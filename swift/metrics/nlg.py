@@ -18,7 +18,11 @@ def compute_rouge_bleu(preds: List[str], labels: List[str]):
     for pred, label in zip(preds, labels):
         hypothesis = [w.strip(' ') for w in jieba.cut(pred) if w.strip(' ')]
         reference = [w.strip(' ') for w in jieba.cut(label) if w.strip(' ')]
-        if not hypothesis or not reference:
+        if not reference:
+            continue
+        if not hypothesis:
+            for metric in score_dict.values():
+                metric.update(0.)
             continue
         rouge = Rouge()
         scores = rouge.get_scores(' '.join(hypothesis), ' '.join(reference))[0]

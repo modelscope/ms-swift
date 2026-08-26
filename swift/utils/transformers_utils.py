@@ -239,6 +239,9 @@ def get_multimodal_target_regex(
         if sub_module is None:
             logger.warning(f'module: {module} is None')
             continue
+        if not isinstance(sub_module, nn.Module):
+            logger.debug(f'Skip non-module LoRA target path: {module} ({type(sub_module).__name__}).')
+            continue
         if isinstance(sub_module, nn.Linear) and module.endswith('lm_head'):
             target_modules = []
         else:

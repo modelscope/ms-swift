@@ -139,22 +139,18 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         if self.template.padding_free:
             cu_seqlens = self.get_cu_seqlens(text_position_ids, batch.get('logits_to_keep'))
             num_examples = (cu_seqlens.shape[0] - 1) // 2
-            all_logps = per_token_logps.new_zeros((num_examples * 2, ))
-            completion_lengths = (cu_seqlens[1:] - cu_seqlens[:-1])
-            chosen_lengths = completion_lengths[:num_examples]
-            rejected_lengths = completion_lengths[num_examples:]
-            public_lengths = torch.min(chosen_lengths, rejected_lengths)  # l_p in the paper
-
-            for i in range(cu_seqlens.shape[0] - 1):
-                start, end = cu_seqlens[i], cu_seqlens[i + 1]
-                length = end - start
-                public_length = public_lengths[i % num_examples]
-                if self.args.ld_alpha is not None and not is_ref_model and length > public_length:
-                    front_logps = per_token_logps[:, start:start + public_length].sum()
-                    rear_logps = per_token_logps[:, start + public_length:end].sum()
-                    all_logps[i] = front_logps + self.args.ld_alpha * rear_logps
-                else:
-                    all_logps[i] = per_token_logps[:, start:end].sum()
+            completion_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
+            if self.args.ld_alpha is not None and not is_ref_model:
+                chosen_lengths = completion_lengths[:num_examples]
+                rejected_lengths = completion_lengths[num_examples:]
+                public_lengths = torch.min(chosen_lengths, rejected_lengths)  # l_p in the paper
+                public_lengths = torch.cat((public_lengths, public_lengths))
+                front_lengths = torch.min(completion_lengths, public_lengths)
+                split_lengths = torch.stack((front_lengths, completion_lengths - front_lengths), dim=-1).flatten()
+                split_logps = self._packed_sequence_sum(per_token_logps.flatten(), split_lengths).view(-1, 2)
+                all_logps = split_logps[:, 0] + self.args.ld_alpha * split_logps[:, 1]
+            else:
+                all_logps = self._packed_sequence_sum(per_token_logps.flatten(), completion_lengths)
             num_tokens = cu_seqlens[num_examples]
             if not is_ref_model:
                 output['nll_loss'] = -origin_per_token_logps[:, :num_tokens][loss_mask[:, :num_tokens]].mean()

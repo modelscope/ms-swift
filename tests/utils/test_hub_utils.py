@@ -54,6 +54,24 @@ class TestHubUtils(unittest.TestCase):
             self.assertEqual(f.read(), b''.join(chunks))
         response.__exit__.assert_called_once()
 
+    @patch('swift.utils.hub_utils.requests.get')
+    @patch('swift.utils.hub_utils.get_cache_dir')
+    def test_download_file_uses_a_distinct_cache_path_for_each_url(self, mock_cache_dir, mock_get):
+        mock_cache_dir.return_value = self.tmp_dir
+        mock_get.side_effect = [self._mock_response([b'first']), self._mock_response([b'second'])]
+
+        first_path = download_file('https://first.example.com/releases/artifact.bin')
+        second_path = download_file('https://second.example.com/releases/artifact.bin')
+        cached_first_path = download_file('https://first.example.com/releases/artifact.bin')
+
+        self.assertNotEqual(first_path, second_path)
+        self.assertEqual(cached_first_path, first_path)
+        with open(first_path, 'rb') as f:
+            self.assertEqual(f.read(), b'first')
+        with open(second_path, 'rb') as f:
+            self.assertEqual(f.read(), b'second')
+        self.assertEqual(mock_get.call_count, 2)
+
 
 if __name__ == '__main__':
     unittest.main()

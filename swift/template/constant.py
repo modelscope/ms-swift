@@ -137,6 +137,7 @@ class RMTemplateType:
 
 
 class MLLMTemplateType:
+    moss_vl = 'moss_vl'
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
@@ -186,6 +187,7 @@ class MLLMTemplateType:
     llava_next_qwen = 'llava_next_qwen'
     llama3_llava_next = 'llama3_llava_next'
     llava_onevision1_5 = 'llava_onevision1_5'
+    llava_onevision2 = 'llava_onevision2'
 
     yi_vl = 'yi_vl'
     ernie_vl = 'ernie_vl'

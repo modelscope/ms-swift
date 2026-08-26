@@ -25,6 +25,7 @@ class LLMModelArch:
 
 
 class MLLMModelArch:
+    moss_vl = 'moss_vl'
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
@@ -593,6 +594,15 @@ else:
             vision_tower='visual',
             mlp='model.layers.{}.mlp',
         ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.moss_vl,
+        language_model=['model.language_model', 'lm_head'],
+        aligner=['model.visual.merger', 'model.separator_token'],
+        vision_tower='model.visual',
+        mlp='model.language_model.layers.{}.mlp',
+    ))
 
 register_model_arch(
     MultiModelKeys(

@@ -2,6 +2,7 @@
 # Parts of the functions in this file are code borrowed from NVIDIA/Megatron-LM
 import copy
 import dataclasses
+import inspect
 import megatron.core
 import numpy as np
 import os
@@ -28,7 +29,7 @@ from megatron.core.transformer.module import Float16Module
 from megatron.core.utils import get_torch_version, is_te_min_version, is_torch_min_version
 from packaging import version
 from transformers.utils import is_torch_npu_available
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from swift.utils import check_json_format, get_logger, init_process_group, is_master, set_device
 from .patcher import patch_merge_fn
@@ -238,6 +239,26 @@ def get_sharded_sd_metadata(args):
     return sharded_sd_metadata
 
 
+def _get_async_strategy_kwargs(async_save: bool) -> Dict[str, Any]:
+    """Pick an async save strategy the installed environment can actually run.
+
+    mcore defaults to the `nvrx` strategy, which needs a recent `nvidia-resiliency-ext`; without it the save
+    raises, so fall back to mcore's own (deprecated but self-contained) async implementation. mcore versions
+    that have no `async_strategy` argument are left alone.
+    """
+    if not async_save or 'async_strategy' not in inspect.signature(dist_checkpointing.save).parameters:
+        return {}
+    try:
+        from megatron.core.dist_checkpointing.strategies.torch import HAVE_NVRX
+    except ImportError:
+        HAVE_NVRX = False
+    if HAVE_NVRX:
+        return {}
+    logger.info_once('A compatible `nvidia-resiliency-ext` is unavailable, '
+                     'falling back to `async_strategy="mcore"` for `--async_save`.')
+    return {'async_strategy': 'mcore'}
+
+
 def save_mcore_checkpoint(
     args,
     models,
@@ -246,7 +267,13 @@ def save_mcore_checkpoint(
     iteration=1,
     output_dir: Optional[str] = None,
     peft_format: bool = False,
-):
+    async_finalize_fn: Optional[Callable] = None,
+) -> bool:
+    """Save a mcore checkpoint and return whether the weights are still being written asynchronously.
+
+    `async_finalize_fn` runs once an asynchronous save has actually landed on disk; it is ignored for
+    synchronous saves, where the caller can simply act after this function returns (see the return value).
+    """
     if output_dir is None:
         output_dir = args.output_dir
     models = unwrap_model(models)
@@ -293,6 +320,7 @@ def save_mcore_checkpoint(
             async_sharded_save=async_save,
             validate_access_integrity=True,
             preprocess_common_before_consistancy_check=_preprocess_common_before_consistancy_check,
+            **_get_async_strategy_kwargs(async_save),
             **kwargs)
 
     if not async_save:
@@ -317,11 +345,14 @@ def save_mcore_checkpoint(
         if async_save:
             assert async_save_request is not None
             async_save_request.add_finalize_fn(iter_finalize_fn)
+            if async_finalize_fn is not None:
+                async_save_request.add_finalize_fn(async_finalize_fn)
         else:
             iter_finalize_fn()
 
     if async_save:
         schedule_async_save(async_save_request)
+    return async_save
 
 
 # Singleton manager of async calls

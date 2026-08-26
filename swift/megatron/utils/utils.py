@@ -248,8 +248,9 @@ def get_packed_seq_params(args, position_ids: torch.Tensor) -> PackedSeqParams:
         max_seqlen_q=max_seqlen_q,
         max_seqlen_kv=max_seqlen_kv,
         qkv_format='thd',
-        total_tokens=position_ids.numel(),
     )
+    if hasattr(packed, 'total_tokens'):
+        packed.total_tokens = position_ids.numel()
     if hasattr(packed, 'cp_partition_mode'):
         packed.cp_partition_mode = args.cp_partition_mode
 

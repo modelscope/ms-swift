@@ -118,7 +118,7 @@ class ModelArguments:
                     self.max_memory[k + local_rank] = self.max_memory.pop(k)
 
     def _init_torch_dtype(self) -> None:
-        """"If torch_dtype is None, find a proper dtype by the config.json/GPU"""
+        """If torch_dtype is None, find a proper dtype by the config.json/GPU"""
         from ..sft_args import SftArguments
 
         self.torch_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.torch_dtype)
@@ -218,7 +218,7 @@ class ModelArguments:
 
     def __post_init__(self):
         if self.model is None:
-            raise ValueError(f'Please set --model <model_id_or_path>`, model: {self.model}')
+            raise ValueError(f'Please set --model <model_id_or_path>, model: {self.model}')
         self._init_new_special_tokens()
         self.model_suffix = get_model_name(self.model)
         self._init_device_map()

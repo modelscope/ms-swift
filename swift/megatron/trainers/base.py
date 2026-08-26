@@ -39,7 +39,7 @@ from swift.template import Template
 from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import (deep_getattr, gc_collect, get_current_device, get_last_valid_indices, get_logger, is_last_rank,
-                         is_master, ms_logger_context)
+                         is_master, ms_logger_context, update_last_checkpoint_symlink)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from .utils import TrainerState, build_streaming_dataloader, prepare_batch
 
@@ -785,14 +785,18 @@ class BaseMegatronTrainer(ABC):
         else:
             model = self.wrapped_models
         gc_collect()
-        save_mcore_checkpoint(
+        async_deferred = save_mcore_checkpoint(
             args,
             model,
             self.optimizer,
             self.opt_param_scheduler,
             iteration=iteration,
             peft_format=args.tuner_type == 'lora',
-            output_dir=output_dir)
+            output_dir=output_dir,
+            # Under `--async_save` the weights are still being written when this returns, so hand the symlink
+            # update to the async request: it then runs once they are durable, and after the safetensors below
+            # (written synchronously), i.e. only when the whole checkpoint is complete.
+            async_finalize_fn=partial(update_last_checkpoint_symlink, output_dir))
         state.last_model_checkpoint = output_dir
         if state.best_global_step is not None:
             best_model_checkpoint = os.path.join(args.output_dir, f'checkpoint-{state.best_global_step}')
@@ -839,6 +843,9 @@ class BaseMegatronTrainer(ABC):
                 self.unmerge_lora_adapters()
 
         if is_master():
+            if not async_deferred:
+                # `output_dir` may have been redirected to the `-merged` copy above, so link the canonical one.
+                update_last_checkpoint_symlink(state.last_model_checkpoint)
             self._rotate_checkpoints(args.output_dir)
 
     def _rotate_checkpoints(self, output_dir: str):
@@ -1007,6 +1014,10 @@ class BaseMegatronTrainer(ABC):
     def _create_dataloader(self, dataset, batch_sampler):
         args = self.args
 
+        dataloader_kwargs = {}
+        mp_context = getattr(args, 'dataloader_multiprocessing_context', None)
+        if mp_context is not None and args.dataloader_num_workers > 0:
+            dataloader_kwargs['multiprocessing_context'] = mp_context
         dataloader = torch.utils.data.DataLoader(
             dataset,
             batch_sampler=batch_sampler,
@@ -1015,6 +1026,7 @@ class BaseMegatronTrainer(ABC):
             persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
             prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
             collate_fn=self.data_collator,
+            **dataloader_kwargs,
         )
         return dataloader
 

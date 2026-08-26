@@ -54,10 +54,11 @@ from swift.template import Template, update_generation_config_eos_token
 from swift.tuner_plugin import tuners_map
 from swift.tuners import SwiftModel
 from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device, get_logger,
-                         get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker)
+                         get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker,
+                         update_last_checkpoint_symlink)
 from .arguments import TrainingArguments
-from .utils import (can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function, get_resume_dir,
-                    is_instance_of_ms_model, patch_modelscope_hub_timeout, replace_index_file)
+from .utils import (accepts_parameter, can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function,
+                    get_resume_dir, is_instance_of_ms_model, patch_modelscope_hub_timeout, replace_index_file)
 
 logger = get_logger()
 
@@ -385,6 +386,13 @@ class SwiftMixin:
                 else:
                     self.model.save_pretrained(output_dir, safe_serialization=safe_serialization, **save_kwargs)
             else:
+                # `Trainer.save_model` calls `self._save(output_dir)` without a state_dict
+                # on the plain/DDP path (transformers only passes one for FSDP/DeepSpeed).
+                # The None fill-in above is skipped for SentenceTransformer models (they are
+                # in `supported_names`), so materialize it here before the ST save branch
+                # consumes it via `state_dict.items()`.
+                if state_dict is None:
+                    state_dict = self.model.state_dict()
 
                 @contextmanager
                 def save_context():
@@ -563,7 +571,16 @@ class SwiftMixin:
         Args:
             timeout (second): The timeout to wait.
         """
-        self.flash_checkpointer.async_save_engine.wait_latest_checkpoint(timeout, max_steps)
+        wait_latest_checkpoint = self.flash_checkpointer.async_save_engine.wait_latest_checkpoint
+        # Older dlrover releases track the latest step themselves and do not accept it.
+        if accepts_parameter(wait_latest_checkpoint, 'max_steps'):
+            wait_latest_checkpoint(timeout, max_steps)
+        else:
+            wait_latest_checkpoint(timeout)
+        # The last saves only became complete during the wait above, so the symlink is stale by now. No
+        # barrier here: the wait already guarantees the checkpoint is durable, and this also runs on the
+        # teardown path, where a rank that already died would never reach it.
+        self._update_last_checkpoint_symlink(barrier=False)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):
@@ -593,7 +610,17 @@ class SwiftMixin:
         else:
             result = super()._save_checkpoint(*args, **kwargs)
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
+        self._update_last_checkpoint_symlink()
         return result
+
+    def _update_last_checkpoint_symlink(self, barrier: bool = True):
+        if barrier and dist.is_initialized():
+            dist.barrier()
+        if not self.args.should_save:
+            return
+        checkpoint_dir = self.get_last_checkpoint() if self.args.use_flash_ckpt else self.state.last_model_checkpoint
+        if checkpoint_dir:
+            update_last_checkpoint_symlink(checkpoint_dir)
 
     def _save_flash_checkpoint(self, model, trial, metrics=None):
         from dlrover.trainer.torch.flash_checkpoint.hf_trainer import HfDdpCheckpointer, HfDeepSpeedCheckpointer
@@ -687,16 +714,21 @@ class SwiftMixin:
                 os.path.join(output_dir, f'rng_state_{self.args.process_index}.pth'),
             )
         if self.args.safe_serialization:
-            torch.save({'safe_serialization': True}, 'safe_serialization')
             replace_index_file(output_dir)
 
         torch.save = torch_native_save
-        if (self.state.global_step == self.state.max_steps):
-            success = self.flash_checkpointer.save_checkpoint_to_storage(self.state.global_step, True)
+        save_to_storage = self.flash_checkpointer.save_checkpoint_to_storage
+        # The final checkpoint must not be dropped, hence the blocking save. Older dlrover releases have no
+        # such argument, so only pass it when it is accepted.
+        if self.state.global_step == self.state.max_steps and accepts_parameter(save_to_storage, 'blocking'):
+            success = save_to_storage(self.state.global_step, True)
         else:
-            success = self.flash_checkpointer.save_checkpoint_to_storage(self.state.global_step)
+            success = save_to_storage(self.state.global_step)
 
-        if not success:
+        # dlrover replicates the state dict across ranks, so only the rank that owns the shared memory reports
+        # success; the others get False without anything going wrong. Cleaning up an incomplete checkpoint has
+        # to be left to the rank that wrote the directory, otherwise it deletes the files the others just saved.
+        if not success and self.args.should_save:
             logger.info(f'Skip saving the checkpoint of step {self.state.global_step} '
                         'because the latest checkpoint is not finished.')
             shutil.rmtree(output_dir, ignore_errors=True)
@@ -1221,13 +1253,14 @@ class SwiftMixin:
 
     def get_cu_seqlens(self, position_ids, logits_to_keep) -> torch.Tensor:
         cu_seqlens = get_packed_seq_params(position_ids)['cu_seq_lens_q']
-        res_cu_seqlens = cu_seqlens.clone()
         if isinstance(logits_to_keep, torch.Tensor):
-            for i in range(cu_seqlens.shape[0] - 1):
-                start, end = cu_seqlens[i], cu_seqlens[i + 1]
-                res_cu_seqlens[i + 1:] -= (~logits_to_keep[start:end]).sum()
-        elif isinstance(logits_to_keep, int):
-            res_cu_seqlens[1:] -= position_ids.shape[-1] + 1 - logits_to_keep
+            kept_cumsum = logits_to_keep.to(cu_seqlens.dtype).cumsum(dim=0, dtype=cu_seqlens.dtype)
+            kept_cumsum = torch.cat((cu_seqlens.new_zeros(1), kept_cumsum))
+            res_cu_seqlens = kept_cumsum[cu_seqlens.long()]
+        else:
+            res_cu_seqlens = cu_seqlens.clone()
+            if isinstance(logits_to_keep, int):
+                res_cu_seqlens[1:] -= position_ids.shape[-1] + 1 - logits_to_keep
         return res_cu_seqlens
 
     @contextmanager
@@ -1251,6 +1284,15 @@ class SwiftMixin:
 
 class DataLoaderMixin:
 
+    @staticmethod
+    def _maybe_multiprocessing_context(args) -> dict:
+        # Honor --dataloader_multiprocessing_context, but only when workers actually exist: the kwarg is
+        # meaningless (and rejected by some DataLoader variants) when num_workers == 0.
+        mp_context = getattr(args, 'dataloader_multiprocessing_context', None)
+        if mp_context is not None and args.dataloader_num_workers > 0:
+            return {'multiprocessing_context': mp_context}
+        return {}
+
     def get_sp_dataloader(self, dataset, batch_size, skip_batches=0):
 
         data_collator = self.data_collator
@@ -1267,6 +1309,7 @@ class DataLoaderMixin:
                 'pin_memory': self.args.dataloader_pin_memory,
                 'persistent_workers': self.args.dataloader_persistent_workers,
             }
+            dataloader_params.update(self._maybe_multiprocessing_context(self.args))
 
             if not isinstance(dataset, torch.utils.data.IterableDataset):
                 if skip_batches > 0:
@@ -1286,6 +1329,7 @@ class DataLoaderMixin:
                 'persistent_workers': self.args.dataloader_persistent_workers,
                 'prefetch_factor': self.args.dataloader_prefetch_factor
             }
+            dataloader_params.update(self._maybe_multiprocessing_context(self.args))
             if dist.is_initialized() and dataloader_params['prefetch_factor']:
                 dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
             dataloader = DataLoader(dataset, batch_size=batch_size, **dataloader_params)
@@ -1311,6 +1355,7 @@ class DataLoaderMixin:
                 'persistent_workers': args.dataloader_persistent_workers,
                 'prefetch_factor': args.dataloader_prefetch_factor
             }
+            dataloader_params.update(self._maybe_multiprocessing_context(args))
             batch_sampler_params = {
                 'drop_last':
                 args.dataloader_drop_last,
@@ -1352,6 +1397,18 @@ class DataLoaderMixin:
             yield
         finally:
             self.args.group_by_length = group_by_length
+
+    def _get_dataloader(self, *args, **kwargs):
+        # Transformers' own dataloaders (eval/predict) don't expose `multiprocessing_context`; patch it in
+        # after construction so `--dataloader_multiprocessing_context` governs them too. DataLoader workers
+        # are created lazily on the first iteration, so setting it before then takes effect.
+        dataloader = super()._get_dataloader(*args, **kwargs)
+        mp_context = getattr(self.args, 'dataloader_multiprocessing_context', None)
+        if mp_context is not None:
+            base = getattr(dataloader, 'base_dataloader', dataloader)
+            if getattr(base, 'num_workers', 0) and getattr(base, 'multiprocessing_context', None) is None:
+                base.multiprocessing_context = mp_context
+        return dataloader
 
     def get_eval_dataloader(self, eval_dataset=None):
         dataloader = None

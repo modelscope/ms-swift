@@ -6,10 +6,11 @@ import os
 import re
 import requests
 import torch
+from contextlib import contextmanager
 from io import BytesIO
 from PIL import Image
 from requests.adapters import HTTPAdapter
-from typing import Any, Callable, List, TypeVar, Union
+from typing import Any, Callable, Iterator, List, TypeVar, Union
 from urllib3.util.retry import Retry
 
 from swift.utils import get_env_args
@@ -411,14 +412,47 @@ def load_audio(
 
 
 def _resolve_video_local_path(path: Union[str, bytes]) -> tuple:
-    """Return (local_path, is_temp_file). HTTP URLs and raw bytes are written to a temp file."""
-    if isinstance(path, bytes) or (isinstance(path, str) and path.startswith('http')):
+    """Return a local path, materializing URLs, Data URIs, base64 strings, and bytes when needed."""
+    if not isinstance(path, (str, bytes)):
+        return path, False
+    if isinstance(path, str):
+        path = path.strip()
+        is_remote = path.startswith('http')
+        checked_path = None if is_remote else _check_path(path)
+    else:
+        is_remote = False
+        checked_path = None
+    if isinstance(path, bytes) or is_remote or checked_path is None:
         import tempfile
-        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
-            f.write(load_file(path).read())
-            return f.name, True
-    checked = _check_path(path) if isinstance(path, str) else None
-    return checked or path, False
+        video_bytes = load_file(path).read()
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
+                temp_path = f.name
+                f.write(video_bytes)
+            return temp_path, True
+        except Exception:
+            if temp_path is not None:
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+            raise
+    return checked_path, False
+
+
+@contextmanager
+def local_video_path(path: Union[str, bytes]) -> Iterator[str]:
+    """Materialize a video input as a local path and remove any temporary file afterwards."""
+    local_path, is_temp = _resolve_video_local_path(path)
+    try:
+        yield local_path
+    finally:
+        if is_temp:
+            try:
+                os.remove(local_path)
+            except OSError:
+                pass
 
 
 def _video_to_ndarrays_local(local_path: str, num_frames: int = -1) -> np.ndarray:
@@ -474,15 +508,8 @@ def _video_get_metadata_local(local_path: str, num_frames: int = -1) -> dict:
 
 def load_vllm_video(path: Union[str, bytes], num_frames: int = -1) -> tuple:
     """Decode video frames + metadata for vLLM rollout; one download, temp file cleaned up."""
-    local_path, is_temp = _resolve_video_local_path(path)
-    try:
+    with local_video_path(path) as local_path:
         return _video_to_ndarrays_local(local_path, num_frames), _video_get_metadata_local(local_path, num_frames)
-    finally:
-        if is_temp:
-            try:
-                os.remove(local_path)
-            except OSError:
-                pass
 
 
 def load_video_valley(video: Union[str, bytes]):

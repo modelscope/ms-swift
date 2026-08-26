@@ -5,9 +5,11 @@ import inspect
 import os
 import torch
 import torch.nn.functional as F
+from contextlib import contextmanager
 from importlib import import_module
 from packaging import version
 from PIL import Image
+from threading import RLock
 from transformers import (AutoConfig, AutoModel, AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase)
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -996,6 +998,23 @@ def _patch_deepstack_process(model):
     model._deepstack_process = MethodType(_deepstack_process, model)
 
 
+def _patch_qwen3_vl_vision_kwargs(visual):
+    # The multimodal data collator injects LLM packing kwargs (cu_seq_lens_q/k, max_length_q/k) at the top
+    # level for flash-attn varlen. transformers threads these **kwargs blindly into the vision tower, whose
+    # flash-attn branch already passes cu_seq_lens_q explicitly, raising
+    # "flash_attention_forward() got multiple values for keyword argument 'cu_seq_lens_q'". The vision tower
+    # derives its own cu_seqlens from grid_thw, so drop these text-only keys before they reach it (the
+    # deepspeed path calls `visual` without them, so this only matters for the origin_forward path).
+    origin_forward = visual.forward
+
+    def forward(*args, **kwargs):
+        for key in ('cu_seq_lens_q', 'cu_seq_lens_k', 'max_length_q', 'max_length_k'):
+            kwargs.pop(key, None)
+        return origin_forward(*args, **kwargs)
+
+    visual.forward = forward
+
+
 def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
     if hasattr(model, 'origin_forward'):
         return
@@ -1086,6 +1105,7 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
     model.origin_forward = model.forward
     model.forward = MethodType(forward, model)
     _patch_deepstack_process(model.language_model)
+    _patch_qwen3_vl_vision_kwargs(model.visual)
 
 
 class Qwen3VLLoader(Qwen2VLLoader):
@@ -1390,6 +1410,117 @@ def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
     return mod.out_proj(core_attn_out)
 
 
+_QWEN3_5_KEEP_IN_FP32_MODULES = ('linear_attn.A_log', 'linear_attn.norm.weight')
+_QWEN3_5_KEEP_IN_FP32_MODULES_LOCK = RLock()
+
+
+def _get_qwen3_5_keep_in_fp32_modules(model_dir: str, config: PretrainedConfig, model_kwargs=None) -> Tuple[str, ...]:
+    from safetensors import safe_open
+    from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_NAME
+
+    model_kwargs = model_kwargs or {}
+    explicit_filename = getattr(config, 'transformers_weights', None)
+    if any(model_kwargs.get(name) is not None
+           for name in ('state_dict', 'gguf_file',
+                        'key_mapping')) or (explicit_filename is None and model_kwargs.get('use_safetensors') is False):
+        return ()
+
+    text_config = getattr(config, 'text_config', config)
+    layer_types = getattr(text_config, 'layer_types', None)
+    if not isinstance(layer_types, (list, tuple)):
+        return ()
+    num_linear_attention_layers = sum(layer_type == 'linear_attention' for layer_type in layer_types)
+    if num_linear_attention_layers == 0:
+        return ()
+
+    checkpoint_dir = os.path.abspath(os.path.join(model_dir, model_kwargs.get('subfolder') or ''))
+    variant = model_kwargs.get('variant')
+
+    def add_variant(filename: str) -> str:
+        if variant is None:
+            return filename
+        path, extension = filename.rsplit('.', 1)
+        return f'{path}.{variant}.{extension}'
+
+    index_path = None
+    checkpoint_path = None
+    if explicit_filename is not None:
+        if not isinstance(explicit_filename, str):
+            return ()
+        archive_path = os.path.abspath(os.path.join(checkpoint_dir, explicit_filename))
+        try:
+            contained = os.path.commonpath([checkpoint_dir, archive_path]) == checkpoint_dir
+        except ValueError:
+            contained = False
+        if not contained:
+            return ()
+        if explicit_filename.endswith('.safetensors.index.json'):
+            index_path = archive_path
+        elif explicit_filename.endswith('.safetensors'):
+            checkpoint_path = archive_path
+        else:
+            return ()
+    else:
+        checkpoint_path = os.path.join(checkpoint_dir, add_variant(SAFE_WEIGHTS_NAME))
+        index_path = os.path.join(checkpoint_dir, add_variant(SAFE_WEIGHTS_INDEX_NAME))
+    target_dtypes = {name: [] for name in _QWEN3_5_KEEP_IN_FP32_MODULES}
+
+    try:
+        if checkpoint_path is not None and os.path.isfile(checkpoint_path):
+            with safe_open(checkpoint_path, framework='pt', device='cpu') as tensors:
+                for key in tensors.keys():
+                    for name in _QWEN3_5_KEEP_IN_FP32_MODULES:
+                        if key.endswith(name):
+                            target_dtypes[name].append(tensors.get_slice(key).get_dtype())
+                            break
+        elif index_path is not None and os.path.isfile(index_path):
+            import json
+            with open(index_path, 'r', encoding='utf-8') as f:
+                weight_map = json.load(f)['weight_map']
+            targets_by_shard = {}
+            for key, shard in weight_map.items():
+                for name in _QWEN3_5_KEEP_IN_FP32_MODULES:
+                    if key.endswith(name):
+                        targets_by_shard.setdefault(shard, []).append((name, key))
+                        break
+            for shard, targets in targets_by_shard.items():
+                shard_path = os.path.abspath(os.path.join(checkpoint_dir, shard))
+                if os.path.commonpath([checkpoint_dir, shard_path]) != checkpoint_dir:
+                    raise ValueError(f'Checkpoint shard must stay inside the model directory: {shard}')
+                with safe_open(shard_path, framework='pt', device='cpu') as tensors:
+                    for name, key in targets:
+                        target_dtypes[name].append(tensors.get_slice(key).get_dtype())
+        else:
+            return ()
+    except Exception as error:
+        logger.debug('Unable to inspect Qwen3.5 checkpoint dtypes in %s: %s', checkpoint_dir, error)
+        return ()
+
+    return tuple(name for name, dtypes in target_dtypes.items()
+                 if len(dtypes) == num_linear_attention_layers and set(dtypes) == {'F32'})
+
+
+@contextmanager
+def _patch_qwen3_5_keep_in_fp32_modules(model_cls: Type[PreTrainedModel], keep_in_fp32_modules: Tuple[str, ...]):
+    attr_name = '_keep_in_fp32_modules_strict'
+    with _QWEN3_5_KEEP_IN_FP32_MODULES_LOCK:
+        if not keep_in_fp32_modules:
+            yield
+            return
+        had_local_attr = attr_name in model_cls.__dict__
+        original_value = model_cls.__dict__.get(attr_name)
+        existing_modules = list(getattr(model_cls, attr_name, None) or [])
+        setattr(model_cls, attr_name,
+                existing_modules + [name for name in keep_in_fp32_modules if name not in existing_modules])
+        try:
+            yield
+        finally:
+            if had_local_attr:
+                setattr(model_cls, attr_name, original_value)
+            else:
+                delattr(model_cls, attr_name)
+
+
 def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
     gated_delta_net_specs = []
     class_specs = (
@@ -1464,10 +1595,12 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
 class Qwen3_5MoeLoader(Qwen3VLLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        from transformers import Qwen3_5MoeForConditionalGeneration
+        from transformers import Qwen3_5MoeForConditionalGeneration, Qwen3_5MoePreTrainedModel
         self.auto_model_cls = self.auto_model_cls or Qwen3_5MoeForConditionalGeneration
         _patch_qwen3_5_linear_attention_sequence_parallel()
-        return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        keep_in_fp32_modules = _get_qwen3_5_keep_in_fp32_modules(model_dir, config, model_kwargs)
+        with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5MoePreTrainedModel, keep_in_fp32_modules):
+            return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
 
 
 register_model(
@@ -1505,10 +1638,12 @@ register_model(
 class Qwen3_5Loader(Qwen3VLLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        from transformers import Qwen3_5ForConditionalGeneration
+        from transformers import Qwen3_5ForConditionalGeneration, Qwen3_5PreTrainedModel
         self.auto_model_cls = self.auto_model_cls or Qwen3_5ForConditionalGeneration
         _patch_qwen3_5_linear_attention_sequence_parallel()
-        return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        keep_in_fp32_modules = _get_qwen3_5_keep_in_fp32_modules(model_dir, config, model_kwargs)
+        with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5PreTrainedModel, keep_in_fp32_modules):
+            return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
 
 
 register_model(
@@ -1626,11 +1761,14 @@ class Qwen3_5EmbLoader(Qwen3_5Loader):
         super()._check_qwen_vl_utils()
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen3_5PreTrainedModel
         self.auto_model_cls = self.auto_model_cls or AutoModel
 
         _patch_qwen3_5_linear_attention_sequence_parallel()
 
-        model = ModelLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        keep_in_fp32_modules = _get_qwen3_5_keep_in_fp32_modules(model_dir, config, model_kwargs)
+        with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5PreTrainedModel, keep_in_fp32_modules):
+            model = ModelLoader.get_model(self, model_dir, config, processor, model_kwargs)
 
         inner = getattr(model, 'model', None) or model
         visual = getattr(inner, 'visual', None)

@@ -1263,9 +1263,13 @@ def patch_vllm_load_adapter():
             # loading weights, throwing an exception if validation fails.
             peft_helper.validate_legal(self.lora_config)
             # For some models like Qwen2VL, we need to use hf_to_vllm_mapper
-            # to ensure correct loading of lora weights.
+            # to ensure correct loading of lora weights. Drop the QKV/MLP fusion
+            # substr maps so constituent names (e.g. `q_proj`) survive for the
+            # LoRA manager to pack, matching vllm's own worker_manager._load_adapter.
             model = self._adapter_manager.model
             hf_to_vllm_mapper = getattr(model, 'hf_to_vllm_mapper', None)
+            if hf_to_vllm_mapper is not None and hasattr(hf_to_vllm_mapper, 'get_unstacked_mapper'):
+                hf_to_vllm_mapper = hf_to_vllm_mapper.get_unstacked_mapper()
 
             lora_request_kwargs = {
                 'peft_helper': peft_helper,
@@ -1548,6 +1552,9 @@ def get_chord_sft_dataloader(trainer,
         'pin_memory': trainer.args.dataloader_pin_memory,
         'persistent_workers': trainer.args.dataloader_persistent_workers,
     }
+    mp_context = getattr(trainer.args, 'dataloader_multiprocessing_context', None)
+    if mp_context is not None and trainer.args.dataloader_num_workers > 0:
+        dataloader_params['multiprocessing_context'] = mp_context
 
     if not isinstance(dataset, torch.utils.data.IterableDataset):
         if sampler_fn is not None:
@@ -1665,6 +1672,26 @@ def set_expandable_segments(enable: bool) -> None:
     if torch.cuda.is_available():
         torch.cuda.memory._set_allocator_settings(f'expandable_segments:{enable}')
         os.environ['PYTORCH_CUDA_ALLOC_CONF'] = f'expandable_segments:{enable}'
+
+
+def sleep_vllm_engine(engine, sleep_level: int, suppress_errors: bool = False) -> None:
+    """Release colocated vLLM memory while attempting every cleanup operation."""
+    cleanup_error = None
+    operations = [
+        ('reset the prefix cache', engine.reset_prefix_cache),
+        ('put the engine to sleep', lambda: engine.sleep(level=sleep_level)),
+        ('empty the device cache', aggressive_empty_cache),
+        ('restore expandable segments', lambda: set_expandable_segments(True)),
+    ]
+    for operation, callback in operations:
+        try:
+            callback()
+        except Exception as error:
+            if cleanup_error is None:
+                cleanup_error = error
+            get_logger().warning(f'Failed to {operation} during vLLM cleanup: {error}')
+    if cleanup_error is not None and not suppress_errors:
+        raise cleanup_error
 
 
 def peft_config_to_dict(peft_config):
