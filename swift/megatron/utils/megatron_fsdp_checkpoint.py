@@ -107,11 +107,6 @@ def is_checkpoint(checkpoint_dir):
     return 'args' in keys and 'iteration' in keys and any(key == 'model' or key.startswith('model.') for key in keys)
 
 
-def _get_load_planner(args):
-    allow_partial_load = not getattr(args, 'strict_fsdp_dtensor_load', False)
-    return default_planner.DefaultLoadPlanner(allow_partial_load=allow_partial_load)
-
-
 def load_checkpoint(args, state_dict, model, checkpoint_dir):
     state_dict, raw_state_dict = _prepare_state_dict(
         args,
@@ -119,10 +114,18 @@ def load_checkpoint(args, state_dict, model, checkpoint_dir):
         model,
         preserve_raw_state=True,
     )
+    storage_reader = FileSystemReader(checkpoint_dir)
+    allow_partial_load = not getattr(args, 'strict_fsdp_dtensor_load', False)
+    if allow_partial_load:
+        from megatron.training.checkpointing import print_diff_in_state_dicts
+
+        state_dict_metadata = storage_reader.read_metadata().state_dict_metadata
+        print_diff_in_state_dicts(state_dict_metadata, state_dict)
+
     torch_dist_checkpoint.load_state_dict(
         state_dict=state_dict,
-        storage_reader=FileSystemReader(checkpoint_dir),
-        planner=_get_load_planner(args),
+        storage_reader=storage_reader,
+        planner=default_planner.DefaultLoadPlanner(allow_partial_load=allow_partial_load),
     )
     state_dict.update(raw_state_dict)
     return state_dict
