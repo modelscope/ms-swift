@@ -222,7 +222,7 @@ class InitModelStrategy:
 
 
 def get_default_device_map():
-    if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
+    if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False').lower() == 'true':
         return None
     local_rank = get_dist_setting()[1]
     if local_rank == -1:
