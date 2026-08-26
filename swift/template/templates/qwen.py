@@ -712,17 +712,6 @@ register_template(
 
 register_template(
     QwenTemplateMeta(
-        MLLMTemplateType.qwen4_exp,
-        template_cls=Qwen3_8Template,
-        default_system=None,
-        thinking_prefix='<think>\n',
-        non_thinking_prefix='<think>\n\n</think>\n\n',
-        agent_template='qwen3_5',
-        preserve_thinking=True,
-        is_thinking=True))
-
-register_template(
-    QwenTemplateMeta(
         MLLMTemplateType.ovis_ocr2,
         template_cls=Qwen3_5Template,
         default_system=None,
