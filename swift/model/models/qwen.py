@@ -1715,7 +1715,7 @@ register_model(
         Qwen4ExpLoader,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen4ExpForConditionalGeneration'],
-        requires=['transformers>=5.16.0.dev0', 'qwen_vl_utils>=0.0.14', 'decord'],
+        requires=['transformers>=5.16.0', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 
