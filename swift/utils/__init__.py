@@ -13,7 +13,7 @@ if TYPE_CHECKING:
                                is_lmdeploy_available, is_megatron_available, is_swanlab_available, is_trl_available,
                                is_unsloth_available, is_vllm_ascend_available, is_vllm_available,
                                is_vllm_metax_available, is_wandb_available)
-    from .io_utils import (JsonlWriter, LAST_CHECKPOINT_SYMLINK, append_to_jsonl, get_file_mm_type, read_from_jsonl,
+    from .io_utils import (LAST_CHECKPOINT_SYMLINK, JsonlWriter, append_to_jsonl, get_file_mm_type, read_from_jsonl,
                            update_last_checkpoint_symlink, write_to_jsonl)
     from .logger import get_logger, ms_logger_context
     from .np_utils import get_seed, stat_array, transform_jsonl_to_df
