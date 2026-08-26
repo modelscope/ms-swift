@@ -1674,6 +1674,26 @@ def set_expandable_segments(enable: bool) -> None:
         os.environ['PYTORCH_CUDA_ALLOC_CONF'] = f'expandable_segments:{enable}'
 
 
+def sleep_vllm_engine(engine, sleep_level: int, suppress_errors: bool = False) -> None:
+    """Release colocated vLLM memory while attempting every cleanup operation."""
+    cleanup_error = None
+    operations = [
+        ('reset the prefix cache', engine.reset_prefix_cache),
+        ('put the engine to sleep', lambda: engine.sleep(level=sleep_level)),
+        ('empty the device cache', aggressive_empty_cache),
+        ('restore expandable segments', lambda: set_expandable_segments(True)),
+    ]
+    for operation, callback in operations:
+        try:
+            callback()
+        except Exception as error:
+            if cleanup_error is None:
+                cleanup_error = error
+            get_logger().warning(f'Failed to {operation} during vLLM cleanup: {error}')
+    if cleanup_error is not None and not suppress_errors:
+        raise cleanup_error
+
+
 def peft_config_to_dict(peft_config):
     if not isinstance(peft_config, dict):
         peft_config = asdict(peft_config)
