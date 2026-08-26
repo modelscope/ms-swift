@@ -254,8 +254,8 @@ def _get_async_strategy_kwargs(async_save: bool) -> Dict[str, Any]:
         HAVE_NVRX = False
     if HAVE_NVRX:
         return {}
-    logger.info('A compatible `nvidia-resiliency-ext` is unavailable, '
-                'falling back to `async_strategy="mcore"` for `--async_save`.')
+    logger.info_once('A compatible `nvidia-resiliency-ext` is unavailable, '
+                     'falling back to `async_strategy="mcore"` for `--async_save`.')
     return {'async_strategy': 'mcore'}
 
 

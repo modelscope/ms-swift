@@ -1246,13 +1246,14 @@ class SwiftMixin:
 
     def get_cu_seqlens(self, position_ids, logits_to_keep) -> torch.Tensor:
         cu_seqlens = get_packed_seq_params(position_ids)['cu_seq_lens_q']
-        res_cu_seqlens = cu_seqlens.clone()
         if isinstance(logits_to_keep, torch.Tensor):
-            for i in range(cu_seqlens.shape[0] - 1):
-                start, end = cu_seqlens[i], cu_seqlens[i + 1]
-                res_cu_seqlens[i + 1:] -= (~logits_to_keep[start:end]).sum()
-        elif isinstance(logits_to_keep, int):
-            res_cu_seqlens[1:] -= position_ids.shape[-1] + 1 - logits_to_keep
+            kept_cumsum = logits_to_keep.to(cu_seqlens.dtype).cumsum(dim=0, dtype=cu_seqlens.dtype)
+            kept_cumsum = torch.cat((cu_seqlens.new_zeros(1), kept_cumsum))
+            res_cu_seqlens = kept_cumsum[cu_seqlens.long()]
+        else:
+            res_cu_seqlens = cu_seqlens.clone()
+            if isinstance(logits_to_keep, int):
+                res_cu_seqlens[1:] -= position_ids.shape[-1] + 1 - logits_to_keep
         return res_cu_seqlens
 
     @contextmanager
