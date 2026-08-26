@@ -48,6 +48,16 @@ class DistributedConfig:
     # (Ulysses/CP-style SP for the transformers path). Only effective when tp > 1.
     sequence_parallel: bool = False
     use_distributed_optimizer: bool = True
+    #: Shard the parameters with Megatron-FSDP instead of replicating them under Megatron-DDP.
+    #: NOT the same knob as ``fsdp`` above: that one is the transformers backend's (torch FSDP via
+    #: accelerate) and has no effect on the megatron path. Named after the legacy Megatron CLI flag
+    #: so args_to_configs picks it up by same-name copy.
+    #: Requires ``use_distributed_optimizer`` (sharded parameters need matching master-weight shards)
+    #: and is incompatible with ``context_parallel_size > 1``; both are checked in validate_configs.
+    #: megatron's other implementation, Torch FSDP2, is deliberately not exposed: it additionally
+    #: demands untied embeddings and a second checkpoint sharding format, neither of which the legacy
+    #: surface supports either.
+    use_megatron_fsdp: bool = False
     recompute_granularity: Optional[Literal['selective', 'full', 'none']] = None
     recompute_method: Optional[Literal['uniform', 'block']] = None
     recompute_num_layers: Optional[int] = None

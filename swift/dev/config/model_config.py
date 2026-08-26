@@ -52,3 +52,49 @@ class ModelConfig:
     #: learn (verl calls this ``detach_encoder`` and recommends it). Safer for RL -- the policy is
     #: then provably unaffected -- at the cost of the effect verl only observed without it.
     mtp_decoder_input_detach: bool = False
+
+    # -- FP4 low-precision training (Megatron only) ---------------------------------------------
+    # Names match the legacy Megatron CLI flags so args_to_configs picks them up by same-name copy;
+    # builders/model.py renames them to what megatron's TransformerConfig calls them (fp4 /
+    # fp4_param). NVFP4 GEMMs need Blackwell (compute capability 10.0+) and Transformer Engine
+    # >= 2.7.0.dev0; mcore-bridge's ModelConfig checks both when the model is built.
+
+    #: Enables FP4 compute. Only 'e2m1' exists, but it stays a value rather than a bool to match
+    #: megatron, whose ``fp4`` field is the format and whose None means "no FP4". Activations and
+    #: GEMM inputs are quantized per transformer layer; the parameters themselves are NOT, unless
+    #: ``fp4_param_gather`` is also set. Mutually exclusive with FP8 (which dev does not expose).
+    fp4_format: Optional[Literal['e2m1']] = None
+    #: Which FP4 scaling recipe to use. Only NVFP4 block scaling is wired, matching legacy; megatron
+    #: also accepts 'custom', which needs a quantizer factory that has no place on this surface.
+    fp4_recipe: Literal['nvfp4'] = 'nvfp4'
+    #: Also keep the *parameters* in FP4, and all-gather them as FP4, which is where the memory and
+    #: bandwidth saving comes from. Requires ``fp4_format`` and the distributed optimizer: the FP32
+    #: master shards are re-quantized back into the FP4 parameters by DistributedOptimizer, and no
+    #: other optimizer has that step -- without it the parameters would never be updated at all.
+    fp4_param_gather: bool = False
+
+    # -- FP8 low-precision training (Megatron only) ----------------------------------------------
+    # Same shape as the FP4 block above, and mutually exclusive with it: megatron enters one
+    # quantization context per transformer layer, so a config asking for both is rejected.
+    # FP8 is the older and far more portable of the two -- Hopper and Ada already have the GEMMs,
+    # whereas NVFP4 needs Blackwell.
+
+    #: Enables FP8 compute. 'e4m3' uses that format throughout; 'hybrid' keeps e4m3 for the forward
+    #: and e5m2 for the backward, which is the usual choice. None means no FP8.
+    fp8_format: Optional[Literal['e4m3', 'hybrid']] = None
+    #: FP8 scaling recipe. 'delayed' scales from an amax history (the two knobs below apply only to
+    #: it); 'tensorwise' rescales per tensor per step; 'blockwise' is what DeepSeek's FP8 checkpoints
+    #: store, so it is the one that round-trips their weights; 'mxfp8' is Blackwell-only.
+    fp8_recipe: Literal['tensorwise', 'delayed', 'mxfp8', 'blockwise'] = 'delayed'
+    #: Also keep the *parameters* in FP8 and all-gather them as FP8. Carries the same requirement as
+    #: its FP4 counterpart, and for the same reason -- megatron itself rejects it without the
+    #: distributed optimizer ('--fp8-param-gather only supported with distributed optimizer, ...').
+    fp8_param_gather: bool = False
+    #: How many past amax values the 'delayed' recipe scales from.
+    #: NOTE: 1024 is legacy Megatron-SWIFT's default, NOT megatron's (which is 1). Kept aligned with
+    #: legacy on purpose: these two knobs change the numerics, so adopting megatron's defaults would
+    #: make an identical-looking config train differently on dev than on legacy.
+    fp8_amax_history_len: int = 1024
+    #: How the scaling factor is picked out of that history. 'max' is legacy's default; megatron's is
+    #: 'most_recent' (see the note above).
+    fp8_amax_compute_algo: Literal['most_recent', 'max'] = 'max'

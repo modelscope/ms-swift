@@ -227,6 +227,69 @@ def _apply_mtp_kwargs(kwargs: dict, model_config: ModelConfig) -> None:
         kwargs['mtp_decoder_input_detach'] = True
 
 
+def _apply_fp4_kwargs(kwargs: dict, model_config: ModelConfig) -> None:
+    """Forward the FP4 knobs into mcore-bridge's ModelConfig, under megatron's names for them.
+
+    A rename, not a copy: dev's fields are named after the legacy CLI flags (``--fp4-format``,
+    ``--fp4-param-gather``) so the Megatron CLI bridge picks them up by same-name copy, while
+    megatron's TransformerConfig calls the same two things ``fp4`` and ``fp4_param``.
+
+    ``fp4_param_gather`` maps onto ``fp4_param`` ALONE even though megatron has a same-named DDP
+    field: the two must agree or the run silently does not train, so twinkle derives the DDP flag
+    from ``fp4_param`` itself (MegatronStrategy._finalize_quantized_param_config). Setting it here as
+    well would create the second, independent source of truth that derivation exists to remove.
+
+    Gated on ``fp4_format`` so an FP4-free run reaches the bridge with exactly the kwargs it had
+    before this existed -- ``fp4_recipe`` in particular has a non-None default on both sides, so
+    forwarding it unconditionally would be indistinguishable from the user asking for it.
+    """
+    if model_config.fp4_format is None:
+        return
+    kwargs['fp4'] = model_config.fp4_format
+    kwargs['fp4_recipe'] = model_config.fp4_recipe
+    if model_config.fp4_param_gather:
+        kwargs['fp4_param'] = True
+
+
+def _apply_fp8_kwargs(kwargs: dict, model_config: ModelConfig) -> None:
+    """Forward the FP8 knobs into mcore-bridge's ModelConfig, under megatron's names for them.
+
+    Deliberately a sibling of ``_apply_fp4_kwargs`` rather than a shared loop: the two formats look
+    symmetric in the config but are not here. FP8 carries the delayed-scaling amax knobs, whose dev
+    defaults intentionally differ from megatron's (1024 / 'max' vs 1 / 'most_recent', following
+    legacy Megatron-SWIFT), which means they must be forwarded EXPLICITLY -- leaving them out would
+    silently hand the run megatron's defaults and change its numerics against legacy. FP4 has no
+    equivalent, so a shared implementation would need a per-format exception table to say so.
+
+    ``fp8_param_gather`` maps to ``fp8_param`` alone, for the same reason as the FP4 case: twinkle
+    derives the DDP flag from it, and a second writer would be a second source of truth.
+    """
+    if model_config.fp8_format is None:
+        return
+    kwargs['fp8'] = model_config.fp8_format
+    kwargs['fp8_recipe'] = model_config.fp8_recipe
+    kwargs['fp8_amax_history_len'] = model_config.fp8_amax_history_len
+    kwargs['fp8_amax_compute_algo'] = model_config.fp8_amax_compute_algo
+    if model_config.fp8_param_gather:
+        kwargs['fp8_param'] = True
+
+
+def _apply_fsdp_kwargs(kwargs: dict, distributed_config: DistributedConfig) -> None:
+    """Forward the Megatron-FSDP switch, which travels inside ddp_config rather than on its own.
+
+    Unlike the other knobs here this is not a MegatronModel argument: twinkle reads
+    ``ddp_config['use_megatron_fsdp']`` to pick WHICH data-parallel class wraps the model, and then
+    hands the same dict to megatron's DistributedDataParallelConfig, which declares a field of that
+    name. One key, two readers -- which is why it cannot simply be passed as a top-level kwarg.
+
+    Only set when enabled, so a DDP run reaches twinkle with no ddp_config at all, exactly as it did
+    before this existed.
+    """
+    if not distributed_config.use_megatron_fsdp:
+        return
+    kwargs['ddp_config'] = {'use_megatron_fsdp': True}
+
+
 def _resolve_bridge_backend(name: str):
     """bridge_backend name (DistributedConfig default: 'mcore-bridge') -> a BridgeBackend instance."""
     from swift.dev.model.megatron.bridge import MCoreBridgeBackend, MegatronBridgeBackend
@@ -309,6 +372,8 @@ def _build_megatron_model(model_config: ModelConfig, distributed_config: Distrib
         extra_kwargs['recompute_num_layers'] = None
         extra_kwargs['recompute_method'] = None
 
+    _apply_fsdp_kwargs(extra_kwargs, distributed_config)
+
     # Attention kernel. Always forwarded (unlike the recompute knobs above) because the meaningful
     # default is legacy's 'flash', not mcore's AttnBackend.auto -- under auto TE picks per shape and
     # selects the FUSED cuDNN kernel for a Qwen2.5 bf16 causal THD forward, so leaving it unset makes
@@ -340,6 +405,8 @@ def _build_megatron_model(model_config: ModelConfig, distributed_config: Distrib
             extra_kwargs['num_labels'] = model_config.num_labels
 
     _apply_mtp_kwargs(extra_kwargs, model_config)
+    _apply_fp4_kwargs(extra_kwargs, model_config)
+    _apply_fp8_kwargs(extra_kwargs, model_config)
 
     backend = _resolve_bridge_backend(distributed_config.bridge_backend)
     # In Ray mode the model lives in a remote DeviceGroup named 'model'; in local (torchrun) mode

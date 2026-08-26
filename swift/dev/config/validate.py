@@ -38,6 +38,88 @@ def validate_configs(
     _check_megatron_recompute(train_config, distributed_config, is_megatron)
     _check_megatron_attn_backend(model_config, template_config, is_megatron)
     _check_mtp(model_config, is_megatron, tuner_config)
+    _check_quantization(model_config, distributed_config, is_megatron)
+    _check_megatron_fsdp(distributed_config, is_megatron)
+
+
+def _check_megatron_fsdp(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+    """Reject Megatron-FSDP pairings that megatron itself rejects, or that silently do nothing.
+
+    Duplicated on purpose with MegatronStrategy._check_fsdp, which is the authority: that one runs in
+    the process that builds the model, so it also covers cookbook users who never touch dev's config
+    layer. Checking here as well means a CLI typo fails on the driver, before ranks are spawned.
+    """
+    if not distributed_config.use_megatron_fsdp:
+        return
+
+    if not is_megatron:
+        # The transformers backend has its own FSDP, reached through DistributedConfig.fsdp. Silently
+        # ignoring this flag there would leave a run that says "sharded" and replicates.
+        raise ValueError('DistributedConfig.use_megatron_fsdp only applies to the megatron backend, but the active '
+                         'backend is transformers. Use DistributedConfig.fsdp for the transformers path.')
+
+    if not distributed_config.use_distributed_optimizer:
+        raise ValueError('DistributedConfig.use_megatron_fsdp requires use_distributed_optimizer=True: FSDP shards '
+                         'the parameters, and only the distributed optimizer keeps the matching master-weight '
+                         'shards to update them from.')
+
+    if distributed_config.context_parallel_size > 1:
+        # megatron asserts the same pairing on its own CLI ('Hybrid context parallelism not supported
+        # with Megatron FSDP').
+        raise ValueError('DistributedConfig.use_megatron_fsdp is incompatible with context_parallel_size='
+                         f'{distributed_config.context_parallel_size}. Megatron-FSDP does not support context '
+                         'parallelism; use the default DDP wrapper for a CP run.')
+
+
+#: (format field, param-gather field) for each low-precision format dev exposes. The amax knobs are
+#: deliberately absent: their defaults are non-None, so "did the user set this?" is unanswerable and
+#: a dependency check on them would fire on every run.
+_QUANT_FORMATS = (('fp4_format', 'fp4_param_gather'), ('fp8_format', 'fp8_param_gather'))
+
+
+def _check_quantization(model_config: 'ModelConfig', distributed_config: 'DistributedConfig',
+                        is_megatron: bool) -> None:
+    """Reject FP4/FP8 settings that cannot do what they say.
+
+    Errors rather than warnings because every case below starts, reports a normal-looking loss, and
+    trains nothing or trains something other than what was asked for.
+
+    The environment preconditions (Blackwell for NVFP4, a TE new enough for the chosen recipe) are
+    deliberately NOT checked here: this runs on the driver, which in Ray mode is not the process --
+    nor necessarily the node -- that builds the model, so a check here would test the wrong GPU.
+    mcore-bridge's ModelConfig checks them where the model is actually built.
+    """
+    active = [fmt for fmt, _ in _QUANT_FORMATS if getattr(model_config, fmt) is not None]
+
+    for fmt, param_gather in _QUANT_FORMATS:
+        if getattr(model_config, fmt) is None:
+            if getattr(model_config, param_gather):
+                raise ValueError(f'ModelConfig.{param_gather} needs ModelConfig.{fmt} to be set. Without it the '
+                                 'model is built in its normal dtype, so this knob would be ignored.')
+            continue
+
+        if not is_megatron:
+            raise ValueError(f'ModelConfig.{fmt} is only implemented by the megatron backend, but the active '
+                             'backend is transformers. Low-precision training here is a Megatron/Transformer-'
+                             'Engine feature; the HF path has no equivalent.')
+
+        if getattr(model_config, param_gather) and not distributed_config.use_distributed_optimizer:
+            # DistributedOptimizer._copy_main_params_to_model_params is the only code that
+            # re-quantizes the FP32 master shards back into the quantized parameters. Under any other
+            # optimizer they keep their initial values for the whole run while the loss is computed
+            # from them, so it neither errors nor learns. megatron asserts the same thing on its own
+            # CLI ('--fp8-param-gather only supported with distributed optimizer, ...').
+            raise ValueError(
+                f'ModelConfig.{param_gather} requires DistributedConfig.use_distributed_optimizer=True: '
+                'quantized parameters are updated by re-quantizing the distributed optimizer\'s master shards, '
+                'and no other optimizer implements that step, so the model would never change.')
+
+    if len(active) > 1:
+        # megatron enters exactly one quantization context per transformer layer and its own
+        # TransformerConfig raises on this; caught here so it fails on the driver, before a model is
+        # built on every rank.
+        raise ValueError(f'{" and ".join(f"ModelConfig.{fmt}" for fmt in active)} are mutually exclusive: megatron '
+                         'applies a single quantization recipe per transformer layer. Pick one.')
 
 
 def _check_mtp(model_config: 'ModelConfig', is_megatron: bool, tuner_config: Optional['TunerConfig']) -> None:
