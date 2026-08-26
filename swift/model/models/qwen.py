@@ -1706,8 +1706,7 @@ class Qwen4ExpLoader(Qwen3VLLoader):
 
 register_model(
     ModelMeta(
-        MLLMModelType.qwen4_exp,
-        [
+        MLLMModelType.qwen4_exp, [
             ModelGroup([
                 Model('Qwen/Qwen3.8-Flash-Next', 'Qwen/Qwen3.8-Flash-Next'),
                 Model('Qwen/Qwen3.8-Flash-Next-FP8', 'Qwen/Qwen3.8-Flash-Next-FP8'),
@@ -1716,7 +1715,7 @@ register_model(
         Qwen4ExpLoader,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen4ExpForConditionalGeneration'],
-        requires=['transformers>=5.16.0.dev0', 'qwen_vl_utils>=0.0.14', 'decord'],
+        requires=['transformers>=5.16.0', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 

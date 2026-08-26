@@ -710,10 +710,6 @@ register_template(
         preserve_thinking=True,
         is_thinking=True))
 
-
-# class Qwen4ExpTemplate(Qwen3_8Template):
-#     pass
-
 register_template(
     QwenTemplateMeta(
         MLLMTemplateType.qwen4_exp,
