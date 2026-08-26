@@ -1696,6 +1696,29 @@ register_model(
         tags=['vision']))
 
 
+class Qwen4ExpLoader(Qwen3VLLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers.models.qwen4_exp.modeling_qwen4_exp import Qwen4ExpForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Qwen4ExpForConditionalGeneration
+        return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen4_exp, [
+            ModelGroup([
+                Model('Qwen/Qwen3.8-Flash-Next', 'Qwen/Qwen3.8-Flash-Next'),
+                Model('Qwen/Qwen3.8-Flash-Next-FP8', 'Qwen/Qwen3.8-Flash-Next-FP8'),
+            ], TemplateType.qwen3_8),
+        ],
+        Qwen4ExpLoader,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['Qwen4ExpForConditionalGeneration'],
+        requires=['transformers>=5.16.0', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
+
+
 def _read_num_eos_tokens(model_dir: str) -> int:
     import json
     sparse_info_path = os.path.join(model_dir, 'sparse_info.json')

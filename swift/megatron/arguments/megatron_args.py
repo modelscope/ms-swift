@@ -829,8 +829,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             if self.megatron_model_meta is None:
                 raise ValueError(f'Model: {self.model} is not supported.')
         self._init_teacher_model()
-        if self.apply_wd_to_qk_layernorm and self.model_type not in {'qwen3_next', 'qwen3_5', 'qwen3_5_moe'}:
-            raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next, qwen3_5 and qwen3_5_moe')
+        if self.apply_wd_to_qk_layernorm and self.model_type not in {
+                'qwen3_next', 'qwen3_5', 'qwen3_5_moe', 'qwen4_exp'
+        }:
+            raise ValueError(f'apply_wd_to_qk_layernorm is only supported for {self.model_type} ')
         if self.pipeline_model_parallel_size == 1 and (self.decoder_first_pipeline_num_layers is not None
                                                        or self.decoder_last_pipeline_num_layers is not None):
             raise ValueError('pipeline_model_parallel_size must be greater than 1 if you want to set '
