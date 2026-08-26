@@ -52,6 +52,9 @@ RENAMES: Dict[str, Dict[str, str]] = {
 
 # --- Derived fields: computed, not copied. --------------------------------------------------------
 DERIVED: Dict[str, Tuple[str, ...]] = {
+    # Legacy has no --enable_mtp_training because its trainer feeds `labels` to the model, so
+    # --mtp_num_layers alone already trains the MTP heads. See _fix_mtp.
+    'ModelConfig': ('enable_mtp_training', ),
     'TrainConfig': ('gradient_accumulation_steps', ),
     'DistributedConfig': ('backend', 'mode', 'nproc_per_node'),
 }
@@ -76,6 +79,11 @@ SUPERSEDED: Dict[str, Dict[str, str]] = {
 # Registered explicitly so the audit can tell "deliberately absent" from "forgotten". Each entry is
 # a field the Megatron CLI cannot set; the dev default applies. Grouped by reason in the comments.
 ABSENT: Dict[str, Tuple[str, ...]] = {
+    'ModelConfig': (
+        # Excluding the MTP layers from the optimizer only makes sense for a run that wants them
+        # loaded and exported but not trained -- i.e. an RL run doing speculative rollout. The legacy
+        # SFT surface trains them whenever they exist, so it has no flag for the opposite.
+        'mtp_freeze', ),
     'TrainConfig': (
         'optim_args',
         # HF-only trainer knobs (validate_configs._HF_ONLY rejects them on the Megatron backend).
@@ -307,6 +315,31 @@ def _fill_from_args(config, args: 'MegatronSftArguments'):
     return config
 
 
+def _fix_mtp(model_config: 'ModelConfig', args: 'MegatronSftArguments') -> None:
+    """Reconcile the two surfaces' notion of "MTP is configured".
+
+    Two mismatches, both invisible to the same-name copy:
+
+    ``mtp_loss_scaling_factor`` is ``float = 0.1`` on the legacy surface and ``Optional[float] = None``
+    on dev's, so the copy hands dev a scaling factor on EVERY legacy run, MTP or not. dev reads that
+    as "the user asked for a factor" and validate_configs then rejects the run for having a factor
+    without any MTP layer. Reset to None when MTP is off, which is what "the user did not choose one"
+    has to look like for mcore's own default to apply.
+
+    ``enable_mtp_training`` has no legacy counterpart because legacy needs none: its trainer passes
+    ``labels`` into the model, so ``--mtp_num_layers`` alone both computes the MTP loss and logs it
+    (trainers/base.py registers the tracker off that flag). dev's forward computes its loss outside
+    the model and therefore withholds ``labels``, so the MTP heads only get targets when training is
+    declared. Deriving it keeps the legacy flag meaning what it always meant.
+    """
+    # getattr, not attribute access: _fill_from_args guards with hasattr for the same reason -- an
+    # args object need only carry the surface under test, and the MTP flags are not on every one.
+    if getattr(args, 'mtp_num_layers', None) is None:
+        model_config.mtp_loss_scaling_factor = None
+        return
+    model_config.enable_mtp_training = True
+
+
 def _attn_backend_name(value: object) -> Optional[str]:
     """legacy --attention_backend -> the string dev's ModelConfig.attn_impl carries.
 
@@ -382,6 +415,7 @@ def megatron_args_to_configs(
     # the transformers-surface attn_impl, which legacy's Megatron path ignores.
     for cfg_field, arg_name in RENAMES['ModelConfig'].items():
         setattr(model_config, cfg_field, _attn_backend_name(getattr(args, arg_name, None)))
+    _fix_mtp(model_config, args)
     template_config = _fill_from_args(TemplateConfig(), args)
     dataset_config = _fill_from_args(DatasetConfig(), args)
 

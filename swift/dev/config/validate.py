@@ -37,6 +37,55 @@ def validate_configs(
     _check_megatron_optimizer(train_config, is_megatron)
     _check_megatron_recompute(train_config, distributed_config, is_megatron)
     _check_megatron_attn_backend(model_config, template_config, is_megatron)
+    _check_mtp(model_config, is_megatron, tuner_config)
+
+
+def _check_mtp(model_config: 'ModelConfig', is_megatron: bool, tuner_config: Optional['TunerConfig']) -> None:
+    """Reject MTP settings that cannot do what they say.
+
+    Every failure here is one that would otherwise be silent -- an MTP run that trains nothing, or
+    exports no MTP layer -- which is why these are errors rather than warnings. The only exception is
+    LoRA, which *can* work if the adapter covers the MTP modules, so it warns instead.
+    """
+    mtp_dependents = ('mtp_loss_scaling_factor', 'enable_mtp_training', 'mtp_freeze', 'mtp_decoder_input_detach')
+
+    if model_config.mtp_num_layers is None:
+        for attr in mtp_dependents:
+            value = getattr(model_config, attr)
+            if value:
+                raise ValueError(f'ModelConfig.{attr}={value!r} needs ModelConfig.mtp_num_layers to be set. '
+                                 'Without it no MTP block is built, so this knob would be ignored.')
+        return
+
+    if not is_megatron:
+        raise ValueError('ModelConfig.mtp_num_layers is only implemented by the megatron backend, but the active '
+                         'backend is transformers. MTP lives in mcore-bridge; the HF path has no equivalent.')
+
+    if model_config.mtp_num_layers < 1:
+        raise ValueError(f'ModelConfig.mtp_num_layers={model_config.mtp_num_layers} must be >= 1, or None to '
+                         'disable MTP entirely.')
+
+    if model_config.mtp_freeze and model_config.enable_mtp_training:
+        raise ValueError('ModelConfig.mtp_freeze and ModelConfig.enable_mtp_training are contradictory: the first '
+                         'drops the MTP gradient, the second asks for it. Set exactly one.')
+
+    if model_config.mtp_loss_scaling_factor is not None and not model_config.enable_mtp_training:
+        raise ValueError('ModelConfig.mtp_loss_scaling_factor only has an effect with '
+                         'ModelConfig.enable_mtp_training=True; on its own the MTP loss is never computed, so the '
+                         'factor scales nothing.')
+
+    if model_config.mtp_decoder_input_detach and not model_config.enable_mtp_training:
+        raise ValueError('ModelConfig.mtp_decoder_input_detach describes where the MTP gradient stops, so it needs '
+                         'ModelConfig.enable_mtp_training=True to mean anything.')
+
+    if (model_config.enable_mtp_training and tuner_config is not None
+            and getattr(tuner_config, 'tuner_type', 'full') != 'full'):
+        # Not an error: this is trainable if the adapter targets the MTP modules, which we cannot
+        # decide from target_modules alone (it may be 'all-linear', or name them explicitly).
+        # twinkle re-checks against the built model and warns if nothing ended up trainable.
+        logger.warning('enable_mtp_training with tuner_type=%r: the MTP layers are base parameters, so they only '
+                       'train if the adapter covers them. Otherwise the MTP loss is computed and discarded.',
+                       tuner_config.tuner_type)
 
 
 def _check_megatron_attn_backend(model_config: 'ModelConfig', template_config: 'TemplateConfig',

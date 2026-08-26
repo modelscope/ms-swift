@@ -109,7 +109,7 @@ class TestCoverageGuard:
 
     def test_measured_gap_matches_documented_gap(self):
         """Pins the field-surface facts the design note records: the gap is 35/59 TrainConfig, 8
-        DistributedConfig, 7 CheckpointConfig, 1 ModelConfig, and 0 for Template/Dataset. If an
+        DistributedConfig, 7 CheckpointConfig, 3 ModelConfig, and 0 for Template/Dataset. If an
         upstream rename shifts these, this fails and the note gets revisited instead of the numbers
         quietly rotting.
 
@@ -118,6 +118,13 @@ class TestCoverageGuard:
         --attn_impl vs Megatron --attention_backend) over disjoint value domains, and its Megatron
         path ignores attn_impl entirely. The same-name copy that made this look like a zero-gap field
         was reading the flag legacy does not use.
+
+        1 -> 3 with MTP joint training, and both new entries are gaps in the same sense -- the two
+        surfaces disagree about what "MTP is configured" means rather than about a name.
+        ``enable_mtp_training`` is DERIVED because legacy needs no such flag: its trainer passes
+        ``labels`` into the model, so --mtp_num_layers alone already trains the MTP heads, while dev
+        computes its loss outside the model and must be told. ``mtp_freeze`` is ABSENT because the
+        legacy SFT surface trains the heads whenever they exist and has no way to ask for the opposite.
         """
         report = audit_coverage()
         gap = {
@@ -129,8 +136,10 @@ class TestCoverageGuard:
         assert gap['CheckpointConfig'] == 7
         # Every TemplateConfig field maps by name onto the Megatron surface.
         assert gap['TemplateConfig'] == 0
-        assert gap['ModelConfig'] == 1
+        assert gap['ModelConfig'] == 3
         assert report['ModelConfig']['renamed'] == ['attn_impl']
+        assert report['ModelConfig']['derived'] == ['enable_mtp_training']
+        assert report['ModelConfig']['absent'] == ['mtp_freeze']
         assert gap['DatasetConfig'] == 0
 
     def test_tables_only_name_real_config_fields(self):

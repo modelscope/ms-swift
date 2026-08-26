@@ -202,6 +202,31 @@ def _build_transformers_model(model_config: ModelConfig,
     return model
 
 
+def _apply_mtp_kwargs(kwargs: dict, model_config: ModelConfig) -> None:
+    """Forward the Multi-Token Prediction knobs into mcore-bridge's ModelConfig.
+
+    All five land on the same object (``get_model_config`` forwards **kwargs verbatim), so they are
+    grouped here rather than mixed into the recompute/attention block above.
+
+    ``mtp_num_layers`` gates the rest: without it the bridge builds no MTP block at all, and
+    mcore-bridge's own ``__post_init__`` rejects the other knobs rather than ignoring them. Each is
+    forwarded only when set, so an MTP-free run reaches the bridge with exactly the kwargs it had
+    before this existed -- an unset ``mtp_loss_scaling_factor`` has to stay unset for mcore's own
+    default (0.1) to apply, and passing None would override it with None.
+    """
+    if model_config.mtp_num_layers is None:
+        return
+    kwargs['mtp_num_layers'] = model_config.mtp_num_layers
+    if model_config.mtp_loss_scaling_factor is not None:
+        kwargs['mtp_loss_scaling_factor'] = model_config.mtp_loss_scaling_factor
+    if model_config.enable_mtp_training:
+        kwargs['enable_mtp_training'] = True
+    if model_config.mtp_freeze:
+        kwargs['mtp_freeze'] = True
+    if model_config.mtp_decoder_input_detach:
+        kwargs['mtp_decoder_input_detach'] = True
+
+
 def _resolve_bridge_backend(name: str):
     """bridge_backend name (DistributedConfig default: 'mcore-bridge') -> a BridgeBackend instance."""
     from swift.dev.model.megatron.bridge import MCoreBridgeBackend, MegatronBridgeBackend
@@ -313,6 +338,8 @@ def _build_megatron_model(model_config: ModelConfig, distributed_config: Distrib
             if model_config.num_labels is None:
                 raise ValueError('ModelConfig.num_labels is required for task_type="seq_cls".')
             extra_kwargs['num_labels'] = model_config.num_labels
+
+    _apply_mtp_kwargs(extra_kwargs, model_config)
 
     backend = _resolve_bridge_backend(distributed_config.bridge_backend)
     # In Ray mode the model lives in a remote DeviceGroup named 'model'; in local (torchrun) mode

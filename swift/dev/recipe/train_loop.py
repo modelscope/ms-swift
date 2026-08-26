@@ -175,15 +175,31 @@ class SFTLoop:
         record = {'step': self.global_step, 'loss': loss}
         if metrics.get('grad_norm') is not None:
             record['grad_norm'] = float(metrics['grad_norm'])
+        record.update(self._mtp_metrics())
         self.history.append(record)
         if self.logging_steps and self.global_step % self.logging_steps == 0:
             gn = record.get('grad_norm')
             gn_str = f'  grad_norm={gn:.4f}' if gn is not None else ''
-            logger.info(f'step {self.global_step}  loss={loss:.4f}{gn_str}')
+            mtp = record.get('mtp_loss')
+            mtp_str = f'  mtp_loss={mtp:.4f}' if mtp is not None else ''
+            logger.info(f'step {self.global_step}  loss={loss:.4f}{gn_str}{mtp_str}')
         if self.save_steps and self.global_step % self.save_steps == 0:
             self.save(f'checkpoint-{self.global_step}')
         if (self.eval_dataloader is not None and self.eval_steps and self.global_step % self.eval_steps == 0):
             self.evaluate()
+
+    def _mtp_metrics(self) -> dict:
+        """Per-depth MTP loss (and acceptance rate, on megatron >= 0.19) for this step, or {}.
+
+        Kept out of ``calculate_metric``: megatron accumulates the MTP loss in a module-level tracker
+        of its own rather than through twinkle's Metric objects, and it has to be *drained* each step
+        or the reported value grows without bound. Absent on the transformers backend, and on megatron
+        whenever MTP is off -- either way the loop is unchanged.
+        """
+        pop = getattr(self.model, 'pop_mtp_metrics', None)
+        if pop is None:
+            return {}
+        return {key: float(value) for key, value in (pop() or {}).items()}
 
     def _final_eval(self) -> None:
         """Final eval pass so training always ends with an eval point (unless just evaluated)."""
