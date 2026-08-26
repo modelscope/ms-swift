@@ -145,7 +145,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     packing_num_proc=args.packing_num_proc,
                     packing_strategy=args.packing_strategy,
                     strict=args.strict,
-                    load_from_cache_file=args.load_from_cache_file)
+                    load_from_cache_file=args.load_from_cache_file,
+                    multiprocessing_context=getattr(args, 'dataloader_multiprocessing_context', None))
             elif args.streaming:
                 preprocessor = EncodePreprocessor(template=template)
                 dataset = preprocessor(

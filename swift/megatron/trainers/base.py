@@ -1007,6 +1007,10 @@ class BaseMegatronTrainer(ABC):
     def _create_dataloader(self, dataset, batch_sampler):
         args = self.args
 
+        dataloader_kwargs = {}
+        mp_context = getattr(args, 'dataloader_multiprocessing_context', None)
+        if mp_context is not None and args.dataloader_num_workers > 0:
+            dataloader_kwargs['multiprocessing_context'] = mp_context
         dataloader = torch.utils.data.DataLoader(
             dataset,
             batch_sampler=batch_sampler,
@@ -1015,6 +1019,7 @@ class BaseMegatronTrainer(ABC):
             persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
             prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
             collate_fn=self.data_collator,
+            **dataloader_kwargs,
         )
         return dataloader
 

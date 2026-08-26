@@ -269,6 +269,12 @@ class Template(ProcessorMixin):
                 self.dummy_model = get_model_processor(self.model_info.model_dir, return_dummy_model=True)[0]
         return self.dummy_model
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['model'] = None
+        state['dummy_model'] = None
+        return state
+
     @staticmethod
     def _load_image(image, load_images: bool):
         if load_images:

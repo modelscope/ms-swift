@@ -335,6 +335,10 @@ class MegatronDataLoaderDispatcher(DataLoaderDispatcher):
 
 
 def build_streaming_dataloader(args, dataset, collate_fn):
+    dataloader_kwargs = {}
+    mp_context = getattr(args, 'dataloader_multiprocessing_context', None)
+    if mp_context is not None and args.dataloader_num_workers > 0:
+        dataloader_kwargs['multiprocessing_context'] = mp_context
     base_dataloader = torch.utils.data.DataLoader(
         dataset,
         num_workers=args.dataloader_num_workers,
@@ -343,6 +347,7 @@ def build_streaming_dataloader(args, dataset, collate_fn):
         batch_size=args.micro_batch_size,
         prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
         persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
+        **dataloader_kwargs,
     )
     return MegatronDataLoaderDispatcher(base_dataloader)
 

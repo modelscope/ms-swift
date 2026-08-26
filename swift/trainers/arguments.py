@@ -150,6 +150,7 @@ class TrainArgumentsMixin:
     dataloader_num_workers: Optional[int] = None
     dataloader_persistent_workers: bool = False
     dataloader_prefetch_factor: Optional[int] = None
+    dataloader_multiprocessing_context: Optional[Literal['fork', 'spawn', 'forkserver']] = None
     use_liger_kernel: bool = False
 
     # extra

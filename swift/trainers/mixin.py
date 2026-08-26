@@ -1252,6 +1252,15 @@ class SwiftMixin:
 
 class DataLoaderMixin:
 
+    @staticmethod
+    def _maybe_multiprocessing_context(args) -> dict:
+        # Honor --dataloader_multiprocessing_context, but only when workers actually exist: the kwarg is
+        # meaningless (and rejected by some DataLoader variants) when num_workers == 0.
+        mp_context = getattr(args, 'dataloader_multiprocessing_context', None)
+        if mp_context is not None and args.dataloader_num_workers > 0:
+            return {'multiprocessing_context': mp_context}
+        return {}
+
     def get_sp_dataloader(self, dataset, batch_size, skip_batches=0):
 
         data_collator = self.data_collator
@@ -1268,6 +1277,7 @@ class DataLoaderMixin:
                 'pin_memory': self.args.dataloader_pin_memory,
                 'persistent_workers': self.args.dataloader_persistent_workers,
             }
+            dataloader_params.update(self._maybe_multiprocessing_context(self.args))
 
             if not isinstance(dataset, torch.utils.data.IterableDataset):
                 if skip_batches > 0:
@@ -1287,6 +1297,7 @@ class DataLoaderMixin:
                 'persistent_workers': self.args.dataloader_persistent_workers,
                 'prefetch_factor': self.args.dataloader_prefetch_factor
             }
+            dataloader_params.update(self._maybe_multiprocessing_context(self.args))
             if dist.is_initialized() and dataloader_params['prefetch_factor']:
                 dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
             dataloader = DataLoader(dataset, batch_size=batch_size, **dataloader_params)
@@ -1312,6 +1323,7 @@ class DataLoaderMixin:
                 'persistent_workers': args.dataloader_persistent_workers,
                 'prefetch_factor': args.dataloader_prefetch_factor
             }
+            dataloader_params.update(self._maybe_multiprocessing_context(args))
             batch_sampler_params = {
                 'drop_last':
                 args.dataloader_drop_last,
@@ -1353,6 +1365,18 @@ class DataLoaderMixin:
             yield
         finally:
             self.args.group_by_length = group_by_length
+
+    def _get_dataloader(self, *args, **kwargs):
+        # Transformers' own dataloaders (eval/predict) don't expose `multiprocessing_context`; patch it in
+        # after construction so `--dataloader_multiprocessing_context` governs them too. DataLoader workers
+        # are created lazily on the first iteration, so setting it before then takes effect.
+        dataloader = super()._get_dataloader(*args, **kwargs)
+        mp_context = getattr(self.args, 'dataloader_multiprocessing_context', None)
+        if mp_context is not None:
+            base = getattr(dataloader, 'base_dataloader', dataloader)
+            if getattr(base, 'num_workers', 0) and getattr(base, 'multiprocessing_context', None) is None:
+                base.multiprocessing_context = mp_context
+        return dataloader
 
     def get_eval_dataloader(self, eval_dataset=None):
         dataloader = None
