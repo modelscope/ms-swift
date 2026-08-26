@@ -32,18 +32,42 @@ def build_rng_state(rng_state, data_parallel_random_init: bool = False, rng_key:
     return {rng_key: rng_state_list}
 
 
-def get_rng_load_key(checkpoint_dir: str) -> str:
+def get_rng_load_key(checkpoint_dir: str, data_parallel_random_init: bool = False) -> Optional[str]:
     metadata_keys = FileSystemReader(checkpoint_dir).read_metadata().state_dict_metadata
-    rank_key = f'global_rank_{torch.distributed.get_rank()}'
-    if any(key.startswith(f'rng_state.{rank_key}.') for key in metadata_keys):
-        return rank_key
+    global_rank_prefix = 'rng_state.global_rank_'
+    saved_global_ranks = set()
+    for key in metadata_keys:
+        if key.startswith(global_rank_prefix):
+            rank = key[len(global_rank_prefix):].split('.', 1)[0]
+            if rank.isdigit():
+                saved_global_ranks.add(int(rank))
+
+    if saved_global_ranks:
+        # Per-rank RNG is exact only when the saved and current world-rank sets match.
+        # A topology-changing reshard should still load model/optimizer state without RNG.
+        current_world_size = torch.distributed.get_world_size()
+        if saved_global_ranks != set(range(current_world_size)):
+            return None
+        current_rank = torch.distributed.get_rank()
+        rank_key = f'global_rank_{current_rank}'
+        return rank_key if current_rank in saved_global_ranks else None
 
     pp_rank = mpu.get_pipeline_model_parallel_rank()
     tp_rank = mpu.get_tensor_model_parallel_rank()
     legacy_key = f'({pp_rank}, {tp_rank})'
-    if any(key.startswith(f'rng_state.{legacy_key}.') for key in metadata_keys):
-        return legacy_key
-    raise RuntimeError(f'RNG state for global rank {torch.distributed.get_rank()} was not found in `{checkpoint_dir}`.')
+    legacy_prefix = f'rng_state.{legacy_key}.'
+    legacy_metadata_keys = [key for key in metadata_keys if key.startswith(legacy_prefix)]
+    if not legacy_metadata_keys:
+        return None
+    if data_parallel_random_init:
+        saved_dp_ranks = set()
+        for key in legacy_metadata_keys:
+            dp_rank = key[len(legacy_prefix):].split('.', 1)[0]
+            if dp_rank.isdigit():
+                saved_dp_ranks.add(int(dp_rank))
+        if saved_dp_ranks != set(range(mpu.get_data_parallel_world_size())):
+            return None
+    return legacy_key
 
 
 def select_rng_state(rng_state, rng_key: str, data_parallel_random_init: bool):

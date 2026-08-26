@@ -468,12 +468,25 @@ def load_mcore_checkpoint(args,
     if (ckpt_tp_pp == run_tp_pp and not finetune and not no_load_rng
             and not getattr(state_dict['args'], 'no_save_rng', False)):
         if fsdp_dtensor:
-            fsdp_rng_key = fsdp_checkpoint.get_rng_load_key(checkpoint_dir)
-        gen_sd_rng_state = _get_rng_state(
-            fsdp_dtensor=fsdp_dtensor,
-            data_parallel_random_init=args.data_parallel_random_init,
-            fsdp_rng_key=fsdp_rng_key,
-        )  # we can load the rng state
+            fsdp_rng_key = fsdp_checkpoint.get_rng_load_key(checkpoint_dir, args.data_parallel_random_init)
+            if fsdp_rng_key is None:
+                gen_sd_rng_state = None
+                logger.warning(
+                    f'Megatron-FSDP RNG state in `{checkpoint_dir}` is incompatible with the current distributed '
+                    f'topology/world size. Model, optimizer, and scheduler checkpoint loading will continue, but '
+                    f'exact RNG restore is skipped; resumed training is not guaranteed to be bitwise or stepwise '
+                    f'deterministic.')
+            else:
+                gen_sd_rng_state = _get_rng_state(
+                    fsdp_dtensor=True,
+                    data_parallel_random_init=args.data_parallel_random_init,
+                    fsdp_rng_key=fsdp_rng_key,
+                )
+        else:
+            gen_sd_rng_state = _get_rng_state(
+                fsdp_dtensor=False,
+                data_parallel_random_init=args.data_parallel_random_init,
+            )  # we can load the rng state
     else:
         gen_sd_rng_state = None
         if ckpt_tp_pp != run_tp_pp:
@@ -543,7 +556,7 @@ def load_mcore_checkpoint(args,
     elif (args.fp16 or args.bf16) and optimizer is not None:
         optimizer.reload_model_params()
 
-    if not finetune and not no_load_rng:
+    if not finetune and not no_load_rng and (not fsdp_dtensor or fsdp_rng_key is not None):
         if 'rng_state' in state_dict:
             if fsdp_dtensor:
                 rng_state = fsdp_checkpoint.select_rng_state(
