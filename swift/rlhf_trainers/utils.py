@@ -1549,6 +1549,7 @@ def get_chord_sft_dataloader(trainer,
         'batch_size': batch_size,
         'collate_fn': data_collator,
         'num_workers': trainer.args.dataloader_num_workers,
+        'multiprocessing_context': trainer.args.dataloader_multiprocessing_context,
         'pin_memory': trainer.args.dataloader_pin_memory,
         'persistent_workers': trainer.args.dataloader_persistent_workers,
     }

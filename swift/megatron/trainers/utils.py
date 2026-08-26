@@ -343,7 +343,7 @@ def build_streaming_dataloader(args, dataset, collate_fn):
         batch_size=args.micro_batch_size,
         prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
         persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
-    )
+        multiprocessing_context=args.dataloader_multiprocessing_context)
     return MegatronDataLoaderDispatcher(base_dataloader)
 
 
