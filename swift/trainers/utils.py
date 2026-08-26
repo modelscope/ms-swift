@@ -25,22 +25,29 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
-def _validate_dlrover_flash_checkpoint_api(checkpointer_cls, checkpoint_engine_cls):
-    required_parameters = [
+def accepts_parameter(method, parameter_name: str) -> bool:
+    parameters = inspect.signature(method).parameters
+    if parameter_name in parameters:
+        return True
+    return any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values())
+
+
+def check_dlrover_flash_checkpoint_api(checkpointer_cls, checkpoint_engine_cls):
+    """Report up front when the installed DLRover predates the Flash Checkpoint arguments ms-swift uses.
+
+    The trainer adapts its calls to either API, so this only warns: on the older API the final save is not
+    blocking, which the `wait_latest_checkpoint` call at the end of training covers anyway.
+    """
+    optional_parameters = [
         (checkpointer_cls.save_checkpoint_to_storage, 'blocking'),
         (checkpoint_engine_cls.wait_latest_checkpoint, 'max_steps'),
     ]
-    missing_parameters = []
-    for method, parameter_name in required_parameters:
-        parameters = inspect.signature(method).parameters
-        accepts_kwargs = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values())
-        if parameter_name not in parameters and not accepts_kwargs:
-            missing_parameters.append(parameter_name)
+    missing_parameters = [name for method, name in optional_parameters if not accepts_parameter(method, name)]
     if missing_parameters:
         missing = ', '.join(missing_parameters)
-        raise ValueError('The installed DLRover Flash Checkpoint API is incompatible with ms-swift. '
-                         f'Missing method parameters: {missing}. Install the latest DLRover source with '
-                         '`pip install git+https://github.com/intelligent-machine-learning/dlrover.git`.')
+        logger.warning(f'The installed DLRover Flash Checkpoint API does not accept: {missing}. ms-swift falls '
+                       'back to the legacy calls; install the latest DLRover source to get the newer API: '
+                       '`pip install git+https://github.com/intelligent-machine-learning/dlrover.git`.')
 
 
 def _get_deepspeed_elastic_world_size():
