@@ -5,7 +5,7 @@ import torch.distributed as dist
 from accelerate.utils import gather_object
 from queue import Queue
 from threading import Thread
-from typing import Any, Dict, List, Literal, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from .env import is_last_rank, is_master
 from .logger import get_logger
@@ -103,6 +103,38 @@ def append_to_jsonl(fpath: str,
                     write_on_rank: Literal['master', 'last'] = 'master') -> None:
     jsonl_writer = JsonlWriter(fpath, encoding=encoding, strict=strict, write_on_rank=write_on_rank)
     jsonl_writer.append(obj)
+
+
+LAST_CHECKPOINT_SYMLINK = 'last-checkpoint'
+
+
+def update_last_checkpoint_symlink(checkpoint_dir: str) -> Optional[str]:
+    """Point `f'{output_dir}/last-checkpoint'` at the checkpoint that was just saved.
+
+    Call this once the checkpoint is fully written, from the rank that owns the output directory. The link
+    target is relative (just the checkpoint directory name) so the output directory stays movable, and it is
+    swapped in with `os.replace` so readers never observe a missing link. Returns the link path, or None if it
+    could not be created (e.g. a filesystem without symlink support).
+    """
+    if not os.path.isdir(checkpoint_dir):
+        return None
+    checkpoint_dir = os.path.abspath(checkpoint_dir)
+    link_path = os.path.join(os.path.dirname(checkpoint_dir), LAST_CHECKPOINT_SYMLINK)
+    if os.path.lexists(link_path) and not os.path.islink(link_path):
+        logger.warning(f'`{link_path}` already exists and is not a symlink; skip updating it.')
+        return None
+    tmp_path = f'{link_path}.tmp'
+    try:
+        if os.path.lexists(tmp_path):
+            os.remove(tmp_path)
+        os.symlink(os.path.basename(checkpoint_dir), tmp_path)
+        os.replace(tmp_path, link_path)
+    except OSError as e:
+        logger.warning(f'Failed to update the symlink `{link_path}`: {e}')
+        if os.path.lexists(tmp_path):
+            os.remove(tmp_path)
+        return None
+    return link_path
 
 
 def get_file_mm_type(file_name: str) -> Literal['image', 'video', 'audio']:

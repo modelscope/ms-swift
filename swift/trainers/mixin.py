@@ -54,10 +54,11 @@ from swift.template import Template, update_generation_config_eos_token
 from swift.tuner_plugin import tuners_map
 from swift.tuners import SwiftModel
 from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device, get_logger,
-                         get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker)
+                         get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker,
+                         update_last_checkpoint_symlink)
 from .arguments import TrainingArguments
-from .utils import (can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function, get_resume_dir,
-                    is_instance_of_ms_model, patch_modelscope_hub_timeout, replace_index_file)
+from .utils import (accepts_parameter, can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function,
+                    get_resume_dir, is_instance_of_ms_model, patch_modelscope_hub_timeout, replace_index_file)
 
 logger = get_logger()
 
@@ -563,7 +564,16 @@ class SwiftMixin:
         Args:
             timeout (second): The timeout to wait.
         """
-        self.flash_checkpointer.async_save_engine.wait_latest_checkpoint(timeout, max_steps)
+        wait_latest_checkpoint = self.flash_checkpointer.async_save_engine.wait_latest_checkpoint
+        # Older dlrover releases track the latest step themselves and do not accept it.
+        if accepts_parameter(wait_latest_checkpoint, 'max_steps'):
+            wait_latest_checkpoint(timeout, max_steps)
+        else:
+            wait_latest_checkpoint(timeout)
+        # The last saves only became complete during the wait above, so the symlink is stale by now. No
+        # barrier here: the wait already guarantees the checkpoint is durable, and this also runs on the
+        # teardown path, where a rank that already died would never reach it.
+        self._update_last_checkpoint_symlink(barrier=False)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):
@@ -593,7 +603,17 @@ class SwiftMixin:
         else:
             result = super()._save_checkpoint(*args, **kwargs)
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
+        self._update_last_checkpoint_symlink()
         return result
+
+    def _update_last_checkpoint_symlink(self, barrier: bool = True):
+        if barrier and dist.is_initialized():
+            dist.barrier()
+        if not self.args.should_save:
+            return
+        checkpoint_dir = self.get_last_checkpoint() if self.args.use_flash_ckpt else self.state.last_model_checkpoint
+        if checkpoint_dir:
+            update_last_checkpoint_symlink(checkpoint_dir)
 
     def _save_flash_checkpoint(self, model, trial, metrics=None):
         from dlrover.trainer.torch.flash_checkpoint.hf_trainer import HfDdpCheckpointer, HfDeepSpeedCheckpointer
@@ -687,16 +707,21 @@ class SwiftMixin:
                 os.path.join(output_dir, f'rng_state_{self.args.process_index}.pth'),
             )
         if self.args.safe_serialization:
-            torch.save({'safe_serialization': True}, 'safe_serialization')
             replace_index_file(output_dir)
 
         torch.save = torch_native_save
-        if (self.state.global_step == self.state.max_steps):
-            success = self.flash_checkpointer.save_checkpoint_to_storage(self.state.global_step, True)
+        save_to_storage = self.flash_checkpointer.save_checkpoint_to_storage
+        # The final checkpoint must not be dropped, hence the blocking save. Older dlrover releases have no
+        # such argument, so only pass it when it is accepted.
+        if self.state.global_step == self.state.max_steps and accepts_parameter(save_to_storage, 'blocking'):
+            success = save_to_storage(self.state.global_step, True)
         else:
-            success = self.flash_checkpointer.save_checkpoint_to_storage(self.state.global_step)
+            success = save_to_storage(self.state.global_step)
 
-        if not success:
+        # dlrover replicates the state dict across ranks, so only the rank that owns the shared memory reports
+        # success; the others get False without anything going wrong. Cleaning up an incomplete checkpoint has
+        # to be left to the rank that wrote the directory, otherwise it deletes the files the others just saved.
+        if not success and self.args.should_save:
             logger.info(f'Skip saving the checkpoint of step {self.state.global_step} '
                         'because the latest checkpoint is not finished.')
             shutil.rmtree(output_dir, ignore_errors=True)
@@ -1221,14 +1246,13 @@ class SwiftMixin:
 
     def get_cu_seqlens(self, position_ids, logits_to_keep) -> torch.Tensor:
         cu_seqlens = get_packed_seq_params(position_ids)['cu_seq_lens_q']
+        res_cu_seqlens = cu_seqlens.clone()
         if isinstance(logits_to_keep, torch.Tensor):
-            kept_cumsum = logits_to_keep.to(cu_seqlens.dtype).cumsum(dim=0, dtype=cu_seqlens.dtype)
-            kept_cumsum = torch.cat((cu_seqlens.new_zeros(1), kept_cumsum))
-            res_cu_seqlens = kept_cumsum[cu_seqlens.long()]
-        else:
-            res_cu_seqlens = cu_seqlens.clone()
-            if isinstance(logits_to_keep, int):
-                res_cu_seqlens[1:] -= position_ids.shape[-1] + 1 - logits_to_keep
+            for i in range(cu_seqlens.shape[0] - 1):
+                start, end = cu_seqlens[i], cu_seqlens[i + 1]
+                res_cu_seqlens[i + 1:] -= (~logits_to_keep[start:end]).sum()
+        elif isinstance(logits_to_keep, int):
+            res_cu_seqlens[1:] -= position_ids.shape[-1] + 1 - logits_to_keep
         return res_cu_seqlens
 
     @contextmanager

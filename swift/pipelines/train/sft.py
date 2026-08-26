@@ -38,8 +38,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 from dlrover.trainer.torch.flash_checkpoint.hf_trainer import HfFlashCheckpointer
             except ImportError:
                 raise ValueError('Please install DLRover to use Flash Checkpoint: `pip install dlrover[k8s,torch]`.')
-            from swift.trainers.utils import _validate_dlrover_flash_checkpoint_api
-            _validate_dlrover_flash_checkpoint_api(HfFlashCheckpointer, CheckpointEngine)
+            from swift.trainers.utils import check_dlrover_flash_checkpoint_api
+            check_dlrover_flash_checkpoint_api(HfFlashCheckpointer, CheckpointEngine)
 
     def _prepare_generation_config(self):
         args = self.args
