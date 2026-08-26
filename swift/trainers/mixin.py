@@ -386,6 +386,13 @@ class SwiftMixin:
                 else:
                     self.model.save_pretrained(output_dir, safe_serialization=safe_serialization, **save_kwargs)
             else:
+                # `Trainer.save_model` calls `self._save(output_dir)` without a state_dict
+                # on the plain/DDP path (transformers only passes one for FSDP/DeepSpeed).
+                # The None fill-in above is skipped for SentenceTransformer models (they are
+                # in `supported_names`), so materialize it here before the ST save branch
+                # consumes it via `state_dict.items()`.
+                if state_dict is None:
+                    state_dict = self.model.state_dict()
 
                 @contextmanager
                 def save_context():
