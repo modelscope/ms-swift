@@ -107,8 +107,9 @@ def is_checkpoint(checkpoint_dir):
     return 'args' in keys and 'iteration' in keys and any(key == 'model' or key.startswith('model.') for key in keys)
 
 
-def _get_load_planner():
-    return default_planner.DefaultLoadPlanner(allow_partial_load=False)
+def _get_load_planner(args):
+    allow_partial_load = not getattr(args, 'strict_fsdp_dtensor_load', False)
+    return default_planner.DefaultLoadPlanner(allow_partial_load=allow_partial_load)
 
 
 def load_checkpoint(args, state_dict, model, checkpoint_dir):
@@ -121,7 +122,7 @@ def load_checkpoint(args, state_dict, model, checkpoint_dir):
     torch_dist_checkpoint.load_state_dict(
         state_dict=state_dict,
         storage_reader=FileSystemReader(checkpoint_dir),
-        planner=_get_load_planner(),
+        planner=_get_load_planner(args),
     )
     state_dict.update(raw_state_dict)
     return state_dict
