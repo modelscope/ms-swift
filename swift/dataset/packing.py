@@ -158,26 +158,34 @@ class IterablePackingDataset(IterableDataset):
         self.packing_length = packing_length or self.template.max_length
 
         self.packing_interval = packing_interval
-        self._in_queue = mp.Queue()
-        self._out_queue = mp.Queue()
+        # Training may initialize CUDA or distributed state before this dataset is created. A forked worker would
+        # inherit that state and can deadlock, so use a clean interpreter for streaming packing workers.
+        mp_context = mp.get_context('spawn')
+        self._in_queue = mp_context.Queue()
+        self._out_queue = mp_context.Queue()
         self.workers = []
         self.cyclic = cyclic
         self.packing_strategy = packing_strategy
         for _ in range(self.num_proc):
-            worker = mp.Process(target=self._processor, daemon=True)
+            worker = mp_context.Process(
+                target=self._processor,
+                args=(self.template, self._in_queue, self._out_queue, self.strict),
+                daemon=True,
+            )
             worker.start()
             self.workers.append(worker)
 
-    def _processor(self):
+    @staticmethod
+    def _processor(template, in_queue, out_queue, strict):
         while True:
-            i, data = self._in_queue.get()
+            i, data = in_queue.get()
             encoded_data = {}
             try:
-                encoded_data = self.template.encode(data, return_length=True)
+                encoded_data = template.encode(data, return_length=True)
             except Exception as e:
-                if self.strict and not isinstance(e, MaxLengthError):
+                if strict and not isinstance(e, MaxLengthError):
                     raise
-            self._out_queue.put((i, encoded_data))
+            out_queue.put((i, encoded_data))
 
     def _put_data_in_queue(self, iterator) -> int:
         for i in range(self.packing_interval):
