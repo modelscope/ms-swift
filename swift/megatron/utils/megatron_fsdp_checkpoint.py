@@ -6,20 +6,18 @@ import torch.distributed.checkpoint as torch_dist_checkpoint
 from megatron.core import mpu
 from torch.distributed.checkpoint import FileSystemReader, FileSystemWriter, default_planner
 from transformers.utils import is_torch_npu_available
-from typing import Optional
+
+from swift.utils import get_logger
+
+logger = get_logger()
 
 __all__ = [
-    'build_rng_state', 'get_rng_load_key', 'is_checkpoint', 'load_checkpoint', 'load_common_state_dict',
-    'save_checkpoint', 'select_rng_state'
+    'build_rng_state', 'is_checkpoint', 'load_checkpoint', 'load_common_state_dict', 'save_checkpoint',
+    'select_rng_state'
 ]
 
 
-def build_rng_state(rng_state, data_parallel_random_init: bool = False, rng_key: Optional[str] = None):
-    if rng_key is None:
-        rng_key = f'global_rank_{torch.distributed.get_rank()}'
-    if rng_key.startswith('global_rank_'):
-        return {rng_key: [rng_state]}
-
+def build_rng_state(rng_state, data_parallel_random_init: bool = False):
     if (data_parallel_random_init and torch.distributed.is_initialized() and mpu.get_data_parallel_world_size() > 1):
         rng_state_list = [None for _ in range(mpu.get_data_parallel_world_size())]
         torch.distributed.all_gather_object(
@@ -29,50 +27,21 @@ def build_rng_state(rng_state, data_parallel_random_init: bool = False, rng_key:
         )
     else:
         rng_state_list = [rng_state]
-    return {rng_key: rng_state_list}
-
-
-def get_rng_load_key(checkpoint_dir: str, data_parallel_random_init: bool = False) -> Optional[str]:
-    metadata_keys = FileSystemReader(checkpoint_dir).read_metadata().state_dict_metadata
-    global_rank_prefix = 'rng_state.global_rank_'
-    saved_global_ranks = set()
-    for key in metadata_keys:
-        if key.startswith(global_rank_prefix):
-            rank = key[len(global_rank_prefix):].split('.', 1)[0]
-            if rank.isdigit():
-                saved_global_ranks.add(int(rank))
-
-    if saved_global_ranks:
-        # Per-rank RNG is exact only when the saved and current world-rank sets match.
-        # A topology-changing reshard should still load model/optimizer state without RNG.
-        current_world_size = torch.distributed.get_world_size()
-        if saved_global_ranks != set(range(current_world_size)):
-            return None
-        current_rank = torch.distributed.get_rank()
-        rank_key = f'global_rank_{current_rank}'
-        return rank_key if current_rank in saved_global_ranks else None
-
     pp_rank = mpu.get_pipeline_model_parallel_rank()
     tp_rank = mpu.get_tensor_model_parallel_rank()
-    legacy_key = f'({pp_rank}, {tp_rank})'
-    legacy_prefix = f'rng_state.{legacy_key}.'
-    legacy_metadata_keys = [key for key in metadata_keys if key.startswith(legacy_prefix)]
-    if not legacy_metadata_keys:
-        return None
+    return {f'({pp_rank}, {tp_rank})': rng_state_list}
+
+
+def select_rng_state(rng_state, data_parallel_random_init: bool):
+    pp_rank = mpu.get_pipeline_model_parallel_rank()
+    tp_rank = mpu.get_tensor_model_parallel_rank()
+    rng_key = f'({pp_rank}, {tp_rank})'
+    if rng_key in rng_state:
+        rng_state_list = rng_state[rng_key]
+    else:
+        logger.warning('RNG state not found for current TP/PP rank; falling back to the first saved RNG state.')
+        rng_state_list = next(iter(rng_state.values()))
     if data_parallel_random_init:
-        saved_dp_ranks = set()
-        for key in legacy_metadata_keys:
-            dp_rank = key[len(legacy_prefix):].split('.', 1)[0]
-            if dp_rank.isdigit():
-                saved_dp_ranks.add(int(dp_rank))
-        if saved_dp_ranks != set(range(mpu.get_data_parallel_world_size())):
-            return None
-    return legacy_key
-
-
-def select_rng_state(rng_state, rng_key: str, data_parallel_random_init: bool):
-    rng_state_list = rng_state[rng_key]
-    if data_parallel_random_init and not rng_key.startswith('global_rank_'):
         return rng_state_list[mpu.get_data_parallel_rank()]
     return rng_state_list[0]
 

@@ -152,6 +152,12 @@ def complete_mindspeed_fsdp_dtensor_optimizer_state(state_dict, model) -> None:
             continue
 
         dist_param = _get_mindspeed_fsdp_model_parameter(model, param_name)
+        local_param = dist_param.to_local() if hasattr(dist_param, 'to_local') else dist_param
+        if local_param.numel() != 0:
+            raise RuntimeError(
+                f'MindSpeed omitted Megatron-FSDP optimizer state for `{param_name}`, but its local parameter shard '
+                f'is not empty (numel={local_param.numel()}). Refusing to replace a non-empty optimizer shard with '
+                f'zeros.')
         completed_state[param_name] = _build_empty_optimizer_state(
             state_template,
             template_param,

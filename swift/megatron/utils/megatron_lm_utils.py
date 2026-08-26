@@ -38,32 +38,6 @@ logger = get_logger()
 
 mcore_017 = version.parse(megatron.core.__version__) >= version.parse('0.17.0rc0')
 
-_RNG_TOPOLOGY_DEFAULTS = {
-    'world_size': None,
-    'tensor_model_parallel_size': None,
-    'pipeline_model_parallel_size': None,
-    'context_parallel_size': 1,
-    'expert_model_parallel_size': 1,
-    'expert_tensor_parallel_size': 1,
-    'virtual_pipeline_model_parallel_size': None,
-}
-
-
-def _get_rng_topology(args) -> Dict[str, Any]:
-    return {name: getattr(args, name, default) for name, default in _RNG_TOPOLOGY_DEFAULTS.items()}
-
-
-def _is_rng_topology_compatible(checkpoint_args, args) -> bool:
-    checkpoint_topology = _get_rng_topology(checkpoint_args)
-    current_topology = _get_rng_topology(args)
-    # Per-global-rank RNG can be restored exactly only when every rank keeps the
-    # same parallel coordinates. An unknown world/TP/PP dimension is not enough
-    # evidence for an exact restore.
-    required_fields = ('world_size', 'tensor_model_parallel_size', 'pipeline_model_parallel_size')
-    if any(checkpoint_topology[field] is None or current_topology[field] is None for field in required_fields):
-        return False
-    return checkpoint_topology == current_topology
-
 
 @contextmanager
 def _patch_megatron_timeout(distributed_timeout_minutes):
@@ -123,9 +97,7 @@ def initialize_megatron(args):
         MoEAuxLossAutoScaler.set_loss_scale(torch.ones(1, device=torch.cuda.current_device()))
 
 
-def _get_rng_state(fsdp_dtensor: bool = False,
-                   data_parallel_random_init: bool = False,
-                   fsdp_rng_key: Optional[str] = None):
+def _get_rng_state(fsdp_dtensor: bool = False, data_parallel_random_init: bool = False):
     """Collect rng state across data parallel ranks."""
     rng_state = {
         'random_rng_state': random.getstate(),
@@ -139,7 +111,6 @@ def _get_rng_state(fsdp_dtensor: bool = False,
         return fsdp_checkpoint.build_rng_state(
             rng_state,
             data_parallel_random_init=data_parallel_random_init,
-            rng_key=fsdp_rng_key,
         )
 
     if (data_parallel_random_init and torch.distributed.is_initialized() and mpu.get_data_parallel_world_size() > 1):
@@ -489,33 +460,13 @@ def load_mcore_checkpoint(args,
         args.pipeline_model_parallel_size,
     )
     mismatch_msg = f'(TP, PP) mismatch after resume ({run_tp_pp} vs {ckpt_tp_pp} from checkpoint)'
-    fsdp_rng_key = None
     # Determine if RNG state will be loaded
     if not finetune and not no_load_rng and not getattr(state_dict['args'], 'no_save_rng', False):
         if fsdp_dtensor:
-            if not _is_rng_topology_compatible(state_dict['args'], args):
-                gen_sd_rng_state = None
-                checkpoint_topology = _get_rng_topology(state_dict['args'])
-                current_topology = _get_rng_topology(args)
-                logger.warning(
-                    f'Megatron-FSDP checkpoint topology changed from {checkpoint_topology} to {current_topology}. '
-                    f'Model, optimizer, and scheduler checkpoint loading will continue, but exact RNG restore is '
-                    f'skipped; resumed training is not guaranteed to be bitwise or stepwise deterministic.')
-            else:
-                fsdp_rng_key = fsdp_checkpoint.get_rng_load_key(checkpoint_dir, args.data_parallel_random_init)
-                if fsdp_rng_key is None:
-                    gen_sd_rng_state = None
-                    logger.warning(
-                        f'Megatron-FSDP RNG state in `{checkpoint_dir}` is missing or incompatible with the current '
-                        f'rank layout. Model, optimizer, and scheduler checkpoint loading will continue, but exact '
-                        f'RNG restore is skipped; resumed training is not guaranteed to be bitwise or stepwise '
-                        f'deterministic.')
-                else:
-                    gen_sd_rng_state = _get_rng_state(
-                        fsdp_dtensor=True,
-                        data_parallel_random_init=args.data_parallel_random_init,
-                        fsdp_rng_key=fsdp_rng_key,
-                    )
+            gen_sd_rng_state = _get_rng_state(
+                fsdp_dtensor=True,
+                data_parallel_random_init=args.data_parallel_random_init,
+            )
         elif ckpt_tp_pp == run_tp_pp:
             gen_sd_rng_state = _get_rng_state(
                 fsdp_dtensor=False,
@@ -593,12 +544,11 @@ def load_mcore_checkpoint(args,
     elif (args.fp16 or args.bf16) and optimizer is not None:
         optimizer.reload_model_params()
 
-    if not finetune and not no_load_rng and (not fsdp_dtensor or fsdp_rng_key is not None):
+    if not finetune and not no_load_rng:
         if 'rng_state' in state_dict:
             if fsdp_dtensor:
                 rng_state = fsdp_checkpoint.select_rng_state(
                     state_dict['rng_state'],
-                    fsdp_rng_key,
                     args.data_parallel_random_init,
                 )
             else:
@@ -620,9 +570,10 @@ def load_mcore_checkpoint(args,
 
 
 def _set_fsdp_tensor_parallel_attributes(param, partition_dim: int) -> None:
-    param.tensor_model_parallel = True
-    param.partition_dim = partition_dim
-    param.partition_stride = 1
+    if not hasattr(param, 'tensor_model_parallel'):
+        param.tensor_model_parallel = True
+    if not hasattr(param, 'partition_dim'):
+        param.partition_dim = partition_dim
 
 
 def _ensure_fsdp_tensor_parallel_attributes(args, model) -> None:
