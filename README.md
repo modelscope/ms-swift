@@ -77,6 +77,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🔥 2026.08.26: Day-0 Support for [Qwen3.8-Flash-Next](https://www.modelscope.cn/models/Qwen/Qwen3.8-Flash-Next), refer to [sft example](examples/models/qwen4_exp/megatron_sft.sh) for training.
 - 🎁 2026.08.11: Support inference and training for the multimodal model [Muse-Glimmer-30B](https://modelscope.cn/models/meta-models/Muse-Glimmer-30B), with Megatron-SWIFT support as well.
 - 🎁 2026.07.22: Support inference for the moonshotai multimodal model [Kimi-K3](https://modelscope.cn/models/moonshotai/Kimi-K3), including the XTML chat template, thinking channel (`reasoning_effort`) and tool calling (`--agent_template kimi_k3`).
 - 🎁 2026.06.10: Megatron-Ray now supports GRPO and GKD training. See [docs](./docs/source_en/Instruction/Ray.md) and [examples](examples/ray).
