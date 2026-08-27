@@ -1,6 +1,5 @@
 """build_model: ModelConfig + DistributedConfig -> twinkle-native TransformersModel / MegatronModel."""
 from __future__ import annotations
-
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -17,6 +16,10 @@ def build_model(model_config: ModelConfig,
     Thin mapping (no Registry/Factory): model_config fields -> twinkle __init__ kwargs.
     DistributedConfig.backend=='megatron' builds a MegatronModel (via the selected bridge
     backend); otherwise a TransformersModel. twinkle self-builds weights on the correct rank.
+
+    PPO's value critic is NOT a special build flag: it is a ``task_type='seq_cls', num_labels=1`` model
+    forwarded with ``task='value'`` (which keeps the head's per-token output instead of pooling), so it
+    goes through the ordinary seq_cls build path on both backends.
     """
     if is_megatron_backend(distributed_config):
         return _build_megatron_model(model_config, distributed_config)
@@ -119,6 +122,25 @@ def _apply_unsloth_kwargs(kwargs: dict, model_config: ModelConfig, tuner_config:
         kwargs['use_gradient_checkpointing'] = False
 
 
+def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig) -> None:
+    """Place the transformers model in the remote 'model' DeviceGroup under mode='ray'.
+
+    The transformers backend has no TP/PP, so the mesh is pure data parallel over nproc_per_node.
+    Local (torchrun) mode leaves both device_mesh and remote_group unset, exactly as before -- see
+    the note in _build_transformers_model on why a None mesh is the correct (and load-bearing)
+    choice there.
+    """
+    if distributed_config.mode == 'local':
+        return
+    from twinkle import DeviceMesh
+    nproc = distributed_config.nproc_per_node
+    if nproc is None:
+        raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the 'model' "
+                         'DeviceGroup and its data-parallel mesh). Pass it explicitly -- there is no default.')
+    kwargs['device_mesh'] = DeviceMesh.from_sizes(world_size=nproc, dp_size=nproc)
+    kwargs['remote_group'] = 'model'
+
+
 def _build_transformers_model(model_config: ModelConfig,
                               distributed_config: DistributedConfig,
                               train_config: Optional[TrainConfig] = None,
@@ -144,6 +166,8 @@ def _build_transformers_model(model_config: ModelConfig,
     # seq_cls / reranker ride a num_labels-wide SequenceClassification head instead of the LM head.
     # (reranker = num_labels=1; a plain reranker maps to this same head with a reranker loss.)
     # generative_reranker keeps the CausalLM + a forward-time lm_head patch, so it is NOT here.
+    # PPO's value critic also rides this head (task_type='seq_cls', num_labels=1) and is forwarded with
+    # task='value' to keep the per-token output.
     if model_config.task_type in ('seq_cls', 'reranker'):
         _apply_seq_cls_head(kwargs, model_config)
 
@@ -179,6 +203,12 @@ def _build_transformers_model(model_config: ModelConfig,
     # is load-bearing that run_sft calls twinkle.initialize first (see _initialize_twinkle, and the
     # 2-GPU aggregation test that pins the result).
     #
+    # Ray placement (RL): under mode='ray' the model lives in a remote DeviceGroup named 'model' --
+    # the same group _initialize_twinkle builds -- mirroring the Megatron branch below. This is what
+    # an online RL recipe needs so the trainer and a vLLMSampler are SEPARATE Ray actors that
+    # CheckpointEngineManager can weight-sync between (it asserts both have `_actors`+`device_mesh`).
+    _apply_ray_placement(kwargs, distributed_config)
+
     # tuner_backend='unsloth' swaps the class: unsloth owns both construction (its Triton kernels /
     # optional 4bit base) and LoRA installation -- see swift/dev/model/unsloth_model.py. Everything
     # derived above (dtype, strategy, mixed_precision, ddp_config) is passed through unchanged.

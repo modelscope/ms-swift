@@ -11,16 +11,19 @@ Scope (T1 wired):
     group/batch/none/gdpo); estimator/scale read from RLHFConfig.
   - only forward_backward / forward_only are used (backend-agnostic).
 
-Deliberately NOT wired (bundled with later items, see doc P2-3c / T0):
-  - weight-sync: the RolloutEngine's vLLM keeps its INITIAL weights, so the behavior policy never
-    tracks the trained policy. A green run here is "pipeline works", never "GRPO is correct".
-  - ref/KL (beta): old_logps come from the rollout logprobs, and ref-KL needs a ref forward; both
-    must land WITH weight-sync (else ratio is systematically off, hidden by the step0 same-weights
-    test). DAPO dynamic sampling, reward models, async rewards are separate items.
-"""
-# TODO: not implemented yet
-from __future__ import annotations
+Weight-sync is delegated to the rollout object, not owned by the loop: when the rollout exposes
+``sync_weights`` (+ optional ``finish_generate``) -- as ``run_grpo``'s ``SamplerRollout`` does over
+twinkle's ``CheckpointEngineManager`` -- the loop pushes the trained policy into the sampler BEFORE
+each rollout, so the behaviour policy tracks the trained one (correct GRPO). The local
+``RolloutEngine`` smoke path has no such hook, so the loop simply skips it and stays a pipeline smoke
+on the INITIAL weights.
 
+Still deliberately NOT wired here:
+  - ref/KL (beta): old_logps come from the rollout logprobs; a ref-KL term needs a separate frozen
+    ref forward, which belongs with a ref-model owner, not this loop. DAPO dynamic sampling, reward
+    models and async rewards are separate items.
+"""
+from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 from swift.dev.advantage import compute_advantages
@@ -113,8 +116,15 @@ class GRPOLoop:
         Samples are grouped by prompt (num_generations each), so rewards/advantages stay in group
         order and each block of num_generations is one prompt group.
         """
+        # Weight-sync (if the rollout supports it): push the trained policy into the sampler BEFORE
+        # generating, so the behaviour policy is the current one. finish_generate reverses the
+        # colocate device hand-over after generation. The local smoke RolloutEngine has neither hook.
+        if hasattr(self.rollout, 'sync_weights'):
+            self.rollout.sync_weights()
         samples = self.rollout.generate(
             self.prompts, num_samples=self.num_generations, sampling_params=self.sampling_params)
+        if hasattr(self.rollout, 'finish_generate'):
+            self.rollout.finish_generate()
         if self.reward_funcs:
             # Loop-side glue only: project samples onto the L1 reward API's inputs (completion text +
             # batched dataset columns). The scoring/advantage math itself lives in swift.dev.*.
@@ -136,8 +146,9 @@ class GRPOLoop:
     def fit(self) -> list:
         """Run max_steps GRPO steps. Each step: rollout -> one GA window of forward_backward.
 
-        NOTE the rollout policy is NEVER updated (no weight-sync),
-        so this is a pipeline smoke, not a correct GRPO training run.
+        When the rollout has no ``sync_weights`` hook (the local smoke path) the rollout policy is
+        never updated, so that configuration is a pipeline smoke, not a correct GRPO training run;
+        ``run_grpo``'s SamplerRollout DOES sync, closing the loop.
         """
         ga = self.gradient_accumulation_steps
         group = self._active_group()

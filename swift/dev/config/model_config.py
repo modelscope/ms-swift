@@ -24,6 +24,26 @@ class ModelConfig:
     device_map: Optional[Union[dict, str]] = None
     max_memory: Optional[Union[dict, str]] = None
     local_repo_path: Optional[str] = None
+    #: Extra kwargs forwarded to ``from_pretrained``. Accepts a dict, or a JSON string for command lines.
+    #: The escape hatch for a model whose loading needs something this config does not name.
+    model_kwargs: Optional[Union[dict, str]] = None
+    #: Python files imported before anything is built, so that decorated models, templates, datasets and
+    #: reward functions register themselves. Import order is the order given.
+    external_plugins: List[str] = field(default_factory=list)
+    #: Files whose ``register_model`` / ``register_template`` calls add entries the built-in registries
+    #: do not have. Distinct from ``external_plugins``, which is for behaviour rather than registration.
+    custom_register_path: List[str] = field(default_factory=list)
+    #: Apply swift's Ascend-specific model patches. On by default and only consulted on NPU, where a few
+    #: models otherwise hit unsupported ops.
+    enable_npu_model_patch: bool = True
+    #: Attention implementation for the vision tower, which often supports a different set than the
+    #: language tower named by ``attn_impl`` -- so they are chosen separately rather than shared.
+    vit_attn_impl: Optional[str] = None
+    #: Build only the language tower, dropping the vision one. For training a multimodal checkpoint on
+    #: text alone, where the unused tower would still occupy memory.
+    language_model_only: bool = False
+    #: Tie the MTP heads' weights to the main output embedding instead of giving them their own.
+    mtp_shared_weights: bool = False
     init_strategy: Literal['zero', 'uniform', 'normal', 'xavier_uniform', 'xavier_normal', 'kaiming_uniform',
                            'kaiming_normal', 'orthogonal', None] = None
 

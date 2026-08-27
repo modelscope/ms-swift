@@ -5,8 +5,12 @@ from .convert import run_convert
 from .merge_lora import run_merge_lora
 from .quantize import run_quantize
 from .run_deploy import build_app, run_deploy, run_deploy_process
+from .run_dpo import PreferenceLoop, run_dpo
 from .run_embedding import run_embedding
+from .run_gkd import GKDLoop, run_gkd
+from .run_grpo import SamplerRollout, plan_rl_device_groups, run_grpo
 from .run_infer import infer_cli, run_infer
+from .run_ppo import PPOLoop, run_ppo
 from .run_reranker import run_reranker
 from .run_sampling import run_sampling
 from .run_seq_cls import run_seq_cls
@@ -19,6 +23,15 @@ __all__ = [
     'run_embedding',
     'run_reranker',
     'run_seq_cls',
+    'run_grpo',
+    'plan_rl_device_groups',
+    'SamplerRollout',
+    'run_dpo',
+    'PreferenceLoop',
+    'run_gkd',
+    'GKDLoop',
+    'run_ppo',
+    'PPOLoop',
     'num_optimizer_steps',
     'export_cached_dataset',
     'run_quantize',

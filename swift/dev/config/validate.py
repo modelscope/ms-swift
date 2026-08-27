@@ -6,8 +6,8 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                   TrainConfig, TunerConfig)
+    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, RLHFConfig,
+                                   TemplateConfig, TrainConfig, TunerConfig)
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,7 @@ def validate_configs(
     distributed_config: 'DistributedConfig',
     checkpoint_config: Optional['CheckpointConfig'] = None,
     tuner_config: Optional['TunerConfig'] = None,
+    rlhf_config: Optional['RLHFConfig'] = None,
 ) -> None:
     """Validate constraints that span multiple Configs. Raises ValueError on an illegal combination.
 
@@ -35,11 +36,62 @@ def validate_configs(
     _check_streaming(dataset_config, checkpoint_config)
     _check_backend_specific(dataset_config, train_config, distributed_config, is_megatron, tuner_config)
     _check_megatron_optimizer(train_config, is_megatron)
+    _check_muon(train_config, distributed_config, is_megatron)
     _check_megatron_recompute(train_config, distributed_config, is_megatron)
     _check_megatron_attn_backend(model_config, template_config, is_megatron)
     _check_mtp(model_config, is_megatron, tuner_config)
     _check_quantization(model_config, distributed_config, is_megatron)
     _check_megatron_fsdp(distributed_config, is_megatron)
+    _check_selective_recompute(distributed_config, is_megatron)
+    _check_pipeline_decoder_layers(distributed_config, is_megatron)
+    _check_tp_comm_overlap(distributed_config, is_megatron)
+    _check_sequence_parallel_tp(distributed_config, is_megatron)
+    _check_save_total_limit(checkpoint_config, is_megatron)
+    _check_rlhf_ref_model(model_config, tuner_config, rlhf_config)
+    _check_rlhf_padding_free(template_config, dataset_config, rlhf_config)
+    _check_rlhf_sequence_parallel(template_config, rlhf_config)
+
+
+def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+    """Reject muon pairings that Megatron itself refuses, or that would train something else.
+
+    Mirrors legacy megatron_args.py::_check_muon with one deliberate difference: legacy silently sets
+    ``use_distributed_optimizer = False`` when muon is selected, and this raises instead. The knob is
+    one the user typed, and turning off the distributed optimizer changes both the memory profile and
+    what a checkpoint contains -- the same class of hidden downgrade as the padding_free case above.
+
+    The mcore version gate is legacy's too. Checking it here means a CLI mistake fails on the driver;
+    it is safe to read on this side because it is a package version rather than a device property, so
+    unlike the FP8/Blackwell checks it does not describe hardware this process may not have.
+    """
+    if 'muon' not in train_config.optimizer:
+        return
+
+    if not is_megatron:
+        raise ValueError(f'TrainConfig.optimizer={train_config.optimizer!r} is a Megatron optimizer, but the active '
+                         'backend is transformers. Use TrainConfig.optim for the transformers path, or switch '
+                         'DistributedConfig.backend.')
+
+    from swift.dev.naming import mcore_version_at_least
+    if not mcore_version_at_least('0.16'):
+        raise ValueError(f'TrainConfig.optimizer={train_config.optimizer!r} requires megatron-core>=0.16, which is '
+                         'where the muon implementation lands.')
+
+    if train_config.optimizer == 'muon':
+        # Plain muon orthogonalises whole parameters, so it needs each one gathered before the step;
+        # both overlaps hand it a shard instead. megatron asserts the same pairing.
+        for attr in ('overlap_grad_reduce', 'overlap_param_gather'):
+            if getattr(distributed_config, attr):
+                raise ValueError(
+                    f"optimizer='muon' is incompatible with DistributedConfig.{attr}=True: muon computes its "
+                    'update from the whole parameter, which an overlapped reduce/gather has not finished '
+                    f"assembling. Use optimizer='dist_muon', which is sharded, or set {attr}=False.")
+
+    if distributed_config.use_distributed_optimizer:
+        raise ValueError(f'TrainConfig.optimizer={train_config.optimizer!r} does not support '
+                         'DistributedConfig.use_distributed_optimizer=True; muon maintains its own state layout. '
+                         'legacy turned the distributed optimizer off silently here -- set it to False explicitly, '
+                         'so the memory profile and checkpoint contents of the run are not a surprise.')
 
 
 def _check_megatron_fsdp(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
@@ -423,3 +475,161 @@ def _check_backend_specific(dataset_config: 'DatasetConfig',
                 if attr in _MEGATRON_PARALLEL_SIZES else f'the active backend is {wrong_backend}')
         raise ValueError(f'{attr}={value!r} is only implemented by the {right_backend} backend, but {hint}. '
                          f'Remove it, or switch DistributedConfig.backend.')
+
+
+def _check_selective_recompute(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+    """'selective' recompute chooses WHAT to recompute; recompute_method chooses HOW MUCH of 'full'.
+
+    Mirrors legacy megatron_args.py:799-800. Selective recomputation always targets the same
+    (attention) operations, so it has no layer partitioning to configure -- `recompute_method`
+    (uniform/block) only means something under 'full'. Pairing them asks Megatron to partition a mode
+    that is not partitioned, which it refuses; catching it here reports the contradiction before ranks
+    are spawned rather than deep in the model build.
+    """
+    if not is_megatron:
+        return
+    if distributed_config.recompute_granularity == 'selective' and distributed_config.recompute_method is not None:
+        raise ValueError('DistributedConfig.recompute_method='
+                         f'{distributed_config.recompute_method!r} has no effect with '
+                         "recompute_granularity='selective': selective recompute always targets the attention "
+                         "ops and has nothing to partition. Use recompute_granularity='full' to configure a "
+                         'method, or drop recompute_method.')
+
+
+def _check_pipeline_decoder_layers(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+    """The per-stage decoder layer overrides need a pipeline to distribute across.
+
+    Mirrors legacy megatron_args.py:832-835. `decoder_first_pipeline_num_layers` /
+    `decoder_last_pipeline_num_layers` move layers onto the first/last pipeline stage to balance an
+    uneven split; with `pipeline_model_parallel_size == 1` there is only one stage, so both are the
+    whole model and the override describes a partition that does not exist.
+    """
+    if not is_megatron or distributed_config.pipeline_model_parallel_size > 1:
+        return
+    for attr in ('decoder_first_pipeline_num_layers', 'decoder_last_pipeline_num_layers'):
+        if getattr(distributed_config, attr) is not None:
+            raise ValueError(f'DistributedConfig.{attr} needs pipeline_model_parallel_size > 1: with a single '
+                             'pipeline stage there is no first/last stage to move layers onto. Set a pipeline '
+                             f'size, or drop {attr}.')
+
+
+def _check_tp_comm_overlap(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+    """Tensor-parallel comm/GEMM overlap only exists when sequence parallelism splits the activations.
+
+    Mirrors legacy megatron_args.py:896-898. The overlap hides the tensor-parallel all-gather/
+    reduce-scatter behind the GEMM, and those collectives only appear when `sequence_parallel` shards
+    the activations along the sequence; without it there is nothing to overlap and Megatron asserts the
+    same pairing.
+    """
+    if not is_megatron:
+        return
+    if distributed_config.tp_comm_overlap and not distributed_config.sequence_parallel:
+        raise ValueError('DistributedConfig.tp_comm_overlap requires sequence_parallel=True: the overlap hides '
+                         'the tensor-parallel collectives that only exist under sequence parallelism, so with it '
+                         'off there is nothing to overlap.')
+
+
+def _check_sequence_parallel_tp(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+    """Sequence parallelism splits activations across the tensor-parallel ranks, so it needs TP > 1.
+
+    legacy silently sets `sequence_parallel = False` here (megatron_args.py:890-891). dev raises
+    instead, for the reason the muon and attn-backend guards give: `sequence_parallel` is one the user
+    typed, and quietly turning it off changes the activation memory profile so a run can look fine and
+    use far more memory than the config implies. With `tensor_model_parallel_size == 1` there are no
+    tensor-parallel ranks to split across, so the flag cannot do anything.
+    """
+    if not is_megatron:
+        return
+    if distributed_config.sequence_parallel and distributed_config.tensor_model_parallel_size <= 1:
+        raise ValueError('DistributedConfig.sequence_parallel requires tensor_model_parallel_size > 1: it shards '
+                         'activations along the sequence across the tensor-parallel ranks, and with TP=1 there are '
+                         'none to shard across. legacy turned sequence_parallel off silently here; dev refuses so '
+                         'the activation-memory profile of the run is not a surprise. Set a TP size, or '
+                         'sequence_parallel=False.')
+
+
+def _check_save_total_limit(checkpoint_config: Optional['CheckpointConfig'], is_megatron: bool) -> None:
+    """A rolling checkpoint limit needs room for two, and cannot run while a save is still in flight.
+
+    Mirrors legacy megatron_args.py:857-861. `save_total_limit` keeps the newest N checkpoints; a limit
+    of 1 would delete the previous checkpoint before the current one is known-good, leaving a window
+    with no complete checkpoint, so Megatron requires >= 2. `async_save` writes in the background, and
+    the limit's delete-oldest step cannot tell whether an in-flight async save has finished, so the two
+    are incompatible.
+    """
+    if not is_megatron or checkpoint_config is None or checkpoint_config.save_total_limit is None:
+        return
+    if checkpoint_config.async_save:
+        raise ValueError('CheckpointConfig.save_total_limit is incompatible with async_save=True: the rolling '
+                         'delete of old checkpoints cannot tell whether a background save has finished. Disable '
+                         'one of the two.')
+    if checkpoint_config.save_total_limit < 2:
+        raise ValueError('CheckpointConfig.save_total_limit must be >= 2 on the Megatron backend: a limit of 1 '
+                         'deletes the previous checkpoint before the current one is complete, leaving no valid '
+                         'checkpoint if the save is interrupted.')
+
+
+#: rlhf_type -> whether it trains against a separate reference model. CPO/ORPO fold the reference into
+#: their own loss and LoRA uses the adapter-disabled base as reference, so neither takes a ref_model.
+_RLHF_USES_REF_MODEL = ('dpo', 'kto', 'ppo', 'grpo')
+
+
+def _check_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
+                          rlhf_config: Optional['RLHFConfig']) -> None:
+    """Reject a reference model passed to an algorithm that has none.
+
+    Mirrors the trailing `elif self.ref_model is not None: raise` of legacy rlhf_args.py:297-298. The
+    derivation half (defaulting ref_model to model for the algorithms that use one) lives in
+    process.py::_derive_rlhf_ref_model; this is the refusal half. CPO/ORPO build the reference into
+    their loss and LoRA training uses the base model with the adapter disabled, so a `--ref_model`
+    there is a knob that would be silently ignored -- the class of mistake validate.py exists to catch.
+    """
+    if rlhf_config is None or rlhf_config.ref_model is None:
+        return
+    rlhf_type = getattr(rlhf_config, 'rlhf_type', None)
+    tuner_type = getattr(tuner_config, 'tuner_type', 'full') if tuner_config is not None else 'full'
+    uses_ref = rlhf_type in _RLHF_USES_REF_MODEL and tuner_type == 'full'
+    # grpo with beta=0 drops the KL term, so even a ref-using algorithm needs no reference then.
+    if rlhf_type == 'grpo' and rlhf_config.beta == 0.0:
+        uses_ref = False
+    if not uses_ref:
+        raise ValueError(f'RLHFConfig.ref_model={rlhf_config.ref_model!r} is not used by rlhf_type={rlhf_type!r}'
+                         f' with tuner_type={tuner_type!r}: CPO/ORPO fold the reference into their loss and LoRA '
+                         'uses the adapter-disabled base as the reference, so no separate ref_model is loaded. '
+                         'Remove it.')
+
+
+def _check_rlhf_padding_free(template_config: 'TemplateConfig', dataset_config: 'DatasetConfig',
+                            rlhf_config: Optional['RLHFConfig']) -> None:
+    """Only some RLHF algorithms have a padding-free/packing training path.
+
+    Mirrors legacy rlhf_args.py::_check_padding_free. padding_free (and packing, which implies it)
+    flattens a micro batch into one variable-length sequence; only GRPO/DPO/KTO/GKD implement the
+    loss over that layout. For the others the flag would be accepted and then read by a code path that
+    assumes padded batches, so it is refused here rather than mis-computed later.
+    """
+    if rlhf_config is None:
+        return
+    if not (template_config.padding_free or dataset_config.packing):
+        return
+    rlhf_type = getattr(rlhf_config, 'rlhf_type', None)
+    if rlhf_type not in ('grpo', 'dpo', 'kto', 'gkd'):
+        feature = 'packing' if dataset_config.packing else 'padding_free'
+        raise ValueError(f'rlhf_type={rlhf_type!r} does not support {feature}: only grpo/dpo/kto/gkd implement the '
+                         'variable-length training path it produces. Set the corresponding flag to False.')
+
+
+def _check_rlhf_sequence_parallel(template_config: 'TemplateConfig', rlhf_config: Optional['RLHFConfig']) -> None:
+    """Only some RLHF algorithms have a sequence-parallel training path.
+
+    Mirrors legacy rlhf_args.py::_check_sequence_parallel. `sequence_parallel_size > 1` splits each
+    sequence across ranks; only GRPO and DPO implement the loss under that split, so the others would
+    silently mis-reduce. Refused here for the same reason as padding_free above.
+    """
+    if rlhf_config is None or template_config.sequence_parallel_size <= 1:
+        return
+    rlhf_type = getattr(rlhf_config, 'rlhf_type', None)
+    if rlhf_type not in ('grpo', 'dpo'):
+        raise ValueError(f'rlhf_type={rlhf_type!r} does not support sequence_parallel_size='
+                         f'{template_config.sequence_parallel_size}: only grpo/dpo implement the sequence-parallel '
+                         'loss. Set sequence_parallel_size=1.')

@@ -31,6 +31,34 @@ class RolloutConfig:
     vllm_engine_kwargs: Optional[str] = None
     vllm_data_parallel_size: int = 1
 
+    # === SGLang Engine Parameters ===
+    # Parallel to the vLLM block above rather than shared with it: the two engines name and scope these
+    # knobs differently -- SGLang splits data parallelism into a replica count plus attention-level DP,
+    # and reserves a fraction of memory statically where vLLM takes a utilisation target -- so one set
+    # of fields could not be handed to both without a translation layer that hides those differences.
+    sglang_tp_size: int = 1
+    sglang_pp_size: int = 1
+    sglang_dp_size: int = 1
+    sglang_ep_size: int = 1
+    sglang_enable_ep_moe: bool = False
+    #: Shard attention over the DP ranks as well, instead of replicating it per replica.
+    sglang_enable_dp_attention: bool = False
+    #: Fraction of device memory reserved up front for weights and KV cache. None lets SGLang choose.
+    sglang_mem_fraction_static: Optional[float] = None
+    #: Max sequence length the engine is built for. None takes the model's own.
+    sglang_context_length: Optional[int] = None
+    sglang_disable_cuda_graph: bool = False
+    sglang_quantization: Optional[str] = None
+    sglang_kv_cache_dtype: str = 'auto'
+    #: Defaults to True, unlike the vLLM side: SGLang's custom all-reduce has been the less reliable of
+    #: the two, and this preserves the behaviour rollout ran with before the migration.
+    sglang_disable_custom_all_reduce: bool = True
+    #: Speculative decoding. The three sizes below are only read once an algorithm is named.
+    sglang_speculative_algorithm: Optional[str] = None
+    sglang_speculative_num_steps: Optional[int] = None
+    sglang_speculative_eagle_topk: Optional[int] = None
+    sglang_speculative_num_draft_tokens: Optional[int] = None
+
     # === Rollout Mode ===
     use_vllm: bool = False
     vllm_mode: Optional[Literal['server', 'colocate']] = None

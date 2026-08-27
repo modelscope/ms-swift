@@ -58,3 +58,6 @@ class DatasetConfig:
     dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = False
     dataloader_prefetch_factor: Optional[int] = None
+    #: Discard a final short batch instead of padding it. Needed when a step assumes a fixed batch
+    #: size -- otherwise the last batch of an epoch is a different shape from every other.
+    dataloader_drop_last: bool = False

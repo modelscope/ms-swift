@@ -124,3 +124,38 @@ class RLHFConfig:
     reward_model_type: Optional[List[str]] = None
     reward_model_revision: Optional[List[str]] = None
     reward_model_plugin: Optional[List[str]] = None
+    #: Chat template per reward model, positional with ``reward_model``. Needed because a reward model
+    #: is often trained under a different template than the policy, and scoring under the wrong one
+    #: silently changes what it rewards. None lets each model use its own default.
+    reward_template: Optional[List[str]] = None
+
+    # === Megatron backend ===
+    # The Megatron path's counterparts to the fields above. Kept separate rather than folded in because
+    # a reference model in mcore format is not interchangeable with ``ref_model``: it is sharded under
+    # Megatron parameter names, so the two are loaded by different code.
+    #: Reference model in mcore format, and an mcore LoRA to apply to it.
+    mcore_ref_model: Optional[str] = None
+    mcore_ref_adapter: Optional[str] = None
+    #: Compute the KL term explicitly rather than folding it into the advantage. None takes the value
+    #: implied by the algorithm.
+    calculate_KL: Optional[bool] = None
+    #: Which f-divergence stands in for the KL, e.g. 'reverse_kl', 'forward_kl', 'js_divergence'.
+    f_divergence_type: str = 'reverse_kl'
+    #: Drop the reference model entirely and score against a constant instead. Removes a whole model
+    #: from memory, and with it the anchor that keeps the policy near where it started.
+    reference_free: bool = False
+    #: Temperature on the REAL objective's soft constraint.
+    real_tau: float = 0.5
+    #: Generations per prompt during evaluation. None reuses ``num_generations``.
+    num_generations_eval: Optional[int] = None
+    #: Replay the router's expert choices from the generating pass during the training pass, so an MoE
+    #: policy's log-probabilities are computed under the routing that actually produced the tokens.
+    #: 'disabled' recomputes routing, which can silently make the importance ratio wrong.
+    router_replay_mode: Literal['disabled', 'R2', 'R3'] = 'disabled'
+    #: Move the HF<->mcore bridge off the device between syncs. Frees its buffers for rollout at the
+    #: cost of rebuilding them each time.
+    offload_bridge: bool = False
+    #: Obtain the teacher's outputs by disabling the policy's adapter instead of loading a second model.
+    #: Only valid when the teacher is exactly the base model of a LoRA policy. Private: it is set from
+    #: the teacher configuration above rather than passed directly.
+    _teacher_use_disable_adapter: bool = False

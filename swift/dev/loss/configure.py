@@ -13,10 +13,10 @@ Why reduction='sum':
   micro-batch has the same token count. So SFT must use SUM.
 """
 from __future__ import annotations
-
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 if TYPE_CHECKING:
+    from swift.dev.config import RLHFConfig
     from swift.dev.model import TrainableModel
 
 # Losses that read ``outputs['embeddings']`` (the pooled, L2-normalized sentence vector) rather
@@ -150,3 +150,120 @@ def configure_seq_cls_loss(model: TrainableModel, *, problem_type: str, num_labe
                          'It is required (not inferred) so the training objective is explicit.')
     loss_cls = resolve_loss('seq_cls')
     model.set_loss(loss_cls(problem_type=problem_type, num_labels=num_labels, **kwargs))
+
+
+# rlhf_type -> the twinkle loss name it maps onto. Most are same-named in twinkle's torch_loss_mapping;
+# the exceptions are: 'kto' (no standalone loss yet -> the DPO family's paired 'kto_pair' variant), and
+# 'ppo' (whose POLICY loss is the same clipped surrogate as GRPO -> 'grpo'; its critic is a separate
+# value loss set by configure_ppo_value_loss, not here).
+_RLHF_LOSS_NAME = {
+    'grpo': 'grpo',
+    'dpo': 'dpo',
+    'cpo': 'cpo',
+    'orpo': 'orpo',
+    'simpo': 'simpo',
+    'gkd': 'gkd',
+    'rm': 'reward',
+    'kto': 'dpo',
+    'ppo': 'grpo',
+}
+
+
+def configure_rlhf_loss(model: TrainableModel, rlhf_config: 'RLHFConfig') -> None:
+    """Set the RLHF/RL loss on ``model`` from ``rlhf_config.rlhf_type`` and its hyperparameters.
+
+    Peer of :func:`configure_loss`, for the RLHF recipes (run_grpo / run_dpo / run_gkd / run_ppo). The
+    heavy losses themselves already live in twinkle (GRPO family, the DPO family, GKD) plus RewardLoss
+    added alongside; this only maps the dev Config onto the right constructor, so a recipe never
+    hand-picks a loss class or its argument names.
+
+    Only the fields each algorithm actually reads are forwarded, so twinkle's own defaults stand for
+    the rest (e.g. an unset ``beta`` leaves the loss default rather than being overwritten with None).
+    ``beta`` in particular is normally pre-filled per-algorithm by process.py::_derive_rlhf_beta.
+
+    rlhf_type='ppo' sets only the POLICY loss (the shared clipped surrogate, GRPOLoss, with
+    epsilon=cliprange and KL applied in the loop's reward shaping rather than the loss). Its critic is
+    a separate value model whose loss is set by :func:`configure_ppo_value_loss`.
+    """
+    from swift.dev.naming import resolve_loss
+
+    rlhf_type = rlhf_config.rlhf_type
+    if rlhf_type not in _RLHF_LOSS_NAME:
+        raise ValueError(f'Unknown rlhf_type={rlhf_type!r}; expected one of {sorted(_RLHF_LOSS_NAME)}.')
+
+    loss_cls = resolve_loss(_RLHF_LOSS_NAME[rlhf_type])
+    model.set_loss(loss_cls(**_rlhf_loss_kwargs(rlhf_type, rlhf_config)))
+
+
+def configure_ppo_value_loss(value_model: TrainableModel, rlhf_config: 'RLHFConfig') -> None:
+    """Set PPO's clipped value-regression loss on the critic (a seq_cls num_labels=1 value model).
+
+    Separate from :func:`configure_rlhf_loss` because PPO trains two models with two objectives: the
+    policy (clipped surrogate, set by configure_rlhf_loss) and the critic (this value loss). Forwards
+    ``cliprange_value`` and ``vf_coef``; the loop supplies ``returns``/``old_values`` per step.
+    """
+    from swift.dev.naming import resolve_loss
+
+    loss_cls = resolve_loss('ppo_value')
+    value_model.set_loss(loss_cls(cliprange_value=rlhf_config.cliprange_value, vf_coef=rlhf_config.vf_coef))
+
+
+def _rlhf_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig') -> Dict[str, Any]:
+    """The constructor kwargs for one rlhf_type's loss, forwarding only the fields it reads.
+
+    Split into an online (policy-gradient / distillation) and a preference/pairwise half so each stays
+    a short, single-purpose mapping rather than one long branch.
+    """
+    if rlhf_type in ('grpo', 'gkd', 'ppo'):
+        return _online_loss_kwargs(rlhf_type, rlhf_config)
+    return _preference_loss_kwargs(rlhf_type, rlhf_config)
+
+
+def _online_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig') -> Dict[str, Any]:
+    """kwargs for the on-policy losses (GRPO/PPO clip params, GKD's temperature); grpo/gkd read beta."""
+    kwargs: Dict[str, Any] = {}
+    if rlhf_type == 'gkd':
+        if rlhf_config.beta is not None:
+            kwargs['beta'] = rlhf_config.beta
+        kwargs['temperature'] = rlhf_config.temperature
+        return kwargs
+    if rlhf_type == 'ppo':
+        # PPO's policy loss is the shared clipped surrogate; the clip range is `cliprange`, and its KL
+        # is applied as a reward penalty in the loop (beta=0 here, GRPOLoss's default) to avoid
+        # double-counting.
+        kwargs['epsilon'] = rlhf_config.cliprange
+        return kwargs
+    # grpo
+    if rlhf_config.beta is not None:
+        kwargs['beta'] = rlhf_config.beta
+    kwargs['epsilon'] = rlhf_config.epsilon
+    if rlhf_config.epsilon_high is not None:
+        kwargs['epsilon_high'] = rlhf_config.epsilon_high
+    return kwargs
+
+
+def _preference_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig') -> Dict[str, Any]:
+    """kwargs for the preference / pairwise losses (dpo/kto/simpo/cpo/orpo/rm)."""
+    beta = rlhf_config.beta
+    kwargs: Dict[str, Any] = {}
+    # dpo/kto/simpo/cpo take beta straight through; orpo folds it into lambda_orpo and rm has none.
+    if beta is not None and rlhf_type in ('dpo', 'kto', 'simpo', 'cpo'):
+        kwargs['beta'] = beta
+    if rlhf_type in ('dpo', 'kto'):
+        # dev stores loss_type as a list (legacy CLI accepts several); the twinkle DPO family takes a
+        # single variant. kto rides the DPO family's paired 'kto_pair' variant.
+        kwargs['loss_type'] = ('kto_pair' if rlhf_type == 'kto' else
+                               (rlhf_config.loss_type[0] if rlhf_config.loss_type else 'sigmoid'))
+        kwargs['label_smoothing'] = rlhf_config.label_smoothing
+    elif rlhf_type == 'simpo':
+        kwargs['gamma'] = rlhf_config.simpo_gamma
+    elif rlhf_type == 'cpo':
+        # twinkle CPOLoss names the behaviour-cloning weight bc_coef; dev keeps legacy's cpo_alpha.
+        kwargs['bc_coef'] = rlhf_config.cpo_alpha
+    elif rlhf_type == 'orpo' and beta is not None:
+        # ORPO has no reference model and no beta: its single weight is lambda_orpo, which legacy/TRL
+        # carry in the beta slot -- so the derived beta maps onto lambda_orpo here.
+        kwargs['lambda_orpo'] = beta
+    elif rlhf_type == 'rm' and rlhf_config.center_rewards_coefficient is not None:
+        kwargs['center_rewards_coefficient'] = rlhf_config.center_rewards_coefficient
+    return kwargs
