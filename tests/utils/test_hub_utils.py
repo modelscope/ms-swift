@@ -56,6 +56,20 @@ class TestHubUtils(unittest.TestCase):
 
     @patch('swift.utils.hub_utils.requests.get')
     @patch('swift.utils.hub_utils.get_cache_dir')
+    def test_download_file_removes_partial_cache_on_failure(self, mock_cache_dir, mock_get):
+        mock_cache_dir.return_value = self.tmp_dir
+        response = self._mock_response([b'partial'])
+        response.iter_content.side_effect = OSError('connection reset')
+        mock_get.return_value = response
+
+        with self.assertRaisesRegex(OSError, 'connection reset'):
+            download_file('https://example.com/model.bin')
+
+        cache_dir = os.path.join(self.tmp_dir, 'files')
+        self.assertEqual(os.listdir(cache_dir), [])
+
+    @patch('swift.utils.hub_utils.requests.get')
+    @patch('swift.utils.hub_utils.get_cache_dir')
     def test_download_file_uses_a_distinct_cache_path_for_each_url(self, mock_cache_dir, mock_get):
         mock_cache_dir.return_value = self.tmp_dir
         mock_get.side_effect = [self._mock_response([b'first']), self._mock_response([b'second'])]
