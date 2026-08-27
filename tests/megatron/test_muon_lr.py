@@ -1,14 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import dataclasses
+import torch
+import torch.distributed as dist
 import types
 import unittest
 from unittest import mock
 
-import torch
-import torch.distributed as dist
-
 try:
-    from megatron.core.optimizer import (ParamKey, ParamPredicate, _get_param_groups, get_standard_config_overrides)
+    from megatron.core.optimizer import ParamKey, ParamPredicate, _get_param_groups, get_standard_config_overrides
 
     from swift.megatron.arguments.megatron_args import MegatronArguments
     # The older mcore has no shared routing predicate, so take the one swift resolved rather than mcore's.
