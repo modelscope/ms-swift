@@ -465,6 +465,37 @@ register_template(
         suffix=['<|role_end|>'],
     ))
 
+class Ling3Template(Template):
+    def init_env_args(self):
+        super().init_env_args()
+        self.enable_thinking = get_env_args('enable_thinking', bool, True)
+
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
+        system = super()._get_system(inputs)
+        enable_thinking = self._get_enable_thinking(inputs)
+        thinking_option = 'on' if enable_thinking else 'off'
+        if system and ('detailed thinking on' in system or 'detailed thinking off' in system):
+            return system
+        if system:
+            return system + '\ndetailed thinking ' + thinking_option
+        return 'detailed thinking ' + thinking_option
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.ling3,
+        prefix=['<role>SYSTEM</role><|role_end|>'],
+        system_prefix=['<role>SYSTEM</role>{{SYSTEM}}<|role_end|>'],
+        prompt=['<role>HUMAN</role>{{QUERY}}<|role_end|><role>ASSISTANT</role>\n'],
+        chat_sep=['<|role_end|>'],
+        suffix=['<|role_end|>'],
+        template_cls=Ling3Template,
+        is_thinking=True,
+        thinking_prefix='<think>',
+        non_thinking_prefix='<think></think>',
+        agent_template='ling3',
+    ))
+
 register_template(
     TemplateMeta(
         LLMTemplateType.ring2,
