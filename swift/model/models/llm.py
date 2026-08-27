@@ -373,6 +373,7 @@ register_model(
         architectures=['BailingMoeV2ForCausalLM'],
     ))
 
+
 class BailingHybridLoader(ModelLoader):
 
     @staticmethod
@@ -393,17 +394,18 @@ class BailingHybridLoader(ModelLoader):
         DynamicCache.update = auto_extend_update
         DynamicCache._swift_auto_extend_patched = True
 
-    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
-                  model_kwargs) -> Any:
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor, model_kwargs) -> Any:
         if 'BailingMoeV3ForCausalLM' in (getattr(config, 'architectures', None) or []):
             import transformers.utils.import_utils as import_utils
             if not hasattr(import_utils, 'is_torch_fx_available'):
+
                 def is_torch_fx_available():
                     try:
                         import torch.fx  # noqa: F401
                         return True
                     except ImportError:
                         return False
+
                 import_utils.is_torch_fx_available = is_torch_fx_available
             rope_scaling = getattr(config, 'rope_scaling', None)
             if isinstance(rope_scaling, dict) and 'factor' not in rope_scaling:

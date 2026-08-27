@@ -465,7 +465,9 @@ register_template(
         suffix=['<|role_end|>'],
     ))
 
+
 class Ling3Template(Template):
+
     def init_env_args(self):
         super().init_env_args()
         self.enable_thinking = get_env_args('enable_thinking', bool, True)
