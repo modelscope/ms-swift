@@ -986,12 +986,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             # compat mcore 0.17
             self.muon_nesterov = self.muon_use_nesterov
 
-            # `vit_lr`/`aligner_lr`/`apply_wd_to_qk_layernorm` replace mcore's `_get_param_groups`, which drops
-            # the parameter overrides Muon relies on to route non-matrix parameters to `muon_scalar_optimizer`.
-            # Failing here beats silently training every parameter with Muon.
+            # `vit_lr`/`aligner_lr` replace mcore's `_get_param_groups`, which drops the parameter overrides
+            # Muon relies on to route non-matrix parameters to `muon_scalar_optimizer`. Failing here beats
+            # silently training every parameter with Muon.
             incompatible_args = [name for name in ['vit_lr', 'aligner_lr'] if getattr(self, name) is not None]
-            if self.apply_wd_to_qk_layernorm:
-                incompatible_args.append('apply_wd_to_qk_layernorm')
             if incompatible_args:
                 raise ValueError(f'Muon optimizer does not support: {", ".join(incompatible_args)}. '
                                  'Use `--muon_lr` to give the Muon-managed matrices their own learning rate.')

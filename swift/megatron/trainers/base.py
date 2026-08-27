@@ -224,7 +224,7 @@ class BaseMegatronTrainer(ABC):
         }
         config = config_cls(**kwargs)
 
-        if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
+        if self._needs_own_param_groups(args, config.optimizer):
             param_groups_context = self._patch_get_param_groups()
         else:
             param_groups_context = nullcontext()
@@ -248,6 +248,18 @@ class BaseMegatronTrainer(ABC):
                 )
         opt_param_scheduler = get_optimizer_param_scheduler(args, optimizer)
         return optimizer, opt_param_scheduler
+
+    @staticmethod
+    def _needs_own_param_groups(args, optimizer: str) -> bool:
+        """Whether swift has to build the parameter groups itself instead of letting mcore do it.
+
+        `vit_lr`/`aligner_lr` have no mcore equivalent, so they leave no choice. That replacement drops the
+        `config_overrides` Muon routes its parameters with, so under Muon `apply_wd_to_qk_layernorm` is left
+        to mcore, which implements it natively in `get_standard_config_overrides`.
+        """
+        if args.vit_lr is not None or args.aligner_lr is not None:
+            return True
+        return args.apply_wd_to_qk_layernorm and 'muon' not in optimizer
 
     def _get_muon_config_overrides(self, config) -> Dict[str, Any]:
         """Give the matrices Muon manages a learning rate of their own.
