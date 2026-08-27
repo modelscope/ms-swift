@@ -23,7 +23,7 @@ from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelpe
 from modelscope import check_local_model_is_latest
 from packaging import version
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from swift.dataset import RowPreprocessor
 from swift.megatron.callbacks import megatron_callbacks_map
@@ -244,9 +244,39 @@ class BaseMegatronTrainer(ABC):
                     config,
                     self.wrapped_models,
                     layer_wise_distributed_optimizer='dist' in config.optimizer,
+                    **self._get_muon_config_overrides(config),
                 )
         opt_param_scheduler = get_optimizer_param_scheduler(args, optimizer)
         return optimizer, opt_param_scheduler
+
+    def _get_muon_config_overrides(self, config) -> Dict[str, Any]:
+        """Give the matrices Muon manages a learning rate of their own.
+
+        Muon orthogonalizes its updates, so those matrices usually want a different learning rate from the
+        scalar optimizer that handles the remaining parameters. mcore expresses this with the same override
+        mechanism it already uses to split the parameters between the two optimizers, keyed on the very
+        predicate that decides the split, so the override cannot drift away from the actual grouping.
+        """
+        args = self.args
+        if args.muon_lr is None and args.muon_min_lr is None:
+            return {}
+        from megatron.core.optimizer import ParamKey, ParamPredicate, get_standard_config_overrides
+        from megatron.core.optimizer.layer_wise_optimizer import is_managed_by_layer_wise_optimizer
+
+        override = {}
+        if args.muon_lr is not None:
+            override['max_lr'] = args.muon_lr
+        if args.muon_min_lr is not None:
+            override['min_lr'] = args.muon_min_lr
+        logger.info(f'muon_lr: {args.muon_lr}, muon_min_lr: {args.muon_min_lr}, '
+                    f'{args.muon_scalar_optimizer}_lr: {args.lr}, {args.muon_scalar_optimizer}_min_lr: {args.min_lr}')
+        param_key = ParamKey(
+            predicate=ParamPredicate(name='muon_managed_matrix', fn=is_managed_by_layer_wise_optimizer))
+        # mcore only falls back to its standard overrides (the weight-decay skips and `decoupled_lr`) when the
+        # caller passes none of its own, so extend them rather than replace them.
+        config_overrides = get_standard_config_overrides(config)
+        config_overrides[param_key] = override
+        return {'config_overrides': config_overrides}
 
     def _get_data_collator(self):
         data_collator = self.template.data_collator
@@ -693,11 +723,9 @@ class BaseMegatronTrainer(ABC):
         self.call_event('on_step_end')
         self._aggregated_metrics(metrics, self._train_metrics)
         self._train_metrics['grad_norm'] = grad_norm
-        for param_group in self.optimizer.param_groups:
-            if len(param_group['params']) == 0:
-                continue
-            self._train_metrics['learning_rate'] = param_group['lr']
-            break
+        learning_rate = self._get_reported_learning_rate()
+        if learning_rate is not None:
+            self._train_metrics['learning_rate'] = learning_rate
         if state.should_log:
             state.should_log = False
             self.on_log(logs=self._train_metrics)
@@ -874,13 +902,22 @@ class BaseMegatronTrainer(ABC):
             checkpoints_sorted.append(state.best_model_checkpoint)
         return checkpoints_sorted
 
+    def _get_reported_learning_rate(self) -> Optional[float]:
+        """Pick the learning rate to report when the parameter groups no longer share one.
+
+        mcore flags the groups that follow the `--lr` schedule with `default_config` and reports those, so a
+        group with an overridden learning rate (`--muon_lr`) is not mistaken for the headline number. Param
+        groups built without that flag all count as default.
+        """
+        param_groups = [param_group for param_group in self.optimizer.param_groups if param_group['params']]
+        for param_group in param_groups:
+            if param_group.get('default_config', True):
+                return param_group['lr']
+        return param_groups[0]['lr'] if param_groups else None
+
     def training_log(self, metrics, grad_norm):
-        learning_rate = None
-        for param_group in self.optimizer.param_groups:
-            if len(param_group['params']) == 0:
-                continue
-            learning_rate = param_group['lr']
-        logger.info(f'metrics: {metrics}, grad_norm: {grad_norm}, learning_rate: {learning_rate}')
+        logger.info(f'metrics: {metrics}, grad_norm: {grad_norm}, '
+                    f'learning_rate: {self._get_reported_learning_rate()}')
 
     def evaluate(self, val_data_iterator):
         args = self.args

@@ -558,6 +558,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     muon_tp_mode: Literal['blockwise', 'duplicated', 'distributed'] = 'blockwise'
     muon_extra_scale_factor: float = 1.
     muon_scalar_optimizer: str = 'adam'
+    # Muon orthogonalizes its updates, so the matrices it manages usually want a larger learning rate than
+    # the scalar optimizer handling the remaining parameters. Both default to `lr`/`min_lr`.
+    muon_lr: Optional[float] = None
+    muon_min_lr: Optional[float] = None
 
     # checkpoint
     output_dir: Optional[str] = None
@@ -981,6 +985,18 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.use_distributed_optimizer = False
             # compat mcore 0.17
             self.muon_nesterov = self.muon_use_nesterov
+
+            # `vit_lr`/`aligner_lr`/`apply_wd_to_qk_layernorm` replace mcore's `_get_param_groups`, which drops
+            # the parameter overrides Muon relies on to route non-matrix parameters to `muon_scalar_optimizer`.
+            # Failing here beats silently training every parameter with Muon.
+            incompatible_args = [name for name in ['vit_lr', 'aligner_lr'] if getattr(self, name) is not None]
+            if self.apply_wd_to_qk_layernorm:
+                incompatible_args.append('apply_wd_to_qk_layernorm')
+            if incompatible_args:
+                raise ValueError(f'Muon optimizer does not support: {", ".join(incompatible_args)}. '
+                                 'Use `--muon_lr` to give the Muon-managed matrices their own learning rate.')
+        elif self.muon_lr is not None or self.muon_min_lr is not None:
+            raise ValueError('`muon_lr`/`muon_min_lr` require `--optimizer muon` or `--optimizer dist_muon`.')
 
     def _init_teacher_model(self):
         if self.teacher_model is None:
