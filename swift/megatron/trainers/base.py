@@ -53,6 +53,15 @@ except ImportError:
 
 mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
 
+try:
+    from megatron.core.optimizer.layer_wise_optimizer import is_managed_by_layer_wise_optimizer
+except ImportError:
+    # Before the layer-wise optimizer there was no shared predicate: `get_megatron_muon_optimizer` split the
+    # parameters between Muon and the scalar optimizer inline with this very rule, so mirror it to stay in step.
+    def is_managed_by_layer_wise_optimizer(param) -> bool:
+        return not getattr(param, 'is_embedding_or_output_parameter', False) and param.dim() == 2
+
+
 logger = get_logger()
 
 
@@ -224,7 +233,7 @@ class BaseMegatronTrainer(ABC):
         }
         config = config_cls(**kwargs)
 
-        if self._needs_own_param_groups(args, config.optimizer):
+        if self._needs_own_param_groups(args, config):
             param_groups_context = self._patch_get_param_groups()
         else:
             param_groups_context = nullcontext()
@@ -250,16 +259,19 @@ class BaseMegatronTrainer(ABC):
         return optimizer, opt_param_scheduler
 
     @staticmethod
-    def _needs_own_param_groups(args, optimizer: str) -> bool:
+    def _needs_own_param_groups(args, config) -> bool:
         """Whether swift has to build the parameter groups itself instead of letting mcore do it.
 
         `vit_lr`/`aligner_lr` have no mcore equivalent, so they leave no choice. That replacement drops the
         `config_overrides` Muon routes its parameters with, so under Muon `apply_wd_to_qk_layernorm` is left
-        to mcore, which implements it natively in `get_standard_config_overrides`.
+        to mcore, which implements it in `get_standard_config_overrides` -- but only on the versions that
+        have it, and `config` carries the field exactly when mcore declares it.
         """
         if args.vit_lr is not None or args.aligner_lr is not None:
             return True
-        return args.apply_wd_to_qk_layernorm and 'muon' not in optimizer
+        if not args.apply_wd_to_qk_layernorm:
+            return False
+        return not ('muon' in config.optimizer and hasattr(config, 'apply_wd_to_qk_layernorm'))
 
     def _get_muon_config_overrides(self, config) -> Dict[str, Any]:
         """Give the matrices Muon manages a learning rate of their own.
@@ -273,7 +285,6 @@ class BaseMegatronTrainer(ABC):
         if args.muon_lr is None and args.muon_min_lr is None:
             return {}
         from megatron.core.optimizer import ParamKey, ParamPredicate, get_standard_config_overrides
-        from megatron.core.optimizer.layer_wise_optimizer import is_managed_by_layer_wise_optimizer
 
         override = {}
         if args.muon_lr is not None:

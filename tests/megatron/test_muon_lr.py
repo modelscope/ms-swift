@@ -1,4 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import dataclasses
+import inspect
 import types
 import unittest
 from unittest import mock
@@ -8,10 +10,10 @@ import torch.distributed as dist
 
 try:
     from megatron.core.optimizer import (ParamKey, ParamPredicate, _get_param_groups, get_standard_config_overrides)
-    from megatron.core.optimizer.layer_wise_optimizer import is_managed_by_layer_wise_optimizer
 
     from swift.megatron.arguments.megatron_args import MegatronArguments
-    from swift.megatron.trainers.base import BaseMegatronTrainer
+    # mcore 0.16 has no shared routing predicate, so take the one swift resolved rather than mcore's.
+    from swift.megatron.trainers.base import BaseMegatronTrainer, is_managed_by_layer_wise_optimizer
     MEGATRON_UNAVAILABLE = None
 except Exception as e:
     # CI does not install megatron, and a mismatched mcore dependency can fail with anything from
@@ -238,7 +240,8 @@ class TestOwnParamGroupsGate(unittest.TestCase):
 
     @staticmethod
     def _needs(optimizer='muon', **kwargs):
-        return BaseMegatronTrainer._needs_own_param_groups(_make_args(**kwargs), optimizer)
+        args = _make_args(optimizer=optimizer, **kwargs)
+        return BaseMegatronTrainer._needs_own_param_groups(args, _make_config(args))
 
     def test_muon_keeps_mcores_param_groups_by_default(self):
         self.assertFalse(self._needs())
@@ -247,6 +250,17 @@ class TestOwnParamGroupsGate(unittest.TestCase):
         """mcore implements it in `get_standard_config_overrides`, so the replacement is not needed."""
         self.assertFalse(self._needs(apply_wd_to_qk_layernorm=True))
         self.assertFalse(self._needs(optimizer='dist_muon', apply_wd_to_qk_layernorm=True))
+
+    def test_an_mcore_without_the_field_falls_back_to_swifts_param_groups(self):
+        """swift supports megatron-core>=0.16, and the older ones may not implement this themselves.
+
+        `config` is built from the fields mcore declares, so a missing attribute means mcore cannot do it
+        and dropping the replacement would silently ignore the argument.
+        """
+        args = _make_args(apply_wd_to_qk_layernorm=True)
+        config = _make_config(args)
+        del config.apply_wd_to_qk_layernorm
+        self.assertTrue(BaseMegatronTrainer._needs_own_param_groups(args, config))
 
     def test_other_optimizers_keep_using_swifts_param_groups(self):
         self.assertTrue(self._needs(optimizer='adam', apply_wd_to_qk_layernorm=True))
@@ -288,26 +302,84 @@ class TestMuonArgumentValidation(unittest.TestCase):
     """`--muon_lr` only makes sense where mcore actually applies the override."""
 
     @staticmethod
-    def _check(**kwargs):
-        args = types.SimpleNamespace(
+    def _args(**kwargs):
+        """A real instance, minus `__post_init__`, so `_check_muon` finds every sibling method it reaches for."""
+        args = MegatronArguments.__new__(MegatronArguments)
+        defaults = dict(
             optimizer='muon',
             overlap_grad_reduce=False,
             overlap_param_gather=False,
             muon_use_nesterov=False,
+            muon_scalar_optimizer='adam',
+            muon_coefficient_type='quintic',
             muon_lr=None,
             muon_min_lr=None,
             vit_lr=None,
             aligner_lr=None,
             apply_wd_to_qk_layernorm=False,
         )
-        for key, value in kwargs.items():
+        for key, value in {**defaults, **kwargs}.items():
             setattr(args, key, value)
-        MegatronArguments._check_muon(args)
         return args
 
+    @classmethod
+    def _check(cls, **kwargs):
+        """Only the rules between the arguments themselves.
+
+        Whether the installed packages can honour them is a separate question, and stubbing it out here keeps
+        these expectations from turning on which megatron-core happens to be installed.
+        """
+        args = cls._args(**kwargs)
+        args._check_muon_mcore_support = lambda: None
+        args._check_muon()
+        return args
+
+    @classmethod
+    def _check_against_the_installed_packages(cls, **kwargs):
+        args = cls._args(**kwargs)
+        args._check_muon()
+        return args
+
+    @staticmethod
+    def _mcore_supports(name):
+        from megatron.core.optimizer import OptimizerConfig
+        return name in {field.name for field in dataclasses.fields(OptimizerConfig)}
+
+    def test_settings_the_installed_mcore_would_drop_are_rejected(self):
+        """mcore fills its config from the fields it declares, so an unknown one vanishes without a word."""
+        for name, value in [('muon_scalar_optimizer', 'sgd'), ('muon_coefficient_type', 'cubic')]:
+            with self.subTest(name):
+                if self._mcore_supports(name):
+                    continue  # honoured here, so there is nothing to reject
+                with self.assertRaises(ValueError) as cm:
+                    self._check_against_the_installed_packages(**{name: value})
+                self.assertIn(name, str(cm.exception))
+
+    def test_a_nesterov_flag_the_packages_disagree_on_is_reported(self):
+        """Only where mcore forwards the flag under its own name, so a renamed one is swallowed by `**kwargs`.
+
+        The versions that pick the spelling at runtime fit either package, and `HAVE_EO_V02` is how they say so.
+        """
+        from megatron.core import optimizer
+
+        from emerging_optimizers.orthogonalized_optimizers import OrthogonalizedOptimizer
+        passed = 'use_nesterov' if self._mcore_supports('muon_use_nesterov') else 'nesterov'
+        agrees = passed in inspect.signature(OrthogonalizedOptimizer.__init__).parameters
+        if agrees or hasattr(optimizer, 'HAVE_EO_V02'):
+            self._check_against_the_installed_packages()  # nothing to report
+        else:
+            with self.assertRaises(ValueError) as cm:
+                self._check_against_the_installed_packages()
+            self.assertIn('emerging-optimizers', str(cm.exception))
+
     def test_muon_is_rejected_alongside_the_arguments_that_drop_the_override(self):
+        """Only where mcore routes through `config_overrides`; the older Muon freezes instead and survives."""
+        routes_through_overrides = MegatronArguments._muon_routes_through_param_overrides()
         for kwargs in [{'vit_lr': 1e-5}, {'aligner_lr': 1e-5}]:
             with self.subTest(**kwargs):
+                if not routes_through_overrides:
+                    self._check(**kwargs)  # the split happens outside `_get_param_groups` here
+                    continue
                 with self.assertRaises(ValueError) as cm:
                     self._check(**kwargs)
                 self.assertIn(next(iter(kwargs)), str(cm.exception))
