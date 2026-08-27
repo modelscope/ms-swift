@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import inspect
 import json
 import megatron.core
 import os
@@ -1007,7 +1006,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
         `is_managed_by_layer_wise_optimizer` is the predicate that split was expressed as, and it is declared
         unconditionally, so unlike the override registry it tells the two designs apart without also depending
-        on which `emerging-optimizers` happens to be installed.
+        on which `emerging-optimizers` happens to be installed. `BaseMegatronTrainer` resolves the same symbol
+        to key the `muon_lr` override on, falling back to the older inline rule, so the two move together.
         """
         try:
             from megatron.core.optimizer.layer_wise_optimizer import is_managed_by_layer_wise_optimizer  # noqa: F401
@@ -1016,11 +1016,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         return True
 
     def _check_muon_mcore_support(self):
-        """Fail on Muon settings the installed megatron-core cannot honour.
+        """Fail on Muon settings the installed megatron-core would drop without a word.
 
-        mcore fills its `OptimizerConfig` from the fields it declares, so a setting it does not know about is
-        dropped without a word: on the versions predating `muon_scalar_optimizer`, Muon hardcodes Adam for
-        the parameters it does not manage, and `--muon_scalar_optimizer sgd` would quietly do nothing.
+        mcore fills its `OptimizerConfig` from the fields it declares, so a setting it does not know about
+        vanishes silently: on the versions predating `muon_scalar_optimizer`, Muon hardcodes Adam for the
+        parameters it does not manage, and `--muon_scalar_optimizer sgd` would quietly train with Adam.
         """
         from megatron.core.optimizer import OptimizerConfig
         config_fields = {f.name for f in fields(OptimizerConfig)}
@@ -1031,27 +1031,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if unsupported:
             raise ValueError(f'megatron-core {megatron.core.__version__} does not support: '
                              f'{", ".join(unsupported)}. Leave them at their default or upgrade megatron-core.')
-
-        # mcore renamed Muon's nesterov flag when `emerging-optimizers` did, and the oldest supported version
-        # forwards its own spelling straight through. A mismatched pair only surfaces as a `TypeError` from
-        # deep inside optimizer construction, because `**kwargs` swallows the flag under the name mcore uses
-        # and the rename then shows up as its counterpart going unfilled. Later versions pick the spelling at
-        # runtime and fit either package, which `HAVE_EO_V02` marks.
-        from megatron.core import optimizer
-        if hasattr(optimizer, 'HAVE_EO_V02'):
-            return
-        nesterov_kwarg = 'use_nesterov' if 'muon_use_nesterov' in config_fields else 'nesterov'
-        counterpart = 'nesterov' if nesterov_kwarg == 'use_nesterov' else 'use_nesterov'
-        try:
-            from emerging_optimizers.orthogonalized_optimizers import OrthogonalizedOptimizer
-        except ImportError:
-            return  # mcore reports the missing package itself.
-        parameters = inspect.signature(OrthogonalizedOptimizer.__init__).parameters
-        renamed = parameters.get(counterpart)
-        if nesterov_kwarg not in parameters and renamed is not None and renamed.default is inspect.Parameter.empty:
-            raise ValueError(f'The installed `emerging-optimizers` requires `{counterpart}` while megatron-core '
-                             f'{megatron.core.__version__} passes `{nesterov_kwarg}`. Install a version of '
-                             '`emerging-optimizers` that matches this megatron-core.')
 
     def _init_teacher_model(self):
         if self.teacher_model is None:

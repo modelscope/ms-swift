@@ -35,7 +35,7 @@
 - optimizer: 优化器类型，可选为'adam'、'sgd'、'muon'和'dist_muon'。默认为adam。
   - 注意：此'adam'为'adamw'，参考[这里](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70)。
   - 其中'muon'和'dist_muon'需要"megatron-core>=0.16"。
-  - 注意：在通过`config_overrides`划分参数的 megatron-core 上，'muon'和'dist_muon'不兼容`vit_lr`/`aligner_lr`（这些参数会接管参数分组，使 Muon 无法将非矩阵参数路由给`muon_scalar_optimizer`），此时会直接报错；较早的版本通过冻结参数完成划分，不受影响。
+  - 注意：在 "megatron-core>=0.18" 上，'muon'和'dist_muon'不兼容`vit_lr`/`aligner_lr`，使用时会报错：这些参数会接管参数分组，而该版本的 Muon 正是靠参数分组将非矩阵参数路由给`muon_scalar_optimizer`的。较早的版本通过冻结参数完成该划分，不受影响。
 - 🔥optimizer_cpu_offload: 将优化器状态卸载到 CPU，例如设置：`--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`。默认为False。
   - 该参数可以显著降低显存占用（但增加内存占用）。若global_batch_size较大，则对训练速度的影响不大。
 - 🔥optimizer_offload_fraction: 卸载到 CPU 的优化器状态所占比例。默认为1.。

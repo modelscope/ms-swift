@@ -37,7 +37,7 @@
 - optimizer: Optimizer type. Options include 'adam', 'sgd', 'muon', and 'dist_muon'. Default is 'adam'.
   - Note: This 'adam' is actually 'adamw'. See [here](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70) for reference.
   - 'muon' and 'dist_muon' require "megatron-core>=0.16".
-  - Note: On the megatron-core versions that split the parameters through `config_overrides`, 'muon' and 'dist_muon' are incompatible with `vit_lr`/`aligner_lr` (those parameters take over the parameter grouping, which prevents Muon from routing the non-matrix parameters to `muon_scalar_optimizer`) and this combination is rejected. Earlier versions perform the split by freezing parameters instead and are unaffected.
+  - Note: On "megatron-core>=0.18", 'muon' and 'dist_muon' are incompatible with `vit_lr`/`aligner_lr` and using them together is rejected: those parameters take over the parameter grouping, which is exactly how Muon routes the non-matrix parameters to `muon_scalar_optimizer` on those versions. Earlier versions perform that split by freezing parameters instead and are unaffected.
 - 🔥optimizer_cpu_offload: Offloads optimizer states to the CPU. For example, set: `--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`. Defaults to `False`.
   - This parameter can significantly reduce GPU memory usage (at the cost of increased CPU memory consumption). When the `global_batch_size` is large, its impact on training speed is minimal.
 - 🔥optimizer_offload_fraction: The fraction of the optimizer state to offload to CPU. Default is `1.0`.
