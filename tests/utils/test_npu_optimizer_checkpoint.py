@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import unittest
-
 import torch
+import unittest
 
 from swift.model.npu_patch.megatron_checkpoint import (_canonicalize_optimizer_steps_for_checkpoint,
                                                        _iter_optimizer_param_groups)
