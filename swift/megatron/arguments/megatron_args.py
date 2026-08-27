@@ -558,6 +558,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     muon_tp_mode: Literal['blockwise', 'duplicated', 'distributed'] = 'blockwise'
     muon_extra_scale_factor: float = 1.
     muon_scalar_optimizer: str = 'adam'
+    # Muon orthogonalizes its updates, so the matrices it manages usually want a larger learning rate than
+    # the scalar optimizer handling the remaining parameters. Both default to `lr`/`min_lr`.
+    muon_lr: Optional[float] = None
+    muon_min_lr: Optional[float] = None
 
     # checkpoint
     output_dir: Optional[str] = None
@@ -983,6 +987,52 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.use_distributed_optimizer = False
             # compat mcore 0.17
             self.muon_nesterov = self.muon_use_nesterov
+
+            # `vit_lr`/`aligner_lr` replace mcore's `_get_param_groups`. Where Muon splits the parameters
+            # through `config_overrides`, that replacement drops the split and every parameter, biases
+            # included, ends up in Muon; failing here beats training that silently. The older Muon does the
+            # split by freezing parameters around the call instead, so the replacement is harmless there.
+            incompatible_args = [name for name in ['vit_lr', 'aligner_lr'] if getattr(self, name) is not None]
+            if incompatible_args and self._muon_routes_through_param_overrides():
+                raise ValueError(f'Muon optimizer does not support: {", ".join(incompatible_args)} with '
+                                 f'megatron-core {megatron.core.__version__}. '
+                                 'Use `--muon_lr` to give the Muon-managed matrices their own learning rate.')
+            self._check_muon_mcore_support()
+        elif self.muon_lr is not None or self.muon_min_lr is not None:
+            raise ValueError('`muon_lr`/`muon_min_lr` require `--optimizer muon` or `--optimizer dist_muon`.')
+
+    @staticmethod
+    def _muon_routes_through_param_overrides() -> bool:
+        """Whether the installed mcore splits the parameters between Muon and its scalar optimizer through
+        `config_overrides` rather than by freezing them around `_get_param_groups`.
+
+        `is_managed_by_layer_wise_optimizer` is the predicate that split was expressed as, and it is declared
+        unconditionally, so unlike the override registry it tells the two designs apart without also depending
+        on which `emerging-optimizers` happens to be installed. `BaseMegatronTrainer` resolves the same symbol
+        to key the `muon_lr` override on, falling back to the older inline rule, so the two move together.
+        """
+        try:
+            from megatron.core.optimizer.layer_wise_optimizer import is_managed_by_layer_wise_optimizer  # noqa: F401
+        except ImportError:
+            return False
+        return True
+
+    def _check_muon_mcore_support(self):
+        """Fail on Muon settings the installed megatron-core would drop without a word.
+
+        mcore fills its `OptimizerConfig` from the fields it declares, so a setting it does not know about
+        vanishes silently: on the versions predating `muon_scalar_optimizer`, Muon hardcodes Adam for the
+        parameters it does not manage, and `--muon_scalar_optimizer sgd` would quietly train with Adam.
+        """
+        from megatron.core.optimizer import OptimizerConfig
+        config_fields = {f.name for f in fields(OptimizerConfig)}
+        unsupported = [
+            name for name in ['muon_scalar_optimizer', 'muon_coefficient_type']
+            if name not in config_fields and getattr(self, name) != self.__dataclass_fields__[name].default
+        ]
+        if unsupported:
+            raise ValueError(f'megatron-core {megatron.core.__version__} does not support: '
+                             f'{", ".join(unsupported)}. Leave them at their default or upgrade megatron-core.')
 
     def _init_teacher_model(self):
         if self.teacher_model is None:
