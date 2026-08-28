@@ -273,6 +273,8 @@ class Template(ProcessorMixin):
         state = self.__dict__.copy()
         state['model'] = None
         state['dummy_model'] = None
+        state['_handles'] = []
+        state['_deepspeed_initialize'] = None
         return state
 
     @staticmethod

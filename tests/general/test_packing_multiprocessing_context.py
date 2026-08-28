@@ -17,6 +17,8 @@ The fakes below are defined at module scope on purpose: ``spawn``/``forkserver``
 target, so any object reachable from it (template, dataset) must be importable/picklable.
 """
 import multiprocessing as mp
+import pickle
+import torch
 import types
 import unittest
 from unittest import mock
@@ -86,6 +88,31 @@ def _noop_worker(*args):
     return None
 
 
+class _TemplateLike:
+    """Picklable stand-in that goes through the real ``Template.__getstate__`` under test."""
+
+    __getstate__ = Template.__getstate__
+
+
+def _hooked_model():
+    """A model carrying the kind of hook ``enable_input_require_grads`` installs: a local closure.
+
+    transformers registers exactly this shape, so anything holding a reference to a hooked model cannot be
+    pickled -- which is what forkserver/spawn dataloader workers hit on Python 3.14.
+    """
+    model = torch.nn.Linear(2, 2)
+
+    def make_inputs_require_grads(module, args, output):
+        output.requires_grad_(True)
+
+    return model, model.register_forward_hook(make_inputs_require_grads)
+
+
+def _stashed_deepspeed_initialize(*args, **kwargs):
+    """Stands in for the original ``deepspeed.initialize`` that zero3 makes the template stash."""
+    return None
+
+
 class TestResolveMpContext(unittest.TestCase):
 
     def test_default_keeps_platform_default_when_nothing_initialized(self):
@@ -145,6 +172,56 @@ class TestTemplateGetstate(unittest.TestCase):
         self.assertEqual(state['max_length'], 8)
         # must not mutate the original object
         self.assertIsNotNone(stub.model)
+
+    def test_hook_bookkeeping_is_dropped_so_no_model_is_reachable(self):
+        """``_handles`` pairs every hook with its live model, so keeping it re-pickles the very model that
+        ``model = None`` drops -- and a hooked model reaches un-picklable local closures."""
+        model, handle = _hooked_model()
+        template = _TemplateLike()
+        template.model = model
+        template.dummy_model = None
+        template._handles = [(model, handle)]
+        template._deepspeed_initialize = None
+        template.max_length = 8
+
+        restored = pickle.loads(pickle.dumps(template))
+
+        self.assertIsNone(restored.model)
+        self.assertEqual(restored._handles, [])
+        self.assertEqual(restored.max_length, 8)
+
+    def test_the_live_template_keeps_its_hooks(self):
+        """Workers are spawned mid-run, so pickling must leave ``remove_post_encode_hook`` able to undo."""
+        model, handle = _hooked_model()
+        template = _TemplateLike()
+        template.model = model
+        template.dummy_model = None
+        template._handles = [(model, handle)]
+        template._deepspeed_initialize = _stashed_deepspeed_initialize
+
+        Template.__getstate__(template)
+
+        self.assertEqual(template._handles, [(model, handle)])
+        self.assertIs(template.model, model)
+        self.assertIs(template._deepspeed_initialize, _stashed_deepspeed_initialize)
+
+    def test_stashed_deepspeed_initialize_is_dropped(self):
+        """Under zero3 the template stashes the original ``deepspeed.initialize`` and rebinds the module
+        attribute to a wrapper. pickle stores functions by reference and refuses one whose module attribute
+        no longer points back at it, so the stash cannot cross a process boundary either."""
+        template = _TemplateLike()
+        template.model = None
+        template.dummy_model = None
+        template._handles = []
+        template._deepspeed_initialize = _stashed_deepspeed_initialize
+
+        with mock.patch(f'{__name__}._stashed_deepspeed_initialize', lambda *args, **kwargs: None):
+            # the hazard is real: the stashed original is no longer what its module name resolves to
+            with self.assertRaises(pickle.PicklingError):
+                pickle.dumps(template._deepspeed_initialize)
+            restored = pickle.loads(pickle.dumps(template))
+
+        self.assertIsNone(restored._deepspeed_initialize)
 
 
 class TestSpawnWorkers(unittest.TestCase):
