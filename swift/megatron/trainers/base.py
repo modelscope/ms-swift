@@ -81,6 +81,8 @@ class BaseMegatronTrainer(ABC):
         if initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
+        if args.tp_comm_overlap:
+            initialize_tp_communicators(args, self.config)
         warmup_jit_function(self.config, args)
         self._load_checkpoint()
 
@@ -99,9 +101,6 @@ class BaseMegatronTrainer(ABC):
         self.callbacks = []
         for callback in args.callbacks:
             self.callbacks.append(megatron_callbacks_map[callback](self))
-
-        if args.tp_comm_overlap:
-            initialize_tp_communicators(args, self.config)
 
         if args.async_save and args.use_persistent_ckpt_worker:
             init_persistent_async_worker()

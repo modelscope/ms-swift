@@ -1,4 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+"""PyTorch DCP helpers for Megatron-FSDP ``fsdp_dtensor`` checkpoints."""
+
 import copy
 import os
 import torch
@@ -18,6 +20,7 @@ __all__ = [
 
 
 def build_rng_state(rng_state, data_parallel_random_init: bool = False):
+    """Build MCore's ``(PP, TP) -> DP RNG states`` layout for FSDP checkpoints."""
     if (data_parallel_random_init and torch.distributed.is_initialized() and mpu.get_data_parallel_world_size() > 1):
         rng_state_list = [None for _ in range(mpu.get_data_parallel_world_size())]
         torch.distributed.all_gather_object(
@@ -33,6 +36,7 @@ def build_rng_state(rng_state, data_parallel_random_init: bool = False):
 
 
 def select_rng_state(rng_state, data_parallel_random_init: bool):
+    """Select the current rank's RNG state from MCore's FSDP checkpoint layout."""
     pp_rank = mpu.get_pipeline_model_parallel_rank()
     tp_rank = mpu.get_tensor_model_parallel_rank()
     rng_key = f'({pp_rank}, {tp_rank})'
@@ -49,6 +53,7 @@ def select_rng_state(rng_state, data_parallel_random_init: bool):
 def _preprocess_state_dict(args, state_dict, model):
     from megatron.training.checkpointing import preprocess_fsdp_dtensor_state_dict
 
+    # MCore maps logical model and optimizer state into the DTensor layout consumed by DCP.
     preprocess_args = copy.copy(args)
     config = getattr(model, 'config', None)
     preprocess_args.swiglu = getattr(args, 'swiglu', getattr(config, 'swiglu', False))
@@ -73,6 +78,8 @@ def _prepare_state_dict(args, state_dict, model, preserve_raw_state: bool = Fals
         from swift.model.npu_patch.mindspeed import complete_mindspeed_fsdp_dtensor_optimizer_state
         complete_mindspeed_fsdp_dtensor_optimizer_state(state_dict, model)
 
+    # Preprocessing rewrites the model and optimizer containers. Keep their original structure
+    # for the wrapper and optimizer load_state_dict calls after DCP has populated the tensors.
     raw_state_dict = {}
     if preserve_raw_state:
         raw_state_dict.update({key: value.copy() for key, value in state_dict.items() if key.startswith('model')})
@@ -92,6 +99,7 @@ def save_checkpoint(args, state_dict, model, checkpoint_dir):
 
 
 def load_common_state_dict(checkpoint_dir):
+    # DCP needs a target skeleton even when only checkpoint arguments and iteration are loaded.
     state_dict = {'args': None, 'iteration': None}
     torch_dist_checkpoint.load(state_dict=state_dict, checkpoint_id=checkpoint_dir)
     return state_dict
@@ -99,6 +107,7 @@ def load_common_state_dict(checkpoint_dir):
 
 def is_checkpoint(checkpoint_dir):
     metadata_path = os.path.join(checkpoint_dir, '.metadata')
+    # FSDP DCP keeps common state in DCP metadata; regular MCore checkpoints use common.pt.
     if not os.path.isfile(metadata_path) or os.path.exists(os.path.join(checkpoint_dir, 'common.pt')):
         return False
 
@@ -119,6 +128,7 @@ def load_checkpoint(args, state_dict, model, checkpoint_dir):
     if allow_partial_load:
         from megatron.training.checkpointing import print_diff_in_state_dicts
 
+        # Partial loading is permissive, so report key differences before DCP skips them.
         state_dict_metadata = storage_reader.read_metadata().state_dict_metadata
         print_diff_in_state_dicts(state_dict_metadata, state_dict)
 

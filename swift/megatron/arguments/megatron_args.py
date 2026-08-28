@@ -587,6 +587,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     use_distributed_optimizer: bool = True
     # megatron-fsdp
     use_megatron_fsdp: bool = False
+    strict_fsdp_dtensor_load: bool = True
     data_parallel_sharding_strategy: Literal['no_shard', 'optim', 'optim_grads',
                                              'optim_grads_params'] = 'optim_grads_params'
     tensor_model_parallel_size: int = 1

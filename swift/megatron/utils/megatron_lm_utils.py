@@ -551,12 +551,10 @@ def load_mcore_checkpoint(args,
                     state_dict['rng_state'],
                     args.data_parallel_random_init,
                 )
+            elif args.data_parallel_random_init:
+                rng_state = state_dict['rng_state'][mpu.get_data_parallel_rank()]
             else:
-                rng_state = state_dict['rng_state']
-            if not fsdp_dtensor and args.data_parallel_random_init:
-                rng_state = rng_state[mpu.get_data_parallel_rank()]
-            elif not fsdp_dtensor:
-                rng_state = rng_state[0]
+                rng_state = state_dict['rng_state'][0]
             random.setstate(rng_state['random_rng_state'])
             np.random.set_state(rng_state['np_rng_state'])
             torch.set_rng_state(rng_state['torch_rng_state'])
@@ -596,7 +594,7 @@ def _ensure_fsdp_tensor_parallel_attributes(args, model) -> None:
 
     if getattr(args, 'expert_tensor_parallel_size', 1) > 1:
         for name, param in model.named_parameters():
-            if '.experts.' not in f'.{name}':
+            if not (name.startswith('experts.') or '.experts.' in name):
                 continue
             if 'linear_fc1.weight' in name or 'linear_fc1.bias' in name:
                 _set_fsdp_tensor_parallel_attributes(param, 0)

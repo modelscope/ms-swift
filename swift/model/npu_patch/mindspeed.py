@@ -76,8 +76,12 @@ def patch_mindspeed_megatron_fsdp_gradient_scaling(megatron_args: dict[str, Any]
         return
     has_unconditional_scale = 'bucket.data.mul_(scaling_factor)' in source
     has_none_guard = 'if scaling_factor is None' in source or 'if scaling_factor is not None' in source
-    if not has_unconditional_scale or has_none_guard:
+    if has_none_guard:
         logger.info('MindSpeed Megatron-FSDP gradient reducer already handles None scaling; skip patch.')
+        return
+    if not has_unconditional_scale:
+        logger.warning('The active MindSpeed Megatron-FSDP gradient reducer no longer matches the expected '
+                       'None-scaling implementation; skip patch and verify the reducer compatibility.')
         return
 
     grad_buffer_module.GradReducePipeline._bucket_group_gradient_reduce = _wrap_mindspeed_fsdp_gradient_reduce(
