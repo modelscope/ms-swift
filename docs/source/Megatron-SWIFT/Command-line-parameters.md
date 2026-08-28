@@ -144,6 +144,7 @@
 - 🔥use_distributed_optimizer: 使用分布式优化器（即zero1）。默认为True。
 - use_megatron_fsdp: 使用 Megatron-FSDP 作为数据并行的实现（替代DDP）。默认为False。开启后会强制`use_distributed_optimizer=True`，仅支持`sgd`/`adam`优化器，且要求`CUDA_DEVICE_MAX_CONNECTIONS`大于1。
   - 注意：尽量不要将 Megatron-FSDP 与张量并行（tensor parallelism）或上下文并行（context parallelism）同时使用，因为两者对`CUDA_DEVICE_MAX_CONNECTIONS`的最佳设置相互冲突：序列并行（sequence parallelism）需要将`CUDA_DEVICE_MAX_CONNECTIONS`设为1，而 Megatron-FSDP 则要求不能设为1（以获得更好的并行度）。
+- strict_fsdp_dtensor_load: 是否严格加载 Megatron-FSDP DTensor checkpoint，默认为True。设置为True时，checkpoint 与当前加载目标的state-dict键不匹配会立即报错；设置为False时，允许部分加载并打印state-dict键差异，未加载的状态保持当前值。仅影响 Megatron-FSDP DTensor checkpoint 的加载，不影响保存和非FSDP路径。正常断点续训建议保持为True，仅在明确需要兼容不完整或结构不同的checkpoint时设为False。
 - data_parallel_sharding_strategy: Megatron-FSDP 的数据并行切分策略。可选为'no_shard', 'optim', 'optim_grads', 'optim_grads_params'，默认为'optim_grads_params'。仅在`use_megatron_fsdp=True`时生效。
 - 🔥tensor_model_parallel_size: tp数，默认为1。
 - 🔥pipeline_model_parallel_size: pp数，默认为1。
