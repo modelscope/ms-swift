@@ -1,0 +1,139 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[dependency-groups]
+dev = [
+  "torch==2.11.0",
+  "torchvision==0.26.0",
+  "torchaudio==2.11.0",
+  "vllm==0.22.0",
+  "transformers==5.8.1",
+  "qwen-vl-utils==0.0.14",
+  "qwen-omni-utils==0.0.9",
+  "decord==0.6.0; sys_platform != 'darwin'",
+  "tabulate==0.10.0",
+  "omegaconf",
+  "loguru",
+  "python-dotenv",
+  "math-verify",
+  "deepspeed",
+  "wandb",
+  "bitsandbytes",
+  "weave",
+  "flash-linear-attention==0.4.2",
+  "causal-conv1d",
+]
+test = [
+  "coverage",
+  "pytest",
+  "pytest-cov",
+]
+
+[project]
+authors = [
+  {name = "DAMO ModelScope teams", email = "contact@modelscope.cn"},
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "accelerate",
+  "addict",
+  "aiohttp",
+  "attrdict",
+  "binpacking",
+  "charset-normalizer",
+  "cpm-kernels",
+  "dacite",
+  "datasets>=3.0,<4.8.5",
+  "einops",
+  "fastapi",
+  "gradio>=3.40.0,<6.0",
+  "importlib-metadata",
+  "json-repair",
+  "matplotlib",
+  "modelscope>=1.23",
+  "nltk",
+  "numpy",
+  "openai",
+  "oss2",
+  "pandas",
+  "peft>=0.11,<0.21",
+  "pillow",
+  "pyyaml>=5.4",
+  "requests",
+  "rouge",
+  "safetensors",
+  "scipy",
+  "sentencepiece",
+  "simplejson>=3.3.0",
+  "sortedcontainers>=1.5.9",
+  "tensorboard",
+  "tiktoken",
+  "tqdm",
+  "transformers>=4.33,<5.17.0",
+  "transformers-stream-generator",
+  "trl>=0.15,<1.0",
+  "uvicorn",
+  "zstandard",
+]
+description = "Swift: Scalable lightWeight Infrastructure for Fine-Tuning"
+dynamic = ["version"]
+keywords = ["transformers", "LLM", "lora", "megatron", "grpo", "sft"]
+license = "Apache-2.0"
+name = "ms-swift"
+readme = "README.md"
+requires-python = "==3.12.*"
+
+[project.scripts]
+megatron = "swift.cli._megatron.main:cli_main"
+swift = "swift.cli.main:cli_main"
+
+[project.urls]
+Homepage = "https://github.com/modelscope/ms-swift"
+Repository = "https://github.com/modelscope/ms-swift"
+
+[tool.hatch.build.targets.sdist]
+include = ["swift"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["swift"]
+
+[tool.hatch.version]
+path = "swift/version.py"
+
+[tool.uv]
+default-groups = ["dev", "test"]
+override-dependencies = ["trl==0.29.1"]
+
+[[tool.uv.index]]
+explicit = true
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu129"
+
+[[tool.uv.index]]
+explicit = true
+name = "vllm-stable"
+url = "https://wheels.vllm.ai/0.22.0/cu129"
+
+[tool.uv.sources]
+causal-conv1d = [
+  {url = "https://github.com/qthequartermasterman/causal-conv1d/releases/download/v1.6.2.post1/causal_conv1d-1.6.2.post1+cu12torch2.11cxx11abiTRUE-cp312-cp312-linux_x86_64.whl"},
+]
+torch = [
+  {index = "pytorch-cuda", marker = "sys_platform != 'darwin'"},
+]
+torchaudio = [
+  {index = "pytorch-cuda", marker = "sys_platform != 'darwin'"},
+]
+torchvision = [
+  {index = "pytorch-cuda", marker = "sys_platform != 'darwin'"},
+]
+vllm = [
+  {index = "vllm-stable", marker = "sys_platform == 'linux'"},
+]
