@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 from dataclasses import dataclass
+from accelerate.utils.fsdp_utils import enable_fsdp_ram_efficient_loading
 from transformers.utils.versions import require_version
 from typing import Literal, Optional
 
@@ -318,6 +319,11 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         # Set FSDP_VERSION environment variable for accelerate to recognize FSDP2
         fsdp_version = self.fsdp_config.get('fsdp_version', 2)
         os.environ['FSDP_VERSION'] = str(fsdp_version)
+
+        # Model loading happens before the Trainer/Accelerator is created, so wire up the env vars read by
+        # `swift.model.utils.get_default_device_map()` and `transformers.is_fsdp_enabled()` via accelerate's
+        # official helper: sets ACCELERATE_USE_FSDP (only if unset) and FSDP_CPU_RAM_EFFICIENT_LOADING.
+        enable_fsdp_ram_efficient_loading()
 
         # Set environment variable to optimize NCCL memory usage
         if 'TORCH_NCCL_AVOID_RECORD_STREAMS' not in os.environ:
