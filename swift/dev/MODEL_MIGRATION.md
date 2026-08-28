@@ -2,6 +2,8 @@
 
 > 记录每个 legacy `model_type` 迁移到 dev loader 的结论与依据。与 `PATCH_INVENTORY.md` 配套：patch 是否仍需要看那份，模型是否迁移看这份。
 
+> **2026-08 legacy 解耦（loader 栈接上并被消费）**：`swift/dev/model/loader/__init__.py` 现在导入全部 family 模块触发 `@register_model`（`MODEL_MAPPING` 非空，236 个 model_type，无重复）；`build_model` 经新增的 `_resolve_model_loader`（`match_model_type` 命中即取该 family 的 `ModelLoader` 实例）把它传给 twinkle `TransformersModel(model_loader=...)`，由 loader 的 `build_config/build_processor/build_model + process_*` 全权构建底层 HF 模型。seq_cls/reranker 例外——其 num_labels 头覆盖 `model_cls`，仍走 `AutoModelForSequenceClassification` 路径（loader 仅用于取 pad_token 的 tokenizer）。因此 `swift/dev/builders/model.py` 不再 `from swift.model import get_model_processor`（dev 内对 `swift.model` 的唯一引用已清零）。twinkle 侧的 `model_loader` 钩子是 duck-typed，未引入 `swift.dev` 依赖；未注册的 checkpoint `match_model_type` 返回 None，回退 twinkle 默认 AutoModel 路径。
+
 ## 判定规则
 - **迁移（migrated）**：在 dev 侧新建 `ModelLoader` 子类并 `@register_model`。
 - **删除（dropped）**：不写 loader、不注册，仅在此表登记原因。判据：模型早于 2024 发布，或 2025 前但构造复杂/强依赖 legacy patch；构造简单（纯 `AutoModelForCausalLM`、无自定义 loader）的即便老也保留。

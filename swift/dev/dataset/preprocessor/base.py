@@ -26,7 +26,7 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
-from swift.utils import get_logger
+from swift.dev.utils import get_logger
 
 __all__ = ['MessagesRepairPreprocessor', 'Preprocessor']
 

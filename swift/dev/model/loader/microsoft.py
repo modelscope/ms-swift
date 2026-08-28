@@ -85,7 +85,7 @@ class Phi3VisionLoader(ModelLoader):
     ]
 
     def build_processor(self, model_dir, config, **kwargs):
-        from swift.utils import get_env_args
+        from swift.dev.utils import get_env_args
         # legacy passed num_crops to AutoProcessor; keep the env knob, let trust_remote_code (base)
         # and the preprocessor-config detection pick AutoProcessor.
         kwargs.setdefault('num_crops', get_env_args('num_crops', int, self.num_crops))

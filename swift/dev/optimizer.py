@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from swift.dev.naming import (parse_optim_args, parse_scheduler_kwargs, resolve_megatron_decay_style,
                               resolve_optim_target, resolve_scheduler)
-from swift.utils import get_logger
+from swift.dev.utils import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import TrainConfig

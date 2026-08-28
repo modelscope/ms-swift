@@ -7,7 +7,7 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset
 
-from swift.utils import get_logger
+from swift.dev.utils import get_logger
 from .preprocessor import MeasurePreprocessor
 
 if TYPE_CHECKING:

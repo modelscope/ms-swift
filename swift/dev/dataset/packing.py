@@ -24,7 +24,7 @@ import torch.distributed as dist
 from torch.utils.data import IterableDataset
 from tqdm import tqdm
 
-from swift.utils import get_logger, is_dist, is_master, split_list
+from swift.dev.utils import get_logger, is_dist, is_master, split_list
 from .swift_dataset import SwiftDataset
 
 __all__ = ['IterablePackingDataset', 'PackingDataset']

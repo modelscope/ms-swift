@@ -599,8 +599,8 @@ def _load_prompt_rows(dataset_config: DatasetConfig, max_rows: Optional[int],
     which is what a single ``--dataset`` meant in legacy. Set ``split_dataset_ratio=0`` to infer over
     the whole thing.
     """
-    from swift.dataset import load_dataset
     from swift.dev.builders.dataset import _load_kwargs
+    from swift.dev.dataset import load_dataset
 
     kwargs = _load_kwargs(dataset_config)
     if dataset_config.val_dataset:

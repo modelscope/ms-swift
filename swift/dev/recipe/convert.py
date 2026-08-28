@@ -191,7 +191,7 @@ def _convert_mcore(
     logger.info('Megatron model created successfully.')
 
     if convert_config.to_hf:
-        from swift.utils import is_master
+        from swift.dev.utils import is_master
 
         bridge = mg_model.config.bridge
         logger.info('Converting weights and saving the model...')
@@ -319,13 +319,13 @@ def _save_args(megatron_args, output_dir: str) -> None:
     ``save_args`` lives on legacy's BaseArguments, not on MegatronArguments (which is what this recipe
     builds), so the same file is written directly rather than reaching for a method that is not there.
     """
-    from swift.utils import is_master
+    from swift.dev.utils import is_master
 
     if not is_master():
         return
     import json
 
-    from swift.utils import check_json_format
+    from swift.dev.utils import check_json_format
 
     os.makedirs(output_dir, exist_ok=True)
     path = os.path.join(output_dir, 'args.json')

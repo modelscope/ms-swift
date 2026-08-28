@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from swift.utils import get_hf_endpoint, use_hf_hub
+from swift.dev.utils import get_hf_endpoint, use_hf_hub
 
 from .base import DatasetLoader, SubsetMeta, register_dataset
 from ..mm_download import MediaDownloader

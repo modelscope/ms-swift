@@ -19,7 +19,7 @@ from typing import Dict
 from packaging import version
 from transformers.utils.versions import require_version
 
-from swift.utils import get_logger
+from swift.dev.utils import get_logger
 from transformers import PretrainedConfig, PreTrainedModel
 from ..keep_alive import apply_vision_keep_alive
 from .base import ModelArch, ModelLoader, register_model
@@ -1193,7 +1193,7 @@ class Qwen3TTSLoader(ModelLoader):
         from qwen_tts import Qwen3TTSTokenizer
 
         from swift.hub import safe_snapshot_download
-        from swift.utils import get_env_args
+        from swift.dev.utils import get_env_args
         processor = super().build_processor(model_dir, config, **kwargs)
         tts_path = get_env_args('tts_tokenizer_path', str, 'Qwen/Qwen3-TTS-Tokenizer-12Hz')
         tokenizer_path = safe_snapshot_download(tts_path)

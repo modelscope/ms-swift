@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 from swift.dev.advantage import compute_advantages
 from swift.dev.reward import compute_rewards_per_func, get_reward_funcs
-from swift.utils import get_logger
+from swift.dev.utils import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import RLHFConfig

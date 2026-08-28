@@ -98,7 +98,7 @@ def _parse_json_fields(model_config, dataset_config, train_config, distributed_c
     on its own: for most of these fields None means "let the library choose its own defaults" and an
     empty dict does not say that -- ``fsdp_config={}`` would claim FSDP was configured with nothing.
     """
-    from swift.utils import json_parse_to_dict
+    from swift.dev.utils import json_parse_to_dict
 
     holders = {
         'model_config': model_config,

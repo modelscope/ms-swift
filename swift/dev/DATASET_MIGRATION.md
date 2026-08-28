@@ -4,6 +4,8 @@
 
 > **本文只记「已经搬了什么」。接下来怎么改形状，见 [`DATASET_REDESIGN.md`](./DATASET_REDESIGN.md)**——那份含完整的猫腻清单（带代码位置）、目标类层次设计、`cache_encoded`（文本落盘 + 媒体运行时）、下游硬约束清单与分阶段计划。两者分工：**先有本文的逐字 parity，才有资格谈那份的重排。**
 
+> **2026-08 legacy 解耦（dev 构建路径不再依赖 `swift.dataset`/`swift.pipelines`）**：`swift/dev/builders/dataset.py` 与 recipe（`cached_dataset.py`/`quantize.py`/`run_infer.py`）的 `load_dataset`、`DatasetLoader.concat_datasets`、`EncodePreprocessor`、`LazyLLMDataset`、`PackingDataset`、`IterablePackingDataset` 全部指向 `swift.dev.dataset`；legacy `AddLengthPreprocessor` 换成 dev 的 `MeasurePreprocessor`（不可编码行保留并置空 `lengths`，是 dev 既定语义）。legacy `swift.pipelines.utils.get_cached_dataset` 在 dev 重写为 `DatasetLoader.load_cached_datasets`（staticmethod：逐 path 解析 `#N` 采样、`length`→`lengths` 重命名、`truncation_strategy=='delete'` 的 `max_length` 过滤），`builders/dataset.py` 直接读 config 字段传入，去掉了 legacy 版的 `SimpleNamespace` shim。数据集层目前仅剩 `loader/base.py:482` 的 `from swift.hub import get_hub` 一处 legacy 引用（复杂件，保留）。
+
 ## 判定规则
 - **迁移（migrated）**：在 dev 侧新建 `DatasetLoader` 子类并 `@register_dataset`，且与 legacy 做过逐用例 parity 比对。
 - **待迁（pending）**：无真障碍，只是还没轮到。数据集与模型不同——绝大多数数据集是**纯声明**（无自定义逻辑），迁移成本近乎为零，所以 pending 才是常态，不是问题。

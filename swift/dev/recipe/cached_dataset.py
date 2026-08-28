@@ -87,8 +87,8 @@ def export_cached_dataset(
 
 def _load_raw(dataset_config: DatasetConfig) -> tuple:
     """Load train (+val) exactly as build_dataset does (same kwargs, same split semantics)."""
-    from swift.dataset import load_dataset
     from swift.dev.builders.dataset import _load_kwargs
+    from swift.dev.dataset import load_dataset
 
     load_kwargs = _load_kwargs(dataset_config)
     train_raw, val_raw = (None, None)

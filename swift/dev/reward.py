@@ -15,7 +15,7 @@ from __future__ import annotations
 import torch
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
-from swift.utils import get_logger
+from swift.dev.utils import get_logger
 
 logger = get_logger()
 

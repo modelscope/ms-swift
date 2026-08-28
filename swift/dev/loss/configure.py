@@ -102,7 +102,7 @@ def _parse_mrl_dims(mrl_dims: Optional[Union[Dict[int, float], str]]) -> Optiona
     if not mrl_dims:
         return None
     if isinstance(mrl_dims, str):
-        from swift.utils import json_parse_to_dict
+        from swift.dev.utils import json_parse_to_dict
         mrl_dims = json_parse_to_dict(mrl_dims)
     return {int(k): float(v) for k, v in mrl_dims.items()}
 

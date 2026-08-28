@@ -54,7 +54,7 @@ def is_megatron_backend(distributed_config: DistributedConfig) -> bool:
     raise ValueError(f"DistributedConfig.backend must be one of {{'megatron', 'hf'}}, got {backend!r}.")
 
 
-def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig) -> None:
+def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig, model_loader=None) -> None:
     """Route a seq_cls/reranker model to a num_labels-wide SequenceClassification head.
 
     twinkle's TransformersModel forwards ``model_cls`` + ``config`` to ``from_pretrained``. We build
@@ -85,8 +85,14 @@ def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig) -> None:
     config.tie_word_embeddings = False
 
     if getattr(config, 'pad_token_id', None) is None:
-        from swift.model import get_model_processor
-        _, processor = get_model_processor(model_config.model, load_model=False)
+        # The SequenceClassification head needs a pad id to locate the last non-pad token. Source the
+        # tokenizer from the resolved dev loader (build_processor) when there is one, else a plain
+        # AutoTokenizer -- which is why dev no longer imports swift.model.get_model_processor here.
+        if model_loader is not None:
+            processor = model_loader.build_processor(model_config.model, config)
+        else:
+            from transformers import AutoTokenizer
+            processor = AutoTokenizer.from_pretrained(model_config.model, trust_remote_code=True)
         tokenizer = processor if not hasattr(processor, 'tokenizer') else processor.tokenizer
         config.pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
 
@@ -141,6 +147,26 @@ def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig) ->
     kwargs['remote_group'] = 'model'
 
 
+def _resolve_model_loader(model_config: ModelConfig):
+    """Resolve a dev :class:`ModelLoader` instance for ``model_config.model``, or None.
+
+    Matches the checkpoint basename against the registered families (a pre-download match that,
+    unlike ``architectures``, cannot collide). A miss returns None so an unregistered checkpoint
+    still loads through twinkle's default AutoModel path. When non-None the loader is handed to
+    ``TransformersModel(model_loader=...)`` and fully owns config/processor/model construction.
+    """
+    from swift.dev.model.loader import ModelInfo, get_model_loader, match_model_type
+    model_type = match_model_type(model_config.model)
+    if model_type is None:
+        return None
+    model_info = ModelInfo(
+        model_type=model_type,
+        model_dir=model_config.model,
+        task_type=model_config.task_type,
+        num_labels=model_config.num_labels)
+    return get_model_loader(model_type)(model_info)
+
+
 def _build_transformers_model(model_config: ModelConfig,
                               distributed_config: DistributedConfig,
                               train_config: Optional[TrainConfig] = None,
@@ -163,13 +189,16 @@ def _build_transformers_model(model_config: ModelConfig,
     if model_config.model_revision:
         kwargs['revision'] = model_config.model_revision
 
+    # Resolve a dev family loader from the checkpoint id (None if unregistered -> twinkle default).
+    model_loader = _resolve_model_loader(model_config)
+
     # seq_cls / reranker ride a num_labels-wide SequenceClassification head instead of the LM head.
     # (reranker = num_labels=1; a plain reranker maps to this same head with a reranker loss.)
     # generative_reranker keeps the CausalLM + a forward-time lm_head patch, so it is NOT here.
     # PPO's value critic also rides this head (task_type='seq_cls', num_labels=1) and is forwarded with
     # task='value' to keep the per-token output.
     if model_config.task_type in ('seq_cls', 'reranker'):
-        _apply_seq_cls_head(kwargs, model_config)
+        _apply_seq_cls_head(kwargs, model_config, model_loader)
 
     # strategy: deepspeed/fsdp config selects the twinkle strategy (default: accelerate).
     from swift.dev.naming import resolve_strategy
@@ -217,6 +246,12 @@ def _build_transformers_model(model_config: ModelConfig,
         _apply_unsloth_kwargs(kwargs, model_config, tuner_config, train_config)
         model = UnslothModel(**kwargs)
     else:
+        # Full takeover: hand the resolved family loader to twinkle, which then builds config/
+        # processor/model through it. seq_cls/reranker are excluded -- their num_labels head overrides
+        # model_cls, which a family (causal-LM) loader would not build; they keep the
+        # AutoModelForSequenceClassification path applied above.
+        if model_loader is not None and model_config.task_type not in ('seq_cls', 'reranker'):
+            kwargs['model_loader'] = model_loader
         model = TransformersModel(**kwargs)
 
     # twinkle's TransformersModel.__init__ calls gradient_checkpointing_enable() unconditionally

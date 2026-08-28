@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Type, Union
 
 from modelscope.hub.utils.utils import get_cache_dir
 
-from swift.utils import get_logger
+from swift.dev.utils import get_logger
 
 logger = get_logger()
 

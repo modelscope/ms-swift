@@ -137,7 +137,7 @@ class MiniCPMOLoader(MiniCPMVLoader):
         return ModelArch(language_model='llm', aligner='resampler', vision_tower=['vpm', 'apm'])
 
     def process_config(self, config):
-        from swift.utils import get_env_args
+        from swift.dev.utils import get_env_args
         from transformers.utils import strtobool
         config.init_tts = strtobool(get_env_args('init_tts', str, 'false'))
         config.init_audio = strtobool(get_env_args('init_audio', str, 'true'))

@@ -2,7 +2,7 @@
 from typing import Dict, List, Optional
 
 from swift.template.base import Template as LegacyTemplate
-from swift.utils import get_logger
+from swift.dev.utils import get_logger
 
 logger = get_logger()
 

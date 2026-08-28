@@ -15,7 +15,7 @@ from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Type, U
 
 import numpy as np
 
-from swift.utils import get_logger
+from swift.dev.utils import get_logger
 
 __all__ = [
     'DATASET_MAPPING', 'DATASET_TYPE', 'DatasetInfo', 'DatasetLoader', 'SubsetMeta', 'get_dataset_loader',
@@ -657,6 +657,59 @@ class DatasetLoader:
         if sep and count.isdigit():
             return name, int(count)
         return dataset, None
+
+    @staticmethod
+    def load_cached_datasets(cached_dataset: Sequence[str],
+                             cached_val_dataset: Sequence[str],
+                             *,
+                             max_length: Optional[int] = None,
+                             truncation_strategy: Optional[str] = None,
+                             data_seed: Optional[int] = None,
+                             shuffle: bool = False) -> Tuple[List[DATASET_TYPE], List[DATASET_TYPE]]:
+        """Load pre-encoded splits written by ``swift export --to_cached_dataset`` from disk.
+
+        Reimplements legacy ``swift.pipelines.utils.get_cached_dataset`` on dev primitives so the dev
+        dataset path no longer reaches into ``swift.pipelines``. Each path may carry a trailing ``#N``
+        row budget (:meth:`split_sample_count`); the saved table is read with ``load_from_disk``, its
+        3.x ``length`` column renamed to ``lengths``, and -- only under
+        ``truncation_strategy='delete'`` -- rows longer than ``max_length`` are dropped before the
+        optional ``#N`` subsample (:meth:`sample_dataset`).
+
+        Returns ``(train, val)`` as lists (possibly empty), not concatenated: the per-split builder
+        merges each with the freshly-encoded split, so a cache-only run still produces a loader.
+        """
+        from datasets import load_from_disk
+        train_datasets: List[DATASET_TYPE] = []
+        val_datasets: List[DATASET_TYPE] = []
+        for paths, out in ((cached_dataset, train_datasets), (cached_val_dataset, val_datasets)):
+            for path in (paths or []):
+                # An existing path is a directory to read as-is; otherwise a trailing ``#N`` is a
+                # row budget, matching the ``dataset#N`` syntax used everywhere else.
+                if os.path.exists(path):
+                    sample_count = None
+                else:
+                    path, sample_count = DatasetLoader.split_sample_count(path)
+                dataset = load_from_disk(path)
+                # ms-swift 3.x wrote the encoded token count as ``length``; dev reads ``lengths``.
+                if 'length' in dataset.column_names and 'lengths' not in dataset.column_names:
+                    dataset = dataset.rename_column('length', 'lengths')
+                if truncation_strategy == 'delete' and max_length is not None:
+                    lengths = dataset['lengths']
+                    # ``lengths`` is a per-row token count, but a packed cache stores a list of the
+                    # counts it packed -- take the longest so the filter is on the real sequence
+                    # length. A row MeasurePreprocessor could not encode carries an empty list and is
+                    # treated as length 0 (kept, then substituted at access time).
+                    if lengths and isinstance(lengths[0], list):
+                        arr = np.fromiter((max(x) if x else 0 for x in lengths), dtype=np.int64, count=len(lengths))
+                    else:
+                        arr = np.asarray(lengths, dtype=np.int64)
+                    keep = arr <= max_length
+                    if not bool(keep.all()):
+                        dataset = dataset.select(np.flatnonzero(keep))
+                if sample_count is not None:
+                    dataset = DatasetLoader.sample_dataset(dataset, sample_count, shuffle, data_seed)
+                out.append(dataset)
+        return train_datasets, val_datasets
 
     @staticmethod
     def parse_legacy_syntax(entry: str) -> Tuple[str, List[str], Optional[int], Optional[bool]]:

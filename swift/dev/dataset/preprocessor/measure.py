@@ -3,7 +3,7 @@
 from __future__ import annotations
 from typing import Any, Dict, Optional
 
-from swift.utils import get_logger
+from swift.dev.utils import get_logger
 from .encode import EncodePreprocessor
 
 __all__ = ['MeasurePreprocessor']

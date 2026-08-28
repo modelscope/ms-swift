@@ -33,7 +33,7 @@ def build_dataset(dataset_config: DatasetConfig,
     ``SwiftSft._prepare_dataset``, which appends get_cached_dataset()'s splits alongside the freshly
     encoded ones.
     """
-    from swift.dataset import load_dataset
+    from swift.dev.dataset import load_dataset
 
     load_kwargs = _load_kwargs(dataset_config)
 
@@ -84,35 +84,30 @@ def build_dataset(dataset_config: DatasetConfig,
 
 
 def _load_cached_datasets(dataset_config: DatasetConfig, template_config: Any) -> tuple:
-    """Load ``cached_dataset`` / ``cached_val_dataset`` via the legacy loader.
+    """Load ``cached_dataset`` / ``cached_val_dataset`` from disk via the dev loader.
 
-    Reuses ``swift.pipelines.utils.get_cached_dataset`` rather than reimplementing it, so the
-    3.x ``length``->``lengths`` rename, the ``truncation_strategy='delete'`` length filter and the
-    ``path#sample_count`` subsampling syntax stay in ONE place. That function reads a flat legacy
-    args object, so a small shim carries the six attributes it touches across the two dev Configs
-    that own them (dataset_config: paths/seed/shuffle, template_config: max_length/truncation).
+    Delegates to ``DatasetLoader.load_cached_datasets`` (dev), which owns the 3.x
+    ``length``->``lengths`` rename, the ``truncation_strategy='delete'`` length filter and the
+    ``path#sample_count`` subsampling syntax -- so the dev dataset path no longer reaches into
+    ``swift.pipelines``. ``max_length`` / ``truncation_strategy`` live on TemplateConfig, which is
+    optional here: a caller with no template config still loads caches, and no length filter is then
+    applied (``truncation_strategy=None``).
 
     Returns ``(train_datasets, val_datasets)`` as lists (possibly empty), not concatenated -- the
     per-split builder merges them with the encoded split.
     """
     if not dataset_config.cached_dataset and not dataset_config.cached_val_dataset:
         return [], []
-    from types import SimpleNamespace
+    from swift.dev.dataset import DatasetLoader
 
-    from swift.pipelines.utils import get_cached_dataset
-
-    # max_length / truncation_strategy live on TemplateConfig; template_config is optional here so
-    # callers that have no template config still load caches (then no length filter is applied,
-    # which is what truncation_strategy=None means in legacy too).
-    args = SimpleNamespace(
-        cached_dataset=dataset_config.cached_dataset,
-        cached_val_dataset=dataset_config.cached_val_dataset,
-        data_seed=dataset_config.data_seed,
-        dataset_shuffle=dataset_config.dataset_shuffle,
+    train_datasets, val_datasets = DatasetLoader.load_cached_datasets(
+        dataset_config.cached_dataset,
+        dataset_config.cached_val_dataset,
         max_length=getattr(template_config, 'max_length', None),
         truncation_strategy=getattr(template_config, 'truncation_strategy', None),
+        data_seed=dataset_config.data_seed,
+        shuffle=dataset_config.dataset_shuffle,
     )
-    train_datasets, val_datasets = get_cached_dataset(args)
     logger.info(f'cached_dataset: {len(train_datasets)} train split(s), {len(val_datasets)} val split(s)')
     return train_datasets, val_datasets
 
@@ -284,7 +279,7 @@ def _concat_with_cached(enc: Any, cached: list, *, encode_mode: Optional[str]) -
     incompatible cache (different columns / dtypes -- e.g. exported with another template) is
     reported as such instead of surfacing a raw pyarrow error.
     """
-    from swift.dataset import DatasetLoader
+    from swift.dev.dataset import DatasetLoader
 
     if enc is None:
         _, cached = _align_features(None, cached)
@@ -404,7 +399,7 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
                   AddLengthPreprocessor, which keeps the raw row and only adds a `lengths` column
                   (rows are encoded later by the lazy/collate path).
     """
-    from swift.dataset.utils import AddLengthPreprocessor, EncodePreprocessor, LazyLLMDataset
+    from swift.dev.dataset import EncodePreprocessor, LazyLLMDataset, MeasurePreprocessor
 
     truncation_strategy = getattr(template, 'truncation_strategy', None)
     if truncation_strategy == 'split' and mode != 'eager':
@@ -420,14 +415,14 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
     if truncation_strategy == 'split':
         preprocessor = EncodePreprocessor(template)
     else:
-        preprocessor = AddLengthPreprocessor(template)
+        preprocessor = MeasurePreprocessor(template)
     return preprocessor(raw, num_proc=num_proc, strict=strict)
 
 
 def _pack(dataset: Any, template: Any, *, streaming: bool, packing_length: Optional[int], packing_strategy: str,
           num_proc: int, strict: bool) -> Any:
     """Pack an encoded dataset for efficient training (map-style or iterable)."""
-    from swift.dataset.packing import IterablePackingDataset, PackingDataset
+    from swift.dev.dataset import IterablePackingDataset, PackingDataset
 
     length = packing_length or template.max_length
     cls = IterablePackingDataset if streaming else PackingDataset

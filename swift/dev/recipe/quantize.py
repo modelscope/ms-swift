@@ -288,7 +288,7 @@ def _build_calib_data(quant_method: str, template, dataset_config: DatasetConfig
     import torch
     from tqdm import tqdm
 
-    from swift.dataset import load_dataset
+    from swift.dev.dataset import load_dataset
     from swift.template import MaxLengthError
 
     is_gptq = quant_method in ('gptq', 'gptq_v2')
@@ -358,7 +358,7 @@ def _collate_multimodal(examples: List[Dict[str, Any]], model, template, *, batc
     import torch
     from tqdm import tqdm
 
-    from swift.utils import to_device
+    from swift.dev.utils import to_device
 
     res = []
     with torch.inference_mode():
