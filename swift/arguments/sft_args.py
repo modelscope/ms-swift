@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from dataclasses import dataclass
 from accelerate.utils.fsdp_utils import enable_fsdp_ram_efficient_loading
+from dataclasses import dataclass
 from transformers.utils.versions import require_version
 from typing import Literal, Optional
 
