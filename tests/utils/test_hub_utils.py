@@ -1,9 +1,10 @@
 import os
 import tempfile
 import unittest
+from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
 
-from swift.utils.hub_utils import download_file, download_ms_file
+from swift.utils.hub_utils import download_file, download_ms_file, safe_snapshot_download
 
 
 class TestHubUtils(unittest.TestCase):
@@ -85,6 +86,23 @@ class TestHubUtils(unittest.TestCase):
         with open(second_path, 'rb') as f:
             self.assertEqual(f.read(), b'second')
         self.assertEqual(mock_get.call_count, 2)
+
+    @patch('swift.utils.hub_utils.safe_ddp_context', side_effect=lambda **kwargs: nullcontext())
+    @patch('swift.hub.get_hub')
+    def test_metadata_download_does_not_mutate_caller_ignore_patterns(self, mock_get_hub, _mock_safe_ddp_context):
+        hub = MagicMock()
+        hub.download_model.return_value = self.tmp_dir
+        mock_get_hub.return_value = hub
+        ignore_patterns = ['custom/*']
+
+        safe_snapshot_download('org/model', download_model=False, ignore_patterns=ignore_patterns)
+
+        self.assertEqual(ignore_patterns, ['custom/*'])
+        self.assertEqual(hub.download_model.call_args_list[0].args[2], ['custom/*', '*.bin', '*.safetensors'])
+
+        safe_snapshot_download('org/model', download_model=True, ignore_patterns=ignore_patterns)
+
+        self.assertEqual(hub.download_model.call_args_list[1].args[2], ['custom/*'])
 
 
 if __name__ == '__main__':
