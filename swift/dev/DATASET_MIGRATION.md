@@ -464,7 +464,9 @@ legacy 在 dataset 里用 `safe_ddp_context` 共 6 处（`media.py:52`、`loader
 
 ## 批次 9：DataLoader 层切 twinkle —— `legacy_dataloader` 退役
 
-批次 6 把「数据 → input_ids」接上了，最后一段「input_ids → 训练步」一直还跑在 `swift/dev/legacy_dataloader/`（包装 legacy `swift.dataloader` 的 `BatchSamplerShard` / `DataLoaderShard` / `DataLoaderDispatcher`）。本批次整体换成 **twinkle `DataLoader`**，并删掉 `swift/dev/legacy_dataloader/` 整个包。
+批次 6 把「数据 → input_ids」接上了，最后一段「input_ids → 训练步」一直还跑在 `swift/dev/legacy_dataloader/`（包装 legacy `swift.dataloader` 的 `BatchSamplerShard` / `DataLoaderShard` / `DataLoaderDispatcher`）。本批次整体换成 **twinkle `DataLoader`**，`swift/dev/legacy_dataloader/` 随之退役（运行时已无任何调用者）。
+
+> 该包曾被删除，后**按用户要求恢复保留**（493 行，待用户 review）。因此 `swift.dataloader` 尚未归零：`legacy_dataloader/factory.py` 的模块顶层仍 import 它（另有 1 处延迟 import `swift.megatron.trainers.utils`）。删掉这个包即可归零，详见 PATCH_INVENTORY.md 第 13 节。
 
 ### 换下来的对应关系
 
@@ -664,7 +666,7 @@ dev 完成的是：**「从 hub 拉数据 → 标准 messages 行 → input_ids 
 
 机制层只剩**下载重试 `retry=3`**（抗网络抖动，不是正确性问题）。多卡串行化已全部接上，用的是 `twinkle.utils.processing_lock` 而非 `safe_ddp_context`。
 
-**接线已完成**：`swift/dev/builders/dataset.py`、`recipe/cached_dataset.py`、`recipe/quantize.py` 都已走 `swift.dev.dataset.load_dataset`（曾卡在 template 的 `EncodePreprocessor` 已随 dev template 落地）。DataLoader 那一段在批次 9 换成了 twinkle `DataLoader`，`swift/dev/legacy_dataloader/` 已删除——dev 的数据路径不再 import 任何 `swift.dataset` / `swift.dataloader`。
+**接线已完成**：`swift/dev/builders/dataset.py`、`recipe/cached_dataset.py`、`recipe/quantize.py` 都已走 `swift.dev.dataset.load_dataset`（曾卡在 template 的 `EncodePreprocessor` 已随 dev template 落地）。DataLoader 那一段在批次 9 换成了 twinkle `DataLoader`，`swift/dev/legacy_dataloader/` 已退役（无调用者，但按用户要求文件暂留）——dev 的数据路径已不再 import 任何 `swift.dataset`；`swift.dataloader` 仅剩那个待 review 的退役包在 import。
 
 ---
 

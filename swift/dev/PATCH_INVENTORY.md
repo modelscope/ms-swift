@@ -210,17 +210,18 @@
 
 ### dev 侧仍在的 legacy 依赖（本轮之后的全量清单）
 
-口径：`swift/dev` 非测试代码（140 个 `.py`）里 `from swift.<legacy> import` / `import swift.<legacy>` 的**语句行数**，grep 实测。
+口径：`swift/dev` 非测试代码（143 个 `.py`）里 `from swift.<legacy> import` / `import swift.<legacy>` 的**语句行数**，grep 实测。
 
 | 依赖 | 位置 | 保留理由 |
 |---|---|---|
 | `swift.template`（14 处）| `swift/dev/template/`（基类 + TEMPLATE_MAPPING）、dataset 层的 `MaxLengthError`（6 处）、`swift.template.utils.split_str_parts_by`、`model/loader/_qwen_vl_utils.py` 的 `load_file`（2 处）| template 域尚未迁移（独立任务）。注意 `MaxLengthError` **不可内化**：dev Template 继承 legacy Template，dev 各处 `isinstance(e, MaxLengthError)` 捕获的正是 legacy 抛的那个类，另建同名类会让判型失效 |
 | `swift.model`（20 处，如 `get_model_processor` / `save_checkpoint`）| recipe 层、builders | 跟随 template 一起迁（注：`swift.model.models` 已归零，loader 不再借 patch）|
-| `swift.megatron`（9 处：arguments / model / utils）| `cli/megatron.py`（3 处，仅 `MegatronSftArguments` 参数兼容）、`recipe/convert.py`（6 处，mcore 建模与权重存取）| 训练本体已不依赖：`cli/megatron.py` 只把 legacy 参数翻成 dev Config，训练走 dev `run_sft` + twinkle megatron 后端。剩下的是**参数兼容**与 **HF↔mcore 权重转换**（`get_mcore_model` / `save_mcore_checkpoint` / `load_mcore_checkpoint` / `prepare_mcore_model` / `patch_torch_dist_shard` / `test_convert_precision`），即 mcore-bridge 建模主体，本轮边界外 |
+| `swift.megatron`（10 处：arguments / model / utils / trainers）| `cli/megatron.py`（3 处，仅 `MegatronSftArguments` 参数兼容）、`recipe/convert.py`（6 处，mcore 建模与权重存取）、`legacy_dataloader/factory.py`（1 处 `trainers.utils.MegatronDataLoaderDispatcher`）| 训练本体已不依赖：`cli/megatron.py` 只把 legacy 参数翻成 dev Config，训练走 dev `run_sft` + twinkle megatron 后端。剩下的是**参数兼容**与 **HF↔mcore 权重转换**（`get_mcore_model` / `save_mcore_checkpoint` / `load_mcore_checkpoint` / `prepare_mcore_model` / `patch_torch_dist_shard` / `test_convert_precision`），即 mcore-bridge 建模主体，本轮边界外 |
 | `swift.arguments`（3 处）| `cli/sft.py`（TYPE_CHECKING）、`cli/export.py`（一处 TYPE_CHECKING + 一处运行时 `isinstance` 判型）| dev CLI 有意接受 legacy `SftArguments`/`ExportArguments` 对象，属参数层兼容（见 ARGUMENTS_MIGRATION.md）|
+| `swift.dataloader`（2 处）| `legacy_dataloader/factory.py` 的 `DataLoaderDispatcher` / `BatchSamplerShard` / `DataLoaderShard`（模块顶层 import）| **退役但按用户要求暂留**的 `swift/dev/legacy_dataloader/` 包（493 行）。dev 运行时**已无任何调用者**（grep 实测 0 处）：`builders/dataset.py` 已切 twinkle `DataLoader`。删除它即可让 `swift.dataloader` 归零 |
 | `swift.infer_engine`（1 处）| `rewards/orm.py` 的 `InferRequest` | **仅 TYPE_CHECKING**（引号类型注解），无运行时依赖 |
 
-已归零的（运行时 import = 0）：`swift.utils`、`swift.hub`、`swift.dataset`、`swift.dataloader`、`swift.rewards`、`swift.rl_core`、`swift.tuners`、`swift.version`、`swift.model.models`、`swift.metrics`。
+已归零的（运行时 import = 0）：`swift.utils`、`swift.hub`、`swift.dataset`、`swift.rewards`、`swift.rl_core`、`swift.tuners`、`swift.version`、`swift.model.models`、`swift.metrics`。
 
 > 早前版本此表把 `swift.template` 记作 19 处、`swift.model` 记作 30 处：那是**含测试代码**的计数，与表头声明的口径不符，已按非测试口径更正。
 
