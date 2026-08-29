@@ -6,7 +6,8 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from pathlib import Path
 
-from swift.rl_core.m2po import compute_m2po_log_ratio, compute_m2po_mask, compute_m2po_token_loss
+from swift.rl_core.m2po import (compute_m2po_log_ratio, compute_m2po_mask, compute_m2po_masks_for_batches,
+                                compute_m2po_token_loss, compute_m2po_token_loss_from_mask)
 
 
 def test_m2po_log_ratio_prefers_rollout_policy_and_falls_back_to_old_policy():
@@ -16,6 +17,25 @@ def test_m2po_log_ratio_prefers_rollout_policy_and_falls_back_to_old_policy():
 
     torch.testing.assert_close(compute_m2po_log_ratio(current, old, rollout), current - rollout)
     torch.testing.assert_close(compute_m2po_log_ratio(current, old), current - old)
+
+    with pytest.raises(ValueError, match='behavior policy'):
+        compute_m2po_log_ratio(current, old, allow_old_policy_fallback=False)
+
+
+def test_m2po_selects_once_across_all_optimizer_micro_batches():
+    log_ratios = [torch.tensor([[0.05, 0.4]]), torch.tensor([[0.19, 0.21]])]
+    completion_masks = [torch.ones_like(value, dtype=torch.bool) for value in log_ratios]
+    advantages = [torch.ones_like(value) for value in log_ratios]
+
+    batch_masks, metrics = compute_m2po_masks_for_batches(log_ratios, completion_masks, advantages, m2_threshold=0.04)
+    independently_selected = [
+        compute_m2po_mask(log_ratio, completion_mask, advantage, m2_threshold=0.04)[0]
+        for log_ratio, completion_mask, advantage in zip(log_ratios, completion_masks, advantages)
+    ]
+
+    assert [mask.tolist() for mask in batch_masks] == [[[True, False]], [[True, True]]]
+    assert [mask.tolist() for mask in independently_selected] == [[[True, False]], [[True, False]]]
+    assert metrics['masked_fraction'].item() == pytest.approx(0.25)
 
 
 def test_m2po_masks_largest_trust_region_outlier():
@@ -100,6 +120,15 @@ def test_m2po_empty_mask_and_extreme_non_trust_ratio_are_finite():
     assert torch.isfinite(extreme_log_ratio.grad).all()
     assert extreme_log_ratio.grad.item() > 0
 
+    padded_log_ratio = torch.tensor([[float('nan'), 0.0]], requires_grad=True)
+    padded_advantages = torch.tensor([[float('nan'), 1.0]])
+    padded_loss = compute_m2po_token_loss_from_mask(padded_log_ratio, padded_advantages, torch.tensor([[False, True]]))
+    padded_loss.sum().backward()
+
+    assert torch.isfinite(padded_loss).all()
+    assert torch.isfinite(padded_log_ratio.grad).all()
+    assert padded_log_ratio.grad[0, 0].item() == pytest.approx(0.0)
+
 
 def test_m2po_rejects_invalid_inputs():
     values = torch.zeros(1, 2)
@@ -114,18 +143,22 @@ def test_m2po_rejects_invalid_inputs():
         compute_m2po_mask(values, mask[:, :1], advantages)
     with pytest.raises(ValueError, match='non-finite'):
         compute_m2po_mask(torch.tensor([[float('nan'), 0.0]]), mask, advantages)
+    with pytest.raises(ValueError, match='advantages'):
+        compute_m2po_mask(values, mask, torch.tensor([[float('nan'), 0.0]]))
 
 
 def _distributed_m2po_worker(rank, world_size, init_method, result_queue):
     dist.init_process_group('gloo', rank=rank, world_size=world_size, init_method=init_method)
     try:
         local_ratios = [torch.tensor([[0.05, 0.4]]), torch.tensor([[0.2, 0.21]])][rank]
-        local_mask, metrics = compute_m2po_mask(
-            local_ratios,
-            torch.ones_like(local_ratios, dtype=torch.bool),
-            torch.ones_like(local_ratios),
+        ratio_batches = [local_ratios[:, :1], local_ratios[:, 1:]]
+        local_masks, metrics = compute_m2po_masks_for_batches(
+            ratio_batches,
+            [torch.ones_like(value, dtype=torch.bool) for value in ratio_batches],
+            [torch.ones_like(value) for value in ratio_batches],
             m2_threshold=0.04,
         )
+        local_mask = torch.cat(local_masks, dim=-1)
         result_queue.put((rank, local_mask.tolist(), {key: value.item() for key, value in metrics.items()}))
     finally:
         dist.destroy_process_group()

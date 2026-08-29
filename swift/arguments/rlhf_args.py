@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import math
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
@@ -579,13 +580,20 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         """Validate combinations that would change the final-paper M2PO objective."""
         if self.loss_type != 'm2po':
             return
-        if self.m2_threshold < 0:
-            raise ValueError(f'm2_threshold must be non-negative, got {self.m2_threshold}.')
+        if not math.isfinite(self.m2_threshold) or self.m2_threshold < 0:
+            raise ValueError(f'm2_threshold must be finite and non-negative, got {self.m2_threshold}.')
+        if self.gradient_accumulation_steps != 1:
+            raise ValueError('HF loss_type=m2po requires gradient_accumulation_steps=1 because the M2PO mask '
+                             'must be selected once over the complete optimizer batch.')
+        if self.sequence_parallel_size > 1:
+            raise ValueError('HF loss_type=m2po does not yet support sequence_parallel_size > 1 because '
+                             'reconstructed sequence-parallel replicas must be excluded from mask selection.')
         if self.importance_sampling_level != 'token':
             raise ValueError('loss_type=m2po requires importance_sampling_level=token.')
         if self.rollout_importance_sampling_mode is not None:
-            raise ValueError('loss_type=m2po already uses the behavior-policy ratio and cannot be combined with '
-                             'rollout_importance_sampling_mode.')
+            raise ValueError('The current loss_type=m2po path directly uses rollout log-probabilities as the '
+                             'behavior policy and does not retain the separate training-engine behavior '
+                             'log-probabilities required to compose M2PO with rollout importance sampling.')
         if self.off_policy_sequence_mask_delta is not None:
             raise ValueError('loss_type=m2po cannot be combined with off_policy_sequence_mask_delta.')
         if self.delta is not None:

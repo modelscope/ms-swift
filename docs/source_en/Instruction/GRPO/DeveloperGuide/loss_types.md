@@ -131,10 +131,21 @@ second-moment constraint on the behavior-policy log-ratio. It considers only tok
 quadrants, `(A > 0, ratio > 1)` and `(A < 0, ratio < 1)`, then masks the largest squared log-ratio outliers until the
 mean second moment of the remaining trust-region tokens is at most `m2_threshold`.
 
-When rollout log probabilities are available, the ratio is computed against `rollout_per_token_logps`; otherwise it
-falls back to `old_per_token_logps`. In distributed training, the threshold is selected jointly across the data
-parallel group. Following the paper, masked policy-loss terms are zeroed while the denominator remains the number of
-all valid completion tokens. The reference experiments use `m2_threshold=0.04` and `beta=0`.
+With vLLM or Megatron rollouts, the ratio must use `rollout_per_token_logps` from the actual sampling behavior policy;
+a missing tensor on any rank raises an error. Falling back to `old_per_token_logps` is allowed only for synchronous
+native HF generation, where generation and training use the same model engine. In distributed training, the threshold
+is selected jointly across the data-parallel group. Following the paper, masked policy-loss terms are zeroed while the
+denominator remains the number of all valid completion tokens. The reference experiments use `m2_threshold=0.04` and
+`beta=0`.
+
+The current HF path requires `gradient_accumulation_steps=1` and `sequence_parallel_size=1`, and does not support
+dynamic loss chunking. The Megatron path requires `steps_per_generation=1` and selects the mask once across every
+micro-batch in an optimizer batch; reconstructed Context Parallel replicas are not counted twice. Because Megatron
+precomputes the full-batch mask before the loss forward, policy forwards must be deterministic: LoRA training requires
+`--lora_dropout 0`, and non-zero model dropout, stochastic depth, BatchNorm, or router jitter raises an error. Composing
+M2PO with TIS as described in the final paper additionally requires separately retained training-engine behavior log
+probabilities. The current path does not retain that independent tensor, so it rejects
+`rollout_importance_sampling_mode` to avoid applying the correction twice.
 
 **Normalization Dimension:** Global valid-token dimension before M2PO masking.
 

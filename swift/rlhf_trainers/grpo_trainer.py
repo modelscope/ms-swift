@@ -888,6 +888,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if not should_chunk:
             return self._compute_loss_single(model, model_inputs, grpo_batch)
         else:
+            if self.loss_type == 'm2po':
+                raise ValueError('HF loss_type=m2po does not support dynamic loss chunking because selecting '
+                                 'independent masks for each chunk changes the optimizer-batch objective.')
             # maybe dynamic rollout num for multi-turn training
             return self._compute_loss_chunked(model, model_inputs, grpo_batch, origin_data)
 
@@ -1024,7 +1027,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.loss_type == 'm2po':
             rollout_per_token_logps = grpo_batch.rollout_per_token_logps if all_have_rollout else None
-            log_ratio = compute_m2po_log_ratio(per_token_logps, old_per_token_logps, rollout_per_token_logps)
+            log_ratio = compute_m2po_log_ratio(
+                per_token_logps,
+                old_per_token_logps,
+                rollout_per_token_logps,
+                allow_old_policy_fallback=not self.use_vllm,
+            )
         else:
             log_ratio = per_token_logps - old_per_token_logps
         if self.loss_type == 'm2po':

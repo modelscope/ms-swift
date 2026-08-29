@@ -131,9 +131,17 @@ FIPO 的 influence weight 默认不参与梯度计算，并使用与 DAPO 相同
 `(A < 0, ratio < 1)`。它按二阶矩从大到小屏蔽异常 token，直到剩余 trust-region token 的平均二阶矩
 不超过 `m2_threshold`。
 
-存在 rollout log-prob 时，ratio 使用 `rollout_per_token_logps` 作为行为策略；否则回退到
+使用 vLLM 或 Megatron rollout 时，ratio 必须使用实际采样行为策略的 `rollout_per_token_logps`，任一 rank
+缺失都会直接报错。只有同步的原生 HF generation（生成与训练使用同一模型引擎）允许回退到
 `old_per_token_logps`。分布式训练会在数据并行组内统一选择阈值。按照论文定义，被屏蔽 token 的策略损失
 置零，但分母仍使用屏蔽前的全部有效 completion token。论文默认配置为 `m2_threshold=0.04`、`beta=0`。
+
+当前 HF 路径要求 `gradient_accumulation_steps=1`、`sequence_parallel_size=1`，且不支持动态 loss chunk；
+Megatron 路径要求 `steps_per_generation=1`，并在一个 optimizer batch 的所有 micro-batch 上只选择一次 mask。
+Context Parallel 重建产生的副本不会被重复计入。由于 Megatron 在 loss forward 前预计算全批次 mask，策略 forward
+必须是确定性的；LoRA 训练需设置 `--lora_dropout 0`，非零模型 dropout、stochastic depth、BatchNorm 或 router
+jitter 会直接报错。最终版论文中的 TIS 组合还需要单独保留训练引擎侧的行为策略 log-prob；当前路径没有该独立
+张量，因此拒绝再叠加 `rollout_importance_sampling_mode`，以避免重复校正。
 
 **归一化维度：** M2PO 屏蔽前的全局有效 token 维度。
 
