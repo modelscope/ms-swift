@@ -22,7 +22,7 @@ from swift.dev.model.megatron.model import MegatronModel
 from swift.dev.model.strategy import AccelerateStrategy, NativeFSDPStrategy
 from swift.dev.model.transformers_model import TransformersModel
 from swift.dev.processor import InputProcessor
-from swift.utils import to_device
+from swift.dev.utils import to_device
 
 # ======================================================================
 # Data format — now twinkle's InputFeature/ModelOutput/LossOutput (dict-based)

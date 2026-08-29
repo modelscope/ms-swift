@@ -437,9 +437,9 @@ def test_resume_param_trajectory_bit_identical_oddphase(tmp_path):
         pytest.skip('CUDA not available')
 
     from datasets import Dataset as HfDataset
+    from twinkle.dataloader import DataLoader as TwinkleDataLoader
 
-    from swift.dev.builders.dataset import _encode
-    from swift.dev.legacy_dataloader import build_dataloader, identity_collate
+    from swift.dev.builders.dataset import _encode, _identity_collate
 
     # Self-contained: drive SFTLoop's contract directly on an in-memory dataset so the
     # test doesn't depend on a registered dataset id.
@@ -467,7 +467,9 @@ def test_resume_param_trajectory_bit_identical_oddphase(tmp_path):
             }]
         } for i in range(8)])
         enc = _encode(raw, tpl, mode='lazy', num_proc=1, strict=False, data_seed=42)
-        return build_dataloader(enc, collate_fn=identity_collate, batch_size=1, shuffle=False, resumable=True)
+        # Same loader dev builds in production (build_dataset's _build_split_loader): twinkle's
+        # DataLoader, which is resumable by construction (skip_consumed_samples / get_state).
+        return TwinkleDataLoader(enc, batch_size=1, collate_fn=_identity_collate, shuffle=False)
 
     def build_from(model_path):
         # NOTE: FULL-PARAM resume (方向 X): weights load from the given path (ckpt dir on
@@ -504,7 +506,7 @@ def test_resume_param_trajectory_bit_identical_oddphase(tmp_path):
         'checkpoint-3',
         output_dir=str(tmp_path / 'a'),
         save_optimizer=True,
-        consumed_train_samples=dl_a.consumed_samples)
+        consumed_train_samples=dl_a.get_state()['consumed_train_samples'])
 
     # FULL-PARAM resume: weights come from the ckpt dir (方向 X), NOT from
     # resume_from_checkpoint (which only restores optim/sched/RNG/cur_step for full-param).
@@ -569,10 +571,10 @@ def test_lora_resume_param_trajectory_bit_identical_seed_independent(tmp_path):
         pytest.skip('CUDA not available')
 
     from datasets import Dataset as HfDataset
+    from twinkle.dataloader import DataLoader as TwinkleDataLoader
 
     from swift.dev.adapter import apply_tuner
-    from swift.dev.builders.dataset import _encode
-    from swift.dev.legacy_dataloader import build_dataloader, identity_collate
+    from swift.dev.builders.dataset import _encode, _identity_collate
     from swift.dev.loss import configure_loss
     from swift.dev.model import TransformersModel
     from swift.dev.optimizer import configure_optimizer
@@ -598,7 +600,9 @@ def test_lora_resume_param_trajectory_bit_identical_seed_independent(tmp_path):
             }]
         } for i in range(8)])
         enc = _encode(raw, tpl, mode='lazy', num_proc=1, strict=False, data_seed=42)
-        return build_dataloader(enc, collate_fn=identity_collate, batch_size=1, shuffle=False, resumable=True)
+        # Same loader dev builds in production (build_dataset's _build_split_loader): twinkle's
+        # DataLoader, which is resumable by construction (skip_consumed_samples / get_state).
+        return TwinkleDataLoader(enc, batch_size=1, collate_fn=_identity_collate, shuffle=False)
 
     def build_lora(model_path, *, tuner_seed):
         m = TransformersModel(model_id=model_path, mixed_precision='no', strategy='accelerate', dtype=torch.float32)
@@ -627,7 +631,7 @@ def test_lora_resume_param_trajectory_bit_identical_seed_independent(tmp_path):
         'ckpt-lora-3',
         output_dir=str(tmp_path / 'a'),
         save_optimizer=True,
-        consumed_train_samples=dl_a.consumed_samples)
+        consumed_train_samples=dl_a.get_state()['consumed_train_samples'])
 
     # phase2: DIFFERENT seed (999). Resume must overwrite the phase2 random init with the
     # saved adapter weights, so this seed must NOT affect the resumed trajectory.

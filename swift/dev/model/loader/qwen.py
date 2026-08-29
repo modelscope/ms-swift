@@ -132,7 +132,7 @@ class Qwen2VLLoader(ModelLoader):
     def process_tokenizer(self, processor):
         from qwen_vl_utils import vision_process
 
-        from swift.model.models.qwen import patch_qwen_vl_utils
+        from ._qwen_vl_utils import patch_qwen_vl_utils
         # In order to have different hashes for the template.
         processor.global_vars = patch_qwen_vl_utils(vision_process)
         return processor
@@ -306,11 +306,6 @@ class Qwen3_5Loader(Qwen3VLLoader):
         # deepstack -- so qwen3_5 skips deepstack zeroing without any process_model override (the old
         # PORT-10 "reach past super to skip it" hack is gone).
         return Qwen2VLLoader.model_arch.fget(self)
-
-    def build_model(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
-        from swift.model.models.qwen import _patch_qwen3_5_linear_attention_sequence_parallel
-        _patch_qwen3_5_linear_attention_sequence_parallel()
-        return super().build_model(model_dir, config, processor, **kwargs)
 
 
 @register_model
@@ -972,7 +967,7 @@ class _QwenOmniLoader(Qwen2VLLoader):
     def process_tokenizer(self, processor):
         from qwen_omni_utils import vision_process
 
-        from swift.model.models.qwen import patch_qwen_vl_utils
+        from ._qwen_vl_utils import patch_qwen_vl_utils
         processor.global_vars = patch_qwen_vl_utils(vision_process)
         return processor
 
@@ -1145,11 +1140,11 @@ class Qwen3TTSLoader(ModelLoader):
     key, which ``build_config`` reproduces here (registration is idempotent per key).
 
     Real behaviour kept from legacy:
-      * ``_patch_qwen3_tts_forward`` -- **not** an obsolete patch but the dual-channel training step
-        itself: it splits ``input_ids`` into text/codec channels, sums their embeddings, injects the
+      * twinkle's ``Qwen3TTSTrainingPatch`` -- **not** an obsolete patch but the dual-channel training
+        step itself: it splits ``input_ids`` into text/codec channels, sums their embeddings, injects the
         speaker embedding at codec position 6, folds in the 15 sub-talker codec embeddings, and adds a
-        sub-talker cross-entropy term on top of the talker loss. Imported from
-        ``swift.model.models.qwen`` rather than copied, so the two stay in sync.
+        sub-talker cross-entropy term on top of the talker loss. Applied from ``twinkle.patch`` (the
+        componentized equivalent of legacy ``_patch_qwen3_tts_forward``).
       * ``speaker_encoder`` is frozen -- only the talker trains.
       * the external ``Qwen3TTSTokenizer`` (a separate checkpoint, ``tts_tokenizer_path`` env knob) is
         downloaded and attached to the processor as ``tts_tokenizer``.
@@ -1192,7 +1187,7 @@ class Qwen3TTSLoader(ModelLoader):
     def build_processor(self, model_dir: str, config: PretrainedConfig, **kwargs):
         from qwen_tts import Qwen3TTSTokenizer
 
-        from swift.hub import safe_snapshot_download
+        from swift.dev.utils import safe_snapshot_download
         from swift.dev.utils import get_env_args
         processor = super().build_processor(model_dir, config, **kwargs)
         tts_path = get_env_args('tts_tokenizer_path', str, 'Qwen/Qwen3-TTS-Tokenizer-12Hz')
@@ -1201,10 +1196,12 @@ class Qwen3TTSLoader(ModelLoader):
         return processor
 
     def process_model(self, model):
-        from swift.model.models.qwen import _patch_qwen3_tts_forward
+        from twinkle.patch import apply_patch
+        from twinkle.patch.transformers_qwen3_tts import Qwen3TTSTrainingPatch
         self.delegate_to_submodel(model, 'talker', ['get_input_embeddings', 'gradient_checkpointing_enable'])
         if model.speaker_encoder is not None:
             for param in model.speaker_encoder.parameters():
                 param.requires_grad = False
-        _patch_qwen3_tts_forward(model)
+        # Applied persistently (not via apply_context) to match legacy's permanent forward swap.
+        apply_patch(model, Qwen3TTSTrainingPatch())
         return model

@@ -213,8 +213,8 @@ class SFTLoop:
         for epoch in range(self._start_epoch, self._epochs()):
             if self._reached_max():
                 break
-            # Reshuffle each epoch (BatchSamplerShard.curr_seed only advances via set_epoch);
-            # the resumable wrapper relies on this to reproduce a given epoch's order.
+            # Reshuffle each epoch (twinkle's EpochSampler derives each epoch's order from its number,
+            # and only set_epoch advances it); resume replays a given epoch's order the same way.
             if hasattr(self.dataloader, 'set_epoch'):
                 self.dataloader.set_epoch(epoch)
             for batch in self.dataloader:
@@ -248,7 +248,7 @@ class SFTLoop:
           - Ray: forward_backward's dispatch='slice_dp' splits the group across DP ranks on the
             driver before each worker runs; the loop here runs once on the driver.
           - local (torchrun): slice_dp is a no-op (no driver), so the dataloader shards by DP rank
-            up front via _MegatronDPBatchSampler; this loop runs per rank over its own slice.
+            up front via twinkle's DeviceMeshSampler; this loop runs per rank over its own slice.
 
         On Megatron the dataloader is built with drop_last=True (see builders/dataset.py::_drop_last),
         so a trailing partial group cannot occur there: global_batch_size is an exact invariant and
@@ -289,11 +289,20 @@ class SFTLoop:
 
         Passes save_optimizer=True so twinkle writes optimizer.pt / scheduler.pt / scaler.pt /
         rng_state.pt / trainer_state.json (twinkle schema: cur_step / gradient_accumulation_steps
-        / consumed_train_samples). dev does NOT hand-roll trainer_state; it feeds the wrapper's
-        consumed_samples so the resume position is recoverable.
+        / consumed_train_samples). dev does NOT hand-roll trainer_state; it feeds the dataloader's
+        own consumed count so the resume position is recoverable.
+
+        Read through ``get_state()`` rather than off an attribute: the dataloader is a twinkle
+        ``remote_class``, so in ray mode the driver holds a handle whose attributes live in the worker
+        and only its remote_functions answer. Same call the twinkle cookbooks use.
         """
-        consumed = getattr(self.dataloader, 'consumed_samples', 0)
+        consumed = self._dataloader_state().get('consumed_train_samples', 0)
         return self.model.save(name, output_dir=self.output_dir, save_optimizer=True, consumed_train_samples=consumed)
+
+    def _dataloader_state(self) -> dict:
+        """The train dataloader's ``{consumed_train_samples, resume_epoch}``, or ``{}`` if it has none."""
+        get_state = getattr(self.dataloader, 'get_state', None)
+        return get_state() if get_state is not None else {}
 
     def resume(self, state: dict) -> None:
         """Seed loop counters + dataloader position from a restored twinkle trainer_state.
@@ -315,5 +324,5 @@ class SFTLoop:
         if hasattr(self.dataloader, 'skip_consumed_samples'):
             self.dataloader.skip_consumed_samples(consumed)
         # Start the epoch loop at the resume epoch so cross-epoch resume does not replay
-        # already-consumed epochs (the wrapper only skips the offset within its resume epoch).
-        self._start_epoch = getattr(self.dataloader, '_resume_epoch', 0)
+        # already-consumed epochs (the dataloader only skips the offset within its resume epoch).
+        self._start_epoch = self._dataloader_state().get('resume_epoch', 0)

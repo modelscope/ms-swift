@@ -472,14 +472,14 @@ class DatasetLoader:
 
     @staticmethod
     def load_from_hub(dataset_id: str, subset: str, split: str, *, use_hf: bool, **kwargs) -> DATASET_TYPE:
-        """Load from whichever hub ``use_hf`` selects, through swift's hub layer.
+        """Load from whichever hub ``use_hf`` selects, through dev's hub layer.
 
         Not a bare ``datasets.load_dataset``: that reaches HuggingFace only, while a ModelScope id has
         to go through ``MsDataset`` -- which is also where login, the differing revision names
         (``master`` on ModelScope, ``main`` on HuggingFace) and ``trust_remote_code`` are handled.
-        ``swift.hub`` already owns those differences, so this only unwraps the result.
+        ``swift.dev.utils.get_hub`` already owns those differences, so this only unwraps the result.
         """
-        from swift.hub import get_hub
+        from swift.dev.utils import get_hub
         hub = get_hub(use_hf)
         # Both hubs accept the union of these and ignore what they have no use for (`token` on the HF
         # side, `num_proc` on the ModelScope side), so one call site serves both.

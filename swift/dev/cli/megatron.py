@@ -467,7 +467,7 @@ def megatron_sft_main(args: Optional[List[str]] = None) -> List[dict]:
     (drop-in argv compatibility); import one of them under an alias when using both."""
     from swift.dev.recipe import run_sft
     from swift.megatron.arguments import MegatronSftArguments
-    from swift.utils import parse_args
+    from swift.dev.utils import parse_args
 
     if isinstance(args, MegatronSftArguments):
         megatron_args: Any = args

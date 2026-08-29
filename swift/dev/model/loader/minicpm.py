@@ -91,10 +91,9 @@ class MiniCPMV4_6Loader(ModelLoader):
     ``AutoModelForImageTextToText`` with the standard ``model.language_model`` layout -- so no
     ``delegate_to_submodel`` and no processor-method binding.
 
-    Its LLM uses qwen3.5-style linear attention, whose sequence-parallel path needs a live global
-    patch (``_patch_qwen3_5_linear_attention_sequence_parallel``); this is a real runtime requirement,
-    not an obsolete device_map patch, so it is applied in ``build_model`` exactly as the qwen3.5
-    loaders do.
+    Its LLM uses qwen3.5-style linear attention. The sequence-parallel forward for that is owned by
+    twinkle's SequenceParallelStrategy (it applies ``Qwen3_5GatedDeltaNetUlyssesPatch`` when SP is
+    enabled), so this loader no longer applies any linear-attention patch itself.
     """
 
     model_type = 'minicpmv4_6'
@@ -113,11 +112,6 @@ class MiniCPMV4_6Loader(ModelLoader):
             aligner=['model.merger'],
             vision_tower=['model.vision_tower'],
         )
-
-    def build_model(self, model_dir, config, processor, **kwargs):
-        from swift.model.models.qwen import _patch_qwen3_5_linear_attention_sequence_parallel
-        _patch_qwen3_5_linear_attention_sequence_parallel()
-        return super().build_model(model_dir, config, processor, **kwargs)
 
 
 @register_model

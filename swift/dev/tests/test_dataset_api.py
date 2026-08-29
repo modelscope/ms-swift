@@ -56,7 +56,7 @@ class SimpleIterableDataset(IterableDataset):
 
 class TestEncode:
 
-    @patch('swift.dataset.utils.LazyLLMDataset')
+    @patch('swift.dev.dataset.LazyLLMDataset')
     def test_lazy_mode_returns_lazy_dataset(self, MockLazy):
         from swift.dev.builders.dataset import _encode
         dataset = make_mock_dataset(10)
@@ -65,9 +65,9 @@ class TestEncode:
         MockLazy.assert_called_once()
         assert result == MockLazy.return_value
 
-    @patch('swift.dataset.utils.AddLengthPreprocessor')
+    @patch('swift.dev.dataset.MeasurePreprocessor')
     def test_eager_mode_uses_add_length(self, MockAddLength):
-        """Non-'split' eager encoding keeps rows raw + only adds `lengths` (AddLengthPreprocessor)."""
+        """Non-'split' eager encoding keeps rows raw + only adds `lengths` (MeasurePreprocessor)."""
         from swift.dev.builders.dataset import _encode
         mock_instance = MagicMock()
         mock_instance.return_value = make_mock_dataset(5)
@@ -77,7 +77,7 @@ class TestEncode:
         _encode(dataset, template, mode='eager', num_proc=1, strict=False, data_seed=42)
         MockAddLength.assert_called_once_with(template)
 
-    @patch('swift.dataset.utils.AddLengthPreprocessor')
+    @patch('swift.dev.dataset.MeasurePreprocessor')
     def test_stream_mode_uses_add_length(self, MockAddLength):
         from swift.dev.builders.dataset import _encode
         mock_instance = MagicMock()
@@ -99,7 +99,7 @@ class TestEncode:
         with pytest.raises(ValueError, match="truncation_strategy='split' requires mode='eager'"):
             _encode(dataset, template, mode='stream', num_proc=1, strict=False, data_seed=42)
 
-    @patch('swift.dataset.utils.EncodePreprocessor')
+    @patch('swift.dev.dataset.EncodePreprocessor')
     def test_split_strategy_with_eager_uses_full_encode(self, MockPreprocessor):
         """'split' expands one input into many samples, so it must fully encode (EncodePreprocessor)."""
         from swift.dev.builders.dataset import _encode
@@ -117,7 +117,7 @@ class TestEncode:
 
 class TestPack:
 
-    @patch('swift.dataset.packing.PackingDataset')
+    @patch('swift.dev.dataset.PackingDataset')
     def test_static_packing(self, MockPacking):
         from swift.dev.builders.dataset import _pack
         mock_instance = MagicMock()
@@ -136,7 +136,7 @@ class TestPack:
         assert MockPacking.call_args[1]['packing_length'] == 256
         assert result == mock_instance
 
-    @patch('swift.dataset.packing.IterablePackingDataset')
+    @patch('swift.dev.dataset.IterablePackingDataset')
     def test_streaming_packing(self, MockIterPacking):
         from swift.dev.builders.dataset import _pack
         mock_instance = MagicMock()
@@ -148,7 +148,7 @@ class TestPack:
         MockIterPacking.assert_called_once()
         assert result == mock_instance
 
-    @patch('swift.dataset.packing.PackingDataset')
+    @patch('swift.dev.dataset.PackingDataset')
     def test_default_packing_length_falls_back_to_template(self, MockPacking):
         from swift.dev.builders.dataset import _pack
         MockPacking.return_value = MagicMock()
@@ -181,9 +181,9 @@ class TestBuildDatasetEncode:
         dc = DatasetConfig(dataset=['d'], packing=packing, streaming=streaming)
         return dc, TrainConfig(), DistributedConfig()
 
-    @patch('swift.dev.legacy_dataloader.build_dataloader')
+    @patch('twinkle.dataloader.DataLoader')
     @patch('swift.dev.builders.dataset._encode')
-    @patch('swift.dataset.load_dataset')
+    @patch('swift.dev.dataset.load_dataset')
     def test_encode_false_skips_encoding(self, mock_load, mock_encode, mock_build_dl):
         from swift.dev.builders.dataset import build_dataset
         raw = make_mock_dataset(10)
@@ -192,14 +192,14 @@ class TestBuildDatasetEncode:
         template = make_mock_template()
         dc, tc, dist = self._configs()
         train_loader, val_loader = build_dataset(dc, template, tc, dist, encode=False)
-        # _encode must NOT be called; the raw dataset is passed straight to build_dataloader.
+        # _encode must NOT be called; the raw dataset is passed straight to the dataloader.
         mock_encode.assert_not_called()
         assert mock_build_dl.call_args[0][0] is raw
         assert train_loader == 'LOADER' and val_loader is None
 
-    @patch('swift.dev.legacy_dataloader.build_dataloader')
+    @patch('twinkle.dataloader.DataLoader')
     @patch('swift.dev.builders.dataset._encode')
-    @patch('swift.dataset.load_dataset')
+    @patch('swift.dev.dataset.load_dataset')
     def test_encode_true_encodes(self, mock_load, mock_encode, mock_build_dl):
         from swift.dev.builders.dataset import build_dataset
         raw = make_mock_dataset(10)
@@ -212,8 +212,8 @@ class TestBuildDatasetEncode:
         mock_encode.assert_called_once()
         assert mock_build_dl.call_args[0][0] == 'ENCODED'
 
-    @patch('swift.dev.legacy_dataloader.build_dataloader')
-    @patch('swift.dataset.load_dataset')
+    @patch('twinkle.dataloader.DataLoader')
+    @patch('swift.dev.dataset.load_dataset')
     def test_encode_false_with_map_packing_raises(self, mock_load, mock_build_dl):
         from swift.dev.builders.dataset import build_dataset
         mock_load.return_value = (make_mock_dataset(10), None)
@@ -223,8 +223,8 @@ class TestBuildDatasetEncode:
             build_dataset(dc, template, tc, dist, encode=False)
 
     @patch('swift.dev.builders.dataset._pack', return_value='PACKED')
-    @patch('swift.dev.legacy_dataloader.build_dataloader')
-    @patch('swift.dataset.load_dataset')
+    @patch('twinkle.dataloader.DataLoader')
+    @patch('swift.dev.dataset.load_dataset')
     def test_encode_false_with_streaming_packing_ok(self, mock_load, mock_build_dl, mock_pack):
         from swift.dev.builders.dataset import build_dataset
         raw = make_mock_dataset(10)
@@ -246,9 +246,9 @@ class TestBuildDatasetLoadOnce:
         from swift.dev.config import DatasetConfig, DistributedConfig, TrainConfig
         return DatasetConfig(**dc_kw), TrainConfig(), DistributedConfig()
 
-    @patch('swift.dev.legacy_dataloader.build_dataloader', return_value='L')
+    @patch('twinkle.dataloader.DataLoader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')
-    @patch('swift.dataset.load_dataset')
+    @patch('swift.dev.dataset.load_dataset')
     def test_split_val_loads_once(self, mock_load, _enc, _dl):
         """Val split off via split_dataset_ratio must NOT re-load: exactly one load_dataset call."""
         from swift.dev.builders.dataset import build_dataset
@@ -258,9 +258,9 @@ class TestBuildDatasetLoadOnce:
         assert mock_load.call_count == 1
         assert train_loader == 'L' and val_loader == 'L'
 
-    @patch('swift.dev.legacy_dataloader.build_dataloader', return_value='L')
+    @patch('twinkle.dataloader.DataLoader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')
-    @patch('swift.dataset.load_dataset')
+    @patch('swift.dev.dataset.load_dataset')
     def test_separate_val_dataset_loads_twice(self, mock_load, _enc, _dl):
         """A separate val_dataset is a distinct source -> legacy loads it with its own call."""
         from swift.dev.builders.dataset import build_dataset
@@ -276,9 +276,9 @@ class TestBuildDatasetLoadOnce:
         assert mock_load.call_args_list[1].kwargs['shuffle'] is False
         assert mock_load.call_args_list[1].kwargs['split_dataset_ratio'] == 1.0
 
-    @patch('swift.dev.legacy_dataloader.build_dataloader', return_value='L')
+    @patch('twinkle.dataloader.DataLoader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')
-    @patch('swift.dataset.load_dataset')
+    @patch('swift.dev.dataset.load_dataset')
     def test_full_kwargs_forwarded(self, mock_load, _enc, _dl):
         """All legacy get_dataset_kwargs keys must reach load_dataset (not the previous 6-key subset)."""
         from swift.dev.builders.dataset import build_dataset
@@ -288,16 +288,34 @@ class TestBuildDatasetLoadOnce:
         build_dataset(dc, make_mock_template(), tc, dist)
         kw = mock_load.call_args.kwargs
         for key in ('interleave_prob', 'stopping_strategy', 'shuffle_buffer_size', 'columns', 'use_hf', 'hub_token',
-                    'download_mode', 'remove_unused_columns', 'disable_auto_column_mapping', 'model_name',
-                    'model_author'):
+                    'download_mode', 'model_name', 'model_author'):
             assert key in kw, f'{key} not forwarded to load_dataset'
         assert kw['interleave_prob'] == [0.5, 0.5]
         assert kw['columns'] == {'a': 'b'}
         assert kw['use_hf'] is True
+        # The dev dataset framework has no switch for these two -- forwarding them would be a TypeError.
+        assert 'remove_unused_columns' not in kw and 'disable_auto_column_mapping' not in kw
 
-    @patch('swift.dev.legacy_dataloader.build_dataloader', return_value='L')
+    @patch('twinkle.dataloader.DataLoader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')
-    @patch('swift.dataset.load_dataset')
+    @patch('swift.dev.dataset.load_dataset')
+    def test_unsupported_column_knobs_are_refused(self, mock_load, _enc, _dl):
+        """dev already behaves the way both defaults ask for, so a non-default request must fail rather
+        than be accepted and ignored (which would silently train on a different set of columns)."""
+        from swift.dev.builders.dataset import build_dataset
+        mock_load.return_value = (make_mock_dataset(10), None)
+        for kwargs, message in (({
+                'remove_unused_columns': False
+        }, 'remove_unused_columns=False is not supported'), ({
+                'disable_auto_column_mapping': True
+        }, 'disable_auto_column_mapping=True is not supported')):
+            dc, tc, dist = self._configs(dataset=['d'], **kwargs)
+            with pytest.raises(ValueError, match=message):
+                build_dataset(dc, make_mock_template(), tc, dist)
+
+    @patch('twinkle.dataloader.DataLoader', return_value='L')
+    @patch('swift.dev.builders.dataset._encode', return_value='E')
+    @patch('swift.dev.dataset.load_dataset')
     def test_load_time_vs_dataloader_shuffle(self, mock_load, _enc, mock_dl):
         """dataset_shuffle drives the load-time shuffle; train_dataloader_shuffle drives the sampler."""
         from swift.dev.builders.dataset import build_dataset
@@ -313,39 +331,50 @@ class TestBuildDatasetLoadOnce:
         assert mock_dl.call_args.kwargs['shuffle'] is False
 
 
-# === TestDpShardFromMpu (config-derived shard source: mode + backend, no env/runtime probe) ===
+# === TestTwinkleLoaderLayout (who shards, and how wide the batch is: config-derived, no env probe) ===
 
 
-class TestDpShardFromMpu:
-    """_dp_shard_in_loader must be derived from DistributedConfig (mode+backend) only -- never env.
+class TestTwinkleLoaderLayout:
+    """_twinkle_loader_layout decides the loader's batch WIDTH and whether it self-shards by DP rank.
 
-    Env probing would be wrong: on the driver TWINKLE_MODE is unset even in ray mode, so it would
-    misreport 'local' and double-shard against slice_dp.
+    Both must come from DistributedConfig (mode + nproc_per_node) only -- never from env. Env probing
+    would be wrong: on the driver TWINKLE_MODE is unset even in ray mode, so it would misreport
+    'local' and double-shard against slice_dp.
+
+    twinkle's DataLoader takes the GLOBAL batch and its DeviceMeshSampler slices each batch across DP
+    ranks, which is the opposite convention from legacy (per-device batch, sharded internally). Getting
+    the width wrong is silent: too narrow trains on a fraction of the intended batch.
     """
 
     def _dc(self, **kw):
         from swift.dev.config import DistributedConfig
         return DistributedConfig(**kw)
 
-    def test_megatron_local_true(self):
-        from swift.dev.builders.dataset import _dp_shard_in_loader
-        assert _dp_shard_in_loader(self._dc(backend='megatron', mode='local')) is True
+    def test_local_passes_the_mesh_and_the_global_batch(self, monkeypatch):
+        """local: the loader owns DP sharding, so it gets the mesh and per_device*dp as the width."""
+        from swift.dev.builders.dataset import _twinkle_loader_layout
+        monkeypatch.setenv('RANK', '0')
+        monkeypatch.setenv('WORLD_SIZE', '4')
+        global_batch, mesh = _twinkle_loader_layout(
+            self._dc(backend='megatron', mode='local', nproc_per_node=4, tensor_model_parallel_size=2), 2)
+        assert mesh is not None and mesh.data_world_size == 2  # 4 GPUs / tp=2
+        assert global_batch == 4, 'global batch must be per_device * dp_world_size'
 
-    def test_megatron_ray_false(self):
-        from swift.dev.builders.dataset import _dp_shard_in_loader
+    def test_ray_gets_no_mesh(self, monkeypatch):
+        """ray: DP scatter happens later in forward_backward(dispatch='slice_dp'), so the driver loader
+        must NOT self-shard -- only the global WIDTH matters here."""
+        from swift.dev.builders.dataset import _twinkle_loader_layout
+        monkeypatch.setenv('RANK', '0')
+        monkeypatch.setenv('WORLD_SIZE', '4')
+        global_batch, mesh = _twinkle_loader_layout(
+            self._dc(backend='megatron', mode='ray', nproc_per_node=4), 2)
+        assert mesh is None
+        assert global_batch == 8  # dp == 4 (no tp/pp/cp)
 
-        # Ray scatters on the driver (slice_dp) -> bare loader; the dataloader must NOT self-shard.
-        assert _dp_shard_in_loader(self._dc(backend='megatron', mode='ray')) is False
-
-    def test_hf_local_false(self):
-        from swift.dev.builders.dataset import _dp_shard_in_loader
-
-        # transformers path (TP/PP/CP==1) shards by global rank in BatchSamplerShard.
-        assert _dp_shard_in_loader(self._dc(backend='hf', mode='local')) is False
-
-    def test_hf_ray_false(self):
-        from swift.dev.builders.dataset import _dp_shard_in_loader
-        assert _dp_shard_in_loader(self._dc(backend='hf', mode='ray')) is False
+    def test_single_process_keeps_the_per_device_batch(self):
+        """No nproc_per_node -> no DP layout to size: the width is the per-device batch, unscaled."""
+        from swift.dev.builders.dataset import _twinkle_loader_layout
+        assert _twinkle_loader_layout(self._dc(backend='hf', mode='local'), 3) == (3, None)
 
 
 # === TestDropLast (partial-batch policy is a backend contract, not a preference) ===
@@ -377,7 +406,7 @@ class TestDropLast:
         from swift.dev.builders.dataset import _drop_last
 
         # The global-batch invariant holds regardless of who performs the DP scatter, so ray mode
-        # must not differ from local here (unlike _dp_shard_in_loader, which does).
+        # must not differ from local here (unlike _twinkle_loader_layout, which does).
         assert _drop_last(self._dc(backend='megatron', mode='ray'), is_val=False) is True
 
     def test_hf_train_keeps_remainder(self):
@@ -403,9 +432,9 @@ class TestDropLast:
         # Unchanged on the transformers path: legacy defers to dataloader_drop_last (default False).
         assert _drop_last(self._dc(backend='hf', mode='local'), is_val=True) is False
 
-    @patch('swift.dev.legacy_dataloader.build_dataloader', return_value='L')
+    @patch('twinkle.dataloader.DataLoader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')
-    @patch('swift.dataset.load_dataset')
+    @patch('swift.dev.dataset.load_dataset')
     def test_build_dataset_forwards_drop_last_per_backend(self, mock_load, _enc, mock_dl):
         """The policy is worthless if build_dataset does not actually pass it down.
 
@@ -425,104 +454,64 @@ class TestDropLast:
                 f'backend={backend} should pass drop_last={expected}'
 
 
-# === TestBuildDataloader ===
+# === TestDeviceMeshSampler (DP semantics of the twinkle dataloader's per-rank slicing) ===
 
 
-class TestBuildDataloader:
+class DeviceMeshSamplerCase:
+    """Shared construction for the DP-slicing tests: one real DeviceMesh per rank coordinate.
 
-    def test_sequence_parallel_not_implemented(self):
-        """SP dataloader is intentionally disabled this phase -> fail fast, not a silent wrong path."""
-        from swift.dev.legacy_dataloader.factory import build_dataloader
-        with pytest.raises(NotImplementedError, match='SP dataloader is not implemented'):
-            build_dataloader(SimpleMapDataset(8), lambda x: x, batch_size=4, sequence_parallel_size=2)
+    Not named Test* on purpose -- pytest would re-collect the shared helpers as a case of their own.
+    """
 
-    @patch('swift.dev.legacy_dataloader.factory._is_dist_initialized', return_value=False)
-    @patch('swift.dev.legacy_dataloader.factory.DataLoaderShard')
-    @patch('swift.dev.legacy_dataloader.factory.BatchSamplerShard')
-    def test_map_style_dataset(self, MockBatchSampler, MockDataLoaderShard, mock_dist):
-        from swift.dev.legacy_dataloader.factory import build_dataloader
-        mock_loader = MagicMock(spec=DataLoader)
-        MockDataLoaderShard.return_value = mock_loader
-        dataset = SimpleMapDataset(50)
-        result = build_dataloader(dataset, lambda x: x, batch_size=4, shuffle=True, resumable=False)
-        MockBatchSampler.assert_called_once()
-        MockDataLoaderShard.assert_called_once()
-        assert result == mock_loader
+    @staticmethod
+    def mesh(rank, world, monkeypatch):
+        from swift.dev.builders import build_device_mesh
+        from swift.dev.config import DistributedConfig
+        monkeypatch.setenv('RANK', str(rank))
+        monkeypatch.setenv('WORLD_SIZE', str(world))
+        return build_device_mesh(DistributedConfig(backend='megatron', mode='local', nproc_per_node=world))
 
-    @patch('swift.dev.legacy_dataloader.factory._is_dist_initialized', return_value=False)
-    @patch('swift.dev.legacy_dataloader.factory.DataLoaderDispatcher')
-    def test_iterable_dataset(self, MockDispatcher, mock_dist):
-        from swift.dev.legacy_dataloader.factory import build_dataloader
-        mock_loader = MagicMock()
-        MockDispatcher.return_value = mock_loader
-        dataset = SimpleIterableDataset(20)
-        result = build_dataloader(dataset, lambda x: x, batch_size=4, shuffle=False, resumable=False)
-        MockDispatcher.assert_called_once()
-        assert result == mock_loader
+    @staticmethod
+    def indices(mesh, *, total, global_batch, shuffle=False, **kw):
+        """The indices one rank reads, through the same sampler stack twinkle's DataLoader builds."""
+        from torch.utils.data import BatchSampler
+        from twinkle.dataloader.device_mesh_sampler import DeviceMeshSampler
+        from twinkle.dataloader.epoch_sampler import EpochSampler
+        base = BatchSampler(
+            EpochSampler(total, shuffle=shuffle, data_seed=0), batch_size=global_batch, drop_last=False)
+        sampler = DeviceMeshSampler(base, mesh, dataset_length=total, batch_size=global_batch, data_seed=0, **kw)
+        return [idx for batch in sampler for idx in batch]
 
-    @patch('swift.dev.legacy_dataloader.factory._is_dist_initialized', return_value=False)
-    @patch('swift.dev.legacy_dataloader.factory.DataLoaderShard')
-    @patch('swift.dev.legacy_dataloader.factory.BatchSamplerShard')
-    def test_resumable_wrapper(self, MockBatchSampler, MockDataLoaderShard, mock_dist):
-        from swift.dev.legacy_dataloader.factory import build_dataloader
-        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
-        mock_loader = MagicMock(spec=DataLoader)
-        mock_loader.batch_size = 4
-        MockDataLoaderShard.return_value = mock_loader
-        dataset = SimpleMapDataset(50)
-        result = build_dataloader(
-            dataset, lambda x: x, batch_size=4, shuffle=True, resumable=True, consumed_samples=100)
-        assert isinstance(result, ResumableDataLoaderWrapper)
-        assert result.consumed_samples == 100
 
-    @patch('swift.dev.legacy_dataloader.factory._is_dist_initialized', return_value=False)
-    @patch('swift.dev.legacy_dataloader.factory.DataLoaderShard')
-    @patch('swift.dev.legacy_dataloader.factory.BatchSamplerShard')
-    def test_non_resumable_default(self, MockBatchSampler, MockDataLoaderShard, mock_dist):
-        from swift.dev.legacy_dataloader.factory import build_dataloader
-        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
-        mock_loader = MagicMock(spec=DataLoader)
-        MockDataLoaderShard.return_value = mock_loader
-        dataset = SimpleMapDataset(50)
-        result = build_dataloader(dataset, lambda x: x, batch_size=4, shuffle=True, resumable=False)
-        assert not isinstance(result, ResumableDataLoaderWrapper)
-        assert result == mock_loader
+class TestDeviceMeshSampler(DeviceMeshSamplerCase):
+    """twinkle's DeviceMeshSampler must shard the data across DP ranks with NO overlap and NO gap --
+    the DP-semantics gate for the mode='local' path.
 
-    def test_megatron_dp_sampler_shards_by_dp_rank(self):
-        """_MegatronDPBatchSampler must shard the dataset across DP ranks with NO overlap and NO
-        gap -- the DP-semantics gate for the mode='local' Megatron path.
+    dev hands twinkle the GLOBAL batch and each rank takes its own slice of every batch, so a
+    regression that slices by the wrong rank source (or hands the whole batch to both ranks) silently
+    trains every rank on the same data. Simulated with two real DeviceMeshes, one per rank coordinate,
+    so it needs no GPU and no distributed init. shuffle=False keeps the expected order deterministic.
 
-        Simulates DP=2 by passing each rank's DP coordinate. Each rank's flattened index set must be
-        disjoint from the other's, and their union must equal the full dataset (minus the drop_last
-        remainder). Uses distinct indices per rank (not identical data) so a regression that shards
-        by the wrong rank source, or replicates data to both ranks, is caught. shuffle=False keeps
-        the expected order deterministic (natural sequential shard).
+    Scope: this gates the shard ARITHMETIC given a DP coordinate. That the coordinate itself is right
+    under tp*pp*cp>1 is a separate question, covered without GPUs by
+    test_mesh_dp_matches_megatron_rank_generator (mesh coordinate == Megatron's DP grouping).
+    """
 
-        Scope: this gates the shard ARITHMETIC given a DP coordinate. That the coordinate itself is
-        right under tp*pp*cp>1 is a separate question, covered without GPUs by
-        test_mesh_dp_matches_megatron_rank_generator (mesh coordinate == Megatron's DP grouping).
-        """
-        size, batch_size, dp_size = 40, 4, 2
+    def test_slices_each_global_batch_across_dp_ranks(self, monkeypatch):
+        total, global_batch, world = 40, 4, 2
+        idx = {
+            rank: self.indices(self.mesh(rank, world, monkeypatch), total=total, global_batch=global_batch)
+            for rank in range(world)
+        }
+        assert idx[0] and idx[1], f'empty shard: {idx}'
+        assert set(idx[0]).isdisjoint(idx[1]), f'DP shards overlap (data replicated?): {idx}'
+        assert set(idx[0]) | set(idx[1]) == set(range(total)), \
+            f'DP shards do not cover the dataset: union={sorted(set(idx[0]) | set(idx[1]))}'
+        # DeviceMesh.get_slice hands each rank a CONTIGUOUS share of every global batch, so with
+        # shuffle=False rank 0 reads 0,1 then 4,5 then 8,9 ... -- half the global width per step.
+        assert len(idx[0]) == total // world
+        assert idx[0][:4] == [0, 1, 4, 5], f'rank 0 did not take its half of each batch: {idx[0][:8]}'
 
-        def _indices_for_rank(dp_rank):
-            from swift.dev.legacy_dataloader.factory import _MegatronDPBatchSampler
-            s = _MegatronDPBatchSampler(
-                total_samples=size,
-                batch_size=batch_size,
-                shuffle=False,
-                drop_last=False,
-                data_seed=42,
-                dp_rank=dp_rank,
-                dp_world_size=dp_size)
-            return [idx for batch in s for idx in batch]
-
-        r0 = _indices_for_rank(0)
-        r1 = _indices_for_rank(1)
-        assert r0 and r1, f'empty shard: r0={r0} r1={r1}'
-        assert set(r0).isdisjoint(set(r1)), f'DP shards overlap (data replicated?): r0={r0} r1={r1}'
-        # natural sequential interleave: rank r gets indices r, r+dp, r+2dp, ...
-        assert set(r0) | set(r1) == set(range(size)), \
-            f'DP shards do not cover the dataset: union={sorted(set(r0) | set(r1))}'
 
 
 class TestGroupByLength:
@@ -544,9 +533,8 @@ class TestGroupByLength:
         with pytest.raises(ValueError, match='requires a `lengths` column'):
             _extract_lengths(no_len)
 
-    @patch('swift.dev.legacy_dataloader.factory._is_dist_initialized', return_value=False)
-    def test_build_dataloader_group_by_length_batches_similar_lengths(self, mock_dist):
-        """End-to-end (real BatchSamplerShard, no GPU): with group_by_length + lengths, batches
+    def test_group_by_length_batches_similar_lengths(self):
+        """End-to-end through twinkle's DataLoader (no GPU): with group_by_length + lengths, batches
         must contain similar-length samples. transformers get_length_grouped_indices groups within
         mega-batches, so we assert the mean intra-batch length spread is far smaller than a random
         batching baseline -- the property group_by_length exists to deliver (less padding), without
@@ -554,21 +542,22 @@ class TestGroupByLength:
         bite (tiny datasets fall into a single mega-batch and barely group)."""
         import random as _random
 
-        from swift.dev.legacy_dataloader.factory import build_dataloader
+        from twinkle.dataloader import DataLoader as TwinkleDataLoader
         _random.seed(0)
         lengths = [_random.randint(10, 1000) for _ in range(200)]
 
         def _mean_batch_spread(gbl: bool):
-            loader = build_dataloader(
+            loader = TwinkleDataLoader(
                 SimpleMapDataset(len(lengths)),
-                lambda x: x,
                 batch_size=8,
                 shuffle=True,
                 group_by_length=gbl,
                 lengths=(lengths if gbl else None),
-                data_seed=0,
-                resumable=False)
-            spreads = [max(lengths[i] for i in b) - min(lengths[i] for i in b) for b in loader.batch_sampler]
+                data_seed=0)
+            spreads = []
+            for batch in loader:
+                sample_lengths = [lengths[int(row['input_ids'][0])] for row in batch]
+                spreads.append(max(sample_lengths) - min(sample_lengths))
             return sum(spreads) / len(spreads)
 
         grouped_spread = _mean_batch_spread(True)
@@ -577,147 +566,130 @@ class TestGroupByLength:
         assert grouped_spread < random_spread * 0.5, (f'group_by_length did not reduce intra-batch length spread '
                                                       f'(grouped={grouped_spread:.1f} vs random={random_spread:.1f})')
 
-    def test_build_dataloader_group_by_length_requires_lengths(self):
-        """BatchSamplerShard guard: group_by_length=True without lengths -> ValueError."""
-        from swift.dev.legacy_dataloader.factory import build_dataloader
-        with pytest.raises(ValueError, match='lengths must be provided'):
-            build_dataloader(
-                SimpleMapDataset(8), lambda x: x, batch_size=4, shuffle=True, group_by_length=True, lengths=None)
+    def test_group_by_length_requires_lengths(self):
+        """twinkle's DataLoader guard: group_by_length=True without lengths -> ValueError at build time,
+        not once a run has already loaded a model and started."""
+        from twinkle.dataloader import DataLoader as TwinkleDataLoader
+        with pytest.raises(ValueError, match='group_by_length needs'):
+            TwinkleDataLoader(SimpleMapDataset(8), batch_size=4, shuffle=True, group_by_length=True, lengths=None)
 
 
-class TestDataSharding:
-    """data_sharding (Megatron-only): shuffle WITHIN a DP shard instead of globally-then-stride.
+class TestDataSharding(DeviceMeshSamplerCase):
+    """data_sharding (Megatron-only): shuffle WITHIN a DP shard instead of globally-then-slice.
 
-    Ported from legacy MegatronPretrainingRandomSampler (batch_sampler.py:121-129) so existing
-    Megatron user scripts that set --data_sharding keep working after the dev refactor.
+    Ported into twinkle's DeviceMeshSampler from legacy MegatronPretrainingRandomSampler
+    (batch_sampler.py:121-129) so existing Megatron user scripts that set --data_sharding keep working
+    after the dev refactor. Opt-in: the default path keeps the global permutation.
     """
 
-    def _sampler(self, total, batch_size, dp_rank, dp_world, data_sharding, **kw):
-        """_MegatronDPBatchSampler with the DP coordinate passed in (no GPU / no megatron init)."""
-        from swift.dev.legacy_dataloader.factory import _MegatronDPBatchSampler
-
-        return _MegatronDPBatchSampler(
-            total_samples=total,
-            batch_size=batch_size,
-            shuffle=True,
-            drop_last=False,
-            data_seed=0,
-            dp_rank=dp_rank,
-            dp_world_size=dp_world,
-            data_sharding=data_sharding,
-            **kw)
-
-    def test_data_sharding_keeps_each_rank_in_its_own_contiguous_bucket(self):
+    def test_data_sharding_keeps_each_rank_in_its_own_contiguous_bucket(self, monkeypatch):
         """shard-then-shuffle: rank r draws only from its own contiguous block, and the two ranks
         together still cover the dataset exactly once (no overlap, no loss)."""
         total, dp_world = 40, 2
         per_rank = total // dp_world
         idx = {}
-        for r in range(dp_world):
-            s = self._sampler(total, batch_size=4, dp_rank=r, dp_world=dp_world, data_sharding=True)
-            idx[r] = [i for b in s for i in b]
-            expected = set(range(r * per_rank, (r + 1) * per_rank))
-            assert set(idx[r]) == expected, (
-                f'rank {r} left its bucket: got {sorted(set(idx[r]))}, expected {sorted(expected)}')
+        for rank in range(dp_world):
+            idx[rank] = self.indices(
+                self.mesh(rank, dp_world, monkeypatch),
+                total=total,
+                global_batch=4,
+                shuffle=True,
+                data_sharding=True)
+            expected = set(range(rank * per_rank, (rank + 1) * per_rank))
+            assert set(idx[rank]) == expected, (
+                f'rank {rank} left its bucket: got {sorted(set(idx[rank]))}, expected {sorted(expected)}')
         assert set(idx[0]).isdisjoint(idx[1])
         assert set(idx[0]) | set(idx[1]) == set(range(total))
 
-    def test_data_sharding_shuffles_within_the_bucket(self):
+    def test_data_sharding_shuffles_within_the_bucket(self, monkeypatch):
         """It must still be a shuffle -- a contiguous bucket read in order would defeat the purpose."""
-        s = self._sampler(40, batch_size=4, dp_rank=0, dp_world=2, data_sharding=True)
-        order = [i for b in s for i in b]
+        order = self.indices(
+            self.mesh(0, 2, monkeypatch), total=40, global_batch=4, shuffle=True, data_sharding=True)
         assert order != sorted(order), 'data_sharding did not shuffle within the bucket'
 
-    def test_data_sharding_off_uses_global_permutation(self):
-        """With data_sharding=False the base class strides a GLOBAL permutation, so a rank's indices
-        are NOT confined to a contiguous bucket (this is the behavioural difference being ported)."""
-        s = self._sampler(40, batch_size=4, dp_rank=0, dp_world=2, data_sharding=False)
-        order = [i for b in s for i in b]
+    def test_data_sharding_off_uses_global_permutation(self, monkeypatch):
+        """With data_sharding=False the sampler slices a GLOBAL permutation, so a rank's indices are
+        NOT confined to a contiguous bucket (this is the behavioural difference being ported)."""
+        order = self.indices(self.mesh(0, 2, monkeypatch), total=40, global_batch=4, shuffle=True)
         assert not set(order).issubset(set(range(20))), \
             'data_sharding=False should draw from the whole dataset, not one contiguous bucket'
 
-    def test_data_sharding_rejects_group_by_length(self):
-        """Length grouping needs the global order; the sampler must not silently pick one.
-        (build_dataset downgrades this combination earlier with a warning, matching legacy.)"""
-        with pytest.raises(ValueError, match='incompatible with group_by_length'):
-            self._sampler(
-                40,
-                batch_size=4,
-                dp_rank=0,
-                dp_world=2,
-                data_sharding=True,
-                group_by_length=True,
-                lengths=list(range(40)))
+    def test_data_sharding_needs_the_dp_layout(self):
+        """Without a device_mesh there are no buckets to shard into -> fail, never silently ignore."""
+        from twinkle.dataloader.device_mesh_sampler import DeviceMeshSampler
+        with pytest.raises(ValueError, match='data_sharding needs'):
+            DeviceMeshSampler(None, None, data_sharding=True, dataset_length=40, batch_size=4)
 
-    def test_build_dataloader_rejects_data_sharding_without_megatron(self):
-        """data_sharding is meaningless without loader-side DP sharding -> fail, never ignore."""
-        from swift.dev.legacy_dataloader.factory import build_dataloader
-        with pytest.raises(ValueError, match='requires the Megatron backend'):
-            build_dataloader(
-                SimpleMapDataset(8),
-                lambda x: x,
-                batch_size=4,
-                shuffle=True,
-                data_sharding=True,
-                dp_shard_in_loader=False)
+    @patch('swift.dev.builders.dataset._encode', return_value='E')
+    @patch('swift.dev.dataset.load_dataset')
+    def test_build_dataset_downgrades_data_sharding_under_group_by_length(self, mock_load, _enc, monkeypatch, caplog):
+        """Length grouping needs the global order, so the two are mutually exclusive. legacy downgrades
+        with a warning rather than failing (batch_sampler.py:86-90), which keeps existing Megatron
+        scripts that set both running -- dev must do the same, and must SAY so."""
+        import logging
+
+        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.config import DatasetConfig, DistributedConfig, TrainConfig
+        mock_load.return_value = (make_encoded_dataset(16), None)
+        monkeypatch.setattr('swift.dev.builders.dataset._extract_lengths', lambda enc: list(range(16)))
+        with patch('twinkle.dataloader.DataLoader', return_value='L') as mock_dl, \
+                caplog.at_level(logging.WARNING, logger='swift.dev.builders.dataset'):
+            build_dataset(
+                DatasetConfig(dataset=['d'], data_sharding=True, group_by_length=True), make_mock_template(),
+                TrainConfig(), DistributedConfig(backend='megatron', mode='local', nproc_per_node=1))
+        assert mock_dl.call_args.kwargs['data_sharding'] is False
+        assert mock_dl.call_args.kwargs['group_by_length'] is True
+        assert 'data_sharding=False' in caplog.text
 
 
-# === TestResumableDataLoaderWrapper ===
+# === TestDataLoaderResumeContract ===
 
 
-class TestResumableDataLoaderWrapper:
+class TestDataLoaderResumeContract:
+    """The resume contract dev's SFTLoop drives twinkle's DataLoader through (see recipe/train_loop.py
+    save/resume): ``get_state()`` reports consumed_train_samples + resume_epoch, and
+    ``skip_consumed_samples()`` makes the NEXT pass continue from exactly there.
 
-    def _make_simple_dataloader(self, size=20, batch_size=4):
-        return DataLoader(SimpleMapDataset(size), batch_size=batch_size)
+    Read through get_state() rather than off an attribute on purpose: the DataLoader is a twinkle
+    remote_class, so in ray mode the driver holds a handle whose attributes live in the worker and only
+    its remote_functions answer -- an attribute read would silently report 0 and lose the position.
+    """
 
-    def test_get_state(self):
-        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
-        wrapper = ResumableDataLoaderWrapper(self._make_simple_dataloader(), consumed_samples=0)
-        state = wrapper.get_state()
-        # state carries the resume triple (consumed_samples/consumed_batches/epoch)
-        assert state['consumed_samples'] == 0
-        assert state['epoch'] == 0
-        assert state['consumed_batches'] == 0
+    def _loader(self, size=20, batch_size=4):
+        from twinkle.dataloader import DataLoader as TwinkleDataLoader
+        return TwinkleDataLoader(SimpleMapDataset(size), batch_size=batch_size, shuffle=False)
 
-    def test_skip_consumed_samples(self):
-        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
-        wrapper = ResumableDataLoaderWrapper(self._make_simple_dataloader(), consumed_samples=0)
-        wrapper.skip_consumed_samples(100)
-        assert wrapper.consumed_samples == 100
-        wrapper.skip_consumed_samples(-5)
-        assert wrapper.consumed_samples == 0
+    def test_fresh_state_is_zero(self):
+        assert self._loader().get_state() == {'consumed_train_samples': 0, 'resume_epoch': 0}
 
-    def test_consumed_samples_increments(self):
-        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
-        wrapper = ResumableDataLoaderWrapper(self._make_simple_dataloader(20, 4), consumed_samples=0)
-        list(wrapper)
-        assert wrapper.consumed_samples == 20
+    def test_iterating_counts_consumed_samples(self):
+        loader = self._loader(20, 4)
+        assert len(list(loader)) == 5
+        assert loader.get_state()['consumed_train_samples'] == 20
 
-    def test_initial_consumed_samples_skips(self):
-        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
-        wrapper = ResumableDataLoaderWrapper(self._make_simple_dataloader(20, 4), consumed_samples=8)
-        assert wrapper.consumed_samples == 8
-        batches = list(wrapper)
-        assert len(batches) == 3
-        assert wrapper.consumed_samples == 20
+    def test_skip_resumes_mid_epoch(self):
+        """8 of 20 samples consumed -> the next pass reads the remaining 12 (3 batches of 4)."""
+        loader = self._loader(20, 4)
+        loader.skip_consumed_samples(8)
+        assert loader.get_state() == {'consumed_train_samples': 8, 'resume_epoch': 0}
+        assert len(list(loader)) == 3
+        assert loader.get_state()['consumed_train_samples'] == 20
 
-    def test_set_epoch(self):
-        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
-        wrapper = ResumableDataLoaderWrapper(self._make_simple_dataloader(), consumed_samples=0)
-        wrapper.set_epoch(5)
-        assert wrapper.get_state()['epoch'] == 5
+    def test_skip_decomposes_into_epoch_and_offset(self):
+        """A cross-epoch count is split into the loop's start epoch (train_loop.resume reads
+        resume_epoch) and an offset within it, so a resumed multi-epoch run neither replays finished
+        epochs nor -- as a linear index skip would -- reads nothing at all."""
+        loader = self._loader(20, 4)
+        loader.skip_consumed_samples(48)  # two full epochs + 8
+        assert loader.get_state()['resume_epoch'] == 2
+        assert len(list(loader)) == 3
 
-    def test_len(self):
-        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
-        loader = self._make_simple_dataloader(20, 4)
-        wrapper = ResumableDataLoaderWrapper(loader, consumed_samples=0)
-        assert len(wrapper) == len(loader)
-
-    def test_dataset_property(self):
-        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
-        loader = self._make_simple_dataloader(20, 4)
-        wrapper = ResumableDataLoaderWrapper(loader, consumed_samples=0)
-        assert wrapper.dataset is loader.dataset
+    def test_skip_applies_to_the_next_pass_only(self):
+        """Left in place, the skip would drop the same head of the dataset in every later epoch."""
+        loader = self._loader(20, 4)
+        loader.skip_consumed_samples(8)
+        assert len(list(loader)) == 3
+        assert len(list(loader)) == 5
 
 
 # === TestResumeGuards ===
@@ -726,17 +698,17 @@ class TestResumableDataLoaderWrapper:
 class TestEpochReshuffle:
     """Guards the per-epoch reshuffle contract: shuffle order must change per epoch.
 
-    SFTLoop.fit calls dataloader.set_epoch(epoch) each epoch; BatchSamplerShard derives
+    SFTLoop.fit calls dataloader.set_epoch(epoch) each epoch; twinkle's EpochSampler derives
     its shuffle seed as base_seed + epoch. A regression where set_epoch is dropped (the
     original SFTLoop bug) would make every epoch train on the identical order — silent
     training-quality loss. These assertions freeze the correct reshuffle behavior.
     """
 
     def _indices(self, epoch, seed=42, size=40, batch_size=4):
-        from swift.dataloader.shard import BatchSamplerShard
-        s = BatchSamplerShard(total_samples=size, batch_size=batch_size, shuffle=True, drop_last=False, data_seed=seed)
+        from twinkle.dataloader.epoch_sampler import EpochSampler
+        s = EpochSampler(size, shuffle=True, data_seed=seed, batch_size=batch_size)
         s.set_epoch(epoch)
-        return [idx for batch in s for idx in batch]
+        return list(s)
 
     def test_different_epochs_reshuffle(self):
         # epoch 0 and epoch 1 must NOT produce the same order (this is the bug we fixed).
@@ -761,14 +733,14 @@ class TestEpochReshuffle:
         applied shuffling (or a non-identity permutation) despite shuffle=False would break the
         comparison's premise; this freezes the natural-order contract at the data layer (no GPU).
         """
-        from swift.dataloader.shard import BatchSamplerShard
+        from twinkle.dataloader.epoch_sampler import EpochSampler
         size, batch_size = 40, 4
-        s = BatchSamplerShard(total_samples=size, batch_size=batch_size, shuffle=False, drop_last=False, data_seed=42)
-        order = [idx for batch in s for idx in batch]
+        s = EpochSampler(size, shuffle=False, data_seed=42, batch_size=batch_size)
+        order = list(s)
         assert order == list(range(size)), f'shuffle=False reordered samples: {order[:8]}...'
         # Order is stable across epochs too (no per-epoch reshuffle when shuffle=False).
         s.set_epoch(1)
-        assert [idx for batch in s for idx in batch] == list(range(size))
+        assert list(s) == list(range(size))
 
     @pytest.mark.parametrize('world,tp,pp,cp', [(2, 1, 1, 1), (4, 2, 1, 1), (4, 1, 2, 1), (4, 1, 1, 2), (8, 2, 2, 1),
                                                 (8, 2, 1, 2)])

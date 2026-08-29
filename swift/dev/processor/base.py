@@ -49,9 +49,9 @@ class InputProcessor(TwinkleInputProcessor):
         from input_ids (a cached length would be stale after pad_cp extends the sequence anyway).
 
         Packing: PackingDataset yields a LIST of rows per item (packing.py:130 /
-        IterablePackingDataset.__iter__), and identity_collate passes it through unchanged, so a
-        packed batch arrives here as list[list[dict]]. Flatten it first -- exactly what legacy does
-        in Template.data_collator (template/base.py:1668-1669 `batch = sum(batch, start=[])`).
+        IterablePackingDataset.__iter__), and the dataloader's identity collate passes it through
+        unchanged, so a packed batch arrives here as list[list[dict]]. Flatten it first -- exactly what
+        legacy does in Template.data_collator (template/base.py:1668-1669 `batch = sum(batch, start=[])`).
         Without this the dict-comprehension below hits AttributeError: 'list' has no 'items'.
         Flattening belongs HERE rather than in the dataloader: in ray mode the driver's slice_dp
         splits the batch element-wise across DP ranks, so flattening earlier would scatter one

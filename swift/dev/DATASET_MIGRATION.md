@@ -462,6 +462,47 @@ legacy 在 dataset 里用 `safe_ddp_context` 共 6 处（`media.py:52`、`loader
 
 ---
 
+## 批次 9：DataLoader 层切 twinkle —— `legacy_dataloader` 退役
+
+批次 6 把「数据 → input_ids」接上了，最后一段「input_ids → 训练步」一直还跑在 `swift/dev/legacy_dataloader/`（包装 legacy `swift.dataloader` 的 `BatchSamplerShard` / `DataLoaderShard` / `DataLoaderDispatcher`）。本批次整体换成 **twinkle `DataLoader`**，并删掉 `swift/dev/legacy_dataloader/` 整个包。
+
+### 换下来的对应关系
+
+| 能力 | legacy_dataloader | twinkle `DataLoader` |
+|---|---|---|
+| 顺序/shuffle | `BatchSamplerShard`（seed+epoch） | `EpochSampler`（同为 seed+epoch，语义一致）|
+| DP 分片 | `BatchSamplerShard` 按**全局 rank** stride | `DeviceMeshSampler` 按 **DeviceMesh 的 dp 坐标**切每个 batch |
+| group_by_length | `BatchSamplerShard(group_by_length, lengths)` | `EpochSampler(group_by_length, lengths)`，同样调 transformers `get_length_grouped_indices` |
+| resume | `ResumableDataLoaderWrapper`（dev 自写，数 batch） | 内置 `skip_consumed_samples` / `get_state`（数 sample）|
+| iterable 分发 | rank0 `DataLoaderDispatcher` scatter | `DeviceMeshDataset` worker-fetcher（各 rank 自切片）|
+| 失败重试 | 无 | `RetryDataset`（按 `TWINKLE_SEED` 跘 rank 一致的替换样本）|
+| Megatron `data_sharding` | `_MegatronDPBatchSampler`（dev 自写） | **本批次移进 twinkle**（下节）|
+
+### twinkle 侧补的唯一缺口：`data_sharding`
+
+Megatron 的 `--data_sharding` 是「先分桶再桶内 shuffle」（`MegatronPretrainingRandomSampler`），twinkle `DeviceMeshSampler` 只有「全局 permutation 再逐 batch 切片」，两者不等价。按「只补缺失、组件化、默认不变」给 `DeviceMeshSampler` 加了 opt-in 的 `data_sharding` 模式（`twinkle/src/twinkle/dataloader/device_mesh_sampler.py`）：每个 dp rank 只看 `[rank*bucket, (rank+1)*bucket)`，桶内按 `data_seed+epoch` permute，尾巴不足一个 micro batch 丢弃（与 legacy 一致）；`emitted_batch_sizes` 记的是**全局宽度**，使 consumed 计数与非 data_sharding 路径同口径。`DataLoader` 同步加了 `data_sharding` 参数与 epoch 跟踪（`set_epoch` 转发给 batch_sampler）。
+
+### 行为变化（需真实多卡环境确认）
+
+| 项 | 变化 | 影响 |
+|---|---|---|
+| `batch_size` 口径 | legacy 收**每卡** batch，twinkle 收**全局** batch 再切 | `_twinkle_loader_layout` 传 `per_device * dp_world_size`；local 传 mesh，ray 传 `None`（DP scatter 由 `forward_backward(dispatch='slice_dp')` 做）|
+| `nproc_per_node` | 以前可缺 | **多卡 local 必需**：它定 DP 布局；不传则 dp=1，不分片 |
+| hf backend 的 DP 源 | 全局 rank stride | DeviceMesh dp 坐标（TP/PP/CP==1 时两者相等）|
+| iterable 数据集 | rank0 scatter | 各 worker 自切片（各 rank 自行读流）|
+| resume 粒度 | batch（`consumed_batches * batch_size`）| sample（`consumed_train_samples`，按真实宽度累加）|
+| resume 读取方式 | `dl.consumed_samples` / `dl._resume_epoch` 属性 | `dl.get_state()['consumed_train_samples' \| 'resume_epoch']`。**必须走方法**：`DataLoader` 是 `remote_class`，ray 模式下 driver 只持 handle，属性读会静默得 0 而丢掉断点（`recipe/train_loop.py` 已改）|
+
+### 附带修的一个真 bug
+
+`_load_kwargs` 仍在转发 `remove_unused_columns` / `disable_auto_column_mapping`，而 dev 的 `load_dataset` 没有这两个参数——任何带 `dataset` 的 `build_dataset` 调用都会 `TypeError`。之前没暴露，是因为测试还 patch 在 legacy `swift.dataset.load_dataset` 上（round 1 改成 `swift.dev.dataset` 后失效的 mock）。现在：两个旋钮不再转发（dev 本就等价于它们的**默认值**：预处理器总是丢掉已消费的源列，列别名总是生效），非默认值直接**报错**而不是静默忽略；所有失效的 patch 目标修正到 `swift.dev.dataset.*`。
+
+### 验证
+
+`swift/dev/tests/test_dataset_api.py` **69 项通过**（仅剩 3 项 pre-existing 失败，LISA 旋钮已从 `TunerConfig` 移除而 `config/validate.py:428` 未同步，与本批次无关）。四个旧测试类已改指 twinkle：`TestDeviceMeshSampler`（两个真 DeviceMesh 验 DP 不重不漏）、`TestDataSharding`（桶内限定 + 桶内 shuffle + 默认仍为全局 permutation）、`TestDataLoaderResumeContract`（`get_state`/`skip_consumed_samples` 跨 epoch 分解）、`TestTwinkleLoaderLayout`（全局 batch 宽度与 mesh 传递）。**未验证**：真实多卡下的 DP 切片、iterable worker-fetcher、Megatron `data_sharding` 端到端（均需 GPU）。
+
+---
+
 # 三、全量对账（ground truth，按注册表差集自动统计）
 
 > 数据来源：`swift.dataset.register.DATASET_MAPPING`（legacy，导入 llm+mllm 后）vs `swift.dev.dataset.DATASET_MAPPING`（dev）。以 ModelScope id 为对账主键。
@@ -623,7 +664,7 @@ dev 完成的是：**「从 hub 拉数据 → 标准 messages 行 → input_ids 
 
 机制层只剩**下载重试 `retry=3`**（抗网络抖动，不是正确性问题）。多卡串行化已全部接上，用的是 `twinkle.utils.processing_lock` 而非 `safe_ddp_context`。
 
-**真正剩下的不是「缺机制」，而是「未接线」**：`swift/dev/builders/dataset.py`、`recipe/cached_dataset.py`、`recipe/quantize.py` 仍 `from swift.dataset import load_dataset`，dev/dataset 目前只有测试在调用。接线本身卡在 template（`EncodePreprocessor` 需要 template，即阶段 2 下半的阻塞）。
+**接线已完成**：`swift/dev/builders/dataset.py`、`recipe/cached_dataset.py`、`recipe/quantize.py` 都已走 `swift.dev.dataset.load_dataset`（曾卡在 template 的 `EncodePreprocessor` 已随 dev template 落地）。DataLoader 那一段在批次 9 换成了 twinkle `DataLoader`，`swift/dev/legacy_dataloader/` 已删除——dev 的数据路径不再 import 任何 `swift.dataset` / `swift.dataloader`。
 
 ---
 

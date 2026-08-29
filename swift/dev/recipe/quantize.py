@@ -133,7 +133,7 @@ def _run_calibration(
     from twinkle.quantizer import get_quantizer
 
     from swift.model import save_checkpoint
-    from swift.utils import HfConfigFactory
+    from swift.dev.utils import HfConfigFactory
 
     if dataset_config is None or not dataset_config.dataset:
         raise ValueError(f'quant_method={quant_method!r} is calibration-based and needs '

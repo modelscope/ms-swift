@@ -306,7 +306,7 @@ def _set_thread_count(convert_config: ConvertConfig, model, model_config: ModelC
         return
     import torch
 
-    from swift.utils import get_n_params_grads
+    from swift.dev.utils import get_n_params_grads
 
     dtype = _dtype(model_config.torch_dtype) or torch.float32
     checkpoint_size = sum(get_n_params_grads(model)[0]) * torch.finfo(dtype).bits // 8e9

@@ -83,7 +83,7 @@ def args_to_configs(
 def sft_main(args: Optional[List[str]] = None) -> List[dict]:
     from swift import SftArguments
     from swift.dev.recipe import run_sft
-    from swift.utils import parse_args
+    from swift.dev.utils import parse_args
 
     if isinstance(args, SftArguments):
         sft_args = args

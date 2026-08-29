@@ -94,7 +94,7 @@ def test_get_reward_funcs_resolves_orms_and_callables():
         return [1.0] * len(completions)
 
     funcs, names = get_reward_funcs(['format', my_reward])
-    from swift.rewards.orm import Format
+    from swift.dev.rewards.orm import Format
     assert isinstance(funcs[0], Format) and names[0] == 'Format'  # name -> orms instance
     assert funcs[1] is my_reward and names[1] == 'my_reward'  # callable passthrough
     with pytest.raises(ValueError, match='not registered'):
@@ -158,21 +158,34 @@ def test_rollout_shifted_key_matches_template():
     assert SHIFTED_KEY == DevMixin.SHIFTED_KEY
 
 
-def test_extract_chosen_logps_raises_on_missing_logprobs():
+def test_rollout_sample_build_raises_on_missing_logprobs():
     """old_logps must never be silently padded: 0.0 is a legal logprob (p=1.0), so padding a
-    missing/short list would corrupt the importance ratio instead of failing."""
+    missing/short list would corrupt the importance ratio instead of failing.
+
+    Drives ``_samples_from_responses`` with stub twinkle SampleResponses (no vLLM, no GPU): it is the
+    one place that turns ``sequence.logprobs`` into old_logps, so the length check belongs there."""
+    from types import SimpleNamespace
+
     from swift.dev.rollout import RolloutEngine
 
-    extract = RolloutEngine._extract_chosen_logps
+    def _response(tokens, logprobs, prompt_tokens=(1, 2)):
+        sequence = SimpleNamespace(tokens=list(tokens), logprobs=logprobs, decoded='x')
+        return SimpleNamespace(prompt_token_ids=list(prompt_tokens), sequences=[sequence])
+
+    build = RolloutEngine._samples_from_responses
     # exact match is the only accepted shape
-    assert extract({'content': [{'logprob': -0.5}, {'logprob': -1.5}]}, 2) == [-0.5, -1.5]
-    assert extract(None, 0) == []
-    # logprobs not requested at all -> empty content while tokens exist
+    samples = build([_response([7, 8], [-0.5, -1.5])])
+    assert [sample.old_logps for sample in samples] == [[-0.5, -1.5]]
+    assert samples[0].encoded['input_ids'] == [1, 2, 7, 8]
+    # logprobs not requested at all -> empty list while tokens exist
     with pytest.raises(RuntimeError, match='logprobs misaligned'):
-        extract(None, 3)
+        build([_response([7, 8, 9], None)])
     # short list (partial logprobs) is equally fatal
     with pytest.raises(RuntimeError, match='logprobs misaligned'):
-        extract({'content': [{'logprob': -0.5}]}, 2)
+        build([_response([7, 8], [-0.5])])
+    # no prompt tokens at all means the sampler ran without a template -> also fatal, not guessed
+    with pytest.raises(RuntimeError, match='no prompt_token_ids'):
+        build([_response([7], [-0.5], prompt_tokens=())])
 
 
 # ----------------------------------------------------------------------

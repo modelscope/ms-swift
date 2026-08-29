@@ -130,9 +130,23 @@ def _load_kwargs(dataset_config: DatasetConfig) -> dict:
     """Full load_dataset kwargs, mirroring legacy DataArguments.get_dataset_kwargs (data_args.py).
 
     The previous build_dataset passed only 6 of these; interleave_prob / stopping_strategy /
-    shuffle_buffer_size / columns / use_hf / hub_token / download_mode / remove_unused_columns /
-    disable_auto_column_mapping / model_name / model_author were silently dropped.
+    shuffle_buffer_size / columns / use_hf / hub_token / download_mode / model_name / model_author
+    were silently dropped.
+
+    ``remove_unused_columns`` / ``disable_auto_column_mapping`` are NOT forwarded: the dev dataset
+    framework has no switch for either because it already behaves the way both DEFAULTS ask for -- its
+    preprocessors always drop the source columns they consumed (dataset/preprocessor/base.py), and the
+    declared plus user ``columns`` renames are always applied (dataset/loader/base.py). A non-default
+    request cannot be honored, so it is refused rather than accepted and ignored.
     """
+    if not dataset_config.remove_unused_columns:
+        raise ValueError('remove_unused_columns=False is not supported by the dev dataset framework: its '
+                         'preprocessors always drop the source columns they consumed. Drop the flag, or keep '
+                         'the extra columns by loading the dataset without a preprocessor.')
+    if dataset_config.disable_auto_column_mapping:
+        raise ValueError('disable_auto_column_mapping=True is not supported by the dev dataset framework: a '
+                         "dataset's `columns` renames are part of its loader declaration and always apply. "
+                         'Pass `columns` to override individual names instead.')
     return dict(
         seed=dataset_config.data_seed,
         num_proc=dataset_config.dataset_num_proc,
@@ -148,8 +162,6 @@ def _load_kwargs(dataset_config: DatasetConfig) -> dict:
         strict=dataset_config.strict,
         model_name=dataset_config.model_name,
         model_author=dataset_config.model_author,
-        remove_unused_columns=dataset_config.remove_unused_columns,
-        disable_auto_column_mapping=dataset_config.disable_auto_column_mapping,
     )
 
 
@@ -164,8 +176,6 @@ def _build_split_loader(raw: Any,
                         is_val: bool,
                         cached: Optional[list] = None) -> Any:
     """Encode -> merge cached -> optional pack -> dataloader for one split (None+no cache -> None)."""
-    from swift.dev.legacy_dataloader import build_dataloader, identity_collate
-
     if raw is None and not cached:
         return None
 
@@ -216,10 +226,6 @@ def _build_split_loader(raw: Any,
     #    load-time dataset shuffle applied above. Eval never reshuffles.
     batch_size = (train_config.per_device_eval_batch_size if is_val else train_config.per_device_train_batch_size)
     dl_shuffle = (not is_val) and dataset_config.train_dataloader_shuffle
-    # Only the TRAIN loader is resumable (deterministic epoch-aware skip). Eval never resumes.
-    # Iterable/streaming datasets cannot support deterministic resume -> not resumable.
-    # (run_sft rejects streaming+resume up front.)
-    resumable = (not is_val) and (not dataset_config.streaming)
     # group_by_length: batch similar-length samples to cut padding. Mirrors legacy swift
     # (trainers/mixin.py:1306-1309): only applied on the map-style TRAIN loader, and it reads a
     # `lengths` column off the (eagerly-encoded) dataset. Legacy also DISABLES it for eval
@@ -238,27 +244,57 @@ def _build_split_loader(raw: Any,
         logger.warning('`group_by_length=True` is incompatible with `data_sharding=True`. '
                        'Setting `data_sharding=False` to enable length grouping.')
         data_sharding = False
-    from swift.dev.builders.model import build_device_mesh
-    dp_shard_in_loader = _dp_shard_in_loader(distributed_config)
-    # Only the loader-side sharding path needs the layout, and build_device_mesh requires
-    # nproc_per_node -- which non-Megatron configs are not obliged to set -- so build it on demand.
-    device_mesh = build_device_mesh(distributed_config) if dp_shard_in_loader else None
-    return build_dataloader(
+
+    # twinkle's DataLoader is handed the GLOBAL batch and slices it per DP rank (its DeviceMeshSampler),
+    # unlike legacy which received the per-device batch and sharded internally. So it gets
+    # per_device * dp and the mesh does the split (worker-fetcher). See _twinkle_loader_layout.
+    global_batch_size, device_mesh = _twinkle_loader_layout(distributed_config, batch_size)
+
+    from twinkle.dataloader import DataLoader
+    # twinkle's DataLoader is inherently resumable (skip_consumed_samples / get_state); the training
+    # loop decides whether to skip, so there is no separate resumable flag. Eval simply never resumes.
+    return DataLoader(
         enc,
-        collate_fn=identity_collate,
-        batch_size=batch_size,
-        shuffle=dl_shuffle and not dataset_config.streaming,
-        drop_last=_drop_last(distributed_config, is_val=is_val),
+        batch_size=global_batch_size,
+        device_mesh=device_mesh,
         data_seed=dataset_config.data_seed,
         group_by_length=group_by_length,
         lengths=lengths,
         data_sharding=data_sharding,
+        collate_fn=_identity_collate,
+        shuffle=dl_shuffle and not dataset_config.streaming,
+        drop_last=_drop_last(distributed_config, is_val=is_val),
         num_workers=(dataset_config.dataloader_num_workers or 0),
         pin_memory=dataset_config.dataloader_pin_memory,
-        resumable=resumable,
-        dp_shard_in_loader=dp_shard_in_loader,
-        device_mesh=device_mesh,
     )
+
+
+def _identity_collate(batch):
+    """Return the batch as a ``list[InputFeature]`` unchanged; dev collates inside the model forward."""
+    return list(batch)
+
+
+def _twinkle_loader_layout(distributed_config: DistributedConfig, per_device_batch_size: int) -> tuple:
+    """``(global_batch_size, loader_device_mesh)`` for twinkle's ``DataLoader``.
+
+    twinkle's DataLoader takes the GLOBAL batch and slices it across DP ranks (its DeviceMeshSampler),
+    so it is given ``per_device * dp_world_size`` and the mesh does the per-rank split. The DP layout
+    is a pure function of the config (``build_device_mesh``):
+
+      - local mode: the loader owns DP sharding, so it is given the DeviceMesh and each rank takes its
+        own slice (worker-fetcher). ``nproc_per_node`` MUST be set for a multi-GPU local run -- it
+        sizes the DP layout; without it dp defaults to 1 (single process) and no sharding happens.
+      - ray mode: the loader is a bare driver loader (``device_mesh=None``); the DP scatter happens
+        later in ``model.forward_backward(dispatch='slice_dp')``, so only the global batch WIDTH is
+        needed here.
+    """
+    if distributed_config.nproc_per_node is None:
+        return per_device_batch_size, None
+    from swift.dev.builders.model import build_device_mesh
+    mesh = build_device_mesh(distributed_config)
+    global_batch_size = per_device_batch_size * mesh.data_world_size
+    device_mesh = None if distributed_config.mode == 'ray' else mesh
+    return global_batch_size, device_mesh
 
 
 def _concat_with_cached(enc: Any, cached: list, *, encode_mode: Optional[str]) -> Any:
@@ -344,29 +380,6 @@ def _extract_lengths(enc: Any) -> list:
                      'requirement (it reads train_dataset[\'lengths\']).')
 
 
-def _dp_shard_in_loader(distributed_config: DistributedConfig) -> bool:
-    """Should the dataloader shard by data-parallel rank itself? (config-derived, no env/probe)
-
-    Three cases, all read from DistributedConfig (mode + backend) -- never from env vars or runtime
-    state. This matters because on the DRIVER (where build_dataset runs) the TWINKLE_MODE env var is
-    unset even in ray mode (twinkle only sets it on workers), so an env probe would misreport 'local'
-    and double-shard against slice_dp. DistributedConfig.mode is the user/CLI-declared intent:
-
-      - mode=='ray'            -> False. The dataloader is a bare driver loader; DP scatter happens
-                                  later in model.forward_backward(dispatch='slice_dp'). (This is why
-                                  the twinkle cookbook uses a plain dataloader in ray mode.)
-      - mode=='local' + megatron -> True. No driver to scatter (slice_dp no-ops locally), so the
-                                  dataloader owns DP sharding and takes the DP rank from the
-                                  DeviceMesh (global-rank sharding is wrong once TP/PP/CP>1).
-      - mode=='local' + hf     -> False. TP/PP/CP==1, so the global-rank BatchSamplerShard already
-                                  equals the DP shard.
-    """
-    if distributed_config.mode == 'ray':
-        return False
-    from swift.dev.builders.model import is_megatron_backend
-    return is_megatron_backend(distributed_config)
-
-
 def _drop_last(distributed_config: DistributedConfig, *, is_val: bool) -> bool:
     """Drop a trailing partial batch? megatron yes, hf no -- matching legacy on both.
 
@@ -396,7 +409,7 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
       - stream -> EncodePreprocessor.map (streaming pre-tokenize).
       - eager  -> pre-tokenize via map. The 'split' truncation strategy expands one sample into
                   many, so it must fully encode with EncodePreprocessor; otherwise use
-                  AddLengthPreprocessor, which keeps the raw row and only adds a `lengths` column
+                  MeasurePreprocessor, which keeps the raw row and only adds a `lengths` column
                   (rows are encoded later by the lazy/collate path).
     """
     from swift.dev.dataset import EncodePreprocessor, LazyLLMDataset, MeasurePreprocessor
@@ -411,7 +424,7 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
         return LazyLLMDataset(raw, template.encode, strict=strict, random_state=random_state)
 
     # eager / stream: 'split' needs a full encode (emits multiple samples per input); otherwise
-    # AddLengthPreprocessor only writes `lengths` and leaves rows raw.
+    # MeasurePreprocessor only writes `lengths` and leaves rows raw.
     if truncation_strategy == 'split':
         preprocessor = EncodePreprocessor(template)
     else:

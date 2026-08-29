@@ -35,6 +35,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from swift.dev.rollout import RolloutEngine
+
 if TYPE_CHECKING:
     from swift.dev.config import (
         CheckpointConfig,
@@ -116,23 +118,23 @@ def _initialize_twinkle_rl(distributed_config: DistributedConfig,
         groups=[DeviceGroup(name=name, ranks=ranks, device_type='GPU', gpus_per_worker=1) for name, ranks in groups])
 
 
-class SamplerRollout:
-    """A weight-syncable rollout over twinkle's ``vLLMSampler``, shaped like ``RolloutEngine``.
+class SamplerRollout(RolloutEngine):
+    """A weight-syncable rollout over twinkle's ``vLLMSampler``.
 
-    Presents the ``generate(prompts, num_samples, sampling_params) -> List[RolloutSample]`` surface the
-    GRPO loop already consumes, and adds :meth:`sync_weights` (+ the colocate memory schedule) that the
-    loop calls once per step. Keeping the loop's rollout contract unchanged is deliberate: only the
-    engine and the weight-sync hook differ from the smoke path.
-
-    The training feature is rebuilt from the sampler's ``prompt_token_ids`` + ``sequence.tokens`` with
-    the SAME next-token label shift ``RolloutEngine`` applies, rather than trusting the sampler's own
-    ``new_input_feature`` labelling -- so old_logps (``sequence.logprobs``) line up with the training
-    forward exactly as in the single-engine path.
+    Adds weight sync (+ the colocate memory schedule) to the base :class:`RolloutEngine`: the GRPO
+    loop calls :meth:`sync_weights` once per step, BEFORE the rollout, so the behaviour policy tracks
+    the trained one (correct GRPO). Everything else -- ``generate`` and the training-feature assembly
+    with the next-token label shift -- is inherited unchanged, so the rollout contract lives in one
+    place. Unlike the base engine it is handed an already-built sampler (placed on its own
+    ``remote_group``) plus the trainer model, rather than building a sampler from a model id.
     """
 
     def __init__(self, model: Any, sampler: Any, *, colocate: bool, platform: str = 'GPU'):
         from twinkle.checkpoint_engine import CheckpointEngineManager
 
+        # NB: deliberately does NOT call RolloutEngine.__init__ (which would build a fresh sampler);
+        # the sampler is built and placed by run_grpo and injected here. generate()/shutdown() only
+        # touch self.sampler, so they work against the injected one.
         self.model = model
         self.sampler = sampler
         self.colocate = colocate
@@ -160,56 +162,6 @@ class SamplerRollout:
         if self.colocate:
             self.sampler.sleep()
             self.model.reload_to_gpu()
-
-    def generate(self,
-                 prompts: List[List[dict]],
-                 num_samples: int = 1,
-                 sampling_params: Optional[dict] = None) -> List[Any]:
-        """Generate ``num_samples`` completions per prompt as RolloutSample objects (grouped by prompt)."""
-        from twinkle.data_format import SamplingParams, Trajectory
-
-        from swift.dev.rollout import SHIFTED_KEY, RolloutSample
-
-        sp = dict(sampling_params or {})
-        sp.setdefault('temperature', 1.0)
-        sp.setdefault('max_tokens', 32)
-        # logprobs=0 -> the sampled token's own logprob (== old_logps); num_samples -> the GRPO group.
-        sp['logprobs'] = sp.get('logprobs', 0)
-        sp['num_samples'] = num_samples
-        params = SamplingParams(**sp)
-
-        trajectories = [Trajectory(messages=list(messages)) for messages in prompts]
-        responses = self.sampler.sample(trajectories, params)
-
-        out: List[RolloutSample] = []
-        for pidx, response in enumerate(responses):
-            prompt_tokens = list(response.prompt_token_ids or [])
-            if not prompt_tokens:
-                raise RuntimeError('vLLMSampler returned no prompt_token_ids; cannot build the RL training feature. '
-                                   'The sampler must run with a template set (set_template) so the prompt is encoded.')
-            for seq in response.sequences:
-                response_tokens = list(seq.tokens or [])
-                aligned = [-100] * len(prompt_tokens) + response_tokens
-                # Next-token shift, identical to RolloutEngine: logits[i] predicts token[i+1], so the
-                # training forward's logps align with the sampler's per-token old_logps.
-                labels = list(aligned[1:]) + [-100]
-                encoded = {'input_ids': prompt_tokens + response_tokens, 'labels': labels, SHIFTED_KEY: True}
-                old_logps = [float(lp) for lp in (seq.logprobs or [])]
-                if len(old_logps) != len(response_tokens):
-                    raise RuntimeError(f'rollout logprobs misaligned: {len(old_logps)} logprobs for '
-                                       f'{len(response_tokens)} tokens. These are old_logps; a mismatch would '
-                                       'silently corrupt the GRPO importance ratio, so it is fatal.')
-                out.append(
-                    RolloutSample(
-                        encoded=encoded,
-                        response_token_ids=[response_tokens],
-                        rollout_logprobs=[old_logps],
-                        prompt_id=str(pidx),
-                        decoded=seq.decoded or ''))
-        return out
-
-    def shutdown(self) -> None:
-        self.sampler.shutdown()
 
 
 def run_grpo(

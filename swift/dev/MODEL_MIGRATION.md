@@ -469,7 +469,7 @@ legacy `DeepseekLoader.get_model` 仅对每个 MLP 做 `patch_output_to_input_de
 | `megrez_omni` | remote-code `MegrezO` + `delegate_to_submodel('llm')`；processor 由 model 创建 → `build_processor` 实例化 model 取 `_get_or_init_processor()`（processor-from-model 反转） |
 | `jina_reranker_m0` | remote-code `AutoModel` + `task_type='reranker'`；`process_model` 绑定 forward 包装（`SequenceClassifierOutputWithPast`，logit_bias 2.65）+ `padding_free_fn` |
 | `qwen2_5_omni`/`qwen3_omni_moe` | 继承 `Qwen2VLLoader` 复用 env/global_vars；`delegate_to_submodel('thinker')` + talker 配置；**丢弃 `patch_get_input_embeddings`/`_no_split_modules`**；qwen3 的 `_compat_qwen3_omni_mixed_data` forward fork → `apply_vision_keep_alive` |
-| `minicpmv4_6` | transformers-native `AutoModelForImageTextToText`（需 >=5.7）；`build_model` 保留 `_patch_qwen3_5_linear_attention_sequence_parallel`（linear-attn SP，真实需求） |
+| `minicpmv4_6` | transformers-native `AutoModelForImageTextToText`（需 >=5.7）；`build_model` 原本保留 `_patch_qwen3_5_linear_attention_sequence_parallel`，**后续已删除该调用**（见末尾「Patch 去 legacy」）|
 
 反查未污染：`Qwen2ForCausalLM=[qwen2, qwen2_gte]`、`Gemma4ForConditionalGeneration=[gemma4]`（thinking 变体 `architectures=[]` 正确排除）、reward/prm/omni/megrez 各自唯一。
 
@@ -498,7 +498,7 @@ legacy `DeepseekLoader.get_model` 仅对每个 MLP 做 `patch_output_to_input_de
 | `llava_onevision1_5` | **之前的分类是错的**：我曾归入 git_clone，实际 requires 是 `transformers>=4.53.0`（floor）+ `qwen_vl_utils`（已装）——从未版本死。loader 三件事里两件废弃（`_no_split_modules` 是 device_map hint、`patch_get_input_embeddings` 是 reentrant 兼容），`get_class_from_dynamic_module` 仅为设置前者而存在 → g7 `trust_remote_code` 即可。保留 `vision_start_token_id=151652` | ✅ 可用 |
 | `phi4_multimodal` | pin `<4.49` 守的是 remote-code `Phi4MMForCausalLM`。**tf5.5 自带原生端口** `transformers.models.phi4_multimodal` → 改用 `Phi4MultimodalForCausalLM`，pin 变 `>=5.0`，不需 trust_remote_code。三处差异：原生 `Phi4MultimodalProcessor` 字段已规范（legacy 六改三删的 hack 全丢）；**原生版零 LoRA 代码**（实测 `set_lora_adapter` 不存在、模块源码 0 处 `lora`）故 `set_lora_adapter(['vision','speech'])` 无处可接 → **微调语义与 legacy 不同**，模态适配从内置 adapter 激活变为普通 tuner；model_arch 按原生布局（`img_projection` 拆成 up/down 对） | ⚠️ 可用，语义有变 |
 | `qwen3_asr` | pin `==4.57.6` 的根因**已定位到单点**：`qwen_asr` 用 `@check_model_inputs()`（工厂式），tf5.x 改成裸装饰器 → import 即 `TypeError`。新增 `Qwen3ASRLoader.compat_check_model_inputs`（静态方法，只 patch `transformers.utils.generic` 一处——实测那是 tf5.5 唯一持有该符号的模块），使两种写法都可用。**已实测**：shim 后 `qwen_asr` import 成功、`Qwen3ASRForConditionalGeneration`/`Config`/`Processor` 均可达、幂等。requires 去掉 transformers pin。残留风险已写入 docstring：shim 只恢复调用约定，`check_model_inputs` 在 5.x 负责 output_attentions/hidden_states 收集，forward 辅助输出未对真 checkpoint 验证 | ⚠️ 可加载，forward 待实跑 |
-| `qwen3_tts` | pin `<5`。`qwen_tts` **本环境未装**，用户选择不装先写 loader。保留全部真实逻辑：Auto* 三注册（`exist_ok=True`）、`_patch_qwen3_tts_forward`（**非废弃 patch，而是双通道训练本体**：text/codec 双通道 embedding 求和 + speaker embedding 注入 codec position 6 + 15 层 sub-talker embedding + sub-talker CE loss；从 legacy import 而非拷贝）、freeze `speaker_encoder`、外部 `Qwen3TTSTokenizer` 下载、delegate `get_input_embeddings`/`gradient_checkpointing_enable` 到 talker。ceiling 按与 ASR 同理由丢弃（pin 守的是包而非权重），但**无 import 级证据** | ❓ 未验证 |
+| `qwen3_tts` | pin `<5`。`qwen_tts` **本环境未装**，用户选择不装先写 loader。保留全部真实逻辑：Auto* 三注册（`exist_ok=True`）、双通道训练 patch（**非废弃 patch，而是双通道训练本体**：text/codec 双通道 embedding 求和 + speaker embedding 注入 codec position 6 + 15 层 sub-talker embedding + sub-talker CE loss；**现改用 twinkle `Qwen3TTSTrainingPatch`**，不再从 legacy import）、freeze `speaker_encoder`、外部 `Qwen3TTSTokenizer` 下载、delegate `get_input_embeddings`/`gradient_checkpointing_enable` 到 talker。ceiling 按与 ASR 同理由丢弃（pin 守的是包而非权重），但**无 import 级证据** | ❓ 未验证 |
 | `deepseek_ocr2` | pin `==4.46.3`（距 tf5.5 跳 9 个小版本）+ `easydict` 未装。loader 代码几乎全是废弃 patch（`patch_output_clone` + `patch_output_to_input_device`×3），声明很轻；但**pin 保留不动**——与 ASR 不同，这里没有定位到具体不兼容点，乐观放宽没依据。注册使 id 可解析、版本检查报真实冲突 | ❌ 版本死（已声明）|
 | `minicpmo4_5` | 家族已支持，只缺这个 id。加模板变体（`architectures=[]`，2_6 保留 `MiniCPMO` 反查所有权）。pin `==4.51.3` + `minicpmo-utils==1.0.6` 同样保留不动（无证据支持放宽） | ❌ 版本死（已声明）|
 
@@ -547,3 +547,19 @@ legacy `DeepseekLoader.get_model` 仅对每个 MLP 做 `patch_output_to_input_de
 >
 > **双层审计（归零）**：model_type 层 52 个全部有归属，悬空项 = 0。checkpoint id 层：已迁家族内缺口 81 = **77 旧量化**（用户确认不补）+ **4 版本死组内 id**（Moonlight-16B-A3B×2 `<4.49`、Mini-InternVL-Chat-4B-V1-5 / InternVL2-4B `<4.42`），待定夺项 = **0**。
 
+
+---
+
+# Patch 去 legacy：dev loader 不再 import `swift.model.models`
+
+dev loader 实际调用的 legacy patch 只有 3 个（都在 `swift/model/models/qwen.py`），本轮全部处理完，`swift/dev/model/loader/` 已不再 import 任何 `swift.model.models`：
+
+| legacy patch | 调用点 | 结论 |
+|---|---|---|
+| `_patch_qwen3_tts_forward` | `qwen.py` `Qwen3TTSLoader.process_model` | 改用 twinkle 的等价组件 `twinkle.patch.transformers_qwen3_tts.Qwen3TTSTrainingPatch`（`apply_patch(model, ...)`，持久 patch，与 legacy 的不可逆语义一致） |
+| `patch_qwen_vl_utils` | `qwen.py` 两处 `process_tokenizer` | twinkle 无等价物，**内化**为 `swift/dev/model/loader/_qwen_vl_utils.py:patch_qwen_vl_utils`（逐字移植：pixel/video env 边界 + video reader backend 替换，返回 `global_vars`） |
+| `_patch_qwen3_5_linear_attention_sequence_parallel` | `qwen.py` / `minicpm.py` 的 `build_model` | **删除调用**（用户决策）。twinkle 的 `gdn_padding_free` 只覆盖 padding-free 非 SP 分支；SP 变体不在 dev 的支持面内，与其保留一个跨仓的全局 patch，不如显式不支持 |
+
+其余原本从 legacy 借的东西也在本轮内化/换源：`swift.hub` + `safe_snapshot_download` → `swift/dev/utils/hub.py`（多卡串行用 `twinkle.utils.processing_lock` 而非 `safe_ddp_context`）、`HfConfigFactory` → `swift/dev/utils/hf_config.py`、`parse_args` / `get_n_params_grads` → `swift/dev/utils/`、`swift.version` → `swift/dev/version.py`（值必须 `>=4.0.0.dev`：legacy `load_args_from_ckpt` 靠它决定是否认 `model_type`）、`swift.tuners.Swift` → peft 原生 `PeftModel.merge_and_unload`、`swift.rewards.orms` → `swift/dev/rewards/`、`swift.rl_core.advantage` → twinkle `twinkle.advantage`（补齐 reinforce++/gdpo/kl_in_reward 后分派）、`swift.infer_engine.GRPOVllmEngine` → twinkle `vLLMSampler`（`swift/dev/rollout`）。
+
+> **未验证**（都需要 GPU/真实权重）：三个 patch 的前向、twinkle sampler 的 rollout 端到端、advantage 的多卡 GRPO。

@@ -103,7 +103,7 @@ def export_main(args: Optional[Any] = None) -> Optional[str]:
     """
     from swift.arguments import ExportArguments
     from swift.dev.recipe import export_cached_dataset, run_convert, run_merge_lora, run_quantize
-    from swift.utils import parse_args
+    from swift.dev.utils import parse_args
 
     if isinstance(args, ExportArguments):
         export_args = args

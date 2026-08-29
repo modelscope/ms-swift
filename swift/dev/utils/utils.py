@@ -2,11 +2,14 @@
 """General-purpose helpers, copied from ``swift.utils.utils`` so the dev stack is self-contained."""
 import json
 import os
+import sys
 from collections.abc import Mapping, Sequence
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from contextlib import contextmanager
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
 import torch
+from transformers import HfArgumentParser
 from transformers.utils import strtobool
 
 from .logger import get_logger
@@ -107,3 +110,47 @@ def json_parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Un
                         logger.error(f"Unable to parse json string: '{value}', and try to repair failed")
                         raise
     return value
+
+
+def deep_getattr(obj, attr: str, default=None):
+    attrs = attr.split('.')
+    for a in attrs:
+        if obj is None:
+            break
+        if isinstance(obj, dict):
+            obj = obj.get(a, default)
+        else:
+            obj = getattr(obj, a, default)
+    return obj
+
+
+@contextmanager
+def _patch_get_type_hints():
+    # Fix parsing string arguments into dicts
+    from transformers import hf_argparser
+    origin_get_type_hints = hf_argparser.get_type_hints
+
+    def get_type_hints(*args, **kwargs):
+        kwargs = origin_get_type_hints(*args, **kwargs)
+        for k, v in kwargs.items():
+            if v == Union[str, dict, type(None)]:
+                kwargs[k] = Union[dict, str, type(None)]
+        return kwargs
+
+    hf_argparser.get_type_hints = get_type_hints
+    try:
+        yield
+    finally:
+        hf_argparser.get_type_hints = origin_get_type_hints
+
+
+def parse_args(class_type: Type[_T], argv: Optional[List[str]] = None) -> Tuple[_T, List[str]]:
+    with _patch_get_type_hints():
+        parser = HfArgumentParser([class_type])
+    _ray_args = os.environ.get('RAY_SWIFT_ARGS')
+    if _ray_args:
+        argv = json.loads(_ray_args)
+    elif argv is None:
+        argv = sys.argv[1:]
+    args, remaining_args = parser.parse_args_into_dataclasses(argv, return_remaining_strings=True)
+    return args, remaining_args

@@ -38,7 +38,7 @@ class GrokLoader(ModelLoader):
     models = [('colossalai/grok-1-pytorch', 'hpcai-tech/grok-1')]
 
     def build_processor(self, model_dir: str, config, **kwargs):
-        from swift.utils import safe_snapshot_download
+        from swift.dev.utils import safe_snapshot_download
         tokenizer_dir = safe_snapshot_download(
             'AI-ModelScope/grok-1-tokenizer', download_model=False, check_local=True)
         return super().build_processor(tokenizer_dir, config, **kwargs)

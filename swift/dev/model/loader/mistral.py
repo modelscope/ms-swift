@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from transformers import AutoProcessor, AutoTokenizer
 
-from swift.utils import safe_snapshot_download
+from swift.dev.utils import safe_snapshot_download
 from .base import ModelArch, ModelLoader, register_model
 
 

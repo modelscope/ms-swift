@@ -193,3 +193,49 @@
 > - **vllm_ascend**：LoRA / memory / MoE / attention 的 vLLM-Ascend runtime 补丁 + MoE 专家 LoRA 训练校验。
 > - **model / megatron_checkpoint / utils**：NPU 上模型 forward、flash-linear-attention 可用性、ckpt load、patch-map 应用。
 
+
+---
+
+## 13. 本轮结果：dev 实际调用过的 legacy patch（3 个，已清零）
+
+上面各表是**按架构做的判断**，这一节是**按调用点实测**的结果：`swift/dev/model/loader/` 曾 import 的 legacy patch 只有 3 个，现已全部处理，dev 侧不再 import `swift.model.models`。
+
+| legacy patch | dev 侧现状 | twinkle 侧 |
+|---|---|---|
+| `qwen._patch_qwen3_tts_forward` | `Qwen3TTSLoader.process_model` 改调 `apply_patch(model, Qwen3TTSTrainingPatch())` | 已有等价组件 `twinkle.patch.transformers_qwen3_tts.Qwen3TTSTrainingPatch`，**无需改动** |
+| `qwen.patch_qwen_vl_utils` | **内化**到 `swift/dev/model/loader/_qwen_vl_utils.py`（逐字移植 env 边界 + video reader backend 替换，返回 `global_vars`） | 无等价物，未新增（属 dev 私有兼容层，不进公共 patch 域）|
+| `qwen._patch_qwen3_5_linear_attention_sequence_parallel` | **删除调用**（`qwen.py` / `minicpm.py` 的 `build_model`）| twinkle `gdn_padding_free` 只覆盖 padding-free 非 SP 分支；SP 变体 dev 不支持 |
+
+> 与上面第 6 节表格里的手写批注（「不需要了」/「已迁移」）对齐后的准确口径：`patch_qwen_vl_utils` 不是「不需要」而是**内化在 dev**；SP patch 是**放弃支持**而非迁移。
+
+### dev 侧仍在的 legacy 依赖（本轮之后的全量清单）
+
+口径：`swift/dev` 非测试代码（140 个 `.py`）里 `from swift.<legacy> import` / `import swift.<legacy>` 的**语句行数**，grep 实测。
+
+| 依赖 | 位置 | 保留理由 |
+|---|---|---|
+| `swift.template`（14 处）| `swift/dev/template/`（基类 + TEMPLATE_MAPPING）、dataset 层的 `MaxLengthError`（6 处）、`swift.template.utils.split_str_parts_by`、`model/loader/_qwen_vl_utils.py` 的 `load_file`（2 处）| template 域尚未迁移（独立任务）。注意 `MaxLengthError` **不可内化**：dev Template 继承 legacy Template，dev 各处 `isinstance(e, MaxLengthError)` 捕获的正是 legacy 抛的那个类，另建同名类会让判型失效 |
+| `swift.model`（20 处，如 `get_model_processor` / `save_checkpoint`）| recipe 层、builders | 跟随 template 一起迁（注：`swift.model.models` 已归零，loader 不再借 patch）|
+| `swift.megatron`（9 处：arguments / model / utils）| `cli/megatron.py`（3 处，仅 `MegatronSftArguments` 参数兼容）、`recipe/convert.py`（6 处，mcore 建模与权重存取）| 训练本体已不依赖：`cli/megatron.py` 只把 legacy 参数翻成 dev Config，训练走 dev `run_sft` + twinkle megatron 后端。剩下的是**参数兼容**与 **HF↔mcore 权重转换**（`get_mcore_model` / `save_mcore_checkpoint` / `load_mcore_checkpoint` / `prepare_mcore_model` / `patch_torch_dist_shard` / `test_convert_precision`），即 mcore-bridge 建模主体，本轮边界外 |
+| `swift.arguments`（3 处）| `cli/sft.py`（TYPE_CHECKING）、`cli/export.py`（一处 TYPE_CHECKING + 一处运行时 `isinstance` 判型）| dev CLI 有意接受 legacy `SftArguments`/`ExportArguments` 对象，属参数层兼容（见 ARGUMENTS_MIGRATION.md）|
+| `swift.infer_engine`（1 处）| `rewards/orm.py` 的 `InferRequest` | **仅 TYPE_CHECKING**（引号类型注解），无运行时依赖 |
+
+已归零的（运行时 import = 0）：`swift.utils`、`swift.hub`、`swift.dataset`、`swift.dataloader`、`swift.rewards`、`swift.rl_core`、`swift.tuners`、`swift.version`、`swift.model.models`、`swift.metrics`。
+
+> 早前版本此表把 `swift.template` 记作 19 处、`swift.model` 记作 30 处：那是**含测试代码**的计数，与表头声明的口径不符，已按非测试口径更正。
+
+### `swift.metrics` → twinkle `metric`（本轮补齐）
+
+`recipe/run_infer.py:compute_metric` 原本借 legacy 的 `MeanMetric` 和 `compute_rouge_bleu`。twinkle 的 metric 里只有 token-level 的 `Accuracy`（logits vs label ids），**缺**文本级评测这一类，所以在 twinkle 新增 `twinkle/metric/generation.py`：
+
+| 新增 | 作用 |
+|---|---|
+| `TextMetric` | `(prediction, reference)` 文本对的累积基类。pair 以 dict 形态过 `gather_results`（`gather_object` 会把 list/tuple 展平，用 tuple 存会被拆散），因此单进程（`device_mesh=None`）和多卡 DP 同一份代码 |
+| `ExactMatch` | 字符串全等占比 → `{'acc': float}` |
+| `RougeBleu` | jieba 分词 + rouge + nltk BLEU-4 → 四个百分比。三个库延迟 import，其余 metric 不受影响 |
+
+dev 侧因此少了一次分支：`ExactMatch() if metric == 'acc' else RougeBleu()`，其余不变。
+
+**口径已实测逐位一致**：同一批 5 条中英混合样本（含空串、无参考行），新旧 `acc` 均为 `0.2`，`rouge-1/2/l` 与 `bleu-4` 到小数第 6 位完全相同（`45.111004`）。唯一差异在**空输入**：legacy `compute_rouge_bleu([], [])` 返回四个 `0`，`RougeBleu` 返回 `{}`（与 twinkle `Accuracy` 无数据即 `{}` 的惯例一致）——`compute_metric` 在 pairs 为空时已提前 `return {}` 并告警，永远走不到那里，故 dev 行为零变化。
+
+测试：`twinkle/tests/metric/test_metrics.py` 新增 14 例（41 → 55 全绿），覆盖全对/部分/大小写与空格不做归一/多次累积/`calculate` 后自动 reset/长度不齐 assert/空 tokenize 被跳过而非记 0。

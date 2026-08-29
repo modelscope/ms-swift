@@ -1,9 +1,9 @@
 """Advantage: turn rewards into per-sequence advantages (L1 atomic API).
 
-Reuses ``swift.rl_core.advantage.compute_advantages`` — swift's backend-agnostic pure function and
-the superset implementation (grpo / rloo / reinforce++ estimators; group / batch / none / gdpo
-scaling; optional ref-KL-in-reward). This module is a thin, typed entry point over it, so callers do
-not need to build tensors by hand.
+Dispatches to twinkle's advantage estimators (``GRPOAdvantage`` / ``RLOOAdvantage`` /
+``ReinforcePlusPlusAdvantage``), which cover the full surface used here (grpo / rloo / reinforce++
+estimators; group / batch / none / gdpo scaling; optional ref-KL-in-reward). This module is a thin,
+typed entry point over them, so callers do not need to build tensors by hand.
 
 General API, not recipe-private: inputs are plain rewards (a ``[N, n_funcs]`` matrix or a ``[N]``
 list) plus the group size; nothing here knows about rollout sample classes or training loops.
@@ -15,7 +15,7 @@ from typing import List, Optional, Sequence, Union
 
 __all__ = ['compute_advantages']
 
-# Estimators / scalings supported by swift.rl_core (kept as literals for discoverability).
+# Estimators / scalings supported by twinkle.advantage (kept as literals for discoverability).
 ESTIMATORS = ('grpo', 'rloo', 'reinforce_plus_plus')
 SCALINGS = ('group', 'batch', 'none', 'gdpo')
 
@@ -29,7 +29,7 @@ def compute_advantages(rewards: Union[torch.Tensor, Sequence[float]],
                        kl_in_reward: bool = False,
                        beta: float = 0.0,
                        kl_values: Optional[torch.Tensor] = None) -> List[float]:
-    """Per-sequence advantages from rewards (delegates to ``swift.rl_core``).
+    """Per-sequence advantages from rewards (delegates to ``twinkle.advantage``).
 
     Args:
         rewards: either a ``[N, n_funcs]`` per-function reward matrix (multi-reward) or a flat ``[N]``
@@ -53,7 +53,7 @@ def compute_advantages(rewards: Union[torch.Tensor, Sequence[float]],
             mismatch, or ``kl_in_reward`` without ``kl_values``.
     """
     from swift.dev.reward import build_reward_weights
-    from swift.rl_core.advantage import compute_advantages as _compute_advantages
+    from twinkle.advantage import GRPOAdvantage, ReinforcePlusPlusAdvantage, RLOOAdvantage
 
     if advantage_estimator not in ESTIMATORS:
         raise ValueError(f'advantage_estimator {advantage_estimator!r} not in {ESTIMATORS}.')
@@ -74,12 +74,16 @@ def compute_advantages(rewards: Union[torch.Tensor, Sequence[float]],
         raise ValueError('kl_in_reward=True requires kl_values ([N] per-sample ref-model KL).')
 
     weights = build_reward_weights(reward_weights, rewards_per_func.shape[1])
-    advantages, _ = _compute_advantages(
-        rewards_per_func=rewards_per_func,
+    estimator_cls = {
+        'grpo': GRPOAdvantage,
+        'rloo': RLOOAdvantage,
+        'reinforce_plus_plus': ReinforcePlusPlusAdvantage,
+    }[advantage_estimator]
+    advantages = estimator_cls()(
+        rewards_per_func,
+        num_generations,
+        scale=scale_rewards,
         reward_weights=weights,
-        num_generations=num_generations,
-        advantage_estimator=advantage_estimator,
-        scale_rewards=scale_rewards,
         kl_in_reward=kl_in_reward,
         beta=beta,
         kl_values=kl_values,

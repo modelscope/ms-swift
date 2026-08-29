@@ -315,7 +315,7 @@ def _write_ckpt_args_json(ckpt_dir: str,
     model_meta = getattr(processor, 'model_meta', None)
     model_type = getattr(model_meta, 'model_type', None)
     template = template_config.template or getattr(model_meta, 'template', None)
-    from swift.version import __version__ as swift_version
+    from swift.dev.version import __version__ as swift_version
     args = {
         # swift_version gates model_type loading in BaseArguments.load_args_from_ckpt
         # (model_type is only honored when swift_version >= 4.0.0.dev); must be present.

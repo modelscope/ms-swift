@@ -347,17 +347,42 @@ class _RequestLog:
                 f.write(json.dumps(entry, ensure_ascii=False, default=str) + '\n')
 
 
+def _media_to_base64(mm_data: Any) -> str:
+    """Encode one media item as base64 (internalized from ``swift.infer_engine`` MultiModalRequestMixin).
+
+    Passes URLs and already-base64 strings through unchanged; only a genuine local file / PIL image /
+    raw bytes is encoded. Kept here (not in swift.dev.utils) because logging replayability is the only
+    thing that needs it, so dev carries no runtime dependency on legacy ``swift.infer_engine``.
+    """
+    import base64
+    if isinstance(mm_data, dict) and 'bytes' in mm_data:
+        mm_data = mm_data['bytes'] or mm_data['path']
+    if isinstance(mm_data, str) and not os.path.isfile(mm_data):
+        # base64 or url
+        return mm_data
+    if isinstance(mm_data, str):
+        # local_path
+        with open(mm_data, 'rb') as f:
+            bytes_ = f.read()
+    elif hasattr(mm_data, 'save'):  # PIL.Image.Image
+        import io
+        bytes_io = io.BytesIO()
+        mm_data.save(bytes_io, format='png')
+        bytes_ = bytes_io.getvalue()
+    else:
+        bytes_ = mm_data
+    return base64.b64encode(bytes_).decode('utf-8')
+
+
 def _inline_media(body: Any) -> Any:
     """Rewrite local media paths in a logged body as base64 data URIs.
 
     A log line saying ``/tmp/x.jpg`` is worthless once that file is gone, and the whole point of the
     request log is to be replayable later. URLs and existing base64 are passed through by
-    ``to_base64``, so only genuine local files are inlined.
+    ``_media_to_base64``, so only genuine local files are inlined.
     """
     if not isinstance(body, dict) or not isinstance(body.get('messages'), list):
         return body
-
-    from swift.infer_engine.protocol import MultiModalRequestMixin
 
     messages = []
     for message in body['messages']:
@@ -372,7 +397,7 @@ def _inline_media(body: Any) -> Any:
                 block = dict(block)
                 for key in ('image', 'url', 'path', 'image_url'):
                     if isinstance(block.get(key), str):
-                        encoded = MultiModalRequestMixin.to_base64(block[key])
+                        encoded = _media_to_base64(block[key])
                         block[key] = encoded if encoded.startswith(('http', 'data:')) else \
                             f'data:image/jpg;base64,{encoded}'
                         break

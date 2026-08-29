@@ -639,25 +639,20 @@ def compute_metric(results: List[Dict[str, Any]], metric: Literal['acc', 'rouge'
     """Score the first completion of each row against its reference answer.
 
     ``acc`` is exact string equality, which is what legacy's ``--metric acc`` measured -- NOT the
-    token-level ``swift.metrics.compute_acc``, which scores logits against label ids and would report a
+    token-level ``twinkle.metric.Accuracy``, which scores logits against label ids and would report a
     different (and much higher) number for the same run.
 
     Only the first completion is scored: with ``num_samples > 1`` a best-of-n score is a different
     measurement (pass@n) and reporting it as accuracy would overstate the model. Rows without a
     reference are skipped rather than counted as wrong.
     """
+    from twinkle.metric import ExactMatch, RougeBleu
+
     pairs = [(r['response'], r['labels']) for r in results if r.get('labels') is not None and r.get('response')]
     if not pairs:
         logger.warning('metric requested but no row has both a response and a reference answer.')
         return {}
     predictions, references = zip(*pairs)
-    if metric == 'acc':
-        from swift.metrics import MeanMetric
-
-        mean = MeanMetric()
-        for prediction, reference in zip(predictions, references):
-            mean.update(prediction == reference)
-        return {'acc': mean.compute()['value']}
-    from swift.metrics import compute_rouge_bleu
-
-    return compute_rouge_bleu(list(predictions), list(references))
+    scorer = ExactMatch() if metric == 'acc' else RougeBleu()
+    scorer.accumulate(predictions=list(predictions), references=list(references))
+    return scorer.calculate()

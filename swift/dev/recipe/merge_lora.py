@@ -52,20 +52,22 @@ def run_merge_lora(
         return resolved
 
     from swift.model import save_checkpoint
-    from swift.tuners import Swift
+    from peft import PeftModel
 
     model, processor = _load_base_model(model_config, device_map=device_map)
     # Built (and attached) before merging because some multimodal templates patch the model on attach;
     # the template itself is not used afterwards, only its side effect on the model.
     _build_template(template_config, processor, model)
-    for adapter in tuner_config.adapters:
-        model = Swift.from_pretrained(model, adapter)
 
     logger.info('Merge LoRA...')
-    _check_tie_word_embeddings(model)
-    Swift.merge_and_unload(model)
-    # Unwrap the SwiftModel/PeftModel shell so what gets saved is a plain transformers model.
-    model = model.model
+    # dev only ships peft adapters, so merge with peft directly instead of swift.tuners.Swift. Each
+    # adapter is wrapped, merged into the base weights, and unwound in turn: merge_and_unload returns the
+    # plain transformers model (no SwiftModel/PeftModel shell to strip afterwards), and merging
+    # sequentially is additive -- equivalent to the old loop that stacked adapters onto `model`.
+    for adapter in tuner_config.adapters:
+        peft_model = PeftModel.from_pretrained(model, adapter)
+        _check_tie_word_embeddings(peft_model)
+        model = peft_model.merge_and_unload()
 
     logger.info('Saving merged weights...')
     save_checkpoint(
@@ -128,7 +130,7 @@ def _check_tie_word_embeddings(model) -> None:
     Guarded broadly (like legacy) because it is a best-effort fix-up: peft internals differ across
     versions and a failure here must not abort an otherwise valid merge.
     """
-    from swift.utils import HfConfigFactory
+    from swift.dev.utils import HfConfigFactory
 
     config = model.config
     try:

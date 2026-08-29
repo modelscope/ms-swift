@@ -1,6 +1,6 @@
 """Reward: resolve reward functions and score completions (L1 atomic API).
 
-Reuses swift's ``swift.rewards.orms`` registry (rule-based ORMs: accuracy / format / cosine /
+Reuses swift.dev's ``swift.dev.rewards.orms`` registry (rule-based ORMs: accuracy / format / cosine /
 repetition / soft_overlong / ...) rather than reimplementing reward logic. Each ORM's contract is
 ``__call__(completions, **columns) -> List[float]``.
 
@@ -29,7 +29,7 @@ def get_reward_funcs(reward_funcs: Sequence[Any], config: Optional[Any] = None) 
     """Resolve reward specs to callables + display names.
 
     A spec is either:
-      - a name registered in ``swift.rewards.orms`` -> instantiated as ``orms[name](args=config)``
+      - a name registered in ``swift.dev.rewards.orms`` -> instantiated as ``orms[name](args=config)``
         (the ORM reads its own hyperparameters off ``config``, e.g. ``cosine_*`` / ``repetition_*``);
       - an already-callable reward function -> passed through unchanged.
 
@@ -44,14 +44,14 @@ def get_reward_funcs(reward_funcs: Sequence[Any], config: Optional[Any] = None) 
     Raises:
         ValueError: unknown name, or a spec that is neither a name nor callable.
     """
-    from swift.rewards import orms
+    from swift.dev.rewards import orms
 
     funcs: List[RewardFunc] = []
     names: List[str] = []
     for spec in reward_funcs:
         if isinstance(spec, str):
             if spec not in orms:
-                raise ValueError(f'reward function {spec!r} is not registered in swift.rewards.orms '
+                raise ValueError(f'reward function {spec!r} is not registered in swift.dev.rewards.orms '
                                  f'(available: {sorted(orms)}). Pass a registered name or a callable.')
             func = orms[spec](args=config)
             funcs.append(func)
