@@ -316,9 +316,26 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         # Extract fsdp_config dict
         self.fsdp_config = fsdp_config_dict.get('fsdp_config', {})
 
-        # Set FSDP_VERSION environment variable for accelerate to recognize FSDP2
-        fsdp_version = self.fsdp_config.get('fsdp_version', 2)
-        os.environ['FSDP_VERSION'] = str(fsdp_version)
+        # Set FSDP environment variables for accelerate
+        # Map fsdp_config keys to environment variable names
+        fsdp_env_mapping = {
+            'fsdp_version': 'FSDP_VERSION',
+            'state_dict_type': 'FSDP_STATE_DICT_TYPE',
+            'reshard_after_forward': 'FSDP_RESHARD_AFTER_FORWARD',
+            'auto_wrap_policy': 'FSDP_AUTO_WRAP_POLICY',
+            'cpu_ram_efficient_loading': 'FSDP_CPU_RAM_EFFICIENT_LOADING',
+        }
+        for config_key, env_var in fsdp_env_mapping.items():
+            if config_key in self.fsdp_config:
+                value = self.fsdp_config[config_key]
+                # Convert bool to lowercase string format expected by accelerate
+                if isinstance(value, bool):
+                    value = str(value).lower()
+                os.environ[env_var] = str(value)
+
+        # Set default FSDP_VERSION if not specified
+        if 'FSDP_VERSION' not in os.environ:
+            os.environ['FSDP_VERSION'] = '2'
 
         # Model loading happens before the Trainer/Accelerator is created, so wire up the env vars read by
         # `swift.model.utils.get_default_device_map()` and `transformers.is_fsdp_enabled()` via accelerate's
