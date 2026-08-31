@@ -4,10 +4,11 @@ requires = ["hatchling"]
 
 [dependency-groups]
 dev = [
-  "torch==2.11.0",
-  "torchvision==0.26.0",
-  "torchaudio==2.11.0",
-  "vllm==0.22.0",
+  "torch",
+  "torchvision",
+  "torchaudio",
+  "torchcodec",
+  "vllm",
   "transformers==5.8.1",
   "qwen-vl-utils==0.0.14",
   "qwen-omni-utils==0.0.9",
@@ -22,7 +23,7 @@ dev = [
   "bitsandbytes",
   "weave",
   "flash-linear-attention==0.4.2",
-  "causal-conv1d",
+  # "causal-conv1d",
 ]
 test = [
   "coverage",
@@ -119,7 +120,7 @@ url = "https://download.pytorch.org/whl/cu129"
 [[tool.uv.index]]
 explicit = true
 name = "vllm-stable"
-url = "https://wheels.vllm.ai/0.22.0/cu129"
+url = "https://wheels.vllm.ai/0.27.1/cu129"
 
 [tool.uv.sources]
 causal-conv1d = [
@@ -132,6 +133,9 @@ torchaudio = [
   {index = "pytorch-cuda", marker = "sys_platform != 'darwin'"},
 ]
 torchvision = [
+  {index = "pytorch-cuda", marker = "sys_platform != 'darwin'"},
+]
+torchcodec = [
   {index = "pytorch-cuda", marker = "sys_platform != 'darwin'"},
 ]
 vllm = [
