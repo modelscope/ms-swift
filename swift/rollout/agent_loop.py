@@ -120,14 +120,12 @@ def _run_multi_turn_impl(
             response = output.response
             response_choice = response.choices[0]
             completion = response_choice.message.content
-            is_continuations[index] = False
-            if messages[-1]['role'] == 'assistant':
-                messages[-1]['content'] += completion
-                is_continuations[index] = True
-            else:
-                messages.append({'role': 'assistant', 'content': completion})
+            is_continuations[index] = scheduler.append_assistant_completion(requests[index], completion)
 
         current_requests = [requests[index] for index in index_to_infer]
+        assistant_snapshots = [
+            scheduler.snapshot_and_materialize_assistant_messages(req) for req in current_requests
+        ]
 
         async def _gather_turn_ends():
             return list(await asyncio.gather(*[
@@ -135,15 +133,20 @@ def _run_multi_turn_impl(
                 for req, output in zip(current_requests, outputs)
             ]))
 
-        turn_results = loop.run_until_complete(_gather_turn_ends())
-        for tr, index in zip(turn_results, index_to_infer):
-            if tr.get('rollout_infos'):
-                rollout_infos[index].update(tr['rollout_infos'])
+        try:
+            turn_results = loop.run_until_complete(_gather_turn_ends())
+            for tr, index in zip(turn_results, index_to_infer):
+                if tr.get('rollout_infos'):
+                    rollout_infos[index].update(tr['rollout_infos'])
 
-        should_stops = [
-            tr.get('done', scheduler.check_finished(req, output.response.choices[0], current_turn))
-            for tr, req, output in zip(turn_results, current_requests, outputs)
-        ]
+            should_stops = [
+                tr.get('done', scheduler.check_finished(req, output.response.choices[0], current_turn))
+                for tr, req, output in zip(turn_results, current_requests, outputs)
+            ]
+            turn_result_by_index = dict(zip(index_to_infer, turn_results))
+        finally:
+            for snapshots in assistant_snapshots:
+                scheduler.restore_assistant_message_snapshots(snapshots)
 
         next_turn_index_to_infer: List[int] = []
         for stop, index, output in zip(should_stops, index_to_infer, outputs):
@@ -153,24 +156,31 @@ def _run_multi_turn_impl(
                 is_continuation = is_continuations[index]
                 response_choice = output.response.choices[0]
                 current_logprobs = extract_logprobs_from_choice(response_choice)
-                final_token_ids = response_choice.token_ids
+                step_result = turn_result_by_index[index]
+                if 'rollout_logprobs' in step_result:
+                    current_logprobs = step_result['rollout_logprobs'] or []
+                final_token_ids, final_mask = scheduler.get_response_token_data(
+                    requests[index],
+                    response_choice,
+                    is_continuation=is_continuation,
+                    response_token_ids=step_result.get('response_token_ids'),
+                    response_loss_mask=step_result.get('response_loss_mask'))
 
                 if is_continuation and response_token_ids[index]:
                     response_token_ids[index][-1].extend(final_token_ids)
-                    if response_loss_mask[index]:
-                        response_loss_mask[index][-1].extend([1] * len(final_token_ids))
+                    response_loss_mask[index][-1].extend(final_mask)
                     if rollout_logprobs[index] and current_logprobs:
                         rollout_logprobs[index][-1].extend(current_logprobs)
                 elif not response_token_ids[index]:
                     if final_token_ids:
                         response_token_ids[index] = [list(final_token_ids)]
-                        response_loss_mask[index] = [[1] * len(final_token_ids)]
+                        response_loss_mask[index] = [list(final_mask)]
                     if current_logprobs:
                         rollout_logprobs[index] = [current_logprobs]
                 else:
                     if final_token_ids:
                         response_token_ids[index].append(list(final_token_ids))
-                        response_loss_mask[index].append([1] * len(final_token_ids))
+                        response_loss_mask[index].append(list(final_mask))
                     if current_logprobs:
                         rollout_logprobs[index].append(current_logprobs)
 
@@ -206,23 +216,24 @@ def _run_multi_turn_impl(
                 continue
 
             is_continuation = is_continuations[index]
+            turn_ids, turn_mask = scheduler.get_response_token_data(
+                requests[index], output.response.choices[0], is_continuation=is_continuation)
             step_result = scheduler.step(requests[index], output.response.choices[0], current_turn)
             current_request: RolloutInferRequest = step_result['infer_request']
-            return_token_id = False
-            if 'response_token_ids' in step_result:
+            if step_result.get('response_token_ids') is not None or step_result.get('response_loss_mask') is not None:
+                turn_ids, turn_mask = scheduler.get_response_token_data(
+                    requests[index],
+                    output.response.choices[0],
+                    is_continuation=is_continuation,
+                    response_token_ids=step_result.get('response_token_ids'),
+                    response_loss_mask=step_result.get('response_loss_mask'))
+            if turn_ids:
                 if is_continuation and response_token_ids[index]:
-                    response_token_ids[index][-1].extend(step_result['response_token_ids'])
+                    response_token_ids[index][-1].extend(turn_ids)
+                    response_loss_mask[index][-1].extend(turn_mask)
                 else:
-                    response_token_ids[index].append(step_result['response_token_ids'])
-                return_token_id = True
-            if 'response_loss_mask' in step_result:
-                assert return_token_id, 'You must return response_token_ids with response_loss_mask return'
-                assert len(step_result['response_loss_mask']) == len(step_result['response_token_ids']), \
-                    'response_loss_mask must have the same length as response_token_ids'
-                if is_continuation and response_loss_mask[index]:
-                    response_loss_mask[index][-1].extend(step_result['response_loss_mask'])
-                else:
-                    response_loss_mask[index].append(step_result['response_loss_mask'])
+                    response_token_ids[index].append(turn_ids)
+                    response_loss_mask[index].append(turn_mask)
 
             if 'rollout_infos' in step_result:
                 # Always overwrite the rollout info for this step.
@@ -240,6 +251,8 @@ def _run_multi_turn_impl(
                 else:
                     rollout_logprobs[index].append(current_logprobs)
 
+            if response_token_ids[index]:
+                scheduler.set_assistant_message_token_ids(current_request, response_token_ids[index][-1])
             requests[index] = current_request
             next_turn_index_to_infer.append(index)
 
