@@ -2050,7 +2050,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template = self.template
             current_length = model_inputs['input_ids'].shape[1]
             with self._template_context(template):
-                encoded_data = [template.encode(data.to_template_dict()) for data in chunk_origin_data]
+                encoded_data = [encode_sample(data, template) for data in chunk_origin_data]
                 for ed in encoded_data:
                     ed.pop('_extra_kwargs', None)
                 chunk_model_inputs.update(
