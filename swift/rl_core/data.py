@@ -83,25 +83,26 @@ class OnPolicySample:
         return str(val) if val is not None else None
 
     def build_teacher_view(self) -> bool:
-        """Populate the OPSD teacher view from ``teacher_prompt`` + the on-policy response.
+        """Populate the OPSD teacher view from teacher-side prompt/media + the on-policy response.
 
-        OPSD scores the teacher on its OWN (teacher_prompt + same on-policy response)
-        sequence: replace the last user message with ``teacher_prompt`` and keep the
-        assistant response. Teacher and student share ``response_token_ids`` (identical
-        response tokens, only the prompt differs). Returns ``True`` when an OPSD view
-        exists (idempotent) and ``False`` when ``teacher_prompt`` is unset (non-OPSD).
+        When ``teacher_prompt`` is provided, replace the last user message with it.
+        When only ``teacher_images`` is provided, retain the student messages and vary
+        only the visual input. Teacher and student share ``response_token_ids``. Returns
+        ``True`` when either teacher-side input is explicitly provided (idempotent), and
+        ``False`` when both are unset (non-OPSD).
         """
         if self.teacher_messages is not None:
             return True
 
-        if not self.teacher_prompt:
+        if not self.teacher_prompt and self.teacher_images is None:
             return False
 
         messages = [dict(m) for m in self.messages]
-        for msg in reversed(messages):
-            if msg['role'] == 'user':
-                msg['content'] = self.teacher_prompt
-                break
+        if self.teacher_prompt:
+            for msg in reversed(messages):
+                if msg['role'] == 'user':
+                    msg['content'] = self.teacher_prompt
+                    break
 
         self.teacher_messages = messages
         return True

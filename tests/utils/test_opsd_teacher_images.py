@@ -1,11 +1,14 @@
 import copy
 import torch
 from datasets import Dataset
+from PIL import Image
 
 from swift.dataset.preprocessor.core import RowPreprocessor
+from swift.model import get_processor
 from swift.rl_core.data import GKDSample
 from swift.rlhf_trainers.gkd_helpers import build_teacher_requests, encode_gkd_samples
 from swift.rlhf_trainers.gkd_loss import TeacherOutput, gkd_loss
+from swift.template import get_template
 from swift.template.template_inputs import StdTemplateInputs
 
 
@@ -104,6 +107,30 @@ def test_explicit_empty_teacher_images_builds_text_only_teacher_view():
     assert teacher_rows[0]['pixel_values'] == []
 
 
+def test_teacher_images_without_teacher_prompt_builds_teacher_view():
+    sample = GKDSample(
+        messages=[
+            {
+                'role': 'user',
+                'content': '<image>question'
+            },
+            {
+                'role': 'assistant',
+                'content': 'rollout'
+            },
+        ],
+        images=['student'],
+        teacher_images=['teacher'],
+        response_token_ids=[[31, 32, 33]],
+    )
+    student_rows, teacher_rows, has_opsd = encode_gkd_samples([sample], _FakeTemplate())
+
+    assert has_opsd
+    assert sample.teacher_messages == sample.messages
+    assert student_rows[0]['pixel_values'] == ['student']
+    assert teacher_rows[0]['pixel_values'] == ['teacher']
+
+
 def test_different_image_counts_reencode_prompt_and_align_response():
     sample = _sample(
         student_images=[f'student-{i}' for i in range(8)],
@@ -118,6 +145,33 @@ def test_different_image_counts_reencode_prompt_and_align_response():
     student_response = [token for token in student_rows[0]['labels'] if token != -100]
     teacher_response = [token for token in teacher_rows[0]['labels'] if token != -100]
     assert student_response == teacher_response == [31, 32, 33]
+
+
+def test_real_qwen2_vl_template_handles_fewer_teacher_images_than_tags():
+    processor = get_processor('Qwen/Qwen2-VL-2B-Instruct')
+    template = get_template(processor)
+    image = Image.new('RGB', (28, 28), 'red')
+    sample = GKDSample(
+        messages=[
+            {
+                'role': 'user',
+                'content': '<image>question'
+            },
+            {
+                'role': 'assistant',
+                'content': 'rollout'
+            },
+        ],
+        images=[image],
+        teacher_prompt='<image><image>privileged question',
+        teacher_images=[image],
+        response_token_ids=[[31, 32, 33]],
+    )
+
+    _, teacher_rows, has_opsd = encode_gkd_samples([sample], template)
+
+    assert has_opsd
+    assert teacher_rows[0]['image_grid_thw'].shape[0] == 1
 
 
 def test_teacher_request_uses_teacher_images():
