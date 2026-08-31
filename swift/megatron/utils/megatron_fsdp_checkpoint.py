@@ -3,10 +3,15 @@
 
 import copy
 import os
+
 import torch
 import torch.distributed.checkpoint as torch_dist_checkpoint
 from megatron.core import mpu
-from torch.distributed.checkpoint import FileSystemReader, FileSystemWriter, default_planner
+from torch.distributed.checkpoint import (
+    FileSystemReader,
+    FileSystemWriter,
+    default_planner,
+)
 from transformers.utils import is_torch_npu_available
 
 from swift.utils import get_logger
@@ -51,14 +56,40 @@ def select_rng_state(rng_state, data_parallel_random_init: bool):
 
 
 def _preprocess_state_dict(args, state_dict, model):
-    from megatron.training.checkpointing import preprocess_fsdp_dtensor_state_dict
-
-    # MCore maps logical model and optimizer state into the DTensor layout consumed by DCP.
+    # MindSpeed is installed together with the full Megatron-LM training package and patches
+    # its checkpoint preprocessing on NPU. Keep using that patched path there. The supported
+    # CUDA installation only depends on megatron-core, so compose the same preprocessing from
+    # its public FSDP DTensor helpers instead of importing ``megatron.training``.
     preprocess_args = copy.copy(args)
     config = getattr(model, 'config', None)
     preprocess_args.swiglu = getattr(args, 'swiglu', getattr(config, 'swiglu', False))
     preprocess_args.num_experts = getattr(args, 'num_experts', getattr(config, 'num_moe_experts', None))
-    return preprocess_fsdp_dtensor_state_dict(preprocess_args, state_dict, model)
+    if is_torch_npu_available():
+        from megatron.training.checkpointing import preprocess_fsdp_dtensor_state_dict
+
+        return preprocess_fsdp_dtensor_state_dict(preprocess_args, state_dict, model)
+
+    from megatron.core.distributed.fsdp.src.megatron_fsdp.uneven_dtensor import (
+        preprocess_state_dict_for_uneven_dtensor,
+    )
+    from megatron.core.transformer.fsdp_dtensor_checkpoint import (
+        handle_experts_in_state_dict,
+        handle_fp8_extra_state_case,
+        handle_swiglu_in_state_dict,
+    )
+
+    state_dict = state_dict.copy()
+    handle_fp8_extra_state_case(state_dict['model'])
+    if preprocess_args.swiglu:
+        optimizer_state_dict = state_dict.get('optimizer')
+        model_state_dict, optimizer_state_dict = handle_swiglu_in_state_dict(
+            model, state_dict['model'], optimizer_state_dict)
+        state_dict['model'] = model_state_dict
+        if optimizer_state_dict is not None:
+            state_dict['optimizer'] = optimizer_state_dict
+    if preprocess_args.num_experts:
+        state_dict['model'] = handle_experts_in_state_dict(state_dict['model'], preprocess_args.num_experts)
+    return preprocess_state_dict_for_uneven_dtensor(state_dict)
 
 
 def _validate_optimizer_state(state_dict):
@@ -75,7 +106,9 @@ def _validate_optimizer_state(state_dict):
 def _prepare_state_dict(args, state_dict, model, preserve_raw_state: bool = False):
     _validate_optimizer_state(state_dict)
     if is_torch_npu_available():
-        from swift.model.npu_patch.mindspeed import complete_mindspeed_fsdp_dtensor_optimizer_state
+        from swift.model.npu_patch.mindspeed import (
+            complete_mindspeed_fsdp_dtensor_optimizer_state,
+        )
         complete_mindspeed_fsdp_dtensor_optimizer_state(state_dict, model)
 
     # Preprocessing rewrites the model and optimizer containers. Keep their original structure
@@ -126,7 +159,12 @@ def load_checkpoint(args, state_dict, model, checkpoint_dir):
     storage_reader = FileSystemReader(checkpoint_dir)
     allow_partial_load = not getattr(args, 'strict_fsdp_dtensor_load', False)
     if allow_partial_load:
-        from megatron.training.checkpointing import print_diff_in_state_dicts
+        if is_torch_npu_available():
+            from megatron.training.checkpointing import print_diff_in_state_dicts
+        else:
+            from megatron.core.transformer.fsdp_dtensor_checkpoint import (
+                print_diff_in_state_dicts,
+            )
 
         # Partial loading is permissive, so report key differences before DCP skips them.
         state_dict_metadata = storage_reader.read_metadata().state_dict_metadata
