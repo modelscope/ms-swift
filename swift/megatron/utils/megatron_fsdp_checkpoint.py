@@ -3,15 +3,10 @@
 
 import copy
 import os
-
 import torch
 import torch.distributed.checkpoint as torch_dist_checkpoint
 from megatron.core import mpu
-from torch.distributed.checkpoint import (
-    FileSystemReader,
-    FileSystemWriter,
-    default_planner,
-)
+from torch.distributed.checkpoint import FileSystemReader, FileSystemWriter, default_planner
 from transformers.utils import is_torch_npu_available
 
 from swift.utils import get_logger
@@ -69,21 +64,17 @@ def _preprocess_state_dict(args, state_dict, model):
 
         return preprocess_fsdp_dtensor_state_dict(preprocess_args, state_dict, model)
 
-    from megatron.core.distributed.fsdp.src.megatron_fsdp.uneven_dtensor import (
-        preprocess_state_dict_for_uneven_dtensor,
-    )
-    from megatron.core.transformer.fsdp_dtensor_checkpoint import (
-        handle_experts_in_state_dict,
-        handle_fp8_extra_state_case,
-        handle_swiglu_in_state_dict,
-    )
+    from megatron.core.distributed.fsdp.src.megatron_fsdp.uneven_dtensor import preprocess_state_dict_for_uneven_dtensor
+    from megatron.core.transformer.fsdp_dtensor_checkpoint import (handle_experts_in_state_dict,
+                                                                   handle_fp8_extra_state_case,
+                                                                   handle_swiglu_in_state_dict)
 
     state_dict = state_dict.copy()
     handle_fp8_extra_state_case(state_dict['model'])
     if preprocess_args.swiglu:
         optimizer_state_dict = state_dict.get('optimizer')
-        model_state_dict, optimizer_state_dict = handle_swiglu_in_state_dict(
-            model, state_dict['model'], optimizer_state_dict)
+        model_state_dict, optimizer_state_dict = handle_swiglu_in_state_dict(model, state_dict['model'],
+                                                                             optimizer_state_dict)
         state_dict['model'] = model_state_dict
         if optimizer_state_dict is not None:
             state_dict['optimizer'] = optimizer_state_dict
@@ -106,9 +97,7 @@ def _validate_optimizer_state(state_dict):
 def _prepare_state_dict(args, state_dict, model, preserve_raw_state: bool = False):
     _validate_optimizer_state(state_dict)
     if is_torch_npu_available():
-        from swift.model.npu_patch.mindspeed import (
-            complete_mindspeed_fsdp_dtensor_optimizer_state,
-        )
+        from swift.model.npu_patch.mindspeed import complete_mindspeed_fsdp_dtensor_optimizer_state
         complete_mindspeed_fsdp_dtensor_optimizer_state(state_dict, model)
 
     # Preprocessing rewrites the model and optimizer containers. Keep their original structure
@@ -162,9 +151,7 @@ def load_checkpoint(args, state_dict, model, checkpoint_dir):
         if is_torch_npu_available():
             from megatron.training.checkpointing import print_diff_in_state_dicts
         else:
-            from megatron.core.transformer.fsdp_dtensor_checkpoint import (
-                print_diff_in_state_dicts,
-            )
+            from megatron.core.transformer.fsdp_dtensor_checkpoint import print_diff_in_state_dicts
 
         # Partial loading is permissive, so report key differences before DCP skips them.
         state_dict_metadata = storage_reader.read_metadata().state_dict_metadata
