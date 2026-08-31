@@ -32,6 +32,7 @@ from transformers.utils import is_torch_npu_available
 from typing import Any, Callable, Dict, Optional
 
 from swift.utils import check_json_format, get_logger, init_process_group, is_master, set_device
+from . import megatron_fsdp_checkpoint as fsdp_checkpoint
 from .patcher import patch_merge_fn
 
 logger = get_logger()
@@ -97,7 +98,7 @@ def initialize_megatron(args):
         MoEAuxLossAutoScaler.set_loss_scale(torch.ones(1, device=torch.cuda.current_device()))
 
 
-def _get_rng_state():
+def _get_rng_state(fsdp_dtensor: bool = False, data_parallel_random_init: bool = False):
     """Collect rng state across data parallel ranks."""
     rng_state = {
         'random_rng_state': random.getstate(),
@@ -107,12 +108,25 @@ def _get_rng_state():
         'rng_tracker_states': tensor_parallel.get_cuda_rng_tracker().get_states()
     }
 
-    # data_parallel_random_init False
-    rng_state_list = [rng_state]
+    if fsdp_dtensor:
+        return fsdp_checkpoint.build_rng_state(
+            rng_state,
+            data_parallel_random_init=data_parallel_random_init,
+        )
+
+    if (data_parallel_random_init and torch.distributed.is_initialized() and mpu.get_data_parallel_world_size() > 1):
+        rng_state_list = [None for _ in range(mpu.get_data_parallel_world_size())]
+        torch.distributed.all_gather_object(
+            rng_state_list,
+            rng_state,
+            group=mpu.get_data_parallel_group(),
+        )
+    else:
+        rng_state_list = [rng_state]
 
     pp_rank = mpu.get_pipeline_model_parallel_rank()
-    pp_size = mpu.get_pipeline_model_parallel_world_size()
     tp_rank = mpu.get_tensor_model_parallel_rank()
+    pp_size = mpu.get_pipeline_model_parallel_world_size()
     tp_size = mpu.get_tensor_model_parallel_world_size()
     rng_state_list = ShardedObject(
         'rng_state',
@@ -128,7 +142,12 @@ def _generate_state_dict(args,
                          rng_state=None,
                          iteration=None,
                          model_sd_kwargs=None,
-                         optim_sd_kwargs=None):
+                         optim_sd_kwargs=None,
+                         fsdp_dtensor: bool = False):
+    if fsdp_dtensor and len(models) != 1:
+        raise NotImplementedError(
+            f'Megatron-FSDP fsdp_dtensor checkpointing supports exactly one model chunk, got {len(models)}. '
+            'Virtual pipeline parallel checkpointing is not supported yet.')
     model_sd_kwargs = model_sd_kwargs or {}
     state_dict = {
         'args': Namespace(**check_json_format(vars(args))),
@@ -140,11 +159,14 @@ def _generate_state_dict(args,
         key = 'model'
         if len(models) > 1:
             key = f'model{i}'
-        model_sd = models[i].sharded_state_dict(**model_sd_kwargs)
+        if fsdp_dtensor:
+            model_sd = models[i].state_dict_for_save_checkpoint()
+        else:
+            model_sd = models[i].sharded_state_dict(**model_sd_kwargs)
         state_dict[key] = model_sd
 
     if not args.no_save_optim:
-        if optimizer is not None:
+        if optimizer is not None and not getattr(optimizer, 'is_stub_optimizer', False):
             state_dict['optimizer'] = _optimizer_sharded_state_dict(optimizer, state_dict, optim_sd_kwargs or {})
         if opt_param_scheduler is not None:
             state_dict['opt_param_scheduler'] = opt_param_scheduler.state_dict()
@@ -199,8 +221,9 @@ def _filter_adapter_state_dict(state_dict, peft_format: bool, adapter_name: str 
                     continue
                 k = k.replace('base_layer.', '')
                 k = k.replace(f'modules_to_save.{adapter_name}.', '')
-                v.key = v.key.replace('base_layer.', '')
-                v.key = v.key.replace(f'modules_to_save.{adapter_name}.', '')
+                if hasattr(v, 'key'):
+                    v.key = v.key.replace('base_layer.', '')
+                    v.key = v.key.replace(f'modules_to_save.{adapter_name}.', '')
                 new_state_dict[k] = v
         state_dict[model_key] = new_state_dict
 
@@ -277,7 +300,14 @@ def save_mcore_checkpoint(
     if output_dir is None:
         output_dir = args.output_dir
     models = unwrap_model(models)
-    rng_state = _get_rng_state() if models else None
+    fsdp_dtensor = bool(models) and getattr(args, 'use_megatron_fsdp', False)
+    if fsdp_dtensor and args.async_save:
+        raise ValueError('Megatron-FSDP fsdp_dtensor checkpoint does not support async_save in Megatron-Core 0.16.')
+    rng_state = (
+        _get_rng_state(
+            fsdp_dtensor=fsdp_dtensor,
+            data_parallel_random_init=args.data_parallel_random_init,
+        ) if models else None)
     checkpoint_dir = os.path.join(output_dir, f'iter_{iteration:07d}')
     sharded_sd_metadata = get_sharded_sd_metadata(args)
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -291,17 +321,9 @@ def save_mcore_checkpoint(
         iteration=iteration,
         model_sd_kwargs={'metadata': sharded_sd_metadata},
         optim_sd_kwargs={'metadata': sharded_sd_metadata},
+        fsdp_dtensor=fsdp_dtensor,
     )
     _filter_adapter_state_dict(state_dict, peft_format)
-    if mcore_017:
-        save_strategy = TorchDistSaveShardedStrategy()
-    else:
-        from megatron.core.dist_checkpointing.serialization import get_default_save_sharded_strategy
-        save_strategy = get_default_save_sharded_strategy()
-    save_strategy = FullyParallelSaveStrategyWrapper(
-        save_strategy,
-        mpu.get_data_parallel_group(with_context_parallel=True),
-    )
     kwargs = {'content_metadata': sharded_sd_metadata}
     async_save = args.async_save
     if not models:  # save GPU memory
@@ -312,7 +334,19 @@ def save_mcore_checkpoint(
             state_dict.update(kwargs)
             torch.save(state_dict, common_path)
         async_save_request = None
+    elif fsdp_dtensor:
+        fsdp_checkpoint.save_checkpoint(args, state_dict, models[0], checkpoint_dir)
+        async_save_request = None
     else:
+        if mcore_017:
+            save_strategy = TorchDistSaveShardedStrategy()
+        else:
+            from megatron.core.dist_checkpointing.serialization import get_default_save_sharded_strategy
+            save_strategy = get_default_save_sharded_strategy()
+        save_strategy = FullyParallelSaveStrategyWrapper(
+            save_strategy,
+            mpu.get_data_parallel_group(with_context_parallel=True),
+        )
         async_save_request = dist_checkpointing.save(
             state_dict,
             checkpoint_dir,
@@ -438,7 +472,15 @@ def load_mcore_checkpoint(args,
     tracker_path = os.path.join(load_dir, 'latest_checkpointed_iteration.txt')
     iteration = _load_iteration(tracker_path)
     checkpoint_dir = os.path.join(load_dir, f'iter_{iteration:07d}')
-    state_dict = dist_checkpointing.load_common_state_dict(checkpoint_dir)
+    fsdp_dtensor = getattr(args, 'use_megatron_fsdp', False) and fsdp_checkpoint.is_checkpoint(checkpoint_dir)
+    if fsdp_dtensor:
+        state_dict = fsdp_checkpoint.load_common_state_dict(checkpoint_dir)
+        checkpoint_uses_fsdp = getattr(state_dict['args'], 'use_megatron_fsdp', False)
+        if not checkpoint_uses_fsdp:
+            raise ValueError(f'Checkpoint `{checkpoint_dir}` uses PyTorch DCP storage but was not saved as a '
+                             'Megatron-FSDP fsdp_dtensor checkpoint.')
+    else:
+        state_dict = dist_checkpointing.load_common_state_dict(checkpoint_dir)
 
     ckpt_tp_pp = (
         state_dict['args'].tensor_model_parallel_size,
@@ -450,14 +492,25 @@ def load_mcore_checkpoint(args,
     )
     mismatch_msg = f'(TP, PP) mismatch after resume ({run_tp_pp} vs {ckpt_tp_pp} from checkpoint)'
     # Determine if RNG state will be loaded
-    if (ckpt_tp_pp == run_tp_pp and not finetune and not no_load_rng
-            and not getattr(state_dict['args'], 'no_save_rng', False)):
-        gen_sd_rng_state = _get_rng_state()  # we can load the rng state
+    if not finetune and not no_load_rng and not getattr(state_dict['args'], 'no_save_rng', False):
+        if fsdp_dtensor:
+            gen_sd_rng_state = _get_rng_state(
+                fsdp_dtensor=True,
+                data_parallel_random_init=args.data_parallel_random_init,
+            )
+        elif ckpt_tp_pp == run_tp_pp:
+            gen_sd_rng_state = _get_rng_state(
+                fsdp_dtensor=False,
+                data_parallel_random_init=args.data_parallel_random_init,
+            )  # we can load the rng state
+        else:
+            gen_sd_rng_state = None
+            logger.info(f'{mismatch_msg}: RNG state will be ignored')
     else:
         gen_sd_rng_state = None
         if ckpt_tp_pp != run_tp_pp:
             logger.info(f'{mismatch_msg}: RNG state will be ignored')
-    sharded_sd_metadata = state_dict.get('content_metadata')
+    sharded_sd_metadata = get_sharded_sd_metadata(args) if fsdp_dtensor else state_dict.get('content_metadata')
     if (not finetune and not no_load_optim and not getattr(state_dict['args'], 'no_save_optim', False)):
         gen_sd_optim = optimizer
         gen_sd_opt_param_scheduler = opt_param_scheduler
@@ -482,20 +535,24 @@ def load_mcore_checkpoint(args,
         gen_sd_rng_state,
         iteration=iteration,
         model_sd_kwargs=model_sd_kwargs,
-        optim_sd_kwargs=optim_sd_kwargs)
+        optim_sd_kwargs=optim_sd_kwargs,
+        fsdp_dtensor=fsdp_dtensor)
     _filter_adapter_state_dict(sharded_state_dict, peft_format, adapter_name=adapter_name)
     model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]  # compat vpp
     for k in model_keys:
         patch_merge_fn(sharded_state_dict[k])
-    if mcore_017:
-        load_strategy = TorchDistLoadShardedStrategy()
+    if fsdp_dtensor:
+        state_dict = fsdp_checkpoint.load_checkpoint(args, sharded_state_dict, models[0], checkpoint_dir)
     else:
-        from megatron.core.dist_checkpointing.serialization import get_default_load_sharded_strategy
-        load_strategy = get_default_load_sharded_strategy(checkpoint_dir)
+        if mcore_017:
+            load_strategy = TorchDistLoadShardedStrategy()
+        else:
+            from megatron.core.dist_checkpointing.serialization import get_default_load_sharded_strategy
+            load_strategy = get_default_load_sharded_strategy(checkpoint_dir)
 
-    load_strategy = FullyParallelLoadStrategyWrapper(load_strategy,
-                                                     mpu.get_data_parallel_group(with_context_parallel=True))
-    state_dict = dist_checkpointing.load(sharded_state_dict, checkpoint_dir, load_strategy)
+        load_strategy = FullyParallelLoadStrategyWrapper(load_strategy,
+                                                         mpu.get_data_parallel_group(with_context_parallel=True))
+        state_dict = dist_checkpointing.load(sharded_state_dict, checkpoint_dir, load_strategy)
 
     if finetune:
         iteration = 0
@@ -520,11 +577,15 @@ def load_mcore_checkpoint(args,
 
     if not finetune and not no_load_rng:
         if 'rng_state' in state_dict:
-            rng_state = state_dict['rng_state']
-            if args.data_parallel_random_init:
-                rng_state = rng_state[mpu.get_data_parallel_rank()]
+            if fsdp_dtensor:
+                rng_state = fsdp_checkpoint.select_rng_state(
+                    state_dict['rng_state'],
+                    args.data_parallel_random_init,
+                )
+            elif args.data_parallel_random_init:
+                rng_state = state_dict['rng_state'][mpu.get_data_parallel_rank()]
             else:
-                rng_state = rng_state[0]
+                rng_state = state_dict['rng_state'][0]
             random.setstate(rng_state['random_rng_state'])
             np.random.set_state(rng_state['np_rng_state'])
             torch.set_rng_state(rng_state['torch_rng_state'])
@@ -537,12 +598,48 @@ def load_mcore_checkpoint(args,
     return iteration
 
 
+def _set_fsdp_tensor_parallel_attributes(param, partition_dim: int) -> None:
+    if not hasattr(param, 'tensor_model_parallel'):
+        param.tensor_model_parallel = True
+    if not hasattr(param, 'partition_dim'):
+        param.partition_dim = partition_dim
+
+
+def _ensure_fsdp_tensor_parallel_attributes(args, model) -> None:
+    """Restore TP metadata omitted when MCore builds parameters without initialization."""
+    if not getattr(args, 'use_megatron_fsdp', False):
+        return
+
+    from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear, VocabParallelEmbedding
+
+    for module in model.modules():
+        weight = getattr(module, 'weight', None)
+        if isinstance(module, (VocabParallelEmbedding, ColumnParallelLinear)) and weight is not None:
+            _set_fsdp_tensor_parallel_attributes(weight, 0)
+        elif isinstance(module, RowParallelLinear) and weight is not None:
+            _set_fsdp_tensor_parallel_attributes(weight, 1)
+        if isinstance(module, ColumnParallelLinear):
+            bias = getattr(module, 'bias', None)
+            if bias is not None:
+                _set_fsdp_tensor_parallel_attributes(bias, 0)
+
+    if getattr(args, 'expert_tensor_parallel_size', 1) > 1:
+        for name, param in model.named_parameters():
+            if not (name.startswith('experts.') or '.experts.' in name):
+                continue
+            if 'linear_fc1.weight' in name or 'linear_fc1.bias' in name:
+                _set_fsdp_tensor_parallel_attributes(param, 0)
+            elif 'linear_fc2.weight' in name:
+                _set_fsdp_tensor_parallel_attributes(param, 1)
+
+
 def wrap_model(args, models, wrap_with_ddp: bool = True):
     # Set tensor model parallel attributes if not set.
     # Only parameters that are already tensor model parallel have these
     # attributes set for them. We should make sure the default attributes
     # are set for all params so the optimizer can use them.
     for m in models:
+        _ensure_fsdp_tensor_parallel_attributes(args, m)
         for param in m.parameters():
             tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
         m.cuda(torch.cuda.current_device())
