@@ -66,6 +66,7 @@ class OnPolicySample:
 
     # --- OPSD (On-Policy Self-Distillation), shared by GKD and OPD-RL ---
     teacher_prompt: Optional[Any] = None  # OPSD: dataset ``teacher_prompt`` column (pre-collation)
+    teacher_images: Optional[List[Any]] = None  # OPSD: explicit teacher-side images; None reuses student images
     teacher_messages: Optional[Messages] = None  # OPSD: messages with teacher_prompt replacing last user
 
     @property
@@ -113,6 +114,11 @@ class OnPolicySample:
         """
         d = self._standard_fields()
         d['messages'] = self.teacher_messages
+        if self.teacher_images is not None:
+            # Templates continue consuming the canonical ``images`` key. An explicit
+            # empty list intentionally produces a text-only teacher view; None preserves
+            # legacy OPSD behavior by retaining the student's images.
+            d['images'] = self.teacher_images
         chat_template_kwargs = self.extra.get('chat_template_kwargs')
         if chat_template_kwargs is not None:
             d['chat_template_kwargs'] = chat_template_kwargs
