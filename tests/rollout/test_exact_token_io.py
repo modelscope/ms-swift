@@ -1,8 +1,8 @@
 import unittest
 from copy import deepcopy
 
-from swift.infer_engine.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage, RequestConfig,
-                                         RolloutInferRequest, RolloutOutput, UsageInfo)
+from swift.infer_engine.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage,
+                                         RequestConfig, RolloutInferRequest, RolloutOutput, UsageInfo)
 from swift.rollout.agent_loop import run_multi_turn
 from swift.rollout.multi_turn import MultiTurnScheduler
 
@@ -50,15 +50,16 @@ class Scheduler(MultiTurnScheduler):
 
 def make_choice(token_ids):
     """Build an inference response choice containing exact sampled IDs."""
-    return ChatCompletionResponseChoice(
-        0, ChatMessage('assistant', 'sampled text'), 'stop', token_ids=token_ids)
+    return ChatCompletionResponseChoice(0, ChatMessage('assistant', 'sampled text'), 'stop', token_ids=token_ids)
 
 
 def make_request():
     """Build a request with an explicit deterministic assistant prefix."""
     return RolloutInferRequest(
-        messages=[{'role': 'user', 'content': 'question'}],
-        chat_template_kwargs={'response_prefix': '<prefix>'})
+        messages=[{
+            'role': 'user',
+            'content': 'question'
+        }], chat_template_kwargs={'response_prefix': '<prefix>'})
 
 
 class NonBijectiveTokenizer:
@@ -127,10 +128,7 @@ def test_explicit_masked_prefix_is_not_duplicated():
     scheduler = Scheduler(tokenizer=PrefixTokenizer(), template=PrefixTemplate())
 
     ids, mask = scheduler.get_response_token_data(
-        make_request(),
-        make_choice([11]),
-        response_token_ids=[9, 8, 7],
-        response_loss_mask=[0, 0, 0])
+        make_request(), make_choice([11]), response_token_ids=[9, 8, 7], response_loss_mask=[0, 0, 0])
 
     assert ids == [9, 8, 7]
     assert mask == [0, 0, 0]
@@ -140,8 +138,7 @@ def test_continuation_does_not_repeat_response_prefix():
     """Treat continuation IDs as part of the current assistant message."""
     scheduler = Scheduler(tokenizer=PrefixTokenizer(), template=PrefixTemplate())
 
-    ids, mask = scheduler.get_response_token_data(
-        make_request(), make_choice([12]), is_continuation=True)
+    ids, mask = scheduler.get_response_token_data(make_request(), make_choice([12]), is_continuation=True)
 
     assert ids == [12]
     assert mask == [1]
@@ -152,10 +149,7 @@ def assert_invalid_response_loss_mask_is_rejected(loss_mask):
     scheduler = Scheduler(tokenizer=PrefixTokenizer(), template=PrefixTemplate())
 
     scheduler.get_response_token_data(
-        make_request(),
-        make_choice([11, 12]),
-        response_token_ids=[11, 12],
-        response_loss_mask=loss_mask)
+        make_request(), make_choice([11, 12]), response_token_ids=[11, 12], response_loss_mask=loss_mask)
 
 
 def make_output(token_ids, text, logprobs, finish_reason=None):
@@ -164,10 +158,11 @@ def make_output(token_ids, text, logprobs, finish_reason=None):
         0,
         ChatMessage('assistant', text),
         finish_reason,
-        logprobs={'content': [{'logprob': value} for value in logprobs]},
+        logprobs={'content': [{
+            'logprob': value
+        } for value in logprobs]},
         token_ids=token_ids)
-    response = ChatCompletionResponse(
-        'fake-model', [choice], UsageInfo(0, len(token_ids), len(token_ids)))
+    response = ChatCompletionResponse('fake-model', [choice], UsageInfo(0, len(token_ids), len(token_ids)))
     return RolloutOutput(response=response)
 
 
@@ -220,13 +215,11 @@ def test_colocate_driver_accumulates_exact_ids_masks_and_logprobs():
         assert requests[0].messages[-1] == {'role': 'user', 'content': 'observation'}
         return next(outputs_by_turn)
 
-    result = run_multi_turn(
-        [request],
-        [first_output],
-        TwoTurnScheduler(tokenizer=PrefixTokenizer(), template=PrefixTemplate()),
-        rollout_fn,
-        RequestConfig(n=1),
-        max_turns=2)
+    result = run_multi_turn([request], [first_output],
+                            TwoTurnScheduler(tokenizer=PrefixTokenizer(), template=PrefixTemplate()),
+                            rollout_fn,
+                            RequestConfig(n=1),
+                            max_turns=2)
 
     assert result[0].response_token_ids == [[9, 8, 11, 12], [9, 8, 13]]
     assert result[0].response_loss_mask == [[0, 0, 1, 1], [0, 0, 1]]
@@ -244,13 +237,11 @@ def test_colocate_completed_turn_uses_prefix_before_scheduler_mutation():
             return []
         return [second_output]
 
-    result = run_multi_turn(
-        [request],
-        [first_output],
-        MutatingPrefixScheduler(tokenizer=PrefixTokenizer(), template=PrefixTemplate()),
-        rollout_fn,
-        RequestConfig(n=1),
-        max_turns=2)
+    result = run_multi_turn([request], [first_output],
+                            MutatingPrefixScheduler(tokenizer=PrefixTokenizer(), template=PrefixTemplate()),
+                            rollout_fn,
+                            RequestConfig(n=1),
+                            max_turns=2)
 
     assert result[0].response_token_ids == [[9, 8, 11, 12], [7, 13]]
     assert result[0].response_loss_mask == [[0, 0, 1, 1], [0, 1]]
@@ -271,13 +262,7 @@ def test_colocate_driver_preserves_token_history_across_scheduler_boundary():
         inference_messages.append(deepcopy(requests[0].messages))
         return [second_output]
 
-    result = run_multi_turn(
-        [request],
-        [first_output],
-        scheduler,
-        rollout_fn,
-        RequestConfig(n=1),
-        max_turns=2)
+    result = run_multi_turn([request], [first_output], scheduler, rollout_fn, RequestConfig(n=1), max_turns=2)
 
     assert scheduler.hook_messages[0][-1] == {'role': 'assistant', 'content': 'first action'}
     assert inference_messages[0][1] == {'role': 'assistant', 'content': [9, 8, 11, 12]}
@@ -320,8 +305,7 @@ class ToolCallScheduler(Scheduler):
 def test_tool_call_scheduler_preserves_sampled_tokens_and_masks_tool_result():
     """Keep tool observations out of the loss while preserving exact history."""
     request = make_request()
-    first_output = make_output(
-        [11, 12], 'Action: calculator\nAction Input: 1 + 2\n', [-0.2, -0.4], finish_reason=None)
+    first_output = make_output([11, 12], 'Action: calculator\nAction Input: 1 + 2\n', [-0.2, -0.4], finish_reason=None)
     second_output = make_output([31, 32], 'The answer is 3', [-0.7, -0.8], finish_reason='stop')
     inference_messages = []
 
@@ -332,13 +316,11 @@ def test_tool_call_scheduler_preserves_sampled_tokens_and_masks_tool_result():
         inference_messages.append(deepcopy(requests[0].messages))
         return [second_output]
 
-    result = run_multi_turn(
-        [request],
-        [first_output],
-        ToolCallScheduler(tokenizer=ToolResultTokenizer(), template=PrefixTemplate()),
-        rollout_fn,
-        RequestConfig(n=1),
-        max_turns=2)
+    result = run_multi_turn([request], [first_output],
+                            ToolCallScheduler(tokenizer=ToolResultTokenizer(), template=PrefixTemplate()),
+                            rollout_fn,
+                            RequestConfig(n=1),
+                            max_turns=2)
 
     assert inference_messages[0][1] == {
         'role': 'assistant',
@@ -363,13 +345,11 @@ def test_colocate_driver_merges_continuation_without_repeating_prefix():
         assert requests[0].messages[-1] == {'role': 'assistant', 'content': [9, 8, 11]}
         return next(outputs_by_turn)
 
-    result = run_multi_turn(
-        [request],
-        [first_output],
-        ContinuationScheduler(tokenizer=PrefixTokenizer(), template=PrefixTemplate()),
-        rollout_fn,
-        RequestConfig(n=1),
-        max_turns=2)
+    result = run_multi_turn([request], [first_output],
+                            ContinuationScheduler(tokenizer=PrefixTokenizer(), template=PrefixTemplate()),
+                            rollout_fn,
+                            RequestConfig(n=1),
+                            max_turns=2)
 
     assert result[0].response_token_ids == [[9, 8, 11, 12]]
     assert result[0].response_loss_mask == [[0, 0, 1, 1]]

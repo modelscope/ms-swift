@@ -1,21 +1,14 @@
 import asyncio
 import sys
+import torch
 import unittest
 from contextlib import ExitStack, nullcontext
 from copy import deepcopy
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
-import torch
-
-from swift.infer_engine.protocol import (
-    ChatCompletionResponse,
-    ChatCompletionResponseChoice,
-    ChatMessage,
-    RequestConfig,
-    RolloutInferRequest,
-    UsageInfo,
-)
+from swift.infer_engine.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage,
+                                         RequestConfig, RolloutInferRequest, UsageInfo)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rlhf_trainers.grpo_trainer import GRPOTrainer
 from swift.rollout.multi_turn import MultiTurnScheduler, RolloutScheduler
@@ -62,16 +55,12 @@ class ExactTokenTemplate:
             response_mask = [1]
         return {
             'input_ids': [100, *response_ids],
-            'labels': [-100, *[token_id if mask else -100
-                               for token_id, mask in zip(response_ids, response_mask)]],
+            'labels': [-100, *[token_id if mask else -100 for token_id, mask in zip(response_ids, response_mask)]],
         }
 
     def data_collator(self, encoded_data, padding_to=None):
         self.encoded_data = encoded_data
-        return {
-            key: torch.tensor([item[key] for item in encoded_data])
-            for key in ('input_ids', 'labels')
-        }
+        return {key: torch.tensor([item[key] for item in encoded_data]) for key in ('input_ids', 'labels')}
 
 
 class AsyncTwoTurnEngine:
@@ -108,21 +97,24 @@ def make_response(token_ids, text, logprobs, finish_reason=None):
         0,
         ChatMessage('assistant', text),
         finish_reason,
-        logprobs={'content': [{'logprob': value} for value in logprobs]},
+        logprobs={'content': [{
+            'logprob': value
+        } for value in logprobs]},
         token_ids=token_ids)
     return ChatCompletionResponse('fake-model', [choice], UsageInfo(0, len(token_ids), len(token_ids)))
 
 
 def test_server_scheduler_preserves_exact_token_history():
     request = RolloutInferRequest(
-        messages=[{'role': 'user', 'content': 'question'}],
-        chat_template_kwargs={'response_prefix': '<prefix>'})
+        messages=[{
+            'role': 'user',
+            'content': 'question'
+        }], chat_template_kwargs={'response_prefix': '<prefix>'})
     engine = AsyncTwoTurnEngine([
         make_response([11, 12], 'first action', [-0.2, -0.4]),
         make_response([13], 'second action', [-0.7], finish_reason='stop'),
     ])
-    scheduler = ServerBoundaryScheduler(
-        infer_engine=engine, tokenizer=PrefixTokenizer(), template=PrefixTemplate())
+    scheduler = ServerBoundaryScheduler(infer_engine=engine, tokenizer=PrefixTokenizer(), template=PrefixTemplate())
 
     result = asyncio.run(scheduler.run(request, RequestConfig(n=1)))
 
@@ -141,16 +133,19 @@ def test_server_scheduler_preserves_exact_token_history():
 def test_multimodal_chunk_rebuild_preserves_exact_response_tokens():
     sample = GRPOSample(
         messages=[
-            {'role': 'user', 'content': 'question'},
-            {'role': 'assistant', 'content': 'decoded response'},
+            {
+                'role': 'user',
+                'content': 'question'
+            },
+            {
+                'role': 'assistant',
+                'content': 'decoded response'
+            },
         ],
         images=[object()],
         response_token_ids=[[9, 8, 11, 12]],
         response_loss_mask=[[0, 0, 1, 1]])
-    batch = GRPOBatch(
-        completion_mask=torch.ones((1, 5)),
-        truncated_mask=torch.zeros(1),
-        seq_lengths=torch.tensor([5]))
+    batch = GRPOBatch(completion_mask=torch.ones((1, 5)), truncated_mask=torch.zeros(1), seq_lengths=torch.tensor([5]))
     template = ExactTokenTemplate()
     trainer = SimpleNamespace(
         is_multimodal=True,
@@ -169,10 +164,14 @@ def test_token_backed_response_deduplicates_template_separator_overlap():
     template = object.__new__(SwiftTemplate)
     template.processor = SeparatorTokenizer()
 
-    assert template._remove_response_separator_overlap(
-        {'token_ids': [1, 9], 'loss_scale': [1, 1]}, ['<end>\n']) == [[10]]
-    assert template._remove_response_separator_overlap(
-        {'token_ids': [1, 7, 8], 'loss_scale': [1, 1, 1]}, ['<pair>\n']) == [[10]]
+    assert template._remove_response_separator_overlap({
+        'token_ids': [1, 9],
+        'loss_scale': [1, 1]
+    }, ['<end>\n']) == [[10]]
+    assert template._remove_response_separator_overlap({
+        'token_ids': [1, 7, 8],
+        'loss_scale': [1, 1, 1]
+    }, ['<pair>\n']) == [[10]]
     assert template._remove_response_separator_overlap([1, 9, 10], ['<end>\n']) == []
     no_overlap = ['<end>\n']
     assert template._remove_response_separator_overlap({'token_ids': [1, 2]}, no_overlap) is no_overlap
