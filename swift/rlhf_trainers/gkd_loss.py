@@ -253,14 +253,20 @@ def gkd_loss(
     """
     teacher_output.validate()
     s_active, t_active, num_valid = extract_active(student_logits, teacher_output, labels)
+    use_fp32 = os.getenv('SWIFT_GKD_JSD_FP32', '0') == '1'
 
     if t_active.is_topk_mode:
-        s_logits = gather_fn(s_active, t_active.topk_indices)
-        t_logits = t_active.topk_logprobs
+        # Cast before gather so the complete top-k loss path, including the
+        # gathered student logits, runs in FP32 when requested.
+        s_source = s_active.float() if use_fp32 else s_active
+        s_logits = gather_fn(s_source, t_active.topk_indices)
+        t_logits = t_active.topk_logprobs.float() if use_fp32 else t_active.topk_logprobs
         lsf, kdf = default_log_softmax, default_kl_div
     else:
-        s_logits = s_active
-        t_logits = t_active.full_logits
+        # Align vocabulary dimensions after casting, so padding and the
+        # subsequent TP-aware primitives also receive FP32 tensors.
+        s_logits = s_active.float() if use_fp32 else s_active
+        t_logits = t_active.full_logits.float() if use_fp32 else t_active.full_logits
         s_logits, t_logits = _align_vocab(s_logits, t_logits)
         lsf, kdf = log_softmax_fn, kl_div_fn
 
