@@ -35,6 +35,7 @@ class RowPreprocessor:
                                 'channel',
                                 'margin',
                                 'teacher_prompt',
+                                'teacher_images',
                                 'chat_template_kwargs',
                                 # Qwen3-TTS
                                 'ref_audios',
@@ -85,7 +86,7 @@ class RowPreprocessor:
 
     @staticmethod
     def _cast_mm_data(row: Dict[str, Any]) -> None:
-        for key in ['images', 'rejected_images']:
+        for key in ['images', 'rejected_images', 'teacher_images']:
             images = row.get(key, None)
             if images is None:
                 continue
@@ -264,7 +265,10 @@ class RowPreprocessor:
                     messages_feature = List(Json())
                     for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
                         features[key] = messages_feature
-                    features['images'] = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
+                    image_feature = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
+                    features['images'] = image_feature
+                    if 'teacher_images' in features:
+                        features['teacher_images'] = image_feature
                     features['objects'] = Json()
                     features['chat_template_kwargs'] = Json()
                 else:
@@ -282,7 +286,10 @@ class RowPreprocessor:
                     features['rejected_messages'] = messages_feature_with_loss
                     features['positive_messages'] = messages_feature
                     features['negative_messages'] = messages_feature
-                    features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
+                    image_feature = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
+                    features['images'] = image_feature
+                    if 'teacher_images' in features:
+                        features['teacher_images'] = image_feature
                     features['objects'] = {
                         'ref': Sequence(feature=Value(dtype='string'), length=-1),
                         'bbox': Sequence(feature=Sequence(feature=Value(dtype='float64'), length=-1), length=-1),
@@ -301,7 +308,7 @@ class RowPreprocessor:
 
     def _cast_pil_image(self, dataset):
         features = dataset.features
-        for col in ['images', 'rejected_images']:
+        for col in ['images', 'rejected_images', 'teacher_images']:
             if (col in features and isinstance(features[col], Image) and getattr(features[col], 'decode', False)):
                 dataset = dataset.cast_column(col, Image(decode=False))
         return dataset
