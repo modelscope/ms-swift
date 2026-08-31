@@ -7,15 +7,13 @@ from swift.infer_engine import Function
 from swift.template import Prompt
 from .base import BaseAgentTemplate
 
-_FORMAT_EXAMPLE = (
-    '<tool_call>{function-name}\n'
-    '<arg_key>{arg-key-1}</arg_key>\n'
-    '<arg_value>{arg-value-1}</arg_value>\n'
-    '<arg_key>{arg-key-2}</arg_key>\n'
-    '<arg_value>{arg-value-2}</arg_value>\n'
-    '...\n'
-    '</tool_call>\n'
-)
+_FORMAT_EXAMPLE = ('<tool_call>{function-name}\n'
+                   '<arg_key>{arg-key-1}</arg_key>\n'
+                   '<arg_value>{arg-value-1}</arg_value>\n'
+                   '<arg_key>{arg-key-2}</arg_key>\n'
+                   '<arg_value>{arg-value-2}</arg_value>\n'
+                   '...\n'
+                   '</tool_call>\n')
 
 
 class Ling3AgentTemplate(BaseAgentTemplate):
@@ -51,8 +49,7 @@ class Ling3AgentTemplate(BaseAgentTemplate):
             return super().get_toolcall(response)
         return functions
 
-    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None,
-                      user_message=None) -> str:
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [
             '# Tools\n\n'
             'You may call one or more functions to assist with the user query.\n\n'
@@ -62,16 +59,13 @@ class Ling3AgentTemplate(BaseAgentTemplate):
         for tool in tools:
             tool = self.wrap_tool(tool)
             tool_descs.append(json.dumps(tool, ensure_ascii=False))
-        tool_descs.append(
-            '</tools>\n\n'
-            'If none of the functions can be used, point it out. '
-            'If the given question lacks the parameters required by the function, '
-            'also point it out.\n'
-            'If you need to use a function, for each function call, '
-            'output the function name and arguments within the following '
-            'XML format:\n'
-            + _FORMAT_EXAMPLE
-        )
+        tool_descs.append('</tools>\n\n'
+                          'If none of the functions can be used, point it out. '
+                          'If the given question lacks the parameters required by the function, '
+                          'also point it out.\n'
+                          'If you need to use a function, for each function call, '
+                          'output the function name and arguments within the following '
+                          'XML format:\n' + _FORMAT_EXAMPLE)
         tool_section = '\n'.join(tool_descs)
         if system is not None and system.strip():
             return system.strip() + '\n' + tool_section
@@ -102,8 +96,7 @@ class Ling3AgentTemplate(BaseAgentTemplate):
         assistant_content: str,
         tool_messages,
     ) -> Tuple[str, 'Prompt']:
-        with_action = (self.keyword.action in assistant_content
-                       and self.keyword.action_input in assistant_content)
+        with_action = (self.keyword.action in assistant_content and self.keyword.action_input in assistant_content)
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
         # Close assistant turn, open OBSERVATION, then re-open ASSISTANT.
@@ -111,8 +104,7 @@ class Ling3AgentTemplate(BaseAgentTemplate):
         res = ['<|role_end|><role>OBSERVATION</role>']
         for tool_message in tool_messages:
             tool_content = tool_message['content']
-            res.append(
-                '\n<tool_response>\n' + tool_content + '\n</tool_response>')
+            res.append('\n<tool_response>\n' + tool_content + '\n</tool_response>')
         res.append('<|role_end|><role>ASSISTANT</role>\n')
         return assistant_content, res
 
@@ -122,6 +114,5 @@ class Ling3AgentTemplate(BaseAgentTemplate):
         res = ['<|role_end|><role>OBSERVATION</role>']
         for tool_message in tool_messages:
             tool_content = tool_message['content']
-            res.append(
-                '\n<tool_response>\n' + tool_content + '\n</tool_response>')
+            res.append('\n<tool_response>\n' + tool_content + '\n</tool_response>')
         return res
