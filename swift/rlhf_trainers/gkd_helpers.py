@@ -6,7 +6,6 @@ These functions are stateless: they operate on ``GKDSample`` objects and a
 outputs.  Shared by the HF and Megatron GKD trainers.
 """
 import copy
-
 import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple

@@ -1,5 +1,4 @@
 import copy
-
 import torch
 from datasets import Dataset
 
@@ -34,8 +33,14 @@ def _sample(*, student_images, teacher_images):
     teacher_image_count = len(student_images) if teacher_images is None else len(teacher_images)
     return GKDSample(
         messages=[
-            {'role': 'user', 'content': '<image>' * len(student_images) + '\nquestion'},
-            {'role': 'assistant', 'content': 'rollout'},
+            {
+                'role': 'user',
+                'content': '<image>' * len(student_images) + '\nquestion'
+            },
+            {
+                'role': 'assistant',
+                'content': 'rollout'
+            },
         ],
         images=student_images,
         teacher_prompt='<image>' * teacher_image_count + '\nprivileged question',
@@ -46,7 +51,10 @@ def _sample(*, student_images, teacher_images):
 
 def test_teacher_images_survive_preprocessing_and_sample_roundtrip():
     row = {
-        'messages': [{'role': 'user', 'content': '<image>question'}],
+        'messages': [{
+            'role': 'user',
+            'content': '<image>question'
+        }],
         'images': ['student.jpg'],
         'teacher_prompt': '<image>privileged question',
         'teacher_images': ['teacher.jpg'],
@@ -65,7 +73,10 @@ def test_teacher_images_survive_preprocessing_and_sample_roundtrip():
 
 def test_dataset_preprocessor_preserves_teacher_images_column():
     dataset = Dataset.from_dict({
-        'messages': [[{'role': 'user', 'content': '<image>question'}]],
+        'messages': [[{
+            'role': 'user',
+            'content': '<image>question'
+        }]],
         'images': [['student.jpg']],
         'teacher_prompt': ['<image>privileged question'],
         'teacher_images': [['teacher.jpg']],
