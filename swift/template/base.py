@@ -25,7 +25,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, 
 
 from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
 from .template_inputs import StdTemplateInputs, TemplateInputs
-from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
+from .utils import (Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round,
+                    get_token_backed_response_ids, split_str_parts_by)
 from .vision_utils import _check_path, load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
@@ -964,22 +965,10 @@ class Template(ProcessorMixin):
     def _tokenize(self, context, **kwargs):
         return self.tokenizer(context, return_attention_mask=False, add_special_tokens=False, **kwargs)['input_ids']
 
-    @staticmethod
-    def _get_token_backed_response_ids(response: Context) -> Optional[List[int]]:
-        if isinstance(response, dict):
-            token_ids = response.get('token_ids', response.get('input_ids'))
-        elif isinstance(response, list) and (not response or isinstance(response[0], int)):
-            token_ids = response
-        else:
-            return None
-        if not isinstance(token_ids, list) or any(not isinstance(token_id, int) for token_id in token_ids):
-            return None
-        return list(token_ids)
-
     def _remove_response_separator_overlap(self, response: Context,
                                            extra_context_list: Optional[List[Context]]) -> List[Context]:
         """Keep sampled terminal tokens while removing their overlap from a template separator."""
-        response_ids = self._get_token_backed_response_ids(response)
+        response_ids = get_token_backed_response_ids(response)
         if not response_ids or not extra_context_list:
             return extra_context_list or []
         if any(not isinstance(context, str) for context in extra_context_list):

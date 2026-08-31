@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 from swift.infer_engine.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, RequestConfig,
                                          RolloutInferRequest, RolloutOutput)
 from swift.template import Messages
+from swift.template.utils import get_token_backed_response_ids
 from swift.utils import remove_response
 from .gym_env import Env, envs
 
@@ -31,7 +32,8 @@ class RolloutScheduler(ABC):
         self._template = kwargs.get('template', None)
         self.max_turns = max_turns
 
-    def get_response_token_data(self, infer_request: 'RolloutInferRequest',
+    def get_response_token_data(self,
+                                infer_request: 'RolloutInferRequest',
                                 response_choice: 'ChatCompletionResponseChoice',
                                 is_continuation: bool = False,
                                 response_token_ids: Optional[List[int]] = None,
@@ -80,9 +82,8 @@ class RolloutScheduler(ABC):
         else:
             rollout_logprobs = []
         if rollout_logprobs and len(rollout_logprobs) != len(token_ids):
-            raise ValueError(
-                f'rollout_logprobs length ({len(rollout_logprobs)}) must match sampled token_ids '
-                f'length ({len(token_ids)})')
+            raise ValueError(f'rollout_logprobs length ({len(rollout_logprobs)}) must match sampled token_ids '
+                             f'length ({len(token_ids)})')
         return token_ids, [1] * len(token_ids), rollout_logprobs
 
     def set_assistant_message_token_ids(self, infer_request: 'RolloutInferRequest', token_ids: List[int]) -> None:
@@ -101,8 +102,8 @@ class RolloutScheduler(ABC):
             if message.get('role') != 'assistant':
                 continue
             original_content = message.get('content')
-            token_ids = original_content.get('token_ids') if isinstance(original_content, dict) else original_content
-            if not isinstance(token_ids, list) or (token_ids and not isinstance(token_ids[0], int)):
+            token_ids = get_token_backed_response_ids(original_content)
+            if token_ids is None:
                 continue
             if tokenizer is None:
                 raise RuntimeError('A tokenizer is required to materialize an ID-backed assistant response')
@@ -124,8 +125,8 @@ class RolloutScheduler(ABC):
             return False
 
         content = messages[-1].get('content')
-        token_ids = content.get('token_ids') if isinstance(content, dict) else content
-        if isinstance(token_ids, list) and (not token_ids or isinstance(token_ids[0], int)):
+        token_ids = get_token_backed_response_ids(content)
+        if token_ids is not None:
             tokenizer = self.tokenizer
             if tokenizer is None:
                 raise RuntimeError('A tokenizer is required to continue an ID-backed assistant response')

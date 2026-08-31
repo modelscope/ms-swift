@@ -123,9 +123,7 @@ def _run_multi_turn_impl(
             is_continuations[index] = scheduler.append_assistant_completion(requests[index], completion)
 
         current_requests = [requests[index] for index in index_to_infer]
-        assistant_snapshots = [
-            scheduler.snapshot_and_materialize_assistant_messages(req) for req in current_requests
-        ]
+        assistant_snapshots = [scheduler.snapshot_and_materialize_assistant_messages(req) for req in current_requests]
 
         async def _gather_turn_ends():
             return list(await asyncio.gather(*[

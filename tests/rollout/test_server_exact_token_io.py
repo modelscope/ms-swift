@@ -13,6 +13,7 @@ from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rlhf_trainers.grpo_trainer import GRPOTrainer
 from swift.rollout.multi_turn import MultiTurnScheduler, RolloutScheduler
 from swift.template import Template as SwiftTemplate
+from swift.template.utils import get_token_backed_response_ids
 
 
 class PrefixTokenizer:
@@ -178,6 +179,32 @@ def test_token_backed_response_deduplicates_template_separator_overlap():
     assert template._remove_response_separator_overlap('text response', no_overlap) is no_overlap
 
 
+def test_shared_token_backed_response_detection():
+    assert get_token_backed_response_ids([1, 2]) == [1, 2]
+    assert get_token_backed_response_ids({'token_ids': [3, 4], 'loss_scale': [1, 0]}) == [3, 4]
+    assert get_token_backed_response_ids({'input_ids': [5, 6]}) == [5, 6]
+    assert get_token_backed_response_ids({'token_ids': ['decoded']}) is None
+    assert get_token_backed_response_ids('decoded response') is None
+
+
+def test_rollout_trainer_scheduler_receives_template():
+    import swift.rlhf_trainers.rollout_mixin as rollout_mixin
+
+    scheduler_name = 'rollout_trainer_exact_token_probe'
+    tokenizer = PrefixTokenizer()
+    template = PrefixTemplate()
+    trainer = SimpleNamespace(
+        args=SimpleNamespace(multi_turn_scheduler=scheduler_name, max_turns=2, gym_env=None),
+        processing_class=tokenizer,
+        template=template)
+
+    with patch.dict(rollout_mixin.multi_turns, {scheduler_name: RayDriverProbeScheduler}):
+        rollout_mixin.RolloutTrainerMixin._prepare_scheduler(trainer)
+
+    assert trainer.multi_turn_scheduler.tokenizer is tokenizer
+    assert trainer.multi_turn_scheduler._template is template
+
+
 class RayDriverProbeScheduler(RolloutScheduler):
     pass
 
@@ -248,6 +275,12 @@ class TestServerExactTokenIO(unittest.TestCase):
 
     def test_token_backed_response_deduplicates_template_separator_overlap(self):
         test_token_backed_response_deduplicates_template_separator_overlap()
+
+    def test_shared_token_backed_response_detection(self):
+        test_shared_token_backed_response_detection()
+
+    def test_rollout_trainer_scheduler_receives_template(self):
+        test_rollout_trainer_scheduler_receives_template()
 
     def test_ray_driver_scheduler_preserves_deterministic_response_prefix(self):
         for trainer_name in ('GRPOTrainer', 'GKDTrainer'):
