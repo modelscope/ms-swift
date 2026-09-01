@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """PyTorch DCP helpers for Megatron-FSDP ``fsdp_dtensor`` checkpoints."""
 
-import copy
 import os
 import torch
 import torch.distributed.checkpoint as torch_dist_checkpoint
@@ -51,35 +50,25 @@ def select_rng_state(rng_state, data_parallel_random_init: bool):
 
 
 def _preprocess_state_dict(args, state_dict, model):
-    # MindSpeed is installed together with the full Megatron-LM training package and patches
-    # its checkpoint preprocessing on NPU. Keep using that patched path there. The supported
-    # CUDA installation only depends on megatron-core, so compose the same preprocessing from
-    # its public FSDP DTensor helpers instead of importing ``megatron.training``.
-    preprocess_args = copy.copy(args)
-    config = getattr(model, 'config', None)
-    preprocess_args.swiglu = getattr(args, 'swiglu', getattr(config, 'swiglu', False))
-    preprocess_args.num_experts = getattr(args, 'num_experts', getattr(config, 'num_moe_experts', None))
-    if is_torch_npu_available():
-        from megatron.training.checkpointing import preprocess_fsdp_dtensor_state_dict
-
-        return preprocess_fsdp_dtensor_state_dict(preprocess_args, state_dict, model)
-
     from megatron.core.distributed.fsdp.src.megatron_fsdp.uneven_dtensor import preprocess_state_dict_for_uneven_dtensor
     from megatron.core.transformer.fsdp_dtensor_checkpoint import (handle_experts_in_state_dict,
                                                                    handle_fp8_extra_state_case,
                                                                    handle_swiglu_in_state_dict)
 
+    config = getattr(model, 'config', None)
+    swiglu = getattr(args, 'swiglu', getattr(config, 'swiglu', False))
+    num_experts = getattr(args, 'num_experts', getattr(config, 'num_moe_experts', None))
     state_dict = state_dict.copy()
     handle_fp8_extra_state_case(state_dict['model'])
-    if preprocess_args.swiglu:
+    if swiglu:
         optimizer_state_dict = state_dict.get('optimizer')
         model_state_dict, optimizer_state_dict = handle_swiglu_in_state_dict(model, state_dict['model'],
                                                                              optimizer_state_dict)
         state_dict['model'] = model_state_dict
         if optimizer_state_dict is not None:
             state_dict['optimizer'] = optimizer_state_dict
-    if preprocess_args.num_experts:
-        state_dict['model'] = handle_experts_in_state_dict(state_dict['model'], preprocess_args.num_experts)
+    if num_experts:
+        state_dict['model'] = handle_experts_in_state_dict(state_dict['model'], num_experts)
     return preprocess_state_dict_for_uneven_dtensor(state_dict)
 
 
@@ -148,10 +137,7 @@ def load_checkpoint(args, state_dict, model, checkpoint_dir):
     storage_reader = FileSystemReader(checkpoint_dir)
     allow_partial_load = not getattr(args, 'strict_fsdp_dtensor_load', False)
     if allow_partial_load:
-        if is_torch_npu_available():
-            from megatron.training.checkpointing import print_diff_in_state_dicts
-        else:
-            from megatron.core.transformer.fsdp_dtensor_checkpoint import print_diff_in_state_dicts
+        from megatron.core.transformer.fsdp_dtensor_checkpoint import print_diff_in_state_dicts
 
         # Partial loading is permissive, so report key differences before DCP skips them.
         state_dict_metadata = storage_reader.read_metadata().state_dict_metadata
