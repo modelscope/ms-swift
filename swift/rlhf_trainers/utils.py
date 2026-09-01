@@ -20,6 +20,7 @@ from peft.tuners.lora import LoraLayer
 from PIL import Image
 from pydantic import BaseModel, field_validator
 from torch import nn
+from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, RandomSampler
 from transformers.utils import is_torch_npu_available
 from types import MethodType
@@ -1873,45 +1874,44 @@ def pad_logps_back_to_batch(logps_rmpad: Optional[torch.Tensor],
         # Compute actual sequence lengths
         seq_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
 
-    # Compute cumulative sequence lengths
-    cu_seqlens = torch.cumsum(torch.cat([torch.tensor([0], device=device), seq_lengths]), dim=0)
     max_seq_len = logits_to_keep  # All sequences will be padded to this length
-
-    # Initialize output tensors with padding value
-    logps_padded = torch.full((batch_size, max_seq_len), pad_value, dtype=dtype, device=device)
-    valid_mask = torch.zeros(batch_size, max_seq_len, dtype=torch.float32, device=device)
-
-    # Unflatten: assign each sequence's logps to the corresponding row
-    # Use LEFT PADDING (right-align the data) to match the standard padding convention
     logps_flat = logps_rmpad.squeeze(0)  # [total_nnz]
 
-    for i in range(batch_size):
-        start_idx = cu_seqlens[i].item()
-        end_idx = cu_seqlens[i + 1].item()
-        seq_len = int(seq_lengths[i].item())
-
-        actual_end_idx = min(end_idx, len(logps_flat))
-        actual_len = actual_end_idx - start_idx
-
-        if actual_len <= 0:
-            continue
-
-        # Left padding: place data at the RIGHT side of the row
-        # pad_len is the number of padding tokens at the beginning
-        pad_len = max_seq_len - seq_len
-
-        if actual_len < seq_len:
-            # Input data is shorter than expected seq_len
-            # This happens when logps_flat doesn't have enough data
-            # Place actual data at the rightmost positions
-            data_pad_len = max_seq_len - actual_len
-            logps_padded[i, data_pad_len:] = logps_flat[start_idx:actual_end_idx]
-            valid_mask[i, data_pad_len:] = 1.0
-        else:
-            # Normal case: seq_len tokens of data
-            logps_padded[i, pad_len:] = logps_flat[start_idx:end_idx]
+    if batch_size <= 2:
+        cu_seqlens = torch.cat((seq_lengths.new_zeros(1), seq_lengths.cumsum(0)))
+        logps_padded = torch.full((batch_size, max_seq_len), pad_value, dtype=dtype, device=device)
+        valid_mask = torch.zeros(batch_size, max_seq_len, dtype=torch.float32, device=device)
+        for i in range(batch_size):
+            start_idx = cu_seqlens[i].item()
+            end_idx = cu_seqlens[i + 1].item()
+            seq_len = int(seq_lengths[i].item())
+            actual_end_idx = min(end_idx, len(logps_flat))
+            actual_len = actual_end_idx - start_idx
+            if actual_len <= 0:
+                continue
+            pad_len = max_seq_len - actual_len if actual_len < seq_len else max_seq_len - seq_len
+            logps_padded[i, pad_len:] = logps_flat[start_idx:actual_end_idx]
             valid_mask[i, pad_len:] = 1.0
+        return logps_padded, valid_mask
 
+    lengths = seq_lengths.detach().tolist()
+    actual_lengths = []
+    remaining = logps_flat.numel()
+    for seq_len in lengths:
+        actual_lengths.append(min(max(remaining, 0), seq_len))
+        remaining -= seq_len
+
+    logps_flat = logps_flat.to(dtype=dtype)
+    sequences = torch.split(logps_flat[:sum(actual_lengths)], actual_lengths)
+    # Reverse before and after right-padding to support left-padding on older PyTorch versions.
+    logps_padded = pad_sequence([sequence.flip(0) for sequence in sequences], batch_first=True,
+                                padding_value=pad_value).flip(1)
+    if logps_padded.shape[1] < max_seq_len:
+        logps_padded = F.pad(logps_padded, (max_seq_len - logps_padded.shape[1], 0), value=pad_value)
+
+    actual_lengths = torch.tensor(actual_lengths, dtype=torch.long, device=device)
+    positions = torch.arange(max_seq_len, device=device)
+    valid_mask = (positions.unsqueeze(0) >= (max_seq_len - actual_lengths).unsqueeze(1)).to(torch.float32)
     return logps_padded, valid_mask
 
 
