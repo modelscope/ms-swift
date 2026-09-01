@@ -36,6 +36,7 @@ class MLLMModelArch:
     qwen3_asr = 'qwen3_asr'
     qwen3_tts = 'qwen3_tts'
     qwen3_5 = 'qwen3_5'
+    wemm_embedding = 'wemm_embedding'
 
     cogvlm = 'cogvlm'
     chatglm4v = 'chatglm4v'
@@ -881,6 +882,15 @@ register_model_arch(
         aligner='visual.merger',
         vision_tower='visual',
         mlp='language_model.layers.{}.mlp',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.wemm_embedding,
+        language_model=['model.language_model', 'lm_head'],
+        aligner='model.visual.merger',
+        vision_tower='model.visual',
+        mlp='model.language_model.layers.{}.mlp',
     ))
 
 

@@ -154,6 +154,7 @@ class MLLMModelType:
     qwen3_5 = 'qwen3_5'
     qwen3_5_moe = 'qwen3_5_moe'
     qwen3_5_emb = 'qwen3_5_emb'
+    wemm_embedding = 'wemm_embedding'
     qwen4_exp = 'qwen4_exp'
 
     qwen2_gme = 'qwen2_gme'

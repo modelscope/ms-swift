@@ -788,6 +788,16 @@ register_template(
         template_cls=Qwen3VLEmbTemplate,
     ))
 
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.wemm_embedding,
+        template_cls=Qwen3_5EmbTemplate,
+        default_system=None,
+        prompt=['<|im_start|>user\n{{QUERY}}<|im_end|>\n'],
+        suffix=['<embedding>'],
+        stop_words=['<embedding>'],
+    ))
+
 
 class Qwen3VLRerankerTemplate(Qwen3VLTemplate):
     instruction = 'Given a search query, retrieve relevant candidates that answer the query.'
