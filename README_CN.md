@@ -73,6 +73,7 @@
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速。
 
 ## 🎉 新闻
+- 🔥 2026.09.01: 支持腾讯混元多模态嵌入模型 [WeMM-Embedding](https://www.modelscope.cn/models/Tencent-Hunyuan/WeMM-Embedding-2B)（2B/4B/9B）的推理与训练，支持图文混合输入的向量表征，训练示例参考 [embedding 示例](examples/train/embedding)。
 - 🔥 2026-08-26：Day-0 支持 [Qwen3.8-Flash-Next](https://www.modelscope.cn/models/Qwen/Qwen3.8-Flash-Next)，训练示例请参考 [SFT 示例](examples/models/qwen4_exp/megatron_sft.sh)。
 - 🎁 2026.08.21: 支持OpenMOSS多模态模型 [MOSS-VL-Instruct-0708](https://modelscope.cn/models/openmoss/MOSS-VL-Instruct-0708)的推理与训练，支持LoRA与全参数微调，覆盖单图/多图、单视频/多视频及混合模态场景。
 - 🎁 2026.08.11: 支持多模态模型[Muse-Glimmer-30B](https://modelscope.cn/models/meta-models/Muse-Glimmer-30B)的推理与训练，Megatron-SWIFT同步支持。
