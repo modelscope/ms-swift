@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Union
 from swift.rl_core.data import GKDBatch, GKDSample
 from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_output, build_teacher_requests, encode_gkd_samples,
                                              fetch_teacher_parsed_by_routing)
-from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
+from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss, gkd_monitoring_stats
 from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
@@ -102,16 +102,31 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             is_training=True,
         )
 
-    def _compute_jsd_loss(self, student_logits, teacher_output: TeacherOutput, labels):
+    def _compute_jsd_loss(self, student_logits, teacher_output: TeacherOutput, labels, *, record_metrics=False):
         """Compute JSD loss. teacher_output.labels is always set (equals student labels when non-OPSD)."""
         shifted_labels = torch.roll(labels, shifts=-1, dims=1)
         teacher_output.labels = torch.roll(teacher_output.labels, shifts=-1, dims=1)
+        if record_metrics:
+            self._record_gkd_monitoring(student_logits, teacher_output, shifted_labels)
         if self.gkd_logits_topk is not None:
             teacher_output = teacher_output.to_topk(self.gkd_logits_topk)
         total, num_valid = gkd_loss(student_logits, teacher_output, shifted_labels, self.beta, self.temperature)
         if num_valid == 0:
             return total * 0
         return total / num_valid
+
+    def _record_gkd_monitoring(self, student_logits, teacher_output: TeacherOutput, labels) -> None:
+        stats = gkd_monitoring_stats(student_logits, teacher_output, labels, full_vocab_topk=self.gkd_logits_topk or 16)
+        packed = torch.stack([
+            stats['topk_overlap_sum'], stats['topk_overlap_count'], stats['teacher_student_gap_sum'],
+            stats['teacher_student_gap_count']
+        ])
+        packed = self.accelerator.reduce(packed, reduction='sum')
+        mode = 'train' if self.model.training else 'eval'
+        if packed[1].item() > 0:
+            self._metrics[mode]['gkd/topk_overlap'].append((packed[0] / packed[1]).item())
+        if packed[3].item() > 0:
+            self._metrics[mode]['gkd/teacher_student_gap'].append((packed[2] / packed[3]).item())
 
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
@@ -239,7 +254,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                         outputs_teacher = self.teacher_model(**t_fwd)
                 teacher_out = TeacherOutput(full_logits=outputs_teacher.logits, labels=teacher_labels)
 
-            loss = self._compute_jsd_loss(outputs_student.logits, teacher_out, model_inputs['labels'])
+            loss = self._compute_jsd_loss(
+                outputs_student.logits,
+                teacher_out,
+                model_inputs['labels'],
+                record_metrics=data_source == DataSource.STUDENT)
 
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
@@ -342,7 +361,16 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self._fetch_and_assemble_teacher_logprobs(batch_encoded_inputs)
 
     def _log_rollout(self, samples: List[GKDSample]) -> None:
-        """Student completions are logged in ``_rollout_samples``; nothing extra here."""
+        """Log multi-turn trajectory metadata for on-policy GKD rollouts."""
+        if not samples or not all(s.rollout_infos and 'num_turns' in s.rollout_infos for s in samples):
+            return
+        num_turns = self._gather_and_flatten([s.rollout_infos['num_turns'] for s in samples], flatten_level=0)
+        mode = 'train' if self.model.training else 'eval'
+        self._metrics[mode]['num_turns'].append(sum(num_turns) / len(num_turns))
+        if self.log_completions:
+            if 'num_turns' not in self._logs:
+                self._logs['num_turns'] = deque()
+            self._logs['num_turns'].extend(num_turns)
 
     @profiling_decorator
     def _prepare_inputs(self, inputs: DataType) -> Dict[str, torch.Tensor]:
@@ -378,7 +406,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.teacher_clients,
             gather_fn=self._gather_teacher_requests,
             infer_fn=lambda handle, client: self._infer_teacher_requests(
-                handle, topk=self.gkd_logits_topk, teacher_client=client),
+                handle, topk=self.gkd_logits_topk, teacher_client=client, include_sampled=True),
             scatter_fn=self._scatter_teacher_parsed,
             is_main_process=self.accelerator.is_main_process,
             tag_key=self.args.teacher_tag_key)
@@ -493,6 +521,12 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     def log(self, logs: Dict[str, float], start_time: Optional[float] = None) -> None:
         """Override log method to include completion table logging (aligned with GRPO)."""
+        mode = 'train' if self.model.training else 'eval'
+        metrics = {key: sum(values) / len(values) for key, values in self._metrics[mode].items() if values}
+        if mode == 'eval':
+            metrics = {f'eval_{key}': value for key, value in metrics.items()}
+        logs.update(metrics)
+
         # Call parent log method
         import transformers
         from packaging import version
@@ -500,6 +534,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             super().log(logs, start_time)
         else:
             super().log(logs)
+        self._metrics[mode].clear()
 
         # Log completions table if we have data (only for on-policy generations)
         if self.accelerator.is_main_process and self.log_completions and len(self._logs['prompt']) > 0:
@@ -509,12 +544,15 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 'prompt': list(self._logs['prompt'])[:seen_nums],
                 'completion': list(self._logs['completion'])[:seen_nums],
             }
+            for key, value in self._logs.items():
+                if key not in table:
+                    table[key] = list(value)[:seen_nums]
 
             # Write to jsonl
             self.jsonl_writer.append(table)
 
-            self._logs['prompt'].clear()
-            self._logs['completion'].clear()
+            for value in self._logs.values():
+                value.clear()
             # Log to wandb if enabled
             report_to_wandb = self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None
             if report_to_wandb:
