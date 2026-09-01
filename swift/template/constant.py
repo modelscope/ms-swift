@@ -154,6 +154,7 @@ class MLLMTemplateType:
     qwen3_5 = 'qwen3_5'
     qwen3_8 = 'qwen3_8'
     qwen3_5_emb = 'qwen3_5_emb'
+    wemm_embedding = 'wemm_embedding'
 
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'

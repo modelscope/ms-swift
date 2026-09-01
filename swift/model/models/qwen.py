@@ -1801,6 +1801,53 @@ register_model(
         tags=['vision', 'video']))
 
 
+class WeMMEmbeddingLoader(Qwen3_5EmbLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        model = Qwen3_5EmbLoader.get_model(self, model_dir, config, processor, model_kwargs)
+
+        inner = getattr(model, 'model', None) or model
+        visual = getattr(inner, 'visual', None)
+
+        if visual is not None:
+            _deepspeed_forward = inner.forward.__func__
+            _original_forward = inner.origin_forward.__func__
+
+            def _wemm_forward(self, *args, **kwargs):
+                if kwargs.get('input_ids') is None and kwargs.get('inputs_embeds') is not None:
+                    return _original_forward(self, *args, **kwargs)
+                return _deepspeed_forward(self, *args, **kwargs)
+
+            inner.forward = MethodType(_wemm_forward, inner)
+
+        _embedding = model.embedding
+
+        def _embedding_forward(**kwargs):
+            embeddings = _embedding(**kwargs)
+            return {'last_hidden_state': embeddings.contiguous()}
+
+        model.forward = _embedding_forward
+
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.wemm_embedding, [
+            ModelGroup([
+                Model('Tencent-Hunyuan/WeMM-Embedding-2B', 'tencent/WeMM-Embedding-2B'),
+                Model('Tencent-Hunyuan/WeMM-Embedding-4B', 'tencent/WeMM-Embedding-4B'),
+                Model('Tencent-Hunyuan/WeMM-Embedding-9B', 'tencent/WeMM-Embedding-9B'),
+            ]),
+        ],
+        WeMMEmbeddingLoader,
+        template=TemplateType.wemm_embedding,
+        model_arch=ModelArch.wemm_embedding,
+        architectures=['WeMMEmbedding', 'Qwen3_5ForConditionalGeneration'],
+        requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>0.0.14', 'decord'],
+        tags=['vision', 'video', 'embedding']))
+
+
 class Qwen2_5OmniLoader(ModelLoader):
 
     def _check_qwen_omni_utils(self):
