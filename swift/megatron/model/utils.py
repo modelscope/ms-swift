@@ -238,9 +238,13 @@ def _get_megatron_bridge_model(args, hf_config):
     explicit_mappings = {
         'decoder_first_pipeline_num_layers': 'num_layers_in_first_pipeline_stage',
         'decoder_last_pipeline_num_layers': 'num_layers_in_last_pipeline_stage',
+        'mtp_shared_weights': 'mtp_use_repeated_layer',
     }
     for args_key, provider_key in explicit_mappings.items():
         value = getattr(args, args_key, None)
+        # Keep model-specific provider defaults when the opt-in flag is disabled.
+        if args_key == 'mtp_shared_weights' and not value:
+            continue
         if value is not None and provider_key in provider_fields:
             overrides[provider_key] = value
 
