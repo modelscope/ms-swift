@@ -143,7 +143,7 @@ def load_checkpoint(args, state_dict, model, checkpoint_dir):
         state_dict_metadata = storage_reader.read_metadata().state_dict_metadata
         print_diff_in_state_dicts(state_dict_metadata, state_dict)
 
-    torch_dist_checkpoint.load_state_dict(
+    torch_dist_checkpoint.load(
         state_dict=state_dict,
         storage_reader=storage_reader,
         planner=default_planner.DefaultLoadPlanner(allow_partial_load=allow_partial_load),
