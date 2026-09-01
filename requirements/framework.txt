@@ -9,7 +9,6 @@ dacite
 datasets>=3.0,<4.8.5
 einops
 fastapi
-gradio>=3.40.0,<6.0
 importlib_metadata
 json_repair
 matplotlib
