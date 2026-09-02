@@ -13,7 +13,7 @@ from trl.trainer import disable_dropout_in_model
 from trl.trainer.utils import selective_log_softmax
 from typing import Dict, List, Optional, Tuple, Union
 
-from swift.sequence_parallel import GatherLoss, sequence_parallel
+from swift.sequence_parallel import GatherLoss, get_sp_strategy
 from swift.utils import HfConfigFactory
 
 
@@ -64,7 +64,7 @@ class RLHFTrainerMixin:
     def _prepare_inputs(self, inputs):
         inputs = super()._prepare_inputs(inputs)
         if self.template.sequence_parallel_size > 1:
-            sequence_parallel.prepare_inputs(inputs)
+            get_sp_strategy().preprocess_inputs(inputs)
         return inputs
 
     def get_train_dataloader(self, *args, **kwargs):
@@ -175,9 +175,10 @@ class RLHFTrainerMixin:
             loss_mask = loss_mask.to(logits.device)
             mean_logits = reduce_logits
             per_token_logps = selective_log_softmax(logits, labels)
-            position_ids = sequence_parallel.real_position_ids
+            strategy = get_sp_strategy()
+            position_ids = strategy.real_position_ids
             total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, 1, position_ids)
-            total_mean_logits = sequence_parallel.gather(mean_logits, dim=1, position_ids=position_ids)
+            total_mean_logits = strategy.gather(mean_logits, dim=1, position_ids=position_ids)
             if position_ids is not None and position_ids.min() == -1:
                 _pos_mask = position_ids >= 0
                 total_per_token_logps = total_per_token_logps[_pos_mask].contiguous()

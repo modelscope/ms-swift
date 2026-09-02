@@ -49,13 +49,12 @@ from swift.metrics import MeanMetric, compute_acc, eval_metrics_map
 from swift.model import get_llm_model, get_lm_head_model, save_checkpoint
 from swift.model.patcher import gather_sequence_parallel_outputs, revert_padding_free, transformers_seq_cls_forward
 from swift.optimizers import OptimizerCallback, optimizers_map
-from swift.sequence_parallel import SequenceParallelDispatcher, SequenceParallelSampler, sequence_parallel
+from swift.sequence_parallel import get_sp_strategy
 from swift.template import Template, update_generation_config_eos_token
 from swift.tuner_plugin import tuners_map
 from swift.tuners import SwiftModel
-from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device, get_logger,
-                         get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker,
-                         update_last_checkpoint_symlink)
+from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_logger, get_packed_seq_params,
+                         is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker, update_last_checkpoint_symlink)
 from .arguments import TrainingArguments
 from .utils import (accepts_parameter, can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function,
                     get_resume_dir, is_instance_of_ms_model, patch_modelscope_hub_timeout, replace_index_file)
@@ -869,8 +868,8 @@ class SwiftMixin:
                     if sp_enabled:
 
                         def revert_padding_free_hook(module, args, input, output):
-                            # Use full packed position ids cached by sequence_parallel.prepare_inputs
-                            position_ids = sequence_parallel.real_position_ids
+                            # Use full packed position ids cached by the last SP prepare_inputs run
+                            position_ids = get_sp_strategy().real_position_ids
                             tmp_input = {'position_ids': position_ids}
                             return revert_padding_free(output, tmp_input, padding_side)
                     else:
@@ -1153,24 +1152,9 @@ class SwiftMixin:
         elif task_type == 'causal_lm':
             preds = logits.argmax(dim=-1)
             if self.template.sequence_parallel_size > 1:
-                # Gather preds and labels across the sp group
-                if isinstance(preds, np.ndarray):
-                    preds = torch.from_numpy(preds).to(get_current_device())
-                if isinstance(labels, np.ndarray):
-                    labels = torch.from_numpy(labels).to(get_current_device())
-                assert labels.shape[1] == preds.shape[1]
-
-                if sequence_parallel.rp_world_size > 1:
-                    position_ids = sequence_parallel.real_position_ids
-                    position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
-                else:
-                    position_ids = None
-                preds_output = sequence_parallel.gather(preds, dim=1, position_ids=position_ids)
-                labels_output = sequence_parallel.gather(labels, dim=1, position_ids=position_ids)
-                # roll back to fit compute_acc
-                labels_output = torch.roll(labels_output, shifts=1, dims=1)
-                preds = preds_output
-                labels = labels_output.int()
+                # Gather preds and labels across the sp group. Contract: the returned labels are
+                # rolled back (+1) so they are position-aligned with preds for compute_acc below.
+                preds, labels = get_sp_strategy().postprocess_outputs(preds, labels)
 
             metrics = compute_acc(
                 preds,
@@ -1301,7 +1285,8 @@ class DataLoaderMixin:
         else:
             data_collator = self._get_collator_with_removed_columns(data_collator, description='training')
         if hasattr(dataset, '__len__'):
-            sampler = SequenceParallelSampler(sequence_parallel, dataset, seed=42)
+            strategy = get_sp_strategy()
+            sampler = strategy.create_sp_sampler(dataset, seed=42)
             dataloader_params = {
                 'batch_size': batch_size,
                 'collate_fn': data_collator,
@@ -1318,7 +1303,7 @@ class DataLoaderMixin:
                 dataloader_params['sampler'] = sampler
                 dataloader_params['drop_last'] = self.args.dataloader_drop_last
                 dataloader_params['worker_init_fn'] = partial(
-                    seed_worker, num_workers=self.args.dataloader_num_workers, rank=sequence_parallel.dp_rank)
+                    seed_worker, num_workers=self.args.dataloader_num_workers, rank=strategy.dp_rank)
 
             return DataLoaderShard(dataset, device=self.accelerator.device, **dataloader_params)
         else:
@@ -1333,8 +1318,8 @@ class DataLoaderMixin:
             if dist.is_initialized() and dataloader_params['prefetch_factor']:
                 dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
             dataloader = DataLoader(dataset, batch_size=batch_size, **dataloader_params)
-            dataloader = SequenceParallelDispatcher(
-                dataloader, sequence_parallel, self.accelerator.device, skip_batches=skip_batches)
+            dataloader = get_sp_strategy().create_sp_dispatcher(
+                dataloader, self.accelerator.device, skip_batches=skip_batches)
             return dataloader
 
     def get_train_dataloader(self, skip_batches=0):

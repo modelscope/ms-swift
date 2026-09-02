@@ -6,7 +6,7 @@ from functools import wraps
 from peft import PeftModel
 from transformers import Trainer as HfTrainer
 
-from swift.sequence_parallel import sequence_parallel
+from swift.sequence_parallel import get_sp_strategy
 from swift.utils import get_logger
 from .arguments import TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
@@ -28,7 +28,7 @@ class Trainer(SwiftMixin, DataLoaderMixin, HfTrainer):
             if pop_labels:
                 labels = inputs.pop('labels', None)
             try:
-                sequence_parallel.prepare_inputs(inputs)
+                get_sp_strategy().preprocess_inputs(inputs)
             finally:
                 if pop_labels and labels is not None:
                     inputs['labels'] = labels

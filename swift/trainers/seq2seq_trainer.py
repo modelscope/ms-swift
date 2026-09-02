@@ -14,7 +14,7 @@ from transformers.utils import is_peft_available
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
-from swift.sequence_parallel import sequence_parallel
+from swift.sequence_parallel import get_sp_strategy
 from swift.utils import HfConfigFactory, JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
@@ -102,7 +102,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         args = self.args
         inputs = super()._prepare_inputs(inputs)
         if self.template.sequence_parallel_size > 1:
-            sequence_parallel.prepare_inputs(inputs)
+            get_sp_strategy().preprocess_inputs(inputs)
 
         use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
         if use_logits_to_keep:

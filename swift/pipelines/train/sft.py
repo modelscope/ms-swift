@@ -8,7 +8,7 @@ from swift.dataset import (AddLengthPreprocessor, DatasetLoader, EncodePreproces
                            LazyLLMDataset, PackingDataset)
 from swift.infer_engine import prepare_generation_config
 from swift.ray_utils import RayHelper
-from swift.sequence_parallel import sequence_parallel
+from swift.sequence_parallel import get_sp_strategy
 from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..base import SwiftPipeline
@@ -52,9 +52,12 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _prepare_model_tokenizer(self, **kwargs):
         args = self.args
         self.model, self.processor = args.get_model_processor(**kwargs)
-        if args.sequence_parallel_size > 1:
-            sequence_parallel.prepare(
-                args.sequence_parallel_size, model=self.model, tokenizer=self.processor, padding_free=args.padding_free)
+        # initialize() is a no-op (returns False) when sp_size <= 1, no outer guard needed.
+        get_sp_strategy().initialize(
+            sp_size=args.sequence_parallel_size,
+            model=self.model,
+            tokenizer=self.processor,
+            padding_free=args.padding_free)
         if self.model is None:
             return
         if hasattr(self.model, 'hf_device_map'):

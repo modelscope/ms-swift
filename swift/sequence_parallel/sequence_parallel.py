@@ -9,9 +9,11 @@ from transformers import PreTrainedTokenizer
 from types import SimpleNamespace
 from typing import Optional
 
-from swift.utils import HfConfigFactory, get_cu_seqlens_from_position_ids, get_device, get_dist_setting
+from swift.utils import HfConfigFactory, get_cu_seqlens_from_position_ids, get_device, get_dist_setting, get_logger
 from .ulysses import DistributedAttention
 from .zigzag_ring_attn import zigzag_ring_flash_attn_varlen_func
+
+logger = get_logger()
 
 
 @lru_cache(maxsize=None)
@@ -339,7 +341,12 @@ class SequenceParallel:
 
         base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
 
-    def prepare(self, sp_size: int, model: torch.nn.Module, tokenizer: PreTrainedTokenizer, padding_free: bool):
+    def prepare(self,
+                sp_size: int,
+                model: torch.nn.Module,
+                tokenizer: PreTrainedTokenizer,
+                padding_free: bool,
+                device_mesh=None):
         from swift.model import get_llm_model
         self.num_heads = HfConfigFactory.get_config_attr(model.config, 'num_key_value_heads')
         if self.num_heads is None:
@@ -359,7 +366,7 @@ class SequenceParallel:
 
         if not SequenceParallel._global_inited:
             # these operations are global initializations and patches
-            self._init_device_mesh()
+            self._init_device_mesh(device_mesh)
             self._prepare_flash_attn(llm_model)
             SequenceParallel._global_inited = True
 
@@ -369,6 +376,14 @@ class SequenceParallel:
             self._prepare_moe_aux_loss(llm_model)
 
         self.model_dtype = next(model.parameters()).dtype
+        old_pad_id = getattr(self.tokenizer, 'pad_token_id', None)
+        new_pad_id = getattr(tokenizer, 'pad_token_id', None)
+        if self.tokenizer is not None and self.tokenizer is not tokenizer and old_pad_id != new_pad_id:
+            # e.g. RLHF prepares policy and ref models in two prepare() calls; the singleton only
+            # stores one tokenizer, so the later call silently wins. pad_token_id is the only field
+            # actually consumed (input_ids padding), so warn only when it really changes.
+            logger.warning('sequence_parallel: tokenizer overwritten by a different pad_token_id '
+                           f'({old_pad_id} -> {new_pad_id}); input_ids padding now uses the later tokenizer.')
         self.tokenizer = tokenizer
         if self.rp_world_size > 1 and not self.padding_free:
             raise NotImplementedError(
@@ -636,23 +651,44 @@ class SequenceParallel:
 
     def _gather_object_dp(self, input_data):
         """Gather object for data parallel"""
-        input_data_list = [None] * self.dp_world_size
-        dist.all_gather_object(input_data_list, input_data, group=self.dp_group)
-        return [x for y in input_data_list for x in y]
+        from .utils import gather_object_dp
+        return gather_object_dp(input_data, self.dp_group, self.dp_world_size)
 
-    def _init_device_mesh(self):
+    def _init_device_mesh(self, device_mesh=None):
         """Initialize device mesh for sequence and ring parallel.
 
-        The logic is unified:
-        1. Determine the Sequence Parallel (SP) size first based on GCD to satisfy constraints.
-        2. Allocate all remaining model parallelism to Ring Parallel (RP).
+        Two paths:
+
+        1. External mesh object (duck-typed, e.g. a twinkle ``DeviceMesh`` or a
+           ``SimpleNamespace``): the (data, ring, sequence) sizes are derived
+           from it — ``sequence`` from the ``ulysses_size`` attribute, ``ring``
+           from ``cp_world_size``, ``data`` from ``data_world_size`` (which
+           already folds the ulysses replicas back). The same internal torch
+           mesh is then constructed, so every downstream ``_dim_group`` user
+           is unchanged.
+        2. Legacy fallback (``device_mesh=None``): sizes are self-computed as
+           before — SP size is the GCD of num_heads and world_size, and Ring
+           Parallel takes the remaining factor.
         """
         _, _, world_size, _ = get_dist_setting()
-        self.dp_world_size = world_size // self.world_size
-        # SP size is the GCD of num_heads and world_size, guaranteeing it divides both.
-        self.sp_world_size = math.gcd(self.num_heads, self.world_size)
-        # RP takes the remaining factor so all model-parallel GPUs are used.
-        self.rp_world_size = self.world_size // self.sp_world_size
+        if device_mesh is not None:
+            self.sp_world_size = getattr(device_mesh, 'ulysses_size', None) or 1
+            assert self.num_heads % self.sp_world_size == 0, (
+                f'ulysses_size({self.sp_world_size}) must divide num_heads({self.num_heads})')
+            self.dp_world_size = device_mesh.data_world_size or 1
+            model_world_size = world_size // self.dp_world_size
+            self.rp_world_size = device_mesh.cp_world_size or (model_world_size // self.sp_world_size)
+            assert self.dp_world_size * self.rp_world_size * self.sp_world_size == world_size, (
+                f'Inconsistent mesh: data({self.dp_world_size}) * ring({self.rp_world_size}) '
+                f'* sequence({self.sp_world_size}) != world_size({world_size})')
+            # The external mesh is authoritative for the model-parallel world.
+            self.world_size = self.sp_world_size * self.rp_world_size
+        else:
+            self.dp_world_size = world_size // self.world_size
+            # SP size is the GCD of num_heads and world_size, guaranteeing it divides both.
+            self.sp_world_size = math.gcd(self.num_heads, self.world_size)
+            # RP takes the remaining factor so all model-parallel GPUs are used.
+            self.rp_world_size = self.world_size // self.sp_world_size
 
         if self.rp_world_size > 1:
             mesh_shape = (self.dp_world_size, self.rp_world_size, self.sp_world_size)

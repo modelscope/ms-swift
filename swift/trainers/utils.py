@@ -16,7 +16,7 @@ from types import FunctionType, MethodType
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from swift.model import ModelMeta
-from swift.sequence_parallel import ChunkedCrossEntropyLoss, GatherLoss, sequence_parallel
+from swift.sequence_parallel import ChunkedCrossEntropyLoss, get_sp_strategy
 from swift.utils import deep_getattr, get_dist_setting, get_logger
 
 if TYPE_CHECKING:
@@ -185,15 +185,7 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> 
         with torch.no_grad():
             target_probs = torch.exp(-loss)
         loss *= target_probs
-    position_ids = sequence_parallel.real_position_ids
-    if position_ids is not None:
-        position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
-    loss, labels = GatherLoss.apply(loss.reshape(batch_size, -1), labels.reshape(batch_size, -1), 1, position_ids)
-    if position_ids is not None and position_ids.min() == -1:
-        _pos_mask = position_ids >= 0
-        loss = loss[_pos_mask].contiguous()
-
-    return loss
+    return get_sp_strategy().gather_loss_tensors(loss, labels, batch_size)
 
 
 def per_token_loss_func(outputs, labels, enable_dft_loss: bool = False, **kwargs):
@@ -324,8 +316,9 @@ def disable_gradient_checkpointing(model: PreTrainedModel, gradient_checkpointin
 
 def gather_for_unpadded_tensors(input_data, use_gather_object=False):
     from accelerate.utils import gather_object
-    if getattr(sequence_parallel, 'dp_group', None) is not None:
-        input_data = sequence_parallel._gather_object_dp(input_data)
+    strategy = get_sp_strategy()
+    if strategy.dp_group is not None:
+        input_data = strategy.gather_object_dp(input_data)
     else:
         input_data = gather_object(input_data)
     output = []
