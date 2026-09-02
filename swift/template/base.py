@@ -1421,13 +1421,30 @@ class Template(ProcessorMixin):
                 # and here we avoid adding <|user|>.
                 response_content = response
                 if not isinstance(response_content, str):
-                    if isinstance(response_content, list) and response_content and isinstance(
-                            response_content[-1], str):
-                        response_content = response_content[-1]
-                    else:
-                        token_ids = response_content if isinstance(response_content,
-                                                                   list) else response_content['token_ids']
+                    if isinstance(response_content, list):
+                        if response_content and isinstance(response_content[-1], str):
+                            response_content = response_content[-1]
+                        elif (response_content and isinstance(response_content[-1], dict)
+                              and 'token_ids' in response_content[-1]):
+                            token_ids = response_content[-1]['token_ids']
+                            if (not isinstance(token_ids, list)
+                                    or any(not isinstance(token_id, int) for token_id in token_ids)):
+                                raise TypeError(f'Invalid token_ids in mixed response content: {token_ids!r}')
+                            response_content = self.tokenizer.decode(token_ids[-20:])
+                        elif all(isinstance(token_id, int) for token_id in response_content):
+                            response_content = self.tokenizer.decode(response_content[-20:])
+                        else:
+                            raise TypeError(f'Unsupported response content list: {response_content!r}')
+                    elif isinstance(response_content, dict) and 'token_ids' in response_content:
+                        token_ids = response_content['token_ids']
+                        if (not isinstance(token_ids, list)
+                                or any(not isinstance(token_id, int) for token_id in token_ids)):
+                            raise TypeError(f'Invalid token_ids in response content: {token_ids!r}')
                         response_content = self.tokenizer.decode(token_ids[-20:])
+                    else:
+                        raise TypeError(
+                            f'Unsupported response content: type={type(response_content).__name__}, '
+                            f'value={response_content!r}')
                 endswith_stop_words = any(
                     response_content.endswith(stop_word) for stop_word in template_meta.stop_words
                     if isinstance(stop_word, str))
