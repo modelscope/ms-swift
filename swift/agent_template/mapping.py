@@ -18,6 +18,7 @@ from .qwen import QwenEnAgentTemplate, QwenEnParallelAgentTemplate, QwenZhAgentT
 from .qwen3_coder import Qwen3_5AgentTemplate, Qwen3CoderAgentTemplate
 from .react import ReactEnAgentTemplate, ReactZnAgentTemplate
 from .seed_oss import SeedAgentTemplate
+from .spark import Spark2_5AgentTemplate
 from .toolbench import ToolBenchAgentTemplate
 from .youtu import YoutuAgentTemplate
 
@@ -51,6 +52,8 @@ agent_template_map = {
     'minimax_m2': MinimaxM2AgentTemplate,
     'minimax_m3': MinimaxM3AgentTemplate,
     'seed_oss': SeedAgentTemplate,
+    # ref: https://modelscope.cn/models/XHToken/Spark-X2.5-4B
+    'spark2_5': Spark2_5AgentTemplate,
     # ref: https://modelscope.cn/models/google/gemma-4-12B-it
     'gemma4': Gemma4AgentTemplate,
     # extra

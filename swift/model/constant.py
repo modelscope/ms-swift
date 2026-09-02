@@ -115,6 +115,7 @@ class LLMModelType:
     longchat = 'longchat'
     iquestcoder = 'iquestcoder'
     youtu_llm = 'youtu_llm'
+    spark2_5 = 'spark2_5'
 
     modern_bert_gte_reranker = 'modern_bert_gte_reranker'
     bge_reranker = 'bge_reranker'
