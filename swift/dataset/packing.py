@@ -8,7 +8,7 @@ from tqdm import tqdm
 from typing import Optional
 
 from swift.template import MaxLengthError
-from swift.utils import get_logger, is_dist, is_master, split_list
+from swift.utils import get_external_files, get_logger, import_external_file, is_dist, is_master, split_list
 
 logger = get_logger()
 
@@ -220,10 +220,14 @@ class IterablePackingDataset(IterableDataset):
         self.workers = _spawn_workers(ctx, target=self._processor, jobs=self._worker_jobs())
 
     def _worker_jobs(self):
-        return [(self._in_queue, self._out_queue, self.template, self.strict)] * self.num_proc
+        # get_external_files() is resolved here, in the parent: plugins only ran in the main process and a
+        # non-fork worker starts clean, so the paths have to travel with the job for the worker to replay them.
+        return [(self._in_queue, self._out_queue, self.template, self.strict, get_external_files())] * self.num_proc
 
     @staticmethod
-    def _processor(in_queue, out_queue, template, strict):
+    def _processor(in_queue, out_queue, template, strict, external_files=()):
+        for file_path in external_files:
+            import_external_file(file_path)
         while True:
             i, data = in_queue.get()
             encoded_data = {}
