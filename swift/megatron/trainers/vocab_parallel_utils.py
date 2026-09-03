@@ -182,6 +182,13 @@ def vocab_parallel_gather_logps(logits: torch.Tensor, labels: torch.Tensor) -> t
     Uses Megatron's vocab-parallel cross entropy so backward retains the softmax
     gradient on every TP vocab shard.
 
+    Warning:
+        ``logits`` is modified in place: Megatron's kernel subtracts the global max
+        from it. Callers must not read ``logits`` again afterwards, and anything that
+        needs the original values must run before this call (as
+        ``compute_logps_and_entropy_from_logits`` does for entropy). Copying instead
+        would cost a full extra logits buffer, which is prohibitive at vocab scale.
+
     Args:
         logits: Logits tensor [batch, seq, partition_vocab_size]
         labels: Token labels [batch, seq], -100 for masked positions
@@ -203,13 +210,17 @@ def compute_logps_and_entropy_from_logits(
     """Compute per-token log probabilities and optionally entropy from logits.
 
     Log probabilities use Megatron's vocab-parallel cross entropy for a correct
-    distributed backward. The full log_softmax is computed only when entropy is requested.
+    distributed backward. The full log_softmax is computed only when entropy is requested,
+    and before the logps call, which consumes ``logits`` in place.
 
     Note: In Megatron, labels are already shifted (via torch.roll in get_batch_on_this_tp_rank),
     so logits and labels are already aligned. No additional shift is needed here.
 
     Temperature scaling should be applied by the caller before invoking this function,
     so that this function remains a pure computation without side effects on the input.
+
+    Warning:
+        ``logits`` is modified in place, see ``vocab_parallel_gather_logps``.
 
     Args:
         logits: Logits tensor [batch, seq, partition_vocab_size] or [1, total_tokens, partition_vocab_size].
