@@ -5,6 +5,7 @@ These functions are stateless: they operate on ``GKDSample`` objects and a
 ``Template`` and return encoded dicts / teacher requests / assembled teacher
 outputs.  Shared by the HF and Megatron GKD trainers.
 """
+import copy
 import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -95,7 +96,11 @@ def build_teacher_requests(samples: List[OnPolicySample], template: Optional[Tem
     """
     requests = []
     for s in samples:
-        req = s.to_infer_request()
+        request_sample = s
+        if s.teacher_images is not None:
+            request_sample = copy.copy(s)
+            request_sample.images = s.teacher_images
+        req = request_sample.to_infer_request()
         # OPSD: score the teacher on its privileged prompt instead of the student prompt.
         teacher_messages = getattr(s, 'teacher_messages', None)
         messages = teacher_messages if teacher_messages else req.messages

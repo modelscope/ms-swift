@@ -463,7 +463,7 @@ class MegatronTunerMixin:
 
     # lora
     lora_rank: int = 8
-    lora_alpha: int = 32
+    lora_alpha: float = 32.0
     lora_dropout: float = 0.05
     lora_bias: Literal['none', 'all'] = 'none'
     lora_dtype: Literal['float16', 'bfloat16', 'float32', None] = None
@@ -592,6 +592,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     use_distributed_optimizer: bool = True
     # megatron-fsdp
     use_megatron_fsdp: bool = False
+    strict_fsdp_dtensor_load: bool = True
     data_parallel_sharding_strategy: Literal['no_shard', 'optim', 'optim_grads',
                                              'optim_grads_params'] = 'optim_grads_params'
     tensor_model_parallel_size: int = 1

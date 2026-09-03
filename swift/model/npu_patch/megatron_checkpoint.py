@@ -183,6 +183,12 @@ def load_optimizer_state_dict(optimizer, state_dict):
     mindspeed_patched = any(
         _has_mindspeed_patched_load_state_dict(distributed_optimizer)
         for distributed_optimizer in distributed_optimizers)
+    if mindspeed_patched:
+        from .mindspeed import load_mindspeed_fsdp_dtensor_optimizer_state_dict
+        if load_mindspeed_fsdp_dtensor_optimizer_state_dict(distributed_optimizers, state_dict):
+            _restore_mindspeed_optimizer_step_tensors(optimizer)
+            return
+
     sharding_type = state_dict.get('param_state_sharding_type') if isinstance(state_dict, dict) else None
     native_loader_name = _MEGATRON_RESHARDABLE_PARAM_STATE_LOADERS.get(sharding_type)
     if native_loader_name is None:

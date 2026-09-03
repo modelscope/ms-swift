@@ -1548,7 +1548,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
             tokenizer = getattr(self, 'processing_class', None)
             if isinstance(args.multi_turn_scheduler, str):
                 assert args.multi_turn_scheduler in multi_turns
-                scheduler_kwargs = {'max_turns': args.max_turns, 'tokenizer': tokenizer}
+                scheduler_kwargs = {'max_turns': args.max_turns, 'tokenizer': tokenizer, 'template': self.template}
                 gym_env = getattr(args, 'gym_env', None)
                 if gym_env is not None:
                     scheduler_kwargs['gym_env'] = gym_env

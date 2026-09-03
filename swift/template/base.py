@@ -25,7 +25,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, 
 
 from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
 from .template_inputs import StdTemplateInputs, TemplateInputs
-from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
+from .utils import (Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round,
+                    get_token_backed_response_ids, split_str_parts_by)
 from .vision_utils import _check_path, load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
@@ -964,6 +965,25 @@ class Template(ProcessorMixin):
     def _tokenize(self, context, **kwargs):
         return self.tokenizer(context, return_attention_mask=False, add_special_tokens=False, **kwargs)['input_ids']
 
+    def _remove_response_separator_overlap(self, response: Context,
+                                           extra_context_list: Optional[List[Context]]) -> List[Context]:
+        """Keep sampled terminal tokens while removing their overlap from a template separator."""
+        response_ids = get_token_backed_response_ids(response)
+        if not response_ids or not extra_context_list:
+            return extra_context_list or []
+        if any(not isinstance(context, str) for context in extra_context_list):
+            return extra_context_list
+
+        separator_ids = []
+        for context in extra_context_list:
+            separator_ids.extend(self._tokenize(context))
+        max_overlap = min(len(response_ids), len(separator_ids))
+        for overlap in range(max_overlap, 0, -1):
+            if response_ids[-overlap:] == separator_ids[:overlap]:
+                remaining_ids = separator_ids[overlap:]
+                return [remaining_ids] if remaining_ids else []
+        return extra_context_list
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         """Override this function to do your own replace operation.
@@ -1432,6 +1452,7 @@ class Template(ProcessorMixin):
                 response=response,
                 system=system,
                 round0=i)
+            extra_context_list = self._remove_response_separator_overlap(response, extra_context_list)
             res_context_list += extra_context_list
             res_context_types += [extra_context_type] * len(extra_context_list)
         if template_meta.auto_add_bos and sep_token:

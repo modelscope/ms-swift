@@ -105,7 +105,11 @@ class GRPOTrainer(BaseRayTrainer):
             if scheduler_cfg not in multi_turns:
                 raise ValueError(f'Unknown multi_turn_scheduler: {scheduler_cfg!r}; '
                                  f'available: {list(multi_turns)}')
-            scheduler_kwargs = {'max_turns': self._max_turns}
+            scheduler_kwargs = {
+                'max_turns': self._max_turns,
+                'tokenizer': self.template.tokenizer,
+                'template': self.template,
+            }
             gym_env = getattr(args, 'gym_env', None)
             if gym_env is not None:
                 scheduler_kwargs['gym_env'] = gym_env

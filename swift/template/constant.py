@@ -131,6 +131,7 @@ class LLMTemplateType:
     youtu_llm = 'youtu_llm'
     olmoe = 'olmoe'
     olmoe_0924 = 'olmoe_0924'
+    spark2_5 = 'spark2_5'
 
 
 class RMTemplateType:
@@ -154,6 +155,7 @@ class MLLMTemplateType:
     qwen3_5 = 'qwen3_5'
     qwen3_8 = 'qwen3_8'
     qwen3_5_emb = 'qwen3_5_emb'
+    wemm_embedding = 'wemm_embedding'
 
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'

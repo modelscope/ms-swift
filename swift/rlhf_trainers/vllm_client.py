@@ -17,7 +17,7 @@ from swift.infer_engine import AdapterRequest, RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
 from swift.metrics import Metric
 from swift.utils import (get_torch_device, is_trl_available, is_vllm_ascend_available, is_vllm_available,
-                         is_vllm_metax_available, synchronize)
+                         is_vllm_kunlun_available, is_vllm_metax_available, synchronize)
 from .utils import (broadcast_tensor_for_vllm_weight_sync, format_host_for_url, is_valid_ipv6_address,
                     peft_config_to_dict, resolve_hostname)
 
@@ -27,6 +27,9 @@ if is_vllm_available():
 
     if is_vllm_ascend_available():
         from vllm_ascend.distributed.device_communicators.pyhccl import PyHcclCommunicator as PyNcclCommunicator  # noqa
+
+    if is_vllm_kunlun_available():
+        from vllm_kunlun.distributed.py_kunlun_communicator import PyKunlunCommunicator as PyNcclCommunicator  # noqa
 
     if is_vllm_metax_available():
         import vllm_metax.patch
