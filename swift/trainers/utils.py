@@ -164,7 +164,7 @@ def is_instance_of_ms_model(model: Module) -> bool:
     return False
 
 
-def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> torch.Tensor:
+def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, return_labels=False, **kwargs):
     """Common loss function for sequence parallel training"""
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
@@ -192,7 +192,10 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> 
     if position_ids is not None and position_ids.min() == -1:
         _pos_mask = position_ids >= 0
         loss = loss[_pos_mask].contiguous()
+        labels = labels[_pos_mask].contiguous()
 
+    if return_labels:
+        return loss, labels
     return loss
 
 
