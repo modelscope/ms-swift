@@ -402,11 +402,17 @@ def patch_getattr(obj_cls, item_name: str):
     obj_cls._patch = True
 
 
+# External plugin files imported into this process, in import order. See get_external_files.
+_external_files: List[str] = []
+
+
 def import_external_file(file_path: str):
     file_path = os.path.abspath(os.path.expanduser(file_path))
     py_dir = os.path.dirname(file_path)
     assert os.path.isdir(py_dir), f'py_dir: {py_dir}'
     sys.path.insert(0, py_dir)
+    if file_path not in _external_files:
+        _external_files.append(file_path)
     module_name = f'_swift_external_{hashlib.sha256(file_path.encode()).hexdigest()}'
     if module_name in sys.modules:
         return sys.modules[module_name]
@@ -421,6 +427,64 @@ def import_external_file(file_path: str):
         sys.modules.pop(module_name, None)
         raise
     return module
+
+
+def get_external_files() -> List[str]:
+    """Return the external plugin files imported into this process, in import order.
+
+    Plugins take effect through import side effects, so a worker process that does not inherit the
+    parent's memory (``forkserver``/``spawn``) has to replay them. Resolve this in the parent and pass
+    the result to the worker: the paths then travel across the pickle boundary, which the module-level
+    record itself does not.
+    """
+    return list(_external_files)
+
+
+class _WorkerInitWithPlugins:
+    """``worker_init_fn`` that replays the plugin imports, then delegates to the original one.
+
+    A plain class rather than a closure so that it survives being pickled to a ``spawn`` worker.
+    """
+
+    def __init__(self, inner: Optional[Callable], external_files: Sequence[str]):
+        self.inner = inner
+        self.external_files = external_files
+
+    def __call__(self, worker_id: int) -> None:
+        for file_path in self.external_files:
+            import_external_file(file_path)
+        if self.inner is not None:
+            self.inner(worker_id)
+
+
+def patch_dataloader_external_plugins():
+    """Make every dataloader worker replay the ``--external_plugins`` imports.
+
+    Plugins take effect through import side effects. A forked worker inherits those for free, but a
+    ``forkserver``/``spawn`` worker starts from a clean interpreter, so whatever a plugin registered
+    into a global table -- an extra PIL codec is the motivating case -- is silently missing by the time
+    the worker looks it up. Patching the constructor instead of every call site keeps this working for
+    the dataloaders swift does not build itself (transformers, accelerate's rebuild in ``prepare``) and
+    for any added later.
+
+    Wrapping after ``__init__`` has run avoids caring whether ``worker_init_fn`` was passed positionally,
+    and torch allows the assignment because ``worker_init_fn`` is not one of its frozen attributes.
+    """
+    from torch.utils.data import DataLoader
+    if getattr(DataLoader, '_swift_external_plugins', False):
+        return
+    origin_init = DataLoader.__init__
+
+    @wraps(origin_init)
+    def __init__(self, *args, **kwargs):
+        origin_init(self, *args, **kwargs)
+        # Resolved here, in the parent: the paths travel to the worker inside this object, which the
+        # module-level record does not.
+        if self.num_workers > 0 and not isinstance(self.worker_init_fn, _WorkerInitWithPlugins):
+            self.worker_init_fn = _WorkerInitWithPlugins(self.worker_init_fn, get_external_files())
+
+    DataLoader.__init__ = __init__
+    DataLoader._swift_external_plugins = True
 
 
 def json_parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:

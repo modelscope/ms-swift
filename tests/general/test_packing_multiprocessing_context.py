@@ -16,15 +16,23 @@ Why this is worth testing carefully:
 The fakes below are defined at module scope on purpose: ``spawn``/``forkserver`` pickle the worker
 target, so any object reachable from it (template, dataset) must be importable/picklable.
 """
+import importlib
 import multiprocessing as mp
+import os
 import pickle
+import shutil
+import sys
+import tempfile
 import torch
 import types
 import unittest
+from torch.utils.data import DataLoader
 from unittest import mock
 
+import swift.utils.utils as utils_module
 from swift.dataset.packing import IterablePackingDataset, PackingDataset, _resolve_mp_context, _spawn_workers
 from swift.template.base import Template
+from swift.utils import get_external_files, import_external_file, patch_dataloader_external_plugins
 
 FORK_AVAILABLE = 'fork' in mp.get_all_start_methods()
 SPAWN_AVAILABLE = 'spawn' in mp.get_all_start_methods()
@@ -358,6 +366,181 @@ class TestDataloaderContextInjection(unittest.TestCase):
     def test_injected_when_set_with_workers(self):
         params = self._build_params('spawn', 4)
         self.assertEqual(params['multiprocessing_context'], 'spawn')
+
+
+# --- external plugin replay in workers -------------------------------------------------------------
+#
+# A swift plugin takes effect purely through import side effects (``import_external_file`` just execs
+# the file). Under fork the worker inherits those side effects for free; under forkserver/spawn it
+# starts clean, so anything the worker looks up by name afterwards -- an extra PIL codec being the
+# motivating case -- is silently missing unless the import is replayed. Every test below pairs the
+# patched case with an unpatched control, so a regression shows up as the two agreeing.
+
+CODEC_MODULE = '_swift_test_codec'
+
+
+def _codec_registry_size():
+    """Count the plugin's own entries in the stand-in registry, 0 if the plugin never ran here.
+
+    Counts only ``JXL`` so that a caller-supplied worker_init_fn writing its own marker into the same
+    registry does not inflate the number. Deliberately importable-or-zero rather than raising: that is
+    exactly the shape of the bug, where a worker silently lacks a codec instead of failing loudly.
+    """
+    try:
+        module = importlib.import_module(CODEC_MODULE)
+    except ImportError:
+        return 0
+    return module.REGISTRY.count('JXL')
+
+
+def _record_worker_init(worker_id):
+    """A caller-supplied worker_init_fn; the patch must delegate to it, not replace it."""
+    importlib.import_module(CODEC_MODULE).REGISTRY.append(f'inner-{worker_id}')
+
+
+class CodecProbeTemplate(FakeTemplate):
+    """Reports, through ``length``, whether the plugin took effect in the packing worker."""
+
+    def encode(self, data, return_length=True):
+        return {'input_ids': [1], 'labels': [1], 'length': _codec_registry_size()}
+
+
+class CodecProbeDataset:
+    """``__getitem__`` runs in the dataloader worker, like ``Template.encode`` -> ``load_image`` does."""
+
+    def __len__(self):
+        return 2
+
+    def __getitem__(self, index):
+        try:
+            registry = importlib.import_module(CODEC_MODULE).REGISTRY
+        except ImportError:
+            registry = []
+        return registry.count('JXL'), int(any(str(entry).startswith('inner-') for entry in registry))
+
+
+class TestExternalPluginReplayInWorkers(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmpdir = tempfile.mkdtemp()
+        # stands in for a third-party lib whose global registry is consulted inside the worker
+        with open(os.path.join(cls.tmpdir, f'{CODEC_MODULE}.py'), 'w') as f:
+            f.write('REGISTRY = []\n')
+        # stands in for the user's one-line plugin: `import pillow_jxl`
+        cls.plugin = os.path.join(cls.tmpdir, '_swift_test_plugin.py')
+        with open(cls.plugin, 'w') as f:
+            f.write(f'import {CODEC_MODULE}\n{CODEC_MODULE}.REGISTRY.append("JXL")\n')
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def setUp(self):
+        self._saved_external = list(utils_module._external_files)
+        self._saved_modules = set(sys.modules)
+        self._saved_path = list(sys.path)
+        self._saved_init = DataLoader.__init__
+        self._was_patched = getattr(DataLoader, '_swift_external_plugins', False)
+        import_external_file(self.plugin)  # what BaseArguments._import_external_plugins does
+        self.assertEqual(_codec_registry_size(), 1, 'plugin should have taken effect in the parent')
+
+    def tearDown(self):
+        DataLoader.__init__ = self._saved_init
+        DataLoader._swift_external_plugins = self._was_patched
+        utils_module._external_files[:] = self._saved_external
+        for name in set(sys.modules) - self._saved_modules:
+            del sys.modules[name]
+        sys.path[:] = self._saved_path
+
+    def test_get_external_files_records_the_plugin(self):
+        self.assertIn(self.plugin, get_external_files())
+
+    def test_get_external_files_does_not_duplicate(self):
+        import_external_file(self.plugin)
+        self.assertEqual(get_external_files().count(self.plugin), 1)
+
+    def _dataloader_sees(self, ctx_name, worker_init_fn=None):
+        loader = DataLoader(
+            CodecProbeDataset(),
+            batch_size=2,
+            num_workers=1,
+            multiprocessing_context=ctx_name,
+            worker_init_fn=worker_init_fn,
+        )
+        plugin, inner = next(iter(loader))
+        return plugin.tolist(), inner.tolist()
+
+    @unittest.skipUnless(FORK_AVAILABLE, 'fork not available')
+    def test_fork_inherits_even_unpatched(self):
+        self.assertEqual(self._dataloader_sees('fork')[0], [1, 1])
+
+    @unittest.skipUnless(SPAWN_AVAILABLE, 'spawn not available')
+    def test_spawn_needs_the_patch(self):
+        self.assertEqual(self._dataloader_sees('spawn')[0], [0, 0], 'control: spawn must start clean')
+        patch_dataloader_external_plugins()
+        self.assertEqual(self._dataloader_sees('spawn')[0], [1, 1])
+
+    @unittest.skipUnless(FORKSERVER_AVAILABLE, 'forkserver not available')
+    def test_forkserver_needs_the_patch(self):
+        self.assertEqual(self._dataloader_sees('forkserver')[0], [0, 0], 'control: forkserver starts clean')
+        patch_dataloader_external_plugins()
+        self.assertEqual(self._dataloader_sees('forkserver')[0], [1, 1])
+
+    @unittest.skipUnless(SPAWN_AVAILABLE, 'spawn not available')
+    def test_patch_delegates_to_a_caller_supplied_worker_init_fn(self):
+        patch_dataloader_external_plugins()
+        plugin, inner = self._dataloader_sees('spawn', worker_init_fn=_record_worker_init)
+        self.assertEqual(plugin, [1, 1])
+        self.assertEqual(inner, [1, 1], 'the original worker_init_fn must still run')
+
+    def test_patch_is_idempotent_and_does_not_nest(self):
+        patch_dataloader_external_plugins()
+        patched_init = DataLoader.__init__
+        patch_dataloader_external_plugins()
+        self.assertIs(DataLoader.__init__, patched_init, 'patching twice must not re-wrap')
+        loader = DataLoader(CodecProbeDataset(), batch_size=2, num_workers=1, worker_init_fn=_record_worker_init)
+        self.assertIs(loader.worker_init_fn.inner, _record_worker_init, 'the wrapper must not stack')
+
+    def test_patch_leaves_single_process_loaders_alone(self):
+        patch_dataloader_external_plugins()
+        loader = DataLoader(CodecProbeDataset(), batch_size=2, num_workers=0)
+        self.assertIsNone(loader.worker_init_fn, 'nothing to replay without workers')
+
+    def test_packing_worker_job_carries_the_plugin_paths(self):
+        # IterablePackingDataset drives raw ctx.Process workers, not a DataLoader, so the constructor
+        # patch cannot reach them; the paths ride along in the job tuple instead.
+        ipd = _run_iter_packing(None, _make_rows(4), template=CodecProbeTemplate())
+        try:
+            self.assertEqual(ipd._worker_jobs()[0][-1], get_external_files())
+        finally:
+            for worker in ipd.workers:
+                worker.terminate()
+
+    def _packing_worker_sees(self, ctx_name, external_files):
+        ctx = mp.get_context(ctx_name)
+        in_queue, out_queue = ctx.Queue(), ctx.Queue()
+        worker = ctx.Process(
+            target=IterablePackingDataset._processor,
+            args=(in_queue, out_queue, CodecProbeTemplate(), False, external_files),
+            daemon=True)
+        worker.start()
+        try:
+            in_queue.put((0, {'input_ids': [1]}))
+            return out_queue.get(timeout=60)[1]['length']
+        finally:
+            worker.terminate()
+            worker.join(timeout=10)
+
+    @unittest.skipUnless(SPAWN_AVAILABLE, 'spawn not available')
+    def test_packing_worker_spawn_needs_replay(self):
+        self.assertEqual(self._packing_worker_sees('spawn', ()), 0, 'control: spawn must start clean')
+        self.assertEqual(self._packing_worker_sees('spawn', get_external_files()), 1)
+
+    @unittest.skipUnless(FORKSERVER_AVAILABLE, 'forkserver not available')
+    def test_packing_worker_forkserver_needs_replay(self):
+        self.assertEqual(self._packing_worker_sees('forkserver', ()), 0, 'control: forkserver starts clean')
+        self.assertEqual(self._packing_worker_sees('forkserver', get_external_files()), 1)
 
 
 if __name__ == '__main__':
