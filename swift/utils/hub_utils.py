@@ -81,7 +81,7 @@ def safe_snapshot_download(model_id_or_path: str,
             '*.ot', '*.h5'
         ]
     if not download_model:
-        ignore_patterns += ['*.bin', '*.safetensors']
+        ignore_patterns = [*ignore_patterns, '*.bin', '*.safetensors']
     hub = get_hub(use_hf)
     if model_id_or_path.startswith('~'):
         model_id_or_path = os.path.abspath(os.path.expanduser(model_id_or_path))
