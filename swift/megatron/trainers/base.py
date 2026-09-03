@@ -400,7 +400,7 @@ class BaseMegatronTrainer(ABC):
             logger.info_once(f'vit_lr: {vit_lr}, aligner_lr: {aligner_lr}, llm_lr: {args.lr}')
         use_decoupled_learning_rate = decoupled_lr is not None
 
-        # Map (wd_mult, lr_mult, is_expert_parallel, is_decoupled_lr) to params.
+        # Map (wd_mult, max_lr, min_lr, is_expert_parallel, is_decoupled_lr) to params.
         params_map = {}
         for model_chunk in model_chunks:
             visual = model_chunk.module.module.visual if is_multimodal else None
@@ -424,6 +424,7 @@ class BaseMegatronTrainer(ABC):
                         name.endswith('.bias') or len(param.shape) == 1
                         or (default_skip_embedding_weight_decay and 'embedding' in name))
                 _lr_mult = lr_mult
+                lr_override = None
                 if scale_lr_cond is not None:
                     scale_lr = scale_lr_cond(name, param)
                 else:
@@ -436,12 +437,12 @@ class BaseMegatronTrainer(ABC):
                                      for k in visual._vision_tower) and not is_aligner
                     else:
                         is_aligner, is_vit = False, False
-                    if is_vit and args.vit_lr:
+                    if is_vit and args.vit_lr is not None:
                         scale_lr = True
-                        _lr_mult = args.vit_lr / lr
-                    elif is_aligner and args.aligner_lr:
+                        lr_override = args.vit_lr
+                    elif is_aligner and args.aligner_lr is not None:
                         scale_lr = True
-                        _lr_mult = args.aligner_lr / lr
+                        lr_override = args.aligner_lr
 
                 if not no_wd and not scale_lr:
                     wd_mult, _lr_mult = 1.0, 1.0
@@ -458,7 +459,18 @@ class BaseMegatronTrainer(ABC):
                 if use_decoupled_learning_rate and getattr(param, 'is_embedding_or_output_parameter', False):
                     is_decoupled_lr = True
 
-                key = (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr)
+                if lr_override is not None:
+                    _max_lr = lr_override
+                    _min_lr = 0. if lr == 0. or lr_override == 0. else min_lr * lr_override / lr
+                elif is_decoupled_lr:
+                    assert decoupled_lr is not None
+                    _max_lr = decoupled_lr * _lr_mult
+                    _min_lr = decoupled_min_lr * _lr_mult
+                else:
+                    _max_lr = lr * _lr_mult
+                    _min_lr = min_lr * _lr_mult
+
+                key = (wd_mult, _max_lr, _min_lr, is_expert_parallel, is_decoupled_lr)
                 if key not in params_map:
                     params_map[key] = []
                 params_map[key].append(param)
@@ -476,12 +488,12 @@ class BaseMegatronTrainer(ABC):
 
         param_groups = []
         for key in params_key:
-            wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr = key
+            wd_mult, _max_lr, _min_lr, is_expert_parallel, is_decoupled_lr = key
             params = params_map[key] if key in params_map else []
             param_group = {
                 'params': params,
                 'wd_mult': wd_mult,
-                'lr_mult': _lr_mult,
+                'lr_mult': 1.,
                 'is_expert_parallel': is_expert_parallel,
                 'is_decoupled_lr': is_decoupled_lr,
             }
@@ -489,23 +501,9 @@ class BaseMegatronTrainer(ABC):
             # See MegatronOptimizer._filter_and_reorder_param_groups.
             if param_group_identifier_keys is not None:
                 assert set(param_group.keys()) - set(param_group_identifier_keys) == {'params'}
+            param_group['max_lr'] = _max_lr
+            param_group['min_lr'] = _min_lr
             param_groups.append(param_group)
-
-        # Update min and max lr in param groups
-        # These changes are compatible with mcore 0.16.
-        for param_group in param_groups:
-            if param_group['is_decoupled_lr']:
-                assert decoupled_lr is not None
-                param_group['max_lr'] = decoupled_lr
-                param_group['min_lr'] = decoupled_min_lr
-            else:
-                param_group['max_lr'] = lr
-                param_group['min_lr'] = min_lr
-            lr_mult = param_group.pop('lr_mult')
-            # Instead of using lr_mult to control the learning rate, we directly use max_lr/min_lr.
-            param_group['lr_mult'] = 1.
-            param_group['max_lr'] *= lr_mult
-            param_group['min_lr'] *= lr_mult
         return param_groups
 
     @contextmanager
