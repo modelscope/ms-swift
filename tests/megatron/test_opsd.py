@@ -19,7 +19,7 @@ if __name__ == '__main__':
             vllm_max_model_len=10240,
             tuner_type='lora',
             lora_rank=64,
-            lora_alpha=128,
+            lora_alpha=128.0,
             sleep_level=1,
             lmbda=1.0,
             beta=0.5,

@@ -463,7 +463,7 @@ class MegatronTunerMixin:
 
     # lora
     lora_rank: int = 8
-    lora_alpha: int = 32
+    lora_alpha: float = 32.0
     lora_dropout: float = 0.05
     lora_bias: Literal['none', 'all'] = 'none'
     lora_dtype: Literal['float16', 'bfloat16', 'float32', None] = None

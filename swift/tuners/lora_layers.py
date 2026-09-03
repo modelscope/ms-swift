@@ -517,7 +517,7 @@ class LoRALayer(ActivationMixin):
         adapter_name: str,
         module_key: str,
         r: int,
-        lora_alpha: int,
+        lora_alpha: float,
         lora_dropout: float,
         merge_weights: bool,
     ):
@@ -544,7 +544,7 @@ class MergedLinear(nn.Linear, LoRALayer):
                  module_key: str,
                  base_layer: nn.Linear,
                  r: int = 0,
-                 lora_alpha: int = 1,
+                 lora_alpha: float = 1.0,
                  lora_dropout: float = 0.,
                  enable_lora: List[bool] = [False],
                  fan_in_fan_out: bool = False,
