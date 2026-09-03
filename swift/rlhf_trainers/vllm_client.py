@@ -10,14 +10,14 @@ from packaging import version
 from pydantic import ValidationError
 from requests import ConnectionError
 from torch import nn
-from typing import List, Optional, Union
+from typing import Iterable, List, Optional, Union
 from urllib.parse import urlparse
 
 from swift.infer_engine import AdapterRequest, RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
 from swift.metrics import Metric
-from swift.utils import (is_trl_available, is_vllm_ascend_available, is_vllm_available, is_vllm_kunlun_available,
-                         is_vllm_metax_available, synchronize)
+from swift.utils import (get_torch_device, is_trl_available, is_vllm_ascend_available, is_vllm_available,
+                         is_vllm_kunlun_available, is_vllm_metax_available, synchronize)
 from .utils import (broadcast_tensor_for_vllm_weight_sync, format_host_for_url, is_valid_ipv6_address,
                     peft_config_to_dict, resolve_hostname)
 
@@ -39,6 +39,34 @@ if is_trl_available():
     trl_verison = version.parse(trl.__version__)
 
 logger = logging.getLogger(__name__)
+
+
+def _broadcast_tensors_for_vllm_weight_sync(communicator, tensors: Iterable[torch.Tensor]) -> None:
+    """Broadcast outgoing tensors on the device owned by ``communicator``."""
+    tensors = list(tensors)
+    if not tensors:
+        return
+
+    # Exported tensors may originate from a different model-parallel device.
+    # Wait for each source device before starting a blocking cross-device copy.
+    source_devices = dict.fromkeys(tensor.device for tensor in tensors)
+    for source_device in source_devices:
+        if source_device.type != 'cpu':
+            synchronize(source_device)
+
+    prepared_tensors = [
+        tensor if tensor.device == communicator.device else tensor.to(device=communicator.device, non_blocking=False)
+        for tensor in tensors
+    ]
+
+    # VLLM's communicator and its stream must use the same device. This is
+    # especially important in ThreadPoolExecutor workers, whose current device
+    # is not inherited from the caller thread.
+    device_module = get_torch_device()
+    with device_module.device(communicator.device):
+        for tensor in prepared_tensors:
+            broadcast_tensor_for_vllm_weight_sync(communicator, tensor, src=communicator.rank)
+        synchronize(communicator.device)
 
 
 class VLLMInferClient:
@@ -250,10 +278,9 @@ class VLLMClient(VLLMInferClient):
                 if response.status_code != 200:
                     raise Exception(f'Server {i} update failed: {response.text}')
 
-                synchronize()
-                broadcast_tensor_for_vllm_weight_sync(self.pynccl_comms[i], weights, src=self.pynccl_comms[i].rank)
-                synchronize()
-                self.pynccl_comms[i].group.barrier()
+                comm = self.pynccl_comms[i]
+                _broadcast_tensors_for_vllm_weight_sync(comm, [weights])
+                comm.group.barrier()
             except Exception as e:
                 errors[i] = e
 
@@ -295,11 +322,9 @@ class VLLMClient(VLLMInferClient):
                 if response.status_code != 200:
                     raise Exception(f'Server {i} update adapter failed: {response.text}')
 
-                synchronize()
-                broadcast_tensor_for_vllm_weight_sync(
-                    self.pynccl_comms[i], flattened_tensor, src=self.pynccl_comms[i].rank)
-                synchronize()
-                self.pynccl_comms[i].group.barrier()
+                comm = self.pynccl_comms[i]
+                _broadcast_tensors_for_vllm_weight_sync(comm, [flattened_tensor])
+                comm.group.barrier()
             except Exception as e:
                 errors[i] = e
 
@@ -353,12 +378,10 @@ class VLLMClient(VLLMInferClient):
                 if response.status_code != 200:
                     raise Exception(f'Server {i} update adapter failed: {response.text}')
 
-                # Broadcast each tensor individually
-                synchronize()
-                for name, param in lora_params.items():
-                    broadcast_tensor_for_vllm_weight_sync(self.pynccl_comms[i], param, src=self.pynccl_comms[i].rank)
-                synchronize()
-                self.pynccl_comms[i].group.barrier()
+                # Broadcast each tensor individually.
+                comm = self.pynccl_comms[i]
+                _broadcast_tensors_for_vllm_weight_sync(comm, lora_params.values())
+                comm.group.barrier()
             except Exception as e:
                 errors[i] = e
 
@@ -395,11 +418,9 @@ class VLLMClient(VLLMInferClient):
                 if response.status_code != 200:
                     raise Exception(f'Server {i} update flattened params failed: {response.text}')
 
-                synchronize()
-                broadcast_tensor_for_vllm_weight_sync(
-                    self.pynccl_comms[i], flattened_tensor, src=self.pynccl_comms[i].rank)
-                synchronize()
-                self.pynccl_comms[i].group.barrier()
+                comm = self.pynccl_comms[i]
+                _broadcast_tensors_for_vllm_weight_sync(comm, [flattened_tensor])
+                comm.group.barrier()
             except Exception as e:
                 errors[i] = e
 
