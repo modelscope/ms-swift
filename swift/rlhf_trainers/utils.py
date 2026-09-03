@@ -1012,7 +1012,7 @@ def _get_moe_model_registry():
     return _moe_model_registry_cache
 
 
-def patch_vllm_moe_model_weight_loader(model):
+def patch_vllm_moe_model_weight_loader(model, *, load_preprocessed_weight: bool = False):
     """
     Patch vLLM MoE model to add weight_loader attribute to expert weights.
 
@@ -1022,6 +1022,8 @@ def patch_vllm_moe_model_weight_loader(model):
 
     Args:
         model: The vLLM model to patch.
+        load_preprocessed_weight: Whether Ascend MoE expert loaders should write
+            checkpoint layout for a subsequent post-load processing pass.
     """
     # Check if already patched (idempotent). On NPU/vLLM-Ascend, sleep/wake
     # and full-model reload can recreate expert Parameters while keeping this
@@ -1062,16 +1064,14 @@ def patch_vllm_moe_model_weight_loader(model):
         return
 
     def maybe_patch_vllm_ascend_moe_expert_weight_loader(experts, name, param):
-        quant_method = getattr(experts, 'quant_method', None)
-        if not is_torch_npu_available() or not type(quant_method).__module__.startswith('vllm_ascend'):
+        if not is_torch_npu_available():
             return
-        from swift.model.npu_patch.vllm_ascend import (patch_vllm_ascend_moe_expert_weight_loader,
-                                                       use_vllm_ascend_moe_preprocessed_weight)
+        from swift.model.npu_patch.vllm_ascend import patch_vllm_ascend_moe_expert_weight_loader
         patch_vllm_ascend_moe_expert_weight_loader(
             experts,
             name,
             param,
-            load_preprocessed_weight=use_vllm_ascend_moe_preprocessed_weight(original_model),
+            load_preprocessed_weight=load_preprocessed_weight,
         )
 
     for layer in inner_model.layers:
@@ -1099,10 +1099,6 @@ def patch_vllm_moe_model_weight_loader(model):
 def finish_vllm_weight_reload(vllm_model, model_config, target_device):
     if vllm_model is None or model_config is None or target_device is None:
         return
-    if is_torch_npu_available():
-        from swift.model.npu_patch.vllm_ascend import should_skip_vllm_ascend_moe_post_load
-        if should_skip_vllm_ascend_moe_post_load(vllm_model):
-            return
     try:
         from vllm.model_executor.model_loader.utils import process_weights_after_loading
         process_weights_after_loading(vllm_model, model_config, target_device)
@@ -1111,6 +1107,13 @@ def finish_vllm_weight_reload(vllm_model, model_config, target_device):
 
 
 _cached_reverse_renamings = None
+
+# Models whose vLLM ``load_weights`` path expects *checkpoint-style* per-expert MoE
+# keys, while HF runtime packs them via ``WeightConverter`` (e.g. MergeModulelist).
+# For these, rename-only revert is insufficient — experts must be unpacked back to
+# HF checkpoint keys. Other MoE families (Qwen2/3-MoE, Mixtral, ...) keep fused
+# runtime tensors for the existing MoE weight-loader patch.
+_VLLM_CHECKPOINT_STYLE_PACKED_MOE_MODEL_TYPES = frozenset({'nemotron_h'})
 
 
 def _build_reverse_renamings(model):
@@ -1165,10 +1168,16 @@ def revert_runtime_names_to_checkpoint(model, state_dict):
     that sends runtime names can land on the wrong vLLM module and raise
     "There is no module or parameter named ...".
 
-    We revert only the *renaming* part (``WeightRenaming``). Tensor-level
-    ``WeightConverter`` ops (e.g. MoE fuse/split) are intentionally skipped and
+    Default path: revert only the *renaming* part (``WeightRenaming``). Tensor-level
+    ``WeightConverter`` ops (e.g. Qwen/Mixtral MoE fuse) are intentionally skipped and
     left to the existing MoE weight-loader patch, which expects the fused runtime
     layout.
+
+    Exception: models in ``_VLLM_CHECKPOINT_STYLE_PACKED_MOE_MODEL_TYPES`` (currently
+    ``nemotron_h``) need transformers ``revert_weight_conversion`` (rename + expert
+    unpack) so the payload matches the HF checkpoint layout that vLLM's
+    ``hf_to_vllm_mapper`` / ``load_weights`` expect. We do **not** emit vLLM-internal
+    names (``embed_tokens``, fused ``w13``, …) — vLLM renames/loads those itself.
 
     Safe by construction: models whose vLLM mapper accepts runtime names also
     carry the checkpoint-name rules (required by ``vllm serve``), so reverting to
@@ -1181,6 +1190,11 @@ def revert_runtime_names_to_checkpoint(model, state_dict):
             model = model.get_base_model()
         except Exception:
             pass
+
+    model_type = getattr(getattr(model, 'config', None), 'model_type', None)
+    if model_type in _VLLM_CHECKPOINT_STYLE_PACKED_MOE_MODEL_TYPES:
+        from transformers.core_model_loading import revert_weight_conversion
+        return revert_weight_conversion(model, state_dict)
 
     reverse_renamings = _build_reverse_renamings(model)
     if not reverse_renamings:
@@ -1249,9 +1263,13 @@ def patch_vllm_load_adapter():
             # loading weights, throwing an exception if validation fails.
             peft_helper.validate_legal(self.lora_config)
             # For some models like Qwen2VL, we need to use hf_to_vllm_mapper
-            # to ensure correct loading of lora weights.
+            # to ensure correct loading of lora weights. Drop the QKV/MLP fusion
+            # substr maps so constituent names (e.g. `q_proj`) survive for the
+            # LoRA manager to pack, matching vllm's own worker_manager._load_adapter.
             model = self._adapter_manager.model
             hf_to_vllm_mapper = getattr(model, 'hf_to_vllm_mapper', None)
+            if hf_to_vllm_mapper is not None and hasattr(hf_to_vllm_mapper, 'get_unstacked_mapper'):
+                hf_to_vllm_mapper = hf_to_vllm_mapper.get_unstacked_mapper()
 
             lora_request_kwargs = {
                 'peft_helper': peft_helper,
@@ -1534,6 +1552,9 @@ def get_chord_sft_dataloader(trainer,
         'pin_memory': trainer.args.dataloader_pin_memory,
         'persistent_workers': trainer.args.dataloader_persistent_workers,
     }
+    mp_context = getattr(trainer.args, 'dataloader_multiprocessing_context', None)
+    if mp_context is not None and trainer.args.dataloader_num_workers > 0:
+        dataloader_params['multiprocessing_context'] = mp_context
 
     if not isinstance(dataset, torch.utils.data.IterableDataset):
         if sampler_fn is not None:
@@ -1651,6 +1672,26 @@ def set_expandable_segments(enable: bool) -> None:
     if torch.cuda.is_available():
         torch.cuda.memory._set_allocator_settings(f'expandable_segments:{enable}')
         os.environ['PYTORCH_CUDA_ALLOC_CONF'] = f'expandable_segments:{enable}'
+
+
+def sleep_vllm_engine(engine, sleep_level: int, suppress_errors: bool = False) -> None:
+    """Release colocated vLLM memory while attempting every cleanup operation."""
+    cleanup_error = None
+    operations = [
+        ('reset the prefix cache', engine.reset_prefix_cache),
+        ('put the engine to sleep', lambda: engine.sleep(level=sleep_level)),
+        ('empty the device cache', aggressive_empty_cache),
+        ('restore expandable segments', lambda: set_expandable_segments(True)),
+    ]
+    for operation, callback in operations:
+        try:
+            callback()
+        except Exception as error:
+            if cleanup_error is None:
+                cleanup_error = error
+            get_logger().warning(f'Failed to {operation} during vLLM cleanup: {error}')
+    if cleanup_error is not None and not suppress_errors:
+        raise cleanup_error
 
 
 def peft_config_to_dict(peft_config):

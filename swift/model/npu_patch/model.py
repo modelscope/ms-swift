@@ -8,6 +8,7 @@ from torch import nn
 from transformers.models.qwen2 import modeling_qwen2
 from transformers.models.qwen3 import modeling_qwen3
 from transformers.models.qwen3_moe import modeling_qwen3_moe
+from transformers.models.qwen3_vl import modeling_qwen3_vl
 from transformers.models.qwen3_vl_moe import modeling_qwen3_vl_moe
 
 from swift.utils.logger import get_logger
@@ -204,6 +205,16 @@ QWEN3_PATCHES = {
     'Qwen3RMSNorm': NpuRMSNorm,
     'apply_rotary_pos_emb': npu_apply_rotary_pos_emb,
     'Qwen3MLP.forward': npu_swiglu_forward,
+}
+
+# ---------------------------------------------------------------------------
+# Qwen3-VL dense patch
+# ---------------------------------------------------------------------------
+
+QWEN3_VL_PATCHES = {
+    'Qwen3VLTextRMSNorm': NpuRMSNorm,
+    'apply_rotary_pos_emb': npu_apply_rotary_pos_emb,
+    'Qwen3VLTextMLP.forward': npu_swiglu_forward,
 }
 
 # ---------------------------------------------------------------------------
@@ -501,6 +512,7 @@ def apply_patch() -> None:
     patch_groups = [
         ('qwen2', modeling_qwen2, QWEN2_PATCHES, {}),
         ('qwen3', modeling_qwen3, QWEN3_PATCHES, {}),
+        ('qwen3_vl', modeling_qwen3_vl, QWEN3_VL_PATCHES, {}),
         ('qwen3_moe', modeling_qwen3_moe, QWEN3_MOE_PATCHES, QWEN3_MOE_TRANSFORMERS_5_PATCHES),
         ('qwen3_vl_moe', modeling_qwen3_vl_moe, QWEN3_VL_MOE_PATCHES, {}),
     ]

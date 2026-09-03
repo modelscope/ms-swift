@@ -373,6 +373,49 @@ register_model(
         architectures=['BailingMoeV2ForCausalLM'],
     ))
 
+
+class BailingHybridLoader(ModelLoader):
+
+    @staticmethod
+    def _patch_dynamic_cache_auto_extend():
+        """Patch DynamicCache.update to auto-extend layers for MTP/NextN layers."""
+        from transformers.cache_utils import DynamicCache
+        if getattr(DynamicCache, '_swift_auto_extend_patched', False):
+            return
+
+        _original_update = DynamicCache.update
+
+        def auto_extend_update(self, key_states, value_states, layer_idx, *args, **kwargs):
+            from transformers import DynamicLayer
+            while len(self.layers) <= layer_idx:
+                self.layers.append(DynamicLayer())
+            return _original_update(self, key_states, value_states, layer_idx, *args, **kwargs)
+
+        DynamicCache.update = auto_extend_update
+        DynamicCache._swift_auto_extend_patched = True
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor, model_kwargs) -> Any:
+        if 'BailingMoeV3ForCausalLM' in (getattr(config, 'architectures', None) or []):
+            import transformers.utils.import_utils as import_utils
+            if not hasattr(import_utils, 'is_torch_fx_available'):
+
+                def is_torch_fx_available():
+                    try:
+                        import torch.fx  # noqa: F401
+                        return True
+                    except ImportError:
+                        return False
+
+                import_utils.is_torch_fx_available = is_torch_fx_available
+            rope_scaling = getattr(config, 'rope_scaling', None)
+            if isinstance(rope_scaling, dict) and 'factor' not in rope_scaling:
+                rope_scaling['factor'] = 1.0
+                rope_scaling['rope_type'] = 'linear'
+            if getattr(config, 'num_nextn_predict_layers', 0) > 0:
+                self._patch_dynamic_cache_auto_extend()
+        return super().get_model(model_dir, config, processor, model_kwargs)
+
+
 register_model(
     ModelMeta(
         LLMModelType.bailing_hybrid,
@@ -384,12 +427,18 @@ register_model(
             ],
                        template=TemplateType.ling2),
             ModelGroup([
+                Model('inclusionAI/Ling-3.0-tiny', 'inclusionAI/Ling-3.0-tiny'),
+                Model('inclusionAI/Ling-3.0-flash', 'inclusionAI/Ling-3.0-flash'),
+            ],
+                       template=TemplateType.ling3),
+            ModelGroup([
                 Model('inclusionAI/Ring-2.5-1T', 'inclusionAI/Ring-2.5-1T'),
                 Model('inclusionAI/Ring-2.6-1T', 'inclusionAI/Ring-2.6-1T'),
             ],
                        template=TemplateType.ring2_5),
         ],
-        architectures=['BailingMoeV2_5ForCausalLM'],
+        BailingHybridLoader,
+        architectures=['BailingMoeV2_5ForCausalLM', 'BailingMoeV3ForCausalLM'],
     ))
 
 register_model(

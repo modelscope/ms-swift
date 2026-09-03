@@ -101,6 +101,7 @@ class LLMModelType:
     dbrx = 'dbrx'
     grok = 'grok'
     mamba = 'mamba'
+    nemotron_h = 'nemotron_h'
     polylm = 'polylm'
     aya = 'aya'
     mimo = 'mimo'
@@ -136,6 +137,7 @@ class RMModelType:
 
 
 class MLLMModelType:
+    moss_vl = 'moss_vl'
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
@@ -151,6 +153,9 @@ class MLLMModelType:
     qwen3_vl_reranker = 'qwen3_vl_reranker'
     qwen3_5 = 'qwen3_5'
     qwen3_5_moe = 'qwen3_5_moe'
+    qwen3_5_emb = 'qwen3_5_emb'
+    wemm_embedding = 'wemm_embedding'
+    qwen4_exp = 'qwen4_exp'
 
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
@@ -202,6 +207,7 @@ class MLLMModelType:
     llava_next_qwen = 'llava_next_qwen'
     llama3_llava_next = 'llama3_llava_next'
     llava_onevision1_5 = 'llava_onevision1_5'
+    llava_onevision2 = 'llava_onevision2'
 
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
@@ -241,6 +247,7 @@ class MLLMModelType:
     keye_vl_1_5 = 'keye_vl_1_5'
     dots_ocr = 'dots_ocr'
     sail_vl2 = 'sail_vl2'
+    mimo_v2 = 'mimo_v2'
 
     phi3_vision = 'phi3_vision'
     phi4_multimodal = 'phi4_multimodal'
@@ -264,6 +271,7 @@ class MLLMModelType:
     paddleocr_vl = 'paddleocr_vl'
     hunyuan_ocr = 'hunyuan_ocr'
     step3_vl = 'step3_vl'
+    muse_glimmer = 'muse_glimmer'
 
     jina_reranker_m0 = 'jina_reranker_m0'
 

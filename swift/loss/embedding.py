@@ -10,7 +10,7 @@ from torch import nn
 from torch.nn import MSELoss
 from transformers.utils import strtobool
 
-from swift.sequence_parallel import sequence_parallel
+from swift.sequence_parallel import get_sp_strategy
 from swift.utils import get_dist_setting
 from .base import BaseLoss
 
@@ -135,10 +135,11 @@ class InfonceLoss(BaseLoss):
         sentences = outputs['last_hidden_state']
 
         if world_size > 1 and use_batch:
-            if getattr(sequence_parallel, 'dp_group', None) is not None:
-                all_sentences = sequence_parallel._gather_object_dp(sentences.unsqueeze(0))
-                labels = sequence_parallel._gather_object_dp(labels)
-                rank = sequence_parallel.dp_rank
+            strategy = get_sp_strategy()
+            if strategy.dp_group is not None:
+                all_sentences = strategy.gather_object_dp(sentences.unsqueeze(0))
+                labels = strategy.gather_object_dp(labels)
+                rank = strategy.dp_rank
             elif self.is_megatron:
                 from megatron.core import mpu
                 dp_group = mpu.get_data_parallel_group()

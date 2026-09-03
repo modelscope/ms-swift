@@ -58,7 +58,7 @@ from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_completion_logprob
                                              build_teacher_requests, encode_teacher_view,
                                              fetch_teacher_parsed_by_routing, remap_teacher_logps_to_student_frame,
                                              should_compute_local_teacher_logps)
-from swift.sequence_parallel import GatherLoss, sequence_parallel
+from swift.sequence_parallel import GatherLoss, get_sp_strategy
 from swift.template import Template, TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logger, is_swanlab_available,
@@ -156,7 +156,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.eval_flag = False
 
         if self.template.sequence_parallel_size > 1:
-            self.args.gradient_accumulation_steps = self.args.gradient_accumulation_steps * sequence_parallel.world_size
+            self.args.gradient_accumulation_steps = self.args.gradient_accumulation_steps * get_sp_strategy().world_size
 
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
         # Record the number of samples that need to be padded for even distribution across processes
@@ -178,7 +178,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 data_source=train_dataset or self.train_dataset,
                 mini_repeat_count=self.num_generations,
                 batch_size=self.args.generation_batch_size // self.num_generations,
-                repeat_count=self.num_iterations * self.args.steps_per_generation * sequence_parallel.world_size,
+                repeat_count=self.num_iterations * self.args.steps_per_generation * get_sp_strategy().world_size,
                 shuffle=self.shuffle_dataset,
                 seed=self.args.seed,
             )
@@ -547,7 +547,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for s in batch:
             s.encoded = encode_teacher_view(s, template)
         teacher_model_inputs, teacher_grpo_batch = collate_to_grpo_micro_batch(
-            batch, template, device=self.model.device, use_logits_to_keep=True)
+            batch, template, device=self.accelerator.device, use_logits_to_keep=True)
         teacher_model_inputs.pop('labels', None)
         # Restore the student encoding so downstream code (advantages/loss) keeps the student frame.
         for s in batch:
@@ -756,7 +756,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     encoded_inputs.pop('_extra_kwargs', None)  # pop add_eos
                     s.encoded = encoded_inputs
                 model_inputs, grpo_batch = collate_to_grpo_micro_batch(
-                    batch, template, device=self.model.device, use_logits_to_keep=True)
+                    batch, template, device=self.accelerator.device, use_logits_to_keep=True)
                 # OPSD: the local teacher forwards its own (teacher_prompt + same response)
                 # encoding, so collate a separate teacher micro-batch (different length).
                 has_opsd_batch = build_opsd_samples(batch)
@@ -1465,13 +1465,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                           input_ids: torch.Tensor,
                           compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Get per token logps via sequence parallel, returns rmpad format [1, total_nnz] for padding_free mode"""
-        sequence_parallel.prepare_inputs(model_inputs)
+        strategy = get_sp_strategy()
+        strategy.preprocess_inputs(model_inputs)
         with self._template_context(self.template, model_inputs):
             output = model(**model_inputs)
             logits = output.logits
         # split input_ids to labels
-        position_ids = sequence_parallel.real_position_ids
-        _, _, labels, _, _, _, _ = sequence_parallel.pad_and_split_inputs(
+        position_ids = strategy.real_position_ids
+        _, _, labels, _, _, _, _ = strategy.pad_and_split_inputs(
             None, None, input_ids.clone(), None, None, None, real_position_ids=position_ids)
 
         labels = torch.where(labels == -100, self.processing_class.pad_token_id, labels)
@@ -1490,7 +1491,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # - rp_world_size == 1: Entire data is padded to world_size multiple (end padding only)
             seq_lengths = grpo_batch.seq_lengths
             batch_size = seq_lengths.shape[0]
-            rp_world_size = sequence_parallel.rp_world_size
+            rp_world_size = strategy.rp_world_size
 
             if rp_world_size > 1:
                 # With ring parallel: GatherLoss pads each sequence to world_size * 2 multiple
@@ -1502,7 +1503,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 cu_seqlens_orig = get_cu_seqlens_from_position_ids(position_ids)
 
                 # Get padded sequence boundaries (for offset calculation)
-                padded_position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
+                padded_position_ids = strategy.pad(position_ids, padding_value=-1, position_ids=position_ids)
                 cu_seqlens_padded = get_cu_seqlens_from_position_ids(padded_position_ids)
 
                 result_logps = []
@@ -1558,6 +1559,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                      input_ids: torch.Tensor,
                                      compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Get per token logps via local forward pass, returns rmpad format [1, total_nnz] for padding_free mode"""
+        if 'use_cache' in self.model_kwarg_keys:
+            model_inputs['use_cache'] = False
+
         if 'logits_to_keep' in self.model_kwarg_keys:
             model_inputs['logits_to_keep'] = logits_to_keep + 1
 
@@ -1825,7 +1829,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     or self.args.gradient_accumulation_steps % self.args.steps_per_generation != 0)
         else:
             return (self.num_iterations > 1 or self.args.gradient_accumulation_steps %
-                    (self.args.steps_per_generation * sequence_parallel.world_size) != 0)
+                    (self.args.steps_per_generation * get_sp_strategy().world_size) != 0)
 
     @contextmanager
     def offload_context(self):
@@ -2047,11 +2051,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template = self.template
             current_length = model_inputs['input_ids'].shape[1]
             with self._template_context(template):
-                encoded_data = [template.encode(data.to_template_dict()) for data in chunk_origin_data]
+                encoded_data = [encode_sample(data, template) for data in chunk_origin_data]
                 for ed in encoded_data:
                     ed.pop('_extra_kwargs', None)
                 chunk_model_inputs.update(
-                    to_device(template.data_collator(encoded_data, padding_to=current_length), self.model.device))
+                    to_device(template.data_collator(encoded_data, padding_to=current_length), self.accelerator.device))
                 chunk_model_inputs.pop('labels', None)
 
         return chunk_model_inputs, chunk_grpo_batch

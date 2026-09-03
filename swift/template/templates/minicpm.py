@@ -15,7 +15,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from ..vision_utils import load_audio, load_video_minicpmv_mplug_owl3
+from ..vision_utils import load_audio, load_video_minicpmv_mplug_owl3, local_video_path
 from .llama import Llama3TemplateMeta
 from .qwen import Qwen2_5TemplateMeta, Qwen3MixedTemplateMeta, QwenTemplateMeta
 from .utils import ChatmlTemplateMeta
@@ -321,6 +321,11 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
     SAMPLING_RATE = 16000
     MAX_AUDIO_DURATION = 30  # seconds
 
+    def _get_audio_context(self) -> List[Context]:
+        if self.mode == 'vllm':
+            return ['(<audio>./</audio>)']
+        return ['<|audio_start|><|audio_end|>']
+
     def init_env_args(self):
         super().init_env_args()
         self.use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
@@ -333,23 +338,38 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
             # Load audio from file path to numpy array at 16kHz
             if isinstance(inputs.audios[index], str):
                 inputs.audios[index] = load_audio(inputs.audios[index], sampling_rate=self.SAMPLING_RATE)
-            return ['<|audio_start|><|audio_end|>']
+            return self._get_audio_context()
         elif media_type == 'video':
             from minicpmo.utils import get_video_frame_audio_segments
-            video = inputs.videos[inputs.video_idx]
-            video_segments, audio_segments, _ = get_video_frame_audio_segments(
-                video, use_audio=self.use_audio_in_video, stack_frames=1)
+            video_idx = inputs.video_idx
+            video = inputs.videos[video_idx]
+            with local_video_path(video) as video_path:
+                video_segments, audio_segments, _ = get_video_frame_audio_segments(
+                    video_path, use_audio=self.use_audio_in_video, stack_frames=1)
+            # The video has already been converted into image/audio segments. In
+            # vLLM/lmdeploy mode, keeping the original value would pass the raw
+            # path or Data URI to the backend as an additional video input.
+            # Compensate for the increment performed by Template._pre_tokenize
+            # so multiple video placeholders continue to consume index 0.
+            if self.mode in {'vllm', 'lmdeploy'}:
+                inputs.videos.pop(video_idx)
+                inputs.video_idx -= 1
             # Insert frames into images list at current position
             images = inputs.images
             inputs.images = images[:inputs.image_idx] + video_segments + images[inputs.image_idx:]
-            # Build context list
-            image_context = [[-100]]
+            # Build context list. vLLM decodes prompt_token_ids while applying
+            # multimodal prompt updates, so a training-only -100 sentinel in
+            # input_ids causes tokenizer.decode() to raise OverflowError.
+            # Reuse the parent mode-aware image placeholder. It emits valid
+            # placeholder text for vLLM and -100 for the transformers path,
+            # where _encode() expands the sentinel before inference.
+            image_context = super().replace_tag('image', inputs.image_idx, inputs)
             context_list = []
             if self.use_audio_in_video and audio_segments:
                 # Insert audio segments into audios list at current position
                 audios = inputs.audios
                 inputs.audios = audios[:inputs.audio_idx] + audio_segments + audios[inputs.audio_idx:]
-                audio_context = ['<|audio_start|><|audio_end|>']
+                audio_context = self._get_audio_context()
                 # Interleave: one image placeholder + one audio placeholder per second
                 for i in range(len(video_segments)):
                     context_list += image_context

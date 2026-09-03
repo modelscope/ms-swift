@@ -9,6 +9,7 @@ from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
 from .hy_v3 import HyV3AgentTemplate, HyV3PreviewAgentTemplate
 from .kimi_k3 import KimiK3AgentTemplate
 from .kimi_k25 import KimiK25AgentTemplate
+from .ling3 import Ling3AgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .minicpm5 import MiniCPM5AgentTemplate
 from .minimax_m2 import MinimaxM2AgentTemplate
@@ -59,5 +60,6 @@ agent_template_map = {
     'youtu': YoutuAgentTemplate,
     'kimi_k25': KimiK25AgentTemplate,
     'kimi_k3': KimiK3AgentTemplate,
+    'ling3': Ling3AgentTemplate,
     'minicpm5': MiniCPM5AgentTemplate,
 }

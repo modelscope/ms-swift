@@ -6,6 +6,7 @@
 # generation_batch_size = global_batch_size * steps_per_generation (128 * 4 = 512)
 # num_of_prompt_to_rollout = generation_batch_size / num_generations (512 / 8 = 64)
 # num_of_prompt_to_train = generation_batch_size / num_generations (128 / 8 = 16)
+# Disable the multimodal processor cache to avoid mismatches across iterations.
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
@@ -29,6 +30,7 @@ megatron rlhf \
     --use_vllm true \
     --vllm_mode colocate \
     --vllm_gpu_memory_utilization 0.7 \
+    --vllm_mm_processor_cache_gb 0 \
     --vllm_max_model_len 10240 \
     --max_length 8192 \
     --max_completion_length 2048 \

@@ -103,10 +103,7 @@ def _set_death_signal():
 
 
 def _patch_full_weight_reload_loader(model) -> None:
-    if is_vllm_ascend_available():
-        from swift.model.npu_patch.vllm_ascend_moe import configure_vllm_ascend_moe_preprocessed_weight_sync
-        configure_vllm_ascend_moe_preprocessed_weight_sync(model)
-    patch_vllm_moe_model_weight_loader(model)
+    patch_vllm_moe_model_weight_loader(model, load_preprocessed_weight=is_vllm_ascend_available())
 
 
 class WeightSyncWorkerExtension:
@@ -729,6 +726,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
     args: args_class
 
     def _register_rl_rollout_app(self):
+        self.app.get('/health')(self.health)
         self.app.get('/health/')(self.health)
         self.app.get('/get_world_size/')(self.get_world_size)
         self.app.get('/get_model_state_keys/')(self.get_model_state_keys)

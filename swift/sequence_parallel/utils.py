@@ -10,6 +10,13 @@ from swift.dataloader import DataLoaderDispatcher
 from .sequence_parallel import sequence_parallel
 
 
+def gather_object_dp(input_data, group, world_size):
+    """Gather a list of objects across the data-parallel group and flatten one level."""
+    input_data_list = [None] * world_size
+    dist.all_gather_object(input_data_list, input_data, group=group)
+    return [x for y in input_data_list for x in y]
+
+
 class GatherTensor(torch.autograd.Function):
     """Gather tensor from sequence group (autograd supported)"""
 
@@ -105,12 +112,16 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
 
 
 class SequenceParallelSampler(Sampler):
-    """Sampler for sequence parallel training"""
+    """Sampler for sequence parallel training.
 
-    def __init__(self, sp_instance, dataset, shuffle: bool = True, seed=None, round_up: bool = True) -> None:
-        self.sp_instance = sp_instance
-        rank = dist.get_rank(sp_instance.device_mesh['data'].get_group())
-        world_size = sp_instance.device_mesh['data'].size()
+    Depends only on the data-parallel topology (``dp_group``), not on the SP
+    engine instance.
+    """
+
+    def __init__(self, dataset, dp_group=None, shuffle: bool = True, seed=None, round_up: bool = True) -> None:
+        self.dp_group = dp_group
+        rank = dist.get_rank(group=dp_group) if dp_group is not None else dist.get_rank()
+        world_size = dist.get_world_size(group=dp_group) if dp_group is not None else dist.get_world_size()
         self.rank = rank
         self.world_size = world_size
 
@@ -150,22 +161,28 @@ class SequenceParallelSampler(Sampler):
 
 
 class SequenceParallelDispatcher(DataLoaderDispatcher):
-    """Dispatcher for sequence parallel training"""
+    """Dispatcher for sequence parallel training.
 
-    def __init__(self, dataloader, sp_instance, device=None, skip_batches: int = 0):
+    Depends only on the data-parallel topology (rank/world_size/group), not on
+    the SP engine instance.
+    """
+
+    def __init__(self, dataloader, dp_rank=None, dp_world_size=None, dp_group=None, device=None, skip_batches: int = 0):
         super().__init__(dataloader)
-        self.sp_instance = sp_instance
+        self._dp_rank = dp_rank
+        self._dp_world_size = dp_world_size
+        self._dp_group = dp_group
         self.device = device
         self.skip_batches = skip_batches
 
     @property
     def rank(self):
-        return self.sp_instance.dp_rank if dist.is_initialized() else 0
+        return self._dp_rank if dist.is_initialized() else 0
 
     @property
     def world_size(self):
-        return self.sp_instance.dp_world_size if dist.is_initialized() else 1
+        return self._dp_world_size if dist.is_initialized() else 1
 
     @property
     def group(self):
-        return self.sp_instance.dp_group if dist.is_initialized() else 1
+        return self._dp_group if dist.is_initialized() else 1

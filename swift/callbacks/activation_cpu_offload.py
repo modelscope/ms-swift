@@ -510,10 +510,13 @@ class ActivationHandler:
 
         @functools.wraps(orig_method)
         def wrapped_method(model_self, *args, **kwargs):
+            if not model_self.training or not torch.is_grad_enabled():
+                return orig_method(*args, **kwargs)
             handler.pre_forward(model_self)
-            out = handler.forward(model_self, orig_method, *args, **kwargs)
-            handler.post_forward(model_self)
-            return out
+            try:
+                return handler.forward(model_self, orig_method, *args, **kwargs)
+            finally:
+                handler.post_forward(model_self)
 
         module.forward = wrapped_method.__get__(module, type(module))
 

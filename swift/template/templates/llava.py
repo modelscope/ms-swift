@@ -414,3 +414,140 @@ class LLavaOneVision1_5Template(Template):
 
 register_template(
     QwenTemplateMeta(MLLMTemplateType.llava_onevision1_5, template_cls=LLavaOneVision1_5Template, agent_template=None))
+
+
+class LLavaOneVision2Template(LLavaOneVision1_5Template):
+    """Template for LLaVA-OneVision-2 (Qwen3 backbone + OneVision encoder).
+
+    Extends v1.5 template. The only architectural difference is that v2's vision
+    tower requires ``patch_positions`` (per-patch [t,h,w] indices in 2x2 block
+    layout) to compute 3D RoPE, whereas v1.5 derives positions from ``grid_thw``
+    alone.
+
+    Inference: ``patch_positions`` is passed through to ``model.forward()``
+        natively via ``pre_forward_hook``.
+    Training: ``_post_encode`` calls ``visual(..., patch_positions=...)``
+        manually, so we override ``_get_inputs_embeds_hf`` to inject it.
+    """
+
+    @staticmethod
+    def _build_patch_positions(grid_thw: torch.Tensor, spatial_merge_size: int = 2) -> torch.Tensor:
+        """Build block-layout [t,h,w] patch positions from grid_thw.
+
+        Mirrors ``build_patch_positions`` from the model's
+        ``video_processing_llava_onevision2`` module.
+        """
+        out = []
+        for row in grid_thw:
+            t, h, w = int(row[0]), int(row[1]), int(row[2])
+            h_coords = torch.arange(h, dtype=torch.int64).repeat_interleave(w).repeat(t)
+            w_coords = torch.arange(w, dtype=torch.int64).repeat(h).repeat(t)
+            t_coords = torch.arange(t, dtype=torch.int64).repeat_interleave(h * w)
+            pp = torch.stack([t_coords, h_coords, w_coords], dim=1)
+            if spatial_merge_size > 1:
+                total = t * h * w
+                indices = torch.arange(total).view(t, h, w)
+                h_m, w_m = h // spatial_merge_size, w // spatial_merge_size
+                indices = (
+                    indices.view(t, h_m, spatial_merge_size, w_m,
+                                 spatial_merge_size).permute(0, 1, 3, 2, 4).contiguous().view(total))
+                pp = pp[indices]
+            out.append(pp)
+        return torch.cat(out, dim=0)
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        image_grid_thw = encoded.get('image_grid_thw')
+        video_grid_thw = encoded.get('video_grid_thw')
+        if image_grid_thw is not None or video_grid_thw is not None:
+            sms = self.processor.image_processor.merge_size
+            all_pp = []
+            if image_grid_thw is not None:
+                all_pp.append(self._build_patch_positions(image_grid_thw, sms))
+            if video_grid_thw is not None:
+                all_pp.append(self._build_patch_positions(video_grid_thw, sms))
+            encoded['patch_positions'] = torch.cat(all_pp, dim=0)
+        return encoded
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = self.fetch_inputs(batch, ['patch_positions'])
+        if res.get('patch_positions'):
+            res['patch_positions'] = torch.concat([v for v in res['patch_positions'] if v is not None])
+        for b in batch:
+            b.pop('patch_positions', None)
+        res.update(super()._data_collator(batch, padding_to=padding_to))
+        return res
+
+    @staticmethod
+    def _get_inputs_embeds_hf(inputs_embeds, inputs, visual, processor, config):
+        """Override base method to pass patch_positions to visual().
+
+        Also handles v2's visual output: returns BaseModelOutputWithPooling
+        with last_hidden_state set and pooler_output=None, unlike v1.5 which
+        returns a tensor or a ModelOutput with a meaningful pooler_output.
+        """
+        from PIL import Image
+
+        from swift.utils import to_device
+
+        input_ids = inputs['input_ids']
+        pixel_values = inputs.get('pixel_values')
+        pixel_values_videos = inputs.get('pixel_values_videos')
+        image_grid_thw = inputs.get('image_grid_thw')
+        video_grid_thw = inputs.get('video_grid_thw')
+        patch_positions = inputs.get('patch_positions')
+        dtype = visual.dtype
+
+        if pixel_values is None and pixel_values_videos is None:  # plain-text
+            images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+            media_inputs = processor.image_processor(images=images, return_tensors='pt')
+            media_inputs = to_device(media_inputs, input_ids.device)
+            pixel_values = media_inputs['pixel_values'].type(dtype)
+            pp = LLavaOneVision2Template._build_patch_positions(media_inputs['image_grid_thw'],
+                                                                processor.image_processor.merge_size)
+            image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'], patch_positions=pp)
+            if hasattr(image_embeds, 'last_hidden_state'):
+                image_embeds = image_embeds.last_hidden_state
+            inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
+        else:
+            if pixel_values is None:
+                pixel_values_mixed = pixel_values_videos
+                grid_thw = video_grid_thw
+            elif pixel_values_videos is None:
+                pixel_values_mixed = pixel_values
+                grid_thw = image_grid_thw
+            else:
+                pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
+                grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
+            pixel_values_mixed = pixel_values_mixed.type(dtype)
+            mixed_embeds = visual(pixel_values_mixed, grid_thw=grid_thw, patch_positions=patch_positions)
+            if hasattr(mixed_embeds, 'last_hidden_state'):
+                mixed_embeds = mixed_embeds.last_hidden_state
+            if pixel_values is None:
+                image_embeds = None
+                video_embeds = mixed_embeds
+            elif pixel_values_videos is None:
+                image_embeds = mixed_embeds
+                video_embeds = None
+            else:
+                merge_length = processor.image_processor.merge_size**2
+                image_tokens = (image_grid_thw.prod(dim=-1) // merge_length).sum()
+                image_embeds = mixed_embeds[:image_tokens]
+                video_embeds = mixed_embeds[image_tokens:]
+
+            if image_embeds is not None:
+                image_mask = (input_ids == config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                image_mask = image_mask.to(inputs_embeds.device)
+                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+
+            if video_embeds is not None:
+                video_mask = (input_ids == config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                video_mask = video_mask.to(inputs_embeds.device)
+                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
+        return inputs_embeds
+
+
+register_template(
+    QwenTemplateMeta(MLLMTemplateType.llava_onevision2, template_cls=LLavaOneVision2Template, agent_template=None))

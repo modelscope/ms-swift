@@ -54,6 +54,23 @@ class HermesAgentTemplate(BaseAgentTemplate):
             res.append(context)
         return assistant_content, res
 
+    def _format_standalone_tool_responses(self, tool_messages) -> 'Prompt':
+        """Render standalone results as a native tool-response user turn."""
+        if not hasattr(self, 'template_meta'):
+            return super()._format_standalone_tool_responses(tool_messages)
+
+        res = (self.template_meta.chat_sep or []).copy()
+        total_tool = self._get_tool_responses(tool_messages)
+        for context in self.template_meta.prompt:
+            if isinstance(context, str) and '{{QUERY}}' in context:
+                query_prefix = context.split('{{QUERY}}', maxsplit=1)[0]
+                if query_prefix:
+                    res.append(query_prefix)
+                res.append(total_tool)
+                return res
+            res.append(context)
+        raise ValueError(f'Template prompt does not contain {{{{QUERY}}}}: {self.template_meta.prompt}')
+
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]
         system = system or ''

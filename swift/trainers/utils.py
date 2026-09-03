@@ -16,13 +16,38 @@ from types import FunctionType, MethodType
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from swift.model import ModelMeta
-from swift.sequence_parallel import ChunkedCrossEntropyLoss, GatherLoss, sequence_parallel
+from swift.sequence_parallel import ChunkedCrossEntropyLoss, get_sp_strategy
 from swift.utils import deep_getattr, get_dist_setting, get_logger
 
 if TYPE_CHECKING:
     from .arguments import TrainingArguments
 
 logger = get_logger()
+
+
+def accepts_parameter(method, parameter_name: str) -> bool:
+    parameters = inspect.signature(method).parameters
+    if parameter_name in parameters:
+        return True
+    return any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values())
+
+
+def check_dlrover_flash_checkpoint_api(checkpointer_cls, checkpoint_engine_cls):
+    """Report up front when the installed DLRover predates the Flash Checkpoint arguments ms-swift uses.
+
+    The trainer adapts its calls to either API, so this only warns: on the older API the final save is not
+    blocking, which the `wait_latest_checkpoint` call at the end of training covers anyway.
+    """
+    optional_parameters = [
+        (checkpointer_cls.save_checkpoint_to_storage, 'blocking'),
+        (checkpoint_engine_cls.wait_latest_checkpoint, 'max_steps'),
+    ]
+    missing_parameters = [name for method, name in optional_parameters if not accepts_parameter(method, name)]
+    if missing_parameters:
+        missing = ', '.join(missing_parameters)
+        logger.warning(f'The installed DLRover Flash Checkpoint API does not accept: {missing}. ms-swift falls '
+                       'back to the legacy calls; install the latest DLRover source to get the newer API: '
+                       '`pip install git+https://github.com/intelligent-machine-learning/dlrover.git`.')
 
 
 def _get_deepspeed_elastic_world_size():
@@ -160,15 +185,7 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> 
         with torch.no_grad():
             target_probs = torch.exp(-loss)
         loss *= target_probs
-    position_ids = sequence_parallel.real_position_ids
-    if position_ids is not None:
-        position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
-    loss, labels = GatherLoss.apply(loss.reshape(batch_size, -1), labels.reshape(batch_size, -1), 1, position_ids)
-    if position_ids is not None and position_ids.min() == -1:
-        _pos_mask = position_ids >= 0
-        loss = loss[_pos_mask].contiguous()
-
-    return loss
+    return get_sp_strategy().gather_loss_tensors(loss, labels, batch_size)
 
 
 def per_token_loss_func(outputs, labels, enable_dft_loss: bool = False, **kwargs):
@@ -299,8 +316,9 @@ def disable_gradient_checkpointing(model: PreTrainedModel, gradient_checkpointin
 
 def gather_for_unpadded_tensors(input_data, use_gather_object=False):
     from accelerate.utils import gather_object
-    if getattr(sequence_parallel, 'dp_group', None) is not None:
-        input_data = sequence_parallel._gather_object_dp(input_data)
+    strategy = get_sp_strategy()
+    if strategy.dp_group is not None:
+        input_data = strategy.gather_object_dp(input_data)
     else:
         input_data = gather_object(input_data)
     output = []

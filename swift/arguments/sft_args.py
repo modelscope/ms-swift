@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
+from accelerate.utils.fsdp_utils import enable_fsdp_ram_efficient_loading
 from dataclasses import dataclass
 from transformers.utils.versions import require_version
 from typing import Literal, Optional
@@ -209,7 +210,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         TunerArguments.__post_init__(self)
         self._check_padding_free()
         if self.vit_gradient_checkpointing is None:
-            self.vit_gradient_checkpointing = not self.freeze_vit
+            self.vit_gradient_checkpointing = self.gradient_checkpointing
         if self.optimizer is None:
             if self.lorap_lr_ratio:
                 self.optimizer = 'lorap'
@@ -319,6 +320,11 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         fsdp_version = self.fsdp_config.get('fsdp_version', 2)
         os.environ['FSDP_VERSION'] = str(fsdp_version)
 
+        # Model loading happens before the Trainer/Accelerator is created, so wire up the env vars read by
+        # `swift.model.utils.get_default_device_map()` and `transformers.is_fsdp_enabled()` via accelerate's
+        # official helper: sets ACCELERATE_USE_FSDP (only if unset) and FSDP_CPU_RAM_EFFICIENT_LOADING.
+        enable_fsdp_ram_efficient_loading()
+
         # Set environment variable to optimize NCCL memory usage
         if 'TORCH_NCCL_AVOID_RECORD_STREAMS' not in os.environ:
             os.environ['TORCH_NCCL_AVOID_RECORD_STREAMS'] = '1'
@@ -380,6 +386,9 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
             self.logging_dir = f'{self.output_dir}/runs'
 
         self.logging_dir = to_abspath(self.logging_dir)
+        # transformers>=5.15 dropped `TrainingArguments.logging_dir`; its TensorBoardCallback reads the log
+        # dir from this environment variable instead. Harmless on older versions, which ignore it.
+        os.environ.setdefault('TENSORBOARD_LOGGING_DIR', self.logging_dir)
         os.makedirs(self.output_dir, exist_ok=True)
 
         if self.run_name is None:

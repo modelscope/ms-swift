@@ -46,7 +46,7 @@
 | torch_npu | >= 2.7.1.post4  |
 
 基础环境准备请参照 [Ascend PyTorch 安装文档](https://gitcode.com/Ascend/pytorch)。本文示例实验环境为 8 * 昇腾910B3 64G。
-注：vllm ascend系列官方推荐版本配套已更新至 CANN9.0.0 torch 2.9.0 torch_npu 2.9.0 vllm-ascend 0.18.0(A3) 0.19.1(A5)，详情请参阅 [vLLM Ascend 安装文档](https://docs.vllm.ai/projects/ascend/en/v0.18.0/installation.html)。
+vLLM-Ascend 需要与 CANN、torch 和 torch_npu 按整套兼容矩阵安装，详情请参阅 [vLLM-Ascend 0.23.0 安装文档](https://docs.vllm.ai/projects/ascend/en/v0.23.0/installation.html)。
 
 | 一级特性 | 特性                | 进展     |
 | -------- | ------------------- | -------- |
@@ -195,7 +195,7 @@ docker run -it \
 ### 本地环境安装
 ```shell
 # 创建新的 conda 虚拟环境（可选）
-conda create -n swift-npu python=3.11 -y
+conda create -n swift-npu python=3.12 -y
 conda activate swift-npu
 
 # 注意进行后续操作前要先 source 激活 CANN 环境
@@ -210,8 +210,10 @@ git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
 
-# 安装 torch_npu
-pip install torch_npu==2.9.0 decorator
+# 安装匹配的 PyTorch/TorchNPU 运行时
+pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0
+pip install torch_npu==2.10.0.post4 decorator \
+  --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi
 # 如果你想要使用 deepspeed（控制显存占用，训练速度会有一定下降）
 pip install deepspeed
 
@@ -219,8 +221,10 @@ pip install deepspeed
 pip install evalscope[opencompass]
 
 # 如果需要使用 vllm-ascend 进行推理，请安装以下包（更多版本请参考 [vLLM-Ascend 官网](https://docs.vllm.ai/projects/ascend/en/latest/installation.html)）
-pip install vllm==0.18.0
-pip install vllm-ascend==0.18.0
+pip install vllm==0.23.0
+pip install vllm-ascend==0.23.0 \
+  --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi/variant \
+  --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi
 ```
 
 ### NPU 可用性检查
@@ -701,9 +705,11 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max
 ### 使用vLLM-ascend进行部署
 使用pypi进行安装：
 ```shell
-# 请以 vLLM-Ascend 官方兼容矩阵为准；以下为本文验证版本。
-pip install vllm==0.14.0
-pip install vllm-ascend==0.14.0rc1
+# 请以 vLLM-Ascend 官方兼容矩阵为准；以下为本文推荐版本。
+pip install vllm==0.23.0
+pip install vllm-ascend==0.23.0 \
+  --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi/variant \
+  --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi
 ```
 原始模型：
 ```shell

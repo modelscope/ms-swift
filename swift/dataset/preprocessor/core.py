@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import ast
 import datasets
+import json
 import numpy as np
 import os
 from collections import Counter
@@ -12,9 +13,10 @@ from datasets import Sequence, Value
 from itertools import chain
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 from swift.template import history_to_messages
+from swift.template.template_inputs import normalize_openai_tool_calls
 from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -33,6 +35,7 @@ class RowPreprocessor:
                                 'channel',
                                 'margin',
                                 'teacher_prompt',
+                                'teacher_images',
                                 'chat_template_kwargs',
                                 # Qwen3-TTS
                                 'ref_audios',
@@ -83,7 +86,7 @@ class RowPreprocessor:
 
     @staticmethod
     def _cast_mm_data(row: Dict[str, Any]) -> None:
-        for key in ['images', 'rejected_images']:
+        for key in ['images', 'rejected_images', 'teacher_images']:
             images = row.get(key, None)
             if images is None:
                 continue
@@ -262,7 +265,10 @@ class RowPreprocessor:
                     messages_feature = List(Json())
                     for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
                         features[key] = messages_feature
-                    features['images'] = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
+                    image_feature = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
+                    features['images'] = image_feature
+                    if 'teacher_images' in features:
+                        features['teacher_images'] = image_feature
                     features['objects'] = Json()
                     features['chat_template_kwargs'] = Json()
                 else:
@@ -280,7 +286,10 @@ class RowPreprocessor:
                     features['rejected_messages'] = messages_feature_with_loss
                     features['positive_messages'] = messages_feature
                     features['negative_messages'] = messages_feature
-                    features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
+                    image_feature = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
+                    features['images'] = image_feature
+                    if 'teacher_images' in features:
+                        features['teacher_images'] = image_feature
                     features['objects'] = {
                         'ref': Sequence(feature=Value(dtype='string'), length=-1),
                         'bbox': Sequence(feature=Sequence(feature=Value(dtype='float64'), length=-1), length=-1),
@@ -299,7 +308,7 @@ class RowPreprocessor:
 
     def _cast_pil_image(self, dataset):
         features = dataset.features
-        for col in ['images', 'rejected_images']:
+        for col in ['images', 'rejected_images', 'teacher_images']:
             if (col in features and isinstance(features[col], Image) and getattr(features[col], 'decode', False)):
                 dataset = dataset.cast_column(col, Image(decode=False))
         return dataset
@@ -449,6 +458,7 @@ class MessagesPreprocessor(RowPreprocessor):
             repair_messages: Callable[[Union[str, List[Dict[str, str]]]],
                                       Optional[List[Dict[str, str]]]] = default_repair_messages,
             inner_key: Optional[str] = None,
+            message_format: Literal['auto', 'swift', 'openai', 'anthropic'] = 'auto',
             **kwargs):
         super().__init__(columns=columns, **kwargs)
         self.role_keys = ['role', 'from'] if role_key is None else [role_key]
@@ -461,6 +471,7 @@ class MessagesPreprocessor(RowPreprocessor):
         self.system_role = system_role
         self.repair_messages = repair_messages
         self.inner_key = inner_key
+        self.message_format = message_format
 
         message_keys = ['messages', 'conversation', 'conversations']
         for key in message_keys:
@@ -508,6 +519,118 @@ class MessagesPreprocessor(RowPreprocessor):
                 message['role'] = 'tool_response'
 
     @staticmethod
+    def openai_to_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Convert OpenAI tool-call messages to the SWIFT canonical roles."""
+        return normalize_openai_tool_calls(messages)
+
+    @staticmethod
+    def _anthropic_image_source(block: Dict[str, Any]) -> str:
+        source = block.get('source') or {}
+        source_type = source.get('type')
+        if source_type == 'base64':
+            media_type = source.get('media_type')
+            data = source.get('data')
+            if not media_type or not data:
+                raise ValueError(f'Invalid Anthropic base64 image block: {block}')
+            return f'data:{media_type};base64,{data}'
+        if source_type == 'url':
+            url = source.get('url')
+            if not url:
+                raise ValueError(f'Invalid Anthropic URL image block: {block}')
+            return url
+        raise ValueError(f'Unsupported Anthropic image source type: {source_type}')
+
+    @classmethod
+    def _anthropic_block_content(cls, content: Any, media: Dict[str, List[Any]]) -> Any:
+        if not isinstance(content, list):
+            return content
+        parts = []
+        for block in content:
+            block_type = block.get('type')
+            if block_type == 'text':
+                parts.append(block.get('text', ''))
+            elif block_type == 'image':
+                parts.append('<image>')
+                media['images'].append(cls._anthropic_image_source(block))
+            else:
+                raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
+        return ''.join(parts)
+
+    @classmethod
+    def anthropic_to_messages(cls,
+                              messages: List[Dict[str, Any]],
+                              media: Optional[Dict[str, List[Any]]] = None) -> List[Dict[str, Any]]:
+        """Convert Anthropic content blocks to the SWIFT canonical roles."""
+        media = media if media is not None else {'images': []}
+        new_messages = []
+        for message in messages:
+            content = message.get('content')
+            if not isinstance(content, list):
+                new_messages.append(message)
+                continue
+
+            pending_content = []
+            message_metadata = {key: message[key] for key in ['loss', 'loss_scale'] if key in message}
+
+            def flush_content():
+                if pending_content:
+                    new_messages.append({
+                        'role': message['role'],
+                        'content': ''.join(pending_content),
+                        **message_metadata
+                    })
+                    pending_content.clear()
+
+            for block in content:
+                block_type = block.get('type')
+                if block_type == 'text':
+                    pending_content.append(block.get('text', ''))
+                elif block_type == 'image':
+                    pending_content.append('<image>')
+                    media['images'].append(cls._anthropic_image_source(block))
+                elif block_type == 'tool_use':
+                    flush_content()
+                    new_messages.append({
+                        'role': 'tool_call',
+                        'content': {
+                            'name': block['name'],
+                            'arguments': block.get('input', {}),
+                        },
+                        **message_metadata,
+                    })
+                elif block_type == 'tool_result':
+                    flush_content()
+                    new_messages.append({
+                        'role': 'tool_response',
+                        'content': cls._anthropic_block_content(block.get('content', ''), media),
+                        **message_metadata,
+                    })
+                else:
+                    raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
+            flush_content()
+        return new_messages
+
+    def normalize_provider_messages(self, messages: List[Dict[str, Any]],
+                                    media: Dict[str, List[Any]]) -> List[Dict[str, Any]]:
+        message_format = self.message_format
+        if message_format == 'auto':
+            if any(message.get('tool_calls') for message in messages):
+                message_format = 'openai'
+            elif any(
+                    isinstance(message.get('content'), list) and any(
+                        block.get('type') in {'tool_use', 'tool_result'}
+                        or block.get('type') == 'image' and 'source' in block for block in message['content'])
+                    for message in messages):
+                message_format = 'anthropic'
+            else:
+                message_format = 'swift'
+        if message_format == 'openai':
+            return self.openai_to_messages(messages)
+        if message_format == 'anthropic':
+            return self.anthropic_to_messages(messages, media)
+        return messages
+
+    @staticmethod
     def _to_std_key(messages: List[Dict[str, str]], std_key: str, optional_keys: List[str]) -> None:
         for message in messages:
             for key in optional_keys:
@@ -524,6 +647,12 @@ class MessagesPreprocessor(RowPreprocessor):
         messages: Optional[List[Dict[str, str]]] = self.repair_messages(messages)
         if not messages or isinstance(messages, str):
             return
+        media = {'images': []}
+        messages = self.normalize_provider_messages(messages, media)
+        for key, value in media.items():
+            if value:
+                assert not row.get(key), f'Cannot mix Anthropic content blocks with the top-level `{key}` field.'
+                row[key] = value
         self._to_std_key(messages, 'role', self.role_keys)
         self._to_std_key(messages, 'content', self.content_keys)
         system = row.pop('system', None)
@@ -533,6 +662,18 @@ class MessagesPreprocessor(RowPreprocessor):
             self.to_std_messages(messages, system)  # inplace
         row['messages'] = messages
         return row
+
+
+class OpenAIMessagesPreprocessor(MessagesPreprocessor):
+
+    def __init__(self, **kwargs):
+        super().__init__(message_format='openai', **kwargs)
+
+
+class AnthropicMessagesPreprocessor(MessagesPreprocessor):
+
+    def __init__(self, **kwargs):
+        super().__init__(message_format='anthropic', **kwargs)
 
 
 class ClsPreprocessor(ResponsePreprocessor):
