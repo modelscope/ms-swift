@@ -7,13 +7,46 @@ and other operations across vocab-parallel sharded tensors in Tensor Parallelism
 When using TP, the vocabulary dimension is sharded across TP ranks. These utilities
 correctly handle the distributed computation by:
 1. Finding global max via all_reduce (for numerical stability)
-2. Computing sum of exp via all_reduce (for normalization)
+2. Computing sum of exp via a differentiable all_reduce (for normalization)
 3. All-reducing partial sums for final results
+
+Note on gradients: ``torch.distributed.all_reduce`` is invisible to autograd, so
+whether a raw call is correct depends on what consumes the reduced value. See
+``_AllReduceAcrossVocabShards`` and the comments on each reduction below.
 """
 
 import torch
 from megatron.core import mpu, tensor_parallel
 from typing import Optional, Tuple
+
+
+class _AllReduceAcrossVocabShards(torch.autograd.Function):
+    """All-reduce a value that every vocab shard both contributes to and depends on.
+
+    A raw ``torch.distributed.all_reduce`` is not part of the autograd graph, so each
+    rank's backward only ever sees its own partial derivative. That is what we want
+    when the reduced value is consumed by replicated math -- the vocab dimension is
+    already gone, every rank runs the identical remaining computation, and its partial
+    derivative is therefore the total one (entropy and KL below).
+
+    It is wrong when every rank's output still depends on the reduced value, as for
+    the ``sum(exp)`` normalizer of log_softmax: a target token lives on a single shard,
+    so the other ranks' incoming gradient is zero and the ``-softmax`` half of the
+    gradient silently vanishes on them. Summing the partial derivatives recovers it.
+    """
+
+    @staticmethod
+    def forward(ctx, tensor: torch.Tensor, group) -> torch.Tensor:
+        ctx.group = group
+        tensor = tensor.clone()
+        torch.distributed.all_reduce(tensor, op=torch.distributed.ReduceOp.SUM, group=group)
+        return tensor
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor) -> Tuple[torch.Tensor, None]:
+        grad_output = grad_output.contiguous().clone()
+        torch.distributed.all_reduce(grad_output, op=torch.distributed.ReduceOp.SUM, group=ctx.group)
+        return grad_output, None
 
 
 def vocab_parallel_log_softmax(logits: torch.Tensor) -> torch.Tensor:
@@ -22,8 +55,11 @@ def vocab_parallel_log_softmax(logits: torch.Tensor) -> torch.Tensor:
     When using Tensor Parallelism, vocab is sharded across TP ranks.
     This function correctly computes log_softmax by:
     1. Finding global max via all_reduce
-    2. Computing sum of exp via all_reduce
+    2. Computing sum of exp via a differentiable all_reduce
     3. Computing log_softmax using the global statistics
+
+    Both the forward values and the backward gradients match a single-rank
+    ``torch.log_softmax`` over the full vocabulary.
 
     Args:
         logits: Logits tensor [..., partition_vocab_size]
@@ -38,14 +74,17 @@ def vocab_parallel_log_softmax(logits: torch.Tensor) -> torch.Tensor:
 
     tp_group = mpu.get_tensor_model_parallel_group()
 
-    # Step 1: Find global max for numerical stability
-    logits_max = logits.max(dim=-1, keepdim=True)[0]
-    torch.distributed.all_reduce(logits_max, op=torch.distributed.ReduceOp.MAX, group=tp_group)
+    # Step 1: Find global max for numerical stability. This is a constant shift and is
+    # computed without grad: the local max is not the global one, so keeping it in the
+    # graph would scatter a bogus gradient onto each rank's local argmax position.
+    with torch.no_grad():
+        logits_max = logits.max(dim=-1, keepdim=True)[0]
+        torch.distributed.all_reduce(logits_max, op=torch.distributed.ReduceOp.MAX, group=tp_group)
 
-    # Step 2: Compute exp(logits - max) and sum across all TP ranks
+    # Step 2: Compute exp(logits - max) and sum across all TP ranks. Every rank's
+    # log_softmax divides by this sum, so backward must all-reduce the partials too.
     exp_logits = torch.exp(logits - logits_max)
-    sum_exp = exp_logits.sum(dim=-1, keepdim=True)
-    torch.distributed.all_reduce(sum_exp, op=torch.distributed.ReduceOp.SUM, group=tp_group)
+    sum_exp = _AllReduceAcrossVocabShards.apply(exp_logits.sum(dim=-1, keepdim=True), tp_group)
 
     # Step 3: Compute log_softmax
     log_softmax = logits - logits_max - torch.log(sum_exp)
@@ -89,7 +128,11 @@ def vocab_parallel_entropy(log_probs: torch.Tensor, chunk_size: int = 512) -> to
         probs = torch.exp(log_probs_chunk)
         partial_entropy = -(probs * log_probs_chunk).sum(dim=-1)  # [chunk_size]
 
-        # All-reduce to get global entropy if using TP
+        # All-reduce to get global entropy if using TP. A raw all_reduce is correct
+        # here: the vocab dimension is fully reduced away, so everything downstream is
+        # replicated across the TP group and each rank's incoming gradient is already
+        # the total derivative. Routing this through an autograd-aware reduce would
+        # sum it tp_size times instead.
         if tp_size > 1:
             torch.distributed.all_reduce(partial_entropy, op=torch.distributed.ReduceOp.SUM, group=tp_group)
 
@@ -124,6 +167,8 @@ def vocab_parallel_kl_div(input_log_probs: torch.Tensor, target_log_probs: torch
     target_probs = torch.exp(target_log_probs)
     partial_kl = (target_probs * (target_log_probs - input_log_probs)).sum(dim=-1)
 
+    # As in vocab_parallel_entropy, a raw all_reduce is the correct gradient behaviour
+    # here because the per-position KL is consumed by replicated math.
     if mpu.get_tensor_model_parallel_world_size() > 1:
         tp_group = mpu.get_tensor_model_parallel_group()
         torch.distributed.all_reduce(partial_kl, op=torch.distributed.ReduceOp.SUM, group=tp_group)
@@ -131,11 +176,7 @@ def vocab_parallel_kl_div(input_log_probs: torch.Tensor, target_log_probs: torch
     return partial_kl
 
 
-def vocab_parallel_gather_logps(
-    logits: torch.Tensor,
-    labels: torch.Tensor,
-    log_probs: Optional[torch.Tensor] = None,
-) -> torch.Tensor:
+def vocab_parallel_gather_logps(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     """Gather log probabilities for target labels from vocab-parallel logits.
 
     Uses Megatron's vocab-parallel cross entropy so backward retains the softmax
@@ -144,7 +185,6 @@ def vocab_parallel_gather_logps(
     Args:
         logits: Logits tensor [batch, seq, partition_vocab_size]
         labels: Token labels [batch, seq], -100 for masked positions
-        log_probs: Deprecated and ignored. Kept for backward compatibility.
 
     Returns:
         per_token_logps: [batch, seq] log probabilities for target tokens
