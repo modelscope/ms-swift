@@ -704,6 +704,10 @@
 |[IQuestLab/IQuest-Coder-V1-40B-Instruct](https://modelscope.cn/models/IQuestLab/IQuest-Coder-V1-40B-Instruct)|iquestcoder|iquestcoder|hermes|transformers==4.52.4|&#x2718;|-|[IQuestLab/IQuest-Coder-V1-40B-Instruct](https://huggingface.co/IQuestLab/IQuest-Coder-V1-40B-Instruct)|
 |[Tencent-YouTu-Research/Youtu-LLM-2B](https://modelscope.cn/models/Tencent-YouTu-Research/Youtu-LLM-2B)|youtu_llm|youtu_llm|youtu|transformers>=4.56|&#x2718;|-|[tencent/Youtu-LLM-2B](https://huggingface.co/tencent/Youtu-LLM-2B)|
 |[Tencent-YouTu-Research/Youtu-LLM-2B-Base](https://modelscope.cn/models/Tencent-YouTu-Research/Youtu-LLM-2B-Base)|youtu_llm|youtu_llm|youtu|transformers>=4.56|&#x2718;|-|[tencent/Youtu-LLM-2B-Base](https://huggingface.co/tencent/Youtu-LLM-2B-Base)|
+|[XHToken/Spark-X2.5-1.7B-Base](https://modelscope.cn/models/XHToken/Spark-X2.5-1.7B-Base)|spark2_5|spark2_5|spark2_5|transformers>=4.57|&#x2718;|-|-|
+|[XHToken/Spark-X2.5-1.7B](https://modelscope.cn/models/XHToken/Spark-X2.5-1.7B)|spark2_5|spark2_5|spark2_5|transformers>=4.57|&#x2718;|-|-|
+|[XHToken/Spark-X2.5-4B-Base](https://modelscope.cn/models/XHToken/Spark-X2.5-4B-Base)|spark2_5|spark2_5|spark2_5|transformers>=4.57|&#x2718;|-|-|
+|[XHToken/Spark-X2.5-4B](https://modelscope.cn/models/XHToken/Spark-X2.5-4B)|spark2_5|spark2_5|spark2_5|transformers>=4.57|&#x2718;|-|-|
 |[iic/gte-reranker-modernbert-base](https://modelscope.cn/models/iic/gte-reranker-modernbert-base)|modern_bert_gte_reranker|bert||transformers>=4.48|&#x2718;|bert, reranker|[Alibaba-NLP/gte-reranker-modernbert-base](https://huggingface.co/Alibaba-NLP/gte-reranker-modernbert-base)|
 |[BAAI/bge-reranker-base](https://modelscope.cn/models/BAAI/bge-reranker-base)|bge_reranker|bge_reranker||-|&#x2718;|-|[BAAI/bge-reranker-base](https://huggingface.co/BAAI/bge-reranker-base)|
 |[BAAI/bge-reranker-v2-m3](https://modelscope.cn/models/BAAI/bge-reranker-v2-m3)|bge_reranker|bge_reranker||-|&#x2718;|-|[BAAI/bge-reranker-v2-m3](https://huggingface.co/BAAI/bge-reranker-v2-m3)|
