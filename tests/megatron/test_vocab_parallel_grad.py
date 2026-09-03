@@ -17,9 +17,8 @@ Requires more than one GPU and must be launched with torchrun from the repositor
 Running it directly (no torchrun) exercises the tp_size == 1 path only.
 """
 import os
-import unittest
-
 import torch
+import unittest
 
 BATCH, SEQ, VOCAB = 2, 6, 16
 # -100 marks masked positions; the remaining targets are spread over every shard so that
@@ -195,8 +194,7 @@ class TestVocabParallelGrad(unittest.TestCase):
 
     def test_no_grad_builds_no_graph(self):
         """Reference-model and teacher paths run under no_grad; autograd.Function must not leak."""
-        from swift.megatron.trainers.vocab_parallel_utils import (vocab_parallel_gather_logps,
-                                                                  vocab_parallel_log_softmax)
+        from swift.megatron.trainers.vocab_parallel_utils import vocab_parallel_gather_logps, vocab_parallel_log_softmax
         with torch.no_grad():
             log_probs = vocab_parallel_log_softmax(self._shard(self.full))
             self.assertFalse(log_probs.requires_grad)
