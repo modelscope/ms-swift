@@ -1760,8 +1760,8 @@ class Qwen3_5EmbLoader(Qwen3_5Loader):
         super()._check_qwen_vl_utils()
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        from transformers import Qwen3_5PreTrainedModel
-        self.auto_model_cls = self.auto_model_cls or AutoModel
+        from transformers import Qwen3_5ForConditionalGeneration, Qwen3_5PreTrainedModel
+        self.auto_model_cls = self.auto_model_cls or Qwen3_5ForConditionalGeneration
 
         _patch_qwen3_5_linear_attention_sequence_parallel()
 
@@ -1804,7 +1804,9 @@ register_model(
 class WeMMEmbeddingLoader(Qwen3_5EmbLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        self.auto_model_cls = self.auto_model_cls or AutoModel
         model = Qwen3_5EmbLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        model.config.architectures = ['Qwen3_5ForConditionalGeneration']
 
         inner = getattr(model, 'model', None) or model
         visual = getattr(inner, 'visual', None)
@@ -1822,11 +1824,35 @@ class WeMMEmbeddingLoader(Qwen3_5EmbLoader):
 
         _embedding = model.embedding
 
-        def _embedding_forward(**kwargs):
+        def _embedding_hook(module, args, kwargs, output):
             embeddings = _embedding(**kwargs)
             return {'last_hidden_state': embeddings.contiguous()}
 
-        model.forward = _embedding_forward
+        model.register_forward_hook(_embedding_hook, with_kwargs=True)
+
+        _original_save_pretrained = model.save_pretrained
+
+        def _save_pretrained(*args, **kwargs):
+            result = _original_save_pretrained(*args, **kwargs)
+            model.config.architectures = ['Qwen3_5ForConditionalGeneration']
+            import json
+            if len(args) > 1:
+                save_dir = args[1]
+            else:
+                save_dir = kwargs.get('save_directory') or kwargs.get('output_dir')
+                if save_dir is None and args:
+                    save_dir = args[0]
+            if save_dir:
+                config_path = os.path.join(str(save_dir), 'config.json')
+                if os.path.exists(config_path):
+                    with open(config_path, 'r') as f:
+                        saved_config = json.load(f)
+                    saved_config['architectures'] = ['Qwen3_5ForConditionalGeneration']
+                    with open(config_path, 'w') as f:
+                        json.dump(saved_config, f, indent=2, ensure_ascii=False)
+            return result
+
+        model.save_pretrained = _save_pretrained
 
         return model
 
