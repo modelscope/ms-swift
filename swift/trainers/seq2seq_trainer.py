@@ -161,11 +161,21 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                     or self.template.sequence_parallel_size > 1):
                 if self.template.sequence_parallel_size > 1:
                     outputs.loss = per_token_loss_func_sp(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
+                    if loss_scale is not None:
+                        position_ids = sequence_parallel.real_position_ids
+                        if position_ids is not None:
+                            position_ids = sequence_parallel.pad(
+                                position_ids, padding_value=-1, position_ids=position_ids)
+                        loss_scale = sequence_parallel.gather(loss_scale, dim=1, position_ids=position_ids)
+                        if position_ids is not None and position_ids.min() == -1:
+                            loss_scale = loss_scale[position_ids >= 0].contiguous()
                 else:
                     outputs.loss = per_token_loss_func(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
 
                 if loss_scale is not None:
-                    loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
+                    if self.template.sequence_parallel_size == 1:
+                        loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
+                    assert outputs.loss.shape == loss_scale.shape
                     outputs.loss = outputs.loss * loss_scale
 
                 if self.args.enable_channel_loss:

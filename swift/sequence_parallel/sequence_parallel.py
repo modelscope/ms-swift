@@ -711,7 +711,7 @@ class SequenceParallel:
         """Prepare inputs
 
         1. set extra_kwargs['text_position_ids']
-        2. split labels
+        2. split labels and loss_scale
         """
         position_ids = inputs.get('text_position_ids')
         input_ids = inputs.get('input_ids')
@@ -721,11 +721,15 @@ class SequenceParallel:
             self.extra_kwargs['text_position_ids'] = position_ids.clone()
         if input_ids is not None:
             self.extra_kwargs['input_ids'] = input_ids.clone()
-        if 'labels' in inputs:
-            labels = inputs['labels']
-            _, _, labels, _, _, _, _ = self.pad_and_split_inputs(
-                None, None, labels, None, None, None, real_position_ids=position_ids)
-            inputs['labels'] = labels
+        labels = inputs.get('labels')
+        loss_scale = inputs.get('loss_scale')
+        if labels is not None or loss_scale is not None:
+            _, _, labels, _, _, loss_scale, _ = self.pad_and_split_inputs(
+                None, None, labels, None, None, loss_scale, real_position_ids=position_ids)
+            if labels is not None:
+                inputs['labels'] = labels
+            if loss_scale is not None:
+                inputs['loss_scale'] = loss_scale
 
 
 sequence_parallel = SequenceParallel()
