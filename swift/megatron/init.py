@@ -34,6 +34,8 @@ def _patch__batched_p2p_ops():
 def _patch_torch_FileSystemReader():
     from torch.distributed.checkpoint.filesystem import FileSystemReader
     from torch.futures import Future
+    if getattr(FileSystemReader.read_data, '_swift_patched', False):
+        return
     _origin_read_data = FileSystemReader.read_data
     _origin__slice_file = FileSystemReader._slice_file
     READER_MAX_WORKERS = int(os.environ.get('MCORE_READER_MAX_WORKERS', '16'))
@@ -71,6 +73,7 @@ def _patch_torch_FileSystemReader():
         fut.set_result(None)
         return fut
 
+    read_data._swift_patched = True
     FileSystemReader.read_data = read_data
 
 
