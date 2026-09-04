@@ -878,10 +878,10 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.qwen3_5,
-        language_model=['language_model'],
-        aligner='visual.merger',
-        vision_tower='visual',
-        mlp='language_model.layers.{}.mlp',
+        language_model=['model.language_model', 'lm_head'],
+        aligner='model.visual.merger',
+        vision_tower='model.visual',
+        mlp='model.language_model.layers.{}.mlp',
     ))
 
 register_model_arch(
