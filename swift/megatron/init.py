@@ -59,16 +59,20 @@ def _patch_torch_FileSystemReader():
             _origin_read_data(self, plan_shard, planner)
 
         prog_bar = tqdm(total=len(plan.items), dynamic_ncols=True, desc='Loading: ')
-        plan_shards = split_list(plan.items, READER_MAX_WORKERS, contiguous=False)
-        with _patch__slice_file(prog_bar):
-            with concurrent.futures.ThreadPoolExecutor(max_workers=READER_MAX_WORKERS) as pool:
-                futures = []
-                for i in range(READER_MAX_WORKERS):
-                    plan_shard = copy(plan)
-                    plan_shard.items = plan_shards[i]
-                    futures.append(pool.submit(_worker, plan_shard))
-                concurrent.futures.wait(futures)
-        prog_bar.close()
+        try:
+            plan_shards = split_list(plan.items, READER_MAX_WORKERS, contiguous=False)
+            with _patch__slice_file(prog_bar):
+                with concurrent.futures.ThreadPoolExecutor(max_workers=READER_MAX_WORKERS) as pool:
+                    futures = []
+                    for i in range(READER_MAX_WORKERS):
+                        plan_shard = copy(plan)
+                        plan_shard.items = plan_shards[i]
+                        futures.append(pool.submit(_worker, plan_shard))
+                    concurrent.futures.wait(futures)
+                    for future in futures:
+                        future.result()
+        finally:
+            prog_bar.close()
         fut: Future = Future()
         fut.set_result(None)
         return fut
