@@ -151,7 +151,7 @@ class SwiftDeploy(SwiftInfer):
 
         is_finished = all(response.choices[i].finish_reason for i in range(len(response.choices)))
         if 'stream' in response.__class__.__name__.lower():
-            request_info['response'] += response.choices[0].delta.content
+            request_info['response'] += response.choices[0].delta.content or ''
         else:
             request_info['response'] = response.choices[0].message.content
         if return_cmpl_response:
