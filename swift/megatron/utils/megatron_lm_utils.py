@@ -193,7 +193,8 @@ def _load_optimizer_state_dict(optimizer, state_dict):
 
 def _filter_adapter_state_dict(state_dict, peft_format: bool, adapter_name: str = 'default'):
     """
-    When peft_format is True, keep only the PEFT format state_dict;
+    When peft_format is True, keep only the requested PEFT adapter and map its
+    checkpoint lookup keys from the default adapter slot;
     when False, remove the PEFT format state_dict.
 
     This function ensures it is called when tuner_type != 'full'.
@@ -214,7 +215,13 @@ def _filter_adapter_state_dict(state_dict, peft_format: bool, adapter_name: str 
         state_dict_model = state_dict[model_key]
         for k, v in state_dict_model.items():
             if peft_format:
-                if '.lora_A.' in k or '.lora_B.' in k or '.modules_to_save.' in k:
+                adapter_modules = ('lora_A', 'lora_B', 'modules_to_save')
+                if any(f'.{module}.{adapter_name}.' in k for module in adapter_modules):
+                    if adapter_name != 'default':
+                        # Keep the state-dict key for the target adapter, but read the tensor from the
+                        # default adapter slot used by the source checkpoint.
+                        for module in adapter_modules:
+                            v.key = v.key.replace(f'.{module}.{adapter_name}.', f'.{module}.default.')
                     new_state_dict[k] = v
             else:
                 if '.lora_A.' in k or '.lora_B.' in k or 'original_module.' in k:
