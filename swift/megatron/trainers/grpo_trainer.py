@@ -16,6 +16,7 @@ from swift.rl_core.advantage import (compute_advantages, compute_reward_metrics,
                                      expand_advantage_to_per_token, get_local_rollout_values)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
+from swift.rl_core.m2po import compute_m2po_log_ratio, compute_m2po_masks_for_batches, compute_m2po_token_loss_from_mask
 from swift.rl_core.resample import resample_encode_failed_inputs
 from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_completion_logprobs, build_opsd_samples,
                                              build_teacher_requests, encode_teacher_view,
@@ -63,6 +64,55 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def prepare_model(self):
         super().prepare_model()
         self._load_teacher_model()
+        if self.args.loss_type == 'm2po':
+            self._validate_m2po_prepass_determinism()
+
+    def _validate_m2po_prepass_determinism(self) -> None:
+        """Reject train/eval stochasticity that would invalidate the mask prepass."""
+        stochastic = []
+        config_fields = [
+            'hidden_dropout',
+            'attention_dropout',
+            'embedding_dropout',
+            'drop_path_rate',
+            'stochastic_depth',
+            'moe_router_jitter_eps',
+            'moe_input_jitter_eps',
+        ]
+        for field_name in config_fields:
+            value = getattr(self.config, field_name, None)
+            try:
+                enabled = value is not None and float(value) > 0
+            except (TypeError, ValueError):
+                enabled = False
+            if enabled:
+                stochastic.append(f'config.{field_name}={value}')
+
+        for model_idx, model in enumerate(self.unwrapped_models):
+            for module_name, module in model.named_modules():
+                if isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
+                    stochastic.append(f'model[{model_idx}].{module_name}={type(module).__name__}')
+                    continue
+                module_type = type(module).__name__.lower()
+                if isinstance(module, torch.nn.modules.dropout._DropoutNd):
+                    probability = module.p
+                elif 'droppath' in module_type or 'stochasticdepth' in module_type:
+                    probability = getattr(module, 'drop_prob', getattr(module, 'p', None))
+                else:
+                    continue
+                try:
+                    enabled = probability is not None and float(probability) > 0
+                except (TypeError, ValueError):
+                    enabled = False
+                if enabled:
+                    stochastic.append(f'model[{model_idx}].{module_name}={type(module).__name__}(p={probability})')
+
+        if stochastic:
+            details = ', '.join(stochastic[:8])
+            if len(stochastic) > 8:
+                details += f', ... ({len(stochastic)} total)'
+            raise ValueError('Megatron loss_type=m2po requires deterministic train/eval policy forwards because '
+                             f'the optimizer-batch mask is precomputed from old log-probabilities. Found: {details}')
 
     def train(self, train_dataset, val_dataset):
         if self.dynamic_sample or self.truncation_strategy == 'delete':
@@ -99,6 +149,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.fipo_clip_range = args.fipo_clip_range
         self.fipo_clip_high_only = args.fipo_clip_high_only
         self.fipo_safety_threshold = args.fipo_safety_threshold
+
+        # M2PO, https://arxiv.org/abs/2510.01161
+        self.m2_threshold = args.m2_threshold
 
         # DAPO, https://arxiv.org/abs/2503.14476
         self.dynamic_sample = args.dynamic_sample
@@ -237,7 +290,74 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             micro_batch_data[i:i + num_mini_batch] for i in range(0, len(micro_batch_data), num_mini_batch)
         ]
         assert len(mini_batch_data) == num_gen_steps
+        if self.loss_type == 'm2po':
+            for optimizer_batch_data in mini_batch_data:
+                self._prepare_m2po_optimizer_batch(optimizer_batch_data)
         return mini_batch_data
+
+    def _prepare_m2po_optimizer_batch(self, optimizer_batch_data: List[Dict[str, Any]]) -> None:
+        """Select one M2PO mask across every micro-batch in an optimizer step.
+
+        The selection is non-linear: applying Algorithm 1 independently to
+        micro-batches is not equivalent to applying it to their concatenation.
+        ``old_per_token_logps`` is the current training-engine policy here
+        because Megatron M2PO permits one immediate step per generation only.
+        """
+        if not mpu.is_pipeline_last_stage():
+            return
+
+        grpo_batches = [data['grpo_batch'] for data in optimizer_batch_data]
+        dp_with_cp_group = mpu.get_data_parallel_group(with_context_parallel=True)
+        ready_flags = torch.tensor([
+            bool(grpo_batches),
+            bool(grpo_batches) and all(batch.rollout_per_token_logps is not None for batch in grpo_batches),
+            bool(grpo_batches) and all(batch.old_per_token_logps is not None for batch in grpo_batches),
+            bool(grpo_batches) and all(batch.advantages is not None for batch in grpo_batches),
+        ],
+                                   dtype=torch.int32,
+                                   device=self.device)
+        torch.distributed.all_reduce(ready_flags, op=torch.distributed.ReduceOp.MIN, group=dp_with_cp_group)
+        if not ready_flags[0].item():
+            raise ValueError('M2PO requires at least one Megatron micro-batch per optimizer step.')
+        if not ready_flags[1].item():
+            raise ValueError('Megatron M2PO requires rollout_per_token_logps from the behavior policy on every rank.')
+        if not ready_flags[2].item():
+            raise ValueError('Megatron M2PO requires old_per_token_logps to select the optimizer-batch mask.')
+        if not ready_flags[3].item():
+            raise ValueError('Megatron M2PO requires per-token advantages before mask selection.')
+
+        log_ratios = []
+        completion_masks = []
+        advantages = []
+        for grpo_batch in grpo_batches:
+            log_ratios.append(
+                compute_m2po_log_ratio(
+                    grpo_batch.old_per_token_logps,
+                    grpo_batch.old_per_token_logps,
+                    grpo_batch.rollout_per_token_logps,
+                    allow_old_policy_fallback=False,
+                ))
+            completion_mask = grpo_batch.completion_mask
+            if self.args.overlong_filter:
+                truncated_mask = grpo_batch.truncated_mask.unsqueeze(-1).expand_as(completion_mask)
+                completion_mask = completion_mask & (~truncated_mask)
+            completion_masks.append(completion_mask)
+            advantages.append(grpo_batch.advantages)
+
+        # Context-parallel ranks hold replicas of the reconstructed sequence.
+        # Select across pure DP only; each CP replica independently obtains the
+        # same logical optimizer-batch mask.
+        pure_dp_group = mpu.get_data_parallel_group(with_context_parallel=False)
+        batch_masks, metrics = compute_m2po_masks_for_batches(
+            log_ratios,
+            completion_masks,
+            advantages,
+            m2_threshold=self.m2_threshold,
+            process_group=pure_dp_group,
+        )
+        for grpo_batch, batch_mask in zip(grpo_batches, batch_masks):
+            grpo_batch.m2po_mask = batch_mask
+            grpo_batch.m2po_metrics = metrics
 
     def _generate_and_score_completions(self, inputs: DataType):
         # Get or create the rollout group (TP×PP×CP)
@@ -333,7 +453,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if any(m['grpo_batch'].teacher_per_token_logps is not None for m in mini_batch_data):
             self._log_teacher_kl_metric(mini_batch_data)
 
-        if self.loss_type in ['cispo', 'dapo', 'fipo']:
+        if self.loss_type in ['cispo', 'dapo', 'fipo', 'm2po']:
             # Calculate num_items_in_batch
             # Count completion tokens from all mini_batch_data (this includes gathered data from rollout_group)
             # Use completion_mask.sum() for both padding_free and non-padding_free modes
@@ -971,13 +1091,15 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         should_compute_rollout_metrics = (not self.disable_rollout_importance_sampling
                                           and (self.rollout_importance_sampling_mode is not None
                                                or self.log_rollout_offpolicy_metrics))
+        all_have_rollout = rollout_per_token_logps is not None
         if should_compute_rollout_metrics:
             dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
             has_flag = torch.tensor([1 if rollout_per_token_logps is not None else 0],
                                     dtype=torch.int32,
                                     device=per_token_logps.device)
             torch.distributed.all_reduce(has_flag, op=torch.distributed.ReduceOp.MIN, group=dp_group)
-            should_compute_rollout_metrics = has_flag.item() > 0
+            all_have_rollout = has_flag.item() > 0
+            should_compute_rollout_metrics = should_compute_rollout_metrics and all_have_rollout
         if should_compute_rollout_metrics:
             # Compute off-policy diagnostic metrics
             rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
@@ -1015,10 +1137,20 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             per_token_kl = None
 
         # Compute log ratio for importance sampling
-        log_ratio = per_token_logps - old_per_token_logps
+        if self.loss_type == 'm2po':
+            log_ratio = compute_m2po_log_ratio(
+                per_token_logps,
+                old_per_token_logps,
+                rollout_per_token_logps,
+                allow_old_policy_fallback=False,
+            )
+        else:
+            log_ratio = per_token_logps - old_per_token_logps
 
         # Compute importance weights based on level
-        if self.importance_sampling_level == 'token':
+        if self.loss_type == 'm2po':
+            log_importance_weights = log_ratio
+        elif self.importance_sampling_level == 'token':
             log_importance_weights = log_ratio
         elif self.importance_sampling_level in ['sequence', 'sequence_token']:
             # Sequence-level: compute mean log ratio per sequence
@@ -1034,7 +1166,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
                 ",'sequence' and 'sequence_token'.")
 
-        coef_1 = torch.exp(log_importance_weights)
+        coef_1 = torch.ones_like(log_importance_weights) \
+            if self.loss_type == 'm2po' else torch.exp(log_importance_weights)
 
         # advantages is per-token [B, T] (expanded at batch construction so the OPD-RL signed teacher
         # log-ratio is added per token). Edge loss types that need a per-sequence advantage (real / fipo /
@@ -1045,6 +1178,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                              'off_policy_sequence_mask.')
 
         fipo_metrics = None
+        m2po_metrics = None
         if self.loss_type == 'cispo':
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
             per_token_loss = -clamped_ratios * advantages * per_token_logps
@@ -1054,6 +1188,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             is_positive = advantages > 0
             soft_gate = torch.where(is_positive, gate_pos, gate_neg)
             per_token_loss = -soft_gate * advantages
+        elif self.loss_type == 'm2po':
+            if grpo_batch.m2po_mask is None:
+                raise RuntimeError('Megatron M2PO mask was not prepared for the complete optimizer batch.')
+            per_token_loss = compute_m2po_token_loss_from_mask(log_ratio, advantages, grpo_batch.m2po_mask)
+            m2po_metrics = grpo_batch.m2po_metrics
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'fipo']:
             if self.loss_type == 'fipo':
                 fipo_weight, fipo_metrics = self._compute_fipo_influence(log_ratio, coef_1, advantages, completion_mask)
@@ -1135,8 +1274,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
         elif self.loss_type == 'dr_grpo':
             loss = (per_token_loss * completion_mask).sum() / (micro_batch_size * self.max_completion_length)
-        elif self.loss_type in ['cispo', 'dapo', 'fipo']:
-            # CISPO, DAPO, and FIPO: Normalize by total completion tokens across all processes
+        elif self.loss_type in ['cispo', 'dapo', 'fipo', 'm2po']:
+            # Token-level objectives: normalize by all valid completion tokens across processes.
             num_items_in_batch = grpo_batch.num_items_in_batch
             dp_size = mpu.get_data_parallel_world_size()
             normalizer = num_items_in_batch / dp_size
@@ -1216,6 +1355,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             avg_metric['fipo/safety_keep_ratio'] = ((fipo_metrics['safety_mask'].float() * completion_mask).sum()
                                                     / completion_token_count).clone().detach()
 
+        if m2po_metrics is not None:
+            for key in ['m2_before', 'm2_after', 'masked_fraction', 'trust_region_fraction']:
+                avg_metric[f'm2po/{key}'] = m2po_metrics[key].clone().detach()
+
         if self.loss_type == 'cispo':
             # CISPO: Only track upper bound clipping
             # coef_1 is [batch_size, max_seq_len] or [batch_size, 1] depending on importance_sampling_level
@@ -1223,7 +1366,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             cispo_clip_ratio = (is_cispo_clipped.float() * completion_mask).sum() / completion_token_count
             # Store local clip ratio, _all_reduce_metric will handle averaging across ranks
             self._metrics[mode]['cispo_clip_ratio'].append(cispo_clip_ratio)
-        elif self.loss_type in ['sapo', 'real']:
+        elif self.loss_type in ['sapo', 'real', 'm2po']:
             # SAPO / REAL: No hard clipping, skip clipping metrics
             pass
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'fipo']:
@@ -1635,6 +1778,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             'offpolicy_sequence_mask': 'enable' if self.args.off_policy_sequence_mask_delta is not None else 'disable',
             'rollout_importance_sampling':
             'enable' if self.args.rollout_importance_sampling_mode is not None else 'disable',
-            'loss_type': str(self.args.loss_type)
+            'loss_type': str(self.args.loss_type),
+            'm2_threshold': str(self.args.m2_threshold),
         }
         return config

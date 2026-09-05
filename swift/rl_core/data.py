@@ -319,6 +319,8 @@ class GRPOBatch:
     3. ``advantages`` — computed from gathered rewards.
     4. ``rollout_per_token_logps``, ``num_items_in_batch`` — optional,
        filled when rollout IS / DAPO is enabled.
+    5. ``m2po_mask``, ``m2po_metrics`` — optional optimizer-batch M2PO
+       selection, prepared before Megatron splits the batch into forward passes.
     """
     completion_mask: torch.Tensor  # [B, T]
     truncated_mask: torch.Tensor  # [B]
@@ -331,6 +333,8 @@ class GRPOBatch:
     advantages: Optional[torch.Tensor] = None  # [B, T] per-token (base broadcast minus per-token teacher KL)
     num_items_in_batch: Optional[torch.Tensor] = None  # scalar
     logits_to_keep: Optional[int] = None
+    m2po_mask: Optional[torch.Tensor] = None  # [B, T]
+    m2po_metrics: Optional[Dict[str, torch.Tensor]] = None
 
     def to_device(self, device) -> 'GRPOBatch':
         """Move all tensor fields to ``device`` in place (Ray: collated on the CPU
@@ -339,6 +343,11 @@ class GRPOBatch:
             v = getattr(self, f.name)
             if isinstance(v, torch.Tensor):
                 setattr(self, f.name, v.to(device))
+            elif isinstance(v, dict):
+                setattr(self, f.name, {
+                    k: item.to(device) if isinstance(item, torch.Tensor) else item
+                    for k, item in v.items()
+                })
         return self
 
 

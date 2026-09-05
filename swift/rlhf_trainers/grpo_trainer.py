@@ -54,6 +54,7 @@ from swift.rl_core.advantage import (apply_rlsd_reweight, compute_advantages, co
                                      expand_advantage_to_per_token)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
+from swift.rl_core.m2po import compute_m2po_log_ratio, compute_m2po_token_loss
 from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_completion_logprobs, build_opsd_samples,
                                              build_teacher_requests, encode_teacher_view,
                                              fetch_teacher_parsed_by_routing, remap_teacher_logps_to_student_frame,
@@ -887,6 +888,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if not should_chunk:
             return self._compute_loss_single(model, model_inputs, grpo_batch)
         else:
+            if self.loss_type == 'm2po':
+                raise ValueError('HF loss_type=m2po does not support dynamic loss chunking because selecting '
+                                 'independent masks for each chunk changes the optimizer-batch objective.')
             # maybe dynamic rollout num for multi-turn training
             return self._compute_loss_chunked(model, model_inputs, grpo_batch, origin_data)
 
@@ -999,7 +1003,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.rollout_importance_sampling_mode is not None or self.log_rollout_offpolicy_metrics)
 
         local_has_rollout = grpo_batch.rollout_per_token_logps is not None
-        should_compute_rollout_metrics = should_compute_rollout_metrics and all(gather_object([local_has_rollout]))
+        all_have_rollout = all(gather_object([local_has_rollout])) \
+            if should_compute_rollout_metrics or self.loss_type == 'm2po' else local_has_rollout
+        should_compute_rollout_metrics = should_compute_rollout_metrics and all_have_rollout
         rollout_is_weights = None
         if (not self.disable_rollout_importance_sampling and should_compute_rollout_metrics):
             rollout_per_token_logps = grpo_batch.rollout_per_token_logps
@@ -1019,8 +1025,19 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             pass
         # rollout_is_weights is a local variable, initialized to None above
 
-        log_ratio = per_token_logps - old_per_token_logps
-        if self.importance_sampling_level == 'token':
+        if self.loss_type == 'm2po':
+            rollout_per_token_logps = grpo_batch.rollout_per_token_logps if all_have_rollout else None
+            log_ratio = compute_m2po_log_ratio(
+                per_token_logps,
+                old_per_token_logps,
+                rollout_per_token_logps,
+                allow_old_policy_fallback=not self.use_vllm,
+            )
+        else:
+            log_ratio = per_token_logps - old_per_token_logps
+        if self.loss_type == 'm2po':
+            log_importance_weights = log_ratio
+        elif self.importance_sampling_level == 'token':
             log_importance_weights = log_ratio
         elif self.importance_sampling_level in ['sequence', 'sequence_token']:
             seq_level_log_weights = ((log_ratio * completion_mask).sum(-1)
@@ -1036,7 +1053,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
                 "and 'sequence'.")
 
-        coef_1 = torch.exp(log_importance_weights)
+        coef_1 = torch.ones_like(log_importance_weights) \
+            if self.loss_type == 'm2po' else torch.exp(log_importance_weights)
 
         # advantages is per-token [B, T] (expanded at batch construction so the OPD-RL signed
         # teacher log-ratio is added per token). Edge loss types that need a per-sequence
@@ -1047,6 +1065,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                              'off_policy_sequence_mask.')
 
         fipo_metrics = None
+        m2po_metrics = None
         if self.loss_type == 'cispo':
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
             per_token_loss = -clamped_ratios * advantages * per_token_logps
@@ -1057,6 +1076,13 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             soft_gate = torch.where(is_positive, gate_pos, gate_neg)
 
             per_token_loss = -soft_gate * advantages
+        elif self.loss_type == 'm2po':
+            per_token_loss, _, m2po_metrics = compute_m2po_token_loss(
+                log_ratio=log_ratio,
+                completion_mask=completion_mask,
+                advantages=advantages,
+                m2_threshold=self.m2_threshold,
+            )
         elif self.loss_type == 'real':
             per_token_loss = torch.zeros_like(per_token_logps)
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'fipo']:
@@ -1137,8 +1163,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.beta != 0.0:
                 kl_loss = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
                 loss = loss + kl_loss * self.beta
-        elif self.loss_type in ['cispo', 'dapo', 'fipo']:
-            # CISPO, DAPO, and FIPO: Normalize by total completion tokens across all processes
+        elif self.loss_type in ['cispo', 'dapo', 'fipo', 'm2po']:
+            # Token-level objectives: normalize by all valid completion tokens across processes.
             normalizer = grpo_batch.num_items_in_batch / self.accelerator.num_processes
             loss = (per_token_loss * completion_mask).sum() / normalizer
         else:
@@ -1188,6 +1214,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'safety_keep_ratio': self.accelerator.gather_for_metrics(fipo_safety_keep).nanmean().item(),
             }
 
+        if m2po_metrics is not None:
+            metrics_data['m2po'] = {key: value.item() for key, value in m2po_metrics.items()}
+
         if per_token_kl is not None:
             mean_kl = masked_batch_mean(per_token_kl)
             metrics_data['kl'] = self.accelerator.gather_for_metrics(mean_kl).nanmean().item()
@@ -1203,7 +1232,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             cispo_clip_ratio = masked_batch_mean(is_cispo_clipped.float())
             gathered_cispo_clip_ratio = self.accelerator.gather_for_metrics(cispo_clip_ratio)
             metrics_data['clipping'] = {'cispo_clip_ratio': gathered_cispo_clip_ratio.nanmean().item()}
-        elif self.loss_type in ['sapo', 'real']:
+        elif self.loss_type in ['sapo', 'real', 'm2po']:
             pass
         else:
             is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages < 0)
@@ -1259,6 +1288,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if 'fipo' in metrics_data:
             for key, value in metrics_data['fipo'].items():
                 self._metrics[mode][f'fipo/{key}'].append(value)
+
+        if 'm2po' in metrics_data:
+            for key in ['m2_before', 'm2_after', 'masked_fraction', 'trust_region_fraction']:
+                self._metrics[mode][f'm2po/{key}'].append(metrics_data['m2po'][key])
 
         # Update clipping metrics
         if 'clipping' in metrics_data:
@@ -1344,6 +1377,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         cispo_clip_values = []
         entropy_thresholds = []
         fipo_values = {}
+        m2po_values = []
 
         for chunk_metrics, chunk_weight in all_metrics_data:
             chunk_tokens = chunk_metrics['completion_token_count']
@@ -1370,6 +1404,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 weight = chunk_tokens.item() if hasattr(chunk_tokens, 'item') else chunk_tokens
                 for key, value in chunk_metrics['fipo'].items():
                     fipo_values.setdefault(key, []).append((value, weight))
+
+            if 'm2po' in chunk_metrics:
+                m2po_values.append(chunk_metrics['m2po'])
 
             # Collect clipping metrics (weighted by tokens)
             if 'clipping' in chunk_metrics:
@@ -1422,6 +1459,29 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if fipo_values:
             aggregated_metrics['fipo'] = {key: weighted_avg(values) for key, values in fipo_values.items()}
+
+        if m2po_values:
+            valid_count = sum(value['valid_count'] for value in m2po_values)
+            trust_count = sum(value['trust_region_count'] for value in m2po_values)
+            kept_count = sum(value['kept_trust_region_count'] for value in m2po_values)
+            masked_count = trust_count - kept_count
+            aggregated_metrics['m2po'] = {
+                'm2_before':
+                sum(value['m2_before'] * value['trust_region_count'] for value in m2po_values) / max(trust_count, 1.0),
+                'm2_after':
+                sum(value['m2_after'] * value['kept_trust_region_count']
+                    for value in m2po_values) / max(kept_count, 1.0),
+                'masked_fraction':
+                masked_count / max(valid_count, 1.0),
+                'trust_region_fraction':
+                trust_count / max(valid_count, 1.0),
+                'valid_count':
+                valid_count,
+                'trust_region_count':
+                trust_count,
+                'kept_trust_region_count':
+                kept_count,
+            }
 
         # Update metrics
         self._update_metrics(aggregated_metrics)
@@ -2104,6 +2164,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'offpolicy_sequence_mask': 'enable' if self.off_policy_sequence_mask_delta is not None else 'disable',
             'rollout_importance_sampling': 'enable' if self.rollout_importance_sampling_mode is not None else 'disable',
             'loss_type': str(self.loss_type),
+            'm2_threshold': str(self.m2_threshold),
         }
         return config
 
@@ -2142,6 +2203,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.fipo_clip_range = args.fipo_clip_range
         self.fipo_clip_high_only = args.fipo_clip_high_only
         self.fipo_safety_threshold = args.fipo_safety_threshold
+
+        # M2PO, https://arxiv.org/abs/2510.01161
+        self.m2_threshold = args.m2_threshold
 
         # RLOO,
         self.advantage_estimator = args.advantage_estimator
