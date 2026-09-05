@@ -59,61 +59,57 @@ def run_gkd(
 ) -> List[dict]:
     """Assemble and run on-policy GKD from atomic Configs. Returns the loss history.
 
-    Mirrors run_sft's build order (template -> model -> tuner -> loss -> optimizer), then adds the
-    frozen teacher and an on-policy generation loop. The student is the trained model; the teacher is
-    a separate frozen model (rlhf_config.teacher_model) or, for a LoRA student whose teacher is its own
-    base, the adapter-disabled student (rlhf_config._teacher_use_disable_adapter).
+    The build order is :class:`~swift.dev.recipe.assembly.TrainAssembly`'s, shared with every other
+    recipe; GKD then adds the frozen teacher and an on-policy generation loop, and drives the stages one
+    by one because it has no dataloader (it generates its own data). The student is the trained model;
+    the teacher is a separate frozen model (rlhf_config.teacher_model) or, for a LoRA student whose
+    teacher is its own base, the adapter-disabled student (rlhf_config._teacher_use_disable_adapter).
     """
-    from swift.dev.adapter import apply_tuner
-    from swift.dev.builders import build_model, build_template
-    from swift.dev.config import validate_configs
     from swift.dev.loss import configure_rlhf_loss
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
-    from swift.dev.processor import InputProcessor
+    from swift.dev.recipe.assembly import TrainAssembly
     from swift.dev.recipe.run_grpo import _prompts_from_dataset
-    from swift.dev.recipe.run_sft import _initialize_twinkle, _write_ckpt_args_json
-    from swift.model import get_model_processor
 
     if rlhf_config.rlhf_type != 'gkd':
         raise ValueError(f'run_gkd requires rlhf_type="gkd", got {rlhf_config.rlhf_type!r}.')
-    validate_configs(model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-                     tuner_config, rlhf_config=rlhf_config)
-    _initialize_twinkle(distributed_config)
+    assembly = TrainAssembly(
+        'run_gkd',
+        model_config,
+        template_config,
+        dataset_config,
+        train_config,
+        distributed_config,
+        checkpoint_config,
+        tuner_config,
+        rlhf_config=rlhf_config,
+        output_dir=output_dir)
+    assembly.prepare()
+    TrainAssembly.initialize_twinkle(distributed_config)
 
-    ga = train_config.gradient_accumulation_steps
-    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
-    template = build_template(template_config, processor)
+    assembly.build_template()
+    assembly.build_model()
+    configure_rlhf_loss(assembly.model, rlhf_config)
+    # No dataloader to derive a step budget from -- the prompts are sampled, not iterated -- so
+    # max_steps IS the budget.
+    max_steps = train_config.max_steps or 1
+    configure_optimizer(assembly.model, train_config, num_training_steps=max_steps)
 
-    model = build_model(model_config, distributed_config, train_config, tuner_config)
-    if tuner_config is not None:
-        apply_tuner(model, tuner_config, gradient_accumulation_steps=ga)
-    model.set_processor(InputProcessor, padding_free=template_config.padding_free)
-    model.set_template(template)
-    configure_rlhf_loss(model, rlhf_config)
-    configure_optimizer(model, train_config, num_training_steps=train_config.max_steps or 1)
-
-    teacher = _build_teacher(model, rlhf_config, tuner_config)
-    prompts = _prompts_from_dataset(dataset_config)
-
-    loop = GKDLoop(
-        model,
-        teacher,
-        template,
-        prompts,
+    assembly.loop = GKDLoop(
+        assembly.model,
+        _build_teacher(assembly.model, rlhf_config, tuner_config),
+        assembly.template,
+        _prompts_from_dataset(dataset_config),
         lmbda=rlhf_config.lmbda,
         gkd_logits_topk=rlhf_config.gkd_logits_topk,
-        max_steps=train_config.max_steps or 1,
+        max_steps=max_steps,
         batch_size=train_config.per_device_train_batch_size,
-        gradient_accumulation_steps=ga,
+        gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
         output_dir=output_dir,
         sampling_params=_gkd_sampling_params(rlhf_config, generation_config))
-    history = loop.fit()
+    history = assembly.loop.fit()
     if _save_final:
-        import os
-        loop.save('checkpoint-final')
-        _write_ckpt_args_json(
-            os.path.join(output_dir, 'checkpoint-final'), processor, model_config, template_config, tuner_config)
+        assembly.save_final()
     return history
 
 

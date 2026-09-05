@@ -52,10 +52,10 @@ def test_write_ckpt_args_json_includes_force_load_keys(tmp_path):
     are force_load_keys; omitting them leaves infer on its default. Pure function, no model.
     """
     from swift.dev.config import ModelConfig, TemplateConfig, TunerConfig
-    from swift.dev.recipe.run_sft import _write_ckpt_args_json
+    from swift.dev.recipe.assembly import TrainAssembly
 
     ckpt = str(tmp_path)
-    _write_ckpt_args_json(
+    TrainAssembly.write_ckpt_args_json(
         ckpt,
         _FakeProcessor('qwen2_5'),
         ModelConfig(model='/m', task_type='seq_cls', torch_dtype='bfloat16', attn_impl='flash_attn'),
@@ -77,10 +77,10 @@ def test_write_ckpt_args_json_omits_none_full_param(tmp_path):
     """Full-param causal_lm run: task_type/tuner_type stay None -> filtered out (infer's own
     defaults stand), so we don't write misleading keys."""
     from swift.dev.config import ModelConfig, TemplateConfig
-    from swift.dev.recipe.run_sft import _write_ckpt_args_json
+    from swift.dev.recipe.assembly import TrainAssembly
 
     ckpt = str(tmp_path)
-    _write_ckpt_args_json(
+    TrainAssembly.write_ckpt_args_json(
         ckpt,
         _FakeProcessor('qwen2_5'),
         ModelConfig(model='/m', torch_dtype='bfloat16'),
@@ -109,7 +109,7 @@ def test_initialize_twinkle_sets_a_device_group_on_every_backend():
     import twinkle.infra as infra
 
     from swift.dev.config import DistributedConfig
-    from swift.dev.recipe.run_sft import _initialize_twinkle
+    from swift.dev.recipe.assembly import TrainAssembly
 
     saved = (infra._mode, infra._device_group, infra._device_mesh)
     try:
@@ -118,7 +118,7 @@ def test_initialize_twinkle_sets_a_device_group_on_every_backend():
         for dist_config in (DistributedConfig(), DistributedConfig(mode='local'),
                             DistributedConfig(backend='megatron', mode='local', nproc_per_node=1)):
             infra._mode, infra._device_group, infra._device_mesh = None, None, None
-            _initialize_twinkle(dist_config)
+            TrainAssembly.initialize_twinkle(dist_config)
             assert infra._device_group is not None, f'no device group for {dist_config}'
             assert infra._device_mesh is not None, f'no device mesh for {dist_config}'
             assert infra._mode == 'local', f'unexpected mode {infra._mode} for {dist_config}'

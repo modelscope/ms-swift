@@ -68,9 +68,13 @@ def run_sampling(
         adapters: LoRA to sample with. Ignored by the 'client' backend, which has no local weights.
     """
     from swift.dev.builders import build_sampler, build_template, to_sampling_params
+    from swift.dev.plugin import PluginRegistry
     from swift.dev.recipe.run_infer import _build_device_mesh_if_dp, _load_prompt_rows
-    from swift.dev.recipe.run_sft import _initialize_twinkle
     from swift.model import get_model_processor
+
+    # Scoring resolves reward names below, so the run's plugin files must be imported first -- a
+    # user-defined ORM named in reward_funcs is otherwise "not registered".
+    PluginRegistry.load_configured(model_config)
 
     if sampling_config.n_best_to_keep >= sampling_config.num_return_sequences:
         raise ValueError(f'n_best_to_keep={sampling_config.n_best_to_keep} must be < '

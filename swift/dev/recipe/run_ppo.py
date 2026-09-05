@@ -71,12 +71,10 @@ def run_ppo(
     Reuses run_grpo's device planning and rollout, then trains the policy (clipped surrogate) and the
     critic (clipped value loss) over each rollout for ``num_ppo_epochs``. Returns the loss history.
     """
-    from swift.dev.adapter import apply_tuner
-    from swift.dev.builders import build_model, build_sampler, build_template
-    from swift.dev.config import validate_configs
+    from swift.dev.builders import build_sampler
     from swift.dev.loss import configure_ppo_value_loss, configure_rlhf_loss
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
-    from swift.dev.processor import InputProcessor
+    from swift.dev.recipe.assembly import TrainAssembly
     from swift.dev.recipe.run_grpo import (
         SamplerRollout,
         _grpo_sampling_params,
@@ -85,35 +83,43 @@ def run_ppo(
         _sampler_engine_args,
         plan_rl_device_groups,
     )
-    from swift.model import get_model_processor
 
     if rlhf_config.rlhf_type != 'ppo':
         raise ValueError(f'run_ppo requires rlhf_type="ppo", got {rlhf_config.rlhf_type!r}.')
-    validate_configs(model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-                     tuner_config, rlhf_config=rlhf_config)
+    assembly = TrainAssembly(
+        'run_ppo',
+        model_config,
+        template_config,
+        dataset_config,
+        train_config,
+        distributed_config,
+        checkpoint_config,
+        tuner_config,
+        rlhf_config=rlhf_config,
+        output_dir=output_dir)
+    assembly.prepare()
 
     sampler_world_size = rollout_config.vllm_tensor_parallel_size * rollout_config.vllm_data_parallel_size
     groups, sampler_remote_group, colocate = plan_rl_device_groups(distributed_config.nproc_per_node,
                                                                    rollout_config.vllm_mode, sampler_world_size)
     _initialize_twinkle_rl(distributed_config, groups)
 
-    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
-    template = build_template(template_config, processor)
-    ga = train_config.gradient_accumulation_steps
+    # The critic, the reference and the reward models all encode with the SAME template as the policy,
+    # so a batch lines up token-for-token across the four forwards.
+    template = assembly.build_template()
+    # No dataloader to derive a step budget from -- prompts are rolled out, not iterated.
+    max_steps = train_config.max_steps or 1
 
     # Policy (trainer): the clipped surrogate is the PPO policy loss (configure_rlhf_loss maps ppo).
-    model = build_model(model_config, distributed_config, train_config, tuner_config)
-    if tuner_config is not None:
-        apply_tuner(model, tuner_config, gradient_accumulation_steps=ga)
-    model.set_processor(InputProcessor, padding_free=template_config.padding_free)
-    model.set_template(template)
+    assembly.build_model()
+    model = assembly.model
     configure_rlhf_loss(model, rlhf_config)
-    configure_optimizer(model, train_config, num_training_steps=train_config.max_steps or 1)
+    configure_optimizer(model, train_config, num_training_steps=max_steps)
 
     # Critic: a trainable seq_cls (num_labels=1) value model, trained by the clipped value loss.
     value_model = _build_value_model(model_config, rlhf_config, distributed_config, train_config, template)
     configure_ppo_value_loss(value_model, rlhf_config)
-    configure_optimizer(value_model, train_config, num_training_steps=train_config.max_steps or 1)
+    configure_optimizer(value_model, train_config, num_training_steps=max_steps)
 
     # Rollout (weight-syncable, exactly as run_grpo), reward model(s) and reference for the KL penalty.
     sampler = build_sampler(
@@ -135,8 +141,8 @@ def run_ppo(
         reward_models,
         prompts,
         rlhf_config=rlhf_config,
-        max_steps=train_config.max_steps or 1,
-        gradient_accumulation_steps=ga,
+        max_steps=max_steps,
+        gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=_grpo_sampling_params(rlhf_config, generation_config))
     try:

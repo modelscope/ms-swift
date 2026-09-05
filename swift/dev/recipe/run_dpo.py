@@ -65,97 +65,67 @@ def run_dpo(
 ) -> List[dict]:
     """Assemble and run an offline preference optimisation from atomic Configs. Returns loss history.
 
-    Dispatches on ``rlhf_config.rlhf_type`` (one of dpo/kto/cpo/orpo/simpo/rm). Mirrors run_sft's
-    build order (template -> dataset -> model -> tuner -> loss -> optimizer -> loop), the difference
-    being the preference data pipeline (chosen/rejected -> interleaved features) and the optional
-    reference-logps forward that dpo/kto add.
+    Dispatches on ``rlhf_config.rlhf_type`` (one of dpo/kto/cpo/orpo/simpo/rm). The build order is
+    :class:`~swift.dev.recipe.assembly.TrainAssembly`'s, shared with every other recipe; what this one
+    owns is the preference data pipeline (raw rows -> chosen/rejected -> interleaved features), the
+    optional reference-logps forward that dpo/kto add, and :class:`PreferenceLoop` in place of SFTLoop.
+    Because the loop differs, the stages are driven one by one instead of through ``fit``.
     """
-    from swift.dev.adapter import apply_tuner
-    from swift.dev.builders import build_dataset, build_model, build_template
-    from swift.dev.config import validate_configs
     from swift.dev.loss import configure_rlhf_loss
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
-    from swift.dev.processor import InputProcessor
-    from swift.dev.recipe.run_sft import _initialize_twinkle, _write_ckpt_args_json
-    from swift.dev.recipe.train_loop import num_optimizer_steps
-    from swift.model import get_model_processor
+    from swift.dev.recipe.assembly import TrainAssembly
 
     rlhf_type = rlhf_config.rlhf_type
     if rlhf_type not in _OFFLINE_TYPES:
         raise ValueError(f'run_dpo handles the offline preference types {sorted(_OFFLINE_TYPES)}, got '
                          f'rlhf_type={rlhf_type!r}. Use run_grpo (online RL), run_gkd (distillation) or '
                          'run_ppo instead.')
-    validate_configs(model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-                     tuner_config, rlhf_config=rlhf_config)
-    _initialize_twinkle(distributed_config)
+    assembly = TrainAssembly(
+        'run_dpo',
+        model_config,
+        template_config,
+        dataset_config,
+        train_config,
+        distributed_config,
+        checkpoint_config,
+        tuner_config,
+        rlhf_config=rlhf_config,
+        output_dir=output_dir)
+    assembly.prepare()
+    TrainAssembly.initialize_twinkle(distributed_config)
 
-    ga = train_config.gradient_accumulation_steps
-    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
+    assembly.build_template()
     # Encode with the preference template mode: 'kto' for kto (allows a missing rejected), else
     # 'rlhf'. RM additionally rides task_type='seq_cls', which makes encode drop the labels.
-    template = build_template(template_config, processor, task_type=model_config.task_type)
-    template.set_mode('kto' if rlhf_type == 'kto' else 'rlhf')
+    assembly.template.set_mode('kto' if rlhf_type == 'kto' else 'rlhf')
 
     # Raw (un-encoded) rows: build_dataset(encode=False) keeps the preference columns intact and hands
     # back list[row] batches; PreferenceLoop encodes + interleaves each batch itself (the SFT encode
     # path only knows single-sequence causal_lm, not chosen/rejected pairs).
-    dataloader, eval_dataloader = build_dataset(
-        dataset_config,
-        template,
-        train_config,
-        distributed_config=distributed_config,
-        encode=False,
-        template_config=template_config)
+    assembly.build_dataset(encode=False)
+    assembly.plan_steps()
+    assembly.build_model()
+    configure_rlhf_loss(assembly.model, rlhf_config)
+    configure_optimizer(assembly.model, train_config, num_training_steps=assembly.total_opt_steps)
 
-    total_opt_steps = _preference_step_budget(train_config, dataloader, ga, num_optimizer_steps)
-    if total_opt_steps <= 0:
-        raise ValueError(f'run_dpo: computed {total_opt_steps} optimizer steps -- the dataloader is too small for '
-                         f'gradient_accumulation_steps={ga}, or it is streaming with no max_steps. Set '
-                         'TrainConfig.max_steps explicitly, or provide more preference data.')
-
-    model = build_model(model_config, distributed_config, train_config, tuner_config)
-    if tuner_config is not None:
-        apply_tuner(model, tuner_config, gradient_accumulation_steps=ga)
-    model.set_processor(InputProcessor, padding_free=template_config.padding_free)
-    model.set_template(template)
-    configure_rlhf_loss(model, rlhf_config)
-    configure_optimizer(model, train_config, num_training_steps=total_opt_steps)
-
-    reference = _build_reference(model, rlhf_config, tuner_config)
-
-    loop = PreferenceLoop(
-        model,
-        dataloader,
-        template,
+    assembly.loop = PreferenceLoop(
+        assembly.model,
+        assembly.dataloader,
+        assembly.template,
         rlhf_type=rlhf_type,
-        reference=reference,
-        max_steps=total_opt_steps,
+        reference=_build_reference(assembly.model, rlhf_config, tuner_config),
+        max_steps=assembly.total_opt_steps,
         num_train_epochs=train_config.num_train_epochs,
-        gradient_accumulation_steps=ga,
+        gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
         output_dir=output_dir,
-        eval_dataloader=eval_dataloader,
+        eval_dataloader=assembly.eval_dataloader,
         eval_steps=train_config.eval_steps,
         save_steps=checkpoint_config.save_steps)
-    history = loop.fit()
+    history = assembly.loop.fit()
     if _save_final:
-        import os
-        loop.save('checkpoint-final')
-        _write_ckpt_args_json(
-            os.path.join(output_dir, 'checkpoint-final'), processor, model_config, template_config, tuner_config)
+        assembly.save_final()
     return history
-
-
-def _preference_step_budget(train_config: TrainConfig, dataloader: Any, ga: int, num_optimizer_steps) -> int:
-    """Optimizer-step budget, mirroring run_sft: max_steps wins, else epochs * ceil(micro/ga)."""
-    if train_config.max_steps and train_config.max_steps > 0:
-        return train_config.max_steps
-    try:
-        micro_per_epoch = len(dataloader)
-    except TypeError:
-        return 0  # iterable/streaming: caller must set max_steps
-    total_micro = math.ceil(micro_per_epoch * train_config.num_train_epochs)
-    return num_optimizer_steps(total_micro, ga)
 
 
 def _build_reference(model: TrainableModel, rlhf_config: RLHFConfig,

@@ -11,61 +11,17 @@ import os
 import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+from swift.dev.plugin import AsyncRewardPlugin, PluginRegistry, RewardPlugin
+
 if TYPE_CHECKING:
     from swift.infer_engine import InferRequest
 
-
-class ORM:
-    """Base class for synchronous outcome reward models (ORM).
-
-    Subclasses should implement the __call__ method to compute rewards.
-
-    Example:
-        class MyReward(ORM):
-            def __call__(self, completions, **kwargs) -> List[float]:
-                return [1.0 if len(c) > 100 else 0.0 for c in completions]
-    """
-
-    def __init__(self, args: Optional[Any] = None, **kwargs):
-        self.args = args
-
-    def __call__(self, **kwargs) -> List[float]:
-        raise NotImplementedError
-
-
-class AsyncORM:
-    """Base class for asynchronous outcome reward models (ORM).
-
-    Use this for reward functions that involve I/O operations (e.g., API calls,
-    database queries) that can benefit from async execution.
-
-    Async reward functions are executed in parallel using asyncio.gather,
-    which can significantly speed up reward computation when multiple async
-    reward functions are used or when the reward function involves network calls.
-
-    Example:
-        class MyAsyncReward(AsyncORM):
-            async def __call__(self, completions, **kwargs) -> List[float]:
-                # Use asyncio.gather for parallel execution of all API calls
-                import asyncio
-                import aiohttp
-
-                async def score_single(session, text):
-                    async with session.post(api_url, json={'text': text}) as resp:
-                        result = await resp.json()
-                        return result['score']
-
-                async with aiohttp.ClientSession() as session:
-                    tasks = [score_single(session, c) for c in completions]
-                    rewards = await asyncio.gather(*tasks)
-                    return list(rewards)
-    """
-
-    def __init__(self, args: Optional[Any] = None, **kwargs):
-        self.args = args
-
-    async def __call__(self, **kwargs) -> List[float]:
-        raise NotImplementedError
+#: The reward plugin base under its historical names. A reward ORM *is* swift's reward plugin -- same
+#: ``cls(args=...)`` construction, same ``__call__(completions, **columns) -> List[float]`` contract --
+#: so these are aliases rather than a parallel base class, and a user's existing ``class
+#: MyReward(ORM)`` keeps working while gaining the registry's shape check.
+ORM = RewardPlugin
+AsyncORM = AsyncRewardPlugin
 
 
 class MathAccuracy(ORM):
@@ -464,3 +420,10 @@ orms = {
     'repetition': RepetitionPenalty,
     'soft_overlong': SoftOverlong,
 }
+
+#: The 'reward' extension point adopts ``orms`` *itself* as its registry, so
+#: ``@PluginRegistry.register('reward', ...)`` and the historical ``orms['my'] = MyReward`` write to one
+#: dict -- no consumer has to know which form a plugin arrived in, and there is no second roster to keep
+#: in sync. Async rewards are accepted here too: they are selected by the same ``--reward_funcs``.
+REWARD = PluginRegistry.register_kind(
+    'reward', (RewardPlugin, AsyncRewardPlugin), config_field='reward_funcs', entries=orms)

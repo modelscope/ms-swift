@@ -95,9 +95,13 @@ def run_infer(
         Result rows, each with ``response`` / ``responses`` / ``labels`` / ``messages`` plus every
         column the dataset row already had.
     """
-    from swift.dev.recipe.run_sft import _initialize_twinkle
+    from swift.dev.plugin import PluginRegistry
+    from swift.dev.recipe.assembly import TrainAssembly
 
-    _initialize_twinkle(distributed_config)
+    # Inference has no Configs to cross-validate, but it still needs the run's plugin files imported:
+    # a custom model or dataset lives in one, and its registration must precede the first name lookup.
+    PluginRegistry.load_configured(model_config)
+    TrainAssembly.initialize_twinkle(distributed_config)
     adapters = _resolve_adapters(adapters, tuner_config)
     if merge_lora and adapters:
         model_config, adapters = _merge_adapters(model_config, template_config, adapters)

@@ -187,36 +187,42 @@ def run_grpo(
     (``vllm_tensor_parallel_size * vllm_data_parallel_size``) are placed alongside (disaggregated) or
     shared (colocate).
     """
-    from swift.dev.adapter import apply_tuner
-    from swift.dev.builders import build_model, build_sampler, build_template
-    from swift.dev.config import validate_configs
+    from swift.dev.builders import build_sampler
     from swift.dev.loss import configure_rlhf_loss
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
-    from swift.dev.processor import InputProcessor
+    from swift.dev.recipe.assembly import TrainAssembly
     from swift.dev.recipe.grpo import GRPOLoop
-    from swift.model import get_model_processor
 
-    validate_configs(model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-                     tuner_config, rlhf_config=rlhf_config)
+    assembly = TrainAssembly(
+        'run_grpo',
+        model_config,
+        template_config,
+        dataset_config,
+        train_config,
+        distributed_config,
+        checkpoint_config,
+        tuner_config,
+        rlhf_config=rlhf_config,
+        output_dir=output_dir)
+    # Also imports the run's plugin files -- the reward names handed to GRPOLoop below are resolved
+    # against the registry they write into.
+    assembly.prepare()
 
     sampler_world_size = rollout_config.vllm_tensor_parallel_size * rollout_config.vllm_data_parallel_size
     groups, sampler_remote_group, colocate = plan_rl_device_groups(distributed_config.nproc_per_node,
                                                                    rollout_config.vllm_mode, sampler_world_size)
+    # RL initializes twinkle itself rather than through the assembly: it needs two device groups (trainer
+    # + sampler), whose placement was just planned.
     _initialize_twinkle_rl(distributed_config, groups)
 
-    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
-    template = build_template(template_config, processor)
-
+    assembly.build_template()
     # Trainer: a Ray-actor model in the 'model' group (build_model sets remote_group='model' under
-    # mode='ray'). Tuner/loss/optimizer in the run_sft order (tuner first so loss/optim target it).
-    model = build_model(model_config, distributed_config, train_config, tuner_config)
-    ga = train_config.gradient_accumulation_steps
-    if tuner_config is not None:
-        apply_tuner(model, tuner_config, gradient_accumulation_steps=ga)
-    model.set_processor(InputProcessor, padding_free=template_config.padding_free)
-    model.set_template(template)
-    configure_rlhf_loss(model, rlhf_config)
-    configure_optimizer(model, train_config, num_training_steps=train_config.max_steps or 1)
+    # mode='ray'), with the tuner applied before loss/optimizer so those target its group.
+    assembly.build_model()
+    configure_rlhf_loss(assembly.model, rlhf_config)
+    # No dataloader to derive a step budget from -- prompts are rolled out, not iterated.
+    max_steps = train_config.max_steps or 1
+    configure_optimizer(assembly.model, train_config, num_training_steps=max_steps)
 
     # Sampler: vLLMSampler placed in its group (shared 'model' for colocate, separate 'sampler'
     # otherwise). enable_sleep_mode is required for the colocate device hand-over.
@@ -225,13 +231,13 @@ def run_grpo(
         model_config,
         backend='vllm',
         engine_args=sampler_engine_args,
-        template=template,
+        template=assembly.template,
         remote_group=sampler_remote_group)
-    rollout = SamplerRollout(model, sampler, colocate=colocate)
+    rollout = SamplerRollout(assembly.model, sampler, colocate=colocate)
 
     prompts = _prompts_from_dataset(dataset_config)
     loop = GRPOLoop(
-        model,
+        assembly.model,
         rollout,
         prompts,
         num_generations=rlhf_config.num_generations,
@@ -240,8 +246,8 @@ def run_grpo(
         advantage_estimator=rlhf_config.advantage_estimator,
         scale_rewards=rlhf_config.scale_rewards or 'group',
         rlhf_config=rlhf_config,
-        max_steps=train_config.max_steps or 1,
-        gradient_accumulation_steps=ga,
+        max_steps=max_steps,
+        gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=_grpo_sampling_params(rlhf_config, generation_config))
     try:

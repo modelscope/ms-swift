@@ -28,39 +28,32 @@ __all__ = ['RewardFunc', 'get_reward_funcs', 'compute_rewards_per_func', 'weight
 def get_reward_funcs(reward_funcs: Sequence[Any], config: Optional[Any] = None) -> Tuple[List[RewardFunc], List[str]]:
     """Resolve reward specs to callables + display names.
 
-    A spec is either:
-      - a name registered in ``swift.dev.rewards.orms`` -> instantiated as ``orms[name](args=config)``
-        (the ORM reads its own hyperparameters off ``config``, e.g. ``cosine_*`` / ``repetition_*``);
-      - an already-callable reward function -> passed through unchanged.
+    A spec is either a name registered at the ``reward`` extension point (instantiated as
+    ``cls(args=config)``, so the plugin reads its own hyperparameters -- ``cosine_*`` /
+    ``repetition_*`` -- off the Config), a plugin class, or an already-callable reward function,
+    which is passed through unchanged. Registration itself lives in :mod:`swift.dev.plugin`; this
+    function is the reward-shaped door onto it and adds nothing of its own but the naming.
 
     Args:
-        reward_funcs: reward specs (registered names and/or callables).
-        config: object carrying reward hyperparameters (any object with the fields the chosen ORMs
-            read; ``None`` is fine for ORMs that need none).
+        reward_funcs: reward specs (registered names, plugin classes and/or callables).
+        config: object carrying reward hyperparameters (any object with the fields the chosen plugins
+            read; ``None`` is fine for plugins that need none).
 
     Returns:
         ``(funcs, names)``; ``names`` are suitable for per-reward metric keys.
 
     Raises:
-        ValueError: unknown name, or a spec that is neither a name nor callable.
+        ValueError: unknown name, or a spec that is neither a name, a class nor a callable.
     """
-    from swift.dev.rewards import orms
+    from swift.dev.plugin import PluginRegistry
+    from swift.dev.rewards import REWARD
 
     funcs: List[RewardFunc] = []
     names: List[str] = []
     for spec in reward_funcs:
-        if isinstance(spec, str):
-            if spec not in orms:
-                raise ValueError(f'reward function {spec!r} is not registered in swift.dev.rewards.orms '
-                                 f'(available: {sorted(orms)}). Pass a registered name or a callable.')
-            func = orms[spec](args=config)
-            funcs.append(func)
-            names.append(func.__class__.__name__)
-        elif callable(spec):
-            funcs.append(spec)
-            names.append(getattr(spec, '__name__', spec.__class__.__name__))
-        else:
-            raise ValueError(f'reward function {spec!r} must be a registered name or a callable.')
+        func = PluginRegistry.resolve(REWARD, spec, config=config)
+        funcs.append(func)
+        names.append(PluginRegistry.display_name(func))
     return funcs, names
 
 
