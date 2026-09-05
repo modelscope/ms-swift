@@ -836,7 +836,9 @@ def replace_assistant_response_with_ids(messages: 'Messages',
     return messages
 
 
-def parse_prompt_logprobs(response, topk: int) -> Tuple[List[List[float]], List[List[int]]]:
+def parse_prompt_logprobs(response,
+                          topk: int,
+                          include_sampled: bool = False) -> Tuple[List[List[float]], List[List[int]]]:
     """Parse vLLM prompt_logprobs into per-position (logprobs, token_ids).
 
     vLLM's ``prompt_logprobs[i]`` is ``{token_id: {logprob, rank, ...}}`` for predicting
@@ -847,7 +849,8 @@ def parse_prompt_logprobs(response, topk: int) -> Tuple[List[List[float]], List[
       token — take that single entry. This is token-in-token-out, NOT the top-1: the
       sampled token may have any rank.
     - ``topk > 0`` (top-k, GKD): the ``topk`` highest-probability tokens, ordered by logprob
-      (== rank order). The sampled token, if returned as an extra ``k+1``-th entry, is dropped.
+      (== rank order). The sampled token, if returned as an extra ``k+1``-th entry, is dropped
+      unless ``include_sampled`` is true.
     """
     raw = response.prompt_logprobs or []
     lps: List[List[float]] = []
@@ -859,7 +862,9 @@ def parse_prompt_logprobs(response, topk: int) -> Tuple[List[List[float]], List[
             lps.append([info['logprob']])
             ixs.append([int(tid)])
         else:
-            items = sorted(pos_lp.items(), key=lambda x: -x[1]['logprob'])[:topk]
+            items = sorted(pos_lp.items(), key=lambda x: -x[1]['logprob'])
+            if not include_sampled:
+                items = items[:topk]
             lps.append([info['logprob'] for _, info in items])
             ixs.append([int(tid) for tid, _ in items])
     return lps, ixs
@@ -888,8 +893,8 @@ def assemble_teacher_topk_logprobs(
             length = min(len(lps), end - start)
             if length <= 0:
                 continue
-            out_lp[start:start + length] = torch.tensor(lps[:length], dtype=torch.float32)
-            out_ix[start:start + length] = torch.tensor(ixs[:length], dtype=torch.long)
+            out_lp[start:start + length] = torch.tensor([row[:topk] for row in lps[:length]], dtype=torch.float32)
+            out_ix[start:start + length] = torch.tensor([row[:topk] for row in ixs[:length]], dtype=torch.long)
         return out_lp.unsqueeze(0).to(device), out_ix.unsqueeze(0).to(device)
 
     out_lp = torch.full((batch_size, seq_len, topk), float('-inf'), dtype=torch.float32)
@@ -902,8 +907,8 @@ def assemble_teacher_topk_logprobs(
         length = min(P, seq_len - start)
         if length <= 0:
             continue
-        out_lp[idx, start:start + length] = torch.tensor(lps[:length], dtype=torch.float32)
-        out_ix[idx, start:start + length] = torch.tensor(ixs[:length], dtype=torch.long)
+        out_lp[idx, start:start + length] = torch.tensor([row[:topk] for row in lps[:length]], dtype=torch.float32)
+        out_ix[idx, start:start + length] = torch.tensor([row[:topk] for row in ixs[:length]], dtype=torch.long)
     return out_lp.to(device), out_ix.to(device)
 
 

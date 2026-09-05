@@ -15,7 +15,7 @@ from swift.rl_core.data import GKDSample
 from swift.rl_core.resample import resample_encode_failed_inputs
 from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_output, build_opsd_samples, build_teacher_requests,
                                              encode_gkd_samples, fetch_teacher_parsed_by_routing)
-from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
+from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss, gkd_monitoring_stats
 from swift.template import Template
 from swift.utils import get_logger, to_device
 from ..utils import forward_step_helper, get_padding_to
@@ -259,11 +259,23 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 if teacher_logits is not None:
                     teacher_logits = teacher_logits.detach()
 
+                target_logprobs = None
+                if (teacher_logits is not None and teacher_labels is not None
+                        and encoded_batch.get('data_source') == DataSource.STUDENT):
+                    safe_labels = teacher_labels.masked_fill(teacher_labels == -100, 0).long()
+                    teacher_logprobs = vocab_parallel_log_softmax(teacher_logits.float())
+                    target_logprobs = tp_gather_topk(teacher_logprobs, safe_labels.unsqueeze(-1)).squeeze(-1)
+                    target_logprobs = target_logprobs.masked_fill(teacher_labels == -100, float('nan'))
+
                 if topk is not None and teacher_logits is not None:
                     topk_logits, topk_indices = vocab_parallel_topk(teacher_logits, k=topk)
-                    teacher_out = TeacherOutput(topk_logprobs=topk_logits, topk_indices=topk_indices)
+                    teacher_out = TeacherOutput(
+                        topk_logprobs=topk_logits,
+                        topk_indices=topk_indices,
+                        target_logprobs=target_logprobs,
+                    )
                 else:
-                    teacher_out = TeacherOutput(full_logits=teacher_logits)
+                    teacher_out = TeacherOutput(full_logits=teacher_logits, target_logprobs=target_logprobs)
 
                 teacher_out.labels = teacher_labels
                 encoded_batch['teacher_output'] = teacher_out
@@ -286,6 +298,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             samples = self._gather_rollout_results(local_batch)
             self._log_completions_from_samples(samples)
 
+        num_turns_mean = None
+        if data_source == DataSource.STUDENT and samples and all(s.rollout_infos and 'num_turns' in s.rollout_infos
+                                                                 for s in samples):
+            num_turns_mean = sum(float(s.rollout_infos['num_turns']) for s in samples) / len(samples)
+
         # Teacher API: build requests from samples, fetch logprobs
         local_parsed = None
         if self.use_teacher_api:
@@ -299,7 +316,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     self.teacher_clients,
                     gather_fn=self._gather_teacher_requests,
                     infer_fn=lambda handle, client: self._infer_teacher_requests(
-                        handle, topk=self.gkd_logits_topk, teacher_client=client),
+                        handle, topk=self.gkd_logits_topk, teacher_client=client, include_sampled=True),
                     scatter_fn=self._scatter_teacher_parsed,
                     is_main_process=self.is_main_process,
                     tag_key=self.args.teacher_tag_key)
@@ -314,6 +331,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             sample_slice = samples[start_idx:end_idx]
             encoded_batch = self._encode_samples(sample_slice)
             encoded_batch['data_source'] = data_source
+            if num_turns_mean is not None:
+                encoded_batch['num_turns'] = num_turns_mean
             if local_parsed is not None:
                 encoded_batch['_teacher_parsed'] = local_parsed[start_idx:end_idx]
             all_encoded_batches.append(encoded_batch)
@@ -346,7 +365,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                   *,
                   labels: torch.Tensor,
                   teacher_output: TeacherOutput,
-                  data_source: DataSource = DataSource.DATASET):
+                  data_source: DataSource = DataSource.DATASET,
+                  num_turns: Optional[float] = None):
         """Compute GKD loss (JSD + optional SFT loss)."""
         student_logits = output_tensor
 
@@ -388,6 +408,29 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             loss = loss + self.sft_alpha * sft_loss
 
         metric = {'loss': loss.detach().clone()}
+        if num_turns is not None:
+            metric['num_turns'] = loss.new_tensor(num_turns)
+        if data_source == DataSource.STUDENT:
+            monitor = gkd_monitoring_stats(
+                student_logits,
+                teacher_output,
+                labels,
+                full_vocab_topk=self.gkd_logits_topk or 16,
+                student_topk_fn=vocab_parallel_topk,
+                teacher_topk_fn=vocab_parallel_topk,
+                gather_fn=tp_gather_topk,
+                target_logprob_fn=lambda logits, target_ids: tp_gather_topk(
+                    vocab_parallel_log_softmax(logits.float()), target_ids.unsqueeze(-1)).squeeze(-1))
+            packed = torch.stack([
+                monitor['topk_overlap_sum'], monitor['topk_overlap_count'], monitor['teacher_student_gap_sum'],
+                monitor['teacher_student_gap_count']
+            ])
+            if self.args.context_parallel_size > 1:
+                torch.distributed.all_reduce(
+                    packed, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
+            torch.distributed.all_reduce(packed, op=torch.distributed.ReduceOp.SUM, group=mpu.get_data_parallel_group())
+            metric['gkd/topk_overlap'] = packed[0] / packed[1].clamp(min=1)
+            metric['gkd/teacher_student_gap'] = packed[2] / packed[3].clamp(min=1)
         if sft_loss is not None:
             metric['jsd_loss'] = jsd_loss_val.detach().clone()
             metric['sft_loss'] = sft_loss.detach().clone()
@@ -408,6 +451,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         data = next(data_iterator)
         data_source = data.pop('data_source', DataSource.DATASET)
+        num_turns = data.pop('num_turns', None)
         teacher_output = data.pop('teacher_output')
         data.pop('teacher_model_inputs', None)  # consumed by _compute_teacher_logits; not needed for student forward
         data = self._prepare_batch(data, vp_stage)
@@ -424,4 +468,5 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             labels=labels,
             teacher_output=teacher_output,
             data_source=data_source,
+            num_turns=num_turns,
         )

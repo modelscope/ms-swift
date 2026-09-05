@@ -277,7 +277,11 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         flat_global = [req for dp in dp_ranks_sorted for req in segments_by_dp[dp]]
         return {'flat_global': flat_global, 'offset': offset, 'n_local': len(requests)}
 
-    def _infer_teacher_requests(self, handle: Dict[str, Any], topk: int, teacher_client: Optional[Any] = None):
+    def _infer_teacher_requests(self,
+                                handle: Dict[str, Any],
+                                topk: int,
+                                teacher_client: Optional[Any] = None,
+                                include_sampled: bool = False):
         """Phase 2 (main process only, no collective): run the teacher HTTP infer.
 
         Safe to call concurrently across teachers (distinct clients, no collective inside).
@@ -287,7 +291,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         client = teacher_client if teacher_client is not None else self.teacher_clients[0]
         request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)
         responses = client.infer(handle['flat_global'], request_config=request_config, use_tqdm=False)
-        return [parse_prompt_logprobs(r, topk=topk) for r in responses]
+        return [parse_prompt_logprobs(r, topk=topk, include_sampled=include_sampled) for r in responses]
 
     def _scatter_teacher_parsed(self, handle: Dict[str, Any], parsed_global):
         """Phase 3 (all ranks, collective): broadcast the parsed result and slice this rank's part."""
