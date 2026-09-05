@@ -30,7 +30,9 @@ class MplugOwl2Loader(ModelLoader):
         # https://github.com/X-PLUG/mPLUG-Owl/blob/main/mPLUG-Owl2/mplug_owl2/model/modeling_mplug_owl2.py#L447
         from mplug_owl2 import MPLUGOwl2LlamaForCausalLM
         if vocab_size is not None:
-            config.vocab_size = vocab_size
+            # ModelLoader.get_model is called with (model_dir, config, processor, model_kwargs),
+            # so the framework-loaded config arrives as args[0].
+            args[0].vocab_size = vocab_size
         model = super().get_model(model_dir, *args, **kwargs)
         logger.info('Please ignore the unimported warning.')
         return model
