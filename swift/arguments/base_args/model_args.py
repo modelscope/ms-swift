@@ -64,6 +64,13 @@ class ModelArguments:
         init_strategy (Optional[str]): The strategy to initialize all uninitialized parameters when loading a model
             (especially for custom architectures). Options include 'zero', 'uniform', 'normal', 'xavier_uniform',
             'xavier_normal', 'kaiming_uniform', 'kaiming_normal', 'orthogonal'. Defaults to None.
+        load_model (bool): Whether to instantiate the model. If False, only the config and the processor
+            (tokenizer/image_processor) are prepared, and the model weight files (.bin/.safetensors) are not even
+            downloaded. Useful for tokenization/template debugging. Defaults to True.
+        return_dummy_model (bool): Whether to build the model from `config.json` only (i.e. `cls(config)`), skipping
+            `from_pretrained`. The architecture is complete but the parameters are randomly initialized, and the
+            weight files are not downloaded. Requires `load_model` to be True. Combine with `--device_map meta` to
+            build the model on the meta device so that no real memory is allocated. Defaults to False.
     """
     model: Optional[str] = None  # model id or model path
     model_type: Optional[str] = field(
@@ -91,6 +98,10 @@ class ModelArguments:
     local_repo_path: Optional[str] = None
     init_strategy: Literal['zero', 'uniform', 'normal', 'xavier_uniform', 'xavier_normal', 'kaiming_uniform',
                            'kaiming_normal', 'orthogonal'] = None
+    # False: only build the config & processor, the model will be None.
+    load_model: bool = True
+    # True: build the model via `cls(config)` instead of `from_pretrained`, i.e. no weights are loaded.
+    return_dummy_model: bool = False
 
     def _init_device_map(self):
         """Prepare device map args"""
@@ -190,7 +201,7 @@ class ModelArguments:
 
     def _init_model_info(self) -> torch.dtype:
         model_kwargs = self.get_model_kwargs()
-        if self.tuner_backend == 'unsloth':
+        if self.tuner_backend == 'unsloth' and self.load_model:
             model_kwargs['download_model'] = True
         self.model_info, self.model_meta = get_model_info_meta(**model_kwargs)
         self.task_type = self.model_info.task_type
@@ -216,11 +227,25 @@ class ModelArguments:
                 new_special_tokens.append(token)
         self.new_special_tokens = new_special_tokens
 
+    def _init_load_model(self):
+        """Validate `load_model` / `return_dummy_model` and log the effective weight-loading behavior."""
+        if self.return_dummy_model and not self.load_model:
+            raise ValueError('`--return_dummy_model true` requires `--load_model true`, because a dummy model still '
+                             'needs to be instantiated. If you only need the tokenizer/template, just set '
+                             '`--load_model false`.')
+        if not self.load_model:
+            logger.info('Setting args.load_model: False. The model will not be instantiated (model is None), '
+                        'and the model weight files will not be downloaded.')
+        elif self.return_dummy_model:
+            logger.info('Setting args.return_dummy_model: True. The model will be built from `config.json` with '
+                        'randomly initialized parameters, and the model weight files will not be downloaded.')
+
     def __post_init__(self):
         if self.model is None:
             raise ValueError(f'Please set --model <model_id_or_path>, model: {self.model}')
         self._init_new_special_tokens()
         self.model_suffix = get_model_name(self.model)
+        self._init_load_model()
         self._init_device_map()
         self._init_max_memory()
         self._init_torch_dtype()
@@ -246,4 +271,6 @@ class ModelArguments:
             'num_labels': self.num_labels,
             'problem_type': self.problem_type,
             'init_strategy': self.init_strategy,
+            'load_model': self.load_model,
+            'return_dummy_model': self.return_dummy_model,
         }
