@@ -9,6 +9,7 @@ from swift.rlhf_trainers import rlhf_mixin
 from swift.rlhf_trainers.dpo_trainer import DPOTrainer
 from swift.rlhf_trainers.kto_trainer import KTOTrainer
 from swift.rlhf_trainers.rlhf_mixin import RLHFTrainerMixin
+from swift.rlhf_trainers.utils import pad_logps_back_to_batch
 from swift.trainers.mixin import SwiftMixin
 from swift.utils import get_packed_seq_params
 
@@ -70,6 +71,27 @@ def _reference_segment_sum(values, lengths):
         outputs.append(values[offset:offset + length].sum(dim=0))
         offset += length
     return torch.stack(outputs)
+
+
+def _reference_pad_logps(logps_rmpad, seq_lengths, logits_to_keep, dtype=None, pad_value=-1e10):
+    if dtype is None:
+        dtype = logps_rmpad.dtype
+    lengths = seq_lengths.cpu().tolist()
+    device = logps_rmpad.device
+    output = torch.full((len(lengths), logits_to_keep), pad_value, dtype=dtype, device=device)
+    valid_mask = torch.zeros_like(output, dtype=torch.float32)
+    flat = logps_rmpad.flatten().to(dtype)
+    offset = 0
+    for i, seq_len in enumerate(lengths):
+        actual_len = min(max(flat.numel() - offset, 0), seq_len)
+        if actual_len <= 0:
+            offset += seq_len
+            continue
+        pad_len = logits_to_keep - (actual_len if actual_len < seq_len else seq_len)
+        output[i, pad_len:] = flat[offset:offset + actual_len]
+        valid_mask[i, pad_len:] = 1.0
+        offset += seq_len
+    return output, valid_mask
 
 
 def _reference_dpo_sum(values, lengths, num_examples, ld_alpha=None, is_ref_model=False):
@@ -225,6 +247,56 @@ class TestPackedRLHFReduction(unittest.TestCase):
                 expected[1:] -= position_ids.shape[-1] + 1 - 11
                 actual = trainer.get_cu_seqlens(position_ids, 11)
                 torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+    def test_pad_logps_back_to_batch(self):
+        cases = [
+            ('normal', [4, 3, 5, 2], 14, 16),
+            ('empty', [3, 0, 2, 5], 10, 8),
+            ('all_empty', [0, 0, 0], 0, 4),
+            ('truncated', [3, 5, 2], 5, 6),
+            ('extra', [3, 2, 1], 10, 5),
+            ('small_fast_path', [1, 2], 3, 4),
+        ]
+        for device in _test_devices():
+            for dtype in (torch.float32, torch.bfloat16):
+                for name, lengths_list, source_tokens, logits_to_keep in cases:
+                    with self.subTest(device=device, dtype=dtype, case=name):
+                        lengths = torch.tensor(lengths_list, dtype=torch.int32, device=device)
+                        logps = torch.arange(source_tokens, dtype=dtype, device=device).reshape(1, -1)
+                        expected = _reference_pad_logps(logps, lengths, logits_to_keep)
+                        actual = pad_logps_back_to_batch(
+                            logps, batch_size=len(lengths_list), seq_lengths=lengths, logits_to_keep=logits_to_keep)
+                        torch.testing.assert_close(actual[0].cpu(), expected[0].cpu())
+                        torch.testing.assert_close(actual[1].cpu(), expected[1].cpu())
+                        self.assertEqual(actual[0].dtype, dtype)
+                        self.assertEqual(actual[0].device, logps.device)
+
+                lengths = torch.tensor([4, 3, 5, 2], dtype=torch.int32, device=device)
+                logps = torch.arange(14, dtype=torch.bfloat16, device=device).reshape(1, -1)
+                expected = _reference_pad_logps(logps, lengths, 16, dtype=torch.float32)
+                actual = pad_logps_back_to_batch(
+                    logps, batch_size=4, seq_lengths=lengths, logits_to_keep=16, dtype=torch.float32)
+                torch.testing.assert_close(actual[0].cpu(), expected[0].cpu())
+                torch.testing.assert_close(actual[1].cpu(), expected[1].cpu())
+
+        position_ids = torch.cat([torch.arange(length) for length in [4, 3, 5, 2]]).unsqueeze(0)
+        logps = torch.arange(14, dtype=torch.float32).reshape(1, -1)
+        lengths = torch.tensor([4, 3, 5, 2], dtype=torch.int32)
+        expected = _reference_pad_logps(logps, lengths, 16)
+        actual = pad_logps_back_to_batch(logps, batch_size=4, position_ids=position_ids, logits_to_keep=16)
+        torch.testing.assert_close(actual[0], expected[0])
+        torch.testing.assert_close(actual[1], expected[1])
+
+        lengths = torch.tensor([4, 3, 5, 2], dtype=torch.int32)
+        logps = torch.randn(1, 14, requires_grad=True)
+        expected_input = logps.detach().clone().requires_grad_(True)
+        actual = pad_logps_back_to_batch(logps, batch_size=4, seq_lengths=lengths, logits_to_keep=8, pad_value=0.0)
+        expected = _reference_pad_logps(expected_input, lengths, 8, pad_value=0.0)
+        (actual[0].square().sum() + actual[1].sum()).backward()
+        (expected[0].square().sum() + expected[1].sum()).backward()
+        torch.testing.assert_close(actual[0], expected[0])
+        torch.testing.assert_close(actual[1], expected[1])
+        torch.testing.assert_close(logps.grad, expected_input.grad, rtol=0, atol=0)
 
     def test_packed_sequence_sum_forward_and_backward(self):
         lengths = [0, 3, 2, 0, 4]
