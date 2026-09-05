@@ -300,7 +300,7 @@ swift 不留的理由只有两条站得住：① `template_mode` / `task_type` �
 
 ### legacy 的一处设计隐患：陈旧 `lengths` 会让 pack 超长
 
-上一节的最后一句引出一个真问题，与 dev 迁移无关但值得登记。`cached_dataset` 重载时 [`_select_dataset`](../../pipelines/utils.py) **不校验也不重算** `lengths`（只做了 3.x 的 `length`→`lengths` 改名兼容）。于是开 `--packing` 时：
+上一节的最后一句引出一个真问题，与 dev 迁移无关但值得登记。`cached_dataset` 重载时 [`_select_dataset`](../pipelines/utils.py) **不校验也不重算** `lengths`（只做了 3.x 的 `length`→`lengths` 改名兼容）。于是开 `--packing` 时：
 
 1. `PackingDataset` 拿陈旧 `lengths` 规划分组，保证每组和 ≤ `packing_length`
 2. `__getitem__` 又用**当前** template 重新编码那些行
