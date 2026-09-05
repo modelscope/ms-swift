@@ -8,7 +8,7 @@
 <p align="center">
 <a href="https://modelscope.cn/home">魔搭社区官网</a>
 <br>
-        中文&nbsp ｜ &nbsp<a href="README.md">English</a>&nbsp
+        中文&nbsp ｜ &nbsp<a href="README.md">English</a>&nbsp ｜ &nbsp<a href="README_JA.md">日本語</a>&nbsp
 </p>
 
 
