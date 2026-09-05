@@ -381,7 +381,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
   - vllm_server_pass_dataset: 透传额外的数据集信息到vLLM server，用于多轮训练。
   - async_generate: 异步rollout以提高训练速度，注意开启时采样会使用上一轮更新的模型进行采样，不支持多轮场景。默认`false`.
   - SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE: 环境变量，用于控制权重同步时的传输桶大小（bucket size），适用于 Server Mode 下的全参数训练，单位为 MB，默认值为 512 MB。
-- vllm_mode colocate 参数（更多参数支持参考[vLLM参数](#vLLM参数)。）
+- vllm_mode colocate 参数（更多参数支持参考[vLLM参数](../Instruction/Command-line-parameters.md#vllm参数)。）
   - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9。
   - vllm_max_model_len: vllm透传参数，默认为None。
   - vllm_enforce_eager: vllm透传参数，默认为False。

@@ -404,14 +404,14 @@ In addition to inheriting the training parameters, the following parameters are 
   - vllm_server_pass_dataset: Pass additional dataset information to the vLLM server for multi-round training.
   - async_generate: Asynchronous rollout to improve training speed. Note: When enabled, sampling uses the model from the previous round update, and multi-round scenarios are not supported. Default is `false`.
   - SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE: Environment variable for controlling the bucket size during weight synchronization. Applicable to full-parameter training in Server Mode. Unit is MB, default value is 512 MB.
-- vllm_mode colocate parameters (for more parameter support, refer to [vLLM parameters](#vllm-parameters)):
+- vllm_mode colocate parameters (for more parameter support, refer to [vLLM parameters](../Instruction/Command-line-parameters.md#vllm-arguments)):
   - vllm_gpu_memory_utilization: vLLM passthrough parameter. Default is 0.9.
   - vllm_max_model_len: vLLM passthrough parameter. Default is None.
   - vllm_enforce_eager: vLLM passthrough parameter. Default is False.
   - vllm_limit_mm_per_prompt: vLLM passthrough parameter. Default is None.
   - vllm_enable_prefix_caching: vLLM passthrough parameter. Default is True.
   - vllm_tensor_parallel_size: Tensor parallel size. Default is `1`.
-  - vllm_enable_lora: Support loading LoRA adapters in the vLLM Engine. Default is False. Used to accelerate weight synchronization in LoRA training. See [documentation](../Instruction/GRPO/GetStarted/GRPO.md#weight-synchronization-acceleration) for details.
+  - vllm_enable_lora: Support loading LoRA adapters in the vLLM Engine. Default is False. Used to accelerate weight synchronization in LoRA training. See [documentation](../Instruction/GRPO/GetStarted/GRPO.md#weight-sync-acceleration) for details.
   - sleep_level: Release vLLM GPU memory during training. Options are `[0, 1, 2]`. Default is 0, meaning no release.
   - offload_optimizer: Whether to offload optimizer parameters during vLLM inference. Default is False.
   - offload_model: Whether to offload the model during vLLM inference. Default is False.

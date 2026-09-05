@@ -644,7 +644,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy`,`format`,`cosine`,`repetition` and `soft_overlong`, as seen in `swift/rewards/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
 - reward_weights: Weights for each reward function. The number should be equal to the sum of the number of reward functions and reward models. If `None`, all rewards are weighted equally with weight `1.0`.
   - Note: If `--reward_model` is included in GRPO training, it is added to the end of the reward functions.
-- reward_model_plugin: The logic for the reward model, which defaults to ORM logic. For more information, please refer to [Customized Reward Models](./GRPO/DeveloperGuide/reward_model.md#custom-reward-model).
+- reward_model_plugin: The logic for the reward model, which defaults to ORM logic. For more information, please refer to [Customized Reward Models](./GRPO/DeveloperGuide/reward_model.md#custom-reward-models).
 - dataset_shuffle: Whether to shuffle the dataset randomly. Default is True.
 - truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. With the delete strategy, over-long or encoding-failed samples are discarded, and new samples are resampled from the original dataset to maintain the intended batch size.
 - loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo', 'real', 'fipo'], default is 'grpo'. For details, refer to this [doc](./GRPO/DeveloperGuide/loss_types.md)
@@ -689,7 +689,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - dynamic_sample: Exclude data within the group where the reward standard deviation is 0, and additionally sample new data. Default is False.
 - max_resample_times: Under the dynamic_sample setting, limit the number of resampling attempts to a maximum of 3. Default is 3 times.
 - overlong_filter: Skip overlong truncated samples, which will not be included in loss calculation. Default is False.
-The hyperparameters for the reward function can be found in the [Built-in Reward Functions section](#built-in-reward-functions).
+The hyperparameters for the reward function can be found in the [Reward function parameters section](#reward-function-parameters).
 - delta: Delta value for the upper clipping bound in two-sided GRPO. Recommended to be > 1 + epsilon. This method was introduced in the [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291).
 - importance_sampling_level: Controls how the importance sampling ratio is computed. Options are `token` and `sequence`. In `token` mode, the raw per-token log-probability ratios are used. In `sequence` mode, the log-probability ratios of all valid tokens in the sequence are averaged to produce a single ratio per sequence. The [GSPO paper](https://arxiv.org/abs/2507.18071) uses sequence-level importance sampling to stabilize training. The default is `token`.
 - advantage_estimator: Advantage estimator. Default is `grpo` (group-relative advantage). Options: `grpo`, [`rloo`](./GRPO/AdvancedResearch/RLOO.md), [`reinforce_plus_plus`](./GRPO/AdvancedResearch/REINFORCEPP.md).

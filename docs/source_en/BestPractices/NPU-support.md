@@ -746,7 +746,7 @@ After training, inference, or deployment, you can evaluate the original model or
 
 ## Release
 
-If you need to publish NPU-trained checkpoints, merged models, or quantized models to ModelScope/HuggingFace, use the push capability in `swift export`. For complete arguments and examples, see [Export and Push](../Instruction/Export-and-push.md#push-models).
+If you need to publish NPU-trained checkpoints, merged models, or quantized models to ModelScope/HuggingFace, use the push capability in `swift export`. For complete arguments and examples, see [Export and Push](../Instruction/Export-and-push.md#push-model).
 
 ## FAQ
 
