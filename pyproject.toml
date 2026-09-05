@@ -1,3 +1,11 @@
+[tool.pytest.ini_options]
+testpaths = ["swift/dev/tests", "tests"]
+addopts = "--strict-markers -ra"
+markers = [
+  "accel(n): needs n accelerators (CUDA or NPU); defaults to 1",
+  "slow: downloads real weights or runs a real training loop; daily CI only",
+]
+
 [tool.ruff]
 line-length = 120
 target-version = "py38"

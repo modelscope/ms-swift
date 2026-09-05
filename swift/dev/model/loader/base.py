@@ -1,16 +1,16 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """What a checkpoint is, and which named sub-modules make up which trainable part of it."""
 from __future__ import annotations
-
 import importlib
 import os
 import platform
 import re
-import torch
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from transformers import AutoConfig, AutoProcessor, AutoTokenizer, PretrainedConfig, PreTrainedModel
 from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple, Type, Union
+
+import torch
+from transformers import AutoConfig, AutoProcessor, AutoTokenizer, PretrainedConfig, PreTrainedModel
 
 __all__ = [
     'ModelArch', 'ModelInfo', 'ModelLoader', 'MODEL_ALIASES', 'MODEL_MAPPING', 'get_model_loader', 'match_model_type',
@@ -412,11 +412,22 @@ class ModelLoader:
             processor_cls = AutoTokenizer
         return processor_cls.from_pretrained(model_dir, **kwargs)
 
+    @classmethod
+    def resolve_model_cls(cls) -> type:
+        """The transformers class this family loads with, resolved from :attr:`model_cls`.
+
+        Split out of :meth:`build_model` so a caller that needs the class itself rather than a loaded
+        checkpoint -- ``from_config`` on a config with no weights behind it, an ``isinstance`` check --
+        does not have to re-resolve the ``'module:ClassName'`` string, which is the one place the
+        lazy-import rule lives.
+        """
+        assert cls.model_cls is not None, f'{cls.__name__} must declare `model_cls`.'
+        return _import_cls(cls.model_cls)
+
     def build_model(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
-        assert self.model_cls is not None, f'{type(self).__name__} must declare `model_cls`.'
         if self.trust_remote_code:
             kwargs.setdefault('trust_remote_code', True)
-        return _import_cls(self.model_cls).from_pretrained(model_dir, config=config, **kwargs)
+        return self.resolve_model_cls().from_pretrained(model_dir, config=config, **kwargs)
 
     def process_config(self, config):
         return config

@@ -154,7 +154,7 @@ def _run_sft_body(
     redirect_to_ckpt = bool(resume_dir) and (not resume_only_model) and (tuner_config is None)
 
     # TODO: refactor to get only processor
-    _, processor = get_model_processor(model_config.model, load_model=False)
+    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
     template = build_template(template_config, processor)
 
     # 3. dataloader (list[InputFeature]; twinkle processor collates). One call loads train + val

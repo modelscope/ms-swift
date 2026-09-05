@@ -114,7 +114,7 @@ def _run_embedding_body(
     redirect_to_ckpt = bool(resume_dir) and (not resume_only_model) and (tuner_config is None)
 
     # TODO: refactor to get only processor
-    _, processor = get_model_processor(model_config.model, load_model=False)
+    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
     # task_type reaches the template explicitly: it is normally read off model_info.task_type, which
     # a load_model=False processor never populates, so it would default to 'causal_lm' and encode
     # single-sequence SFT rows instead of anchor/positive/negative groups.

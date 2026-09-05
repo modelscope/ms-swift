@@ -97,7 +97,7 @@ def run_sampling(
     if backend == 'client':
         sampler = _ClientSampler(**(engine_args or {}))
     else:
-        _, processor = get_model_processor(model_config.model, load_model=False)
+        _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
         template = build_template(template_config, processor)
         sampler = build_sampler(
             model_config,

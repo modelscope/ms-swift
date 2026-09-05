@@ -171,7 +171,7 @@ def build_app(
     if merge_lora and adapter_mapping:
         model_config, adapter_mapping = _merge_single_adapter(model_config, template_config, adapter_mapping)
 
-    _, processor = get_model_processor(model_config.model, load_model=False)
+    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
     template = build_template(template_config, processor)
     model_name = served_model_name or os.path.basename(str(model_config.model).rstrip('/'))
     sampler = build_sampler(

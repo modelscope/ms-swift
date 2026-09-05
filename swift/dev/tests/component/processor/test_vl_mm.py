@@ -6,7 +6,7 @@ Scope: multimodal is a sample->batch data-format concern. The dev QwenVLTemplate
 multi-image batch by CONCATENATING VLM_CONCAT_FIELDS (pixel_values/grid_thw along dim 0), not
 padding. CP/SP splitting is explicitly the Model's job (out of scope here).
 
-Marked slow: needs a real Qwen2.5-VL model + image processing. Run with --runslow.
+Marked slow: needs a real Qwen2.5-VL model + image processing. Run with -m slow.
 """
 import numpy as np
 import pytest

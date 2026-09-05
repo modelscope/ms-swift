@@ -81,7 +81,7 @@ def run_gkd(
     _initialize_twinkle(distributed_config)
 
     ga = train_config.gradient_accumulation_steps
-    _, processor = get_model_processor(model_config.model, load_model=False)
+    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
     template = build_template(template_config, processor)
 
     model = build_model(model_config, distributed_config, train_config, tuner_config)

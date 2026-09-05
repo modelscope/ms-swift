@@ -61,7 +61,7 @@ def export_cached_dataset(
 
     # Only the processor (tokenizer) is needed -- the template encodes with it. load_model=False keeps
     # this a CPU-only job; legacy instead builds a meta-device model to satisfy SwiftSft's __init__.
-    _, processor = get_model_processor(model_config.model, load_model=False)
+    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
     template = build_template(template_config, processor)
 
     train_raw, val_raw = _load_raw(dataset_config)

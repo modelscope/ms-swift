@@ -8,12 +8,15 @@ green-path that was previously only hand-verified in a throwaway script.
 Asserts: optimizer steps ran, loss is finite + normalized (readable per-token, not raw sum),
 and a self-describing checkpoint (weights + args.json) is written so `swift infer` can load it.
 
-Marked slow: loads a real Qwen2.5-0.5B. Run with --runslow.
+Marked slow: loads a real Qwen2.5-0.5B. Run with -m slow.
 """
-import json
 import os
+
+import json
 import pytest
 import torch
+
+from swift.dev.tests._runners import Runners
 
 MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
 
@@ -192,8 +195,14 @@ def test_run_sft_end_to_end_happy_path(tmp_path):
 
     from modelscope import snapshot_download
 
-    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                   TrainConfig)
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+    )
     from swift.dev.recipe import run_sft
 
     model_path = snapshot_download(MODEL)
@@ -249,8 +258,14 @@ def test_run_sft_zero_opt_steps_raises(tmp_path):
     """
     from modelscope import snapshot_download
 
-    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                   TrainConfig)
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+    )
     from swift.dev.recipe import run_sft
 
     model_path = snapshot_download(MODEL)
@@ -405,8 +420,14 @@ def _run_megatron_sft(bridge_backend: str,
     """
     from modelscope import snapshot_download
 
-    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                   TrainConfig)
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+    )
     from swift.dev.recipe import run_sft
 
     model_path = snapshot_download(MODEL)
@@ -474,25 +495,13 @@ def test_run_sft_megatron_evaluate_returns_metrics(tmp_path):
 
 
 def _run_torchrun(cmd, *, timeout=1800):
-    """Run a torchrun command with a timeout that actually fires; return (stdout, stderr).
+    """(stdout, stderr) from a bounded torchrun launch -- see ``Runners.launch`` for why it is bounded.
 
-    ``subprocess.run(capture_output=True, timeout=...)`` is not enough here: it kills torchrun
-    itself, but the worker grandchildren inherit the pipes, so communicate() keeps blocking for EOF
-    and the timeout never takes effect (one such run hung for 12 hours instead of 30 minutes).
-    Giving torchrun its own process group and killing the whole group is what makes it bounded.
+    Kept as a local adapter so the four call sites below keep unpacking a pair; the launch itself lives
+    in ``Runners`` because the capability suite needs the same guarantee.
     """
-    import signal
-    import subprocess
-
-    proc = subprocess.Popen(
-        cmd, env=dict(os.environ), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
-    try:
-        return proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        out, err = proc.communicate()
-        raise AssertionError(f'torchrun exceeded {timeout}s and was killed: {" ".join(cmd)}\n'
-                             f'stdout tail:\n{out[-2000:]}\nstderr tail:\n{err[-3000:]}')
+    proc = Runners.launch(cmd, timeout=timeout)
+    return proc.stdout, proc.stderr
 
 
 def _run_backend_subprocess(backend, data_path, out_dir, result_path, steps, lr):
@@ -504,7 +513,7 @@ def _run_backend_subprocess(backend, data_path, out_dir, result_path, steps, lr)
     """
     import sys
 
-    runner = os.path.join(os.path.dirname(__file__), '_megatron_sft_runner.py')
+    runner = Runners.path('megatron_sft')
     # Distinct port per backend so a lingering rendezvous from a previous backend cannot be joined.
     port_offset = {'dev': 0, 'legacy': 1, 'dev_cli': 2}[backend]
     cmd = [
@@ -657,7 +666,7 @@ def _run_dense_backend(backend, out_dir, result_path, steps, *, model=None, data
     """
     import sys
 
-    runner = os.path.join(os.path.dirname(__file__), '_megatron_dense_runner.py')
+    runner = Runners.path('megatron_dense')
     port = _master_port(3 + (1 if backend == 'legacy' else 0))
     cmd = [
         sys.executable,
@@ -779,7 +788,7 @@ def _run_resume_phase(phase, out_dir, result_path, *, resume_from=None, steps=3)
     """
     import sys
 
-    runner = os.path.join(os.path.dirname(__file__), '_megatron_resume_runner.py')
+    runner = Runners.path('megatron_resume')
     ports = {'A': _master_port(5), 'B': _master_port(6), 'cont': _master_port(7), 'resume_cont': _master_port(8)}
     cmd = [
         sys.executable,
@@ -934,7 +943,7 @@ def _run_hf_shape(shape, data_path, out_dir, result_prefix):
     """
     import sys
 
-    runner = os.path.join(os.path.dirname(__file__), '_hf_dp_runner.py')
+    runner = Runners.path('hf_dp')
     cmd = [sys.executable]
     if shape == 'dp2':
         cmd += ['-m', 'torch.distributed.run', '--nproc_per_node=2', f'--master_port={_master_port(9)}']

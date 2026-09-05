@@ -1,0 +1,99 @@
+name: ci
+
+# One job. It knows nothing about versions, test names or hardware topology -- it hands the suite a
+# fixed 2-GPU slot and runs `pytest`. Anything variable lives outside this file:
+#   * which tests run      -> markers, plus the box's capability (conftest.py)
+#   * which versions run   -> the test case's own business; a UT may pip-install what it needs
+#   * how many run at once -> how many runner services the box has (see below)
+#
+# Replaces citest.yaml, citest_npu.yaml, .dev_scripts/dockerci.sh, dockerci_npu.sh,
+# ci_container_test.sh, tests/run.py and tests/run_config.yaml (~970 lines).
+#
+# CONCURRENCY IS A RUNNER-POOL PROPERTY, NOT A WORKFLOW ONE.
+# Four PRs must be able to test at once on one 8-GPU box, so that box registers four runner
+# services, all labelled `gpu`, named `<host>-0` .. `<host>-3`. Actions sends each run to a free
+# runner and *queues* when all four are busy -- which is the point: dockerci.sh used to `exit 1`
+# with 'No free GPU!' instead. There is deliberately no job-level `concurrency:` here; one would
+# serialise the pool back down to a single run.
+#
+# Measured: no test needs more than 2 real GPUs (every torchrun launch is --nproc_per_node=2; the
+# nproc_per_node=4 cases build a simulated DistributedConfig and touch no device). So 8 GPUs divide
+# into exactly four 2-GPU slots with nothing stranded.
+#
+# Two repository variables replace the out-of-repo /mnt/modelscope/ci_env.sh:
+#   vars.CI_GPU_IMAGE         the image ci_env.sh referred to as $IMAGE_NAME:$IMAGE_VERSION
+#   vars.CI_MODELSCOPE_CACHE  host path of the warm model cache
+
+on:
+  pull_request:
+  push:
+    branches: [master, "release/**"]
+  schedule:
+    - cron: "0 18 * * *"   # 02:00 Beijing
+  workflow_dispatch:
+
+# Per-ref only: supersedes earlier runs of the *same* PR, never another PR's.
+# No paths-ignore. The old workflow skipped requirements/** and .dev_scripts/**, which is how
+# "we support transformers<5.13" and "CI installs transformers<5.0" stayed contradictory unnoticed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # swift/dev imports twinkle, which no requirements file declares; pin the ref instead of
+  # relying on whatever copy happens to be installed on a runner.
+  TWINKLE_REF: master
+  MODELSCOPE_ENVIRONMENT: ci
+  MODELSCOPE_API_TOKEN: ${{ secrets.MODELSCOPE_API_TOKEN }}
+  GPUS_PER_SLOT: 2
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - accelerator: cuda
+            runner: gpu
+            image: ${{ vars.CI_GPU_IMAGE }}
+            options: --gpus all --shm-size=16gb
+          - accelerator: npu
+            runner: linux-aarch64-a2-1
+            image: ascendai/cann:8.3.rc2-910b-ubuntu22.04-py3.11
+            options: >-
+              --privileged
+              --device=/dev/davinci0 --device=/dev/davinci1
+              --device=/dev/davinci2 --device=/dev/davinci3
+              --device=/dev/davinci_manager --device=/dev/devmm_svm --device=/dev/hisi_hdc
+              --volume=/usr/local/Ascend/driver:/usr/local/Ascend/driver:ro
+              --volume=/usr/local/sbin/npu-smi:/usr/local/sbin/npu-smi:ro
+              --volume=/etc/ascend_install.info:/etc/ascend_install.info:ro
+    name: test (${{ matrix.accelerator }})
+    runs-on: [self-hosted, "${{ matrix.runner }}"]
+    timeout-minutes: 240
+    container:
+      image: ${{ matrix.image }}
+      options: ${{ matrix.options }} --volume=${{ vars.CI_MODELSCOPE_CACHE }}:/root/.cache/modelscope
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: modelscope/twinkle
+          ref: ${{ env.TWINKLE_REF }}
+          path: .twinkle
+      - if: matrix.accelerator == 'cuda'
+        name: Claim this slot's GPUs
+        run: .github/slot_devices.sh >> "$GITHUB_ENV"
+      # The image owns torch / TE / megatron / vllm / CANN. --no-deps keeps it that way: to add a
+      # runtime dependency, rebuild the image, do not grow this file. A test that needs a specific
+      # dependency version installs it itself, inside the test.
+      - run: |
+          pip install --no-deps -e ./.twinkle -e .
+          pip install -r requirements/tests.txt
+      # `&&` binds tighter than `||`, so the parentheses are load-bearing: without them a PR
+      # renders the literal `true` as pytest's argument.
+      - run: pytest ${{ github.event_name == 'schedule' && '' || '-m "not slow"' }}
+      # The container is root, the runner is not: leave the workspace deletable or the next run
+      # fails in checkout. This is what citest.yaml's ResetFileMode step was working around.
+      - if: always()
+        run: chmod -R a+rwX .

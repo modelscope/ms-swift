@@ -150,7 +150,7 @@ def _run_generative(
     from swift.model import get_model_processor
 
     logger.info(f'run_infer: {len(rows)} prompts, backend={backend}, num_samples={num_samples}')
-    _, processor = get_model_processor(model_config.model, load_model=False)
+    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
     template = build_template(template_config, processor)
     device_mesh = _build_device_mesh_if_dp(distributed_config)
     adapter_path = adapters[0] if adapters else None
@@ -246,7 +246,7 @@ def _run_pooling(
 
     task_type = model_config.task_type
     logger.info(f'run_infer: {len(rows)} rows, task_type={task_type} (forward pass, no sampler)')
-    _, processor = get_model_processor(model_config.model, load_model=False)
+    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
     template = build_template(template_config, processor)
     model = build_model(model_config, distributed_config or DistributedConfig())
     if adapters:
@@ -317,7 +317,7 @@ def infer_cli(
     from swift.dev.builders import build_sampler, build_template, to_sampling_params
     from swift.model import get_model_processor
 
-    _, processor = get_model_processor(model_config.model, load_model=False)
+    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
     template = build_template(template_config, processor)
     sampler = build_sampler(
         model_config, backend=backend, engine_args=engine_args, template=template, adapters=adapters)

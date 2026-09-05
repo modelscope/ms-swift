@@ -97,7 +97,7 @@ def run_ppo(
                                                                    rollout_config.vllm_mode, sampler_world_size)
     _initialize_twinkle_rl(distributed_config, groups)
 
-    _, processor = get_model_processor(model_config.model, load_model=False)
+    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
     template = build_template(template_config, processor)
     ga = train_config.gradient_accumulation_steps
 

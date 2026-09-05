@@ -214,7 +214,7 @@ def _load_model_template(quant_method: str, model_config: ModelConfig, template_
     from swift.dev.builders import build_template
     from swift.model import get_model_processor
 
-    kwargs = {}
+    kwargs = {'model_type': model_config.model_type}
     if quant_method == 'awq':
         from awq import AutoAWQForCausalLM
         kwargs['auto_model_cls'] = AutoAWQForCausalLM

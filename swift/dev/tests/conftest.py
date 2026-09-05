@@ -1,12 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Pytest config for all swift/dev tests (now consolidated under swift/dev/tests/).
 
-Registers the `slow` marker (real vLLM/Megatron engine, heavy GPU / multi-GPU Ray) and skips it
-by default so the normal `pytest swift/dev/tests` regression stays fast. Run slow tests explicitly:
-    pytest swift/dev/tests/... -m slow --runslow
+Tiering lives in the root ``pyproject.toml`` / ``conftest.py``: mark heavy tests ``slow`` and CI
+selects with ``-m``. Run just the heavy ones with ``pytest swift/dev/tests -m slow``.
 """
-import pytest
 import shutil
+
+import pytest
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -34,21 +34,3 @@ def _reclaim_heavy_tmp(request):
     if heavy_tmp is None or report is None or not report.passed:
         return
     shutil.rmtree(heavy_tmp, ignore_errors=True)
-
-
-def pytest_configure(config):
-    config.addinivalue_line('markers',
-                            'slow: heavy test (real vLLM/Megatron engine, multi-GPU); skipped unless --runslow')
-
-
-def pytest_addoption(parser):
-    parser.addoption('--runslow', action='store_true', default=False, help='run slow tests (real vLLM/Megatron engine)')
-
-
-def pytest_collection_modifyitems(config, items):
-    if config.getoption('--runslow'):
-        return
-    skip_slow = pytest.mark.skip(reason='slow test; pass --runslow to run')
-    for item in items:
-        if 'slow' in item.keywords:
-            item.add_marker(skip_slow)

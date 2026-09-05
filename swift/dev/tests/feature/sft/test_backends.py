@@ -16,7 +16,7 @@ micro-step):
     band (same natural-order samples) -- exact per-step equality is not expected once
     GA/scheduler + sum-vs-mean normalization compound as weights update.
 
-All tests are @pytest.mark.slow (real 0.5B weights + GPU); run with --runslow.
+All tests are @pytest.mark.slow (real 0.5B weights + GPU); run with -m slow.
 """
 import os
 import pytest
