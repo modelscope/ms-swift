@@ -25,6 +25,7 @@ logger = get_logger()
 
 class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
     args: Seq2SeqTrainingArguments
+    SUPPORTS_SP_LOGITS_TO_KEEP = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -105,9 +106,20 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             sequence_parallel.prepare_inputs(inputs)
 
         use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
+        sp_selective_unsupported = self.template.sequence_parallel_size > 1 and (self.compute_loss_func is not None
+                                                                                 or self.label_smoother is not None
+                                                                                 or self.args.enable_channel_loss)
+        if use_logits_to_keep and sp_selective_unsupported:
+            # Custom losses and label smoothing may consume the original
+            # (unshifted) label frame.  Keep their established semantics until
+            # they provide an SP-aware selective-loss implementation.
+            logger.warning_once(
+                'Disabling use_logits_to_keep for sequence parallel custom loss/label smoothing/channel loss.')
+            use_logits_to_keep = False
         if use_logits_to_keep:
             self.prepare_logits_to_keep(inputs)
-            if args.tuner_backend == 'unsloth' and isinstance(inputs['logits_to_keep'], torch.Tensor):
+            if (args.tuner_backend == 'unsloth' and self.template.sequence_parallel_size == 1
+                    and isinstance(inputs['logits_to_keep'], torch.Tensor)):
                 inputs['logits_to_keep'] = int(inputs['logits_to_keep'].sum())
 
         base_model = self.template.get_base_model(self.model)
@@ -160,7 +172,11 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             if (self.args.enable_dft_loss or loss_scale is not None or self.args.enable_channel_loss
                     or self.template.sequence_parallel_size > 1):
                 if self.template.sequence_parallel_size > 1:
-                    outputs.loss = per_token_loss_func_sp(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
+                    outputs.loss = per_token_loss_func_sp(
+                        outputs,
+                        labels,
+                        enable_dft_loss=self.args.enable_dft_loss,
+                        logits_to_keep=inputs.get('logits_to_keep'))
                     if loss_scale is not None:
                         position_ids = sequence_parallel.real_position_ids
                         if position_ids is not None:
@@ -232,10 +248,15 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         if (outputs.logits is not None and labels is not None and self.args.tuner_backend != 'unsloth'):
             cu_seqlens = None
             if self.template.padding_free and self.args.acc_strategy == 'seq':
-                cu_seqlens = self.get_cu_seqlens(text_position_ids, inputs.get('logits_to_keep'))
+                logits_to_keep = inputs.get('logits_to_keep')
+                # Outputs are full-frame after SP selective-loss scattering;
+                # retain full packed boundaries for sequence accuracy.
+                cu_seqlens = self.get_cu_seqlens(
+                    text_position_ids,
+                    None if self.template.sequence_parallel_size > 1 and logits_to_keep is not None else logits_to_keep)
             # Liger does not have logits
             # Unsloth has a bug with output logits
-            self._compute_acc(outputs, labels, cu_seqlens=cu_seqlens)
+            self._compute_acc(outputs, labels, cu_seqlens=cu_seqlens, logits_to_keep=inputs.get('logits_to_keep'))
         return (loss, outputs) if return_outputs else loss
 
     def training_step(self, model, inputs, *args, **kwargs):
