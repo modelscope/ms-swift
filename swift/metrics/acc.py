@@ -34,7 +34,8 @@ def compute_acc(preds,
             # padding_free
             for i in range(cu_seqlens.shape[0] - 1):
                 start, end = cu_seqlens[i], cu_seqlens[i + 1]
-                acc_list.append(np.all(preds[0, start:end] == labels[0, start:end]))
+                mask = masks[0, start:end]
+                acc_list.append(np.all(preds[0, start:end][mask] == labels[0, start:end][mask]))
         else:
             for i, m in enumerate(masks):
                 acc_list.append(np.all(preds[i, m] == labels[i, m]))
