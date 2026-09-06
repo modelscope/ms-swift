@@ -18,7 +18,7 @@ from swift.sequence_parallel import sequence_parallel
 from swift.utils import HfConfigFactory, JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
-from .utils import per_token_loss_func, per_token_loss_func_sp
+from .utils import pad_for_ddp_gather, per_token_loss_func, per_token_loss_func_sp
 
 logger = get_logger()
 
@@ -96,6 +96,9 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         labels_list = [Serializer.to_tensor(labels).to(device=device) for labels in labels_list]
         response_list = pad_sequence(response_list, batch_first=True, padding_value=0)
         labels_list = pad_sequence(labels_list, batch_first=True, padding_value=0)
+        # Align seq length across DDP ranks so accelerator.gather keeps a 2D batch.
+        response_list = pad_for_ddp_gather(response_list, padding_value=0)
+        labels_list = pad_for_ddp_gather(labels_list, padding_value=0)
         return None, response_list, labels_list
 
     def _prepare_inputs(self, inputs):
