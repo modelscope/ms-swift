@@ -1932,8 +1932,8 @@ def build_completion_mask_and_seq_lengths(
       ``completion_mask = roll(labels,-1) != -100``, shape ``[B, T_full]``.
     - ``logits_to_keep is int`` -> completion-region frame, no roll (HF):
       ``completion_mask = labels[:, -ltk:] != -100``, shape ``[B, ltk]``; the per-sample
-      ``seq_lengths`` (padding_free) carries the first-sentence prompt adjustment so it
-      matches HF's ``num_logits_to_keep`` logps frame.
+      ``seq_lengths`` (padding_free) contains each sequence's retained suffix length
+      to match HF's ``num_logits_to_keep`` logps frame.
 
     Args:
         labels: Label tensor from data collator.
@@ -1992,12 +1992,11 @@ def build_completion_mask_and_seq_lengths(
         if position_ids is None:
             position_ids = encoded_batch.get('position_ids')
         position_ids = position_ids.squeeze()
-        lengths = torch.diff(
-            torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
-                       torch.tensor([len(position_ids)]).to(position_ids.device)]))
-        total_lengths = lengths.sum()
-        # The first sentence has its prompt portion removed due to logits_to_keep
-        lengths[0] = lengths[0] - (total_lengths - logits_to_keep)
+        cu_seqlens = torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
+                                torch.tensor([len(position_ids)]).to(position_ids.device)])
+        cut = cu_seqlens[-1] - logits_to_keep
+        # Intersect each sequence with the retained suffix, preserving empty rows.
+        lengths = (cu_seqlens[1:] - torch.maximum(cu_seqlens[:-1], cut)).clamp(min=0)
         seq_lengths = lengths
         completion_mask, _ = pad_logps_back_to_batch(
             logps_rmpad=completion_mask_raw.float(),
