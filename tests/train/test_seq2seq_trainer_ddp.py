@@ -1,7 +1,6 @@
+import torch
 import unittest
 from unittest import mock
-
-import torch
 
 from swift.trainers.utils import pad_for_ddp_gather, pad_to_global_max_len
 
