@@ -6,11 +6,11 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     from .agent_loop import extract_logprobs_from_choice, invoke_async_hook, multi_turn_lifecycle, run_multi_turn
     from .gym_env import Env, envs
-    from .multi_turn import MultiTurnScheduler, RolloutScheduler, multi_turns
+    from .multi_turn import AgentArkScheduler, MultiTurnScheduler, RolloutScheduler, multi_turns
 
 else:
     _import_structure = {
-        'multi_turn': ['multi_turns', 'RolloutScheduler', 'MultiTurnScheduler'],
+        'multi_turn': ['multi_turns', 'RolloutScheduler', 'MultiTurnScheduler', 'AgentArkScheduler'],
         'gym_env': ['envs', 'Env'],
         'agent_loop': ['run_multi_turn', 'multi_turn_lifecycle', 'extract_logprobs_from_choice', 'invoke_async_hook'],
     }

@@ -359,3 +359,63 @@ Runnable script: [`examples/train/grpo/plugin/openenv/run_grpo_sudoku.sh`](https
 4. **First-turn timing**: `on_trajectory_start` is called BEFORE the first rollout, ensuring the model sees the actual environment observation (e.g., Sudoku board) rather than the placeholder text from the dataset.
 5. **enable_thinking**: When using Qwen3.5 series models, set `--enable_thinking false` to skip `<think>` block generation.
 6. **Sync I/O**: `OpenEnvWrapper`'s `reset()`/`step()` are synchronous WebSocket calls. `OpenEnvScheduler` subclasses should wrap these calls with `asyncio.to_thread()` to avoid blocking the event loop.
+
+## AgentArk Environment Training
+
+[AgentArk](https://github.com/P90-RushB/AgentArk) provides multimodal agent environments for reinforcement learning and evaluation. A standalone AgentArk Env Server manages the environments, while one or more Unity runtimes execute the tasks. Swift's built-in `AgentArkEnv` and `AgentArkScheduler` use HTTP protocol v2 for reset, step, reward, and lease cleanup. The trainer environment does not need the `agent-ark` package or `--external_plugins`.
+
+```text
+swift rlhf + AgentArkScheduler ──HTTP──> AgentArk Env Server ──> Unity runtime pool
+```
+
+### 1. Prepare the AgentArk Server
+
+Prepare the Env Server, Unity package, runtime configuration, and warm pool from the AgentArk repository. First-time users should follow the complete [AgentArk Snake tutorial](https://github.com/P90-RushB/AgentArk/blob/main/integrations/ms_swift/tutorial/README.md). It temporarily reduces Snake from its default map to `8×8` and starts with a one-step smoke test. The smaller map reduces early exploration and helps validate the pipeline quickly; it is not the official evaluation configuration.
+
+The Server and Swift trainer may use separate Python environments. Install AgentArk and ML-Agents in the Server environment, and ms-swift in the trainer environment. Before training, require a healthy Server, pre-warmed protocol-v2 runtimes, and at least `generation_batch_size` idle runtimes.
+
+### 2. Generate a ticket dataset
+
+Dataset rows are lightweight tickets. Unity supplies the real system/user messages and images after reset. Each row identifies one GRPO group; Swift expands it into `num_generations` sibling trajectories that share a `group_uid` and initial seed while holding separate leases.
+
+Generate unique tickets with the included helper:
+
+```bash
+python examples/train/grpo/plugin/agentark/generate_tickets.py \
+    --output /path/to/agentark-tickets.jsonl \
+    --run-id snake-smoke \
+    --count 100 \
+    --task-name Snake \
+    --group-seed-base 1234
+```
+
+Do not use dataset repetition syntax to duplicate one `group_uid`. Prepare enough unique tickets for a longer run.
+
+### 3. Run a one-step smoke test
+
+Keep the Env Server running and set the required variables in the trainer terminal:
+
+```bash
+export AGENTARK_MODEL=/path/to/a/swift-supported-multimodal-model
+export AGENTARK_TICKET_DATASET=/path/to/agentark-tickets.jsonl
+export AGENTARK_RUNTIME_CONFIG=/path/to/agentark_runtime_config.yaml
+export AGENTARK_SERVER_URL=http://127.0.0.1:18080
+
+bash examples/train/grpo/plugin/agentark/run_grpo.sh
+```
+
+The example defaults to the built-in `agentark_scheduler`, LoRA, colocated vLLM, and `max_steps=1`. It is a minimal pipeline check, so adjust the model, GPU count, context length, generation batch, and vLLM memory fraction for the machine. At minimum, verify that training reaches step 1, gradients are finite, reward/completion logs and a checkpoint are written, and the Server eventually reports zero active leases. No exact reward needs to be reproduced.
+
+The essential Swift arguments are:
+
+```bash
+swift rlhf ... \
+    --use_gym_env true \
+    --gym_env agentark \
+    --multi_turn_scheduler agentark_scheduler \
+    --max_turns 6
+```
+
+`AgentArkScheduler` preserves the rollout's exact token IDs and per-token loss masks, supports multi-turn inline `image_url` messages, and releases leases after success, failure, or cancellation. Set `assistant_loss_scope` in a ticket's `env_config` to `all_turns` (default) or `last_round`.
+
+Example files: [`examples/train/grpo/plugin/agentark`](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/agentark).

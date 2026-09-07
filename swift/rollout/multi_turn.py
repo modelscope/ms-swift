@@ -11,13 +11,14 @@ from swift.infer_engine.protocol import (ChatCompletionResponse, ChatCompletionR
 from swift.template import Messages
 from swift.template.utils import get_token_backed_response_ids
 from swift.utils import get_logger, remove_response
+from .agentark.env import AgentArkEnv
+from .agentark.scheduler import AgentArkSchedulerMixin
 from .gym_env import Env, envs
 
 if TYPE_CHECKING:
     # Imported only for type hints; importing it at runtime pulls in vllm, which would make
     # `swift.rollout` (and thus GRPO trainer init) hard-require vllm even when use_vllm=False.
     from swift.infer_engine import GRPOVllmEngine
-
 
 logger = get_logger()
 
@@ -1111,7 +1112,14 @@ class OpenEnvScheduler(GYMScheduler):
             return str(observation)
 
 
+class AgentArkScheduler(AgentArkSchedulerMixin, GYMScheduler):
+    """Drive multimodal AgentArk environments over the protocol-v2 HTTP API."""
+
+
+envs['agentark'] = AgentArkEnv
+
 multi_turns = {
+    'agentark_scheduler': AgentArkScheduler,
     'math_tip_trick': MathTipsScheduler,
     'gym_scheduler': GYMScheduler,
     'openenv_scheduler': OpenEnvScheduler,
