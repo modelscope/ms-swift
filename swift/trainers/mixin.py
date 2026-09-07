@@ -67,6 +67,9 @@ transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0
 
 class SwiftMixin:
     FLASH_CKPT_WAIT_TIMEOUT = 1800
+    # Selective logits with SP requires a trainer-specific loss reducer.  SFT
+    # opts in below; RLHF trainers keep their established full-frame path.
+    SUPPORTS_SP_LOGITS_TO_KEEP = False
 
     def __init__(self,
                  model: PreTrainedModel,
@@ -220,6 +223,10 @@ class SwiftMixin:
                 use_logits_to_keep = default_value
             self.args.use_logits_to_keep = use_logits_to_keep
             logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
+        if (use_logits_to_keep and self.template.sequence_parallel_size > 1 and not self.SUPPORTS_SP_LOGITS_TO_KEEP):
+            logger.warning_once(
+                'Disabling use_logits_to_keep for this sequence-parallel trainer; its loss reducer is not SP-aware.')
+            use_logits_to_keep = False
         return use_logits_to_keep
 
     def _save_initial_model(self, output_dir):
@@ -1161,7 +1168,7 @@ class SwiftMixin:
         labels = torch.tensor([0] * (len(positive_indices) - 1))
         return preds, labels
 
-    def _compute_acc(self, outputs, labels, cu_seqlens=None) -> None:
+    def _compute_acc(self, outputs, labels, cu_seqlens=None, logits_to_keep=None) -> None:
         args = self.args
         logits = outputs.logits
         metrics = None
@@ -1186,9 +1193,28 @@ class SwiftMixin:
                     preds = torch.from_numpy(preds).to(get_current_device())
                 if isinstance(labels, np.ndarray):
                     labels = torch.from_numpy(labels).to(get_current_device())
+                # Selective lm-head projection returns only the positions
+                # addressed by ``logits_to_keep``. Reinsert those predictions
+                # into the full local shard before the existing gather path.
+                if isinstance(logits_to_keep, torch.Tensor) and logits_to_keep.dtype == torch.bool:
+                    if logits_to_keep.ndim == 1 and logits_to_keep.numel() == labels.shape[1]:
+                        selected_count = int(logits_to_keep.sum().item())
+                        if preds.shape[1] == selected_count:
+                            full_preds = torch.zeros((preds.shape[0], labels.shape[1]),
+                                                     dtype=preds.dtype,
+                                                     device=preds.device)
+                            full_preds[:, logits_to_keep] = preds
+                            preds = full_preds
+                elif isinstance(logits_to_keep, int) and 0 < logits_to_keep <= labels.shape[1]:
+                    if preds.shape[1] == logits_to_keep:
+                        full_preds = torch.zeros((preds.shape[0], labels.shape[1]),
+                                                 dtype=preds.dtype,
+                                                 device=preds.device)
+                        full_preds[:, -logits_to_keep:] = preds
+                        preds = full_preds
                 assert labels.shape[1] == preds.shape[1]
 
-                if sequence_parallel.rp_world_size > 1:
+                if (sequence_parallel.rp_world_size or 1) > 1:
                     position_ids = sequence_parallel.real_position_ids
                     position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
                 else:
@@ -1257,10 +1283,38 @@ class SwiftMixin:
         return eval_dict
 
     def prepare_logits_to_keep(self, inputs):
+        """Prepare selective lm-head inputs for regular and SP SFT paths.
+
+        Sequence-parallel input preparation has already applied the causal
+        shift to labels.  Keep that full local frame intact and let the SP
+        loss function scatter selected logits back into it.
+        """
         labels = inputs['labels']
         loss_scale = inputs.get('loss_scale')
         if self.template.sequence_parallel_size > 1:
-            raise NotImplementedError()
+            # Transformers causal-LM heads accept a one-dimensional boolean
+            # sequence index for every batch row.  Keep arbitrary supervised
+            # positions for batch-size one; for a larger batch use one shared
+            # suffix that covers the earliest supervised target in any row.
+            if labels.shape[0] == 1 and not is_mp():
+                logits_to_keep = labels[0] != -100
+                # Keep one ignored position on an all-masked shard so model
+                # implementations that reject an empty lm_head input remain
+                # usable; it contributes zero to the loss.
+                if not logits_to_keep.any():
+                    logits_to_keep = logits_to_keep.clone()
+                    logits_to_keep[-1] = True
+            else:
+                supervised = labels != -100
+                first_supervised = supervised.int().argmax(dim=-1)
+                has_supervised = supervised.any(dim=-1)
+                first = first_supervised.masked_fill(~has_supervised, labels.shape[-1] - 1).min().item()
+                logits_to_keep = torch.zeros(labels.shape[-1], dtype=torch.bool, device=labels.device)
+                logits_to_keep[-max(labels.shape[-1] - first, 1):] = True
+            inputs['logits_to_keep'] = logits_to_keep
+            # Do not truncate labels/loss_scale: SP gathers a full local frame
+            # and therefore needs their original shard length.
+            return
         if labels.shape[0] == 1 and not is_mp():
             # device_map may encounter device mismatch issues.
             loss_mask = (labels != -100)[0]
@@ -1282,6 +1336,21 @@ class SwiftMixin:
     def get_cu_seqlens(self, position_ids, logits_to_keep) -> torch.Tensor:
         cu_seqlens = get_packed_seq_params(position_ids)['cu_seq_lens_q']
         if isinstance(logits_to_keep, torch.Tensor):
+            # SP keeps a local boolean mask while position_ids still contains
+            # the complete packed sequence. Gather the mask first so compact
+            # boundaries are computed in the global frame.
+            if (getattr(getattr(self, 'template', None), 'sequence_parallel_size', 1) > 1 and logits_to_keep.ndim == 1
+                    and logits_to_keep.numel() != position_ids.shape[-1] and (sequence_parallel.world_size or 1) > 1):
+                local_mask = logits_to_keep.unsqueeze(0)
+                gather_position_ids = None
+                if (sequence_parallel.rp_world_size or 1) > 1:
+                    gather_position_ids = sequence_parallel.real_position_ids
+                    gather_position_ids = sequence_parallel.pad(
+                        gather_position_ids, padding_value=-1, position_ids=gather_position_ids)
+                logits_to_keep = sequence_parallel.gather(local_mask, dim=1, position_ids=gather_position_ids)
+                if gather_position_ids is not None and gather_position_ids.min() == -1:
+                    logits_to_keep = logits_to_keep[gather_position_ids >= 0]
+                logits_to_keep = logits_to_keep.reshape(-1)
             kept_cumsum = logits_to_keep.to(cu_seqlens.dtype).cumsum(dim=0, dtype=cu_seqlens.dtype)
             kept_cumsum = torch.cat((cu_seqlens.new_zeros(1), kept_cumsum))
             res_cu_seqlens = kept_cumsum[cu_seqlens.long()]

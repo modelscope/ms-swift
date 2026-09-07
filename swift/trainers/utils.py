@@ -164,27 +164,74 @@ def is_instance_of_ms_model(model: Module) -> bool:
     return False
 
 
-def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> torch.Tensor:
-    """Common loss function for sequence parallel training"""
+def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, logits_to_keep=None, **kwargs) -> torch.Tensor:
+    """Compute per-token SP loss while supporting selective lm-head logits.
+
+    Sequence-parallel labels are already causally shifted and sharded.  When
+    ``logits_to_keep`` selects a compact subset of the local hidden states,
+    CE is evaluated on that subset and scattered back into the full local
+    sequence frame before the existing gather.  This keeps packed/ring
+    ordering and collective tensor shapes unchanged while avoiding the
+    vocabulary projection for ignored tokens.
+    """
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
     else:
         logits = outputs
     device = logits.device
+    labels = labels.to(device)
+    batch_size = labels.shape[0]
+    compact_selection = logits_to_keep is not None
 
-    batch_size = logits.shape[0]
-    logits = logits.view(-1, logits.shape[-1])
-    labels = labels.flatten().to(device)
+    if compact_selection:
+        local_seq_len = labels.shape[-1]
+        if isinstance(logits_to_keep, torch.Tensor):
+            if logits_to_keep.dtype != torch.bool or logits_to_keep.ndim != 1:
+                compact_selection = False
+            elif logits_to_keep.numel() != local_seq_len:
+                raise ValueError(
+                    f'logits_to_keep has length {logits_to_keep.numel()}, expected {local_seq_len} for SP labels')
+            else:
+                selected_labels = labels[:, logits_to_keep]
+        elif isinstance(logits_to_keep, int):
+            if logits_to_keep <= 0 or logits_to_keep > local_seq_len:
+                raise ValueError(f'logits_to_keep={logits_to_keep} must be in [1, {local_seq_len}] for SP labels')
+            selected_labels = labels[:, -logits_to_keep:]
+        else:
+            compact_selection = False
+
+    if compact_selection:
+        if logits.shape[1] != selected_labels.shape[1]:
+            raise ValueError(f'logits sequence length ({logits.shape[1]}) does not match selected labels '
+                             f'({selected_labels.shape[1]})')
+        logits = logits.reshape(-1, logits.shape[-1])
+        selected_labels = selected_labels.reshape(-1)
+    else:
+        logits = logits.reshape(-1, logits.shape[-1])
+        selected_labels = labels.reshape(-1)
+
     sploss_parallel_size = int(os.environ.get('CELOSS_PARALLEL_SIZE', '0'))
     if sploss_parallel_size > 0:
-        loss = ChunkedCrossEntropyLoss.apply(logits, labels, sploss_parallel_size)
+        loss = ChunkedCrossEntropyLoss.apply(logits, selected_labels, sploss_parallel_size)
     else:
         loss_fct = CrossEntropyLoss(reduction='none')
-        loss = loss_fct(logits, labels)
+        loss = loss_fct(logits, selected_labels)
     if enable_dft_loss:
         with torch.no_grad():
             target_probs = torch.exp(-loss)
         loss *= target_probs
+
+    if compact_selection:
+        # Reconstruct a full local frame for GatherLoss.  Unselected entries
+        # remain zero and correspond to -100 labels in the original frame.
+        selected_loss = loss.reshape(batch_size, -1)
+        full_loss = torch.zeros((batch_size, labels.shape[-1]), dtype=selected_loss.dtype, device=selected_loss.device)
+        if isinstance(logits_to_keep, torch.Tensor):
+            full_loss[:, logits_to_keep] = selected_loss
+        else:
+            full_loss[:, -logits_to_keep:] = selected_loss
+        loss = full_loss.reshape(-1)
+
     position_ids = sequence_parallel.real_position_ids
     if position_ids is not None:
         position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
