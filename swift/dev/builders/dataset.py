@@ -5,6 +5,8 @@ import numpy as np
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:
+    from twinkle import DeviceMesh
+
     from swift.dev.config import DatasetConfig, DistributedConfig, TemplateConfig, TrainConfig
 
 logger = logging.getLogger(__name__)
@@ -16,7 +18,8 @@ def build_dataset(dataset_config: DatasetConfig,
                   distributed_config: DistributedConfig,
                   *,
                   encode: bool = True,
-                  template_config: Optional[TemplateConfig] = None) -> Any:
+                  template_config: Optional[TemplateConfig] = None,
+                  device_mesh: Optional['DeviceMesh'] = None) -> Any:
     """Load train (+val) once and return ``(train_loader, val_loader)`` (either may be None).
 
     A single call mirrors legacy ``BaseArguments.load_dataset`` (base_args.py): one ``load_dataset``
@@ -25,6 +28,10 @@ def build_dataset(dataset_config: DatasetConfig,
     encode: whether to pre-tokenize now (SFT: True) or keep the raw messages and defer tokenization
       to the training/rollout phase (RL such as GRPO/GKD: False). Mirrors legacy
       ``SwiftSft._get_dataset``'s ``pre_process = not (rlhf_type in {grpo, gkd})``.
+
+    ``device_mesh``: the HF-local Ulysses SP mesh from ``build_hf_device_mesh`` (None when SP is
+    off). When set, the loader slices by ``mesh.data_world_size`` (world/ulysses), so SP peers get
+    identical samples and DP groups get distinct ones -- see _twinkle_loader_layout.
 
     ``DatasetConfig.cached_dataset`` / ``cached_val_dataset`` point at directories written by
     ``swift export --to_cached_dataset`` (see swift/pipelines/export/cached_dataset.py). Those rows
@@ -69,7 +76,8 @@ def build_dataset(dataset_config: DatasetConfig,
         encode=encode,
         encode_mode=encode_mode,
         is_val=False,
-        cached=cached_train)
+        cached=cached_train,
+        device_mesh=device_mesh)
     val_loader = _build_split_loader(
         val_raw,
         template,
@@ -79,7 +87,8 @@ def build_dataset(dataset_config: DatasetConfig,
         encode=encode,
         encode_mode=encode_mode,
         is_val=True,
-        cached=cached_val)
+        cached=cached_val,
+        device_mesh=device_mesh)
     return train_loader, val_loader
 
 
@@ -174,7 +183,8 @@ def _build_split_loader(raw: Any,
                         encode: bool,
                         encode_mode: Optional[str],
                         is_val: bool,
-                        cached: Optional[list] = None) -> Any:
+                        cached: Optional[list] = None,
+                        device_mesh: Optional['DeviceMesh'] = None) -> Any:
     """Encode -> merge cached -> optional pack -> dataloader for one split (None+no cache -> None)."""
     if raw is None and not cached:
         return None
@@ -248,7 +258,7 @@ def _build_split_loader(raw: Any,
     # twinkle's DataLoader is handed the GLOBAL batch and slices it per DP rank (its DeviceMeshSampler),
     # unlike legacy which received the per-device batch and sharded internally. So it gets
     # per_device * dp and the mesh does the split (worker-fetcher). See _twinkle_loader_layout.
-    global_batch_size, device_mesh = _twinkle_loader_layout(distributed_config, batch_size)
+    global_batch_size, device_mesh = _twinkle_loader_layout(distributed_config, batch_size, device_mesh)
 
     from twinkle.dataloader import DataLoader
     # twinkle's DataLoader is inherently resumable (skip_consumed_samples / get_state); the training
@@ -274,13 +284,19 @@ def _identity_collate(batch):
     return list(batch)
 
 
-def _twinkle_loader_layout(distributed_config: DistributedConfig, per_device_batch_size: int) -> tuple:
+def _twinkle_loader_layout(distributed_config: DistributedConfig,
+                           per_device_batch_size: int,
+                           device_mesh: Optional['DeviceMesh'] = None) -> tuple:
     """``(global_batch_size, loader_device_mesh)`` for twinkle's ``DataLoader``.
 
     twinkle's DataLoader takes the GLOBAL batch and slices it across DP ranks (its DeviceMeshSampler),
     so it is given ``per_device * dp_world_size`` and the mesh does the per-rank split. The DP layout
     is a pure function of the config (``build_device_mesh``):
 
+      - HF Ulysses SP (``device_mesh`` given, from ``build_hf_device_mesh``): the sampler slices by
+        ``mesh.data_world_size`` (= world/ulysses), so SP peers receive IDENTICAL samples and only DP
+        groups differ -- exactly what Ulysses needs, since each SP rank re-splits the same sequence.
+        The global batch is scaled by data_world_size so twinkle's divisibility assert holds.
       - local mode: the loader owns DP sharding, so it is given the DeviceMesh and each rank takes its
         own slice (worker-fetcher). ``nproc_per_node`` MUST be set for a multi-GPU local run -- it
         sizes the DP layout; without it dp defaults to 1 (single process) and no sharding happens.
@@ -288,6 +304,8 @@ def _twinkle_loader_layout(distributed_config: DistributedConfig, per_device_bat
         later in ``model.forward_backward(dispatch='slice_dp')``, so only the global batch WIDTH is
         needed here.
     """
+    if device_mesh is not None:
+        return per_device_batch_size * device_mesh.data_world_size, device_mesh
     if distributed_config.nproc_per_node is None:
         return per_device_batch_size, None
     from swift.dev.builders.model import build_device_mesh

@@ -50,6 +50,8 @@ def validate_configs(
     _check_rlhf_ref_model(model_config, tuner_config, rlhf_config)
     _check_rlhf_padding_free(template_config, dataset_config, rlhf_config)
     _check_rlhf_sequence_parallel(template_config, rlhf_config)
+    # After _check_packing (which may force padding_free=True) and after the RLHF SP guard.
+    _check_hf_sequence_parallel(model_config, template_config, dataset_config, distributed_config, is_megatron)
 
 
 def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
@@ -620,16 +622,84 @@ def _check_rlhf_padding_free(template_config: 'TemplateConfig', dataset_config: 
 
 
 def _check_rlhf_sequence_parallel(template_config: 'TemplateConfig', rlhf_config: Optional['RLHFConfig']) -> None:
-    """Only some RLHF algorithms have a sequence-parallel training path.
+    """Sequence parallelism is not wired for ANY RLHF algorithm on the dev path.
 
-    Mirrors legacy rlhf_args.py::_check_sequence_parallel. `sequence_parallel_size > 1` splits each
-    sequence across ranks; only GRPO and DPO implement the loss under that split, so the others would
-    silently mis-reduce. Refused here for the same reason as padding_free above.
+    Divergence from legacy, deliberate: legacy rlhf_args.py::_check_sequence_parallel allows grpo/dpo
+    because legacy's trainers implement the sequence-parallel loss for them. dev wires NO mesh for the
+    RLHF recipes at all, so allowing grpo/dpo here would silently train with SP=1 while the config says
+    otherwise -- the exact failure mode validate.py exists to kill. Re-enable per algorithm when the
+    RLHF SP path is wired.
     """
     if rlhf_config is None or template_config.sequence_parallel_size <= 1:
         return
     rlhf_type = getattr(rlhf_config, 'rlhf_type', None)
-    if rlhf_type not in ('grpo', 'dpo'):
-        raise ValueError(f'rlhf_type={rlhf_type!r} does not support sequence_parallel_size='
-                         f'{template_config.sequence_parallel_size}: only grpo/dpo implement the sequence-parallel '
-                         'loss. Set sequence_parallel_size=1.')
+    raise ValueError(f'rlhf_type={rlhf_type!r} does not support sequence_parallel_size='
+                     f'{template_config.sequence_parallel_size} on the dev path: no device mesh is wired for the '
+                     'RLHF recipes, so the run would silently train WITHOUT sequence parallelism. '
+                     'Set sequence_parallel_size=1. (legacy allows grpo/dpo here; dev diverges until RLHF SP '
+                     'is wired -- see _check_hf_sequence_parallel for the SFT path.)')
+
+
+#: attn_impl values whose attention kernel handles the variable-length (THD) layout that
+#: padding_free produces under Ulysses SP. Mirrors legacy sft_args.py supported_impls; twinkle's
+#: SP strategy enforces the same requirement at first forward (flash_attention_2/3 only).
+_SP_PADDING_FREE_ATTN_IMPLS = ('flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4')
+
+
+def _check_hf_sequence_parallel(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+                                dataset_config: 'DatasetConfig', distributed_config: 'DistributedConfig',
+                                is_megatron: bool) -> None:
+    """Guards for Ulysses sequence parallelism (TemplateConfig.sequence_parallel_size) on the HF backend.
+
+    Every check raises: SP that cannot do what the config says would otherwise SILENTLY train with
+    SP=1 (nothing on the HF path used to read this knob) or crash deep in the first forward. Called
+    after _check_packing, which may force padding_free=True, so guard 3 sees the effective value.
+    Streaming is allowed: twinkle's IterableFetcher slices by data_world_size the same way.
+    """
+    sp = template_config.sequence_parallel_size
+    if sp <= 1:
+        return
+
+    if is_megatron:
+        # TemplateConfig.sequence_parallel_size is the HF Ulysses knob; Megatron's sequence
+        # parallelism is DistributedConfig.sequence_parallel (TP-SP), a different feature.
+        raise ValueError(f'TemplateConfig.sequence_parallel_size={sp} only applies to the transformers backend, '
+                         'but the active backend is megatron. Megatron sequence parallelism is '
+                         'DistributedConfig.sequence_parallel (TP-SP over the tensor-parallel ranks) -- set that '
+                         'instead, or switch DistributedConfig.backend.')
+
+    if distributed_config.mode != 'local':
+        raise NotImplementedError(f'sequence_parallel_size={sp} is only wired for mode="local" (torchrun): under '
+                                  "mode='ray' the model gets a pure data-parallel mesh (_apply_ray_placement), so "
+                                  'SP would silently not apply. Run with torchrun, or set sequence_parallel_size=1.')
+
+    if distributed_config.fsdp:
+        raise NotImplementedError(f'sequence_parallel_size={sp} with DistributedConfig.fsdp is not supported yet: '
+                                  'the FSDP x ulysses composition in twinkle is unvalidated. Use DDP/accelerate '
+                                  '(the default strategy), or set sequence_parallel_size=1.')
+
+    # Legacy asserts this at collate time (swift/template/base.py); dev fails fast at validation.
+    if template_config.padding_side != 'right':
+        raise ValueError(f'sequence_parallel_size={sp} requires padding_side="right" (got '
+                         f'{template_config.padding_side!r}): the SP collator injects per-row position_ids that '
+                         'assume right padding. legacy asserts the same at collate time; dev refuses up front.')
+
+    if template_config.padding_free or dataset_config.packing:
+        if model_config.attn_impl not in _SP_PADDING_FREE_ATTN_IMPLS:
+            raise ValueError(f'sequence_parallel_size={sp} with padding_free requires a flash attention kernel: '
+                             f'twinkle\'s SP strategy rejects the variable-length layout under '
+                             f'attn_impl={model_config.attn_impl!r}. Use one of '
+                             f'{", ".join(repr(i) for i in _SP_PADDING_FREE_ATTN_IMPLS)}, or set padding_free=False '
+                             '(packing implies padding_free, so drop packing too).')
+
+    # twinkle.initialize(mode='local') never calls dist.init_process_group -- world size comes from
+    # Platform.get_world_size() (the WORLD_SIZE env torchrun sets), the same source initialize uses
+    # to build the default mesh. Requiring dist here would reject every real SP run.
+    from twinkle.utils import Platform
+    world = Platform.get_world_size()
+    if world < 2:
+        raise ValueError(f'sequence_parallel_size={sp} requires torchrun (WORLD_SIZE>=2): a single process has no '
+                         'ranks to split a sequence across. Set sequence_parallel_size=1 for a single-process run.')
+    if world % sp != 0:
+        raise ValueError(f'world_size={world} is not divisible by sequence_parallel_size={sp}: the SP groups must '
+                         'tile the ranks exactly. Adjust the rank count or sequence_parallel_size.')

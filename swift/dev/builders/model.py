@@ -3,19 +3,59 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
+    from twinkle import DeviceMesh
+
     from swift.dev.config import DistributedConfig, ModelConfig, TrainConfig, TunerConfig
     from swift.dev.model import TrainableModel
+
+
+def build_hf_device_mesh(distributed_config: DistributedConfig,
+                         sequence_parallel_size: int) -> Optional['DeviceMesh']:
+    """HF-backend local-mode DeviceMesh for Ulysses sequence parallelism.
+
+    Returns None unless SP is actually on in local (torchrun) mode -- an sp=1 run must reach
+    TransformersModel with no mesh, exactly as before (see the load-bearing note in
+    _build_transformers_model on why the default-mesh substitution is deliberate there).
+
+    Unlike build_device_mesh (Megatron: a pure function of the config, nproc_per_node-driven),
+    this reads the world size the same place twinkle's local mode does -- Platform.get_world_size()
+    (the torchrun WORLD_SIZE env), NOT torch.distributed, which twinkle initializes lazily and which
+    is therefore not up yet when run_sft builds the mesh.
+
+    Distinct from the Megatron mesh on purpose: no tp/pp/cp, just dp x ulysses. Note ulysses is
+    NOT a mesh dim in twinkle -- the dp dim spans ALL ranks (dp_size=world) and ``data_world_size``
+    derives world/ulysses from it (utils/device_mesh.py), so SP peers share one data rank and
+    receive identical samples.
+    """
+    if sequence_parallel_size <= 1 or distributed_config.mode != 'local':
+        return None
+
+    from twinkle import DeviceMesh
+    from twinkle.utils import Platform
+
+    world = Platform.get_world_size()
+    if world < 2:
+        raise ValueError(f'sequence_parallel_size={sequence_parallel_size} requires torchrun (WORLD_SIZE>=2); '
+                         'a single process has no ranks to split a sequence across.')
+    if world % sequence_parallel_size != 0:
+        raise ValueError(f'world_size={world} is not divisible by sequence_parallel_size={sequence_parallel_size}.')
+    return DeviceMesh.from_sizes(world_size=world, dp_size=world, ulysses_size=sequence_parallel_size)
 
 
 def build_model(model_config: ModelConfig,
                 distributed_config: DistributedConfig,
                 train_config: Optional[TrainConfig] = None,
-                tuner_config: Optional[TunerConfig] = None) -> TrainableModel:
+                tuner_config: Optional[TunerConfig] = None,
+                device_mesh: Optional['DeviceMesh'] = None) -> TrainableModel:
     """ModelConfig + DistributedConfig -> twinkle-native Model (no loss/optim yet).
 
     Thin mapping (no Registry/Factory): model_config fields -> twinkle __init__ kwargs.
     DistributedConfig.backend=='megatron' builds a MegatronModel (via the selected bridge
     backend); otherwise a TransformersModel. twinkle self-builds weights on the correct rank.
+
+    ``device_mesh`` is the HF-local Ulysses SP mesh from :func:`build_hf_device_mesh` (None when
+    SP is off); it is forwarded to the TransformersModel build only and must NOT be set for the
+    Megatron backend, which derives its own mesh from DistributedConfig.
 
     PPO's value critic is NOT a special build flag: it is a ``task_type='seq_cls', num_labels=1`` model
     forwarded with ``task='value'`` (which keeps the head's per-token output instead of pooling), so it
@@ -23,7 +63,7 @@ def build_model(model_config: ModelConfig,
     """
     if is_megatron_backend(distributed_config):
         return _build_megatron_model(model_config, distributed_config)
-    return _build_transformers_model(model_config, distributed_config, train_config, tuner_config)
+    return _build_transformers_model(model_config, distributed_config, train_config, tuner_config, device_mesh)
 
 
 def _mixed_precision_for(torch_dtype: Optional[str]) -> str:
@@ -128,6 +168,17 @@ def _apply_unsloth_kwargs(kwargs: dict, model_config: ModelConfig, tuner_config:
         kwargs['use_gradient_checkpointing'] = False
 
 
+def _apply_hf_sp_mesh(kwargs: dict, device_mesh: Optional['DeviceMesh'],
+                      distributed_config: DistributedConfig) -> None:
+    """Install the Ulysses SP mesh (from build_hf_device_mesh) on a local-mode transformers build.
+
+    A no-op for sp=1 (device_mesh is None) and for mode='ray', where validate_configs has already
+    rejected SP>1 and placement is _apply_ray_placement's business.
+    """
+    if device_mesh is not None and distributed_config.mode == 'local':
+        kwargs['device_mesh'] = device_mesh
+
+
 def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig) -> None:
     """Place the transformers model in the remote 'model' DeviceGroup under mode='ray'.
 
@@ -170,7 +221,8 @@ def _resolve_model_loader(model_config: ModelConfig):
 def _build_transformers_model(model_config: ModelConfig,
                               distributed_config: DistributedConfig,
                               train_config: Optional[TrainConfig] = None,
-                              tuner_config: Optional[TunerConfig] = None) -> TrainableModel:
+                              tuner_config: Optional[TunerConfig] = None,
+                              device_mesh: Optional['DeviceMesh'] = None) -> TrainableModel:
     import torch
 
     from swift.dev.model import TransformersModel
@@ -225,12 +277,17 @@ def _build_transformers_model(model_config: ModelConfig,
             find_unused = not gc_on
     kwargs['ddp_config'] = {'find_unused_parameters': bool(find_unused)}
 
-    # No device_mesh passed on purpose: twinkle's local mode assigns its default one (pure data
+    # No device_mesh passed by default: twinkle's local mode assigns its default one (pure data
     # parallel over WORLD_SIZE, infra/__init__.py:538-541), which is exactly the transformers layout --
     # this backend has no TP/PP/CP (validate_configs rejects those sizes here). It is NOT optional
     # bookkeeping though: a None mesh silently changes the training objective to an avg-of-avg, so it
     # is load-bearing that run_sft calls twinkle.initialize first (see _initialize_twinkle, and the
     # 2-GPU aggregation test that pins the result).
+    #
+    # The one opt-in exception is Ulysses sequence parallelism: run_sft passes an explicit mesh from
+    # build_hf_device_mesh (dp x ulysses over the torchrun world) when sequence_parallel_size > 1,
+    # which switches twinkle's TransformersModel into its SP path (_enable_sp, transformers.py).
+    _apply_hf_sp_mesh(kwargs, device_mesh, distributed_config)
     #
     # Ray placement (RL): under mode='ray' the model lives in a remote DeviceGroup named 'model' --
     # the same group _initialize_twinkle builds -- mirroring the Megatron branch below. This is what
