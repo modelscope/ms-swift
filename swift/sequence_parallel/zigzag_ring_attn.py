@@ -50,6 +50,23 @@ def get_half_lse(lse, cu_seqlens, *, front: bool):
     Returns:
         The filtered lse with the same shape as lse
     """
+    # Vector index construction has fixed overhead; use it only for sufficiently packed inputs.
+    _LSE_VEC_PATH_MIN_NUMEL = torch.jit.annotate(int, 9)
+    if cu_seqlens.numel() >= _LSE_VEC_PATH_MIN_NUMEL:
+        cu_seqlens = cu_seqlens.to(device=lse.device, dtype=torch.long)
+        lengths = cu_seqlens[1:] - cu_seqlens[:-1]
+        half_lengths = lengths // 2
+        half_total_len = lse.shape[1] // 2
+        if front:
+            source_starts = cu_seqlens[:-1]
+        else:
+            source_starts = cu_seqlens[:-1] + half_lengths
+        destination_starts = cu_seqlens[:-1] // 2
+        source_indices = torch.repeat_interleave(source_starts, half_lengths, output_size=half_total_len)
+        destination_indices = torch.repeat_interleave(destination_starts, half_lengths, output_size=half_total_len)
+        source_indices = source_indices + torch.arange(half_total_len, device=lse.device) - destination_indices
+        return lse.index_select(1, source_indices)
+
     new_lse = torch.empty(
         (lse.shape[0], lse.shape[1] // 2),
         dtype=lse.dtype,
