@@ -567,3 +567,16 @@ critic 复用 **seq_cls `num_labels=1` 头**（两后端同构：mcore-bridge `O
 | GKD `lmbda`/`sft_alpha` | 恒 on-policy 生成；twinkle `GKDLoss` 为纯 JSD，未折入 SFT 项 |
 | PPO critic | per-token value 走 DDP/AccelerateStrategy 路径，暂不覆盖 sequence-parallel / packed（critic 不开这些） |
 | 偏好参考 | 仅 `mode='local'` in-process；ray/megatron 偏好参考未接 |
+
+## 7. Channel loss 接线（`enable_channel_loss`）
+
+`TrainConfig.enable_channel_loss` 已从仅有字段升级为可用功能。核心实现位于
+`twinkle/loss/channel.py::ChannelLoss`，继承 `CrossEntropyLoss`：训练目标保持原有 token-level CE；通用的
+逐 token `loss_scale` 和 DFT 由 `CrossEntropyLoss` 计算一次，`ChannelLoss` 仅按样本级 `channel` 生成
+`[loss_sum, token_count]`，缺失 channel 时统一归到 `loss_None`。
+
+数据链路已覆盖普通 padding、padding-free/packing、Transformers 与 Megatron；`channel` 和 `loss_scale` 均不
+传入底层模型。`LossMetric` 只负责跨 micro-batch 和数据并行 rank 汇总已有统计，不重新计算 token loss；SFT
+训练/eval history 分别记录 `loss_<channel>` / `eval_loss_<channel>`。单元测试覆盖注册、CE 的 loss_scale、
+DFT/loss_scale 组合、默认 channel、padding-free 解包、CP padding/split、指标累计与配置选择；多卡 PP/CP
+端到端仍需在 GPU 环境执行。

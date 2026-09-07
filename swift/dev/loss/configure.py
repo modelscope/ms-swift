@@ -34,6 +34,8 @@ def configure_loss(model: TrainableModel,
                    *,
                    loss_type: str = 'cross_entropy',
                    reduction: str = 'sum',
+                   enable_channel_loss: bool = False,
+                   dft: bool = False,
                    **kwargs) -> None:
     """Set the SFT loss on ``model`` with an explicit reduction (default 'sum').
 
@@ -43,13 +45,15 @@ def configure_loss(model: TrainableModel,
             'cross_entropy'). Non-CE losses (grpo/dpo/...) resolve too but belong to
             their own recipes; SFT keeps CE.
         reduction: 'sum' (default; GA-correct, aligns legacy) or 'mean'.
+        enable_channel_loss: Report token-level loss grouped by the dataset's sample-level ``channel`` field.
+        dft: Apply DFT entropy weighting before total and channel aggregation.
     """
     from swift.dev.naming import resolve_loss
 
     if loss_type != 'cross_entropy':
         raise NotImplementedError(f"SFT configure_loss only supports 'cross_entropy', got {loss_type!r}")
-    loss_cls = resolve_loss(loss_type)
-    model.set_loss(loss_cls(reduction=reduction, **kwargs))
+    loss_cls = resolve_loss('channel' if enable_channel_loss else loss_type)
+    model.set_loss(loss_cls(reduction=reduction, dft=dft, **kwargs))
 
 
 def configure_embedding_loss(model: TrainableModel,

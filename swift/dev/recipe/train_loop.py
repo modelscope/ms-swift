@@ -138,6 +138,9 @@ class SFTLoop:
         result = {'step': self.global_step}
         if metrics.get('loss') is not None:
             result['eval_loss'] = float(metrics['loss'])
+        for key, value in metrics.items():
+            if key.startswith('loss_'):
+                result[f'eval_{key}'] = float(value)
         self.eval_history.append(result)
         logger.info(f"step {self.global_step}  eval_loss={result.get('eval_loss', float('nan')):.4f}")
         return result
@@ -175,6 +178,9 @@ class SFTLoop:
         record = {'step': self.global_step, 'loss': loss}
         if metrics.get('grad_norm') is not None:
             record['grad_norm'] = float(metrics['grad_norm'])
+        for key, value in metrics.items():
+            if key.startswith('loss_'):
+                record[key] = float(value)
         record.update(self._mtp_metrics())
         self.history.append(record)
         if self.logging_steps and self.global_step % self.logging_steps == 0:
@@ -182,7 +188,8 @@ class SFTLoop:
             gn_str = f'  grad_norm={gn:.4f}' if gn is not None else ''
             mtp = record.get('mtp_loss')
             mtp_str = f'  mtp_loss={mtp:.4f}' if mtp is not None else ''
-            logger.info(f'step {self.global_step}  loss={loss:.4f}{gn_str}{mtp_str}')
+            channel_str = ''.join(f'  {key}={value:.4f}' for key, value in record.items() if key.startswith('loss_'))
+            logger.info(f'step {self.global_step}  loss={loss:.4f}{gn_str}{mtp_str}{channel_str}')
         if self.save_steps and self.global_step % self.save_steps == 0:
             self.save(f'checkpoint-{self.global_step}')
         if (self.eval_dataloader is not None and self.eval_steps and self.global_step % self.eval_steps == 0):

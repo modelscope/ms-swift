@@ -208,6 +208,17 @@ def test_configure_loss_rejects_unknown_type():
         configure_loss(m, loss_type='dpo')
 
 
+def test_configure_loss_enables_channel_and_dft():
+    from swift.dev.loss import ChannelLoss, configure_loss
+
+    m = _FakeModel()
+    configure_loss(m, enable_channel_loss=True, dft=True)
+
+    assert isinstance(m.loss_instance, ChannelLoss)
+    assert m.loss_instance.reduction == 'sum'
+    assert m.loss_instance.dft is True
+
+
 # ----------------------------------------------------------------------
 # Unified naming layer: swift-style names -> twinkle constructibles.
 # Guards the twinkle construct_class gotcha (plain names like 'cross_entropy'

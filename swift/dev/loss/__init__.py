@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from twinkle.loss import (
+                          ChannelLoss,
                           ContrastiveLoss,
                           CosineSimilarityLoss,
                           CrossEntropyLoss,
@@ -27,7 +28,8 @@ from .configure import (
 )
 
 __all__ = [
-    'Loss', 'CrossEntropyLoss', 'GRPOLoss', 'configure_loss', 'EmbeddingLoss', 'InfonceLoss', 'CosineSimilarityLoss',
+    'Loss', 'CrossEntropyLoss', 'ChannelLoss', 'GRPOLoss', 'configure_loss', 'EmbeddingLoss', 'InfonceLoss',
+    'CosineSimilarityLoss',
     'ContrastiveLoss', 'OnlineContrastiveLoss', 'configure_embedding_loss', 'EMBEDDING_LOSS_TYPES',
     'PointwiseRerankerLoss', 'ListwiseRerankerLoss', 'SeqClsLoss', 'configure_reranker_loss', 'configure_seq_cls_loss',
     'RERANKER_LOSS_TYPES', 'PROBLEM_TYPES', 'configure_rlhf_loss', 'configure_ppo_value_loss'

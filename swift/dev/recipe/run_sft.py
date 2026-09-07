@@ -92,15 +92,16 @@ def _run_sft_body(
     Separate from ``run_sft`` because twinkle initialization must NOT be repeated: the Megatron Ray
     path initializes once and then drives this body inside the workers.
     """
-    from swift.dev.builders import is_megatron_backend
     from swift.dev.loss import configure_loss
     from swift.dev.recipe.assembly import TrainAssembly
 
     def sft_loss(model) -> None:
-        # Megatron computes CE internally (vocab-parallel) inside forward_backward, so set_loss is a
-        # no-op there; skip it and let the default group's loss stand.
-        if not is_megatron_backend(distributed_config):
-            configure_loss(model)
+        configure_loss(
+            model,
+            loss_type=train_config.loss_type or 'cross_entropy',
+            enable_channel_loss=train_config.enable_channel_loss,
+            dft=train_config.enable_dft_loss,
+        )
 
     return TrainAssembly(
         'run_sft',
