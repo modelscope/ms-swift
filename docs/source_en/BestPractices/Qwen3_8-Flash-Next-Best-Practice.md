@@ -1,17 +1,17 @@
-# Qwen3.8-Flash-Next 最佳实践
+# Qwen3.8-Flash-Next Best Practice
 
-[Qwen3.8-Flash-Next](https://modelscope.cn/models/Qwen/Qwen3.8-Flash-Next) 是一个多模态超稀疏 MoE 模型，共 125B 参数（其中包含一张额外的 51B N-gram 嵌入表），每 token 激活约 6B。它的架构结合了三个关键设计：
+[Qwen3.8-Flash-Next](https://modelscope.cn/models/Qwen/Qwen3.8-Flash-Next) is a multimodal, ultra-sparse MoE model with 125B parameters in total (including an additional 51B N-gram embedding table), activating about 6B per token. Its architecture combines three key designs:
 
-![Qwen3.8-Flash-Next 模型结构](https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen3.8-Flash-Next/architecture.png)
+![Qwen3.8-Flash-Next architecture](https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen3.8-Flash-Next/architecture.png)
 
-- **GDN + QSA**：每四层中有三层用 Gated DeltaNet 压缩历史，第四层用 Qwen Sparse Attention 做长范围精确检索。QSA 的预算是 2048 token。
-- **Gated Residual**（Hyper-Connections）：每层输入扩成 4 路残差分支，动态控制跳层读写。
-- **N-gram Embedding**：一张 51B 的查询记忆表，用极小的单 token 计算量换来容量，可以 offload 到主机内存。
+- **GDN + QSA**: three of every four layers use Gated DeltaNet to compress history, while the fourth uses Qwen Sparse Attention for precise long-range retrieval. QSA's budget is 2048 tokens.
+- **Gated Residual** (Hyper-Connections): each layer's input is expanded into 4 residual branches that dynamically control cross-layer reads and writes.
+- **N-gram Embedding**: a 51B lookup-memory table that trades an extremely small per-token compute cost for capacity, and can be offloaded to host memory.
 
 
-checkpoint 原生支持 262,144 token 上下文。
+The checkpoint natively supports a 262,144-token context.
 
-## 环境设置
+## Environment Setup
 
 ```shell
 pip install -U ms-swift
@@ -27,29 +27,29 @@ pip install -U "flash-linear-attention>=0.5.2" --no-build-isolation
 # causal_conv1d
 pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolation
 
-# vllm 安装需包含 https://github.com/vllm-project/vllm/pull/53896
-# 目前安装源码 (>0.28.0)
-# 参考 https://docs.vllm.ai/en/latest/getting_started/installation/gpu/index.html#build-wheel-from-source
+# The vllm build must include https://github.com/vllm-project/vllm/pull/53896
+# For now, install from source (>0.28.0)
+# See https://docs.vllm.ai/en/latest/getting_started/installation/gpu/index.html#build-wheel-from-source
 ```
 
-训练后端使用 Megatron, 环境的准备请参考[Megatron-SWIFT快速开始文档](../Megatron-SWIFT/Quick-start.md)
+The training backend uses Megatron. For environment preparation, please refer to the [Megatron-SWIFT Quick Start guide](../Megatron-SWIFT/Quick-start.md).
 
-## 微调（Megatron SFT）
+## Fine-tuning (Megatron SFT)
 
-**显存优化：N-gram 表 offload**
+**Memory optimization: N-gram table offload**
 
-N-gram 嵌入表占了 51B 参数、bf16 下约 **95GiB**，而且只能沿 TP 切分。
+The N-gram embedding table holds 51B parameters (~**95GiB** in bf16), and can only be sharded along TP.
 
-设置`PLE_CPU_OFFLOAD`环境变量卸载PLE权重
+Set the `PLE_CPU_OFFLOAD` environment variable to offload the PLE weights:
 
 ```shell
 PLE_CPU_OFFLOAD=1 megatron sft ...
 ```
 
-注意，开启后
-- **该表将会冻结训练**。LoRA 训练本来就不更新它，无影响；但全参训练下这部分权重会静默地不参与训练。
+Note that once enabled:
+- **The table is frozen during training.** LoRA training does not update it anyway, so there is no impact; under full-parameter training, however, these weights silently stop participating in training.
 
-8 卡 LoRA 微调：
+8-GPU LoRA fine-tuning:
 
 ```shell
 # 8*70G
@@ -84,33 +84,33 @@ megatron sft \
     --output_dir output
 ```
 
-> **`--decoder_first_pipeline_num_layers 12`**：PLE 层（第 2 层）落在 PP stage 0，它的激活与查表开销都压在该 stage，因此按 24/24 均分会两边不均。可以通过给 stage 0 分配更少的层拉平
+> **`--decoder_first_pipeline_num_layers 12`**: the PLE layer (layer 2) lands on PP stage 0, so both its activations and its lookup cost fall on that stage; an even 24/24 split would therefore be unbalanced between the two stages. Assigning fewer layers to stage 0 evens it out.
 
-### 实测数据
+### Measured data
 
-测试环境为 8卡，LoRA（rank 8）、TP2/EP4/PP2（并行策略组除外），`micro_batch_size=1`、`global_batch_size=8`，数据集为每条长度精确相等的合成集。显存每卡峰值，耗时以 **seq=2048 基线**为 1.00×。
+Measured on 8 GPUs with LoRA (rank 8), TP2/EP4/PP2 (except for the "parallelism" group), `micro_batch_size=1`, `global_batch_size=8`, on a synthetic dataset where every sample is exactly the same length. Memory is the per-GPU peak; step time is relative to the **seq=2048 baseline** = 1.00×.
 
-| 分组 | 配置 | seq | PF | RC | PLE offload | 显存 (GiB) | Δ Mem | 耗时 |
+| Group | Config | seq | PF | RC | PLE offload | Mem (GiB) | Δ Mem | Time |
 |:--|:--|--:|:-:|:-:|:-:|--:|--:|--:|
-| **基线** | seq=2048 | 2048 | – | full | – | **75.6** | – | **1.00×** |
-| **序列长度** | – | 4096 | – | full | – | 77.8 | +2.9% | 1.03× |
+| **baseline** | seq=2048 | 2048 | – | full | – | **75.6** | – | **1.00×** |
+| **sequence length** | – | 4096 | – | full | – | 77.8 | +2.9% | 1.03× |
 | | – | 8192 | – | full | – | 93.3 | +23.4% | 1.32× |
-| **显存开关** | PLE offload | 4096 | – | full | **✓** | **63.6** | **−15.9%** | 1.04× |
+| **memory switches** | PLE offload | 4096 | – | full | **✓** | **63.6** | **−15.9%** | 1.04× |
 | | PLE offload | 8192 | – | full | **✓** | **77.7** | +2.8% | 1.27× |
 | | PLE offload + PF | 8192 | ✓ | full | **✓** | **72.5** | **−4.1%** | 1.26× |
 | | padding_free | 4096 | ✓ | full | – | 77.8 | +2.9% | 1.16× |
 | | recompute selective | 4096 | – | **selective** | – | 92.1 | +21.8% | **0.75×** |
 | | recompute selective | 8192 | – | **selective** | – | 123.5 | +63.4% | **0.87×** |
-| | 关 recompute | 4096 | – | **none** | – | 92.1 | +21.8% | **0.74×** |
-| **并行策略** | TP4/EP2/PP2 | 8192 | – | full | – | 105.7 | +39.8% | 2.58× |
+| | recompute off | 4096 | – | **none** | – | 92.1 | +21.8% | **0.74×** |
+| **parallelism** | TP4/EP2/PP2 | 8192 | – | full | – | 105.7 | +39.8% | 2.58× |
 | | TP2/EP4/PP1 | 8192 | – | full | – | 142.5 | +88.5% | **0.80×** |
 
-<sub>PF = padding_free，RC = recompute_granularity，PLE offload = `PLE_CPU_OFFLOAD=1`；“–” 表示关闭/默认。**耗时列是单步时长的相对值，数值越大越慢**（如 1.32× = 每步耗时是基线的 1.32 倍）。</sub>
+<sub>PF = padding_free, RC = recompute_granularity, PLE offload = `PLE_CPU_OFFLOAD=1`; "–" means off/default. **The Time column is the relative single-step duration — higher is slower** (e.g. 1.32× means each step takes 1.32× as long as the baseline).</sub>
 
 
-## 强化学习（GRPO）
+## Reinforcement Learning (GRPO)
 
-8 卡 GRPO LoRA 训练，rollout 使用 colocate 模式的 vLLM，`max_completion_length` 为 8192：
+8-GPU GRPO LoRA training, with rollout using vLLM in colocate mode and `max_completion_length` of 8192:
 
 ```shell
 # 8*135G
