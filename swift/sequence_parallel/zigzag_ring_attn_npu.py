@@ -8,6 +8,7 @@ from .ring_utils import RingComm
 _NPU_BLOCK_MASK_SIZE = 2048
 _NPU_FULL_TOKENS = 2147483647
 _NPU_TND_SOFTMAX_STAT_REPEAT = 8
+_VEC_PATH_MIN_NUMEL = 6
 
 
 def is_npu_tensor(tensor: torch.Tensor) -> bool:
@@ -257,7 +258,7 @@ def _get_second_half_lse(softmax_lse: torch.Tensor, cu_seqlens: torch.Tensor) ->
 
     # For a few sequences, constructing index tensors costs more than the
     # bounded loop. Keep the fast path from regressing long single sequences.
-    if cu_seqlens.numel() <= 5:
+    if cu_seqlens.numel() < _VEC_PATH_MIN_NUMEL:
         second_half_lse = torch.empty((lse.shape[0], lse.shape[1] // 2), dtype=lse.dtype, device=lse.device)
         for i in range(len(cu_seqlens) - 1):
             start, end = cu_seqlens[i].item(), cu_seqlens[i + 1].item()
