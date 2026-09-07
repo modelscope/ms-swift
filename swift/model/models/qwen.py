@@ -6,6 +6,7 @@ import os
 import torch
 import torch.nn.functional as F
 from contextlib import contextmanager
+from functools import wraps
 from importlib import import_module
 from packaging import version
 from PIL import Image
@@ -25,7 +26,7 @@ from swift.utils import (Processor, get_cu_seqlens_from_position_ids, get_device
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
-from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone
+from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_module_forward, patch_output_clone
 from ..register import ModelLoader, RewardModelLoader, register_model
 from ..utils import AttnImpl, use_submodel_func
 
@@ -1859,13 +1860,12 @@ class WeMMEmbeddingLoader(Qwen3_5EmbLoader):
 
             inner.forward = MethodType(_wemm_forward, inner)
 
-        _embedding = model.embedding
-
-        def _embedding_hook(module, args, kwargs, output):
-            embeddings = _embedding(**kwargs)
+        @wraps(type(model).forward)
+        def _embedding_forward(self, *args, **kwargs):
+            embeddings = self.embedding(*args, **kwargs)
             return {'last_hidden_state': embeddings.contiguous()}
 
-        model.register_forward_hook(_embedding_hook, with_kwargs=True)
+        patch_module_forward(model, _embedding_forward)
 
         _original_save_pretrained = model.save_pretrained
 
