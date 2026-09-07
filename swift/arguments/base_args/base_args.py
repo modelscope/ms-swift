@@ -15,7 +15,8 @@ from swift.ray_utils import RayArguments
 from swift.template import Template, get_template
 from swift.tuner_plugin import tuners_map
 from swift.utils import (Processor, check_json_format, get_dist_setting, get_logger, import_external_file, is_dist,
-                         is_master, json_parse_to_dict, safe_snapshot_download, set_device, use_hf_hub)
+                         is_master, json_parse_to_dict, patch_dataloader_external_plugins, safe_snapshot_download,
+                         set_device, use_hf_hub)
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
@@ -152,6 +153,9 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             return
         for external_plugin in self.external_plugins:
             import_external_file(external_plugin)
+        # A plugin's effect is an import side effect, which a forkserver/spawn dataloader worker does not
+        # inherit. Only patch when there is something to replay.
+        patch_dataloader_external_plugins()
         logger.info(f'Successfully imported external_plugins: {self.external_plugins}.')
 
     @staticmethod

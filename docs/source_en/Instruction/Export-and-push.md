@@ -24,8 +24,7 @@ In addition to the SWIFT installation, the following additional dependencies nee
 pip install autoawq -U
 
 # For GPTQ quantization:
-# The versions of auto_gptq and CUDA are correlated; please choose the version according to `https://github.com/PanQiWei/AutoGPTQ#quick-installation`.
-pip install auto_gptq optimum -U
+pip install gptqmodel optimum -U
 
 # For GPTQ v2 quantization:
 pip install gptqmodel optimum -U

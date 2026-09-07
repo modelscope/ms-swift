@@ -878,6 +878,32 @@ def test_standalone_tool():
         template.safe_decode(pair_jinja['input_ids']))
 
 
+def test_ling3():
+    engine = TransformersEngine('inclusionAI/Ling-3.0-flash', load_model=False)
+    template = engine.template
+    template.template_backend = 'jinja'
+
+    dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
+    data = dataset[6]
+    data['messages'].insert(1, data['messages'][1])
+    data['messages'].insert(3, data['messages'][3])
+    template.template_backend = 'swift'
+    template.set_mode('train')
+    encoded = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    template.template_backend = 'jinja'
+    encoded2 = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded2["labels"])}')
+
+    def _normalize(text):
+        return text.replace('\n', '')
+
+    assert _normalize(template.safe_decode(encoded['input_ids'])) == _normalize(
+        template.safe_decode(encoded2['input_ids']))
+
+
 if __name__ == '__main__':
     from swift import InferRequest, RequestConfig, TransformersEngine, agent_template_map, load_dataset
 
@@ -902,4 +928,5 @@ if __name__ == '__main__':
     # test_deepseek_v4()
     # test_seed_oss()
     # test_youtu()
+    # test_ling3()
     test_standalone_tool()

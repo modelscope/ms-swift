@@ -375,8 +375,10 @@ def test_ray_gkd_generate_uses_multi_turn_scheduler():
     # The scheduler's infer_engine is None; we need to mock the inference
     # Instead, verify that the multi-turn path is taken by checking call_count
     # We mock on_trajectory_start to be a no-op
-    import asyncio
-    trainer._multi_turn_scheduler.on_trajectory_start = lambda reqs: asyncio.coroutine(lambda: None)()
+    async def _noop(reqs):
+        pass
+
+    trainer._multi_turn_scheduler.on_trajectory_start = _noop
 
     try:
         outputs = trainer._generate([sample2])

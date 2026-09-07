@@ -43,7 +43,7 @@ pip install -U "vllm>=0.17.0"
 
 Using ms-swift's `TransformersEngine` for inference:
 
-- The meaning of model-specific parameters such as `VIDEO_MAX_TOKEN_NUM` environment variables is the same as Qwen3-VL, refer to [Command-line Parameters Documentation](../Instruction/Command-line-parameters.md#qwen3_vl,qwen3_5).
+- The meaning of model-specific parameters such as `VIDEO_MAX_TOKEN_NUM` environment variables is the same as Qwen3-VL, refer to [Command-line Parameters Documentation](../Instruction/Command-line-parameters.md#qwen3_vl-qwen3_5).
 
 ```python
 import os

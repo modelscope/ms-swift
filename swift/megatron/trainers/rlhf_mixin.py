@@ -21,7 +21,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         if args.mcore_ref_model is not None:
             load_mcore_checkpoint(args, self.ref_models, load_arg='mcore_ref_model')
         if args.mcore_ref_adapter is not None:
-            load_mcore_checkpoint(args, self.wrapped_models, load_arg='mcore_ref_adapter')
+            load_mcore_checkpoint(args, self.wrapped_models, load_arg='mcore_ref_adapter', adapter_name='ref_adapter')
         super()._load_checkpoint()
 
     def prepare_model(self):
@@ -39,10 +39,10 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
             ref_model_id_or_path = args.ref_model or args.model
             ref_model_dir = safe_snapshot_download(ref_model_id_or_path, use_hf=args.use_hf, hub_token=args.hub_token)
             self.bridge.load_weights(self.ref_models, ref_model_dir)
-        if args.tuner_type == 'lora' and args.ref_adapters and args.mcore_ref_adapter is None:
+        if args.tuner_type in {'lora', 'lora_llm'} and args.ref_adapters and args.mcore_ref_adapter is None:
             assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
             self.bridge.load_weights(
-                self.ref_models, args.ref_adapters[0], peft_format=True, adapter_name='ref_adapter')
+                self.unwrapped_models, args.ref_adapters[0], peft_format=True, adapter_name='ref_adapter')
 
     def _get_data_collator(self):
         if self.args.rlhf_type in ('grpo', 'gkd'):

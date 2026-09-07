@@ -540,7 +540,9 @@ def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding
 
     seq_lengths = []
     pos = position_ids[0]
-    resets = torch.where(pos[1:] < pos[:-1])[0] + 1
+    # A length-1 sequence contributes a lone 0, so equality marks a boundary as well. The -1 slots
+    # padded by sequence parallel belong to no sequence and must not open one.
+    resets = torch.where((pos[1:] <= pos[:-1]) & (pos[1:] >= 0))[0] + 1
 
     if len(resets) == 0:
         # Only one sequence in this batch item
@@ -551,7 +553,7 @@ def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding
         for end in resets:
             seq_lengths.append(end - start)
             start = end
-        seq_lengths.append(pos.shape[0] - start)
+        seq_lengths.append(int((pos >= 0).sum()) - start)
 
     max_length = max(seq_lengths)
     unpacked_logits = []

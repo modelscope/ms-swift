@@ -20,6 +20,10 @@ def is_vllm_metax_available():
     return importlib.util.find_spec('vllm_metax') is not None
 
 
+def is_vllm_kunlun_available():
+    return importlib.util.find_spec('vllm_kunlun') is not None
+
+
 def is_lmdeploy_available():
     return importlib.util.find_spec('lmdeploy') is not None
 

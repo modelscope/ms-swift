@@ -23,7 +23,7 @@ from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelpe
 from modelscope import check_local_model_is_latest
 from packaging import version
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from swift.dataset import RowPreprocessor
 from swift.megatron.callbacks import megatron_callbacks_map
@@ -39,7 +39,7 @@ from swift.template import Template
 from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import (deep_getattr, gc_collect, get_current_device, get_last_valid_indices, get_logger, is_last_rank,
-                         is_master, ms_logger_context)
+                         is_master, ms_logger_context, update_last_checkpoint_symlink)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from .utils import TrainerState, build_streaming_dataloader, prepare_batch
 
@@ -52,6 +52,15 @@ except ImportError:
     RouterReplayAction = None
 
 mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
+
+try:
+    from megatron.core.optimizer.layer_wise_optimizer import is_managed_by_layer_wise_optimizer
+except ImportError:
+    # Before the layer-wise optimizer there was no shared predicate: `get_megatron_muon_optimizer` split the
+    # parameters between Muon and the scalar optimizer inline with this very rule, so mirror it to stay in step.
+    def is_managed_by_layer_wise_optimizer(param) -> bool:
+        return not getattr(param, 'is_embedding_or_output_parameter', False) and param.dim() == 2
+
 
 logger = get_logger()
 
@@ -81,6 +90,9 @@ class BaseMegatronTrainer(ABC):
         if initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
+        if args.tp_comm_overlap:
+            initialize_tp_communicators(args, self.config)
+        warmup_jit_function(self.config, args)
         self._load_checkpoint()
 
         self.eval_metrics = None
@@ -98,11 +110,6 @@ class BaseMegatronTrainer(ABC):
         self.callbacks = []
         for callback in args.callbacks:
             self.callbacks.append(megatron_callbacks_map[callback](self))
-
-        if args.tp_comm_overlap:
-            initialize_tp_communicators(args, self.config)
-
-        warmup_jit_function(self.config, args)
 
         if args.async_save and args.use_persistent_ckpt_worker:
             init_persistent_async_worker()
@@ -198,7 +205,7 @@ class BaseMegatronTrainer(ABC):
         if args.mcore_model is None:
             self.bridge.load_weights(models, args.model_dir)
         peft_models = [prepare_mcore_model(args, model) for model in models]
-        if args.tuner_type == 'lora' and args.adapters and args.mcore_adapter is None:
+        if args.tuner_type in {'lora', 'lora_llm'} and args.adapters and args.mcore_adapter is None:
             assert len(args.adapters) == 1, 'Currently only support one adapter.'
             self.bridge.load_weights(models, args.adapters[0], peft_format=True, adapter_name='default')
         return peft_models
@@ -224,7 +231,7 @@ class BaseMegatronTrainer(ABC):
         }
         config = config_cls(**kwargs)
 
-        if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
+        if self._needs_own_param_groups(args, config):
             param_groups_context = self._patch_get_param_groups()
         else:
             param_groups_context = nullcontext()
@@ -244,9 +251,53 @@ class BaseMegatronTrainer(ABC):
                     config,
                     self.wrapped_models,
                     layer_wise_distributed_optimizer='dist' in config.optimizer,
+                    **self._get_muon_config_overrides(config),
                 )
         opt_param_scheduler = get_optimizer_param_scheduler(args, optimizer)
         return optimizer, opt_param_scheduler
+
+    @staticmethod
+    def _needs_own_param_groups(args, config) -> bool:
+        """Whether swift has to build the parameter groups itself instead of letting mcore do it.
+
+        `vit_lr`/`aligner_lr` have no mcore equivalent, so they leave no choice. That replacement drops the
+        `config_overrides` Muon routes its parameters with, so under Muon `apply_wd_to_qk_layernorm` is left
+        to mcore, which implements it in `get_standard_config_overrides` -- but only on the versions that
+        have it, and `config` carries the field exactly when mcore declares it.
+        """
+        if args.vit_lr is not None or args.aligner_lr is not None:
+            return True
+        if not args.apply_wd_to_qk_layernorm:
+            return False
+        return not ('muon' in config.optimizer and hasattr(config, 'apply_wd_to_qk_layernorm'))
+
+    def _get_muon_config_overrides(self, config) -> Dict[str, Any]:
+        """Give the matrices Muon manages a learning rate of their own.
+
+        Muon orthogonalizes its updates, so those matrices usually want a different learning rate from the
+        scalar optimizer that handles the remaining parameters. mcore expresses this with the same override
+        mechanism it already uses to split the parameters between the two optimizers, keyed on the very
+        predicate that decides the split, so the override cannot drift away from the actual grouping.
+        """
+        args = self.args
+        if args.muon_lr is None and args.muon_min_lr is None:
+            return {}
+        from megatron.core.optimizer import ParamKey, ParamPredicate, get_standard_config_overrides
+
+        override = {}
+        if args.muon_lr is not None:
+            override['max_lr'] = args.muon_lr
+        if args.muon_min_lr is not None:
+            override['min_lr'] = args.muon_min_lr
+        logger.info(f'muon_lr: {args.muon_lr}, muon_min_lr: {args.muon_min_lr}, '
+                    f'{args.muon_scalar_optimizer}_lr: {args.lr}, {args.muon_scalar_optimizer}_min_lr: {args.min_lr}')
+        param_key = ParamKey(
+            predicate=ParamPredicate(name='muon_managed_matrix', fn=is_managed_by_layer_wise_optimizer))
+        # mcore only falls back to its standard overrides (the weight-decay skips and `decoupled_lr`) when the
+        # caller passes none of its own, so extend them rather than replace them.
+        config_overrides = get_standard_config_overrides(config)
+        config_overrides[param_key] = override
+        return {'config_overrides': config_overrides}
 
     def _get_data_collator(self):
         data_collator = self.template.data_collator
@@ -349,7 +400,7 @@ class BaseMegatronTrainer(ABC):
             logger.info_once(f'vit_lr: {vit_lr}, aligner_lr: {aligner_lr}, llm_lr: {args.lr}')
         use_decoupled_learning_rate = decoupled_lr is not None
 
-        # Map (wd_mult, lr_mult, is_expert_parallel, is_decoupled_lr) to params.
+        # Map (wd_mult, max_lr, min_lr, is_expert_parallel, is_decoupled_lr) to params.
         params_map = {}
         for model_chunk in model_chunks:
             visual = model_chunk.module.module.visual if is_multimodal else None
@@ -373,6 +424,7 @@ class BaseMegatronTrainer(ABC):
                         name.endswith('.bias') or len(param.shape) == 1
                         or (default_skip_embedding_weight_decay and 'embedding' in name))
                 _lr_mult = lr_mult
+                lr_override = None
                 if scale_lr_cond is not None:
                     scale_lr = scale_lr_cond(name, param)
                 else:
@@ -385,12 +437,12 @@ class BaseMegatronTrainer(ABC):
                                      for k in visual._vision_tower) and not is_aligner
                     else:
                         is_aligner, is_vit = False, False
-                    if is_vit and args.vit_lr:
+                    if is_vit and args.vit_lr is not None:
                         scale_lr = True
-                        _lr_mult = args.vit_lr / lr
-                    elif is_aligner and args.aligner_lr:
+                        lr_override = args.vit_lr
+                    elif is_aligner and args.aligner_lr is not None:
                         scale_lr = True
-                        _lr_mult = args.aligner_lr / lr
+                        lr_override = args.aligner_lr
 
                 if not no_wd and not scale_lr:
                     wd_mult, _lr_mult = 1.0, 1.0
@@ -407,7 +459,18 @@ class BaseMegatronTrainer(ABC):
                 if use_decoupled_learning_rate and getattr(param, 'is_embedding_or_output_parameter', False):
                     is_decoupled_lr = True
 
-                key = (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr)
+                if lr_override is not None:
+                    _max_lr = lr_override
+                    _min_lr = 0. if lr == 0. or lr_override == 0. else min_lr * lr_override / lr
+                elif is_decoupled_lr:
+                    assert decoupled_lr is not None
+                    _max_lr = decoupled_lr * _lr_mult
+                    _min_lr = decoupled_min_lr * _lr_mult
+                else:
+                    _max_lr = lr * _lr_mult
+                    _min_lr = min_lr * _lr_mult
+
+                key = (wd_mult, _max_lr, _min_lr, is_expert_parallel, is_decoupled_lr)
                 if key not in params_map:
                     params_map[key] = []
                 params_map[key].append(param)
@@ -425,12 +488,12 @@ class BaseMegatronTrainer(ABC):
 
         param_groups = []
         for key in params_key:
-            wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr = key
+            wd_mult, _max_lr, _min_lr, is_expert_parallel, is_decoupled_lr = key
             params = params_map[key] if key in params_map else []
             param_group = {
                 'params': params,
                 'wd_mult': wd_mult,
-                'lr_mult': _lr_mult,
+                'lr_mult': 1.,
                 'is_expert_parallel': is_expert_parallel,
                 'is_decoupled_lr': is_decoupled_lr,
             }
@@ -438,23 +501,9 @@ class BaseMegatronTrainer(ABC):
             # See MegatronOptimizer._filter_and_reorder_param_groups.
             if param_group_identifier_keys is not None:
                 assert set(param_group.keys()) - set(param_group_identifier_keys) == {'params'}
+            param_group['max_lr'] = _max_lr
+            param_group['min_lr'] = _min_lr
             param_groups.append(param_group)
-
-        # Update min and max lr in param groups
-        # These changes are compatible with mcore 0.16.
-        for param_group in param_groups:
-            if param_group['is_decoupled_lr']:
-                assert decoupled_lr is not None
-                param_group['max_lr'] = decoupled_lr
-                param_group['min_lr'] = decoupled_min_lr
-            else:
-                param_group['max_lr'] = lr
-                param_group['min_lr'] = min_lr
-            lr_mult = param_group.pop('lr_mult')
-            # Instead of using lr_mult to control the learning rate, we directly use max_lr/min_lr.
-            param_group['lr_mult'] = 1.
-            param_group['max_lr'] *= lr_mult
-            param_group['min_lr'] *= lr_mult
         return param_groups
 
     @contextmanager
@@ -693,11 +742,9 @@ class BaseMegatronTrainer(ABC):
         self.call_event('on_step_end')
         self._aggregated_metrics(metrics, self._train_metrics)
         self._train_metrics['grad_norm'] = grad_norm
-        for param_group in self.optimizer.param_groups:
-            if len(param_group['params']) == 0:
-                continue
-            self._train_metrics['learning_rate'] = param_group['lr']
-            break
+        learning_rate = self._get_reported_learning_rate()
+        if learning_rate is not None:
+            self._train_metrics['learning_rate'] = learning_rate
         if state.should_log:
             state.should_log = False
             self.on_log(logs=self._train_metrics)
@@ -785,14 +832,18 @@ class BaseMegatronTrainer(ABC):
         else:
             model = self.wrapped_models
         gc_collect()
-        save_mcore_checkpoint(
+        async_deferred = save_mcore_checkpoint(
             args,
             model,
             self.optimizer,
             self.opt_param_scheduler,
             iteration=iteration,
             peft_format=args.tuner_type == 'lora',
-            output_dir=output_dir)
+            output_dir=output_dir,
+            # Under `--async_save` the weights are still being written when this returns, so hand the symlink
+            # update to the async request: it then runs once they are durable, and after the safetensors below
+            # (written synchronously), i.e. only when the whole checkpoint is complete.
+            async_finalize_fn=partial(update_last_checkpoint_symlink, output_dir))
         state.last_model_checkpoint = output_dir
         if state.best_global_step is not None:
             best_model_checkpoint = os.path.join(args.output_dir, f'checkpoint-{state.best_global_step}')
@@ -839,6 +890,9 @@ class BaseMegatronTrainer(ABC):
                 self.unmerge_lora_adapters()
 
         if is_master():
+            if not async_deferred:
+                # `output_dir` may have been redirected to the `-merged` copy above, so link the canonical one.
+                update_last_checkpoint_symlink(state.last_model_checkpoint)
             self._rotate_checkpoints(args.output_dir)
 
     def _rotate_checkpoints(self, output_dir: str):
@@ -874,13 +928,22 @@ class BaseMegatronTrainer(ABC):
             checkpoints_sorted.append(state.best_model_checkpoint)
         return checkpoints_sorted
 
+    def _get_reported_learning_rate(self) -> Optional[float]:
+        """Pick the learning rate to report when the parameter groups no longer share one.
+
+        mcore flags the groups that follow the `--lr` schedule with `default_config` and reports those, so a
+        group with an overridden learning rate (`--muon_lr`) is not mistaken for the headline number. Param
+        groups built without that flag all count as default.
+        """
+        param_groups = [param_group for param_group in self.optimizer.param_groups if param_group['params']]
+        for param_group in param_groups:
+            if param_group.get('default_config', True):
+                return param_group['lr']
+        return param_groups[0]['lr'] if param_groups else None
+
     def training_log(self, metrics, grad_norm):
-        learning_rate = None
-        for param_group in self.optimizer.param_groups:
-            if len(param_group['params']) == 0:
-                continue
-            learning_rate = param_group['lr']
-        logger.info(f'metrics: {metrics}, grad_norm: {grad_norm}, learning_rate: {learning_rate}')
+        logger.info(f'metrics: {metrics}, grad_norm: {grad_norm}, '
+                    f'learning_rate: {self._get_reported_learning_rate()}')
 
     def evaluate(self, val_data_iterator):
         args = self.args
@@ -1007,6 +1070,10 @@ class BaseMegatronTrainer(ABC):
     def _create_dataloader(self, dataset, batch_sampler):
         args = self.args
 
+        dataloader_kwargs = {}
+        mp_context = getattr(args, 'dataloader_multiprocessing_context', None)
+        if mp_context is not None and args.dataloader_num_workers > 0:
+            dataloader_kwargs['multiprocessing_context'] = mp_context
         dataloader = torch.utils.data.DataLoader(
             dataset,
             batch_sampler=batch_sampler,
@@ -1015,6 +1082,7 @@ class BaseMegatronTrainer(ABC):
             persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
             prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
             collate_fn=self.data_collator,
+            **dataloader_kwargs,
         )
         return dataloader
 

@@ -325,7 +325,7 @@ def load_dataset(
         use_hf_default = True if use_hf_hub() else False
     for dataset in datasets:
         dataset_syntax = DatasetSyntax.parse(dataset)
-        use_hf = dataset_syntax.use_hf or use_hf_default
+        use_hf = dataset_syntax.use_hf if dataset_syntax.use_hf is not None else use_hf_default
         # compat dataset_name
         if dataset_syntax.dataset in DATASET_MAPPING:
             dataset_meta = DATASET_MAPPING[dataset_syntax.dataset]

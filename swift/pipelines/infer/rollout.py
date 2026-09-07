@@ -47,7 +47,7 @@ from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LO
                                        patch_vllm_moe_model_weight_loader, vllm_supports_lora_load_inplace)
 from swift.rollout import RolloutScheduler, multi_turns
 from swift.utils import (gc_collect, get_logger, get_physical_device_count, get_seed, ipc_collect, is_torch_rocm,
-                         is_vllm_ascend_available, is_vllm_metax_available, synchronize)
+                         is_vllm_ascend_available, is_vllm_kunlun_available, is_vllm_metax_available, synchronize)
 from ..base import SwiftPipeline
 
 try:
@@ -60,6 +60,9 @@ try:
     from vllm.distributed.utils import StatelessProcessGroup
     if is_vllm_ascend_available():
         from vllm_ascend.distributed.device_communicators.pyhccl import PyHcclCommunicator as PyNcclCommunicator  # noqa
+
+    if is_vllm_kunlun_available():
+        from vllm_kunlun.distributed.py_kunlun_communicator import PyKunlunCommunicator as PyNcclCommunicator  # noqa
 
     if is_vllm_metax_available():
         import vllm_metax.patch
@@ -726,6 +729,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
     args: args_class
 
     def _register_rl_rollout_app(self):
+        self.app.get('/health')(self.health)
         self.app.get('/health/')(self.health)
         self.app.get('/get_world_size/')(self.get_world_size)
         self.app.get('/get_model_state_keys/')(self.get_model_state_keys)

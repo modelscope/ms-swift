@@ -328,6 +328,71 @@ Use `--target_regex` to match only the module paths you want to train. For examp
 --target_regex ".*audio.*"    # Only match modules containing audio
 ```
 
+### Q52: Does Qwen3.5 support CP?
+Yes, it is supported. For details, please refer to [Qwen 3.5 Best Practices](https://swift.readthedocs.io/en/latest/BestPractices/Qwen3_8-Best-Practice.html).
+
+### Q53: Can gkd support different system prompts for teacher and student, like opsd?
+Yes, it can.
+
+### Q54: Can the MoE model be trained using deepspeed zero3?
+Yes, but it will be slow.
+
+### Q55: Does megatron swift support graphics card B300?
+Yes.
+
+### Q56: What if the results of running a MoE model using megatron stf and swift stf are not the same?
+MoE models should be run using Megatron whenever possible, as Megatron + MoE is relatively mature. Transformers only started supporting MoE training in version 5.0 and later, so it may not be stable.
+
+### Q57: Under what circumstances should think mode be enabled during training?
+If your training data involves CoT, it is recommended to enable think mode.
+
+### Q58: Do all data with `<think></think>` need to have the think mode enabled during training?
+This depends on the specific training scenario. If the data doesn't involve a lot of logical reasoning, you can use no-thinking.
+
+### Q59: An error occurred while training qwenvl-2.5.
+```shell
+[rankØ]: Original Traceback (most recent call last):
+[rank0]:
+File "/apdcephfs_qy3/share_300998916/weituchong/miniforge3/envs/qwen/lib/python3.10/site-packages/torch/utils/data/_utils/worker.py", line 349, in _worker_loop
+[rank0] :
+data = fetcher. fetch index)
+type: ignore [possibly-undefined]
+[rank0]:
+File"/apdcephfs_qy3/share_300998916/weituchong/miniforge3/envs/qwen/lib/python3.10/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
+[rankø]:
+data = [self-dataset [idx] for idx in possibly_batched_index]
+[rankø]:
+File"/apdcephfs_qy3/share_300998916/weituchong/miniforge3/envs/qwen/Lib/python3.10/site-packages/torch/utils/data/_utils/fetch.py", line 52, in
+[rankø] :
+data = [self dataset [idx] for idx in possibly_batched_index]
+[rank0]:
+File "/apdcephfs_qy3/share_300998916/weituchong/miniforge3/envs/qwen/lib/python3.10/site-packages/swift/llm/dataset/utils-py", line 191, in _getitem
+[rank0]:
+raise ValueError( 'Failed to retrieve the dataset. You can avoid this issue by increasing
+'max_length'
+or "
+[rankø]: ValueError: Failed to retrieve the dataset. You can avoid this issue by increasing 'max_length' or modifying the 'truncation_strategy -
+```
+If there are no other error messages above, then the dataset is too long. Increase the `--max_length`, and as long as it doesn't cause an OOM (Out of Memory) error, there shouldn't be any problem.
+
+### Q60: How to perform dynamic data augmentation on image samples when training a multimodal model, i.e., augment the data once before each batch is input into the model?
+Swift does not currently have out-of-the-box support for dynamic data enhancements; you can extend the source code as needed.
+
+### Q61: How many samples are typically needed for GRPO training?
+A few thousand will be effective, and more will be even more effective.
+
+### Q62: Can Swift be used for pre-training visual models?
+Yes, you can, but you'll need to adjust the learning rate yourself. See the [tutorial document](https://swift.readthedocs.io/en/latest/BestPractices/Rapidly-Training-VL-model.html) for details.
+
+### Q63: Does magetron support using custom functions via `--loss_type my_loss` like in Swift?
+Megatron currently requires modifications to the loss_func in the trainer; simpler custom logic will be supported in the future.
+
+### Q64: Does the Swift framework support Agentic RL training?
+Yes，For details, please refer to [Multiple Rounds of Training](https://swift.readthedocs.io/en/latest/Instruction/GRPO/DeveloperGuide/multi_turn.html).
+
+### Q65: How can I train Qwen3-Omni on ROCm/MI300X using megatron-swift?
+You can refer to this [best practice](https://swift.readthedocs.io/en/latest/BestPractices/AMD-support.html).
+
 ## Inference
 
 Swift supports inference via Python scripts, command line, and UI interfaces. For details, see [Inference and Deployment](https://swift.readthedocs.io/en/latest/Instruction/Inference-and-deployment.html).
@@ -559,3 +624,6 @@ swift eval does not support DDP startup.
 ### Q13: Where can I see what additional fields are included in the query besides the question during Swift evaluation?
 The simplest way is to look at the input field in the output reviews file; it's the Markdown format of the content input to the model. <br>
 If the backend is OpenCompass, these outputs won't be available, and you'll need to use a native backend.
+
+### Q14: When installing evalscope using pip, it keeps getting stuck at "preparing metadata(pyproject.toml)".
+This process involves evaluating dependencies during installation, which may be relatively slow.

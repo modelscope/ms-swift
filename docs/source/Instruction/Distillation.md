@@ -337,7 +337,7 @@ OPSD（[On-Policy Self-Distillation](https://arxiv.org/abs/2601.18734)）是一�
 **核心机制**
 
 - **学生**：仅看到问题，正常推理。
-- **教师**：看到问题 + 参考解答（通过 `teacher_prompt` 列提供特权信息）。
+- **教师**：通过 `teacher_prompt` 获取特权文本，通过 `teacher_images` 获取特权图片，也可同时使用两者。
 - **训练目标**：用散度（JSD / KL）对齐学生与教师在同一份学生采样响应上的输出分布。
 
 OPSD 既可走 GKD 路径，也可走 OPD-RL 路径：
@@ -354,7 +354,9 @@ OPSD 既可走 GKD 路径，也可走 OPD-RL 路径：
 
 **数据格式**
 
-OPSD 数据集需包含 `teacher_prompt` 列，可通过 `--external_plugins` 加载数据处理插件来构建。以数学推理数据集 `open-r1/OpenThoughts-114k-math` 为例：
+OPSD 数据集可提供 `teacher_prompt`、`teacher_images`，或同时提供两者。省略 `teacher_images`（值为 `None`）时，教师复用学生的 `images`；显式传入空列表时，教师使用纯文本视图。只提供 `teacher_images` 而不提供 `teacher_prompt` 时，教师沿用学生消息，但使用单独的教师图片。教师实际提示词中的 `<image>` 标签数应与教师图片数一致；否则多余标签会作为文本保留，并由模板输出警告。
+
+可通过 `--external_plugins` 加载数据处理插件来构建教师侧字段。以数学推理数据集 `open-r1/OpenThoughts-114k-math` 为例：
 
 ```python
 from swift.dataset import DatasetMeta, RowPreprocessor, register_dataset

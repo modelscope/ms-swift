@@ -508,7 +508,7 @@ def zigzag_ring_flash_attn_varlen_backward(
     for step in range(kv_comm.world_size):
         _, _, block_out, block_lse, _ = out_lse[step]
         if block_out.isnan().any() or block_lse.isnan().any():
-            raise
+            raise RuntimeError(f'NaN detected in block_out/block_lse at step {step}.')
         block_lse = block_lse.transpose(0, 1).squeeze(2)
 
         if step + 1 != kv_comm.world_size:
@@ -522,7 +522,7 @@ def zigzag_ring_flash_attn_varlen_backward(
             block_dout = block_gradients[step]['grad_block_out']
 
         if block_dout.isnan().any():
-            raise
+            raise RuntimeError(f'NaN detected in block_dout at step {step}.')
 
         if step == 0:
             backward(
@@ -532,7 +532,7 @@ def zigzag_ring_flash_attn_varlen_backward(
             dk = dk_buffer.to(torch.float32)
             dv = dv_buffer.to(torch.float32)
             if dq.isnan().any() or dk.isnan().any() or dv.isnan().any():
-                raise
+                raise RuntimeError(f'NaN detected in dq/dk/dv at step {step}.')
         else:
             if step <= kv_comm.rank:
                 k0 = k[half_index0]
@@ -568,7 +568,7 @@ def zigzag_ring_flash_attn_varlen_backward(
                 dk += dk_buffer
                 dv += dv_buffer
             if dq.isnan().any() or dk.isnan().any() or dv.isnan().any():
-                raise
+                raise RuntimeError(f'NaN detected in dq/dk/dv at step {step}.')
         if step + 1 != kv_comm.world_size:
             kv_comm.wait()
             k, v = next_k, next_v

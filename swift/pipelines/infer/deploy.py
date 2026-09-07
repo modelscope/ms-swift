@@ -45,6 +45,7 @@ class SwiftDeploy(SwiftInfer):
 
     def _register_app(self):
         self.app.get('/health')(self.health)
+        self.app.get('/health/')(self.health)
         self.app.get('/ping')(self.ping)
         self.app.post('/ping')(self.ping)
         self.app.get('/v1/models')(self.get_available_models)

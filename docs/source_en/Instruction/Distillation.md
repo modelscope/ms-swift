@@ -331,7 +331,7 @@ OPSD ([On-Policy Self-Distillation](https://arxiv.org/abs/2601.18734)) is a sing
 **Core mechanism**
 
 - **Student**: sees only the problem and reasons normally.
-- **Teacher**: sees problem + reference solution (privileged info via `teacher_prompt` column).
+- **Teacher**: sees privileged text via `teacher_prompt`, privileged images via `teacher_images`, or both.
 - **Training objective**: align student and teacher output distributions on the same student-sampled response via divergence (JSD / KL).
 
 OPSD can follow either GKD or OPD-RL path:
@@ -348,7 +348,9 @@ OPSD can follow either GKD or OPD-RL path:
 
 **Data format**
 
-OPSD datasets need a `teacher_prompt` column. Load a data preprocessing plugin via `--external_plugins` to build it. Example with math reasoning dataset `open-r1/OpenThoughts-114k-math`:
+OPSD datasets provide a `teacher_prompt` column, a `teacher_images` column, or both. If `teacher_images` is omitted (`None`), the teacher reuses the student's `images`. An explicit empty list gives the teacher a text-only view. When `teacher_images` is provided without `teacher_prompt`, the teacher uses the student messages with the separate teacher images. The number of `<image>` tags in the effective teacher prompt should match the number of teacher images; otherwise extra tags remain as text and the template emits a warning.
+
+Load a data preprocessing plugin via `--external_plugins` to build the teacher-side fields. Example with math reasoning dataset `open-r1/OpenThoughts-114k-math`:
 
 ```python
 from swift.dataset import DatasetMeta, RowPreprocessor, register_dataset

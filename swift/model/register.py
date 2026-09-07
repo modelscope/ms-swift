@@ -450,6 +450,11 @@ class ModelLoader(BaseModelLoader):
                     if type(module).__name__ == 'MiMoV2MoE':
                         z3_leaf_modules = [type(module)]
                         break
+            elif hf_model_type == 'bailing_hybrid':
+                for module in model.modules():
+                    if type(module).__name__ == 'BailingMoeV3SparseMoeBlock':
+                        z3_leaf_modules = [type(module)]
+                        break
 
         if z3_leaf_modules:
             from deepspeed.utils import set_z3_leaf_modules

@@ -25,6 +25,7 @@ class LLMModelArch:
 
 
 class MLLMModelArch:
+    moss_vl = 'moss_vl'
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
@@ -34,6 +35,8 @@ class MLLMModelArch:
     qwen3_omni = 'qwen3_omni'
     qwen3_asr = 'qwen3_asr'
     qwen3_tts = 'qwen3_tts'
+    qwen3_5 = 'qwen3_5'
+    wemm_embedding = 'wemm_embedding'
 
     cogvlm = 'cogvlm'
     chatglm4v = 'chatglm4v'
@@ -595,6 +598,15 @@ else:
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.moss_vl,
+        language_model=['model.language_model', 'lm_head'],
+        aligner=['model.visual.merger', 'model.separator_token'],
+        vision_tower='model.visual',
+        mlp='model.language_model.layers.{}.mlp',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.qwen3_vl,
         language_model=['model.language_model', 'lm_head'],
         aligner=['model.visual.merger', 'model.visual.deepstack_merger_list'],
@@ -861,6 +873,24 @@ register_model_arch(
         aligner='visual.merger',
         vision_tower=['visual', 'audio_encoder'],
         mlp='model.layers.{}.mlp',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.qwen3_5,
+        language_model=['model.language_model', 'lm_head'],
+        aligner='model.visual.merger',
+        vision_tower='model.visual',
+        mlp='model.language_model.layers.{}.mlp',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.wemm_embedding,
+        language_model=['model.language_model', 'lm_head'],
+        aligner='model.visual.merger',
+        vision_tower='model.visual',
+        mlp='model.language_model.layers.{}.mlp',
     ))
 
 

@@ -20,6 +20,7 @@ from peft.tuners.lora import LoraLayer
 from PIL import Image
 from pydantic import BaseModel, field_validator
 from torch import nn
+from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, RandomSampler
 from transformers.utils import is_torch_npu_available
 from types import MethodType
@@ -1263,9 +1264,13 @@ def patch_vllm_load_adapter():
             # loading weights, throwing an exception if validation fails.
             peft_helper.validate_legal(self.lora_config)
             # For some models like Qwen2VL, we need to use hf_to_vllm_mapper
-            # to ensure correct loading of lora weights.
+            # to ensure correct loading of lora weights. Drop the QKV/MLP fusion
+            # substr maps so constituent names (e.g. `q_proj`) survive for the
+            # LoRA manager to pack, matching vllm's own worker_manager._load_adapter.
             model = self._adapter_manager.model
             hf_to_vllm_mapper = getattr(model, 'hf_to_vllm_mapper', None)
+            if hf_to_vllm_mapper is not None and hasattr(hf_to_vllm_mapper, 'get_unstacked_mapper'):
+                hf_to_vllm_mapper = hf_to_vllm_mapper.get_unstacked_mapper()
 
             lora_request_kwargs = {
                 'peft_helper': peft_helper,
@@ -1548,6 +1553,9 @@ def get_chord_sft_dataloader(trainer,
         'pin_memory': trainer.args.dataloader_pin_memory,
         'persistent_workers': trainer.args.dataloader_persistent_workers,
     }
+    mp_context = getattr(trainer.args, 'dataloader_multiprocessing_context', None)
+    if mp_context is not None and trainer.args.dataloader_num_workers > 0:
+        dataloader_params['multiprocessing_context'] = mp_context
 
     if not isinstance(dataset, torch.utils.data.IterableDataset):
         if sampler_fn is not None:
@@ -1665,6 +1673,26 @@ def set_expandable_segments(enable: bool) -> None:
     if torch.cuda.is_available():
         torch.cuda.memory._set_allocator_settings(f'expandable_segments:{enable}')
         os.environ['PYTORCH_CUDA_ALLOC_CONF'] = f'expandable_segments:{enable}'
+
+
+def sleep_vllm_engine(engine, sleep_level: int, suppress_errors: bool = False) -> None:
+    """Release colocated vLLM memory while attempting every cleanup operation."""
+    cleanup_error = None
+    operations = [
+        ('reset the prefix cache', engine.reset_prefix_cache),
+        ('put the engine to sleep', lambda: engine.sleep(level=sleep_level)),
+        ('empty the device cache', aggressive_empty_cache),
+        ('restore expandable segments', lambda: set_expandable_segments(True)),
+    ]
+    for operation, callback in operations:
+        try:
+            callback()
+        except Exception as error:
+            if cleanup_error is None:
+                cleanup_error = error
+            get_logger().warning(f'Failed to {operation} during vLLM cleanup: {error}')
+    if cleanup_error is not None and not suppress_errors:
+        raise cleanup_error
 
 
 def peft_config_to_dict(peft_config):
@@ -1846,45 +1874,44 @@ def pad_logps_back_to_batch(logps_rmpad: Optional[torch.Tensor],
         # Compute actual sequence lengths
         seq_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
 
-    # Compute cumulative sequence lengths
-    cu_seqlens = torch.cumsum(torch.cat([torch.tensor([0], device=device), seq_lengths]), dim=0)
     max_seq_len = logits_to_keep  # All sequences will be padded to this length
-
-    # Initialize output tensors with padding value
-    logps_padded = torch.full((batch_size, max_seq_len), pad_value, dtype=dtype, device=device)
-    valid_mask = torch.zeros(batch_size, max_seq_len, dtype=torch.float32, device=device)
-
-    # Unflatten: assign each sequence's logps to the corresponding row
-    # Use LEFT PADDING (right-align the data) to match the standard padding convention
     logps_flat = logps_rmpad.squeeze(0)  # [total_nnz]
 
-    for i in range(batch_size):
-        start_idx = cu_seqlens[i].item()
-        end_idx = cu_seqlens[i + 1].item()
-        seq_len = int(seq_lengths[i].item())
-
-        actual_end_idx = min(end_idx, len(logps_flat))
-        actual_len = actual_end_idx - start_idx
-
-        if actual_len <= 0:
-            continue
-
-        # Left padding: place data at the RIGHT side of the row
-        # pad_len is the number of padding tokens at the beginning
-        pad_len = max_seq_len - seq_len
-
-        if actual_len < seq_len:
-            # Input data is shorter than expected seq_len
-            # This happens when logps_flat doesn't have enough data
-            # Place actual data at the rightmost positions
-            data_pad_len = max_seq_len - actual_len
-            logps_padded[i, data_pad_len:] = logps_flat[start_idx:actual_end_idx]
-            valid_mask[i, data_pad_len:] = 1.0
-        else:
-            # Normal case: seq_len tokens of data
-            logps_padded[i, pad_len:] = logps_flat[start_idx:end_idx]
+    if batch_size <= 2:
+        cu_seqlens = torch.cat((seq_lengths.new_zeros(1), seq_lengths.cumsum(0)))
+        logps_padded = torch.full((batch_size, max_seq_len), pad_value, dtype=dtype, device=device)
+        valid_mask = torch.zeros(batch_size, max_seq_len, dtype=torch.float32, device=device)
+        for i in range(batch_size):
+            start_idx = cu_seqlens[i].item()
+            end_idx = cu_seqlens[i + 1].item()
+            seq_len = int(seq_lengths[i].item())
+            actual_end_idx = min(end_idx, len(logps_flat))
+            actual_len = actual_end_idx - start_idx
+            if actual_len <= 0:
+                continue
+            pad_len = max_seq_len - actual_len if actual_len < seq_len else max_seq_len - seq_len
+            logps_padded[i, pad_len:] = logps_flat[start_idx:actual_end_idx]
             valid_mask[i, pad_len:] = 1.0
+        return logps_padded, valid_mask
 
+    lengths = seq_lengths.detach().tolist()
+    actual_lengths = []
+    remaining = logps_flat.numel()
+    for seq_len in lengths:
+        actual_lengths.append(min(max(remaining, 0), seq_len))
+        remaining -= seq_len
+
+    logps_flat = logps_flat.to(dtype=dtype)
+    sequences = torch.split(logps_flat[:sum(actual_lengths)], actual_lengths)
+    # Reverse before and after right-padding to support left-padding on older PyTorch versions.
+    logps_padded = pad_sequence([sequence.flip(0) for sequence in sequences], batch_first=True,
+                                padding_value=pad_value).flip(1)
+    if logps_padded.shape[1] < max_seq_len:
+        logps_padded = F.pad(logps_padded, (max_seq_len - logps_padded.shape[1], 0), value=pad_value)
+
+    actual_lengths = torch.tensor(actual_lengths, dtype=torch.long, device=device)
+    positions = torch.arange(max_seq_len, device=device)
+    valid_mask = (positions.unsqueeze(0) >= (max_seq_len - actual_lengths).unsqueeze(1)).to(torch.float32)
     return logps_padded, valid_mask
 
 

@@ -3,6 +3,7 @@ import concurrent.futures
 import inspect
 import logging
 import os
+import sys
 import torch
 import torch.distributed as dist
 from contextlib import contextmanager
@@ -34,6 +35,8 @@ def _patch__batched_p2p_ops():
 def _patch_torch_FileSystemReader():
     from torch.distributed.checkpoint.filesystem import FileSystemReader
     from torch.futures import Future
+    if getattr(FileSystemReader.read_data, '_swift_patched', False):
+        return
     _origin_read_data = FileSystemReader.read_data
     _origin__slice_file = FileSystemReader._slice_file
     READER_MAX_WORKERS = int(os.environ.get('MCORE_READER_MAX_WORKERS', '16'))
@@ -57,20 +60,25 @@ def _patch_torch_FileSystemReader():
             _origin_read_data(self, plan_shard, planner)
 
         prog_bar = tqdm(total=len(plan.items), dynamic_ncols=True, desc='Loading: ')
-        plan_shards = split_list(plan.items, READER_MAX_WORKERS, contiguous=False)
-        with _patch__slice_file(prog_bar):
-            with concurrent.futures.ThreadPoolExecutor(max_workers=READER_MAX_WORKERS) as pool:
-                futures = []
-                for i in range(READER_MAX_WORKERS):
-                    plan_shard = copy(plan)
-                    plan_shard.items = plan_shards[i]
-                    futures.append(pool.submit(_worker, plan_shard))
-                concurrent.futures.wait(futures)
-        prog_bar.close()
+        try:
+            plan_shards = split_list(plan.items, READER_MAX_WORKERS, contiguous=False)
+            with _patch__slice_file(prog_bar):
+                with concurrent.futures.ThreadPoolExecutor(max_workers=READER_MAX_WORKERS) as pool:
+                    futures = []
+                    for i in range(READER_MAX_WORKERS):
+                        plan_shard = copy(plan)
+                        plan_shard.items = plan_shards[i]
+                        futures.append(pool.submit(_worker, plan_shard))
+                    concurrent.futures.wait(futures)
+                    for future in futures:
+                        future.result()
+        finally:
+            prog_bar.close()
         fut: Future = Future()
         fut.set_result(None)
         return fut
 
+    read_data._swift_patched = True
     FileSystemReader.read_data = read_data
 
 
@@ -142,11 +150,59 @@ def _patch_unified_memory():
         cpp_extension.load_inline = load_inline
 
 
+def _patch_vllm_qwen4_exp_config():
+    """Backfill config defaults vLLM's qwen4_exp config class does not declare.
+
+    vLLM ships its own `Qwen4ExpTextConfig` and registers it for the
+    `qwen4_exp_text` model type via `AutoConfig.register(..., exist_ok=True)`,
+    which replaces the Transformers class in the process-wide `CONFIG_MAPPING`.
+    Under colocate GRPO the rollout engine lives in the training process, so every
+    later `AutoConfig.from_pretrained` resolves to vLLM's class -- including the
+    one used to build the dummy HF model when saving. Transformers' own
+    `Qwen4ExpTextNGramEmbedding` then reads `config.seed`, which vLLM's class does
+    not define, and released checkpoints do not carry it either, so saving dies
+    with `AttributeError: 'Qwen4ExpTextConfig' object has no attribute 'seed'`.
+
+    Only class-level defaults are added, and only for names vLLM is missing, so an
+    explicit value from `config.json` still wins (instance `__dict__` takes
+    precedence) and a future vLLM that declares them is left untouched.
+    """
+    if 'vllm' not in sys.modules:
+        return  # vLLM never loaded -> the Transformers class is still in charge
+    try:
+        from transformers.models.auto.configuration_auto import CONFIG_MAPPING
+        # Imported by module path on purpose: AutoConfig lookups already resolve to
+        # vLLM's class at this point, so they cannot supply the reference defaults.
+        from transformers.models.qwen4_exp.configuration_qwen4_exp import Qwen4ExpConfig, Qwen4ExpTextConfig
+        from vllm.transformers_utils.config import _CONFIG_REGISTRY
+    except Exception:
+        return  # no qwen4_exp on either side -> nothing to mirror
+    # vLLM only registers the outer model type it actually loaded; the text config
+    # class is reached through that class's `sub_configs`, never via CONFIG_MAPPING.
+    # So gate on the outer override being live, then fix up both classes.
+    active_outer = CONFIG_MAPPING._extra_content.get('qwen4_exp') if hasattr(CONFIG_MAPPING, '_extra_content') else None
+    if active_outer is None or active_outer is Qwen4ExpConfig:
+        return  # Transformers' class still in charge -> nothing to do
+    for model_type, hf_cls in (('qwen4_exp', Qwen4ExpConfig), ('qwen4_exp_text', Qwen4ExpTextConfig)):
+        try:
+            vllm_cls = _CONFIG_REGISTRY[model_type]  # LazyConfigDict resolves on access
+        except Exception:
+            continue
+        if vllm_cls is hf_cls:
+            continue
+        for name in ('seed', ):
+            if not hasattr(vllm_cls, name) and hasattr(hf_cls, name):
+                setattr(vllm_cls, name, getattr(hf_cls, name))
+                logger.info(f'Backfilled `{name}` default onto vLLM {model_type} config '
+                            f'(vLLM does not declare it; needed by the Transformers modeling code).')
+
+
 def _patch_mcore_bridge():
     import mcore_bridge
     from mcore_bridge import GPTBridge
     logger.info(f'mcore_bridge.__version__: {mcore_bridge.__version__}')
     origin_save_weights = GPTBridge.save_weights
+    origin_parameters = inspect.signature(origin_save_weights).parameters
 
     def save_weights(
         self,
@@ -158,13 +214,14 @@ def _patch_mcore_bridge():
         processor=None,
         save_missing_weights: Union[bool, str] = False,
     ) -> None:
+        kwargs = {}
+        if 'save_missing_weights' in origin_parameters:
+            kwargs['save_missing_weights'] = save_missing_weights
+        elif save_missing_weights:
+            logger.warning('The installed `mcore-bridge` does not support `save_missing_weights`. '
+                           'Please upgrade it via `pip install mcore-bridge -U`. Ignoring this parameter.')
         origin_save_weights(
-            self,
-            mg_models,
-            output_dir,
-            peft_format=peft_format,
-            max_shard_size=max_shard_size,
-            save_missing_weights=save_missing_weights)
+            self, mg_models, output_dir, peft_format=peft_format, max_shard_size=max_shard_size, **kwargs)
         if processor is None or args is None:
             return
         hf_config = self.config.hf_config
@@ -175,6 +232,7 @@ def _patch_mcore_bridge():
                 self.hf_model.model_meta = processor.model_meta
                 self.hf_model.model_info = processor.model_info
             else:
+                _patch_vllm_qwen4_exp_config()
                 with torch.device('meta'), disable_safe_ddp_context_use_barrier():
                     self.hf_model = get_model_processor(
                         args.model_dir, model_type=args.model_type, return_dummy_model=True)[0]

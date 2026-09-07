@@ -101,6 +101,7 @@ class LLMTemplateType:
 
     ling = 'ling'
     ling2 = 'ling2'
+    ling3 = 'ling3'
     ring2 = 'ring2'
     ring2_5 = 'ring2_5'
     yuan = 'yuan'
@@ -130,6 +131,7 @@ class LLMTemplateType:
     youtu_llm = 'youtu_llm'
     olmoe = 'olmoe'
     olmoe_0924 = 'olmoe_0924'
+    spark2_5 = 'spark2_5'
 
 
 class RMTemplateType:
@@ -137,6 +139,7 @@ class RMTemplateType:
 
 
 class MLLMTemplateType:
+    moss_vl = 'moss_vl'
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
@@ -151,6 +154,8 @@ class MLLMTemplateType:
     qwen3_vl_reranker = 'qwen3_vl_reranker'
     qwen3_5 = 'qwen3_5'
     qwen3_8 = 'qwen3_8'
+    qwen3_5_emb = 'qwen3_5_emb'
+    wemm_embedding = 'wemm_embedding'
 
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'
@@ -184,6 +189,7 @@ class MLLMTemplateType:
     llava_next_qwen = 'llava_next_qwen'
     llama3_llava_next = 'llama3_llava_next'
     llava_onevision1_5 = 'llava_onevision1_5'
+    llava_onevision2 = 'llava_onevision2'
 
     yi_vl = 'yi_vl'
     ernie_vl = 'ernie_vl'

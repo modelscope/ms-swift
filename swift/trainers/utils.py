@@ -25,6 +25,31 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
+def accepts_parameter(method, parameter_name: str) -> bool:
+    parameters = inspect.signature(method).parameters
+    if parameter_name in parameters:
+        return True
+    return any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values())
+
+
+def check_dlrover_flash_checkpoint_api(checkpointer_cls, checkpoint_engine_cls):
+    """Report up front when the installed DLRover predates the Flash Checkpoint arguments ms-swift uses.
+
+    The trainer adapts its calls to either API, so this only warns: on the older API the final save is not
+    blocking, which the `wait_latest_checkpoint` call at the end of training covers anyway.
+    """
+    optional_parameters = [
+        (checkpointer_cls.save_checkpoint_to_storage, 'blocking'),
+        (checkpoint_engine_cls.wait_latest_checkpoint, 'max_steps'),
+    ]
+    missing_parameters = [name for method, name in optional_parameters if not accepts_parameter(method, name)]
+    if missing_parameters:
+        missing = ', '.join(missing_parameters)
+        logger.warning(f'The installed DLRover Flash Checkpoint API does not accept: {missing}. ms-swift falls '
+                       'back to the legacy calls; install the latest DLRover source to get the newer API: '
+                       '`pip install git+https://github.com/intelligent-machine-learning/dlrover.git`.')
+
+
 def _get_deepspeed_elastic_world_size():
     if dist.is_available() and dist.is_initialized():
         return dist.get_world_size()
@@ -295,6 +320,31 @@ def disable_gradient_checkpointing(model: PreTrainedModel, gradient_checkpointin
     finally:
         if was_enabled:
             model.gradient_checkpointing_enable(gradient_checkpointing_kwargs)
+
+
+def pad_to_global_max_len(tensor: torch.Tensor, global_max_len: int, padding_value: int = 0) -> torch.Tensor:
+    """Pad a [batch, seq_len] tensor on the right to ``global_max_len``."""
+    if tensor.ndim != 2:
+        return tensor
+    pad_len = global_max_len - tensor.shape[1]
+    if pad_len <= 0:
+        return tensor
+    return F.pad(tensor, (0, pad_len), value=padding_value)
+
+
+def get_ddp_global_max_seq_len(local_seq_len: int, device: torch.device) -> int:
+    """Return the max sequence length across all DDP ranks."""
+    if dist.is_available() and dist.is_initialized():
+        max_len = torch.tensor([local_seq_len], device=device, dtype=torch.long)
+        dist.all_reduce(max_len, op=dist.ReduceOp.MAX)
+        return int(max_len.item())
+    return local_seq_len
+
+
+def pad_for_ddp_gather(tensor: torch.Tensor, padding_value: int = 0) -> torch.Tensor:
+    """Pad predictions/labels so every rank shares the same seq length before DDP gather."""
+    global_max_len = get_ddp_global_max_seq_len(tensor.shape[1], tensor.device)
+    return pad_to_global_max_len(tensor, global_max_len, padding_value=padding_value)
 
 
 def gather_for_unpadded_tensors(input_data, use_gather_object=False):

@@ -17,7 +17,10 @@ if TYPE_CHECKING:
 
 def is_vit_aligner_param(model_arch, parameter_name: str) -> bool:
     for module_prefix in model_arch.vision_tower + model_arch.aligner:
-        if f'.{module_prefix}.' in parameter_name:
+        # An aligner entry may be a bare `nn.Parameter` (not a module), whose name
+        # terminates at the prefix itself; the leading dot keeps the match on exact
+        # dotted-name boundaries for both wrapped and unwrapped models.
+        if f'.{module_prefix}.' in parameter_name or f'.{parameter_name}'.endswith(f'.{module_prefix}'):
             return True
     return False
 

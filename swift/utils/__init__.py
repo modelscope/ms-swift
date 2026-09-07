@@ -12,8 +12,9 @@ if TYPE_CHECKING:
     from .import_utils import (is_flash_attn_2_available, is_flash_attn_3_available, is_liger_available,
                                is_lmdeploy_available, is_megatron_available, is_swanlab_available, is_trl_available,
                                is_unsloth_available, is_vllm_ascend_available, is_vllm_available,
-                               is_vllm_metax_available, is_wandb_available)
-    from .io_utils import JsonlWriter, append_to_jsonl, get_file_mm_type, read_from_jsonl, write_to_jsonl
+                               is_vllm_kunlun_available, is_vllm_metax_available, is_wandb_available)
+    from .io_utils import (LAST_CHECKPOINT_SYMLINK, JsonlWriter, append_to_jsonl, get_file_mm_type, read_from_jsonl,
+                           update_last_checkpoint_symlink, write_to_jsonl)
     from .logger import get_logger, ms_logger_context
     from .np_utils import get_seed, stat_array, transform_jsonl_to_df
     from .processor_utils import Processor, ProcessorMixin
@@ -32,8 +33,9 @@ if TYPE_CHECKING:
                                      get_packed_seq_params, get_position_ids_from_cu_seqlens, seed_worker, show_layers,
                                      unwrap_model_for_generation)
     from .utils import (add_version_to_work_dir, check_json_format, copy_files_by_pattern, deep_getattr, find_free_port,
-                        find_node_ip, format_time, get_env_args, import_external_file, json_parse_to_dict, lower_bound,
-                        parse_args, parse_args_from_dict, patch_getattr, read_multi_line, remove_response,
+                        find_node_ip, format_time, get_env_args, get_external_files, import_external_file,
+                        json_parse_to_dict, lower_bound, parse_args, parse_args_from_dict,
+                        patch_dataloader_external_plugins, patch_getattr, read_multi_line, remove_response,
                         retry_decorator, seed_everything, shutdown_event_loop_in_daemon, split_list,
                         start_event_loop_in_daemon, subprocess_run, swanlab_get_run, test_time, to_abspath, upper_bound)
 else:
@@ -49,9 +51,13 @@ else:
         'import_utils': [
             'is_flash_attn_2_available', 'is_flash_attn_3_available', 'is_liger_available', 'is_lmdeploy_available',
             'is_megatron_available', 'is_swanlab_available', 'is_trl_available', 'is_unsloth_available',
-            'is_vllm_ascend_available', 'is_vllm_available', 'is_vllm_metax_available', 'is_wandb_available'
+            'is_vllm_ascend_available', 'is_vllm_available', 'is_vllm_kunlun_available', 'is_vllm_metax_available',
+            'is_wandb_available'
         ],
-        'io_utils': ['JsonlWriter', 'append_to_jsonl', 'get_file_mm_type', 'read_from_jsonl', 'write_to_jsonl'],
+        'io_utils': [
+            'JsonlWriter', 'LAST_CHECKPOINT_SYMLINK', 'append_to_jsonl', 'get_file_mm_type', 'read_from_jsonl',
+            'update_last_checkpoint_symlink', 'write_to_jsonl'
+        ],
         'logger': ['get_logger', 'ms_logger_context'],
         'np_utils': ['get_seed', 'stat_array', 'transform_jsonl_to_df'],
         'processor_utils': ['Processor', 'ProcessorMixin'],
@@ -73,8 +79,9 @@ else:
         ],
         'utils': [
             'add_version_to_work_dir', 'check_json_format', 'copy_files_by_pattern', 'deep_getattr', 'find_free_port',
-            'find_node_ip', 'format_time', 'get_env_args', 'import_external_file', 'json_parse_to_dict', 'lower_bound',
-            'parse_args', 'parse_args_from_dict', 'patch_getattr', 'read_multi_line', 'remove_response',
+            'find_node_ip', 'format_time', 'get_env_args', 'get_external_files', 'import_external_file',
+            'json_parse_to_dict', 'lower_bound', 'parse_args', 'parse_args_from_dict',
+            'patch_dataloader_external_plugins', 'patch_getattr', 'read_multi_line', 'remove_response',
             'retry_decorator', 'seed_everything', 'shutdown_event_loop_in_daemon', 'split_list',
             'start_event_loop_in_daemon', 'subprocess_run', 'swanlab_get_run', 'test_time', 'to_abspath', 'upper_bound'
         ],
