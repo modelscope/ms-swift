@@ -1,6 +1,5 @@
-from types import SimpleNamespace
-
 from transformers import trainer as hf_trainer
+from types import SimpleNamespace
 
 from swift.trainers.mixin import DataLoaderMixin, SwiftMixin
 
