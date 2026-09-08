@@ -165,6 +165,10 @@ def test_infer_handler_checks_api_key_before_parsing_body():
     asyncio.run(_test_infer_handler_checks_api_key_before_parsing_body())
 
 
+def test_infer_handler_rejects_streaming_before_fetching_media():
+    asyncio.run(_test_infer_handler_rejects_streaming_before_fetching_media())
+
+
 async def _test_media_is_not_fetched_before_authentication():
     deploy = object.__new__(SwiftDeploy)
     deploy.args = SimpleNamespace(
@@ -206,6 +210,38 @@ async def _test_infer_handler_checks_api_key_before_parsing_body():
 
     response = await deploy.infer_handler(RawRequest())
     assert response.status_code == 400
+
+
+async def _test_infer_handler_rejects_streaming_before_fetching_media():
+    deploy = object.__new__(SwiftDeploy)
+    deploy.args = SimpleNamespace(api_key=None)
+
+    async def _infer_async(infer_request, request_config):
+        raise AssertionError('Streaming requests must be rejected before inference.')
+
+    class RawRequest:
+        headers = {}
+
+        async def json(self):
+            return {
+                'infer_requests': [{
+                    'messages': [{
+                        'role': 'user',
+                        'content': '<image>describe'
+                    }],
+                    'images': ['https://example.com/image.jpg'],
+                }],
+                'request_config': {
+                    'stream': True
+                },
+            }
+
+    deploy.infer_async = _infer_async
+    with patch('swift.pipelines.infer.deploy.SafeUrlFetcher.read') as read:
+        response = await deploy.infer_handler(RawRequest())
+
+    assert response.status_code == 400
+    read.assert_not_called()
 
 
 async def _test_infer_handler_materializes_media_for_the_whole_batch():

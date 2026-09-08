@@ -323,6 +323,8 @@ class SwiftDeploy(SwiftInfer):
         infer_requests = [RolloutInferRequest(**r) for r in body.get('infer_requests', [])]
         rc_data = body.get('request_config')
         request_config = RequestConfig(**rc_data) if rc_data else RequestConfig()
+        if request_config.stream:
+            return self.create_error_response(HTTPStatus.BAD_REQUEST, '`/infer/` does not support streaming requests.')
         with ExitStack() as media_stack:
             for infer_request in infer_requests:
                 media_stack.enter_context(self._prepare_request_media(infer_request))
