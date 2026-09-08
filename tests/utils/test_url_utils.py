@@ -1,3 +1,4 @@
+import ipaddress
 import os
 import unittest
 from unittest.mock import MagicMock, patch
@@ -50,6 +51,24 @@ class TestSafeUrlFetcher(unittest.TestCase):
             with self.assertRaises(ValueError):
                 SafeUrlFetcher.check_url(url)
 
+    def test_ambiguous_authorities_are_blocked(self):
+        """Reject syntax for which urllib.parse and requests can disagree about the connection host."""
+        for url in [
+                'http://127.0.0.1\\@example.com/x',
+                'http://example.com\\@127.0.0.1/x',
+                'http://example.com\n@127.0.0.1/x',
+                'http://example.com\x7f@127.0.0.1/x',
+        ]:
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                SafeUrlFetcher.check_url(url)
+
+    def test_obscured_loopback_addresses_are_blocked(self):
+        loopback = ipaddress.ip_address('127.0.0.1')
+        for url in ['http://0177.0.0.1/x', 'http://2130706433/x', 'http://[::ffff:127.0.0.1]/x']:
+            with self.subTest(url=url), patch.object(SafeUrlFetcher, '_resolve', return_value=[loopback]):
+                with self.assertRaises(ValueError):
+                    SafeUrlFetcher.check_url(url)
+
     def test_public_urls_are_allowed(self):
         for url in ['https://www.modelscope.cn/', 'http://example.com/a.png']:
             SafeUrlFetcher.check_url(url)
@@ -61,13 +80,24 @@ class TestSafeUrlFetcher(unittest.TestCase):
 
     def test_allowed_hosts_env(self):
         os.environ['SWIFT_URL_ALLOWED_HOSTS'] = 'mybucket.oss.com, cdn.example.com'
-        SafeUrlFetcher.check_url('http://mybucket.oss.com/x')
-        SafeUrlFetcher.check_url('http://cdn.example.com/x')
+        public_ip = ipaddress.ip_address('93.184.216.34')
+        with patch.object(SafeUrlFetcher, '_resolve', return_value=[public_ip]):
+            SafeUrlFetcher.check_url('http://mybucket.oss.com/x')
+            SafeUrlFetcher.check_url('http://cdn.example.com/x')
         with self.assertRaises(ValueError):
             SafeUrlFetcher.check_url('http://evil.com/x')
-        # Metadata is blocked even if it were (mis)placed in the allowlist path.
-        with self.assertRaises(ValueError):
-            SafeUrlFetcher.check_url('http://169.254.169.254/x')
+
+    def test_metadata_ip_is_blocked_even_when_allowlisted(self):
+        os.environ['SWIFT_URL_ALLOWED_HOSTS'] = '169.254.169.254,100.100.100.200'
+        for url in ['http://169.254.169.254/x', 'http://100.100.100.200/x']:
+            with self.assertRaises(ValueError):
+                SafeUrlFetcher.check_url(url)
+
+    def test_allowlisted_dns_alias_to_metadata_is_blocked(self):
+        os.environ['SWIFT_URL_ALLOWED_HOSTS'] = 'trusted.example'
+        with patch.object(SafeUrlFetcher, '_resolve', return_value=[ipaddress.ip_address('169.254.169.254')]):
+            with self.assertRaises(ValueError):
+                SafeUrlFetcher.check_url('http://trusted.example/latest/meta-data/')
 
     @staticmethod
     def _response(*, is_redirect=False, location=None, content=b'', headers=None):

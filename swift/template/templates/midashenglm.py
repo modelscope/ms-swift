@@ -10,7 +10,7 @@ from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, findall
-from ..vision_utils import load_batch
+from ..vision_utils import load_audio, load_batch
 from .qwen import QwenTemplateMeta
 
 
@@ -28,7 +28,6 @@ class MiDashengLMTemplate(Template):
         return ['<|AUDIO|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from transformers.audio_utils import load_audio
         encoded = super()._encode(inputs)
         input_ids = encoded['input_ids']
         inputs.audios = load_batch(inputs.audios, partial(load_audio, sampling_rate=self.sampling_rate))

@@ -685,35 +685,22 @@ register_model(
 
 
 def _get_new_read_video_func(read_video_func, read_backend):
-    if read_backend == 'torchvision':
 
-        def _new_read_video(ele: dict):
-            from swift.template.vision_utils import _safe_media_input
+    def _new_read_video(ele: dict):
+        from swift.template.vision_utils import local_video_path
 
-            # Resolve the source here so a URL is fetched through SafeUrlFetcher (and a local path checked
-            # against the media-dir allowlist) rather than by torchvision itself, which would otherwise
-            # re-fetch the URL and bypass the SSRF guard. base64 passes through and still hits the
-            # load_file fallback below.
-            ele = {**ele, 'video': _safe_media_input(ele['video'], is_video=True)}
-            try:
-                return read_video_func(ele)
-            except Exception:
-                from swift.template import load_file  # base64
-                ele = {**ele, 'video': load_file(ele['video'])}
-                return read_video_func(ele)
-    else:
-
-        def _new_read_video(ele: dict):
-            from swift.template import load_file
-            ele['video'] = load_file(ele['video'])
-            return read_video_func(ele)
+        # Every qwen_vl_utils backend can hand a string to a network-capable decoder (torchvision, decord or
+        # torchcodec/ffmpeg). Materialize URLs/base64 through the guarded loader and pass an actual local path;
+        # this also avoids the previous torchvision regression where io.read_video received a BytesIO object.
+        with local_video_path(ele['video']) as video_path:
+            return read_video_func({**ele, 'video': video_path})
 
     return _new_read_video
 
 
 def patch_qwen_vl_utils(vision_process):
     if hasattr(vision_process, '_patch'):
-        return
+        return getattr(vision_process, '_swift_patch_globals', {})
     if os.getenv('VIDEO_MAX_PIXELS') and not os.getenv('VIDEO_TOTAL_PIXELS'):
         # https://github.com/QwenLM/Qwen2.5-VL/issues/1120
         os.environ['VIDEO_TOTAL_PIXELS'] = str(int(128000 * 28 * 28 * 0.9))
@@ -758,6 +745,7 @@ def patch_qwen_vl_utils(vision_process):
             elif backends is None:  # keye_vl
                 setattr(vision_process, func_key, _new_read_video)
     vision_process._patch = True
+    vision_process._swift_patch_globals = res
     return res
 
 

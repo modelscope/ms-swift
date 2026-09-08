@@ -112,7 +112,8 @@ class TestRequestMediaPath(unittest.TestCase):
     def _request(url):
         from swift.infer_engine.protocol import ChatCompletionRequest
         return ChatCompletionRequest(
-            model='m', messages=[{
+            model='m',
+            messages=[{
                 'role': 'user',
                 'content': [{
                     'type': 'image_url',
@@ -234,7 +235,6 @@ class TestSafeVideoInput(unittest.TestCase):
 
     def test_frame_list_base64_and_pil_pass_through(self):
         from PIL import Image
-
         from swift.template.vision_utils import _safe_video_input
         b64 = 'data:image/png;base64,aGVsbG8='
         self.assertEqual(_safe_video_input([b64, b64]), [b64, b64])
@@ -243,7 +243,6 @@ class TestSafeVideoInput(unittest.TestCase):
 
     def test_frame_list_url_is_routed_through_the_guarded_loader(self):
         from unittest.mock import patch
-
         from swift.template import vision_utils
         with patch.object(vision_utils, 'load_image', return_value='LOADED') as m:
             out = vision_utils._safe_video_input(['http://127.0.0.1:9/a.png', 'HTTP://127.0.0.1:9/b.png'])
@@ -256,6 +255,166 @@ class TestSafeVideoInput(unittest.TestCase):
         self.assertEqual(_safe_video_input([self.inside]), [self.inside])
         with self.assertRaises(ValueError):
             _safe_video_input([self.outside])
+
+
+class TestGuardedQwenVideoReader(unittest.TestCase):
+
+    def test_every_backend_receives_a_local_path_and_temp_file_is_cleaned(self):
+        from unittest.mock import patch
+        from swift.model.models.qwen import _get_new_read_video_func
+
+        for backend in ['torchvision', 'decord', 'torchcodec']:
+            seen = {}
+
+            def reader(ele):
+                seen['path'] = ele['video']
+                self.assertIsInstance(ele['video'], str)
+                self.assertTrue(os.path.isfile(ele['video']))
+                return backend
+
+            wrapped = _get_new_read_video_func(reader, backend)
+            with patch('swift.utils.url_utils.SafeUrlFetcher.read', return_value=b'video-bytes'):
+                self.assertEqual(wrapped({'video': 'http://example.com/video.mp4'}), backend)
+            self.assertFalse(os.path.exists(seen['path']))
+
+
+class TestThirdPartyMediaIsolation(unittest.TestCase):
+
+    def test_legacy_qwen_vl_does_not_pass_a_remote_url_to_its_tokenizer(self):
+        from io import BytesIO
+        from unittest.mock import patch
+        from PIL import Image
+        from swift.template.templates.qwen import QwenVLTemplate
+
+        image_io = BytesIO()
+        Image.new('RGB', (2, 2)).save(image_io, format='PNG')
+        with patch('swift.utils.url_utils.SafeUrlFetcher.read', return_value=image_io.getvalue()) as read:
+            image = QwenVLTemplate._load_image('http://example.com/image.png', False)
+        self.assertIsInstance(image, Image.Image)
+        read.assert_called_once()
+        with self.assertRaises(ValueError):
+            QwenVLTemplate._load_image('http://169.254.169.254/latest/meta-data/', False)
+
+    def test_transformers_video_loader_only_receives_a_local_path(self):
+        from unittest.mock import patch
+        from swift.template.vision_utils import load_video_hf
+        seen = {}
+
+        def load_video(path, **kwargs):
+            seen['path'] = path
+            self.assertTrue(os.path.isfile(path))
+            return 'frames', 'metadata'
+
+        with patch('swift.utils.url_utils.SafeUrlFetcher.read', return_value=b'video-bytes'):
+            with patch('transformers.video_utils.load_video', side_effect=load_video):
+                videos, metadata = load_video_hf(['http://example.com/video.mp4'])
+        self.assertEqual((videos, metadata), (['frames'], ['metadata']))
+        self.assertFalse(os.path.exists(seen['path']))
+
+    def test_sglang_preprocess_resolves_media_before_the_engine(self):
+        from io import BytesIO
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from PIL import Image
+        from swift.template.base import Template
+        from swift.template.template_inputs import StdTemplateInputs
+
+        image_io = BytesIO()
+        Image.new('RGB', (2, 2)).save(image_io, format='PNG')
+        template = object.__new__(Template)
+        template.model_meta = SimpleNamespace(is_multimodal=False)
+        template.mode = 'sglang'
+        template.load_images = False
+        template.root_image_dir = None
+        template.max_pixels = None
+        template._preprocess_tools = lambda inputs: None
+        template._add_default_tags = lambda inputs: None
+        inputs = StdTemplateInputs(
+            messages=[],
+            images=['http://example.com/image.png'],
+            videos=['http://example.com/video.mp4'],
+            audios=['http://example.com/audio.wav'])
+
+        with patch(
+                'swift.utils.url_utils.SafeUrlFetcher.read',
+                side_effect=[image_io.getvalue(), b'video-bytes', b'audio-bytes']) as read:
+            template._preprocess_inputs(inputs)
+        self.assertIsInstance(inputs.images[0], Image.Image)
+        self.assertEqual(inputs.videos, [b'video-bytes'])
+        self.assertEqual(inputs.audios, [b'audio-bytes'])
+        self.assertEqual(read.call_count, 3)
+
+    def test_midasheng_uses_swift_audio_loader(self):
+        from swift.template import vision_utils
+        from swift.template.templates import midashenglm
+        self.assertIs(midashenglm.load_audio, vision_utils.load_audio)
+
+    def test_qwen_audio_remote_processor_only_sees_a_live_local_path(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from swift.template.base import Template
+        from swift.template.templates.qwen import QwenAudioTemplate
+
+        seen_paths = []
+
+        class Processor:
+
+            def process_audio(self, text):
+                path = text.split('<audio>', 1)[1].split('</audio>', 1)[0]
+                self_test.assertTrue(os.path.isfile(path))
+                seen_paths.append(path)
+
+        self_test = self
+        processor = Processor()
+        template = object.__new__(QwenAudioTemplate)
+        template.processor = processor
+        inputs = SimpleNamespace(audios=['http://example.com/audio.wav'])
+        original_audios = inputs.audios
+
+        def base_encode(current_template, current_inputs):
+            text = ''.join(current_template.replace_tag('audio', 0, current_inputs))
+            current_template.processor.process_audio(text)
+            return {}
+
+        with patch.object(Template, '_encode', base_encode):
+            with patch('swift.utils.url_utils.SafeUrlFetcher.read', return_value=b'audio-bytes'):
+                QwenAudioTemplate._encode(template, inputs)
+        self.assertIs(inputs.audios, original_audios)
+        self.assertEqual(len(seen_paths), 2)
+        self.assertTrue(all(not os.path.exists(path) for path in seen_paths))
+
+    def test_megrez_remote_processor_only_sees_a_live_local_path(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from swift.template.base import Template
+        from swift.template.templates.megrez import MegrezOmniTemplate
+
+        seen_paths = []
+
+        class Processor:
+
+            def process_audio(self, audios, **kwargs):
+                self_test.assertTrue(all(os.path.isfile(path) for path in audios))
+                seen_paths.extend(audios)
+                return {}
+
+            def insert_audio_feature_placeholders(self, text, encoding):
+                return 'audio'
+
+        self_test = self
+        template = object.__new__(MegrezOmniTemplate)
+        template.processor = Processor()
+        template._tokenize = lambda text: [1]
+        template._extend_tokens = lambda input_ids, labels, loss_scale, idx_list, callback: (input_ids, labels,
+                                                                                             loss_scale)
+        inputs = SimpleNamespace(images=[], audios=['http://example.com/audio.wav'])
+        encoded = {'input_ids': [-2], 'labels': [-100], 'loss_scale': None}
+
+        with patch.object(Template, '_encode', return_value=encoded):
+            with patch('swift.utils.url_utils.SafeUrlFetcher.read', return_value=b'audio-bytes'):
+                MegrezOmniTemplate._encode(template, inputs)
+        self.assertEqual(len(seen_paths), 1)
+        self.assertFalse(os.path.exists(seen_paths[0]))
 
 
 if __name__ == '__main__':

@@ -27,7 +27,7 @@ from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, rem
 from .template_inputs import StdTemplateInputs, TemplateInputs
 from .utils import (Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round,
                     get_token_backed_response_ids, split_str_parts_by)
-from .vision_utils import _check_path, load_audio, load_batch, load_image, rescale_image
+from .vision_utils import _check_path, _safe_video_input, load_audio, load_batch, load_file, load_image, rescale_image
 
 logger = get_logger()
 if TYPE_CHECKING:
@@ -428,7 +428,7 @@ class Template(ProcessorMixin):
             self._replace_start_image_tags(inputs)
 
         images = inputs.images
-        load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
+        load_images = self.load_images or self.mode in {'vllm', 'lmdeploy', 'sglang'}
         load_images_origin = load_images
         max_pixels = self._get_max_pixels(inputs)
         if max_pixels is not None or inputs.objects:
@@ -454,10 +454,19 @@ class Template(ProcessorMixin):
         if self.root_image_dir:
             for media_list in (inputs.videos, inputs.audios):
                 for i, media_file in enumerate(media_list):
-                    if isinstance(media_file, str) and not media_file.startswith('http'):
+                    if isinstance(media_file, str) and not re.match(r'https?://', media_file, re.IGNORECASE):
                         media_list[i] = _check_path(media_file) or media_file
 
-        if self.mode == 'vllm' and inputs.audios:
+        if self.mode == 'sglang':
+            # SGLang accepts bytes/PIL inputs but also fetches URL strings itself. Resolve every media value here
+            # so its HTTP client cannot bypass SafeUrlFetcher (including redirects); frame-list videos are loaded
+            # image by image because SGLang accepts those as well.
+            inputs.videos = [_safe_video_input(video) for video in inputs.videos]
+            for media_list in (inputs.videos, inputs.audios):
+                for i, media in enumerate(media_list):
+                    if isinstance(media, (str, bytes)):
+                        media_list[i] = load_file(media).getvalue()
+        elif self.mode == 'vllm' and inputs.audios:
             sampling_rate = get_env_args('sampling_rate', int, None)
             inputs.audios = load_batch(
                 inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate, return_sr=True))

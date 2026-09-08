@@ -5,12 +5,13 @@ from transformers import PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.template import TemplateType
-from swift.utils import git_clone_github, safe_snapshot_download
+from swift.utils import Processor, git_clone_github, safe_snapshot_download
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_get_input_embeddings
 from ..register import ModelLoader, register_model
+from .qwen import patch_qwen_vl_utils
 
 
 class LlavaLlamaHfLoader(ModelLoader):
@@ -421,6 +422,12 @@ register_model(
 
 class LlavaOnevisionLoader(ModelLoader):
 
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from qwen_vl_utils import vision_process
+        processor = super().get_processor(model_dir, config)
+        processor.global_vars = patch_qwen_vl_utils(vision_process)
+        return processor
+
     def get_config(self, model_dir: str) -> PretrainedConfig:
         config = super().get_config(model_dir)
         config.vision_start_token_id = 151652
@@ -463,6 +470,12 @@ class LlavaOnevision2Loader(ModelLoader):
     The model class (LlavaOnevision2ForConditionalGeneration) already
     defines _no_split_modules, so we only set auto_model_cls and patch.
     """
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from qwen_vl_utils import vision_process
+        processor = super().get_processor(model_dir, config)
+        processor.global_vars = patch_qwen_vl_utils(vision_process)
+        return processor
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import AutoModelForImageTextToText

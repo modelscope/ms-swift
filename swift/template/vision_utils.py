@@ -130,7 +130,9 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
     res = path
     if isinstance(path, str):
         path = path.strip()
-        if path.startswith('http'):
+        match = re.match(r'(https?)://', path, re.IGNORECASE)
+        if match:
+            path = match.group(1).lower() + path[len(match.group(1)):]
             timeout = float(os.getenv('SWIFT_TIMEOUT', '20'))
             request_kwargs = {'timeout': timeout} if timeout > 0 else {}
             # Untrusted callers can supply this URL (e.g. media URLs in a `swift deploy` request), so guard
@@ -222,12 +224,14 @@ def load_video_hf(videos: List[str]):
             video = np.stack(video)
             metadata = None
         else:
-            # Case b: Video is provided as a single file path or URL or decoded frames in a np.ndarray or torch.tensor
+            # Case b: Materialize a path/URL before calling transformers.video_utils, whose backends may otherwise
+            # fetch the URL themselves and bypass SafeUrlFetcher (including its redirect checks).
             video_load_backend = get_env_args('video_load_backend', str, 'pyav')
-            video, metadata = load_video(
-                video,
-                backend=video_load_backend,
-            )
+            with local_video_path(video) as local_path:
+                video, metadata = load_video(
+                    local_path,
+                    backend=video_load_backend,
+                )
         res.append(video)
         video_metadata.append(metadata)
     return res, video_metadata
@@ -458,7 +462,10 @@ def _resolve_local_media_path(path: Union[str, bytes], suffix: str) -> tuple:
         return path, False
     if isinstance(path, str):
         path = path.strip()
-        is_remote = path.startswith('http')
+        match = re.match(r'(https?)://', path, re.IGNORECASE)
+        is_remote = match is not None
+        if match:
+            path = match.group(1).lower() + path[len(match.group(1)):]
         checked_path = None if is_remote else _check_path(path)
     else:
         is_remote = False
@@ -579,7 +586,6 @@ def load_video_valley(video: Union[str, bytes]):
 
 def load_video_ovis2(video_path, num_frames):
     from moviepy.editor import VideoFileClip
-
     # moviepy hands the string to ffmpeg, which would fetch a URL / open a local path itself; materialize it
     # through the SSRF- and allowlist-guarded loader first (a temp file for URLs, cleaned up on exit).
     with local_video_path(video_path) as video_path:
@@ -599,7 +605,6 @@ def load_video_ovis2(video_path, num_frames):
 
 def load_video_ovis2_5(video_path, num_frames):
     from moviepy.editor import VideoFileClip
-
     # See load_video_ovis2: route the source through the guarded loader before ffmpeg touches it.
     with local_video_path(video_path) as video_path:
         with VideoFileClip(video_path) as clip:

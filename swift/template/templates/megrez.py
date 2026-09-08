@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 import torch.nn as nn
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
@@ -9,6 +10,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
+from ..vision_utils import local_audio_path
 
 
 @dataclass
@@ -56,10 +58,15 @@ class MegrezOmniTemplate(Template):
                 encoded['image_encoding'] = encoding
             else:
                 idx_list = findall(input_ids, -2)
-                encoding = self.processor.process_audio(
-                    mm_data,
-                    return_tensors='pt',
-                )
+                with ExitStack() as stack:
+                    local_audios = [
+                        stack.enter_context(local_audio_path(audio)) if isinstance(audio, (str, bytes)) else audio
+                        for audio in mm_data
+                    ]
+                    encoding = self.processor.process_audio(
+                        local_audios,
+                        return_tensors='pt',
+                    )
                 text = self.processor.insert_audio_feature_placeholders(
                     '<s>'.join(['(<audio>./</audio>)'] * len(mm_data)), encoding)
                 encoded['audio_encoding'] = encoding

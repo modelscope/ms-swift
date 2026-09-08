@@ -7,6 +7,7 @@ import shutil
 import torch
 import torch.nn.functional as F
 import transformers
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from functools import partial
 from packaging import version
@@ -23,7 +24,7 @@ from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
 from ..vision_utils import (_safe_media_input, _safe_video_input, load_audio, load_batch, load_video_ovis2,
-                            load_video_ovis2_5)
+                            load_video_ovis2_5, local_audio_path)
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
@@ -203,8 +204,14 @@ class QwenVLTemplate(Template):
 
     @staticmethod
     def _load_image(image, load_images: bool):
-        if not load_images and isinstance(image, str) and (image.startswith('data:') or len(image) > 200):
-            load_images = True
+        if not load_images and isinstance(image, str):
+            # Legacy Qwen-VL embeds this value in `<img>...</img>` and its remote tokenizer opens it itself.
+            # Resolve URLs here and enforce the local-path allowlist before that processor sees the value.
+            image = _safe_media_input(image)
+            if not isinstance(image, str):
+                return image
+            if image.startswith('data:') or len(image) > 200:
+                load_images = True
         return Template._load_image(image, load_images)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -245,14 +252,25 @@ class QwenAudioTemplate(Template):
         return super()._tokenize(context, audio_info=audio_info)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = super()._encode(inputs)
-        text = ''.join([f'<audio>{audio}</audio>' for audio in inputs.audios])
-        audio_info = self.processor.process_audio(text)
-        if audio_info:
-            tokenizer_kwargs = {'audio_info': audio_info}
-            encoded.update(tokenizer_kwargs)
-            encoded['tokenizer_kwargs'] = tokenizer_kwargs
-        return encoded
+        original_audios = inputs.audios
+        with ExitStack() as stack:
+            inputs.audios = [
+                stack.enter_context(local_audio_path(audio)) if isinstance(audio, (str, bytes)) else audio
+                for audio in original_audios
+            ]
+            try:
+                # Legacy Qwen-Audio resolves the paths embedded in the prompt inside its remote processor.
+                # Keep any downloaded temporary files alive until both tokenization and processing finish.
+                encoded = super()._encode(inputs)
+                text = ''.join([f'<audio>{audio}</audio>' for audio in inputs.audios])
+                audio_info = self.processor.process_audio(text)
+                if audio_info:
+                    tokenizer_kwargs = {'audio_info': audio_info}
+                    encoded.update(tokenizer_kwargs)
+                    encoded['tokenizer_kwargs'] = tokenizer_kwargs
+                return encoded
+            finally:
+                inputs.audios = original_audios
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)

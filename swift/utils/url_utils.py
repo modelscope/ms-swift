@@ -4,8 +4,8 @@ import requests
 import socket
 from requests.adapters import HTTPAdapter
 from typing import List, Optional, Set, Union
-from urllib3.util.retry import Retry
 from urllib.parse import urljoin, urlparse
+from urllib3.util.retry import Retry
 
 from .utils import get_env_args
 
@@ -26,8 +26,8 @@ class SafeUrlFetcher:
 
     - `SWIFT_ALLOW_INTERNAL_URL=1`: allow private/loopback addresses, e.g. an internal image server used by
       an offline training job. Cloud metadata endpoints stay blocked.
-    - `SWIFT_URL_ALLOWED_HOSTS=host1,host2`: only fetch from these hosts, and trust them regardless of the
-      addresses they resolve to. Recommended when a deployment serves media from a known bucket domain.
+    - `SWIFT_URL_ALLOWED_HOSTS=host1,host2`: only fetch from these hosts. They may resolve to ordinary private
+      addresses, but cloud metadata addresses remain blocked. Recommended for a known media bucket domain.
     - `SWIFT_MAX_DOWNLOAD_SIZE_MB`: cap on the response body, so that a caller cannot exhaust memory (and,
       for video, disk) by pointing the server at an endless response. Set to `0` to disable the cap.
 
@@ -97,7 +97,17 @@ class SafeUrlFetcher:
     @classmethod
     def check_url(cls, url: str) -> None:
         """Raise a ValueError if `url` must not be fetched on behalf of an untrusted caller."""
-        parsed = urlparse(url)
+        if not isinstance(url, str):
+            raise ValueError(f'Refusing to fetch {url!r}: the URL must be a string.')
+        if '\\' in url or any(ord(char) < 32 or ord(char) == 127 for char in url):
+            raise ValueError(f'Refusing to fetch {url!r}: ambiguous URL characters are not allowed.')
+        try:
+            # Validate the URL after applying requests' own normalization. Otherwise urllib.parse and requests
+            # can disagree about the authority (for example, a backslash before `@` can move the real host).
+            prepared_url = requests.Request('GET', url).prepare().url
+        except (requests.RequestException, UnicodeError) as e:
+            raise ValueError(f'Refusing to fetch {url!r}: the URL is invalid ({e}).') from e
+        parsed = urlparse(prepared_url)
         if parsed.scheme.lower() not in cls.ALLOWED_SCHEMES:
             raise ValueError(f'Refusing to fetch {url!r}: only '
                              f'{"/".join(scheme + "://" for scheme in cls.ALLOWED_SCHEMES)} URLs are supported.')
@@ -107,23 +117,22 @@ class SafeUrlFetcher:
         if host in cls.METADATA_HOSTS:
             cls._raise_metadata(url, f'{host!r} is a cloud instance metadata endpoint')
         allowed_hosts = cls._get_allowed_hosts()
-        if allowed_hosts is not None:
-            # An explicit allowlist is an explicit trust decision, so the address checks below are skipped.
-            if host not in allowed_hosts:
-                raise ValueError(f'Refusing to fetch {url!r}: the host {host!r} is not listed in '
-                                 'the `SWIFT_URL_ALLOWED_HOSTS` environment variable.')
-            return
+        if allowed_hosts is not None and host not in allowed_hosts:
+            raise ValueError(f'Refusing to fetch {url!r}: the host {host!r} is not listed in '
+                             'the `SWIFT_URL_ALLOWED_HOSTS` environment variable.')
+        # Resolve allowlisted hosts too: the allowlist may trust a private storage endpoint, but cloud metadata
+        # networks are never trusted, even if an IP literal or a DNS alias was accidentally put in the list.
         for ip in cls._resolve(host):
-            cls._check_ip(url, ip)
+            cls._check_ip(url, ip, allow_internal=allowed_hosts is not None)
 
     @classmethod
-    def _check_ip(cls, url: str, ip: IpAddress) -> None:
+    def _check_ip(cls, url: str, ip: IpAddress, allow_internal: bool = False) -> None:
         if getattr(ip, 'ipv4_mapped', None) is not None:
             ip = ip.ipv4_mapped  # e.g. ::ffff:169.254.169.254
         for network in cls.METADATA_NETWORKS:
             if ip.version == network.version and ip in network:
                 cls._raise_metadata(url, f'it resolves to {ip}, inside the metadata range {network}')
-        if cls._allow_internal_url():
+        if allow_internal or cls._allow_internal_url():
             return
         if not ip.is_global:
             raise ValueError(
