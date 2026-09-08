@@ -130,16 +130,12 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             all_logits, labels, label_pad_token_id=self.label_pad_token_id)
         origin_per_token_logps = per_token_logps
 
-        loss_types = self.loss_type if isinstance(self.loss_type, list) else [self.loss_type]
-        if 'ipo' in loss_types:
-            size_completion = loss_mask.sum(dim=-1)
-            per_token_logps = per_token_logps / size_completion
-
         output = {}
         if self.template.padding_free:
             cu_seqlens = self.get_cu_seqlens(text_position_ids, batch.get('logits_to_keep'))
             num_examples = (cu_seqlens.shape[0] - 1) // 2
             completion_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
+            completion_token_counts = self._packed_sequence_sum(loss_mask.flatten().long(), completion_lengths)
             if self.args.ld_alpha is not None and not is_ref_model:
                 chosen_lengths = completion_lengths[:num_examples]
                 rejected_lengths = completion_lengths[num_examples:]
@@ -160,6 +156,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['mean_rejected_logits'] = mean_all_logits[:, num_tokens:][loss_mask[:, num_tokens:]].mean()
         else:
             num_examples = labels.shape[0] // 2
+            completion_token_counts = loss_mask.sum(dim=1)
             if not is_ref_model:
                 output['nll_loss'] = -origin_per_token_logps[:num_examples][loss_mask[:num_examples]].mean()
             if self.args.ld_alpha is not None and not is_ref_model:
@@ -189,6 +186,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['rejected_logps'] = all_logps[num_examples:]
             output['mean_chosen_logits'] = mean_all_logits[:num_examples][loss_mask[:num_examples]].mean()
             output['mean_rejected_logits'] = mean_all_logits[num_examples:][loss_mask[num_examples:]].mean()
+        output['chosen_completion_token_counts'] = completion_token_counts[:num_examples]
+        output['rejected_completion_token_counts'] = completion_token_counts[num_examples:]
         if self.aux_loss_enabled:
             output['aux_loss'] = outputs.aux_loss
         return output
@@ -203,6 +202,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             else:
                 ref_model_output = self.concatenated_forward(self.ref_model, batch, is_ref_model=True)
         return ref_model_output['chosen_logps'], ref_model_output['rejected_logps']
+
+    @staticmethod
+    def _get_ipo_sequence_logps(sequence_logps, completion_token_counts):
+        return sequence_logps / completion_token_counts.to(sequence_logps).clamp_min(1)
 
     def dpo_loss(
         self,
@@ -361,11 +364,22 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         loss_types = self.loss_type if isinstance(self.loss_type, list) else [self.loss_type]
         loss_weights = self.loss_weights if hasattr(self, 'loss_weights') and self.loss_weights else None
         for idx, loss_type in enumerate(loss_types):
+            chosen_logps = model_output['chosen_logps']
+            rejected_logps = model_output['rejected_logps']
+            current_ref_chosen_logps = ref_chosen_logps
+            current_ref_rejected_logps = ref_rejected_logps
+            if loss_type == 'ipo':
+                chosen_token_counts = model_output['chosen_completion_token_counts']
+                rejected_token_counts = model_output['rejected_completion_token_counts']
+                chosen_logps = self._get_ipo_sequence_logps(chosen_logps, chosen_token_counts)
+                rejected_logps = self._get_ipo_sequence_logps(rejected_logps, rejected_token_counts)
+                current_ref_chosen_logps = self._get_ipo_sequence_logps(ref_chosen_logps, chosen_token_counts)
+                current_ref_rejected_logps = self._get_ipo_sequence_logps(ref_rejected_logps, rejected_token_counts)
             _losses, _chosen_rewards, _rejected_rewards = self.dpo_loss(
-                model_output['chosen_logps'],
-                model_output['rejected_logps'],
-                ref_chosen_logps,
-                ref_rejected_logps,
+                chosen_logps,
+                rejected_logps,
+                current_ref_chosen_logps,
+                current_ref_rejected_logps,
                 loss_type,
                 model_output,
             )
@@ -395,6 +409,12 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             self.accelerator.gather_for_metrics(model_output['chosen_logps']).detach().mean().item())
         metrics[f'{prefix}logps/rejected'] = (
             self.accelerator.gather_for_metrics(model_output['rejected_logps']).detach().mean().item())
+        if 'ipo' in loss_types:
+            for key in ['chosen', 'rejected']:
+                mean_logps = self._get_ipo_sequence_logps(model_output[f'{key}_logps'],
+                                                          model_output[f'{key}_completion_token_counts'])
+                metrics[f'{prefix}logps_mean/{key}'] = (
+                    self.accelerator.gather_for_metrics(mean_logps).detach().mean().item())
         metrics[f'{prefix}logits/chosen'] = (
             self.accelerator.gather_for_metrics(model_output['mean_chosen_logits']).detach().mean().item())
         metrics[f'{prefix}logits/rejected'] = (

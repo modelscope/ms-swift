@@ -3,6 +3,7 @@ import concurrent.futures
 import inspect
 import logging
 import os
+import sys
 import torch
 import torch.distributed as dist
 from contextlib import contextmanager
@@ -149,6 +150,53 @@ def _patch_unified_memory():
         cpp_extension.load_inline = load_inline
 
 
+def _patch_vllm_qwen4_exp_config():
+    """Backfill config defaults vLLM's qwen4_exp config class does not declare.
+
+    vLLM ships its own `Qwen4ExpTextConfig` and registers it for the
+    `qwen4_exp_text` model type via `AutoConfig.register(..., exist_ok=True)`,
+    which replaces the Transformers class in the process-wide `CONFIG_MAPPING`.
+    Under colocate GRPO the rollout engine lives in the training process, so every
+    later `AutoConfig.from_pretrained` resolves to vLLM's class -- including the
+    one used to build the dummy HF model when saving. Transformers' own
+    `Qwen4ExpTextNGramEmbedding` then reads `config.seed`, which vLLM's class does
+    not define, and released checkpoints do not carry it either, so saving dies
+    with `AttributeError: 'Qwen4ExpTextConfig' object has no attribute 'seed'`.
+
+    Only class-level defaults are added, and only for names vLLM is missing, so an
+    explicit value from `config.json` still wins (instance `__dict__` takes
+    precedence) and a future vLLM that declares them is left untouched.
+    """
+    if 'vllm' not in sys.modules:
+        return  # vLLM never loaded -> the Transformers class is still in charge
+    try:
+        from transformers.models.auto.configuration_auto import CONFIG_MAPPING
+        # Imported by module path on purpose: AutoConfig lookups already resolve to
+        # vLLM's class at this point, so they cannot supply the reference defaults.
+        from transformers.models.qwen4_exp.configuration_qwen4_exp import Qwen4ExpConfig, Qwen4ExpTextConfig
+        from vllm.transformers_utils.config import _CONFIG_REGISTRY
+    except Exception:
+        return  # no qwen4_exp on either side -> nothing to mirror
+    # vLLM only registers the outer model type it actually loaded; the text config
+    # class is reached through that class's `sub_configs`, never via CONFIG_MAPPING.
+    # So gate on the outer override being live, then fix up both classes.
+    active_outer = CONFIG_MAPPING._extra_content.get('qwen4_exp') if hasattr(CONFIG_MAPPING, '_extra_content') else None
+    if active_outer is None or active_outer is Qwen4ExpConfig:
+        return  # Transformers' class still in charge -> nothing to do
+    for model_type, hf_cls in (('qwen4_exp', Qwen4ExpConfig), ('qwen4_exp_text', Qwen4ExpTextConfig)):
+        try:
+            vllm_cls = _CONFIG_REGISTRY[model_type]  # LazyConfigDict resolves on access
+        except Exception:
+            continue
+        if vllm_cls is hf_cls:
+            continue
+        for name in ('seed', ):
+            if not hasattr(vllm_cls, name) and hasattr(hf_cls, name):
+                setattr(vllm_cls, name, getattr(hf_cls, name))
+                logger.info(f'Backfilled `{name}` default onto vLLM {model_type} config '
+                            f'(vLLM does not declare it; needed by the Transformers modeling code).')
+
+
 def _patch_mcore_bridge():
     import mcore_bridge
     from mcore_bridge import GPTBridge
@@ -184,6 +232,7 @@ def _patch_mcore_bridge():
                 self.hf_model.model_meta = processor.model_meta
                 self.hf_model.model_info = processor.model_info
             else:
+                _patch_vllm_qwen4_exp_config()
                 with torch.device('meta'), disable_safe_ddp_context_use_barrier():
                     self.hf_model = get_model_processor(
                         args.model_dir, model_type=args.model_type, return_dummy_model=True)[0]

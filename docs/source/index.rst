@@ -67,6 +67,7 @@ Swift DOCUMENTATION
    BestPractices/Qwen3-Best-Practice.md
    BestPractices/Qwen3-VL-Best-Practice.md
    BestPractices/Qwen3_8-Best-Practice.md
+   BestPractices/Qwen3_8-Flash-Next-Best-Practice.md
    BestPractices/deepseek-v4.md
    BestPractices/MLLM-Registration.md
    BestPractices/Embedding.md

@@ -1299,7 +1299,9 @@ class SwiftMixin:
         def skip_first_batches(dataloader, num_batches=0):
             if isinstance(dataloader, (DataLoaderShard, DataLoaderDispatcher)):
                 # DataLoaderMixin
-                return self.get_train_dataloader(skip_batches=num_batches)
+                new_dataloader = self.get_train_dataloader(skip_batches=num_batches)
+                self._restore_dataloader_epoch(dataloader, new_dataloader)
+                return new_dataloader
             else:
                 return origin_skip_first_batches(dataloader, num_batches)
 
@@ -1308,6 +1310,30 @@ class SwiftMixin:
             yield
         finally:
             trainer.skip_first_batches = origin_skip_first_batches
+
+    @staticmethod
+    def _restore_dataloader_epoch(dataloader, new_dataloader) -> None:
+        """Keep the in-progress epoch's permutation when rebuilding a dataloader.
+
+        HF Trainer applies ``set_epoch`` to the original dataloader before
+        ``skip_first_batches`` (transformers <= 4.x). The rebuilt dataloader would
+        otherwise replay the epoch-0 permutation and re-train already-seen samples
+        (https://github.com/modelscope/ms-swift/issues/10050).
+        """
+        sampler = getattr(dataloader, 'batch_sampler', None)
+        while sampler is not None and not hasattr(sampler, 'set_epoch'):
+            # Unwrap e.g. accelerate's SkipBatchSampler.
+            sampler = getattr(sampler, 'batch_sampler', None)
+        epoch = None
+        if sampler is not None:
+            curr_seed = getattr(sampler, 'curr_seed', None)
+            base_seed = getattr(sampler, 'base_seed', None)
+            if curr_seed is not None and base_seed is not None:
+                epoch = curr_seed - base_seed
+            else:
+                epoch = getattr(sampler, 'epoch', None)
+        if epoch is not None and hasattr(new_dataloader, 'set_epoch'):
+            new_dataloader.set_epoch(epoch)
 
 
 class DataLoaderMixin:
