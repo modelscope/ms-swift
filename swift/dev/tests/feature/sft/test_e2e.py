@@ -1020,3 +1020,173 @@ def test_run_sft_hf_dp_loss_is_globally_token_weighted(tmp_path):
     assert rel < 0.02, (f'dp2 loss {got:.6f} is not the global token-weighted mean {ref:.6f} (rel={rel:.2e}, limit '
                         '2e-2): the two shapes trained on the same two samples, so this gap is an aggregation '
                         'convention difference, not noise')
+
+
+def _accel_device_count() -> int:
+    """Accelerator count, CUDA or NPU -- the cuda-only gates above all skip on an Ascend machine."""
+    if torch.cuda.is_available():
+        return torch.cuda.device_count()
+    try:
+        import torch_npu  # noqa: F401
+        return torch.npu.device_count() if torch.npu.is_available() else 0
+    except ImportError:
+        return 0
+
+
+def _flash_attn_available() -> bool:
+    """Flash attention per twinkle's SP gate (transformers' is_flash_attn_available, which counts
+    torch_npu/torch_xpu as flash-capable -- is_flash_attn_2_available alone would skip on Ascend)."""
+    try:
+        from transformers.modeling_flash_attention_utils import is_flash_attn_available
+        return is_flash_attn_available()
+    except Exception:
+        return False
+
+
+def _run_hf_sp_shape(shape, data_path, out_dir, result_prefix, padding_free, port_offset, nproc=None, sp_size=2):
+    """Launch the hf_sp runner for ONE shape; returns one result dict per rank. Sibling of
+    _run_hf_shape -- sp2 goes through torchrun (2 ranks, half a sequence each), single is a plain
+    process. nproc overrides the rank count (torchrun x4 + sp_size=2 is the hybrid dp+sp layout)."""
+    import sys
+
+    if nproc is None:
+        nproc = 2 if shape == 'sp2' else 1
+    runner = Runners.path('hf_sp')
+    cmd = [sys.executable]
+    if nproc > 1:
+        cmd += [
+            '-m', 'torch.distributed.run', f'--nproc_per_node={nproc}', f'--master_port={_master_port(port_offset)}'
+        ]
+    cmd += [runner, '--shape', shape, '--data', data_path, '--out', result_prefix, '--out_dir', out_dir]
+    if padding_free:
+        cmd += ['--padding_free']
+    if sp_size != 2:
+        cmd += ['--sp_size', str(sp_size)]
+    out, err = _run_torchrun(cmd)
+
+    results = []
+    for rank in range(nproc):
+        path = f'{result_prefix}.rank{rank}.json'
+        if not os.path.exists(path):
+            raise AssertionError(f'{shape} runner produced no result for rank {rank}. stdout tail:\n{out[-2000:]}\n'
+                                 f'stderr tail:\n{err[-3000:]}')
+        with open(path) as f:
+            results.append(json.load(f))
+    return results
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('padding_free', [False, True])
+def test_run_sft_hf_sp_matches_single(tmp_path, padding_free):
+    """sp=2 transformers SFT must report the SAME loss as a single-process run on the same batch.
+
+    Ulysses SP is a pure re-partition: both SP ranks receive identical samples (the loader slices by
+    data_world_size = world/ulysses) and each computes half of every sequence, then twinkle's
+    gather_loss_tensors reassembles the global token-weighted loss. So the sp2 loss must land on the
+    single-process loss within bf16 band, exactly like the dp2 aggregation test above.
+
+    padding_free=False runs the padded path (default sdpa kernel, portable); padding_free=True runs
+    the variable-length path, which twinkle's SP strategy gates on a flash attention kernel -- that
+    parametrization skips where flash-attn is unavailable.
+
+    Three assertion groups, mirroring the dp2 test:
+      - plumbing: mesh ulysses_size==2, data_world_size==1, sp_strategy constructed after training;
+      - cross-rank identity: both SP ranks report the same loss (the gather replicated it);
+      - value: sp2 loss ~= single-process loss (rel < 2e-2 band, same as dp2).
+    """
+    if _accel_device_count() < 2:
+        pytest.skip('needs >=2 accelerators')
+    if padding_free and not _flash_attn_available():
+        pytest.skip('padding_free + SP requires flash attention (flash_attn/torch_npu), not available')
+
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_toy_dataset(data_path)
+    port_offset = 12 if padding_free else 11
+    tag = 'pf' if padding_free else 'pad'
+
+    sp2 = _run_hf_sp_shape('sp2', data_path, str(tmp_path / f'sp2_{tag}_out'), str(tmp_path / f'sp2_{tag}'),
+                           padding_free, port_offset)
+    single = _run_hf_sp_shape('single', data_path, str(tmp_path / f'single_{tag}_out'),
+                              str(tmp_path / f'single_{tag}'), padding_free, port_offset + 2)
+
+    print(f'\nHF sp (padding_free={padding_free}): sp2={[r["losses"] for r in sp2]} single={single[0]["losses"]}')
+    for r in sp2:
+        assert r['ulysses_size'] == 2, (
+            f'rank {r["rank"]}: mesh ulysses_size={r["ulysses_size"]}, not 2 -- the SP mesh did not '
+            'reach TransformersModel (build_hf_device_mesh / device_mesh kwarg broken)')
+        assert r['data_world_size'] == 1, (
+            f'rank {r["rank"]}: data_world_size={r["data_world_size"]}, not world/ulysses=1 -- the '
+            'loader would hand SP peers different samples')
+        assert r['enable_sp'], f'rank {r["rank"]}: model._enable_sp is False -- SP did not activate'
+        assert r['sp_strategy_present'], (
+            f'rank {r["rank"]}: sp_strategy never constructed -- the first-forward lazy init did not run')
+
+    assert sp2[0]['losses'] == sp2[1]['losses'], (
+        f'SP ranks disagree: rank0={sp2[0]["losses"]} rank1={sp2[1]["losses"]} -- gather_loss_tensors '
+        'did not replicate the loss across the SP group')
+
+    ref, got = single[0]['losses'][0], sp2[0]['losses'][0]
+    rel = abs(got - ref) / max(abs(ref), 1e-8)
+    assert rel < 0.02, (f'sp2 loss {got:.6f} != single-process loss {ref:.6f} (rel={rel:.2e}, limit 2e-2): SP is '
+                        'a pure re-partition over the same global batch, so this gap is a real split/gather '
+                        'bug, not noise')
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('padding_free', [False, True])
+def test_run_sft_hf_sp_hybrid_dp(tmp_path, padding_free):
+    """Hybrid layout: torchrun x4 with sp=2 -- world=4, ulysses=2, so data_world_size=2 and the two
+    SP groups train on DIFFERENT data slices (twinkle data_rank = dp_rank // ulysses_size: ranks
+    {0,1} -> data 0, ranks {2,3} -> data 1). Baseline: torchrun x2 with sp=1 (pure DP, world=2) --
+    with shuffle off the sampler hands data_rank d the same rows in both runs, so hybrid rank 2d
+    must report the baseline rank d loss (within bf16 band), and each SP pair must agree exactly.
+
+    Assertion groups:
+      - plumbing: ulysses_size==2, data_world_size==2, data_rank == rank//2, sp_strategy present;
+      - SP-pair identity: rank0==rank1 and rank2==rank3 losses (gather replicated within the group);
+      - value: hybrid rank0 ~= dp2 rank0, hybrid rank2 ~= dp2 rank1 (rel < 2e-2, same band as the
+        sp2-vs-single and dp2 aggregation tests).
+    """
+    if _accel_device_count() < 4:
+        pytest.skip('needs >=4 accelerators for the world=4 / sp=2 hybrid layout')
+    if padding_free and not _flash_attn_available():
+        pytest.skip('padding_free + SP requires flash attention (flash_attn/torch_npu), not available')
+
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_toy_dataset(data_path)
+    port_offset = 14 if padding_free else 13
+    tag = 'pf' if padding_free else 'pad'
+
+    hybrid = _run_hf_sp_shape(
+        'sp2', data_path, str(tmp_path / f'hybrid_{tag}_out'), str(tmp_path / f'hybrid_{tag}'), padding_free,
+        port_offset, nproc=4)
+    dp2 = _run_hf_sp_shape(
+        'single', data_path, str(tmp_path / f'dp2_{tag}_out'), str(tmp_path / f'dp2_{tag}'), padding_free,
+        port_offset + 2, nproc=2)
+
+    print(f'\nHF sp hybrid (padding_free={padding_free}): '
+          f'hybrid={[r["losses"] for r in hybrid]} dp2={[r["losses"] for r in dp2]}')
+    for r in hybrid:
+        assert r['world_size'] == 4 and r['ulysses_size'] == 2, (
+            f'rank {r["rank"]}: world={r["world_size"]} ulysses={r["ulysses_size"]} -- expected the '
+            'world=4 / sp=2 hybrid mesh')
+        assert r['data_world_size'] == 2, (
+            f'rank {r["rank"]}: data_world_size={r["data_world_size"]}, not world/ulysses=2 -- the '
+            'loader layout did not switch to the hybrid mesh')
+        assert r['data_rank'] == r['rank'] // 2, (
+            f'rank {r["rank"]}: data_rank={r["data_rank"]}, expected rank//2={r["rank"] // 2} -- '
+            'data_rank = dp_rank // ulysses_size mapping broken; SP peers would see different samples')
+        assert r['enable_sp'] and r['sp_strategy_present'], (
+            f'rank {r["rank"]}: SP did not activate (enable_sp={r["enable_sp"]}, '
+            f'sp_strategy={r["sp_strategy_present"]})')
+
+    assert hybrid[0]['losses'] == hybrid[1]['losses'] and hybrid[2]['losses'] == hybrid[3]['losses'], (
+        f'SP pairs disagree: {[r["losses"] for r in hybrid]} -- gather_loss_tensors did not replicate '
+        'the loss within each SP group')
+
+    for h_rank, d_rank in ((0, 0), (2, 1)):
+        ref, got = dp2[d_rank]['losses'][0], hybrid[h_rank]['losses'][0]
+        rel = abs(got - ref) / max(abs(ref), 1e-8)
+        assert rel < 0.02, (
+            f'hybrid rank{h_rank} loss {got:.6f} != dp2 rank{d_rank} loss {ref:.6f} (rel={rel:.2e}, '
+            'limit 2e-2): same data slice, SP a pure re-partition -- a real gap is a split/gather bug')
