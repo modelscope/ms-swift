@@ -4,6 +4,13 @@ from functools import wraps
 from transformers import AutoConfig, AutoTokenizer, PretrainedConfig, PreTrainedTokenizerBase
 
 
+def register_uembed_model():
+    from vllm import ModelRegistry
+    if 'UEmbedForConditionalGeneration' not in ModelRegistry.get_supported_archs():
+        ModelRegistry.register_model('UEmbedForConditionalGeneration',
+                                     'swift.infer_engine.vllm_uembed:UEmbedForConditionalGeneration')
+
+
 @contextmanager
 def patch_auto_tokenizer(tokenizer: PreTrainedTokenizerBase):
     _old_from_pretrained = AutoTokenizer.from_pretrained

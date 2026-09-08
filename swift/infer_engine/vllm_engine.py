@@ -221,6 +221,9 @@ class VllmEngine(InferEngine):
                 ignore_patterns=getattr(template.model_meta, 'ignore_patterns', None),
                 hub_token=hub_token)
         super().__init__(template)
+        self._uembed_num_eos_tokens = (
+            getattr(template, 'num_eos_tokens', 0)
+            if self.task_type == 'embedding' and self.model_meta.model_type == 'qwen3_5_emb' else None)
         if max_model_len is not None:
             self.max_model_len = max_model_len
             logger.info(f'Setting max_model_len: {max_model_len}')
@@ -348,6 +351,13 @@ class VllmEngine(InferEngine):
         arch_mapping = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM'], 'chatglm4v': ['GLM4VForCausalLM']}
         if self.model_meta.model_type in arch_mapping:
             hf_overrides['architectures'] = arch_mapping[self.model_meta.model_type]
+        if self._uembed_num_eos_tokens is not None:
+            from vllm.config import PoolerConfig
+
+            from .patch import register_uembed_model
+            register_uembed_model()
+            hf_overrides['architectures'] = ['UEmbedForConditionalGeneration']
+            engine_kwargs['pooler_config'] = PoolerConfig(task='token_embed', pooling_type='ALL')
         hf_overrides.update(self._get_hf_config_overrides())
         if hf_overrides:
             engine_kwargs['hf_overrides'] = hf_overrides
@@ -497,11 +507,15 @@ class VllmEngine(InferEngine):
                 pooling_kwargs = {}
                 if has_task_arg:
                     pooling_kwargs['task'] = task_mapping[self.task_type]
+                if self._uembed_num_eos_tokens is not None:
+                    pooling_kwargs.update(task='token_embed', use_activation=False)
                 if self.task_type in ('reranker', 'generative_reranker') and \
                         has_activation_arg and self.reranker_use_activation:
                     pooling_kwargs['activation'] = True
                 pooling_params = PoolingParams(**pooling_kwargs)
-                return self.engine.encode(llm_inputs, pooling_params, request_id)
+                if self.use_async_engine:
+                    return self.engine.encode(llm_inputs, pooling_params, request_id, **kwargs)
+                return self.engine.add_request(request_id, llm_inputs, pooling_params, **kwargs)
             elif self.use_async_engine:
                 return self.engine.generate(llm_inputs, generation_config, request_id, **kwargs)
             else:
@@ -696,7 +710,11 @@ class VllmEngine(InferEngine):
 
     def _create_embedding_response(self, result, generation_config, request_id) -> EmbeddingResponse:
         assert result is not None
-        embedding = result.outputs.data.cpu().numpy().tolist()
+        embedding = result.outputs.data
+        if self._uembed_num_eos_tokens is not None:
+            embedding = torch.nn.functional.normalize(
+                embedding[-(self._uembed_num_eos_tokens + 1)].float(), p=2, dim=-1)
+        embedding = embedding.cpu().tolist()
         usage_info = self._get_usage_info(len(result.prompt_token_ids), 0)
         return EmbeddingResponse(
             model=self.model_name, data=[EmbeddingResponseData(embedding=embedding)], usage=usage_info, id=request_id)
@@ -709,6 +727,8 @@ class VllmEngine(InferEngine):
         request_id,
     ) -> ChatCompletionResponse:
         assert result is not None
+        if self.task_type == 'embedding':
+            return self._create_embedding_response(result, None, request_id)
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
         choices = []
