@@ -7,10 +7,10 @@
 如果你是第一次在 NPU 上使用 ms-swift，推荐按以下顺序阅读：
 
 1. 先查看“支持范围速览”，确认模型、算法和后端是否已验证。
-2. 根据“选择你的使用路线”决定只装基础环境，还是额外安装 MindSpeed/Megatron-SWIFT。
+2. 根据“选择你的使用路线”决定只装基础环境，还是额外安装 Megatron/MegatronAdaptor/TransformerEngineNPU。
 3. 根据自己的环境管理习惯选择“本地环境安装”或“镜像/容器环境安装”，然后执行“NPU 可用性检查”。
 4. 使用“快速跑通”完成一次 ModelScope 模型 LoRA 训练、合并、推理和部署。
-5. 需要更大规模训练时，再阅读 DDP、DeepSpeed 和 MindSpeed/Megatron-SWIFT 相关章节。
+5. 需要更大规模训练时，再阅读 DDP、DeepSpeed 和 Megatron 相关章节。
 
 ## 硬件配套和支持的操作系统
 
@@ -58,7 +58,7 @@ vLLM-Ascend 需要与 CANN、torch 和 torch_npu 按整套兼容矩阵安装，�
 |          | FSDP                | 已支持   |
 |          | FSDP2               | 已支持   |
 |          | DeepSpeed           | 已支持   |
-|          | MindSpeed(Megatron) | 已支持   |
+|          | Megatron (MCore 0.18 + MegatronAdaptor) | 已支持   |
 | 低参微调 | FULL                | 已支持   |
 |          | LoRA                | 已支持   |
 |          | QLoRA               | 暂不支持 |
@@ -125,12 +125,12 @@ vLLM-Ascend 需要与 CANN、torch 和 torch_npu 按整套兼容矩阵安装，�
 
 ## 选择你的使用路线
 
-| 场景                         | 推荐路线                                      | 是否需要 MindSpeed |
-| ---------------------------- | --------------------------------------------- | ------------------ |
-| 只做普通 SFT/LoRA/推理       | 本地环境安装或镜像/容器环境安装              | 不需要             |
-| 需要 Megatron-SWIFT 大模型训练 | 先装基础环境，再装 MindSpeed/Megatron/mcore-bridge | 需要               |
-| 需要 GRPO/PPO/DPO 等 RLHF    | 基础训练环境 + vLLM-Ascend rollout/deploy     | 通常不需要         |
-| 只是验证 NPU 是否可用        | 跑 NPU 可用性检查脚本                         | 不需要             |
+| 场景                         | 推荐路线                                      | 是否需要 MegatronAdaptor |
+| ---------------------------- | --------------------------------------------- | ------------------------ |
+| 只做普通 SFT/LoRA/推理       | 本地环境安装或镜像/容器环境安装              | 不需要                  |
+| 需要 Megatron 大模型训练    | 先装基础环境，再装 MCore 0.18、MegatronAdaptor、TransformerEngineNPU 和 mcore-bridge | 需要 |
+| 需要 GRPO/PPO/DPO 等 RLHF    | 基础训练环境 + vLLM-Ascend rollout/deploy     | 通常不需要              |
+| 只是验证 NPU 是否可用        | 跑 NPU 可用性检查脚本                         | 不需要                  |
 
 ## 环境准备
 
@@ -240,74 +240,67 @@ print(torch.npu.device_count())  # 8
 print(torch.randn(10, device='npu:0'))
 ```
 
-### MindSpeed/Megatron-SWIFT 可选安装
+### MegatronAdaptor + TransformerEngineNPU 可选安装
 
-如果需要使用 MindSpeed(Megatron-LM)，请按照下面引导安装必要依赖。
+NPU Megatron 路径固定使用 MCore 0.18、MegatronAdaptor、TransformerEngineNPU 和 mcore-bridge，不安装或导入 MindSpeed。下面的命令对应当前首个准入环境：Python 3.12、CANN 9.1 beta、torch/torch_npu 2.10。
 
 ```shell
-# 1. 获取并切换 Megatron-LM 至 v0.16.0 版本
-git clone https://github.com/NVIDIA/Megatron-LM.git
-cd Megatron-LM
-git checkout core_v0.16.0
-cd ..
+export SWIFT_ROOT=/home/zyh/code
+export MEGATRON_LM_PATH=$SWIFT_ROOT/Megatron-LM
+export PYTHONPATH=$SWIFT_ROOT/Megatron-LM:$SWIFT_ROOT/MegatronAdaptor:$SWIFT_ROOT/TransformerEngineNPU:$SWIFT_ROOT/mcore-bridge/src:$SWIFT_ROOT/ms-swift:$PYTHONPATH
+# 可选：设置为 0 使用 transformers GDN；默认值 1 使用 MCore GDN。
+# export USE_MCORE_GDN=0
 
-# 2. 获取并安装 MindSpeed
-git clone https://gitcode.com/Ascend/MindSpeed.git
-cd MindSpeed
-git checkout core_r0.16.0
-pip install -e .
-cd ..
+# 固定 checkout：Megatron-LM core_v0.18.0 ba7b5ebce12a，
+# MegatronAdaptor core_r0.18.0 2a164d4548e2，
+# TransformerEngineNPU main 0a389a677586，mcore-bridge adapt_018_main c820ed47960e
+cd $SWIFT_ROOT/Megatron-LM && git checkout ba7b5ebce12a
+cd $SWIFT_ROOT/MegatronAdaptor && git checkout 2a164d4548e2
+cd $SWIFT_ROOT/TransformerEngineNPU && git checkout 0a389a677586
+cd $SWIFT_ROOT/mcore-bridge && git checkout c820ed47960e
 
-# 3. 获取并安装 mcore-bridge
-git clone https://github.com/modelscope/mcore-bridge.git
-cd mcore-bridge
-pip install -e .
-cd ..
-
-# 4. 获取并安装 triton-ascend
-pip install triton-ascend==3.2.1 --extra-index-url=https://triton-ascend.osinfra.cn/pypi/simple
-
-# 5. 设置环境变量
-export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
-export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
-
-# 6. 如需回退到 transformers 的 GatedDeltaNet 实现，可关闭 Megatron GDN
-export USE_MCORE_GDN=0
+# 先安装与 torch 2.10 配套的 Python 依赖，再对本地 checkout 使用 no-build-isolation/no-deps。
+# Qwen3.5 的 Transformers loader 需要 FLA 的导出符号；其 NPU backend 也来自该 checkout。
+python -m pip install 'packaging>=26.2' transformers==5.12.1 torchvision==0.25.0 torchaudio==2.10.0 nvdlfw-inspect 'qwen-vl-utils>=0.0.14'
+python -m pip install -e $SWIFT_ROOT/flash-linear-attention --no-build-isolation --no-deps
+python -m pip install -e $SWIFT_ROOT/Megatron-LM --no-build-isolation --no-deps
+python -m pip install -e $SWIFT_ROOT/MegatronAdaptor --no-build-isolation --no-deps
+python -m pip install -e $SWIFT_ROOT/TransformerEngineNPU --no-build-isolation --no-deps
+python -m pip install -e $SWIFT_ROOT/mcore-bridge --no-build-isolation --no-deps
+python -m pip install -e $SWIFT_ROOT/ms-swift --no-build-isolation --no-deps
 ```
 
-执行如下命令验证 MindSpeed(Megatron-LM) 是否配置成功：
+固定的 `mcore-bridge` 提交已包含 TransformerEngineNPU main 的 NPU LoRA `LayerNormLinear`、GroupedLinear/expert 和 checkpoint 映射适配，不依赖未提交的 working-tree patch。
+
+配套 bridge 修复同时删除了 MindSpeed defaults 探测。准入条件应同时检查 `find_spec('mindspeed') is None`、`mindspeed` 不在 `sys.modules`，并确认 bridge 运行时代码中不存在 MindSpeed 引用。
+
+验证时应按代表性 dense、GDN、MoE 拓扑分别记录完整命令、源码 SHA、版本、实际拓扑、日志、退出码以及 pass/framework failure/environment failure/capacity failure 分类；不要把两步 smoke 或单元测试结果当成长跑验收。
+
+验证时要同时检查源码归属和 MindSpeed 缺失；只检查 `import` 成功不足以证明运行时绑定正确：
+
 ```shell
-python -c "import mindspeed.megatron_adaptor; from swift.megatron.init import init_megatron_env; init_megatron_env(); print('✓ NPU环境下的Megatron-SWIFT配置验证成功！')"
+python - <<'PY'
+import importlib.util
+import megatron_adaptor, megatron.core, transformer_engine, mcore_bridge, fla
+from swift.megatron.init import init_megatron_env
+init_megatron_env()
+for module in (megatron_adaptor, megatron.core, transformer_engine, mcore_bridge):
+    print(module.__name__, module.__file__)
+assert '/home/zyh/code/' in megatron_adaptor.__file__
+assert '/home/zyh/code/' in megatron.core.__file__
+assert '/home/zyh/code/' in transformer_engine.__file__
+assert '/home/zyh/code/' in mcore_bridge.__file__
+assert '/home/zyh/code/' in fla.__file__
+assert importlib.util.find_spec('mindspeed') is None
+print('NPU MegatronAdaptor/MCore 0.18 environment verified')
+PY
 ```
 
-### Qwen3.5 FLA补丁说明
+### Qwen3.5 MCore GDN 说明
 
-Qwen3.5 在昇腾 NPU 上直接使用 `flash-linear-attention`（FLA）的原生 Triton-Ascend GDN backend。ms-swift 不再内置或维护一份 MindSpeed `chunk_gated_delta_rule` 副本。
+Qwen3.5 的 Megatron NPU 路径默认使用 MCore 0.18 的 `GatedDeltaNet`（GDN，门控 DeltaNet 状态空间层），由 MegatronAdaptor 提供 NPU 所需的 Torch-native causal-conv、GDN 和归一化替换。`USE_MCORE_GDN` 仍然有效：设为 `1` 使用 MCore GDN，设为 `0` 选择 transformers GDN；它是模型实现选择项，与本次 0.18 依赖迁移无关。
 
-ms-swift 只保留两处 NPU 兼容处理：
-
-1. Transformers 的 FLA 可用性检查包含 CUDA 条件，ms-swift 会在 NPU 上按 FLA 的公共 causal-conv 与 GDN 入口是否可导入补充判断。具体 NPU backend 的选择与校验由 FLA 自己负责。
-2. Transformers 当前使用 `torch.cuda.current_device()` 初始化 `FusedRMSNormGated`，因此 NPU 上仍保留 Qwen3.5 原生 torch norm；这不影响 GDN 使用 FLA。
-
-可以将这条调用链理解为：
-
-```text
-Qwen3.5 modeling.chunk_gated_delta_rule
-    -> fla.ops.gated_delta_rule.chunk_gated_delta_rule
-    -> fla.ops.gated_delta_rule.backends.triton_ascend
-```
-
-- 当前请安装 FLA main 分支最新版本以获得 NPU GDN 支持。
-- 当前验证环境：torch 2.9.0+cpu、torch-npu 2.9.0.post2、FLA 0.5.2 main、triton-ascend 3.2.1、transformers 5.12.1。
-
-
-当前 Qwen3.5 在 NPU 上如果走 transformers 后端或 Megatron-SWIFT 后端训练，还需要额外注意版本和功能约束：
-
-1. 当前 NPU 文档中约定的 MindSpeed 训练组合是 `Megatron-LM v0.16.0 + MindSpeed core_r0.16.0`。在这个组合下，`mcore-bridge` 默认按 `USE_MCORE_GDN=1` 走 Megatron-Core/MindSpeed GDN；若显式设置 `USE_MCORE_GDN=0`，则走 transformers 版 GDN。该路径会优先尝试使用上述 FLA Triton-Ascend backend；FLA 不可用时仅记录 warning 并保留当前 MindSpeed/Megatron 选择的 GDN 实现，不主动替换为 Torch 实现，因此 FLA 不是普通 Megatron 训练的强依赖。
-
-2. MindSpeed 初始化以及训练参数 `repatch()` 可能会替换 FLA 的公共 GDN 入口。ms-swift 会在构建 `mcore-bridge` 前和 `repatch()` 后，优先从 MindSpeed patch manager 保存的 `orig_func` 恢复 FLA 原始 callable；仅在成功恢复 FLA 时才同步刷新 `mcore-bridge` 已缓存的 callable。如果 FLA 缺失或恢复失败，则不修改当前 GDN callable，并记录 warning。packed/varlen 能力取决于保留的实现；如果它不支持非空 `cu_seqlens`，实际 GDN 调用会直接失败，此时需要安装可用的 FLA。
-
-3. 已在 8 卡 Atlas 900 A2 上完成 Qwen3.5-4B 的 Transformers/FSDP LoRA 验证：BF16、`alpaca-gpt4-data-zh`、`packing=true`、`max_length=512`、每卡 batch size 1、梯度累积 1，共训练 300 steps；全程 loss/grad_norm 为有限值，并成功保存 checkpoint。相同配置下，NPU 与 GPU 对照实验的 loss 变化趋势对齐。
+MCore-bridge 负责把 Qwen3.5/Omni 的模型参数和 packed/padding-free 元数据接到 MCore；CP（context parallel，沿序列维度切分的并行）使用 MCore 0.18 的实现。需要分别验证 dense、GDN、MoE 的 forward/backward、optimizer、packing、CP 和 save/resume；这里的环境安装成功不等于长训练或性能已经验收。
 
 ### 环境查看
 
@@ -754,7 +747,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 
 ### Q2: 训练时应该选择 FSDP、DeepSpeed 还是 Megatron-SWIFT？
 
-普通 SFT 优先参考本文兼容性表中的 `FSDP1/FSDP2/deepspeed` 组合；如果模型规模较大、需要更高并行能力，再使用 Megatron-SWIFT，并按安装章节额外安装 MindSpeed、Megatron-LM 和 mcore-bridge。DeepSpeed 可以降低显存压力，但速度可能下降，遇到性能问题时可以对比 FSDP 方案。
+普通 SFT 优先参考本文兼容性表中的 `FSDP1/FSDP2/deepspeed` 组合；如果模型规模较大、需要更高并行能力，再使用 Megatron，并按安装章节额外安装 MCore 0.18、MegatronAdaptor、TransformerEngineNPU 和 mcore-bridge。DeepSpeed 可以降低显存压力，但速度可能下降，遇到性能问题时可以对比 FSDP 方案。
 
 ### Q3: NPU 模型 Patch 需要手动关闭吗？
 
@@ -824,14 +817,14 @@ python -c "import torch, vllm_ascend; print(torch.__version__); print(vllm_ascen
 
 不要默认可以。下载或加载大模型前，先检查 `config.json` 是否包含 `quantization_config`，再检查 safetensors 的真实 dtype。当前 NPU 支持范围中量化/QLoRA 仍属于暂不支持或未完全验证能力；如果模型权重是 FP8 block quantized，而当前 NPU 软件栈不支持对应 FP8 路径，应先换用 BF16 权重，或离线转换为 BF16 后再训练/加载。
 
-### Q14: Megatron-SWIFT 导入到错误的 Megatron/MindSpeed 怎么排查？
+### Q14: Megatron 导入到错误的 MCore/Adaptor 怎么排查？
 
-跑 Megatron-SWIFT 前，`PYTHONPATH` 和 `MEGATRON_LM_PATH` 必须指向同一份 Megatron-LM 源码树。否则 Python 可能能启动，但实际导入到的是另一套 Megatron/MindSpeed 组合，后续报错会很像模型或参数问题。
+跑 Megatron 前，`PYTHONPATH`、`MEGATRON_LM_PATH` 和本地 MegatronAdaptor/TransformerEngineNPU 路径必须指向同一套 `/home/zyh/code` checkout。否则 Python 可能能启动，但实际导入到的是另一套 MCore/Adaptor 组合，后续报错会很像模型或参数问题。
 
 ```shell
-export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
-export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
-python -c "import megatron, os; print(megatron.__file__); print(os.environ.get('MEGATRON_LM_PATH'))"
+export MEGATRON_LM_PATH=/home/zyh/code/Megatron-LM
+export PYTHONPATH=/home/zyh/code/Megatron-LM:/home/zyh/code/MegatronAdaptor:/home/zyh/code/TransformerEngineNPU:/home/zyh/code/mcore-bridge/src:/home/zyh/code/ms-swift:$PYTHONPATH
+python -c "import importlib.util, megatron_adaptor, megatron.core, transformer_engine, os; print(megatron_adaptor.__file__); print(megatron.core.__file__); print(transformer_engine.__file__); print(os.environ.get('MEGATRON_LM_PATH')); assert importlib.util.find_spec('mindspeed') is None"
 ```
 
 如果二者不一致，先修环境变量，再继续排查模型构建、权重加载或并行配置。
