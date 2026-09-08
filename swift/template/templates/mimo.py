@@ -9,7 +9,7 @@ from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, Word, findall
-from ..vision_utils import _safe_media_input, _safe_video_input, load_audio
+from ..vision_utils import load_audio
 from .utils import ChatmlTemplateMeta
 
 
@@ -78,18 +78,14 @@ class MiMoV2Template(Template):
 
         kwargs = {'image_patch_size': self.processor.image_processor.patch_size}
         if media_type == 'image':
-            inputs.images[index] = fetch_image(
-                {
-                    'image': _safe_media_input(inputs.images[index]),
-                    **inputs.chat_template_kwargs
-                }, **kwargs)
+            inputs.images[index] = fetch_image({'image': inputs.images[index], **inputs.chat_template_kwargs}, **kwargs)
             if self.mode == 'lmdeploy':
                 return ['<|vision_start|>', [-100], '<|vision_end|>']
             return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
             if self.mode == 'sglang':
                 return ['<|vision_start|><|video_pad|><|vision_end|>']
-            video = _safe_video_input(inputs.videos[index])
+            video = inputs.videos[index]
             video_inputs = {'video': video, **inputs.chat_template_kwargs}
             if isinstance(video, list):
                 from qwen_vl_utils import vision_process

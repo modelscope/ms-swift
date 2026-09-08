@@ -4,13 +4,16 @@ import math
 import numpy as np
 import os
 import re
+import requests
 import torch
 from contextlib import contextmanager
 from io import BytesIO
 from PIL import Image
+from requests.adapters import HTTPAdapter
 from typing import Any, Callable, Iterator, List, TypeVar, Union
+from urllib3.util.retry import Retry
 
-from swift.utils import SafeMediaPath, SafeUrlFetcher, get_env_args
+from swift.utils import get_env_args
 
 # >>> internvl
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -105,14 +108,14 @@ def _check_path(path: str) -> Union[str, None]:
     if len(path) > MAX_PATH_HEURISTIC:
         return
     if os.path.exists(path):
-        return SafeMediaPath.check(os.path.abspath(path))
+        return os.path.abspath(path)
     data = path
     ROOT_IMAGE_DIR = get_env_args('ROOT_IMAGE_DIR', str, None)
     if ROOT_IMAGE_DIR is not None:
         path = os.path.join(ROOT_IMAGE_DIR, path)
     path = os.path.abspath(os.path.expanduser(path))
     if os.path.exists(path):
-        return SafeMediaPath.check(path)
+        return path
     if data.startswith('data:'):
         return
     try:
@@ -120,9 +123,6 @@ def _check_path(path: str) -> Union[str, None]:
         return
     except Exception:
         pass
-    # The string is a path that does not exist. It is still checked, so that refusing an outside path looks the
-    # same whether or not the file is there; otherwise the two different errors reveal which paths exist.
-    SafeMediaPath.check(path)
     return data
 
 
@@ -130,14 +130,19 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
     res = path
     if isinstance(path, str):
         path = path.strip()
-        match = re.match(r'(https?)://', path, re.IGNORECASE)
-        if match:
-            path = match.group(1).lower() + path[len(match.group(1)):]
-            timeout = float(os.getenv('SWIFT_TIMEOUT', '20'))
-            request_kwargs = {'timeout': timeout} if timeout > 0 else {}
-            # Untrusted callers can supply this URL (e.g. media URLs in a `swift deploy` request), so guard
-            # against SSRF instead of fetching it directly. See `SafeUrlFetcher`.
-            res = BytesIO(SafeUrlFetcher.read(path, **request_kwargs))
+        if path.startswith('http'):
+            retries = Retry(total=3, backoff_factor=1, allowed_methods=['GET'])
+            with requests.Session() as session:
+                session.mount('http://', HTTPAdapter(max_retries=retries))
+                session.mount('https://', HTTPAdapter(max_retries=retries))
+
+                timeout = float(os.getenv('SWIFT_TIMEOUT', '20'))
+                request_kwargs = {'timeout': timeout} if timeout > 0 else {}
+
+                response = session.get(path, **request_kwargs)
+                response.raise_for_status()
+                content = response.content
+                res = BytesIO(content)
         else:
             data = path
             path = _check_path(path)
@@ -166,42 +171,6 @@ def load_image(image: Union[str, bytes, Image.Image]) -> Image.Image:
     return image
 
 
-def _safe_media_input(value: Any, is_video: bool = False) -> Any:
-    """Sanitize an untrusted media value before handing it to a third-party fetcher/decoder.
-
-    Some templates delegate media loading to libraries that resolve the input themselves
-    (`qwen_vl_utils`/`keye_vl_utils`/`qwen_omni_utils` `fetch_image`/`fetch_video`, torchvision, moviepy).
-    Those would fetch a URL or open a local path on their own, bypassing `SafeUrlFetcher` and the
-    `SWIFT_MEDIA_ALLOWED_DIRS` allowlist. So a URL is fetched here through the guarded loader, and a local
-    path is checked against the allowlist; base64 and already-loaded values (PIL/tensor/list) pass through
-    unchanged, so the downstream library handles them exactly as before.
-    """
-    if not isinstance(value, str):
-        return value
-    stripped = value.strip()
-    # The scheme is case-insensitive, so normalize it; otherwise `HTTP://` would skip the URL branch and be
-    # treated as a local path, and then fetched by the downstream decoder without the SSRF check.
-    match = re.match(r'(https?)://', stripped, re.IGNORECASE)
-    if match:
-        url = match.group(1).lower() + stripped[len(match.group(1)):]
-        return load_file(url) if is_video else load_image(url)
-    _check_path(value)  # raises if a local path is outside the allowlist; base64 passes through as None
-    return value
-
-
-def _safe_video_input(video: Any) -> Any:
-    """Sanitize a video value before handing it to `fetch_video`.
-
-    A single source (a `str`/`bytes` path or URL) is loaded by a patched reader backend, so it is left
-    untouched here. But when the video is a list/tuple of frames, `fetch_video` loads each frame with its
-    own (unpatched) `fetch_image`, which would fetch a URL or open a local path directly. So each frame is
-    routed through `_safe_media_input` (as an image); non-string frames pass through unchanged.
-    """
-    if isinstance(video, (list, tuple)):
-        return [_safe_media_input(frame) for frame in video]
-    return video
-
-
 def load_batch(path_list: List[Union[str, None, Any, BytesIO]],
                load_func: Callable[[Any], _T] = load_image) -> List[_T]:
     res = []
@@ -224,14 +193,12 @@ def load_video_hf(videos: List[str]):
             video = np.stack(video)
             metadata = None
         else:
-            # Case b: Materialize a path/URL before calling transformers.video_utils, whose backends may otherwise
-            # fetch the URL themselves and bypass SafeUrlFetcher (including its redirect checks).
+            # Case b: Video is provided as a single file path or URL or decoded frames in a np.ndarray or torch.tensor
             video_load_backend = get_env_args('video_load_backend', str, 'pyav')
-            with local_video_path(video) as local_path:
-                video, metadata = load_video(
-                    local_path,
-                    backend=video_load_backend,
-                )
+            video, metadata = load_video(
+                video,
+                backend=video_load_backend,
+            )
         res.append(video)
         video_metadata.append(metadata)
     return res, video_metadata
@@ -336,19 +303,12 @@ def _load_audio_librosa(audio: Union[str, bytes], sampling_rate: int, mono: bool
         audio_io = load_file(audio)
         return librosa.load(audio_io, sr=sampling_rate, mono=mono)
     except Exception:
-        if not isinstance(audio, (str, bytes)):
-            # Already a file-like object / ndarray; let librosa handle it directly.
-            return librosa.load(audio, sr=sampling_rate, mono=mono)
-        # Fall back to ffmpeg (via audioread) for containers librosa/soundfile cannot open. Handing a URL
-        # straight to ffmpeg would let it fetch the URL itself, re-resolving the host and following its own
-        # redirects behind the SSRF guard (over any protocol ffmpeg supports). So materialize the input to a
-        # local file through the guarded `load_file` and only ever let ffmpeg open that local file.
-        import audioread
-        with local_audio_path(audio) as audio_path:
-            if not os.path.isfile(audio_path):
-                raise ValueError(f'Cannot load audio from {audio!r}.')
-            audio_io = audioread.ffdec.FFmpegAudioFile(audio_path)
-            return librosa.load(audio_io, sr=sampling_rate, mono=mono)
+        if isinstance(audio, str) and audio.startswith(('http://', 'https://')):
+            import audioread
+            audio_io = audioread.ffdec.FFmpegAudioFile(audio)
+        else:
+            audio_io = _check_path(audio) if isinstance(audio, str) else audio
+        return librosa.load(audio_io, sr=sampling_rate, mono=mono)
 
 
 # ref: https://github.com/vllm-project/vllm/blob/v0.23.0/vllm/multimodal/audio.py#L169-L224
@@ -451,33 +411,25 @@ def load_audio(
     return res if return_sr else res[0]
 
 
-def _resolve_local_media_path(path: Union[str, bytes], suffix: str) -> tuple:
-    """Return a local path, materializing URLs, Data URIs, base64 strings, and bytes when needed.
-
-    Downloading always goes through `load_file`, so a remote URL is fetched by the SSRF guard rather than by
-    the downstream decoder (ffmpeg/OpenCV/decord), which would otherwise re-resolve the host and follow its
-    own redirects. Returns `(path, is_temp)`; when `is_temp` is True the caller owns the temporary file.
-    """
+def _resolve_video_local_path(path: Union[str, bytes]) -> tuple:
+    """Return a local path, materializing URLs, Data URIs, base64 strings, and bytes when needed."""
     if not isinstance(path, (str, bytes)):
         return path, False
     if isinstance(path, str):
         path = path.strip()
-        match = re.match(r'(https?)://', path, re.IGNORECASE)
-        is_remote = match is not None
-        if match:
-            path = match.group(1).lower() + path[len(match.group(1)):]
+        is_remote = path.startswith('http')
         checked_path = None if is_remote else _check_path(path)
     else:
         is_remote = False
         checked_path = None
     if isinstance(path, bytes) or is_remote or checked_path is None:
         import tempfile
-        media_bytes = load_file(path).read()
+        video_bytes = load_file(path).read()
         temp_path = None
         try:
-            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
                 temp_path = f.name
-                f.write(media_bytes)
+                f.write(video_bytes)
             return temp_path, True
         except Exception:
             if temp_path is not None:
@@ -490,8 +442,9 @@ def _resolve_local_media_path(path: Union[str, bytes], suffix: str) -> tuple:
 
 
 @contextmanager
-def _local_media_path(path: Union[str, bytes], suffix: str) -> Iterator[str]:
-    local_path, is_temp = _resolve_local_media_path(path, suffix)
+def local_video_path(path: Union[str, bytes]) -> Iterator[str]:
+    """Materialize a video input as a local path and remove any temporary file afterwards."""
+    local_path, is_temp = _resolve_video_local_path(path)
     try:
         yield local_path
     finally:
@@ -500,20 +453,6 @@ def _local_media_path(path: Union[str, bytes], suffix: str) -> Iterator[str]:
                 os.remove(local_path)
             except OSError:
                 pass
-
-
-@contextmanager
-def local_video_path(path: Union[str, bytes]) -> Iterator[str]:
-    """Materialize a video input as a local path and remove any temporary file afterwards."""
-    with _local_media_path(path, '.mp4') as local_path:
-        yield local_path
-
-
-@contextmanager
-def local_audio_path(path: Union[str, bytes]) -> Iterator[str]:
-    """Materialize an audio input as a local path and remove any temporary file afterwards."""
-    with _local_media_path(path, '') as local_path:
-        yield local_path
 
 
 def _video_to_ndarrays_local(local_path: str, num_frames: int = -1) -> np.ndarray:
@@ -586,29 +525,24 @@ def load_video_valley(video: Union[str, bytes]):
 
 def load_video_ovis2(video_path, num_frames):
     from moviepy.editor import VideoFileClip
-    # moviepy hands the string to ffmpeg, which would fetch a URL / open a local path itself; materialize it
-    # through the SSRF- and allowlist-guarded loader first (a temp file for URLs, cleaned up on exit).
-    with local_video_path(video_path) as video_path:
-        with VideoFileClip(video_path) as clip:
-            total_frames = int(clip.fps * clip.duration)
-            if total_frames <= num_frames:
-                sampled_indices = range(total_frames)
-            else:
-                stride = total_frames / num_frames
-                sampled_indices = [
-                    min(total_frames - 1, int((stride * i + stride * (i + 1)) / 2)) for i in range(num_frames)
-                ]
-            frames = [clip.get_frame(index / clip.fps) for index in sampled_indices]
-            frames = [Image.fromarray(frame, mode='RGB') for frame in frames]
+    with VideoFileClip(video_path) as clip:
+        total_frames = int(clip.fps * clip.duration)
+        if total_frames <= num_frames:
+            sampled_indices = range(total_frames)
+        else:
+            stride = total_frames / num_frames
+            sampled_indices = [
+                min(total_frames - 1, int((stride * i + stride * (i + 1)) / 2)) for i in range(num_frames)
+            ]
+        frames = [clip.get_frame(index / clip.fps) for index in sampled_indices]
+        frames = [Image.fromarray(frame, mode='RGB') for frame in frames]
     return frames
 
 
 def load_video_ovis2_5(video_path, num_frames):
     from moviepy.editor import VideoFileClip
-    # See load_video_ovis2: route the source through the guarded loader before ffmpeg touches it.
-    with local_video_path(video_path) as video_path:
-        with VideoFileClip(video_path) as clip:
-            total_frames = int(clip.fps * clip.duration)
-            indices = [int(i * total_frames / num_frames) for i in range(num_frames)]
-            frames = [Image.fromarray(clip.get_frame(t)) for t in (idx / clip.fps for idx in indices)]
+    with VideoFileClip(video_path) as clip:
+        total_frames = int(clip.fps * clip.duration)
+        indices = [int(i * total_frames / num_frames) for i in range(num_frames)]
+        frames = [Image.fromarray(clip.get_frame(t)) for t in (idx / clip.fps for idx in indices)]
     return frames

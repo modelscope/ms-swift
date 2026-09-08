@@ -10,7 +10,7 @@ from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, findall
-from ..vision_utils import load_batch, load_file, local_audio_path
+from ..vision_utils import load_batch, load_file
 from .qwen import QwenTemplateMeta
 
 
@@ -131,11 +131,7 @@ class StepAudio2MiniTemplate(Template):
         If max_length is provided, truncate the audio to that length
         '''
         import torchaudio
-
-        # `torchaudio.load`, with its ffmpeg backend, would fetch a URL / open a local path itself; route the
-        # source through the guarded loader (SSRF + allowlist) and only hand ffmpeg a local file.
-        with local_audio_path(file_path) as local_path:
-            waveform, sample_rate = torchaudio.load(local_path)
+        waveform, sample_rate = torchaudio.load(file_path)
         if sample_rate != target_rate:
             waveform = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_rate)(waveform)
         audio = waveform[0]  # get the first channel

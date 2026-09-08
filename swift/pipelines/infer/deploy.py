@@ -1,25 +1,31 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import asyncio
+import base64
+import binascii
 import inspect
 import json
 import multiprocessing
+import os
+import re
+import tempfile
 import time
 import uvicorn
 from aiohttp import ClientConnectorError
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import asdict
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from http import HTTPStatus
 from threading import Thread
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
+from urllib.parse import urlsplit
 
 from swift.arguments import DeployArguments, InferArguments
 from swift.infer_engine import AdapterRequest, InferClient, RequestConfig
 from swift.infer_engine.protocol import (ChatCompletionRequest, CompletionRequest, EmbeddingRequest, Model, ModelList,
                                          MultiModalRequestMixin, RolloutInferRequest)
 from swift.metrics import InferStats
-from swift.utils import JsonlWriter, get_logger
+from swift.utils import JsonlWriter, SafeMediaPath, SafeUrlFetcher, get_logger
 from .infer import SwiftInfer
 
 logger = get_logger()
@@ -137,6 +143,68 @@ class SwiftDeploy(SwiftInfer):
         status_code = int(status_code)
         return JSONResponse({'message': message, 'object': 'error'}, status_code)
 
+    @staticmethod
+    def _materialize_media(value: Any, media_type: str, temp_dir: str) -> Any:
+        if isinstance(value, (list, tuple)):
+            item_type = 'image' if media_type == 'video' else media_type
+            return [SwiftDeploy._materialize_media(item, item_type, temp_dir) for item in value]
+        if not isinstance(value, str):
+            return value
+
+        stripped = value.strip()
+        match = re.match(r'(https?)://', stripped, re.IGNORECASE)
+        if match:
+            url = match.group(1).lower() + stripped[len(match.group(1)):]
+            timeout = float(os.getenv('SWIFT_TIMEOUT', '20'))
+            request_kwargs = {'timeout': timeout} if timeout > 0 else {}
+            media_bytes = SafeUrlFetcher.read(url, **request_kwargs)
+            suffix = os.path.splitext(urlsplit(url).path)[1]
+            if not re.fullmatch(r'\.[A-Za-z0-9]{1,10}', suffix):
+                suffix = {'image': '.jpg', 'audio': '.wav', 'video': '.mp4'}[media_type]
+            with tempfile.NamedTemporaryFile(dir=temp_dir, suffix=suffix, delete=False) as f:
+                f.write(media_bytes)
+                return f.name
+
+        scheme = urlsplit(stripped).scheme.lower()
+        if scheme == 'data':
+            return value
+        if scheme:
+            raise ValueError(f'Refusing media URI {value!r}: only http://, https://, and data: are supported.')
+        if os.path.isfile(value):
+            return SafeMediaPath.check(value)
+        try:
+            base64.b64decode(stripped, validate=True)
+            return value
+        except (ValueError, binascii.Error):
+            return SafeMediaPath.check(value)
+
+    @staticmethod
+    @contextmanager
+    def _prepare_request_media(infer_request):
+        with tempfile.TemporaryDirectory(prefix='swift-media-') as temp_dir:
+            for media_type in ('image', 'audio', 'video'):
+                key = f'{media_type}s'
+                values = getattr(infer_request, key, None)
+                if values:
+                    setattr(infer_request, key,
+                            [SwiftDeploy._materialize_media(value, media_type, temp_dir) for value in values])
+
+            for message in infer_request.messages:
+                content = message.get('content')
+                if not isinstance(content, list):
+                    continue
+                for item in content:
+                    key = item.get('type', '')
+                    media_type = key[:-len('_url')] if key.endswith('_url') else key
+                    if media_type not in {'image', 'audio', 'video'} or key not in item:
+                        continue
+                    value = item[key]
+                    if isinstance(value, dict):
+                        value['url'] = SwiftDeploy._materialize_media(value['url'], media_type, temp_dir)
+                    else:
+                        item[key] = SwiftDeploy._materialize_media(value, media_type, temp_dir)
+            yield infer_request
+
     def _post_process(self, request_info, response, return_cmpl_response: bool = False):
         args = self.args
 
@@ -198,26 +266,37 @@ class SwiftDeploy(SwiftInfer):
             return kwargs
 
         infer_kwargs['pre_infer_hook'] = pre_infer_hook
+        media_stack = ExitStack()
         try:
+            media_stack.enter_context(self._prepare_request_media(infer_request))
             res_or_gen = await self.infer_async(infer_request, request_config, **infer_kwargs)
+        except asyncio.CancelledError:
+            media_stack.close()
+            raise
         except Exception as e:
+            media_stack.close()
             import traceback
             logger.info(traceback.format_exc())
             return self.create_error_response(HTTPStatus.BAD_REQUEST, str(e))
         if request_config.stream:
 
             async def _gen_wrapper():
-                async for res in res_or_gen:
-                    res = self._post_process(request_info, res, return_cmpl_response)
-                    yield f'data: {json.dumps(asdict(res), ensure_ascii=False)}\n\n'
-                yield 'data: [DONE]\n\n'
+                try:
+                    async for res in res_or_gen:
+                        res = self._post_process(request_info, res, return_cmpl_response)
+                        yield f'data: {json.dumps(asdict(res), ensure_ascii=False)}\n\n'
+                    yield 'data: [DONE]\n\n'
+                finally:
+                    media_stack.close()
 
             return StreamingResponse(_gen_wrapper(), media_type='text/event-stream')
-        elif hasattr(res_or_gen, 'choices'):
-            # instance of ChatCompletionResponse
-            return self._post_process(request_info, res_or_gen, return_cmpl_response)
-        else:
+        try:
+            if hasattr(res_or_gen, 'choices'):
+                # instance of ChatCompletionResponse
+                return self._post_process(request_info, res_or_gen, return_cmpl_response)
             return res_or_gen
+        finally:
+            media_stack.close()
 
     async def create_completion(self, request: CompletionRequest, raw_request: Request):
         chat_request = ChatCompletionRequest.from_cmpl_request(request)
@@ -232,8 +311,10 @@ class SwiftDeploy(SwiftInfer):
         infer_requests = [RolloutInferRequest(**r) for r in body.get('infer_requests', [])]
         rc_data = body.get('request_config')
         request_config = RequestConfig(**rc_data) if rc_data else RequestConfig()
-        results = await asyncio.gather(*[self.infer_async(req, request_config) for req in infer_requests])
-        return results
+        with ExitStack() as media_stack:
+            for infer_request in infer_requests:
+                media_stack.enter_context(self._prepare_request_media(infer_request))
+            return await asyncio.gather(*[self.infer_async(req, request_config) for req in infer_requests])
 
     def _warn_if_unauthenticated(self):
         """Warn when the service is reachable from other hosts with authentication disabled.

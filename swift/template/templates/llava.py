@@ -11,7 +11,7 @@ from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from ..vision_utils import _safe_media_input, _safe_video_input, load_video_llava
+from ..vision_utils import load_video_llava
 from .llama import Llama3TemplateMeta
 from .qwen import QwenTemplateMeta
 from .utils import ChatmlTemplateMeta
@@ -333,13 +333,13 @@ class LLavaOneVision1_5Template(Template):
         from qwen_vl_utils import fetch_image, fetch_video
         assert media_type in {'image', 'video'}
         if media_type == 'image':
-            inputs.images[index] = fetch_image({'image': _safe_media_input(inputs.images[index])})
+            inputs.images[index] = fetch_image({'image': inputs.images[index]})
             if self.mode == 'lmdeploy':
                 return ['<|vision_start|>', [-100], '<|vision_end|>']
             else:
                 return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
-            video = _safe_video_input(inputs.videos[index])
+            video = inputs.videos[index]
             video, video_kwargs = fetch_video({'video': video}, return_video_sample_fps=True)
             inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
             tokens = ['<|vision_start|><|video_pad|><|vision_end|>']

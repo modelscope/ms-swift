@@ -24,8 +24,8 @@ class SafeUrlFetcher:
     hop at a time so that a public URL cannot bounce the request into the internal network. Two environment
     variables relax the checks for trusted setups:
 
-    - `SWIFT_ALLOW_INTERNAL_URL=1`: allow private/loopback addresses, e.g. an internal image server used by
-      an offline training job. Cloud metadata endpoints stay blocked.
+    - `SWIFT_ALLOW_INTERNAL_URL=1`: allow private/loopback addresses, e.g. a trusted internal media server
+      used by a deployment. Cloud metadata endpoints stay blocked.
     - `SWIFT_URL_ALLOWED_HOSTS=host1,host2`: only fetch from these hosts. They may resolve to ordinary private
       addresses, but cloud metadata addresses remain blocked. Recommended for a known media bucket domain.
     - `SWIFT_MAX_DOWNLOAD_SIZE_MB`: cap on the response body, so that a caller cannot exhaust memory (and,

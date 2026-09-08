@@ -7,7 +7,6 @@ import shutil
 import torch
 import torch.nn.functional as F
 import transformers
-from contextlib import ExitStack
 from dataclasses import dataclass, field
 from functools import partial
 from packaging import version
@@ -23,8 +22,7 @@ from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
-from ..vision_utils import (_safe_media_input, _safe_video_input, load_audio, load_batch, load_video_ovis2,
-                            load_video_ovis2_5, local_audio_path)
+from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
@@ -204,14 +202,8 @@ class QwenVLTemplate(Template):
 
     @staticmethod
     def _load_image(image, load_images: bool):
-        if not load_images and isinstance(image, str):
-            # Legacy Qwen-VL embeds this value in `<img>...</img>` and its remote tokenizer opens it itself.
-            # Resolve URLs here and enforce the local-path allowlist before that processor sees the value.
-            image = _safe_media_input(image)
-            if not isinstance(image, str):
-                return image
-            if image.startswith('data:') or len(image) > 200:
-                load_images = True
+        if not load_images and isinstance(image, str) and (image.startswith('data:') or len(image) > 200):
+            load_images = True
         return Template._load_image(image, load_images)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -252,25 +244,14 @@ class QwenAudioTemplate(Template):
         return super()._tokenize(context, audio_info=audio_info)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        original_audios = inputs.audios
-        with ExitStack() as stack:
-            inputs.audios = [
-                stack.enter_context(local_audio_path(audio)) if isinstance(audio, (str, bytes)) else audio
-                for audio in original_audios
-            ]
-            try:
-                # Legacy Qwen-Audio resolves the paths embedded in the prompt inside its remote processor.
-                # Keep any downloaded temporary files alive until both tokenization and processing finish.
-                encoded = super()._encode(inputs)
-                text = ''.join([f'<audio>{audio}</audio>' for audio in inputs.audios])
-                audio_info = self.processor.process_audio(text)
-                if audio_info:
-                    tokenizer_kwargs = {'audio_info': audio_info}
-                    encoded.update(tokenizer_kwargs)
-                    encoded['tokenizer_kwargs'] = tokenizer_kwargs
-                return encoded
-            finally:
-                inputs.audios = original_audios
+        encoded = super()._encode(inputs)
+        text = ''.join([f'<audio>{audio}</audio>' for audio in inputs.audios])
+        audio_info = self.processor.process_audio(text)
+        if audio_info:
+            tokenizer_kwargs = {'audio_info': audio_info}
+            encoded.update(tokenizer_kwargs)
+            encoded['tokenizer_kwargs'] = tokenizer_kwargs
+        return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
@@ -357,11 +338,7 @@ class Qwen2VLTemplate(Template):
             # ref: https://github.com/modelscope/ms-swift/issues/8445
             inputs.mm_processor_kwargs['do_resize'] = False
         if media_type == 'image':
-            inputs.images[index] = fetch_image(
-                {
-                    'image': _safe_media_input(inputs.images[index]),
-                    **inputs.chat_template_kwargs
-                }, **kwargs)
+            inputs.images[index] = fetch_image({'image': inputs.images[index], **inputs.chat_template_kwargs}, **kwargs)
             if self.mode == 'lmdeploy':
                 return ['<|vision_start|>', [-100], '<|vision_end|>']
             else:
@@ -369,7 +346,7 @@ class Qwen2VLTemplate(Template):
         else:
             if self.version == 'v3':
                 kwargs['return_video_metadata'] = True
-            video = _safe_video_input(inputs.videos[index])
+            video = inputs.videos[index]
             video_inputs = {'video': video, **inputs.chat_template_kwargs}
             if isinstance(video, list):  # image list
                 from qwen_vl_utils import vision_process
@@ -914,11 +891,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             # https://github.com/modelscope/ms-swift/issues/8445
             inputs.mm_processor_kwargs['do_resize'] = False
         if media_type == 'image':
-            inputs.images[index] = fetch_image(
-                {
-                    'image': _safe_media_input(inputs.images[index]),
-                    **inputs.chat_template_kwargs
-                }, **kwargs)
+            inputs.images[index] = fetch_image({'image': inputs.images[index], **inputs.chat_template_kwargs}, **kwargs)
             if self.version == 'omni_v2_5':
                 return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
             elif self.version == 'omni_v3':
@@ -931,7 +904,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             elif self.version == 'omni_v3':
                 return ['<|audio_start|><|audio_pad|><|audio_end|>']
         elif media_type == 'video':
-            video = _safe_video_input(inputs.videos[index])
+            video = inputs.videos[index]
             video_inputs = {'video': video, **inputs.chat_template_kwargs}
             if isinstance(video, list):  # image list
                 from qwen_omni_utils import vision_process

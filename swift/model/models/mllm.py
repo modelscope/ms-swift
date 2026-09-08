@@ -393,12 +393,6 @@ register_model(
 
 class MimoV2Loader(ModelLoader):
 
-    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
-        from qwen_vl_utils import vision_process
-        processor = super().get_processor(model_dir, config)
-        processor.global_vars = patch_qwen_vl_utils(vision_process)
-        return processor
-
     def _postprocess_model(self, model_dir, model):
         super()._postprocess_model(model_dir, model)
         audio_tokenizer_dir = os.path.join(model_dir, 'audio_tokenizer')

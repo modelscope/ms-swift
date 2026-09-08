@@ -344,7 +344,8 @@ class ChatCompletionRequest(RequestConfig, MultiModalRequestMixin, ChatCompletio
                 if isinstance(value, dict):
                     is_dict = True
                     value = value['url']
-                if isinstance(value, str) and (value.startswith('data:') or value.startswith('http')
+                if isinstance(value, str) and (value.startswith('data:')
+                                               or value.strip().lower().startswith(('http://', 'https://'))
                                                or len(value) > 200):
                     continue
 
