@@ -1,5 +1,7 @@
+import importlib.util
 import sys
 import unittest
+from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
 
@@ -44,6 +46,22 @@ class TestImportUtils(unittest.TestCase):
             self.assertIs(trl_import_utils.is_weave_available(), False)
             self.assertIs(trl_import_utils._is_package_available, patched_package_check)
             self.assertEqual(trl_import_utils._is_package_available('vllm', return_version=True), (True, '1.0.0'))
+
+    def test_patch_trl_package_check_runs_on_import(self):
+
+        def package_check(package, return_version=False):
+            if return_version:
+                return True, '1.0.0'
+            return package != 'weave', None
+
+        modules = self.make_trl_modules(package_check)
+        module_path = Path(__file__).parents[2] / 'swift/utils/import_utils.py'
+        spec = importlib.util.spec_from_file_location('_isolated_swift_import_utils', module_path)
+        isolated_import_utils = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, modules):
+            spec.loader.exec_module(isolated_import_utils)
+
+            self.assertIs(modules['trl.import_utils'].is_weave_available(), False)
 
     def test_patch_trl_package_check_is_noop_for_bool_return(self):
 

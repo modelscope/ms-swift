@@ -90,6 +90,9 @@ def patch_trl_package_check() -> None:
     trl_import_utils._is_package_available = compatible_package_check
 
 
+patch_trl_package_check()
+
+
 class _LazyModule(ModuleType):
     """
     Module class that surfaces all objects but only performs associated imports when the objects are requested.

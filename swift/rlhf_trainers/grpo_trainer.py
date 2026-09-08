@@ -15,9 +15,6 @@ try:
 except ImportError:
     pass
 
-# https://github.com/modelscope/ms-swift/pull/8280
-from swift.utils.import_utils import patch_trl_package_check
-patch_trl_package_check()
 # fmt: on
 
 import concurrent.futures
