@@ -16,6 +16,10 @@ def _run_e2e():
         if world_size != 2:
             raise AssertionError(f'This smoke test expects 2 ranks, got {world_size}')
 
+        # Each global sequence is divisible by 2 * world_size, which is
+        # required by the existing zigzag layout. Eight packed sequences give
+        # a nine-element cu_seqlens, so this E2E exercises the vectorized
+        # LSE extraction path rather than the bounded loop.
         lengths = [4, 8, 12, 16, 8, 12, 4, 8]
         cu_seqlens = torch.tensor([0, 4, 12, 24, 40, 48, 60, 64, 72], dtype=torch.int32, device='cuda')
         local_tokens = sum(lengths) // world_size
@@ -41,7 +45,8 @@ def _run_e2e():
         if not torch.isfinite(output).all().item():
             raise AssertionError('Ring attention output contains non-finite values')
 
-        output.float().square().mean().backward()
+        loss = output.float().square().mean()
+        loss.backward()
         for name, gradient in (('dq', q.grad), ('dk', k.grad), ('dv', v.grad)):
             if gradient is None:
                 raise AssertionError(f'{name} was not produced')
@@ -50,6 +55,7 @@ def _run_e2e():
             if not torch.isfinite(gradient).all().item():
                 raise AssertionError(f'{name} contains non-finite values')
 
+        print(f'rank={local_rank} output={tuple(output.shape)} loss={loss.item():.6f}')
         dist.barrier()
     finally:
         if dist.is_initialized():
