@@ -53,8 +53,10 @@ def test_prepare_request_media_materializes_all_url_locations():
 
     with patch('swift.pipelines.infer.deploy.SafeUrlFetcher.read', return_value=b'media') as read:
         with SwiftDeploy._prepare_request_media(request):
-            paths = [request.images[0], request.audios[0], *request.videos[0],
-                     request.messages[0]['content'][0]['image_url']['url']]
+            paths = [
+                request.images[0], request.audios[0], *request.videos[0],
+                request.messages[0]['content'][0]['image_url']['url']
+            ]
             assert all(os.path.isfile(path) for path in paths)
             assert all(Path(path).read_bytes() == b'media' for path in paths)
         assert read.call_count == 5
@@ -74,6 +76,33 @@ def test_prepare_request_media_preserves_inline_media():
     with tempfile.TemporaryDirectory() as temp_dir:
         for value in ('aGVsbG8=', 'data:image/png;base64,aGVsbG8='):
             assert SwiftDeploy._materialize_media(value, 'image', temp_dir) == value
+
+
+def test_prepare_request_media_materializes_bytes_path_dict():
+    url = 'https://example.com/image.jpg'
+    media_objects = [
+        ({
+            'bytes': None,
+            'path': url
+        }, 'path'),
+        ({
+            'bytes': url,
+            'path': None
+        }, 'bytes'),
+        ({
+            'path': url
+        }, 'path'),
+    ]
+    with tempfile.TemporaryDirectory() as temp_dir:
+        for media, source_key in media_objects:
+            with patch('swift.pipelines.infer.deploy.SafeUrlFetcher.read', return_value=b'image'):
+                result = SwiftDeploy._materialize_media(media, 'image', temp_dir)
+            assert result is media
+            assert os.path.isfile(result[source_key])
+            assert Path(result[source_key]).read_bytes() == b'image'
+
+        with pytest.raises(ValueError, match='expected a url, bytes, or path field'):
+            SwiftDeploy._materialize_media({'unexpected': url}, 'image', temp_dir)
 
 
 async def _test_streaming_response_keeps_media_until_stream_finishes():
@@ -103,7 +132,10 @@ async def _test_streaming_response_keeps_media_until_stream_finishes():
     deploy.infer_async = _infer_async
     request = ChatCompletionRequest(
         model='test',
-        messages=[{'role': 'user', 'content': '<image>describe'}],
+        messages=[{
+            'role': 'user',
+            'content': '<image>describe'
+        }],
         images=['https://example.com/image.jpg'],
         stream=True,
     )
@@ -129,6 +161,10 @@ def test_infer_handler_materializes_media_for_the_whole_batch():
     asyncio.run(_test_infer_handler_materializes_media_for_the_whole_batch())
 
 
+def test_infer_handler_checks_api_key_before_parsing_body():
+    asyncio.run(_test_infer_handler_checks_api_key_before_parsing_body())
+
+
 async def _test_media_is_not_fetched_before_authentication():
     deploy = object.__new__(SwiftDeploy)
     deploy.args = SimpleNamespace(
@@ -144,7 +180,10 @@ async def _test_media_is_not_fetched_before_authentication():
     deploy._check_model = _check_model
     request = ChatCompletionRequest(
         model='test',
-        messages=[{'role': 'user', 'content': '<image>describe'}],
+        messages=[{
+            'role': 'user',
+            'content': '<image>describe'
+        }],
         images=['https://example.com/image.jpg'],
     )
 
@@ -155,8 +194,23 @@ async def _test_media_is_not_fetched_before_authentication():
     read.assert_not_called()
 
 
+async def _test_infer_handler_checks_api_key_before_parsing_body():
+    deploy = object.__new__(SwiftDeploy)
+    deploy.args = SimpleNamespace(api_key='secret')
+
+    class RawRequest:
+        headers = {}
+
+        async def json(self):
+            raise AssertionError('Unauthorized requests must be rejected before parsing the body.')
+
+    response = await deploy.infer_handler(RawRequest())
+    assert response.status_code == 400
+
+
 async def _test_infer_handler_materializes_media_for_the_whole_batch():
     deploy = object.__new__(SwiftDeploy)
+    deploy.args = SimpleNamespace(api_key=None)
     captured_paths = []
 
     async def _infer_async(infer_request, request_config):
@@ -165,11 +219,15 @@ async def _test_infer_handler_materializes_media_for_the_whole_batch():
         return 'ok'
 
     class RawRequest:
+        headers = {}
 
         async def json(self):
             return {
                 'infer_requests': [{
-                    'messages': [{'role': 'user', 'content': '<image>describe'}],
+                    'messages': [{
+                        'role': 'user',
+                        'content': '<image>describe'
+                    }],
                     'images': ['https://example.com/image.jpg'],
                 }]
             }

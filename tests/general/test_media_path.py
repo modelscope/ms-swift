@@ -104,8 +104,7 @@ class TestRequestMediaPath(unittest.TestCase):
     def _request(url):
         from swift.infer_engine.protocol import ChatCompletionRequest
         return ChatCompletionRequest(
-            model='m',
-            messages=[{
+            model='m', messages=[{
                 'role': 'user',
                 'content': [{
                     'type': 'image_url',

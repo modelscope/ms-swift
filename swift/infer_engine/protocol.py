@@ -344,10 +344,10 @@ class ChatCompletionRequest(RequestConfig, MultiModalRequestMixin, ChatCompletio
                 if isinstance(value, dict):
                     is_dict = True
                     value = value['url']
-                if isinstance(value, str) and (value.startswith('data:')
-                                               or value.strip().lower().startswith(('http://', 'https://'))
-                                               or len(value) > 200):
-                    continue
+                if isinstance(value, str):
+                    is_remote = value.strip().lower().startswith(('http://', 'https://'))
+                    if value.startswith('data:') or is_remote or len(value) > 200:
+                        continue
 
                 # local_path / PIL.Image
                 if isinstance(value, str):

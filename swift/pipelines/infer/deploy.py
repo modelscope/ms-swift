@@ -148,6 +148,19 @@ class SwiftDeploy(SwiftInfer):
         if isinstance(value, (list, tuple)):
             item_type = 'image' if media_type == 'video' else media_type
             return [SwiftDeploy._materialize_media(item, item_type, temp_dir) for item in value]
+        if isinstance(value, dict):
+            if 'url' in value:
+                source_key = 'url'
+            elif value.get('bytes'):
+                source_key = 'bytes'
+            elif 'path' in value:
+                source_key = 'path'
+            elif 'bytes' in value:
+                source_key = 'bytes'
+            else:
+                raise ValueError(f'Refusing media object {value!r}: expected a url, bytes, or path field.')
+            value[source_key] = SwiftDeploy._materialize_media(value[source_key], media_type, temp_dir)
+            return value
         if not isinstance(value, str):
             return value
 
@@ -198,11 +211,7 @@ class SwiftDeploy(SwiftInfer):
                     media_type = key[:-len('_url')] if key.endswith('_url') else key
                     if media_type not in {'image', 'audio', 'video'} or key not in item:
                         continue
-                    value = item[key]
-                    if isinstance(value, dict):
-                        value['url'] = SwiftDeploy._materialize_media(value['url'], media_type, temp_dir)
-                    else:
-                        item[key] = SwiftDeploy._materialize_media(value, media_type, temp_dir)
+                    item[key] = SwiftDeploy._materialize_media(item[key], media_type, temp_dir)
             yield infer_request
 
     def _post_process(self, request_info, response, return_cmpl_response: bool = False):
@@ -307,6 +316,9 @@ class SwiftDeploy(SwiftInfer):
         return await self.create_chat_completion(chat_request, raw_request, return_cmpl_response=True)
 
     async def infer_handler(self, raw_request: Request):
+        error_msg = self._check_api_key(raw_request)
+        if error_msg:
+            return self.create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
         body = await raw_request.json()
         infer_requests = [RolloutInferRequest(**r) for r in body.get('infer_requests', [])]
         rc_data = body.get('request_config')
