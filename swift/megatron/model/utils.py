@@ -3,7 +3,6 @@ from dataclasses import fields
 from mcore_bridge import ModelConfig
 from mcore_bridge import get_mcore_model as _get_mcore_model
 from mcore_bridge import hf_to_mcore_config
-from transformers.utils import is_torch_npu_available
 from typing import Any, Generator, Optional, Tuple
 
 from swift.utils import get_logger
@@ -72,8 +71,6 @@ def get_mcore_model_config(args, hf_config):
     if args.megatron_extra_kwargs:
         kwargs.update(args.megatron_extra_kwargs)
     config = ModelConfig(**kwargs)
-    if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
-        setattr(config, 'use_flash_attn', True)
     _check_attention_backend(args, config)
     _check_padding_free(args, config)
     return config
