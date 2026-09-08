@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Shared GKD loss utilities across HF / Megatron / Ray backends."""
+import os
 import torch
 import torch.nn.functional as F
 from dataclasses import dataclass
