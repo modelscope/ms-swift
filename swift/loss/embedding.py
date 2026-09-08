@@ -142,18 +142,21 @@ class InfonceLoss(BaseLoss):
             elif self.is_megatron:
                 from megatron.core import mpu
                 dp_group = mpu.get_data_parallel_group()
-                shapes = [sentences.new_empty((2, ), dtype=torch.long) for _ in range(world_size)]
+                shapes = [sentences.new_empty((3, ), dtype=torch.long) for _ in range(world_size)]
                 dist.all_gather(
                     shapes,
-                    sentences.new_tensor(sentences.shape, dtype=torch.long),
+                    sentences.new_tensor((*sentences.shape, labels.numel()), dtype=torch.long),
                     group=dp_group,
                 )
-                all_sentences = [sentences.new_empty(shape.tolist()) for shape in shapes]
+                all_sentences = [sentences.new_empty(shape[:2].tolist()) for shape in shapes]
                 dist.all_gather(
                     all_sentences,
                     sentences,
                     group=dp_group,
                 )
+                all_labels = [labels.new_empty((shape[2].item(), )) for shape in shapes]
+                dist.all_gather(all_labels, labels, group=dp_group)
+                labels = torch.cat(all_labels)
             else:
                 # gather all the sentences and labels across the gpus when calculate loss across all batches of all gpus
                 all_sentences = gather_object(sentences.unsqueeze(0))
