@@ -4,8 +4,8 @@ import requests
 import socket
 from requests.adapters import HTTPAdapter
 from typing import List, Optional, Set, Union
-from urllib.parse import urljoin, urlparse
 from urllib3.util.retry import Retry
+from urllib.parse import urljoin, urlparse
 
 from .utils import get_env_args
 
