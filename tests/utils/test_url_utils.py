@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 
 from swift.utils.url_utils import SafeUrlFetcher
 
-
 ENV_KEYS = ['SWIFT_ALLOW_INTERNAL_URL', 'SWIFT_URL_ALLOWED_HOSTS', 'SWIFT_MAX_DOWNLOAD_SIZE_MB']
 
 

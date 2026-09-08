@@ -339,10 +339,11 @@ class Qwen2VLTemplate(Template):
             # ref: https://github.com/modelscope/ms-swift/issues/8445
             inputs.mm_processor_kwargs['do_resize'] = False
         if media_type == 'image':
-            inputs.images[index] = fetch_image({
-                'image': _safe_media_input(inputs.images[index]),
-                **inputs.chat_template_kwargs
-            }, **kwargs)
+            inputs.images[index] = fetch_image(
+                {
+                    'image': _safe_media_input(inputs.images[index]),
+                    **inputs.chat_template_kwargs
+                }, **kwargs)
             if self.mode == 'lmdeploy':
                 return ['<|vision_start|>', [-100], '<|vision_end|>']
             else:
@@ -895,10 +896,11 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             # https://github.com/modelscope/ms-swift/issues/8445
             inputs.mm_processor_kwargs['do_resize'] = False
         if media_type == 'image':
-            inputs.images[index] = fetch_image({
-                'image': _safe_media_input(inputs.images[index]),
-                **inputs.chat_template_kwargs
-            }, **kwargs)
+            inputs.images[index] = fetch_image(
+                {
+                    'image': _safe_media_input(inputs.images[index]),
+                    **inputs.chat_template_kwargs
+                }, **kwargs)
             if self.version == 'omni_v2_5':
                 return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
             elif self.version == 'omni_v3':

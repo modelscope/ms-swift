@@ -579,6 +579,7 @@ def load_video_valley(video: Union[str, bytes]):
 
 def load_video_ovis2(video_path, num_frames):
     from moviepy.editor import VideoFileClip
+
     # moviepy hands the string to ffmpeg, which would fetch a URL / open a local path itself; materialize it
     # through the SSRF- and allowlist-guarded loader first (a temp file for URLs, cleaned up on exit).
     with local_video_path(video_path) as video_path:
@@ -598,6 +599,7 @@ def load_video_ovis2(video_path, num_frames):
 
 def load_video_ovis2_5(video_path, num_frames):
     from moviepy.editor import VideoFileClip
+
     # See load_video_ovis2: route the source through the guarded loader before ffmpeg touches it.
     with local_video_path(video_path) as video_path:
         with VideoFileClip(video_path) as clip:

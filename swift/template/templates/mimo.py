@@ -78,10 +78,11 @@ class MiMoV2Template(Template):
 
         kwargs = {'image_patch_size': self.processor.image_processor.patch_size}
         if media_type == 'image':
-            inputs.images[index] = fetch_image({
-                'image': _safe_media_input(inputs.images[index]),
-                **inputs.chat_template_kwargs
-            }, **kwargs)
+            inputs.images[index] = fetch_image(
+                {
+                    'image': _safe_media_input(inputs.images[index]),
+                    **inputs.chat_template_kwargs
+                }, **kwargs)
             if self.mode == 'lmdeploy':
                 return ['<|vision_start|>', [-100], '<|vision_end|>']
             return ['<|vision_start|><|image_pad|><|vision_end|>']

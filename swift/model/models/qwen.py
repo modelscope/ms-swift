@@ -689,6 +689,7 @@ def _get_new_read_video_func(read_video_func, read_backend):
 
         def _new_read_video(ele: dict):
             from swift.template.vision_utils import _safe_media_input
+
             # Resolve the source here so a URL is fetched through SafeUrlFetcher (and a local path checked
             # against the media-dir allowlist) rather than by torchvision itself, which would otherwise
             # re-fetch the URL and bypass the SSRF guard. base64 passes through and still hits the

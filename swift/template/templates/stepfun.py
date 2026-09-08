@@ -131,6 +131,7 @@ class StepAudio2MiniTemplate(Template):
         If max_length is provided, truncate the audio to that length
         '''
         import torchaudio
+
         # `torchaudio.load`, with its ffmpeg backend, would fetch a URL / open a local path itself; route the
         # source through the guarded loader (SSRF + allowlist) and only hand ffmpeg a local file.
         with local_audio_path(file_path) as local_path:

@@ -112,8 +112,7 @@ class TestRequestMediaPath(unittest.TestCase):
     def _request(url):
         from swift.infer_engine.protocol import ChatCompletionRequest
         return ChatCompletionRequest(
-            model='m',
-            messages=[{
+            model='m', messages=[{
                 'role': 'user',
                 'content': [{
                     'type': 'image_url',
@@ -235,6 +234,7 @@ class TestSafeVideoInput(unittest.TestCase):
 
     def test_frame_list_base64_and_pil_pass_through(self):
         from PIL import Image
+
         from swift.template.vision_utils import _safe_video_input
         b64 = 'data:image/png;base64,aGVsbG8='
         self.assertEqual(_safe_video_input([b64, b64]), [b64, b64])
@@ -243,6 +243,7 @@ class TestSafeVideoInput(unittest.TestCase):
 
     def test_frame_list_url_is_routed_through_the_guarded_loader(self):
         from unittest.mock import patch
+
         from swift.template import vision_utils
         with patch.object(vision_utils, 'load_image', return_value='LOADED') as m:
             out = vision_utils._safe_video_input(['http://127.0.0.1:9/a.png', 'HTTP://127.0.0.1:9/b.png'])
