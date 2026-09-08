@@ -6,6 +6,7 @@ from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, findall
+from ..vision_utils import _safe_media_input
 from .utils import TemplateMeta
 
 
@@ -17,7 +18,7 @@ class DotsOCRTemplate(Template):
                     inputs: StdTemplateInputs) -> List[Context]:
         from qwen_vl_utils import fetch_image
         assert media_type == 'image'
-        inputs.images[index] = fetch_image({'image': inputs.images[index]})
+        inputs.images[index] = fetch_image({'image': _safe_media_input(inputs.images[index])})
         if self.mode == 'lmdeploy':
             return ['<|img|>', [-100], '<|endofimg|>']
         else:

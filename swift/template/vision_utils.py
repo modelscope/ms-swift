@@ -10,7 +10,7 @@ from io import BytesIO
 from PIL import Image
 from typing import Any, Callable, Iterator, List, TypeVar, Union
 
-from swift.utils import SafeUrlFetcher, get_env_args
+from swift.utils import SafeMediaPath, SafeUrlFetcher, get_env_args
 
 # >>> internvl
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -105,14 +105,14 @@ def _check_path(path: str) -> Union[str, None]:
     if len(path) > MAX_PATH_HEURISTIC:
         return
     if os.path.exists(path):
-        return os.path.abspath(path)
+        return SafeMediaPath.check(os.path.abspath(path))
     data = path
     ROOT_IMAGE_DIR = get_env_args('ROOT_IMAGE_DIR', str, None)
     if ROOT_IMAGE_DIR is not None:
         path = os.path.join(ROOT_IMAGE_DIR, path)
     path = os.path.abspath(os.path.expanduser(path))
     if os.path.exists(path):
-        return path
+        return SafeMediaPath.check(path)
     if data.startswith('data:'):
         return
     try:
@@ -120,6 +120,9 @@ def _check_path(path: str) -> Union[str, None]:
         return
     except Exception:
         pass
+    # The string is a path that does not exist. It is still checked, so that refusing an outside path looks the
+    # same whether or not the file is there; otherwise the two different errors reveal which paths exist.
+    SafeMediaPath.check(path)
     return data
 
 
@@ -132,8 +135,7 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
             request_kwargs = {'timeout': timeout} if timeout > 0 else {}
             # Untrusted callers can supply this URL (e.g. media URLs in a `swift deploy` request), so guard
             # against SSRF instead of fetching it directly. See `SafeUrlFetcher`.
-            response = SafeUrlFetcher.get(path, **request_kwargs)
-            res = BytesIO(response.content)
+            res = BytesIO(SafeUrlFetcher.read(path, **request_kwargs))
         else:
             data = path
             path = _check_path(path)
@@ -160,6 +162,42 @@ def load_image(image: Union[str, bytes, Image.Image]) -> Image.Image:
     if image.mode != 'RGB':
         image = image.convert('RGB')
     return image
+
+
+def _safe_media_input(value: Any, is_video: bool = False) -> Any:
+    """Sanitize an untrusted media value before handing it to a third-party fetcher/decoder.
+
+    Some templates delegate media loading to libraries that resolve the input themselves
+    (`qwen_vl_utils`/`keye_vl_utils`/`qwen_omni_utils` `fetch_image`/`fetch_video`, torchvision, moviepy).
+    Those would fetch a URL or open a local path on their own, bypassing `SafeUrlFetcher` and the
+    `SWIFT_MEDIA_ALLOWED_DIRS` allowlist. So a URL is fetched here through the guarded loader, and a local
+    path is checked against the allowlist; base64 and already-loaded values (PIL/tensor/list) pass through
+    unchanged, so the downstream library handles them exactly as before.
+    """
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    # The scheme is case-insensitive, so normalize it; otherwise `HTTP://` would skip the URL branch and be
+    # treated as a local path, and then fetched by the downstream decoder without the SSRF check.
+    match = re.match(r'(https?)://', stripped, re.IGNORECASE)
+    if match:
+        url = match.group(1).lower() + stripped[len(match.group(1)):]
+        return load_file(url) if is_video else load_image(url)
+    _check_path(value)  # raises if a local path is outside the allowlist; base64 passes through as None
+    return value
+
+
+def _safe_video_input(video: Any) -> Any:
+    """Sanitize a video value before handing it to `fetch_video`.
+
+    A single source (a `str`/`bytes` path or URL) is loaded by a patched reader backend, so it is left
+    untouched here. But when the video is a list/tuple of frames, `fetch_video` loads each frame with its
+    own (unpatched) `fetch_image`, which would fetch a URL or open a local path directly. So each frame is
+    routed through `_safe_media_input` (as an image); non-string frames pass through unchanged.
+    """
+    if isinstance(video, (list, tuple)):
+        return [_safe_media_input(frame) for frame in video]
+    return video
 
 
 def load_batch(path_list: List[Union[str, None, Any, BytesIO]],
@@ -541,24 +579,29 @@ def load_video_valley(video: Union[str, bytes]):
 
 def load_video_ovis2(video_path, num_frames):
     from moviepy.editor import VideoFileClip
-    with VideoFileClip(video_path) as clip:
-        total_frames = int(clip.fps * clip.duration)
-        if total_frames <= num_frames:
-            sampled_indices = range(total_frames)
-        else:
-            stride = total_frames / num_frames
-            sampled_indices = [
-                min(total_frames - 1, int((stride * i + stride * (i + 1)) / 2)) for i in range(num_frames)
-            ]
-        frames = [clip.get_frame(index / clip.fps) for index in sampled_indices]
-        frames = [Image.fromarray(frame, mode='RGB') for frame in frames]
+    # moviepy hands the string to ffmpeg, which would fetch a URL / open a local path itself; materialize it
+    # through the SSRF- and allowlist-guarded loader first (a temp file for URLs, cleaned up on exit).
+    with local_video_path(video_path) as video_path:
+        with VideoFileClip(video_path) as clip:
+            total_frames = int(clip.fps * clip.duration)
+            if total_frames <= num_frames:
+                sampled_indices = range(total_frames)
+            else:
+                stride = total_frames / num_frames
+                sampled_indices = [
+                    min(total_frames - 1, int((stride * i + stride * (i + 1)) / 2)) for i in range(num_frames)
+                ]
+            frames = [clip.get_frame(index / clip.fps) for index in sampled_indices]
+            frames = [Image.fromarray(frame, mode='RGB') for frame in frames]
     return frames
 
 
 def load_video_ovis2_5(video_path, num_frames):
     from moviepy.editor import VideoFileClip
-    with VideoFileClip(video_path) as clip:
-        total_frames = int(clip.fps * clip.duration)
-        indices = [int(i * total_frames / num_frames) for i in range(num_frames)]
-        frames = [Image.fromarray(clip.get_frame(t)) for t in (idx / clip.fps for idx in indices)]
+    # See load_video_ovis2: route the source through the guarded loader before ffmpeg touches it.
+    with local_video_path(video_path) as video_path:
+        with VideoFileClip(video_path) as clip:
+            total_frames = int(clip.fps * clip.duration)
+            indices = [int(i * total_frames / num_frames) for i in range(num_frames)]
+            frames = [Image.fromarray(clip.get_frame(t)) for t in (idx / clip.fps for idx in indices)]
     return frames

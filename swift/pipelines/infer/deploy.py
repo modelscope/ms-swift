@@ -235,10 +235,24 @@ class SwiftDeploy(SwiftInfer):
         results = await asyncio.gather(*[self.infer_async(req, request_config) for req in infer_requests])
         return results
 
+    def _warn_if_unauthenticated(self):
+        """Warn when the service is reachable from other hosts with authentication disabled.
+
+        Such a service lets anyone who can route to the port run inference, and a chat request can ask the
+        server to fetch a media URL on the caller's behalf, so it should not be exposed as-is.
+        """
+        args = self.args
+        if args.api_key is not None or args.host in {'127.0.0.1', 'localhost', '::1'}:
+            return
+        logger.warning(f'The server is listening on {args.host}:{args.port} without an API key, so anyone able '
+                       'to reach this port can use it. Pass `--api_key` to require one, and `--host 127.0.0.1` '
+                       'to accept local connections only (put a gateway in front for remote access).')
+
     def run(self):
         args = self.args
         self.jsonl_writer = JsonlWriter(args.result_path) if args.result_path else None
         logger.info(f'model_list: {self._get_model_list()}')
+        self._warn_if_unauthenticated()
         uvicorn.run(
             self.app,
             host=args.host,

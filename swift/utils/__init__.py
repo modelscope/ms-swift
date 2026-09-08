@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .io_utils import (LAST_CHECKPOINT_SYMLINK, JsonlWriter, append_to_jsonl, get_file_mm_type, read_from_jsonl,
                            update_last_checkpoint_symlink, write_to_jsonl)
     from .logger import get_logger, ms_logger_context
+    from .media_utils import SafeMediaPath
     from .np_utils import get_seed, stat_array, transform_jsonl_to_df
     from .processor_utils import Processor, ProcessorMixin
     from .shutdown_manager import ShutdownManager
@@ -60,6 +61,7 @@ else:
             'update_last_checkpoint_symlink', 'write_to_jsonl'
         ],
         'logger': ['get_logger', 'ms_logger_context'],
+        'media_utils': ['SafeMediaPath'],
         'np_utils': ['get_seed', 'stat_array', 'transform_jsonl_to_df'],
         'processor_utils': ['Processor', 'ProcessorMixin'],
         'shutdown_manager': ['ShutdownManager'],

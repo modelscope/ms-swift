@@ -5,15 +5,18 @@ from unittest.mock import MagicMock, patch
 from swift.utils.url_utils import SafeUrlFetcher
 
 
+ENV_KEYS = ['SWIFT_ALLOW_INTERNAL_URL', 'SWIFT_URL_ALLOWED_HOSTS', 'SWIFT_MAX_DOWNLOAD_SIZE_MB']
+
+
 class TestSafeUrlFetcher(unittest.TestCase):
 
     def setUp(self):
         # Isolate each test from any ambient configuration.
-        for key in ['SWIFT_ALLOW_INTERNAL_URL', 'SWIFT_URL_ALLOWED_HOSTS']:
+        for key in ENV_KEYS:
             os.environ.pop(key, None)
 
     def tearDown(self):
-        for key in ['SWIFT_ALLOW_INTERNAL_URL', 'SWIFT_URL_ALLOWED_HOSTS']:
+        for key in ENV_KEYS:
             os.environ.pop(key, None)
 
     def test_metadata_endpoints_are_blocked(self):
@@ -68,31 +71,61 @@ class TestSafeUrlFetcher(unittest.TestCase):
             SafeUrlFetcher.check_url('http://169.254.169.254/x')
 
     @staticmethod
-    def _redirect_response(location):
+    def _response(*, is_redirect=False, location=None, content=b'', headers=None):
         response = MagicMock()
-        response.is_redirect = True
-        response.headers = {'location': location}
+        response.__enter__.return_value = response
+        response.is_redirect = is_redirect
+        response.headers = dict(headers or {})
+        if location is not None:
+            response.headers['location'] = location
+        response.content = content
+        response.iter_content.return_value = [content]
         return response
+
+    @staticmethod
+    def _session(response):
+        session = MagicMock()
+        session.__enter__.return_value = session
+        session.get.return_value = response
+        return session
 
     def test_redirect_to_internal_address_is_blocked(self):
         """A public URL must not be able to bounce the request into the internal network via a redirect."""
-        session = MagicMock()
-        session.__enter__.return_value = session
-        session.get.return_value = self._redirect_response('http://169.254.169.254/latest/meta-data/')
+        session = self._session(self._response(is_redirect=True, location='http://169.254.169.254/latest/meta-data/'))
         with patch('swift.utils.url_utils.requests.Session', return_value=session):
             with self.assertRaises(ValueError):
-                SafeUrlFetcher.get('http://example.com/redir')
+                SafeUrlFetcher.read('http://example.com/redir')
 
-    def test_get_returns_final_response(self):
-        ok = MagicMock()
-        ok.is_redirect = False
-        session = MagicMock()
-        session.__enter__.return_value = session
-        session.get.return_value = ok
+    def test_read_returns_body(self):
+        response = self._response(content=b'hello')
+        session = self._session(response)
         with patch('swift.utils.url_utils.requests.Session', return_value=session):
-            res = SafeUrlFetcher.get('http://example.com/a.png')
-        self.assertIs(res, ok)
-        ok.raise_for_status.assert_called_once()
+            res = SafeUrlFetcher.read('http://example.com/a.png')
+        self.assertEqual(res, b'hello')
+        response.raise_for_status.assert_called_once()
+
+    def test_oversized_body_is_rejected_while_reading(self):
+        """A response that omits (or understates) content-length must still be capped."""
+        os.environ['SWIFT_MAX_DOWNLOAD_SIZE_MB'] = '0.001'  # ~1KB
+        session = self._session(self._response(content=b'x' * 4096))
+        with patch('swift.utils.url_utils.requests.Session', return_value=session):
+            with self.assertRaises(ValueError):
+                SafeUrlFetcher.read('http://example.com/big.png')
+
+    def test_oversized_content_length_is_rejected_before_reading(self):
+        os.environ['SWIFT_MAX_DOWNLOAD_SIZE_MB'] = '0.001'  # ~1KB
+        response = self._response(content=b'x', headers={'content-length': str(100 * 1024**2)})
+        session = self._session(response)
+        with patch('swift.utils.url_utils.requests.Session', return_value=session):
+            with self.assertRaises(ValueError):
+                SafeUrlFetcher.read('http://example.com/big.png')
+        response.iter_content.assert_not_called()
+
+    def test_size_cap_can_be_disabled(self):
+        os.environ['SWIFT_MAX_DOWNLOAD_SIZE_MB'] = '0'
+        session = self._session(self._response(content=b'x' * 4096))
+        with patch('swift.utils.url_utils.requests.Session', return_value=session):
+            self.assertEqual(len(SafeUrlFetcher.read('http://example.com/big.png')), 4096)
 
 
 if __name__ == '__main__':

@@ -4,8 +4,8 @@ import requests
 import socket
 from requests.adapters import HTTPAdapter
 from typing import List, Optional, Set, Union
-from urllib3.util.retry import Retry
 from urllib.parse import urljoin, urlparse
+from urllib3.util.retry import Retry
 
 from .utils import get_env_args
 
@@ -28,6 +28,8 @@ class SafeUrlFetcher:
       an offline training job. Cloud metadata endpoints stay blocked.
     - `SWIFT_URL_ALLOWED_HOSTS=host1,host2`: only fetch from these hosts, and trust them regardless of the
       addresses they resolve to. Recommended when a deployment serves media from a known bucket domain.
+    - `SWIFT_MAX_DOWNLOAD_SIZE_MB`: cap on the response body, so that a caller cannot exhaust memory (and,
+      for video, disk) by pointing the server at an endless response. Set to `0` to disable the cap.
 
     Note that a host resolved here is resolved again by the OS when the connection is made, so a DNS entry
     that changes between the two (DNS rebinding) is not covered; use `SWIFT_URL_ALLOWED_HOSTS` plus an egress
@@ -36,6 +38,8 @@ class SafeUrlFetcher:
     ALLOWED_SCHEMES = ('http', 'https')
     MAX_REDIRECTS = 5
     RETRY_TOTAL = 3
+    CHUNK_SIZE = 1024 * 1024
+    DEFAULT_MAX_DOWNLOAD_SIZE_MB = 1024
     # Cloud instance metadata services, reachable from inside virtually every cloud VM and container and
     # holding short-lived credentials for the whole account, so they are blocked unconditionally.
     # 169.254.0.0/16: AWS/Azure/GCP/Huawei (and Tencent's metadata.tencentyun.com); 100.100.100.200: Alibaba
@@ -45,23 +49,50 @@ class SafeUrlFetcher:
         ipaddress.ip_network(network) for network in ('169.254.0.0/16', '100.100.100.200/32', 'fd00:ec2::254/128'))
 
     @classmethod
-    def get(cls, url: str, **kwargs) -> requests.Response:
-        """`requests.get`, but every hop of the request is checked by `check_url` first."""
+    def read(cls, url: str, **kwargs) -> bytes:
+        """Fetch `url` and return its body, checking every hop with `check_url` and capping the size."""
         kwargs.pop('allow_redirects', None)  # redirects are followed below, one checked hop at a time
+        kwargs.pop('stream', None)  # the body is streamed so that the size cap can be enforced while reading
+        max_size = cls._max_download_size()
         retries = Retry(total=cls.RETRY_TOTAL, backoff_factor=1, allowed_methods=['GET'])
         with requests.Session() as session:
             session.mount('http://', HTTPAdapter(max_retries=retries))
             session.mount('https://', HTTPAdapter(max_retries=retries))
             for _ in range(cls.MAX_REDIRECTS + 1):
                 cls.check_url(url)
-                response = session.get(url, allow_redirects=False, **kwargs)
-                if not response.is_redirect:
-                    response.raise_for_status()
-                    return response
-                location = response.headers['location']
-                response.close()
+                with session.get(url, allow_redirects=False, stream=True, **kwargs) as response:
+                    if not response.is_redirect:
+                        response.raise_for_status()
+                        return cls._read_capped(response, url, max_size)
+                    location = response.headers['location']
                 url = urljoin(url, location)
         raise ValueError(f'The URL {url!r} exceeded the limit of {cls.MAX_REDIRECTS} redirects.')
+
+    @classmethod
+    def _read_capped(cls, response: requests.Response, url: str, max_size: int) -> bytes:
+        if max_size <= 0:
+            return response.content
+        content_length = response.headers.get('content-length')
+        if content_length is not None and content_length.isdigit() and int(content_length) > max_size:
+            cls._raise_too_large(url, max_size)
+        res = bytearray()
+        for chunk in response.iter_content(cls.CHUNK_SIZE):
+            res += chunk
+            # A response may omit or understate content-length, so the cap is also enforced while reading.
+            if len(res) > max_size:
+                cls._raise_too_large(url, max_size)
+        return bytes(res)
+
+    @staticmethod
+    def _raise_too_large(url: str, max_size: int) -> None:
+        raise ValueError(f'Refusing to fetch {url!r}: the response is larger than '
+                         f'{max_size / 1024 ** 2:.0f}MB. Raise or disable this cap with the environment '
+                         'variable `SWIFT_MAX_DOWNLOAD_SIZE_MB` (`0` disables it).')
+
+    @classmethod
+    def _max_download_size(cls) -> int:
+        size_mb = get_env_args('swift_max_download_size_mb', float, cls.DEFAULT_MAX_DOWNLOAD_SIZE_MB)
+        return int(size_mb * 1024**2)
 
     @classmethod
     def check_url(cls, url: str) -> None:
