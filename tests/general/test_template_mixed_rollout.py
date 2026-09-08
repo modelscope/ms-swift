@@ -1,6 +1,5 @@
-from types import SimpleNamespace
-
 import pytest
+from types import SimpleNamespace
 
 from swift.template import StdTemplateInputs, Template
 
@@ -51,8 +50,14 @@ def make_template():
 def encode_response(response):
     template = make_template()
     inputs = StdTemplateInputs(messages=[
-        {'role': 'user', 'content': 'question'},
-        {'role': 'assistant', 'content': response},
+        {
+            'role': 'user',
+            'content': 'question'
+        },
+        {
+            'role': 'assistant',
+            'content': response
+        },
     ])
     template._swift_encode(inputs)
     return template
@@ -78,7 +83,10 @@ def test_swift_encode_supports_mixed_text_and_raw_token_response():
     ('plain text response', []),
     (['previous response', 'plain text response'], []),
     ([1, 2, 3], [[1, 2, 3]]),
-    ({'loss_scale': [1, 1, 1], 'token_ids': [1, 2, 3]}, [[1, 2, 3]]),
+    ({
+        'loss_scale': [1, 1, 1],
+        'token_ids': [1, 2, 3]
+    }, [[1, 2, 3]]),
 ])
 def test_swift_encode_preserves_existing_response_types(response, expected_decoded_ids):
     template = encode_response(response)

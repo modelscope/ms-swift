@@ -1442,9 +1442,8 @@ class Template(ProcessorMixin):
                             raise TypeError(f'Invalid token_ids in response content: {token_ids!r}')
                         response_content = self.tokenizer.decode(token_ids[-20:])
                     else:
-                        raise TypeError(
-                            f'Unsupported response content: type={type(response_content).__name__}, '
-                            f'value={response_content!r}')
+                        raise TypeError(f'Unsupported response content: type={type(response_content).__name__}, '
+                                        f'value={response_content!r}')
                 endswith_stop_words = any(
                     response_content.endswith(stop_word) for stop_word in template_meta.stop_words
                     if isinstance(stop_word, str))
