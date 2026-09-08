@@ -32,6 +32,7 @@ if TYPE_CHECKING:
                                      get_modules_to_not_convert, get_multimodal_target_regex, get_n_params_grads,
                                      get_packed_seq_params, get_position_ids_from_cu_seqlens, seed_worker, show_layers,
                                      unwrap_model_for_generation)
+    from .url_utils import SafeUrlFetcher
     from .utils import (add_version_to_work_dir, check_json_format, copy_files_by_pattern, deep_getattr, find_free_port,
                         find_node_ip, format_time, get_env_args, get_external_files, import_external_file,
                         json_parse_to_dict, lower_bound, parse_args, parse_args_from_dict,
@@ -77,6 +78,7 @@ else:
             'get_n_params_grads', 'get_packed_seq_params', 'get_position_ids_from_cu_seqlens', 'seed_worker',
             'show_layers', 'unwrap_model_for_generation'
         ],
+        'url_utils': ['SafeUrlFetcher'],
         'utils': [
             'add_version_to_work_dir', 'check_json_format', 'copy_files_by_pattern', 'deep_getattr', 'find_free_port',
             'find_node_ip', 'format_time', 'get_env_args', 'get_external_files', 'import_external_file',

@@ -976,3 +976,5 @@ qwen2_5_omni除了包含qwen2_5_vl和qwen2_audio的模型特定参数外，还�
 - ROOT_IMAGE_DIR: 图像（多模态）资源的根目录。通过设置该参数，可以在数据集中使用相对于 `ROOT_IMAGE_DIR` 的相对路径。默认情况下，是相对于运行目录的相对路径。
 - SWIFT_SINGLE_DEVICE_MODE: 单设备模式，可选值为"0"(默认值)/"1"，在此模式下，每个进程只能看到一个设备。
 - SWIFT_AUDIO_LOAD_BACKEND: 音频波形加载后端。`librosa`（默认）或 `soundfile_pyav`（soundfile 优先、失败时 pyav fallback）。GRPO/GKD训练 在 `--use_vllm true`时默认为 `soundfile_pyav`，保证训练侧 encode 与 vLLM rollout 解析同一音频 URL 时波形一致。
+- SWIFT_ALLOW_INTERNAL_URL: 默认为`'0'`。在获取多模态媒体URL（图片/音频/视频）时，swift 会拒绝解析到非公网地址（回环、内网私有网段等）的 URL，以防御 SSRF；这对可被非信任方访问的 `swift deploy` 服务尤为重要。当媒体 URL 可信时（例如离线训练中使用的内网图片服务器），可将其设置为`'1'`以放行此类地址。云厂商元数据端点（`169.254.0.0/16`、阿里云 `100.100.100.200` 等）无论该开关如何设置都始终被拦截。
+- SWIFT_URL_ALLOWED_HOSTS: 以逗号分隔的 host 白名单，例如 `bucket.oss-cn-hangzhou.aliyuncs.com,cdn.example.com`。设置后，仅当媒体 URL 的 host 在该列表中时才会被获取，且这些 host 会被信任、不再校验其解析到的地址。当部署服务的媒体来自已知的存储桶/CDN 域名时推荐配置。
