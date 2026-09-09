@@ -1186,7 +1186,13 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Add rollout correction metrics
         if rollout_correction_metrics:
-            metrics_data['rollout_correction'] = rollout_correction_metrics
+            # Gather one row per rank to preserve gather_for_metrics' dataloader remainder handling.
+            values = torch.stack(list(rollout_correction_metrics.values())).detach().unsqueeze(0)
+            gathered = self.accelerator.gather_for_metrics(values)
+            metrics_data['rollout_correction'] = dict(zip(rollout_correction_metrics, gathered.nanmean(0).unbind()))
+            for key, reduce in [('log_ppl_diff_max', torch.max), ('log_ppl_diff_min', torch.min)]:
+                index = list(rollout_correction_metrics).index(key)
+                metrics_data['rollout_correction'][key] = reduce(gathered[:, index])
 
         # Compute the clipped probability ratios
         if self.loss_type == 'cispo':
@@ -1844,7 +1850,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def log(self, logs: Dict[str, float], start_time: Optional[float] = None) -> None:
         mode = 'train' if self.model.training else 'eval'
-        metrics = {key: sum(val) / len(val) for key, val in self._metrics[mode].items()}  # average the metrics
+        rollout_metrics = {
+            key: val
+            for key, val in self._metrics[mode].items() if key.startswith('rollout_correction/')
+        }
+        metrics = {key: sum(val) / len(val) for key, val in self._metrics[mode].items() if key not in rollout_metrics}
+        if rollout_metrics:
+            values = torch.stack([torch.stack(val) for val in rollout_metrics.values()])
+            metrics.update(zip(rollout_metrics, values.cpu().double().mean(1).tolist()))
 
         # This method can be called both in training and evaluation. When called in evaluation, the keys in `logs`
         # start with "eval_". We need to add the prefix "eval_" to the keys in `metrics` to match the format.
@@ -2414,7 +2427,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         per_token_logps: torch.Tensor,
         rollout_per_token_logps: torch.Tensor,
         completion_mask: torch.Tensor,
-    ) -> Dict[str, float]:
+    ) -> Dict[str, torch.Tensor]:
         """
         Compute off-policy diagnostic metrics (always computed for monitoring).
 
@@ -2454,11 +2467,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Formula: exp(-1/|T| * Σ log π_training(y_t|y_<t))
         mean_log_prob_training = masked_mean(per_token_logps, completion_mask, axis=-1)  # (batch_size,)
         training_ppl = torch.exp(-mean_log_prob_training).mean()  # Batch mean of per-sequence PPL
-        metrics['training_ppl'] = self.accelerator.gather_for_metrics(training_ppl).nanmean().item()
+        metrics['training_ppl'] = training_ppl
 
         # Also log log-ppl for easier analysis (avoids exponential scale)
-        metrics['training_log_ppl'] = self.accelerator.gather_for_metrics(
-            (-mean_log_prob_training).mean()).nanmean().item()
+        metrics['training_log_ppl'] = (-mean_log_prob_training).mean()
 
         # 2. Compute rollout off-policy metrics
         # All KL metrics estimate KL(π_rollout || π_training), which measures how much
@@ -2473,21 +2485,20 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Formula: KL(P||Q) = E_P[log(P/Q)] where P=π_rollout, Q=π_training
         # = E_rollout[log(π_rollout) - log(π_training)] = E[-log_ratio]
         kl = masked_mean(-log_ratio, completion_mask)
-        metrics['kl'] = self.accelerator.gather_for_metrics(kl).nanmean().item()
+        metrics['kl'] = kl
 
         # 2b. k3_kl: K3 estimator for KL(π_rollout || π_training)
         # More stable for small KL values
         log_ratio_safe = torch.clamp(log_ratio, min=-20, max=20)
         k3_kl_matrix = torch.clamp(torch.exp(log_ratio_safe) - log_ratio_safe - 1, min=-10, max=10)
         k3_kl = masked_mean(k3_kl_matrix, completion_mask)
-        metrics['k3_kl'] = self.accelerator.gather_for_metrics(k3_kl).nanmean().item()
+        metrics['k3_kl'] = k3_kl
 
         # 2c. Rollout policy perplexity
         mean_log_prob_rollout = masked_mean(rollout_per_token_logps, completion_mask, axis=-1)  # (batch_size,)
         rollout_ppl = torch.exp(-mean_log_prob_rollout).mean()  # Batch mean of per-sequence PPL
-        metrics['rollout_ppl'] = self.accelerator.gather_for_metrics(rollout_ppl).nanmean().item()
-        metrics['rollout_log_ppl'] = self.accelerator.gather_for_metrics(
-            (-mean_log_prob_rollout).mean()).nanmean().item()
+        metrics['rollout_ppl'] = rollout_ppl
+        metrics['rollout_log_ppl'] = (-mean_log_prob_rollout).mean()
 
         # 2d. Log PPL difference (sequence-level perplexity difference)
         # log_ppl_diff = mean_log_prob_rollout - mean_log_prob_training
@@ -2495,17 +2506,17 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         #   log(ppl_ratio) = log(training_ppl/rollout_ppl) = log_ppl_diff
         # Positive value means training assigns lower probability (higher PPL) than rollout
         log_ppl_diff = mean_log_prob_rollout - mean_log_prob_training
-        metrics['log_ppl_diff'] = self.accelerator.gather_for_metrics(log_ppl_diff.mean()).nanmean().item()
-        metrics['log_ppl_abs_diff'] = self.accelerator.gather_for_metrics(log_ppl_diff.abs().mean()).nanmean().item()
-        metrics['log_ppl_diff_max'] = self.accelerator.gather_for_metrics(log_ppl_diff.max()).max().item()
-        metrics['log_ppl_diff_min'] = self.accelerator.gather_for_metrics(log_ppl_diff.min()).min().item()
+        metrics['log_ppl_diff'] = log_ppl_diff.mean()
+        metrics['log_ppl_abs_diff'] = log_ppl_diff.abs().mean()
+        metrics['log_ppl_diff_max'] = log_ppl_diff.max()
+        metrics['log_ppl_diff_min'] = log_ppl_diff.min()
 
         # 2e. PPL ratio (how much higher is training PPL vs rollout PPL)
         # IMPORTANT: Compute per-sequence ratio first, then average
         # For numerical stability, compute in log space using log_ppl_diff
         # Note: log_ppl_diff = log(ppl_ratio), so ppl_ratio = exp(log_ppl_diff)
         ppl_ratio = torch.exp(log_ppl_diff).mean()
-        metrics['ppl_ratio'] = self.accelerator.gather_for_metrics(ppl_ratio).nanmean().item()
+        metrics['ppl_ratio'] = ppl_ratio
 
         # 2f. Chi-squared divergence: χ²(π_training || π_rollout) = E_μ[ρ²] - 1
         # where ρ = π_training / π_rollout and μ = π_rollout (rollout distribution)
@@ -2515,7 +2526,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         rho_token = torch.exp(log_ratio_safe)  # ρ = π_training / π_rollout (token-level)
         rho_squared_token = rho_token.square()
         chi2_token = masked_mean(rho_squared_token, completion_mask) - 1.0
-        metrics['chi2_token'] = self.accelerator.gather_for_metrics(chi2_token).nanmean().item()
+        metrics['chi2_token'] = chi2_token
 
         # Sequence-level (geometric mean): E_seq[ρ_geo²] - 1
         # where ρ_geo = exp(mean(log ρ_t)) is the geometric mean of token-level ratios
@@ -2525,7 +2536,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         log_ratio_mean_safe = torch.clamp(log_ratio_mean, min=-SAFETY_BOUND, max=SAFETY_BOUND)
         rho_geo = torch.exp(log_ratio_mean_safe)  # geometric mean of ρ_t
         chi2_seq = (rho_geo.square().mean() - 1.0)
-        metrics['chi2_seq'] = self.accelerator.gather_for_metrics(chi2_seq).nanmean().item()
+        metrics['chi2_seq'] = chi2_seq
 
         return metrics
 
@@ -2534,7 +2545,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         rollout_log_ratio: torch.Tensor,
         is_weights: torch.Tensor,
         completion_mask: torch.Tensor,
-    ) -> Dict[str, float]:
+    ) -> Dict[str, torch.Tensor]:
         """
         Compute importance sampling correction metrics (ess, clipped_frac, is_weight_mean).
         Only called when rollout_importance_sampling_mode is enabled.
@@ -2565,7 +2576,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # 1. IS weight statistics
         mean_is_weight = masked_mean(is_weights, completion_mask)
-        metrics['is_weight_mean'] = self.accelerator.gather_for_metrics(mean_is_weight).nanmean().item()
+        metrics['is_weight_mean'] = mean_is_weight
 
         # 2. Compute Effective Sample Size (ESS) for IS weights
         # ESS = 1 / E[(w_i / E[w_i])²] (using clamped weights for stability)
@@ -2574,7 +2585,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mean_for_ess = masked_mean(weights_for_ess, completion_mask)
         is_weights_normalized = weights_for_ess / (mean_for_ess + 1e-8)  # Avoid division by zero
         ess = 1.0 / masked_mean(is_weights_normalized.square(), completion_mask).clamp(min=1e-10)
-        metrics['ess'] = self.accelerator.gather_for_metrics(ess).nanmean().item()
+        metrics['ess'] = ess
 
         # 3. Fraction of clipped/masked samples
         if self.rollout_importance_sampling_mode in ['token_truncate', 'token_mask']:
@@ -2583,12 +2594,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 clipped_frac = masked_mean((is_ratio > threshold).float(), completion_mask)
             else:  # token_mask
                 clipped_frac = masked_mean((is_weights == 0).float(), completion_mask)
-            metrics['clipped_frac'] = self.accelerator.gather_for_metrics(clipped_frac).nanmean().item()
+            metrics['clipped_frac'] = clipped_frac
         else:
             # Sequence-level (both truncate and mask)
             seq_ratios = self._compute_sequence_level_ratios(is_ratio, completion_mask)
             clipped_frac = (seq_ratios > threshold).float().mean()
-            metrics['clipped_frac'] = self.accelerator.gather_for_metrics(clipped_frac).nanmean().item()
+            metrics['clipped_frac'] = clipped_frac
 
         return metrics
 
