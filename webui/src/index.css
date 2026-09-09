@@ -1,0 +1,138 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+  color: #16171f;
+  background: #14151d;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 深色 chrome（标题栏 / 侧栏）上的 hover 反馈 */
+.chrome-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e6e7f0 !important;
+}
+.nav-item {
+  transition: background 0.13s ease, color 0.13s ease;
+}
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e6e7f0 !important;
+}
+
+/* 浅色内容区里的无框按钮 */
+.ghost-icon {
+  transition: background 0.13s ease, color 0.13s ease;
+}
+.ghost-icon:hover {
+  background: #f0f1f5;
+  color: #16171f !important;
+}
+
+/* 有底色的胶囊按钮（主操作 / 危险操作） */
+.pill-btn {
+  transition: filter 0.13s ease;
+}
+.pill-btn:hover {
+  filter: brightness(0.94);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #dcdde6;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c2c4d1;
+}
+
+a {
+  cursor: pointer;
+}
+
+/* 列表行：无边框无卡片，hover 只给一块很淡的底色并露出操作按钮 */
+.task-row {
+  transition: background 0.13s ease;
+}
+.task-row:hover {
+  background: #f7f8fa;
+}
+.task-row .row-actions {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.task-row:hover .row-actions {
+  opacity: 1;
+}
+
+/* 运行中状态点的呼吸动画 */
+@keyframes pulseDot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+.status-dot-live {
+  animation: pulseDot 1.4s ease-in-out infinite;
+}
+
+/* ===== 编排画布（ComfyUI 风节点编辑器）===== */
+
+/* 左侧组件面板条目 */
+.palette-item {
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.palette-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #e6e7f0 !important;
+}
+.palette-item:active {
+  cursor: grabbing;
+}
+
+/* 节点标题栏上的小按钮，平时半透，hover 变实 */
+.node-btn {
+  width: 19px;
+  height: 19px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.node-btn:hover {
+  background: rgba(0, 0, 0, 0.26);
+  color: #fff;
+}
+
+/* 运行中的连线：虚线往前流 */
+@keyframes edgeFlow {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+.edge-flow {
+  animation: edgeFlow 0.9s linear infinite;
+}
