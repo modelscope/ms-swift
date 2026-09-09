@@ -485,8 +485,10 @@ class VllmEngine(InferEngine):
             if mm_processor_kwargs:
                 llm_inputs['mm_processor_kwargs'] = mm_processor_kwargs
 
-            has_task_arg = 'task' in inspect.signature(PoolingParams).parameters
-            has_activation_arg = 'activation' in inspect.signature(PoolingParams).parameters
+            pooling_params_signature = inspect.signature(PoolingParams)
+            has_task_arg = 'task' in pooling_params_signature.parameters
+            has_activation_arg = 'activation' in pooling_params_signature.parameters
+            has_use_activation_arg = 'use_activation' in pooling_params_signature.parameters
             task_mapping = {
                 'embedding': 'embed',
                 'seq_cls': 'classify',
@@ -497,9 +499,11 @@ class VllmEngine(InferEngine):
                 pooling_kwargs = {}
                 if has_task_arg:
                     pooling_kwargs['task'] = task_mapping[self.task_type]
-                if self.task_type in ('reranker', 'generative_reranker') and \
-                        has_activation_arg and self.reranker_use_activation:
-                    pooling_kwargs['activation'] = True
+                if self.task_type in ('reranker', 'generative_reranker') and self.reranker_use_activation:
+                    if has_use_activation_arg:
+                        pooling_kwargs['use_activation'] = True
+                    elif has_activation_arg:
+                        pooling_kwargs['activation'] = True
                 pooling_kwargs = self.template.prepare_pooling_params(pooling_kwargs)
                 pooling_params = PoolingParams(**pooling_kwargs)
                 if self.use_async_engine:
