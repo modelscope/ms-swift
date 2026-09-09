@@ -1,20 +1,14 @@
-import { useState } from 'react';
-import { Avatar, Button, Empty, Input, List, Segmented, Select, Space, Tag, Tooltip } from 'antd';
-import {
-  ArrowUpOutlined,
-  BulbOutlined,
-  CodeOutlined,
-  GlobalOutlined,
-  PaperClipOutlined,
-  PlusOutlined,
-  RobotOutlined,
-  SplitCellsOutlined,
-  UserOutlined,
-} from '@ant-design/icons';
+import { useState, type ReactNode } from 'react';
+import { ArrowUp, Bot, Code, Columns2, Globe, Lightbulb, Paperclip, Plus, User } from 'lucide-react';
+import { cn } from 'cn';
 import { PageHeader } from '@/components/PageHeader';
+import { CheckboxGroup, SegmentedControl, SelectInput } from '@/components/FormField';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { contentHeight } from '@/layout/metrics';
 import { MODULES } from '@/theme/modules';
-import { brand, logo, logoGradient, neutral } from '@/theme/theme';
 import { features } from '@/config/features';
 import { availableModels, conversations } from '@/mock/data';
 
@@ -31,7 +25,32 @@ const DEMO_TURNS = [
   },
 ];
 
-/** 可开关的工具胶囊，选中时染上品牌淡紫 */
+/**
+ * 思考档位。灯泡画在每个选项的标签里而不是当作下拉的后缀图标：
+ * Radix 的 Select 触发器右边固定是那个箭头，而 SelectValue 显示的就是选中项的标签，
+ * 把图标写进标签，收起状态下也一样能看见。
+ */
+const THINKING_OPTIONS = [
+  { value: 'off', label: '不思考' },
+  { value: 'mid', label: '思考 · 中' },
+  { value: 'high', label: '思考 · 高' },
+].map((o) => ({
+  value: o.value,
+  label: (
+    <span className="flex items-center gap-1.5">
+      <Lightbulb size={12} />
+      {o.label}
+    </span>
+  ),
+}));
+
+/**
+ * 对比模式下三列各自的底色。取自 logo 渐变上采样出的靛 / 蓝 / 紫（chart-1..3），
+ * 作用是让人一眼看出某句话出自哪个模型——单列时不需要区分，直接走品牌色。
+ */
+const COLUMN_TONES = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3'];
+
+/** 可开关的工具胶囊，选中时染上品牌淡色 */
 function Chip({
   active,
   onClick,
@@ -40,22 +59,21 @@ function Chip({
 }: {
   active?: boolean;
   onClick?: () => void;
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
 }) {
   return (
     <Button
-      size="small"
-      shape="round"
-      icon={icon}
+      type="button"
+      variant="ghost"
+      size="sm"
       onClick={onClick}
-      style={{
-        color: active ? brand.primaryActive : neutral.textSecondary,
-        background: active ? brand.soft : 'transparent',
-        borderColor: active ? brand.softBorder : 'transparent',
-        fontWeight: active ? 600 : 400,
-      }}
+      className={cn(
+        'h-7 rounded-full px-2.5 text-xs font-normal',
+        active && 'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary font-medium',
+      )}
     >
+      {icon}
       {label}
     </Button>
   );
@@ -77,103 +95,79 @@ interface ComposerState {
 function Composer({ big, state }: { big?: boolean; state: ComposerState }) {
   return (
     <div
-      style={{
-        width: '100%',
-        maxWidth: big ? 720 : undefined,
-        background: '#fff',
-        border: `1px solid ${neutral.border}`,
-        borderRadius: 22,
-        boxShadow: big ? '0 10px 30px rgba(30,34,68,0.10)' : 'none',
-        padding: 14,
-      }}
+      className={cn(
+        'bg-card border-border w-full rounded-2xl border p-3.5',
+        big && 'max-w-[720px] shadow-lg',
+      )}
     >
-      <Input.TextArea
-        variant="borderless"
+      {/*
+        高度不用 antd 那套 autoSize：shadcn 的 textarea 自带 field-sizing-content，
+        跟着内容长，只要给一个 max-h 兜住就等于原来的 maxRows。
+      */}
+      <Textarea
         value={state.value}
         onChange={(e) => state.onChange(e.target.value)}
         placeholder="问点什么……（示意，未接后端）"
-        autoSize={{ minRows: big ? 2 : 1, maxRows: 6 }}
-        style={{ fontSize: 15, padding: '2px 6px', resize: 'none' }}
+        className={cn(
+          'max-h-40 resize-none border-0 bg-transparent px-1.5 py-0.5 shadow-none focus-visible:ring-0 md:text-[15px]',
+          big ? 'min-h-12' : 'min-h-7',
+        )}
       />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-        <Button type="text" size="small" shape="circle" icon={<PaperClipOutlined />} />
-        <Chip active={state.web} onClick={() => state.setWeb(!state.web)} icon={<GlobalOutlined />} label="联网搜索" />
-        <Chip active={state.code} onClick={() => state.setCode(!state.code)} icon={<CodeOutlined />} label="代码" />
-        <div style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Select
-            size="small"
-            variant="borderless"
+      <div className="mt-2 flex items-center gap-2">
+        <Button variant="ghost" size="icon" className="size-7 rounded-full">
+          <Paperclip />
+        </Button>
+        <Chip active={state.web} onClick={() => state.setWeb(!state.web)} icon={<Globe />} label="联网搜索" />
+        <Chip active={state.code} onClick={() => state.setCode(!state.code)} icon={<Code />} label="代码" />
+        <div className="ms-auto flex items-center gap-2">
+          <SelectInput
             value={state.thinking}
             onChange={state.setThinking}
-            suffixIcon={<BulbOutlined />}
-            popupMatchSelectWidth={false}
-            options={[
-              { value: 'off', label: '不思考' },
-              { value: 'mid', label: '思考 · 中' },
-              { value: 'high', label: '思考 · 高' },
-            ]}
+            options={THINKING_OPTIONS}
+            className="text-muted-foreground h-7 w-auto gap-1.5 border-0 px-2 text-xs shadow-none"
           />
-          <Button type="primary" shape="circle" icon={<ArrowUpOutlined />} onClick={state.onSend} />
+          <Button size="icon" className="size-8 rounded-full" onClick={state.onSend}>
+            <ArrowUp />
+          </Button>
         </div>
       </div>
     </div>
   );
 }
 
-/** 单个对话列，多模型对比时并排放多列 */
-function ChatColumn({ model, accent }: { model: string; accent: string }) {
+/** 单个对话列，多模型对比时并排放多列。tone 是一个背景色 class，见 COLUMN_TONES */
+function ChatColumn({ model, tone }: { model: string; tone: string }) {
   return (
-    <div
-      style={{
-        flex: 1,
-        minWidth: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        border: `1px solid ${neutral.borderLight}`,
-        borderRadius: 14,
-        overflow: 'hidden',
-      }}
-    >
-      <div
-        style={{
-          padding: '8px 14px',
-          borderBottom: `1px solid ${neutral.borderLight}`,
-          background: neutral.bgSubtle,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-        }}
-      >
-        <Tag color={accent} style={{ margin: 0, borderRadius: 8 }}>
-          <RobotOutlined /> {model}
-        </Tag>
+    <div className="border-border/60 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border">
+      <div className="border-border/60 bg-muted/50 flex items-center gap-2 border-b px-3.5 py-2">
+        <Badge className={cn('gap-1.5 text-white', tone)}>
+          <Bot /> {model}
+        </Badge>
       </div>
-      <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {DEMO_TURNS.map((m, i) => (
-          <div
-            key={i}
-            style={{ display: 'flex', gap: 10, flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}
-          >
-            <Avatar
-              size={28}
-              style={{ flex: 'none', background: m.role === 'user' ? '#e5e7eb' : accent }}
-              icon={m.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
-            />
-            <div
-              style={{
-                maxWidth: '78%',
-                padding: '9px 13px',
-                borderRadius: 12,
-                fontSize: 14,
-                lineHeight: '22px',
-                background: m.role === 'user' ? brand.soft : neutral.bgSubtle,
-                color: neutral.text,
-              }}
-            >
-              {m.content}
+      <div className="flex flex-1 flex-col gap-3.5 overflow-auto p-4">
+        {DEMO_TURNS.map((m, i) => {
+          const mine = m.role === 'user';
+          return (
+            <div key={i} className={cn('flex gap-2.5', mine && 'flex-row-reverse')}>
+              <span
+                className={cn(
+                  'flex size-7 flex-none items-center justify-center rounded-full [&>svg]:size-3.5',
+                  mine ? 'bg-secondary text-secondary-foreground' : cn('text-white', tone),
+                )}
+              >
+                {mine ? <User /> : <Bot />}
+              </span>
+              <div
+                className={cn(
+                  'text-foreground max-w-[78%] rounded-lg px-3.5 py-2.5 text-sm leading-[22px]',
+                  mine ? 'bg-primary/10' : 'bg-muted',
+                )}
+              >
+                {m.content}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -189,6 +183,7 @@ export function ChatPage() {
   const [compare, setCompare] = useState(false);
   const [models, setModels] = useState([availableModels[0], availableModels[4]]);
   const [single, setSingle] = useState(availableModels[0]);
+  const [activeConv, setActiveConv] = useState(conversations[0].id);
 
   // composer 共享状态
   const [draft, setDraft] = useState('');
@@ -208,49 +203,30 @@ export function ChatPage() {
     onSend: () => setStarted(true),
   };
 
+  const modelOptions = availableModels.map((m) => ({ value: m, label: m }));
+
   // 未开始：整屏居中的大对话框
   if (!started) {
     return (
       <div
-        style={{
-          height: contentHeight(),
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 26,
-          padding: 24,
-        }}
+        className="flex flex-col items-center justify-center gap-6 p-6"
+        style={{ height: contentHeight() }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-          <div
-            style={{
-              width: 60,
-              height: 60,
-              borderRadius: 18,
-              background: logoGradient,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              fontSize: 28,
-              boxShadow: '0 8px 20px rgba(62,69,133,0.32)',
-            }}
-          >
-            <RobotOutlined />
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 600, color: neutral.text }}>有什么可以帮你？</div>
-          <Select
-            variant="borderless"
+        <div className="flex flex-col items-center gap-4">
+          {/* 渐变直接用 Tailwind 的 from/to 表达，方向和 logo 一致：钢蓝走到紫 */}
+          <span className="from-chart-2 to-chart-3 flex size-15 items-center justify-center rounded-[18px] bg-gradient-to-br text-white shadow-lg [&>svg]:size-7">
+            <Bot />
+          </span>
+          <div className="text-foreground text-[26px] font-semibold">有什么可以帮你？</div>
+          <SelectInput
             value={single}
             onChange={setSingle}
-            popupMatchSelectWidth={false}
-            style={{ fontSize: 13 }}
-            options={availableModels.map((m) => ({ value: m, label: m }))}
+            options={modelOptions}
+            className="text-muted-foreground h-8 w-auto border-0 text-[13px] shadow-none"
           />
         </div>
         <Composer big state={composer} />
-        <div style={{ fontSize: 12, color: neutral.textTertiary }}>
+        <div className="text-muted-foreground text-xs">
           可对话本地或已部署的远端模型，支持多模型并排对比
         </div>
       </div>
@@ -266,12 +242,19 @@ export function ChatPage() {
         desc={mod.desc}
         extra={
           features.chatCompare ? (
-            <Segmented
+            <SegmentedControl
               value={compare ? 'compare' : 'single'}
               onChange={(v) => setCompare(v === 'compare')}
               options={[
-                { label: '单模型', value: 'single' },
-                { label: '对比', value: 'compare', icon: <SplitCellsOutlined /> },
+                { value: 'single', label: '单模型' },
+                {
+                  value: 'compare',
+                  label: (
+                    <span className="flex items-center gap-1.5">
+                      <Columns2 size={13} /> 对比
+                    </span>
+                  ),
+                },
               ]}
             />
           ) : undefined
@@ -279,85 +262,73 @@ export function ChatPage() {
       />
 
       {/* 74px 是上面那截页头 */}
-      <div style={{ display: 'flex', height: contentHeight(74) }}>
-        <div
-          style={{
-            width: 248,
-            flex: 'none',
-            borderInlineEnd: `1px solid ${neutral.borderLight}`,
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          <div style={{ padding: 12 }}>
-            <Button type="primary" block shape="round" icon={<PlusOutlined />} onClick={() => setStarted(false)}>
-              新对话
+      <div className="flex" style={{ height: contentHeight(74) }}>
+        <div className="border-border/60 flex w-62 flex-none flex-col border-e">
+          <div className="p-3">
+            <Button className="w-full rounded-full" onClick={() => setStarted(false)}>
+              <Plus /> 新对话
             </Button>
           </div>
-          <List
-            style={{ flex: 1, overflow: 'auto' }}
-            dataSource={conversations}
-            renderItem={(c, i) => (
-              <List.Item
-                onClick={() => setStarted(true)}
-                style={{
-                  padding: '10px 14px',
-                  cursor: 'pointer',
-                  background: i === 0 ? mod.accentSoft : undefined,
-                  borderInlineStart: i === 0 ? `2px solid ${mod.accent}` : '2px solid transparent',
-                }}
+          <div className="flex-1 overflow-auto">
+            {conversations.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setActiveConv(c.id)}
+                className={cn(
+                  'flex w-full flex-col gap-0.5 border-s-2 px-3.5 py-2.5 text-left',
+                  c.id === activeConv
+                    ? 'border-primary bg-primary/8'
+                    : 'hover:bg-muted border-transparent',
+                )}
               >
-                <List.Item.Meta
-                  title={<span style={{ fontSize: 13, color: neutral.text }}>{c.title}</span>}
-                  description={<span style={{ fontSize: 12, color: neutral.textTertiary }}>{c.updatedAt}</span>}
-                />
-              </List.Item>
-            )}
-          />
+                <span className="text-foreground truncate text-[13px]">{c.title}</span>
+                <span className="text-muted-foreground text-xs">{c.updatedAt}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', padding: 16 }}>
-          <div style={{ marginBottom: 12 }}>
+        <div className="flex min-w-0 flex-1 flex-col p-4">
+          <div className="mb-3">
             {compare ? (
-              <Space wrap>
-                <span style={{ fontSize: 13, color: neutral.textSecondary }}>对比模型：</span>
-                <Select
-                  mode="multiple"
-                  value={models}
-                  onChange={setModels}
-                  style={{ minWidth: 360 }}
-                  maxCount={3}
-                  options={availableModels.map((m) => ({ value: m, label: m }))}
-                />
-                <Tooltip title="部署页里 RUNNING 的服务会自动出现在这里">
-                  <Tag>来自部署服务</Tag>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <span className="text-muted-foreground text-[13px]">对比模型：</span>
+                {/*
+                  原来是 mode="multiple" 的下拉 + maxCount。摊开成多选框的理由和表单页一样：
+                  只有 5 个选项，勾选比「点开、勾、点空白收起」少两步。max=3 是布局上限，
+                  再多一列每列就窄到读不下一句完整的回答了。
+                */}
+                <CheckboxGroup value={models} onChange={setModels} options={modelOptions} max={3} />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="cursor-help">
+                      来自部署服务
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>部署页里 RUNNING 的服务会自动出现在这里</TooltipContent>
                 </Tooltip>
-              </Space>
+              </div>
             ) : (
-              <Select
-                value={single}
-                onChange={setSingle}
-                style={{ width: 320 }}
-                options={availableModels.map((m) => ({ value: m, label: m }))}
-              />
+              <SelectInput value={single} onChange={setSingle} options={modelOptions} className="w-80" />
             )}
           </div>
 
-          <div style={{ flex: 1, display: 'flex', gap: 14, minHeight: 0 }}>
+          <div className="flex min-h-0 flex-1 gap-3.5">
             {compare ? (
               models.length ? (
                 models.map((m, i) => (
-                  <ChatColumn key={m} model={m} accent={[logo.indigo, logo.blue, logo.plum][i % 3]} />
+                  <ChatColumn key={m} model={m} tone={COLUMN_TONES[i % COLUMN_TONES.length]} />
                 ))
               ) : (
-                <Empty description="选择要对比的模型" style={{ margin: 'auto' }} />
+                <div className="text-muted-foreground m-auto text-[13px]">选择要对比的模型</div>
               )
             ) : (
-              <ChatColumn model={single} accent={mod.accent} />
+              <ChatColumn model={single} tone="bg-primary" />
             )}
           </div>
 
-          <div style={{ marginTop: 14 }}>
+          <div className="mt-3.5">
             <Composer state={composer} />
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Alert, Form, InputNumber, Radio, Select } from 'antd';
+import { Info } from 'lucide-react';
 import { ConfigFormShell } from '@/components/ConfigFormShell';
+import { Field, FieldStack, NumberInput, SegmentedControl, SelectInput } from '@/components/FormField';
 import { MODULES } from '@/theme/modules';
 import { availableModels } from '@/mock/data';
 
@@ -11,7 +12,7 @@ import { availableModels } from '@/mock/data';
 export function DeployNewPage() {
   const [model, setModel] = useState(availableModels[0]);
   const [engine, setEngine] = useState('vllm');
-  const [port, setPort] = useState(0);
+  const [port, setPort] = useState<number | undefined>(0);
 
   const preview = useMemo(
     () =>
@@ -39,39 +40,47 @@ export function DeployNewPage() {
         {
           title: '服务配置',
           content: (
-            <Form layout="vertical">
-              <Form.Item label="模型">
-                <Select value={model} onChange={setModel} options={availableModels.map((m) => ({ value: m, label: m }))} showSearch />
-              </Form.Item>
-              <Form.Item label="推理引擎">
-                <Radio.Group
+            <FieldStack>
+              <Field label="模型">
+                <SelectInput
+                  value={model}
+                  onChange={setModel}
+                  options={availableModels.map((m) => ({ value: m, label: m }))}
+                />
+              </Field>
+              <Field label="推理引擎">
+                <SegmentedControl
                   value={engine}
-                  onChange={(e) => setEngine(e.target.value)}
-                  optionType="button"
+                  onChange={setEngine}
                   options={[
                     { value: 'vllm', label: 'vLLM' },
                     { value: 'lmdeploy', label: 'LMDeploy' },
                     { value: 'pt', label: 'PyTorch' },
                   ]}
                 />
-              </Form.Item>
-              <Form.Item
+              </Field>
+              <Field
                 label="期望端口"
-                tooltip="留 0 表示由进程自选空闲端口，避免多个部署抢同一端口的竞态"
+                hint="留 0 表示由进程自选空闲端口，避免多个部署抢同一端口的竞态"
               >
-                <InputNumber style={{ width: 200 }} value={port} onChange={(v) => setPort(v ?? 0)} min={0} max={65535} />
-              </Form.Item>
-            </Form>
+                <NumberInput
+                  className="w-50"
+                  value={port}
+                  onChange={setPort}
+                  min={0}
+                  max={65535}
+                />
+              </Field>
+            </FieldStack>
           ),
         },
         {
           title: '说明',
           content: (
-            <Alert
-              type="info"
-              showIcon
-              message="部署任务起来后一直处于运行中，没有「完成」态；停止即视为正常结束。服务地址会在进程绑定端口后回填到列表。"
-            />
+            <div className="text-muted-foreground flex items-start gap-2 text-[13px] leading-5">
+              <Info size={14} className="mt-0.5 flex-none" />
+              部署任务起来后一直处于运行中，没有「完成」态；停止即视为正常结束。服务地址会在进程绑定端口后回填到列表。
+            </div>
           ),
         },
       ]}

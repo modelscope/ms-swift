@@ -1,14 +1,19 @@
-import { Segmented, Slider, Switch, message } from 'antd';
-import { BulbOutlined, RobotOutlined, UndoOutlined } from '@ant-design/icons';
+import type { ReactNode } from 'react';
+import { Lightbulb, Bot, Undo2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageHeader } from '@/components/PageHeader';
+import { Column } from '@/components/Column';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { TIPS, visibleTips } from '@/config/tips';
 import { useSettings } from '@/settings/SettingsContext';
-import { columnStyle, neutral } from '@/theme/theme';
 
 /**
  * 偏好设置。
  *
- * 走的是「一行一件事」的排法，不用 antd Form——这些开关彼此独立，
+ * 走的是「一行一件事」的排法，不套表单——这些开关彼此独立，
  * 套一层表单只会多出提交按钮和校验状态两样不需要的东西。改完即生效。
  */
 export function SettingsPage() {
@@ -16,36 +21,26 @@ export function SettingsPage() {
   const poolSize = visibleTips(settings.tipsBeginnerOnly).length;
 
   return (
-    <div style={{ paddingBottom: 40 }}>
+    <div className="pb-10">
       <PageHeader
         title="偏好设置"
         desc="只影响这台机器上的这个浏览器，改完立即生效，不用保存"
         extra={
-          <span
-            className="ghost-icon"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => {
               reset();
-              message.success('已恢复默认设置');
-            }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              height: 30,
-              padding: '0 12px',
-              borderRadius: 999,
-              fontSize: 12.5,
-              cursor: 'pointer',
-              color: neutral.textSecondary,
+              toast.success('已恢复默认设置');
             }}
           >
-            <UndoOutlined /> 恢复默认
-          </span>
+            <Undo2 /> 恢复默认
+          </Button>
         }
       />
 
-      <div style={columnStyle}>
-        <Group icon={<BulbOutlined />} title="底部提示" desc="等训练的时候顺手看两眼，都是真事">
+      <Column>
+        <Group icon={<Lightbulb size={13} />} title="底部提示" desc="等训练的时候顺手看两眼，都是真事">
           <Row
             label="显示底部提示条"
             hint={
@@ -56,7 +51,7 @@ export function SettingsPage() {
           >
             <Switch
               checked={settings.tipsEnabled}
-              onChange={(v) => update('tipsEnabled', v)}
+              onCheckedChange={(v) => update('tipsEnabled', v)}
             />
           </Row>
 
@@ -64,28 +59,31 @@ export function SettingsPage() {
             <Switch
               checked={settings.tipsBeginnerOnly}
               disabled={!settings.tipsEnabled}
-              onChange={(v) => update('tipsBeginnerOnly', v)}
+              onCheckedChange={(v) => update('tipsBeginnerOnly', v)}
             />
           </Row>
 
           <Row label="轮换间隔" hint={`每 ${settings.tipsInterval} 秒换一条`}>
-            <div style={{ width: 200 }}>
-              <Slider
-                min={5}
-                max={40}
-                step={1}
-                disabled={!settings.tipsEnabled}
-                value={settings.tipsInterval}
-                onChange={(v) => update('tipsInterval', v)}
-                tooltip={{ formatter: (v) => `${v} 秒` }}
-              />
-            </div>
+            {/*
+              Radix 的 Slider 是多游标模型，value 永远是数组，所以这里进出都要拆装一次。
+              当前值不显示在游标上而是写进上面那句 hint：拖动时提示气泡会挡住相邻的行，
+              而这一页的说明文字本来就在左边，读起来是连贯的。
+            */}
+            <Slider
+              className="w-50"
+              min={5}
+              max={40}
+              step={1}
+              disabled={!settings.tipsEnabled}
+              value={[settings.tipsInterval]}
+              onValueChange={([v]) => update('tipsInterval', v)}
+            />
           </Row>
         </Group>
 
-        <Group icon={<RobotOutlined />} title="AI 协助" desc="节点上和整张流程上的问 AI 入口">
+        <Group icon={<Bot size={13} />} title="AI 协助" desc="节点上和整张流程上的问 AI 入口">
           <Row label="启用 AI 入口" hint="关掉后节点标题栏和工具条上的 AI 按钮都不显示">
-            <Switch checked={settings.aiEnabled} onChange={(v) => update('aiEnabled', v)} />
+            <Switch checked={settings.aiEnabled} onCheckedChange={(v) => update('aiEnabled', v)} />
           </Row>
 
           <Row
@@ -95,9 +93,9 @@ export function SettingsPage() {
             <Switch
               checked={settings.aiConfirmBeforeApply}
               disabled={!settings.aiEnabled}
-              onChange={(v) => {
+              onCheckedChange={(v) => {
                 update('aiConfirmBeforeApply', v);
-                if (!v) message.warning('已关闭确认：AI 之后会直接改图，改动仍会记在对话里');
+                if (!v) toast.warning('已关闭确认：AI 之后会直接改图，改动仍会记在对话里');
               }}
             />
           </Row>
@@ -107,26 +105,22 @@ export function SettingsPage() {
           <Row label="节点跑完自动展开输出" hint="只对单节点运行生效，整图运行时不会一个个弹出来">
             <Switch
               checked={settings.autoOpenOutput}
-              onChange={(v) => update('autoOpenOutput', v)}
+              onCheckedChange={(v) => update('autoOpenOutput', v)}
             />
           </Row>
         </Group>
 
         <Group title="界面" desc="以下几项还没接上，先占位">
           <Row label="主题" hint="深色 chrome 是固定的，这里只切内容区">
-            <Segmented
-              size="small"
-              disabled
-              value="light"
-              options={[
-                { label: '浅色', value: 'light' },
-                { label: '深色', value: 'dark' },
-                { label: '跟随系统', value: 'auto' },
-              ]}
-            />
+            {/* type="single" 的 ToggleGroup 就是 antd Segmented 的等价物 */}
+            <ToggleGroup type="single" variant="outline" size="sm" disabled value="light">
+              <ToggleGroupItem value="light">浅色</ToggleGroupItem>
+              <ToggleGroupItem value="dark">深色</ToggleGroupItem>
+              <ToggleGroupItem value="auto">跟随系统</ToggleGroupItem>
+            </ToggleGroup>
           </Row>
         </Group>
-      </div>
+      </Column>
     </div>
   );
 }
@@ -138,19 +132,19 @@ function Group({
   desc,
   children,
 }: {
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   title: string;
   desc: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <section style={{ marginBottom: 34 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 2 }}>
-        {icon && <span style={{ color: neutral.textTertiary, fontSize: 13 }}>{icon}</span>}
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: neutral.text }}>{title}</h3>
+    <section className="mb-8">
+      <div className="mb-0.5 flex items-center gap-[7px]">
+        {icon && <span className="text-muted-foreground">{icon}</span>}
+        <h3 className="text-foreground text-sm font-semibold">{title}</h3>
       </div>
-      <div style={{ fontSize: 12.5, color: neutral.textTertiary, marginBottom: 10 }}>{desc}</div>
-      <div style={{ borderTop: `1px solid ${neutral.borderLight}` }}>{children}</div>
+      <div className="text-muted-foreground mb-2.5 text-[12.5px]">{desc}</div>
+      <div className="border-border/60 border-t">{children}</div>
     </section>
   );
 }
@@ -160,34 +154,16 @@ function Group({
  * 说明这一行是有意留出的：这些开关里有几个（尤其 AI 确认）关掉是有代价的，
  * 代价必须写在旁边，而不是等出了事再解释。
  */
-function Row({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
+function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 20,
-        padding: '13px 2px',
-        borderBottom: `1px solid ${neutral.borderLight}`,
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13.5, color: neutral.text }}>{label}</div>
+    <div className="border-border/60 flex items-center gap-5 border-b px-0.5 py-3.5">
+      <div className="min-w-0 flex-1">
+        <div className="text-foreground text-[13.5px]">{label}</div>
         {hint && (
-          <div style={{ fontSize: 12, color: neutral.textTertiary, marginTop: 2, lineHeight: '17px' }}>
-            {hint}
-          </div>
+          <div className="text-muted-foreground mt-0.5 text-xs leading-[17px]">{hint}</div>
         )}
       </div>
-      <div style={{ flex: 'none' }}>{children}</div>
+      <div className="flex-none">{children}</div>
     </div>
   );
 }

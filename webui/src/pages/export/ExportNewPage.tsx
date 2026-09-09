@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Form, Input, Select, Switch } from 'antd';
 import { ConfigFormShell } from '@/components/ConfigFormShell';
+import { Field, FieldStack, SelectInput } from '@/components/FormField';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { MODULES } from '@/theme/modules';
 import { checkpoints } from '@/mock/data';
 
@@ -16,7 +18,8 @@ export function ExportNewPage() {
       'swift export',
       `    --model ${ckpt}`,
       mergeLora ? '    --merge_lora true' : null,
-      quant !== 'none' ? `    --quant_method ${quant} --quant_bits ${quant === 'awq' ? 4 : 4}` : null,
+      /* awq / gptq 都是 int4，bnb 是 int8——位宽跟着方法走，不单独给一个选项 */
+      quant !== 'none' ? `    --quant_method ${quant} --quant_bits ${quant === 'bnb' ? 8 : 4}` : null,
       push ? '    --push_to_hub true --hub_model_id my-org/my-model' : null,
       '    --output_dir outputs',
     ]
@@ -41,9 +44,9 @@ export function ExportNewPage() {
         {
           title: '源与操作',
           content: (
-            <Form layout="vertical">
-              <Form.Item label="源 checkpoint">
-                <Select
+            <FieldStack>
+              <Field label="源 checkpoint">
+                <SelectInput
                   value={ckpt}
                   onChange={setCkpt}
                   options={checkpoints.map((c) => ({
@@ -51,12 +54,12 @@ export function ExportNewPage() {
                     label: `${c.name} · 来自 ${c.fromTask}`,
                   }))}
                 />
-              </Form.Item>
-              <Form.Item label="合并 LoRA 权重">
-                <Switch checked={mergeLora} onChange={setMergeLora} />
-              </Form.Item>
-              <Form.Item label="量化方式">
-                <Select
+              </Field>
+              <Field label="合并 LoRA 权重">
+                <Switch checked={mergeLora} onCheckedChange={setMergeLora} />
+              </Field>
+              <Field label="量化方式">
+                <SelectInput
                   value={quant}
                   onChange={setQuant}
                   options={[
@@ -66,23 +69,23 @@ export function ExportNewPage() {
                     { value: 'bnb', label: 'BitsAndBytes (int8)' },
                   ]}
                 />
-              </Form.Item>
-            </Form>
+              </Field>
+            </FieldStack>
           ),
         },
         {
           title: '推送到 Hub',
           content: (
-            <Form layout="vertical">
-              <Form.Item label="推送到 ModelScope Hub">
-                <Switch checked={push} onChange={setPush} />
-              </Form.Item>
+            <FieldStack>
+              <Field label="推送到 ModelScope Hub">
+                <Switch checked={push} onCheckedChange={setPush} />
+              </Field>
               {push && (
-                <Form.Item label="hub_model_id">
+                <Field label="hub_model_id">
                   <Input placeholder="my-org/my-model" defaultValue="my-org/my-model" />
-                </Form.Item>
+                </Field>
               )}
-            </Form>
+            </FieldStack>
           ),
         },
       ]}

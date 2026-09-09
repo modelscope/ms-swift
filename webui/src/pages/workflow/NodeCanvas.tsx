@@ -1,34 +1,82 @@
-import { useEffect, useRef, useState } from 'react';
-import { Tooltip, message } from 'antd';
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
+import type { CSSProperties } from 'react';
 import {
-  CheckOutlined,
-  CopyOutlined,
-  CloseOutlined,
-  ExclamationOutlined,
-  FileTextOutlined,
-  LoadingOutlined,
-  LockOutlined,
-  PlayCircleFilled,
-  RobotOutlined,
-} from '@ant-design/icons';
+  Background,
+  BackgroundVariant,
+  ControlButton,
+  Controls,
+  Handle,
+  Panel,
+  Position,
+  ReactFlow,
+  ReactFlowProvider,
+  useConnection,
+  useReactFlow,
+} from '@xyflow/react';
+import type {
+  Connection,
+  ConnectionState,
+  Edge,
+  FitViewOptions,
+  Node,
+  NodeProps,
+  OnNodesChange,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import {
-  HEADER_H,
-  NODE_TYPES,
-  NODE_W,
-  PORT_TYPES,
-  findPort,
-  nodeHeight,
-  portY,
-} from './nodeTypes';
-import type { GraphEdge, GraphFrame, GraphNode, PortTypeKey } from './nodeTypes';
-import { chrome } from '@/theme/theme';
+  Bot,
+  Check,
+  Copy,
+  FileText,
+  Loader2,
+  Lock,
+  Maximize2,
+  Minus,
+  Play,
+  Plus,
+  TriangleAlert,
+  X,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { cn } from 'cn';
+import { Hint } from '@/components/Hint';
+import { NODE_TYPES, NODE_W, PORT_TYPES, findPort } from './nodeTypes';
+import type { GraphEdge, GraphFrame, GraphNode, PortDef } from './nodeTypes';
 
-/** 交互状态。拖节点 / 平移画布 / 拉连线三种互斥，用一个联合类型管住 */
-type Interaction =
-  | { kind: 'none' }
-  | { kind: 'node'; id: string; dx: number; dy: number }
-  | { kind: 'pan'; clientX: number; clientY: number; ox: number; oy: number }
-  | { kind: 'link'; from: string; fromPort: string; x: number; y: number };
+/**
+ * 节点画布。深底 + 点阵网格，节点是厚边框的卡片，连线是粗贝塞尔曲线。
+ *
+ * 平移、缩放、拖节点、拉连线、框选、适应视图这些全部交给 React Flow，
+ * 这个文件只负责两件事：把编排的「作者格式」翻译成 React Flow 的结构，
+ * 以及画节点长什么样。
+ *
+ * 翻译只发生在这里一处 —— 示例图、YAML/代码生成、AI 上下文、输出模拟
+ * 读到的都还是 GraphNode / GraphEdge，它们不认识 React Flow。
+ */
+
+/** 节点里塞的就是原始的作者格式，画节点时直接拿出来用 */
+type SwiftNodeData = { node: GraphNode };
+type FrameNodeData = { frame: GraphFrame };
+
+/**
+ * 单节点上的操作走 context 而不是塞进 node.data。
+ *
+ * 塞进 data 的话，父组件每次重渲染这几个回调的引用都变，
+ * 于是每个节点的 data 都成了新对象，整张图跟着重建。
+ */
+interface NodeActions {
+  onRunNode: (id: string) => void;
+  onOpenOutput?: (id: string) => void;
+  onAskAi?: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+const ActionsCtx = createContext<NodeActions | null>(null);
+
+/** 切示例后的复位视角：留出边距但不缩太小，从数据流起点开始看 */
+const FIT_ON_LOAD: FitViewOptions = { padding: 0.1, minZoom: 0.72, maxZoom: 1 };
+/** 手点「适应」时才真缩到装下全图——GRPO 那张图展开有两千多像素宽 */
+const FIT_ALL: FitViewOptions = { padding: 0.08, minZoom: 0.3, maxZoom: 1 };
 
 export interface NodeCanvasProps {
   nodes: GraphNode[];
@@ -49,19 +97,24 @@ export interface NodeCanvasProps {
   aiEnabled?: boolean;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
+  /** 删连线。选中一根线按 Del 就走这里 */
+  onDeleteEdges?: (ids: string[]) => void;
   /** 值变化时自动缩放到刚好装下整张图，切换示例后用它复位视角 */
   fitSignal?: number;
   /** 画布把当前视口中心（图坐标）写进来，点组件面板时把节点加在看得见的地方 */
   viewCenterRef?: React.MutableRefObject<{ x: number; y: number }>;
 }
 
-/**
- * 节点画布。深底 + 点阵网格，节点是厚边框的卡片，连线是粗贝塞尔曲线。
- *
- * 坐标系：外层容器是视口，内层 layer 上挂 translate(offset) scale(scale)。
- * 所有鼠标位置都先过 toCanvas() 换算回图坐标，缩放后拖拽才不会漂。
- */
-export function NodeCanvas({
+/** React Flow 的 hook 都要在 Provider 里面用，所以画布本体包一层 */
+export function NodeCanvas(props: NodeCanvasProps) {
+  return (
+    <ReactFlowProvider>
+      <Canvas {...props} />
+    </ReactFlowProvider>
+  );
+}
+
+function Canvas({
   nodes,
   edges,
   frames = [],
@@ -76,854 +129,532 @@ export function NodeCanvas({
   aiEnabled = true,
   onDuplicate,
   onDelete,
+  onDeleteEdges,
   fitSignal = 0,
   viewCenterRef,
 }: NodeCanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [offset, setOffset] = useState({ x: 40, y: 24 });
-  const [scale, setScale] = useState(1);
-  const [act, setAct] = useState<Interaction>({ kind: 'none' });
+  const { fitView, screenToFlowPosition, zoomIn, zoomOut } = useReactFlow();
 
-  /** 屏幕坐标 → 图坐标 */
-  const toCanvas = (clientX: number, clientY: number) => {
-    const r = wrapRef.current?.getBoundingClientRect();
-    if (!r) return { x: 0, y: 0 };
-    return {
-      x: (clientX - r.left - offset.x) / scale,
-      y: (clientY - r.top - offset.y) / scale,
-    };
-  };
+  const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+
+  const flowNodes = useMemo<Node[]>(
+    () => [
+      /*
+       * 循环框做成压在最底下的节点（zIndex -1 会落到连线层下面），
+       * 这样它跟着平移缩放走，不用自己算坐标。它只是一块背景标注，
+       * 说明「框住的这几个节点每步重跑」，不是真容器：
+       * 拖节点不会跟随，拖出框外也不会被移出循环。
+       */
+      ...frames.map((f) => ({
+        id: `frame:${f.id}`,
+        type: 'frame',
+        position: { x: f.x, y: f.y },
+        width: f.w,
+        height: f.h,
+        data: { frame: f },
+        zIndex: -1,
+        selectable: false,
+        draggable: false,
+        deletable: false,
+        focusable: false,
+        /* 事件全部放过去，点框里的空白仍然是在拖画布 */
+        style: { pointerEvents: 'none' as const },
+      })),
+      ...nodes.map((n) => ({
+        id: n.id,
+        type: 'swift',
+        position: { x: n.x, y: n.y },
+        data: { node: n },
+        selected: n.id === selected,
+        /* 只能拖标题栏移动节点，body 里有可点的东西 */
+        dragHandle: '.swift-node-header',
+        style: { width: NODE_W },
+      })),
+    ],
+    [nodes, frames, selected],
+  );
+
+  const flowEdges = useMemo<Edge[]>(
+    () =>
+      edges.map((ed) => {
+        const src = byId.get(ed.from);
+        const p = src ? findPort(src.type, ed.fromPort, 'out') : undefined;
+        /* 连线颜色取端口数据类型，不取节点色——一眼看出这根线在传什么 */
+        const color = p ? PORT_TYPES[p.type].color : '#6B7280';
+        return {
+          id: ed.id,
+          source: ed.from,
+          sourceHandle: ed.fromPort,
+          target: ed.to,
+          targetHandle: ed.toPort,
+          /* 上游正在跑，线上的虚线往前流。animated 是 RF 自带的 */
+          animated: src?.status === 'running',
+          style: {
+            /*
+             * 设 --xy-edge-stroke 而不是直接写 stroke：直接写是内联样式，
+             * 会压掉 RF 那条「选中时换色」的规则，选中就看不出来了。
+             */
+            '--xy-edge-stroke': color,
+            strokeWidth: 3.5,
+            /* 深底点阵上连线要有厚度，原来靠垫一条更粗的暗线，一个投影就够 */
+            filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.85))',
+          } as CSSProperties,
+        };
+      }),
+    [edges, byId],
+  );
 
   /**
-   * 缩放到装下整张图。minScale 是下限：
-   * GRPO 那张图展开有两千多像素宽，真按完全装下算会缩到 50%，字小得没法看。
-   * 所以初始视角给个较高的下限、靠左对齐（从数据流起点开始看，往右拖），
-   * 只有手点「适应」时才真缩到全图。
+   * 连线合法性。三道校验的原因文案是有信息量的，所以不用 isValidConnection——
+   * 那个只会静默不让连，用户只看到线弹回去，不知道为什么。
+   * 这里放它连上、在 onConnect 里拦下来并把原因说出来。
    */
-  const fitView = (minScale = 0.4) => {
-    const r = wrapRef.current?.getBoundingClientRect();
-    if (!r || nodes.length === 0) return;
-    /* 循环框比里面的节点大一圈，不算进去的话框边会被裁掉 */
-    const xs = [...nodes.map((n) => n.x), ...frames.map((f) => f.x)];
-    const ys = [...nodes.map((n) => n.y), ...frames.map((f) => f.y)];
-    const xe = [
-      ...nodes.map((n) => n.x + NODE_W),
-      ...frames.map((f) => f.x + f.w),
-    ];
-    const ye = [
-      ...nodes.map((n) => n.y + nodeHeight(NODE_TYPES[n.type])),
-      ...frames.map((f) => f.y + f.h),
-    ];
-    const x1 = Math.min(...xs);
-    const y1 = Math.min(...ys);
-    const x2 = Math.max(...xe);
-    const y2 = Math.max(...ye);
-    const pad = 34;
-    const raw = Math.min(
-      1,
-      (r.width - pad * 2) / Math.max(1, x2 - x1),
-      (r.height - pad * 2) / Math.max(1, y2 - y1),
-    );
-    const sc = Math.max(minScale, +raw.toFixed(2));
-    setScale(sc);
-    /* 装不下时 Math.max(0, ...) 会归零，自然变成靠左上对齐 */
-    setOffset({
-      x: pad - x1 * sc + Math.max(0, (r.width - pad * 2 - (x2 - x1) * sc) / 2),
-      y: pad - y1 * sc + Math.max(0, (r.height - pad * 2 - (y2 - y1) * sc) / 2),
-    });
-  };
-
-  useEffect(() => {
-    fitView(0.72);
-  }, [fitSignal]);
-
-  /* 把视口中心同步给外面，点组件面板新增节点时要用 */
-  useEffect(() => {
-    if (!viewCenterRef) return;
-    const r = wrapRef.current?.getBoundingClientRect();
-    if (!r) return;
-    viewCenterRef.current = {
-      x: Math.round((r.width / 2 - offset.x) / scale),
-      y: Math.round((r.height / 2 - offset.y) / scale),
-    };
-  }, [offset, scale, viewCenterRef]);
-
-  /**
-   * 连线合法性：端口类型必须一致。
-   * 挡在这里而不是等运行时报错——优势接不到损失口上，当场就该拒绝。
-   */
-  const checkConnect = (to: string, toPort: string, from: string, fromPort: string) => {
-    if (from === to) return '不能连到自己身上';
-    const a = nodes.find((n) => n.id === from);
-    const b = nodes.find((n) => n.id === to);
-    if (!a || !b) return '节点不存在';
-    const pa = findPort(a.type, fromPort, 'out');
-    const pb = findPort(b.type, toPort, 'in');
-    if (!pa || !pb) return '端口不存在';
-    if (pa.type !== pb.type) {
-      return `类型不匹配：${PORT_TYPES[pa.type].label} 接不到 ${PORT_TYPES[pb.type].label} 上`;
-    }
-    /*
-     * 锁定节点拒收任何手拉的连线。轨迹过滤就是这种：它的两路数据必须
-     * 同进同出、且优势必须在它上游算好。这两条被改了训练会错但不报错——
-     * 类型全匹配，上面那两道检查都拦不住。
-     */
-    if (NODE_TYPES[b.type]?.lockedPorts) {
-      return `${NODE_TYPES[b.type].label} 的连线已锁定：两路数据必须同进同出，接错不报错`;
-    }
-    if (NODE_TYPES[a.type]?.lockedPorts) {
-      return `${NODE_TYPES[a.type].label} 的输出已锁定，不能单独引出一路`;
-    }
-    return null;
-  };
-
-  /* 拖拽期间把 move/up 挂到 window 上，指针移出节点也不会断 */
-  useEffect(() => {
-    if (act.kind === 'none') return;
-
-    const onMove = (e: PointerEvent) => {
-      if (act.kind === 'node') {
-        const p = toCanvas(e.clientX, e.clientY);
-        onMoveNode(act.id, Math.round(p.x - act.dx), Math.round(p.y - act.dy));
-      } else if (act.kind === 'pan') {
-        setOffset({
-          x: act.ox + (e.clientX - act.clientX),
-          y: act.oy + (e.clientY - act.clientY),
-        });
-      } else if (act.kind === 'link') {
-        const p = toCanvas(e.clientX, e.clientY);
-        setAct({ ...act, x: p.x, y: p.y });
+  const check = useCallback(
+    (from: string, fromPort: string, to: string, toPort: string) => {
+      if (from === to) return '不能连到自己身上';
+      const a = byId.get(from);
+      const b = byId.get(to);
+      if (!a || !b) return '节点不存在';
+      const pa = findPort(a.type, fromPort, 'out');
+      const pb = findPort(b.type, toPort, 'in');
+      if (!pa || !pb) return '端口不存在';
+      if (pa.type !== pb.type) {
+        return `类型不匹配：${PORT_TYPES[pa.type].label} 接不到 ${PORT_TYPES[pb.type].label} 上`;
       }
-    };
+      /*
+       * 锁定节点拒收任何手拉的连线。轨迹过滤就是这种：它的两路数据必须
+       * 同进同出、且优势必须在它上游算好。这两条被改了训练会错但不报错——
+       * 类型全匹配，上面那两道检查都拦不住。
+       */
+      if (NODE_TYPES[b.type]?.lockedPorts) {
+        return `${NODE_TYPES[b.type].label} 的连线已锁定：两路数据必须同进同出，接错不报错`;
+      }
+      if (NODE_TYPES[a.type]?.lockedPorts) {
+        return `${NODE_TYPES[a.type].label} 的输出已锁定，不能单独引出一路`;
+      }
+      return null;
+    },
+    [byId],
+  );
 
-    const onUp = (e: PointerEvent) => {
-      if (act.kind === 'link') {
-        /** 落点是否是一个输入口：用 DOM 上的 data 属性反查，省掉一套命中测试 */
-        const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
-        const port = el?.closest('[data-port-in]') as HTMLElement | null;
-        if (port) {
-          const to = port.dataset.nodeId;
-          const toPort = port.dataset.portKey;
-          if (to && toPort) {
-            const err = checkConnect(to, toPort, act.from, act.fromPort);
-            if (err) message.warning(err);
-            else onConnect(act.from, act.fromPort, to, toPort);
-          }
+  const handleConnect = useCallback(
+    (c: Connection) => {
+      if (!c.sourceHandle || !c.targetHandle) return;
+      const err = check(c.source, c.sourceHandle, c.target, c.targetHandle);
+      if (err) toast.warning(err);
+      else onConnect(c.source, c.sourceHandle, c.target, c.targetHandle);
+    },
+    [check, onConnect],
+  );
+
+  /*
+   * 尺寸变化和选中状态都由 RF 自己在内部记着，这里只需要把拖动后的坐标写回去。
+   */
+  const handleNodesChange = useCallback<OnNodesChange>(
+    (changes) => {
+      for (const c of changes) {
+        if (c.type === 'position' && c.position) {
+          onMoveNode(c.id, Math.round(c.position.x), Math.round(c.position.y));
         }
       }
-      setAct({ kind: 'none' });
-    };
+    },
+    [onMoveNode],
+  );
 
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-  }, [act, offset, scale, onMoveNode, onConnect]);
+  /** 把视口中心同步给外面，点组件面板新增节点时要用 */
+  const syncCenter = useCallback(() => {
+    const r = wrapRef.current?.getBoundingClientRect();
+    if (!viewCenterRef || !r) return;
+    const p = screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+    viewCenterRef.current = { x: Math.round(p.x), y: Math.round(p.y) };
+  }, [screenToFlowPosition, viewCenterRef]);
 
-  /* 选中节点后的键盘操作：复制 / 删除 */
+  const firstFit = useRef(true);
+  useEffect(() => {
+    /* 首次复位交给 <ReactFlow fitView>：这会儿节点还没量出尺寸，这里算不准 */
+    if (firstFit.current) {
+      firstFit.current = false;
+      return;
+    }
+    fitView(FIT_ON_LOAD);
+    syncCenter();
+  }, [fitSignal, fitView, syncCenter]);
+
+  /* Del 删除由 RF 的 deleteKeyCode 管，⌘D 复制它不管，自己留一个 */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!selected) return;
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd') {
-        e.preventDefault();
-        onDuplicate(selected);
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        onDelete(selected);
-      }
+      if (!selected || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'd') return;
+      e.preventDefault();
+      onDuplicate(selected);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selected, onDuplicate, onDelete]);
+  }, [selected, onDuplicate]);
 
-  /** 端口圆心在图坐标里的位置 */
-  const portPos = (nodeId: string, portKey: string, dir: 'in' | 'out') => {
-    const n = nodes.find((x) => x.id === nodeId);
-    if (!n) return null;
-    const def = NODE_TYPES[n.type];
-    const list = dir === 'in' ? def.inputs : def.outputs;
-    const i = list.findIndex((p) => p.key === portKey);
-    if (i < 0) return null;
-    return { x: n.x + (dir === 'out' ? NODE_W : 0), y: n.y + portY(i) };
-  };
-
-  /** 粗贝塞尔：横向控制点随距离伸缩，短连线不打结 */
-  const path = (x1: number, y1: number, x2: number, y2: number) => {
-    const d = Math.max(46, Math.abs(x2 - x1) * 0.5);
-    return `M ${x1} ${y1} C ${x1 + d} ${y1}, ${x2 - d} ${y2}, ${x2} ${y2}`;
-  };
-
-  /** 正在拉的线是什么类型，用来给兼容的输入口亮一下 */
-  const linkingType: PortTypeKey | null = (() => {
-    if (act.kind !== 'link') return null;
-    const src = nodes.find((n) => n.id === act.from);
-    const sp = src ? findPort(src.type, act.fromPort, 'out') : undefined;
-    return sp ? sp.type : null;
-  })();
-
-  /** 当前图里出现过的数据类型，给图例用 */
-  const legendTypes: PortTypeKey[] = Array.from(
-    new Set(
-      edges
-        .map((ed) => {
-          const src = nodes.find((n) => n.id === ed.from);
-          return src ? findPort(src.type, ed.fromPort, 'out')?.type : undefined;
-        })
-        .filter((t): t is PortTypeKey => !!t),
-    ),
+  const actions = useMemo<NodeActions>(
+    () => ({
+      onRunNode,
+      onOpenOutput,
+      onAskAi: aiEnabled ? onAskAi : undefined,
+      onDuplicate,
+      onDelete,
+    }),
+    [onRunNode, onOpenOutput, onAskAi, aiEnabled, onDuplicate, onDelete],
   );
 
+  /** 当前图里出现过的数据类型，给图例用 */
+  const legendTypes = useMemo(() => {
+    const seen = new Set<string>();
+    for (const ed of edges) {
+      const src = byId.get(ed.from);
+      const p = src ? findPort(src.type, ed.fromPort, 'out') : undefined;
+      if (p) seen.add(p.type);
+    }
+    return [...seen] as (keyof typeof PORT_TYPES)[];
+  }, [edges, byId]);
+
   return (
-    <div
-      ref={wrapRef}
-      onPointerDown={(e) => {
-        /** 空白处按下：取消选中并开始平移 */
-        if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.canvasBg) {
-          onSelect(null);
-          setAct({ kind: 'pan', clientX: e.clientX, clientY: e.clientY, ox: offset.x, oy: offset.y });
-        }
-      }}
-      onDragOver={(e) => {
-        if (e.dataTransfer.types.includes('application/swift-node')) {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'copy';
-        }
-      }}
-      onDrop={(e) => {
-        const key = e.dataTransfer.getData('application/swift-node');
-        if (!key) return;
-        e.preventDefault();
-        const p = toCanvas(e.clientX, e.clientY);
-        onAddNode(key, Math.round(p.x - NODE_W / 2), Math.round(p.y - HEADER_H / 2));
-      }}
-      style={{
-        position: 'relative',
-        flex: 1,
-        minWidth: 0,
-        overflow: 'hidden',
-        background: '#191A23',
-        /* 点阵网格：两层 radial-gradient，跟着平移一起动 */
-        backgroundImage:
-          'radial-gradient(rgba(255,255,255,0.10) 1.2px, transparent 1.2px), radial-gradient(rgba(255,255,255,0.045) 1px, transparent 1px)',
-        backgroundSize: `${28 * scale}px ${28 * scale}px, ${140 * scale}px ${140 * scale}px`,
-        backgroundPosition: `${offset.x}px ${offset.y}px, ${offset.x}px ${offset.y}px`,
-        cursor: act.kind === 'pan' ? 'grabbing' : 'default',
-        touchAction: 'none',
-      }}
-      data-canvas-bg="1"
-    >
-      <div
-        data-canvas-bg="1"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-          transformOrigin: '0 0',
-        }}
-      >
-        {/*
-          循环框层。压在连线和节点下面，pointerEvents 关掉——它只是一块
-          背景标注，说明「框住的这几个节点每步重跑」，不是真容器：
-          拖节点不会跟随，拖出框外也不会被移出循环。
-        */}
-        {frames.map((f) => {
-          const c = f.color ?? '#6366F1';
-          return (
-            <div
-              key={f.id}
-              style={{
-                position: 'absolute',
-                left: f.x,
-                top: f.y,
-                width: f.w,
-                height: f.h,
-                borderRadius: 16,
-                border: `2px dashed ${c}88`,
-                background: `${c}12`,
-                pointerEvents: 'none',
-              }}
-            >
-              <div
-                style={{
-                  position: 'absolute',
-                  left: 12,
-                  top: -12,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  maxWidth: f.w - 24,
-                }}
-              >
-                <span
-                  style={{
-                    background: c,
-                    color: '#fff',
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    letterSpacing: 0.3,
-                    padding: '2px 9px',
-                    borderRadius: 7,
-                    flex: 'none',
-                  }}
-                >
-                  {f.label}
-                </span>
-                {f.note && (
+    <div ref={wrapRef} className="bg-titlebar relative min-w-0 flex-1">
+      <ActionsCtx.Provider value={actions}>
+        <ReactFlow
+          nodes={flowNodes}
+          edges={flowEdges}
+          nodeTypes={NODE_VIEWS}
+          onNodesChange={handleNodesChange}
+          onConnect={handleConnect}
+          onNodesDelete={(deleted) => deleted.forEach((n) => onDelete(n.id))}
+          onEdgesDelete={(deleted) => onDeleteEdges?.(deleted.map((e) => e.id))}
+          onSelectionChange={({ nodes: sel }) => {
+            const id = sel.find((n) => n.type === 'swift')?.id ?? null;
+            if (id !== selected) onSelect(id);
+          }}
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes('application/swift-node')) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+          }}
+          onDrop={(e) => {
+            const key = e.dataTransfer.getData('application/swift-node');
+            if (!key) return;
+            e.preventDefault();
+            const p = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+            /* 让指针落在标题栏中间，看起来就是「拖到哪放到哪」 */
+            onAddNode(key, Math.round(p.x - NODE_W / 2), Math.round(p.y - 15));
+          }}
+          onInit={syncCenter}
+          onMoveEnd={syncCenter}
+          fitView
+          fitViewOptions={FIT_ON_LOAD}
+          deleteKeyCode={['Delete', 'Backspace']}
+          minZoom={0.3}
+          maxZoom={1.6}
+          /* 画布跟侧栏一样永远是深色壳，跟 app 的明暗主题无关 */
+          colorMode="dark"
+          /* 拉线时不给它上色：颜色每帧都变会把整张图重渲染一遍，兼容的输入口已经在亮了 */
+          connectionLineStyle={{ strokeWidth: 3.5, stroke: 'rgba(255,255,255,0.8)', strokeDasharray: '7 6' }}
+          attributionPosition="top-right"
+        >
+          {/* 点阵网格：两层不同疏密的点，跟原来的双层 radial-gradient 一样 */}
+          <Background id="fine" variant={BackgroundVariant.Dots} gap={28} size={1.2} color="rgba(255,255,255,0.14)" />
+          <Background id="coarse" variant={BackgroundVariant.Dots} gap={140} size={2.4} color="rgba(255,255,255,0.10)" />
+
+          {/* 图例：只列当前图里真用到的数据类型，十五种颜色堆在那里反而没人看 */}
+          {legendTypes.length > 0 && (
+            <Panel position="bottom-left">
+              <div className="border-sidebar-border flex max-w-85 flex-wrap gap-x-3 gap-y-1 rounded-[10px] border bg-black/55 px-2.5 py-1.5 backdrop-blur-sm">
+                {legendTypes.map((t) => (
                   <span
-                    style={{
-                      background: '#191A23',
-                      color: chrome.textDim,
-                      fontSize: 11,
-                      padding: '2px 8px',
-                      borderRadius: 7,
-                      border: `1px solid ${c}55`,
-                      overflow: 'hidden',
-                      whiteSpace: 'nowrap',
-                      textOverflow: 'ellipsis',
-                    }}
+                    key={t}
+                    className="text-sidebar-foreground/60 inline-flex items-center gap-1.5 text-[11px]"
                   >
-                    {f.note}
+                    <span
+                      className="h-[3px] w-3.5 rounded-sm"
+                      style={{ background: PORT_TYPES[t].color }}
+                    />
+                    {PORT_TYPES[t].label}
                   </span>
-                )}
+                ))}
               </div>
-            </div>
-          );
-        })}
+            </Panel>
+          )}
 
-        {/* 连线层。放在节点下面，pointerEvents 关掉不挡拖拽 */}
-        <svg
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            width: 6000,
-            height: 4000,
-            overflow: 'visible',
-            pointerEvents: 'none',
-          }}
-        >
-          {edges.map((ed) => {
-            const a = portPos(ed.from, ed.fromPort, 'out');
-            const b = portPos(ed.to, ed.toPort, 'in');
-            if (!a || !b) return null;
-            const src = nodes.find((n) => n.id === ed.from);
-            const sp = src ? findPort(src.type, ed.fromPort, 'out') : undefined;
-            /* 连线颜色取端口数据类型，不取节点色——一眼看出这根线在传什么 */
-            const color = sp ? PORT_TYPES[sp.type].color : '#6B7280';
-            const flowing = src?.status === 'running';
-            return (
-              <g key={ed.id}>
-                {/* 底下垫一条更粗的暗线，让连线在网格上有厚度 */}
-                <path
-                  d={path(a.x, a.y, b.x, b.y)}
-                  fill="none"
-                  stroke="#0E0F16"
-                  strokeWidth={7}
-                  strokeLinecap="round"
-                  opacity={0.55}
-                />
-                <path
-                  d={path(a.x, a.y, b.x, b.y)}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={3.5}
-                  strokeLinecap="round"
-                  className={flowing ? 'edge-flow' : undefined}
-                  strokeDasharray={flowing ? '9 7' : undefined}
-                />
-              </g>
-            );
-          })}
-
-          {/* 正在拉的那根线 */}
-          {act.kind === 'link' &&
-            (() => {
-              const a = portPos(act.from, act.fromPort, 'out');
-              if (!a) return null;
-              const src = nodes.find((n) => n.id === act.from);
-              const sp = src ? findPort(src.type, act.fromPort, 'out') : undefined;
-              return (
-                <path
-                  d={path(a.x, a.y, act.x, act.y)}
-                  fill="none"
-                  stroke={sp ? PORT_TYPES[sp.type].color : '#fff'}
-                  strokeWidth={3.5}
-                  strokeLinecap="round"
-                  strokeDasharray="7 6"
-                  opacity={0.85}
-                />
-              );
-            })()}
-        </svg>
-
-        {/* 节点层 */}
-        {nodes.map((n) => (
-          <NodeBox
-            key={n.id}
-            node={n}
-            selected={selected === n.id}
-            linkType={linkingType}
-            linkFrom={act.kind === 'link' ? act.from : null}
-            onHeaderDown={(e) => {
-              const p = toCanvas(e.clientX, e.clientY);
-              onSelect(n.id);
-              setAct({ kind: 'node', id: n.id, dx: p.x - n.x, dy: p.y - n.y });
-            }}
-            onStartLink={(portKey, e) => {
-              const p = toCanvas(e.clientX, e.clientY);
-              setAct({ kind: 'link', from: n.id, fromPort: portKey, x: p.x, y: p.y });
-            }}
-            onSelect={() => onSelect(n.id)}
-            onRun={() => onRunNode(n.id)}
-            onOpenOutput={onOpenOutput && (() => onOpenOutput(n.id))}
-            onAskAi={aiEnabled && onAskAi ? () => onAskAi(n.id) : undefined}
-            onDuplicate={() => onDuplicate(n.id)}
-            onDelete={() => onDelete(n.id)}
-          />
-        ))}
-      </div>
-
-      {/* 图例：只列当前图里真用到的数据类型，否则十一种颜色堆在那里反而没人看 */ }
-      {legendTypes.length > 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            left: 12,
-            bottom: 12,
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '4px 12px',
-            maxWidth: 340,
-            background: 'rgba(20,21,29,0.86)',
-            border: `1px solid ${chrome.border}`,
-            borderRadius: 10,
-            padding: '7px 10px',
-          }}
-        >
-          {legendTypes.map((t) => (
-            <span
-              key={t}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                fontSize: 11,
-                color: chrome.textDim,
-              }}
-            >
-              <span
-                style={{
-                  width: 14,
-                  height: 3,
-                  borderRadius: 2,
-                  background: PORT_TYPES[t].color,
-                }}
-              />
-              {PORT_TYPES[t].label}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* 缩放控件，右下角浮层 */}
-      <div
-        style={{
-          position: 'absolute',
-          right: 12,
-          bottom: 12,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 2,
-          background: 'rgba(20,21,29,0.86)',
-          border: `1px solid ${chrome.border}`,
-          borderRadius: 10,
-          padding: 3,
-        }}
-      >
-        <ZoomBtn label="缩小" onClick={() => setScale((s) => Math.max(0.4, +(s - 0.1).toFixed(2)))}>
-          −
-        </ZoomBtn>
-        <span
-          onClick={() => {
-            setScale(1);
-            setOffset({ x: 40, y: 24 });
-          }}
-          className="chrome-icon-btn"
-          style={{
-            fontSize: 11.5,
-            color: chrome.textDim,
-            padding: '0 8px',
-            height: 24,
-            display: 'inline-flex',
-            alignItems: 'center',
-            borderRadius: 7,
-            cursor: 'pointer',
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {Math.round(scale * 100)}%
-        </span>
-        <ZoomBtn label="放大" onClick={() => setScale((s) => Math.min(1.6, +(s + 0.1).toFixed(2)))}>
-          +
-        </ZoomBtn>
-        <Tooltip title="缩放到看得见全图">
-          <span
-            className="chrome-icon-btn"
-            onClick={() => fitView(0.4)}
-            style={{
-              fontSize: 11.5,
-              color: chrome.textDim,
-              padding: '0 8px',
-              height: 24,
-              display: 'inline-flex',
-              alignItems: 'center',
-              borderRadius: 7,
-              cursor: 'pointer',
-            }}
-          >
-            适应
-          </span>
-        </Tooltip>
-      </div>
+          {/* 三个按钮自己写而不是用 Controls 自带的：自带的提示文案是英文的 */}
+          <Controls showZoom={false} showFitView={false} showInteractive={false}>
+            <ControlButton onClick={() => zoomOut()} title="缩小">
+              <Minus />
+            </ControlButton>
+            <ControlButton onClick={() => zoomIn()} title="放大">
+              <Plus />
+            </ControlButton>
+            <ControlButton onClick={() => fitView(FIT_ALL)} title="缩放到看得见全图">
+              <Maximize2 />
+            </ControlButton>
+          </Controls>
+        </ReactFlow>
+      </ActionsCtx.Provider>
     </div>
   );
 }
 
-function ZoomBtn({
-  children,
-  label,
-  onClick,
-}: {
-  children: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <Tooltip title={label}>
-      <span
-        className="chrome-icon-btn"
-        onClick={onClick}
-        style={{
-          width: 24,
-          height: 24,
-          borderRadius: 7,
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: chrome.textDim,
-          cursor: 'pointer',
-          fontSize: 14,
-        }}
-      >
-        {children}
-      </span>
-    </Tooltip>
-  );
+/**
+ * 正在拉的线是什么类型、从哪个节点出发，用来给兼容的输入口亮一下。
+ *
+ * 返回一个字符串而不是对象：指针每动一下这个选择器都会重算，
+ * 返回对象的话引用每次都变，图上所有节点都会跟着重渲染。
+ */
+function linkSelector(c: ConnectionState) {
+  if (!c.inProgress || !c.fromHandle?.id) return '';
+  const g = (c.fromNode.data as SwiftNodeData).node;
+  const p = findPort(g.type, c.fromHandle.id, 'out');
+  return p ? `${p.type}|${g.id}` : '';
 }
 
+const HEADER_BTN =
+  'inline-flex size-[18px] cursor-pointer items-center justify-center rounded text-white/85 transition-colors hover:bg-black/25 hover:text-white [&>svg]:size-3';
+
 /** 单个节点。厚边框 + 饱和色标题栏 + 端口圆点 */
-function NodeBox({
-  node,
-  selected,
-  linkType,
-  linkFrom,
-  onHeaderDown,
-  onStartLink,
-  onSelect,
-  onRun,
-  onOpenOutput,
-  onAskAi,
-  onDuplicate,
-  onDelete,
-}: {
-  node: GraphNode;
-  selected: boolean;
-  /** 正在拉线的类型；匹配的输入口会高亮 */
-  linkType: PortTypeKey | null;
-  linkFrom: string | null;
-  onHeaderDown: (e: React.PointerEvent) => void;
-  onStartLink: (portKey: string, e: React.PointerEvent) => void;
-  onSelect: () => void;
-  onRun: () => void;
-  onOpenOutput?: () => void;
-  onAskAi?: () => void;
-  onDuplicate: () => void;
-  onDelete: () => void;
-}) {
+const SwiftNodeView = memo(function SwiftNodeView({ id, data, selected }: NodeProps) {
+  /* nodeTypes 那边只认 NodeProps 这一种签名，泛型在这个边界上丢了，转回来 */
+  const { node } = data as SwiftNodeData;
   const def = NODE_TYPES[node.type];
+  const act = useContext(ActionsCtx);
+  const link = useConnection(linkSelector);
+  const [linkType, linkFrom] = link.split('|');
+
   const params = node.params ?? def.params;
   const code = node.code ?? def.code;
-  const h = nodeHeight(def);
   const running = node.status === 'running';
-  /** 连线锁定：输出口拖不动，标题栏挂个锁把原因说在 tooltip 里 */
-  const locked = !!def.lockedPorts;
-  /**
-   * 标题栏只有 208px 宽。运行/看输出/问 AI 是常用的，一直在；
-   * 复制/删除每天用不到一次，藏到鼠标移上去才出现——
-   * 不然五个图标排完，节点名字就只剩一个字了。
-   */
-  const [hover, setHover] = useState(false);
   const hasOutput = node.status === 'done' || node.status === 'failed';
+  /** 连线锁定：输出口拖不出来，标题栏挂个锁把原因说在提示里 */
+  const locked = !!def.lockedPorts;
 
   return (
     <div
-      onPointerDown={onSelect}
-      onPointerEnter={() => setHover(true)}
-      onPointerLeave={() => setHover(false)}
-      style={{
-        position: 'absolute',
-        left: node.x,
-        top: node.y,
-        width: NODE_W,
-        minHeight: h,
-        borderRadius: 12,
-        background: '#232532',
-        /* 厚边框：选中时用节点主色，平时是一圈亮边 */
-        border: `2px solid ${selected ? def.color : 'rgba(255,255,255,0.13)'}`,
-        boxShadow: selected
-          ? `0 0 0 4px ${def.color}33, 0 14px 30px rgba(0,0,0,0.5)`
-          : '0 8px 20px rgba(0,0,0,0.42)',
-        overflow: 'hidden',
-        userSelect: 'none',
-      }}
+      className={cn(
+        'bg-sidebar w-full overflow-hidden rounded-xl border-2 select-none',
+        selected ? 'shadow-2xl' : 'border-white/12 shadow-lg',
+      )}
+      style={
+        selected
+          ? { borderColor: def.color, boxShadow: `0 0 0 4px ${def.color}33, 0 14px 30px rgba(0,0,0,0.5)` }
+          : undefined
+      }
     >
       {/* 标题栏：拖这里移动节点 */}
       <div
-        onPointerDown={onHeaderDown}
-        style={{
-          height: HEADER_H,
-          background: def.color,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 7,
-          padding: '0 8px',
-          cursor: 'grab',
-        }}
+        className="swift-node-header flex h-[30px] cursor-grab items-center gap-[7px] px-2"
+        style={{ background: def.color }}
       >
-        <span style={{ color: '#fff', fontSize: 13, display: 'inline-flex', opacity: 0.95 }}>
-          {def.icon}
-        </span>
-        <span
-          style={{
-            flex: 1,
-            minWidth: 0,
-            color: '#fff',
-            fontSize: 12.5,
-            fontWeight: 600,
-            letterSpacing: 0.2,
-            overflow: 'hidden',
-            whiteSpace: 'nowrap',
-            textOverflow: 'ellipsis',
-          }}
-        >
+        <span className="inline-flex text-white/95 [&>svg]:size-3.5">{def.icon}</span>
+        <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold tracking-wide text-white">
           {def.label}
         </span>
 
         <StatusDot status={node.status} />
 
         {locked && (
-          <Tooltip title="这个节点的连线不能改：两路数据必须同进同出，接错不报错">
-            <span style={{ color: '#fff', fontSize: 11, opacity: 0.9, flex: 'none' }}>
-              <LockOutlined />
+          <Hint title="这个节点的连线不能改：两路数据必须同进同出，接错不报错">
+            <span className="shrink-0 text-white/90 [&>svg]:size-3">
+              <Lock />
             </span>
-          </Tooltip>
+          </Hint>
         )}
 
-        {/* 单节点操作。按在按钮上不触发拖拽 */}
-        <div style={{ display: 'flex', gap: 1 }} onPointerDown={(e) => e.stopPropagation()}>
-          <Tooltip title={def.runnable ? '只运行这个节点' : '这是声明式节点，跑一次只是把它准备好'}>
-            <span className="node-btn" onClick={onRun}>
-              {running ? <LoadingOutlined /> : <PlayCircleFilled />}
+        {/*
+          单节点操作。
+          nodrag 让 RF 别把这里当拖动把手；停掉冒泡是为了别顺手把节点选中——
+          「看输出」本来要把面板开到输出页，被选中一挤就跳回参数页了。
+
+          复制/删除藏到鼠标移上来才出现：标题栏只有 208px 宽，
+          五个图标一起排完，节点名字就只剩一个字了。
+        */}
+        <div
+          className="nodrag group/act flex shrink-0 gap-px"
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <Hint title={def.runnable ? '只运行这个节点' : '这是声明式节点，跑一次只是把它准备好'}>
+            <span className={HEADER_BTN} onClick={() => act?.onRunNode(id)}>
+              {running ? <Loader2 className="animate-spin" /> : <Play />}
             </span>
-          </Tooltip>
-          {onOpenOutput && (
-            <Tooltip title={hasOutput ? '看这次跑出了什么' : '还没跑过，跑完才有输出'}>
+          </Hint>
+          {act?.onOpenOutput && (
+            <Hint title={hasOutput ? '看这次跑出了什么' : '还没跑过，跑完才有输出'}>
               <span
-                className="node-btn"
-                onClick={onOpenOutput}
-                style={{ opacity: hasOutput ? 1 : 0.42 }}
+                className={cn(HEADER_BTN, !hasOutput && 'opacity-45')}
+                onClick={() => act.onOpenOutput?.(id)}
               >
-                <FileTextOutlined />
+                <FileText />
               </span>
-            </Tooltip>
+            </Hint>
           )}
-          {onAskAi && (
-            <Tooltip title="就这个节点问 AI">
-              <span className="node-btn" onClick={onAskAi}>
-                <RobotOutlined />
+          {act?.onAskAi && (
+            <Hint title="就这个节点问 AI">
+              <span className={HEADER_BTN} onClick={() => act.onAskAi?.(id)}>
+                <Bot />
               </span>
-            </Tooltip>
+            </Hint>
           )}
-          {(hover || selected) && (
-            <>
-              <Tooltip title="复制节点  ⌘D">
-                <span className="node-btn" onClick={onDuplicate}>
-                  <CopyOutlined />
-                </span>
-              </Tooltip>
-              <Tooltip title="删除节点  Del">
-                <span className="node-btn" onClick={onDelete}>
-                  <CloseOutlined />
-                </span>
-              </Tooltip>
-            </>
-          )}
+          <Hint title="复制节点  ⌘D">
+            <span
+              className={cn(HEADER_BTN, !selected && 'opacity-0 group-hover/act:opacity-100')}
+              onClick={() => act?.onDuplicate(id)}
+            >
+              <Copy />
+            </span>
+          </Hint>
+          <Hint title="删除节点  Del">
+            <span
+              className={cn(HEADER_BTN, !selected && 'opacity-0 group-hover/act:opacity-100')}
+              onClick={() => act?.onDelete(id)}
+            >
+              <X />
+            </span>
+          </Hint>
         </div>
       </div>
 
-      {/* 端口区 */}
-      <div style={{ position: 'relative', paddingTop: 6, minHeight: 22 }}>
-        {def.inputs.map((p, i) => (
-          <div
-            key={p.key}
-            data-port-in="1"
-            data-node-id={node.id}
-            data-port-key={p.key}
-            style={{
-              position: 'absolute',
-              left: -2,
-              top: portY(i) - HEADER_H - 7,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              height: 14,
-            }}
-          >
-            <Port
-              color={PORT_TYPES[p.type].color}
-              highlight={linkType === p.type && linkFrom !== node.id}
+      {/*
+        端口区。左右两列各排一路，第 i 个输入和第 i 个输出自然对齐，
+        位置全靠布局撑出来——原来这里是按下标手算每个圆点的绝对坐标。
+      */}
+      <div className="grid min-h-5.5 grid-cols-2 gap-x-2 pt-1.5">
+        <div className="flex flex-col gap-[7px]">
+          {def.inputs.map((p) => (
+            <PortRow
+              key={p.key}
+              port={p}
+              dir="in"
+              highlight={linkType === p.type && linkFrom !== id}
             />
-            <span style={{ fontSize: 11, color: chrome.textDim }}>{p.label}</span>
-          </div>
-        ))}
-        {def.outputs.map((p, i) => (
-          <div
-            key={p.key}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              if (locked) return;
-              onStartLink(p.key, e);
-            }}
-            title={locked ? '这路输出已锁定，不能单独引出' : '从这里拖到下一个节点的输入口'}
-            style={{
-              position: 'absolute',
-              right: -2,
-              top: portY(i) - HEADER_H - 7,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              height: 14,
-              cursor: locked ? 'not-allowed' : 'crosshair',
-            }}
-          >
-            <span style={{ fontSize: 11, color: chrome.textDim }}>{p.label}</span>
-            <Port color={PORT_TYPES[p.type].color} />
-          </div>
-        ))}
-        <div
-          style={{
-            height: Math.max(def.inputs.length, def.outputs.length, 1) * 21,
-          }}
-        />
+          ))}
+        </div>
+        <div className="flex flex-col gap-[7px]">
+          {def.outputs.map((p) => (
+            <PortRow key={p.key} port={p} dir="out" connectable={!locked} />
+          ))}
+        </div>
       </div>
 
       {/* 代码节点显代码，其余显参数摘要 */}
       {code ? (
-        <div
-          style={{
-            margin: '0 8px 9px',
-            padding: '6px 8px',
-            borderRadius: 8,
-            background: '#15161E',
-            border: '1px solid rgba(255,255,255,0.08)',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            fontSize: 11,
-            lineHeight: '14px',
-            color: '#C3C7D1',
-            whiteSpace: 'pre',
-            overflow: 'hidden',
-          }}
-        >
+        <pre className="bg-titlebar mx-2 mt-1.5 mb-2.5 overflow-hidden rounded-lg border border-white/8 px-2 py-1.5 font-mono text-[11px] leading-[14px] text-[#C3C7D1]">
           {code}
-        </div>
+        </pre>
       ) : (
-        <div style={{ padding: '2px 10px 9px' }}>
+        <div className="px-2.5 pt-0.5 pb-2.5">
           {params.map((p, i) => (
             <div
               key={`${p.label}-${i}`}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                gap: 8,
-                fontSize: 11.5,
-                lineHeight: '19px',
-              }}
+              className="flex justify-between gap-2 text-[11.5px] leading-[19px]"
             >
-              <span style={{ color: chrome.textFaint, flex: 'none' }}>{p.label}</span>
-              <span
-                style={{
-                  color: chrome.text,
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                  overflow: 'hidden',
-                  whiteSpace: 'nowrap',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {p.value}
-              </span>
+              <span className="text-sidebar-foreground/45 shrink-0">{p.label}</span>
+              <span className="text-sidebar-foreground truncate font-mono">{p.value}</span>
             </div>
           ))}
         </div>
       )}
     </div>
   );
-}
+});
 
-function Port({ color, highlight }: { color: string; highlight?: boolean }) {
+function PortRow({
+  port,
+  dir,
+  highlight,
+  connectable = true,
+}: {
+  port: PortDef;
+  dir: 'in' | 'out';
+  /** 正在拉的线类型对得上，圆点放大并发光 */
+  highlight?: boolean;
+  connectable?: boolean;
+}) {
+  const color = PORT_TYPES[port.type].color;
+  const size = highlight ? 14 : 12;
   return (
-    <span
-      style={{
-        width: highlight ? 14 : 12,
-        height: highlight ? 14 : 12,
-        borderRadius: '50%',
-        background: color,
-        border: '2.5px solid #191A23',
-        boxShadow: highlight ? `0 0 0 3px ${color}66, 0 0 10px ${color}` : `0 0 0 1px ${color}`,
-        flex: 'none',
-        transition: 'width 0.1s ease, height 0.1s ease, box-shadow 0.1s ease',
-      }}
-    />
+    <div className={cn('relative flex h-3.5 items-center gap-1.5', dir === 'in' ? 'ps-2.5' : 'justify-end pe-2.5')}>
+      <Handle
+        id={port.key}
+        type={dir === 'in' ? 'target' : 'source'}
+        position={dir === 'in' ? Position.Left : Position.Right}
+        isConnectableStart={connectable}
+        title={
+          dir === 'out'
+            ? connectable
+              ? '从这里拖到下一个节点的输入口'
+              : '这路输出已锁定，不能单独引出'
+            : undefined
+        }
+        style={{
+          ...(dir === 'in' ? { left: -7 } : { right: -7 }),
+          top: '50%',
+          transform: 'translateY(-50%)',
+          width: size,
+          height: size,
+          minWidth: 0,
+          minHeight: 0,
+          background: color,
+          /* 描边用画布底色，圆点看起来是嵌在节点边上的 */
+          border: '2.5px solid var(--titlebar)',
+          borderRadius: '50%',
+          cursor: dir === 'out' && !connectable ? 'not-allowed' : undefined,
+          boxShadow: highlight ? `0 0 0 3px ${color}66, 0 0 10px ${color}` : `0 0 0 1px ${color}`,
+          transition: 'width 0.1s ease, height 0.1s ease, box-shadow 0.1s ease',
+        }}
+      />
+      <span className="text-sidebar-foreground/60 text-[11px]">{port.label}</span>
+    </div>
   );
 }
 
 function StatusDot({ status }: { status: GraphNode['status'] }) {
   if (status === 'idle') return null;
-  const map = {
-    running: { bg: 'rgba(255,255,255,0.22)', icon: <LoadingOutlined /> },
-    done: { bg: 'rgba(255,255,255,0.22)', icon: <CheckOutlined /> },
-    failed: { bg: '#B03A3A', icon: <ExclamationOutlined /> },
-  } as const;
-  const s = map[status];
+  const icon = {
+    running: <Loader2 className="animate-spin" />,
+    done: <Check />,
+    failed: <TriangleAlert />,
+  }[status];
   return (
     <span
-      style={{
-        width: 16,
-        height: 16,
-        borderRadius: '50%',
-        background: s.bg,
-        color: '#fff',
-        fontSize: 9,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flex: 'none',
-      }}
+      className={cn(
+        'inline-flex size-4 shrink-0 items-center justify-center rounded-full text-white [&>svg]:size-2.5',
+        status === 'failed' ? 'bg-[#B03A3A]' : 'bg-white/20',
+      )}
     >
-      {s.icon}
+      {icon}
     </span>
   );
 }
+
+function FrameNodeView({ data }: NodeProps) {
+  const { frame } = data as FrameNodeData;
+  const c = frame.color ?? '#6366F1';
+  return (
+    <div
+      className="size-full rounded-2xl border-2 border-dashed"
+      style={{ borderColor: `${c}88`, background: `${c}12` }}
+    >
+      <div className="absolute -top-3 left-3 flex max-w-[calc(100%-24px)] items-center gap-2">
+        <span
+          className="shrink-0 rounded-[7px] px-2.5 py-0.5 text-[11.5px] font-semibold tracking-wide text-white"
+          style={{ background: c }}
+        >
+          {frame.label}
+        </span>
+        {frame.note && (
+          <span
+            className="bg-titlebar text-sidebar-foreground/60 truncate rounded-[7px] border px-2 py-0.5 text-[11px]"
+            style={{ borderColor: `${c}55` }}
+          >
+            {frame.note}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 必须是模块级常量：每次渲染换一个新对象，RF 会把所有节点重新挂载一遍 */
+const NODE_VIEWS = { swift: SwiftNodeView, frame: FrameNodeView };

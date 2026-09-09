@@ -4,10 +4,9 @@
  * 加一个新模块 = 在这里加一项 + 在 router/routes.tsx 挂上页面，
  * 侧边导航、面包屑会自动跟随，不需要改其它文件。
  *
- * 配色学 unsloth：整站单一强调色（brand 淡紫），模块不再各用不同色；
- * accent/accentSoft 保留字段以兼容现有组件，但统一指向 brand。
+ * 这里不再有强调色：整站单一强调色，模块不各用一色（学 unsloth 的做法），
+ * 于是那个色值就是 --primary 本身，写在 CSS 变量里，不需要每个模块各存一份。
  */
-import { brand } from './theme';
 export type ModuleKey = 'chat' | 'train' | 'eval' | 'export' | 'deploy' | 'workflow';
 
 export interface ModuleMeta {
@@ -16,10 +15,6 @@ export interface ModuleMeta {
   label: string;
   /** 路由前缀，如 /train */
   path: string;
-  /** 强调色（整站统一走 brand，保留字段兼容组件） */
-  accent: string;
-  /** 浅色底，用于选中态、标签底色 */
-  accentSoft: string;
   /** 一句话说明，显示在页头 */
   desc: string;
 }
@@ -29,48 +24,36 @@ export const MODULES: Record<ModuleKey, ModuleMeta> = {
     key: 'chat',
     label: '对话',
     path: '/chat',
-    accent: brand.primary,
-    accentSoft: brand.soft,
     desc: '与本地或远端模型对话，可多模型并排对比',
   },
   train: {
     key: 'train',
     label: '训练',
     path: '/train',
-    accent: brand.primary,
-    accentSoft: brand.soft,
     desc: '发起训练任务，实时查看指标曲线与日志',
   },
   eval: {
     key: 'eval',
     label: '评测',
     path: '/eval',
-    accent: brand.primary,
-    accentSoft: brand.soft,
     desc: '对 checkpoint 跑评测，支持多结果对比',
   },
   export: {
     key: 'export',
     label: '导出',
     path: '/export',
-    accent: brand.primary,
-    accentSoft: brand.soft,
     desc: 'LoRA 合并、量化、推送到 Hub',
   },
   deploy: {
     key: 'deploy',
     label: '部署',
     path: '/deploy',
-    accent: brand.primary,
-    accentSoft: brand.soft,
     desc: '把模型拉起成常驻推理服务',
   },
   workflow: {
     key: 'workflow',
     label: '编排',
     path: '/workflow',
-    accent: brand.primary,
-    accentSoft: brand.soft,
     desc: '把训练、评测、合并、部署串成一条流程',
   },
 };

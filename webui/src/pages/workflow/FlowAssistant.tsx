@@ -1,12 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Button, Drawer, Tooltip } from 'antd';
-import {
-  CaretRightOutlined,
-  PauseOutlined,
-  RobotOutlined,
-  StopOutlined,
-} from '@ant-design/icons';
-import { brand, neutral } from '@/theme/theme';
+import { Bot, Pause, Play, Square } from 'lucide-react';
+import { cn } from 'cn';
+import { Hint } from '@/components/Hint';
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import type { GraphEdge, GraphNode } from './nodeTypes';
 import type { AiAction, AiMessage } from './aiAssist';
 import { askAi, flowIntro, userMessage } from './aiAssist';
@@ -14,15 +11,10 @@ import { AiChatPanel } from './AiChatPanel';
 
 export type RunState = 'idle' | 'running' | 'paused';
 
-const RUN_TEXT: Record<RunState, string> = {
-  idle: '未启动',
-  running: '正在运行',
-  paused: '已暂停',
-};
-const RUN_COLOR: Record<RunState, string> = {
-  idle: neutral.textTertiary,
-  running: '#10B981',
-  paused: '#F59E0B',
+const RUN: Record<RunState, { text: string; tone: string }> = {
+  idle: { text: '未启动', tone: 'text-muted-foreground' },
+  running: { text: '正在运行', tone: 'text-emerald-500' },
+  paused: { text: '已暂停', tone: 'text-amber-500' },
 };
 
 /**
@@ -91,100 +83,87 @@ export function FlowAssistant({
 
   const done = nodes.filter((n) => n.status === 'done').length;
   const failed = nodes.filter((n) => n.status === 'failed').length;
+  const state = RUN[runState];
 
   return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      width={420}
-      mask={false}
-      title={
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-          <RobotOutlined style={{ color: brand.primary }} />
-          流程助手
-        </span>
-      }
-      styles={{
-        body: { padding: 0, display: 'flex', flexDirection: 'column' },
-        header: { padding: '12px 16px' },
-      }}
-    >
-      {/* 状态条 + 手动启停。AI 能做的事，用户自己也得能做 */}
-      <div
-        style={{
-          padding: '10px 14px',
-          borderBottom: `1px solid ${neutral.borderLight}`,
-          background: neutral.bgSubtle,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          flexWrap: 'wrap',
-        }}
+    /*
+      不盖遮罩、不夺焦点：开着助手还要能看着画布上的节点一个个点亮。
+      onInteractOutside 也要拦下来，不然点一下画布抽屉就自己关了。
+    */
+    <Sheet modal={false} open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent
+        showOverlay={false}
+        className="w-105 gap-0 sm:max-w-none"
+        onInteractOutside={(e) => e.preventDefault()}
       >
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 5,
-            fontSize: 12.5,
-            color: RUN_COLOR[runState],
-          }}
-        >
-          <span
-            className={running ? 'status-dot-live' : undefined}
-            style={{ width: 7, height: 7, borderRadius: '50%', background: RUN_COLOR[runState] }}
-          />
-          {RUN_TEXT[runState]}
-        </span>
-        <span style={{ fontSize: 12, color: neutral.textTertiary }}>
-          {done}/{nodes.length} 已完成
-          {failed > 0 && <span style={{ color: '#EF4444' }}>　{failed} 失败</span>}
-        </span>
+        <SheetHeader className="px-4 py-3">
+          <SheetTitle className="flex items-center gap-2 text-sm">
+            <Bot className="text-primary size-4" />
+            流程助手
+          </SheetTitle>
+        </SheetHeader>
 
-        <span style={{ marginInlineStart: 'auto', display: 'flex', gap: 6 }}>
-          {runState === 'running' ? (
-            <Tooltip title="停在当前 step，已写盘的 checkpoint 留着">
-              <Button size="small" icon={<PauseOutlined />} onClick={() => onControl('pause')}>
-                暂停
-              </Button>
-            </Tooltip>
-          ) : (
-            <Button
-              size="small"
-              type="primary"
-              icon={<CaretRightOutlined />}
-              onClick={() => onControl(runState === 'paused' ? 'resume' : 'start')}
-            >
-              {runState === 'paused' ? '继续' : '启动'}
-            </Button>
-          )}
-          <Tooltip title="结束这次运行，进程不保留">
-            <Button
-              size="small"
-              danger
-              icon={<StopOutlined />}
-              disabled={runState === 'idle'}
-              onClick={() => onControl('stop')}
+        {/* 状态条 + 手动启停。AI 能做的事，用户自己也得能做 */}
+        <div className="border-border/60 bg-secondary flex flex-wrap items-center gap-2 border-y px-3.5 py-2.5">
+          <span className={cn('inline-flex items-center gap-1.5 text-[12.5px]', state.tone)}>
+            <span
+              className={cn('size-[7px] rounded-full bg-current', running && 'status-dot-live')}
             />
-          </Tooltip>
-        </span>
-      </div>
+            {state.text}
+          </span>
+          <span className="text-muted-foreground text-xs">
+            {done}/{nodes.length} 已完成
+            {failed > 0 && <span className="text-red-500">　{failed} 失败</span>}
+          </span>
 
-      <AiChatPanel
-        messages={messages}
-        nodes={nodes}
-        draft={draft}
-        onDraftChange={setDraft}
-        onSend={send}
-        onAction={handleAction}
-        confirmBeforeApply={confirmBeforeApply}
-        suggestions={
-          running
-            ? ['先暂停一下', '为什么这么慢', '显存不够怎么办']
-            : ['帮我跑起来', '这张图在做什么', '优势为什么是 0']
-        }
-        placeholder="问问这张流程图……"
-      />
-    </Drawer>
+          <span className="ms-auto flex gap-1.5">
+            {running ? (
+              <Hint title="停在当前 step，已写盘的 checkpoint 留着">
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => onControl('pause')}>
+                  <Pause />
+                  暂停
+                </Button>
+              </Hint>
+            ) : (
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => onControl(runState === 'paused' ? 'resume' : 'start')}
+              >
+                <Play />
+                {runState === 'paused' ? '继续' : '启动'}
+              </Button>
+            )}
+            <Hint title="结束这次运行，进程不保留">
+              <Button
+                variant="outline"
+                size="icon"
+                className="text-destructive hover:text-destructive size-7"
+                disabled={runState === 'idle'}
+                onClick={() => onControl('stop')}
+              >
+                <Square />
+              </Button>
+            </Hint>
+          </span>
+        </div>
+
+        <AiChatPanel
+          messages={messages}
+          nodes={nodes}
+          draft={draft}
+          onDraftChange={setDraft}
+          onSend={send}
+          onAction={handleAction}
+          confirmBeforeApply={confirmBeforeApply}
+          suggestions={
+            running
+              ? ['先暂停一下', '为什么这么慢', '显存不够怎么办']
+              : ['帮我跑起来', '这张图在做什么', '优势为什么是 0']
+          }
+          placeholder="问问这张流程图……"
+        />
+      </SheetContent>
+    </Sheet>
   );
 }

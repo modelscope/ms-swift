@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Checkbox, Form, Select } from 'antd';
 import { ConfigFormShell } from '@/components/ConfigFormShell';
+import { CheckboxGroup, Field, FieldStack, SelectInput } from '@/components/FormField';
 import { MODULES } from '@/theme/modules';
 import { checkpoints, evalDatasets } from '@/mock/data';
 
@@ -35,9 +35,9 @@ export function EvalNewPage() {
         {
           title: '被测对象',
           content: (
-            <Form layout="vertical">
-              <Form.Item label="checkpoint" tooltip="从各训练任务产出的 ckpt 中选择">
-                <Select
+            <FieldStack>
+              <Field label="checkpoint" hint="从各训练任务产出的 ckpt 中选择">
+                <SelectInput
                   value={ckpt}
                   onChange={setCkpt}
                   options={checkpoints.map((c) => ({
@@ -45,17 +45,17 @@ export function EvalNewPage() {
                     label: `${c.name} · step ${c.step} · 来自 ${c.fromTask}`,
                   }))}
                 />
-              </Form.Item>
-            </Form>
+              </Field>
+            </FieldStack>
           ),
         },
         {
           title: '评测集',
           content: (
-            <Checkbox.Group
+            <CheckboxGroup
               value={sets}
-              onChange={(v) => setSets(v as string[])}
-              options={evalDatasets.map((d) => ({ label: d, value: d }))}
+              onChange={setSets}
+              options={evalDatasets.map((d) => ({ value: d, label: d }))}
             />
           ),
         },

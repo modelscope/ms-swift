@@ -1,36 +1,5 @@
 import type { ReactNode } from 'react';
-import {
-  AimOutlined,
-  ApiOutlined,
-  BarChartOutlined,
-  BranchesOutlined,
-  CloudUploadOutlined,
-  CodeOutlined,
-  CompressOutlined,
-  DashboardOutlined,
-  DatabaseOutlined,
-  DeploymentUnitOutlined,
-  ExperimentOutlined,
-  FallOutlined,
-  FilterOutlined,
-  FunctionOutlined,
-  GlobalOutlined,
-  LineChartOutlined,
-  LockOutlined,
-  MergeCellsOutlined,
-  PlusSquareOutlined,
-  RetweetOutlined,
-  RiseOutlined,
-  RocketOutlined,
-  ShrinkOutlined,
-  SlidersOutlined,
-  StockOutlined,
-  SwapOutlined,
-  SyncOutlined,
-  ThunderboltOutlined,
-  ToolOutlined,
-  TrophyOutlined,
-} from '@ant-design/icons';
+import { Activity, ArrowLeftRight, Brain, ChartBar, ChartLine, CloudUpload, Code, Database, Filter, FlaskConical, Gauge, GitBranch, GitMerge, Globe, Lock, Minimize2, Network, RefreshCw, Repeat, Rocket, Shrink, Sigma, SlidersHorizontal, SquarePlus, Target, TrendingDown, TrendingUp, Trophy, Wrench, Zap } from 'lucide-react';
 
 /**
  * 节点类型注册表：编排画布上「有哪些组件」的唯一定义源。
@@ -137,7 +106,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '数据集',
     category: '输入',
     color: C.data,
-    icon: <DatabaseOutlined />,
+    icon: <Database />,
     inputs: [],
     outputs: [{ key: 'data', label: 'data', type: 'DATA' }],
     params: [
@@ -150,7 +119,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '策略模型',
     category: '输入',
     color: C.input,
-    icon: <ApiOutlined />,
+    icon: <Brain />,
     inputs: [],
     outputs: [{ key: 'model', label: 'model', type: 'MODEL' }],
     params: [
@@ -164,7 +133,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '参考模型',
     category: '输入',
     color: C.input,
-    icon: <LockOutlined />,
+    icon: <Lock />,
     inputs: [],
     outputs: [{ key: 'model', label: 'model', type: 'MODEL' }],
     params: [
@@ -180,7 +149,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '采样 Rollout',
     category: '采样',
     color: C.rollout,
-    icon: <RetweetOutlined />,
+    icon: <Repeat />,
     inputs: [
       { key: 'model', label: 'model', type: 'MODEL' },
       { key: 'data', label: 'prompt', type: 'DATA' },
@@ -200,7 +169,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '推理引擎',
     category: '采样',
     color: C.rollout,
-    icon: <ThunderboltOutlined />,
+    icon: <Zap />,
     inputs: [{ key: 'model', label: 'sync from', type: 'MODEL' }],
     outputs: [{ key: 'sampler', label: 'sampler', type: 'SAMPLER' }],
     params: [
@@ -216,7 +185,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '多轮采样',
     category: '采样',
     color: C.rollout,
-    icon: <SwapOutlined />,
+    icon: <ArrowLeftRight />,
     inputs: [
       { key: 'sampler', label: 'sampler', type: 'SAMPLER' },
       { key: 'env', label: 'env', type: 'ENV' },
@@ -240,7 +209,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '环境池',
     category: 'Agent 环境',
     color: C.agent,
-    icon: <GlobalOutlined />,
+    icon: <Globe />,
     inputs: [{ key: 'mapper', label: 'action_mapper', type: 'FUNC' }],
     outputs: [{ key: 'env', label: 'env slots', type: 'ENV' }],
     params: [
@@ -257,7 +226,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '工具定义',
     category: 'Agent 环境',
     color: C.agent,
-    icon: <ToolOutlined />,
+    icon: <Wrench />,
     inputs: [],
     outputs: [{ key: 'tool', label: 'tools', type: 'TOOL' }],
     params: [
@@ -271,7 +240,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '动作映射',
     category: 'Agent 环境',
     color: C.code,
-    icon: <CodeOutlined />,
+    icon: <Code />,
     inputs: [],
     outputs: [{ key: 'fn', label: 'fn', type: 'FUNC' }],
     params: [],
@@ -288,7 +257,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '代码节点',
     category: 'Agent 环境',
     color: C.code,
-    icon: <CodeOutlined />,
+    icon: <Code />,
     inputs: [{ key: 'in', label: 'in', type: 'TRAJ' }],
     outputs: [{ key: 'out', label: 'out', type: 'TRAJ' }],
     params: [],
@@ -302,7 +271,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '奖励函数',
     category: '奖励与优势',
     color: C.reward,
-    icon: <FunctionOutlined />,
+    icon: <Sigma />,
     inputs: [{ key: 'traj', label: 'trajectories', type: 'TRAJ' }],
     outputs: [{ key: 'reward', label: 'reward', type: 'REWARD' }],
     params: [
@@ -317,7 +286,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '奖励模型',
     category: '奖励与优势',
     color: C.reward,
-    icon: <TrophyOutlined />,
+    icon: <Trophy />,
     inputs: [{ key: 'traj', label: 'trajectories', type: 'TRAJ' }],
     outputs: [{ key: 'reward', label: 'reward', type: 'REWARD' }],
     params: [
@@ -331,7 +300,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '组内优势',
     category: '奖励与优势',
     color: C.adv,
-    icon: <RiseOutlined />,
+    icon: <TrendingUp />,
     inputs: [{ key: 'reward', label: 'reward', type: 'REWARD' }],
     outputs: [{ key: 'adv', label: 'advantage', type: 'ADV' }],
     params: [
@@ -347,7 +316,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: 'GAE 优势',
     category: '奖励与优势',
     color: C.adv,
-    icon: <FallOutlined />,
+    icon: <TrendingDown />,
     inputs: [{ key: 'reward', label: 'reward', type: 'REWARD' }],
     outputs: [{ key: 'adv', label: 'advantage', type: 'ADV' }],
     params: [{ label: 'advantage', value: 'GAEAdvantage' }],
@@ -359,7 +328,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '回合奖励',
     category: '奖励与优势',
     color: C.reward,
-    icon: <TrophyOutlined />,
+    icon: <Trophy />,
     inputs: [{ key: 'traj', label: 'trajectories', type: 'TRAJ' }],
     outputs: [{ key: 'reward', label: 'reward', type: 'REWARD' }],
     params: [
@@ -374,7 +343,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '轨迹过滤',
     category: '奖励与优势',
     color: C.adv,
-    icon: <FilterOutlined />,
+    icon: <Filter />,
     inputs: [
       { key: 'traj', label: 'trajectories', type: 'TRAJ' },
       { key: 'adv', label: 'advantage', type: 'ADV' },
@@ -396,7 +365,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: 'RLOO 优势',
     category: '奖励与优势',
     color: C.adv,
-    icon: <StockOutlined />,
+    icon: <Activity />,
     inputs: [{ key: 'reward', label: 'reward', type: 'REWARD' }],
     outputs: [{ key: 'adv', label: 'advantage', type: 'ADV' }],
     params: [
@@ -413,7 +382,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '策略损失',
     category: '损失',
     color: C.loss,
-    icon: <AimOutlined />,
+    icon: <Target />,
     inputs: [
       { key: 'traj', label: 'trajectories', type: 'TRAJ' },
       { key: 'adv', label: 'advantage', type: 'ADV' },
@@ -433,7 +402,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: 'GRPO 损失',
     category: '损失',
     color: C.loss,
-    icon: <AimOutlined />,
+    icon: <Target />,
     inputs: [],
     outputs: [{ key: 'loss', label: 'loss', type: 'LOSS' }],
     params: [
@@ -448,7 +417,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '交叉熵损失',
     category: '损失',
     color: C.loss,
-    icon: <FallOutlined />,
+    icon: <TrendingDown />,
     inputs: [
       { key: 'model', label: 'model', type: 'MODEL' },
       { key: 'data', label: 'data', type: 'DATA' },
@@ -466,7 +435,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '偏好损失',
     category: '损失',
     color: C.loss,
-    icon: <SwapOutlined />,
+    icon: <ArrowLeftRight />,
     inputs: [
       { key: 'model', label: 'model', type: 'MODEL' },
       { key: 'ref', label: 'ref', type: 'MODEL' },
@@ -484,7 +453,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: 'KL 惩罚',
     category: '损失',
     color: C.loss,
-    icon: <ShrinkOutlined />,
+    icon: <Shrink />,
     inputs: [
       { key: 'traj', label: 'trajectories', type: 'TRAJ' },
       { key: 'ref', label: 'ref', type: 'MODEL' },
@@ -502,7 +471,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '损失合成',
     category: '损失',
     color: C.loss,
-    icon: <PlusSquareOutlined />,
+    icon: <SquarePlus />,
     inputs: [
       { key: 'a', label: 'loss a', type: 'LOSS' },
       { key: 'b', label: 'loss b', type: 'LOSS' },
@@ -519,7 +488,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '训练指标',
     category: '指标',
     color: C.metric,
-    icon: <LineChartOutlined />,
+    icon: <ChartLine />,
     inputs: [
       { key: 'traj', label: 'trajectories', type: 'TRAJ' },
       { key: 'reward', label: 'reward', type: 'REWARD' },
@@ -537,7 +506,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '分通道损失',
     category: '指标',
     color: C.metric,
-    icon: <BarChartOutlined />,
+    icon: <ChartBar />,
     inputs: [{ key: 'loss', label: 'loss', type: 'LOSS' }],
     outputs: [{ key: 'metric', label: 'metric', type: 'METRIC' }],
     params: [
@@ -553,7 +522,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '优化器',
     category: '训练循环',
     color: C.loop,
-    icon: <SlidersOutlined />,
+    icon: <SlidersHorizontal />,
     inputs: [],
     outputs: [{ key: 'optim', label: 'optim', type: 'OPTIM' }],
     params: [
@@ -567,7 +536,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '学习率调度',
     category: '训练循环',
     color: C.loop,
-    icon: <DashboardOutlined />,
+    icon: <Gauge />,
     inputs: [{ key: 'optim', label: 'optim', type: 'OPTIM' }],
     outputs: [{ key: 'optim', label: 'optim', type: 'OPTIM' }],
     params: [
@@ -580,7 +549,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '训练循环',
     category: '训练循环',
     color: C.loop,
-    icon: <SyncOutlined />,
+    icon: <RefreshCw />,
     inputs: [
       { key: 'model', label: 'model', type: 'MODEL' },
       { key: 'traj', label: 'trajectories', type: 'TRAJ' },
@@ -607,7 +576,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '评测',
     category: '训练之后',
     color: C.after,
-    icon: <ExperimentOutlined />,
+    icon: <FlaskConical />,
     inputs: [{ key: 'ckpt', label: 'ckpt', type: 'CKPT' }],
     outputs: [{ key: 'report', label: 'report', type: 'REPORT' }],
     params: [
@@ -621,7 +590,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '分数门槛',
     category: '训练之后',
     color: C.after,
-    icon: <BranchesOutlined />,
+    icon: <GitBranch />,
     inputs: [{ key: 'report', label: 'report', type: 'REPORT' }],
     outputs: [
       { key: 'pass', label: 'pass', type: 'REPORT' },
@@ -638,7 +607,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: 'LoRA 合并',
     category: '训练之后',
     color: C.after,
-    icon: <MergeCellsOutlined />,
+    icon: <GitMerge />,
     inputs: [{ key: 'ckpt', label: 'ckpt', type: 'CKPT' }],
     outputs: [{ key: 'model', label: 'model', type: 'MODEL' }],
     params: [{ label: 'merge_lora', value: 'true' }],
@@ -649,7 +618,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '量化',
     category: '训练之后',
     color: C.after,
-    icon: <CompressOutlined />,
+    icon: <Minimize2 />,
     inputs: [{ key: 'model', label: 'model', type: 'MODEL' }],
     outputs: [{ key: 'model', label: 'model', type: 'MODEL' }],
     params: [
@@ -663,7 +632,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '部署',
     category: '训练之后',
     color: C.after,
-    icon: <RocketOutlined />,
+    icon: <Rocket />,
     inputs: [{ key: 'model', label: 'model', type: 'MODEL' }],
     outputs: [{ key: 'endpoint', label: 'endpoint', type: 'ENDPOINT' }],
     params: [
@@ -677,7 +646,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '推送 Hub',
     category: '训练之后',
     color: C.after,
-    icon: <CloudUploadOutlined />,
+    icon: <CloudUpload />,
     inputs: [{ key: 'model', label: 'model', type: 'MODEL' }],
     outputs: [],
     params: [
@@ -691,7 +660,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
     label: '子流程',
     category: '训练之后',
     color: C.after,
-    icon: <DeploymentUnitOutlined />,
+    icon: <Network />,
     inputs: [{ key: 'ckpt', label: 'in', type: 'CKPT' }],
     outputs: [{ key: 'report', label: 'out', type: 'REPORT' }],
     params: [{ label: 'ref', value: 'daily-regression' }],
@@ -716,6 +685,11 @@ export const NODE_TYPE_LIST = Object.values(NODE_TYPES);
 /** 节点运行状态。单个节点可以独立跑，所以状态挂在节点上而非整图 */
 export type NodeStatus = 'idle' | 'running' | 'done' | 'failed';
 
+/**
+ * 图上的一个节点。这是编排的「作者格式」：presets.ts 手排坐标、YAML/代码生成、
+ * AI 上下文、输出模拟全都读它。画布内部会把它转成 React Flow 的节点结构，
+ * 转换只发生在 NodeCanvas 一个地方。
+ */
 export interface GraphNode {
   id: string;
   type: string;
@@ -755,26 +729,20 @@ export interface GraphEdge {
   toPort: string;
 }
 
-/** 节点几何。画布上的连线端点位置全靠这几个常量算，改这里即可整体缩放 */
+/**
+ * 节点宽度。
+ *
+ * 原来这里还有 HEADER_H / PORT_TOP / PORT_GAP / portY() / nodeHeight() 五个东西，
+ * 用来手算每个端口圆点的绝对坐标、以及手算「适应视图」要缩到多少。
+ * 换成 React Flow 之后这些全都不需要了：端口是 <Handle>，位置由它自己排；
+ * 节点高度由内容撑开、由布局引擎量；fitView 是库自带的。
+ *
+ * 只剩宽度还留着，因为它是设计约束（一列放得下几个节点）而不是推导值，
+ * 而且点组件面板往画布中央加节点时要拿它算居中偏移。
+ */
 export const NODE_W = 208;
-export const HEADER_H = 34;
-export const PORT_TOP = 14;
-export const PORT_GAP = 21;
 
-export function portY(index: number): number {
-  return HEADER_H + PORT_TOP + index * PORT_GAP;
-}
-
-/** 节点总高：端口区 + 参数区（代码节点换成代码区） */
-export function nodeHeight(def: NodeTypeDef): number {
-  const ports = Math.max(def.inputs.length, def.outputs.length);
-  const bodyH = def.code
-    ? def.code.split('\n').length * 14 + 14
-    : def.params.length * 19 + 10;
-  return HEADER_H + PORT_TOP + Math.max(ports, 1) * PORT_GAP + bodyH;
-}
-
-/** 查端口定义，画布算连线颜色和做类型校验都用它 */
+/** 查端口定义，连线的颜色和类型校验都用它 */
 export function findPort(
   typeKey: string,
   portKey: string,

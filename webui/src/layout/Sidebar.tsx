@@ -1,87 +1,58 @@
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Dropdown, Tooltip } from 'antd';
 import {
-  ApiOutlined,
-  ApartmentOutlined,
-  BellOutlined,
-  DownOutlined,
-  ExportOutlined,
-  MessageOutlined,
-  PlusOutlined,
-  QuestionCircleOutlined,
-  RocketOutlined,
-  SearchOutlined,
-  ThunderboltOutlined,
-} from '@ant-design/icons';
+  Bell,
+  ChevronDown,
+  CircleHelp,
+  MessageSquare,
+  Network,
+  Package,
+  Plus,
+  Rocket,
+  Search,
+  Workflow,
+  Zap,
+} from 'lucide-react';
+import { cn } from 'cn';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ModuleKey } from '@/theme/modules';
 import { MODULES, MODULE_ORDER, moduleOf, taskDetailPath } from '@/theme/modules';
-import { chrome } from '@/theme/theme';
 import { features } from '@/config/features';
 import { tasksByType } from '@/mock/data';
+import { ChromeIconButton } from './ChromeIconButton';
 
 const ICONS: Record<ModuleKey, ReactNode> = {
-  chat: <MessageOutlined />,
-  train: <ThunderboltOutlined />,
-  eval: <ApartmentOutlined />,
-  export: <ExportOutlined />,
-  deploy: <RocketOutlined />,
-  workflow: <ApiOutlined />,
+  chat: <MessageSquare size={14} />,
+  train: <Zap size={14} />,
+  eval: <Network size={14} />,
+  export: <Package size={14} />,
+  deploy: <Rocket size={14} />,
+  workflow: <Workflow size={14} />,
 };
 
-/** 无框幽灵图标按钮。刻意脱离导航行之外，不排成工具栏 */
-function GhostIcon({
-  icon,
-  title,
-  size = 24,
-  onClick,
-}: {
-  icon: ReactNode;
-  title: string;
-  size?: number;
-  onClick?: () => void;
-}) {
-  return (
-    <Tooltip title={title} mouseEnterDelay={0.4}>
-      <span
-        className="chrome-icon-btn"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onClick?.();
-        }}
-        style={{
-          width: size,
-          height: size,
-          borderRadius: 7,
-          flex: 'none',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: chrome.textFaint,
-          cursor: 'pointer',
-          fontSize: 13,
-        }}
-      >
-        {icon}
-      </span>
-    </Tooltip>
-  );
-}
+/**
+ * 深色侧栏里弹出的菜单，配色改成跟侧栏同一套。
+ *
+ * shadcn 的 DropdownMenuContent 默认是 bg-popover——那是内容区那套浅色语义，
+ * 从一块近黑的侧栏里弹出一张白卡片会很割裂。这里换成 sidebar-* 那组，
+ * 菜单看起来就像从侧栏本身撑开的，跟 VS Code 一致。
+ */
+const MENU_CLS = 'bg-sidebar border-sidebar-border text-sidebar-foreground min-w-[168px]';
+const MENU_ITEM_CLS =
+  'text-sidebar-foreground/80 focus:bg-sidebar-accent focus:text-sidebar-foreground text-[13px]';
 
 /** 分组小标签，用来打断长列表，而不是一长条等距菜单 */
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <div
-      style={{
-        fontSize: 12,
-        color: chrome.textFaint,
-        padding: '0 11px',
-        margin: '18px 0 6px',
-        userSelect: 'none',
-      }}
-    >
+    <div className="text-sidebar-foreground/40 mt-[18px] mb-1.5 px-[11px] text-xs select-none">
       {children}
     </div>
   );
@@ -112,113 +83,86 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
     [],
   );
 
-  const rowBase: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    height: 32,
-    borderRadius: 8,
-    fontSize: 13,
-    textDecoration: 'none',
-    padding: collapsed ? 0 : '0 11px',
-    justifyContent: collapsed ? 'center' : 'flex-start',
-  };
+  /* 导航行的公共形状。选中/未选中只差一层底色和字重 */
+  const row = (active: boolean, extra?: string) =>
+    cn(
+      'flex h-8 items-center gap-2.5 text-[13px] no-underline transition-colors',
+      collapsed ? 'justify-center px-0' : 'justify-start px-[11px]',
+      active
+        ? 'bg-sidebar-accent text-sidebar-foreground font-medium'
+        : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+      extra,
+    );
 
   return (
     <div
-      style={{
-        width: collapsed ? 60 : 240,
-        flex: 'none',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        background: chrome.sidebar,
-        borderInlineEnd: `1px solid ${chrome.border}`,
-        transition: 'width 0.18s ease',
-        overflow: 'hidden',
-      }}
+      className="bg-sidebar border-sidebar-border flex h-full shrink-0 flex-col overflow-hidden border-r transition-[width] duration-200"
+      style={{ width: collapsed ? 60 : 240 }}
     >
       {/* 品牌区：纯文字 + 小箭头，右侧贴边的无框图标 */}
       <div
-        style={{
-          height: 46,
-          flex: 'none',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: collapsed ? '0 16px' : '0 12px 0 14px',
-        }}
+        className={cn(
+          'flex h-[46px] shrink-0 items-center gap-1.5',
+          collapsed ? 'px-4' : 'pr-3 pl-3.5',
+        )}
       >
         {collapsed ? (
-          <span style={{ fontWeight: 700, fontSize: 14, color: chrome.text }}>S</span>
+          <span className="text-sidebar-foreground text-sm font-bold">S</span>
         ) : (
           <>
-            <Dropdown
-              trigger={['click']}
-              menu={{
-                onClick: ({ key }) => {
-                  if (key === 'settings') navigate('/settings');
-                },
-                items: [
-                  { key: 'about', label: '关于 SWIFT WebUI' },
-                  { key: 'settings', label: '偏好设置' },
-                  { type: 'divider' },
-                  { key: 'docs', label: '文档' },
-                ],
-              }}
-            >
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  fontSize: 15,
-                  color: chrome.text,
-                  letterSpacing: 0.2,
-                }}
-              >
-                SWIFT
-                <DownOutlined style={{ fontSize: 9, color: chrome.textFaint }} />
-              </span>
-            </Dropdown>
-            <div style={{ marginInlineStart: 'auto', display: 'flex', gap: 2 }}>
-              <GhostIcon icon={<SearchOutlined />} title="搜索  ⌘K" size={26} />
-              <GhostIcon icon={<BellOutlined />} title="通知" size={26} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="text-sidebar-foreground hover:text-sidebar-foreground/80 inline-flex cursor-pointer items-center gap-1.5 text-[15px] font-semibold tracking-wide outline-none"
+                >
+                  SWIFT
+                  <ChevronDown size={10} className="text-sidebar-foreground/40" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className={MENU_CLS}>
+                <DropdownMenuItem className={MENU_ITEM_CLS}>关于 SWIFT WebUI</DropdownMenuItem>
+                <DropdownMenuItem className={MENU_ITEM_CLS} onClick={() => navigate('/settings')}>
+                  偏好设置
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-sidebar-border" />
+                <DropdownMenuItem className={MENU_ITEM_CLS} asChild>
+                  <a href="https://swift.readthedocs.io" target="_blank" rel="noreferrer">
+                    文档
+                  </a>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <div className="ms-auto flex gap-0.5">
+              <ChromeIconButton icon={<Search size={13} />} label="搜索  ⌘K" />
+              <ChromeIconButton icon={<Bell size={13} />} label="通知" />
             </div>
           </>
         )}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: collapsed ? '2px 8px' : '2px 8px' }}>
+      <div className="flex-1 overflow-y-auto px-2 py-0.5">
         {/* 模块导航 */}
         {items.map((m) => {
           const active = current.key === m.key;
-          const row = (
+          const link = (
             <Link
-              key={m.key}
               to={m.path}
-              className="nav-item"
-              style={{
-                ...rowBase,
-                color: active ? chrome.text : chrome.textDim,
-                background: active ? chrome.hover : 'transparent',
-                fontWeight: active ? 500 : 400,
-                marginBottom: 1,
-                /** 对话行右侧留出脱离行外的 + 按钮位置 */
-                paddingInlineEnd: !collapsed && m.key === 'chat' ? 4 : undefined,
-              }}
+              className={row(
+                active,
+                /* 对话行右侧留出脱离行外的 + 按钮位置 */
+                !collapsed && m.key === 'chat' ? 'pe-1' : undefined,
+              )}
             >
-              <span style={{ fontSize: 14, display: 'inline-flex', color: 'inherit', opacity: 0.9 }}>
-                {ICONS[m.key]}
-              </span>
+              <span className="inline-flex text-current opacity-90">{ICONS[m.key]}</span>
               {!collapsed && m.label}
               {!collapsed && m.key === 'chat' && (
-                <span style={{ marginInlineStart: 'auto' }}>
-                  <GhostIcon
-                    icon={<PlusOutlined />}
-                    title="新建对话"
+                <span className="ms-auto">
+                  <ChromeIconButton
+                    icon={<Plus size={13} />}
+                    label="新建对话"
+                    size={24}
                     onClick={() => navigate('/chat')}
                   />
                 </span>
@@ -226,11 +170,12 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
             </Link>
           );
           return collapsed ? (
-            <Tooltip key={m.key} title={m.label} placement="right">
-              {row}
+            <Tooltip key={m.key}>
+              <TooltipTrigger asChild>{link}</TooltipTrigger>
+              <TooltipContent side="right">{m.label}</TooltipContent>
             </Tooltip>
           ) : (
-            row
+            <div key={m.key}>{link}</div>
           );
         })}
 
@@ -239,26 +184,8 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
           <>
             <SectionLabel>最近</SectionLabel>
             {recent.map((t) => (
-              <Link
-                key={t.id}
-                to={taskDetailPath(t)}
-                className="nav-item"
-                style={{
-                  ...rowBase,
-                  height: 30,
-                  color: pathname.includes(t.id) ? chrome.text : chrome.textDim,
-                  background: pathname.includes(t.id) ? chrome.hover : 'transparent',
-                }}
-              >
-                <span
-                  style={{
-                    overflow: 'hidden',
-                    whiteSpace: 'nowrap',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {t.label}
-                </span>
+              <Link key={t.id} to={taskDetailPath(t)} className={row(pathname.includes(t.id), 'h-[30px]')}>
+                <span className="truncate">{t.label}</span>
               </Link>
             ))}
           </>
@@ -266,73 +193,38 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       </div>
 
       {/* 底部：空间切换 + 用户，右侧贴边帮助 */}
-      <div
-        style={{
-          flex: 'none',
-          borderTop: `1px solid ${chrome.border}`,
-          padding: collapsed ? '8px' : '8px',
-        }}
-      >
+      <div className="border-sidebar-border shrink-0 border-t p-2">
         {features.multiTenant && !collapsed && (
-          <Dropdown
-            trigger={['click']}
-            menu={{
-              items: [
-                { key: 'default', label: 'default（默认空间）' },
-                { key: 'team-a', label: 'team-a' },
-                { key: 'team-b', label: 'team-b' },
-              ],
-            }}
-          >
-            <div className="nav-item" style={{ ...rowBase, color: chrome.textDim, cursor: 'pointer' }}>
-              <span style={{ color: chrome.textFaint }}>空间</span>
-              <span style={{ color: chrome.text }}>default</span>
-              <DownOutlined style={{ marginInlineStart: 'auto', fontSize: 9, color: chrome.textFaint }} />
-            </div>
-          </Dropdown>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className={cn(row(false), 'w-full cursor-pointer outline-none')}>
+                <span className="text-sidebar-foreground/40">空间</span>
+                <span className="text-sidebar-foreground">default</span>
+                <ChevronDown size={10} className="text-sidebar-foreground/40 ms-auto" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="top" className={MENU_CLS}>
+              <DropdownMenuItem className={MENU_ITEM_CLS}>default（默认空间）</DropdownMenuItem>
+              <DropdownMenuItem className={MENU_ITEM_CLS}>team-a</DropdownMenuItem>
+              <DropdownMenuItem className={MENU_ITEM_CLS}>team-b</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
+
         <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            height: 34,
-            padding: collapsed ? 0 : '0 11px',
-            justifyContent: collapsed ? 'center' : 'flex-start',
-          }}
+          className={cn(
+            'flex h-[34px] items-center gap-2',
+            collapsed ? 'justify-center px-0' : 'justify-start px-[11px]',
+          )}
         >
-          <div
-            style={{
-              width: 22,
-              height: 22,
-              flex: 'none',
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,0.12)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: chrome.text,
-              fontSize: 11,
-              fontWeight: 600,
-            }}
-          >
+          <div className="bg-sidebar-accent text-sidebar-foreground flex size-[22px] shrink-0 items-center justify-center rounded-full text-[11px] font-semibold">
             U
           </div>
           {!collapsed && (
             <>
-              <span
-                style={{
-                  fontSize: 13,
-                  color: chrome.textDim,
-                  overflow: 'hidden',
-                  whiteSpace: 'nowrap',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                user@swift
-              </span>
-              <span style={{ marginInlineStart: 'auto' }}>
-                <GhostIcon icon={<QuestionCircleOutlined />} title="帮助" size={26} />
+              <span className="text-sidebar-foreground/60 truncate text-[13px]">user@swift</span>
+              <span className="ms-auto">
+                <ChromeIconButton icon={<CircleHelp size={13} />} label="帮助" side="top" />
               </span>
             </>
           )}

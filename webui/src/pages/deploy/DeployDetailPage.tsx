@@ -1,46 +1,18 @@
-import { useParams } from 'react-router-dom';
-import { useNavigate } from 'react-router-dom';
-import { Tooltip, Typography, message } from 'antd';
-import { MessageOutlined } from '@ant-design/icons';
+import { useNavigate, useParams } from 'react-router-dom';
+import { MessageSquare } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   TaskDetailShell,
   ArtifactRow,
   MetaCell,
   Panel,
-  PillButton,
+  ActionButton,
   StatCell,
 } from '@/components/TaskDetailShell';
+import { CodeBlock } from '@/components/CodeBlock';
 import { LogViewer } from '@/components/LogViewer';
 import { MODULES } from '@/theme/modules';
-import { brand, neutral } from '@/theme/theme';
 import { deployTasks, logLines } from '@/mock/data';
-
-/** 可复制的代码块。等宽字体 + 软底，右上角悬浮复制 */
-function CodeBlock({ code }: { code: string }) {
-  return (
-    <div style={{ position: 'relative' }}>
-      <pre
-        style={{
-          margin: 0,
-          padding: '12px 14px',
-          background: neutral.bgCode,
-          borderRadius: 11,
-          fontSize: 12.5,
-          lineHeight: '20px',
-          color: neutral.text,
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-          overflowX: 'auto',
-          whiteSpace: 'pre',
-        }}
-      >
-        {code}
-      </pre>
-      <span style={{ position: 'absolute', top: 7, right: 9 }}>
-        <Typography.Text copyable={{ text: code, tooltips: ['复制', '已复制'] }} />
-      </span>
-    </div>
-  );
-}
 
 /**
  * 部署详情。概览 Tab 给服务地址与开箱即用的调用示例（这是部署完最想拿到的东西），
@@ -74,14 +46,15 @@ print(resp.choices[0].message.content)`;
 
   const overviewTab = (
     <>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+      <div className="mb-4 flex flex-wrap gap-3">
         <StatCell label="服务状态" value={running ? '在线' : '已停止'} />
         <StatCell label="累计请求" value={running ? '1,284' : '—'} hint="示意数据，接后端后从进程指标读取" />
         <StatCell label="平均延迟" value={running ? '312' : '—'} suffix="ms" hint="示意数据" />
         <StatCell label="显存占用" value={running ? '17.4' : '—'} suffix="GB" hint="示意数据" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 14 }}>
+      {/* auto-fit + minmax：宽屏两段示例并排，窗口窄了自动堆成上下，不靠断点 */}
+      <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(380px,1fr))]">
         <Panel title="curl">
           <CodeBlock code={curl} />
         </Panel>
@@ -90,7 +63,7 @@ print(resp.choices[0].message.content)`;
         </Panel>
       </div>
 
-      <div style={{ marginTop: 14 }}>
+      <div className="mt-3.5">
         <Panel title="服务参数">
           <ArtifactRow
             done
@@ -126,17 +99,17 @@ print(resp.choices[0].message.content)`;
       extraMeta={<MetaCell label="接口协议" value="OpenAI 兼容" />}
       actions={
         running ? (
-          <Tooltip title="带着这个 endpoint 去对话页试用">
-            <PillButton
-              icon={<MessageOutlined />}
-              onClick={() => {
-                message.info('已切到对话页（示意：会自动选中该服务）');
-                navigate('/chat');
-              }}
-            >
-              <span style={{ color: brand.primary }}>试用</span>
-            </PillButton>
-          </Tooltip>
+          <ActionButton
+            icon={<MessageSquare />}
+            tone="primary"
+            tooltip="带着这个 endpoint 去对话页试用"
+            onClick={() => {
+              toast.info('已切到对话页（示意：会自动选中该服务）');
+              navigate('/chat');
+            }}
+          >
+            试用
+          </ActionButton>
         ) : null
       }
     />

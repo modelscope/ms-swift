@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Empty, Input, Segmented, Tooltip } from 'antd';
-import {
-  CaretRightOutlined,
-  CloseOutlined,
-  LoadingOutlined,
-  ReloadOutlined,
-} from '@ant-design/icons';
+import { Loader2, Play, RotateCw, X } from 'lucide-react';
+import { cn } from 'cn';
+import { Hint } from '@/components/Hint';
 import { LogViewer } from '@/components/LogViewer';
-import { brand, neutral } from '@/theme/theme';
+import { SegmentedControl } from '@/components/FormField';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import type { GraphEdge, GraphNode } from './nodeTypes';
 import { NODE_TYPES } from './nodeTypes';
 import type { NodeOutput, OutputBlock } from './nodeOutputs';
@@ -19,17 +17,16 @@ import { AiChatPanel } from './AiChatPanel';
 export type InspectorTab = 'params' | 'output' | 'ai';
 type Tab = InspectorTab;
 
-const STATUS_TEXT: Record<string, string> = {
-  idle: '未运行',
-  running: '正在运行',
-  done: '已完成',
-  failed: '失败',
-};
-const STATUS_COLOR: Record<string, string> = {
-  idle: neutral.textTertiary,
-  running: '#F59E0B',
-  done: '#10B981',
-  failed: '#EF4444',
+/**
+ * 运行状态的说法和颜色。
+ * 用 Tailwind 调色板里的 amber/emerald/red 而不是主题色：
+ * 这几个是「跑得怎么样」的通用信号，跟品牌色换不换没关系。
+ */
+const STATUS: Record<GraphNode['status'], { text: string; tone: string }> = {
+  idle: { text: '未运行', tone: 'text-muted-foreground' },
+  running: { text: '正在运行', tone: 'text-amber-500' },
+  done: { text: '已完成', tone: 'text-emerald-500' },
+  failed: { text: '失败', tone: 'text-red-500' },
 };
 
 /**
@@ -115,152 +112,96 @@ export function NodeInspector({
     );
   };
 
-  const tabs: { label: string; value: Tab }[] = [
+  const tabs = [
     { label: '参数', value: 'params' },
     { label: '输出', value: 'output' },
-    ...(aiEnabled ? [{ label: '问 AI', value: 'ai' as Tab }] : []),
+    ...(aiEnabled ? [{ label: '问 AI', value: 'ai' }] : []),
   ];
 
+  const status = STATUS[node.status];
+
   return (
-    <div
-      style={{
-        width: 348,
-        flex: 'none',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        background: '#fff',
-        borderInlineStart: `1px solid ${neutral.border}`,
-      }}
-    >
+    <div className="bg-background border-border flex h-full w-87 flex-none flex-col border-s">
       {/* 头部：节点是谁 + 现在什么状态 */}
-      <div style={{ padding: '12px 12px 10px', borderBottom: `1px solid ${neutral.borderLight}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="border-border/60 border-b px-3 pt-3 pb-2.5">
+        <div className="flex items-center gap-2">
           <span
-            style={{
-              width: 22,
-              height: 22,
-              borderRadius: 7,
-              flex: 'none',
-              background: def.color,
-              color: '#fff',
-              fontSize: 12,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
+            className="inline-flex size-5.5 flex-none items-center justify-center rounded-[7px] text-white [&>svg]:size-3.5"
+            style={{ background: def.color }}
           >
             {def.icon}
           </span>
-          <span style={{ fontSize: 14, fontWeight: 600, color: neutral.text, flex: 1, minWidth: 0 }}>
+          <span className="text-foreground min-w-0 flex-1 truncate text-sm font-semibold">
             {def.label}
           </span>
-          <Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} />
+          <Button variant="ghost" size="icon" className="size-7" onClick={onClose}>
+            <X />
+          </Button>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 9 }}>
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              fontSize: 12,
-              color: STATUS_COLOR[node.status],
-            }}
+        <div className="mt-2 flex items-center gap-2">
+          <span className={cn('inline-flex items-center gap-1.5 text-xs', status.tone)}>
+            {/* bg-current：点跟着文字同色，状态色只写一处 */}
+            <span className="size-1.5 rounded-full bg-current" />
+            {status.text}
+          </span>
+          {output && <span className="text-muted-foreground text-xs">耗时 {output.elapsed}</span>}
+
+          {/*
+            所有节点都能单独跑。声明式节点（模型、优化器）跑一次的意思是
+            「把它准备好」——加载权重、把生效配置定下来，这也是有输出可看的。
+          */}
+          <Hint
+            title={
+              def.runnable
+                ? undefined
+                : '这个节点是声明式的，跑一次只是把它准备好，输出里能看到加载结果和生效配置'
+            }
           >
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                background: STATUS_COLOR[node.status],
-              }}
-            />
-            {STATUS_TEXT[node.status]}
-          </span>
-          {output && (
-            <span style={{ fontSize: 12, color: neutral.textTertiary }}>耗时 {output.elapsed}</span>
-          )}
-          <span style={{ marginInlineStart: 'auto' }}>
-            {/*
-              所有节点都能单独跑。声明式节点（模型、优化器）跑一次的意思是
-              「把它准备好」——加载权重、把生效配置定下来，这也是有输出可看的。
-            */}
-            <Tooltip
-              title={
-                def.runnable
-                  ? undefined
-                  : '这个节点是声明式的，跑一次只是把它准备好，输出里能看到加载结果和生效配置'
-              }
+            <Button
+              size="sm"
+              variant={node.status === 'done' ? 'outline' : 'default'}
+              className="ms-auto h-7 text-xs"
+              disabled={node.status === 'running'}
+              onClick={() => onRun(node.id)}
             >
-              <Button
-                size="small"
-                type={node.status === 'done' ? 'default' : 'primary'}
-                icon={
-                  node.status === 'running' ? (
-                    <LoadingOutlined />
-                  ) : node.status === 'idle' ? (
-                    <CaretRightOutlined />
-                  ) : (
-                    <ReloadOutlined />
-                  )
-                }
-                disabled={node.status === 'running'}
-                onClick={() => onRun(node.id)}
-                style={{ fontSize: 12 }}
-              >
-                {node.status === 'idle' ? '运行' : node.status === 'running' ? '运行中' : '重跑'}
-              </Button>
-            </Tooltip>
-          </span>
+              {node.status === 'running' ? (
+                <Loader2 className="animate-spin" />
+              ) : node.status === 'idle' ? (
+                <Play />
+              ) : (
+                <RotateCw />
+              )}
+              {node.status === 'idle' ? '运行' : node.status === 'running' ? '运行中' : '重跑'}
+            </Button>
+          </Hint>
         </div>
       </div>
 
-      <div style={{ padding: '10px 12px 0' }}>
-        <Segmented
-          size="small"
-          block
-          value={tab}
-          onChange={(v) => setTab(v as Tab)}
-          options={tabs}
-        />
+      <div className="px-3 pt-2.5">
+        <SegmentedControl block value={tab} onChange={(v) => setTab(v as Tab)} options={tabs} />
       </div>
 
       {tab === 'params' && (
-        <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '12px 12px 16px' }}>
+        <div className="min-h-0 flex-1 overflow-auto px-3 pt-3 pb-4">
           {params.length === 0 ? (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={<span style={{ fontSize: 12 }}>这个节点没有可调参数</span>}
-            />
+            <EmptyHint>这个节点没有可调参数</EmptyHint>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="flex flex-col gap-2.5">
               {params.map((p, i) => (
-                <div key={`${p.label}-${i}`}>
-                  <div style={{ fontSize: 12, color: neutral.textSecondary, marginBottom: 4 }}>
-                    {p.label}
-                  </div>
+                <label key={`${p.label}-${i}`} className="block">
+                  <span className="text-muted-foreground mb-1 block text-xs">{p.label}</span>
                   <Input
-                    size="small"
+                    className="h-8"
                     value={p.value}
                     onChange={(e) => onParamChange(node.id, i, e.target.value)}
                   />
-                </div>
+                </label>
               ))}
             </div>
           )}
           {def.hint && (
-            <div
-              style={{
-                marginTop: 14,
-                padding: '9px 11px',
-                borderRadius: 10,
-                background: neutral.bgSubtle,
-                fontSize: 12,
-                lineHeight: '19px',
-                color: neutral.textSecondary,
-              }}
-            >
+            <div className="bg-secondary text-muted-foreground mt-3.5 rounded-[10px] px-3 py-2.5 text-xs leading-[19px]">
               {def.hint}
             </div>
           )}
@@ -268,16 +209,11 @@ export function NodeInspector({
       )}
 
       {tab === 'output' && (
-        <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '12px 12px 16px' }}>
-          {node.status === 'idle' && (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={<span style={{ fontSize: 12 }}>还没跑过，跑一次才有输出</span>}
-            />
-          )}
+        <div className="min-h-0 flex-1 overflow-auto px-3 pt-3 pb-4">
+          {node.status === 'idle' && <EmptyHint>还没跑过，跑一次才有输出</EmptyHint>}
           {node.status === 'running' && (
-            <div style={{ fontSize: 12, color: neutral.textSecondary, padding: '20px 0', textAlign: 'center' }}>
-              <LoadingOutlined /> 正在跑，跑完这里会有输出
+            <div className="text-muted-foreground flex items-center justify-center gap-1.5 py-5 text-xs">
+              <Loader2 className="size-3.5 animate-spin" /> 正在跑，跑完这里会有输出
             </div>
           )}
           {output && <OutputView output={output} />}
@@ -302,6 +238,11 @@ export function NodeInspector({
   );
 }
 
+/** 空状态就一行字。这里的空是「还没到时候」，不值得画一张插图去强调 */
+function EmptyHint({ children }: { children: React.ReactNode }) {
+  return <div className="text-muted-foreground py-6 text-center text-xs">{children}</div>;
+}
+
 /** 按节点类型给几个像样的追问。问不出问题的时候，这几个按钮就是入口 */
 function suggestionsFor(type: string): string[] {
   if (type === 'trainer') return ['显存不够怎么办', '为什么这么慢', '学习率怎么定'];
@@ -314,17 +255,14 @@ function suggestionsFor(type: string): string[] {
 /** 输出块渲染。分块的意义就在这里——每种块长得不一样，扫一眼就知道在看什么 */
 function OutputView({ output }: { output: NodeOutput }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div className="flex flex-col gap-3.5">
       <div
-        style={{
-          padding: '9px 11px',
-          borderRadius: 10,
-          fontSize: 12.5,
-          lineHeight: '19px',
-          background: output.error ? '#FEF2F2' : brand.soft,
-          border: `1px solid ${output.error ? '#FECACA' : brand.softBorder}`,
-          color: output.error ? '#B91C1C' : neutral.text,
-        }}
+        className={cn(
+          'rounded-[10px] border px-3 py-2.5 text-[12.5px] leading-[19px]',
+          output.error
+            ? 'border-red-200 bg-red-50 text-red-700'
+            : 'bg-secondary border-border text-foreground',
+        )}
       >
         {output.error ?? output.summary}
       </div>
@@ -338,27 +276,24 @@ function OutputView({ output }: { output: NodeOutput }) {
 
 function Block({ block }: { block: OutputBlock }) {
   const title = block.title && (
-    <div style={{ fontSize: 12, color: neutral.textTertiary, marginBottom: 6 }}>{block.title}</div>
+    <div className="text-muted-foreground mb-1.5 text-xs">{block.title}</div>
   );
 
   if (block.kind === 'kv') {
     return (
       <div>
         {title}
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div className="flex flex-col">
           {block.rows.map(([k, v], i) => (
             <div
               key={`${k}-${i}`}
-              style={{
-                display: 'flex',
-                gap: 10,
-                padding: '5px 0',
-                fontSize: 12.5,
-                borderBottom: i === block.rows.length - 1 ? undefined : `1px solid ${neutral.borderLight}`,
-              }}
+              className={cn(
+                'flex gap-2.5 py-[5px] text-[12.5px]',
+                i !== block.rows.length - 1 && 'border-border/60 border-b',
+              )}
             >
-              <span style={{ color: neutral.textSecondary, flex: 'none', minWidth: 118 }}>{k}</span>
-              <span style={{ color: neutral.text, flex: 1, minWidth: 0, wordBreak: 'break-all' }}>{v}</span>
+              <span className="text-muted-foreground min-w-30 flex-none">{k}</span>
+              <span className="text-foreground min-w-0 flex-1 break-all">{v}</span>
             </div>
           ))}
         </div>
@@ -370,20 +305,7 @@ function Block({ block }: { block: OutputBlock }) {
     return (
       <div>
         {title}
-        <pre
-          style={{
-            margin: 0,
-            padding: '9px 11px',
-            borderRadius: 10,
-            background: neutral.bgCode,
-            fontSize: 11.5,
-            lineHeight: '18px',
-            color: neutral.text,
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            whiteSpace: 'pre',
-            overflowX: 'auto',
-          }}
-        >
+        <pre className="bg-muted text-foreground overflow-x-auto rounded-[10px] px-3 py-2.5 font-mono text-[11.5px] leading-[18px]">
           {block.body}
         </pre>
       </div>
@@ -395,34 +317,23 @@ function Block({ block }: { block: OutputBlock }) {
     return (
       <div>
         {title}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="flex flex-col gap-1.5">
           {block.bars.map((b) => (
-            <div key={b.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 11.5, color: neutral.textSecondary, flex: 'none', minWidth: 54 }}>
+            <div key={b.label} className="flex items-center gap-2">
+              <span className="text-muted-foreground min-w-14 flex-none text-[11.5px]">
                 {b.label}
               </span>
-              <span
-                style={{
-                  flex: 1,
-                  height: 8,
-                  borderRadius: 4,
-                  background: neutral.borderLight,
-                  overflow: 'hidden',
-                }}
-              >
+              <span className="bg-border h-2 flex-1 overflow-hidden rounded-full">
                 <span
-                  style={{
-                    display: 'block',
-                    width: `${(b.value / max) * 100}%`,
-                    height: '100%',
-                    borderRadius: 4,
-                    /** 方差为 0 的那种情况要一眼看出来，所以零值给个红点宽度 */
-                    background: b.value === 0 ? '#EF4444' : brand.primary,
-                    minWidth: b.value === 0 ? 3 : undefined,
-                  }}
+                  className={cn(
+                    'block h-full rounded-full',
+                    /* 方差为 0 的那种情况要一眼看出来，所以零值给个红点宽度 */
+                    b.value === 0 ? 'min-w-[3px] bg-red-500' : 'bg-primary',
+                  )}
+                  style={{ width: `${(b.value / max) * 100}%` }}
                 />
               </span>
-              <span style={{ fontSize: 11.5, color: neutral.textTertiary, flex: 'none', minWidth: 32, textAlign: 'right' }}>
+              <span className="text-muted-foreground min-w-8 flex-none text-end text-[11.5px]">
                 {b.value.toFixed(2)}
               </span>
             </div>

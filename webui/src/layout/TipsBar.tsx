@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Tooltip } from 'antd';
-import { BulbOutlined, CloseOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Lightbulb, RotateCw, X } from 'lucide-react';
 import { visibleTips } from '@/config/tips';
 import { useSettings } from '@/settings/SettingsContext';
+import { ChromeIconButton } from './ChromeIconButton';
 import { TIPSBAR_H } from './metrics';
-import { chrome } from '@/theme/theme';
 
 /**
  * 底部 tips 条。
@@ -17,6 +15,10 @@ import { chrome } from '@/theme/theme';
  *  - 叉掉 = 这次别烦我，刷新后还会回来
  *  - 设置里关掉 = 以后都别出现
  * 所以叉的 tooltip 里要写清楚「去设置里可以永久关闭」，否则用户会反复叉。
+ *
+ * 原来那句提示里嵌了一个跳设置页的 <Link>。换到 Radix 的 Tooltip 之后不能这么写：
+ * 气泡不是 hoverable 的，鼠标从按钮移向链接的路上气泡就关了，链接根本点不到。
+ * 所以改成纯文字指路，去设置页走侧栏。
  */
 export function TipsBar() {
   const { settings, dismissTips } = useSettings();
@@ -47,73 +49,35 @@ export function TipsBar() {
 
   return (
     <div
-      style={{
-        height: TIPSBAR_H,
-        flex: 'none',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '0 10px 0 12px',
-        background: chrome.titlebar,
-        borderTop: `1px solid ${chrome.border}`,
-        fontSize: 11.5,
-        color: chrome.textDim,
-        overflow: 'hidden',
-      }}
+      className="bg-titlebar border-sidebar-border text-sidebar-foreground/60 flex shrink-0 items-center gap-2 overflow-hidden border-t pr-2 pl-3 text-[11.5px]"
+      style={{ height: TIPSBAR_H }}
     >
-      <BulbOutlined style={{ fontSize: 11, color: '#C9A227', flex: 'none' }} />
+      <Lightbulb size={11} className="text-titlebar-accent shrink-0" />
       <span
+        className="min-w-0 flex-1 truncate transition-[opacity,transform] duration-200"
         style={{
-          flex: 1,
-          minWidth: 0,
-          overflow: 'hidden',
-          whiteSpace: 'nowrap',
-          textOverflow: 'ellipsis',
           opacity: visible ? 1 : 0,
           transform: visible ? 'translateY(0)' : 'translateY(3px)',
-          transition: 'opacity 0.22s ease, transform 0.22s ease',
         }}
       >
         {tip.text}
       </span>
 
-      <Tooltip title="换一条">
-        <span
-          className="chrome-icon-btn"
-          onClick={next}
-          style={tipsBtnStyle}
-        >
-          <ReloadOutlined style={{ fontSize: 10 }} />
-        </span>
-      </Tooltip>
-
-      <Tooltip
-        title={
-          <span style={{ fontSize: 12 }}>
-            本次关闭。想以后都不显示，去{' '}
-            <Link to="/settings" style={{ color: '#A8AEE0' }}>
-              偏好设置
-            </Link>{' '}
-            里关掉
-          </span>
-        }
-      >
-        <span className="chrome-icon-btn" onClick={dismissTips} style={tipsBtnStyle}>
-          <CloseOutlined style={{ fontSize: 10 }} />
-        </span>
-      </Tooltip>
+      {/* side=top：这一排贴着视口底边，气泡往下弹会被裁掉 */}
+      <ChromeIconButton
+        icon={<RotateCw size={10} />}
+        label="换一条"
+        onClick={next}
+        size={18}
+        side="top"
+      />
+      <ChromeIconButton
+        icon={<X size={10} />}
+        label="本次关闭。想以后都不显示，去偏好设置里关掉"
+        onClick={dismissTips}
+        size={18}
+        side="top"
+      />
     </div>
   );
 }
-
-const tipsBtnStyle: React.CSSProperties = {
-  width: 18,
-  height: 18,
-  borderRadius: 5,
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: chrome.textFaint,
-  cursor: 'pointer',
-  flex: 'none',
-};

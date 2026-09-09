@@ -3,7 +3,7 @@ import { TaskDetailShell, MetaCell, Panel, StatCell } from '@/components/TaskDet
 import { LogViewer } from '@/components/LogViewer';
 import { LineChart } from '@/components/charts/LineChart';
 import { MODULES } from '@/theme/modules';
-import { logo, neutral } from '@/theme/theme';
+import { logo } from '@/theme/theme';
 import { logLines, metricPoints, trainTasks } from '@/mock/data';
 
 /**
@@ -20,43 +20,31 @@ export function TrainDetailPage({ tab }: { tab: 'metrics' | 'log' }) {
   const metricsTab = (
     <>
       {/* 四枚指标：软底方块，不套 Card */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+      <div className="mb-3.5 flex flex-wrap gap-3">
         <StatCell label="当前 step" value={task?.step ?? 0} suffix={`/ ${task?.totalSteps ?? 0}`} />
         <StatCell label="最新 loss" value={last?.loss.toFixed(4) ?? '—'} />
         <StatCell label="学习率" value={last?.lr.toExponential(2) ?? '—'} />
         <StatCell label="grad norm" value={last?.gradNorm.toFixed(3) ?? '—'} />
       </div>
 
-      {/* 进度条：细一条，不用 antd Progress 的默认样式 */}
+      {/* 进度条：细一条，不用现成的进度条组件——它只需要是一条线 */}
       {task?.totalSteps ? (
-        <div style={{ marginBottom: 20 }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              fontSize: 12.5,
-              color: neutral.textTertiary,
-              marginBottom: 6,
-            }}
-          >
+        <div className="mb-5">
+          <div className="text-muted-foreground mb-1.5 flex justify-between text-[12.5px]">
             <span>训练进度</span>
             <span>{pct}%</span>
           </div>
-          <div style={{ height: 4, borderRadius: 999, background: neutral.borderLight, overflow: 'hidden' }}>
+          <div className="bg-border/60 h-1 overflow-hidden rounded-full">
+            {/* 用 logo 的靛色而不是 --primary：跟下面那条 loss 曲线是同一件事 */}
             <div
-              style={{
-                width: `${pct}%`,
-                height: '100%',
-                borderRadius: 999,
-                background: logo.indigo,
-                transition: 'width 0.3s ease',
-              }}
+              className="h-full rounded-full transition-[width] duration-300"
+              style={{ width: `${pct}%`, background: logo.indigo }}
             />
           </div>
         </div>
       ) : null}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 14 }}>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] gap-3.5">
         <Panel title="loss">
           <LineChart
             points={metricPoints.map((p) => ({ x: p.step, y: p.loss }))}
@@ -73,7 +61,7 @@ export function TrainDetailPage({ tab }: { tab: 'metrics' | 'log' }) {
         </Panel>
       </div>
 
-      <div style={{ marginTop: 14, fontSize: 12.5, color: neutral.textTertiary }}>
+      <div className="text-muted-foreground mt-3.5 text-[12.5px]">
         曲线按 metrics.jsonl 增量刷新；若任务经历过暂停/继续，横轴会在续跑处出现一次接续。
       </div>
     </>

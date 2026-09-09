@@ -1,5 +1,6 @@
 # Byte-compiled / optimized / DLL files
 tmp
+node_modules
 *.ttf
 __pycache__/
 *.py[cod]

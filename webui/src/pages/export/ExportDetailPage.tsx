@@ -1,16 +1,15 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { Tooltip, Typography } from 'antd';
-import { RocketOutlined } from '@ant-design/icons';
+import { Rocket } from 'lucide-react';
 import {
   TaskDetailShell,
   ArtifactRow,
   MetaCell,
   Panel,
-  PillButton,
+  ActionButton,
 } from '@/components/TaskDetailShell';
+import { CodeLine } from '@/components/CodeBlock';
 import { LogViewer } from '@/components/LogViewer';
 import { MODULES } from '@/theme/modules';
-import { brand, neutral } from '@/theme/theme';
 import { exportTasks, logLines } from '@/mock/data';
 
 /**
@@ -62,27 +61,10 @@ export function ExportDetailPage({ tab }: { tab: 'artifact' | 'log' }) {
         ))}
       </Panel>
 
-      <div style={{ marginTop: 14 }}>
+      <div className="mt-3.5">
         <Panel title="输出目录">
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              background: neutral.bgCode,
-              borderRadius: 11,
-              padding: '11px 14px',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-              fontSize: 12.5,
-              color: neutral.text,
-            }}
-          >
-            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {outDir}
-            </span>
-            <Typography.Text copyable={{ text: outDir, tooltips: ['复制路径', '已复制'] }} />
-          </div>
-          <div style={{ fontSize: 12.5, color: neutral.textTertiary, marginTop: 9 }}>
+          <CodeLine text={outDir} label="复制路径" />
+          <div className="text-muted-foreground mt-2.5 text-[12.5px]">
             {done
               ? '目录已可直接用于部署或二次训练；血缘会记录它来自哪个训练任务。'
               : '导出仍在进行，目录内容尚不完整，请勿直接使用。'}
@@ -106,11 +88,14 @@ export function ExportDetailPage({ tab }: { tab: 'artifact' | 'log' }) {
       extraMeta={<MetaCell label="输出目录" value={outDir} />}
       actions={
         done ? (
-          <Tooltip title="以这个导出产物为模型新建部署">
-            <PillButton icon={<RocketOutlined />} onClick={() => navigate('/deploy/new')}>
-              <span style={{ color: brand.primary }}>去部署</span>
-            </PillButton>
-          </Tooltip>
+          <ActionButton
+            icon={<Rocket />}
+            tone="primary"
+            tooltip="以这个导出产物为模型新建部署"
+            onClick={() => navigate('/deploy/new')}
+          >
+            去部署
+          </ActionButton>
         ) : null
       }
     />

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Input, Tooltip } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Search } from 'lucide-react';
+import { Hint } from '@/components/Hint';
+import { Input } from '@/components/ui/input';
 import { CATEGORY_ORDER, NODE_TYPE_LIST, PORT_TYPES } from './nodeTypes';
 import type { NodeTypeDef } from './nodeTypes';
-import { chrome } from '@/theme/theme';
 
 /**
  * 左侧组件面板。两种添加方式都支持：
@@ -23,53 +23,25 @@ export function NodePalette({ onAdd }: { onAdd: (typeKey: string) => void }) {
   }, [kw]);
 
   return (
-    <div
-      style={{
-        width: 214,
-        flex: 'none',
-        display: 'flex',
-        flexDirection: 'column',
-        background: chrome.sidebar,
-        borderInlineEnd: `1px solid ${chrome.border}`,
-        overflow: 'hidden',
-      }}
-    >
-      <div style={{ padding: '10px 10px 8px' }}>
-        <div
-          style={{
-            fontSize: 12,
-            color: chrome.textFaint,
-            marginBottom: 8,
-            paddingInlineStart: 2,
-          }}
-        >
-          组件
+    <div className="bg-sidebar border-sidebar-border flex w-54 flex-none flex-col overflow-hidden border-e">
+      <div className="px-2.5 pt-2.5 pb-2">
+        <div className="text-sidebar-foreground/45 mb-2 ps-0.5 text-xs">组件</div>
+        {/* 搜索图标压在输入框里，所以给输入框留出左侧内边距 */}
+        <div className="relative">
+          <Search className="text-sidebar-foreground/45 pointer-events-none absolute start-2 top-1/2 size-3 -translate-y-1/2" />
+          <Input
+            value={kw}
+            onChange={(e) => setKw(e.target.value)}
+            placeholder="搜索组件"
+            className="text-sidebar-foreground placeholder:text-sidebar-foreground/40 h-8 border-white/10 bg-white/6 ps-7 text-[13px]"
+          />
         </div>
-        <Input
-          variant="filled"
-          size="small"
-          placeholder="搜索组件"
-          prefix={<SearchOutlined style={{ color: chrome.textFaint, fontSize: 11 }} />}
-          onChange={(e) => setKw(e.target.value)}
-          style={{
-            background: 'rgba(255,255,255,0.06)',
-            color: chrome.text,
-            borderRadius: 8,
-          }}
-        />
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 12px' }}>
+      <div className="flex-1 overflow-y-auto px-2 pb-3">
         {grouped.map((g) => (
-          <div key={g.category} style={{ marginBottom: 12 }}>
-            <div
-              style={{
-                fontSize: 11,
-                color: chrome.textFaint,
-                padding: '6px 4px 5px',
-                letterSpacing: 0.3,
-              }}
-            >
+          <div key={g.category} className="mb-3">
+            <div className="text-sidebar-foreground/45 px-1 pt-1.5 pb-1 text-[11px] tracking-wide">
               {g.category}
             </div>
             {g.items.map((d) => (
@@ -79,16 +51,7 @@ export function NodePalette({ onAdd }: { onAdd: (typeKey: string) => void }) {
         ))}
       </div>
 
-      <div
-        style={{
-          flex: 'none',
-          borderTop: `1px solid ${chrome.border}`,
-          padding: '9px 12px',
-          fontSize: 11.5,
-          color: chrome.textFaint,
-          lineHeight: '17px',
-        }}
-      >
+      <div className="border-sidebar-border text-sidebar-foreground/45 flex-none border-t px-3 py-2.5 text-[11.5px] leading-[17px]">
         拖到画布，或点一下加到中央
       </div>
     </div>
@@ -97,22 +60,25 @@ export function NodePalette({ onAdd }: { onAdd: (typeKey: string) => void }) {
 
 function PaletteItem({ def, onAdd }: { def: NodeTypeDef; onAdd: (k: string) => void }) {
   /** 端口类型比个数有用：知道要接什么才知道往哪拖 */
-  const io = (ps: typeof def.inputs) =>
+  const io = (ps: NodeTypeDef['inputs']) =>
     ps.length ? ps.map((p) => PORT_TYPES[p.type].label).join(' + ') : '—';
 
   return (
-    <Tooltip
-      placement="right"
-      mouseEnterDelay={0.35}
+    <Hint
+      side="right"
       title={
-        <div style={{ fontSize: 12, lineHeight: '18px' }}>
-          {def.hint && <div style={{ marginBottom: 3 }}>{def.hint}</div>}
-          <div style={{ opacity: 0.7 }}>
+        <div className="text-xs leading-[18px]">
+          {def.hint && <div className="mb-0.5">{def.hint}</div>}
+          <div className="opacity-70">
             入 {io(def.inputs)} → 出 {io(def.outputs)}
           </div>
         </div>
       }
     >
+      {/*
+        hover 反馈原来挂在一个叫 palette-item 的类上，而这个类整个项目里
+        没有任何定义——面板项其实一直是没有反馈的。这里显式写出来。
+      */}
       <div
         draggable
         onDragStart={(e) => {
@@ -120,37 +86,18 @@ function PaletteItem({ def, onAdd }: { def: NodeTypeDef; onAdd: (k: string) => v
           e.dataTransfer.effectAllowed = 'copy';
         }}
         onClick={() => onAdd(def.key)}
-        className="palette-item"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 9,
-          height: 32,
-          padding: '0 8px',
-          borderRadius: 8,
-          cursor: 'grab',
-          color: chrome.textDim,
-          fontSize: 13,
-          userSelect: 'none',
-        }}
+        className="text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground flex h-8 cursor-grab items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors select-none"
       >
         {/* 左侧色条：跟节点标题栏同色，拖之前就知道会得到什么 */}
         <span
-          style={{
-            width: 4,
-            height: 17,
-            borderRadius: 3,
-            background: def.color,
-            flex: 'none',
-          }}
+          className="h-[17px] w-1 flex-none rounded-sm"
+          style={{ background: def.color }}
         />
-        <span style={{ fontSize: 13, color: def.color, display: 'inline-flex', flex: 'none' }}>
+        <span className="inline-flex flex-none [&>svg]:size-3.5" style={{ color: def.color }}>
           {def.icon}
         </span>
-        <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-          {def.label}
-        </span>
+        <span className="truncate">{def.label}</span>
       </div>
-    </Tooltip>
+    </Hint>
   );
 }

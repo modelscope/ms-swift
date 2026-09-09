@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { neutral } from '@/theme/theme';
 
 /**
@@ -20,6 +21,15 @@ export function LineChart({
   const W = 720;
   const H = height;
   const pad = { top: 16, right: 16, bottom: 28, left: 48 };
+  /**
+   * 渐变的 id 必须是 useId 算出来的，不能拿颜色拼。
+   *
+   * 原来写的是 `grad-${color.replace('#','')}`，在色值是十六进制时没问题；
+   * 但现在色值是 var(--chart-1) 这种 CSS 函数，id 就变成了 grad-var(--chart-1)，
+   * fill="url(#grad-var(--chart-1))" 引用不到任何节点——SVG 里 fill 引用失败会退回初始值
+   * 也就是纯黑，于是整张图被填成一块黑疴。这类错误 tsc 和 build 都查不出来。
+   */
+  const gradId = `chart-grad-${useId().replace(/:/g, '')}`;
 
   if (points.length === 0) return null;
 
@@ -41,14 +51,17 @@ export function LineChart({
 
   const yTicks = Array.from({ length: 5 }, (_, i) => yMin - yPad + ((yMax + yPad - (yMin - yPad)) / 4) * i);
   const xTicks = Array.from({ length: 5 }, (_, i) => xMin + ((xMax - xMin) / 4) * i);
-  const gradId = `grad-${color.replace('#', '')}`;
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
       <defs>
+        {/*
+          颜色走 style 而不是 stopColor 属性：stop-color 作为属性写时对 var() 的支持
+          各引擎不一致，当成 CSS 声明写则是确定生效的。
+        */}
         <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity={0.18} />
-          <stop offset="100%" stopColor={color} stopOpacity={0} />
+          <stop offset="0%" style={{ stopColor: color, stopOpacity: 0.16 }} />
+          <stop offset="100%" style={{ stopColor: color, stopOpacity: 0 }} />
         </linearGradient>
       </defs>
 
@@ -82,12 +95,12 @@ export function LineChart({
       ))}
 
       <path d={area} fill={`url(#${gradId})`} />
-      <path d={path} fill="none" stroke={color} strokeWidth={1.8} strokeLinejoin="round" />
+      <path d={path} fill="none" style={{ stroke: color }} strokeWidth={1.8} strokeLinejoin="round" />
       <circle
         cx={sx(points[points.length - 1].x)}
         cy={sy(points[points.length - 1].y)}
         r={3.5}
-        fill={color}
+        style={{ fill: color }}
       />
 
       {yLabel && (
