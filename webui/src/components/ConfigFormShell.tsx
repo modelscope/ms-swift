@@ -1,10 +1,15 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, CirclePlay, Info, Save, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Bot, CirclePlay, Info, Save, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
+import { Hint } from './Hint';
 import { PageHeader } from './PageHeader';
 import { Panel } from './TaskDetailShell';
 import { Button } from './ui/button';
+import { ConfigAssistant } from './ConfigAssistant';
+import type { ConfigField } from './configAssist';
+import { useSettings } from '@/settings/SettingsContext';
 import type { ModuleMeta } from '@/theme/modules';
 
 /**
@@ -14,6 +19,9 @@ import type { ModuleMeta } from '@/theme/modules';
  *
  * 分区用的是详情页那个 Panel，不另造一种卡片：同一个应用里「一块内容」
  * 只应该有一种长相，否则新建页和详情页看着像两个产品。
+ *
+ * AI 助手也接在这里，而不是四个新建页各写一遍：四个页面的差异只在「有哪些字段」，
+ * 开抽屉、接偏好设置、把提议写回表单这三件事是一模一样的，各写一遍就是四份要同步改的代码。
  */
 export function ConfigFormShell({
   module,
@@ -22,6 +30,7 @@ export function ConfigFormShell({
   sections,
   preview,
   warning,
+  fields,
 }: {
   module: ModuleMeta;
   title: string;
@@ -29,8 +38,16 @@ export function ConfigFormShell({
   sections: Array<{ title: string; extra?: ReactNode; content: ReactNode }>;
   preview: string;
   warning?: string;
+  /**
+   * 交给 AI 助手的字段。每个字段自带 setter，所以这里不用再接一个 onApply。
+   * 必填（可以为空数组）：新增一个新建页时得明确表态它的字段给不给 AI 看，
+   * 而不是忘了传就默默少了一个功能。
+   */
+  fields: ConfigField[];
 }) {
   const navigate = useNavigate();
+  const { settings } = useSettings();
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   return (
     <>
@@ -50,6 +67,17 @@ export function ConfigFormShell({
         }
         extra={
           <>
+            {/* 助手摆在两个提交按钮前面：它是提交之前的事，而且得比「提交运行」低一级 */}
+            {settings.aiEnabled && fields.length > 0 && (
+              <Hint title="问这份配置：字段怎么填、有没有坑">
+                <Button
+                  variant={assistantOpen ? 'secondary' : 'ghost'}
+                  onClick={() => setAssistantOpen(true)}
+                >
+                  <Bot /> AI 助手
+                </Button>
+              </Hint>
+            )}
             <Button variant="secondary" onClick={() => toast.success('已存为草稿（示意）')}>
               <Save /> 存为草稿
             </Button>
@@ -93,6 +121,14 @@ export function ConfigFormShell({
           </Panel>
         </div>
       </div>
+
+      <ConfigAssistant
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+        module={module.key}
+        fields={fields}
+        confirmBeforeApply={settings.aiConfirmBeforeApply}
+      />
     </>
   );
 }

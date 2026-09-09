@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ConfigFormShell } from '@/components/ConfigFormShell';
+import type { ConfigField } from '@/components/configAssist';
 import { CheckboxGroup, Field, FieldStack, SelectInput } from '@/components/FormField';
 import { MODULES } from '@/theme/modules';
 import { checkpoints, evalDatasets } from '@/mock/data';
@@ -24,12 +25,24 @@ export function EvalNewPage() {
     [ckpt, sets],
   );
 
+  /* 交给 AI 助手的字段。被测对象只读——要测哪个 ckpt 只有用户知道 */
+  const fields: ConfigField[] = [
+    { key: 'model', label: '被测 checkpoint', value: ckpt },
+    {
+      key: 'eval_dataset',
+      label: '评测集',
+      value: sets.join(' '),
+      apply: (v) => setSets(v.split(' ').filter(Boolean)),
+    },
+  ];
+
   return (
     <ConfigFormShell
       module={MODULES.eval}
       title="新建评测"
       desc="选择被测 checkpoint 与评测集"
       preview={preview}
+      fields={fields}
       warning="评测依赖 evalscope，请确认已安装（否则任务会以 exit_code=127 失败）"
       sections={[
         {

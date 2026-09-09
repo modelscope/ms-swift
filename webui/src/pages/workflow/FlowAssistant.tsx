@@ -3,11 +3,11 @@ import { Bot, Pause, Play, Square } from 'lucide-react';
 import { cn } from 'cn';
 import { Hint } from '@/components/Hint';
 import { Button } from '@/components/ui/button';
+import { AiChatPanel, userMessage } from '@/components/AiChatPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import type { GraphEdge, GraphNode } from './nodeTypes';
-import type { AiAction, AiMessage } from './aiAssist';
-import { askAi, flowIntro, userMessage } from './aiAssist';
-import { AiChatPanel } from './AiChatPanel';
+import type { AiAction, FlowMessage } from './aiAssist';
+import { askAi, describeAction, flowIntro } from './aiAssist';
 
 export type RunState = 'idle' | 'running' | 'paused';
 
@@ -49,7 +49,7 @@ export function FlowAssistant({
   /** 非控制类提议（改参数、加节点）交给页面处理 */
   onAction: (a: AiAction) => void;
 }) {
-  const [messages, setMessages] = useState<AiMessage[]>([]);
+  const [messages, setMessages] = useState<FlowMessage[]>([]);
   const [draft, setDraft] = useState('');
   const running = runState === 'running';
 
@@ -150,7 +150,7 @@ export function FlowAssistant({
 
         <AiChatPanel
           messages={messages}
-          nodes={nodes}
+          describe={(a) => describeAction(a, nodes)}
           draft={draft}
           onDraftChange={setDraft}
           onSend={send}

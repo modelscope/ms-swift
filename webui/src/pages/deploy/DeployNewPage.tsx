@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Info } from 'lucide-react';
 import { ConfigFormShell } from '@/components/ConfigFormShell';
+import type { ConfigField } from '@/components/configAssist';
 import { Field, FieldStack, NumberInput, SegmentedControl, SelectInput } from '@/components/FormField';
 import { MODULES } from '@/theme/modules';
 import { availableModels } from '@/mock/data';
@@ -30,12 +31,20 @@ export function DeployNewPage() {
     [model, engine, port],
   );
 
+  /* 交给 AI 助手的字段 */
+  const fields: ConfigField[] = [
+    { key: 'model', label: '模型', value: model, apply: setModel },
+    { key: 'infer_backend', label: '推理引擎', value: engine, apply: setEngine },
+    { key: 'port', label: '期望端口', value: String(port ?? ''), apply: (v) => setPort(Number(v)) },
+  ];
+
   return (
     <ConfigFormShell
       module={MODULES.deploy}
       title="新建部署"
       desc="把模型拉起成常驻推理服务"
       preview={preview}
+      fields={fields}
       sections={[
         {
           title: '服务配置',

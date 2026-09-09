@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ConfigFormShell } from '@/components/ConfigFormShell';
+import type { ConfigField } from '@/components/configAssist';
+import { OFF, ON } from '@/components/configAssist';
 import {
   CheckboxGroup,
   Field,
@@ -74,12 +76,68 @@ export function TrainNewPage() {
     ].join('\n');
   }, [model, trainType, selectedDatasets, resumeCkpt, useServer, lr, epochs, batchSize, maxLength]);
 
+  /**
+   * 交给 AI 助手的字段。
+   *
+   * key 跟命令行参数对齐（learning_rate 而不是 lr），这样 AI 说的词、
+   * 卡片上的词、右边预览里那条命令用的是同一个词。
+   * 不给 apply 的字段就是只读：AI 能引用它，但提不出改它的建议。
+   */
+  const fields: ConfigField[] = [
+    { key: 'model', label: '基座模型', value: model, apply: setModel },
+    { key: 'train_type', label: '微调类型', value: trainType, apply: setTrainType },
+    {
+      key: 'dataset',
+      label: '数据集',
+      value: selectedDatasets.join(' '),
+      apply: (v) => setSelectedDatasets(v.split(' ').filter(Boolean)),
+    },
+    {
+      /* 只读：从哪个 ckpt 继续跑是一个事实判断，不是调参，AI 提不出比用户更准的选择 */
+      key: 'resume_from_checkpoint',
+      label: '继训 checkpoint',
+      value: resumeCkpt === NO_CKPT ? '从头开始' : resumeCkpt,
+    },
+    {
+      /* 用科学计数法交出去：卡片上「1e-4 → 1e-5」比「0.0001 → 0.00001」好认 */
+      key: 'learning_rate',
+      label: '学习率',
+      value: lr === undefined ? '' : lr.toExponential(),
+      apply: (v) => setLr(Number(v)),
+    },
+    {
+      key: 'num_train_epochs',
+      label: 'epochs',
+      value: String(epochs ?? ''),
+      apply: (v) => setEpochs(Number(v)),
+    },
+    {
+      key: 'per_device_train_batch_size',
+      label: 'batch size',
+      value: String(batchSize ?? ''),
+      apply: (v) => setBatchSize(Number(v)),
+    },
+    {
+      key: 'max_length',
+      label: 'max length',
+      value: String(maxLength ?? ''),
+      apply: (v) => setMaxLength(Number(v)),
+    },
+    {
+      key: 'twinkle_server',
+      label: '连接 twinkle-server',
+      value: useServer ? ON : OFF,
+      apply: (v) => setUseServer(v === ON),
+    },
+  ];
+
   return (
     <ConfigFormShell
       module={MODULES.train}
       title="新建训练"
       desc="配置基座模型、数据与超参，提交后生成 run.sh 并拉起"
       preview={preview}
+      fields={fields}
       sections={[
         {
           title: '模型与数据',

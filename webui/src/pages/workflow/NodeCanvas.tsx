@@ -249,7 +249,8 @@ function Canvas({
   );
 
   /*
-   * 尺寸变化和选中状态都由 RF 自己在内部记着，这里只需要把拖动后的坐标写回去。
+   * 尺寸变化由 RF 自己在内部记着；选中态是受控的（flowNodes 里按 selected 写死），
+   * 所以这里只需要把拖动后的坐标写回去。
    */
   const handleNodesChange = useCallback<OnNodesChange>(
     (changes) => {
@@ -325,10 +326,22 @@ function Canvas({
           onConnect={handleConnect}
           onNodesDelete={(deleted) => deleted.forEach((n) => onDelete(n.id))}
           onEdgesDelete={(deleted) => onDeleteEdges?.(deleted.map((e) => e.id))}
-          onSelectionChange={({ nodes: sel }) => {
-            const id = sel.find((n) => n.type === 'swift')?.id ?? null;
-            if (id !== selected) onSelect(id);
+          /*
+           * 用「用户点了什么」驱动选中，而不是 onSelectionChange。
+           *
+           * onSelectionChange 反映的是 RF store 的状态，而 selected 又被我们写回
+           * flowNodes——于是我们自己的每一次同步都会把这个回调再触发一遍，
+           * 形成一个环。RF 在同步 prop 的间隙会瞬时清空选中，回调就带着 null 进来，
+           * 右侧面板被这个回弹反复开关（看起来就是一直闪），
+           * 顺便还会把 openInspector 刚指定的 tab 顶回参数页。
+           *
+           * onNodeClick / onPaneClick 只在真实点击时触发，不会被我们自己的同步引发。
+           * 这里不加 id !== selected 的判断：重复点同一个节点要能把关掉的面板重新叫出来。
+           */
+          onNodeClick={(_, n) => {
+            if (n.type === 'swift') onSelect(n.id);
           }}
+          onPaneClick={() => onSelect(null)}
           onDragOver={(e) => {
             if (!e.dataTransfer.types.includes('application/swift-node')) return;
             e.preventDefault();

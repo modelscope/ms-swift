@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Play, RotateCw, X } from 'lucide-react';
 import { cn } from 'cn';
 import { Hint } from '@/components/Hint';
+import { AiChatPanel, userMessage } from '@/components/AiChatPanel';
 import { LogViewer } from '@/components/LogViewer';
 import { SegmentedControl } from '@/components/FormField';
 import { Button } from '@/components/ui/button';
@@ -10,9 +11,8 @@ import type { GraphEdge, GraphNode } from './nodeTypes';
 import { NODE_TYPES } from './nodeTypes';
 import type { NodeOutput, OutputBlock } from './nodeOutputs';
 import { failedOutput, outputOf } from './nodeOutputs';
-import type { AiAction, AiMessage } from './aiAssist';
-import { askAi, nodeIntro, paramsOf, userMessage } from './aiAssist';
-import { AiChatPanel } from './AiChatPanel';
+import type { AiAction, FlowMessage } from './aiAssist';
+import { askAi, describeAction, nodeIntro, paramsOf } from './aiAssist';
 
 export type InspectorTab = 'params' | 'output' | 'ai';
 type Tab = InspectorTab;
@@ -46,11 +46,12 @@ export function NodeInspector({
   running,
   aiEnabled,
   confirmBeforeApply,
-  defaultTab = 'params',
+  tab,
   onClose,
   onRun,
   onParamChange,
   onAction,
+  onTabChange,
 }: {
   node: GraphNode;
   nodes: GraphNode[];
@@ -59,7 +60,11 @@ export function NodeInspector({
   running: boolean;
   aiEnabled: boolean;
   confirmBeforeApply: boolean;
-  defaultTab?: Tab;
+  /**
+   * 开在哪一页。它由外面持有，而不是这里自己存一份再跟着 prop 同步——
+   * 同一个东西两处各存一份，就会出现「点节点上的问 AI，面板却停在参数页」这种事。
+   */
+  tab: Tab;
   onClose: () => void;
   onRun: (nodeId: string) => void;
   /**
@@ -69,21 +74,23 @@ export function NodeInspector({
   onParamChange: (nodeId: string, index: number, value: string) => void;
   /** AI 提议被应用时上报。面板自己不改图 */
   onAction: (a: AiAction) => void;
+  onTabChange: (t: Tab) => void;
 }) {
   const def = NODE_TYPES[node.type];
-  const [tab, setTab] = useState<Tab>(defaultTab);
 
-  // 换节点时：回到默认 tab，AI 会话重开
+  /* 设置里把 AI 关掉时，正停在 AI 页就退回参数页——不拦的话面板下半截是空的 */
+  const active: Tab = tab === 'ai' && !aiEnabled ? 'params' : tab;
+
   const ctx = { node, nodes, edges, presetLabel, running };
-  const [messages, setMessages] = useState<AiMessage[]>(() => [nodeIntro(node, ctx)]);
+  const [messages, setMessages] = useState<FlowMessage[]>(() => [nodeIntro(node, ctx)]);
   const [draft, setDraft] = useState('');
+
+  // 换节点才重开会话。只认 node.id：拖动节点位置、切 tab 都不该把对话清掉
   useEffect(() => {
-    setTab(defaultTab);
     setMessages([nodeIntro(node, { node, nodes, edges, presetLabel, running })]);
     setDraft('');
-    // 只认 node.id：拖动节点位置不该把对话清掉
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node.id, defaultTab]);
+  }, [node.id]);
 
   const params = paramsOf(node);
   const output: NodeOutput | null = useMemo(() => {
@@ -145,7 +152,13 @@ export function NodeInspector({
             <span className="size-1.5 rounded-full bg-current" />
             {status.text}
           </span>
-          {output && <span className="text-muted-foreground text-xs">耗时 {output.elapsed}</span>}
+          {/*
+            elapsed 为 '—' 的意思是「这类节点没有单次耗时」——工具定义、指标上报、
+            优化器都是声明式或常驻的。既然没有值，就别把「耗时 —」这行占着位置摆在那。
+          */}
+          {output && output.elapsed !== '—' && (
+            <span className="text-muted-foreground text-xs">耗时 {output.elapsed}</span>
+          )}
 
           {/*
             所有节点都能单独跑。声明式节点（模型、优化器）跑一次的意思是
@@ -179,10 +192,10 @@ export function NodeInspector({
       </div>
 
       <div className="px-3 pt-2.5">
-        <SegmentedControl block value={tab} onChange={(v) => setTab(v as Tab)} options={tabs} />
+        <SegmentedControl block value={active} onChange={(v) => onTabChange(v as Tab)} options={tabs} />
       </div>
 
-      {tab === 'params' && (
+      {active === 'params' && (
         <div className="min-h-0 flex-1 overflow-auto px-3 pt-3 pb-4">
           {params.length === 0 ? (
             <EmptyHint>这个节点没有可调参数</EmptyHint>
@@ -208,7 +221,7 @@ export function NodeInspector({
         </div>
       )}
 
-      {tab === 'output' && (
+      {active === 'output' && (
         <div className="min-h-0 flex-1 overflow-auto px-3 pt-3 pb-4">
           {node.status === 'idle' && <EmptyHint>还没跑过，跑一次才有输出</EmptyHint>}
           {node.status === 'running' && (
@@ -220,10 +233,10 @@ export function NodeInspector({
         </div>
       )}
 
-      {tab === 'ai' && (
+      {active === 'ai' && (
         <AiChatPanel
           messages={messages}
-          nodes={nodes}
+          describe={(a) => describeAction(a, nodes)}
           draft={draft}
           onDraftChange={setDraft}
           onSend={send}

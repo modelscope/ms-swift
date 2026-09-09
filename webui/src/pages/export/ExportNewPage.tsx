@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ConfigFormShell } from '@/components/ConfigFormShell';
+import type { ConfigField } from '@/components/configAssist';
+import { OFF, ON } from '@/components/configAssist';
 import { Field, FieldStack, SelectInput } from '@/components/FormField';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -34,12 +36,21 @@ export function ExportNewPage() {
     ].join('\n');
   }, [ckpt, mergeLora, quant, push]);
 
+  /* 交给 AI 助手的字段。源 ckpt 只读，其余三项之间有顺序约束，正是助手要盯的 */
+  const fields: ConfigField[] = [
+    { key: 'model', label: '源 checkpoint', value: ckpt },
+    { key: 'merge_lora', label: '合并 LoRA', value: mergeLora ? ON : OFF, apply: (v) => setMergeLora(v === ON) },
+    { key: 'quant_method', label: '量化方式', value: quant, apply: setQuant },
+    { key: 'push_to_hub', label: '推送到 Hub', value: push ? ON : OFF, apply: (v) => setPush(v === ON) },
+  ];
+
   return (
     <ConfigFormShell
       module={MODULES.export}
       title="新建导出"
       desc="LoRA 合并、量化、推送到 Hub"
       preview={preview}
+      fields={fields}
       sections={[
         {
           title: '源与操作',

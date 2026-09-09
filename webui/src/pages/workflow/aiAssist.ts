@@ -1,3 +1,5 @@
+import type { AiMessage, ActionState, ProposalView } from '@/components/AiChatPanel';
+import { messageId } from '@/components/AiChatPanel';
 import type { GraphEdge, GraphNode, NodeParam } from './nodeTypes';
 import { NODE_TYPES } from './nodeTypes';
 
@@ -5,7 +7,7 @@ import { NODE_TYPES } from './nodeTypes';
  * 编排页的 AI 协助层。
  *
  * 这里放两样东西：AI 能提出的动作类型，和一个假 AI。
- * UI 组件只认 AiMessage，接真后端时把 askAi() 换成一次请求即可，界面不用动。
+ * UI 组件只认 FlowMessage，接真后端时把 askAi() 换成一次请求即可，界面不用动。
  *
  * 最重要的一条设计：AI 不直接改图。
  * 它只能"提议"——每条提议是一张动作卡片，得点了应用才会落到图上。
@@ -27,19 +29,8 @@ export type AiAction =
   | { kind: 'addNode'; typeKey: string; note: string }
   | { kind: 'control'; op: 'start' | 'pause' | 'resume' | 'stop' };
 
-export type ActionState = 'pending' | 'applied' | 'ignored';
-
-export interface AiMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  text: string;
-  /** 附带的提议。每条独立确认，不是打包应用 */
-  actions?: AiAction[];
-  /** 与 actions 同长度，记录每条被点了什么 */
-  states?: ActionState[];
-  /** 生成中的占位 */
-  pending?: boolean;
-}
+/** 编排页的一条消息。消息的形状是通用的，只有提议的类型是这一页特有的 */
+export type FlowMessage = AiMessage<AiAction>;
 
 /** 问 AI 时带上的上下文。有 node 就是在问单个节点，没有就是在问整张图 */
 export interface AiContext {
@@ -59,16 +50,9 @@ function paramValue(node: GraphNode, label: string): string | undefined {
   return paramsOf(node).find((p) => p.label === label)?.value;
 }
 
-let seq = 0;
-const mkId = () => `ai${Date.now().toString(36)}${seq++}`;
-
-export function userMessage(text: string): AiMessage {
-  return { id: mkId(), role: 'user', text };
-}
-
-function reply(text: string, actions?: AiAction[]): AiMessage {
+function reply(text: string, actions?: AiAction[]): FlowMessage {
   return {
-    id: mkId(),
+    id: messageId(),
     role: 'assistant',
     text,
     actions,
@@ -77,7 +61,7 @@ function reply(text: string, actions?: AiAction[]): AiMessage {
 }
 
 /** 单个节点视角的开场白：直接把这个节点在干什么、接了什么说清楚 */
-export function nodeIntro(node: GraphNode, ctx: AiContext): AiMessage {
+export function nodeIntro(node: GraphNode, ctx: AiContext): FlowMessage {
   const def = NODE_TYPES[node.type];
   const upstream = ctx.edges
     .filter((e) => e.to === node.id)
@@ -103,7 +87,7 @@ export function nodeIntro(node: GraphNode, ctx: AiContext): AiMessage {
 }
 
 /** 整图视角的开场白。跟整图兜底是同一套话，统一从这里出 */
-export function flowIntro(ctx: AiContext): AiMessage {
+export function flowIntro(ctx: AiContext): FlowMessage {
   return askAi('', ctx);
 }
 
@@ -113,7 +97,7 @@ export function flowIntro(ctx: AiContext): AiMessage {
  * 剧本不是随便编的：每条都对应一个真实会被问到的问题，
  * 回答里引用的是图上当前的真实取值，所以看着才像真在读这张图。
  */
-export function askAi(question: string, ctx: AiContext): AiMessage {
+export function askAi(question: string, ctx: AiContext): FlowMessage {
   const q = question.toLowerCase();
   const node = ctx.node;
 
@@ -261,8 +245,18 @@ export function askAi(question: string, ctx: AiContext): AiMessage {
   );
 }
 
-/** 动作卡片上显示的一句话 */
-export function actionLabel(a: AiAction, nodes: GraphNode[]): string {
+/**
+ * 把一条提议翻成卡片上的样子。
+ *
+ * 翻译放在这里而不是面板里：面板是通用的，它不知道 nodeId 对应哪个节点，
+ * 也不该知道——新建页那边的提议改的是表单字段，压根没有节点这回事。
+ */
+export function describeAction(a: AiAction, nodes: GraphNode[]): ProposalView {
+  /* 控制类（启停）比改个参数重得多，给它醒目色 */
+  return { label: actionLabel(a, nodes), heavy: a.kind === 'control' };
+}
+
+function actionLabel(a: AiAction, nodes: GraphNode[]): string {
   if (a.kind === 'param') {
     const n = nodes.find((x) => x.id === a.nodeId);
     const label = n ? NODE_TYPES[n.type].label : a.nodeId;

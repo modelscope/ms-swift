@@ -239,15 +239,20 @@ export function WorkflowEditorPage() {
       });
     });
 
-  /** 选中节点：同时把右侧面板开到参数页 */
+  /**
+   * 选中节点：把右侧面板开出来。
+   *
+   * 只有真的换了节点才回到参数页。无条件重置会把 openInspector 刚指定的那一页
+   * 顶掉——点节点上的「问 AI」本来要直接开到 AI 页，被顶一下就只能看到参数页。
+   *
+   * 没选中节点时面板自然就不渲染了（靠 selectedNode 为空卡住），
+   * 不需要再额外写一次 inspectorOpen。
+   */
   const selectNode = (id: string | null) => {
     setSelected(id);
-    if (id) {
-      setInspectorTab('params');
-      setInspectorOpen(true);
-    } else {
-      setInspectorOpen(false);
-    }
+    if (!id) return;
+    if (id !== selected) setInspectorTab('params');
+    setInspectorOpen(true);
   };
 
   const openInspector = (id: string, tab: InspectorTab) => {
@@ -490,11 +495,12 @@ export function WorkflowEditorPage() {
               running={runState === 'running'}
               aiEnabled={settings.aiEnabled}
               confirmBeforeApply={settings.aiConfirmBeforeApply}
-              defaultTab={inspectorTab}
+              tab={inspectorTab}
               onClose={() => setInspectorOpen(false)}
               onRun={runNode}
               onParamChange={setParamAt}
               onAction={applyAction}
+              onTabChange={setInspectorTab}
             />
           )}
         </div>

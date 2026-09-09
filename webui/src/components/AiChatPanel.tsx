@@ -4,23 +4,62 @@ import { cn } from 'cn';
 import { Hint } from '@/components/Hint';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import type { GraphNode } from './nodeTypes';
-import type { ActionState, AiAction, AiMessage } from './aiAssist';
-import { actionLabel } from './aiAssist';
 
 /**
- * 编排页的 AI 对话面板。功能 2（问单个节点）和功能 3（问整张图）共用这一个组件。
+ * 对话面板。编排页问节点、问整张图，新建页问配置，都用这一个。
  *
  * 气泡样式跟对话页保持一致：右侧用户淡紫、左侧助手浅灰、26px 头像。
- * 不重新设计一套是有意的——同一个产品里两处对话长得不一样，
- * 用户会以为它们是两个不同的东西。
+ * 不重新设计一套是有意的——同一个产品里几处对话长得不一样，
+ * 用户会以为它们是几个不同的东西。
  *
- * 完全受控：自己不存消息、不调 askAi。谁用它谁负责推进对话，
- * 这样节点面板和整图抽屉可以各存一份互不干扰的会话。
+ * 完全受控：自己不存消息、不调 AI。谁用它谁负责推进对话，
+ * 这样每个使用方可以各存一份互不干扰的会话。
+ *
+ * 对提议（动作卡片）只认三件事：怎么写成一句人话、要不要醒目、点了应用干什么。
+ * 提议的内部结构留给使用方——编排页的提议是「改图上某个节点的参数」，
+ * 新建页的是「改表单里某个字段」，两者没有公共结构，硬凑一个反而两边都别扭。
  */
-export function AiChatPanel({
+
+export type ActionState = 'pending' | 'applied' | 'ignored';
+
+export interface AiMessage<A> {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  /** 附带的提议。每条独立确认，不是打包应用 */
+  actions?: A[];
+  /** 与 actions 同长度，记录每条被点了什么 */
+  states?: ActionState[];
+  /** 生成中的占位 */
+  pending?: boolean;
+}
+
+/** 一条提议在卡片上长什么样。翻译权在提议方，面板不认识动作的内部结构 */
+export interface ProposalView {
+  /** 卡片上那句人话 */
+  label: string;
+  /** 启停这类动作比改个参数更重，给个更醒目的颜色 */
+  heavy?: boolean;
+}
+
+let seq = 0;
+
+/** 消息 id。只用来做 React key 和定位某一条，够区分同一次会话里的消息就行 */
+export const messageId = () => `ai${Date.now().toString(36)}${seq++}`;
+
+/**
+ * 用户说的一句话。
+ *
+ * 提议类型给 never 而不是泛型：用户消息永远不带提议，
+ * 而 never[] 能塞进任何一种消息列表，调用处就不用写类型参数。
+ */
+export function userMessage(text: string): AiMessage<never> {
+  return { id: messageId(), role: 'user', text };
+}
+
+export function AiChatPanel<A>({
   messages,
-  nodes,
+  describe,
   onSend,
   onAction,
   draft,
@@ -30,9 +69,8 @@ export function AiChatPanel({
   accent = 'var(--primary)',
   placeholder = '问点什么……',
 }: {
-  messages: AiMessage[];
-  /** 用来把动作里的 nodeId 翻成人看得懂的节点名 */
-  nodes: GraphNode[];
+  messages: AiMessage<A>[];
+  describe: (a: A) => ProposalView;
   onSend: () => void;
   onAction: (msgId: string, index: number, next: Exclude<ActionState, 'pending'>) => void;
   draft: string;
@@ -86,8 +124,7 @@ export function AiChatPanel({
                 {m.actions.map((a, i) => (
                   <ActionCard
                     key={i}
-                    action={a}
-                    nodes={nodes}
+                    view={describe(a)}
                     state={confirmBeforeApply ? (m.states?.[i] ?? 'pending') : 'applied'}
                     onApply={() => onAction(m.id, i, 'applied')}
                     onIgnore={() => onAction(m.id, i, 'ignored')}
@@ -150,17 +187,15 @@ export function AiChatPanel({
  *
  * 关键在于它长得不像一句话，而像一个待办：有边框、有明确的两个出口。
  * AI 说「建议把 micro_batch_size 降到 1」和真把它降到 1 之间，
- * 必须隔着一次点击——图是流程的唯一事实来源，不能被静默改写。
+ * 必须隔着一次点击——配置是任务的唯一事实来源，不能被静默改写。
  */
 function ActionCard({
-  action,
-  nodes,
+  view,
   state,
   onApply,
   onIgnore,
 }: {
-  action: AiAction;
-  nodes: GraphNode[];
+  view: ProposalView;
   state: ActionState;
   onApply: () => void;
   onIgnore: () => void;
@@ -177,17 +212,10 @@ function ActionCard({
       <Zap
         className={cn(
           'size-3 flex-none',
-          done
-            ? 'text-muted-foreground'
-            : /* 控制类动作（启动/暂停）比改参数更重，给个更醒目的颜色 */
-              action.kind === 'control'
-              ? 'text-amber-600'
-              : 'text-primary',
+          done ? 'text-muted-foreground' : view.heavy ? 'text-amber-600' : 'text-primary',
         )}
       />
-      <span className={cn('min-w-0 flex-1', state === 'ignored' && 'line-through')}>
-        {actionLabel(action, nodes)}
-      </span>
+      <span className={cn('min-w-0 flex-1', state === 'ignored' && 'line-through')}>{view.label}</span>
 
       {state === 'pending' ? (
         <span className="flex flex-none gap-1">
