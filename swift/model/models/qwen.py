@@ -1823,6 +1823,25 @@ class Qwen3_5EmbLoader(Qwen3_5Loader):
         return model
 
 
+def register_uembed_model():
+    from vllm import ModelRegistry
+
+    arch = 'UEmbedForConditionalGeneration'
+    if arch in ModelRegistry.get_supported_archs():
+        return
+
+    from vllm.model_executor.models.qwen3_5 import Qwen3_5ForConditionalGeneration
+    from vllm.model_executor.models.utils import WeightsMapper
+
+    class UEmbedForConditionalGeneration(Qwen3_5ForConditionalGeneration):
+        hf_to_vllm_mapper = WeightsMapper(orig_to_new_prefix={
+            'language_model.': 'model.language_model.',
+            'visual.': 'model.visual.',
+        }) | Qwen3_5ForConditionalGeneration.hf_to_vllm_mapper
+
+    ModelRegistry.register_model(arch, UEmbedForConditionalGeneration)
+
+
 register_model(
     ModelMeta(
         MLLMModelType.qwen3_5_emb, [

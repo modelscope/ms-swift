@@ -412,6 +412,12 @@ class Template(ProcessorMixin):
     def prepare_engine_kwargs(self) -> Dict[str, Any]:
         return {}
 
+    def prepare_pooling_params(self, pooling_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        return pooling_kwargs
+
+    def extract_embedding(self, result) -> Any:
+        return result.outputs.data.cpu().numpy().tolist()
+
     def _get_max_pixels(self, inputs=None):
         max_pixels = None if inputs is None else inputs.chat_template_kwargs.get('max_pixels')
         if max_pixels is None:

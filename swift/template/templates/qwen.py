@@ -760,6 +760,30 @@ class Qwen3_5EmbTemplate(Qwen3_5Template):
             if last_msg['role'] != 'assistant':
                 inputs.messages.append({'role': 'assistant', 'content': ''})
 
+    def prepare_engine_kwargs(self) -> Dict[str, Any]:
+        if self.mode == 'vllm' and self.template_meta.template_type == MLLMTemplateType.qwen3_5_emb:
+            from vllm.config import PoolerConfig
+            return {
+                'hf_overrides': {
+                    'architectures': ['UEmbedForConditionalGeneration'],
+                },
+                'pooler_config': PoolerConfig(task='token_embed', pooling_type='ALL'),
+            }
+        return {}
+
+    def prepare_pooling_params(self, pooling_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        if self.mode == 'vllm' and self.template_meta.template_type == MLLMTemplateType.qwen3_5_emb:
+            pooling_kwargs.update(task='token_embed', use_activation=False)
+        return pooling_kwargs
+
+    def extract_embedding(self, result) -> Any:
+        if self.template_meta.template_type == MLLMTemplateType.qwen3_5_emb:
+            data = result.outputs.data
+            num_eos = self.num_eos_tokens
+            embedding = torch.nn.functional.normalize(data[-(num_eos + 1)].float(), p=2, dim=-1)
+            return embedding.cpu().tolist()
+        return super().extract_embedding(result)
+
 
 register_template(
     QwenTemplateMeta(
