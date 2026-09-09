@@ -12,11 +12,12 @@ Megatron-Ray driver process:
                     all ranks can agree on the termination condition.
 """
 import asyncio
+from contextlib import contextmanager
 from typing import Callable, List, Optional
 
 from swift.infer_engine import RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponseChoice, RolloutInferRequest, RolloutOutput
-from swift.utils import remove_response
+from swift.utils import get_logger, remove_response
 from .multi_turn import MultiTurnScheduler
 
 RolloutFn = Callable[[List[RolloutInferRequest], RequestConfig], List[RolloutOutput]]
@@ -25,6 +26,7 @@ RolloutFn = Callable[[List[RolloutInferRequest], RequestConfig], List[RolloutOut
 # concatenated flat list across all ranks. Passing a scalar would crash
 # accelerate's implementation (it iterates each rank's contribution).
 GatherFn = Callable[[List[bool]], List[bool]]
+logger = get_logger()
 
 
 def _identity_gather(values: List[bool]) -> List[bool]:
@@ -43,6 +45,30 @@ def invoke_async_hook(coro):
         return loop.run_until_complete(coro)
     finally:
         loop.close()
+
+
+@contextmanager
+def multi_turn_lifecycle(scheduler: MultiTurnScheduler, requests: List[RolloutInferRequest]):
+    """Run colocate multi-turn initialization and finalization as one boundary.
+
+    Finalization runs even when initialization or first-turn generation fails.
+    A finalization error is raised after a successful rollout, but cannot mask
+    an exception that is already propagating from the rollout itself.
+    """
+    rollout_error = None
+    try:
+        invoke_async_hook(scheduler.on_trajectory_start(requests))
+        yield
+    except BaseException as error:
+        rollout_error = error
+        raise
+    finally:
+        try:
+            invoke_async_hook(scheduler.on_trajectory_end(requests, rollout_error))
+        except BaseException:
+            if rollout_error is None:
+                raise
+            logger.exception('Trajectory finalization failed while preserving the original rollout error')
 
 
 def extract_logprobs_from_choice(response_choice: ChatCompletionResponseChoice) -> List[float]:

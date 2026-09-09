@@ -32,7 +32,7 @@ from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequ
 from swift.model import MultiModelKeys
 from swift.rl_core.data import OnPolicySample
 from swift.rl_core.resample import resample_encode_failed_inputs
-from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
+from swift.rollout import MultiTurnScheduler, multi_turn_lifecycle, multi_turns, run_multi_turn
 from swift.sequence_parallel import sequence_parallel
 from swift.template import Template
 from swift.tuners import Swift
@@ -1130,16 +1130,15 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         # Multi-turn: call on_trajectory_start BEFORE first turn generation
         # so the model sees the actual environment question, not the placeholder.
         requests = self.samples2requests(samples)
-        invoke_async_hook(self.multi_turn_scheduler.on_trajectory_start(requests))
+        with multi_turn_lifecycle(self.multi_turn_scheduler, requests):
+            # Update inputs with actual messages from requests (e.g. env question)
+            for req, sample in zip(requests, samples):
+                sample.messages = req.messages
 
-        # Update inputs with actual messages from requests (e.g. env question)
-        for req, sample in zip(requests, samples):
-            sample.messages = req.messages
+            # Generate first turn with actual questions
+            first_turn_rollout_outputs: List[RolloutOutput] = self._rollout(samples, request_config, is_global_inputs)
 
-        # Generate first turn with actual questions
-        first_turn_rollout_outputs: List[RolloutOutput] = self._rollout(samples, request_config, is_global_inputs)
-
-        return self._colocate_multi_turn_infer(samples, first_turn_rollout_outputs, request_config, requests)
+            return self._colocate_multi_turn_infer(samples, first_turn_rollout_outputs, request_config, requests)
 
     def _colocate_multi_turn_infer(self,
                                    samples: List[OnPolicySample],
