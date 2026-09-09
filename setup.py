@@ -160,7 +160,8 @@ if __name__ == '__main__':
         install_requires=install_requires,
         extras_require=extra_requires,
         entry_points={
-            'console_scripts': ['swift=swift.cli.main:cli_main', 'megatron=swift.cli._megatron.main:cli_main']
+            'console_scripts': ['swift=swift.cli.main:cli_main', 'megatron=swift.cli._megatron.main:cli_main'],
+            'vllm.general_plugins': ['swift_uembed=swift.model.models.qwen:register_uembed_model'],
         },
         dependency_links=deps_link,
         zip_safe=False)

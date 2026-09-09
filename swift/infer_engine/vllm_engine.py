@@ -500,8 +500,11 @@ class VllmEngine(InferEngine):
                 if self.task_type in ('reranker', 'generative_reranker') and \
                         has_activation_arg and self.reranker_use_activation:
                     pooling_kwargs['activation'] = True
+                pooling_kwargs = self.template.prepare_pooling_params(pooling_kwargs)
                 pooling_params = PoolingParams(**pooling_kwargs)
-                return self.engine.encode(llm_inputs, pooling_params, request_id)
+                if self.use_async_engine:
+                    return self.engine.encode(llm_inputs, pooling_params, request_id, **kwargs)
+                return self.engine.add_request(request_id, llm_inputs, pooling_params, **kwargs)
             elif self.use_async_engine:
                 return self.engine.generate(llm_inputs, generation_config, request_id, **kwargs)
             else:
@@ -696,7 +699,7 @@ class VllmEngine(InferEngine):
 
     def _create_embedding_response(self, result, generation_config, request_id) -> EmbeddingResponse:
         assert result is not None
-        embedding = result.outputs.data.cpu().numpy().tolist()
+        embedding = self.template.extract_embedding(result)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), 0)
         return EmbeddingResponse(
             model=self.model_name, data=[EmbeddingResponseData(embedding=embedding)], usage=usage_info, id=request_id)
@@ -709,6 +712,8 @@ class VllmEngine(InferEngine):
         request_id,
     ) -> ChatCompletionResponse:
         assert result is not None
+        if self.task_type == 'embedding':
+            return self._create_embedding_response(result, None, request_id)
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
         choices = []
