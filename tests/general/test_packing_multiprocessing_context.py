@@ -396,7 +396,8 @@ class TestIterablePackingWorkerErrors(unittest.TestCase):
             target=_collect_packing_result, args=(queue, context, rows, strict, dataloader_num_workers))
         process.start()
         try:
-            return queue.get(timeout=60 if dataloader_num_workers else 30)
+            # Both the consumer and packing worker need time to start under spawn.
+            return queue.get(timeout=60)
         finally:
             process.join(timeout=5)
             if process.is_alive():
