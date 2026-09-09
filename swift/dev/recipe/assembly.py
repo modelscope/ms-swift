@@ -65,6 +65,7 @@ class TrainAssembly:
     output_dir: str = 'output'
 
     # --- stage results, in the order the stages produce them ---
+    sp_mesh: Any = field(default=None, init=False)
     processor: Any = field(default=None, init=False)
     template: Any = field(default=None, init=False)
     dataloader: Any = field(default=None, init=False)
@@ -149,6 +150,21 @@ class TrainAssembly:
             self.rlhf_config,
         )
         return self
+
+    def plan_sp_mesh(self) -> Any:
+        """Build the ONE Ulysses SP mesh all consumers share (None when SP is off).
+
+        The mesh is the only thing twinkle's SP needs: the model activates its SP strategy from
+        ``mesh.ulysses_size > 1``, and the dataloader slices by ``mesh.data_world_size`` so SP peers
+        receive identical samples. ``build_hf_device_mesh`` returns None for sp<=1 or non-local mode,
+        preserving the deliberate no-mesh local path bit-for-bit. Runs AFTER :meth:`prepare`:
+        ``_check_hf_sequence_parallel`` has already rejected the combinations where this mesh would
+        be meaningless or harmful (megatron backend, rlhf, ray, fsdp, non-divisible world).
+        """
+        from swift.dev.builders import build_hf_device_mesh
+
+        self.sp_mesh = build_hf_device_mesh(self.distributed_config, self.template_config.sequence_parallel_size)
+        return self.sp_mesh
 
     def require_task_type(self) -> str:
         """Default ``ModelConfig.task_type`` to this recipe's ``task``, and refuse a conflicting one.
@@ -259,7 +275,8 @@ class TrainAssembly:
             model_config = copy.copy(model_config)
             model_config.model = resume_dir
 
-        self.model = build_model(model_config, self.distributed_config, self.train_config, self.tuner_config)
+        self.model = build_model(
+            model_config, self.distributed_config, self.train_config, self.tuner_config, device_mesh=self.sp_mesh)
         if self.tuner_config is not None:
             apply_tuner(self.model, self.tuner_config, gradient_accumulation_steps=self.ga)
         self.model.set_processor(InputProcessor, padding_free=self.template_config.padding_free)
@@ -322,10 +339,11 @@ class TrainAssembly:
         from swift.dev.optimizer import configure_optimizer
 
         self.prepare()
+        self.plan_sp_mesh()
         if self.task:
             self.require_task_type()
         self.build_template()
-        self.build_dataset()
+        self.build_dataset(device_mesh=self.sp_mesh)
         self.plan_steps()
         self.build_model()
         configure_loss(self.model)
