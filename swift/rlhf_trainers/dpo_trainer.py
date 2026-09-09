@@ -137,13 +137,13 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             completion_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
             completion_token_counts = self._packed_sequence_sum(loss_mask.flatten().long(), completion_lengths)
             if self.args.ld_alpha is not None and not is_ref_model:
-                chosen_lengths = completion_lengths[:num_examples]
-                rejected_lengths = completion_lengths[num_examples:]
+                chosen_lengths = completion_token_counts[:num_examples]
+                rejected_lengths = completion_token_counts[num_examples:]
                 public_lengths = torch.min(chosen_lengths, rejected_lengths)  # l_p in the paper
                 public_lengths = torch.cat((public_lengths, public_lengths))
-                front_lengths = torch.min(completion_lengths, public_lengths)
-                split_lengths = torch.stack((front_lengths, completion_lengths - front_lengths), dim=-1).flatten()
-                split_logps = self._packed_sequence_sum(per_token_logps.flatten(), split_lengths).view(-1, 2)
+                split_lengths = torch.stack((public_lengths, completion_token_counts - public_lengths),
+                                            dim=-1).flatten()
+                split_logps = self._packed_sequence_sum(per_token_logps[loss_mask], split_lengths).view(-1, 2)
                 all_logps = split_logps[:, 0] + self.args.ld_alpha * split_logps[:, 1]
             else:
                 all_logps = self._packed_sequence_sum(per_token_logps.flatten(), completion_lengths)

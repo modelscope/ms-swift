@@ -129,6 +129,8 @@ class _LogitsToKeepModel:
         logits = self.logits
         if isinstance(logits_to_keep, torch.Tensor):
             logits = logits[:, logits_to_keep]
+        elif isinstance(logits_to_keep, int):
+            logits = logits[:, -logits_to_keep:]
         return SimpleNamespace(logits=logits)
 
 
@@ -143,12 +145,38 @@ class _PaddingFreeDPOStub:
         self.loss_type = ['sigmoid']
 
     def get_use_logits_to_keep(self, default_value=True):
-        return True
+        return self.args.use_logits_to_keep
 
     prepare_logits_to_keep = SwiftMixin.prepare_logits_to_keep
     get_cu_seqlens = SwiftMixin.get_cu_seqlens
     get_per_token_logps = RLHFTrainerMixin.get_per_token_logps
     _packed_sequence_sum = staticmethod(RLHFTrainerMixin._packed_sequence_sum)
+
+
+@pytest.mark.parametrize('use_logits_to_keep', [False, True])
+def test_padding_free_dpo_matches_padded(use_logits_to_keep):
+    rows = [torch.tensor([-100, -100, 0, 0, 0, 0]), torch.tensor([-100, -100, 0, 0])]
+    scores, grads = [], []
+    for padding_free in [False, True]:
+        labels = (
+            torch.cat(rows).unsqueeze(0) if padding_free else torch.nn.utils.rnn.pad_sequence(
+                rows, batch_first=True, padding_value=-100))
+        logits = torch.zeros(*labels.shape, 2, requires_grad=True)
+        trainer = _PaddingFreeDPOStub(ld_alpha=0.0)
+        trainer.template.padding_free = padding_free
+        trainer.args.use_logits_to_keep = use_logits_to_keep
+        batch = {'labels': labels}
+        if padding_free:
+            batch['position_ids'] = torch.cat([torch.arange(len(row)) for row in rows]).unsqueeze(0)
+        with patch.dict(os.environ, {'SWIFT_SINGLE_DEVICE_MODE': '1'}):
+            output = DPOTrainer.concatenated_forward(trainer, _LogitsToKeepModel(logits), batch)
+        score = torch.cat((output['chosen_logps'], output['rejected_logps']))
+        score.sum().backward()
+        scores.append(score)
+        grads.append(
+            logits.grad[0] if padding_free else torch.cat([logits.grad[i, :len(row)] for i, row in enumerate(rows)]))
+    torch.testing.assert_close(scores[0], scores[1])
+    torch.testing.assert_close(grads[0], grads[1])
 
 
 class TestPackedRLHFReduction(unittest.TestCase):
@@ -195,8 +223,9 @@ class TestPackedRLHFReduction(unittest.TestCase):
                                                                 expected_batch['logits_to_keep'])
                 expected_lengths = expected_cu_seqlens[1:] - expected_cu_seqlens[:-1]
                 self.assertEqual(expected_lengths.cpu().tolist(), [3, 2, 4, 1])
+                expected_counts = _reference_segment_sum(expected_loss_mask.flatten(), expected_lengths)
                 expected_all_logps = _reference_dpo_sum(
-                    expected_logps.flatten(), expected_lengths, num_examples=2, ld_alpha=0.5)
+                    expected_logps[expected_loss_mask], expected_counts, num_examples=2, ld_alpha=0.5)
                 num_tokens = int(expected_cu_seqlens[2].item())
                 expected_nll_loss = -expected_logps[:, :num_tokens][expected_loss_mask[:, :num_tokens]].mean()
                 expected_chosen_logits = expected_mean_logits[:, :num_tokens][expected_loss_mask[:, :num_tokens]].mean()
