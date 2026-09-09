@@ -5,6 +5,7 @@ from .deepspeed_elastic import DeepspeedElasticCallback, GracefulExitCallback
 from .early_stop import EarlyStopCallback
 from .lisa import LISACallback
 from .perf_log import PerfMetricsLogCallback
+from .qat import QatCallback
 
 callbacks_map = {
     'activation_cpu_offload': ActivationCpuOffloadCallBack,
@@ -13,5 +14,6 @@ callbacks_map = {
     'early_stop': EarlyStopCallback,
     'graceful_exit': GracefulExitCallback,
     'lisa': LISACallback,
-    'perf_log': PerfMetricsLogCallback
+    'perf_log': PerfMetricsLogCallback,
+    'qat': QatCallback
 }
