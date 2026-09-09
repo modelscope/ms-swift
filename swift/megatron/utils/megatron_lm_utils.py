@@ -660,16 +660,26 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
         return models
 
     kwargs = {}
+    ddp_fields = {f.name for f in dataclasses.fields(DistributedDataParallelConfig)}
     for f in dataclasses.fields(DistributedDataParallelConfig):
         if hasattr(args, f.name):
             kwargs[f.name] = getattr(args, f.name)
-
-    # compat: SWIFT keeps the user-facing Megatron-LM arg name, while MCore
-    # DistributedDataParallelConfig expects grad_reduce_in_fp32.
-    if hasattr(args, 'accumulate_allreduce_grads_in_fp32'):
-        kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
+    # Swift names this switch after the all-reduce operation, while Megatron
+    # consumes the DDP field names below. Without this explicit aliasing the
+    # setting is present in args.json but silently omitted from ddp_config.
+    accumulate_grads_in_fp32 = getattr(args, 'accumulate_allreduce_grads_in_fp32', False)
+    if accumulate_grads_in_fp32:
+        if 'grad_reduce_in_fp32' in ddp_fields:
+            kwargs['grad_reduce_in_fp32'] = True
+        if 'reduce_scatter_with_fp32_accumulation' in ddp_fields:
+            kwargs['reduce_scatter_with_fp32_accumulation'] = True
     kwargs['check_for_nan_in_grad'] = True
     ddp_config = DistributedDataParallelConfig(**kwargs)
+    logger.info(
+        f'Megatron DDP gradient precision: '
+        f'grad_reduce_in_fp32={getattr(ddp_config, "grad_reduce_in_fp32", None)}, '
+        f'reduce_scatter_with_fp32_accumulation='
+        f'{getattr(ddp_config, "reduce_scatter_with_fp32_accumulation", None)}')
 
     # In the Megatron FSDP and DDP use path, we need to initialize the bucket size.
     # If bucket_size is not provided as an input, use sane default.
