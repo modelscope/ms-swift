@@ -1120,7 +1120,8 @@ class BaseMegatronTrainer(ABC):
 
     def get_last_tokens(self, output_tensor, packed_seq_params=None, attention_mask=None):
         if self.args.context_parallel_size > 1:
-            output_tensor = reconstruct_tensor_cp(output_tensor, packed_seq_params, dim=1)
+            output_tensor = reconstruct_tensor_cp(
+                output_tensor, packed_seq_params, dim=1, cp_partition_mode=self.args.cp_partition_mode)
         if packed_seq_params is None:
             # Compatible with attention_mask_2d
             if attention_mask.dim() > 2:

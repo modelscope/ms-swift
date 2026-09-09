@@ -909,10 +909,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 num_samples = packed_seq_params.seq_lens.shape[0] if args.padding_free else micro_batch_size
                 cp_size = args.context_parallel_size
                 per_token_logps_packed = reconstruct_tensor_cp(cp_size, per_token_logps_packed, packed_seq_params,
-                                                               num_samples)
+                                                               num_samples, args.cp_partition_mode)
                 if per_token_entropy_packed is not None:
                     per_token_entropy_packed = reconstruct_tensor_cp(cp_size, per_token_entropy_packed,
-                                                                     packed_seq_params, num_samples)
+                                                                     packed_seq_params, num_samples,
+                                                                     args.cp_partition_mode)
 
             if args.padding_free:
                 # Pad from rmpad [1, total_tokens] to batch format [batch_size, max_seq_len]

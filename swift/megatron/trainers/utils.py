@@ -465,11 +465,11 @@ def compute_per_token_logps_fn(model, args, data_iterator, temperature=1.0, no_g
 
     if args.context_parallel_size > 1:
         per_token_logps = reconstruct_tensor_cp(args.context_parallel_size, per_token_logps, packed_seq_params,
-                                                num_samples)
+                                                num_samples, args.cp_partition_mode)
     return per_token_logps, routing_topk_idx
 
 
-def reconstruct_tensor_cp(cp_size, tensor, packed_seq_params, num_samples):
+def reconstruct_tensor_cp(cp_size, tensor, packed_seq_params, num_samples, cp_partition_mode='zigzag'):
     """In CP mode, all_gather and reconstruct full tensor sequences."""
     cp_rank = mpu.get_context_parallel_rank()
 
@@ -477,6 +477,13 @@ def reconstruct_tensor_cp(cp_size, tensor, packed_seq_params, num_samples):
     output_list = [torch.empty_like(tensor) for _ in range(cp_size)]
     torch.distributed.all_gather(output_list, tensor.contiguous(), group=mpu.get_context_parallel_group())
     output_list[cp_rank] = tensor
+
+    if cp_partition_mode == 'contiguous':
+        # Contiguous CP splits the entire flattened packed sequence across ranks.
+        output_full = torch.cat(output_list, dim=1)
+        if packed_seq_params is not None:
+            output_full = output_full[:, :packed_seq_params.cu_seqlens_q[num_samples].item()]
+        return output_full
 
     if packed_seq_params is not None:
         cu_seqlens_full = packed_seq_params.cu_seqlens_q

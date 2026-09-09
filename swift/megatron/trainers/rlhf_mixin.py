@@ -79,7 +79,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         if per_token:
             if args.context_parallel_size > 1:
                 per_token_logps = reconstruct_tensor_cp(args.context_parallel_size, per_token_logps, packed_seq_params,
-                                                        num_samples)
+                                                        num_samples, args.cp_partition_mode)
             return per_token_logps
 
         if args.padding_free:
