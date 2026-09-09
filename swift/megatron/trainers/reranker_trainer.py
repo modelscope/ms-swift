@@ -2,6 +2,7 @@
 import torch.nn
 from collections import namedtuple
 from functools import partial
+from megatron.core import mpu
 
 from swift.loss import loss_map
 from swift.metrics import eval_metrics_map
@@ -17,7 +18,7 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
     def __init__(self, args, template):
         super().__init__(args, template)
         self._loss_func = loss_map[args.loss_type](args, self)
-        self.eval_metrics = eval_metrics_map['reranker'](args, self)
+        self.eval_metrics = eval_metrics_map['reranker'](args, self, group=mpu.get_data_parallel_group())
 
     @staticmethod
     def _get_listwise_reranker_preds(logits, labels):
