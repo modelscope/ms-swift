@@ -596,8 +596,8 @@ class MegatronWorker(CheckpointEngineMixin):
         """
         from swift.rlhf_trainers.gkd_loss import TeacherOutput
         effective_target = None if is_opsd else target_seq_len
-        pad_vals = {'topk_logprobs': float('-inf'), 'labels': -100}
-        fields = ('full_logits', 'topk_logprobs', 'topk_indices', 'labels')
+        pad_vals = {'topk_logprobs': float('-inf'), 'target_logprobs': float('nan'), 'labels': -100}
+        fields = ('full_logits', 'topk_logprobs', 'topk_indices', 'target_logprobs', 'labels')
         kwargs = {}
         for field in fields:
             tensors = [getattr(t, field) for t in teacher_outputs]

@@ -176,7 +176,40 @@ def assemble_teacher_output(
         offsets=offsets,
     )
 
-    teacher_out = TeacherOutput(topk_logprobs=topk_logprobs, topk_indices=topk_indices)
+    # ``prompt_logprobs=K`` may return the observed prompt token as an extra
+    # K+1 entry when it falls outside the teacher top-k. Preserve that value for
+    # the exact teacher-student log-probability gap monitor.
+    target_logprobs = torch.full((batch_size, seq_len), float('nan'), dtype=torch.float32)
+    input_ids_cpu = input_ids.detach().cpu()
+
+    def _fill_target(row: int, pos: int, lps_row, ids_row) -> None:
+        target_pos = pos + 1
+        if target_pos >= seq_len:
+            return
+        target_id = int(input_ids_cpu[row, target_pos])
+        for lp, token_id in zip(lps_row, ids_row):
+            if int(token_id) == target_id:
+                target_logprobs[row, pos] = float(lp)
+                return
+
+    if template_padding_free:
+        for i, (lps, ixs) in enumerate(parsed):
+            start, end = cu_seqlens[i], cu_seqlens[i + 1]
+            length = min(len(lps), end - start - 1)
+            for j in range(max(length, 0)):
+                _fill_target(0, start + j, lps[j], ixs[j])
+    else:
+        for i, (lps, ixs) in enumerate(parsed):
+            start = offsets[i] if offsets is not None else 0
+            length = min(len(lps), seq_len - start - 1)
+            for j in range(max(length, 0)):
+                _fill_target(i, start + j, lps[j], ixs[j])
+
+    teacher_out = TeacherOutput(
+        topk_logprobs=topk_logprobs,
+        topk_indices=topk_indices,
+        target_logprobs=target_logprobs.to(device),
+    )
     if 'labels' in teacher_model_inputs:
         teacher_out.labels = teacher_model_inputs['labels']
     return teacher_out

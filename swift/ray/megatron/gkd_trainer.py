@@ -132,6 +132,10 @@ class GKDTrainer(BaseRayTrainer):
                 chunk = source_items[step_idx * chunk_size:(step_idx + 1) * chunk_size]
                 if not chunk:
                     break
+                num_turns_mean = None
+                if data_source == DataSource.STUDENT and all(s.rollout_infos and 'num_turns' in s.rollout_infos
+                                                             for s in chunk):
+                    num_turns_mean = sum(float(s.rollout_infos['num_turns']) for s in chunk) / len(chunk)
                 samples = self._encode_rollout_batch(chunk)
 
                 use_colocated_teacher = self._teacher_use_disable_adapter or (self._teacher_model_dir
@@ -144,7 +148,8 @@ class GKDTrainer(BaseRayTrainer):
 
                 # Driver collates the student (and, for the colocated path, the teacher view)
                 # micro-batches; the worker only runs prepare_batch (PP/CP slice) + forward.
-                dispatch = self._collate_for_workers_gkd(tg, samples, data_source, with_teacher=use_colocated_teacher)
+                dispatch = self._collate_for_workers_gkd(
+                    tg, samples, data_source, with_teacher=use_colocated_teacher, num_turns=num_turns_mean)
                 if use_colocated_teacher:
                     # Teacher forwards on the worker (CP slicing keeps each rank's shard
                     # aligned) and caches per-micro-batch; train_step attaches the cache.
@@ -249,7 +254,7 @@ class GKDTrainer(BaseRayTrainer):
             result.append(payload)
         return result
 
-    def _collate_for_workers_gkd(self, tg, samples: List[dict], data_source, *, with_teacher: bool):
+    def _collate_for_workers_gkd(self, tg, samples: List[dict], data_source, *, with_teacher: bool, num_turns=None):
         """Driver-side GKD collate: ``List[payload-dict]`` -> ``{dp_rank: [model_inputs]}``.
 
         Mirrors the non-Ray GKD ``_encode_samples`` (data_collator on the rank, teacher
@@ -281,6 +286,8 @@ class GKDTrainer(BaseRayTrainer):
                 chunk = shard[i:i + mbs]
                 model_inputs = template.data_collator([s['encoded'] for s in chunk], padding_to=padding_to)
                 model_inputs['data_source'] = data_source
+                if num_turns is not None:
+                    model_inputs['num_turns'] = num_turns
                 if with_teacher:
                     has_opsd = chunk[0].get('teacher_encoded') is not None
                     key = 'teacher_encoded' if has_opsd else 'encoded'
@@ -344,7 +351,7 @@ class GKDTrainer(BaseRayTrainer):
             responses.extend(p)
 
         for sample, response, t_encoded in zip(samples, responses, teacher_encodeds):
-            parsed = parse_prompt_logprobs(response, topk=topk)
+            parsed = parse_prompt_logprobs(response, topk=topk, include_sampled=True)
             encoded = t_encoded if t_encoded is not None else sample['encoded']
             teacher_labels = t_encoded.get('labels') if t_encoded is not None else None
             sample['teacher_output'] = self._build_per_sample_teacher_output(parsed, encoded, topk, teacher_labels)
@@ -367,15 +374,27 @@ class GKDTrainer(BaseRayTrainer):
         parsed_len = len(lps)
         topk_logprobs = torch.full((seq_len, topk), float('-inf'), dtype=torch.float32)
         topk_indices = torch.zeros(seq_len, topk, dtype=torch.long)
+        target_logprobs = torch.full((seq_len, ), float('nan'), dtype=torch.float32)
         length = min(parsed_len, seq_len)
         if length > 0:
-            topk_logprobs[:length] = torch.tensor(lps[:length], dtype=torch.float32)
-            topk_indices[:length] = torch.tensor(ixs[:length], dtype=torch.long)
+            topk_logprobs[:length] = torch.tensor([row[:topk] for row in lps[:length]], dtype=torch.float32)
+            topk_indices[:length] = torch.tensor([row[:topk] for row in ixs[:length]], dtype=torch.long)
+            flat_input_ids = input_ids if isinstance(input_ids, list) else input_ids.reshape(-1).tolist()
+            for pos in range(min(length, seq_len - 1)):
+                target_id = int(flat_input_ids[pos + 1])
+                for lp, token_id in zip(lps[pos], ixs[pos]):
+                    if int(token_id) == target_id:
+                        target_logprobs[pos] = float(lp)
+                        break
 
-        kwargs = dict(topk_logprobs=topk_logprobs.unsqueeze(0), topk_indices=topk_indices.unsqueeze(0))
+        kwargs = dict(
+            topk_logprobs=topk_logprobs.unsqueeze(0),
+            topk_indices=topk_indices.unsqueeze(0),
+            target_logprobs=target_logprobs.unsqueeze(0))
         if labels is not None:
             t_labels = labels
             if not isinstance(t_labels, torch.Tensor):
                 t_labels = torch.tensor(t_labels, dtype=torch.long)
-            kwargs['labels'] = t_labels.unsqueeze(0) if t_labels.dim() == 1 else t_labels
+            t_labels = t_labels.unsqueeze(0) if t_labels.dim() == 1 else t_labels
+            kwargs['labels'] = torch.roll(t_labels, shifts=-1, dims=-1)
         return TeacherOutput(**kwargs)
