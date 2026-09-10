@@ -334,12 +334,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             self._log_teacher_kl_metric(mini_batch_data)
 
         if self.loss_type in ['bnpo', 'cispo', 'dapo', 'fipo']:
-            # Count completion tokens for token-normalized losses. Use completion_mask.sum() for
-            # both padding_free and non-padding_free modes since we want the count of actual
-            # completion tokens, not sequence lengths. mini_batch_data covers all
-            # `steps_per_generation` optimizer steps of this rollout, but each step must be
-            # normalized by its own global token count, so the counts are computed per step
-            # (chunks of num_mini_batch consecutive micro-batches, matching _build_rollout_buffer).
             num_mini_batch = self.global_batch_size // (self.micro_batch_size * mpu.get_data_parallel_world_size())
             # Divide by rollout_group_size to account for duplicate counting within each rollout_group
             # Each rollout_group (TP×PP×CP ranks) has the same gathered data, so we need to normalize
@@ -1136,15 +1130,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             # Per-sample mean, then batch mean
             loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
         elif self.loss_type == 'bnpo':
-            # Global token mean: normalize by the DP-global completion token count instead of the
-            # micro-batch's own count (which made each token's weight depend on its micro-batch
-            # length, the same mean-of-means bias as GKD's pre-fix loss, ms-swift #10076).
             num_items_in_batch = grpo_batch.num_items_in_batch
             dp_size = mpu.get_data_parallel_world_size()
             normalizer = num_items_in_batch / dp_size
             loss = (per_token_loss * completion_mask).sum() / normalizer.clamp(min=1.0)
             # Megatron's two-value regime divides each micro-batch's loss equally by
-            # num_microbatches; premultiply to cancel it (same as verl/slime).
+            # num_microbatches; premultiply to cancel it
             loss = loss * self.args.num_microbatches
         elif self.loss_type == 'dr_grpo':
             loss = (per_token_loss * completion_mask).sum() / (micro_batch_size * self.max_completion_length)

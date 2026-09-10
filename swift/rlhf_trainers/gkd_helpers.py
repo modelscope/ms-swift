@@ -163,6 +163,8 @@ def assemble_teacher_output(
                                'trainer. This may be caused by non-aligned processing; aligning teacher logprobs '
                                'to the trainer-side sequence boundaries.')
             cu_seqlens = trainer_cu
+        # TP + SP: trailing pad tokens carry position_ids == 0 and each opens its own
+        # segment, so len(trainer_seq_lens) = len(cu_seqlens) + num_pad_tokens; only the totals are comparable.
         elif trainer_seq_lens is not None and cu_seqlens[-1] != int(trainer_seq_lens[-1]):
             logger.warning('The number of tokens returned by the teacher server differs from that of the trainer. '
                            'This may be caused by non-aligned processing.')
