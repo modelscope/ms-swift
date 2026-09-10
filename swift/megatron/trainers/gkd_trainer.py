@@ -359,9 +359,17 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             gather_fn=tp_gather_topk,
             log_softmax_fn=vocab_parallel_log_softmax,
             kl_div_fn=vocab_parallel_kl_div)
-        jsd_loss_val = cp_reduce(jsd_total, jsd_num_valid, cp_size=self.args.context_parallel_size)
-
-        loss = jsd_loss_val
+        token_normalized = self.args.calculate_per_token_loss
+        if token_normalized:
+            # The scheduler accumulates token sums; finalize_model_grads divides
+            # the summed gradients by the DP-global valid-token count once.
+            # Keep an autograd edge even when this microbatch has no scored tokens.
+            if not jsd_total.requires_grad:
+                jsd_total = jsd_total + student_logits[..., :0].sum()
+            loss = jsd_total
+        else:
+            jsd_loss_val = cp_reduce(jsd_total, jsd_num_valid, cp_size=self.args.context_parallel_size)
+            loss = jsd_loss_val
 
         # Add SFT loss if enabled (skip for student-generated responses)
         sft_loss = None
@@ -376,29 +384,48 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             sft_loss_sum = (per_token_loss * loss_mask).sum()
             sft_loss_count = loss_mask.sum().float()
 
-            # All-reduce across CP group for correct averaging
-            if args.context_parallel_size > 1:
-                sft_stats = torch.stack([sft_loss_sum, sft_loss_count])
+            if token_normalized:
+                # API top-k can omit positions that still contribute to SFT.
+                # Two different global denominators require a separate contract.
+                mismatched_count = (sft_loss_count != jsd_num_valid).to(torch.int)
                 torch.distributed.all_reduce(
-                    sft_stats, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
-                sft_loss_sum, sft_loss_count = sft_stats[0], sft_stats[1]
-
-            sft_loss = sft_loss_sum / sft_loss_count
-
+                    mismatched_count, op=torch.distributed.ReduceOp.MAX, group=mpu.get_data_parallel_group())
+                if mismatched_count:
+                    raise ValueError('Token-normalized GKD with sft_alpha>0 requires teacher scores for every '
+                                     'valid response token. Use sft_alpha=0 for partial teacher coverage.')
+                sft_loss = sft_loss_sum
+            else:
+                if args.context_parallel_size > 1:
+                    sft_stats = torch.stack([sft_loss_sum, sft_loss_count])
+                    torch.distributed.all_reduce(
+                        sft_stats, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
+                    sft_loss_sum, sft_loss_count = sft_stats[0], sft_stats[1]
+                sft_loss = sft_loss_sum / sft_loss_count
             loss = loss + self.sft_alpha * sft_loss
 
         metric = {'loss': loss.detach().clone()}
         if sft_loss is not None:
-            metric['jsd_loss'] = jsd_loss_val.detach().clone()
+            metric['jsd_loss'] = (jsd_total if token_normalized else jsd_loss_val).detach().clone()
             metric['sft_loss'] = sft_loss.detach().clone()
-        metric = self._all_reduce_metric(metric)
-
-        loss = loss / mpu.get_context_parallel_world_size()
+        if token_normalized:
+            # BaseMegatronTrainer sums [numerator, denominator] across microbatches
+            # and logging steps before division. Counts must never be DP-averaged.
+            metric_dtype = torch.promote_types(loss.dtype, torch.float32)
+            metric = {
+                key: torch.stack([value.to(metric_dtype), jsd_num_valid.to(metric_dtype)])
+                for key, value in metric.items()
+            }
+            metric = self._all_reduce_metric(metric, reduction=torch.distributed.ReduceOp.SUM)
+        else:
+            metric = self._all_reduce_metric(metric)
+            loss = loss / mpu.get_context_parallel_world_size()
 
         # Flush completion logs at generation cycle boundaries.
         if (self._step - 1) % self.steps_per_generation == 0:
             self._flush_log_completions()
 
+        if token_normalized:
+            return loss, jsd_num_valid.detach().clone().to(torch.int), metric
         return loss, metric
 
     def forward_step(self, data_iterator, model):

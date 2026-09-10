@@ -11,9 +11,16 @@ class MegatronRLHFArguments(MegatronSftArguments):
     loss_scale: str = 'last_round'
     truncation_strategy: Optional[Literal['delete', 'left', 'right', 'split', None]] = None
 
-    calculate_per_token_loss: bool = False
+    calculate_per_token_loss: Optional[bool] = None
 
     def __post_init__(self):
+        if self.calculate_per_token_loss is None:
+            # Ray uses a separate loss interface; retain its existing default.
+            self.calculate_per_token_loss = self.rlhf_type == 'gkd' and not self.use_ray
+        if (self.rlhf_type == 'gkd' and not self.use_ray and self.calculate_per_token_loss
+                and self.context_parallel_size > 1):
+            raise NotImplementedError('Token-normalized Megatron GKD currently requires context_parallel_size=1. '
+                                      'Set calculate_per_token_loss=False to retain legacy microbatch averaging.')
         if self.rlhf_type == 'rm':
             self.task_type = 'seq_cls'
             self.num_labels = 1

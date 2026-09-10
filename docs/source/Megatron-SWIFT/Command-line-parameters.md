@@ -332,7 +332,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 除了继承训练参数外，还支持以下参数：
 - 🔥rlhf_type: 默认为'dpo'。目前可选择为'dpo'、'grpo'、'kto'、'rm'和'gkd'。
 - loss_scale: 覆盖[基本参数](../Instruction/Command-line-parameters.md)中的loss_scale。默认为'last_round'。
-- calculate_per_token_loss: 覆盖Megatron参数，默认为False。
+- calculate_per_token_loss: 覆盖Megatron参数。非Ray的GKD默认为True，按全局批次中有效蒸馏token的总数归一化损失与梯度。当前该路径要求`context_parallel_size=1`；设置为False可保留旧版microbatch均值聚合（变长回答的token权重不同）。Ray GKD及其他RLHF类型仍默认为False。启用SFT混合损失时，Teacher必须覆盖所有有效回答token，否则无法共用全局归一化分母。
 
 
 ### DPO参数
