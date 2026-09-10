@@ -201,7 +201,11 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             return [ChatCompletionMessageToolCall(function=function) for function in functions]
 
     @staticmethod
-    def _get_num_tokens(inputs: Dict[str, Any]) -> int:
+    def _get_num_tokens(inputs: Dict[str, Any], batch_idx: Optional[int] = None) -> int:
+        # Generation slicing needs the padded width; usage counts only real prompt tokens.
+        attention_mask = inputs.get('attention_mask')
+        if batch_idx is not None and attention_mask is not None and attention_mask.ndim == 2:
+            return int(attention_mask[batch_idx].sum().item())
         if 'input_ids' in inputs:  # 1d or 2d
             input_ids = inputs['input_ids']
             if isinstance(input_ids, list):
