@@ -761,7 +761,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 self.lr = 1e-4
         if self.task_type is None:
             self.task_type = 'causal_lm'
-        if self.calculate_per_token_loss is None:
+        if self.rlhf_type == 'gkd':
+            if self.calculate_per_token_loss is False:
+                logger.warning("calculate_per_token_loss=False is incompatible with rlhf_type='gkd'; forcing True.")
+            self.calculate_per_token_loss = True
+        elif self.calculate_per_token_loss is None:
             self.calculate_per_token_loss = (self.task_type == 'causal_lm' and self.rlhf_type is None)
 
     def _init_mixed_precision(self):

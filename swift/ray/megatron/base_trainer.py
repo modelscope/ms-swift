@@ -194,6 +194,14 @@ class BaseRayTrainer:
                 micro_batches.append(model_inputs)
                 flat_grpo_batches.append(grpo_batch)
             dispatch[dp_rank] = micro_batches
+        # Per-step global completion token count for token-normalized GRPO losses
+        # (bnpo/cispo/dapo/fipo). The driver owns the whole global batch, so no all-reduce is
+        # needed (equivalent to the all-reduce + rollout_group_size dedup in the non-Ray path);
+        # MegatronGRPOTrainer.loss_func reads it from each grpo_batch.
+        if getattr(self.args, 'loss_type', None) in ['bnpo', 'cispo', 'dapo', 'fipo']:
+            num_items_in_batch = sum(grpo_batch.completion_mask.sum().item() for grpo_batch in flat_grpo_batches)
+            for grpo_batch in flat_grpo_batches:
+                grpo_batch.num_items_in_batch = num_items_in_batch
         return dispatch, flat_grpo_batches
 
     def _prepare_state(self) -> None:
