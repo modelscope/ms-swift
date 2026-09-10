@@ -351,7 +351,7 @@ In addition to inheriting the training parameters, the following parameters are 
 
 - 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo', 'grpo', 'kto', 'rm', and 'gkd' are available.
 - loss_scale: Overrides the `loss_scale` in [basic parameters](../Instruction/Command-line-parameters.md). Default is 'last_round'.
-- calculate_per_token_loss: Overrides the Megatron parameter. Default is False.
+- calculate_per_token_loss: Overrides the Megatron parameter. Defaults to True for non-Ray GKD, normalizing loss and gradients by the global count of valid distillation tokens. This path currently requires `context_parallel_size=1`; setting False retains legacy microbatch averaging, which weights tokens differently for variable-length responses. Ray GKD and other RLHF types still default to False. Mixing SFT loss requires teacher scores for every valid response token so both objectives share the global denominator.
 
 
 ### DPO Parameters
