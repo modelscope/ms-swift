@@ -27,7 +27,7 @@ from types import MethodType
 from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 from swift.rl_core.data import GRPOBatch, OnPolicySample
-from swift.template import Messages, Template
+from swift.template import Messages, StdTemplateInputs, Template
 from swift.tuners.lora import LoraConfig
 from swift.utils import (gc_collect, get_cu_seqlens_from_position_ids, get_logger, get_packed_seq_params,
                          get_torch_device, is_swanlab_available, is_vllm_available, is_wandb_available, swanlab_get_run,
@@ -689,14 +689,16 @@ def load_pil_img(img) -> Image:
         raise ValueError("Image dictionary must contain either 'bytes' or 'path' key.")
 
 
-def get_response_prefix_ids(template: Template, sample_enable_thinking: Optional[bool] = None) -> Optional[List[int]]:
-    effective = sample_enable_thinking if sample_enable_thinking is not None else template.enable_thinking
-    if effective is True:
-        prefix_str = template.template_meta.thinking_prefix
-    elif effective is False:
-        prefix_str = template.template_meta.non_thinking_prefix
-    else:
-        return None
+def get_response_prefix_ids(template: Template,
+                            sample_enable_thinking: Optional[bool] = None,
+                            *,
+                            chat_template_kwargs: Optional[Dict[str, Any]] = None) -> Optional[List[int]]:
+    # Use the same precedence and model-specific overrides as rollout encoding.
+    kwargs = dict(chat_template_kwargs or {})
+    if sample_enable_thinking is not None:
+        kwargs['enable_thinking'] = sample_enable_thinking
+    inputs = StdTemplateInputs(messages=[], chat_template_kwargs=kwargs)
+    prefix_str = template._get_response_prefix(inputs)
     if prefix_str:
         return template.tokenizer.encode(prefix_str, add_special_tokens=False)
     return None
@@ -709,12 +711,8 @@ def encode_sample(sample: OnPolicySample, template: Template, *, encode_prompt_o
     ``to_template_dict()`` so the sample's original messages are preserved
     for logging / reward computation / reuse across steps_per_generation.
 
-    Per-sample ``enable_thinking``: the response prefix (thinking or
-    non-thinking) is computed per-sample from
-    ``sample.extra['chat_template_kwargs']['enable_thinking']``, falling back
-    to the template's global setting.  This keeps the trainer sequence
-    aligned with the rollout sequence for both thinking and non-thinking
-    prefixes.
+    Resolve the response prefix with the same per-sample chat template
+    settings as rollout, and exclude the injected prefix from the loss.
     """
     data = sample.to_template_dict()
     if sample.response_token_ids:
@@ -723,10 +721,11 @@ def encode_sample(sample: OnPolicySample, template: Template, *, encode_prompt_o
         if msgs is not None:
             msgs = [m.copy() for m in msgs]
         ctk = sample.extra.get('chat_template_kwargs') or {}
-        sample_et = ctk.get('enable_thinking')
-        prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=sample_et)
+        prefix_ids = get_response_prefix_ids(template, chat_template_kwargs=ctk)
         data['messages'] = replace_assistant_response_with_ids(
             msgs, sample.response_token_ids, loss_mask, non_thinking_prefix_ids=prefix_ids)
+    elif sample.finish_reason is not None:
+        data['mask_response_prefix'] = True
 
     if encode_prompt_only:
         messages = data.get('messages', [])
@@ -794,16 +793,18 @@ def replace_assistant_response_with_ids(messages: 'Messages',
     if loss_mask and isinstance(loss_mask[0], int):
         loss_mask = [loss_mask]
 
-    # Inject the non-thinking prefix (e.g. '<think>\n\n</think>\n\n') into the LAST assistant turn.
-    # When enable_thinking false, the engine prepends non_thinking_prefix before generation
-    # so completion_ids here are generated with the non-thinking prefix, inject here
+    # The prefix was prompt context during rollout, not part of the sampled IDs.
+    # Copy the outer lists so repeated encoding does not mutate the stored rollout.
     if non_thinking_prefix_ids:
+        completion_ids = list(completion_ids)
+        loss_mask = list(loss_mask) if loss_mask is not None else [[1] * len(ids) for ids in completion_ids]
         n_prefix = len(non_thinking_prefix_ids)
         last_ids = list(completion_ids[-1])
-        # Skip if the response already starts with the prefix (avoid double injection).
-        if last_ids[:n_prefix] != list(non_thinking_prefix_ids):
-            if loss_mask is None:
-                loss_mask = [[1] * len(ids) for ids in completion_ids]
+        # Multi-turn schedulers may already have inserted and masked the prefix.
+        # Matching token values alone cannot distinguish that from a sampled repetition.
+        prefix_is_masked = (
+            last_ids[:n_prefix] == list(non_thinking_prefix_ids) and loss_mask[-1][:n_prefix] == [0] * n_prefix)
+        if not prefix_is_masked:
             completion_ids[-1] = list(non_thinking_prefix_ids) + last_ids
             loss_mask[-1] = [0] * n_prefix + list(loss_mask[-1])
 
