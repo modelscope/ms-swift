@@ -28,6 +28,22 @@ logger = get_logger()
 transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0.dev')
 
 
+def _fsdp2_use_meta_loading() -> bool:
+    """Whether non-rank0 ranks should load the model on the meta device under FSDP2 (0 CPU RAM).
+
+    The weights are later synced from rank0 by accelerate's ``cpu_ram_efficient_loading``
+    path during ``prepare``. Can be disabled with env ``SWIFT_FSDP2_META_LOADING=0``.
+    """
+    if os.environ.get('SWIFT_FSDP2_META_LOADING', '1') == '0':
+        return False
+    if os.environ.get('FSDP_VERSION') != '2':  # set by SftArguments._init_fsdp
+        return False
+    try:
+        return int(os.environ.get('WORLD_SIZE', '1')) > 1
+    except ValueError:
+        return False
+
+
 def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     """
     model_type: The unique ID for the model type. Models with the same model_type share
@@ -638,6 +654,21 @@ def get_model_processor(
         new_special_tokens=new_special_tokens,
         model_kwargs=model_kwargs,
         **kwargs)
+    if load_model and _fsdp2_use_meta_loading() and int(os.environ.get('RANK', '0')) != 0:
+        from accelerate import init_empty_weights
+        logger.info('FSDP2 non-rank0: loading the model on the meta device (0 CPU RAM), '
+                    'weights will be synced from rank0 by accelerate during prepare.')
+        # Mask ACCELERATE_USE_FSDP during loading: transformers' FSDP non-rank0 branch
+        # (modeling_utils._move_missing_keys) would otherwise materialize meta params
+        # as CPU zeros (full model in host RAM per rank). device_map was already
+        # resolved earlier in this function, so masking here is safe.
+        use_fsdp = os.environ.pop('ACCELERATE_USE_FSDP', None)
+        try:
+            with init_empty_weights():
+                return loader.load()
+        finally:
+            if use_fsdp is not None:
+                os.environ['ACCELERATE_USE_FSDP'] = use_fsdp
     return loader.load()
 
 
