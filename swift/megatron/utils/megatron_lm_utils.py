@@ -314,7 +314,7 @@ def save_mcore_checkpoint(
         _get_rng_state(
             fsdp_dtensor=fsdp_dtensor,
             data_parallel_random_init=args.data_parallel_random_init,
-        ) if models else None)
+        ) if not args.no_save_rng else None)
     checkpoint_dir = os.path.join(output_dir, f'iter_{iteration:07d}')
     sharded_sd_metadata = get_sharded_sd_metadata(args)
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -333,7 +333,7 @@ def save_mcore_checkpoint(
     _filter_adapter_state_dict(state_dict, peft_format)
     kwargs = {'content_metadata': sharded_sd_metadata}
     async_save = args.async_save
-    if not models:  # save GPU memory
+    if not models and rng_state is None:  # save GPU memory when only common state remains
         assert 'optimizer' not in state_dict
         async_save = False
         common_path = os.path.join(checkpoint_dir, 'common.pt')
