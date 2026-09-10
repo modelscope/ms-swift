@@ -20,7 +20,6 @@ except ImportError:
 import concurrent.futures
 import inspect
 import os
-import time
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -144,7 +143,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.args.dynamic_sample or self.template.truncation_strategy == 'raise':
             self._prepare_resample_data_iterator()
-        # flag indicating whether the evaluation has started
+        # Whether training still needs to wait for the last evaluation rollout.
         self.eval_flag = False
 
         if self.template.sequence_parallel_size > 1:
@@ -1799,8 +1798,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def evaluation_loop(self, dataloader, *args, **kwargs):
         # Wait for the training rollout to complete
         if self.args.async_generate:
-            while not self.is_async_generate_train_rollout_done():
-                time.sleep(0.1)
+            self._wait_queue(self.train_queue)
         if self._queue.empty() and self.args.async_generate:
             self._prefetch(dataloader)
         output = super().evaluation_loop(dataloader, *args, **kwargs)
@@ -1808,10 +1806,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return output
 
     def training_step(self, model: nn.Module, inputs: DataType, num_items_in_batch=None) -> torch.Tensor:
-        if self.args.async_generate:
+        if self.args.async_generate and self.eval_flag:
             # Wait for the eval rollout to complete
-            while not self.is_async_generate_eval_rollout_done():
-                time.sleep(0.1)
+            self._wait_queue(self.eval_queue)
+            self.eval_flag = False
         return super().training_step(model, inputs, num_items_in_batch)
 
     def old_policy(self):
