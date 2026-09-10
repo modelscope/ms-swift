@@ -1357,8 +1357,10 @@ class Template(ProcessorMixin):
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
+        mask_response_prefix = inputs.extra_kwargs.get('mask_response_prefix') or inputs.chat_template_kwargs.get(
+            'mask_response_prefix', False)
         if self.use_chat_template:
-            if self.add_non_thinking_prefix:
+            if self.add_non_thinking_prefix and not mask_response_prefix:
                 self._add_non_thinking_prefix(inputs)
             preserve_thinking = self._get_preserve_thinking(inputs)
             if not preserve_thinking:
@@ -1414,6 +1416,11 @@ class Template(ProcessorMixin):
             extra_context_list = []
             extra_context_type = None
             response_prefix = self._get_response_prefix(inputs)
+            # Text-only rollouts include the prompt prefix in the decoded response.
+            if (mask_response_prefix and response_prefix and isinstance(response, str)
+                    and response.startswith(response_prefix)):
+                context_list.append(response_prefix)
+                response = response_message['content'] = response[len(response_prefix):]
             if i < n_round - 1:
                 # Not the last round.
                 context_list.append('{{RESPONSE}}')
