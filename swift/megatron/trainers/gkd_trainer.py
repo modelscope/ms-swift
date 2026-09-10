@@ -19,7 +19,7 @@ from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
 from swift.template import Template
 from swift.utils import get_logger, to_device
 from ..utils import forward_step_helper, get_padding_to
-from .gkd_utils import cp_reduce, tp_gather_topk, vocab_parallel_topk
+from .gkd_utils import cp_slice_teacher_output, tp_gather_topk, vocab_parallel_topk
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather_object
@@ -201,6 +201,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         )
 
     def _assemble_teacher_outputs(self, encoded_batches: List[Dict]) -> None:
+        cp_size = self.args.context_parallel_size
         for encoded_batch in encoded_batches:
             parsed = encoded_batch.pop('_teacher_parsed')
             teacher_model_inputs = encoded_batch['teacher_model_inputs']
@@ -210,6 +211,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 topk=self.gkd_logits_topk,
                 template_padding_free=self.template.padding_free,
                 device=self.device,
+                cp_size=cp_size,
             )
             if teacher_out.labels is not None:
                 teacher_out.labels = torch.roll(teacher_out.labels, shifts=-1, dims=-1)
@@ -359,14 +361,12 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             gather_fn=tp_gather_topk,
             log_softmax_fn=vocab_parallel_log_softmax,
             kl_div_fn=vocab_parallel_kl_div)
-        jsd_loss_val = cp_reduce(jsd_total, jsd_num_valid, cp_size=self.args.context_parallel_size)
 
-        loss = jsd_loss_val
+        loss = jsd_total
 
         # Add SFT loss if enabled (skip for student-generated responses)
-        sft_loss = None
+        sft_loss_sum = None
         if self.sft_alpha > 0 and data_source != DataSource.STUDENT:
-            args = self.args
             logits_sbv = student_logits.transpose(0, 1).contiguous()
             model = self.unwrapped_models[0]
             if hasattr(model, 'language_model'):
@@ -374,32 +374,28 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             per_token_loss = model.compute_language_model_loss(labels, logits_sbv)
             loss_mask = labels != -100
             sft_loss_sum = (per_token_loss * loss_mask).sum()
-            sft_loss_count = loss_mask.sum().float()
 
-            # All-reduce across CP group for correct averaging
-            if args.context_parallel_size > 1:
-                sft_stats = torch.stack([sft_loss_sum, sft_loss_count])
-                torch.distributed.all_reduce(
-                    sft_stats, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
-                sft_loss_sum, sft_loss_count = sft_stats[0], sft_stats[1]
+            loss = loss + self.sft_alpha * sft_loss_sum
 
-            sft_loss = sft_loss_sum / sft_loss_count
+        # CP shards report their local counts; finalize_model_grads all-reduces the token
+        # count over the DP*CP group, matching the per-shard loss sums the same group sums
+        # during grad reduction, so no explicit CP all-reduce is needed here.
+        num_tokens = jsd_num_valid.detach().to(torch.int)
 
-            loss = loss + self.sft_alpha * sft_loss
-
-        metric = {'loss': loss.detach().clone()}
-        if sft_loss is not None:
-            metric['jsd_loss'] = jsd_loss_val.detach().clone()
-            metric['sft_loss'] = sft_loss.detach().clone()
-        metric = self._all_reduce_metric(metric)
-
-        loss = loss / mpu.get_context_parallel_world_size()
+        # Metrics are [sum, count] pairs: SUM-reduced across the DP*CP group here, then summed
+        # across micro-batches by _aggregated_metrics; the logger reports sum/count (mean).
+        metric = {'loss': torch.stack([loss.detach().float(), num_tokens.float()])}
+        if sft_loss_sum is not None:
+            metric['jsd_loss'] = torch.stack([jsd_total.detach().float(), num_tokens.float()])
+            metric['sft_loss'] = torch.stack([sft_loss_sum.detach().float(), num_tokens.float()])
+        metric = self._all_reduce_metric(
+            metric, torch.distributed.ReduceOp.SUM, group=mpu.get_data_parallel_group(with_context_parallel=True))
 
         # Flush completion logs at generation cycle boundaries.
         if (self._step - 1) % self.steps_per_generation == 0:
             self._flush_log_completions()
 
-        return loss, metric
+        return loss, num_tokens, metric
 
     def forward_step(self, data_iterator, model):
         unwrapped_model = model.module.module
@@ -411,6 +407,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         teacher_output = data.pop('teacher_output')
         data.pop('teacher_model_inputs', None)  # consumed by _compute_teacher_logits; not needed for student forward
         data = self._prepare_batch(data, vp_stage)
+        if self.use_teacher_api:
+            teacher_output = cp_slice_teacher_output(teacher_output, data.get('packed_seq_params'),
+                                                     getattr(self.args, 'cp_partition_mode', 'zigzag'))
 
         data.pop('loss_scale', None)
         labels = data.pop('labels', None)
