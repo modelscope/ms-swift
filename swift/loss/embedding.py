@@ -133,6 +133,7 @@ class InfonceLoss(BaseLoss):
             rank, _, world_size, _ = get_dist_setting()
         # repeat of anchor(1)+positive(1)+negatives(n)
         sentences = outputs['last_hidden_state']
+        gradient_scale = 1
 
         if world_size > 1 and use_batch:
             if getattr(sequence_parallel, 'dp_group', None) is not None:
@@ -163,6 +164,8 @@ class InfonceLoss(BaseLoss):
                 labels = gather_object(labels)
             # override the gathered one
             all_sentences[rank] = sentences
+            if not self.is_megatron:
+                gradient_scale = len(all_sentences)
             for idx in range(len(all_sentences)):
                 if idx == rank:
                     continue
@@ -321,4 +324,7 @@ class InfonceLoss(BaseLoss):
                     # next positive is neg+1
                     length += tensor.size(0) - 1
                 loss /= len(split_tensors)
+        if gradient_scale > 1:
+            # DDP averages the local contributions to the global loss graph; preserve the reported loss.
+            loss = loss.detach() + gradient_scale * (loss - loss.detach())
         return loss
