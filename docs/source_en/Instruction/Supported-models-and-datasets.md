@@ -355,6 +355,9 @@ The table below introduces the models integrated with ms-swift:
 |[OpenBMB/MiniCPM5-1B](https://modelscope.cn/models/OpenBMB/MiniCPM5-1B)|llama|minicpm5|minicpm5|transformers>=5.6|&#x2714;|-|[openbmb/MiniCPM5-1B](https://huggingface.co/openbmb/MiniCPM5-1B)|
 |[OpenBMB/MiniCPM5-1B-Base](https://modelscope.cn/models/OpenBMB/MiniCPM5-1B-Base)|llama|minicpm5|minicpm5|transformers>=5.6|&#x2714;|-|[openbmb/MiniCPM5-1B-Base](https://huggingface.co/openbmb/MiniCPM5-1B-Base)|
 |[OpenBMB/MiniCPM5-1B-SFT](https://modelscope.cn/models/OpenBMB/MiniCPM5-1B-SFT)|llama|minicpm5|minicpm5|transformers>=5.6|&#x2714;|-|[openbmb/MiniCPM5-1B-SFT](https://huggingface.co/openbmb/MiniCPM5-1B-SFT)|
+|[OpenBMB/MiniCPM5-2B](https://modelscope.cn/models/OpenBMB/MiniCPM5-2B)|llama|minicpm5_2b|minicpm5|transformers>=5.6|&#x2714;|-|[openbmb/MiniCPM5-2B](https://huggingface.co/openbmb/MiniCPM5-2B)|
+|[OpenBMB/MiniCPM5-2B-Base](https://modelscope.cn/models/OpenBMB/MiniCPM5-2B-Base)|llama|minicpm5_2b|minicpm5|transformers>=5.6|&#x2714;|-|[openbmb/MiniCPM5-2B-Base](https://huggingface.co/openbmb/MiniCPM5-2B-Base)|
+|[OpenBMB/MiniCPM5-2B-SFT](https://modelscope.cn/models/OpenBMB/MiniCPM5-2B-SFT)|llama|minicpm5_2b|minicpm5|transformers>=5.6|&#x2714;|-|[openbmb/MiniCPM5-2B-SFT](https://huggingface.co/openbmb/MiniCPM5-2B-SFT)|
 |[LLM-Research/Reflection-Llama-3.1-70B](https://modelscope.cn/models/LLM-Research/Reflection-Llama-3.1-70B)|llama|reflection|llama3|transformers>=4.43|&#x2714;|-|[mattshumer/Reflection-Llama-3.1-70B](https://huggingface.co/mattshumer/Reflection-Llama-3.1-70B)|
 |[01ai/Yi-6B](https://modelscope.cn/models/01ai/Yi-6B)|yi|chatml||-|&#x2714;|-|[01-ai/Yi-6B](https://huggingface.co/01-ai/Yi-6B)|
 |[01ai/Yi-6B-200K](https://modelscope.cn/models/01ai/Yi-6B-200K)|yi|chatml||-|&#x2714;|-|[01-ai/Yi-6B-200K](https://huggingface.co/01-ai/Yi-6B-200K)|
