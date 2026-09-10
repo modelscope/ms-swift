@@ -172,20 +172,24 @@ class TransformersEngine(InferEngine):
             if item is not None:
                 kwargs, queue_list = item
                 request_config = kwargs['request_config']
-                res_list_or_gen = self._infer(**kwargs)
-                if request_config.stream:
-                    finished = False
-                    while not finished:
-                        try:
-                            res_list = next(res_list_or_gen)
-                        except StopIteration:
-                            finished = True
-                            res_list = [None] * len(queue_list)
-                        for (queue, loop), res in zip(queue_list, res_list):
+                try:
+                    res_list_or_gen = self._infer(**kwargs)
+                    if request_config.stream:
+                        finished = False
+                        while not finished:
+                            try:
+                                res_list = next(res_list_or_gen)
+                            except StopIteration:
+                                finished = True
+                                res_list = [None] * len(queue_list)
+                            for (queue, loop), res in zip(queue_list, res_list):
+                                asyncio.run_coroutine_threadsafe(queue.put(res), loop)
+                    else:
+                        for (queue, loop), res in zip(queue_list, res_list_or_gen):
                             asyncio.run_coroutine_threadsafe(queue.put(res), loop)
-                else:
-                    for (queue, loop), res in zip(queue_list, res_list_or_gen):
-                        asyncio.run_coroutine_threadsafe(queue.put(res), loop)
+                except Exception as e:
+                    for queue, loop in queue_list:
+                        asyncio.run_coroutine_threadsafe(queue.put(e), loop)
 
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
@@ -501,11 +505,16 @@ class TransformersEngine(InferEngine):
                     await asyncio.sleep(0)
                     if item is None:
                         break
+                    if isinstance(item, Exception):
+                        raise item
                     yield item
 
             return _gen_wrapper()
         else:
-            return await queue.get()
+            item = await queue.get()
+            if isinstance(item, Exception):
+                raise item
+            return item
 
     # Ensure `template._post_encode` has no gradient.
     @torch.inference_mode()
