@@ -7,6 +7,8 @@ class CustomCrossEntropyLoss(BaseLoss):
     def __call__(self, outputs, labels, *, num_items_in_batch=None, loss_scale=None, **kwargs):
         from swift.trainers import per_token_loss_func
         token_loss = per_token_loss_func(outputs, labels)
+        if loss_scale is not None:
+            token_loss = token_loss * loss_scale
         if num_items_in_batch is None:
             num_items_in_batch = (labels[:, 1:] != -100).sum()
         return token_loss.sum() / num_items_in_batch
