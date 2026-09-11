@@ -58,6 +58,7 @@ class RLHFMegatronArgumentsMixin:
     teacher_tag_key: str = field(
         default='dataset', metadata={'help': 'Column name for multi-teacher routing. Default "dataset".'})
     gkd_logits_topk: Optional[int] = None
+    gkd_loss_chunk_size: Optional[int] = None  # Tokens per fused output projection/JSD chunk
     lmbda: float = 0.5  # On-policy probability: with prob lmbda, use student-generated responses
     seq_kd: bool = False  # Deprecated
     offload_teacher_model: bool = False  # Offload teacher model to CPU to save GPU memory
@@ -243,6 +244,16 @@ class RLHFMegatronArgumentsMixin:
             # Validate gkd_logits_topk
             if self.gkd_logits_topk is not None and self.gkd_logits_topk <= 0:
                 raise ValueError(f'gkd_logits_topk must be a positive integer, got {self.gkd_logits_topk}')
+            if self.gkd_loss_chunk_size is not None:
+                if self.gkd_loss_chunk_size <= 0:
+                    raise ValueError('gkd_loss_chunk_size must be positive')
+                if (self.teacher_model is None or self.teacher_model_server is not None
+                        or self.gkd_logits_topk is not None):
+                    raise ValueError('gkd_loss_chunk_size requires a separate local full-vocabulary teacher')
+                if self.sft_alpha != 0:
+                    raise ValueError('gkd_loss_chunk_size currently requires sft_alpha=0')
+                if self.use_megatron_fsdp:
+                    raise ValueError('gkd_loss_chunk_size does not support Megatron-FSDP parameter resharding')
 
             # seq_kd (teacher-generated responses) is not implemented; raise early.
             if self.seq_kd:

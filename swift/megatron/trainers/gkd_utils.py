@@ -1,10 +1,132 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Megatron-specific GKD utilities: TP-aware gather/topk, CP reduce and teacher CP slicing."""
 import torch
+import torch.nn.functional as F
+from contextlib import contextmanager
+from dataclasses import dataclass
 from mcore_bridge import split_cp_inputs
 from megatron.core import mpu
+from megatron.core.tensor_parallel.mappings import (copy_to_tensor_model_parallel_region,
+                                                    gather_from_sequence_parallel_region)
 
-from swift.rlhf_trainers.gkd_loss import TeacherOutput
+from swift.rlhf_trainers.gkd_loss import TeacherOutput, jsd_loss
+from .vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
+
+
+@dataclass
+class TeacherHiddenStates:
+    hidden_states: torch.Tensor
+    labels: torch.Tensor
+
+
+def get_gkd_language_model(model):
+    model = getattr(model, 'language_model', model)
+    if model.post_process:
+        from mcore_bridge.model.gpt_model import GPTModel
+        from megatron.core.tensor_parallel.layers import ColumnParallelLinear
+
+        if (type(model.output_layer) is not ColumnParallelLinear or getattr(
+                getattr(model, '_forward_output_layer', None), '__func__', None) is not GPTModel._forward_output_layer):
+            raise ValueError('gkd_loss_chunk_size requires an unmodified mcore-bridge output projection '
+                             '(output-layer adapters and custom logit transformations are unsupported)')
+        if model.config.defer_embedding_wgrad_compute:
+            raise ValueError('gkd_loss_chunk_size does not support defer_embedding_wgrad_compute')
+    return model
+
+
+@contextmanager
+def gkd_hidden_states_context(model):
+    """Skip only the final projection; keep the teacher/student PP forwards intact."""
+    model = get_gkd_language_model(model)
+    if not model.post_process:
+        yield
+        return
+    # Still call the module so distributed-optimizer parameter-gather hooks run.
+    layer = model.output_layer
+    had_override = 'forward' in layer.__dict__
+    original = layer.forward
+    layer.forward = lambda hidden_states, *args, **kwargs: (hidden_states, None)
+    try:
+        yield
+    finally:
+        if had_override:
+            layer.forward = original
+        else:
+            del layer.forward
+
+
+class _ChunkedJSD(torch.autograd.Function):
+    """Like fused linear distillation losses, retain gradients instead of [tokens, vocab] activations."""
+
+    @staticmethod
+    def forward(ctx, student, weight, bias, teacher, teacher_weight, teacher_bias, beta, temperature, chunk_size):
+        loss_dtype = torch.promote_types(student.dtype, torch.float32)
+        grad_student = torch.empty_like(student)
+        grad_weight = torch.zeros_like(weight, dtype=loss_dtype) if weight.requires_grad else None
+        grad_bias = torch.zeros_like(bias, dtype=loss_dtype) if bias is not None and bias.requires_grad else None
+        total = torch.zeros((), dtype=loss_dtype, device=student.device)
+        with torch.enable_grad():
+            w = weight.detach().requires_grad_(weight.requires_grad)
+            b = bias.detach().requires_grad_(bias.requires_grad) if bias is not None else None
+            for start in range(0, student.shape[0], chunk_size):
+                end = start + chunk_size
+                s = student[start:end].detach().requires_grad_(True)
+                with torch.no_grad():
+                    t_logits = F.linear(teacher[start:end], teacher_weight, teacher_bias).to(loss_dtype) / temperature
+                s_logits = F.linear(s, w, b).to(loss_dtype) / temperature
+                loss = jsd_loss(s_logits, t_logits, beta, vocab_parallel_log_softmax, vocab_parallel_kl_div, chunk_size)
+                inputs = [s] + ([w] if grad_weight is not None else []) + ([b] if grad_bias is not None else [])
+                grads = iter(torch.autograd.grad(loss, inputs))
+                grad_student[start:end] = next(grads)
+                if grad_weight is not None:
+                    grad_weight.add_(next(grads))
+                if grad_bias is not None:
+                    grad_bias.add_(next(grads))
+                total.add_(loss.detach())
+                del s_logits, t_logits, loss
+        ctx.save_for_backward(grad_student, grad_weight, grad_bias)
+        return total
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grads = tuple(g * grad_output if g is not None else None for g in ctx.saved_tensors)
+        return *grads, None, None, None, None, None, None
+
+
+def chunked_gkd_loss(student, teacher_output, labels, student_model, teacher_model, beta, temperature, chunk_size):
+    """Full-vocabulary JSD from hidden states, with TP/SP gradient routing and CP-local masks."""
+    student_model = get_gkd_language_model(student_model)
+    teacher_model = get_gkd_language_model(teacher_model)
+
+    def prepare_hidden(hidden, model):
+        # The model's postprocess returns [batch, sequence / SP, hidden].
+        if mpu.get_tensor_model_parallel_world_size() > 1:
+            if model.config.sequence_parallel:
+                hidden = gather_from_sequence_parallel_region(hidden.transpose(0, 1).contiguous())
+                hidden = hidden.transpose(0, 1).contiguous()
+            else:
+                # Keep the backward input contiguous for M-Core's in-place TP reduction.
+                hidden = copy_to_tensor_model_parallel_region(hidden)
+        return hidden
+
+    def output_weight(model):
+        if model.share_embeddings_and_output_weights:
+            return model.shared_embedding_or_output_weight()
+        return model.output_layer.weight
+
+    student = prepare_hidden(student, student_model)
+    with torch.no_grad():
+        teacher = prepare_hidden(teacher_output.hidden_states, teacher_model)
+    s_mask, t_mask = labels != -100, teacher_output.labels != -100
+    num_valid = s_mask.sum()
+    if num_valid != t_mask.sum():
+        raise ValueError('Student and teacher must have the same number of response tokens')
+    student_weight, teacher_weight = output_weight(student_model), output_weight(teacher_model)
+    if student_weight.shape[0] != teacher_weight.shape[0]:
+        raise ValueError('Chunked GKD requires matching teacher/student vocabulary partitions')
+    loss = _ChunkedJSD.apply(student[s_mask], student_weight, student_model.output_layer.bias, teacher[t_mask],
+                             teacher_weight, teacher_model.output_layer.bias, beta, temperature, chunk_size)
+    return loss, num_valid
 
 
 def vocab_parallel_topk(logits: torch.Tensor, k: int) -> tuple:
