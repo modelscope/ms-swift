@@ -67,6 +67,7 @@ class MLLMModelArch:
     deepseek_ocr = 'deepseek_ocr'
     deepseek_ocr2 = 'deepseek_ocr2'
     unlimited_ocr = 'unlimited_ocr'
+    deepseek_v4_vision = 'deepseek_v4_vision'
     kimi_k25 = 'kimi_k25'
 
     mplug_owl2 = 'mplug_owl2'
@@ -495,6 +496,14 @@ register_model_arch(
         language_model='language',
         vision_tower='vision',
         aligner='projector',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.deepseek_v4_vision,
+        language_model=['model.layers', 'model.norm', 'model.embed'],
+        vision_tower='model.vision',
+        aligner='model.aligner',
     ))
 
 register_model_arch(

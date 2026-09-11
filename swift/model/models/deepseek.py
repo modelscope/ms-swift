@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import os
 import sys
 import torch
 from transformers import AutoModel, PretrainedConfig, PreTrainedModel
@@ -187,6 +188,34 @@ register_model(
         ],
         template=TemplateType.deepseek_v4,
         architectures=['DeepseekV4ForCausalLM'],
+    ))
+
+
+class DeepseekV4VisionLoader(ModelLoader):
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        # Ensure inference/ and encoding/ are importable for the template
+        for sub in ['inference', 'encoding']:
+            sub_path = os.path.join(model_dir, sub)
+            if os.path.isdir(sub_path) and sub_path not in sys.path:
+                sys.path.insert(0, sub_path)
+        return super().get_processor(model_dir, config)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.deepseek_v4_flash_vision,
+        [
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V4-Flash-Vision-Exp', 'deepseek-ai/DeepSeek-V4-Flash-Vision-Exp'),
+            ], TemplateType.deepseek_v4_flash_vision),
+        ],
+        DeepseekV4VisionLoader,
+        template=TemplateType.deepseek_v4_flash_vision,
+        model_arch=ModelArch.deepseek_v4_vision,
+        mcore_model_type='deepseek_v4_flash_vision',
+        architectures=['DeepseekV4ForCausalLM'],
+        tags=['vision'],
     ))
 
 

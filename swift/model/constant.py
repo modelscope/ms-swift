@@ -217,6 +217,7 @@ class MLLMModelType:
     deepseek_ocr = 'deepseek_ocr'
     deepseek_ocr2 = 'deepseek_ocr2'
     unlimited_ocr = 'unlimited_ocr'
+    deepseek_v4_flash_vision = 'deepseek_v4_flash_vision'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'

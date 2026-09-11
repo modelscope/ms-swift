@@ -275,7 +275,7 @@ def _patch_mcore_bridge():
                         modules_to_not_convert = (modules_to_not_convert or []) + list(self._fp8_skip_modules)
                     hf_config.quantization_config = FineGrainedFP8Config(modules_to_not_convert=modules_to_not_convert)
                     expert_dtype = 'fp8'
-                if args.model_type == 'deepseek_v4':
+                if args.model_type in ('deepseek_v4', 'deepseek_v4_flash_vision'):
                     HfConfigFactory.set_config_attr(hf_config, 'expert_dtype', expert_dtype)
                 hf_config.save_pretrained(output_dir)
                 if getattr(self.hf_model, '_auto_class') is not None:
