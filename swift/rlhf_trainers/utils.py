@@ -724,8 +724,6 @@ def encode_sample(sample: OnPolicySample, template: Template, *, encode_prompt_o
         prefix_ids = get_response_prefix_ids(template, chat_template_kwargs=ctk)
         data['messages'] = replace_assistant_response_with_ids(
             msgs, sample.response_token_ids, loss_mask, non_thinking_prefix_ids=prefix_ids)
-    elif sample.finish_reason is not None:
-        data['mask_response_prefix'] = True
 
     if encode_prompt_only:
         messages = data.get('messages', [])
