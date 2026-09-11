@@ -4,4 +4,5 @@ isort>=4.3.21
 modelscope
 pre-commit
 pytest
+scikit-learn
 yapf==0.30.0 # use fix version to ensure consistent auto-styling
