@@ -184,10 +184,6 @@ def _optimizer_sharded_state_dict(optimizer, state_dict, optim_sd_kwargs):
 
 
 def _load_optimizer_state_dict(optimizer, state_dict):
-    if is_torch_npu_available():
-        from swift.model.npu_patch.megatron_checkpoint import load_optimizer_state_dict
-        load_optimizer_state_dict(optimizer, state_dict)
-        return
     optimizer.load_state_dict(state_dict)
 
 
@@ -309,7 +305,7 @@ def save_mcore_checkpoint(
     models = unwrap_model(models)
     fsdp_dtensor = bool(models) and getattr(args, 'use_megatron_fsdp', False)
     if fsdp_dtensor and args.async_save:
-        raise ValueError('Megatron-FSDP fsdp_dtensor checkpoint does not support async_save in Megatron-Core 0.16.')
+        raise ValueError('Megatron-FSDP fsdp_dtensor checkpoint does not support async_save.')
     rng_state = (
         _get_rng_state(
             fsdp_dtensor=fsdp_dtensor,
@@ -369,6 +365,24 @@ def save_mcore_checkpoint(
         # Wait so everyone is done (necessary)
         if torch.distributed.is_initialized():
             torch.distributed.barrier()
+
+        if getattr(args, 'use_megatron_fsdp', False) and is_torch_npu_available():
+            # ``state_dict_for_save_checkpoint`` temporarily exposes the
+            # FSDP-managed DTensor parameters on the wrapped module.  The
+            # regular Megatron-FSDP loop restores raw module parameters before
+            # its next forward, but Swift immediately calls mcore-bridge's
+            # HF exporter after this function.  First complete the same
+            # parameter all-gather used by the GPU FSDP forward boundary, then
+            # expose those full raw parameters to bridge.  Restoring raw
+            # parameters without this gather would leave empty DP shards on
+            # non-zero ranks and can crash during bridge's reshape/copy path.
+            for model in models:
+                start_param_sync = getattr(model, 'start_param_sync', None)
+                if start_param_sync is not None:
+                    start_param_sync(force_sync=True)
+                restore_raw_parameters = getattr(model, '_replace_param_with_raw_if_needed', None)
+                if restore_raw_parameters is not None:
+                    restore_raw_parameters()
 
     if is_master():
 
@@ -641,6 +655,11 @@ def _ensure_fsdp_tensor_parallel_attributes(args, model) -> None:
 
 
 def wrap_model(args, models, wrap_with_ddp: bool = True):
+    if getattr(args, 'use_megatron_fsdp', False) and is_torch_npu_available():
+        from swift.model.npu_patch.megatron_fsdp import patch_megatron_fsdp_optimizer
+        patch_megatron_fsdp_optimizer(
+            use_precision_aware_optimizer=getattr(args, 'use_precision_aware_optimizer', False))
+
     # Set tensor model parallel attributes if not set.
     # Only parameters that are already tensor model parallel have these
     # attributes set for them. We should make sure the default attributes

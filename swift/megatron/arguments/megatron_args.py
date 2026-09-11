@@ -917,6 +917,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     def _check_megatron_fsdp(self):
         if not self.use_megatron_fsdp:
             return
+        if is_torch_npu_available() and self.virtual_pipeline_model_parallel_size is not None:
+            raise ValueError('NPU Megatron-FSDP does not support virtual pipeline parallelism yet. '
+                             'Its DCP preprocessing currently handles one model chunk per pipeline rank; '
+                             'set virtual_pipeline_model_parallel_size=None and use ordinary PP instead.')
         # Megatron-FSDP is only compatible with the distributed optimizer.
         if not self.use_distributed_optimizer:
             logger.info('Megatron-FSDP is only compatible with use_distributed_optimizer=True; setting it to True.')
