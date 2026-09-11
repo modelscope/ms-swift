@@ -8,7 +8,7 @@ from functools import partial
 from mcore_bridge import set_random_seed
 from megatron.core import mpu
 from transformers.utils import ContextManagers
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from swift.megatron.arguments import MegatronArguments
 from swift.rl_core.data import GKDSample
@@ -19,7 +19,8 @@ from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
 from swift.template import Template
 from swift.utils import get_logger, to_device
 from ..utils import forward_step_helper, get_padding_to
-from .gkd_utils import cp_slice_teacher_output, tp_gather_topk, vocab_parallel_topk
+from .gkd_utils import (TeacherHiddenStates, chunked_gkd_loss, cp_slice_teacher_output, get_gkd_language_model,
+                        gkd_hidden_states_context, tp_gather_topk, vocab_parallel_topk)
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather_object
@@ -47,6 +48,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         # GKD top-k logits configuration
         self.gkd_logits_topk = getattr(args, 'gkd_logits_topk', None)
+        self.gkd_loss_chunk_size = args.gkd_loss_chunk_size
 
         self.use_vllm = getattr(args, 'use_vllm', False)
         self.steps_per_generation = args.steps_per_generation
@@ -83,6 +85,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         elif self._is_self_distillation:
             logger.info('Self-distillation mode: using student model as teacher (no separate teacher loaded)')
         self._load_teacher_model()
+        if self.gkd_loss_chunk_size is not None:
+            for model in self.unwrapped_models + self.teacher_models:
+                get_gkd_language_model(model)
 
     @contextmanager
     def _template_context(self, template: Template, max_length: Optional[int] = None):
@@ -257,6 +262,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 teacher_data = self._prepare_batch(teacher_batch, vp_stage)
                 teacher_data.pop('loss_scale', None)
                 teacher_labels = teacher_data.pop('labels', None)
+                if self.gkd_loss_chunk_size is not None:
+                    with gkd_hidden_states_context(teacher_model):
+                        hidden_states = forward_step_helper(teacher_model, teacher_data)
+                    encoded_batch['teacher_output'] = TeacherHiddenStates(hidden_states, teacher_labels)
+                    continue
                 teacher_logits = forward_step_helper(teacher_model, teacher_data)
                 if teacher_logits is not None:
                     teacher_logits = teacher_logits.detach()
@@ -347,20 +357,26 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                   output_tensor: torch.Tensor,
                   *,
                   labels: torch.Tensor,
-                  teacher_output: TeacherOutput,
+                  teacher_output: Union[TeacherOutput, TeacherHiddenStates],
                   data_source: DataSource = DataSource.DATASET):
         """Compute GKD loss (JSD + optional SFT loss)."""
         student_logits = output_tensor
 
-        jsd_total, jsd_num_valid = gkd_loss(
-            student_logits,
-            teacher_output,
-            labels,
-            self.beta,
-            self.temperature,
-            gather_fn=tp_gather_topk,
-            log_softmax_fn=vocab_parallel_log_softmax,
-            kl_div_fn=vocab_parallel_kl_div)
+        if self.gkd_loss_chunk_size is not None:
+            with self.load_teacher_model_context():
+                jsd_total, jsd_num_valid = chunked_gkd_loss(output_tensor, teacher_output, labels,
+                                                            self.unwrapped_models[0], self.teacher_models[0], self.beta,
+                                                            self.temperature, self.gkd_loss_chunk_size)
+        else:
+            jsd_total, jsd_num_valid = gkd_loss(
+                student_logits,
+                teacher_output,
+                labels,
+                self.beta,
+                self.temperature,
+                gather_fn=tp_gather_topk,
+                log_softmax_fn=vocab_parallel_log_softmax,
+                kl_div_fn=vocab_parallel_kl_div)
 
         loss = jsd_total
 
@@ -416,7 +432,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         if input_tensor is not None:
             unwrapped_model.set_input_tensor(input_tensor)
-        student_output = model(**data)
+        if self.gkd_loss_chunk_size is not None:
+            with gkd_hidden_states_context(unwrapped_model):
+                student_output = model(**data)
+        else:
+            student_output = model(**data)
 
         return student_output, partial(
             self.loss_func,
