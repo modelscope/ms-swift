@@ -1054,6 +1054,7 @@ class BaseMegatronTrainer(ABC):
             data_sharding=args.data_sharding,
             shuffle=args.train_dataloader_shuffle,
             group_by_length=args.group_by_length,
+            group_by_length_shuffle_batches=args.group_by_length_shuffle_batches,
         )
         train_dataloader = self._create_dataloader(train_dataset, train_batch_sampler)
         if val_dataset is not None:

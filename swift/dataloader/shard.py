@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from typing import Optional
 
 from swift.utils import to_device
+from .utils import shuffle_batch_blocks
 
 
 class BatchSamplerShard:
@@ -19,6 +20,7 @@ class BatchSamplerShard:
         tp_size: int = 1,
         group_by_length: bool = False,
         lengths=None,
+        group_by_length_shuffle_batches: bool = False,
     ):
         self.tp_size = tp_size
         self.total_samples = total_samples // self.world_size
@@ -28,6 +30,7 @@ class BatchSamplerShard:
         self.base_seed = data_seed or 0
         self.curr_seed = self.base_seed
         self.group_by_length = group_by_length
+        self.group_by_length_shuffle_batches = group_by_length_shuffle_batches
         if group_by_length and not shuffle:
             raise ValueError('shuffle must be True when group_by_length is True')
         self.lengths = lengths
@@ -50,6 +53,8 @@ class BatchSamplerShard:
                 from transformers.trainer_pt_utils import get_length_grouped_indices
                 total_idx = get_length_grouped_indices(
                     self.lengths, self.batch_size * self.world_size, generator=generator)
+                if self.group_by_length_shuffle_batches:
+                    total_idx = shuffle_batch_blocks(total_idx, self.batch_size * self.world_size, generator)
             else:
                 total_idx = torch.randperm(self.total_samples * self.world_size, generator=generator).tolist()
             total_idx = total_idx[self.rank::self.world_size]

@@ -520,6 +520,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     dataloader_multiprocessing_context: Optional[Literal['fork', 'spawn', 'forkserver']] = None
     data_sharding: bool = False
     group_by_length: bool = False
+    group_by_length_shuffle_batches: bool = False
     te_rng_tracker: bool = False
     data_parallel_random_init: Optional[bool] = False
     padding_free: bool = True

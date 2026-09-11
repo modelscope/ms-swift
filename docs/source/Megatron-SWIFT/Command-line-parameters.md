@@ -62,6 +62,7 @@
 - dataloader_prefetch_factor: 默认为2。
 - data_sharding: 当`--train_dataloader_shuffle true`时对 train_dataloader 生效，默认为False。该参数控制数据集随机的范围。若设置为True，则先对数据集进行分片，然后对每个分片进行随机处理（略节约内存）；若设置为False，则先对数据集进行随机，再进行分片（更好的随机效果）。
 - 🔥group_by_length: 是否在训练数据集中将长度大致相同的样本分组在一起（有随机因素），以最小化填充并确保各节点与进程的负载均衡以提高效率。默认为False。具体算法参考`transformers.trainer_pt_utils.get_length_grouped_indices`。
+- group_by_length_shuffle_batches: 在 `group_by_length=True` 时，按完整 DP micro-batch 块打乱长度分组后的顺序。默认为 False。该参数减少反复出现的由长到短顺序，同时保持各 rank 的 batch 内容和负载均衡。每块包含 `per_device_train_batch_size * DP数` 条样本（Megatron 中为 `micro_batch_size * DP数`），不包含梯度累积。首块和不完整尾块保持原位。它不会打散块内样本，也不保证改善收敛。断点续训时应保持该参数不变。仅作用于可随机访问数据集的长度分组采样器，不影响 streaming 或独立的序列并行采样器。
 - te_rng_tracker: 使用 Transformer Engine 版本的随机数生成器。默认为False。
 - data_parallel_random_init: 在数据并行的各个 rank 之间启用不同的随机初始化。默认为False。
 - padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练。默认为True。

@@ -60,6 +60,8 @@ class TrainArgumentsMixin:
         train_dataloader_shuffle (bool): Whether to shuffle the training data. Defaults to True.
         group_by_length (bool): Whether to group samples with approximately the same length together in the
             training dataset (with a random factor).
+        group_by_length_shuffle_batches (bool): Shuffle DP micro-batch blocks after length grouping while
+            preserving their contents. Defaults to False.
         max_epochs (Optional[int]): The total number of training epochs to perform. Overrides `num_train_epochs`.
             Defaults to None.
         aligner_lr (Optional[float]): A specific learning rate for the aligner part of the model. Defaults to None.
@@ -158,6 +160,7 @@ class TrainArgumentsMixin:
     acc_strategy: Literal['token', 'seq'] = 'token'
     train_dataloader_shuffle: bool = True
     group_by_length: bool = False
+    group_by_length_shuffle_batches: bool = False
     max_epochs: Optional[int] = None
     aligner_lr: Optional[float] = None
     vit_lr: Optional[float] = None

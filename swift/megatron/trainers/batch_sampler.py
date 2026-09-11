@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 
+from swift.dataloader.utils import shuffle_batch_blocks
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -75,6 +76,7 @@ class MegatronPretrainingRandomSampler:
         data_sharding,
         shuffle: bool = True,
         group_by_length: bool = False,
+        group_by_length_shuffle_batches: bool = False,
     ):
         # Keep a copy of input params for later use.
         self.dataset = dataset
@@ -93,6 +95,7 @@ class MegatronPretrainingRandomSampler:
         self.data_sharding = data_sharding
         self.shuffle = shuffle
         self.group_by_length = group_by_length
+        self.group_by_length_shuffle_batches = group_by_length_shuffle_batches
         self.lengths = self.dataset['lengths'] if group_by_length else None
         if self.lengths is not None:
             self.lengths = [max(length) if isinstance(length, list) else length for length in self.lengths]
@@ -136,6 +139,9 @@ class MegatronPretrainingRandomSampler:
                     from transformers.trainer_pt_utils import get_length_grouped_indices
                     idx_range_total = get_length_grouped_indices(
                         self.lengths, self.micro_batch_times_data_parallel_size, generator=g)
+                    if self.group_by_length_shuffle_batches:
+                        idx_range_total = shuffle_batch_blocks(idx_range_total,
+                                                               self.micro_batch_times_data_parallel_size, g)
                 else:
                     idx_range_total = torch.randperm(full_bucket_size, generator=g).tolist()
                 idx_range_active = idx_range_total[full_bucket_offset:]
