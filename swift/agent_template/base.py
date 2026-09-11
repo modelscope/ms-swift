@@ -197,7 +197,40 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
         assert isinstance(tool, dict), f'tool: {tool}'
         if 'type' not in tool and 'function' not in tool:
             tool = {'type': 'function', 'function': tool}
+        function = tool.get('function')
+        if isinstance(function, dict) and isinstance(function.get('parameters'), dict):
+            parameters = BaseAgentTemplate._remove_null_properties(function['parameters'])
+            tool = {**tool, 'function': {**function, 'parameters': parameters}}
         return tool
+
+    @staticmethod
+    def _remove_null_properties(schema):
+        """Remove null property definitions introduced by Arrow struct alignment.
+
+        Property definitions must be schemas, so a null entry is padding rather
+        than a nullable parameter (which uses ``type: 'null'``). Only descend
+        through schema-valued keywords: defaults, constants, examples and custom
+        annotations may contain literal nulls or objects named ``properties``.
+        """
+        clean = BaseAgentTemplate._remove_null_properties
+        if isinstance(schema, list):
+            return [clean(child) for child in schema]
+        if not isinstance(schema, dict):
+            return schema
+        schema = schema.copy()
+        for key in ('properties', 'patternProperties', '$defs', 'definitions', 'dependentSchemas', 'dependencies'):
+            children = schema.get(key)
+            if isinstance(children, dict):
+                schema[key] = {
+                    name: clean(child)
+                    for name, child in children.items() if key != 'properties' or child is not None
+                }
+        for key in ('items', 'additionalItems', 'prefixItems', 'contains', 'additionalProperties', 'unevaluatedItems',
+                    'unevaluatedProperties', 'propertyNames', 'allOf', 'anyOf', 'oneOf', 'not', 'if', 'then', 'else',
+                    'contentSchema'):
+            if key in schema:
+                schema[key] = clean(schema[key])
+        return schema
 
     @staticmethod
     def _parse_tool(tool, lang: Literal['zh', 'en']) -> ToolDesc:
