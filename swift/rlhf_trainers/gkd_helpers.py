@@ -37,8 +37,7 @@ def encode_teacher_view(
     if teacher_row.get('response_token_ids'):
         loss_mask = teacher_row.get('response_loss_mask') or None
         ctk = sample.extra.get('chat_template_kwargs') or {}
-        sample_et = ctk.get('enable_thinking')
-        prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=sample_et)
+        prefix_ids = get_response_prefix_ids(template, chat_template_kwargs=ctk)
         teacher_row['messages'] = replace_assistant_response_with_ids(
             teacher_row['messages'],
             teacher_row['response_token_ids'],
@@ -112,7 +111,7 @@ def build_teacher_requests(samples: List[OnPolicySample], template: Optional[Tem
             # and the OPSD teacher prompt (which shares the same response tokens).
             loss_mask = s.response_loss_mask or None
             ctk = s.extra.get('chat_template_kwargs') or {}
-            prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=ctk.get('enable_thinking'))
+            prefix_ids = get_response_prefix_ids(template, chat_template_kwargs=ctk)
             messages = replace_assistant_response_with_ids([m.copy() for m in messages],
                                                            s.response_token_ids,
                                                            loss_mask,
