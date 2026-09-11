@@ -8,7 +8,7 @@ from functools import partial
 from mcore_bridge import set_random_seed
 from megatron.core import mpu
 from transformers.utils import ContextManagers
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 from swift.megatron.arguments import MegatronArguments
 from swift.rl_core.data import GKDSample
@@ -249,7 +249,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             teacher_model = self.teacher_models[vp_stage or 0]
             outer_context = self.load_teacher_model_context()
 
-        with torch.no_grad(), outer_context:
+        hidden_context = gkd_hidden_states_context(teacher_model, self.gkd_loss_chunk_size is not None)
+        with torch.no_grad(), outer_context, hidden_context:
             for encoded_batch in encoded_batches:
                 teacher_model_inputs = encoded_batch['teacher_model_inputs']
                 teacher_batch = {
@@ -259,13 +260,12 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 teacher_data = self._prepare_batch(teacher_batch, vp_stage)
                 teacher_data.pop('loss_scale', None)
                 teacher_labels = teacher_data.pop('labels', None)
-                with gkd_hidden_states_context(teacher_model, self.gkd_loss_chunk_size is not None):
-                    teacher_logits = forward_step_helper(teacher_model, teacher_data)
+                teacher_logits = forward_step_helper(teacher_model, teacher_data)
                 if teacher_logits is not None:
                     teacher_logits = teacher_logits.detach()
 
                 if self.gkd_loss_chunk_size is not None:
-                    teacher_out = TeacherHiddenStates(teacher_logits, teacher_labels)
+                    teacher_out = TeacherHiddenStates(hidden_states=teacher_logits)
                 elif topk is not None and teacher_logits is not None:
                     topk_logits, topk_indices = vocab_parallel_topk(teacher_logits, k=topk)
                     teacher_out = TeacherOutput(topk_logprobs=topk_logits, topk_indices=topk_indices)
@@ -352,7 +352,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                   output_tensor: torch.Tensor,
                   *,
                   labels: torch.Tensor,
-                  teacher_output: Union[TeacherOutput, TeacherHiddenStates],
+                  teacher_output: TeacherOutput,
                   data_source: DataSource = DataSource.DATASET):
         """Compute GKD loss (JSD + optional SFT loss)."""
         student_logits = output_tensor
