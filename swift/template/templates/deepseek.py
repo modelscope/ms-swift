@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import inspect
 import math
 import numpy as np
 import sys
@@ -10,7 +11,7 @@ from PIL import Image, ImageOps
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from typing import Any, Dict, List, Optional
 
-from swift.utils import get_env_args, get_logger
+from swift.utils import get_env_args, get_logger, to_device
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -816,3 +817,440 @@ register_template(
         MLLMTemplateType.deepseek_janus_pro,
         prompt=['<|User|>: {{QUERY}}\n\n<|Assistant|>:'],
         template_cls=DeepseekJanus))
+
+
+class DeepseekV4VisionTemplate(DeepseekV4FlashTemplate):
+    image_placeholder = ['<｜deepseek_image｜>']
+    placeholder_tokens = ['<｜deepseek_image｜>']
+    skip_prompt = False
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._vit = None
+        self._aligner = None
+        self._image_params = None
+        self._vit_args = None
+        self._shard_map = None
+        self._shard_map_dir = None
+        import threading
+        self._mm_lock = threading.Lock()
+
+    def _resolve_model_dir(self):
+        """Return the model_dir that contains inference/ and encoding/ subdirs.
+
+        If the checkpoint dir lacks them, fall back to the original model dir
+        stored in args.json (``model_dir`` key).
+        """
+        import json
+        import os
+        model_dir = self.model_info.model_dir
+        if os.path.isdir(os.path.join(model_dir, 'inference')):
+            return model_dir
+        # Try args.json from the checkpoint
+        args_path = os.path.join(model_dir, 'args.json')
+        if os.path.exists(args_path):
+            with open(args_path, 'r', encoding='utf-8') as f:
+                old_args = json.load(f)
+            orig_dir = old_args.get('model_dir') or old_args.get('model')
+            if orig_dir and os.path.isdir(os.path.join(orig_dir, 'inference')):
+                return orig_dir
+        return model_dir
+
+    def pre_forward_hook(self, model: nn.Module, args, kwargs):
+        old_kwargs = to_device(kwargs, model.device)
+        kwargs = to_device(self._post_encode(model, old_kwargs), model.device)
+        for k, v in old_kwargs.items():
+            if k in {
+                    'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep',
+                    'max_length_q', 'max_length_k', 'cu_seq_lens_q', 'cu_seq_lens_k', 'mm_token_type_ids'
+            } and k not in kwargs:
+                kwargs[k] = v
+        # NOTE: do NOT pop input_ids — DeepSeek-V4 hash-MoE needs it.
+
+        if 'inputs_embeds' in kwargs and 'input_ids' in kwargs:
+            base_model = self.get_base_model(model)
+            inner = getattr(base_model, 'model', base_model)
+            if not getattr(inner, '_swift_dsv4_mm_patched', False):
+                _orig_forward = inner.forward
+
+                def _mm_forward(self, *a, **kw):
+                    ids = kw.get('input_ids')
+                    embeds = kw.get('inputs_embeds')
+                    if ids is not None and embeds is not None:
+                        kw['input_ids'] = None
+                        _mm_ids = ids
+                        _orig_layers = self.layers
+
+                        class _MMLayerWrapper(torch.nn.Module):
+
+                            def __init__(self, real_layer):
+                                super().__init__()
+                                self._real = real_layer
+
+                            def forward(self, *la, **lkw):
+                                if 'input_ids' not in lkw or lkw['input_ids'] is None:
+                                    lkw['input_ids'] = _mm_ids
+                                return self._real(*la, **lkw)
+
+                        with self._swift_template._mm_lock:
+                            self.layers = torch.nn.ModuleList([_MMLayerWrapper(layer) for layer in _orig_layers])
+                            try:
+                                return _orig_forward(*a, **kw)
+                            finally:
+                                self.layers = _orig_layers
+
+                    return _orig_forward(*a, **kw)
+
+                import types
+                inner.forward = types.MethodType(_mm_forward, inner)
+                inner._swift_dsv4_mm_patched = True
+                inner._swift_template = self
+
+        base_model = self.get_base_model(model)
+        parameters = inspect.signature(base_model.forward).parameters
+        if 'position_ids' not in parameters:
+            kwargs.pop('position_ids', None)
+        return args, kwargs
+
+    def _load_vision_modules(self):
+        import importlib
+        import os
+        model_dir = self._resolve_model_dir()
+        inference_dir = os.path.join(model_dir, 'inference')
+        encoding_dir = os.path.join(model_dir, 'encoding')
+        for d in [inference_dir, encoding_dir]:
+            if d not in sys.path:
+                sys.path.insert(0, d)
+        return importlib.import_module('image_processor')
+
+    def _get_vision_args(self):
+        from types import SimpleNamespace
+        config = self.config
+        return SimpleNamespace(
+            vocab_size=config.vocab_size,
+            vision_patch_size=config.vision_patch_size,
+            vision_dim=config.vision_dim,
+            vision_n_heads=config.vision_n_heads,
+            vision_inter_dim=config.vision_inter_dim,
+            vision_n_layers=config.vision_n_layers,
+            vision_rope_theta=config.vision_rope_theta,
+            vision_downsample_ratio=config.vision_downsample_ratio,
+            vision_max_n_token=config.vision_max_n_token,
+            vision_min_pixels=config.vision_min_pixels,
+            vision_max_wh_ratio=config.vision_max_wh_ratio,
+            dim=config.hidden_size,
+        )
+
+    def _process_images(self, images, input_ids, labels, loss_scale):
+        image_processor = self._load_vision_modules()
+        args = self._get_vision_args()
+
+        # Token id of the placeholder
+        placeholder_id = self.tokenizer.convert_tokens_to_ids('<｜deepseek_image｜>')
+        idx_list = findall(input_ids, placeholder_id)
+
+        new_input_ids, new_labels, new_loss_scale = [], [], []
+        image_inputs = []
+        lo = 0
+
+        img_iter = iter(images)
+        for hi in idx_list:
+            new_input_ids += input_ids[lo:hi]
+            if labels is not None:
+                new_labels += labels[lo:hi]
+            if loss_scale is not None:
+                new_loss_scale += loss_scale[lo:hi]
+
+            # Load and process the image
+            img_obj = next(img_iter)
+            if isinstance(img_obj, str):
+                record = {'url': img_obj}
+            elif isinstance(img_obj, Image.Image):
+                import base64
+                import io
+                buf = io.BytesIO()
+                img_obj.save(buf, format='PNG')
+                record = {'data': base64.b64encode(buf.getvalue()).decode()}
+            else:
+                record = img_obj
+
+            patches, n_vit_h, n_vit_w, n_llm_h, n_llm_w = image_processor.load_image(record, args)
+            types, perm = image_processor.build_image_block(n_llm_h, n_llm_w, len(new_input_ids))
+
+            # Sentinel tokens: vocab_size + type
+            sentinel_tokens = (args.vocab_size + types).tolist()
+            new_input_ids += sentinel_tokens
+            if labels is not None:
+                new_labels += [-100] * len(sentinel_tokens)
+            if loss_scale is not None:
+                new_loss_scale += [0.] * len(sentinel_tokens)
+
+            # ImageInput: store start, patches, n_vit_h, n_vit_w, types, perm
+            image_inputs.append(
+                image_processor.ImageInput(
+                    start=len(new_input_ids) - len(sentinel_tokens),
+                    patches=patches,
+                    n_vit_h=n_vit_h,
+                    n_vit_w=n_vit_w,
+                    types=types,
+                    perm=perm,
+                ))
+
+            lo = hi + 1
+
+        new_input_ids += input_ids[lo:]
+        if labels is not None:
+            new_labels += labels[lo:]
+        if loss_scale is not None:
+            new_loss_scale += loss_scale[lo:]
+
+        return new_input_ids, new_labels, new_loss_scale, image_inputs
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        images = inputs.images
+        if not images:
+            return encoded
+
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale')
+
+        new_input_ids, new_labels, new_loss_scale, image_inputs = self._process_images(
+            images, input_ids, labels, loss_scale)
+
+        encoded['input_ids'] = new_input_ids
+        encoded['labels'] = new_labels
+        if loss_scale is not None:
+            encoded['loss_scale'] = new_loss_scale
+        encoded['image_inputs'] = image_inputs
+        return encoded
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
+        image_inputs = [b['image_inputs'] for b in batch if b.get('image_inputs') is not None]
+        if image_inputs:
+            res['image_inputs'] = image_inputs
+        return res
+
+    @staticmethod
+    def _get_embed_fn(base_model):
+        """Recursively find the embedding function on the model."""
+        for attr in ['embed', 'embed_tokens']:
+            obj = base_model
+            for _ in range(4):  # search up to 4 levels deep
+                if hasattr(obj, attr):
+                    fn = getattr(obj, attr)
+                    if callable(fn):
+                        return fn
+                obj = getattr(obj, 'model', None)
+                if obj is None:
+                    break
+        raise AttributeError('Cannot find embed/embed_tokens on model or any nested .model attribute')
+
+    @staticmethod
+    def _get_merge_fn(base_model):
+        """Find merge_image_embeddings on the model or a nested .model attribute."""
+        obj = base_model
+        for _ in range(4):
+            if hasattr(obj, 'merge_image_embeddings'):
+                return obj.merge_image_embeddings
+            obj = getattr(obj, 'model', None)
+            if obj is None:
+                break
+        return None
+
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        image_inputs = inputs.get('image_inputs')
+        if not image_inputs:
+            return inputs
+
+        base_model = self.get_base_model(model)
+        input_ids = inputs['input_ids']
+        config = getattr(base_model, 'config', None) or getattr(base_model.model, 'config', None)
+        vocab_size = config.vocab_size
+        masked_ids = torch.masked_fill(input_ids, input_ids >= vocab_size, 0)
+        embed_fn = self._get_embed_fn(base_model)
+        h = embed_fn(masked_ids)
+
+        merge_fn = self._get_merge_fn(base_model)
+        if merge_fn is not None:
+            merge_fn(image_inputs, h)
+        else:
+            self._merge_image_embeds_custom(h, input_ids, image_inputs, base_model)
+
+        return {'inputs_embeds': h, 'input_ids': masked_ids}
+
+    def _ensure_vision_modules(self, h, config):
+        import json
+        import os
+        from safetensors.torch import safe_open as _safe_open
+        from types import SimpleNamespace
+
+        if self._vit is not None and self._aligner is not None:
+            return
+
+        dtype = h.dtype
+        device = h.device
+
+        # Resolve which model_dir has inference/ and encoding/
+        model_dir = self._resolve_model_dir()
+        inference_dir = os.path.join(model_dir, 'inference')
+        encoding_dir = os.path.join(model_dir, 'encoding')
+        for d in [inference_dir, encoding_dir]:
+            if d not in sys.path:
+                sys.path.insert(0, d)
+
+        import image_processor  # noqa: F401  (ensures module is importable)
+        import vision as vision_mod
+
+        args = SimpleNamespace(
+            vision_patch_size=config.vision_patch_size,
+            vision_dim=config.vision_dim,
+            vision_n_heads=config.vision_n_heads,
+            vision_inter_dim=config.vision_inter_dim,
+            vision_n_layers=config.vision_n_layers,
+            vision_rope_theta=config.vision_rope_theta,
+            vision_downsample_ratio=config.vision_downsample_ratio,
+            dim=config.hidden_size,
+        )
+        self._vit_args = args
+
+        vit = vision_mod.ViT(args).to(device=device, dtype=dtype)
+        aligner = vision_mod.Aligner(args).to(device=device, dtype=dtype)
+
+        _orig_gcs = vision_mod.get_vision_cos_sin
+
+        def _gcs(n_h, n_w, dim, theta):
+            cos, sin = _orig_gcs(n_h, n_w, dim, theta)
+            return cos.to(device), sin.to(device)
+
+        vision_mod.get_vision_cos_sin = _gcs
+
+        weight_dir = self.model_info.model_dir
+        index_path = os.path.join(weight_dir, 'model.safetensors.index.json')
+        shard_map = {}
+        if os.path.exists(index_path):
+            with open(index_path) as _f:
+                shard_map = json.load(_f).get('weight_map', {})
+
+        def _load_ckpt_tensor(key):
+            """Load a single tensor from the checkpoint, trying several key forms."""
+            for ckpt_key in [key, f'model.{key}']:
+                shard = shard_map.get(ckpt_key)
+                if shard is None:
+                    continue
+                with _safe_open(os.path.join(weight_dir, shard), framework='pt') as _sf:
+                    return _sf.get_tensor(ckpt_key).to(dtype=dtype, device=device)
+            # Fallback: scan shards when no index exists.
+            for _fn in sorted(os.listdir(weight_dir)):
+                if not _fn.endswith('.safetensors'):
+                    continue
+                try:
+                    with _safe_open(os.path.join(weight_dir, _fn), framework='pt') as _sf:
+                        for ckpt_key in [key, f'model.{key}']:
+                            if ckpt_key in _sf.keys():
+                                return _sf.get_tensor(ckpt_key).to(dtype=dtype, device=device)
+                except Exception:
+                    continue
+            return None
+
+        # Load ViT weights (checkpoint keys: vision.*)
+        vit_sd = {}
+        for name, _ in vit.state_dict().items():
+            tensor = _load_ckpt_tensor(f'vision.{name}')
+            if tensor is not None:
+                vit_sd[name] = tensor
+        if vit_sd:
+            vit.load_state_dict(vit_sd, strict=False)
+
+        # Load Aligner weights (checkpoint keys: aligner.*)
+        aligner_sd = {}
+        for name, _ in aligner.state_dict().items():
+            tensor = _load_ckpt_tensor(f'aligner.{name}')
+            if tensor is not None:
+                aligner_sd[name] = tensor
+        if aligner_sd:
+            aligner.load_state_dict(aligner_sd, strict=False)
+
+        # Load image special-token embeddings (checkpoint keys: image_start etc.)
+        for key in ['image_start', 'image_end', 'image_pad', 'image_newline']:
+            tensor = _load_ckpt_tensor(key)
+            if tensor is not None:
+                setattr(vit, key, nn.Parameter(tensor))
+
+        vit.eval()
+        aligner.eval()
+        self._vit = vit
+        self._aligner = aligner
+
+        IMAGE_START, IMAGE_PAD, IMAGE, IMAGE_NEW_LINE, IMAGE_END = range(5)
+        self._image_params = torch.stack([
+            vit.image_start,
+            vit.image_pad,
+            vit.image_pad,  # placeholder for IMAGE; overwritten by aligner output at merge time
+            vit.image_newline,
+            vit.image_end,
+        ]).to(
+            device=device, dtype=dtype)
+
+    def _merge_image_embeds_custom(self, h, input_ids, image_inputs, base_model):
+        config = base_model.config if hasattr(base_model, 'config') else base_model.model.config
+
+        # Lazily initialise and cache ViT / Aligner / params
+        self._ensure_vision_modules(h, config)
+
+        vit = self._vit
+        aligner = self._aligner
+        params = self._image_params
+
+        IMAGE_START, IMAGE_PAD, IMAGE, IMAGE_NEW_LINE, IMAGE_END = range(5)
+        vocab_size = config.vocab_size
+        dtype = h.dtype
+        device = h.device
+
+        all_images = []
+        for sample in image_inputs:
+            if sample is not None:
+                all_images.extend(sample)
+
+        img_idx = 0
+        for i in range(input_ids.shape[0]):
+            row_ids = input_ids[i]
+            start_mask = row_ids == vocab_size + IMAGE_START
+            start_positions = start_mask.nonzero(as_tuple=False).squeeze(-1)
+
+            for start_pos in start_positions:
+                if img_idx >= len(all_images):
+                    break
+                img = all_images[img_idx]
+                img_idx += 1
+
+                sp = start_pos.item()
+                ep = sp
+                row_len = row_ids.shape[0]
+                while ep < row_len and row_ids[ep].item() >= vocab_size:
+                    ep += 1
+                if ep == sp:
+                    continue
+
+                types = (row_ids[sp:ep] - vocab_size).to(torch.int64)
+                embeds = aligner(
+                    vit(img.patches.to(device=device, dtype=dtype), img.n_vit_h, img.n_vit_w),
+                    img.n_vit_h,
+                    img.n_vit_w,
+                )[img.perm.to(device)].to(dtype)
+                block = params[types].clone()
+                block[types == IMAGE] = embeds
+                h[i, sp:ep] = block
+
+
+register_template(
+    DeepseekV2_5TemplateMeta(
+        MLLMTemplateType.deepseek_v4_flash_vision,
+        agent_template='deepseek_v4',
+        is_thinking=True,
+        template_cls=DeepseekV4VisionTemplate,
+        thinking_prefix='<think>',
+        non_thinking_prefix='</think>',
+        history_thinking_prefix='</think>'))

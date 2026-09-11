@@ -180,7 +180,7 @@ class MegatronBridgeBackend:
                 from transformers.utils.quantization_config import FineGrainedFP8Config
                 hf_config.quantization_config = FineGrainedFP8Config()
                 expert_dtype = 'fp8'
-            if getattr(args, 'model_type', None) == 'deepseek_v4':
+            if getattr(args, 'model_type', None) in ('deepseek_v4', 'deepseek_v4_flash_vision'):
                 HfConfigFactory.set_config_attr(hf_config, 'expert_dtype', expert_dtype)
 
             hf_config.save_pretrained(output_dir)
