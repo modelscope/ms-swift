@@ -19,8 +19,8 @@ from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
 from swift.template import Template
 from swift.utils import get_logger, to_device
 from ..utils import forward_step_helper, get_padding_to
-from .gkd_utils import (TeacherHiddenStates, chunked_gkd_loss, cp_slice_teacher_output, get_gkd_language_model,
-                        gkd_hidden_states_context, tp_gather_topk, vocab_parallel_topk)
+from .gkd_utils import (TeacherHiddenStates, chunked_gkd_loss, cp_slice_teacher_output, gkd_hidden_states_context,
+                        tp_gather_topk, vocab_parallel_topk)
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather_object
@@ -85,9 +85,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         elif self._is_self_distillation:
             logger.info('Self-distillation mode: using student model as teacher (no separate teacher loaded)')
         self._load_teacher_model()
-        if self.gkd_loss_chunk_size is not None:
-            for model in self.unwrapped_models + self.teacher_models:
-                get_gkd_language_model(model)
 
     @contextmanager
     def _template_context(self, template: Template, max_length: Optional[int] = None):
@@ -262,16 +259,14 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 teacher_data = self._prepare_batch(teacher_batch, vp_stage)
                 teacher_data.pop('loss_scale', None)
                 teacher_labels = teacher_data.pop('labels', None)
-                if self.gkd_loss_chunk_size is not None:
-                    with gkd_hidden_states_context(teacher_model):
-                        hidden_states = forward_step_helper(teacher_model, teacher_data)
-                    encoded_batch['teacher_output'] = TeacherHiddenStates(hidden_states, teacher_labels)
-                    continue
-                teacher_logits = forward_step_helper(teacher_model, teacher_data)
+                with gkd_hidden_states_context(teacher_model, self.gkd_loss_chunk_size is not None):
+                    teacher_logits = forward_step_helper(teacher_model, teacher_data)
                 if teacher_logits is not None:
                     teacher_logits = teacher_logits.detach()
 
-                if topk is not None and teacher_logits is not None:
+                if self.gkd_loss_chunk_size is not None:
+                    teacher_out = TeacherHiddenStates(teacher_logits, teacher_labels)
+                elif topk is not None and teacher_logits is not None:
                     topk_logits, topk_indices = vocab_parallel_topk(teacher_logits, k=topk)
                     teacher_out = TeacherOutput(topk_logprobs=topk_logits, topk_indices=topk_indices)
                 else:
@@ -432,10 +427,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         if input_tensor is not None:
             unwrapped_model.set_input_tensor(input_tensor)
-        if self.gkd_loss_chunk_size is not None:
-            with gkd_hidden_states_context(unwrapped_model):
-                student_output = model(**data)
-        else:
+        with gkd_hidden_states_context(unwrapped_model, self.gkd_loss_chunk_size is not None):
             student_output = model(**data)
 
         return student_output, partial(
