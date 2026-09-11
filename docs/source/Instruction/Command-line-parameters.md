@@ -157,6 +157,7 @@
   - 注意：eos_token会在输出respsone中被删除，额外停止词会在输出中保留。
 - logprobs: 是否输出logprobs，默认为False。
 - top_logprobs: 输出top_logprobs的数量，默认为None。
+- detokenize: 仅用于vLLM，是否将token解码为文本。默认为`None`，保留后端默认行为。部署时可设置`--detokenize false`，请求可覆盖该默认值。关闭后文本输出为空，但保留token ID和logprobs；跳过自动字符串停止词，保留token级停止，不支持显式字符串stop。
 - structured_outputs_regex: 结构化输出（引导解码）的正则表达式模式。设置后，模型生成将被约束为匹配指定的正则表达式模式。仅在`infer_backend`为`vllm`时生效。默认为`None`。
 
 ### 量化参数
