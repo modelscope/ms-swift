@@ -133,6 +133,17 @@ class RLHFTrainerMixin:
         kwargs = {'train_dataset': train_dataset} if 'train_dataset' in parameters else {}
         return get_train_sampler(**kwargs)
 
+    @staticmethod
+    def _packed_sequence_sum(values: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+        """Sum contiguous packed token values without reading sequence lengths on the host."""
+        segment_ids = torch.repeat_interleave(
+            torch.arange(lengths.shape[0], device=lengths.device), lengths, output_size=values.shape[0])
+        # Match torch.sum's effective accumulation precision for low-precision inputs.
+        accumulation_values = values.float() if values.dtype in (torch.float16, torch.bfloat16) else values
+        result = accumulation_values.new_zeros((lengths.shape[0], *values.shape[1:]))
+        result.index_add_(0, segment_ids, accumulation_values)
+        return result.to(values.dtype)
+
     def get_per_token_logps(
         self,
         logits: torch.FloatTensor,

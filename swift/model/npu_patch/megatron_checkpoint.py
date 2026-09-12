@@ -15,6 +15,23 @@ from swift.utils import get_logger
 logger = get_logger()
 
 
+def _iter_optimizer_children(obj):
+    """The optimizers nested inside `obj`, whichever way it holds them.
+
+    `ChainedOptimizer` exposes `optimizer` as a backwards-compatible property that asserts it holds exactly
+    one, so reading it blows up on a chain of several -- and `getattr`'s default only covers `AttributeError`.
+    The chained members are reachable through their own list anyway, so leave that property alone whenever
+    there is one.
+    """
+    chained_optimizers = getattr(obj, 'chained_optimizers', None) or []
+    sub_optimizers = getattr(obj, 'sub_optimizers', None) or []
+    if chained_optimizers or sub_optimizers:
+        return [*chained_optimizers, *sub_optimizers]
+
+    inner_optimizer = getattr(obj, 'optimizer', None)
+    return [inner_optimizer] if inner_optimizer is not None and inner_optimizer is not obj else []
+
+
 def _iter_optimizer_param_groups(optimizer):
     visited = set()
 
@@ -27,13 +44,7 @@ def _iter_optimizer_param_groups(optimizer):
         if param_groups is not None:
             yield param_groups
 
-        inner_optimizer = getattr(obj, 'optimizer', None)
-        if inner_optimizer is not obj:
-            yield from visit(inner_optimizer)
-
-        for child in getattr(obj, 'chained_optimizers', []) or []:
-            yield from visit(child)
-        for child in getattr(obj, 'sub_optimizers', []) or []:
+        for child in _iter_optimizer_children(obj):
             yield from visit(child)
 
     yield from visit(optimizer)
@@ -172,6 +183,12 @@ def load_optimizer_state_dict(optimizer, state_dict):
     mindspeed_patched = any(
         _has_mindspeed_patched_load_state_dict(distributed_optimizer)
         for distributed_optimizer in distributed_optimizers)
+    if mindspeed_patched:
+        from .mindspeed import load_mindspeed_fsdp_dtensor_optimizer_state_dict
+        if load_mindspeed_fsdp_dtensor_optimizer_state_dict(distributed_optimizers, state_dict):
+            _restore_mindspeed_optimizer_step_tensors(optimizer)
+            return
+
     sharding_type = state_dict.get('param_state_sharding_type') if isinstance(state_dict, dict) else None
     native_loader_name = _MEGATRON_RESHARDABLE_PARAM_STATE_LOADERS.get(sharding_type)
     if native_loader_name is None:

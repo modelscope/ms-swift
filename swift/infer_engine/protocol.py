@@ -13,7 +13,7 @@ from pydantic import AfterValidator, BaseModel, Field, PlainSerializer, field_va
 from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.template import Messages, Tool
-from swift.utils import remove_response
+from swift.utils import SafeMediaPath, remove_response
 
 
 def serialize_ndarray(value):
@@ -268,7 +268,9 @@ class MultiModalRequestMixin:
             # base64 or url
             return mm_data
         if isinstance(mm_data, str):
-            # local_path
+            # local_path. An untrusted caller can name any file here, so the request is inlined only after
+            # the path is allowed; otherwise this reads the file before any of the media loading checks run.
+            SafeMediaPath.check(mm_data)
             with open(mm_data, 'rb') as f:
                 bytes_ = f.read()
         elif isinstance(mm_data, Image.Image):
@@ -342,11 +344,16 @@ class ChatCompletionRequest(RequestConfig, MultiModalRequestMixin, ChatCompletio
                 if isinstance(value, dict):
                     is_dict = True
                     value = value['url']
-                if isinstance(value, str) and (value.startswith('data:') or value.startswith('http')
-                                               or len(value) > 200):
-                    continue
+                if isinstance(value, str):
+                    is_remote = value.strip().lower().startswith(('http://', 'https://'))
+                    if value.startswith('data:') or is_remote or len(value) > 200:
+                        continue
 
                 # local_path / PIL.Image
+                if isinstance(value, str):
+                    # An untrusted caller can name any file here. A missing path is checked as well, so that
+                    # refusing one looks the same whether or not the file is there.
+                    SafeMediaPath.check(value)
                 if isinstance(value, str) and os.path.isfile(value):
                     suffix = os.path.splitext(value)[1][1:].lower()
                 elif isinstance(value, Image.Image):

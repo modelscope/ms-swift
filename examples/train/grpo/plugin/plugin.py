@@ -1190,8 +1190,7 @@ class ToolCallScheduler(MultiTurnScheduler):
     def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
              current_turn: int) -> Dict:
         completion = response_choice.message.content
-        token_ids = response_choice.token_ids
-        loss_mask = [1] * len(token_ids)
+        token_ids, loss_mask, rollout_logprobs = self.prepare_response_continuation(response_choice)
         tool_calls = self._extract_tool_calls(completion)
         # assert len(tool_calls) == 1, 'this scheduler is designed for one tool call per turn'
         tool_results = self._execute_tools(tool_calls)
@@ -1207,6 +1206,7 @@ class ToolCallScheduler(MultiTurnScheduler):
             'infer_request': infer_request,
             'response_token_ids': token_ids,
             'response_loss_mask': loss_mask,
+            'rollout_logprobs': rollout_logprobs,
             'rollout_infos': {
                 'tool_results': tool_results[0],
                 'num_turns': current_turn,

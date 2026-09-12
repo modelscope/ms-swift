@@ -37,6 +37,7 @@
 - optimizer: Optimizer type. Options include 'adam', 'sgd', 'muon', and 'dist_muon'. Default is 'adam'.
   - Note: This 'adam' is actually 'adamw'. See [here](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70) for reference.
   - 'muon' and 'dist_muon' require "megatron-core>=0.16".
+  - Note: On "megatron-core>=0.18", 'muon' and 'dist_muon' are incompatible with `vit_lr`/`aligner_lr` and using them together is rejected: those parameters take over the parameter grouping, which is exactly how Muon routes the non-matrix parameters to `muon_scalar_optimizer` on those versions. Earlier versions perform that split by freezing parameters instead and are unaffected.
 - 🔥optimizer_cpu_offload: Offloads optimizer states to the CPU. For example, set: `--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`. Defaults to `False`.
   - This parameter can significantly reduce GPU memory usage (at the cost of increased CPU memory consumption). When the `global_batch_size` is large, its impact on training speed is minimal.
 - 🔥optimizer_offload_fraction: The fraction of the optimizer state to offload to CPU. Default is `1.0`.
@@ -111,6 +112,8 @@
 - muon_tp_mode: NS calculation method for tensor model parallel weights. Options include 'blockwise', 'duplicated', and 'distributed'. Default is 'blockwise'.
 - muon_extra_scale_factor: Additional scale factor for Muon updates. Default is 1.
 - muon_scalar_optimizer: Optimizer for nonlinear parameters (embeddings, biases, norms) when using Muon. Options are 'adam' or 'lion'. Default is 'adam'.
+- muon_lr: Learning rate for the matrix parameters Muon manages. Default is None, which means `lr` is used. Muon orthogonalizes its updates, so these parameters usually want a larger learning rate than the remaining ones handled by `muon_scalar_optimizer`.
+- muon_min_lr: Minimum learning rate for the matrix parameters Muon manages. Default is None, which means `min_lr` is used.
 
 **Checkpoint Parameters**:
 
@@ -150,6 +153,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - 🔥use_distributed_optimizer: Use a distributed optimizer (i.e., ZeRO-1). Default is True.
 - use_megatron_fsdp: Use Megatron-FSDP as the data-parallel implementation (in place of DDP). Default is False. When enabled, it forces `use_distributed_optimizer=True`, only supports the `sgd`/`adam` optimizers, and requires `CUDA_DEVICE_MAX_CONNECTIONS` greater than 1.
   - Note: Try not to use Megatron-FSDP together with tensor parallelism or context parallelism, since they require conflicting `CUDA_DEVICE_MAX_CONNECTIONS` settings for best performance: sequence parallelism requires setting `CUDA_DEVICE_MAX_CONNECTIONS` to 1, while Megatron-FSDP requires not setting it to 1 (for better parallelization).
+- strict_fsdp_dtensor_load: Whether to load Megatron-FSDP DTensor checkpoints strictly. Defaults to True. When True, a state-dict key mismatch between the checkpoint and the current load target fails immediately. When False, partial loading is allowed, state-dict key differences are printed, and unloaded state keeps its current value. This option affects only Megatron-FSDP DTensor checkpoint loading, not checkpoint saving or non-FSDP paths. Keep it True for normal training resume; set it to False only when intentionally loading an incomplete checkpoint or one with a different structure.
 - data_parallel_sharding_strategy: The data-parallel sharding strategy for Megatron-FSDP. Options are 'no_shard', 'optim', 'optim_grads', 'optim_grads_params'; default is 'optim_grads_params'. Only takes effect when `use_megatron_fsdp=True`.
 - 🔥tensor_model_parallel_size: TP (Tensor Parallelism) size, default is 1.
 - 🔥pipeline_model_parallel_size: PP (Pipeline Parallelism) size, default is 1.
@@ -401,14 +405,14 @@ In addition to inheriting the training parameters, the following parameters are 
   - vllm_server_pass_dataset: Pass additional dataset information to the vLLM server for multi-round training.
   - async_generate: Asynchronous rollout to improve training speed. Note: When enabled, sampling uses the model from the previous round update, and multi-round scenarios are not supported. Default is `false`.
   - SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE: Environment variable for controlling the bucket size during weight synchronization. Applicable to full-parameter training in Server Mode. Unit is MB, default value is 512 MB.
-- vllm_mode colocate parameters (for more parameter support, refer to [vLLM parameters](#vllm-parameters)):
+- vllm_mode colocate parameters (for more parameter support, refer to [vLLM parameters](../Instruction/Command-line-parameters.md#vllm-arguments)):
   - vllm_gpu_memory_utilization: vLLM passthrough parameter. Default is 0.9.
   - vllm_max_model_len: vLLM passthrough parameter. Default is None.
   - vllm_enforce_eager: vLLM passthrough parameter. Default is False.
   - vllm_limit_mm_per_prompt: vLLM passthrough parameter. Default is None.
   - vllm_enable_prefix_caching: vLLM passthrough parameter. Default is True.
   - vllm_tensor_parallel_size: Tensor parallel size. Default is `1`.
-  - vllm_enable_lora: Support loading LoRA adapters in the vLLM Engine. Default is False. Used to accelerate weight synchronization in LoRA training. See [documentation](../Instruction/GRPO/GetStarted/GRPO.md#weight-synchronization-acceleration) for details.
+  - vllm_enable_lora: Support loading LoRA adapters in the vLLM Engine. Default is False. Used to accelerate weight synchronization in LoRA training. See [documentation](../Instruction/GRPO/GetStarted/GRPO.md#weight-sync-acceleration) for details.
   - sleep_level: Release vLLM GPU memory during training. Options are `[0, 1, 2]`. Default is 0, meaning no release.
   - offload_optimizer: Whether to offload optimizer parameters during vLLM inference. Default is False.
   - offload_model: Whether to offload the model during vLLM inference. Default is False.

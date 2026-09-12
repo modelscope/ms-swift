@@ -2,6 +2,7 @@ import os
 import torch
 import unittest
 from functools import lru_cache
+from transformers.utils import strtobool
 
 # NOTE: All tests here only load the processor (tokenizer + vision processor) and the
 # remote-code python files via `get_model_processor` (i.e. `load_model=False`), so
@@ -10,14 +11,24 @@ from functools import lru_cache
 # The template `encode`/official processor `__call__` paths are pure tokenization +
 # image/video preprocessing and never run a model forward, so no weights are required.
 
-MODEL = os.getenv('MOSS_VL_TEST_MODEL', 'OpenMOSS-Team/MOSS-VL-Instruct-0708')
+# The ModelScope and Hugging Face hubs host this model under different orgs; pick the
+# default id by download channel so both CI (ModelScope) and local USE_HF=1 runs work.
+_USE_HF = strtobool(os.environ.get('USE_HF', '0'))
+MODEL = os.getenv('MOSS_VL_TEST_MODEL',
+                  None) or ('OpenMOSS-Team/MOSS-VL-Instruct-0708' if _USE_HF else 'openmoss/MOSS-VL-Instruct-0708')
 VIDEO = 'https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4'
 
 
 @lru_cache(maxsize=1)
 def _get_processor():
     from swift.model import get_model_processor
-    _, processor = get_model_processor(MODEL, load_model=False)
+    try:
+        _, processor = get_model_processor(MODEL, load_model=False)
+    except ImportError as e:
+        # The remote video processor imports torchcodec, whose wheels must match the
+        # local torch version; environments without a compatible torchcodec (e.g. CI
+        # images on older torch) skip these tests instead of erroring out.
+        raise unittest.SkipTest(f'MOSS-VL processor dependency unavailable: {e}')
     return processor
 
 

@@ -5,9 +5,12 @@ import inspect
 import os
 import torch
 import torch.nn.functional as F
+from contextlib import contextmanager
+from functools import wraps
 from importlib import import_module
 from packaging import version
 from PIL import Image
+from threading import RLock
 from transformers import (AutoConfig, AutoModel, AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase)
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -23,7 +26,7 @@ from swift.utils import (Processor, get_cu_seqlens_from_position_ids, get_device
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
-from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_output_clone
+from ..patcher import patch_fixed_device, patch_get_input_embeddings, patch_module_forward, patch_output_clone
 from ..register import ModelLoader, RewardModelLoader, register_model
 from ..utils import AttnImpl, use_submodel_func
 
@@ -32,6 +35,13 @@ dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: '
 
 causal_conv1d = None
 chunk_gated_delta_rule = None
+
+_QWEN3_5_TEXT_PACKING_KWARGS = (
+    'cu_seq_lens_q',
+    'cu_seq_lens_k',
+    'max_length_q',
+    'max_length_k',
+)
 
 
 def _try_import_flash_linear_attention_kernels() -> None:
@@ -996,6 +1006,23 @@ def _patch_deepstack_process(model):
     model._deepstack_process = MethodType(_deepstack_process, model)
 
 
+def _patch_qwen3_vl_vision_kwargs(visual):
+    # The multimodal data collator injects LLM packing kwargs (cu_seq_lens_q/k, max_length_q/k) at the top
+    # level for flash-attn varlen. transformers threads these **kwargs blindly into the vision tower, whose
+    # flash-attn branch already passes cu_seq_lens_q explicitly, raising
+    # "flash_attention_forward() got multiple values for keyword argument 'cu_seq_lens_q'". The vision tower
+    # derives its own cu_seqlens from grid_thw, so drop these text-only keys before they reach it (the
+    # deepspeed path calls `visual` without them, so this only matters for the origin_forward path).
+    origin_forward = visual.forward
+
+    def forward(*args, **kwargs):
+        for key in ('cu_seq_lens_q', 'cu_seq_lens_k', 'max_length_q', 'max_length_k'):
+            kwargs.pop(key, None)
+        return origin_forward(*args, **kwargs)
+
+    visual.forward = forward
+
+
 def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
     if hasattr(model, 'origin_forward'):
         return
@@ -1086,6 +1113,7 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
     model.origin_forward = model.forward
     model.forward = MethodType(forward, model)
     _patch_deepstack_process(model.language_model)
+    _patch_qwen3_vl_vision_kwargs(model.visual)
 
 
 class Qwen3VLLoader(Qwen2VLLoader):
@@ -1218,6 +1246,32 @@ def _get_qwen3_5_cu_seqlens_q():
         padded_position_ids = sequence_parallel.pad(real_position_ids, padding_value=-1, position_ids=real_position_ids)
         return get_cu_seqlens_from_position_ids(padded_position_ids)
     return None
+
+
+def _remove_qwen3_5_text_packing_kwargs(_module, args, kwargs):
+    """Keep language-model packing metadata out of the Qwen3.5 vision tower."""
+    if not any(key in kwargs for key in _QWEN3_5_TEXT_PACKING_KWARGS):
+        return None
+
+    vision_kwargs = kwargs.copy()
+    for key in _QWEN3_5_TEXT_PACKING_KWARGS:
+        vision_kwargs.pop(key, None)
+    return args, vision_kwargs
+
+
+def _register_qwen3_5_vision_kwargs_hook(model: torch.nn.Module) -> None:
+    """Register an instance-scoped hook that separates text and vision packing kwargs."""
+    visual = getattr(model, 'visual', None)
+    if visual is None:
+        base_model = getattr(model, 'model', None)
+        visual = getattr(base_model, 'visual', None)
+    if visual is None:
+        raise AttributeError(f'Cannot find the Qwen3.5 vision tower on {model.__class__.__name__}.')
+    if getattr(visual, '_ms_swift_text_packing_kwargs_hooked', False):
+        return
+
+    visual.register_forward_pre_hook(_remove_qwen3_5_text_packing_kwargs, with_kwargs=True)
+    visual._ms_swift_text_packing_kwargs_hooked = True
 
 
 def _has_multiple_sequences(cu_seqlens) -> bool:
@@ -1390,6 +1444,117 @@ def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
     return mod.out_proj(core_attn_out)
 
 
+_QWEN3_5_KEEP_IN_FP32_MODULES = ('linear_attn.A_log', 'linear_attn.norm.weight')
+_QWEN3_5_KEEP_IN_FP32_MODULES_LOCK = RLock()
+
+
+def _get_qwen3_5_keep_in_fp32_modules(model_dir: str, config: PretrainedConfig, model_kwargs=None) -> Tuple[str, ...]:
+    from safetensors import safe_open
+    from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_NAME
+
+    model_kwargs = model_kwargs or {}
+    explicit_filename = getattr(config, 'transformers_weights', None)
+    if any(model_kwargs.get(name) is not None
+           for name in ('state_dict', 'gguf_file',
+                        'key_mapping')) or (explicit_filename is None and model_kwargs.get('use_safetensors') is False):
+        return ()
+
+    text_config = getattr(config, 'text_config', config)
+    layer_types = getattr(text_config, 'layer_types', None)
+    if not isinstance(layer_types, (list, tuple)):
+        return ()
+    num_linear_attention_layers = sum(layer_type == 'linear_attention' for layer_type in layer_types)
+    if num_linear_attention_layers == 0:
+        return ()
+
+    checkpoint_dir = os.path.abspath(os.path.join(model_dir, model_kwargs.get('subfolder') or ''))
+    variant = model_kwargs.get('variant')
+
+    def add_variant(filename: str) -> str:
+        if variant is None:
+            return filename
+        path, extension = filename.rsplit('.', 1)
+        return f'{path}.{variant}.{extension}'
+
+    index_path = None
+    checkpoint_path = None
+    if explicit_filename is not None:
+        if not isinstance(explicit_filename, str):
+            return ()
+        archive_path = os.path.abspath(os.path.join(checkpoint_dir, explicit_filename))
+        try:
+            contained = os.path.commonpath([checkpoint_dir, archive_path]) == checkpoint_dir
+        except ValueError:
+            contained = False
+        if not contained:
+            return ()
+        if explicit_filename.endswith('.safetensors.index.json'):
+            index_path = archive_path
+        elif explicit_filename.endswith('.safetensors'):
+            checkpoint_path = archive_path
+        else:
+            return ()
+    else:
+        checkpoint_path = os.path.join(checkpoint_dir, add_variant(SAFE_WEIGHTS_NAME))
+        index_path = os.path.join(checkpoint_dir, add_variant(SAFE_WEIGHTS_INDEX_NAME))
+    target_dtypes = {name: [] for name in _QWEN3_5_KEEP_IN_FP32_MODULES}
+
+    try:
+        if checkpoint_path is not None and os.path.isfile(checkpoint_path):
+            with safe_open(checkpoint_path, framework='pt', device='cpu') as tensors:
+                for key in tensors.keys():
+                    for name in _QWEN3_5_KEEP_IN_FP32_MODULES:
+                        if key.endswith(name):
+                            target_dtypes[name].append(tensors.get_slice(key).get_dtype())
+                            break
+        elif index_path is not None and os.path.isfile(index_path):
+            import json
+            with open(index_path, 'r', encoding='utf-8') as f:
+                weight_map = json.load(f)['weight_map']
+            targets_by_shard = {}
+            for key, shard in weight_map.items():
+                for name in _QWEN3_5_KEEP_IN_FP32_MODULES:
+                    if key.endswith(name):
+                        targets_by_shard.setdefault(shard, []).append((name, key))
+                        break
+            for shard, targets in targets_by_shard.items():
+                shard_path = os.path.abspath(os.path.join(checkpoint_dir, shard))
+                if os.path.commonpath([checkpoint_dir, shard_path]) != checkpoint_dir:
+                    raise ValueError(f'Checkpoint shard must stay inside the model directory: {shard}')
+                with safe_open(shard_path, framework='pt', device='cpu') as tensors:
+                    for name, key in targets:
+                        target_dtypes[name].append(tensors.get_slice(key).get_dtype())
+        else:
+            return ()
+    except Exception as error:
+        logger.debug('Unable to inspect Qwen3.5 checkpoint dtypes in %s: %s', checkpoint_dir, error)
+        return ()
+
+    return tuple(name for name, dtypes in target_dtypes.items()
+                 if len(dtypes) == num_linear_attention_layers and set(dtypes) == {'F32'})
+
+
+@contextmanager
+def _patch_qwen3_5_keep_in_fp32_modules(model_cls: Type[PreTrainedModel], keep_in_fp32_modules: Tuple[str, ...]):
+    attr_name = '_keep_in_fp32_modules_strict'
+    with _QWEN3_5_KEEP_IN_FP32_MODULES_LOCK:
+        if not keep_in_fp32_modules:
+            yield
+            return
+        had_local_attr = attr_name in model_cls.__dict__
+        original_value = model_cls.__dict__.get(attr_name)
+        existing_modules = list(getattr(model_cls, attr_name, None) or [])
+        setattr(model_cls, attr_name,
+                existing_modules + [name for name in keep_in_fp32_modules if name not in existing_modules])
+        try:
+            yield
+        finally:
+            if had_local_attr:
+                setattr(model_cls, attr_name, original_value)
+            else:
+                delattr(model_cls, attr_name)
+
+
 def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
     gated_delta_net_specs = []
     class_specs = (
@@ -1464,10 +1629,14 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
 class Qwen3_5MoeLoader(Qwen3VLLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        from transformers import Qwen3_5MoeForConditionalGeneration
+        from transformers import Qwen3_5MoeForConditionalGeneration, Qwen3_5MoePreTrainedModel
         self.auto_model_cls = self.auto_model_cls or Qwen3_5MoeForConditionalGeneration
         _patch_qwen3_5_linear_attention_sequence_parallel()
-        return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        keep_in_fp32_modules = _get_qwen3_5_keep_in_fp32_modules(model_dir, config, model_kwargs)
+        with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5MoePreTrainedModel, keep_in_fp32_modules):
+            model = Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        _register_qwen3_5_vision_kwargs_hook(model)
+        return model
 
 
 register_model(
@@ -1505,10 +1674,14 @@ register_model(
 class Qwen3_5Loader(Qwen3VLLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        from transformers import Qwen3_5ForConditionalGeneration
+        from transformers import Qwen3_5ForConditionalGeneration, Qwen3_5PreTrainedModel
         self.auto_model_cls = self.auto_model_cls or Qwen3_5ForConditionalGeneration
         _patch_qwen3_5_linear_attention_sequence_parallel()
-        return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        keep_in_fp32_modules = _get_qwen3_5_keep_in_fp32_modules(model_dir, config, model_kwargs)
+        with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5PreTrainedModel, keep_in_fp32_modules):
+            model = Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        _register_qwen3_5_vision_kwargs_hook(model)
+        return model
 
 
 register_model(
@@ -1543,7 +1716,7 @@ register_model(
         Qwen3_5Loader,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen3_5ForConditionalGeneration'],
-        requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 register_model(
@@ -1557,8 +1730,31 @@ register_model(
         template=TemplateType.ovis_ocr2,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen3_5ForConditionalGeneration'],
-        requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision']))
+
+
+class Qwen4ExpLoader(Qwen3VLLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers.models.qwen4_exp.modeling_qwen4_exp import Qwen4ExpForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Qwen4ExpForConditionalGeneration
+        return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen4_exp, [
+            ModelGroup([
+                Model('Qwen/Qwen3.8-Flash-Next', 'Qwen/Qwen3.8-Flash-Next'),
+                Model('Qwen/Qwen3.8-Flash-Next-FP8', 'Qwen/Qwen3.8-Flash-Next-FP8'),
+            ], TemplateType.qwen3_8),
+        ],
+        Qwen4ExpLoader,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['Qwen4ExpForConditionalGeneration'],
+        requires=['transformers>=5.16.0', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
 
 
 def _read_num_eos_tokens(model_dir: str) -> int:
@@ -1602,11 +1798,14 @@ class Qwen3_5EmbLoader(Qwen3_5Loader):
         super()._check_qwen_vl_utils()
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        self.auto_model_cls = self.auto_model_cls or AutoModel
+        from transformers import Qwen3_5ForConditionalGeneration, Qwen3_5PreTrainedModel
+        self.auto_model_cls = self.auto_model_cls or Qwen3_5ForConditionalGeneration
 
         _patch_qwen3_5_linear_attention_sequence_parallel()
 
-        model = ModelLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        keep_in_fp32_modules = _get_qwen3_5_keep_in_fp32_modules(model_dir, config, model_kwargs)
+        with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5PreTrainedModel, keep_in_fp32_modules):
+            model = ModelLoader.get_model(self, model_dir, config, processor, model_kwargs)
 
         inner = getattr(model, 'model', None) or model
         visual = getattr(inner, 'visual', None)
@@ -1624,6 +1823,25 @@ class Qwen3_5EmbLoader(Qwen3_5Loader):
         return model
 
 
+def register_uembed_model():
+    from vllm import ModelRegistry
+
+    arch = 'UEmbedForConditionalGeneration'
+    if arch in ModelRegistry.get_supported_archs():
+        return
+
+    from vllm.model_executor.models.qwen3_5 import Qwen3_5ForConditionalGeneration
+    from vllm.model_executor.models.utils import WeightsMapper
+
+    class UEmbedForConditionalGeneration(Qwen3_5ForConditionalGeneration):
+        hf_to_vllm_mapper = WeightsMapper(orig_to_new_prefix={
+            'language_model.': 'model.language_model.',
+            'visual.': 'model.visual.',
+        }) | Qwen3_5ForConditionalGeneration.hf_to_vllm_mapper
+
+    ModelRegistry.register_model(arch, UEmbedForConditionalGeneration)
+
+
 register_model(
     ModelMeta(
         MLLMModelType.qwen3_5_emb, [
@@ -1638,6 +1856,78 @@ register_model(
         additional_saved_files=['sparse_info.json', 'sparse_weights.pt'],
         requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
+
+
+class WeMMEmbeddingLoader(Qwen3_5EmbLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        self.auto_model_cls = self.auto_model_cls or AutoModel
+        model = Qwen3_5EmbLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        model.config.architectures = ['Qwen3_5ForConditionalGeneration']
+
+        inner = getattr(model, 'model', None) or model
+        visual = getattr(inner, 'visual', None)
+
+        if visual is not None:
+            _deepspeed_forward = inner.forward.__func__
+            _original_forward = inner.origin_forward.__func__
+
+            def _wemm_forward(self, *args, **kwargs):
+                if kwargs.get('input_ids') is None and kwargs.get('inputs_embeds') is not None:
+                    return _original_forward(self, *args, **kwargs)
+                return _deepspeed_forward(self, *args, **kwargs)
+
+            inner.forward = MethodType(_wemm_forward, inner)
+
+        @wraps(type(model).forward)
+        def _embedding_forward(self, *args, **kwargs):
+            embeddings = self.embedding(*args, **kwargs)
+            return {'last_hidden_state': embeddings.contiguous()}
+
+        patch_module_forward(model, _embedding_forward)
+
+        _original_save_pretrained = model.save_pretrained
+
+        def _save_pretrained(*args, **kwargs):
+            result = _original_save_pretrained(*args, **kwargs)
+            model.config.architectures = ['Qwen3_5ForConditionalGeneration']
+            import json
+            if len(args) > 1:
+                save_dir = args[1]
+            else:
+                save_dir = kwargs.get('save_directory') or kwargs.get('output_dir')
+                if save_dir is None and args:
+                    save_dir = args[0]
+            if save_dir:
+                config_path = os.path.join(str(save_dir), 'config.json')
+                if os.path.exists(config_path):
+                    with open(config_path, 'r') as f:
+                        saved_config = json.load(f)
+                    saved_config['architectures'] = ['Qwen3_5ForConditionalGeneration']
+                    with open(config_path, 'w') as f:
+                        json.dump(saved_config, f, indent=2, ensure_ascii=False)
+            return result
+
+        model.save_pretrained = _save_pretrained
+
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.wemm_embedding, [
+            ModelGroup([
+                Model('Tencent-Hunyuan/WeMM-Embedding-2B', 'tencent/WeMM-Embedding-2B'),
+                Model('Tencent-Hunyuan/WeMM-Embedding-4B', 'tencent/WeMM-Embedding-4B'),
+                Model('Tencent-Hunyuan/WeMM-Embedding-9B', 'tencent/WeMM-Embedding-9B'),
+            ]),
+        ],
+        WeMMEmbeddingLoader,
+        template=TemplateType.wemm_embedding,
+        model_arch=ModelArch.wemm_embedding,
+        architectures=['WeMMEmbedding', 'Qwen3_5ForConditionalGeneration'],
+        requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>0.0.14', 'decord'],
+        tags=['vision', 'video', 'embedding']))
 
 
 class Qwen2_5OmniLoader(ModelLoader):

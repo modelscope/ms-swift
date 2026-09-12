@@ -18,7 +18,7 @@ from swift.sequence_parallel import sequence_parallel
 from swift.utils import HfConfigFactory, JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
-from .utils import per_token_loss_func, per_token_loss_func_sp
+from .utils import pad_for_ddp_gather, per_token_loss_func, per_token_loss_func_sp
 
 logger = get_logger()
 
@@ -96,6 +96,9 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         labels_list = [Serializer.to_tensor(labels).to(device=device) for labels in labels_list]
         response_list = pad_sequence(response_list, batch_first=True, padding_value=0)
         labels_list = pad_sequence(labels_list, batch_first=True, padding_value=0)
+        # Align seq length across DDP ranks so accelerator.gather keeps a 2D batch.
+        response_list = pad_for_ddp_gather(response_list, padding_value=0)
+        labels_list = pad_for_ddp_gather(labels_list, padding_value=0)
         return None, response_list, labels_list
 
     def _prepare_inputs(self, inputs):
@@ -160,25 +163,47 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
             if (self.args.enable_dft_loss or loss_scale is not None or self.args.enable_channel_loss
                     or self.template.sequence_parallel_size > 1):
                 if self.template.sequence_parallel_size > 1:
-                    outputs.loss = per_token_loss_func_sp(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
+                    sp_loss = per_token_loss_func_sp(
+                        outputs,
+                        labels,
+                        enable_dft_loss=self.args.enable_dft_loss,
+                        return_labels=self.args.enable_channel_loss)
+                    if self.args.enable_channel_loss:
+                        outputs.loss, channel_labels = sp_loss
+                    else:
+                        outputs.loss = sp_loss
+                    if loss_scale is not None:
+                        position_ids = sequence_parallel.real_position_ids
+                        if position_ids is not None:
+                            position_ids = sequence_parallel.pad(
+                                position_ids, padding_value=-1, position_ids=position_ids)
+                        loss_scale = sequence_parallel.gather(loss_scale, dim=1, position_ids=position_ids)
+                        if position_ids is not None and position_ids.min() == -1:
+                            loss_scale = loss_scale[position_ids >= 0].contiguous()
                 else:
                     outputs.loss = per_token_loss_func(outputs, labels, enable_dft_loss=self.args.enable_dft_loss)
 
                 if loss_scale is not None:
-                    loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
+                    if self.template.sequence_parallel_size == 1:
+                        loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
+                    assert outputs.loss.shape == loss_scale.shape
                     outputs.loss = outputs.loss * loss_scale
 
                 if self.args.enable_channel_loss:
                     metrics = self.custom_metrics[mode]
-                    masks = torch.roll(labels, shifts=-1, dims=-1).view(-1) != -100
+                    if self.template.sequence_parallel_size == 1:
+                        channel_labels = torch.roll(labels, shifts=-1, dims=-1)
+                    channel_loss = outputs.loss.view(-1)
+                    masks = channel_labels.view(-1) != -100
                     if self.template.padding_free:
                         cu_seqlens = self.get_cu_seqlens(text_position_ids, inputs.get('logits_to_keep'))
                     else:
-                        cu_seqlens = torch.arange(0, labels.shape[0] + 1) * labels.shape[1]
+                        seq_len = channel_labels.numel() // labels.shape[0]
+                        cu_seqlens = torch.arange(0, labels.shape[0] + 1) * seq_len
                     for i in range(cu_seqlens.shape[0] - 1):
                         channel = None if channels is None else channels[i]
                         slice_ = slice(cu_seqlens[i], cu_seqlens[i + 1])
-                        metrics[f'loss_{channel}'].update(outputs.loss[slice_][masks[slice_]])
+                        metrics[f'loss_{channel}'].update(channel_loss[slice_][masks[slice_]])
 
             unwrapped_model = self.accelerator.unwrap_model(model)
             if is_peft_available() and isinstance(unwrapped_model, PeftModel):

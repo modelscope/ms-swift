@@ -181,6 +181,7 @@ register_model(
             ]),
             ModelGroup([
                 Model('deepseek-ai/DeepSeek-V4-Flash-0731', 'deepseek-ai/DeepSeek-V4-Flash-0731'),
+                Model('deepseek-ai/DeepSeek-V4-Pro-0813', 'deepseek-ai/DeepSeek-V4-Pro-0813'),
             ],
                        template=TemplateType.deepseek_v4_flash),
         ],

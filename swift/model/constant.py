@@ -115,6 +115,7 @@ class LLMModelType:
     longchat = 'longchat'
     iquestcoder = 'iquestcoder'
     youtu_llm = 'youtu_llm'
+    spark2_5 = 'spark2_5'
 
     modern_bert_gte_reranker = 'modern_bert_gte_reranker'
     bge_reranker = 'bge_reranker'
@@ -154,6 +155,8 @@ class MLLMModelType:
     qwen3_5 = 'qwen3_5'
     qwen3_5_moe = 'qwen3_5_moe'
     qwen3_5_emb = 'qwen3_5_emb'
+    wemm_embedding = 'wemm_embedding'
+    qwen4_exp = 'qwen4_exp'
 
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
@@ -205,6 +208,7 @@ class MLLMModelType:
     llava_next_qwen = 'llava_next_qwen'
     llama3_llava_next = 'llama3_llava_next'
     llava_onevision1_5 = 'llava_onevision1_5'
+    llava_onevision2 = 'llava_onevision2'
 
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'

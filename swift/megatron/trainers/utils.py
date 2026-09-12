@@ -335,6 +335,10 @@ class MegatronDataLoaderDispatcher(DataLoaderDispatcher):
 
 
 def build_streaming_dataloader(args, dataset, collate_fn):
+    dataloader_kwargs = {}
+    mp_context = getattr(args, 'dataloader_multiprocessing_context', None)
+    if mp_context is not None and args.dataloader_num_workers > 0:
+        dataloader_kwargs['multiprocessing_context'] = mp_context
     base_dataloader = torch.utils.data.DataLoader(
         dataset,
         num_workers=args.dataloader_num_workers,
@@ -343,6 +347,7 @@ def build_streaming_dataloader(args, dataset, collate_fn):
         batch_size=args.micro_batch_size,
         prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
         persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
+        **dataloader_kwargs,
     )
     return MegatronDataLoaderDispatcher(base_dataloader)
 
@@ -422,8 +427,11 @@ def compute_per_token_logps_fn(model, args, data_iterator, temperature=1.0, no_g
     global_topk_idx = data.pop('routed_experts', None)
     if enable_routing_replay and RouterReplayHelper.is_replay_forward_action(model.config):
         assert global_topk_idx is not None, 'When router_replay_mode = R3, routed_experts must be in data'
-        routing_topk_idx = get_local_topk_idx_for_current_rank(global_topk_idx, model.config,
-                                                               data.get('packed_seq_params'))
+        routing_topk_idx = get_local_topk_idx_for_current_rank(
+            global_topk_idx,
+            model.config,
+            data.get('packed_seq_params'),
+            cp_partition_mode=getattr(args, 'cp_partition_mode', 'zigzag'))
         set_router_replay_data(routing_topk_idx, model.config)
 
     data_for_forward = {k: v for k, v in data.items() if k != 'labels'}
@@ -457,11 +465,11 @@ def compute_per_token_logps_fn(model, args, data_iterator, temperature=1.0, no_g
 
     if args.context_parallel_size > 1:
         per_token_logps = reconstruct_tensor_cp(args.context_parallel_size, per_token_logps, packed_seq_params,
-                                                num_samples)
+                                                num_samples, args.cp_partition_mode)
     return per_token_logps, routing_topk_idx
 
 
-def reconstruct_tensor_cp(cp_size, tensor, packed_seq_params, num_samples):
+def reconstruct_tensor_cp(cp_size, tensor, packed_seq_params, num_samples, cp_partition_mode='zigzag'):
     """In CP mode, all_gather and reconstruct full tensor sequences."""
     cp_rank = mpu.get_context_parallel_rank()
 
@@ -469,6 +477,13 @@ def reconstruct_tensor_cp(cp_size, tensor, packed_seq_params, num_samples):
     output_list = [torch.empty_like(tensor) for _ in range(cp_size)]
     torch.distributed.all_gather(output_list, tensor.contiguous(), group=mpu.get_context_parallel_group())
     output_list[cp_rank] = tensor
+
+    if cp_partition_mode == 'contiguous':
+        # Contiguous CP splits the entire flattened packed sequence across ranks.
+        output_full = torch.cat(output_list, dim=1)
+        if packed_seq_params is not None:
+            output_full = output_full[:, :packed_seq_params.cu_seqlens_q[num_samples].item()]
+        return output_full
 
     if packed_seq_params is not None:
         cu_seqlens_full = packed_seq_params.cu_seqlens_q

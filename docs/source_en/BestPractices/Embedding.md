@@ -17,6 +17,10 @@ SWIFT has already supported the training of embedding models, including both pur
 5. qwen3-vl-embedding models
    - 2B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Embedding-2B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B)
    - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Embedding-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B)
+6. uembed embedding models
+   - 2B: [ModelScope](https://modelscope.cn/models/iic/UEmbed-2B) [Hugging Face](https://huggingface.co/Alibaba-NLP/UEmbed-2B)
+   - 4B: [ModelScope](https://modelscope.cn/models/iic/UEmbed-4B) [Hugging Face](https://huggingface.co/Alibaba-NLP/UEmbed-4B)
+   - 9B: [ModelScope](https://modelscope.cn/models/iic/UEmbed-9B) [Hugging Face](https://huggingface.co/Alibaba-NLP/UEmbed-9B)
 
 Developers can integrate their own models by ensuring the model forward output satisfies:
 
