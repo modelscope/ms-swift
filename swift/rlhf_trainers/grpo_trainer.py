@@ -1822,21 +1822,22 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @contextmanager
     def offload_context(self):
+        models_to_reload = []
         if self.args.offload_model:
-            self.offload_model(self.accelerator.unwrap_model(self.model))
-            if self.ref_model:
-                self.offload_model(self.ref_model)
+            model = self.accelerator.unwrap_model(self.model)
+            if self.offload_model(model):
+                models_to_reload.append(model)
+            if self.ref_model and self.offload_model(self.ref_model):
+                models_to_reload.append(self.ref_model)
         if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
             self.offload_optimizer()
 
         try:
             yield
         finally:
-            # reload (load back) model when exiting context
-            if self.args.offload_model:
-                self.load_model(self.accelerator.unwrap_model(self.model))
-                if self.ref_model:
-                    self.load_model(self.ref_model)
+            # Only reload models that this context actually moved off the GPU.
+            for model in models_to_reload:
+                self.load_model(model)
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 self.load_optimizer()
 
