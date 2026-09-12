@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import math
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
@@ -353,7 +354,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             raise ValueError("GRPO requires `truncation_strategy 'left' or 'delete'`, "
                              f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
         if self.beta is None:
-            self.beta = 0.04  # https://arxiv.org/abs/2402.03300
+            # The M2PO reference setup uses no auxiliary KL loss; keep the existing GRPO default otherwise.
+            self.beta = 0.0 if self.loss_type == 'm2po' else 0.04
         if self.async_generate:
             logger.info('Using async mode. This is a approximate version which '
                         'will use the old weights to generate responses to accelerate. '
@@ -542,6 +544,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             raise ValueError('GRPO with vLLM is not compatible with `device_map`. '
                              'Please set NPROC_PER_NODE equal to num_processes.')
         if self.use_liger_kernel:
+            if self.loss_type == 'm2po':
+                raise ValueError('loss_type=m2po is not supported with use_liger_kernel.')
             liger_kernel_version = version.parse(importlib.metadata.version('liger-kernel'))
             if liger_kernel_version < version.parse('0.7.0'):
                 raise ValueError('Please update liger-kernel to 0.7.0 or later: pip install -U liger-kernel')
@@ -568,8 +572,36 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
 
         self._check_opd_rl()
+        self._check_m2po()
         self._check_rlsd()
         self._check_sdar()
+
+    def _check_m2po(self):
+        """Validate combinations that would change the final-paper M2PO objective."""
+        if self.loss_type != 'm2po':
+            return
+        if not math.isfinite(self.m2_threshold) or self.m2_threshold < 0:
+            raise ValueError(f'm2_threshold must be finite and non-negative, got {self.m2_threshold}.')
+        if self.gradient_accumulation_steps != 1:
+            raise ValueError('HF loss_type=m2po requires gradient_accumulation_steps=1 because the M2PO mask '
+                             'must be selected once over the complete optimizer batch.')
+        if self.sequence_parallel_size > 1:
+            raise ValueError('HF loss_type=m2po does not yet support sequence_parallel_size > 1 because '
+                             'reconstructed sequence-parallel replicas must be excluded from mask selection.')
+        if self.importance_sampling_level != 'token':
+            raise ValueError('loss_type=m2po requires importance_sampling_level=token.')
+        if self.rollout_importance_sampling_mode is not None:
+            raise ValueError('The current loss_type=m2po path directly uses rollout log-probabilities as the '
+                             'behavior policy and does not retain the separate training-engine behavior '
+                             'log-probabilities required to compose M2PO with rollout importance sampling.')
+        if self.off_policy_sequence_mask_delta is not None:
+            raise ValueError('loss_type=m2po cannot be combined with off_policy_sequence_mask_delta.')
+        if self.delta is not None:
+            raise ValueError('loss_type=m2po replaces PPO clipping and cannot be combined with delta.')
+        if self.use_liger_kernel:
+            raise ValueError('loss_type=m2po is not supported with use_liger_kernel.')
+        if self.beta != 0:
+            logger.warning(f'M2PO uses beta=0 in the reference experiments, but beta={self.beta} was requested.')
 
     def _check_rlsd(self):
         """Validate RLSD (Self-Distilled RLVR) advantage reweighting parameters.
