@@ -355,9 +355,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             m2_threshold=self.m2_threshold,
             process_group=pure_dp_group,
         )
-        for grpo_batch, batch_mask in zip(grpo_batches, batch_masks):
-            grpo_batch.m2po_mask = batch_mask
-            grpo_batch.m2po_metrics = metrics
+        for data, batch_mask in zip(optimizer_batch_data, batch_masks):
+            data['m2po_mask'] = batch_mask
+            data['m2po_metrics'] = metrics
 
     def _generate_and_score_completions(self, inputs: DataType):
         # Get or create the rollout group (TP×PP×CP)
@@ -998,6 +998,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         args = self.args
         data = next(data_iterator)
         grpo_batch: GRPOBatch = data.pop('grpo_batch')
+        m2po_mask = data.pop('m2po_mask', None)
+        m2po_metrics = data.pop('m2po_metrics', None)
         data = self._prepare_batch(data)
         data.pop('loss_scale', None)
 
@@ -1015,7 +1017,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         micro_batch_size = self.micro_batch_size
 
         # data is now clean model forward kwargs (template.encode guarantees this;
-        # grpo_batch / loss_scale / routed_experts / labels all popped above)
+        # grpo_batch / M2PO selection / loss_scale / routed_experts / labels all popped above)
         is_pp_last_stage = mpu.is_pipeline_last_stage()
         output_tensor = model(**data)
         if is_pp_last_stage and output_tensor is not None:
@@ -1064,10 +1066,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         data['grpo_batch'] = grpo_batch
         data['labels'] = labels
-        return output_tensor, partial(self.loss_func, data=data)
+        return output_tensor, partial(self.loss_func, data=data, m2po_mask=m2po_mask, m2po_metrics=m2po_metrics)
 
     @profiling_decorator
-    def loss_func(self, output_tensor: torch.Tensor, data: Dict[str, Any]):
+    def loss_func(self,
+                  output_tensor: torch.Tensor,
+                  data: Dict[str, Any],
+                  m2po_mask: Optional[torch.Tensor] = None,
+                  m2po_metrics: Optional[Dict[str, torch.Tensor]] = None):
         grpo_batch: GRPOBatch = data['grpo_batch']
         # Get pre-padded data in batch format [batch_size, max_seq_len]
         advantages = grpo_batch.advantages  # [batch_size, max_seq_len] (per-token, expanded at batch construction)
@@ -1178,7 +1184,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                              'off_policy_sequence_mask.')
 
         fipo_metrics = None
-        m2po_metrics = None
         if self.loss_type == 'cispo':
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
             per_token_loss = -clamped_ratios * advantages * per_token_logps
@@ -1189,10 +1194,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             soft_gate = torch.where(is_positive, gate_pos, gate_neg)
             per_token_loss = -soft_gate * advantages
         elif self.loss_type == 'm2po':
-            if grpo_batch.m2po_mask is None:
+            if m2po_mask is None:
                 raise RuntimeError('Megatron M2PO mask was not prepared for the complete optimizer batch.')
-            per_token_loss = compute_m2po_token_loss_from_mask(log_ratio, advantages, grpo_batch.m2po_mask)
-            m2po_metrics = grpo_batch.m2po_metrics
+            per_token_loss = compute_m2po_token_loss_from_mask(log_ratio, advantages, m2po_mask)
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'fipo']:
             if self.loss_type == 'fipo':
                 fipo_weight, fipo_metrics = self._compute_fipo_influence(log_ratio, coef_1, advantages, completion_mask)
