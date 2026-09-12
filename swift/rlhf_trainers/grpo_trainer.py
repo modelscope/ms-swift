@@ -77,6 +77,10 @@ if is_wandb_available():
 if is_swanlab_available():
     import swanlab
 
+# Losses normalized by the completion tokens of the whole gradient-accumulation window instead of the tokens of
+# the current micro-batch. See `GRPOTrainer._undo_gradient_accumulation_scaling`.
+WINDOW_NORMALIZED_LOSS_TYPES = ['cispo', 'dapo', 'fipo']
+
 
 class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -1128,7 +1132,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.beta != 0.0:
                 kl_loss = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
                 loss = loss + kl_loss * self.beta
-        elif self.loss_type in ['cispo', 'dapo', 'fipo']:
+        elif self.loss_type in WINDOW_NORMALIZED_LOSS_TYPES:
             # CISPO, DAPO, and FIPO: Normalize by total completion tokens across all processes
             normalizer = grpo_batch.num_items_in_batch / self.accelerator.num_processes
             loss = (per_token_loss * completion_mask).sum() / normalizer
@@ -1218,8 +1222,23 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             }
         if mode == 'train' and self.chord_sft_iterator is not None:
             loss = compute_chord_loss(self, grpo_loss=loss)
+        loss = self._undo_gradient_accumulation_scaling(loss)
 
         return loss, metrics_data
+
+    def _undo_gradient_accumulation_scaling(self, loss: torch.Tensor) -> torch.Tensor:
+        """Undo the gradient-accumulation scaling of `Trainer` for window-normalized losses."""
+        # `Trainer.training_step` divides the loss by `current_gradient_accumulation_steps` before backward
+        # (`Accelerator` is created with `num_steps=1`, so the loss is not scaled a second time there). That is
+        # correct for a loss averaged over the current micro-batch, but `WINDOW_NORMALIZED_LOSS_TYPES` are
+        # normalized by the completion tokens of the whole accumulation window, so dividing them would shrink
+        # the loss and its gradient by that factor.
+        if (self.loss_type in WINDOW_NORMALIZED_LOSS_TYPES and self.model.training
+                and not self.model_accepts_loss_kwargs and self.compute_loss_func is None):
+            gradient_accumulation_steps = \
+                getattr(self, 'current_gradient_accumulation_steps', self.args.gradient_accumulation_steps)
+            loss = loss * gradient_accumulation_steps
+        return loss
 
     def _update_metrics(self, metrics_data):
         """Update metrics from metrics_data."""
