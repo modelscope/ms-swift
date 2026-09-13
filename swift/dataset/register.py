@@ -13,13 +13,11 @@ logger = get_logger()
 
 def get_dataset_list():
     datasets = []
-    for key in DATASET_MAPPING:
-        if use_hf_hub():
-            if key[1]:
-                datasets.append(key[1])
-        else:
-            if key[0]:
-                datasets.append(key[0])
+    use_hf = use_hf_hub()
+    for dataset_meta in DATASET_MAPPING.values():
+        dataset_id = dataset_meta.hf_dataset_id if use_hf else dataset_meta.ms_dataset_id
+        if dataset_id:
+            datasets.append(dataset_id)
     return datasets
 
 
