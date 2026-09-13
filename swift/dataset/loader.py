@@ -348,6 +348,13 @@ def load_dataset(
             disable_auto_column_mapping=disable_auto_column_mapping,
         )
         train_dataset = loader.load(dataset_syntax, dataset_meta, use_hf=use_hf)
+        # Inject dataset_syntax.dataset as routing tag for multi-teacher.
+        # Tag before post_process: sampling/splitting go through select(), and add_column() on a
+        # dataset that has an indices table falls back to flatten_indices(). That is a map() whose
+        # cache file path is derived from the fingerprint, so it is identical on every rank; on a
+        # shared filesystem the ranks then race to write the same file. The tag is constant per
+        # dataset, so tagging first is equivalent and keeps add_column() in memory.
+        train_dataset = _inject_dataset_routing_tag(train_dataset, dataset_syntax.dataset)
         train_dataset, val_dataset = loader.post_process(
             train_dataset,
             dataset_sample=dataset_syntax.dataset_sample,
@@ -357,13 +364,8 @@ def load_dataset(
             random_state=seed,
         )
         if train_dataset is not None:
-            # Inject dataset_syntax.dataset as routing tag for multi-teacher
-            ds_name = dataset_syntax.dataset
-            train_dataset = _inject_dataset_routing_tag(train_dataset, ds_name)
             train_datasets.append(train_dataset)
         if val_dataset is not None:
-            ds_name = dataset_syntax.dataset
-            val_dataset = _inject_dataset_routing_tag(val_dataset, ds_name)
             val_datasets.append(val_dataset)
 
     if interleave_prob is None:
