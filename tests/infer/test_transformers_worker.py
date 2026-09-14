@@ -6,6 +6,7 @@ from queue import Queue
 from threading import Event
 from transformers import GenerationConfig
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.infer_engine.utils import TokensIteratorStreamer
@@ -91,6 +92,10 @@ class _WorkerEngine(TransformersEngine):
 class TestTransformersWorker(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
+        # These fixtures use CPU tensors and do not model accelerator placement.
+        npu_available = patch('swift.infer_engine.transformers_engine.is_torch_npu_available', return_value=False)
+        npu_available.start()
+        self.addCleanup(npu_available.stop)
         self.engine = _WorkerEngine()
 
     async def asyncTearDown(self):
@@ -132,6 +137,21 @@ class TestTransformersWorker(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await asyncio.wait_for(anext(stream), timeout=2), 'partial')
         with self.assertRaises(StopAsyncIteration):
             await asyncio.wait_for(anext(stream), timeout=2)
+
+    async def test_npu_device_error_reaches_caller(self):
+        error = RuntimeError('device setup failed')
+        self.engine.model.device = 'npu:0'
+        with patch(
+                'swift.infer_engine.transformers_engine.is_torch_npu_available', return_value=True), patch.object(
+                    torch, 'npu', create=True) as npu, patch.object(self.engine.template, 'generate') as generate:
+            npu.set_device.side_effect = error
+            stream = await self.request('generation_ok', stream=True)
+            with self.assertRaises(RuntimeError) as context:
+                await asyncio.wait_for(anext(stream), timeout=2)
+            self.assertIs(context.exception, error)
+            npu.set_device.assert_called_once_with('npu:0')
+            generate.assert_not_called()
+        await self.assert_recovery()
 
     async def test_generation_thread_errors_reach_batched_callers(self):
         for failure in ('generation_fail', 'generation_partial'):
@@ -177,6 +197,12 @@ class TestTokensIteratorStreamer(unittest.TestCase):
 
 
 class TestTransformersWorkerStrictMode(unittest.TestCase):
+
+    def setUp(self):
+        # These fixtures use CPU tensors and do not model accelerator placement.
+        npu_available = patch('swift.infer_engine.transformers_engine.is_torch_npu_available', return_value=False)
+        npu_available.start()
+        self.addCleanup(npu_available.stop)
 
     def test_generation_error_preserves_partial_output_and_strict_policy(self):
         for strict in (True, False):
