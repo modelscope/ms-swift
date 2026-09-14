@@ -168,6 +168,7 @@ class MLLMModelType:
     chatglm4v = 'chatglm4v'
     glm4v = 'glm4v'
     glm4v_moe = 'glm4v_moe'
+    glm5_next = 'glm5_next'
     glm_edge_v = 'glm_edge_v'
     glm_ocr = 'glm_ocr'
     cogvlm = 'cogvlm'
