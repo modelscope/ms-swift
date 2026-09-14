@@ -2,6 +2,7 @@
 import numpy as np
 import os
 import torch
+import torch.distributed as dist
 from transformers import EvalPrediction
 from transformers.utils import strtobool
 from typing import Dict
@@ -17,14 +18,21 @@ class EmbedddingMetricMixin(Metric):
         super().__init__()
         self.add_state('last_hidden_state', default_factory=list)
         self.add_state('labels', default_factory=list)
+        self.group = None
 
     def update(self, last_hidden_state, labels):
         self.last_hidden_state.append(last_hidden_state.cpu().numpy())
         self.labels.append(labels.cpu().numpy())
 
     def compute(self):
-        predictions = np.concatenate(self.last_hidden_state)
-        labels = np.concatenate(self.labels)
+        predictions, labels = self.last_hidden_state, self.labels
+        if self.group is not None and dist.get_world_size(self.group) > 1:
+            states = [None] * dist.get_world_size(self.group)
+            dist.all_gather_object(states, (predictions, labels), group=self.group)
+            predictions = [batch for rank_predictions, _ in states for batch in rank_predictions]
+            labels = [batch for _, rank_labels in states for batch in rank_labels]
+        predictions = np.concatenate(predictions)
+        labels = np.concatenate(labels)
         return self._calculate_metrics(predictions, labels)
 
 
