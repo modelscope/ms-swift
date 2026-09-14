@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import ast
-import datasets
 import json
 import numpy as np
 import os
@@ -9,15 +8,14 @@ from contextlib import contextmanager
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
-from datasets import Sequence, Value
+from datasets import Value
 from itertools import chain
 from modelscope.hub.utils.utils import get_cache_dir
-from packaging import version
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 from swift.template import history_to_messages
 from swift.template.template_inputs import normalize_openai_tool_calls
-from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
+from swift.utils import TOOL_KEYS, get_logger, is_dist, is_master, remove_arrow_padding, safe_ddp_context
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
@@ -35,6 +33,7 @@ class RowPreprocessor:
                                 'channel',
                                 'margin',
                                 'teacher_prompt',
+                                'teacher_images',
                                 'chat_template_kwargs',
                                 # Qwen3-TTS
                                 'ref_audios',
@@ -60,7 +59,6 @@ class RowPreprocessor:
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
         self.dataset_sample = dataset_sample
-        self.datasets_4 = version.parse(datasets.__version__) >= version.parse('4.0')
         if not isinstance(random_state, np.random.RandomState):
             random_state = np.random.RandomState(random_state)
         self.random_state = random_state
@@ -85,7 +83,7 @@ class RowPreprocessor:
 
     @staticmethod
     def _cast_mm_data(row: Dict[str, Any]) -> None:
-        for key in ['images', 'rejected_images']:
+        for key in ['images', 'rejected_images', 'teacher_images']:
             images = row.get(key, None)
             if images is None:
                 continue
@@ -105,6 +103,33 @@ class RowPreprocessor:
                 continue
             elif isinstance(mm_data, str):
                 row[key] = [mm_data]
+
+    @staticmethod
+    def _normalize_tools(row: Dict[str, Any]) -> None:
+        """Normalize the `tools` columns and drop the ``null`` fields added by Arrow.
+
+        Tool schemas are heterogeneous nested dicts, but an Arrow column holds a single
+        struct type: the fields a tool never defined are read back as ``null``. Datasets
+        published as Parquet/Arrow already carry that padding, `Dataset.from_list` adds it
+        while inferring the features, and casting a batch to the features inferred from
+        another one may even drop fields silently. The padding is removed here and
+        `_patch_arrow_writer` stores the columns as `List(Json())`, so that every schema
+        survives the Arrow cache and the concatenation verbatim.
+        """
+        for key in TOOL_KEYS:
+            tools = row.get(key)
+            if tools is None:
+                continue
+            if isinstance(tools, str):
+                try:
+                    tools = json.loads(tools)
+                except json.JSONDecodeError:
+                    pass  # not a JSON document: a single plain text tool
+            if not isinstance(tools, (list, tuple)):
+                # A single tool, or the scalar a JSON string decoded to. Left bare, either
+                # would be split into its characters by the `List(Json())` feature.
+                tools = [tools]
+            row[key] = [remove_arrow_padding(tool) for tool in tools]
 
     @staticmethod
     def _check_rejected_response(row: Dict[str, Any]) -> None:
@@ -194,6 +219,7 @@ class RowPreprocessor:
                     self._check_rejected_response(r)
                     self._check_messages(r)
                     self._cast_mm_data(r)
+                    self._normalize_tools(r)
             except Exception as e:
                 if strict:
                     logger.warning('To avoid errors, you can pass `strict=False`.')
@@ -258,37 +284,24 @@ class RowPreprocessor:
         def _new_init(_self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
-
-                if self.datasets_4:
-                    from datasets.features import Json, List
-                    messages_feature = List(Json())
-                    for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
-                        features[key] = messages_feature
-                    features['images'] = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
-                    features['objects'] = Json()
-                    features['chat_template_kwargs'] = Json()
-                else:
-                    messages_feature = [{
-                        'role': Value(dtype='string'),
-                        'content': Value(dtype='string'),
-                    }]
-                    messages_feature_with_loss = [{
-                        'role': Value(dtype='string'),
-                        'content': Value(dtype='string'),
-                        'loss': Value(dtype='bool'),
-                        'loss_scale': Value(dtype='float64'),
-                    }]
-                    features['messages'] = messages_feature_with_loss
-                    features['rejected_messages'] = messages_feature_with_loss
-                    features['positive_messages'] = messages_feature
-                    features['negative_messages'] = messages_feature
-                    features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
-                    features['objects'] = {
-                        'ref': Sequence(feature=Value(dtype='string'), length=-1),
-                        'bbox': Sequence(feature=Sequence(feature=Value(dtype='float64'), length=-1), length=-1),
-                        'bbox_type': Value(dtype='string'),
-                        'image_id': Sequence(feature=Value(dtype='int64'), length=-1),
-                    }
+                from datasets.features import Json, List
+                messages_feature = List(Json())
+                for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
+                    features[key] = messages_feature
+                # Tool schemas are heterogeneous as well; `Json` keeps every schema verbatim
+                # instead of aligning them into one struct type (see `_normalize_tools`).
+                # Guarded, unlike the message keys above: only agent datasets carry tools and
+                # adding the column would give every other dataset a null one.
+                tools_feature = List(Json())
+                for key in TOOL_KEYS:
+                    if key in features:
+                        features[key] = tools_feature
+                image_feature = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
+                features['images'] = image_feature
+                if 'teacher_images' in features:
+                    features['teacher_images'] = image_feature
+                features['objects'] = Json()
+                features['chat_template_kwargs'] = Json()
             ArrowWriter.__origin_init__(_self, schema, features, *args, **kwargs)
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
@@ -301,7 +314,7 @@ class RowPreprocessor:
 
     def _cast_pil_image(self, dataset):
         features = dataset.features
-        for col in ['images', 'rejected_images']:
+        for col in ['images', 'rejected_images', 'teacher_images']:
             if (col in features and isinstance(features[col], Image) and getattr(features[col], 'decode', False)):
                 dataset = dataset.cast_column(col, Image(decode=False))
         return dataset
@@ -431,7 +444,10 @@ class AlpacaPreprocessor(ResponsePreprocessor):
 
 def default_repair_messages(s: Union[str, Any]) -> Any:
     if isinstance(s, str):
-        return ast.literal_eval(s)
+        try:
+            return json.loads(s)
+        except json.JSONDecodeError:
+            return ast.literal_eval(s)
     return s
 
 

@@ -485,8 +485,10 @@ class VllmEngine(InferEngine):
             if mm_processor_kwargs:
                 llm_inputs['mm_processor_kwargs'] = mm_processor_kwargs
 
-            has_task_arg = 'task' in inspect.signature(PoolingParams).parameters
-            has_activation_arg = 'activation' in inspect.signature(PoolingParams).parameters
+            pooling_params_signature = inspect.signature(PoolingParams)
+            has_task_arg = 'task' in pooling_params_signature.parameters
+            has_activation_arg = 'activation' in pooling_params_signature.parameters
+            has_use_activation_arg = 'use_activation' in pooling_params_signature.parameters
             task_mapping = {
                 'embedding': 'embed',
                 'seq_cls': 'classify',
@@ -497,11 +499,16 @@ class VllmEngine(InferEngine):
                 pooling_kwargs = {}
                 if has_task_arg:
                     pooling_kwargs['task'] = task_mapping[self.task_type]
-                if self.task_type in ('reranker', 'generative_reranker') and \
-                        has_activation_arg and self.reranker_use_activation:
-                    pooling_kwargs['activation'] = True
+                if self.task_type in ('reranker', 'generative_reranker') and self.reranker_use_activation:
+                    if has_use_activation_arg:
+                        pooling_kwargs['use_activation'] = True
+                    elif has_activation_arg:
+                        pooling_kwargs['activation'] = True
+                pooling_kwargs = self.template.prepare_pooling_params(pooling_kwargs)
                 pooling_params = PoolingParams(**pooling_kwargs)
-                return self.engine.encode(llm_inputs, pooling_params, request_id)
+                if self.use_async_engine:
+                    return self.engine.encode(llm_inputs, pooling_params, request_id, **kwargs)
+                return self.engine.add_request(request_id, llm_inputs, pooling_params, **kwargs)
             elif self.use_async_engine:
                 return self.engine.generate(llm_inputs, generation_config, request_id, **kwargs)
             else:
@@ -696,7 +703,7 @@ class VllmEngine(InferEngine):
 
     def _create_embedding_response(self, result, generation_config, request_id) -> EmbeddingResponse:
         assert result is not None
-        embedding = result.outputs.data.cpu().numpy().tolist()
+        embedding = self.template.extract_embedding(result)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), 0)
         return EmbeddingResponse(
             model=self.model_name, data=[EmbeddingResponseData(embedding=embedding)], usage=usage_info, id=request_id)
@@ -709,6 +716,8 @@ class VllmEngine(InferEngine):
         request_id,
     ) -> ChatCompletionResponse:
         assert result is not None
+        if self.task_type == 'embedding':
+            return self._create_embedding_response(result, None, request_id)
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
         choices = []

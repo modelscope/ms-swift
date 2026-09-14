@@ -261,8 +261,8 @@ def get_packed_seq_params(args, position_ids: torch.Tensor) -> PackedSeqParams:
     return packed
 
 
-def reconstruct_tensor_cp(tensor, packed_seq_params, dim=1) -> torch.Tensor:
-    """In CP mode, all-gather and undo the load-balanced (zigzag) chunking
+def reconstruct_tensor_cp(tensor, packed_seq_params, dim=1, cp_partition_mode='zigzag') -> torch.Tensor:
+    """In CP mode, all-gather and undo the configured partitioning
     produced by ``split_cp_inputs``, restoring the full sequence in original
     token order along ``dim``.
 
@@ -271,6 +271,7 @@ def reconstruct_tensor_cp(tensor, packed_seq_params, dim=1) -> torch.Tensor:
         packed_seq_params: ``PackedSeqParams`` for THD inputs, or ``None`` for
             regular ``[B, S, ...]`` inputs.
         dim: Sequence dimension index of ``tensor`` (default: 1).
+        cp_partition_mode: CP partition layout, either ``zigzag`` or ``contiguous``.
 
     Returns:
         torch.Tensor: Full-sequence tensor with the same shape as ``tensor``
@@ -289,6 +290,8 @@ def reconstruct_tensor_cp(tensor, packed_seq_params, dim=1) -> torch.Tensor:
     torch.distributed.all_gather(output_list, tensor.contiguous(), group=cp_group)
     output_list[cp_rank] = tensor
     gathered = torch.cat(output_list, dim=dim)
+    if cp_partition_mode == 'contiguous':
+        return gathered
 
     # `_undo_attention_load_balancing` assumes sequence dim is 0; transpose if needed.
     if dim != 0:

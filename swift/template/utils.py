@@ -17,6 +17,19 @@ Word = Union[str, List[int]]
 Context = Word
 
 
+def get_token_backed_response_ids(response: Any) -> Optional[List[int]]:
+    """Return exact token IDs from a token-backed response, if present."""
+    if isinstance(response, dict):
+        token_ids = response.get('token_ids', response.get('input_ids'))
+    elif isinstance(response, list) and (not response or isinstance(response[0], int)):
+        token_ids = response
+    else:
+        return None
+    if not isinstance(token_ids, list) or any(not isinstance(token_id, int) for token_id in token_ids):
+        return None
+    return list(token_ids)
+
+
 class ContextType:
     RESPONSE = 'response'
     SUFFIX = 'suffix'

@@ -172,20 +172,24 @@ class TransformersEngine(InferEngine):
             if item is not None:
                 kwargs, queue_list = item
                 request_config = kwargs['request_config']
-                res_list_or_gen = self._infer(**kwargs)
-                if request_config.stream:
-                    finished = False
-                    while not finished:
-                        try:
-                            res_list = next(res_list_or_gen)
-                        except StopIteration:
-                            finished = True
-                            res_list = [None] * len(queue_list)
-                        for (queue, loop), res in zip(queue_list, res_list):
+                try:
+                    res_list_or_gen = self._infer(**kwargs)
+                    if request_config.stream:
+                        finished = False
+                        while not finished:
+                            try:
+                                res_list = next(res_list_or_gen)
+                            except StopIteration:
+                                finished = True
+                                res_list = [None] * len(queue_list)
+                            for (queue, loop), res in zip(queue_list, res_list):
+                                asyncio.run_coroutine_threadsafe(queue.put(res), loop)
+                    else:
+                        for (queue, loop), res in zip(queue_list, res_list_or_gen):
                             asyncio.run_coroutine_threadsafe(queue.put(res), loop)
-                else:
-                    for (queue, loop), res in zip(queue_list, res_list_or_gen):
-                        asyncio.run_coroutine_threadsafe(queue.put(res), loop)
+                except Exception as e:
+                    for queue, loop in queue_list:
+                        asyncio.run_coroutine_threadsafe(queue.put(e), loop)
 
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
@@ -265,8 +269,9 @@ class TransformersEngine(InferEngine):
 
         generate_kwargs = self.template.prepare_generate_kwargs(generate_kwargs, model=self.model)
         thread = Thread(target=_model_generate, kwargs=generate_kwargs)
-        thread.start()
         batch_size = inputs['attention_mask'].shape[0]
+        prompt_token_counts = [self._get_num_tokens(inputs, batch_idx=i) for i in range(batch_size)]
+        thread.start()
         all_is_finished = False
         is_finished = [False] * batch_size
         infer_streamers = [InferStreamer(self.template, template_inputs=template_inputs[i]) for i in range(batch_size)]
@@ -316,7 +321,7 @@ class TransformersEngine(InferEngine):
                 logprobs = self._get_logprobs(logprobs_list, generate_ids[token_idxs[i]:], request_config.top_logprobs)
                 token_idxs[i] = len(generate_ids)
 
-                usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
+                usage_info = self._get_usage_info(prompt_token_counts[i], len(generate_ids))
                 toolcall = None
                 if is_finished[i]:
                     toolcall = self._get_toolcall(
@@ -355,7 +360,6 @@ class TransformersEngine(InferEngine):
         adapter_names = self._get_adapter_names(adapter_request)
         if adapter_names is not None:
             call_kwargs['adapter_names'] = adapter_names
-        num_prompt_tokens = self._get_num_tokens(inputs)
         inputs.pop('labels', None)
         output = self.model(**inputs, **call_kwargs)
         if hasattr(output, 'logits'):
@@ -390,7 +394,7 @@ class TransformersEngine(InferEngine):
 
         res = []
         for i, pred in enumerate(preds):
-            usage_info = self._get_usage_info(num_prompt_tokens, 1)
+            usage_info = self._get_usage_info(self._get_num_tokens(inputs, batch_idx=i), 1)
             if task_type == 'embedding':
                 res.append(
                     EmbeddingResponse(
@@ -428,7 +432,7 @@ class TransformersEngine(InferEngine):
         num_return_sequences = generation_config.num_return_sequences
         for i in range(inputs['attention_mask'].shape[0]):
             choices = []
-            usage_info = self._get_usage_info(num_prompt_tokens, 0)
+            usage_info = self._get_usage_info(self._get_num_tokens(inputs, batch_idx=i), 0)
             for j in range(num_return_sequences):
                 batched_index = i * num_return_sequences + j
                 generate_ids = batched_generate_ids[batched_index]
@@ -501,11 +505,16 @@ class TransformersEngine(InferEngine):
                     await asyncio.sleep(0)
                     if item is None:
                         break
+                    if isinstance(item, Exception):
+                        raise item
                     yield item
 
             return _gen_wrapper()
         else:
-            return await queue.get()
+            item = await queue.get()
+            if isinstance(item, Exception):
+                raise item
+            return item
 
     # Ensure `template._post_encode` has no gradient.
     @torch.inference_mode()

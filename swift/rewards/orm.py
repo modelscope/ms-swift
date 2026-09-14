@@ -187,7 +187,7 @@ class RepetitionPenalty(ORM):
 
     def __call__(self, completions, **kwargs) -> List[float]:
         """
-        reward function the penalizes repetitions
+        reward function that penalizes repetitions
 
         Args:
             completions: List of model completions

@@ -77,6 +77,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🔥 2026.09.01: Support inference and training for the Tencent Hunyuan multimodal embedding model [WeMM-Embedding](https://www.modelscope.cn/models/Tencent-Hunyuan/WeMM-Embedding-2B) (2B/4B/9B), supporting image-text mixed input for vector representation. Refer to [embedding example](examples/train/embedding).
 - 🔥 2026.08.26: Day-0 Support for [Qwen3.8-Flash-Next](https://www.modelscope.cn/models/Qwen/Qwen3.8-Flash-Next), refer to [sft example](examples/models/qwen4_exp/megatron_sft.sh) for training.
 - 🎁 2026.08.21: Support inference and training for the OpenMOSS multimodal model [MOSS-VL-Instruct-0708](https://modelscope.cn/models/openmoss/MOSS-VL-Instruct-0708), with LoRA and full-parameter fine-tuning, covering single/multi-image, single/multi-video and mixed-media scenarios.
 - 🎁 2026.08.11: Support inference and training for the multimodal model [Muse-Glimmer-30B](https://modelscope.cn/models/meta-models/Muse-Glimmer-30B), with Megatron-SWIFT support as well.

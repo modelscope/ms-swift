@@ -12,7 +12,8 @@ class TestGemma3VisionTemplate(unittest.TestCase):
         encoded = {'input_ids': [2, 10, 20], 'labels': [-100, 10, 20]}
         inputs = SimpleNamespace(images=[])
 
-        with patch.object(Gemma3Template, '_encode', return_value=encoded):
-            result = template._encode(inputs)
+        with patch.dict('sys.modules', {'transformers.models.gemma3.processing_gemma3': None}):
+            with patch.object(Gemma3Template, '_encode', return_value=encoded):
+                result = template._encode(inputs)
 
         self.assertEqual(result['token_type_ids'], [0, 0, 0])

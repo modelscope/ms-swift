@@ -198,7 +198,7 @@ def main():
 
     if False:
         # eval the original model
-        do_eval(first_model, None)
+        do_eval(first_model, model_type, None)
 
     model = first_model
     for i in range(5):

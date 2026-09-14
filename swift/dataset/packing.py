@@ -3,12 +3,14 @@ import math
 import multiprocessing as mp
 import torch.distributed as dist
 from itertools import chain
+from multiprocessing.connection import wait
+from queue import Empty
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 from typing import Optional
 
 from swift.template import MaxLengthError
-from swift.utils import get_logger, is_dist, is_master, split_list
+from swift.utils import get_external_files, get_logger, import_external_file, is_dist, is_master, split_list
 
 logger = get_logger()
 
@@ -220,10 +222,14 @@ class IterablePackingDataset(IterableDataset):
         self.workers = _spawn_workers(ctx, target=self._processor, jobs=self._worker_jobs())
 
     def _worker_jobs(self):
-        return [(self._in_queue, self._out_queue, self.template, self.strict)] * self.num_proc
+        # get_external_files() is resolved here, in the parent: plugins only ran in the main process and a
+        # non-fork worker starts clean, so the paths have to travel with the job for the worker to replay them.
+        return [(self._in_queue, self._out_queue, self.template, self.strict, get_external_files())] * self.num_proc
 
     @staticmethod
-    def _processor(in_queue, out_queue, template, strict):
+    def _processor(in_queue, out_queue, template, strict, external_files=()):
+        for file_path in external_files:
+            import_external_file(file_path)
         while True:
             i, data = in_queue.get()
             encoded_data = {}
@@ -246,7 +252,16 @@ class IterablePackingDataset(IterableDataset):
     def _fetch_data_out_queue(self, last_res, num_samples):
         res = [None] * num_samples
         for _ in range(num_samples):
-            i, data = self._out_queue.get()
+            while True:
+                try:
+                    i, data = self._out_queue.get(timeout=1)
+                    break
+                except Empty:
+                    # Sentinels also work when a DataLoader process inherits the workers.
+                    if wait([worker.sentinel for worker in self.workers], timeout=0):
+                        raise RuntimeError(
+                            'A packing worker exited unexpectedly. Check the worker logs for the original error.'
+                        ) from None
             if not data:
                 continue
             res[i] = data if isinstance(data, list) else [data]

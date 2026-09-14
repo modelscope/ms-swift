@@ -164,7 +164,7 @@ def is_instance_of_ms_model(model: Module) -> bool:
     return False
 
 
-def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> torch.Tensor:
+def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, return_labels=False, **kwargs):
     """Common loss function for sequence parallel training"""
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
@@ -192,7 +192,10 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> 
     if position_ids is not None and position_ids.min() == -1:
         _pos_mask = position_ids >= 0
         loss = loss[_pos_mask].contiguous()
+        labels = labels[_pos_mask].contiguous()
 
+    if return_labels:
+        return loss, labels
     return loss
 
 
@@ -320,6 +323,31 @@ def disable_gradient_checkpointing(model: PreTrainedModel, gradient_checkpointin
     finally:
         if was_enabled:
             model.gradient_checkpointing_enable(gradient_checkpointing_kwargs)
+
+
+def pad_to_global_max_len(tensor: torch.Tensor, global_max_len: int, padding_value: int = 0) -> torch.Tensor:
+    """Pad a [batch, seq_len] tensor on the right to ``global_max_len``."""
+    if tensor.ndim != 2:
+        return tensor
+    pad_len = global_max_len - tensor.shape[1]
+    if pad_len <= 0:
+        return tensor
+    return F.pad(tensor, (0, pad_len), value=padding_value)
+
+
+def get_ddp_global_max_seq_len(local_seq_len: int, device: torch.device) -> int:
+    """Return the max sequence length across all DDP ranks."""
+    if dist.is_available() and dist.is_initialized():
+        max_len = torch.tensor([local_seq_len], device=device, dtype=torch.long)
+        dist.all_reduce(max_len, op=dist.ReduceOp.MAX)
+        return int(max_len.item())
+    return local_seq_len
+
+
+def pad_for_ddp_gather(tensor: torch.Tensor, padding_value: int = 0) -> torch.Tensor:
+    """Pad predictions/labels so every rank shares the same seq length before DDP gather."""
+    global_max_len = get_ddp_global_max_seq_len(tensor.shape[1], tensor.device)
+    return pad_to_global_max_len(tensor, global_max_len, padding_value=padding_value)
 
 
 def gather_for_unpadded_tensors(input_data, use_gather_object=False):

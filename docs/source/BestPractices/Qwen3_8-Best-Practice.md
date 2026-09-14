@@ -44,7 +44,7 @@ pip install -U "vllm>=0.17.0"
 
 使用 ms-swift 的 `TransformersEngine` 进行推理：
 
-- 其中特定模型参数，例如 `VIDEO_MAX_TOKEN_NUM` 等环境变量的含义与Qwen3-VL相同，参考[命令行参数文档](../Instruction/Command-line-parameters.md#qwen3_vl,qwen3_5)。
+- 其中特定模型参数，例如 `VIDEO_MAX_TOKEN_NUM` 等环境变量的含义与Qwen3-VL相同，参考[命令行参数文档](../Instruction/Command-line-parameters.md#qwen3_vl-qwen3_5)。
 
 ```python
 import os

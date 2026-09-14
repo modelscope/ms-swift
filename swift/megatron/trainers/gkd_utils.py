@@ -1,7 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Megatron-specific GKD utilities: TP-aware gather/topk and CP reduce."""
+"""Megatron-specific GKD utilities: TP-aware gather/topk, CP reduce and teacher CP slicing."""
 import torch
+from mcore_bridge import split_cp_inputs
 from megatron.core import mpu
+
+from swift.rlhf_trainers.gkd_loss import TeacherOutput
 
 
 def vocab_parallel_topk(logits: torch.Tensor, k: int) -> tuple:
@@ -48,6 +51,30 @@ def tp_gather_topk(logits: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
     torch.distributed.all_reduce(
         gathered_for_reduce, op=torch.distributed.ReduceOp.MAX, group=mpu.get_tensor_model_parallel_group())
     return torch.where(in_range, gathered, gathered_for_reduce)
+
+
+def cp_slice_teacher_output(teacher_output: TeacherOutput,
+                            packed_seq_params=None,
+                            cp_partition_mode: str = 'zigzag') -> TeacherOutput:
+    cp_size = mpu.get_context_parallel_world_size()
+    if cp_size == 1 or teacher_output.labels is None:
+        return teacher_output
+    cu_seqlens = getattr(packed_seq_params, 'cu_seqlens_q', None)
+    kwargs = {}
+    if cp_partition_mode == 'contiguous':
+        kwargs['cp_partition_mode'] = 'contiguous'
+
+    def _slice(x, dim):
+        if x is None:
+            return None
+        return split_cp_inputs(x, cu_seqlens, dim, **kwargs)
+
+    return TeacherOutput(
+        full_logits=_slice(teacher_output.full_logits, 1),
+        topk_logprobs=_slice(teacher_output.topk_logprobs, 1),
+        topk_indices=_slice(teacher_output.topk_indices, 1),
+        labels=_slice(teacher_output.labels, 1),
+    )
 
 
 def cp_reduce(total_loss, num_valid, *, cp_size):

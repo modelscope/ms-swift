@@ -115,6 +115,7 @@ class LLMModelType:
     longchat = 'longchat'
     iquestcoder = 'iquestcoder'
     youtu_llm = 'youtu_llm'
+    spark2_5 = 'spark2_5'
 
     modern_bert_gte_reranker = 'modern_bert_gte_reranker'
     bge_reranker = 'bge_reranker'
@@ -154,6 +155,7 @@ class MLLMModelType:
     qwen3_5 = 'qwen3_5'
     qwen3_5_moe = 'qwen3_5_moe'
     qwen3_5_emb = 'qwen3_5_emb'
+    wemm_embedding = 'wemm_embedding'
     qwen4_exp = 'qwen4_exp'
 
     qwen2_gme = 'qwen2_gme'

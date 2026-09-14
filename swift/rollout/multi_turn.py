@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 from swift.infer_engine.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, RequestConfig,
                                          RolloutInferRequest, RolloutOutput)
 from swift.template import Messages
+from swift.template.utils import get_token_backed_response_ids
 from swift.utils import remove_response
 from .gym_env import Env, envs
 
@@ -26,9 +27,113 @@ class RolloutScheduler(ABC):
                  *args,
                  **kwargs):
         self.infer_engine = infer_engine
-        # Tokenizer can be passed explicitly (e.g., in colocate mode where infer_engine may be None)
+        # Tokenizer/template can be passed explicitly when colocate mode has no infer_engine.
         self._tokenizer = kwargs.get('tokenizer', None)
+        self._template = kwargs.get('template', None)
         self.max_turns = max_turns
+
+    def get_response_token_data(self,
+                                infer_request: 'RolloutInferRequest',
+                                response_choice: 'ChatCompletionResponseChoice',
+                                is_continuation: bool = False,
+                                response_token_ids: Optional[List[int]] = None,
+                                response_loss_mask: Optional[List[int]] = None) -> tuple[List[int], List[int]]:
+        """Return exact IDs and the loss mask for one generated assistant segment.
+
+        The engine reports sampled IDs only. The deterministic response prefix is
+        part of the prompt, but must be represented in the training completion as
+        masked IDs. Scheduler overrides are normalized by the same contract.
+        """
+        ids = list(response_choice.token_ids or []) if response_token_ids is None else list(response_token_ids)
+        mask = None if response_loss_mask is None else list(response_loss_mask)
+        if mask is not None:
+            assert len(mask) == len(ids), 'response_loss_mask must have the same length as response_token_ids'
+            assert all(value in (0, 1) for value in mask), 'response_loss_mask values must be 0 or 1'
+        if mask is None:
+            mask = [1] * len(ids)
+
+        prefix_ids: List[int] = []
+        template = self._template or getattr(self.infer_engine, 'template', None)
+        tokenizer = self.tokenizer
+        if not is_continuation and template is not None and tokenizer is not None:
+            from swift.template import StdTemplateInputs
+            template_inputs = StdTemplateInputs(
+                messages=[], chat_template_kwargs=dict(infer_request.chat_template_kwargs or {}))
+            response_prefix = template._get_response_prefix(template_inputs)
+            if response_prefix:
+                prefix_ids = list(tokenizer.encode(response_prefix, add_special_tokens=False))
+
+        prefix_is_explicit = (
+            prefix_ids and response_loss_mask is not None and ids[:len(prefix_ids)] == prefix_ids
+            and mask[:len(prefix_ids)] == [0] * len(prefix_ids))
+        if prefix_ids and not prefix_is_explicit:
+            ids = prefix_ids + ids
+            mask = [0] * len(prefix_ids) + mask
+        return ids, mask
+
+    def prepare_response_continuation(
+            self, response_choice: 'ChatCompletionResponseChoice') -> tuple[List[int], List[int], List[float]]:
+        """Normalize sampled output before appending deterministic content."""
+        token_ids = list(response_choice.token_ids or [])
+        if response_choice.logprobs is None:
+            rollout_logprobs = []
+        elif 'content' in response_choice.logprobs:
+            rollout_logprobs = [item['logprob'] for item in response_choice.logprobs['content']]
+        else:
+            rollout_logprobs = []
+        if rollout_logprobs and len(rollout_logprobs) != len(token_ids):
+            raise ValueError(f'rollout_logprobs length ({len(rollout_logprobs)}) must match sampled token_ids '
+                             f'length ({len(token_ids)})')
+        return token_ids, [1] * len(token_ids), rollout_logprobs
+
+    def set_assistant_message_token_ids(self, infer_request: 'RolloutInferRequest', token_ids: List[int]) -> None:
+        """Freeze the latest assistant message as exact IDs for the next inference turn."""
+        for message in reversed(infer_request.messages):
+            if message.get('role') == 'assistant':
+                message['content'] = list(token_ids)
+                return
+
+    def snapshot_and_materialize_assistant_messages(self,
+                                                    infer_request: 'RolloutInferRequest') -> List[tuple[dict, Any]]:
+        """Temporarily decode ID-backed assistant history for text-oriented scheduler hooks."""
+        tokenizer = self.tokenizer
+        snapshots = []
+        for message in infer_request.messages:
+            if message.get('role') != 'assistant':
+                continue
+            original_content = message.get('content')
+            token_ids = get_token_backed_response_ids(original_content)
+            if token_ids is None:
+                continue
+            if tokenizer is None:
+                raise RuntimeError('A tokenizer is required to materialize an ID-backed assistant response')
+            snapshots.append((message, deepcopy(original_content)))
+            message['content'] = tokenizer.decode(token_ids, skip_special_tokens=False)
+        return snapshots
+
+    @staticmethod
+    def restore_assistant_message_snapshots(snapshots: List[tuple[dict, Any]]) -> None:
+        """Restore exact assistant contents after text-oriented scheduler hooks."""
+        for message, content in snapshots:
+            message['content'] = content
+
+    def append_assistant_completion(self, infer_request: 'RolloutInferRequest', completion: str) -> bool:
+        """Append generated text, decoding an ID-backed message only for a continuation."""
+        messages = infer_request.messages
+        if messages[-1]['role'] != 'assistant':
+            messages.append({'role': 'assistant', 'content': completion})
+            return False
+
+        content = messages[-1].get('content')
+        token_ids = get_token_backed_response_ids(content)
+        if token_ids is not None:
+            tokenizer = self.tokenizer
+            if tokenizer is None:
+                raise RuntimeError('A tokenizer is required to continue an ID-backed assistant response')
+            content = tokenizer.decode(token_ids, skip_special_tokens=False)
+            messages[-1]['content'] = content
+        messages[-1]['content'] += completion
+        return True
 
     # ------------------------------------------------------------------
     # Universal hooks — called by BOTH ``run()`` (server mode) and
@@ -287,20 +392,19 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
 
             # Update conversation history
             completion = response_choice.message.content
-            is_continuation = False
-            if messages[-1]['role'] == 'assistant':
-                messages[-1]['content'] += completion
-                is_continuation = True
-            else:
-                messages.append({'role': 'assistant', 'content': completion})
+            is_continuation = self.append_assistant_completion(current_request, completion)
 
             # Check stopping conditions
-            turn_result = await self.on_turn_end(current_request, response_choice, current_turn)
-            if turn_result.get('rollout_infos'):
-                rollout_infos.update(turn_result['rollout_infos'])
-            should_stop = self.check_finished(current_request, response_choice, current_turn)
-            if 'done' in turn_result:
-                should_stop = turn_result['done']
+            assistant_snapshots = self.snapshot_and_materialize_assistant_messages(current_request)
+            try:
+                turn_result = await self.on_turn_end(current_request, response_choice, current_turn)
+                if turn_result.get('rollout_infos'):
+                    rollout_infos.update(turn_result['rollout_infos'])
+                should_stop = self.check_finished(current_request, response_choice, current_turn)
+                if 'done' in turn_result:
+                    should_stop = turn_result['done']
+            finally:
+                self.restore_assistant_message_snapshots(assistant_snapshots)
 
             # double-check if user forget to judge the max_turns
             if self.max_turns:
@@ -309,22 +413,23 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
             if should_stop:
                 # Collect final turn's data
                 current_logprobs = self._extract_logprobs_from_choice(response_choice)
-                final_token_ids = response_choice.token_ids
+                final_token_ids, final_loss_mask = self.get_response_token_data(
+                    current_request, response_choice, is_continuation=is_continuation)
 
                 if is_continuation and total_response_ids:
                     # For continuation, extend the last turn's data
                     total_response_ids[-1].extend(final_token_ids)
                     if total_response_loss_mask:
-                        total_response_loss_mask[-1].extend([1] * len(final_token_ids))
+                        total_response_loss_mask[-1].extend(final_loss_mask)
                     if total_rollout_logprobs and current_logprobs:
                         total_rollout_logprobs[-1].extend(current_logprobs)
-                elif not total_response_ids:
-                    # First turn stopped immediately - need to initialize with final response data
+                else:
+                    # Start a new assistant turn, including the first-turn-immediate-stop case.
                     if final_token_ids:
-                        total_response_ids = [list(final_token_ids)]
-                        total_response_loss_mask = [[1] * len(final_token_ids)]
+                        total_response_ids.append(list(final_token_ids))
+                        total_response_loss_mask.append(final_loss_mask)
                     if current_logprobs:
-                        total_rollout_logprobs = [current_logprobs]
+                        total_rollout_logprobs.append(current_logprobs)
 
                 # Validate rollout_logprobs completeness: if logprobs are incomplete (missing for some turns),
                 # clear them to disable rollout importance sampling correction (which requires complete logprobs)
@@ -359,7 +464,11 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                 )
 
             # Prepare next turn
+            response_ids, response_mask = self.get_response_token_data(
+                current_request, response_choice, is_continuation=is_continuation)
             ret = self.step(current_request, response_choice, current_turn)
+            ret.setdefault('response_token_ids', response_ids)
+            ret.setdefault('response_loss_mask', response_mask)
             current_request: 'RolloutInferRequest' = ret['infer_request']
 
             # Track response tokens and masks
@@ -396,6 +505,9 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                     total_rollout_logprobs[-1].extend(current_logprobs)
                 else:
                     total_rollout_logprobs.append(current_logprobs)
+
+            if total_response_ids:
+                self.set_assistant_message_token_ids(current_request, total_response_ids[-1])
 
             current_turn += 1
 

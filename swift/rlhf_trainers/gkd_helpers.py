@@ -5,6 +5,7 @@ These functions are stateless: they operate on ``GKDSample`` objects and a
 ``Template`` and return encoded dicts / teacher requests / assembled teacher
 outputs.  Shared by the HF and Megatron GKD trainers.
 """
+import copy
 import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -95,7 +96,11 @@ def build_teacher_requests(samples: List[OnPolicySample], template: Optional[Tem
     """
     requests = []
     for s in samples:
-        req = s.to_infer_request()
+        request_sample = s
+        if s.teacher_images is not None:
+            request_sample = copy.copy(s)
+            request_sample.images = s.teacher_images
+        req = request_sample.to_infer_request()
         # OPSD: score the teacher on its privileged prompt instead of the student prompt.
         teacher_messages = getattr(s, 'teacher_messages', None)
         messages = teacher_messages if teacher_messages else req.messages
@@ -123,6 +128,7 @@ def assemble_teacher_output(
     topk: Optional[int],
     template_padding_free: bool,
     device: torch.device,
+    cp_size: int = 1,
 ) -> TeacherOutput:
     """Build a full-sequence ``TeacherOutput`` (GKD) from parsed teacher prompt logprobs.
 
@@ -138,9 +144,6 @@ def assemble_teacher_output(
     cu_seqlens = None
     offsets = None
     if template_padding_free:
-        cu_seqlens = [0]
-        for lps, ixs in parsed:
-            cu_seqlens.append(cu_seqlens[-1] + len(lps) + 1)
         trainer_seq_lens = teacher_model_inputs.get('cu_seq_lens_q')
         if trainer_seq_lens is None:
             position_ids = teacher_model_inputs.get('text_position_ids')
@@ -148,7 +151,21 @@ def assemble_teacher_output(
                 position_ids = teacher_model_inputs.get('position_ids')
             if position_ids is not None:
                 trainer_seq_lens = get_cu_seqlens_from_position_ids(position_ids)
-        if trainer_seq_lens is not None and cu_seqlens[-1] != int(trainer_seq_lens[-1]):
+        cu_seqlens = [0]
+        for lps, ixs in parsed:
+            cu_seqlens.append(cu_seqlens[-1] + len(lps) + 1)
+        if trainer_seq_lens is not None and len(trainer_seq_lens) == len(cu_seqlens):
+            trainer_cu = [int(x) for x in trainer_seq_lens]
+            # Under CP > 1 the trainer frame is padded to a context-parallel multiple while the
+            # teacher scores the unpadded tokens, so a total-token difference is expected padding
+            if cu_seqlens[-1] != trainer_cu[-1] and cp_size <= 1:
+                logger.warning('The number of tokens returned by the teacher server differs from that of the '
+                               'trainer. This may be caused by non-aligned processing; aligning teacher logprobs '
+                               'to the trainer-side sequence boundaries.')
+            cu_seqlens = trainer_cu
+        # TP + SP: trailing pad tokens carry position_ids == 0 and each opens its own
+        # segment, so len(trainer_seq_lens) = len(cu_seqlens) + num_pad_tokens; only the totals are comparable.
+        elif trainer_seq_lens is not None and cu_seqlens[-1] != int(trainer_seq_lens[-1]):
             logger.warning('The number of tokens returned by the teacher server differs from that of the trainer. '
                            'This may be caused by non-aligned processing.')
     else:

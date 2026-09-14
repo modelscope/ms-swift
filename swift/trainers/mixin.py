@@ -1108,10 +1108,38 @@ class SwiftMixin:
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         self.optimizer_callback.create_optimizer_and_scheduler(num_training_steps)
 
+    def _disable_foreach_for_deepspeed(self):
+        """Disable foreach for AdamW on torch<2.9 with DeepSpeed ZeRO-1/2 (no-op otherwise).
+
+        torch<2.9 `torch._foreach_*` kernels use a signed int32 element index and write out
+        of bounds when a flat tensor has numel > INT32_MAX.  DeepSpeed ZeRO-1/2 flattens each
+        param group into one FP32 flat partition per DP rank; for full-parameter SFT of large
+        models that partition can exceed the boundary and corrupt memory (loss NaN).  Falling
+        back to the single-tensor path (foreach=False) avoids the bug without changing the
+        optimizer's group layout or checkpoint format, and costs about the same as foreach
+        because ZeRO feeds the base optimizer a few large flat tensors rather than many
+        small ones (measured ~2% on the 2 GiB flat).
+        """
+        if version.parse(torch.__version__) >= version.parse('2.9.0'):
+            return
+        ds_config = getattr(self.args, 'deepspeed', None) or {}
+        # ZeRO-3 partitions parameters individually (no oversized flat tensor); only
+        # stage 1/2 flatten a whole group into one FP32 partition per rank.
+        if not isinstance(ds_config, dict) or ds_config.get('zero_optimization', {}).get('stage') not in (1, 2):
+            return
+        optimizer = self.optimizer
+        if optimizer is None or not isinstance(optimizer, torch.optim.AdamW):
+            return
+        optimizer.defaults['foreach'] = False
+        for group in optimizer.param_groups:
+            group['foreach'] = False
+        logger.info('[adamw-foreach] disabled foreach for DeepSpeed ZeRO on torch<2.9.')
+
     def create_optimizer(self, model=None):
         self._optimizer_ori = self.optimizer = self.optimizer_callback.create_optimizer(model=model)
         if self.optimizer is not None:
             self.optimizer.param_groups = [pg for pg in self.optimizer.param_groups if len(pg['params']) > 0]
+            self._disable_foreach_for_deepspeed()
         return self.optimizer
 
     def create_scheduler(self, num_training_steps: int, optimizer=None):
@@ -1271,7 +1299,9 @@ class SwiftMixin:
         def skip_first_batches(dataloader, num_batches=0):
             if isinstance(dataloader, (DataLoaderShard, DataLoaderDispatcher)):
                 # DataLoaderMixin
-                return self.get_train_dataloader(skip_batches=num_batches)
+                new_dataloader = self.get_train_dataloader(skip_batches=num_batches)
+                self._restore_dataloader_epoch(dataloader, new_dataloader)
+                return new_dataloader
             else:
                 return origin_skip_first_batches(dataloader, num_batches)
 
@@ -1280,6 +1310,30 @@ class SwiftMixin:
             yield
         finally:
             trainer.skip_first_batches = origin_skip_first_batches
+
+    @staticmethod
+    def _restore_dataloader_epoch(dataloader, new_dataloader) -> None:
+        """Keep the in-progress epoch's permutation when rebuilding a dataloader.
+
+        HF Trainer applies ``set_epoch`` to the original dataloader before
+        ``skip_first_batches`` (transformers <= 4.x). The rebuilt dataloader would
+        otherwise replay the epoch-0 permutation and re-train already-seen samples
+        (https://github.com/modelscope/ms-swift/issues/10050).
+        """
+        sampler = getattr(dataloader, 'batch_sampler', None)
+        while sampler is not None and not hasattr(sampler, 'set_epoch'):
+            # Unwrap e.g. accelerate's SkipBatchSampler.
+            sampler = getattr(sampler, 'batch_sampler', None)
+        epoch = None
+        if sampler is not None:
+            curr_seed = getattr(sampler, 'curr_seed', None)
+            base_seed = getattr(sampler, 'base_seed', None)
+            if curr_seed is not None and base_seed is not None:
+                epoch = curr_seed - base_seed
+            else:
+                epoch = getattr(sampler, 'epoch', None)
+        if epoch is not None and hasattr(new_dataloader, 'set_epoch'):
+            new_dataloader.set_epoch(epoch)
 
 
 class DataLoaderMixin:

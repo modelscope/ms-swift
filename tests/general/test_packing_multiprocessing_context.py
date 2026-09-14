@@ -16,13 +16,24 @@ Why this is worth testing carefully:
 The fakes below are defined at module scope on purpose: ``spawn``/``forkserver`` pickle the worker
 target, so any object reachable from it (template, dataset) must be importable/picklable.
 """
+import importlib
 import multiprocessing as mp
+import os
+import pickle
+import shutil
+import sys
+import tempfile
+import time
+import torch
 import types
 import unittest
+from torch.utils.data import DataLoader
 from unittest import mock
 
+import swift.utils.utils as utils_module
 from swift.dataset.packing import IterablePackingDataset, PackingDataset, _resolve_mp_context, _spawn_workers
-from swift.template.base import Template
+from swift.template.base import MaxLengthError, Template
+from swift.utils import get_external_files, import_external_file, patch_dataloader_external_plugins
 
 FORK_AVAILABLE = 'fork' in mp.get_all_start_methods()
 SPAWN_AVAILABLE = 'spawn' in mp.get_all_start_methods()
@@ -48,6 +59,45 @@ class UnpicklableTemplate(FakeTemplate):
     def __init__(self):
         # a lambda attribute makes the whole object un-picklable under spawn/forkserver
         self._not_picklable = lambda x: x
+
+
+class FailingTemplate(FakeTemplate):
+
+    def encode(self, data, return_length=True):
+        if data.get('error') == 'exit':
+            os._exit(1)
+        if data.get('error') == 'length':
+            raise MaxLengthError('sample exceeds max_length')
+        if data.get('error') == 'invalid':
+            raise ValueError('invalid training sample')
+        if data.get('delay'):
+            time.sleep(data['delay'])
+        return super().encode(data, return_length=return_length)
+
+
+def _collect_packing_result(queue, context, rows, strict, dataloader_num_workers=0):
+    dataset = IterablePackingDataset(
+        FailingTemplate(), rows, strict=strict, packing_interval=4, multiprocessing_context=context)
+    if dataloader_num_workers:
+        iterator = iter(
+            DataLoader(
+                dataset,
+                batch_size=None,
+                num_workers=dataloader_num_workers,
+                multiprocessing_context='fork',
+                timeout=20))
+    else:
+        iterator = iter(dataset)
+    try:
+        queue.put(('ok', [row['input_ids'] for pack in iterator for row in pack]))
+    except Exception as exc:
+        queue.put(('error', type(exc).__name__, str(exc)))
+    finally:
+        if dataloader_num_workers:
+            iterator._shutdown_workers()
+        for worker in dataset.workers:
+            worker.terminate()
+            worker.join(timeout=5)
 
 
 class ListDataset:
@@ -83,6 +133,31 @@ def _make_rows(n=40, max_len=10):
 
 # a module-level callable usable as a spawn/forkserver Process target
 def _noop_worker(*args):
+    return None
+
+
+class _TemplateLike:
+    """Picklable stand-in that goes through the real ``Template.__getstate__`` under test."""
+
+    __getstate__ = Template.__getstate__
+
+
+def _hooked_model():
+    """A model carrying the kind of hook ``enable_input_require_grads`` installs: a local closure.
+
+    transformers registers exactly this shape, so anything holding a reference to a hooked model cannot be
+    pickled -- which is what forkserver/spawn dataloader workers hit on Python 3.14.
+    """
+    model = torch.nn.Linear(2, 2)
+
+    def make_inputs_require_grads(module, args, output):
+        output.requires_grad_(True)
+
+    return model, model.register_forward_hook(make_inputs_require_grads)
+
+
+def _stashed_deepspeed_initialize(*args, **kwargs):
+    """Stands in for the original ``deepspeed.initialize`` that zero3 makes the template stash."""
     return None
 
 
@@ -145,6 +220,56 @@ class TestTemplateGetstate(unittest.TestCase):
         self.assertEqual(state['max_length'], 8)
         # must not mutate the original object
         self.assertIsNotNone(stub.model)
+
+    def test_hook_bookkeeping_is_dropped_so_no_model_is_reachable(self):
+        """``_handles`` pairs every hook with its live model, so keeping it re-pickles the very model that
+        ``model = None`` drops -- and a hooked model reaches un-picklable local closures."""
+        model, handle = _hooked_model()
+        template = _TemplateLike()
+        template.model = model
+        template.dummy_model = None
+        template._handles = [(model, handle)]
+        template._deepspeed_initialize = None
+        template.max_length = 8
+
+        restored = pickle.loads(pickle.dumps(template))
+
+        self.assertIsNone(restored.model)
+        self.assertEqual(restored._handles, [])
+        self.assertEqual(restored.max_length, 8)
+
+    def test_the_live_template_keeps_its_hooks(self):
+        """Workers are spawned mid-run, so pickling must leave ``remove_post_encode_hook`` able to undo."""
+        model, handle = _hooked_model()
+        template = _TemplateLike()
+        template.model = model
+        template.dummy_model = None
+        template._handles = [(model, handle)]
+        template._deepspeed_initialize = _stashed_deepspeed_initialize
+
+        Template.__getstate__(template)
+
+        self.assertEqual(template._handles, [(model, handle)])
+        self.assertIs(template.model, model)
+        self.assertIs(template._deepspeed_initialize, _stashed_deepspeed_initialize)
+
+    def test_stashed_deepspeed_initialize_is_dropped(self):
+        """Under zero3 the template stashes the original ``deepspeed.initialize`` and rebinds the module
+        attribute to a wrapper. pickle stores functions by reference and refuses one whose module attribute
+        no longer points back at it, so the stash cannot cross a process boundary either."""
+        template = _TemplateLike()
+        template.model = None
+        template.dummy_model = None
+        template._handles = []
+        template._deepspeed_initialize = _stashed_deepspeed_initialize
+
+        with mock.patch(f'{__name__}._stashed_deepspeed_initialize', lambda *args, **kwargs: None):
+            # the hazard is real: the stashed original is no longer what its module name resolves to
+            with self.assertRaises(pickle.PicklingError):
+                pickle.dumps(template._deepspeed_initialize)
+            restored = pickle.loads(pickle.dumps(template))
+
+        self.assertIsNone(restored._deepspeed_initialize)
 
 
 class TestSpawnWorkers(unittest.TestCase):
@@ -262,6 +387,57 @@ class TestIterablePackingDatasetContexts(unittest.TestCase):
             _run_iter_packing('spawn', self.rows, template=UnpicklableTemplate())
 
 
+class TestIterablePackingWorkerErrors(unittest.TestCase):
+
+    def _result(self, rows, strict, context='spawn', dataloader_num_workers=0):
+        ctx = mp.get_context(context)
+        queue = ctx.Queue()
+        process = ctx.Process(
+            target=_collect_packing_result, args=(queue, context, rows, strict, dataloader_num_workers))
+        process.start()
+        try:
+            # Both the consumer and packing worker need time to start under spawn.
+            return queue.get(timeout=60)
+        finally:
+            process.join(timeout=5)
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+            queue.close()
+
+    def test_strict_encoding_error_reaches_consumer(self):
+        result = self._result([{'error': 'invalid'}], strict=True)
+        self.assertEqual(result[:2], ('error', 'RuntimeError'))
+        self.assertIn('worker', result[2].lower())
+
+    def test_unexpected_worker_exit_reaches_consumer(self):
+        result = self._result([{'error': 'exit'}], strict=False)
+        self.assertEqual(result[:2], ('error', 'RuntimeError'))
+
+    @unittest.skipUnless(FORK_AVAILABLE, 'fork is required to inherit packing worker handles')
+    def test_failed_worker_reaches_dataloader_consumer(self):
+        result = self._result([{'error': 'invalid'}], strict=True, dataloader_num_workers=1)
+        self.assertEqual(result[:2], ('error', 'RuntimeError'))
+        self.assertIn('packing worker exited unexpectedly', result[2])
+
+    @unittest.skipUnless(FORK_AVAILABLE, 'fork is required to inherit packing worker handles')
+    def test_live_worker_with_dataloader_consumer(self):
+        result = self._result([{'input_ids': [1, 2], 'delay': 2}], strict=True, dataloader_num_workers=1)
+        self.assertEqual(result, ('ok', [[1, 2]]))
+
+    def test_non_strict_error_still_skips_sample(self):
+        result = self._result([{'error': 'invalid'}, {'input_ids': [1, 2]}], strict=False)
+        self.assertEqual(result, ('ok', [[1, 2]]))
+
+    def test_strict_length_error_still_skips_sample(self):
+        result = self._result([{'error': 'length'}, {'input_ids': [1, 2]}], strict=True)
+        self.assertEqual(result, ('ok', [[1, 2]]))
+
+    def test_live_worker_is_allowed_to_finish(self):
+        result = self._result([{'input_ids': [1, 2], 'delay': 2}], strict=True)
+        self.assertEqual(result, ('ok', [[1, 2]]))
+
+
 class TestDataloaderContextInjection(unittest.TestCase):
     """The DataLoader-side injection is pure kwargs plumbing; assert it only activates when set."""
 
@@ -281,6 +457,181 @@ class TestDataloaderContextInjection(unittest.TestCase):
     def test_injected_when_set_with_workers(self):
         params = self._build_params('spawn', 4)
         self.assertEqual(params['multiprocessing_context'], 'spawn')
+
+
+# --- external plugin replay in workers -------------------------------------------------------------
+#
+# A swift plugin takes effect purely through import side effects (``import_external_file`` just execs
+# the file). Under fork the worker inherits those side effects for free; under forkserver/spawn it
+# starts clean, so anything the worker looks up by name afterwards -- an extra PIL codec being the
+# motivating case -- is silently missing unless the import is replayed. Every test below pairs the
+# patched case with an unpatched control, so a regression shows up as the two agreeing.
+
+CODEC_MODULE = '_swift_test_codec'
+
+
+def _codec_registry_size():
+    """Count the plugin's own entries in the stand-in registry, 0 if the plugin never ran here.
+
+    Counts only ``JXL`` so that a caller-supplied worker_init_fn writing its own marker into the same
+    registry does not inflate the number. Deliberately importable-or-zero rather than raising: that is
+    exactly the shape of the bug, where a worker silently lacks a codec instead of failing loudly.
+    """
+    try:
+        module = importlib.import_module(CODEC_MODULE)
+    except ImportError:
+        return 0
+    return module.REGISTRY.count('JXL')
+
+
+def _record_worker_init(worker_id):
+    """A caller-supplied worker_init_fn; the patch must delegate to it, not replace it."""
+    importlib.import_module(CODEC_MODULE).REGISTRY.append(f'inner-{worker_id}')
+
+
+class CodecProbeTemplate(FakeTemplate):
+    """Reports, through ``length``, whether the plugin took effect in the packing worker."""
+
+    def encode(self, data, return_length=True):
+        return {'input_ids': [1], 'labels': [1], 'length': _codec_registry_size()}
+
+
+class CodecProbeDataset:
+    """``__getitem__`` runs in the dataloader worker, like ``Template.encode`` -> ``load_image`` does."""
+
+    def __len__(self):
+        return 2
+
+    def __getitem__(self, index):
+        try:
+            registry = importlib.import_module(CODEC_MODULE).REGISTRY
+        except ImportError:
+            registry = []
+        return registry.count('JXL'), int(any(str(entry).startswith('inner-') for entry in registry))
+
+
+class TestExternalPluginReplayInWorkers(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmpdir = tempfile.mkdtemp()
+        # stands in for a third-party lib whose global registry is consulted inside the worker
+        with open(os.path.join(cls.tmpdir, f'{CODEC_MODULE}.py'), 'w') as f:
+            f.write('REGISTRY = []\n')
+        # stands in for the user's one-line plugin: `import pillow_jxl`
+        cls.plugin = os.path.join(cls.tmpdir, '_swift_test_plugin.py')
+        with open(cls.plugin, 'w') as f:
+            f.write(f'import {CODEC_MODULE}\n{CODEC_MODULE}.REGISTRY.append("JXL")\n')
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def setUp(self):
+        self._saved_external = list(utils_module._external_files)
+        self._saved_modules = set(sys.modules)
+        self._saved_path = list(sys.path)
+        self._saved_init = DataLoader.__init__
+        self._was_patched = getattr(DataLoader, '_swift_external_plugins', False)
+        import_external_file(self.plugin)  # what BaseArguments._import_external_plugins does
+        self.assertEqual(_codec_registry_size(), 1, 'plugin should have taken effect in the parent')
+
+    def tearDown(self):
+        DataLoader.__init__ = self._saved_init
+        DataLoader._swift_external_plugins = self._was_patched
+        utils_module._external_files[:] = self._saved_external
+        for name in set(sys.modules) - self._saved_modules:
+            del sys.modules[name]
+        sys.path[:] = self._saved_path
+
+    def test_get_external_files_records_the_plugin(self):
+        self.assertIn(self.plugin, get_external_files())
+
+    def test_get_external_files_does_not_duplicate(self):
+        import_external_file(self.plugin)
+        self.assertEqual(get_external_files().count(self.plugin), 1)
+
+    def _dataloader_sees(self, ctx_name, worker_init_fn=None):
+        loader = DataLoader(
+            CodecProbeDataset(),
+            batch_size=2,
+            num_workers=1,
+            multiprocessing_context=ctx_name,
+            worker_init_fn=worker_init_fn,
+        )
+        plugin, inner = next(iter(loader))
+        return plugin.tolist(), inner.tolist()
+
+    @unittest.skipUnless(FORK_AVAILABLE, 'fork not available')
+    def test_fork_inherits_even_unpatched(self):
+        self.assertEqual(self._dataloader_sees('fork')[0], [1, 1])
+
+    @unittest.skipUnless(SPAWN_AVAILABLE, 'spawn not available')
+    def test_spawn_needs_the_patch(self):
+        self.assertEqual(self._dataloader_sees('spawn')[0], [0, 0], 'control: spawn must start clean')
+        patch_dataloader_external_plugins()
+        self.assertEqual(self._dataloader_sees('spawn')[0], [1, 1])
+
+    @unittest.skipUnless(FORKSERVER_AVAILABLE, 'forkserver not available')
+    def test_forkserver_needs_the_patch(self):
+        self.assertEqual(self._dataloader_sees('forkserver')[0], [0, 0], 'control: forkserver starts clean')
+        patch_dataloader_external_plugins()
+        self.assertEqual(self._dataloader_sees('forkserver')[0], [1, 1])
+
+    @unittest.skipUnless(SPAWN_AVAILABLE, 'spawn not available')
+    def test_patch_delegates_to_a_caller_supplied_worker_init_fn(self):
+        patch_dataloader_external_plugins()
+        plugin, inner = self._dataloader_sees('spawn', worker_init_fn=_record_worker_init)
+        self.assertEqual(plugin, [1, 1])
+        self.assertEqual(inner, [1, 1], 'the original worker_init_fn must still run')
+
+    def test_patch_is_idempotent_and_does_not_nest(self):
+        patch_dataloader_external_plugins()
+        patched_init = DataLoader.__init__
+        patch_dataloader_external_plugins()
+        self.assertIs(DataLoader.__init__, patched_init, 'patching twice must not re-wrap')
+        loader = DataLoader(CodecProbeDataset(), batch_size=2, num_workers=1, worker_init_fn=_record_worker_init)
+        self.assertIs(loader.worker_init_fn.inner, _record_worker_init, 'the wrapper must not stack')
+
+    def test_patch_leaves_single_process_loaders_alone(self):
+        patch_dataloader_external_plugins()
+        loader = DataLoader(CodecProbeDataset(), batch_size=2, num_workers=0)
+        self.assertIsNone(loader.worker_init_fn, 'nothing to replay without workers')
+
+    def test_packing_worker_job_carries_the_plugin_paths(self):
+        # IterablePackingDataset drives raw ctx.Process workers, not a DataLoader, so the constructor
+        # patch cannot reach them; the paths ride along in the job tuple instead.
+        ipd = _run_iter_packing(None, _make_rows(4), template=CodecProbeTemplate())
+        try:
+            self.assertEqual(ipd._worker_jobs()[0][-1], get_external_files())
+        finally:
+            for worker in ipd.workers:
+                worker.terminate()
+
+    def _packing_worker_sees(self, ctx_name, external_files):
+        ctx = mp.get_context(ctx_name)
+        in_queue, out_queue = ctx.Queue(), ctx.Queue()
+        worker = ctx.Process(
+            target=IterablePackingDataset._processor,
+            args=(in_queue, out_queue, CodecProbeTemplate(), False, external_files),
+            daemon=True)
+        worker.start()
+        try:
+            in_queue.put((0, {'input_ids': [1]}))
+            return out_queue.get(timeout=60)[1]['length']
+        finally:
+            worker.terminate()
+            worker.join(timeout=10)
+
+    @unittest.skipUnless(SPAWN_AVAILABLE, 'spawn not available')
+    def test_packing_worker_spawn_needs_replay(self):
+        self.assertEqual(self._packing_worker_sees('spawn', ()), 0, 'control: spawn must start clean')
+        self.assertEqual(self._packing_worker_sees('spawn', get_external_files()), 1)
+
+    @unittest.skipUnless(FORKSERVER_AVAILABLE, 'forkserver not available')
+    def test_packing_worker_forkserver_needs_replay(self):
+        self.assertEqual(self._packing_worker_sees('forkserver', ()), 0, 'control: forkserver starts clean')
+        self.assertEqual(self._packing_worker_sees('forkserver', get_external_files()), 1)
 
 
 if __name__ == '__main__':

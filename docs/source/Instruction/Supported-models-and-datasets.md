@@ -354,6 +354,9 @@
 |[OpenBMB/MiniCPM5-1B](https://modelscope.cn/models/OpenBMB/MiniCPM5-1B)|llama|minicpm5|minicpm5|transformers>=5.6|&#x2714;|-|[openbmb/MiniCPM5-1B](https://huggingface.co/openbmb/MiniCPM5-1B)|
 |[OpenBMB/MiniCPM5-1B-Base](https://modelscope.cn/models/OpenBMB/MiniCPM5-1B-Base)|llama|minicpm5|minicpm5|transformers>=5.6|&#x2714;|-|[openbmb/MiniCPM5-1B-Base](https://huggingface.co/openbmb/MiniCPM5-1B-Base)|
 |[OpenBMB/MiniCPM5-1B-SFT](https://modelscope.cn/models/OpenBMB/MiniCPM5-1B-SFT)|llama|minicpm5|minicpm5|transformers>=5.6|&#x2714;|-|[openbmb/MiniCPM5-1B-SFT](https://huggingface.co/openbmb/MiniCPM5-1B-SFT)|
+|[OpenBMB/MiniCPM5-2B](https://modelscope.cn/models/OpenBMB/MiniCPM5-2B)|llama|minicpm5_2b|minicpm5|transformers>=5.6|&#x2714;|-|[openbmb/MiniCPM5-2B](https://huggingface.co/openbmb/MiniCPM5-2B)|
+|[OpenBMB/MiniCPM5-2B-Base](https://modelscope.cn/models/OpenBMB/MiniCPM5-2B-Base)|llama|minicpm5_2b|minicpm5|transformers>=5.6|&#x2714;|-|[openbmb/MiniCPM5-2B-Base](https://huggingface.co/openbmb/MiniCPM5-2B-Base)|
+|[OpenBMB/MiniCPM5-2B-SFT](https://modelscope.cn/models/OpenBMB/MiniCPM5-2B-SFT)|llama|minicpm5_2b|minicpm5|transformers>=5.6|&#x2714;|-|[openbmb/MiniCPM5-2B-SFT](https://huggingface.co/openbmb/MiniCPM5-2B-SFT)|
 |[LLM-Research/Reflection-Llama-3.1-70B](https://modelscope.cn/models/LLM-Research/Reflection-Llama-3.1-70B)|llama|reflection|llama3|transformers>=4.43|&#x2714;|-|[mattshumer/Reflection-Llama-3.1-70B](https://huggingface.co/mattshumer/Reflection-Llama-3.1-70B)|
 |[01ai/Yi-6B](https://modelscope.cn/models/01ai/Yi-6B)|yi|chatml||-|&#x2714;|-|[01-ai/Yi-6B](https://huggingface.co/01-ai/Yi-6B)|
 |[01ai/Yi-6B-200K](https://modelscope.cn/models/01ai/Yi-6B-200K)|yi|chatml||-|&#x2714;|-|[01-ai/Yi-6B-200K](https://huggingface.co/01-ai/Yi-6B-200K)|
@@ -616,6 +619,8 @@
 |[inclusionAI/Ling-2.5-1T](https://modelscope.cn/models/inclusionAI/Ling-2.5-1T)|bailing_hybrid|ling2||-|&#x2714;|-|[inclusionAI/Ling-2.5-1T](https://huggingface.co/inclusionAI/Ling-2.5-1T)|
 |[inclusionAI/Ling-2.6-1T](https://modelscope.cn/models/inclusionAI/Ling-2.6-1T)|bailing_hybrid|ling2||-|&#x2714;|-|[inclusionAI/Ling-2.6-1T](https://huggingface.co/inclusionAI/Ling-2.6-1T)|
 |[inclusionAI/Ling-2.6-flash](https://modelscope.cn/models/inclusionAI/Ling-2.6-flash)|bailing_hybrid|ling2||-|&#x2714;|-|[inclusionAI/Ling-2.6-flash](https://huggingface.co/inclusionAI/Ling-2.6-flash)|
+|[inclusionAI/Ling-3.0-tiny](https://modelscope.cn/models/inclusionAI/Ling-3.0-tiny)|bailing_hybrid|ling3||-|&#x2714;|-|[inclusionAI/Ling-3.0-tiny](https://huggingface.co/inclusionAI/Ling-3.0-tiny)|
+|[inclusionAI/Ling-3.0-flash](https://modelscope.cn/models/inclusionAI/Ling-3.0-flash)|bailing_hybrid|ling3||-|&#x2714;|-|[inclusionAI/Ling-3.0-flash](https://huggingface.co/inclusionAI/Ling-3.0-flash)|
 |[inclusionAI/Ring-2.5-1T](https://modelscope.cn/models/inclusionAI/Ring-2.5-1T)|bailing_hybrid|ring2_5||-|&#x2714;|-|[inclusionAI/Ring-2.5-1T](https://huggingface.co/inclusionAI/Ring-2.5-1T)|
 |[inclusionAI/Ring-2.6-1T](https://modelscope.cn/models/inclusionAI/Ring-2.6-1T)|bailing_hybrid|ring2_5||-|&#x2714;|-|[inclusionAI/Ring-2.6-1T](https://huggingface.co/inclusionAI/Ring-2.6-1T)|
 |[IEITYuan/Yuan2.0-2B-hf](https://modelscope.cn/models/IEITYuan/Yuan2.0-2B-hf)|yuan2|yuan||-|&#x2718;|-|[IEITYuan/Yuan2-2B-hf](https://huggingface.co/IEITYuan/Yuan2-2B-hf)|
@@ -702,6 +707,10 @@
 |[IQuestLab/IQuest-Coder-V1-40B-Instruct](https://modelscope.cn/models/IQuestLab/IQuest-Coder-V1-40B-Instruct)|iquestcoder|iquestcoder|hermes|transformers==4.52.4|&#x2718;|-|[IQuestLab/IQuest-Coder-V1-40B-Instruct](https://huggingface.co/IQuestLab/IQuest-Coder-V1-40B-Instruct)|
 |[Tencent-YouTu-Research/Youtu-LLM-2B](https://modelscope.cn/models/Tencent-YouTu-Research/Youtu-LLM-2B)|youtu_llm|youtu_llm|youtu|transformers>=4.56|&#x2718;|-|[tencent/Youtu-LLM-2B](https://huggingface.co/tencent/Youtu-LLM-2B)|
 |[Tencent-YouTu-Research/Youtu-LLM-2B-Base](https://modelscope.cn/models/Tencent-YouTu-Research/Youtu-LLM-2B-Base)|youtu_llm|youtu_llm|youtu|transformers>=4.56|&#x2718;|-|[tencent/Youtu-LLM-2B-Base](https://huggingface.co/tencent/Youtu-LLM-2B-Base)|
+|[XHToken/Spark-X2.5-1.7B-Base](https://modelscope.cn/models/XHToken/Spark-X2.5-1.7B-Base)|spark2_5|spark2_5|spark2_5|transformers>=4.57|&#x2718;|-|-|
+|[XHToken/Spark-X2.5-1.7B](https://modelscope.cn/models/XHToken/Spark-X2.5-1.7B)|spark2_5|spark2_5|spark2_5|transformers>=4.57|&#x2718;|-|-|
+|[XHToken/Spark-X2.5-4B-Base](https://modelscope.cn/models/XHToken/Spark-X2.5-4B-Base)|spark2_5|spark2_5|spark2_5|transformers>=4.57|&#x2718;|-|-|
+|[XHToken/Spark-X2.5-4B](https://modelscope.cn/models/XHToken/Spark-X2.5-4B)|spark2_5|spark2_5|spark2_5|transformers>=4.57|&#x2718;|-|-|
 |[iic/gte-reranker-modernbert-base](https://modelscope.cn/models/iic/gte-reranker-modernbert-base)|modern_bert_gte_reranker|bert||transformers>=4.48|&#x2718;|bert, reranker|[Alibaba-NLP/gte-reranker-modernbert-base](https://huggingface.co/Alibaba-NLP/gte-reranker-modernbert-base)|
 |[BAAI/bge-reranker-base](https://modelscope.cn/models/BAAI/bge-reranker-base)|bge_reranker|bge_reranker||-|&#x2718;|-|[BAAI/bge-reranker-base](https://huggingface.co/BAAI/bge-reranker-base)|
 |[BAAI/bge-reranker-v2-m3](https://modelscope.cn/models/BAAI/bge-reranker-v2-m3)|bge_reranker|bge_reranker||-|&#x2718;|-|[BAAI/bge-reranker-v2-m3](https://huggingface.co/BAAI/bge-reranker-v2-m3)|
@@ -841,6 +850,9 @@
 |[Qwen/Qwen3.8-2.4T-A95B](https://modelscope.cn/models/Qwen/Qwen3.8-2.4T-A95B)|qwen3_5_moe|qwen3_8|qwen3_5|transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2714;|vision, video|[Qwen/Qwen3.8-2.4T-A95B](https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B)|
 |[Qwen/Qwen3.8-2.4T-A95B-FP8](https://modelscope.cn/models/Qwen/Qwen3.8-2.4T-A95B-FP8)|qwen3_5_moe|qwen3_8|qwen3_5|transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2714;|vision, video|[Qwen/Qwen3.8-2.4T-A95B-FP8](https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B-FP8)|
 |[iic/UEmbed-2B](https://modelscope.cn/models/iic/UEmbed-2B)|qwen3_5_emb|qwen3_5_emb|hermes|transformers>=5.0.0.dev, qwen_vl_utils>=0.0.14, decord|&#x2718;|vision, video|[iic/UEmbed-2B](https://huggingface.co/iic/UEmbed-2B)|
+|[Tencent-Hunyuan/WeMM-Embedding-2B](https://modelscope.cn/models/Tencent-Hunyuan/WeMM-Embedding-2B)|wemm_embedding|wemm_embedding||transformers>=5.0.0.dev, qwen_vl_utils>0.0.14, decord|&#x2718;|vision, video, embedding|[tencent/WeMM-Embedding-2B](https://huggingface.co/tencent/WeMM-Embedding-2B)|
+|[Tencent-Hunyuan/WeMM-Embedding-4B](https://modelscope.cn/models/Tencent-Hunyuan/WeMM-Embedding-4B)|wemm_embedding|wemm_embedding||transformers>=5.0.0.dev, qwen_vl_utils>0.0.14, decord|&#x2718;|vision, video, embedding|[tencent/WeMM-Embedding-4B](https://huggingface.co/tencent/WeMM-Embedding-4B)|
+|[Tencent-Hunyuan/WeMM-Embedding-9B](https://modelscope.cn/models/Tencent-Hunyuan/WeMM-Embedding-9B)|wemm_embedding|wemm_embedding||transformers>=5.0.0.dev, qwen_vl_utils>0.0.14, decord|&#x2718;|vision, video, embedding|[tencent/WeMM-Embedding-9B](https://huggingface.co/tencent/WeMM-Embedding-9B)|
 |[Qwen/Qwen3.8-Flash-Next](https://modelscope.cn/models/Qwen/Qwen3.8-Flash-Next)|qwen4_exp|qwen4_exp|qwen3_5|transformers>=5.16.0, qwen_vl_utils>=0.0.14, decord|&#x2714;|vision, video|[Qwen/Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Next)|
 |[Qwen/Qwen3.8-Flash-Next-FP8](https://modelscope.cn/models/Qwen/Qwen3.8-Flash-Next-FP8)|qwen4_exp|qwen4_exp|qwen3_5|transformers>=5.16.0, qwen_vl_utils>=0.0.14, decord|&#x2714;|vision, video|[Qwen/Qwen3.8-Flash-Next-FP8](https://huggingface.co/Qwen/Qwen3.8-Flash-Next-FP8)|
 |[iic/gme-Qwen2-VL-2B-Instruct](https://modelscope.cn/models/iic/gme-Qwen2-VL-2B-Instruct)|qwen2_gme|qwen2_gme|hermes|-|&#x2718;|vision|[Alibaba-NLP/gme-Qwen2-VL-2B-Instruct](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-2B-Instruct)|

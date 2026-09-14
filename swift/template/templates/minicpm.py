@@ -741,3 +741,15 @@ register_template(
         non_thinking_prefix='<think>\n\n</think>\n\n',
         agent_template='minicpm5',
     ))
+
+# Unlike MiniCPM5-1B, MiniCPM5-2B keeps the historical thinking content and adds an empty think block
+# to the assistant turns without thinking content.
+register_template(
+    ChatmlTemplateMeta(
+        LLMTemplateType.minicpm5_2b,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+        preserve_thinking=True,
+        agent_template='minicpm5',
+    ))

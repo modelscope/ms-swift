@@ -49,7 +49,7 @@ class TrainArgumentsMixin:
             and specify the API KEY corresponding to your account through `WANDB_API_KEY`.
         dataloader_num_workers (Optional[int]): The number of subprocesses to use for data loading. Defaults to None.
         dataloader_persistent_workers (bool): If True, the data loader workers will not be shut down after a dataset
-            has been consumed once. Defaults to False.
+            has been consumed once. Defaults to True.
         dataloader_prefetch_factor (Optional[int]): The number of batches loaded in advance by each worker. Defaults
             to None.
         use_liger_kernel (bool): Whether to use the Liger kernel for optimization. Defaults to False.
@@ -148,7 +148,7 @@ class TrainArgumentsMixin:
     lr_scheduler_kwargs: Optional[Union[dict, str]] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     dataloader_num_workers: Optional[int] = None
-    dataloader_persistent_workers: bool = False
+    dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: Optional[int] = None
     dataloader_multiprocessing_context: Optional[Literal['fork', 'spawn', 'forkserver']] = None
     use_liger_kernel: bool = False
