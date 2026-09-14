@@ -82,3 +82,19 @@ def test_no_scaling_without_trainer_scaling(training, model_accepts_loss_kwargs,
     actual = GRPOTrainer._undo_gradient_accumulation_scaling(trainer, loss)
 
     torch.testing.assert_close(actual, loss)
+
+
+@pytest.mark.parametrize('gradient_accumulation_steps', [1, 2, 4, 8])
+def test_auxiliary_loss_keeps_trainer_gradient_accumulation_scaling(gradient_accumulation_steps):
+    # SDAR/CHORD are averaged over the current micro-batch, so they still need the Trainer's division by the
+    # accumulation steps: over a window of `gradient_accumulation_steps` micro-batches their accumulated
+    # gradient is the mean over the window, not that mean times the number of accumulation steps. Mirrors
+    # `_compute_loss_and_metrics`: the window-normalized policy loss is compensated before they are added.
+    trainer = _make_trainer('dapo', gradient_accumulation_steps)
+    parameter = torch.tensor(1.0, requires_grad=True)
+    policy_loss = torch.tensor(0.0)  # window-normalized policy slice of one micro-batch
+    loss = GRPOTrainer._undo_gradient_accumulation_scaling(trainer, policy_loss) + 0.1 * parameter.square()
+    (loss / gradient_accumulation_steps).backward()
+
+    # one micro-batch contributes 0.2 / gradient_accumulation_steps, the whole window contributes 0.2
+    torch.testing.assert_close(parameter.grad * gradient_accumulation_steps, torch.tensor(0.2))
