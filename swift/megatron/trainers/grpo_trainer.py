@@ -5,7 +5,6 @@ from collections import defaultdict, deque
 from contextlib import contextmanager
 from copy import copy, deepcopy
 from functools import partial
-from mcore_bridge import set_random_seed
 from megatron.core import mpu
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -209,21 +208,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         """
         args = self.args
         resample_seed = getattr(args, 'seed', 42) + 1
-        try:
-            set_random_seed(
-                resample_seed,
-                args.data_parallel_random_init,
-                args.te_rng_tracker,
-            )
-            # TODO: VPP (Virtual Pipeline Parallelism)
-            resample_data_iterator = self._prepare_data_iterator(train_dataset, use_origin_cyclic=True)[0]
-        finally:
-            set_random_seed(
-                args.seed,
-                args.data_parallel_random_init,
-                args.te_rng_tracker,
-            )
-        return resample_data_iterator
+        # TODO: VPP (Virtual Pipeline Parallelism)
+        return self._prepare_data_iterator(train_dataset, use_origin_cyclic=True, seed=resample_seed)[0]
 
     def _build_rollout_buffer(self, data_iterator):
         num_gen_steps = self.steps_per_generation if self.unwrapped_models[0].training else 1

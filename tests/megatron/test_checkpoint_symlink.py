@@ -53,7 +53,8 @@ class TestAsyncSaveSymlink(unittest.TestCase):
         checkpoint_dir = os.path.join(root, 'checkpoint-2')
         os.makedirs(checkpoint_dir)
         request = FakeAsyncRequest()
-        args = types.SimpleNamespace(output_dir=root, async_save=async_save)
+        args = types.SimpleNamespace(
+            output_dir=root, async_save=async_save, no_save_rng=False, data_parallel_random_init=False)
 
         dist_checkpointing = mock.MagicMock()
         dist_checkpointing.save.return_value = request if async_save else None
