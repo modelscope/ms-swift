@@ -4,7 +4,7 @@ import datetime as dt
 import fnmatch
 import glob
 import hashlib
-import importlib.util
+import importlib
 import json
 import json_repair
 import numpy as np
@@ -413,19 +413,12 @@ def import_external_file(file_path: str):
     sys.path.insert(0, py_dir)
     if file_path not in _external_files:
         _external_files.append(file_path)
-    module_name = f'_swift_external_{hashlib.sha256(file_path.encode()).hexdigest()}'
-    if module_name in sys.modules:
-        return sys.modules[module_name]
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f'Cannot import external file: {file_path}')
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    try:
-        spec.loader.exec_module(module)
-    except Exception:
-        sys.modules.pop(module_name, None)
-        raise
+    # A reversible path keeps same-named files isolated and lets fresh workers import the
+    # module while unpickling, before worker_init_fn can replay the external plugins.
+    module_name = f'swift._external_plugins._{os.fsencode(file_path).hex()}'
+    module = importlib.import_module(module_name)
+    # Keep pickles written before the importable namespace working after the plugin is imported.
+    sys.modules[f'_swift_external_{hashlib.sha256(file_path.encode()).hexdigest()}'] = module
     return module
 
 
