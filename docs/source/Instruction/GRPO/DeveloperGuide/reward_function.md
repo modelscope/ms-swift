@@ -9,8 +9,8 @@
 
 ```python
 from swift.rewards import ORM, orms
-class DummyLengthRewardFunction(ORM)
-    def __call__(completions, **kwargs):
+class DummyLengthRewardFunction(ORM):
+    def __call__(self, completions, **kwargs):
         return [1.0 if len(completion) > 1024 else 0.0 for completion in completions]
 
 orms['dummy']= DummyLengthRewardFunction
@@ -22,7 +22,7 @@ orms['dummy']= DummyLengthRewardFunction
 
 第一种：在__call__入参中显式定义列名
 ```python
-    def __call__(completions, solution, trainer_state, **kwargs):
+    def __call__(self, completions, solution, trainer_state, **kwargs):
         print(solution)
         global_step = trainer_state.global_step
         max_steps = trainer_state.max_steps
@@ -31,7 +31,7 @@ orms['dummy']= DummyLengthRewardFunction
 
 第二种：在kwargs中获取
 ```python
-    def __call__(completions, **kwargs):
+    def __call__(self, completions, **kwargs):
         solution = kwargs.get('solution')
         trainer_state = kwargs.get('trainer_state')
         global_step = trainer_state.global_step
