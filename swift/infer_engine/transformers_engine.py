@@ -349,8 +349,8 @@ class TransformersEngine(InferEngine):
             return
         adapter_name = adapter_request.name
         if adapter_name not in self._adapters_pool:
-            self._adapters_pool[adapter_name] = adapter_request
             self._add_adapter(adapter_request.path, adapter_name)
+            self._adapters_pool[adapter_name] = adapter_request
         return [adapter_name]
 
     def _infer_forward(self, inputs: Dict[str, Any], adapter_request: Optional[AdapterRequest],
