@@ -5,7 +5,7 @@ from queue import Queue
 from threading import Event
 from transformers import GenerationConfig
 
-from swift.infer_engine import RequestConfig, TransformersEngine
+from swift.infer_engine import AdapterRequest, RequestConfig, TransformersEngine
 
 
 class _WorkerEngine(TransformersEngine):
@@ -43,6 +43,61 @@ class _WorkerEngine(TransformersEngine):
 
             return stream()
         return infer_requests
+
+
+class TestTransformersBatching(unittest.TestCase):
+
+    def enqueue(self, engine, text, config, adapter):
+        queue = Queue()
+        engine._queue.put((text, {'request_config': config, 'adapter_request': adapter}, queue))
+        return queue
+
+    def test_different_adapters_keep_their_request_options(self):
+        adapter = AdapterRequest('a', '/adapters/a')
+        for other in (None, AdapterRequest('b', '/adapters/b'), AdapterRequest('a', '/adapters/other')):
+            for reverse in (False, True):
+                for batch_size in (0, 1):
+                    with self.subTest(other=other, reverse=reverse, batch_size=batch_size):
+                        engine = _WorkerEngine()
+                        engine.max_batch_size = batch_size
+                        adapters = [adapter, other]
+                        if reverse:
+                            adapters.reverse()
+                        queues = [
+                            self.enqueue(engine, str(i), RequestConfig(), value) for i, value in enumerate(adapters)
+                        ]
+                        for i, expected in enumerate(adapters):
+                            kwargs, batch_queues = engine._fetch_infer_requests()
+                            self.assertEqual(kwargs['infer_requests'], [str(i)])
+                            self.assertEqual(kwargs['adapter_request'], expected)
+                            self.assertEqual(batch_queues, [queues[i]])
+                        self.assertIsNone(engine._fetch_infer_requests())
+
+    def test_equivalent_requests_still_batch_and_split(self):
+        for adapter in (None, AdapterRequest('a', '/adapters/a')):
+            for batch_size in (0, 2):
+                with self.subTest(adapter=adapter, batch_size=batch_size):
+                    engine = _WorkerEngine()
+                    engine.max_batch_size = batch_size
+                    queues = []
+                    for i in range(3):
+                        # Equivalent requests need not share the same config or adapter object.
+                        value = None if adapter is None else AdapterRequest(adapter.name, adapter.path)
+                        queues.append(self.enqueue(engine, str(i), RequestConfig(), value))
+                    other_queue = self.enqueue(engine, 'other_config', RequestConfig(max_tokens=7), adapter)
+                    offset = 0
+                    while offset < 3:
+                        kwargs, batch_queues = engine._fetch_infer_requests()
+                        end = min(offset + (batch_size or 3), 3)
+                        self.assertEqual(kwargs['infer_requests'], [str(i) for i in range(offset, end)])
+                        self.assertEqual(kwargs['adapter_request'], adapter)
+                        self.assertEqual(batch_queues, queues[offset:end])
+                        offset = end
+                    kwargs, batch_queues = engine._fetch_infer_requests()
+                    self.assertEqual(kwargs['infer_requests'], ['other_config'])
+                    self.assertEqual(kwargs['request_config'].max_tokens, 7)
+                    self.assertEqual(batch_queues, [other_queue])
+                    self.assertIsNone(engine._fetch_infer_requests())
 
 
 class TestTransformersWorker(unittest.IsolatedAsyncioTestCase):
