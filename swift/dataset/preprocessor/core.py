@@ -438,7 +438,10 @@ class AlpacaPreprocessor(ResponsePreprocessor):
 
 def default_repair_messages(s: Union[str, Any]) -> Any:
     if isinstance(s, str):
-        return ast.literal_eval(s)
+        try:
+            return json.loads(s)
+        except json.JSONDecodeError:
+            return ast.literal_eval(s)
     return s
 
 
