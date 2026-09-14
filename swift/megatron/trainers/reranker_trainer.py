@@ -2,8 +2,8 @@
 import torch.nn
 from collections import namedtuple
 from functools import partial
-from megatron.core.utils import get_attr_wrapped_model
 from megatron.core import mpu
+from megatron.core.utils import get_attr_wrapped_model
 
 from swift.loss import loss_map
 from swift.metrics import eval_metrics_map

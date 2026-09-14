@@ -437,7 +437,7 @@ class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
 register_template(GLM4_5TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
 
 
-class GLM5_3Template(GLM4_5VTemplate, GLM5_2Template):
+class GLM5NextTemplate(GLM4_5VTemplate, GLM5_2Template):
     """GLM-5.3-Flash: GLM-4.5V vision tokens, GLM-5.2 reasoning effort (low/high/max), NoPE text tower.
 
     `init_env_args` / `_get_system` come from GLM5_2Template through the MRO; the vision
@@ -465,8 +465,8 @@ class GLM5_3Template(GLM4_5VTemplate, GLM5_2Template):
 
 register_template(
     GLM4_7TemplateMeta(
-        MLLMTemplateType.glm5_3,
-        template_cls=GLM5_3Template,
+        MLLMTemplateType.glm5_next,
+        template_cls=GLM5NextTemplate,
         agent_template='glm5_1',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',

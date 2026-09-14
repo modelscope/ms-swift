@@ -1,5 +1,5 @@
 # transformers >= 5.16.1
-# pip install -U transformers 
+# pip install -U transformers
 
 # megatron dev
 # pip install git+https://github.com/NVIDIA/Megatron-LM.git@dev

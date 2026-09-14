@@ -535,10 +535,11 @@ register_model(
         [
             ModelGroup([
                 Model('ZhipuAI/GLM-5.3-Flash', 'zai-org/GLM-5.3-Flash'),
+                Model('ZhipuAI/GLM-5.3-Flash-BF16', 'zai-org/GLM-5.3-Flash-BF16'),
             ]),
         ],
         Glm5NextLoader,
-        template=TemplateType.glm5_3,
+        template=TemplateType.glm5_next,
         model_arch=ModelArch.glm4v,
         architectures=['Glm5NextForConditionalGeneration'],
         requires=['transformers>=5.16.0'],
