@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from functools import partial
 from mcore_bridge import set_random_seed
 from megatron.core import mpu
+from megatron.core.utils import get_attr_wrapped_model
 from transformers.utils import ContextManagers
 from typing import Dict, List, Optional
 
@@ -402,7 +403,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return loss, metric
 
     def forward_step(self, data_iterator, model):
-        unwrapped_model = model.module.module
+        unwrapped_model = get_attr_wrapped_model(model, 'get_input_tensor', return_model_obj=True)
         input_tensor = unwrapped_model.get_input_tensor()
         vp_stage = unwrapped_model.vp_stage
 

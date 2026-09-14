@@ -437,42 +437,30 @@ class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
 register_template(GLM4_5TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
 
 
-class GLM5_3Template(GLM4_5VTemplate):
-    """GLM-5.3-Flash: GLM-4.5V style vision tokens plus GLM-5.2 style reasoning effort.
+class GLM5_3Template(GLM4_5VTemplate, GLM5_2Template):
+    """GLM-5.3-Flash: GLM-4.5V vision tokens, GLM-5.2 reasoning effort (low/high/max), NoPE text tower.
 
-    GLM-5.3-Flash is a NoPE model (no rope_theta, no ``get_rope_index``), so the mRoPE
-    position-id computation inherited from GLM-4.5V does not apply; the default
-    sequential position ids are used instead.
+    `init_env_args` / `_get_system` come from GLM5_2Template through the MRO; the vision
+    handling comes from GLM4_5VTemplate.
     """
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
-        return {}
-
-    def init_env_args(self):
-        super().init_env_args()
-        # reasoning_effort: "low", "high" or "max"
-        self.reasoning_effort = get_env_args('reasoning_effort', str, 'max')
-        self.chat_template_kwargs['reasoning_effort'] = self.reasoning_effort
-
-    def _get_system(self, inputs):
-        system = super()._get_system(inputs)
-        reasoning_effort = inputs.chat_template_kwargs.get('reasoning_effort')
-        if reasoning_effort is None:
-            reasoning_effort = self.reasoning_effort
-        if self._get_enable_thinking(inputs):
-            effort_str = f'Reasoning Effort: {reasoning_effort.capitalize()}'
-            if system:
-                system = f'{effort_str}<|system|>{system}'
-            else:
-                system = effort_str
-        return system
+        # The text tower is NoPE (`qk_rope_head_dim=0`, `Glm5NextTextModel` passes
+        # `position_embeddings=None`), so there is no `get_rope_index` to call. The stacked
+        # `[text_pos, model_pos]` layout is still required: GLM4vPackingTemplateMixin.
+        # `_data_collator` slices row 0 off as `text_position_ids`, and
+        # `get_packed_seq_params` derives `cu_seqlens` from its per-sample restarts. Without
+        # it `packed_seq_params` is never built, and every fused mcore-bridge GLM-5.3 kernel
+        # (Triton kpool indexer, TileLang SparseMLA) requires `cu_seqlens` -- the DSA layers
+        # would silently fall back to an O(seq_len) python loop.
+        input_ids = inputs['input_ids']
+        position_ids = torch.arange(input_ids.shape[-1], device=input_ids.device)
+        position_ids = position_ids[None, None].expand(1, input_ids.shape[0], -1)
+        return {'position_ids': self._concat_text_position_ids(position_ids)}
 
     def init_processor(self, processor) -> None:
+        # skip super
         Template.init_processor(self, processor)
-        if not getattr(GLM5_3Template, '_patched', False) and self.padding_free:
-            GLM5_3Template._patched = True
-            from transformers.models.glm5_next import modeling_glm5_next
-            self._patch_create_causal_mask(modeling_glm5_next)
 
 
 register_template(
