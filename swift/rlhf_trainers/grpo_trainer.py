@@ -77,6 +77,10 @@ if is_wandb_available():
 if is_swanlab_available():
     import swanlab
 
+# Policy losses normalized by completion tokens of the whole gradient-accumulation window
+# rather than the current micro-batch. See GRPOTrainer._undo_gradient_accumulation_scaling.
+WINDOW_NORMALIZED_LOSS_TYPES = ('cispo', 'dapo', 'fipo')
+
 
 class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -1128,10 +1132,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.beta != 0.0:
                 kl_loss = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
                 loss = loss + kl_loss * self.beta
-        elif self.loss_type in ['cispo', 'dapo', 'fipo']:
+        elif self.loss_type in WINDOW_NORMALIZED_LOSS_TYPES:
             # CISPO, DAPO, and FIPO: Normalize by total completion tokens across all processes
             normalizer = grpo_batch.num_items_in_batch / self.accelerator.num_processes
             loss = (per_token_loss * completion_mask).sum() / normalizer
+            # Already a slice of the global token mean over the accumulation window.
+            # Trainer.training_step would divide by GAS again; undo that extra factor here
+            # so only these policy losses skip the second divide. Micro-batch means
+            # (GRPO/SAPO/BNPO/DR-GRPO) and aux terms (SDAR/CHORD) still use it.
+            loss = self._undo_gradient_accumulation_scaling(loss)
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
@@ -1220,6 +1229,26 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             loss = compute_chord_loss(self, grpo_loss=loss)
 
         return loss, metrics_data
+
+    def _undo_gradient_accumulation_scaling(self, loss: torch.Tensor) -> torch.Tensor:
+        """Undo Trainer.training_step GAS scaling for window-normalized policy losses.
+
+        DAPO/CISPO/FIPO already divide by the completion-token count of the whole
+        gradient-accumulation window (`grpo_batch.num_items_in_batch`). HuggingFace
+        `Trainer.training_step` then divides by `current_gradient_accumulation_steps`
+        when `model_accepts_loss_kwargs` is False (GRPOTrainer forces that so
+        micro-batch-mean losses such as GRPO still accumulate correctly). Multiplying
+        here cancels that extra factor.
+
+        Only the window-normalized policy loss should call this. Auxiliary terms
+        (SDAR/CHORD) are added afterwards so they still receive the Trainer divide.
+        """
+        if (self.loss_type not in WINDOW_NORMALIZED_LOSS_TYPES or not self.model.training
+                or self.model_accepts_loss_kwargs or self.compute_loss_func is not None):
+            return loss
+        gradient_accumulation_steps = getattr(self, 'current_gradient_accumulation_steps',
+                                              self.args.gradient_accumulation_steps)
+        return loss * gradient_accumulation_steps
 
     def _update_metrics(self, metrics_data):
         """Update metrics from metrics_data."""
