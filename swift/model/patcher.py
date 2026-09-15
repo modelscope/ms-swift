@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import transformers
 from accelerate.utils import find_device
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from functools import wraps
 from packaging import version
 from peft import PeftModel
@@ -388,10 +388,20 @@ def patch_automodel(model_info, model_meta, auto_model_cls, return_dummy_model, 
         if hasattr(cls, '_tp_plan'):  # fix tp_plan
             cls._tp_plan = cls._tp_plan or {}
         if return_dummy_model:
+            # `cls(config)` does not accept `device_map`, so honor `device_map='meta'` via a device context manager,
+            # otherwise the dummy model would be materialized on CPU and consume real memory.
+            # Note: only 'meta' is handled here. Other values (including 'cpu') must not open a device context,
+            # because callers such as `Template._get_model` already wrap this call in `torch.device('meta')`
+            # and an inner context would silently override it.
+            device_map = kwargs.get('device_map')
+            device_context = torch.device('meta') if device_map == 'meta' else nullcontext()
             origin_torch_dtype = torch.get_default_dtype()
             torch.set_default_dtype(kwargs['config'].torch_dtype)
-            model = cls(copy.deepcopy(kwargs['config']))
-            torch.set_default_dtype(origin_torch_dtype)
+            try:
+                with device_context:
+                    model = cls(copy.deepcopy(kwargs['config']))
+            finally:
+                torch.set_default_dtype(origin_torch_dtype)
         else:
             model = from_pretrained(cls, *args, **kwargs)
         return model

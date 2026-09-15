@@ -54,6 +54,11 @@
 - max_memory: device_map设置为'auto'或者'sequential'时，会根据max_memory进行模型权重的device分配，例如：`--max_memory '{0: "20GB", 1: "20GB"}'`。默认为None。该参数会透传入transformers的`from_pretrained`接口。
 - local_repo_path: 部分模型在加载时依赖于github repo，例如[deepseek-vl2](https://github.com/deepseek-ai/DeepSeek-VL2)。为了避免`git clone`时遇到网络问题，可以直接使用本地repo。该参数需要传入本地repo的路径, 默认为`None`。
 - init_strategy: 加载模型时，初始化模型中所有未初始化的参数（自定义模型架构时）。可选为'zero', 'uniform', 'normal', 'xavier_uniform', 'xavier_normal', 'kaiming_uniform', 'kaiming_normal', 'orthogonal'。默认为None。
+- load_model: 是否实例化模型。默认为True。设置为False时，只准备config和processor（tokenizer/image_processor），返回的model为None，且**不会下载权重文件**（`.bin`/`.safetensors`）。该参数通常用于调试tokenize过程和对话模板。
+- return_dummy_model: 是否只根据`config.json`构建模型（即`cls(config)`），跳过`from_pretrained`。默认为False。设置为True时，**模型架构完整但参数为随机初始化，且不会下载权重文件**。该参数需要`load_model`为True（否则拿不到模型对象）。建议结合`--device_map meta`使用，在meta设备上建图从而不占用真实内存。
+  - 提示：`load_model`和`return_dummy_model`只要有一个「生效」就不会加载权重，即唯一会加载权重的组合是`load_model=true`且`return_dummy_model=false`（默认值）。
+  - 注意：meta设备上的参数无法直接进行前向推理，如需推理请先调用`model.to_empty(device='cpu')`。
+  - 注意：设置`return_dummy_model=true`时，`new_special_tokens`不会触发`resize_token_embeddings`，只会修改config中的`vocab_size`。
 
 
 ### 数据参数
@@ -805,6 +810,8 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
   - 提示：你可以通过`--split_dataset_ratio`或者`--val_dataset`指定验证集内容。
 - template_mode: 用于支持对`swift rlhf`训练的`cached_dataset`功能。该参数只在`--to_cached_dataset true`时生效。可选项包括: 'train'、'rlhf'和'kto'。其中`swift pt/sft`使用'train'，`swift rlhf --rlhf_type kto`使用'kto'，其他rlhf算法使用'rlhf'。注意：当前'gkd', 'ppo', 'grpo'算法不支持`cached_dataset`功能。默认为'train'。
 - to_ollama: 产生ollama所需的Modelfile文件。默认为False。
+- to_model_summary: 打印模型架构、参数量统计以及tokenizer/template信息，默认为False。结合`--return_dummy_model true`可以在**不加载任何预训练权重**的情况下查看完整模型架构；结合`--load_model false`则只查看tokenizer和template。若指定了`--output_dir`，还会输出`model_summary.json`和`model_architecture.txt`。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/model_summary)。
+  - 注意：该参数与`--merge_lora`、`--quant_method`不兼容，因为二者都需要加载预训练权重。
 - 🔥to_mcore: HF格式权重转成Megatron格式。默认为False。
 - to_hf: Megatron格式权重转成HF格式。默认为False。
 - mcore_model: mcore格式模型路径。默认为None。
