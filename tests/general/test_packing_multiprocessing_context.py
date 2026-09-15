@@ -21,6 +21,7 @@ import multiprocessing as mp
 import os
 import pickle
 import shutil
+import signal
 import sys
 import tempfile
 import time
@@ -322,7 +323,11 @@ class TestPackingDatasetContexts(unittest.TestCase):
 
     @unittest.skipUnless(FORK_AVAILABLE, 'fork not available')
     def test_default_context(self):
-        self._assert_valid(_run_packing_dataset(None, self.rows), expected_total=len(self.rows))
+        dataset = _run_packing_dataset(None, self.rows)
+        self._assert_valid(dataset, expected_total=len(self.rows))
+        # Worker connections must not prevent passing the dataset to a spawn DataLoader.
+        restored = pickle.loads(pickle.dumps(dataset))
+        self.assertEqual([restored[i] for i in range(len(restored))], [dataset[i] for i in range(len(dataset))])
 
     @unittest.skipUnless(FORK_AVAILABLE and SPAWN_AVAILABLE, 'need both fork and spawn')
     def test_spawn_matches_fork(self):
@@ -336,6 +341,146 @@ class TestPackingDatasetContexts(unittest.TestCase):
         self._assert_valid(spawn_pd, expected_total=len(self.rows))
         self.assertEqual(fork_pd.packed_idx, spawn_pd.packed_idx)
         self.assertEqual(fork_pd.packed_length, spawn_pd.packed_length)
+
+
+class ControlledPackingDataset(PackingDataset):
+    PACKING_BATCH_SIZE = 4
+
+    def __init__(self, *args, worker_behavior=None, **kwargs):
+        self.worker_behavior = worker_behavior
+        super().__init__(*args, **kwargs)
+
+    def _worker_jobs(self, jobs, out_pipe):
+        return [(*job, self.worker_behavior) for job in super()._worker_jobs(jobs, out_pipe)]
+
+    @staticmethod
+    def create_packed_idx(rank, offset, lengths, out_queue, packing_length, packing_strategy, behavior):
+        if rank == 0:
+            if behavior == 'error':
+                raise ValueError('packing worker failed')
+            if behavior in ('exit', 'exit-zero'):
+                os._exit(1 if behavior == 'exit' else 0)
+        if behavior == 'start-error' or rank == 1 and behavior == 'partial':
+            time.sleep(60)
+        if behavior == 'slow' or rank == 1 and behavior in ('early', 'error', 'exit', 'exit-zero'):
+            time.sleep(3)
+        PackingDataset.create_packed_idx(rank, offset, lengths, out_queue, packing_length, packing_strategy)
+
+
+def _collect_map_packing_result(queue, behavior):
+
+    def interrupt_test(signum, frame):
+        raise RuntimeError('packing test timed out')
+
+    signal.signal(signal.SIGTERM, interrupt_test)
+    workers, readers = [], []
+    ctx = mp.get_context('fork')
+    make_pipe = ctx.Pipe
+
+    def record_pipe(*args, **kwargs):
+        reader, writer = make_pipe(*args, **kwargs)
+        if behavior == 'partial':
+            import fcntl
+
+            # Force the native result frame to exceed the pipe capacity, without allocating large data.
+            fcntl.fcntl(writer.fileno(), fcntl.F_SETPIPE_SZ, 4096)
+        readers.append(reader)
+        return reader, writer
+
+    def start_workers(*args, **kwargs):
+        if behavior == 'start-error' and workers:
+            raise RuntimeError('cannot start second packing worker')
+        started = _spawn_workers(*args, **kwargs)
+        workers.extend(started)
+        if behavior == 'partial' and len(workers) == 2:
+            # Kill a real writer under backpressure while its peer stays alive.
+            assert readers[0].poll(10), 'packing worker produced no output'
+            time.sleep(1)
+            workers[0].kill()
+            workers[0].join(timeout=5)
+            assert workers[0].exitcode == -9
+        if behavior == 'buffered':
+            # Completed workers may still have unread results and completion markers.
+            for worker in workers:
+                worker.join(timeout=10)
+                assert worker.exitcode == 0
+        return started
+
+    try:
+        with mock.patch('swift.dataset.packing._spawn_workers', side_effect=start_workers), \
+                mock.patch.object(ctx, 'Pipe', side_effect=record_pipe):
+            dataset = ControlledPackingDataset(
+                FakeTemplate(),
+                ListDataset(_make_rows(20000 if behavior in ('partial', 'large') else 8, 2)),
+                worker_behavior=behavior,
+                packing_num_proc=2,
+                packing_length=1 if behavior in ('partial', 'large') else 16,
+                packing_strategy='sequential',
+                multiprocessing_context='fork')
+        result = ('ok', [i for pack in dataset.packed_idx for i in pack], dataset.packed_length)
+    except Exception as exc:
+        if behavior == 'partial':
+            assert isinstance(exc.__cause__, OSError), 'expected an interrupted message body'
+        result = ('error', type(exc).__name__, str(exc))
+    finally:
+        # Inspect production cleanup before the test's fallback cleanup.
+        alive = any(worker.is_alive() for worker in workers)
+        for worker in workers:
+            if worker.is_alive():
+                worker.kill()
+            worker.join(timeout=5)
+    queue.put((result, alive))
+
+
+@unittest.skipUnless(FORK_AVAILABLE, 'fork required for bounded worker-failure tests')
+class TestPackingWorkerErrors(unittest.TestCase):
+
+    def _result(self, behavior):
+        ctx = mp.get_context('fork')
+        queue = ctx.Queue()
+        process = ctx.Process(target=_collect_map_packing_result, args=(queue, behavior))
+        process.start()
+        try:
+            result, alive = queue.get(timeout=15)
+            self.assertFalse(alive, 'packing left a worker running after returning')
+            return result
+        finally:
+            process.join(timeout=5)
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+            queue.close()
+
+    def test_worker_exception_reaches_parent(self):
+        result = self._result('error')
+        self.assertEqual(result[:2], ('error', 'RuntimeError'))
+        self.assertIn('worker', result[2].lower())
+
+    def test_abrupt_exit_reaches_parent(self):
+        self.assertEqual(self._result('exit')[:2], ('error', 'RuntimeError'))
+
+    def test_zero_exit_without_completion_reaches_parent(self):
+        self.assertEqual(self._result('exit-zero')[:2], ('error', 'RuntimeError'))
+
+    def test_live_slow_workers_finish(self):
+        self.assertEqual(self._result('slow'), ('ok', list(range(8)), [6, 6]))
+
+    def test_completed_worker_does_not_fail_slow_peer(self):
+        self.assertEqual(self._result('early'), ('ok', list(range(8)), [6, 6]))
+
+    @unittest.skipUnless(sys.platform == 'linux', 'requires configurable pipe capacity')
+    def test_worker_killed_during_result_write_reaches_parent(self):
+        self.assertEqual(self._result('partial')[:2], ('error', 'RuntimeError'))
+
+    def test_large_results_are_drained_before_joining_workers(self):
+        self.assertEqual(self._result('large'), ('ok', list(range(20000)), [1, 2] * 10000))
+
+    def test_start_failure_cleans_up_started_workers(self):
+        result = self._result('start-error')
+        self.assertEqual(result, ('error', 'RuntimeError', 'cannot start second packing worker'))
+
+    def test_queued_results_from_exited_workers_are_consumed(self):
+        self.assertEqual(self._result('buffered'), ('ok', list(range(8)), [6, 6]))
 
 
 def _drain(ipd):
