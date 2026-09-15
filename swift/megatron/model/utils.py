@@ -38,7 +38,8 @@ def get_mcore_model_config(args, hf_config):
     kwargs = hf_to_mcore_config(hf_config)
     kwargs['mcore_model_type'] = args.megatron_model_meta.model_type
     kwargs['hf_config'] = hf_config
-    for f in fields(ModelConfig):
+    config_cls = getattr(args.megatron_model_meta, 'config_cls', ModelConfig)
+    for f in fields(config_cls):
         key, value = f.name, getattr(args, f.name, None)
         if value is None or isinstance(value, (list, tuple)) and len(value) == 0:
             continue
@@ -71,7 +72,7 @@ def get_mcore_model_config(args, hf_config):
         kwargs['moe_enable_routing_replay'] = True
     if args.megatron_extra_kwargs:
         kwargs.update(args.megatron_extra_kwargs)
-    config = ModelConfig(**kwargs)
+    config = config_cls(**kwargs)
     if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
         setattr(config, 'use_flash_attn', True)
     _check_attention_backend(args, config)

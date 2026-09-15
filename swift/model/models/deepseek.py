@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import sys
 import torch
-from transformers import AutoModel, PretrainedConfig, PreTrainedModel
+from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, PretrainedConfig, PreTrainedModel
 from types import MethodType
 from typing import Any, Dict
 
@@ -187,6 +187,263 @@ register_model(
         ],
         template=TemplateType.deepseek_v4,
         architectures=['DeepseekV4ForCausalLM'],
+    ))
+
+
+class DeepseekV41Loader(ModelLoader):
+    # DeepSeek-V4.1 ships a composite `deepseek_v41` config (text + vision) whose
+    # `model_type`s are unknown to transformers. Register lightweight config classes
+    # so AutoConfig can load the on-disk config; the text config subclasses the
+    # native DeepseekV4Config and only adds the CSA2 source-layer routing fields.
+    def get_config(self, model_dir: str):
+        from huggingface_hub.dataclasses import strict
+        from transformers.models.deepseek_v4.configuration_deepseek_v4 import DeepseekV4Config
+        import transformers.models.deepseek_v4.configuration_deepseek_v4 as _v4_config
+
+        # CSA2 widens the per-layer ratio vocabulary beyond V4's {0, 4, 128}.
+        _csa2_ratio_to_layer_type = {
+            0: 'sliding_attention',
+            1: 'compressed_sparse_attention',
+            2: 'heavily_compressed_attention',
+            4: 'compressed_sparse_attention',
+            128: 'heavily_compressed_attention',
+        }
+
+        @strict
+        class DeepseekV41TextConfig(DeepseekV4Config):
+            model_type = 'deepseek_v41_text'
+            default_num_hash_layers = 0  # V4.1 drops the Hash-MoE bootstrap
+            # CSA2 source-layer routing
+            kv_source_layer_ids: list | None = None
+            index_source_layer_ids: list | None = None
+            candidate_source_layer_id: int | None = None
+            candidate_topk_blocks: int | None = None
+            candidate_block_size: int | None = None
+
+            def __post_init__(self, **kwargs):
+                # super() consumes (pops) the legacy `compress_ratios` to derive
+                # layer_types and discards it; peek it here so the raw per-layer
+                # ratios survive for the megatron parser (CSA2 reads the int list).
+                compress_ratios = kwargs.get('compress_ratios')
+                old = dict(_v4_config._COMPRESS_RATIO_TO_LAYER_TYPE)
+                _v4_config._COMPRESS_RATIO_TO_LAYER_TYPE.update(_csa2_ratio_to_layer_type)
+                try:
+                    super().__post_init__(**kwargs)
+                finally:
+                    _v4_config._COMPRESS_RATIO_TO_LAYER_TYPE.clear()
+                    _v4_config._COMPRESS_RATIO_TO_LAYER_TYPE.update(old)
+                self.compress_ratios = compress_ratios
+                # Store for vLLM compat (V4 config.json carries `num_hash_layers`
+                # but V4.1 derives it from `default_num_hash_layers=0`).
+                if not hasattr(self, 'num_hash_layers'):
+                    self.num_hash_layers = sum(
+                        1 for t in (self.mlp_layer_types or []) if t == 'hash_moe'
+                    )
+
+        class DeepseekV41VisionConfig(PretrainedConfig):
+            model_type = 'deepseek_v41_vision'
+
+        class DeepseekV41Config(PretrainedConfig):
+            model_type = 'deepseek_v41'
+            sub_configs = {'text_config': DeepseekV41TextConfig, 'vision_config': DeepseekV41VisionConfig}
+
+            # mcore-bridge's _set_inv_freq reads config.rope_scaling and expects
+            # the nested dict {'main': {…}, 'compress': {…}}.  The base class
+            # property ``rope_scaling`` returns ``self.rope_parameters`` which,
+            # via __getattr__ below, is intentionally flattened to the 'compress'
+            # sub-dict for vLLM compat.  Override the property so mcore gets the
+            # full nested dict while vLLM still gets the flat one via
+            # ``config.rope_parameters``.
+            @property
+            def rope_scaling(self):
+                return self.text_config.rope_parameters
+
+            @rope_scaling.setter
+            def rope_scaling(self, value):
+                # Allow assignment (PretrainedConfig.__init__ may set it from
+                # kwargs); silently ignore – the authoritative source is always
+                # text_config.rope_parameters.
+                pass
+
+            def __init__(self, text_config=None, vision_config=None, image_token_id=None, **kwargs):
+                if isinstance(text_config, dict):
+                    text_config = DeepseekV41TextConfig(**text_config)
+                elif text_config is None:
+                    text_config = DeepseekV41TextConfig()
+                if isinstance(vision_config, dict):
+                    vision_config = DeepseekV41VisionConfig(**vision_config)
+                self.text_config = text_config
+                self.vision_config = vision_config
+                self.image_token_id = image_token_id
+                # The mcore backbone reads `hf_config.layer_types` off the composite config
+                # (see mcore_bridge DSv4HybridSelfAttention); surface the text config's
+                # CSA2-derived layer_types so the shared DSv4 attention can index it.
+                self.layer_types = getattr(text_config, 'layer_types', None)
+                super().__init__(**kwargs)
+
+            def __getattr__(self, name):
+                # Delegate unknown attribute lookups to text_config so that vLLM
+                # and other consumers can read text-model attrs (vocab_size,
+                # hidden_size, num_attention_heads, …) directly from the
+                # composite config without needing explicit surfacing.
+                try:
+                    return super().__getattribute__(name)
+                except AttributeError:
+                    text_config = super().__getattribute__('text_config')
+                    if hasattr(text_config, name):
+                        value = getattr(text_config, name)
+                        # vLLM's V4 rope builder expects a flat rope_parameters
+                        # dict (keys like rope_type, rope_theta, …); the HF text
+                        # config structures it as {'main': {…}, 'compress': {…}}.
+                        # Return the 'compress' sub-dict which carries the full
+                        # parameter set (incl. yarn scaling info);  the builder
+                        # selects the right theta via per-layer compress_ratio.
+                        if name == 'rope_parameters' and isinstance(value, dict):
+                            compress = value.get('compress')
+                            if isinstance(compress, dict):
+                                return compress
+                        return value
+                    raise
+
+        AutoConfig.register('deepseek_v41_text', DeepseekV41TextConfig, exist_ok=True)
+        AutoConfig.register('deepseek_v41_vision', DeepseekV41VisionConfig, exist_ok=True)
+        AutoConfig.register('deepseek_v41', DeepseekV41Config, exist_ok=True)
+
+        # The megatron adapter save flow instantiates a dummy HF model via
+        # ``AutoModelForCausalLM(config)`` to extract LoRA target modules.
+        # Without an explicit model-class registration for the composite
+        # ``DeepseekV41Config`` this lookup fails. We register a thin wrapper
+        # that delegates to the native ``DeepseekV4ForCausalLM`` (text-only),
+        # which is sufficient for enumerating named parameters on ``meta``.
+        from transformers.models.deepseek_v4.modeling_deepseek_v4 import DeepseekV4ForCausalLM
+
+        class DeepseekV41ForCausalLM(DeepseekV4ForCausalLM):
+            config_class = DeepseekV41Config
+
+            def __init__(self, config):
+                # The parent expects a flat DeepseekV4Config; unwrap the composite.
+                text_config = getattr(config, 'text_config', config)
+                super().__init__(text_config)
+                self.config = config
+
+        AutoModelForCausalLM.register(DeepseekV41Config, DeepseekV41ForCausalLM, exist_ok=True)
+
+        # Register in vLLM's model registry so the colocate rollout engine can
+        # resolve the V4.1 architecture.  Internally V4.1 text layers are
+        # structurally identical to V4, so we re-use the same vLLM impl.
+        # We also monkey-patch load_weights to skip V4.1-only tensors
+        # (bias_vl, engram, compressor, indexer) that the V4 vLLM model
+        # doesn't instantiate.
+        try:
+            from vllm.models.deepseek_v4.nvidia.model import DeepseekV4ForCausalLM as _V4CausalLM
+            from vllm.model_executor.models.registry import ModelRegistry
+
+            # The external deep_gemm package may be outdated (missing
+            # tf32_hc_prenorm_gemm, fp8_einsum, etc.).  Force-replace it
+            # with vLLM's bundled copy which ships a complete API set.
+            import sys as _sys, importlib as _importlib
+            try:
+                _bundled_dg = _importlib.import_module('vllm.third_party.deep_gemm')
+                _sys.modules['deep_gemm'] = _bundled_dg
+            except ImportError:
+                pass
+
+            if 'DeepseekV41ForCausalLM' not in ModelRegistry.get_supported_archs():
+                _v4_orig_load_weights = _V4CausalLM.load_weights
+
+                # Monkey-patch _o_proj: V4's FlashMLA always uses FP8
+                # einsum for the output projection.  V4.1 bf16 checkpoints
+                # don't carry quantisation scales, so replace it with a
+                # simple bf16 grouped matmul (skips inverse RoPE too —
+                # acceptable for the tiny smoke-test).
+                from vllm.models.deepseek_v4.nvidia.flashmla import (
+                    DeepseekV4FlashMLAAttention as _FlashMLA,
+                )
+
+                def _bf16_o_proj(self, o, positions):
+                    import torch as _torch
+                    B = o.shape[0]
+                    hpg = self.n_local_heads // self.n_local_groups
+                    # (B, G, hpg*head_dim)
+                    o_g = o.reshape(B, self.n_local_groups, hpg * (self.nope_head_dim + self.rope_head_dim))
+                    w = self.wo_a.weight.data.view(self.n_local_groups, self.o_lora_rank, -1)
+                    z = _torch.einsum('bgr,gdr->bgd', o_g.float(), w.float()).to(o.dtype)
+                    result = self.wo_b(z.reshape(B, -1))
+                    return result[0] if isinstance(result, tuple) else result
+
+                _FlashMLA._o_proj = _bf16_o_proj
+
+                def _v41_compat_load_weights(self, weights):
+                    import math as _math
+                    from vllm.model_executor.models.utils import AutoWeightsLoader
+                    # V4.1-specific weight prefixes that the V4 vLLM model
+                    # doesn't have modules for:
+                    loader = AutoWeightsLoader(
+                        self,
+                        skip_substrs=[
+                            'mtp.',            # multi-token prediction
+                            'bias_vl',         # visual language gate bias
+                            'engram.',         # engram tables
+                            'compressor.',     # CSA compressor
+                            'indexer.',        # CSA indexer
+                            'aligner.',        # vision-to-text aligner
+                            'vision.',         # vision encoder
+                            'image_start',     # vision special tokens
+                            'image_end',
+                            'image_newline',
+                        ],
+                    )
+                    loaded = loader.load_weights(weights, mapper=self.hf_to_vllm_mapper)
+                    self.model.finalize_mega_moe_weights()
+
+                    # V4.1 doesn't ship hc_head_* weights; initialise them for
+                    # identity-like behaviour (equal-weight stream average).
+                    # sigmoid(base) = 1/hc_mult  →  base = log(p/(1-p))
+                    if hasattr(self.model, 'hc_head_fn'):
+                        hc_mult = self.model.hc_mult
+                        p = 1.0 / hc_mult
+                        base_val = _math.log(p / (1.0 - p))
+                        self.model.hc_head_fn.data.zero_()
+                        self.model.hc_head_base.data.fill_(base_val)
+                        self.model.hc_head_scale.data.zero_()
+                        loaded |= {
+                            'model.hc_head_fn',
+                            'model.hc_head_base',
+                            'model.hc_head_scale',
+                        }
+
+                    # Dynamic fp8 quantisation names the scale ``weight_scale``
+                    # but V4's _o_proj reads ``weight_scale_inv``. Alias it.
+                    for _, mod in self.named_modules():
+                        if hasattr(mod, 'weight_scale') and not hasattr(mod, 'weight_scale_inv'):
+                            mod.weight_scale_inv = mod.weight_scale
+
+                    return loaded
+
+                _V4CausalLM.load_weights = _v41_compat_load_weights
+                ModelRegistry.register_model(
+                    'DeepseekV41ForCausalLM',
+                    'vllm.models.deepseek_v4:DeepseekV4ForCausalLM',
+                )
+        except Exception:
+            pass  # vLLM not installed or incompatible version
+
+        return super().get_config(model_dir)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.deepseek_v41,
+        [
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V4.1-Flash', 'deepseek-ai/DeepSeek-V4.1-Flash'),
+            ]),
+        ],
+        DeepseekV41Loader,
+        template=TemplateType.deepseek_v41,
+        architectures=['DeepseekV41ForCausalLM'],
+        model_arch=ModelArch.deepseek_v41,
+        tags=['vision'],
     ))
 
 
