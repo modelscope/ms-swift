@@ -8,8 +8,10 @@ from transformers import PreTrainedModel
 from transformers import Trainer as HfTrainer
 from typing import Optional
 
+from swift.callbacks import callbacks_map
 from swift.trainers import SwiftMixin
 from swift.utils import patch_getattr
+
 
 if version.parse(trl.__version__) >= version.parse('0.26.0'):
     from trl.experimental.ppo import PPOTrainer as HFPPOTrainer
@@ -49,7 +51,6 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
                     'reward_model',
                     'value_model',
                     'eval_dataset',
-                    'callbacks',
                 ]
             }
             parameters = inspect.signature(ppo_trainer_init).parameters
@@ -62,6 +63,12 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
             else:
                 new_kwargs['tokenizer'] = self.tokenizer
             ppo_trainer_init(self, model=model, ref_model=ref_model, **new_kwargs)
+        # TRL's `PPOTrainer.__init__` rebuilds `callback_handler`, discarding the user callbacks that
+        # `SwiftMixin` registered on the HF Trainer. Re-register them onto the new handler here. We
+        # call `add_callback` directly (rather than `SwiftMixin._add_callbacks`/`_get_callbacks`,
+        # whose names/signatures differ between swift branches) so this works across versions.
+        for callback in self.args.callbacks:
+            self.add_callback(callbacks_map[callback](self.args, self))
         unwrap_model = self.accelerator.unwrap_model(self.model)
         patch_getattr(unwrap_model.__class__, 'policy')
 
