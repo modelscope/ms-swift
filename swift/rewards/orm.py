@@ -167,7 +167,7 @@ class CosineReward(ORM):
             else:
                 min_value = self.max_len_value_wrong
                 max_value = self.min_len_value_wrong
-            gen_len = len(ids)
+            gen_len = sum(map(len, ids)) if ids and isinstance(ids[0], list) else len(ids)
             reward = self.cosfn(gen_len, self.max_len, min_value, max_value)
             rewards.append(reward)
         return rewards
@@ -225,7 +225,7 @@ class SoftOverlong(ORM):
         rewards = []
         response_token_ids = kwargs.get('response_token_ids')
         for ids in response_token_ids:
-            completion_length = len(ids)
+            completion_length = sum(map(len, ids)) if ids and isinstance(ids[0], list) else len(ids)
             expected_len = self.soft_max_length - self.soft_cache_length
             exceed_len = completion_length - expected_len
             rewards.append(min(-exceed_len / self.soft_cache_length, 0))
