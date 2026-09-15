@@ -98,3 +98,21 @@ In this example:
 `base_url` and `model` represent the API endpoint and model name, respectively. `stream` indicates the stream parameter for the request.
 
 Note: For Deepseek-R1 series models, the output will be formatted as:`<thinking>{reasoning_content}</thinking>\n\n<answer>{content}</answer>`.
+
+You can also use an OpenAI-compatible AI gateway as the provider, for example [OrcaRouter](https://www.orcarouter.ai). Like OpenRouter, OrcaRouter exposes a provider/model namespace across many models — but through the single `https://api.orcarouter.ai/v1` endpoint it also combines adaptive routing, automatic failover, zero-markup inference, observability, guardrails, and agent-tool governance. It also runs gateway-level, zero-trust security for AI agents on the same endpoint — screening every prompt/response and governing every tool call on a default-deny basis, with no application code changes.
+
+```shell
+OPENAI_API_KEY="your_api_key" \
+swift sample \
+    --sampler_type distill \
+    --sampler_engine client \
+    --model deepseek/deepseek-reasoner \
+    --stream true \
+    --dataset tastelikefeet/competition_math#5 \
+    --num_return_sequences 1 \
+    --temperature 0.6 \
+    --top_p 0.95 \
+    --engine_kwargs '{"base_url":"https://api.orcarouter.ai/v1"}'
+```
+
+Set `OPENAI_API_KEY` to your OrcaRouter API key. Since OrcaRouter serves a unified namespace of providers and models, `model` can be any model exposed by the gateway, e.g. `deepseek/deepseek-reasoner`.
