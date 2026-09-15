@@ -94,7 +94,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             require_version('trl>=0.18', '`ld_alpha` requires that "trl>=0.18".')
 
         if self.template.packing:
-            self.model_accepts_loss_kwargs = True  # DPO consumes the accumulation-window pair count.
             self.accelerator.gather_for_metrics = new_gather_function
 
     def get_batch_samples(self, *args, **kwargs):
@@ -466,7 +465,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         pair_loss_scale = None
         if self.template.packing and num_items_in_batch is not None:
-            pair_loss_scale = self.args.gradient_accumulation_steps / num_items_in_batch
+            accumulation_steps = self.args.gradient_accumulation_steps
+            if not self.model_accepts_loss_kwargs:
+                accumulation_steps = getattr(self, 'current_gradient_accumulation_steps', accumulation_steps)
+            pair_loss_scale = accumulation_steps / num_items_in_batch
         compute_loss_context_manager = (
             torch.autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext())
         with compute_loss_context_manager:
