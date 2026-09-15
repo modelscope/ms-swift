@@ -16,7 +16,10 @@ class LISACallback(TrainerCallback):
         super().__init__(args, trainer)
         self.n_layers = args.lisa_activated_layers
         self.step_interval = args.lisa_step_interval
-        self.model = self.trainer.model
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        # Wait until the model exists and the optimizer has registered all layers.
+        self.model = kwargs['model']
         layers_name = None
         layers = None
         for name, module in self.model.named_modules():
@@ -28,8 +31,6 @@ class LISACallback(TrainerCallback):
         self.layers_attribute = layers_name
         self.total_layers = len(layers)
 
-        # Freeze all layers upon initialization
-        self.freeze_all_layers()
         self.active_layers_indices = []
         self.switch_active_layers()
 
