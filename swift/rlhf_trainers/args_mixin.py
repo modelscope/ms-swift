@@ -344,6 +344,7 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
         fipo_safety_threshold (Optional[float]): Safety threshold for negative advantages. Tokens with
             `advantage < 0` and importance ratio above this value have their FIPO influence weight capped to
             `[0.8, 1.0]` to avoid over-penalization. Defaults to 4.0.
+        m2_threshold (float): Batch-level second-moment threshold used by M2PO. Defaults to 0.04.
         advantage_estimator (Literal['grpo', 'rloo', 'reinforce_plus_plus']): The advantage estimation
             function to use. 'grpo' calculates the relative advantage within a group. Options are 'grpo', 'rloo',
             'reinforce_plus_plus'. Defaults to 'grpo'.
@@ -467,6 +468,9 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     fipo_clip_range: Optional[float] = 0.2
     fipo_clip_high_only: bool = True
     fipo_safety_threshold: Optional[float] = 4.0
+
+    # M2PO https://arxiv.org/abs/2510.01161
+    m2_threshold: float = 0.04
 
     num_generations_eval: Optional[int] = None
 
