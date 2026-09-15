@@ -262,9 +262,9 @@ class ReactORM(ORM):
                 f1.append(0)
             elif not ref_is_json and not cand_is_json:
                 rougel = ReactORM.evaluate_rougel([ref_input_json], [cand_input_json])
-                if rougel is None or rougel < 10:
+                if rougel is None or rougel < 0.1:
                     f1.append(0)
-                elif 10 <= rougel < 20:
+                elif 0.1 <= rougel < 0.2:
                     f1.append(0.1)
                 else:
                     f1.append(1)
