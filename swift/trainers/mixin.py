@@ -1347,7 +1347,7 @@ class DataLoaderMixin:
             return {'multiprocessing_context': mp_context}
         return {}
 
-    def get_sp_dataloader(self, dataset, batch_size, skip_batches=0):
+    def get_sp_dataloader(self, dataset, batch_size, skip_batches=0, *, shuffle=True, seed=42):
 
         data_collator = self.data_collator
         if isinstance(dataset, datasets.Dataset):
@@ -1355,7 +1355,7 @@ class DataLoaderMixin:
         else:
             data_collator = self._get_collator_with_removed_columns(data_collator, description='training')
         if hasattr(dataset, '__len__'):
-            sampler = SequenceParallelSampler(sequence_parallel, dataset, seed=42)
+            sampler = SequenceParallelSampler(sequence_parallel, dataset, shuffle=shuffle, seed=seed)
             dataloader_params = {
                 'batch_size': batch_size,
                 'collate_fn': data_collator,
@@ -1394,7 +1394,12 @@ class DataLoaderMixin:
     def get_train_dataloader(self, skip_batches=0):
         dataloader = None
         if self.template.sequence_parallel_size > 1:
-            dataloader = self.get_sp_dataloader(self.train_dataset, self._train_batch_size, skip_batches=skip_batches)
+            dataloader = self.get_sp_dataloader(
+                self.train_dataset,
+                self._train_batch_size,
+                skip_batches=skip_batches,
+                shuffle=self.args.train_dataloader_shuffle,
+                seed=self.args.data_seed or 0)
         if dataloader is None:
             # Higher efficiency
             if self.train_dataset is None:
