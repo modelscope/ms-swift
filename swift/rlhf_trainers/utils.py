@@ -1097,14 +1097,21 @@ def patch_vllm_moe_model_weight_loader(model, *, load_preprocessed_weight: bool 
     original_model._swift_moe_weight_loader_patched = True
 
 
-def finish_vllm_weight_reload(vllm_model, model_config, target_device):
+def finish_vllm_weight_reload(vllm_model, model_config, target_device, *, strict: bool = False):
     if vllm_model is None or model_config is None or target_device is None:
         return
     try:
-        from vllm.model_executor.model_loader.utils import process_weights_after_loading
+        from vllm.model_executor.model_loader import utils as model_loader_utils
+
+        # Older vLLM releases do not expose the post-load helper.
+        process_weights_after_loading = getattr(model_loader_utils, 'process_weights_after_loading', None)
+        if process_weights_after_loading is None:
+            return
+        target_device = torch.device(target_device)
         process_weights_after_loading(vllm_model, model_config, target_device)
     except Exception:
-        return
+        if strict:
+            raise
 
 
 _cached_reverse_renamings = None
