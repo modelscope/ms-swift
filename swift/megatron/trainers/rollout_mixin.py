@@ -634,7 +634,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
                 patch_vllm_moe_model_weight_loader(llm_model)
                 llm_model.load_weights(weight_iterator)
                 _model_config = self.engine.engine.model_config
-                finish_vllm_weight_reload(llm_model, model_config=_model_config, target_device=self.device)
+                finish_vllm_weight_reload(llm_model, model_config=_model_config, target_device=self.device, strict=True)
         elif self.vllm_mode == 'server':
             self._load_weights_to_server_in_buckets(weight_iterator)
             if self.is_main_process:

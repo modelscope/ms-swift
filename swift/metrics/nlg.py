@@ -25,7 +25,13 @@ def compute_rouge_bleu(preds: List[str], labels: List[str]):
                 metric.update(0.)
             continue
         rouge = Rouge()
-        scores = rouge.get_scores(' '.join(hypothesis), ' '.join(reference))[0]
+        hypothesis_text = ' '.join(hypothesis)
+        reference_text = ' '.join(reference)
+        # Rouge splits on periods and drops empty segments; a period-only string leaves no sentences.
+        if hypothesis_text.strip('.') and reference_text.strip('.'):
+            scores = rouge.get_scores(hypothesis_text, reference_text)[0]
+        else:
+            scores = {key: {'f': 0.0} for key in rouge.metrics}
         for k, v in scores.items():
             score_dict[k].update(v['f'])
         bleu_score = sentence_bleu([reference], hypothesis, smoothing_function=SmoothingFunction().method3)

@@ -8,7 +8,7 @@ from transformers import GenerationConfig
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from swift.infer_engine import RequestConfig, TransformersEngine, AdapterRequest
+from swift.infer_engine import AdapterRequest, RequestConfig, TransformersEngine
 from swift.infer_engine.utils import TokensIteratorStreamer
 
 
