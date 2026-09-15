@@ -1,0 +1,3 @@
+{
+    "<tool_call>.+?</tool_call>": [2.0]
+}
