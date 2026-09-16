@@ -21,27 +21,33 @@ class LISACallback(TrainerCallback):
     def on_train_begin(self, args, state, control, **kwargs):
         # Wait until the model exists and the optimizer has registered all layers.
         self.model = extract_model_from_parallel(kwargs['model'], keep_torch_compile=False)
-        model_arch = getattr(getattr(self.model, 'model_meta', None), 'model_arch', None)
+        model_meta = getattr(self.model, 'model_meta', None)
+        model_arch = getattr(model_meta, 'model_arch', None)
+        module_list = getattr(model_arch, 'module_list', None)
         layer_prefixes = getattr(model_arch, 'language_model', None)
-        if getattr(model_arch, 'module_list', None):
-            layer_prefixes = [model_arch.module_list]
+        if module_list:
+            layer_prefixes = [module_list]
+        if getattr(model_meta, 'is_multimodal', False) and not layer_prefixes:
+            raise ValueError('LISA requires model_arch.module_list or language_model for multimodal models.')
         excluded_prefixes = [
             prefix for key in ('vision_tower', 'aligner', 'generator') for prefix in getattr(model_arch, key, [])
         ]
-        layers_name = None
-        layers = None
+        layer_names = []
         for name, module in self.model.named_modules():
+            if not isinstance(module, torch.nn.ModuleList) or (module_list and name != module_list):
+                continue
             if layer_prefixes and not any(name == prefix or name.startswith(f'{prefix}.') for prefix in layer_prefixes):
                 continue
             if any(name == prefix or name.startswith(f'{prefix}.') for prefix in excluded_prefixes):
                 continue
-            if isinstance(module, torch.nn.ModuleList):
-                layers_name = name
-                layers = module
-                break
-        assert layers_name is not None
-        self.layers_attribute = layers_name
-        self.total_layers = len(layers)
+            # Nested lists (e.g. MoE experts) belong to the enclosing layer stack.
+            if not any(not parent or name.startswith(f'{parent}.') for parent in layer_names):
+                layer_names.append(name)
+        if len(layer_names) != 1:
+            raise ValueError('LISA could not uniquely identify the layer list. '
+                             f'Set model_arch.module_list explicitly. Candidates: {layer_names}')
+        self.layers_attribute = layer_names[0]
+        self.total_layers = len(self.model.get_submodule(self.layers_attribute))
 
         self.active_layers_indices = []
         self.switch_active_layers()
