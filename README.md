@@ -30,13 +30,13 @@
 </p>
 
 ## 📖 Table of Contents
-- [Groups](#-Groups)
+- [Groups](#-groups)
 - [Introduction](#-introduction)
 - [News](#-news)
 - [Installation](#%EF%B8%8F-installation)
-- [Quick Start](#-quick-Start)
-- [Usage](#-Usage)
-- [License](#-License)
+- [Quick Start](#-quick-start)
+- [Usage](#-usage)
+- [License](#-license)
 - [Citation](#-citation)
 
 
