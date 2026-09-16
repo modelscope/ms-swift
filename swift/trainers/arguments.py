@@ -123,6 +123,18 @@ class TrainArgumentsMixin:
             It is recommended to use this with `PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` to prevent CUDA OOM
             errors during training. Defaults to False.
 
+        offload_expert_optimizer (bool): When set together with `expert_parallel_size > 1`, the expert
+            optimizer state (m/v/gradients) is offloaded to CPU, reducing GPU memory. The CPU AdamW step
+            is driven by `ExpertOptimizerCallback` after gradient clipping. Defaults to False.
+        expert_optimizer_backend (str): Backend for CPU AdamW. Options: 'torch' (functional adamw) or
+            'deepspeed' (DeepSpeedCPUAdam, a faster multithreaded kernel). Defaults to 'torch'.
+        expert_optimizer_dtype (str): Precision of CPU optimizer state. 'bf16' (default): bf16 m/v, no
+            master; 'fp32'/'mixed': fp32 master + fp32 m/v.
+        expert_optimizer_pin_memory (bool): Page-lock CPU state for faster H2D/D2H (risky for large
+            state; counts against cgroup limit). Defaults to False.
+        expert_optimizer_num_threads (Optional[int]): CPU threads for expert AdamW step. Auto-detected
+            from cgroup CPU quota by default, capped at 64.
+
         logging_dir (Optional[str]): The directory for TensorBoard logs. Defaults to `f'{output_dir}/runs'`.
         warmup_ratio (float): The ratio of total training steps used for a linear warmup. Defaults to 0.
     """
@@ -210,6 +222,14 @@ class TrainArgumentsMixin:
 
     # dlrover flash_checkpoint
     use_flash_ckpt: bool = False
+
+    # Expert parallel CPU-offloaded optimizer (only effective with expert_parallel_size > 1).
+    # Frees expert Adam state + gradients from GPU, runs CPU AdamW step per global step.
+    offload_expert_optimizer: bool = False
+    expert_optimizer_backend: str = 'torch'  # 'torch' or 'deepspeed'
+    expert_optimizer_dtype: str = 'bf16'     # 'bf16' or 'fp32'/'mixed'
+    expert_optimizer_pin_memory: bool = False
+    expert_optimizer_num_threads: Optional[int] = None
 
     # `logging_dir` was removed in transformers>=5.15 in favor of the `TENSORBOARD_LOGGING_DIR` environment
     # variable, and `warmup_ratio` (deprecated since 5.12) in favor of a float-valued `warmup_steps`. They

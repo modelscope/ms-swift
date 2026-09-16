@@ -10,6 +10,7 @@ from swift.infer_engine import prepare_generation_config
 from swift.ray_utils import RayHelper
 from swift.sequence_parallel import sequence_parallel
 from swift.trainers import TrainerFactory
+from swift.expert_parallel import expert_parallel
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array
 from ..base import SwiftPipeline
 from ..utils import get_cached_dataset
@@ -55,6 +56,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         if args.sequence_parallel_size > 1:
             sequence_parallel.prepare(
                 args.sequence_parallel_size, model=self.model, tokenizer=self.processor, padding_free=args.padding_free)
+        if args.expert_parallel_size > 1:
+            expert_parallel.prepare(args.expert_parallel_size, model=self.model)
+            self.expert_parallel = expert_parallel
         if self.model is None:
             return
         if hasattr(self.model, 'hf_device_map'):
@@ -186,6 +190,16 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             eval_dataset=val_dataset,
             **self._get_trainer_kwargs(),
         )
+        # When expert parallel is active, inject ignored modules into the FSDP2 plugin
+        # so that expert modules (already sharded on the EP mesh) are excluded from FSDP2 wrapping.
+        # This must happen before trainer.train() which calls accelerator.prepare().
+        if args.expert_parallel_size > 1:
+            ignored_modules = self.expert_parallel.ignored_modules
+            if ignored_modules:
+                fsdp_plugin = getattr(trainer.accelerator.state, 'fsdp_plugin', None)
+                if fsdp_plugin is not None:
+                    setattr(fsdp_plugin, 'ignored_modules', ignored_modules)
+                    logger.info(f'FSDP2: set ignored_modules for expert parallel ({len(ignored_modules)} modules)')
         return self.train(trainer)
 
     def _get_trainer_kwargs(self):

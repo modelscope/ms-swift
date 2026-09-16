@@ -227,6 +227,13 @@ class InitModelStrategy:
 
 
 def get_default_device_map():
+    # Expert Parallel requires CPU loading to avoid OOM during model initialization
+    # Model will be moved to GPU after EP sharding (broadcast + scatter)
+    if os.environ.get('SWIFT_EXPERT_PARALLEL', '0') != '0':
+        rank = get_dist_setting()[0]
+        if rank == 0 or rank == -1:
+            return None  # rank 0 loads full model to CPU
+        return 'meta'     # other ranks use meta device (no RAM)
     if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False').lower() == 'true':
         return None
     local_rank = get_dist_setting()[1]
