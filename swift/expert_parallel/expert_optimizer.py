@@ -191,6 +191,21 @@ class ExpertCPUOptimizer:
         """A view of the shared write-back scratch shaped like `ref`."""
         return self._scratch_wb[:ref.numel()].view(ref.shape)
 
+    def _d2h_grad(self, grad_local):
+        """D2H copy the GPU gradient into the shared CPU scratch buffer, then synchronize."""
+        grad_cpu = self._grad_buf(grad_local)
+        grad_cpu.copy_(grad_local, non_blocking=True)
+        if grad_local.is_cuda:
+            torch.cuda.current_stream().synchronize()
+        return grad_cpu
+
+    def _h2d_weight(self, updated, weight_local):
+        """H2D write-back the updated weight into the GPU param's local shard (blocking)."""
+        wb = self._wb_buf(weight_local)
+        if updated is not wb:
+            wb.copy_(updated.to(wb.dtype))
+        weight_local.copy_(wb, non_blocking=False)
+
     def _init_deepspeed(self):
         try:
             from deepspeed.ops.adam import DeepSpeedCPUAdam
@@ -260,12 +275,8 @@ class ExpertCPUOptimizer:
             grad_local = self._local(p.grad)
             weight_local = self._local(p)  # GPU bf16 shard (updated in place)
 
-            # 1. D2H the clipped gradient into the shared fp32 scratch (sliced to this param).
-            grad_cpu = self._grad_buf(grad_local)
-            grad_cpu.copy_(grad_local, non_blocking=True)
-            # ensure the D2H copy has landed before the CPU reads it
-            if grad_local.is_cuda:
-                torch.cuda.current_stream().synchronize()
+            # 1. D2H the clipped gradient into the shared scratch (sliced to this param).
+            grad_cpu = self._d2h_grad(grad_local)
 
             if self.use_master:
                 # fp32 master IS the optimizer param; grad already fp32 (D2H upcast).
@@ -307,13 +318,9 @@ class ExpertCPUOptimizer:
             )
 
             # 2. H2D the updated weight back into the GPU param's local shard.
-            #    Blocking copy: the write-back source `wb` is a SHARED scratch buffer reused
-            #    by the next param, so the H2D must complete before the loop overwrites it.
-            updated = params_list[0]
-            wb = self._wb_buf(weight_local)
-            if updated is not wb:
-                wb.copy_(updated.to(wb.dtype))
-            weight_local.copy_(wb, non_blocking=False)
+            #    The write-back source is a SHARED scratch buffer reused by the
+            #    next param, so the H2D must complete before the loop overwrites it.
+            self._h2d_weight(params_list[0], weight_local)
         # make sure all weight write-backs complete before the next forward reads them
         if torch.cuda.is_available():
             torch.cuda.current_stream().synchronize()
@@ -324,10 +331,7 @@ class ExpertCPUOptimizer:
                 continue
             cpu_p = self._ds_param_for[p]
             grad_local = self._local(p.grad)
-            grad_cpu = self._grad_buf(grad_local)
-            grad_cpu.copy_(grad_local, non_blocking=True)
-            if grad_local.is_cuda:
-                torch.cuda.current_stream().synchronize()
+            grad_cpu = self._d2h_grad(grad_local)
             # DeepSpeedCPUAdam reads cpu_p.grad in place; give it a private (cloned) grad
             # since the shared scratch is reused across params.
             cpu_p.grad = grad_cpu.clone()
@@ -338,9 +342,7 @@ class ExpertCPUOptimizer:
             cpu_p = self._ds_param_for[p]
             cpu_p.grad = None
             weight_local = self._local(p)
-            wb = self._wb_buf(weight_local)
-            wb.copy_(cpu_p.detach().to(wb.dtype))
-            weight_local.copy_(wb, non_blocking=False)  # shared scratch -> blocking
+            self._h2d_weight(cpu_p.detach(), weight_local)
             self.state[p]['step'] += 1
         if torch.cuda.is_available():
             torch.cuda.current_stream().synchronize()

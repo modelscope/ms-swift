@@ -59,6 +59,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         if args.expert_parallel_size > 1:
             expert_parallel.prepare(args.expert_parallel_size, model=self.model)
             self.expert_parallel = expert_parallel
+        if args.fsdp:
+            from swift.expert_parallel.utils import cast_trainable_params_to_uniform_dtype
+            cast_trainable_params_to_uniform_dtype(self.model)
         if self.model is None:
             return
         if hasattr(self.model, 'hf_device_map'):
@@ -194,12 +197,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         # so that expert modules (already sharded on the EP mesh) are excluded from FSDP2 wrapping.
         # This must happen before trainer.train() which calls accelerator.prepare().
         if args.expert_parallel_size > 1:
-            ignored_modules = self.expert_parallel.ignored_modules
-            if ignored_modules:
-                fsdp_plugin = getattr(trainer.accelerator.state, 'fsdp_plugin', None)
-                if fsdp_plugin is not None:
-                    setattr(fsdp_plugin, 'ignored_modules', ignored_modules)
-                    logger.info(f'FSDP2: set ignored_modules for expert parallel ({len(ignored_modules)} modules)')
+            self.expert_parallel.inject_ignored_modules(trainer)
         return self.train(trainer)
 
     def _get_trainer_kwargs(self):

@@ -42,6 +42,7 @@ from types import MethodType
 from typing import Callable, Dict, List, Optional
 
 from swift.callbacks import callbacks_map
+from swift.expert_parallel.trainer_mixin import ExpertParallelMixin
 from swift.dataloader import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
 from swift.hub import get_hub
 from swift.loss import loss_map
@@ -65,7 +66,7 @@ logger = get_logger()
 transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0')
 
 
-class SwiftMixin:
+class SwiftMixin(ExpertParallelMixin):
     FLASH_CKPT_WAIT_TIMEOUT = 1800
 
     def __init__(self,
@@ -747,120 +748,17 @@ class SwiftMixin:
     @contextmanager
     def _fix_grad_norm_nan():
         from accelerate import Accelerator
-        from torch.distributed.tensor import DTensor
-        origin_clip_grad_norm_ = Accelerator.clip_grad_norm_
-
-        def _get_param_mesh(p):
-            # Use the parameter's grad (prefer) or the parameter itself as the DTensor mesh key
-            target = p.grad if (p.grad is not None and isinstance(p.grad, DTensor)) else p
-            if isinstance(target, DTensor):
-                return target.device_mesh
-            return None  # plain Tensor goes into one group
-
-        @torch.no_grad()
-        def _norm_of_cpu_dtensor_grad(grad, norm_type):
-            """Compute the norm of a CPU DTensor grad without using DTensor
-            all_reduce (which has no CPU backend).  We materialise the full
-            tensor on the mesh device (CUDA), compute the norm there, and
-            return a plain (CPU) scalar."""
-            full = grad.to(grad.device_mesh.device_type).full_tensor()
-            return torch.linalg.vector_norm(full, norm_type).cpu()
-
-        @torch.no_grad()
-        def _clip_cpu_dtensor_grad_with_norm_(param, max_norm, total_norm):
-            """Clip a CPU DTensor grad in-place using a pre-computed total_norm.
-            We cannot assign a CUDA grad to a CPU param, so we do the scale
-            computation on the local CPU shard directly."""
-            if total_norm == 0 or not torch.isfinite(total_norm):
-                return
-            clip_coef = max_norm / (total_norm + 1e-6)
-            if clip_coef < 1.0:
-                local_grad = param.grad.to_local()
-                local_grad.mul_(clip_coef)
+        from swift.expert_parallel.grad_norm import clip_grad_norm_multi_mesh
+        origin_fn = Accelerator.clip_grad_norm_
 
         def clip_grad_norm_(self, parameters, *args, **kwargs):
-            parameters = [p for p in parameters if p.grad is not None]
-            # ---- Separate CPU DTensor grads from the rest ----
-            # CPU DTensor grads arise when FSDP2 CPUOffload is enabled (the
-            # "offload" keyword in --fsdp).  In that mode FSDP2 moves params
-            # and their gradients to CPU, but DTensor's c10d_functional backend
-            # only supports CUDA — attempting all_reduce on a CPU DTensor
-            # raises "No backend type associated with device type cpu".
-            # We compute their norms separately (materialising via
-            # .to(mesh_device).full_tensor()) and merge into the global norm.
-            cpu_dt_params = []  # params whose grad is a CPU DTensor (FSDP2 CPUOffload)
-            other_params = []   # everything else (CUDA DTensors, plain tensors)
-            for p in parameters:
-                g = p.grad
-                if isinstance(g, DTensor) and g.device.type == 'cpu':
-                    cpu_dt_params.append(p)
-                else:
-                    other_params.append(p)
-
-            max_norm = args[0] if len(args) > 0 else kwargs.get('max_norm')
-            norm_type = float(args[1]) if len(args) > 1 else float(kwargs.get('norm_type', 2.0))
-
-            # ---- Compute norms for the two groups separately ----
-            other_norm = None
-            if other_params:
-                # Group other_params by mesh for the original logic
-                mesh_to_params = {}
-                for p in other_params:
-                    key = _get_param_mesh(p)
-                    mesh_to_params.setdefault(key, []).append(p)
-                if len(mesh_to_params) <= 1 and not cpu_dt_params:
-                    # Single mesh, no CPU DTensor grads — delegate entirely
-                    grad_norm = origin_clip_grad_norm_(self, other_params, *args, **kwargs)
-                    if isinstance(grad_norm, torch.Tensor) and grad_norm.isnan().item():
-                        for p in other_params:
-                            p.grad = None
-                    return grad_norm
-                # Multi-mesh path for other_params
-                group_norms = []
-                for group_params in mesh_to_params.values():
-                    grads = [p.grad for p in group_params]
-                    group_norm = torch.nn.utils.get_total_norm(
-                        grads, norm_type=norm_type, error_if_nonfinite=False
-                    )
-                    if isinstance(group_norm, DTensor):
-                        if group_norm.device.type == 'cpu':
-                            group_norm = group_norm.to(group_norm.device_mesh.device_type)
-                        group_norm = group_norm.full_tensor()
-                    group_norms.append(group_norm)
-                if group_norms:
-                    stacked = torch.stack([g.to(group_norms[0].device).reshape(()) for g in group_norms])
-                    other_norm = torch.linalg.vector_norm(stacked, norm_type)
-
-            cpu_dt_norm = None
-            if cpu_dt_params:
-                cpu_norms = [_norm_of_cpu_dtensor_grad(p.grad, norm_type) for p in cpu_dt_params]
-                cpu_dt_norm = torch.linalg.vector_norm(torch.stack(cpu_norms), norm_type)
-
-            # ---- Merge into a global total_norm ----
-            norm_parts = [n for n in (other_norm, cpu_dt_norm) if n is not None]
-            if len(norm_parts) == 1:
-                total_norm = norm_parts[0]
-            else:
-                # Both are plain CPU scalars; combine on CPU
-                total_norm = torch.linalg.vector_norm(torch.stack([n.cpu().reshape(()) for n in norm_parts]), norm_type)
-
-            # ---- Clip each group using the combined total_norm ----
-            if other_params:
-                torch.nn.utils.clip_grads_with_norm_(other_params, max_norm, total_norm)
-            for p in cpu_dt_params:
-                _clip_cpu_dtensor_grad_with_norm_(p, max_norm, total_norm)
-
-            # NaN guard
-            if isinstance(total_norm, torch.Tensor) and total_norm.isnan().item():
-                for p in parameters:
-                    p.grad = None
-            return total_norm
+            return clip_grad_norm_multi_mesh(self, parameters, *args, **kwargs, origin_fn=origin_fn)
 
         Accelerator.clip_grad_norm_ = clip_grad_norm_
         try:
             yield
         finally:
-            Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
+            Accelerator.clip_grad_norm_ = origin_fn
 
     def _patch_tasks(self):
         if isinstance(self.model, PeftModel):
@@ -1221,7 +1119,11 @@ class SwiftMixin:
         if self.optimizer is not None:
             self.optimizer.param_groups = [pg for pg in self.optimizer.param_groups if len(pg['params']) > 0]
             self._maybe_create_expert_cpu_optimizer()
-            self._disable_fused_for_cross_mesh_params()
+            # Only needed when expert params remain in the main optimizer
+            # (i.e. offload_expert_optimizer is False); otherwise they have
+            # already been carved out and all params share the same mesh.
+            if self.expert_optimizer is None:
+                self._disable_fused_for_cross_mesh_params()
             self._disable_foreach_for_deepspeed()
         return self.optimizer
 
@@ -1231,143 +1133,6 @@ class SwiftMixin:
             optimizer = getattr(self, '_optimizer_ori', None)
         self.lr_scheduler = self.optimizer_callback.create_scheduler(num_training_steps, optimizer)
         return self.lr_scheduler
-
-    # ------------------------------------------------------------------
-    # Expert parallel optimizer integration
-    # ------------------------------------------------------------------
-
-    def _maybe_create_expert_cpu_optimizer(self):
-        """Carve EP expert params out of the HF optimizer into a CPU-offloaded optimizer.
-
-        When `offload_expert_optimizer` is set under expert parallel, the expert params
-        (the modules `expert_parallel` excluded from FSDP) are removed from the main HF
-        optimizer and handed to an `ExpertCPUOptimizer`. This keeps the HF optimizer
-        single-mesh / single-device so the FSDP2 checkpoint save+resume path stays valid,
-        and moves the expert Adam state + gradients off the GPU. The expert optimizer is
-        driven from `ExpertOptimizerCallback` (after grad clipping, at sync steps only).
-        """
-        self.expert_optimizer = None
-        args = self.args
-        # NOTE: gate only on `offload_expert_optimizer` — `expert_parallel_size` lives on the
-        # base/template args and is NOT propagated onto the trainer's `training_args`, so it
-        # cannot be read here. Whether EP is actually active is decided authoritatively below
-        # by `expert_parallel.ignored_modules` (non-empty only after EP shards the experts).
-        if not getattr(args, 'offload_expert_optimizer', False):
-            return
-        from swift.expert_parallel import expert_parallel, ExpertCPUOptimizer
-
-        # The authoritative set of expert params is exactly what EP excluded from FSDP.
-        expert_param_ids = set()
-        for module in getattr(expert_parallel, 'ignored_modules', []):
-            for p in module.parameters(recurse=True):
-                expert_param_ids.add(id(p))
-        if not expert_param_ids:
-            logger.warning('offload_expert_optimizer set but no expert (ignored) modules found '
-                           '(expert parallel not active?); skipping CPU offload of expert optimizer.')
-            return
-
-        # Pull expert params out of every HF optimizer group, remembering the hyper-params
-        # of the group they came from (lr/betas/eps/weight_decay).
-        expert_params = []
-        src_hparams = None
-        for pg in self.optimizer.param_groups:
-            kept, taken = [], []
-            for p in pg['params']:
-                (taken if id(p) in expert_param_ids else kept).append(p)
-            if taken:
-                expert_params.extend(taken)
-                if src_hparams is None:
-                    src_hparams = {
-                        'lr': pg.get('lr', args.learning_rate),
-                        'betas': pg.get('betas', (args.adam_beta1, args.adam_beta2)),
-                        'eps': pg.get('eps', args.adam_epsilon),
-                        'weight_decay': pg.get('weight_decay', 0.0),
-                    }
-            pg['params'] = kept
-        # Drop groups emptied by the carve-out (mirrors the filter in create_optimizer).
-        self.optimizer.param_groups = [pg for pg in self.optimizer.param_groups if len(pg['params']) > 0]
-
-        if not expert_params:
-            return
-        self.expert_optimizer = ExpertCPUOptimizer(
-            expert_params,
-            list(self.model.named_parameters()),
-            master_dtype=getattr(args, 'expert_optimizer_dtype', 'bf16'),
-            backend=getattr(args, 'expert_optimizer_backend', 'torch'),
-            pin_memory=getattr(args, 'expert_optimizer_pin_memory', False),
-            num_threads=getattr(args, 'expert_optimizer_num_threads', None),
-            **src_hparams,
-        )
-        from swift.expert_parallel.expert_optimizer import ExpertOptimizerCallback
-        self.add_callback(ExpertOptimizerCallback(self))
-        logger.info(f'Moved {len(expert_params)} expert params to CPU-offloaded optimizer '
-                    f'(hparams={src_hparams}); HF optimizer now has '
-                    f'{len(self.optimizer.param_groups)} group(s).')
-
-    def _expert_optimizer_path(self, ckpt_dir):
-        # Expert optimizer state is rank-local (experts are EP-disjoint), so it is saved
-        # per-rank rather than rank0-only.
-        return os.path.join(ckpt_dir, f'expert_optimizer_{self.args.process_index}.bin')
-
-    def _save_expert_optimizer(self, output_dir):
-        expert_opt = getattr(self, 'expert_optimizer', None)
-        if expert_opt is None or output_dir is None:
-            return
-        path = self._expert_optimizer_path(output_dir)
-        torch.save(expert_opt.state_dict(), path)
-        logger.info(f'Saved expert optimizer state to {path}')
-
-    def _load_expert_optimizer(self, checkpoint):
-        expert_opt = getattr(self, 'expert_optimizer', None)
-        if expert_opt is None or checkpoint is None:
-            return
-        path = self._expert_optimizer_path(checkpoint)
-        if not os.path.isfile(path):
-            logger.warning(f'expert optimizer state not found at {path}; keeping freshly initialised state.')
-            return
-        expert_opt.load_state_dict(torch.load(path, map_location='cpu', weights_only=False))
-        logger.info(f'Loaded expert optimizer state from {path}')
-
-    def _disable_fused_for_cross_mesh_params(self):
-        """When expert parallel is enabled, expert params live on the ep mesh
-        while FSDP params live on the global mesh. Fused/foreach Adam batches
-        params of different meshes into one kernel and fails on pointwise
-        propagation. Split param groups by mesh to avoid this.
-        """
-        from torch.distributed.tensor import DTensor
-
-        def get_param_mesh(param):
-            if isinstance(param, DTensor):
-                return param.device_mesh
-            return None
-
-        all_meshes = set()
-        for param_group in self.optimizer.param_groups:
-            for param in param_group['params']:
-                all_meshes.add(get_param_mesh(param))
-        # Only one mesh present (or no DTensor at all): nothing to do.
-        if len(all_meshes) <= 1:
-            return
-
-        new_param_groups = []
-        for param_group in self.optimizer.param_groups:
-            mesh_to_params = {}
-            for param in param_group['params']:
-                mesh_to_params.setdefault(get_param_mesh(param), []).append(param)
-            if len(mesh_to_params) <= 1:
-                new_param_groups.append(param_group)
-                continue
-            # Split this group — one sub-group per mesh.
-            # Disable fused/foreach to prevent cross-mesh kernel batching.
-            for mesh, params in mesh_to_params.items():
-                new_group = {k: v for k, v in param_group.items() if k != 'params'}
-                new_group['params'] = params
-                new_group['fused'] = False
-                new_group['foreach'] = False
-                new_param_groups.append(new_group)
-        self.optimizer.param_groups = new_param_groups
-        logger.info(f'Split optimizer param groups by device mesh for expert parallel '
-                    f'({len(new_param_groups)} groups)')
 
     @staticmethod
     def _get_listwise_reranker_preds(logits, labels):

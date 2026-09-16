@@ -163,7 +163,8 @@ class TemplateArguments:
             raise ValueError('context_parallel_size and sequence_parallel_size cannot be both > 1 '
                              'since they are not compatible now')
         if self.expert_parallel_size > 1:
-            os.environ['SWIFT_EXPERT_PARALLEL'] = str(self.expert_parallel_size)
+            from swift.expert_parallel import set_expert_parallel_env
+            set_expert_parallel_env(self.expert_parallel_size)
         if self.context_parallel_size > 1:
             os.environ['SWIFT_CONTEXT_PARALLEL'] = str(self.context_parallel_size)
         if getattr(self, 'model_meta', None) is not None:

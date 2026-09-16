@@ -37,9 +37,8 @@ class ExpertParallel:
     with the A2A dispatch on a CUDA side-stream.
     """
 
-    global_initialized: bool = False
-
     def __init__(self):
+        self._prepared: bool = False
         self.ep_size: Optional[int] = None
         self.ep_world_size: Optional[int] = None
         self.dp_world_size: Optional[int] = None
@@ -485,6 +484,25 @@ class ExpertParallel:
             self._patch_forward(moe_module)
 
     # ------------------------------------------------------------------
+    # FSDP2 integration — inject ignored modules
+    # ------------------------------------------------------------------
+
+    def inject_ignored_modules(self, trainer):
+        """Inject EP expert modules into the FSDP2 plugin's ignored_modules list.
+
+        Expert modules are already sharded on the EP device mesh and must be
+        excluded from FSDP2 wrapping.  Call this after creating the trainer
+        but before ``trainer.train()``.
+        """
+        if not self.ignored_modules:
+            return
+        fsdp_plugin = getattr(trainer.accelerator.state, 'fsdp_plugin', None)
+        if fsdp_plugin is None:
+            return
+        setattr(fsdp_plugin, 'ignored_modules', self.ignored_modules)
+        logger.info(f'FSDP2: set ignored_modules for expert parallel ({len(self.ignored_modules)} modules)')
+
+    # ------------------------------------------------------------------
     # Prepare — entry point
     # ------------------------------------------------------------------
 
@@ -495,6 +513,10 @@ class ExpertParallel:
             ep_size: Number of expert-parallel ranks. Must divide world_size.
             model: The HuggingFace MoE model.
         """
+        if self._prepared:
+            logger.warning('ExpertParallel.prepare() called twice; skipping.')
+            return
+
         # Read config — try multiple attribute names for different models
         self.n_routed_experts = self._get_n_routed_experts(model.config)
         self.n_shared_experts = self._get_n_shared_experts(model.config)
@@ -514,11 +536,9 @@ class ExpertParallel:
         # Enable output_router_logits for aux loss support
         HfConfigFactory.set_config_attr(model.config, 'output_router_logits', True)
 
-        if not ExpertParallel.global_initialized:
-            self._init_device_mesh()
-            ExpertParallel.global_initialized = True
-
+        self._init_device_mesh()
         self.process_moe(model)
+        self._prepared = True
 
 
 expert_parallel = ExpertParallel()

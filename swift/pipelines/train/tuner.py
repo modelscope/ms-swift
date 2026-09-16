@@ -418,19 +418,4 @@ class TunerMixin:
         if is_deepspeed_zero3_enabled():
             _patch_modules_to_save_zero3()
 
-        # FSDP2 requires uniform dtype across all trainable parameters.
-        # Some models (e.g. DeepSeek-V4) have some weights stored as float32
-        # (HyperConnection params, RMSNorm, attention sinks, etc.) while the
-        # rest of the model is bfloat16, causing FSDP2 to fail with:
-        #   AssertionError: FSDP expects uniform original parameter dtype
-        #       but got {torch.bfloat16, torch.float32}
-        if args.fsdp:
-            trainable_dtypes = {p.dtype for p in model.parameters() if p.requires_grad}
-            if len(trainable_dtypes) > 1:
-                target_dtype = torch.bfloat16
-                logger.info(f'FSDP2 requires uniform parameter dtype, but found mixed dtypes: {trainable_dtypes}. '
-                            f'Casting all trainable parameters to {target_dtype}.')
-                for p in model.parameters():
-                    if p.requires_grad and p.dtype != target_dtype:
-                        p.data = p.data.to(target_dtype)
         return model
