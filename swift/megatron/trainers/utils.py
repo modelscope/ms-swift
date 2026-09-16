@@ -402,6 +402,14 @@ def prepare_batch(args, data, vp_stage=None):
         batch['packed_seq_params'] = get_packed_seq_params(args, text_position_ids)
         if seq_lens is not None:
             batch['packed_seq_params'].seq_lens = torch.tensor(seq_lens, device=text_position_ids.device)
+            if args.context_parallel_size > 1:
+                # Cache the host-side sample boundaries so the CP reconstruction does
+                # not have to read them back from `cu_seqlens_q` on the device. Only
+                # CP > 1 reconstructs, so there is nothing to cache otherwise.
+                boundaries = [0]
+                for seq_len in seq_lens:
+                    boundaries.append(boundaries[-1] + int(seq_len))
+                batch['packed_seq_params'].swift_cu_seqlens = tuple(boundaries)
         if num_samples is not None:
             batch['packed_seq_params'].num_samples = num_samples
     batch.setdefault('attention_mask', None)
@@ -478,25 +486,43 @@ def reconstruct_tensor_cp(cp_size, tensor, packed_seq_params, num_samples, cp_pa
     torch.distributed.all_gather(output_list, tensor.contiguous(), group=mpu.get_context_parallel_group())
     output_list[cp_rank] = tensor
 
+    # Sample boundaries cached on the host by `prepare_batch`. Reading them avoids
+    # one blocking `.item()` per boundary, which otherwise costs
+    # 1 + 2 * num_samples + cp_size * num_samples device-to-host syncs per call.
+    host_cu_seqlens = getattr(packed_seq_params, 'swift_cu_seqlens', None)
+    if host_cu_seqlens is not None and len(host_cu_seqlens) <= num_samples:
+        host_cu_seqlens = None
+
     if cp_partition_mode == 'contiguous':
         # Contiguous CP splits the entire flattened packed sequence across ranks.
         output_full = torch.cat(output_list, dim=1)
         if packed_seq_params is not None:
-            output_full = output_full[:, :packed_seq_params.cu_seqlens_q[num_samples].item()]
+            if host_cu_seqlens is not None:
+                total_packed_len = int(host_cu_seqlens[num_samples])
+            else:
+                total_packed_len = packed_seq_params.cu_seqlens_q[num_samples].item()
+            output_full = output_full[:, :total_packed_len]
         return output_full
 
     if packed_seq_params is not None:
         cu_seqlens_full = packed_seq_params.cu_seqlens_q
-        cu_seqlens_cp = cu_seqlens_full // cp_size
+        cu_seqlens_cp = None if host_cu_seqlens is not None else cu_seqlens_full // cp_size
 
         # Calculate total packed length
-        total_packed_len = cu_seqlens_full[num_samples].item()
+        if host_cu_seqlens is not None:
+            total_packed_len = int(host_cu_seqlens[num_samples])
+        else:
+            total_packed_len = cu_seqlens_full[num_samples].item()
         output_full = tensor.new_zeros(1, total_packed_len)
 
         # Reconstruct each sequence
         for i in range(num_samples):
-            start_full = cu_seqlens_full[i].item()
-            end_full = cu_seqlens_full[i + 1].item()
+            if host_cu_seqlens is not None:
+                start_full = int(host_cu_seqlens[i])
+                end_full = int(host_cu_seqlens[i + 1])
+            else:
+                start_full = cu_seqlens_full[i].item()
+                end_full = cu_seqlens_full[i + 1].item()
             seq_len = end_full - start_full
 
             # Length of each chunk after CP split
@@ -506,7 +532,9 @@ def reconstruct_tensor_cp(cp_size, tensor, packed_seq_params, num_samples, cp_pa
             # Concatenate from each CP rank's output (load-balanced split)
             for j in range(cp_size):
                 o = output_list[j][0]
-                start_cp = cu_seqlens_cp[i].item()
+                # Integer division commutes with indexing, so the host boundary
+                # yields the same offset as `(cu_seqlens_full // cp_size)[i]`.
+                start_cp = start_full // cp_size if host_cu_seqlens is not None else cu_seqlens_cp[i].item()
                 o0 = o[start_cp:start_cp + half_chunk]
                 o1 = o[start_cp + half_chunk:start_cp + chunk_len]
 
