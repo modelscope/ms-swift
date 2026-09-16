@@ -36,6 +36,9 @@ def register_dataset(dataset_meta: DatasetMeta, *, exist_ok: bool = False) -> No
         raise ValueError(f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.')
 
     DATASET_MAPPING[dataset_name] = dataset_meta
+    # Later registrations (including exist_ok replacements) must refresh cached ID/path lookups.
+    from . import dataset_syntax
+    dataset_syntax._dataset_meta_mapping = None
 
 
 def _preprocess_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None) -> Dict[str, Any]:
