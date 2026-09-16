@@ -46,10 +46,10 @@ from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedT
                     _create_parameter_buckets, _process_bucket_with_flattened_tensor,
                     add_base_layer_suffix_by_param_names, aggressive_empty_cache, check_vllm_version_ge,
                     expand_vllm_param_name_aliases, finish_vllm_weight_reload, get_even_process_data,
-                    get_gather_if_zero3_context, parse_prompt_logprobs, patch_lora_merge, patch_lora_unmerge,
-                    patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, prepare_deepspeed, prepare_fsdp,
-                    profiling_context, profiling_decorator, revert_runtime_names_to_checkpoint, set_expandable_segments,
-                    sleep_vllm_engine, vllm_supports_lora_load_inplace)
+                    get_gather_if_zero3_context, parse_prompt_logprobs, patch_lora_merge, patch_vllm_load_adapter,
+                    patch_vllm_moe_model_weight_loader, prepare_deepspeed, prepare_fsdp, profiling_context,
+                    profiling_decorator, revert_runtime_names_to_checkpoint, set_expandable_segments, sleep_vllm_engine,
+                    vllm_supports_lora_load_inplace)
 from .vllm_client import VLLMInferClient
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
@@ -684,7 +684,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
             else:
                 parameters = []
 
-            with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
+            with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group, restore_weights=True):
                 if not self._is_fsdp2:
                     assert len(parameters) == len(parameter_group)
                     state_dict = {name: p for p, name in zip(parameters, parameter_group)}
@@ -705,9 +705,6 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                         param = param.full_tensor()
                     cur_lora_params[name] = param.detach()
                 lora_params.update(cur_lora_params)
-                if not self._is_fsdp2:
-                    with patch_lora_unmerge(self.model):
-                        self.model.unmerge_adapter()
                 del cur_lora_params
 
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
@@ -909,7 +906,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         """Collect state dict for vLLM synchronization.
 
         This method only collects parameters without merge/unmerge.
-        Caller is responsible for merge/unmerge and gather context.
+        Caller is responsible for temporary merge and gather contexts.
 
         Args:
             parameter_group: Optional parameter group to filter
@@ -935,7 +932,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 raw_state_dict[name] = param
         else:
             # DeepSpeed: use named_parameters + param.data
-            # No clone needed: unmerge happens after _load_state_dict_to_vllm completes
+            # Original base tensors are restored after _load_state_dict_to_vllm completes.
             for name, param in self.model.named_parameters():
                 if parameter_group and name not in parameter_group:
                     continue
@@ -975,10 +972,8 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
     def _move_full_model_to_vllm(self):
         """Transfer full model weights to vLLM engine.
 
-        Manages the lifecycle of gather and merge/unmerge per parameter_group:
-        - gather_if_zero3: per parameter_group batch (DeepSpeed Zero3)
-        - merge/unmerge: per parameter_group (must be within gather context)
-        - No clone needed: unmerge happens after load completes
+        Manages gather and temporary merge per parameter_group. Original base tensors
+        are restored before leaving the gather context, without lossy unmerge subtraction.
         """
         is_peft = is_peft_model(self.model)
         should_merge = is_peft and not self._is_fsdp2 and not self.rollout_enable_lora
@@ -1008,17 +1003,12 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 else:
                     parameters = []
 
-                with gather_if_zero3(parameters):
+                merge_context = patch_lora_merge(
+                    self.model, parameter_group, restore_weights=True) if should_merge else nullcontext()
+                with gather_if_zero3(parameters), merge_context:
                     if should_merge:
-                        with patch_lora_merge(self.model, parameter_group):
-                            self.model.merge_adapter()
-
-                    try:
-                        yield self._collect_state_dict_for_vllm(parameter_group, parameter_group_no_lora)
-                    finally:
-                        if should_merge:
-                            with patch_lora_unmerge(self.model):
-                                self.model.unmerge_adapter()
+                        self.model.merge_adapter()
+                    yield self._collect_state_dict_for_vllm(parameter_group, parameter_group_no_lora)
 
         state_dicts = iter_state_dicts()
         if ascend_reload_runner is not None:

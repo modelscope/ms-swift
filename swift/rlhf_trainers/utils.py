@@ -480,7 +480,7 @@ def round_robin(num_reqs, num_workers):
 
 
 @contextmanager
-def patch_lora_merge(model, parameter_group=None):
+def patch_lora_merge(model, parameter_group=None, restore_weights=False):
     """Patch LoraLayer.merge to support selective merging by ``parameter_group``.
 
     peft's ``merge_adapter()`` merges the whole model; this patch lets us merge only the
@@ -498,15 +498,29 @@ def patch_lora_merge(model, parameter_group=None):
     Args:
         model: The PEFT model to patch
         parameter_group: Optional list of parameter names to restrict merging
+        restore_weights: Merge into temporary base tensors and restore originals on exit.
 
     Yields:
         The patched model (context manager ensures cleanup)
     """
     from peft.tuners.tuners_utils import check_adapters_to_merge
 
+    original_weights = {}
+    original_slots = {}
+    original_states = []
+
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
         if parameter_group and all(self.name not in pg for pg in parameter_group):
             return  # Skip if not in target parameter group
+        if restore_weights:
+            base_layer = self.get_base_layer()
+            for name, parameter in base_layer.named_parameters(recurse=False):
+                original_slots[base_layer, name] = parameter
+                if parameter not in original_weights:
+                    # Keep the original storage untouched; BF16 merge/unmerge is lossy.
+                    original_weights[parameter] = parameter.data
+                    parameter.data = parameter.data.clone()
+            original_states.append((self, list(self.merged_adapters), self._caches.copy()))
         for active_adapter in check_adapters_to_merge(self, adapter_names) or []:
             # Align adapter sublayers (lora_A/B, DoRA magnitude, ...) to the base device.
             # Type-agnostic: ParamWrapper overrides this to use get_param().device.
@@ -524,6 +538,14 @@ def patch_lora_merge(model, parameter_group=None):
     try:
         yield model
     finally:
+        for parameter, data in original_weights.items():
+            parameter.data = data
+        for (module, name), parameter in original_slots.items():
+            setattr(module, name, parameter)
+        for module, merged_adapters, caches in original_states:
+            module.merged_adapters[:] = merged_adapters
+            module._caches.clear()
+            module._caches.update(caches)
         # Cleanup: restore original methods
         for module in model.modules():
             if isinstance(module, LoraLayer) and hasattr(module, 'merge_origin'):
