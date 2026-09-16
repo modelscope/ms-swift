@@ -261,8 +261,15 @@ def gkd_loss(
     else:
         s_logits = s_active
         t_logits = t_active.full_logits
-        s_logits, t_logits = _align_vocab(s_logits, t_logits)
         lsf, kdf = log_softmax_fn, kl_div_fn
+
+    # Promote before vocab alignment and temperature scaling to avoid low-precision KL/JSD errors.
+    if s_logits.dtype in (torch.float16, torch.bfloat16):
+        s_logits = s_logits.float()
+    if t_logits.dtype in (torch.float16, torch.bfloat16):
+        t_logits = t_logits.float()
+    if not t_active.is_topk_mode:
+        s_logits, t_logits = _align_vocab(s_logits, t_logits)
 
     s_logits = s_logits / temperature
     t_logits = t_logits / temperature
