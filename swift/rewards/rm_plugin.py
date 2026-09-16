@@ -8,7 +8,7 @@ import re
 import textwrap
 import torch
 from copy import deepcopy
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from swift.infer_engine import ChatCompletionResponse, RequestConfig, TransformersEngine
 from swift.template import Template
@@ -119,7 +119,7 @@ class GenRMPlugin(DefaultRMPlugin):
         return rm_inputs
 
     @staticmethod
-    def extract_reward(model_output: str) -> float:
+    def extract_reward(model_output: str) -> Optional[float]:
         """
         Extract the reward score from the model's output.
 
@@ -127,17 +127,16 @@ class GenRMPlugin(DefaultRMPlugin):
             model_output (str): The model's output string, expected to follow the format "Reward: {reward}".
 
         Returns:
-            float: The extracted reward score.
-
-        Raises:
-            ValueError: If the reward score cannot be extracted or the format is incorrect.
+            The extracted score in [0, 1], or None if the score is invalid.
         """
-        match = re.search(r'Reward:\s*([0-1](?:\.\d+)?)', model_output)
+        # Parse the whole number before checking its range, rather than accepting a 0/1 prefix.
+        match = re.search(r'Reward:\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(?!\w|\.\d)', model_output)
         if match:
-            return float(match.group(1))
-        else:
-            logger.warning("Unable to extract reward score from the model's output, set reward to 0")
-            return None
+            reward = float(match.group(1))
+            if 0 <= reward <= 1:
+                return reward
+        logger.warning("Unable to extract a reward score in [0, 1] from the model's output")
+        return None
 
     @staticmethod
     def messages_to_query(messages):
