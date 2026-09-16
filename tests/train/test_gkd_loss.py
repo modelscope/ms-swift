@@ -16,7 +16,7 @@ class TestGKDLoss(unittest.TestCase):
                     teacher = TeacherOutput(full_logits=torch.randn(1, 4, teacher_vocab, dtype=dtype))
                     labels = torch.full((1, 4), -100)
                     total, count = gkd_loss(student, teacher, labels, 0.5, 1.)
-                    self.assertEqual(total.dtype, dtype)
+                    self.assertEqual(total.dtype, torch.float64 if dtype == torch.float64 else torch.float32)
                     self.assertEqual(total.device, student.device)
                     self.assertEqual(total.item(), 0.)
                     self.assertEqual(count.item(), 0)
