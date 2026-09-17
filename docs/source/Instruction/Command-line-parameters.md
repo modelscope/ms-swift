@@ -295,7 +295,7 @@ ENV:
 - 🔥ddp_find_unused_parameters: 默认为None。
 - 🔥dataloader_num_workers: 默认为None，若是windows平台，则设置为0，否则设置为1。
 - dataloader_pin_memory: 默认为True。
-- dataloader_persistent_workers: 默认为False。
+- dataloader_persistent_workers: 默认为True；当 `dataloader_num_workers=0` 时自动设为False。
 - dataloader_prefetch_factor: 默认为None。若 `dataloader_num_workers > 0`，则设置为2。每个工作进程预先加载的批次数量。2 表示所有工作进程总共会预取 2 * num_workers 个批次。
 - train_dataloader_shuffle: CPT/SFT训练的dataloader是否随机，默认为True。该参数对IterableDataset无效（即对流式数据集失效）。IterableDataset采用顺序的方式读取。
 - optim: 优化器，默认值为 `"adamw_torch"` (对于 torch>=2.8 为 `"adamw_torch_fused"`)。完整的优化器列表请参见 [training_args.py](https://github.com/huggingface/transformers/blob/main/src/transformers/training_args.py) 中的 `OptimizerNames`。

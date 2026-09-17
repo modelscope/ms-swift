@@ -1188,14 +1188,18 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
             # Check every rank before updating weights or starting another rollout.
             self._wait_queue()
 
-        if self.vllm_mode == 'colocate' and args.sleep_level > 0:
-            if self.engine.inner_model_executor.is_sleeping:
-                wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
-                kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
-                aggressive_empty_cache()
-                self.engine.engine.wake_up(**kwargs)
+        needs_weight_sync = self.state.global_step != self._last_loaded_step or args.sleep_level == 2
+        colocate_sleeping = (
+            self.vllm_mode == 'colocate' and args.sleep_level > 0 and self.engine.inner_model_executor.is_sleeping)
+        wake_up_supports_tags = (
+            colocate_sleeping and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters)
 
-        if self.state.global_step != self._last_loaded_step or args.sleep_level == 2:
+        if colocate_sleeping and needs_weight_sync:
+            kwargs = {'tags': ['weights']} if wake_up_supports_tags else {}
+            aggressive_empty_cache()
+            self.engine.engine.wake_up(**kwargs)
+
+        if needs_weight_sync:
             self._move_model_to_vllm(skip_async_check=True)
             self._last_loaded_step = self.state.global_step
 
@@ -1203,11 +1207,14 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         with context():
             rollout_failed = False
             try:
-                if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
-                        and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
+                if colocate_sleeping and self.engine.inner_model_executor.is_sleeping:
                     aggressive_empty_cache()
                     set_expandable_segments(False)
-                    self.engine.engine.wake_up(tags=['kv_cache'])
+                    tags = ['kv_cache']
+                    if wake_up_supports_tags and not needs_weight_sync:
+                        tags.insert(0, 'weights')
+                    kwargs = {'tags': tags} if wake_up_supports_tags else {}
+                    self.engine.engine.wake_up(**kwargs)
 
                 if args.async_generate:
                     data_cache = self._queue.get_nowait()
@@ -1420,25 +1427,37 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         return results
 
     @torch.no_grad()
-    def offload_model(self, model):
+    def offload_model(self, model) -> bool:
+        """Offload model tensors to CPU and report whether anything moved."""
         # FSDP2: simple .cpu() is sufficient
         if self._is_fsdp2:
-            model.cpu()
-            torch.cuda.empty_cache()
-            return
+            moved = any(param.device.type != 'cpu' for param in model.parameters())
+            if not moved:
+                moved = any(buf is not None and buf.device.type != 'cpu' for buf in model.buffers())
+            if moved:
+                model.cpu()
+                torch.cuda.empty_cache()
+            return moved
 
         # Default: iterate over parameters AND buffers.
+        moved = False
         for param in model.parameters():
             # After DeepSpeed distributed loading: param.data is empty and weights cannot be off-loaded.
             # The real weights are stored in ds_tensor.
             if is_deepspeed_enabled() and hasattr(param, 'ds_tensor'):
-                param.ds_tensor.data = param.ds_tensor.data.to('cpu', non_blocking=True)
+                tensor = param.ds_tensor
             else:
-                param.data = param.data.to(torch.device('cpu'), non_blocking=True)
+                tensor = param
+            if tensor.device.type != 'cpu':
+                tensor.data = tensor.data.to(torch.device('cpu'), non_blocking=True)
+                moved = True
         for buf in model.buffers():
             if buf is not None and buf.device.type != 'cpu':
                 buf.data = buf.data.to(torch.device('cpu'), non_blocking=True)
-        torch.cuda.empty_cache()
+                moved = True
+        if moved:
+            torch.cuda.empty_cache()
+        return moved
 
     @torch.no_grad()
     def load_model(self, model):
