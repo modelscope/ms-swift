@@ -1,6 +1,20 @@
 # DeepSeek-V4.1-Flash LoRA GRPO (Megatron + vLLM colocate).
 #
 # Requirements / notes:
+# - Versions -- this is the combination DeepSeek-V4.1 was validated on:
+#   * Megatron-LM must be a source checkout, not a megatron-core wheel: v4.1 needs the hybrid
+#     stack, Engram and CSA2 code that no release carries. Validated baseline is the dev branch
+#     with NVIDIA/Megatron-LM PR #7224 merged in (megatron-core 0.19.0; dev was at 0cd11658f):
+#         git clone -b dev https://github.com/NVIDIA/Megatron-LM.git && cd Megatron-LM
+#         git fetch origin pull/7224/head:pr7224 && git merge --no-edit pr7224
+#     Put it on PYTHONPATH so it shadows any installed megatron-core:
+#         export PYTHONPATH=/abs/path/to/Megatron-LM:$PYTHONPATH
+#   * ms-swift >= 4.6.0 and mcore-bridge >= 1.7.0, both source installs -- DeepSeek-V4.1 landed
+#     after the latest release of either, and requirements/megatron.txt still pins mcore-bridge
+#     >= 1.6.3, which predates it:
+#         pip install -e /path/to/ms-swift -e /path/to/mcore-bridge
+#     The Megatron-LM checkout above is the training side only; the rollout side needs the vLLM
+#     build below, which is a separate install.
 # - Real DeepSeek-V4.1-Flash is a ~700B MoE model and needs an H200-class multi-node cluster.
 #   The rollout side relies on a vLLM build with native DeepSeek-V4.1 support (use the official
 #   vllm/vllm-openai:deepseekv41-flash image, there is no pip wheel yet). Numbers below are a
