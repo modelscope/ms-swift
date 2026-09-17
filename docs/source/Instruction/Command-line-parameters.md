@@ -503,7 +503,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 ## 集成参数
 
 ### 训练参数
-训练参数除包含[基本参数](#基本参数)、[Seq2SeqTrainer参数](#Seq2SeqTrainer参数)、[tuner参数](#tuner参数)外，还包含下面的部分:
+训练参数除包含[基本参数](#基本参数)、[Seq2SeqTrainer参数](#seq2seqtrainer参数)、[tuner参数](#tuner参数)外，还包含下面的部分:
 
 - add_version: 在`output_dir`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
 - check_model: 检查本地模型文件有损坏或修改并给出提示，默认为True。**如果是断网环境，请设置为False**。
@@ -723,7 +723,7 @@ soft overlong 奖励参数
 
 ### 推理参数
 
-推理参数除包含[基本参数](#基本参数)、[合并参数](#合并参数)、[vLLM参数](#vllm参数)、[LMDeploy参数](#LMDeploy参数)外，还包含下面的部分：
+推理参数除包含[基本参数](#基本参数)、[合并参数](#合并参数)、[vLLM参数](#vllm参数)、[LMDeploy参数](#lmdeploy参数)外，还包含下面的部分：
 
 - 🔥infer_backend: 推理加速后端，支持'transformers'、'vllm'、'sglang'、'lmdeploy'四种推理引擎。默认为'transformers'。
   - 注意：这四种引擎使用的都是swift的template，使用`--template_backend`控制。
@@ -769,7 +769,7 @@ Rollout参数继承于[部署参数](#部署参数)
 
 ### App参数
 
-App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)。
+App参数继承于[部署参数](#部署参数), [Web-UI参数](#web-ui参数)。
 - base_url: 模型部署的base_url，例如`http://localhost:8000/v1`。默认为`None`，使用本地部署。
 - studio_title: studio的标题。默认为None，设置为模型名。
 - is_multimodal: 是否启动多模态版本的app。默认为None，自动根据model判断，若无法判断，设置为False。
