@@ -396,17 +396,20 @@ class MathORM(ORM):
 
     @staticmethod
     def extract_boxed_result(text):
-        pattern = r'\\boxed{([^}]*)}'
-        match = re.search(pattern, text)
+        match = re.search(r'\\boxed\{', text)
         if match:
-            return match.group(1).strip()
-        else:
-            return text
+            depth = 1
+            for brace in re.finditer(r'(?<!\\)[{}]', text[match.end():]):
+                depth += 1 if brace.group() == '{' else -1
+                if depth == 0:
+                    return text[match.end():match.end() + brace.start()].strip()
+        return text
 
     @staticmethod
     def clean_latex(latex_str):
         latex_str = re.sub(r'\\\(|\\\)|\\\[|\\]', '', latex_str)
-        latex_str = latex_str.replace('}}', '}').replace('{', '').replace('}', '')
+        # Preserve groups used by fractions, exponents and other LaTeX commands.
+        latex_str = re.sub(r'^\{([^{}]*)\}$', r'\1', latex_str.strip())
         return latex_str.strip()
 
     @staticmethod
