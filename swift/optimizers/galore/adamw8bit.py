@@ -3,10 +3,10 @@ import torch
 from bitsandbytes.optim.optimizer import Optimizer2State
 
 from swift.utils import synchronize
-from .galore_projector import GaLoreProjector
+from .galore_projector import GaLoreOptimizerState, GaLoreProjector
 
 
-class AdamW8bit(Optimizer2State):
+class AdamW8bit(GaLoreOptimizerState, Optimizer2State):
 
     def __init__(self,
                  params,
