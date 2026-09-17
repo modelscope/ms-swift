@@ -4,6 +4,7 @@
 # including both discriminative reward models (with value heads) and
 # generative reward models (LLM-as-judge style).
 
+import math
 import re
 import textwrap
 import torch
@@ -127,15 +128,15 @@ class GenRMPlugin(DefaultRMPlugin):
             model_output (str): The model's output string, expected to follow the format "Reward: {reward}".
 
         Returns:
-            The extracted score in [0, 1], or None if the score is invalid.
+            The extracted finite score, or None if the score is invalid.
         """
-        # Parse the whole number before checking its range, rather than accepting a 0/1 prefix.
+        # Parse the whole number instead of accepting a prefix of a multi-digit or exponent score.
         match = re.search(r'Reward:\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(?!\w|\.\d)', model_output)
         if match:
             reward = float(match.group(1))
-            if 0 <= reward <= 1:
+            if math.isfinite(reward):
                 return reward
-        logger.warning("Unable to extract a reward score in [0, 1] from the model's output")
+        logger.warning("Unable to extract a finite reward score from the model's output")
         return None
 
     @staticmethod

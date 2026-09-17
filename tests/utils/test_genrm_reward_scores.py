@@ -25,13 +25,17 @@ class TestGenRMRewardScores(unittest.TestCase):
             with self.subTest(output=output):
                 self.assertEqual(GenRMPlugin.extract_reward(output), expected)
 
-    def test_out_of_range_rewards_are_not_prefix_matches(self):
-        for value in ['10', '100', '1.5', '1.0001', '-0.2', '2', '0.5e2', '1e309', '-1e309']:
+    def test_custom_reward_scales(self):
+        for value, expected in [('10', 10.), ('100', 100.), ('1.5', 1.5), ('1.0001', 1.0001), ('-0.2', -0.2), ('2', 2.),
+                                ('0.5e2', 50.), ('-2.5e+1', -25.)]:
             with self.subTest(value=value):
-                self.assertIsNone(GenRMPlugin.extract_reward(f'Reward: {value}'))
+                self.assertEqual(GenRMPlugin.extract_reward(f'Reward: {value}'), expected)
 
     def test_invalid_reward_text(self):
-        for output in ['', 'No score', 'Reward: nan', 'Reward: inf', 'Reward: 0.5e', 'Reward: 0.5.2']:
+        for output in [
+                '', 'No score', 'Reward: nan', 'Reward: inf', 'Reward: -inf', 'Reward: 1e309', 'Reward: -1e309',
+                'Reward: 0.5e', 'Reward: 0.5.2'
+        ]:
             with self.subTest(output=output):
                 self.assertIsNone(GenRMPlugin.extract_reward(output))
 
@@ -40,9 +44,14 @@ class TestGenRMRewardScores(unittest.TestCase):
         results = [
             _response(['Reward: 0.2', 'Reward: 10', 'Reward: 0.6', 'Reward: 1.5']),
             _response(['Reward: 100', 'Reward: -0.2']),
-            _response(['Reward: 1e-1'])
+            _response(['Reward: 1e-1']),
+            _response(['Reward: -2', 'Reward: 10', 'Reward: 1e309', 'No score']),
+            _response(['Reward: nan', 'Reward: -1e309'])
         ]
-        self.assertEqual(plugin.compute_rewards(results), [0.4, 0., 0.1])
+        rewards = plugin.compute_rewards(results)
+        self.assertEqual(len(rewards), len(results))
+        for actual, expected in zip(rewards, [3.075, 49.9, 0.1, 4., 0.]):
+            self.assertAlmostEqual(actual, expected)
 
 
 if __name__ == '__main__':
