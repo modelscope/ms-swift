@@ -7,7 +7,11 @@
 # - LoRA weight sync exports adapter tensors only (peft format), so the Engram tables are
 #   never touched: they stay in the rollout engine from the base checkpoint. Keep
 #   --merge_lora false so the adapter is synced separately instead of merged back.
-# - Adjust TP/EP/PP and node count to your hardware; the values below are a starting point.
+# - Adjust EP/PP and node count to your hardware; the values below are a starting point.
+# - Parallelism support (training): CP / PP / EP / DP / VPP are supported. TP and SP are NOT
+#   supported yet for DeepSeek-V4.1, so keep --tensor_model_parallel_size 1 and do NOT pass
+#   --sequence_parallel. --vllm_tensor_parallel_size is the vLLM inference-side TP and is
+#   independent of the (unsupported) Megatron training TP.
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 megatron rlhf \
@@ -16,7 +20,7 @@ megatron rlhf \
     --save_safetensors true \
     --merge_lora false \
     --context_parallel_size 1 \
-    --tensor_model_parallel_size 8 \
+    --tensor_model_parallel_size 1 \
     --expert_model_parallel_size 8 \
     --pipeline_model_parallel_size 4 \
     --moe_permute_fusion true \
@@ -59,6 +63,5 @@ megatron rlhf \
     --attention_backend flash \
     --temperature 1.0 \
     --padding_free true \
-    --sequence_parallel true \
     --log_completions true \
     --report_to wandb

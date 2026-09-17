@@ -18,6 +18,11 @@
 # - Parallelism support: CP / PP / EP / DP / VPP are supported. TP (tensor parallelism) and
 #   SP (sequence parallelism) are NOT supported yet for DeepSeek-V4.1, so keep
 #   --tensor_model_parallel_size 1 and do NOT pass --sequence_parallel.
+# - Context parallelism (--context_parallel_size > 1): DSv4's hybrid attention (CSA2/Engram)
+#   rejects the default zigzag CP layout and requires contiguous CP over packed (THD) inputs.
+#   So when you raise CP, also add:
+#       --cp_partition_mode contiguous --packing true --sequence_packing_scheduler default_dynamic_cp
+#   Omitting the scheduler fails with "cp_partition_mode='contiguous' ... requires THD inputs".
 # - Keep --bf16: the checkpoint's FP4 weights are dequantized to BF16 on load. Native FP4
 #   training (--fp4) requires Blackwell and is not wired up (absorbed_mla asserts), do not use it.
 # - --virtual_pipeline_model_parallel_size (VPP / interleaved pipeline) is optional; it needs

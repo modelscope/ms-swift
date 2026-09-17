@@ -23,6 +23,9 @@
 #   supported yet for DeepSeek-V4.1, so keep --tensor_model_parallel_size 1 and do NOT pass
 #   --sequence_parallel. NOTE: --vllm_tensor_parallel_size is the vLLM inference-side TP and is
 #   independent of the (unsupported) Megatron training TP -- it is fine to use it for rollout.
+#   To use context parallelism (--context_parallel_size > 1), DSv4's hybrid attention requires
+#   contiguous CP over packed (THD) inputs, so also add:
+#       --cp_partition_mode contiguous --packing true --sequence_packing_scheduler default_dynamic_cp
 # - LoRA weight sync exports adapter tensors only (peft format), so the ~183 GiB Engram tables
 #   are never touched: they stay in the rollout engine from the base checkpoint. Keep
 #   --merge_lora false so the adapter is synced separately instead of merged back.
