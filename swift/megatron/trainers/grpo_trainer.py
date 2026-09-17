@@ -555,7 +555,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         Args:
             rollout_batch: local rollout data samples
             rewards_per_func: reward per function for local data samples
-    
         Returns:
             tuple: (rollout_batch, rewards_per_func) with zero-variance groups replaced by resampled data
         """
