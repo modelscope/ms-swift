@@ -276,6 +276,7 @@ class MLLMModelType:
     muse_glimmer = 'muse_glimmer'
 
     jina_reranker_m0 = 'jina_reranker_m0'
+    monkeyocrv2 = 'monkeyocrv2'
 
 
 class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):

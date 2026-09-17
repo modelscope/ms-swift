@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import torch
-from transformers import PretrainedConfig, PreTrainedModel
+from transformers import AutoConfig, AutoModel, PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from types import MethodType
 
@@ -10,7 +10,7 @@ from swift.utils import Processor, get_logger
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
-from ..patcher import patch_output_clone
+from ..patcher import patch_get_input_embeddings, patch_output_clone
 from ..register import ModelLoader, register_model
 from ..utils import use_submodel_func
 from .qwen import Qwen2VLLoader, patch_qwen_vl_utils
@@ -436,3 +436,80 @@ register_model(
         architectures=['MuseGlimmerForConditionalGeneration'],
         requires=['transformers>=5.15'],
         tags=['vision', 'video']))
+
+
+class MonkeyOCRv2Loader(ModelLoader):
+
+    @staticmethod
+    def _patch_tied_weights(model_dir: str):
+        try:
+            model_cls = get_class_from_dynamic_module('modeling_monkeyocrv2_vision.MonkeyOCRv2VisionTransformer',
+                                                      model_dir)
+        except Exception:
+            return
+        if not hasattr(model_cls, 'all_tied_weights_keys'):
+            model_cls.all_tied_weights_keys = {}
+
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        self._patch_tied_weights(model_dir)
+        return AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from transformers import AutoImageProcessor
+        return AutoImageProcessor.from_pretrained(model_dir, trust_remote_code=True)
+
+    def _postprocess_processor(self, processor: Processor):
+        config = self.model_info.config
+        pad_token_id = getattr(config, 'pad_token_id', None) or 151643
+        if not hasattr(processor, 'pad_token_id') or processor.pad_token_id is None:
+            processor.pad_token_id = pad_token_id
+        if not hasattr(processor, 'eos_token_id') or processor.eos_token_id is None:
+            processor.eos_token_id = pad_token_id
+        processor.model_info = self.model_info
+        processor.model_meta = self.model_meta
+        self.pad_token = pad_token_id
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        self.auto_model_cls = self.auto_model_cls or AutoModel
+        model = super().get_model(model_dir, config, processor, model_kwargs)
+
+        # Remap forward args: processor outputs pixel_values/image_grid_thw,
+        # but the model expects hidden_states/grid_thw
+        origin_forward = model.forward
+
+        def forward(self,
+                    pixel_values=None,
+                    image_grid_thw=None,
+                    hidden_states=None,
+                    grid_thw=None,
+                    bf16=True,
+                    **kwargs):
+            if hidden_states is None and pixel_values is not None:
+                hidden_states = pixel_values
+            if grid_thw is None and image_grid_thw is not None:
+                grid_thw = image_grid_thw
+            return origin_forward(hidden_states=hidden_states, grid_thw=grid_thw, bf16=bf16, **kwargs)
+
+        model.forward = MethodType(forward, model)
+        patch_get_input_embeddings(model, 'patch_embed')
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.monkeyocrv2,
+        [
+            ModelGroup([
+                Model('zenosai/MonkeyOCRv2-S', 'zenosai/MonkeyOCRv2-S'),
+                Model('zenosai/MonkeyOCRv2-B', 'zenosai/MonkeyOCRv2-B'),
+            ]),
+        ],
+        MonkeyOCRv2Loader,
+        template=TemplateType.monkeyocrv2,
+        model_arch=ModelArch.monkeyocrv2,
+        architectures=['MonkeyOCRv2VisionTransformer'],
+        task_type='embedding',
+        requires=['transformers>=4.45', 'qwen_vl_utils'],
+        tags=['vision', 'embedding', 'document-understanding'],
+    ))
