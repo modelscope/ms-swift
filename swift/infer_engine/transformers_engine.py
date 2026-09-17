@@ -314,13 +314,7 @@ class TransformersEngine(InferEngine):
                                           request_config.top_logprobs)
             new_token_ids = raw_batched_generate_ids[:, num_stream_input_tokens:]
             num_generated_tokens = new_token_ids.shape[1]
-            length_finished = (
-                generation_config.max_new_tokens is not None
-                and num_generated_tokens >= generation_config.max_new_tokens)
-            stopped = torch.zeros(batched_generate_ids.shape[0], dtype=torch.bool, device=batched_generate_ids.device)
-            if num_generated_tokens > 0:
-                for criteria in stream_stop_criteria:
-                    stopped |= criteria(new_token_ids, None)
+            stop_results = [criteria(new_token_ids, None) for criteria in stream_stop_criteria if num_generated_tokens]
 
             res = []
             for i in range(batched_generate_ids.shape[0]):
@@ -329,8 +323,8 @@ class TransformersEngine(InferEngine):
                     continue
                 generate_ids = batched_generate_ids[i]
                 eos_finished = num_generated_tokens > 0 and new_token_ids[i, -1].item() in eos_token_ids
-                stop_finished = eos_finished or stopped[i].item()
-                is_finished[i] = all_is_finished or stop_finished or length_finished
+                stop_finished = eos_finished or any(stopped[i] for stopped in stop_results)
+                is_finished[i] = all_is_finished or stop_finished
 
                 # ignore pad_token
                 masks = generate_ids != self.tokenizer.pad_token_id

@@ -186,7 +186,10 @@ class TestStreamCompletionWorker(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(engine._get_toolcall.call_count, 1)
             engine.resume.set()
             b_chunks = await asyncio.wait_for(self.collect(b), timeout=2)
-            self.assertEqual([r.choices[0].finish_reason for r in b_chunks], [None, None, None, 'length'])
+            self.assertTrue(all(r.choices[0].finish_reason is None for r in b_chunks[:-1]))
+            self.assertEqual(b_chunks[-1].choices[0].finish_reason, 'length')
+            self.assertEqual(''.join(r.choices[0].delta.content for r in b_chunks), '甲乙乙乙')
+            self.assertEqual(b_chunks[-1].usage.completion_tokens, 4)
             self.assertEqual(engine._get_toolcall.call_count, 2)
         finally:
             engine.resume.set()
