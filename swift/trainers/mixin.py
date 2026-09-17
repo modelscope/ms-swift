@@ -1261,7 +1261,8 @@ class SwiftMixin:
         loss_scale = inputs.get('loss_scale')
         if self.template.sequence_parallel_size > 1:
             raise NotImplementedError()
-        if labels.shape[0] == 1 and not is_mp():
+        # Unsloth only supports an integer suffix length, so keep masked gaps in labels and loss_scale.
+        if labels.shape[0] == 1 and not is_mp() and self.args.tuner_backend != 'unsloth':
             # device_map may encounter device mismatch issues.
             loss_mask = (labels != -100)[0]
             labels = labels[:, loss_mask]
