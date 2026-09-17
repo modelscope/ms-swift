@@ -173,7 +173,7 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 | torch        | >=2.0        | 2.8.0/2.11.0         |                            |
 | transformers | >=4.33       | 4.57.6/5.12.1              |                          |
 | modelscope   | >=1.23       |                     |                                           |
-| datasets     | >=3.0,<4.8.5 | 3.6.0/4.8.4         |                    |
+| datasets     | >=4.0,<4.8.5 | 4.8.4               |                    |
 | peft         | >=0.11,<0.20 |                     |                                           |
 | flash_attn   |              | 2.8.3/4.0.0b15 |                                           |
 | trl          | >=0.15,<1.0 | 0.29.1              | RLHF                                      |

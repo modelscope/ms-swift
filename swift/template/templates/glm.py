@@ -436,6 +436,42 @@ class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
 
 register_template(GLM4_5TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
 
+
+class GLM5NextTemplate(GLM4_5VTemplate, GLM5_2Template):
+    """GLM-5.3-Flash: GLM-4.5V vision tokens, GLM-5.2 reasoning effort (low/high/max), NoPE text tower.
+
+    `init_env_args` / `_get_system` come from GLM5_2Template through the MRO; the vision
+    handling comes from GLM4_5VTemplate.
+    """
+
+    def _get_position_ids(self, inputs: Dict[str, Any]):
+        # The text tower is NoPE (`qk_rope_head_dim=0`, `Glm5NextTextModel` passes
+        # `position_embeddings=None`), so there is no `get_rope_index` to call. The stacked
+        # `[text_pos, model_pos]` layout is still required: GLM4vPackingTemplateMixin.
+        # `_data_collator` slices row 0 off as `text_position_ids`, and
+        # `get_packed_seq_params` derives `cu_seqlens` from its per-sample restarts. Without
+        # it `packed_seq_params` is never built, and every fused mcore-bridge GLM-5.3 kernel
+        # (Triton kpool indexer, TileLang SparseMLA) requires `cu_seqlens` -- the DSA layers
+        # would silently fall back to an O(seq_len) python loop.
+        input_ids = inputs['input_ids']
+        position_ids = torch.arange(input_ids.shape[-1], device=input_ids.device)
+        position_ids = position_ids[None, None].expand(1, input_ids.shape[0], -1)
+        return {'position_ids': self._concat_text_position_ids(position_ids)}
+
+    def init_processor(self, processor) -> None:
+        # skip super
+        Template.init_processor(self, processor)
+
+
+register_template(
+    GLM4_7TemplateMeta(
+        MLLMTemplateType.glm5_next,
+        template_cls=GLM5NextTemplate,
+        agent_template='glm5_1',
+        non_thinking_prefix='<think></think>',
+        history_thinking_prefix='<think></think>',
+    ))
+
 glm4z1rumination_system = (
     '你是一个专业的深度研究助手，通过提供的工具与模拟浏览器交互，来帮助用户完成深度信息调研和报告撰写任务。'
     '今年是 2025 年。\n\n'

@@ -23,7 +23,8 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
-from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
+from swift.utils import (Processor, ProcessorMixin, get_env_args, get_logger, remove_arrow_padding, remove_response,
+                         retry_decorator, to_device)
 from .template_inputs import StdTemplateInputs, TemplateInputs
 from .utils import (Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round,
                     get_token_backed_response_ids, split_str_parts_by)
@@ -339,6 +340,8 @@ class Template(ProcessorMixin):
                 inputs.tools = [agent_template._parse_json(tool) for tool in inputs.tools]
             else:
                 raise ValueError(f'inputs.tools: {inputs.tools}')
+            # Tools may also come from a request payload rather than a preprocessed dataset.
+            inputs.tools = [remove_arrow_padding(tool) if isinstance(tool, dict) else tool for tool in inputs.tools]
             for i, tool in enumerate(inputs.tools):
                 inputs.tools[i] = agent_template.wrap_tool(tool)
 
