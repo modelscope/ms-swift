@@ -1689,7 +1689,8 @@ class Template(ProcessorMixin):
         for k, v in old_kwargs.items():
             if k in {
                     'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep',
-                    'max_length_q', 'max_length_k', 'cu_seq_lens_q', 'cu_seq_lens_k', 'mm_token_type_ids'
+                    'output_router_logits', 'max_length_q', 'max_length_k', 'cu_seq_lens_q', 'cu_seq_lens_k',
+                    'mm_token_type_ids'
             } and k not in kwargs:
                 kwargs[k] = v
         if 'inputs_embeds' in kwargs:
