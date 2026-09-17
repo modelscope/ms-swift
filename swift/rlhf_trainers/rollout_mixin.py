@@ -55,6 +55,8 @@ from .vllm_client import VLLMInferClient
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
 
+_TEMPLATE_CONTEXT_USE_ORIGINAL = object()
+
 
 @dataclass
 class DataCache:
@@ -1773,12 +1775,13 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
     def _template_context(self,
                           template: Template,
                           inputs: Optional['DataType'] = None,
-                          max_length: Optional[int] = None,
+                          max_length: Any = _TEMPLATE_CONTEXT_USE_ORIGINAL,
                           mode: Optional[str] = None):
-        # used for unsetting max_length
+        # Preserve the existing max_length unless a caller explicitly overrides it.
         original_max_length = template.max_length
         original_mode = template.mode
-        template.max_length = max_length
+        if max_length is not _TEMPLATE_CONTEXT_USE_ORIGINAL:
+            template.max_length = max_length
         if mode is not None:
             template.set_mode(mode)
         forward_ctx = template.forward_context(self.model, inputs) if inputs is not None else nullcontext()
