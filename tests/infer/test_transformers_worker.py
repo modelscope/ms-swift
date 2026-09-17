@@ -6,6 +6,7 @@ from threading import Event
 from transformers import GenerationConfig
 
 from swift.infer_engine import AdapterRequest, RequestConfig, TransformersEngine
+from swift.utils import shutdown_event_loop_in_daemon
 
 
 class _WorkerEngine(TransformersEngine):
@@ -22,6 +23,12 @@ class _WorkerEngine(TransformersEngine):
         if self.stopped.is_set():
             raise SystemExit
         return super()._fetch_infer_requests()
+
+    def _infer_worker(self):
+        try:
+            super()._infer_worker()
+        except SystemExit:
+            pass
 
     def _infer(self, infer_requests, request_config, **kwargs):
         self.batches.append(infer_requests)
@@ -175,7 +182,9 @@ class TestTransformersWorkerStrictMode(unittest.TestCase):
                             self.assertFalse(engine._task_thread.is_alive())
                         loop = getattr(engine, '_event_loop', None)
                         if loop is not None:
-                            loop.close()
+                            shutdown_event_loop_in_daemon(engine._event_loop_thread, loop)
+                            self.assertFalse(engine._event_loop_thread.is_alive())
+                            self.assertTrue(loop.is_closed())
 
 
 if __name__ == '__main__':
