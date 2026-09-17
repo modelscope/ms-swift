@@ -31,6 +31,12 @@ class TestGenRMRewardScores(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertEqual(GenRMPlugin.extract_reward(f'Reward: {value}'), expected)
 
+    def test_cjk_reward_suffixes(self):
+        for output, expected in [('Reward: 0.85分', 0.85), ('Reward: 10分', 10.), ('Reward: -2.5分', -2.5),
+                                 ('Reward: 1e-1分', 0.1)]:
+            with self.subTest(output=output):
+                self.assertEqual(GenRMPlugin.extract_reward(output), expected)
+
     def test_invalid_reward_text(self):
         for output in [
                 '', 'No score', 'Reward: nan', 'Reward: inf', 'Reward: -inf', 'Reward: 1e309', 'Reward: -1e309',

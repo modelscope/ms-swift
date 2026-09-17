@@ -131,7 +131,8 @@ class GenRMPlugin(DefaultRMPlugin):
             The extracted finite score, or None if the score is invalid.
         """
         # Parse the whole number instead of accepting a prefix of a multi-digit or exponent score.
-        match = re.search(r'Reward:\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(?!\w|\.\d)', model_output)
+        match = re.search(r'Reward:\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(?![0-9A-Za-z_]|\.\d)',
+                          model_output)
         if match:
             reward = float(match.group(1))
             if math.isfinite(reward):
