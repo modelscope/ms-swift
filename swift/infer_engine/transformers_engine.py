@@ -145,7 +145,7 @@ class TransformersEngine(InferEngine):
     def _fetch_infer_requests(self):
         while not self._queue.empty():
             infer_request, kwargs, queue = self._queue.get()
-            info = hashlib.sha256(pickle.dumps((kwargs['request_config']))).hexdigest()
+            info = hashlib.sha256(pickle.dumps((kwargs['request_config'], kwargs['adapter_request']))).hexdigest()
             if info not in self._task_pool:
                 self._task_pool[info] = kwargs, []
             self._task_pool[info][1].append((infer_request, queue))
@@ -349,8 +349,8 @@ class TransformersEngine(InferEngine):
             return
         adapter_name = adapter_request.name
         if adapter_name not in self._adapters_pool:
-            self._adapters_pool[adapter_name] = adapter_request
             self._add_adapter(adapter_request.path, adapter_name)
+            self._adapters_pool[adapter_name] = adapter_request
         return [adapter_name]
 
     def _infer_forward(self, inputs: Dict[str, Any], adapter_request: Optional[AdapterRequest],

@@ -5,16 +5,17 @@ from typing import Dict
 
 from swift.utils import get_logger
 from .base import EvalMetrics
-from .utils import Metric
+from .utils import MeanMetric, Metric
 
 logger = get_logger()
 
 
 class RerankerMetrics(EvalMetrics, Metric):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, group=None, **kwargs):
         super().__init__(*args, **kwargs)
         Metric.__init__(self)
+        self.group = group
         self.add_state('logits', default_factory=list)
         self.add_state('labels', default_factory=list)
 
@@ -23,20 +24,32 @@ class RerankerMetrics(EvalMetrics, Metric):
         self.labels.append(labels.cpu().numpy())
 
     def compute(self):
-        predictions = np.concatenate(self.logits)
-        labels = np.concatenate(self.labels)
-        return self._calculate_metrics(predictions, labels)
+        predictions = np.concatenate(self.logits) if self.logits else np.array([])
+        labels = np.concatenate(self.labels) if self.labels else np.array([])
+        if self.group is None:
+            return self._calculate_metrics(predictions, labels)
+        result = {}
+        for name, scores in self._calculate_query_metrics(predictions, labels).items():
+            # Weight by valid queries, not by ranks or document counts.
+            metric = MeanMetric(group=self.group)
+            metric.update(scores)
+            result[name] = metric.compute()['value']
+        return result
 
     def compute_metrics(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
         return self._calculate_metrics(eval_prediction.predictions, eval_prediction.label_ids)
 
     def _calculate_metrics(self, logits, labels):
+        scores = self._calculate_query_metrics(logits, labels)
+        return {name: np.mean(values) if values else 0.0 for name, values in scores.items()}
+
+    def _calculate_query_metrics(self, logits, labels):
         """
         Calculate MRR and NDCG metrics for reranker.
 
         This function first groups the data based on query boundaries (identified by
         positive samples), then calculates MRR and NDCG for each group independently,
-        and finally returns the mean across all queries.
+        and returns the scores of all valid queries.
 
         Data format:
         - Each query group starts with a positive sample (label=1) followed by negatives (label=0)
@@ -47,7 +60,7 @@ class RerankerMetrics(EvalMetrics, Metric):
             labels: Binary labels (1 for positive, 0 for negative) [batch_size]
 
         Returns:
-            dict: Dictionary containing MRR and NDCG metrics averaged across all queries
+            dict: Dictionary containing per-query MRR and NDCG scores
         """
         # Convert to numpy if needed
         if hasattr(logits, 'numpy'):
@@ -62,7 +75,7 @@ class RerankerMetrics(EvalMetrics, Metric):
         positive_indices = np.where(labels == 1)[0]
 
         if len(positive_indices) == 0:
-            return {'mrr': 0.0, 'ndcg': 0.0}
+            return {'mrr': [], 'ndcg': []}
 
         # Step 2: Split into groups (queries)
         query_groups = []
@@ -132,15 +145,11 @@ class RerankerMetrics(EvalMetrics, Metric):
             ndcg = calculate_ndcg_single_query(relevance_scores, ranking)
             ndcg_scores.append(ndcg)
 
-        # Step 4: Calculate mean metrics across all valid queries
+        # Step 4: Return scores for averaging locally or across data-parallel ranks.
         if len(mrr_scores) == 0:
             logger.warning('No valid queries found for metric calculation')
-            return {'mrr': 0.0, 'ndcg': 0.0}
-
-        mean_mrr = np.mean(mrr_scores)
-        mean_ndcg = np.mean(ndcg_scores)
 
         return {
-            'mrr': mean_mrr,
-            'ndcg': mean_ndcg,
+            'mrr': mrr_scores,
+            'ndcg': ndcg_scores,
         }

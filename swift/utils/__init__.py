@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from .media_utils import SafeMediaPath
     from .np_utils import get_seed, stat_array, transform_jsonl_to_df
     from .processor_utils import Processor, ProcessorMixin
+    from .schema_utils import TOOL_KEYS, remove_arrow_padding
     from .shutdown_manager import ShutdownManager
     from .tb_utils import TB_COLOR, TB_COLOR_SMOOTH, plot_images, read_tensorboard_file, tensorboard_smoothing
     from .torch_utils import (Serializer, check_shared_disk, disable_safe_ddp_context_use_barrier, empty_cache,
@@ -64,6 +65,7 @@ else:
         'media_utils': ['SafeMediaPath'],
         'np_utils': ['get_seed', 'stat_array', 'transform_jsonl_to_df'],
         'processor_utils': ['Processor', 'ProcessorMixin'],
+        'schema_utils': ['TOOL_KEYS', 'remove_arrow_padding'],
         'shutdown_manager': ['ShutdownManager'],
         'tb_utils': ['TB_COLOR', 'TB_COLOR_SMOOTH', 'plot_images', 'read_tensorboard_file', 'tensorboard_smoothing'],
         'torch_utils': [

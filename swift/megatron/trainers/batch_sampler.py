@@ -75,6 +75,7 @@ class MegatronPretrainingRandomSampler:
         data_sharding,
         shuffle: bool = True,
         group_by_length: bool = False,
+        seed: int = 0,
     ):
         # Keep a copy of input params for later use.
         self.dataset = dataset
@@ -93,6 +94,7 @@ class MegatronPretrainingRandomSampler:
         self.data_sharding = data_sharding
         self.shuffle = shuffle
         self.group_by_length = group_by_length
+        self.seed = seed
         self.lengths = self.dataset['lengths'] if group_by_length else None
         if self.lengths is not None:
             self.lengths = [max(length) if isinstance(length, list) else length for length in self.lengths]
@@ -124,14 +126,14 @@ class MegatronPretrainingRandomSampler:
                 start_idx = self.data_parallel_rank * bucket_size
 
                 g = torch.Generator()
-                g.manual_seed(self.epoch)
+                g.manual_seed(self.seed + self.epoch)
                 random_idx = torch.randperm(bucket_size, generator=g).tolist()
                 idx_range = [start_idx + x for x in random_idx[bucket_offset:]]
             else:
                 full_bucket_size = (self.total_samples // self.micro_batch_size) * self.micro_batch_size
                 full_bucket_offset = current_epoch_samples
                 g = torch.Generator()
-                g.manual_seed(self.epoch)
+                g.manual_seed(self.seed + self.epoch)
                 if self.group_by_length:
                     from transformers.trainer_pt_utils import get_length_grouped_indices
                     idx_range_total = get_length_grouped_indices(
