@@ -638,7 +638,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
                 patch_vllm_moe_model_weight_loader(llm_model)
                 llm_model.load_weights(weight_iterator)
                 _model_config = self.engine.engine.model_config
-                finish_vllm_weight_reload(llm_model, model_config=_model_config, target_device=self.device)
+                finish_vllm_weight_reload(llm_model, model_config=_model_config, target_device=self.device, strict=True)
         elif self.vllm_mode == 'server':
             self._load_weights_to_server_in_buckets(weight_iterator)
             if self.is_main_process:
@@ -712,15 +712,18 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         """
         samples = self._preprocess_inputs(samples)
 
-        # Wake up engine if sleeping (colocate mode)
-        if self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping:
-            wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
-            kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+        needs_weight_sync = self._step != self._last_loaded_step or self.args.sleep_level == 2
+        colocate_sleeping = (
+            self.vllm_mode == 'colocate' and self.args.sleep_level > 0 and self.engine.inner_model_executor.is_sleeping)
+        wake_up_supports_tags = (
+            colocate_sleeping and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters)
+
+        if colocate_sleeping and needs_weight_sync:
+            kwargs = {'tags': ['weights']} if wake_up_supports_tags else {}
             aggressive_empty_cache()
             self.engine.engine.wake_up(**kwargs)
 
-        # Load model weights if needed
-        if self._step != self._last_loaded_step or self.args.sleep_level == 2:
+        if needs_weight_sync:
             self._move_model_to_vllm()
             self._last_loaded_step = self._step
 
@@ -728,11 +731,14 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         with context():
             rollout_failed = False
             try:
-                if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
-                        and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
+                if colocate_sleeping and self.engine.inner_model_executor.is_sleeping:
                     aggressive_empty_cache()
                     set_expandable_segments(False)
-                    self.engine.engine.wake_up(tags=['kv_cache'])
+                    tags = ['kv_cache']
+                    if wake_up_supports_tags and not needs_weight_sync:
+                        tags.insert(0, 'weights')
+                    kwargs = {'tags': tags} if wake_up_supports_tags else {}
+                    self.engine.engine.wake_up(**kwargs)
 
                 multi_turn_scheduler = getattr(self, 'multi_turn_scheduler', None)
                 colocate_multi_turn = (

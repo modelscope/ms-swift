@@ -516,3 +516,32 @@ register_model(
         architectures=['GlmMoeDsaForCausalLM'],
         requires=['transformers>=5.2.0'],
     ))
+
+
+class Glm5NextLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        from transformers import Glm5NextForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Glm5NextForConditionalGeneration
+        model = super().get_model(model_dir, *args, **kwargs)
+        if hasattr(model, 'visual'):
+            patch_get_input_embeddings(model.visual, 'patch_embed')
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.glm5_next,
+        [
+            ModelGroup([
+                Model('ZhipuAI/GLM-5.3-Flash', 'zai-org/GLM-5.3-Flash'),
+                Model('ZhipuAI/GLM-5.3-Flash-BF16', 'zai-org/GLM-5.3-Flash-BF16'),
+            ]),
+        ],
+        Glm5NextLoader,
+        template=TemplateType.glm5_next,
+        model_arch=ModelArch.glm4v,
+        architectures=['Glm5NextForConditionalGeneration'],
+        requires=['transformers>=5.16.0'],
+        tags=['vision', 'video'],
+    ))

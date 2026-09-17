@@ -103,6 +103,7 @@ class MLLMModelArch:
     paddleocr_vl = 'paddleocr_vl'
     minimax_m3_vl = 'minimax_m3_vl'
     muse_glimmer = 'muse_glimmer'
+    monkeyocrv2 = 'monkeyocrv2'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -900,6 +901,14 @@ register_model_arch(
         aligner='model.visual.merger',
         vision_tower='model.visual',
         mlp='model.language_model.layers.{}.mlp',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.monkeyocrv2,
+        language_model=[],
+        aligner=[],
+        vision_tower=['', 'head'],
     ))
 
 

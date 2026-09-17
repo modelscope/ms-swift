@@ -221,6 +221,7 @@ class MLLMTemplateType:
     glm_edge_v = 'glm_edge_v'
     glm4v = 'glm4v'
     glm4_5v = 'glm4_5v'
+    glm5_next = 'glm5_next'
     glm_ocr = 'glm_ocr'
 
     minicpmv = 'minicpmv'
@@ -286,6 +287,7 @@ class MLLMTemplateType:
     step3_vl = 'step3_vl'
     minimax_m3_vl = 'minimax_m3_vl'
     muse_glimmer = 'muse_glimmer'
+    monkeyocrv2 = 'monkeyocrv2'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):
