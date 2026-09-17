@@ -332,7 +332,12 @@ class SequenceParallel:
                 _gathered_logits.append(_bs_logits)
             router_logits = torch.stack(_gathered_logits, dim=0)
             if self.real_position_ids is not None:
-                router_logits = router_logits[:, :, :self.real_position_ids.shape[1], :]
+                if self.rp_world_size > 1:
+                    position_ids = self.pad(
+                        self.real_position_ids, padding_value=-1, position_ids=self.real_position_ids)
+                    router_logits = router_logits[:, :, position_ids[0] >= 0, :]
+                else:
+                    router_logits = router_logits[:, :, :self.real_position_ids.shape[1], :]
             output['router_logits'] = tuple(
                 [logit.reshape(-1, logit.shape[-1]) for logit in router_logits.split(1, dim=1)])
             return output
