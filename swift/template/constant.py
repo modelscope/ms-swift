@@ -286,6 +286,7 @@ class MLLMTemplateType:
     step3_vl = 'step3_vl'
     minimax_m3_vl = 'minimax_m3_vl'
     muse_glimmer = 'muse_glimmer'
+    monkeyocrv2 = 'monkeyocrv2'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):
