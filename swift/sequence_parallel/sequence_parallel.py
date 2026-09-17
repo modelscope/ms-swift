@@ -595,6 +595,11 @@ class SequenceParallel:
             labels = self.pad(labels, padding_value=-100, position_ids=real_position_ids)
         if loss_scale is not None:
             loss_scale = self.pad(loss_scale, padding_value=0., position_ids=real_position_ids)
+        if extra_split_values is not None:
+            # Auxiliary fields still use the original packed sequence boundaries.
+            for (tensor, pad_value, split_dim) in extra_split_values:
+                extra_values.append(
+                    self.pad(tensor, padding_value=pad_value, position_ids=real_position_ids, dim=split_dim))
         if real_position_ids is not None:
             real_position_ids = self.pad(real_position_ids, padding_value=-1, position_ids=real_position_ids)
         if (input_ids is not None or input_embeds is not None) and batch_size > 1:
@@ -611,10 +616,6 @@ class SequenceParallel:
             if hasattr(self, 'causal_mask_func') and self.causal_mask_func is not None:
                 attention_mask = self.causal_mask_func(attention_mask, inputs.to(self.model_dtype), cache_position,
                                                        None, None)
-        if extra_split_values is not None:
-            for (tensor, pad_value, split_dim) in extra_split_values:
-                extra_values.append(
-                    self.pad(tensor, padding_value=pad_value, position_ids=real_position_ids, dim=split_dim))
         if input_ids is not None:
             input_ids = self.split(input_ids, dim=1, position_ids=real_position_ids)
         if input_embeds is not None:
