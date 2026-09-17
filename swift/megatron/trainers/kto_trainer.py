@@ -3,6 +3,7 @@ import torch
 from collections import namedtuple
 from functools import partial
 from megatron.core import mpu
+from megatron.core.utils import get_attr_wrapped_model
 from trl import KTOTrainer
 from typing import Any, Dict
 
@@ -107,7 +108,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         return res
 
     def forward_step(self, data_iterator, model):
-        unwrapped_model = model.module.module
+        unwrapped_model = get_attr_wrapped_model(model, 'get_input_tensor', return_model_obj=True)
         input_tensor = unwrapped_model.get_input_tensor()
         vp_stage = unwrapped_model.vp_stage
         # not support loss_scale

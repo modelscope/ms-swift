@@ -20,6 +20,7 @@ from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
+from megatron.core.utils import get_attr_wrapped_model
 from modelscope import check_local_model_is_latest
 from packaging import version
 from pathlib import Path
@@ -403,7 +404,10 @@ class BaseMegatronTrainer(ABC):
         # Map (wd_mult, max_lr, min_lr, is_expert_parallel, is_decoupled_lr) to params.
         params_map = {}
         for model_chunk in model_chunks:
-            visual = model_chunk.module.module.visual if is_multimodal else None
+            try:
+                visual = get_attr_wrapped_model(model_chunk, 'visual') if is_multimodal else None
+            except RuntimeError:
+                visual = None
             for name, param in model_chunk.named_parameters():
                 if not param.requires_grad:
                     continue
@@ -552,6 +556,8 @@ class BaseMegatronTrainer(ABC):
             return
         for vision_tower in visual._vision_tower:
             module = deep_getattr(visual, vision_tower)
+            if module is None:
+                continue
             if self.args.vit_gradient_checkpointing:
                 dynamic_gradient_checkpointing(module, False)
                 try:
@@ -1044,16 +1050,24 @@ class BaseMegatronTrainer(ABC):
             if val_dataset is not None:
                 val_dataloader = build_streaming_dataloader(args, val_dataset, self.data_collator)
             return train_dataloader, val_dataloader
+        consumed_samples = self.state.consumed_train_samples
+        if args.rlhf_type in {'grpo', 'gkd'}:
+            if consumed_samples % args.num_generations:
+                raise RuntimeError(f'consumed_train_samples ({consumed_samples}) must be divisible by '
+                                   f'num_generations ({args.num_generations})')
+            # Checkpoints count generated samples; the dataloader indexes unrepeated prompts.
+            consumed_samples //= args.num_generations
         train_batch_sampler = MegatronPretrainingRandomSampler(
             train_dataset,
             total_samples=len(train_dataset),
-            consumed_samples=self.state.consumed_train_samples,
+            consumed_samples=consumed_samples,
             micro_batch_size=args.micro_batch_size,
             data_parallel_rank=mpu.get_data_parallel_rank(),
             data_parallel_size=mpu.get_data_parallel_world_size(),
             data_sharding=args.data_sharding,
             shuffle=args.train_dataloader_shuffle,
             group_by_length=args.group_by_length,
+            seed=args.data_seed,
         )
         train_dataloader = self._create_dataloader(train_dataset, train_batch_sampler)
         if val_dataset is not None:

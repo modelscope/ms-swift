@@ -87,6 +87,7 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
     def backward(ctx: Any, *grad_outputs: Any):
         logits, labels = ctx.saved_tensors
         chunk_size = ctx.chunk_size
+        grad_logits = torch.empty_like(logits)
 
         for i in range(math.ceil(logits.shape[0] / chunk_size)):
             l_start = i * chunk_size
@@ -99,9 +100,9 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
                 grad_output_chunk = grad_outputs[0][l_start:l_end]
                 _loss_chunk = (loss_chunk * grad_output_chunk).sum()
                 grad_chunk = torch.autograd.grad(_loss_chunk, logits_chunk, retain_graph=False)[0]
-                logits[l_start:l_end] = grad_chunk
+                grad_logits[l_start:l_end] = grad_chunk
 
-        return logits, None, None
+        return grad_logits, None, None
 
 
 class SequenceParallelSampler(Sampler):
