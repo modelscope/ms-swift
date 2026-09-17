@@ -311,6 +311,10 @@ def _build_transformers_model(model_config: ModelConfig,
             kwargs['model_loader'] = model_loader
         model = TransformersModel(**kwargs)
 
+        if model_config.enable_kernel:
+            from twinkle.kernel import kernelize
+            kernelize(model.model)
+
     # twinkle's TransformersModel.__init__ calls gradient_checkpointing_enable() unconditionally
     # (model/transformers/transformers.py), so the user's --gradient_checkpointing false was silently
     # ignored -- and the find_unused_parameters derivation above already assumes the flag is honored,
