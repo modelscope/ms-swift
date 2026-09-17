@@ -12,8 +12,19 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import swift.megatron.trainers.utils as trainer_utils
-from swift.megatron.trainers.utils import prepare_batch
+
+def _require_trainer_utils():
+    """Import the Megatron-dependent module, or skip.
+
+    Kept out of module scope so that a runner without the Megatron stack reports
+    these tests as skipped instead of failing to import the whole module, which
+    ``unittest`` discovery turns into an error.
+    """
+    try:
+        import swift.megatron.trainers.utils as trainer_utils
+    except Exception as exc:  # ImportError, or env init failure inside swift.megatron
+        raise unittest.SkipTest(f'Megatron stack unavailable: {exc}')
+    return trainer_utils
 
 
 class _FakeMPU:
@@ -60,11 +71,12 @@ def _build_data(lengths, include_seq_lens=True):
 
 
 def _patched_prepare_batch(args, data, cp_size, cp_rank):
+    trainer_utils = _require_trainer_utils()
     fake_mpu = _FakeMPU(cp_size, cp_rank)
     with patch('swift.megatron.trainers.utils.mpu',
                fake_mpu), patch('swift.megatron.utils.megatron_lm_utils.mpu',
                                 fake_mpu), patch('mcore_bridge.utils.megatron_utils.mpu', fake_mpu):
-        return prepare_batch(args, data)
+        return trainer_utils.prepare_batch(args, data)
 
 
 @unittest.skipIf(not torch.cuda.is_available(), 'CUDA is required for packed CP metadata integration')
@@ -72,6 +84,7 @@ class TestPackedCpMetadata(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        _require_trainer_utils()
         torch.cuda.set_device(0)
 
     def test_prepare_batch_caches_host_metadata_before_cp_split(self):
@@ -147,6 +160,7 @@ def _contiguous_shards(seq_lens, cp_size, pad_to=None):
 
 
 def _reconstruct(seq_lens, cp_size, use_host_metadata, forbid_item=False, pad_to=None, mode='zigzag'):
+    trainer_utils = _require_trainer_utils()
     builder = _zigzag_shards if mode == 'zigzag' else _contiguous_shards
     full, real_boundaries, all_boundaries, shards = builder(seq_lens, cp_size, pad_to)
     packed_seq_params = SimpleNamespace(cu_seqlens_q=torch.tensor(all_boundaries, dtype=torch.int32))
@@ -168,6 +182,10 @@ def _reconstruct(seq_lens, cp_size, use_host_metadata, forbid_item=False, pad_to
 
 class TestPackedCpMetadataConsumer(unittest.TestCase):
     """``reconstruct_tensor_cp`` is the GRPO/RLHF consumer of the cached boundaries."""
+
+    @classmethod
+    def setUpClass(cls):
+        _require_trainer_utils()
 
     CASES = (([8, 24], 2), ([16, 48], 4), ([4, 8, 12, 16], 2), ([8, 8, 8], 4))
 

@@ -23,11 +23,10 @@ Only ``zigzag`` is exercised: it is the supported production partition mode.
 import os
 import pytest
 import torch
-from mcore_bridge import split_cp_inputs
-from megatron.core.packed_seq_params import PackedSeqParams
 
-from swift.megatron.trainers.utils import reconstruct_tensor_cp
-from swift.utils import init_process_group
+# The Megatron stack is imported lazily below. A runner without it would otherwise
+# fail to import this module, which `unittest` discovery reports as an error rather
+# than a skip.
 
 
 @pytest.fixture(scope='module')
@@ -37,6 +36,10 @@ def cp_group():
         pytest.skip('requires torchrun with at least two GPUs')
     if world_size > torch.cuda.device_count():
         pytest.skip(f'requires {world_size} visible GPUs, found {torch.cuda.device_count()}')
+    pytest.importorskip('mcore_bridge', reason='Megatron stack is required')
+    pytest.importorskip('megatron.core', reason='Megatron stack is required')
+    from swift.utils import init_process_group
+
     torch.cuda.set_device(int(os.environ['LOCAL_RANK']))
     init_process_group(backend='nccl', timeout=120)
     import torch.distributed as dist
@@ -53,6 +56,8 @@ def cp_group():
 
 def _packed_batch(cp_size, device, dtype):
     """Shard a packed batch exactly as training does, returning local and reference tensors."""
+    from mcore_bridge import split_cp_inputs
+
     # Every sample must be divisible by 2 * cp_size for the zigzag layout.
     seq_lens = [4 * cp_size, 12 * cp_size]
     boundaries = [0]
@@ -75,6 +80,8 @@ def _packed_batch(cp_size, device, dtype):
 
 
 def _build_params(cu_seqlens, boundaries, with_host_boundaries):
+    from megatron.core.packed_seq_params import PackedSeqParams
+
     packed_seq_params = PackedSeqParams(
         cu_seqlens_q=cu_seqlens,
         cu_seqlens_kv=cu_seqlens,
@@ -90,6 +97,8 @@ def _build_params(cu_seqlens, boundaries, with_host_boundaries):
 @pytest.mark.parametrize('dtype', (torch.long, torch.bfloat16))
 def test_cuda_host_boundaries_match_device_path_e2e(cp_group, dtype):
     """The cached-boundary path must reconstruct bit-identically to the CUDA path."""
+    from swift.megatron.trainers.utils import reconstruct_tensor_cp
+
     cp_size = cp_group
     device = torch.cuda.current_device()
     reference, boundaries, cu_seqlens, local = _packed_batch(cp_size, device, dtype)
@@ -105,6 +114,8 @@ def test_cuda_host_boundaries_match_device_path_e2e(cp_group, dtype):
 
 def test_cuda_host_boundary_path_preserves_gradient_e2e(cp_group):
     """Reconstruction keeps the local autograd graph, so the fix cannot silently detach."""
+    from swift.megatron.trainers.utils import reconstruct_tensor_cp
+
     cp_size = cp_group
     device = torch.cuda.current_device()
     reference, boundaries, cu_seqlens, local = _packed_batch(cp_size, device, torch.bfloat16)
