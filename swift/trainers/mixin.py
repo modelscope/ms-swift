@@ -1161,7 +1161,7 @@ class SwiftMixin:
         labels = torch.tensor([0] * (len(positive_indices) - 1))
         return preds, labels
 
-    def _compute_acc(self, outputs, labels, cu_seqlens=None) -> None:
+    def _compute_acc(self, outputs, labels, cu_seqlens=None, logits_to_keep=None) -> None:
         args = self.args
         logits = outputs.logits
         metrics = None
@@ -1186,6 +1186,8 @@ class SwiftMixin:
                     preds = torch.from_numpy(preds).to(get_current_device())
                 if isinstance(labels, np.ndarray):
                     labels = torch.from_numpy(labels).to(get_current_device())
+                if logits_to_keep is not None:
+                    preds = preds.new_zeros(labels.shape).masked_scatter(logits_to_keep[None], preds)
                 assert labels.shape[1] == preds.shape[1]
 
                 if sequence_parallel.rp_world_size > 1:
