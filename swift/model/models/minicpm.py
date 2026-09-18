@@ -55,11 +55,37 @@ def _patch_minicpmv_device_map(model) -> None:
         patch_fixed_device(model.resampler, device)
 
 
+def _patch_minicpm_resampler(resampler) -> None:
+    if not hasattr(resampler, '_adjust_pos_cache'):
+        return
+
+    # This cache grows independently on each rank. Non-persistent buffers are
+    # still broadcast by DDP, so keep it as an ordinary tensor, including on growth.
+    pos_embed = resampler.pos_embed
+    del resampler.pos_embed
+    resampler.pos_embed = pos_embed
+
+    def _adjust_pos_cache(self, tgt_sizes, device):
+        max_h, max_w = tgt_sizes.max(dim=0).values.tolist()
+        if max_h > self.max_size[0] or max_w > self.max_size[1]:
+            self.max_size = (max(max_h, self.max_size[0]), max(max_w, self.max_size[1]))
+            del self.pos_embed
+            self._set_2d_pos_cache(self.max_size, device)
+            pos_embed = self.pos_embed
+            del self.pos_embed
+            self.pos_embed = pos_embed
+        # Ordinary tensors do not follow Module.to(); move even without growth.
+        self.pos_embed = self.pos_embed.to(device=device, dtype=self.query.dtype)
+
+    resampler._adjust_pos_cache = MethodType(_adjust_pos_cache, resampler)
+
+
 class MiniCPMVLoader(ModelLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         model = super().get_model(model_dir, config, processor, model_kwargs)
         model.resampler.to(self.torch_dtype)  # fix float32
+        _patch_minicpm_resampler(model.resampler)
         _patch_minicpmv_device_map(model)
         func_list = ['generate', 'get_input_embeddings', 'forward']
         use_submodel_func(model, 'llm', func_list)

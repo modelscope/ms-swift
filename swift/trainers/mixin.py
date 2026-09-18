@@ -115,13 +115,6 @@ class SwiftMixin:
         self.model_meta = model.model_meta
         self.model_info = model.model_info
 
-        if self.model_meta.model_type == 'minicpmo':
-            # The resampler position cache grows independently on each DDP rank.
-            ignored_buffers = set(getattr(model, '_ddp_params_and_buffers_to_ignore', []))
-            ignored_buffers.update(name for name, _ in model.named_buffers()
-                                   if name == 'resampler.pos_embed' or name.endswith('.resampler.pos_embed'))
-            model._ddp_params_and_buffers_to_ignore = ignored_buffers
-
         data_collator = self._get_data_collator(args, template)
         kwargs.update(self.create_loss_and_eval_metric(args))
         trainer_parameters = inspect.signature(HfTrainer.__init__).parameters
