@@ -1497,6 +1497,9 @@ class Template(ProcessorMixin):
             loss_scale = torch.tensor(loss_scale)[protected].tolist()
             loss_scale[0] = 0
             encoded['loss_scale'] = loss_scale
+        token_type_ids = encoded.get('token_type_ids')
+        if token_type_ids is not None:
+            encoded['token_type_ids'] = torch.tensor(token_type_ids)[protected].tolist()
         mm_token_type_ids = encoded.get('mm_token_type_ids')
         if mm_token_type_ids is not None:
             encoded['mm_token_type_ids'] = mm_token_type_ids[protected]
