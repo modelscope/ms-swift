@@ -1,5 +1,6 @@
 import os
 import sys
+from transformers.utils import strtobool
 
 from swift.utils import git_clone_github
 from .base import OptimizerCallback
@@ -21,6 +22,12 @@ class MuonOptimizerCallback(OptimizerCallback):
         if args.optim_args:
             for mapping in args.optim_args.replace(' ', '').split(','):
                 key, value = mapping.split('=')
+                if key == 'momentum':
+                    value = float(value)
+                elif key == 'ns_steps':
+                    value = int(value)
+                elif key == 'nesterov':
+                    value = bool(strtobool(value))
                 optim_args[key] = value
 
         model_arch = model.model_meta.model_arch
