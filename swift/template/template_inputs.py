@@ -14,11 +14,24 @@ logger = get_logger()
 def normalize_openai_tool_calls(messages: Messages) -> Messages:
     """Convert OpenAI assistant ``tool_calls`` into SWIFT canonical messages."""
     normalized = []
-    for message in messages:
+    messages = list(messages)
+    for index, message in enumerate(messages):
         tool_calls = message.get('tool_calls') if message.get('role') == 'assistant' else None
         if not tool_calls:
             normalized.append(message)
             continue
+
+        # Canonical tool responses are positional, so align a complete result batch
+        # before the call IDs are discarded. Keep legacy messages without IDs as-is.
+        call_order = {call.get('id'): i for i, call in enumerate(tool_calls)}
+        end = index + 1
+        while end < len(messages) and messages[end].get('role') in {'tool', 'tool_response'}:
+            end += 1
+        responses = messages[index + 1:end]
+        if (None not in call_order and len(call_order) == len(tool_calls) == len(responses)
+                and set(call_order) == {response.get('tool_call_id')
+                                        for response in responses}):
+            messages[index + 1:end] = sorted(responses, key=lambda response: call_order[response['tool_call_id']])
 
         content = message.get('content')
         if content:
