@@ -196,9 +196,9 @@ class DeepseekV41Loader(ModelLoader):
     # so AutoConfig can load the on-disk config; the text config subclasses the
     # native DeepseekV4Config and only adds the CSA2 source-layer routing fields.
     def get_config(self, model_dir: str):
+        import transformers.models.deepseek_v4.configuration_deepseek_v4 as _v4_config
         from huggingface_hub.dataclasses import strict
         from transformers.models.deepseek_v4.configuration_deepseek_v4 import DeepseekV4Config
-        import transformers.models.deepseek_v4.configuration_deepseek_v4 as _v4_config
 
         # CSA2 widens the per-layer ratio vocabulary beyond V4's {0, 4, 128}.
         _csa2_ratio_to_layer_type = {
@@ -236,9 +236,7 @@ class DeepseekV41Loader(ModelLoader):
                 # Store for vLLM compat (V4 config.json carries `num_hash_layers`
                 # but V4.1 derives it from `default_num_hash_layers=0`).
                 if not hasattr(self, 'num_hash_layers'):
-                    self.num_hash_layers = sum(
-                        1 for t in (self.mlp_layer_types or []) if t == 'hash_moe'
-                    )
+                    self.num_hash_layers = sum(1 for t in (self.mlp_layer_types or []) if t == 'hash_moe')
 
         class DeepseekV41VisionConfig(PretrainedConfig):
             model_type = 'deepseek_v41_vision'
@@ -279,6 +277,24 @@ class DeepseekV41Loader(ModelLoader):
                 # (see mcore_bridge DSv4HybridSelfAttention); surface the text config's
                 # CSA2-derived layer_types so the shared DSv4 attention can index it.
                 self.layer_types = getattr(text_config, 'layer_types', None)
+                # Version-compat shim. transformers >= 5.12 turns PreTrainedConfig into a
+                # strict dataclass that runs the *generic* validate_layer_type, which only
+                # accepts the global ('sparse', 'dense') MLP labels. DeepSeek-V4 overrides
+                # that validator on its *text* config to accept its own 'moe'/'hash_moe'
+                # vocabulary, but this composite subclasses PreTrainedConfig directly and
+                # would otherwise fail validation against the legacy 'moe' labels it
+                # delegates from text_config (via __getattr__). Surface an allowed-vocabulary
+                # copy on the composite so the generic validator passes; text_config keeps
+                # its own 'moe' labels for the native DeepSeek-V4 modeling path. Setting the
+                # attribute explicitly (before super().__init__ runs the strict validation)
+                # also stops __getattr__ from delegating the legacy labels. Overriding the
+                # validator method is not enough: huggingface_hub's @strict captures the
+                # validator functions at decoration time, so a subclass method override is
+                # never invoked. Harmless on older transformers without the strict validator.
+                _mlp_layer_types = getattr(text_config, 'mlp_layer_types', None)
+                if _mlp_layer_types is not None:
+                    _mlp_remap = {'moe': 'sparse', 'hash_moe': 'sparse'}
+                    self.mlp_layer_types = [_mlp_remap.get(t, t) for t in _mlp_layer_types]
                 super().__init__(**kwargs)
 
             def __getattr__(self, name):
@@ -335,13 +351,13 @@ class DeepseekV41Loader(ModelLoader):
         # (bias_vl, engram, compressor, indexer) that the V4 vLLM model
         # doesn't instantiate.
         try:
-            from vllm.models.deepseek_v4.nvidia.model import DeepseekV4ForCausalLM as _V4CausalLM
-            from vllm.model_executor.models.registry import ModelRegistry
-
+            import importlib as _importlib
             # The external deep_gemm package may be outdated (missing
             # tf32_hc_prenorm_gemm, fp8_einsum, etc.).  Force-replace it
             # with vLLM's bundled copy which ships a complete API set.
-            import sys as _sys, importlib as _importlib
+            import sys as _sys
+            from vllm.model_executor.models.registry import ModelRegistry
+            from vllm.models.deepseek_v4.nvidia.model import DeepseekV4ForCausalLM as _V4CausalLM
             try:
                 _bundled_dg = _importlib.import_module('vllm.third_party.deep_gemm')
                 _sys.modules['deep_gemm'] = _bundled_dg
@@ -349,16 +365,12 @@ class DeepseekV41Loader(ModelLoader):
                 pass
 
             if 'DeepseekV41ForCausalLM' not in ModelRegistry.get_supported_archs():
-                _v4_orig_load_weights = _V4CausalLM.load_weights
-
                 # Monkey-patch _o_proj: V4's FlashMLA always uses FP8
                 # einsum for the output projection.  V4.1 bf16 checkpoints
                 # don't carry quantisation scales, so replace it with a
                 # simple bf16 grouped matmul (skips inverse RoPE too —
                 # acceptable for the tiny smoke-test).
-                from vllm.models.deepseek_v4.nvidia.flashmla import (
-                    DeepseekV4FlashMLAAttention as _FlashMLA,
-                )
+                from vllm.models.deepseek_v4.nvidia.flashmla import DeepseekV4FlashMLAAttention as _FlashMLA
 
                 def _bf16_o_proj(self, o, positions):
                     import torch as _torch
@@ -376,19 +388,20 @@ class DeepseekV41Loader(ModelLoader):
                 def _v41_compat_load_weights(self, weights):
                     import math as _math
                     from vllm.model_executor.models.utils import AutoWeightsLoader
+
                     # V4.1-specific weight prefixes that the V4 vLLM model
                     # doesn't have modules for:
                     loader = AutoWeightsLoader(
                         self,
                         skip_substrs=[
-                            'mtp.',            # multi-token prediction
-                            'bias_vl',         # visual language gate bias
-                            'engram.',         # engram tables
-                            'compressor.',     # CSA compressor
-                            'indexer.',        # CSA indexer
-                            'aligner.',        # vision-to-text aligner
-                            'vision.',         # vision encoder
-                            'image_start',     # vision special tokens
+                            'mtp.',  # multi-token prediction
+                            'bias_vl',  # visual language gate bias
+                            'engram.',  # engram tables
+                            'compressor.',  # CSA compressor
+                            'indexer.',  # CSA indexer
+                            'aligner.',  # vision-to-text aligner
+                            'vision.',  # vision encoder
+                            'image_start',  # vision special tokens
                             'image_end',
                             'image_newline',
                         ],
