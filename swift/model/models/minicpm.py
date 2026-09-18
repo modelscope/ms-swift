@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import importlib
 import torch
 from transformers import PreTrainedModel
 from transformers.utils import strtobool
@@ -56,35 +55,17 @@ def _patch_minicpmv_device_map(model) -> None:
         patch_fixed_device(model.resampler, device)
 
 
-def _patch_minicpm_resampler(resampler) -> None:
-    if not hasattr(resampler, '_adjust_pos_cache'):
-        return
-    get_2d_sincos_pos_embed = importlib.import_module(resampler.__module__).get_2d_sincos_pos_embed
-
-    # This cache grows independently on each rank. Non-persistent buffers are
-    # still broadcast by DDP, so keep it as an ordinary tensor, including on growth.
-    pos_embed = resampler.pos_embed
-    del resampler.pos_embed
-    resampler.pos_embed = pos_embed
-
-    def _adjust_pos_cache(self, tgt_sizes, device):
-        max_h, max_w = tgt_sizes.max(dim=0).values.tolist()
-        if max_h > self.max_size[0] or max_w > self.max_size[1]:
-            self.max_size = (max(max_h, self.max_size[0]), max(max_w, self.max_size[1]))
-            pos_embed = get_2d_sincos_pos_embed(self.embed_dim, self.max_size)
-            self.pos_embed = torch.from_numpy(pos_embed).float()
-        # Ordinary tensors do not follow Module.to(); move even without growth.
-        self.pos_embed = self.pos_embed.to(device=device, dtype=self.query.dtype)
-
-    resampler._adjust_pos_cache = MethodType(_adjust_pos_cache, resampler)
-
-
 class MiniCPMVLoader(ModelLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         model = super().get_model(model_dir, config, processor, model_kwargs)
         model.resampler.to(self.torch_dtype)  # fix float32
-        _patch_minicpm_resampler(model.resampler)
+        if hasattr(model.resampler, '_adjust_pos_cache'):
+            # Each rank grows this non-persistent buffer independently.
+            ignored = set(getattr(model, '_ddp_params_and_buffers_to_ignore', []))
+            # Full tuning, SwiftModel and PEFT expose different buffer prefixes.
+            ignored.update(f'{prefix}resampler.pos_embed' for prefix in ('', 'base_model.', 'base_model.model.'))
+            model._ddp_params_and_buffers_to_ignore = ignored
         _patch_minicpmv_device_map(model)
         func_list = ['generate', 'get_input_embeddings', 'forward']
         use_submodel_func(model, 'llm', func_list)
