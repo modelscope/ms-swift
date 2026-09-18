@@ -194,7 +194,7 @@ def prepare_mcore_model(args, model):
         freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
         if args.trainable_parameters or args.trainable_parameters_regex:
             activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
-        if args.rlhf_type == 'grpo':
+        if args.rlhf_type == 'grpo' and args.model_type == 'deepseek_v41':
             _freeze_engram_parameters(model)
     elif args.tuner_type in {'lora', 'lora_llm'}:
         model = prepare_adapter(args, model)

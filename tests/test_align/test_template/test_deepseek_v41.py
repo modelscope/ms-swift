@@ -1,4 +1,6 @@
+import json
 import math
+import sys
 from types import SimpleNamespace
 
 import torch
@@ -11,6 +13,48 @@ from swift.template.templates.deepseek import DeepseekV41Template
 
 
 MODEL_ID = 'deepseek-ai/DeepSeek-V4.1-Flash'
+
+
+def test_deepseek_v41_config_is_process_local(tmp_path):
+    import transformers.models.deepseek_v4.configuration_deepseek_v4 as v4_config_module
+    from transformers.models.deepseek_v4.configuration_deepseek_v4 import DeepseekV4Config
+
+    from swift.model.models.deepseek import DeepseekV41Loader
+
+    text_config = DeepseekV4Config(num_hidden_layers=4).to_dict()
+    text_config.update(
+        model_type='deepseek_v41_text',
+        num_hidden_layers=4,
+        mlp_layer_types=['moe'] * 4,
+        compress_ratios=[0, 1, 2, 4],
+    )
+    text_config.pop('layer_types', None)
+    config_dict = {
+        'model_type': 'deepseek_v41',
+        'architectures': ['DeepseekV41ForCausalLM'],
+        'text_config': text_config,
+        'vision_config': {'model_type': 'deepseek_v41_vision'},
+        'image_token_id': 1,
+    }
+    with open(tmp_path / 'config.json', 'w') as config_file:
+        json.dump(config_dict, config_file)
+
+    loader = object.__new__(DeepseekV41Loader)
+    loader.auto_config_cls = None
+    ratio_mapping = dict(v4_config_module._COMPRESS_RATIO_TO_LAYER_TYPE)
+    vllm_modules = {name for name in sys.modules if name.startswith('vllm')}
+
+    config = loader.get_config(str(tmp_path))
+
+    assert config.text_config.compress_ratios == [0, 1, 2, 4]
+    assert config.text_config.layer_types == [
+        'sliding_attention',
+        'compressed_sparse_attention',
+        'heavily_compressed_attention',
+        'compressed_sparse_attention',
+    ]
+    assert v4_config_module._COMPRESS_RATIO_TO_LAYER_TYPE == ratio_mapping
+    assert {name for name in sys.modules if name.startswith('vllm')} == vllm_modules
 
 
 def _get_template():

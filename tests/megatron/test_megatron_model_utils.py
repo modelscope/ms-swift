@@ -60,7 +60,7 @@ class TestMegatronModelUtils(unittest.TestCase):
                     padding_free=False,
                     use_cpu_initialization=False,
                 )
-                backend = SimpleNamespace(_bridge=SimpleNamespace())
+                backend = SimpleNamespace(_bridge=SimpleNamespace(to_megatron_provider=lambda *_args, **_kwargs: None))
                 provider = _FakeProvider(mtp_use_repeated_layer=provider_default)
 
                 with patch.dict(sys.modules, modules), patch.object(
@@ -75,6 +75,46 @@ class TestMegatronModelUtils(unittest.TestCase):
                     self.assertNotIn('mtp_use_repeated_layer', provider.applied_overrides)
                     self.assertEqual(provider.mtp_use_repeated_layer, provider_default)
                 self.assertIs(models[0].config.bridge, backend)
+
+    def test_megatron_bridge_export_accepts_common_skip_flag(self):
+        tensor = object()
+        auto_bridge = SimpleNamespace(
+            export_hf_weights=lambda models, cpu=False: [SimpleNamespace(param_name='weight', weight=tensor)])
+        backend = utils.MegatronBridgeBackend(auto_bridge)
+
+        exported = list(backend.export_weights([object()], target_device='cpu', skip_unsupported_export=True))
+
+        self.assertEqual(exported, [('weight', tensor)])
+
+    def test_engram_freeze_is_scoped_to_deepseek_v41_full_grpo(self):
+        from swift.megatron.utils import utils as megatron_utils
+
+        model = object()
+        base_args = {
+            'tuner_type': 'full',
+            'freeze_parameters_ratio': 0,
+            'freeze_parameters': [],
+            'freeze_parameters_regex': None,
+            'trainable_parameters': [],
+            'trainable_parameters_regex': None,
+        }
+        cases = (
+            ('deepseek_v41', 'grpo', True),
+            ('deepseek_v4', 'grpo', False),
+            ('deepseek_v41', 'sft', False),
+        )
+        for model_type, rlhf_type, should_freeze in cases:
+            with self.subTest(model_type=model_type, rlhf_type=rlhf_type):
+                args = SimpleNamespace(**base_args, model_type=model_type, rlhf_type=rlhf_type)
+                with patch.object(megatron_utils, 'freeze_parameters'), patch.object(
+                        megatron_utils, '_freeze_engram_parameters') as freeze_engram, patch.object(
+                            megatron_utils, 'get_model_parameter_info', return_value=''), patch.object(
+                                megatron_utils.dist, 'get_rank', return_value=0), patch.object(
+                                    megatron_utils.mpu, 'get_data_parallel_rank', return_value=0):
+                    result = megatron_utils.prepare_mcore_model(args, model)
+
+                self.assertIs(result, model)
+                self.assertEqual(freeze_engram.called, should_freeze)
 
 
 if __name__ == '__main__':

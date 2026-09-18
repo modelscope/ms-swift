@@ -3,7 +3,7 @@ import sys
 import torch
 from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, PretrainedConfig, PreTrainedModel
 from types import MethodType
-from typing import Any, Dict
+from typing import List, Optional
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger, git_clone_github
@@ -196,7 +196,6 @@ class DeepseekV41Loader(ModelLoader):
     # so AutoConfig can load the on-disk config; the text config subclasses the
     # native DeepseekV4Config and only adds the CSA2 source-layer routing fields.
     def get_config(self, model_dir: str):
-        import transformers.models.deepseek_v4.configuration_deepseek_v4 as _v4_config
         from huggingface_hub.dataclasses import strict
         from transformers.models.deepseek_v4.configuration_deepseek_v4 import DeepseekV4Config
 
@@ -214,24 +213,22 @@ class DeepseekV41Loader(ModelLoader):
             model_type = 'deepseek_v41_text'
             default_num_hash_layers = 0  # V4.1 drops the Hash-MoE bootstrap
             # CSA2 source-layer routing
-            kv_source_layer_ids: list | None = None
-            index_source_layer_ids: list | None = None
-            candidate_source_layer_id: int | None = None
-            candidate_topk_blocks: int | None = None
-            candidate_block_size: int | None = None
+            kv_source_layer_ids: Optional[List[int]] = None
+            index_source_layer_ids: Optional[List[int]] = None
+            candidate_source_layer_id: Optional[int] = None
+            candidate_topk_blocks: Optional[int] = None
+            candidate_block_size: Optional[int] = None
 
             def __post_init__(self, **kwargs):
-                # super() consumes (pops) the legacy `compress_ratios` to derive
-                # layer_types and discards it; peek it here so the raw per-layer
-                # ratios survive for the megatron parser (CSA2 reads the int list).
-                compress_ratios = kwargs.get('compress_ratios')
-                old = dict(_v4_config._COMPRESS_RATIO_TO_LAYER_TYPE)
-                _v4_config._COMPRESS_RATIO_TO_LAYER_TYPE.update(_csa2_ratio_to_layer_type)
-                try:
-                    super().__post_init__(**kwargs)
-                finally:
-                    _v4_config._COMPRESS_RATIO_TO_LAYER_TYPE.clear()
-                    _v4_config._COMPRESS_RATIO_TO_LAYER_TYPE.update(old)
+                # DeepseekV4Config consumes the legacy `compress_ratios` and resolves it through a
+                # module-level V4-only mapping. Resolve V4.1's wider ratio vocabulary on this
+                # instance before delegating, avoiding process-global mutation and config-load races.
+                compress_ratios = kwargs.pop('compress_ratios', None)
+                if self.layer_types is None and compress_ratios is not None:
+                    self.layer_types = [_csa2_ratio_to_layer_type[ratio] for ratio in compress_ratios]
+                super().__post_init__(**kwargs)
+                # Keep the raw ratios for mcore-bridge, which needs to distinguish ratios 1/2 even
+                # though both map to V4's public attention layer-type vocabulary.
                 self.compress_ratios = compress_ratios
                 # Store for vLLM compat (V4 config.json carries `num_hash_layers`
                 # but V4.1 derives it from `default_num_hash_layers=0`).
@@ -344,103 +341,9 @@ class DeepseekV41Loader(ModelLoader):
 
         AutoModelForCausalLM.register(DeepseekV41Config, DeepseekV41ForCausalLM, exist_ok=True)
 
-        # Register in vLLM's model registry so the colocate rollout engine can
-        # resolve the V4.1 architecture.  Internally V4.1 text layers are
-        # structurally identical to V4, so we re-use the same vLLM impl.
-        # We also monkey-patch load_weights to skip V4.1-only tensors
-        # (bias_vl, engram, compressor, indexer) that the V4 vLLM model
-        # doesn't instantiate.
-        try:
-            import importlib as _importlib
-            # The external deep_gemm package may be outdated (missing
-            # tf32_hc_prenorm_gemm, fp8_einsum, etc.).  Force-replace it
-            # with vLLM's bundled copy which ships a complete API set.
-            import sys as _sys
-            from vllm.model_executor.models.registry import ModelRegistry
-            from vllm.models.deepseek_v4.nvidia.model import DeepseekV4ForCausalLM as _V4CausalLM
-            try:
-                _bundled_dg = _importlib.import_module('vllm.third_party.deep_gemm')
-                _sys.modules['deep_gemm'] = _bundled_dg
-            except ImportError:
-                pass
-
-            if 'DeepseekV41ForCausalLM' not in ModelRegistry.get_supported_archs():
-                # Monkey-patch _o_proj: V4's FlashMLA always uses FP8
-                # einsum for the output projection.  V4.1 bf16 checkpoints
-                # don't carry quantisation scales, so replace it with a
-                # simple bf16 grouped matmul (skips inverse RoPE too —
-                # acceptable for the tiny smoke-test).
-                from vllm.models.deepseek_v4.nvidia.flashmla import DeepseekV4FlashMLAAttention as _FlashMLA
-
-                def _bf16_o_proj(self, o, positions):
-                    import torch as _torch
-                    B = o.shape[0]
-                    hpg = self.n_local_heads // self.n_local_groups
-                    # (B, G, hpg*head_dim)
-                    o_g = o.reshape(B, self.n_local_groups, hpg * (self.nope_head_dim + self.rope_head_dim))
-                    w = self.wo_a.weight.data.view(self.n_local_groups, self.o_lora_rank, -1)
-                    z = _torch.einsum('bgr,gdr->bgd', o_g.float(), w.float()).to(o.dtype)
-                    result = self.wo_b(z.reshape(B, -1))
-                    return result[0] if isinstance(result, tuple) else result
-
-                _FlashMLA._o_proj = _bf16_o_proj
-
-                def _v41_compat_load_weights(self, weights):
-                    import math as _math
-                    from vllm.model_executor.models.utils import AutoWeightsLoader
-
-                    # V4.1-specific weight prefixes that the V4 vLLM model
-                    # doesn't have modules for:
-                    loader = AutoWeightsLoader(
-                        self,
-                        skip_substrs=[
-                            'mtp.',  # multi-token prediction
-                            'bias_vl',  # visual language gate bias
-                            'engram.',  # engram tables
-                            'compressor.',  # CSA compressor
-                            'indexer.',  # CSA indexer
-                            'aligner.',  # vision-to-text aligner
-                            'vision.',  # vision encoder
-                            'image_start',  # vision special tokens
-                            'image_end',
-                            'image_newline',
-                        ],
-                    )
-                    loaded = loader.load_weights(weights, mapper=self.hf_to_vllm_mapper)
-                    self.model.finalize_mega_moe_weights()
-
-                    # V4.1 doesn't ship hc_head_* weights; initialise them for
-                    # identity-like behaviour (equal-weight stream average).
-                    # sigmoid(base) = 1/hc_mult  →  base = log(p/(1-p))
-                    if hasattr(self.model, 'hc_head_fn'):
-                        hc_mult = self.model.hc_mult
-                        p = 1.0 / hc_mult
-                        base_val = _math.log(p / (1.0 - p))
-                        self.model.hc_head_fn.data.zero_()
-                        self.model.hc_head_base.data.fill_(base_val)
-                        self.model.hc_head_scale.data.zero_()
-                        loaded |= {
-                            'model.hc_head_fn',
-                            'model.hc_head_base',
-                            'model.hc_head_scale',
-                        }
-
-                    # Dynamic fp8 quantisation names the scale ``weight_scale``
-                    # but V4's _o_proj reads ``weight_scale_inv``. Alias it.
-                    for _, mod in self.named_modules():
-                        if hasattr(mod, 'weight_scale') and not hasattr(mod, 'weight_scale_inv'):
-                            mod.weight_scale_inv = mod.weight_scale
-
-                    return loaded
-
-                _V4CausalLM.load_weights = _v41_compat_load_weights
-                ModelRegistry.register_model(
-                    'DeepseekV41ForCausalLM',
-                    'vllm.models.deepseek_v4:DeepseekV4ForCausalLM',
-                )
-        except Exception:
-            pass  # vLLM not installed or incompatible version
-
+        # Rollout requires vLLM's native DeepSeek-V4.1 implementation. Reusing the V4 model is
+        # numerically incorrect because it omits Engram/CSA2 and has different output projection
+        # semantics; registration and capability checks therefore belong to the vLLM runtime.
         return super().get_config(model_dir)
 
 

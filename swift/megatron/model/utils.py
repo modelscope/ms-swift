@@ -115,7 +115,10 @@ class MegatronBridgeBackend:
                        converter=None,
                        tqdm_desc='Exporting: ',
                        disable_tqdm=True,
-                       _is_saving=False) -> Generator[Tuple[str, 'torch.Tensor'], None, None]:
+                       _is_saving=False,
+                       skip_unsupported_export=False) -> Generator[Tuple[str, Any], None, None]:
+        # Keep the export contract shared with mcore-bridge. AutoBridge owns its complete
+        # model mapping, so there is no separate unsupported-weight stream to suppress.
         if peft_format:
             raise NotImplementedError('LoRA export via megatron-bridge backend is not yet supported. '
                                       'Please use bridge_backend="mcore-bridge" for LoRA training.')
