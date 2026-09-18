@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import importlib
 import torch
 from transformers import PreTrainedModel
 from transformers.utils import strtobool
@@ -58,6 +59,7 @@ def _patch_minicpmv_device_map(model) -> None:
 def _patch_minicpm_resampler(resampler) -> None:
     if not hasattr(resampler, '_adjust_pos_cache'):
         return
+    get_2d_sincos_pos_embed = importlib.import_module(resampler.__module__).get_2d_sincos_pos_embed
 
     # This cache grows independently on each rank. Non-persistent buffers are
     # still broadcast by DDP, so keep it as an ordinary tensor, including on growth.
@@ -69,11 +71,8 @@ def _patch_minicpm_resampler(resampler) -> None:
         max_h, max_w = tgt_sizes.max(dim=0).values.tolist()
         if max_h > self.max_size[0] or max_w > self.max_size[1]:
             self.max_size = (max(max_h, self.max_size[0]), max(max_w, self.max_size[1]))
-            del self.pos_embed
-            self._set_2d_pos_cache(self.max_size, device)
-            pos_embed = self.pos_embed
-            del self.pos_embed
-            self.pos_embed = pos_embed
+            pos_embed = get_2d_sincos_pos_embed(self.embed_dim, self.max_size)
+            self.pos_embed = torch.from_numpy(pos_embed).float()
         # Ordinary tensors do not follow Module.to(); move even without growth.
         self.pos_embed = self.pos_embed.to(device=device, dtype=self.query.dtype)
 
