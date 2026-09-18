@@ -164,7 +164,7 @@ def is_instance_of_ms_model(model: Module) -> bool:
     return False
 
 
-def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, return_labels=False, **kwargs):
+def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, return_labels=False, logits_to_keep=None, **kwargs):
     """Common loss function for sequence parallel training"""
     if hasattr(outputs, 'logits'):
         logits = outputs.logits
@@ -174,7 +174,11 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, return_labels
 
     batch_size = logits.shape[0]
     logits = logits.view(-1, logits.shape[-1])
-    labels = labels.flatten().to(device)
+    labels = labels.to(device)
+    full_labels = labels
+    if logits_to_keep is not None:
+        labels = labels[:, logits_to_keep]
+    labels = labels.flatten()
     sploss_parallel_size = int(os.environ.get('CELOSS_PARALLEL_SIZE', '0'))
     if sploss_parallel_size > 0:
         loss = ChunkedCrossEntropyLoss.apply(logits, labels, sploss_parallel_size)
@@ -185,6 +189,10 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, return_labels
         with torch.no_grad():
             target_probs = torch.exp(-loss)
         loss *= target_probs
+    if logits_to_keep is not None:
+        # Gather full-length scalar losses, not variable-length vocabulary logits.
+        loss = loss.new_zeros(full_labels.shape).masked_scatter(logits_to_keep[None], loss)
+        labels = full_labels
     position_ids = sequence_parallel.real_position_ids
     if position_ids is not None:
         position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)

@@ -14,6 +14,7 @@ from transformers.utils import is_peft_available
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
+from swift.model import MLLMModelType
 from swift.sequence_parallel import sequence_parallel
 from swift.utils import HfConfigFactory, JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
 from .arguments import Seq2SeqTrainingArguments
@@ -101,6 +102,32 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         labels_list = pad_for_ddp_gather(labels_list, padding_value=0)
         return None, response_list, labels_list
 
+    def prepare_logits_to_keep(self, inputs):
+        if self.template.sequence_parallel_size == 1:
+            return super().prepare_logits_to_keep(inputs)
+        labels = inputs['labels']
+        # Evaluation keeps full logits for prediction gathering and external metrics.
+        if not self.model.training:
+            return
+        if labels.shape[0] != 1 or self.template.padding_free or sequence_parallel.rp_world_size > 1:
+            raise NotImplementedError('SP logits_to_keep requires batch size 1, no packing/padding_free, and Ulysses.')
+        if self.compute_loss_func is not None or self.label_smoother is not None:
+            raise NotImplementedError('SP logits_to_keep requires the default causal language modeling loss.')
+        if self.template.is_encoder_decoder or self.args.tuner_backend == 'unsloth' or self.args.use_liger_kernel:
+            raise NotImplementedError('SP logits_to_keep requires a text causal LM without Unsloth or Liger.')
+        if self.model.model_meta.is_multimodal:
+            media_keys = ('pixel_values', 'pixel_values_videos', 'image_grid_thw', 'video_grid_thw', 'inputs_embeds')
+            mm_token_type_ids = inputs.get('mm_token_type_ids')
+            if (self.model.model_meta.model_type != MLLMModelType.qwen3_5_moe or inputs.get('input_ids') is None
+                    or any(inputs.get(key) is not None for key in media_keys)
+                    or (mm_token_type_ids is not None and mm_token_type_ids.any())):
+                raise NotImplementedError('SP logits_to_keep only supports text-only inputs for Qwen3.5/3.6 MoE.')
+        # SP has already shifted and sharded labels. Keep them at their full local length.
+        logits_to_keep = labels[0] != -100
+        # Keep one position even on prompt-only ranks so lm_head participates in backward.
+        logits_to_keep[-1] = True
+        inputs['logits_to_keep'] = logits_to_keep
+
     def _prepare_inputs(self, inputs):
         args = self.args
         inputs = super()._prepare_inputs(inputs)
@@ -110,7 +137,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
         if use_logits_to_keep:
             self.prepare_logits_to_keep(inputs)
-            if args.tuner_backend == 'unsloth' and isinstance(inputs['logits_to_keep'], torch.Tensor):
+            if args.tuner_backend == 'unsloth' and isinstance(inputs.get('logits_to_keep'), torch.Tensor):
                 inputs['logits_to_keep'] = int(inputs['logits_to_keep'].sum())
 
         base_model = self.template.get_base_model(self.model)
@@ -167,7 +194,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                         outputs,
                         labels,
                         enable_dft_loss=self.args.enable_dft_loss,
-                        return_labels=self.args.enable_channel_loss)
+                        return_labels=self.args.enable_channel_loss,
+                        logits_to_keep=inputs.get('logits_to_keep'))
                     if self.args.enable_channel_loss:
                         outputs.loss, channel_labels = sp_loss
                     else:
@@ -250,7 +278,10 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 cu_seqlens = self.get_cu_seqlens(text_position_ids, inputs.get('logits_to_keep'))
             # Liger does not have logits
             # Unsloth has a bug with output logits
-            self._compute_acc(outputs, labels, cu_seqlens=cu_seqlens)
+            acc_kwargs = {}
+            if self.template.sequence_parallel_size > 1 and 'logits_to_keep' in inputs:
+                acc_kwargs['logits_to_keep'] = inputs['logits_to_keep']
+            self._compute_acc(outputs, labels, cu_seqlens=cu_seqlens, **acc_kwargs)
         return (loss, outputs) if return_outputs else loss
 
     def training_step(self, model, inputs, *args, **kwargs):

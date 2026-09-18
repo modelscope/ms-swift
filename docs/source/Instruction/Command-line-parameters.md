@@ -516,6 +516,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - lazy_tokenize: 是否使用lazy_tokenize。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（多模态模型则包括从磁盘中读取图片）。该参数默认为None，在LLM训练中默认为False，而MLLM训练默认为True，节约内存。
   - 注意：若你要进行图像的数据增强，你需要将lazy_tokenize（或streaming）设置为True，并修改Template类中的encode方法。
 - use_logits_to_keep: 通过在`forward`中根据labels传入logits_to_keep，减少无效logits的计算与存储，从而减少显存占用并加快训练速度。默认为None，进行自动选择。
+  - 与序列并行一起使用时，需显式设置`--use_logits_to_keep true`。目前支持纯文本 causal LM，以及 Qwen3.5/3.6 MoE 的纯文本样本（不含图像、视频）的 Ulysses 训练，要求每卡 batch size 为 1，关闭 packing/padding-free，并使用默认 loss（不支持自定义 loss、label smoothing、Unsloth 或 Liger）。模型需原生支持张量形式的`logits_to_keep`。评估时保留完整 logits。
 - acc_strategy: 训练和验证时计算acc的策略。可选为`seq`和`token`级别的acc，默认为`token`。
 - max_new_tokens: 覆盖生成参数。predict_with_generate=True时的最大生成token数量，默认64。
 - temperature: 覆盖生成参数。predict_with_generate=True时的temperature，默认0。
