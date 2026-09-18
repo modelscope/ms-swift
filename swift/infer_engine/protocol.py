@@ -201,6 +201,8 @@ class RequestConfig:
     logprobs: bool = False
     top_logprobs: Optional[int] = None
     prompt_logprobs: Optional[int] = None
+    # vLLM only. None inherits the deployment default (normally True).
+    detokenize: Optional[bool] = None
 
     n: int = 1
     best_of: Optional[int] = None
