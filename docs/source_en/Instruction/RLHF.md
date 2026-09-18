@@ -20,6 +20,8 @@ Reference the training script [here](https://github.com/modelscope/ms-swift/tree
 ## DPO
 [Paper on arXiv](https://arxiv.org/abs/2305.18290)
 
+Swift's `DPOTrainer` does not support precomputing reference log probabilities. When using the Python API, keep the inherited `DPOConfig.precompute_ref_log_probs` option at its default value of `False`; setting it to `True` raises a `ValueError` when constructing the trainer. Reference log probabilities are computed during training. This option is not exposed by the Swift CLI.
+
 Hyperparameters:
 
 - beta: KL regularization coefficient. A larger value imposes a stronger penalty for deviating from the reference model. Default is 0.1.
