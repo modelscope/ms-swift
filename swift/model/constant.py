@@ -46,6 +46,7 @@ class LLMModelType:
     deepseek_v3 = 'deepseek_v3'
     deepseek_v32 = 'deepseek_v32'
     deepseek_v4 = 'deepseek_v4'
+    deepseek_v41 = 'deepseek_v41'
 
     openbuddy_llama = 'openbuddy_llama'
     openbuddy_mistral = 'openbuddy_mistral'
@@ -211,6 +212,7 @@ class MLLMModelType:
     llava_onevision1_5 = 'llava_onevision1_5'
     llava_onevision2 = 'llava_onevision2'
 
+    deepseek_v41 = 'deepseek_v41'
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
