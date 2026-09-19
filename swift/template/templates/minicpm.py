@@ -576,6 +576,7 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
         return {'inputs_embeds': inputs_embeds}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        seq_lens = [len(b['input_ids']) for b in batch]
         res = {}
         # Vision data
         for k in ['pixel_values', 'image_bound', 'tgt_sizes']:
@@ -617,6 +618,24 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
         res['audio_bounds'] = audio_bounds_list if audio_bounds_list else []
 
         res.update(Template._data_collator(self, batch, padding_to=padding_to))
+
+        # image_bound and audio_bounds are computed before batching. Keep them aligned with input_ids when the
+        # base collator left-pads shorter samples. In inference, the base collator always uses left padding;
+        # during training, it follows self.padding_side.
+        padding_side = self.padding_side if self.is_training else 'left'
+        if not self.padding_free and padding_side == 'left':
+            padded_seq_len = res['input_ids'].shape[-1]
+            padding_lengths = [padded_seq_len - seq_len for seq_len in seq_lens]
+            for key in ['image_bound', 'audio_bounds']:
+                bounds_list = res.get(key)
+                if not bounds_list:
+                    continue
+                assert len(bounds_list) == len(padding_lengths), (
+                    f'len({key}): {len(bounds_list)}, len(padding_lengths): {len(padding_lengths)}')
+                res[key] = [
+                    bounds + padding_length if isinstance(bounds, torch.Tensor) else bounds
+                    for bounds, padding_length in zip(bounds_list, padding_lengths)
+                ]
         return res
 
 
