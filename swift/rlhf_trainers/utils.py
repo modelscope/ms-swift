@@ -108,6 +108,15 @@ def is_valid_ipv6_address(address: str) -> bool:
 def format_host_for_url(host: str) -> str:
     """Format host for URL - wrap IPv6 addresses in brackets."""
     if is_valid_ipv6_address(host):
+        # RFC 6874: a scoped address carries its zone id percent-encoded inside
+        # the brackets (`fe80::1%eth0` -> `[fe80::1%25eth0]`). Leaving the `%`
+        # unencoded makes HTTP clients read `%et` as a malformed percent-escape
+        # and reject the URL. `host` is expected to be a raw address (as
+        # returned by `resolve_hostname`), so its single `%` separator is
+        # encoded exactly once.
+        address, sep, zone = host.partition('%')
+        if sep:
+            host = f'{address}%25{zone}'
         return f'[{host}]'
     return host
 
