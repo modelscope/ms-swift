@@ -358,3 +358,63 @@ swift rlhf \
 - https://github.com/alibaba/ROLL/tree/main/roll/pipeline/agentic/env/frozen_lake
 - https://github.com/huggingface/openenv
 - https://github.com/huggingface/trl/blob/main/examples/notebooks/openenv_sudoku_grpo.ipynb
+
+## AgentArk 环境训练
+
+[AgentArk](https://github.com/P90-RushB/AgentArk) 面向多模态 Agent 的强化学习与评估，环境由独立的 AgentArk Env Server 管理，实际任务运行在一个或多个 Unity runtime 中。Swift 内置的 `AgentArkEnv` 和 `AgentArkScheduler` 通过 HTTP protocol v2 完成 reset、step、reward 和 lease 回收；trainer 环境不需要安装 `agent-ark`，也不需要加载 `--external_plugins`。
+
+```text
+swift rlhf + AgentArkScheduler ──HTTP──> AgentArk Env Server ──> Unity runtime pool
+```
+
+### 1. 准备 AgentArk Server
+
+Env Server、Unity 包、runtime 配置与预热在 AgentArk 仓库中完成。首次使用建议直接按照 [AgentArk 的中文 Snake 教程](https://github.com/P90-RushB/AgentArk/blob/main/integrations/ms_swift/tutorial/README.zh-CN.md) 操作；该教程包含一个先将 Snake 地图缩小为 `8×8`、再运行 1-step smoke test 的完整示例。缩小地图只是为了降低早期探索难度、尽快验证训练链路，并非正式评测配置。
+
+Server 和 Swift trainer 可以使用不同的 Python 环境。Server 环境安装 AgentArk 和 ML-Agents，trainer 环境只安装 ms-swift。训练开始前应确认 Server health 正常、protocol v2 runtime 已预热，并且 idle runtime 数量不少于 `generation_batch_size`。
+
+### 2. 生成 ticket 数据集
+
+数据集中的行是轻量 ticket，真正的 system/user 消息和图片在环境 reset 后由 Unity 返回。每行代表一个 GRPO group；Swift 将该行复制为 `num_generations` 条 sibling trajectory，它们共享 `group_uid` 与初始 seed，但各自获得独立 lease。
+
+使用示例生成器创建唯一 ticket：
+
+```bash
+python examples/train/grpo/plugin/agentark/generate_tickets.py \
+    --output /path/to/agentark-tickets.jsonl \
+    --run-id snake-smoke \
+    --count 100 \
+    --task-name Snake \
+    --group-seed-base 1234
+```
+
+不要用数据集重复语法反复复制同一个 `group_uid`；长时间训练应准备足够多的唯一 ticket。
+
+### 3. 运行 1-step smoke test
+
+保持 Env Server 运行，在 trainer 终端设置必要变量：
+
+```bash
+export AGENTARK_MODEL=/path/to/a/swift-supported-multimodal-model
+export AGENTARK_TICKET_DATASET=/path/to/agentark-tickets.jsonl
+export AGENTARK_RUNTIME_CONFIG=/path/to/agentark_runtime_config.yaml
+export AGENTARK_SERVER_URL=http://127.0.0.1:18080
+
+bash examples/train/grpo/plugin/agentark/run_grpo.sh
+```
+
+示例默认使用内置的 `agentark_scheduler`、LoRA、vLLM colocate 和 `max_steps=1`。它只是最小链路检查；模型、GPU 数量、上下文长度、generation batch 和 vLLM 显存比例应按机器调整。至少检查训练到达 step 1、梯度有限、reward/completion 已写入、checkpoint 已生成，并且 Server 的 active lease 最终回到 0。跑通不要求复现固定 reward。
+
+核心 Swift 参数为：
+
+```bash
+swift rlhf ... \
+    --use_gym_env true \
+    --gym_env agentark \
+    --multi_turn_scheduler agentark_scheduler \
+    --max_turns 6
+```
+
+`AgentArkScheduler` 保留 rollout 返回的精确 token IDs 和逐 token loss mask，支持多轮 inline `image_url` 消息，并在正常结束、异常或取消时释放 lease。`assistant_loss_scope` 可在 ticket 的 `env_config` 中设为 `all_turns`（默认）或 `last_round`。
+
+完整示例文件：[`examples/train/grpo/plugin/agentark`](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/agentark)。
