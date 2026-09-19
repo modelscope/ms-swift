@@ -1,62 +1,57 @@
-# DeepSeek-V4.1-Flash LoRA SFT (Megatron backend).
+#!/bin/bash
+# DeepSeek-V4.1 full-parameter SFT (Megatron backend).
 #
-# Requirements / notes:
-# - Versions -- this is the combination DeepSeek-V4.1 was validated on:
-#   * Megatron-LM must be a source checkout, not a megatron-core wheel: v4.1 needs the hybrid
-#     stack, Engram and CSA2 code that no release carries. Validated baseline is the dev branch
-#     with NVIDIA/Megatron-LM PR #7224 merged in (megatron-core 0.19.0; dev was at 0cd11658f):
-#         git clone -b dev https://github.com/NVIDIA/Megatron-LM.git && cd Megatron-LM
-#         git fetch origin pull/7224/head:pr7224 && git merge --no-edit pr7224
-#     Put it on PYTHONPATH so it shadows any installed megatron-core:
-#         export PYTHONPATH=/abs/path/to/Megatron-LM:$PYTHONPATH
-#   * ms-swift >= 4.6.0 and mcore-bridge >= 1.7.0, both source installs -- DeepSeek-V4.1 landed
-#     after the latest release of either, and requirements/megatron.txt still pins mcore-bridge
-#     >= 1.6.3, which predates it:
-#         pip install -e /path/to/ms-swift -e /path/to/mcore-bridge
-# - Real DeepSeek-V4.1-Flash is a ~700B MoE model and needs an H200-class multi-node
-#   cluster; the numbers below (EP/PP/DP/VPP) are a starting point, adjust to your hardware.
-# - Parallelism support: CP / PP / EP / DP / VPP are supported. TP (tensor parallelism) and
-#   SP (sequence parallelism) are NOT supported yet for DeepSeek-V4.1, so keep
-#   --tensor_model_parallel_size 1 and do NOT pass --sequence_parallel.
-# - Context parallelism (--context_parallel_size > 1): DSv4's hybrid attention (CSA2/Engram)
-#   rejects the default zigzag CP layout and requires contiguous CP over packed (THD) inputs.
-#   So when you raise CP, also add:
-#       --cp_partition_mode contiguous --packing true --sequence_packing_scheduler default_dynamic_cp
-#   Omitting the scheduler fails with "cp_partition_mode='contiguous' ... requires THD inputs".
-# - Keep --bf16: the checkpoint's FP4 weights are dequantized to BF16 on load. Native FP4
-#   training (--fp4) requires Blackwell and is not wired up (absorbed_mla asserts), do not use it.
-# - --virtual_pipeline_model_parallel_size (VPP / interleaved pipeline) is optional; it needs
-#   enough layers per pipeline stage. Remove it if your layout does not divide evenly.
+# Install Megatron-LM with DeepSeek-V4.1 support (CSA2 + Engram + HybridModel), then ms-swift
+# and the mcore-bridge:
+#   pip install "git+https://github.com/tastelikefeet/Megatron-LM.git@dsv41-pr7224-engram-local"
+#   pip install -e .              # ms-swift (run from the repo root)
+#   pip install -e mcore-bridge   # DeepSeek-V4.1 Megatron bridge/loader
+#
+# --model below is a local 4-layer random-weight checkpoint for a fast smoke test; replace it
+# with a real model such as deepseek-ai/DeepSeek-V4.1-Flash for actual training.
+#
+# Engram is driven by the model config (engram_layer_ids), not a CLI flag. Under full-parameter
+# SFT it stays trainable and participates in the backward pass.
+# DeepSeek-V4.1 does not support TP/SP: keep tensor_model_parallel_size 1, no --sequence_parallel.
+#
+#   bash examples/models/deepseek_v41/megatron_sft.sh          # GPU 0
+#   GPUS=3 bash examples/models/deepseek_v41/megatron_sft.sh   # choose a GPU
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-NPROC_PER_NODE=8 \
+NPROC_PER_NODE=1 \
+CUDA_VISIBLE_DEVICES=${GPUS:-0} \
 megatron sft \
-    --model deepseek-ai/DeepSeek-V4.1-Flash \
-    --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
-    --num_train_epochs 1 \
-    --tuner_type lora \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --target_modules all-linear \
-    --bf16 true \
+    --model .temp/dsv41_tiny_sft \
+    --dataset 'swift/self-cognition#500' \
+    --model_author swift \
+    --model_name swift-robot \
+    --split_dataset_ratio 0 \
+    --tuner_type full \
     --context_parallel_size 1 \
     --tensor_model_parallel_size 1 \
-    --expert_model_parallel_size 8 \
+    --expert_model_parallel_size 1 \
     --expert_tensor_parallel_size 1 \
-    --pipeline_model_parallel_size 4 \
-    --virtual_pipeline_model_parallel_size 2 \
-    --moe_permute_fusion true \
-    --moe_grouped_gemm true \
-    --recompute_granularity selective \
-    --padding_free true \
-    --max_length 8192 \
+    --pipeline_model_parallel_size 1 \
     --micro_batch_size 1 \
-    --global_batch_size 8 \
+    --global_batch_size 2 \
+    --max_length 512 \
+    --train_iters 100 \
     --lr 1e-4 \
-    --save_safetensors true \
-    --merge_lora false \
-    --logging_steps 1 \
-    --save_steps 500 \
-    --dataloader_num_workers 8 \
-    --dataset_num_proc 8 \
+    --min_lr 1e-5 \
+    --lr_warmup_fraction 0.05 \
+    --bf16 true \
+    --finetune true \
+    --recompute_granularity none \
+    --masked_softmax_fusion false \
     --attention_backend flash \
-    --output_dir output
+    --logging_steps 1 \
+    --eval_iters 0 \
+    --save_steps 100 \
+    --no_save_optim true \
+    --no_save_rng true \
+    --save_safetensors true \
+    --dataloader_num_workers 1 \
+    --dataset_num_proc 1 \
+    --output_dir megatron_output/dsv41-sft
