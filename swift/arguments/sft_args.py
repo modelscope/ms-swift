@@ -283,6 +283,11 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
     def _init_fsdp(self):
+        # Expert parallel requires FSDP2 — auto-enable when ep_size > 1
+        if self.expert_parallel_size > 1 and not self.fsdp:
+            logger.info(f'Auto-enabling FSDP2 for expert_parallel_size={self.expert_parallel_size}')
+            self.fsdp = 'fsdp2'
+
         if not self.fsdp:
             self.fsdp = []
             return
@@ -340,7 +345,12 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         FSDP2 has several known limitations:
         1. save_only_model=True + SHARDED_STATE_DICT: Can't save only model weights with sharded state dict
         2. gradient_checkpointing=True: Should use activation_checkpointing in fsdp_config instead
+        3. Expert parallel requires FSDP2 and is not compatible with DeepSpeed or device_map
         """
+        # Check 0: Expert parallel + DeepSpeed
+        if self.expert_parallel_size > 1 and self.deepspeed:
+            raise ValueError('expert_parallel_size > 1 is not compatible with DeepSpeed. '
+                             'Use --fsdp fsdp2 instead.')
         state_dict_type = self.fsdp_config.get('state_dict_type', 'SHARDED_STATE_DICT')
 
         # Check 1: save_only_model + SHARDED_STATE_DICT
