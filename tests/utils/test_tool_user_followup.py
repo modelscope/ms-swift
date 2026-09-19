@@ -25,6 +25,25 @@ def _make_tokenizer():
     return tokenizer
 
 
+def _make_glm_tokenizer():
+    # GLM renders tool results with its own control tokens, so a GLM-flavoured byte tokenizer keeps this
+    # regression independent of model downloads while still exercising the `<|user|>` splice.
+    vocab = {char: i for i, char in enumerate(sorted(pre_tokenizers.ByteLevel.alphabet()))}
+    backend = Tokenizer(models.BPE(vocab=vocab, merges=[]))
+    backend.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
+    backend.decoder = decoders.ByteLevel()
+    tokenizer = PreTrainedTokenizerFast(
+        tokenizer_object=backend,
+        eos_token='<|endoftext|>',
+        pad_token='<|endoftext|>',
+        additional_special_tokens=[
+            '[gMASK]', '<sop>', '<|system|>', '<|user|>', '<|assistant|>', '<|observation|>', '<think>', '</think>'
+        ])
+    tokenizer.model_info = SimpleNamespace(config=SimpleNamespace(), task_type='causal_lm', max_model_len=8192)
+    tokenizer.model_meta = SimpleNamespace(is_multimodal=False)
+    return tokenizer
+
+
 class TestQwenToolUserFollowup(unittest.TestCase):
     """Reference byte-match: the root fix must reproduce independent ChatML rendering for qwen3_5."""
 
@@ -83,6 +102,41 @@ class TestQwenToolUserFollowup(unittest.TestCase):
         text = self.tokenizer.decode(encoded['input_ids'])
         self.assertIn('<tool_response>\nresult_0\n</tool_response>', text)
 
+    def test_openai_and_swift_tool_calls_match(self):
+        # The follow-up path must treat OpenAI-format tool_calls and native tool_call/tool_response alike.
+        call = {'name': 'weather', 'arguments': {'city': 'Beijing'}}
+        data = self.make_data()
+        data['messages'][1] = {
+            'role': 'assistant',
+            'content': '',
+            'tool_calls': [{
+                'id': 'call_1',
+                'type': 'function',
+                'function': call
+            }]
+        }
+        data['messages'][2]['tool_call_id'] = 'call_1'
+        native = copy.deepcopy(data)
+        native['messages'][1] = {'role': 'tool_call', 'content': call}
+        native['messages'][2]['role'] = 'tool_response'
+        template = self.make_template()
+        self.assertEqual(template.encode(data), template.encode(native))
+
+    def test_response_loss_weight_is_preserved(self):
+        # Splicing the follow-up into the query must not disturb the assistant response loss weights.
+        template = self.make_template(is_binary_loss_scale=False)
+        data = self.make_data()
+        data['messages'][-1]['loss_scale'] = 0.4
+        encoded = template.encode(data)
+        text = self.tokenizer.decode(encoded['input_ids'])
+        start = text.index(data['messages'][-1]['content'])
+        begin = len(self.tokenizer.encode(text[:start], add_special_tokens=False))
+        length = len(self.tokenizer.encode(data['messages'][-1]['content'], add_special_tokens=False))
+        self.assertEqual(encoded['loss_scale'][begin:begin + length], [0.4] * length)
+        for label, weight in zip(encoded['labels'], encoded['loss_scale']):
+            if label == -100:
+                self.assertEqual(weight, 0.)
+
 
 class TestHermesToolUserFollowup(unittest.TestCase):
     """The root fix generalizes: a non-qwen ChatML template stops crashing and keeps the user boundary."""
@@ -115,6 +169,48 @@ class TestHermesToolUserFollowup(unittest.TestCase):
         self.assertIn('followup_0', text)
         # The follow-up user keeps its own turn boundary rather than being glued to the tool result.
         self.assertIn('</tool_response><|im_end|>\n<|im_start|>user\nfollowup_0', text)
+
+
+class TestGLMToolUserFollowup(unittest.TestCase):
+    """GLM renders tool results independently; a follow-up user must become a normal `<|user|>` turn."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tokenizer = _make_glm_tokenizer()
+
+    def make_template(self):
+        template = get_template(self.tokenizer, template_type='glm4_5')
+        template.set_mode('train')
+        return template
+
+    @staticmethod
+    def make_data(n_users=1):
+        call = '<tool_call>weather\n<arg_key>city</arg_key>\n<arg_value>BJ</arg_value>\n</tool_call>'
+        messages = [
+            {'role': 'user', 'content': 'question'},
+            {'role': 'assistant', 'content': call},
+            {'role': 'tool', 'content': 'result_0'},
+        ]
+        messages += [{'role': 'user', 'content': f'followup_{i}'} for i in range(n_users)]
+        messages.append({'role': 'assistant', 'content': 'final_answer'})
+        return {'messages': messages}
+
+    def test_followup_spliced_before_assistant(self):
+        template = self.make_template()
+        encoded = template.encode(self.make_data(n_users=1))
+        text = self.tokenizer.decode(encoded['input_ids'])
+        # Matches the official jinja: `</tool_response><|user|>\n{followup}<|assistant|>`.
+        self.assertIn('</tool_response><|user|>\nfollowup_0<|assistant|>', text)
+        # The follow-up belongs to the query side and must not be supervised.
+        supervised = self.tokenizer.decode([t for t in encoded['labels'] if t != -100])
+        self.assertNotIn('followup_0', supervised)
+
+    def test_no_followup_is_unchanged(self):
+        template = self.make_template()
+        encoded = template.encode(self.make_data(n_users=0))
+        text = self.tokenizer.decode(encoded['input_ids'])
+        self.assertIn('</tool_response><|assistant|>', text)
+        self.assertNotIn('<|user|>\nfollowup', text)
 
 
 if __name__ == '__main__':

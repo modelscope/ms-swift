@@ -21,6 +21,29 @@ class GLMTemplateMeta(TemplateMeta):
 class GLM4Template(Template):
     strip_newline = True
 
+    def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
+        super()._swift_prepare_inputs(inputs)
+        # The pairwise encoder needs one query before each assistant response, so a user turn that
+        # follows tool results would otherwise pair a `tool` query with a `user` response and hit the
+        # `response_role` assertion in `_swift_encode`. GLM renders each role independently: a user turn
+        # after tool results is just a normal `<|user|>` turn placed before the assistant transition that
+        # `_format_tool_responses` appends. Splice the follow-up user(s) into that tool query accordingly.
+        if self.template_backend != 'swift' or not self.use_chat_template or inputs.is_multimodal:
+            return
+        query_prefix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)[0]
+        messages = inputs.messages
+        i = 1
+        while i < len(messages):
+            pre_message, message = messages[i - 1], messages[i]
+            tool_content = pre_message['content']
+            if (message['role'] == 'user' and isinstance(message['content'], str) and pre_message['role'] == 'tool'
+                    and isinstance(tool_content, list) and tool_content and isinstance(tool_content[-1], str)
+                    and '<|assistant|>' in tool_content[-1]):
+                pre_message['content'] = tool_content[:-1] + [query_prefix + message['content'], tool_content[-1]]
+                messages.pop(i)
+                continue
+            i += 1
+
     def _swift_encode(self, inputs: StdTemplateInputs):
         res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
         if self.strip_newline:
