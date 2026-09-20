@@ -1,6 +1,11 @@
 # DeepSeek-V4.1-Flash full-parameter GRPO (Megatron + vLLM colocate).
 #
 # Requirements / notes:
+# - Install the project's Megatron-LM with DeepSeek-V4.1 support (CSA2 + Engram + HybridModel),
+#   then ms-swift and the mcore-bridge:
+#     pip install "git+https://github.com/tastelikefeet/Megatron-LM.git@dsv41-pr7224-engram-local"
+#     pip install -e .              # ms-swift (run from the repo root)
+#     pip install -e mcore-bridge   # DeepSeek-V4.1 Megatron bridge/loader
 # - Real DeepSeek-V4.1-Flash needs an H200-class cluster; the rollout side relies on a
 #   vLLM build with native DeepSeek-V4.1 support (use the official
 #   vllm/vllm-openai:deepseekv41-flash image, there is no pip wheel yet).

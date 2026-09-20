@@ -1,8 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
-import os
 import inspect
+import os
 import torch
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
