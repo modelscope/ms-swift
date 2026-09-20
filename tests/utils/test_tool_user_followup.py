@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import copy
 import unittest
-from types import SimpleNamespace
-
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers
 from transformers import PreTrainedTokenizerFast
+from types import SimpleNamespace
 
 from swift.template import get_template
 
@@ -153,11 +152,26 @@ class TestHermesToolUserFollowup(unittest.TestCase):
     @staticmethod
     def make_data():
         messages = [
-            {'role': 'user', 'content': 'question'},
-            {'role': 'assistant', 'content': '<tool_call>\n{"name": "weather", "arguments": {}}\n</tool_call>'},
-            {'role': 'tool', 'content': 'result_0'},
-            {'role': 'user', 'content': 'followup_0'},
-            {'role': 'assistant', 'content': 'final_answer'},
+            {
+                'role': 'user',
+                'content': 'question'
+            },
+            {
+                'role': 'assistant',
+                'content': '<tool_call>\n{"name": "weather", "arguments": {}}\n</tool_call>'
+            },
+            {
+                'role': 'tool',
+                'content': 'result_0'
+            },
+            {
+                'role': 'user',
+                'content': 'followup_0'
+            },
+            {
+                'role': 'assistant',
+                'content': 'final_answer'
+            },
         ]
         return {'messages': messages}
 
@@ -187,9 +201,18 @@ class TestGLMToolUserFollowup(unittest.TestCase):
     def make_data(n_users=1):
         call = '<tool_call>weather\n<arg_key>city</arg_key>\n<arg_value>BJ</arg_value>\n</tool_call>'
         messages = [
-            {'role': 'user', 'content': 'question'},
-            {'role': 'assistant', 'content': call},
-            {'role': 'tool', 'content': 'result_0'},
+            {
+                'role': 'user',
+                'content': 'question'
+            },
+            {
+                'role': 'assistant',
+                'content': call
+            },
+            {
+                'role': 'tool',
+                'content': 'result_0'
+            },
         ]
         messages += [{'role': 'user', 'content': f'followup_{i}'} for i in range(n_users)]
         messages.append({'role': 'assistant', 'content': 'final_answer'})
