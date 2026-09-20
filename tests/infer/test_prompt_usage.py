@@ -4,6 +4,7 @@ import unittest
 from transformers import GenerationConfig
 from transformers.utils import is_torch_npu_available
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.infer_engine.infer_engine import InferEngine
@@ -23,6 +24,10 @@ def _generate(model, input_ids, generation_config, streamer=None, **kwargs):
 class TestPromptUsage(unittest.TestCase):
 
     def setUp(self):
+        # These fixtures use CPU tensors and do not model accelerator placement.
+        npu_available = patch('swift.infer_engine.transformers_engine.is_torch_npu_available', return_value=False)
+        npu_available.start()
+        self.addCleanup(npu_available.stop)
         self.inputs = {
             'input_ids': torch.tensor([[0, 0, 4, 5], [4, 5, 6, 7]]),
             'attention_mask': torch.tensor([[0, 0, 1, 1], [1, 1, 1, 1]])

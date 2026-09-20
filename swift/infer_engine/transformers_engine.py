@@ -263,9 +263,12 @@ class TransformersEngine(InferEngine):
             generate_kwargs['logits_processor'] = LogitsProcessorList([logits_streamer])
 
         def _model_generate(**kwargs):
-            if is_torch_npu_available():
-                torch.npu.set_device(self.model.device)
-            self.template.generate(self.model, **kwargs)
+            try:
+                if is_torch_npu_available():
+                    torch.npu.set_device(self.model.device)
+                self.template.generate(self.model, **kwargs)
+            except Exception as e:
+                streamer.queue.put(e)
 
         generate_kwargs = self.template.prepare_generate_kwargs(generate_kwargs, model=self.model)
         thread = Thread(target=_model_generate, kwargs=generate_kwargs)

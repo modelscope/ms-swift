@@ -103,6 +103,8 @@ class StreamerMixin:
 
     def __next__(self) -> torch.Tensor:
         value = self.queue.get()
+        if isinstance(value, Exception):
+            raise value
         if value is None:
             raise StopIteration()
         else:
