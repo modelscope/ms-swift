@@ -51,6 +51,38 @@ class TestGKDLoss(unittest.TestCase):
             for actual, expected in zip(model.parameters(), reference.parameters()):
                 torch.testing.assert_close(actual, expected)
 
+    def test_beta_interpolates_continuously(self):
+        """The interior JSD must tend to the forward / reverse KL at the endpoints.
+
+        Regression test for #10078: the mixture weights were attached to the wrong
+        distribution, so ``D(1 - eps)`` collapsed to ``~eps * KL(S || T)`` while the
+        ``beta == 1`` branch returned the full reverse KL. That made the loss
+        jump-discontinuous at both endpoints and turned ``beta`` into a
+        signal-strength knob instead of a direction knob.
+        """
+        torch.manual_seed(42)
+        student = torch.randn(1, 4, 64, dtype=torch.float64)
+        teacher = torch.randn(1, 4, 64, dtype=torch.float64)
+        labels = torch.tensor([[-100, 1, -100, 2]])
+
+        def loss(beta):
+            return gkd_loss(student, TeacherOutput(full_logits=teacher), labels, beta, 1.)[0].item()
+
+        forward, reverse = loss(0.), loss(1.)
+
+        # Near the endpoints the interior formula must stay on the KL scale
+        # instead of collapsing towards 0 (it used to return ~1e-3 * KL).
+        eps = 1e-3
+        self.assertAlmostEqual(loss(eps) / forward, 1., places=1)
+        self.assertAlmostEqual(loss(1 - eps) / reverse, 1., places=1)
+
+        # The symmetric JSD at beta=0.5 is the minimum, and the loss grows
+        # monotonically towards both endpoints.
+        middle = loss(0.5)
+        for beta in (0.1, 0.25, 0.75, 0.9):
+            with self.subTest(beta=beta):
+                self.assertGreater(loss(beta), middle)
+
     def test_empty_active_tokens_backward(self):
         for beta in (0., 0.5, 1.):
             for mode in ('full', 'topk', 'uncovered_topk'):
@@ -99,7 +131,7 @@ class TestGKDLoss(unittest.TestCase):
                     expected = (s_log.exp() * (s_log - t_log)).sum()
                 else:
                     mixture_log = ((1 - beta) * s_log.exp() + beta * t_log.exp()).log()
-                    expected = (beta * t_log.exp() * (t_log - mixture_log) + (1 - beta) * s_log.exp() *
+                    expected = ((1 - beta) * t_log.exp() * (t_log - mixture_log) + beta * s_log.exp() *
                                 (s_log - mixture_log)).sum()
                 self.assertEqual(count.item(), 2)
                 torch.testing.assert_close(total, expected)

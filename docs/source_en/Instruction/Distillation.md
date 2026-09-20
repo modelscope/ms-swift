@@ -56,7 +56,7 @@ At each token position, quantify the difference between teacher distribution $P_
 |------|------|------|
 | Forward KL | $\text{KL}(P_T \,\|\, P_S)$ | Mode-covering: the student must assign enough probability to regions where the teacher has high probability |
 | Reverse KL | $\text{KL}(P_S \,\|\, P_T)$ | Mode-seeking: the student mainly fits the teacher's mode (high-probability) regions |
-| Generalized JSD($\beta$) | $\beta\,\text{KL}(P_T\|M) + (1-\beta)\,\text{KL}(P_S\|M)$, where $M=\beta P_T+(1-\beta)P_S$ | Interpolates between the two |
+| Generalized JSD($\beta$) | $(1-\beta)\,\text{KL}(P_T\|M) + \beta\,\text{KL}(P_S\|M)$, where $M=\beta P_T+(1-\beta)P_S$ | Interpolates between the two |
 
 > $\beta=0$ reduces to Forward KL, $\beta=1$ reduces to Reverse KL. SFT is equivalent to Forward KL (teacher is one-hot).
 

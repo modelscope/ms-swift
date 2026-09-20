@@ -58,7 +58,7 @@ $$-\log P_S(y^*_t) = \text{KL}(\delta_{y^*} \,\|\, P_S)$$
 |------|------|------|
 | Forward KL | $\text{KL}(P_T \,\|\, P_S)$ | Mode-covering：学生需对教师概率较高的区域都赋予足够概率 |
 | Reverse KL | $\text{KL}(P_S \,\|\, P_T)$ | Mode-seeking：学生主要拟合教师的众数（高概率）区域 |
-| 广义 JSD($\beta$) | $\beta\,\text{KL}(P_T\|M) + (1-\beta)\,\text{KL}(P_S\|M)$，其中 $M=\beta P_T+(1-\beta)P_S$ | 在两者之间插值 |
+| 广义 JSD($\beta$) | $(1-\beta)\,\text{KL}(P_T\|M) + \beta\,\text{KL}(P_S\|M)$，其中 $M=\beta P_T+(1-\beta)P_S$ | 在两者之间插值 |
 
 > 其中 $\beta=0$ 退化为 Forward KL，$\beta=1$ 退化为 Reverse KL。SFT 等价于 Forward KL（教师为 one-hot）。
 

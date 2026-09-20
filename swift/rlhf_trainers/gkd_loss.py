@@ -140,8 +140,15 @@ def jsd_loss(
         elif beta == 1:
             jsd = kl_div_fn(t_log, s_log)
         else:
+            # M = (1 - beta) * S + beta * T. The weights must follow the *other*
+            # distribution: KL(T || M) is weighted by (1 - beta) and KL(S || M) by
+            # beta, so that the interior formula tends to the beta == 0 / beta == 1
+            # branches (forward / reverse KL) instead of collapsing to 0. Swapping
+            # them makes D(1 - eps) ~ eps * KL(S || T), a ~1/beta jump at the
+            # endpoints, and turns beta into a signal-strength knob.
+            # See https://github.com/modelscope/ms-swift/issues/10078
             m_log = torch.logsumexp(torch.stack([s_log + log_1_minus_beta, t_log + log_beta]), dim=0)
-            jsd = beta_t * kl_div_fn(m_log, t_log) + (1 - beta_t) * kl_div_fn(m_log, s_log)
+            jsd = (1 - beta_t) * kl_div_fn(m_log, t_log) + beta_t * kl_div_fn(m_log, s_log)
 
         total = total + jsd.sum()
 
