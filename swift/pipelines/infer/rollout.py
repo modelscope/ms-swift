@@ -501,7 +501,7 @@ class WeightSyncWorkerExtension:
                 raw = buffer[offset:offset + size]
                 tensor = raw.view(dtype=dtype).view(shape)
                 if use_shm:
-                    tensor = tensor.to(device)
+                    tensor = tensor.to(device, copy=True)
                 else:
                     tensor = tensor.clone()
                 weights.append((name, tensor))
@@ -509,11 +509,13 @@ class WeightSyncWorkerExtension:
             if _torch.cuda.is_available():
                 _torch.cuda.synchronize()
 
-            if is_driver:
-                socket.send(b'')  # bucket received
-
+            # The sender can overwrite the shared buffer as soon as it receives
+            # the ACK, so every TP rank must finish its local copies first.
             if tp_size > 1:
                 _dist.barrier(group=cpu_group)
+
+            if is_driver:
+                socket.send(b'')  # all TP ranks have copied this bucket
 
             if is_lora_sync:
                 for name, tensor in weights:
