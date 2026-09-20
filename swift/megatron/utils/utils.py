@@ -8,6 +8,7 @@ from megatron.core.inference.communication_utils import recv_from_prev_pipeline_
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.ssm.mamba_context_parallel import _undo_attention_load_balancing
+from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.transformer.moe.router import TopKRouter
 from torch import nn
 from transformers.utils import is_torch_npu_available
@@ -24,7 +25,8 @@ def find_all_linears(model, extra_layers=None):
 
     def _cond(name, module):
         if (extra_layers and isinstance(module, tuple(extra_layers))) or name != 'output_layer' and isinstance(
-                module, (TELinear, TELayerNormColumnParallelLinear, TEGroupedLinear, nn.Linear)):
+                module, (TELinear, TELayerNormColumnParallelLinear, TEGroupedLinear, ColumnParallelLinear,
+                         RowParallelLinear, nn.Linear)):
             return True
         return False
 
