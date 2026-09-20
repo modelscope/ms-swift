@@ -11,8 +11,7 @@
 #   pip install "git+https://github.com/vllm-project/vllm.git@main"
 # The official vllm/vllm-openai:deepseekv41-flash image also works.
 #
-# --model below is a local 4-layer random-weight checkpoint for a fast smoke test; replace it
-# with a real model such as deepseek-ai/DeepSeek-V4.1-Flash for actual training.
+# --model is the standard model id, downloaded from the hub on first run.
 #
 # Engram is driven by the model config (engram_layer_ids), not a CLI flag. Under full-parameter
 # GRPO it is frozen (requires_grad=False, skipped in the vLLM weight sync) but still runs in the
@@ -29,7 +28,7 @@ NPROC_PER_NODE=1 \
 CUDA_VISIBLE_DEVICES=${GPUS:-0} \
 megatron rlhf \
     --rlhf_type grpo \
-    --model .temp/dsv41_tiny_sft \
+    --model deepseek-ai/DeepSeek-V4.1-Flash \
     --dataset 'open-r1/DAPO-Math-17k-Processed' \
     --split_dataset_ratio 0 \
     --tuner_type full \

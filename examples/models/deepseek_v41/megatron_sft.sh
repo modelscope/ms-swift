@@ -7,8 +7,7 @@
 #   pip install -e .              # ms-swift (run from the repo root)
 #   pip install -e mcore-bridge   # DeepSeek-V4.1 Megatron bridge/loader
 #
-# --model below is a local 4-layer random-weight checkpoint for a fast smoke test; replace it
-# with a real model such as deepseek-ai/DeepSeek-V4.1-Flash for actual training.
+# --model is the standard model id, downloaded from the hub on first run.
 #
 # Engram is driven by the model config (engram_layer_ids), not a CLI flag. Under full-parameter
 # SFT it stays trainable and participates in the backward pass.
@@ -23,10 +22,8 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=1 \
 CUDA_VISIBLE_DEVICES=${GPUS:-0} \
 megatron sft \
-    --model .temp/dsv41_tiny_sft \
-    --dataset 'swift/self-cognition#500' \
-    --model_author swift \
-    --model_name swift-robot \
+    --model deepseek-ai/DeepSeek-V4.1-Flash \
+    --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#2000' \
     --split_dataset_ratio 0 \
     --tuner_type full \
     --context_parallel_size 1 \

@@ -804,8 +804,8 @@ class DeepseekV41Template(DeepseekV4Template):
             width, height = int(width * scale), int(height * scale)
         best_width = math.ceil(width / patch_size) * patch_size
         best_height = math.ceil(height / patch_size) * patch_size
-        n_llm_h, n_llm_w, best_height, best_width = cls._safe_resize(
-            height, width, best_height, best_width, patch_size, downsample_ratio, max_image_tokens)
+        n_llm_h, n_llm_w, best_height, best_width = cls._safe_resize(height, width, best_height, best_width, patch_size,
+                                                                     downsample_ratio, max_image_tokens)
         n_vit_h, n_vit_w = best_height // patch_size, best_width // patch_size
         image = image.convert('RGB')
         if max_wh_ratio is not None and image.width >= max_wh_ratio * image.height:

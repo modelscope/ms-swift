@@ -1,16 +1,14 @@
 import json
 import math
 import sys
-from types import SimpleNamespace
-
 import torch
 from PIL import Image
+from types import SimpleNamespace
 
 from swift import InferRequest
 from swift.model import get_processor
 from swift.template import get_template
 from swift.template.templates.deepseek import DeepseekV41Template
-
 
 MODEL_ID = 'deepseek-ai/DeepSeek-V4.1-Flash'
 
@@ -33,7 +31,9 @@ def test_deepseek_v41_config_is_process_local(tmp_path):
         'model_type': 'deepseek_v41',
         'architectures': ['DeepseekV41ForCausalLM'],
         'text_config': text_config,
-        'vision_config': {'model_type': 'deepseek_v41_vision'},
+        'vision_config': {
+            'model_type': 'deepseek_v41_vision'
+        },
         'image_token_id': 1,
     }
     with open(tmp_path / 'config.json', 'w') as config_file:
@@ -94,7 +94,10 @@ def test_deepseek_v41_image_encoding_and_collation():
     template = _get_template()
     image = Image.new('RGB', (112, 84), (255, 0, 0))
     image_row = template.encode(
-        InferRequest(messages=[{'role': 'user', 'content': '<image>Describe this image.'}], images=[image]))
+        InferRequest(messages=[{
+            'role': 'user',
+            'content': '<image>Describe this image.'
+        }], images=[image]))
     text_row = template.encode(InferRequest(messages=[{'role': 'user', 'content': 'Hello.'}]))
 
     grid = image_row['image_grid_thw'][0]
