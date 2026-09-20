@@ -3,6 +3,7 @@ import inspect
 import json
 import numpy as np
 from copy import copy
+from dataclasses import fields
 from typing import Any, Dict, List, Optional
 
 from swift.infer_engine import ChatCompletionResponse, InferEngine, InferRequest, RequestConfig
@@ -34,7 +35,7 @@ def get_reward(model: Any,
 
     Returns:
         Tuple
-        Index 0: The min-max normalized scores matched the infer_requests
+        Index 0: The raw scores matched the infer_requests
         Index 1: The mask filtered by the threshold
     """
     infer_func = model.infer if isinstance(model, InferEngine) else model.__call__
@@ -43,7 +44,8 @@ def get_reward(model: Any,
     if 'ground_truths' in parameters:
         gt_param = {'ground_truths': ground_truths}
     if isinstance(infer_requests[0], dict):
-        infer_requests = [InferRequest(messages=req['messages']) for req in infer_requests]
+        request_keys = {field.name for field in fields(InferRequest)}
+        infer_requests = [InferRequest(**{k: v for k, v in req.items() if k in request_keys}) for req in infer_requests]
     rewards = infer_func(infer_requests, request_config=request_config, **gt_param)
     if isinstance(rewards[0], ChatCompletionResponse):
         print('reward:', rewards[0].choices[0].message.content)
@@ -65,16 +67,18 @@ def get_reward(model: Any,
         # > not >=, orm caller passes 0, which will cause error
         _mask = np.array([a > threshold for a in arr])
 
-    def normalize(arr):
-        min_val = np.min(arr)
-        max_val = np.max(arr)
-        if min_val == max_val:
-            if min_val == 0:
-                constant_value = 0.0
-            else:
-                constant_value = min(1.0, min_val)
-            return np.full_like(arr, fill_value=constant_value, dtype=np.float64)
-        normalized = (arr - min_val) / (max_val - min_val + 1e-5)
-        return normalized
+    return np.array(arr), _mask
 
-    return normalize(arr), _mask
+
+def normalize_rewards(arr):
+    """Normalize rewards across all candidates for one query after collection."""
+    min_val = np.min(arr)
+    max_val = np.max(arr)
+    if min_val == max_val:
+        if min_val == 0:
+            constant_value = 0.0
+        else:
+            constant_value = min(1.0, min_val)
+        return np.full_like(arr, fill_value=constant_value, dtype=np.float64)
+    normalized = (arr - min_val) / (max_val - min_val + 1e-5)
+    return normalized
