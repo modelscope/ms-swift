@@ -63,17 +63,13 @@ class TestSeqClsArchitecturesRewrite(unittest.TestCase):
         # Generation -> SequenceClassification
         self.assertEqual(_seq_cls_architectures(['Qwen2ForCausalLM']), ['Qwen2ForSequenceClassification'])
         self.assertEqual(
-            _seq_cls_architectures(['Qwen3VLForConditionalGeneration']),
-            ['Qwen3VLForSequenceClassification'])
+            _seq_cls_architectures(['Qwen3VLForConditionalGeneration']), ['Qwen3VLForSequenceClassification'])
         self.assertEqual(_seq_cls_architectures(['LlamaForCausalLM']), ['LlamaForSequenceClassification'])
         self.assertEqual(
-            _seq_cls_architectures(['Qwen2VLForConditionalGeneration']),
-            ['Qwen2VLForSequenceClassification'])
+            _seq_cls_architectures(['Qwen2VLForConditionalGeneration']), ['Qwen2VLForSequenceClassification'])
 
         # Already-seq_cls class is preserved (idempotent).
-        self.assertEqual(
-            _seq_cls_architectures(['BertForSequenceClassification']),
-            ['BertForSequenceClassification'])
+        self.assertEqual(_seq_cls_architectures(['BertForSequenceClassification']), ['BertForSequenceClassification'])
 
         # Multi-arch list: only the matching suffix is rewritten.
         self.assertEqual(
@@ -93,6 +89,45 @@ class TestSeqClsArchitecturesRewrite(unittest.TestCase):
         self.assertEqual(
             _seq_cls_architectures(['MyCustomLMHeadModel', 'LlamaForCausalLM']),
             ['MyCustomLMHeadModel', 'LlamaForSequenceClassification'])
+
+    def test_seq_cls_architectures_saved_config(self):
+        """The seq_cls architecture must survive ``save_pretrained``.
+
+        ``PreTrainedModel.save_pretrained`` resets ``config.architectures`` to the
+        model's class name, so without covering the save path the checkpoint keeps
+        advertising the generation architecture (see #9704).
+        """
+        import json
+        import tempfile
+        from transformers import AutoConfig, Qwen2Config, Qwen2ForCausalLM
+        from types import SimpleNamespace
+
+        from swift.model.patcher import _patch_sequence_classification
+
+        for arch, expected in [('Qwen2ForCausalLM', 'Qwen2ForSequenceClassification'),
+                               ('Qwen2VLForConditionalGeneration', 'Qwen2VLForSequenceClassification'),
+                               ('MyCustomLMHeadModel', 'MyCustomLMHeadModel')]:
+            with self.subTest(arch=arch):
+                config = Qwen2Config(
+                    vocab_size=32,
+                    hidden_size=16,
+                    intermediate_size=32,
+                    num_hidden_layers=1,
+                    num_attention_heads=2,
+                    num_key_value_heads=2,
+                    num_labels=2,
+                    architectures=[arch])
+                model = Qwen2ForCausalLM(config)
+                _patch_sequence_classification(model, SimpleNamespace(model_arch=None))
+
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    model.save_pretrained(tmp_dir)
+                    with open(os.path.join(tmp_dir, 'config.json'), 'r') as f:
+                        saved_config = json.load(f)
+                    reloaded = AutoConfig.from_pretrained(tmp_dir)
+
+                self.assertEqual(saved_config['architectures'], [expected])
+                self.assertEqual(reloaded.architectures, [expected])
 
 
 if __name__ == '__main__':

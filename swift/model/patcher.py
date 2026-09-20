@@ -272,6 +272,47 @@ def _seq_cls_architectures(arch_list):
     return res
 
 
+def _patch_save_pretrained_architectures(model):
+    """Keep the seq_cls ``architectures`` when the model is written to disk.
+
+    ``PreTrainedModel.save_pretrained`` resets ``config.architectures`` to
+    ``model.__class__.__name__`` right before serializing the config, which drops
+    the name assigned by :func:`_patch_sequence_classification`. The seq_cls names
+    are restored in ``PretrainedConfig.save_pretrained``, the last hook before
+    ``config.json`` is written (see #9704).
+    """
+    if getattr(model, '_seq_cls_arch_patched', False):
+        return
+    config = model.config
+    arch_list = getattr(config, 'architectures', None)
+    arch_list = list(arch_list) if arch_list else arch_list
+    class_name = model.__class__.__name__.removeprefix('FSDP')
+    model_save_pretrained = model.save_pretrained
+
+    def save_pretrained(save_directory, *args, **kwargs):
+        config_save_pretrained = config.save_pretrained
+
+        def _config_save_pretrained(*args, **kwargs):
+            # Drop the temporary override first: PretrainedConfig.to_dict()
+            # serializes every instance attribute, so a bound function left on the
+            # config would break json.dumps().
+            config.__dict__.pop('save_pretrained', None)
+            if config.architectures == [class_name]:
+                # Only undo the reset done by PreTrainedModel.save_pretrained();
+                # a value set after patching is kept as is.
+                config.architectures = arch_list
+            return config_save_pretrained(*args, **kwargs)
+
+        config.save_pretrained = _config_save_pretrained
+        try:
+            return model_save_pretrained(save_directory, *args, **kwargs)
+        finally:
+            config.__dict__.pop('save_pretrained', None)
+
+    model.save_pretrained = save_pretrained
+    model._seq_cls_arch_patched = True
+
+
 def _patch_sequence_classification(model, model_meta):
     hidden_size = HfConfigFactory.get_config_attr(model.config, 'hidden_size')
     initializer_range = HfConfigFactory.get_config_attr(model.config, 'initializer_range')
@@ -302,6 +343,7 @@ def _patch_sequence_classification(model, model_meta):
     # monkey-patches a `score` head onto the generation class without swapping it,
     # so the saved checkpoint would otherwise advertise the wrong class (see #9704).
     model.config.architectures = _seq_cls_architectures(getattr(model.config, 'architectures', None))
+    _patch_save_pretrained_architectures(model)
 
 
 @contextmanager
