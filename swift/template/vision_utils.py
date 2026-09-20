@@ -1,10 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import base64
+import ipaddress
 import math
 import numpy as np
 import os
 import re
 import requests
+import socket
 import torch
 from contextlib import contextmanager
 from io import BytesIO
@@ -12,6 +14,7 @@ from PIL import Image
 from requests.adapters import HTTPAdapter
 from typing import Any, Callable, Iterator, List, TypeVar, Union
 from urllib3.util.retry import Retry
+from urllib.parse import urljoin, urlsplit
 
 from swift.utils import get_env_args
 
@@ -126,11 +129,70 @@ def _check_path(path: str) -> Union[str, None]:
     return data
 
 
+class UnsafeMediaURLError(ValueError):
+    """Raised when a media URL resolves to an address that is not publicly routable."""
+
+
+#: Maximum number of redirect hops followed for a media URL.
+_MAX_MEDIA_REDIRECTS = 5
+
+
+def _is_public_ip(ip: str) -> bool:
+    try:
+        return ipaddress.ip_address(ip).is_global
+    except ValueError:
+        return False
+
+
+def _validate_media_url(url: str) -> str:
+    """Reject media URLs that resolve to a non-public address.
+
+    ``swift deploy`` fetches ``image_url`` / ``audio_url`` / ``video_url`` server-side and
+    is unauthenticated by default, so an unfiltered fetch is an SSRF vector: a client can
+    make the server request loopback, RFC1918 ranges or the cloud metadata endpoint
+    (169.254.169.254). The hostname is resolved and *every* returned address is checked, so
+    DNS names that point into private space (e.g. ``localtest.me``) are rejected too.
+
+    Set ``SWIFT_ALLOW_PRIVATE_MEDIA_URLS=1`` to opt out for deployments that legitimately
+    serve media from an internal address.
+    """
+    if get_env_args('swift_allow_private_media_urls', bool, False):
+        return url
+
+    parsed = urlsplit(url)
+    if parsed.scheme not in ('http', 'https'):
+        raise UnsafeMediaURLError(f'Unsupported scheme {parsed.scheme!r} in media url: {url!r}')
+    host = parsed.hostname
+    if not host:
+        raise UnsafeMediaURLError(f'Media url has no host: {url!r}')
+
+    try:
+        ip = ipaddress.ip_address(host.strip('[]'))
+    except ValueError:
+        ip = None
+    if ip is not None:
+        ips = [str(ip)]
+    else:
+        try:
+            infos = socket.getaddrinfo(
+                host, parsed.port or (443 if parsed.scheme == 'https' else 80), proto=socket.IPPROTO_TCP)
+        except socket.gaierror as e:
+            raise UnsafeMediaURLError(f'Cannot resolve media host {host!r}: {e}') from e
+        ips = [info[4][0] for info in infos]
+
+    for ip in ips:
+        if not _is_public_ip(ip):
+            raise UnsafeMediaURLError(f'Refusing to fetch media url {url!r}: {host!r} resolves to the '
+                                      f'non-public address {ip!r}')
+    return url
+
+
 def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
     res = path
     if isinstance(path, str):
         path = path.strip()
         if path.startswith('http'):
+            url = _validate_media_url(path)
             retries = Retry(total=3, backoff_factor=1, allowed_methods=['GET'])
             with requests.Session() as session:
                 session.mount('http://', HTTPAdapter(max_retries=retries))
@@ -139,7 +201,16 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
                 timeout = float(os.getenv('SWIFT_TIMEOUT', '20'))
                 request_kwargs = {'timeout': timeout} if timeout > 0 else {}
 
-                response = session.get(path, **request_kwargs)
+                # Redirects are followed by hand so that every hop is validated: a public
+                # host under the attacker's control can 302 to the metadata endpoint.
+                for _ in range(_MAX_MEDIA_REDIRECTS + 1):
+                    response = session.get(url, allow_redirects=False, **request_kwargs)
+                    if not response.is_redirect:
+                        break
+                    url = _validate_media_url(urljoin(url, response.headers['location']))
+                else:
+                    raise UnsafeMediaURLError(f'Too many redirects for media url: {path!r}')
+
                 response.raise_for_status()
                 content = response.content
                 res = BytesIO(content)
@@ -302,6 +373,9 @@ def _load_audio_librosa(audio: Union[str, bytes], sampling_rate: int, mono: bool
     try:
         audio_io = load_file(audio)
         return librosa.load(audio_io, sr=sampling_rate, mono=mono)
+    except UnsafeMediaURLError:
+        # Do not fall back to another fetcher: it would bypass the SSRF guard.
+        raise
     except Exception:
         if isinstance(audio, str) and audio.startswith(('http://', 'https://')):
             import audioread
