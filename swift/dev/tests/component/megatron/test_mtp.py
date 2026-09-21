@@ -22,10 +22,9 @@ The config rules are errors rather than warnings on purpose: a knob that reads a
 doing nothing is worse than a failed launch.
 """
 from __future__ import annotations
-
-import pytest
 from types import SimpleNamespace
 
+import pytest
 
 # === The config contract (pure function of the Configs, no I/O) ===
 
@@ -108,10 +107,8 @@ def test_lora_plus_joint_training_warns_instead_of_failing(caplog):
     Undecidable from ``target_modules`` alone (it may be 'all-linear'), so this warns here and twinkle
     re-checks against the built model.
 
-    Calls ``_check_mtp`` rather than ``validate_configs`` because the latter currently raises on ANY
-    non-None tuner_config: ``_HF_ONLY`` still names ``lisa_activated_layers``, which TunerConfig no
-    longer declares. That is a separate, pre-existing defect (it also fails four tests in
-    test_dataset_api.py) and routing around it keeps this test about the MTP rule.
+    Calls ``_check_mtp`` rather than ``validate_configs`` to keep this test focused on the MTP rule
+    and independent of unrelated cross-config validation.
     """
     from swift.dev.config import ModelConfig, TunerConfig
     from swift.dev.config.validate import _check_mtp
@@ -199,8 +196,9 @@ def _bridge_config_source():
 
 def _megatron_transformer_config_source():
     """megatron is a namespace package, so ``__file__`` is None and ``__path__`` is the way in."""
-    import megatron
     from pathlib import Path
+
+    import megatron
     for root in getattr(megatron, '__path__', []):
         candidate = Path(root) / 'core' / 'transformer' / 'transformer_config.py'
         if candidate.exists():
@@ -314,6 +312,8 @@ def _loop_with(model):
     loop.global_step = 0
     loop.history = []
     loop.logging_steps = 0
+    loop.logging_config = None
+    loop.tracker = SimpleNamespace(log=lambda record, step: record)
     loop.save_steps = 0
     loop.eval_steps = 0
     loop.eval_dataloader = None

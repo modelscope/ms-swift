@@ -10,7 +10,6 @@ CheckpointConfig owns output_dir/safe_serialization/max_shard_size -- so unlike 
 this one adds no new Config.
 """
 from __future__ import annotations
-
 import logging
 import os
 from typing import TYPE_CHECKING, Any, Dict, Optional
@@ -51,8 +50,8 @@ def run_merge_lora(
                     'skipping the saving process.')
         return resolved
 
-    from swift.model import save_checkpoint
     from peft import PeftModel
+    from swift.model import save_checkpoint
 
     model, processor = _load_base_model(model_config, device_map=device_map)
     # Built (and attached) before merging because some multimodal templates patch the model on attach;
@@ -143,3 +142,82 @@ def _check_tie_word_embeddings(model) -> None:
         HfConfigFactory.set_config_attr(config, 'tie_word_embeddings', False)
     except Exception:
         pass
+
+
+def _render_ollama_parts(template, parts, placeholder: str, replacement: str) -> str:
+    text = ''
+    for part in parts:
+        if isinstance(part, str):
+            text += part.replace(placeholder, replacement)
+        elif isinstance(part, (tuple, list)):
+            if part and isinstance(part[0], int):
+                text += template.tokenizer.decode(part)
+            else:
+                for name in part:
+                    if name == 'bos_token_id':
+                        text += template.tokenizer.bos_token or ''
+                    elif name == 'eos_token_id':
+                        text += template.tokenizer.eos_token or ''
+                    else:
+                        raise ValueError(f'Unknown template token: {name}')
+    return text
+
+
+def run_export_ollama(model_config, template_config, generation_config, output_dir: str) -> str:
+    """Write an Ollama Modelfile for a resolved local model directory."""
+    from swift.dev.builders import build_template
+    from swift.model import get_model_processor
+
+    if not model_config.model or not os.path.isdir(model_config.model):
+        raise ValueError('Ollama export requires a local model directory.')
+    os.makedirs(output_dir, exist_ok=True)
+    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
+    template = build_template(template_config, processor)
+    meta = template.template_meta
+    suffix = _render_ollama_parts(template, meta.suffix, '', '')
+    with open(os.path.join(output_dir, 'Modelfile'), 'w', encoding='utf-8') as file:
+        file.write(f'FROM {model_config.model}\n')
+        file.write('TEMPLATE """{{ if .System }}')
+        file.write(_render_ollama_parts(template, meta.system_prefix, '{{SYSTEM}}', '{{ .System }}'))
+        file.write('{{ else }}')
+        file.write(_render_ollama_parts(template, meta.prefix, '', ''))
+        file.write('{{ end }}{{ if .Prompt }}')
+        file.write(_render_ollama_parts(template, meta.prompt, '{{QUERY}}', '{{ .Prompt }}'))
+        file.write('{{ end }}{{ .Response }}')
+        file.write(suffix + '"""\n')
+        file.write(f'PARAMETER stop "{suffix}"\n')
+        for stop_word in generation_config.stop_words:
+            file.write(f'PARAMETER stop "{stop_word}"\n')
+        temperature = generation_config.temperature if generation_config.temperature is not None else 1.0
+        top_k = generation_config.top_k if generation_config.top_k is not None else -1
+        top_p = generation_config.top_p if generation_config.top_p is not None else 1.0
+        penalty = generation_config.repetition_penalty if generation_config.repetition_penalty is not None else 1.0
+        file.write(f'PARAMETER temperature {temperature}\n')
+        file.write(f'PARAMETER top_k {top_k}\n')
+        file.write(f'PARAMETER top_p {top_p}\n')
+        file.write(f'PARAMETER repeat_penalty {penalty}\n')
+    return output_dir
+
+
+def run_to_peft_format(adapter: str, output_dir: str) -> str:
+    """Convert a Swift-format adapter to PEFT's directory layout."""
+    from swift.tuners import swift_to_peft_format
+    os.makedirs(output_dir, exist_ok=True)
+    return swift_to_peft_format(adapter, output_dir)
+
+
+def run_push_to_hub(folder_path: str, checkpoint_config, dataset_config, commit_message: str) -> str:
+    """Upload one produced model directory using the configured Hub implementation."""
+    if not checkpoint_config.hub_model_id:
+        raise ValueError('--hub_model_id is required with --push_to_hub.')
+    if not os.path.isdir(folder_path):
+        raise ValueError(f'Hub upload source is not a directory: {folder_path}')
+    from swift.dev.utils.hub import get_hub
+    get_hub(dataset_config.use_hf).push_to_hub(
+        checkpoint_config.hub_model_id,
+        folder_path,
+        token=dataset_config.hub_token,
+        private=checkpoint_config.hub_private_repo,
+        revision=checkpoint_config.hub_revision,
+        commit_message=commit_message)
+    return folder_path

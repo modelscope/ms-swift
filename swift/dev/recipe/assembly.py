@@ -33,6 +33,7 @@ if TYPE_CHECKING:
         CheckpointConfig,
         DatasetConfig,
         DistributedConfig,
+        LoggingConfig,
         ModelConfig,
         RLHFConfig,
         TemplateConfig,
@@ -41,6 +42,40 @@ if TYPE_CHECKING:
     )
 
 logger = get_logger()
+
+
+def configure_frozen_adapter(model: Any, template: Any, adapters: List[str], *, role: str) -> Any:
+    """Load one frozen adapter onto an auxiliary model and bind its processor/template group."""
+    from swift.dev.processor import InputProcessor
+
+    if len(adapters) > 1:
+        raise ValueError(f'{role}_adapters currently supports exactly one adapter per auxiliary model.')
+    if adapters:
+        adapter_name = f'{role}_adapter'
+        model.add_adapter_to_model(adapter_name, adapters[0], is_trainable=False)
+        model.set_processor(InputProcessor, adapter_name=adapter_name)
+        model.set_template(template, adapter_name=adapter_name)
+    else:
+        model.set_processor(InputProcessor)
+        model.set_template(template)
+    return model
+
+
+def _resolve_step_interval(value: Optional[float], total_steps: int, name: str) -> Optional[int]:
+    """Resolve a checkpoint/eval interval after the optimizer-step budget is known.
+
+    Values in (0, 1) are ratios of the total run and round up so a positive ratio can never become
+    step zero. Values >= 1 are absolute intervals and must be integral.
+    """
+    if value is None:
+        return None
+    if value < 0:
+        raise ValueError(f'{name} must be non-negative, got {value}.')
+    if 0 < value < 1:
+        return max(1, math.ceil(total_steps * value))
+    if not float(value).is_integer():
+        raise ValueError(f'{name}={value} is not a ratio in (0, 1) or an integer step interval.')
+    return int(value)
 
 
 @dataclass
@@ -63,6 +98,7 @@ class TrainAssembly:
     #: The twinkle task the loop runs (``None`` -> the loop's own default, ``'causal_lm'``).
     task: Optional[str] = None
     output_dir: str = 'output'
+    logging_config: Optional['LoggingConfig'] = None
 
     # --- stage results, in the order the stages produce them ---
     sp_mesh: Any = field(default=None, init=False)
@@ -125,20 +161,37 @@ class TrainAssembly:
             twinkle.initialize(mode='local')
 
     def prepare(self) -> 'TrainAssembly':
-        """Load the run's plugins, then cross-validate the Configs. Every recipe's first step.
+        """Load the run's plugins, resolve cross-config derivations, then cross-validate the Configs.
+        Every recipe's first step.
 
         Plugins first: a plugin file may register the reward / loss the Configs name, so importing it
         after validation would reject a run that is in fact valid. Which Config fields name those files
         is ``PluginRegistry.load_configured``'s business, not a recipe's.
 
+        ``process_configs`` before ``validate_configs`` is the fixed contract (see process.py): the
+        first WRITES every value derived from another Config (packing length, eval schedule, task_type
+        rm->seq_cls, Megatron aliases, ...), the second only READS and refuses, so validating first
+        would test the un-derived state. It is idempotent, so a caller that already ran it (e.g. a
+        Ray driver) is not harmed by this second pass.
+
         Validation runs before anything heavy is built, so an illegal combination fails in
         milliseconds rather than after a dataset encode and a weight load. Rules that need a runtime
         quantity (the zero-optimizer-steps check in :meth:`plan_steps`) stay at their call site.
         """
-        from swift.dev.config import validate_configs
+        from swift.dev.config import process_configs, validate_configs
         from swift.dev.plugin import PluginRegistry
 
         PluginRegistry.load_configured(self.model_config)
+        process_configs(
+            self.model_config,
+            self.template_config,
+            self.dataset_config,
+            self.train_config,
+            self.distributed_config,
+            self.checkpoint_config,
+            self.tuner_config,
+            self.rlhf_config,
+        )
         validate_configs(
             self.model_config,
             self.template_config,
@@ -148,6 +201,7 @@ class TrainAssembly:
             self.checkpoint_config,
             self.tuner_config,
             self.rlhf_config,
+            self.logging_config,
         )
         return self
 
@@ -241,6 +295,12 @@ class TrainAssembly:
                              f'too small for gradient_accumulation_steps={self.ga}, or it is a streaming/iterable '
                              f'dataset with no max_steps. Set TrainConfig.max_steps explicitly, or provide enough '
                              f'data.')
+
+        self.train_config.eval_steps = _resolve_step_interval(
+            self.train_config.eval_steps, self.total_opt_steps, 'eval_steps')
+        if self.checkpoint_config is not None:
+            self.checkpoint_config.save_steps = _resolve_step_interval(
+                self.checkpoint_config.save_steps, self.total_opt_steps, 'save_steps')
         return self.total_opt_steps
 
     def build_model(self) -> Any:
@@ -303,6 +363,7 @@ class TrainAssembly:
             num_train_epochs=self.train_config.num_train_epochs,
             gradient_accumulation_steps=self.ga,
             max_grad_norm=resolve_max_grad_norm(self.train_config),
+            logging_config=self.logging_config,
             output_dir=self.output_dir,
             eval_dataloader=self.eval_dataloader,
             eval_steps=self.train_config.eval_steps,

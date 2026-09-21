@@ -1,11 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import importlib.util
-import json
 import os
 import subprocess
 import sys
-import yaml
 from typing import Dict, List, Optional
+
+import json
+import yaml
 
 from swift.utils import get_logger
 
@@ -26,6 +27,41 @@ ROUTE_MAPPING: Dict[str, str] = {
     'app': 'swift.cli.app',
 }
 
+DEV_ROUTE_MAPPING: Dict[str, str] = {
+    'pt': 'swift.dev.cli.pt',
+    'sft': 'swift.dev.cli.sft',
+    'rlhf': 'swift.dev.cli.rlhf',
+    'infer': 'swift.dev.cli.infer',
+    'merge-lora': 'swift.dev.cli.merge_lora',
+    'deploy': 'swift.dev.cli.deploy',
+    'rollout': 'swift.dev.cli.rollout',
+    'sample': 'swift.dev.cli.sample',
+    'export': 'swift.dev.cli.export',
+    'eval': 'swift.dev.cli.eval',
+    'app': 'swift.dev.cli.app',
+}
+DEV_MEGATRON_ROUTE_MAPPING: Dict[str, str] = {
+    'pt': 'swift.dev.cli.megatron_pt',
+    'sft': 'swift.dev.cli.megatron',
+    'rlhf': 'swift.dev.cli.megatron_rlhf',
+    'export': 'swift.dev.cli.megatron_export',
+}
+
+
+def _use_dev_cli() -> bool:
+    return os.environ.get('USE_SWIFT_V5', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def resolve_route(method_name: str, route_mapping: Dict[str, str], is_megatron: bool = False) -> str:
+    if not _use_dev_cli():
+        return route_mapping[method_name]
+    if not is_megatron and method_name == 'web-ui':
+        return route_mapping[method_name]
+    dev_routes = DEV_MEGATRON_ROUTE_MAPPING if is_megatron else DEV_ROUTE_MAPPING
+    if method_name not in dev_routes:
+        raise RuntimeError(f'USE_SWIFT_V5 is enabled but no dev route exists for {method_name!r}.')
+    return dev_routes[method_name]
+
 
 def use_torchrun() -> bool:
     nproc_per_node = os.getenv('NPROC_PER_NODE')
@@ -35,7 +71,7 @@ def use_torchrun() -> bool:
     return True
 
 
-def parse_yaml_args(argv):
+def parse_yaml_args(argv):  # noqa: C901
     if not argv:
         return
     config = None
@@ -84,16 +120,20 @@ def get_torchrun_args() -> Optional[List[str]]:
 
 
 def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool = False) -> None:
-    route_mapping = route_mapping or ROUTE_MAPPING
+    route_mapping = dict(route_mapping or ROUTE_MAPPING)
     argv = sys.argv[1:]
     method_name = argv[0].replace('_', '-')
     argv = argv[1:]
-    file_path = importlib.util.find_spec(route_mapping[method_name]).origin
+    route = resolve_route(method_name, route_mapping, is_megatron)
+    is_dev_route = route.startswith('swift.dev.')
+    file_path = None if is_dev_route else importlib.util.find_spec(route).origin
     parse_yaml_args(argv)
     torchrun_args = get_torchrun_args()
     python_cmd = sys.executable
     if torchrun_args is None or (not is_megatron and method_name not in {'pt', 'sft', 'rlhf', 'infer'}):
-        args = [python_cmd, file_path, *argv]
+        args = [python_cmd, '-m', route, *argv] if is_dev_route else [python_cmd, file_path, *argv]
+    elif is_dev_route:
+        args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, '--module', route, *argv]
     else:
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, file_path, *argv]
     print(f"run sh: `{' '.join(args)}`", flush=True)

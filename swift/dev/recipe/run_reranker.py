@@ -24,6 +24,7 @@ if TYPE_CHECKING:
         CheckpointConfig,
         DatasetConfig,
         DistributedConfig,
+        LoggingConfig,
         ModelConfig,
         TemplateConfig,
         TrainConfig,
@@ -42,6 +43,7 @@ def run_reranker(
     distributed_config: DistributedConfig,
     checkpoint_config: CheckpointConfig,
     tuner_config: Optional[TunerConfig] = None,
+    logging_config: Optional[LoggingConfig] = None,
     *,
     output_dir: str = 'output',
     _save_final: bool = True,
@@ -63,6 +65,7 @@ def run_reranker(
         distributed_config,
         checkpoint_config,
         tuner_config,
+        logging_config,
         output_dir=output_dir,
         _save_final=_save_final)
 
@@ -75,6 +78,7 @@ def _run_reranker_body(
     distributed_config: DistributedConfig,
     checkpoint_config: CheckpointConfig,
     tuner_config: Optional[TunerConfig] = None,
+    logging_config: Optional[LoggingConfig] = None,
     *,
     output_dir: str = 'output',
     _save_final: bool = True,
@@ -108,4 +112,5 @@ def _run_reranker_body(
         tuner_config,
         task=task_type,
         output_dir=output_dir,
+        logging_config=logging_config,
     ).fit(reranker_loss, save_final=_save_final)

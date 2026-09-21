@@ -20,7 +20,6 @@ entry point; conversion needs a plain cpu-initialized mcore model instead, which
 ``get_mcore_model`` returns.
 """
 from __future__ import annotations
-
 import logging
 import math
 import os
@@ -28,7 +27,7 @@ import shutil
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 if TYPE_CHECKING:
-    from swift.dev.config import (CheckpointConfig, ConvertConfig, DistributedConfig, ModelConfig, TemplateConfig)
+    from swift.dev.config import CheckpointConfig, ConvertConfig, DistributedConfig, ModelConfig, TemplateConfig
 
 logger = logging.getLogger(__name__)
 
@@ -154,8 +153,13 @@ def _convert_mcore(
     """mcore -> HF, or mcore -> mcore (reshard / merge an mcore LoRA)."""
     from swift.megatron.arguments import MegatronArguments
     from swift.megatron.model import get_mcore_model
-    from swift.megatron.utils import (load_mcore_checkpoint, patch_torch_dist_shard, prepare_mcore_model,
-                                      save_mcore_checkpoint, test_convert_precision)
+    from swift.megatron.utils import (
+        load_mcore_checkpoint,
+        patch_torch_dist_shard,
+        prepare_mcore_model,
+        save_mcore_checkpoint,
+        test_convert_precision,
+    )
 
     # No HF weights are needed to READ an mcore checkpoint -- only the processor/config for the target
     # architecture -- so the model is not loaded here.

@@ -26,10 +26,9 @@ Nothing here touches a GPU: NVFP4 GEMMs need Blackwell, so the numerics cannot b
 pre-Blackwell hardware and every test below is a pure function of the configs.
 """
 from __future__ import annotations
-
-import pytest
 from types import SimpleNamespace
 
+import pytest
 
 # === The config contract (pure function of the Configs, no I/O) ===
 
@@ -134,7 +133,10 @@ def test_every_forwarded_fp4_kwarg_is_a_real_megatron_field():
     needs a working CUDA/TE stack, so an import-based check would skip on the machines where the
     rest of this file runs.
     """
-    from swift.dev.tests.test_mtp import _dataclass_fields_from_source, _megatron_transformer_config_source
+    from swift.dev.tests.component.megatron.test_mtp import (
+        _dataclass_fields_from_source,
+        _megatron_transformer_config_source,
+    )
     megatron_fields = _dataclass_fields_from_source(_megatron_transformer_config_source(), 'TransformerConfig')
     if megatron_fields is None:
         pytest.skip('megatron-core source not available for a static field check')
@@ -147,6 +149,7 @@ def test_every_forwarded_fp4_kwarg_is_a_real_megatron_field():
 def test_dev_field_names_match_the_legacy_cli_surface():
     """args_to_configs copies by name, so a divergence here silently drops the legacy --fp4/--fp8 flags."""
     import dataclasses
+
     from swift.dev.config import ModelConfig
     from swift.megatron.arguments.megatron_args import MegatronArguments
 
@@ -166,6 +169,7 @@ def test_dev_matches_legacy_on_the_amax_defaults_not_megatron():
     entry point than under the legacy one -- a divergence nothing else would report.
     """
     import dataclasses
+
     from swift.dev.config import ModelConfig
     from swift.megatron.arguments.megatron_args import MegatronArguments
 
@@ -315,7 +319,10 @@ def test_fp8_param_gather_is_forwarded_as_fp8_param_only():
 
 
 def test_every_forwarded_fp8_kwarg_is_a_real_megatron_field():
-    from swift.dev.tests.test_mtp import _dataclass_fields_from_source, _megatron_transformer_config_source
+    from swift.dev.tests.component.megatron.test_mtp import (
+        _dataclass_fields_from_source,
+        _megatron_transformer_config_source,
+    )
     megatron_fields = _dataclass_fields_from_source(_megatron_transformer_config_source(), 'TransformerConfig')
     if megatron_fields is None:
         pytest.skip('megatron-core source not available for a static field check')

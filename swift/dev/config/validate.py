@@ -1,13 +1,21 @@
 # Cross-config validation: the one place where rules spanning several Configs are enforced.
 
 from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, RLHFConfig,
-                                   TemplateConfig, TrainConfig, TunerConfig)
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        LoggingConfig,
+        ModelConfig,
+        RLHFConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +29,7 @@ def validate_configs(
     checkpoint_config: Optional['CheckpointConfig'] = None,
     tuner_config: Optional['TunerConfig'] = None,
     rlhf_config: Optional['RLHFConfig'] = None,
+    logging_config: Optional['LoggingConfig'] = None,
 ) -> None:
     """Validate constraints that span multiple Configs. Raises ValueError on an illegal combination.
 
@@ -47,11 +56,258 @@ def validate_configs(
     _check_tp_comm_overlap(distributed_config, is_megatron)
     _check_sequence_parallel_tp(distributed_config, is_megatron)
     _check_save_total_limit(checkpoint_config, is_megatron)
+    _check_logging(logging_config)
     _check_rlhf_ref_model(model_config, tuner_config, rlhf_config)
+    _check_rlhf_advanced(train_config, rlhf_config)
     _check_rlhf_padding_free(template_config, dataset_config, rlhf_config)
     _check_rlhf_sequence_parallel(template_config, rlhf_config)
     # After _check_packing (which may force padding_free=True) and after the RLHF SP guard.
     _check_hf_sequence_parallel(model_config, template_config, dataset_config, distributed_config, is_megatron)
+
+
+def _check_rlhf_advanced(train_config: 'TrainConfig', rlhf_config: Optional['RLHFConfig']) -> None:
+    """Validate online-RL features before models, teachers, or rollout workers are created."""
+    if rlhf_config is None:
+        return
+    cfg = rlhf_config
+    online_only = bool(cfg.chord_sft_dataset or cfg.advantage_reweight or cfg.sdar_loss_coef > 0 or cfg.dynamic_sample
+                       or cfg.sync_ref_model or cfg.multi_turn_scheduler or cfg.use_gym_env)
+    if online_only and cfg.rlhf_type != 'grpo':
+        raise ValueError('CHORD, RLSD, SDAR, dynamic sampling, reference sync, and multi-turn/gym are GRPO-only.')
+    _check_dynamic_sampling(cfg)
+    _check_grpo_controls(cfg)
+    _check_reference_sync(cfg, train_config)
+    _check_chord(cfg)
+    _check_self_distillation(cfg, train_config)
+    _check_gkd(cfg)
+    _check_auxiliary_adapters(cfg)
+    _check_multi_turn(cfg)
+    if cfg.teacher_model is not None and cfg.teacher_model_server is not None:
+        raise ValueError('teacher_model and teacher_model_server are mutually exclusive.')
+
+
+def _check_multi_turn(cfg: 'RLHFConfig') -> None:
+    if cfg.max_turns is not None and cfg.max_turns < 1:
+        raise ValueError('max_turns must be >= 1.')
+    if cfg.completion_length_limit_scope not in ('total', 'per_round'):
+        raise ValueError("completion_length_limit_scope must be 'total' or 'per_round'.")
+    if cfg.gym_env is not None and cfg.use_gym_env is False:
+        raise ValueError('gym_env cannot be set when use_gym_env=False.')
+    if not cfg.multi_turn_scheduler:
+        if cfg.use_gym_env:
+            raise ValueError('use_gym_env requires a multi_turn_scheduler.')
+        return
+
+    _check_multi_turn_registry(cfg)
+    if cfg.teacher_model_server:
+        raise ValueError('teacher_model_server is not supported with multi-turn GRPO; use a local teacher model.')
+
+
+def _check_multi_turn_registry(cfg: 'RLHFConfig') -> None:
+    from swift.rollout.multi_turn import GYMScheduler, multi_turns
+    if cfg.multi_turn_scheduler not in multi_turns:
+        raise ValueError(
+            f'Unknown multi_turn_scheduler {cfg.multi_turn_scheduler!r}; available: {sorted(multi_turns)}.')
+    scheduler_cls = multi_turns[cfg.multi_turn_scheduler]
+    if cfg.use_gym_env and not issubclass(scheduler_cls, GYMScheduler):
+        raise ValueError('use_gym_env requires a GYMScheduler-compatible multi_turn_scheduler.')
+    if issubclass(scheduler_cls, GYMScheduler) and not cfg.use_gym_env:
+        raise ValueError('A gym multi_turn_scheduler requires use_gym_env=True.')
+    if cfg.multi_turn_scheduler == 'gym_scheduler':
+        from swift.rollout.gym_env import envs
+        if cfg.gym_env not in envs:
+            raise ValueError(f'Unknown gym_env {cfg.gym_env!r}; available: {sorted(envs)}.')
+
+
+def _check_grpo_controls(cfg: 'RLHFConfig') -> None:
+    loss_type = cfg.loss_type[0] if cfg.loss_type else 'grpo'
+    grpo_only = bool(
+        cfg.log_completions or cfg.num_iterations != 1 or cfg.delta is not None
+        or cfg.importance_sampling_level != 'token' or cfg.overlong_filter or cfg.log_entropy
+        or cfg.top_entropy_quantile != 1.0 or cfg.rollout_importance_sampling_mode
+        or cfg.log_rollout_offpolicy_metrics or cfg.off_policy_sequence_mask_delta is not None
+        or loss_type in ('dapo', 'fipo', 'gspo', 'sapo', 'cispo', 'bnpo', 'dr_grpo'))
+    if cfg.rlhf_type != 'grpo':
+        if grpo_only:
+            raise ValueError('GRPO clipping, replay, entropy, FIPO, and completion logging controls are GRPO-only.')
+        if cfg.teacher_model_server and cfg.rlhf_type != 'gkd':
+            raise ValueError('teacher_model_server is supported only by GRPO and GKD.')
+        return
+    _check_grpo_loss_type(cfg, loss_type)
+    positive = {
+        'num_iterations': cfg.num_iterations,
+        'rollout_importance_sampling_threshold': cfg.rollout_importance_sampling_threshold,
+        'fipo_decay_rate': cfg.fipo_decay_rate,
+    }
+    invalid = [name for name, value in positive.items() if value <= 0]
+    if invalid:
+        raise ValueError(f'GRPO controls must be > 0: {invalid}.')
+    optional_nonnegative = {
+        'delta': cfg.delta,
+        'off_policy_sequence_mask_delta': cfg.off_policy_sequence_mask_delta,
+        'fipo_clip_range': cfg.fipo_clip_range,
+        'fipo_safety_threshold': cfg.fipo_safety_threshold,
+    }
+    invalid = [name for name, value in optional_nonnegative.items() if value is not None and value < 0]
+    if invalid:
+        raise ValueError(f'GRPO controls must be >= 0 when set: {invalid}.')
+    if not 0.0 < cfg.top_entropy_quantile <= 1.0:
+        raise ValueError('top_entropy_quantile must be in (0, 1].')
+
+
+def _check_grpo_loss_type(cfg: 'RLHFConfig', loss_type: str) -> None:
+    supported = {'grpo', 'dapo', 'fipo', 'gspo', 'sapo', 'cispo', 'bnpo', 'dr_grpo'}
+    if len(cfg.loss_type or []) > 1:
+        raise ValueError('GRPO supports exactly one loss_type.')
+    if loss_type not in supported:
+        raise ValueError(f'Unsupported GRPO loss_type={loss_type!r}; expected one of {sorted(supported)}.')
+
+
+def _check_dynamic_sampling(cfg: 'RLHFConfig') -> None:
+    if not cfg.dynamic_sample:
+        return
+    if not (cfg.reward_funcs or cfg.reward_model):
+        raise ValueError(
+            'dynamic_sample requires reward_funcs or reward_model because it filters groups by reward variance.')
+    if cfg.num_generations < 2:
+        raise ValueError('dynamic_sample requires num_generations >= 2 to measure reward variance.')
+    if cfg.max_resample_times < 1:
+        raise ValueError('max_resample_times must be >= 1 when dynamic_sample is enabled.')
+
+
+def _check_reference_sync(cfg: 'RLHFConfig', train_config: 'TrainConfig') -> None:
+    if not cfg.sync_ref_model:
+        return
+    if cfg.beta in (None, 0, 0.0):
+        raise ValueError('sync_ref_model requires beta > 0 and an active reference model.')
+    if cfg.ref_model_sync_steps < 1:
+        raise ValueError('ref_model_sync_steps must be >= 1.')
+    if not 0.0 <= cfg.ref_model_mixup_alpha <= 1.0:
+        raise ValueError('ref_model_mixup_alpha must be in [0, 1].')
+    del train_config
+
+
+def _check_chord(cfg: 'RLHFConfig') -> None:
+    if not cfg.chord_sft_dataset:
+        return
+    required = {
+        'chord_sft_per_device_train_batch_size': cfg.chord_sft_per_device_train_batch_size,
+        'chord_mu_warmup_steps': cfg.chord_mu_warmup_steps,
+        'chord_mu_decay_steps': cfg.chord_mu_decay_steps,
+        'chord_mu_peak': cfg.chord_mu_peak,
+        'chord_mu_valley': cfg.chord_mu_valley,
+    }
+    missing = sorted(name for name, value in required.items() if value is None)
+    if missing:
+        raise ValueError(f'chord_sft_dataset requires explicit CHORD schedule fields: {missing}.')
+    if cfg.chord_sft_per_device_train_batch_size < 1:
+        raise ValueError('chord_sft_per_device_train_batch_size must be >= 1.')
+    if cfg.chord_mu_warmup_steps < 0 or cfg.chord_mu_decay_steps < 0:
+        raise ValueError('CHORD warmup and decay steps must be non-negative.')
+    if not 0.0 <= cfg.chord_mu_valley <= cfg.chord_mu_peak <= 1.0:
+        raise ValueError('CHORD requires 0 <= chord_mu_valley <= chord_mu_peak <= 1.')
+
+
+def _check_self_distillation(cfg: 'RLHFConfig', train_config: 'TrainConfig') -> None:
+    _check_rlsd(cfg)
+    _check_sdar(cfg)
+    if (cfg.advantage_reweight == 'rlsd' or cfg.sdar_loss_coef > 0) and train_config.use_liger_kernel:
+        raise ValueError('RLSD and SDAR require the unfused per-token loss path; disable use_liger_kernel.')
+
+
+def _check_rlsd(cfg: 'RLHFConfig') -> None:
+    if cfg.advantage_reweight != 'rlsd':
+        return
+    if not 0.0 <= cfg.rlsd_lambda <= 1.0:
+        raise ValueError('rlsd_lambda must be in [0, 1].')
+    if cfg.rlsd_reweight_clip_range < 0:
+        raise ValueError('rlsd_reweight_clip_range must be >= 0.')
+    if cfg.rlsd_lambda_warmup_steps < 0 or cfg.rlsd_lambda_decay_steps < 0:
+        raise ValueError('RLSD warmup and decay steps must be non-negative.')
+    if not (cfg.reward_funcs or cfg.reward_model):
+        raise ValueError('advantage_reweight=rlsd requires reward_funcs or reward_model.')
+    if cfg.teacher_model_server:
+        raise ValueError('RLSD requires a local or self-distillation teacher, not teacher_model_server.')
+
+
+def _check_sdar(cfg: 'RLHFConfig') -> None:
+    if cfg.sdar_loss_coef <= 0:
+        return
+    if cfg.sdar_gate_beta <= 0:
+        raise ValueError('sdar_gate_beta must be > 0.')
+    if cfg.advantage_reweight == 'rlsd':
+        raise ValueError('SDAR and RLSD cannot be enabled together.')
+    if cfg.teacher_model_server:
+        raise ValueError('SDAR requires a local or self-distillation teacher, not teacher_model_server.')
+
+
+def _check_gkd(cfg: 'RLHFConfig') -> None:
+    if cfg.rlhf_type != 'gkd':
+        return
+    if not 0.0 <= cfg.lmbda <= 1.0:
+        raise ValueError('GKD lmbda must be in [0, 1].')
+    if cfg.sft_alpha < 0:
+        raise ValueError('GKD sft_alpha must be >= 0.')
+    if cfg.temperature <= 0:
+        raise ValueError('GKD temperature must be > 0.')
+    if cfg.gkd_logits_topk is not None and cfg.gkd_logits_topk < 1:
+        raise ValueError('GKD gkd_logits_topk must be >= 1 when set.')
+    if cfg.teacher_model_server and cfg.gkd_logits_topk is None:
+        raise ValueError('GKD teacher_model_server requires gkd_logits_topk >= 1.')
+    if cfg.offload_teacher_model and cfg.teacher_model is None:
+        raise ValueError('offload_teacher_model requires a distinct local teacher_model.')
+    if cfg.teacher_deepspeed and cfg.teacher_model is None:
+        raise ValueError('teacher_deepspeed requires a distinct local teacher_model.')
+
+
+def _check_auxiliary_adapters(cfg: 'RLHFConfig') -> None:
+    if len(cfg.ref_adapters) > 1:
+        raise ValueError('ref_adapters currently supports one frozen reference adapter.')
+    if len(cfg.teacher_adapters) > 1:
+        raise ValueError('teacher_adapters currently supports one frozen teacher adapter.')
+    if cfg.teacher_adapters and cfg.teacher_model is None:
+        raise ValueError('teacher_adapters requires a distinct local teacher_model.')
+    if cfg.teacher_adapters and cfg.teacher_model_server:
+        raise ValueError('teacher_adapters cannot be combined with teacher_model_server.')
+    reward_models = cfg.reward_model or []
+    reward_fields = {
+        'reward_adapters': cfg.reward_adapters,
+        'reward_model_type': cfg.reward_model_type,
+        'reward_model_revision': cfg.reward_model_revision,
+        'reward_model_plugin': cfg.reward_model_plugin,
+        'reward_template': cfg.reward_template,
+    }
+    for field, values in reward_fields.items():
+        if values and not reward_models:
+            raise ValueError(f'{field} requires reward_model.')
+        if values and len(values) != len(reward_models):
+            raise ValueError(f'{field} must contain exactly one value per reward_model.')
+    if cfg.rlhf_type != 'grpo' and (cfg.reward_model_plugin or cfg.reward_template):
+        raise ValueError('reward_model_plugin and reward_template are supported by GRPO only.')
+
+
+def _check_logging(logging_config: Optional['LoggingConfig']) -> None:
+    if logging_config is None:
+        return
+    reporters = {name.lower() for name in logging_config.report_to}
+    supported = {'none', 'tensorboard', 'wandb', 'swanlab'}
+    unknown = reporters - supported
+    if unknown:
+        raise ValueError(f'Unsupported LoggingConfig.report_to values: {sorted(unknown)}.')
+    if 'none' in reporters and len(reporters) > 1:
+        raise ValueError('LoggingConfig.report_to cannot combine "none" with an active tracker.')
+    if logging_config.logging_strategy == 'steps' and logging_config.logging_steps <= 0:
+        raise ValueError('LoggingConfig.logging_steps must be > 0 when logging_strategy="steps".')
+    if logging_config.swanlab_notification_method == 'email':
+        required = (
+            logging_config.swanlab_sender_email,
+            logging_config.swanlab_receiver_email,
+            logging_config.swanlab_smtp_server,
+            logging_config.swanlab_smtp_port,
+        )
+        if not all(required):
+            raise ValueError('SwanLab email notification requires sender_email, receiver_email, smtp_server, and '
+                             'smtp_port.')
 
 
 def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
@@ -427,7 +683,6 @@ _HF_ONLY = (
     ('distributed_config', 'fsdp', None),
     ('distributed_config', 'ddp_find_unused_parameters', None),
     ('tuner_config', 'use_galore', False),
-    ('tuner_config', 'lisa_activated_layers', 0),
     ('train_config', 'use_liger_kernel', False),
     ('train_config', 'neftune_noise_alpha', None),
     ('train_config', 'optim', 'adamw_torch_fused'),
@@ -586,11 +841,15 @@ def _check_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['T
     their loss and LoRA training uses the base model with the adapter disabled, so a `--ref_model`
     there is a knob that would be silently ignored -- the class of mistake validate.py exists to catch.
     """
-    if rlhf_config is None or rlhf_config.ref_model is None:
+    if rlhf_config is None:
         return
     rlhf_type = getattr(rlhf_config, 'rlhf_type', None)
     tuner_type = getattr(tuner_config, 'tuner_type', 'full') if tuner_config is not None else 'full'
-    uses_ref = rlhf_type in _RLHF_USES_REF_MODEL and tuner_type == 'full'
+    uses_ref = rlhf_type in _RLHF_USES_REF_MODEL and (tuner_type == 'full' or bool(rlhf_config.ref_adapters))
+    if rlhf_config.ref_model is None:
+        if rlhf_config.ref_adapters:
+            raise ValueError('ref_adapters requires a reference model; call process_configs or set ref_model.')
+        return
     # grpo with beta=0 drops the KL term, so even a ref-using algorithm needs no reference then.
     if rlhf_type == 'grpo' and rlhf_config.beta == 0.0:
         uses_ref = False

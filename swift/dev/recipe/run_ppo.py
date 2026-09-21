@@ -36,6 +36,7 @@ if TYPE_CHECKING:
         DatasetConfig,
         DistributedConfig,
         GenerationConfig,
+        LoggingConfig,
         ModelConfig,
         RLHFConfig,
         RolloutConfig,
@@ -61,6 +62,7 @@ def run_ppo(
     rlhf_config: RLHFConfig,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
+    logging_config: Optional[LoggingConfig] = None,
     *,
     engine_args: Optional[Dict[str, Any]] = None,
     output_dir: str = 'output',
@@ -96,7 +98,8 @@ def run_ppo(
         checkpoint_config,
         tuner_config,
         rlhf_config=rlhf_config,
-        output_dir=output_dir)
+        output_dir=output_dir,
+        logging_config=logging_config)
     assembly.prepare()
 
     sampler_world_size = rollout_config.vllm_tensor_parallel_size * rollout_config.vllm_data_parallel_size
@@ -128,8 +131,8 @@ def run_ppo(
         engine_args=_sampler_engine_args(rollout_config, engine_args, colocate),
         template=template,
         remote_group=sampler_remote_group)
-    rollout = SamplerRollout(model, sampler, colocate=colocate)
-    reference = _build_reference(model_config, tuner_config, template)
+    rollout = SamplerRollout(model, sampler, template, colocate=colocate)
+    reference = _build_reference(model_config, tuner_config, template, rlhf_config)
     reward_models = _build_reward_models(rlhf_config, template)
     prompts = _prompts_from_dataset(dataset_config)
 
@@ -144,7 +147,9 @@ def run_ppo(
         max_steps=max_steps,
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
-        sampling_params=_grpo_sampling_params(rlhf_config, generation_config))
+        sampling_params=_grpo_sampling_params(rlhf_config, generation_config),
+        logging_config=logging_config,
+        output_dir=output_dir)
     try:
         history = loop.fit()
     finally:
@@ -179,22 +184,27 @@ def _build_value_model(model_config: ModelConfig, rlhf_config: RLHFConfig, distr
     return value_model
 
 
-def _build_reference(model_config: ModelConfig, tuner_config: Optional[TunerConfig], template: Any) -> Any:
+def _build_reference(model_config: ModelConfig, tuner_config: Optional[TunerConfig], template: Any,
+                     rlhf_config: RLHFConfig) -> Any:
     """PPO's frozen reference for the KL penalty: 'disable_lora' (LoRA) or a frozen policy-init model.
 
     LoRA reuses the adapter-disabled base (no second model); full fine-tuning loads a frozen copy of
     the policy's initial weights (PPO anchors the KL to the starting policy).
     """
-    if tuner_config is not None:
+    if tuner_config is not None and not rlhf_config.ref_adapters:
         return 'disable_lora'
+    from copy import copy
+
     from swift.dev.builders import build_model
     from swift.dev.config import DistributedConfig
-    from swift.dev.processor import InputProcessor
+    from swift.dev.recipe.assembly import configure_frozen_adapter
 
-    ref = build_model(model_config, DistributedConfig(mode='local'))
-    ref.set_processor(InputProcessor)
-    ref.set_template(template)
-    return ref
+    ref_config = copy(model_config)
+    ref_config.model = rlhf_config.ref_model or model_config.model
+    ref_config.model_type = rlhf_config.ref_model_type or model_config.model_type
+    ref_config.model_revision = rlhf_config.ref_model_revision or model_config.model_revision
+    ref = build_model(ref_config, DistributedConfig(mode='local'))
+    return configure_frozen_adapter(ref, template, rlhf_config.ref_adapters, role='ref')
 
 
 def _build_reward_models(rlhf_config: RLHFConfig, template: Any) -> List[Any]:
@@ -207,7 +217,7 @@ def _build_reward_models(rlhf_config: RLHFConfig, template: Any) -> List[Any]:
         return []
     from swift.dev.builders import build_model
     from swift.dev.config import DistributedConfig, ModelConfig
-    from swift.dev.processor import InputProcessor
+    from swift.dev.recipe.assembly import configure_frozen_adapter
 
     models: List[Any] = []
     for idx, rm_id in enumerate(rlhf_config.reward_model):
@@ -215,10 +225,12 @@ def _build_reward_models(rlhf_config: RLHFConfig, template: Any) -> List[Any]:
         rm_cfg.num_labels = 1
         if rlhf_config.reward_model_type:
             rm_cfg.model_type = rlhf_config.reward_model_type[idx] if idx < len(rlhf_config.reward_model_type) else None
+        if rlhf_config.reward_model_revision:
+            rm_cfg.model_revision = (rlhf_config.reward_model_revision[idx]
+                                     if idx < len(rlhf_config.reward_model_revision) else None)
         rm = build_model(rm_cfg, DistributedConfig(mode='local'))
-        rm.set_processor(InputProcessor)
-        rm.set_template(template)
-        models.append(rm)
+        adapters = [rlhf_config.reward_adapters[idx]] if rlhf_config.reward_adapters else []
+        models.append(configure_frozen_adapter(rm, template, adapters, role='reward'))
     return models
 
 
@@ -248,6 +260,8 @@ class PPOLoop:
         gradient_accumulation_steps: int = 1,
         max_grad_norm: float = 1.0,
         sampling_params: Optional[dict] = None,
+        logging_config: Optional['LoggingConfig'] = None,
+        output_dir: str = 'output',
     ):
         self.model = model
         self.value_model = value_model
@@ -260,6 +274,9 @@ class PPOLoop:
         self.gradient_accumulation_steps = max(1, gradient_accumulation_steps)
         self.max_grad_norm = max_grad_norm
         self.sampling_params = sampling_params
+        self.logging_config = logging_config
+        from swift.dev.recipe.tracking import RunTracker
+        self.tracker = RunTracker(logging_config, output_dir)
         self.num_generations = rlhf_config.num_generations
         self.num_ppo_epochs = max(1, rlhf_config.num_ppo_epochs)
         from twinkle.advantage import GAEAdvantage
@@ -360,29 +377,37 @@ class PPOLoop:
     def fit(self) -> list:
         """Run max_steps PPO steps (each: rollout -> per-token GAE -> num_ppo_epochs of policy+critic)."""
         ga = self.gradient_accumulation_steps
-        for _ in range(self.max_steps):
-            if hasattr(self.rollout, 'sync_weights'):
-                self.rollout.sync_weights()
-            samples = self.rollout.generate(
-                self.prompts, num_samples=self.num_generations, sampling_params=self.sampling_params)
-            if hasattr(self.rollout, 'finish_generate'):
-                self.rollout.finish_generate()
+        try:
+            for _ in range(self.max_steps):
+                if hasattr(self.rollout, 'sync_weights'):
+                    self.rollout.sync_weights()
+                samples = self.rollout.generate(
+                    self.prompts, num_samples=self.num_generations, sampling_params=self.sampling_params)
+                if hasattr(self.rollout, 'finish_generate'):
+                    self.rollout.finish_generate()
 
-            plans, mean_reward = self._plan_rollout(samples)
-            for _ in range(self.num_ppo_epochs):
-                for sample, advantages, returns, old_values in plans:
-                    inputs = [sample.input_feature]
-                    self.model.forward_backward(
-                        inputs=inputs, gradient_accumulation_steps=ga,
-                        advantages=[advantages], old_logps=[sample.old_logps])
-                    self.model.clip_grad_and_step(max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
-                    self.value_model.forward_backward(
-                        inputs=inputs, gradient_accumulation_steps=ga, task='value',
-                        returns=[returns], old_values=[old_values])
-                    self.value_model.clip_grad_and_step(
-                        max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
-            self._record_step(mean_reward)
-        return self.history
+                plans, mean_reward = self._plan_rollout(samples)
+                for _ in range(self.num_ppo_epochs):
+                    for sample, advantages, returns, old_values in plans:
+                        inputs = [sample.input_feature]
+                        self.model.forward_backward(
+                            inputs=inputs,
+                            gradient_accumulation_steps=ga,
+                            advantages=[advantages],
+                            old_logps=[sample.old_logps])
+                        self.model.clip_grad_and_step(max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
+                        self.value_model.forward_backward(
+                            inputs=inputs,
+                            gradient_accumulation_steps=ga,
+                            task='value',
+                            returns=[returns],
+                            old_values=[old_values])
+                        self.value_model.clip_grad_and_step(
+                            max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
+                self._record_step(mean_reward)
+            return self.history
+        finally:
+            self.tracker.close()
 
     def _record_step(self, mean_reward: float) -> None:
         self.global_step += 1
@@ -394,6 +419,8 @@ class PPOLoop:
             'value_loss': float(value_metrics['loss']) if value_metrics.get('loss') is not None else float('nan'),
             'reward': mean_reward,
         }
+        record = self.tracker.log(record, self.global_step)
         self.history.append(record)
-        logger.info(f"step {self.global_step}  loss={record['loss']:.4f}  value_loss={record['value_loss']:.4f}  "
-                    f"reward={record['reward']:.4f}")
+        if self.tracker.should_log(self.global_step):
+            logger.info(f"step {self.global_step}  loss={record['loss']:.4f}  value_loss={record['value_loss']:.4f}  "
+                        f"reward={record['reward']:.4f}")

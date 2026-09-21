@@ -8,12 +8,14 @@ General API, not recipe-private: functions take plain ``completions`` (list of s
 dataset columns, so any caller (CLI recipe, cookbook loop, server) can use them. Nothing here knows
 about rollout sample classes or training loops.
 
-Not covered here: reward *models* (``nn.Module`` + ``rm_plugins``) and async reward functions.
+Reward models are adapted to the same batch scorer contract through
+:func:`build_reward_model_plugins`; asynchronous rule rewards remain out of scope.
 """
 from __future__ import annotations
+import copy
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import torch
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from swift.dev.utils import get_logger
 
@@ -22,7 +24,15 @@ logger = get_logger()
 # A reward function: (completions, **columns) -> one score per completion.
 RewardFunc = Callable[..., List[float]]
 
-__all__ = ['RewardFunc', 'get_reward_funcs', 'compute_rewards_per_func', 'weight_rewards', 'build_reward_weights']
+__all__ = [
+    'RewardFunc',
+    'build_reward_model_plugins',
+    'build_reward_weights',
+    'compute_reward_model_scores',
+    'compute_rewards_per_func',
+    'get_reward_funcs',
+    'weight_rewards',
+]
 
 
 def get_reward_funcs(reward_funcs: Sequence[Any], config: Optional[Any] = None) -> Tuple[List[RewardFunc], List[str]]:
@@ -55,6 +65,72 @@ def get_reward_funcs(reward_funcs: Sequence[Any], config: Optional[Any] = None) 
         funcs.append(func)
         names.append(PluginRegistry.display_name(func))
     return funcs, names
+
+
+class _DefaultRewardModelPlugin:
+    """Run a twinkle frozen seq-cls model behind the legacy RM-plugin call contract."""
+
+    def __init__(self, model: Any, template: Any):
+        self.model = model
+        self.template = template
+
+    def __call__(self, inputs: Sequence[Dict[str, Any]], **kwargs):
+        del kwargs
+        features = [self.template.encode(copy.deepcopy(row)) for row in inputs]
+        outputs = self.model.forward_only(inputs=features, return_logits=True)
+        logits = outputs.get('logits') if isinstance(outputs, dict) else None
+        if logits is None:
+            raise RuntimeError('reward model forward returned no logits.')
+        return torch.as_tensor(logits).reshape(-1)
+
+
+def build_reward_model_plugins(models: Sequence[Any], templates: Sequence[Any],
+                               plugin_names: Optional[Sequence[str]] = None) -> Tuple[List[Callable], List[str]]:
+    """Construct per-model reward scorers, preserving legacy custom ``rm_plugins`` compatibility."""
+    from swift.rewards import rm_plugins
+
+    if len(models) != len(templates):
+        raise ValueError(f'reward models/templates length mismatch: {len(models)} != {len(templates)}.')
+    names = list(plugin_names) if plugin_names is not None else ['default'] * len(models)
+    if len(names) != len(models):
+        raise ValueError(f'reward_model_plugin length {len(names)} != reward_model length {len(models)}.')
+    plugins: List[Callable] = []
+    display_names: List[str] = []
+    for model, template, name in zip(models, templates, names):
+        if name not in rm_plugins:
+            raise ValueError(f'Unknown reward_model_plugin={name!r}; expected one of {sorted(rm_plugins)}.')
+        if name == 'default':
+            plugin = _DefaultRewardModelPlugin(model, template)
+        else:
+            raw_model = getattr(model, 'model', model)
+            plugin = rm_plugins[name](model=raw_model, template=template)
+        plugins.append(plugin)
+        display_names.append(getattr(getattr(raw_model if name != 'default' else model, 'config', None),
+                                     '_name_or_path', None) or type(plugin).__name__)
+    return plugins, display_names
+
+
+def compute_reward_model_scores(inputs: Sequence[Dict[str, Any]],
+                                plugins: Sequence[Callable]) -> torch.Tensor:
+    """Score reward rows with per-model plugins -> ``[N, n_models]`` on CPU.
+
+    Each row contains the complete ``messages`` conversation plus the original dataset columns. A
+    plugin may return a tensor or a Python sequence; ``None`` is retained as ``nan`` so weighted
+    aggregation has the same semantics as rule rewards.
+    """
+    rewards = torch.zeros((len(inputs), len(plugins)), dtype=torch.float32)
+    for index, plugin in enumerate(plugins):
+        output = plugin(inputs=copy.deepcopy(list(inputs)))
+        if isinstance(output, torch.Tensor):
+            scores = output.detach().float().cpu().reshape(-1)
+        else:
+            scores = torch.tensor(
+                [score if score is not None else torch.nan for score in output], dtype=torch.float32).reshape(-1)
+        if scores.numel() != len(inputs):
+            name = getattr(plugin, '__name__', plugin.__class__.__name__)
+            raise ValueError(f'reward model plugin {name!r} returned {scores.numel()} scores for {len(inputs)} inputs.')
+        rewards[:, index] = scores
+    return rewards
 
 
 def compute_rewards_per_func(completions: Sequence[str],

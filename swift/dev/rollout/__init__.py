@@ -28,8 +28,8 @@ Scope: text-only; the base :class:`RolloutEngine` does NOT sync weights (vLLM ke
 behaviour policy is stale => NOT algorithmically-correct GRPO — a known intermediate stage).
 ``run_grpo``'s ``SamplerRollout`` adds weight sync.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -70,6 +70,10 @@ class RolloutSample:
     prompt_id: str
     extra: Dict[str, Any] = field(default_factory=dict)
     decoded: str = ''
+    truncated: bool = False
+    response_loss_mask: List[List[int]] = field(default_factory=list)
+    messages: Optional[List[dict]] = None
+    rollout_infos: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def input_feature(self) -> dict:
@@ -87,6 +91,23 @@ class RolloutSample:
         return self.prompt_id
 
 
+def _sampled_token_logprobs(tokens: List[int], logprobs) -> List[float]:
+    """Normalize sampler logprobs to one scalar for each sampled token."""
+    if logprobs is None:
+        return []
+    result: List[float] = []
+    for token, position in zip(tokens, logprobs):
+        if isinstance(position, (int, float)):
+            result.append(float(position))
+            continue
+        candidates = list(position or [])
+        matched = next((value for token_id, value in candidates if int(token_id) == int(token)), None)
+        if matched is None:
+            raise RuntimeError(f'sampled token {token} is missing from its returned logprobs: {candidates!r}.')
+        result.append(float(matched))
+    return result
+
+
 class RolloutEngine:
     """Thin wrapper over twinkle's ``vLLMSampler``: prompts in, RolloutSample (training feature +
     old_logps) out. The sampler owns encoding/decoding; this layer only assembles the RL training
@@ -98,15 +119,33 @@ class RolloutEngine:
         from swift.dev.config import ModelConfig
         self.model_id = model_id
         self.template = template
+        self._multi_turn = None
         # build_sampler sets the template on the sampler so Trajectory (messages) inputs are encoded,
         # and returns the prompt tokens the model conditioned on -- exactly the prompt half we need.
         self.sampler = build_sampler(
             ModelConfig(model=model_id), backend='vllm', engine_args=dict(engine_args or {}), template=template)
 
+    def configure_multi_turn(self,
+                             scheduler: Any,
+                             *,
+                             max_turns: Optional[int] = None,
+                             gym_env: Optional[str] = None,
+                             completion_length_limit_scope: str = 'per_round') -> None:
+        """Attach Twinkle's multi-turn driver through the Swift scheduler adapter."""
+        from .multi_turn import MultiTurnRollout
+        self._multi_turn = MultiTurnRollout(
+            self.sampler,
+            self.template,
+            scheduler,
+            max_turns=max_turns,
+            gym_env=gym_env,
+            completion_length_limit_scope=completion_length_limit_scope)
+
     def generate(self,
                  prompts: List[List[dict]],
                  num_samples: int = 1,
-                 sampling_params: Optional[dict] = None) -> List[RolloutSample]:
+                 sampling_params: Optional[dict] = None,
+                 prompt_extras: Optional[List[Dict[str, Any]]] = None) -> List[RolloutSample]:
         """Generate ``num_samples`` completions per prompt as RolloutSample objects (grouped by prompt).
 
         Args:
@@ -117,23 +156,31 @@ class RolloutEngine:
         Returns:
             flat list of RolloutSample, grouped by prompt_id (num_samples per prompt).
         """
+        if self._multi_turn is not None:
+            return self._multi_turn.generate(
+                prompts,
+                num_samples=num_samples,
+                sampling_params=sampling_params,
+                prompt_extras=prompt_extras)
+
         from twinkle.data_format import SamplingParams, Trajectory
 
         sp = dict(sampling_params or {})
         sp.setdefault('temperature', 1.0)
         sp.setdefault('max_tokens', 32)
-        # logprobs=0 -> the sampled token's own logprob (== old_logps); num_samples -> the GRPO group.
+        # Twinkle uses logprobs=1 for the sampled token in its normalized top-k representation.
         # Contract 15: these logprobs ARE old_logps, so requesting them is forced, not defaulted.
-        sp['logprobs'] = sp.get('logprobs', 0)
+        sp['logprobs'] = max(int(sp.get('logprobs') or 0), 1)
         sp['num_samples'] = num_samples
         params = SamplingParams(**sp)
 
         trajectories = [Trajectory(messages=list(messages)) for messages in prompts]
         responses = self.sampler.sample(trajectories, params)
-        return self._samples_from_responses(responses)
+        return self._samples_from_responses(responses, prompt_extras=prompt_extras)
 
     @staticmethod
-    def _samples_from_responses(responses: List[Any]) -> List[RolloutSample]:
+    def _samples_from_responses(responses: List[Any],
+                                prompt_extras: Optional[List[Dict[str, Any]]] = None) -> List[RolloutSample]:
         """Build RolloutSamples from twinkle SampleResponses (one group per response).
 
         The training feature is rebuilt from ``prompt_token_ids`` + ``sequence.tokens`` rather than
@@ -154,7 +201,7 @@ class RolloutEngine:
                 aligned = [-100] * len(prompt_tokens) + response_tokens
                 labels = list(aligned[1:]) + [-100]
                 encoded = {'input_ids': prompt_tokens + response_tokens, 'labels': labels, SHIFTED_KEY: True}
-                old_logps = [float(lp) for lp in (seq.logprobs or [])]
+                old_logps = _sampled_token_logprobs(response_tokens, seq.logprobs)
                 # A length mismatch is raised, never padded: these values ARE old_logps, and 0.0 is a
                 # legal logprob (p=1.0), not a sentinel -- padding it would turn a missing-logprob bug
                 # into a silently wrong importance ratio exp(logps - 0).
@@ -169,7 +216,9 @@ class RolloutEngine:
                         response_token_ids=[response_tokens],
                         rollout_logprobs=[old_logps],
                         prompt_id=str(pidx),
-                        decoded=seq.decoded or ''))
+                        extra=dict(prompt_extras[pidx]) if prompt_extras and pidx < len(prompt_extras) else {},
+                        decoded=seq.decoded or '',
+                        truncated=getattr(seq, 'stop_reason', None) == 'length'))
         return out
 
     def shutdown(self) -> None:

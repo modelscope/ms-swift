@@ -10,17 +10,64 @@ that made cli/sft.py need a `train_iters` sentinel in the first place. The guard
 fail-when-broken behaviour is tested too (a whitelist that never fires is worthless).
 """
 from __future__ import annotations
-
 import dataclasses
-import pytest
 from types import SimpleNamespace
 
-from swift.dev.cli.megatron import (ABSENT, DERIVED, RENAMES, SUPERSEDED, _decay_style_to_swift,
-                                    _derive_gradient_accumulation_steps, audit_coverage, megatron_args_to_configs)
-from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                               TrainConfig, TunerConfig)
+import pytest
+
+from swift.dev.cli.megatron import (
+    ABSENT,
+    DERIVED,
+    RENAMES,
+    SUPERSEDED,
+    _decay_style_to_swift,
+    _derive_gradient_accumulation_steps,
+    audit_coverage,
+    megatron_args_to_configs,
+    parse_megatron_configs,
+)
+from swift.dev.config import (
+    CheckpointConfig,
+    DatasetConfig,
+    DistributedConfig,
+    ModelConfig,
+    TemplateConfig,
+    TrainConfig,
+    TunerConfig,
+)
 
 _CONFIGS = (ModelConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig, TunerConfig)
+
+
+def _legacy_arg_names():
+    from swift.megatron.arguments import MegatronSftArguments
+
+    return {field.name for field in dataclasses.fields(MegatronSftArguments)}
+
+
+def test_self_parser_maps_legacy_compat_fields_without_legacy_arguments():
+    model, _, _, train, dist, checkpoint, logging, tuner = parse_megatron_configs([
+        '--model', 'm', '--dataset', 'd', '--tuner_type', 'full', '--bf16', 'true', '--attention_backend', 'fused',
+        '--lr', '0.0002', '--train_iters', '20', '--micro_batch_size', '2', '--global_batch_size', '8',
+        '--tensor_model_parallel_size', '2', '--save_steps', '0.25', '--logging_steps', '2',
+    ], world_size=4)
+    assert model.torch_dtype == 'bfloat16' and model.attn_impl == 'fused'
+    assert train.lr == 0.0002 and train.train_iters == 20
+    assert train.gradient_accumulation_steps == 2
+    assert dist.backend == 'megatron' and dist.nproc_per_node == 4
+    assert checkpoint.save_steps == 0.25
+    assert logging.logging_steps == 2
+    assert tuner is None
+
+
+def test_self_parser_rejects_legacy_field_without_dev_consumer():
+    with pytest.raises(ValueError, match='no dev Config consumer'):
+        parse_megatron_configs(['--model', 'm', '--dataset', 'd', '--num_layers', '24'])
+
+
+def test_self_parser_accepts_tracker_config():
+    *_, logging, _ = parse_megatron_configs(['--model', 'm', '--dataset', 'd', '--report_to', 'wandb'])
+    assert logging.report_to == ['wandb']
 
 
 def _args(**overrides):
@@ -30,39 +77,39 @@ def _args(**overrides):
     GA derivation inputs, the reject checks and tuner dispatch). Fields not set here are simply
     absent, which exercises the same "leave the Config default" path as a None value.
     """
-    base = dict(
-        model='m',
-        dataset=['d'],
-        tuner_type='full',
-        torch_dtype=None,
+    base = {
+        'model': 'm',
+        'dataset': ['d'],
+        'tuner_type': 'full',
+        'torch_dtype': None,
         # renames
-        lr=None,
-        train_iters=None,
-        micro_batch_size=1,
-        adam_eps=None,
-        lr_warmup_fraction=None,
-        lr_decay_style='cosine',
+        'lr': None,
+        'train_iters': None,
+        'micro_batch_size': 1,
+        'adam_eps': None,
+        'lr_warmup_fraction': None,
+        'lr_decay_style': 'cosine',
         # The attention kernel comes from --attention_backend on this surface, NOT from the
         # transformers-surface attn_impl that MegatronSftArguments also inherits. Both are present on
         # the real object, so both are present here -- a stub with only attn_impl would hide the
         # rename entirely.
-        attention_backend='flash',
-        attn_impl=None,
+        'attention_backend': 'flash',
+        'attn_impl': None,
         # GA derivation
-        global_batch_size=16,
-        tensor_model_parallel_size=1,
-        pipeline_model_parallel_size=1,
-        context_parallel_size=1,
+        'global_batch_size': 16,
+        'tensor_model_parallel_size': 1,
+        'pipeline_model_parallel_size': 1,
+        'context_parallel_size': 1,
         # reject checks
-        lr_warmup_iters=0,
-        optimizer='adam',
+        'lr_warmup_iters': 0,
+        'optimizer': 'adam',
         # read by name for the derived-vs-intent decision (always present on the real surface)
-        weight_decay_incr_style='constant',
-        start_weight_decay=None,
-        end_weight_decay=None,
+        'weight_decay_incr_style': 'constant',
+        'start_weight_decay': None,
+        'end_weight_decay': None,
         # name-hit sample
-        save_steps=500,
-    )
+        'save_steps': 500,
+    }
     base.update(overrides)
     return SimpleNamespace(**base)
 
@@ -78,7 +125,7 @@ class TestCoverageGuard:
         A field in `unaccounted` is one the CLI would leave at its dev default while the user
         believes their flag applied -- silent, and exactly what this guard exists to prevent.
         """
-        report = audit_coverage()
+        report = audit_coverage(_legacy_arg_names())
         unaccounted = {cfg: b['unaccounted'] for cfg, b in report.items() if b['unaccounted']}
         assert not unaccounted, (f'Config fields not accounted for by the Megatron mapping: {unaccounted}. '
                                  'Add each to RENAMES / DERIVED / ABSENT in swift/dev/cli/megatron.py.')
@@ -87,17 +134,13 @@ class TestCoverageGuard:
         """The guard must actually fire. Simulate a newly added Config field by shrinking the arg
         surface: dropping `seed` from the surface makes TrainConfig.seed unmapped, and the audit
         has to report it rather than quietly bucket it."""
-        arg_names = {
-            f.name
-            for f in dataclasses.fields(
-                __import__('swift.megatron.arguments', fromlist=['MegatronSftArguments']).MegatronSftArguments)
-        }
+        arg_names = _legacy_arg_names()
         report = audit_coverage(arg_names - {'seed'})
         assert 'seed' in report['TrainConfig']['unaccounted']
 
     def test_report_partitions_fields_exactly_once(self):
         """The buckets must partition each Config's fields (no double counting, none lost)."""
-        report = audit_coverage()
+        report = audit_coverage(_legacy_arg_names())
         for cls in _CONFIGS:
             buckets = report[cls.__name__]
             flat = [
@@ -108,9 +151,9 @@ class TestCoverageGuard:
             assert len(flat) == len(set(flat)), f'{cls.__name__}: field counted twice'
 
     def test_measured_gap_matches_documented_gap(self):
-        """Pins the field-surface facts the design note records: the gap is 35/59 TrainConfig, 8
-        DistributedConfig, 7 CheckpointConfig, 3 ModelConfig, and 0 for Template/Dataset. If an
-        upstream rename shifts these, this fails and the note gets revisited instead of the numbers
+        """Pins the field-surface facts the design note records: the gap is 53/59 TrainConfig, 12
+        DistributedConfig, 13 CheckpointConfig, 3 ModelConfig, 1 DatasetConfig, and 0 for Template. If
+        an upstream rename shifts these, this fails and the note gets revisited instead of the numbers
         quietly rotting.
 
         ModelConfig went 0 -> 1 when attn_impl became a rename. It is a genuine gap, not bookkeeping:
@@ -125,22 +168,27 @@ class TestCoverageGuard:
         ``labels`` into the model, so --mtp_num_layers alone already trains the MTP heads, while dev
         computes its loss outside the model and must be told. ``mtp_freeze`` is ABSENT because the
         legacy SFT surface trains the heads whenever they exist and has no way to ask for the opposite.
+
+        The TrainConfig/Distributed/Checkpoint/Dataset gaps also count the transformers
+        TrainingArguments knobs (precision-eval, torch.compile, DDP/FSDP tuning, hub push,
+        dataloader_drop_last) that have no Megatron surface -- see ABSENT in swift/dev/cli/megatron.py.
         """
-        report = audit_coverage()
+        report = audit_coverage(_legacy_arg_names())
         gap = {
             cfg: len(b['renamed']) + len(b['derived']) + len(b['superseded']) + len(b['absent'])
             for cfg, b in report.items()
         }
-        assert gap['TrainConfig'] == 35
-        assert gap['DistributedConfig'] == 8
-        assert gap['CheckpointConfig'] == 7
+        assert gap['TrainConfig'] == 53
+        assert gap['DistributedConfig'] == 12
+        assert gap['CheckpointConfig'] == 13
         # Every TemplateConfig field maps by name onto the Megatron surface.
         assert gap['TemplateConfig'] == 0
         assert gap['ModelConfig'] == 3
         assert report['ModelConfig']['renamed'] == ['attn_impl']
         assert report['ModelConfig']['derived'] == ['enable_mtp_training']
         assert report['ModelConfig']['absent'] == ['mtp_freeze']
-        assert gap['DatasetConfig'] == 0
+        # dataloader_drop_last is the one DatasetConfig field with no Megatron dataloader flag.
+        assert gap['DatasetConfig'] == 1
 
     def test_tables_only_name_real_config_fields(self):
         """A stale entry (renamed/derived/absent naming a field that no longer exists) would mask a

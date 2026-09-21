@@ -44,6 +44,10 @@ WIRED_ELSEWHERE = {
     ('TemplateConfig', 'loss_scale'): "builders/template.py passes it to legacy get_template, whose own "
     'loss_scale registry resolves the name',
     ('SamplingConfig', 'prm_funcs'): 'swift.dev.reward.get_reward_funcs -> the reward kind',
+    ('RLHFConfig', 'reward_model_plugin'): 'run_grpo builds one scorer per reward model via '
+    'swift.dev.reward.build_reward_model_plugins',
+    ('RLHFConfig', 'multi_turn_scheduler'): 'run_grpo configures the dev-owned MultiTurnRollout driver with '
+    'the selected swift scheduler',
 }
 
 #: Declared and reaching NOTHING. Allowed, but each row states why -- an ignored knob must be a
@@ -55,10 +59,6 @@ UNWIRED = {
     'never reads this name. Wiring it means a metric kind whose base is twinkle Metric.',
     ('TemplateConfig', 'agent_template'): 'agent templates format tool calls inside the legacy template; the '
     'dev template inherits the legacy behavior and exposes no selector.',
-    ('RLHFConfig', 'multi_turn_scheduler'): 'multi-turn rollout is not implemented in dev GRPO -- a scheduler '
-    'has no loop to schedule.',
-    ('RLHFConfig', 'reward_model_plugin'): 'dev PPO scores with reward MODELS built by _build_reward_models; '
-    'the legacy per-model plugin hook has no equivalent.',
     ('RLHFConfig', 'loss_scale'): 'the RLHF losses come from twinkle and take no loss_scale; the template-side '
     'loss_scale (TemplateConfig) is the one that is honoured.',
     ('InferConfig', 'metric'): 'InferConfig is not threaded into run_infer at all yet (it takes metric as a '

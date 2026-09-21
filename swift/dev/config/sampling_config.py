@@ -1,8 +1,7 @@
 """Best-of-n sampling: how many candidates, how they are scored, and how a run resumes."""
 from __future__ import annotations
-
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 
 @dataclass
@@ -14,12 +13,19 @@ class SamplingConfig:
     here loads a model, which is why the sampling backend and the scoring path are independent.
     """
 
+    # === Legacy-compatible mode and scorer selection ===
+    sampler_type: Literal['sample', 'distill'] = 'sample'
+    sampler_engine: Literal['transformers', 'vllm', 'sglang', 'client', 'no', 'pt'] = 'transformers'
+    prm_model: Optional[str] = None
+    orm_model: Optional[str] = None
+    engine_kwargs: Optional[Any] = None
+
     # === Candidates ===
     #: Completions generated per prompt. The group the reward ranking then sorts.
-    num_return_sequences: int = 4
+    num_return_sequences: int = 64
     #: How many top-scoring candidates become positives per prompt. The lowest scorer is the
     #: rejected_response, so n_best_to_keep < num_return_sequences or there is no negative left.
-    n_best_to_keep: int = 1
+    n_best_to_keep: int = 5
 
     # === Reward ===
     #: Registered ``orms`` names and/or callables, resolved via ``swift.dev.reward.get_reward_funcs``.
@@ -36,6 +42,7 @@ class SamplingConfig:
     reward_config: Optional[Any] = None
     #: Candidates scoring at or below this are dropped. None keeps every candidate.
     reward_threshold: Optional[float] = None
+    prm_threshold: Optional[float] = None
     #: Drop the whole prompt when this fraction of its candidates already score above
     #: ``reward_threshold`` -- an easy prompt teaches the model nothing. None keeps every prompt.
     easy_query_threshold: Optional[float] = None
@@ -59,15 +66,18 @@ class SamplingConfig:
 
     # === Batching ===
     #: Prompts per sampler call. Also the checkpoint granularity: a crash loses at most one batch.
-    batch_size: int = 16
+    batch_size: int = 1
+    #: Legacy spellings. The CLI folds these into batch_size/max_batches when explicitly provided.
+    num_sampling_batch_size: Optional[int] = None
     #: Stop after this many batches. None runs the whole dataset.
     max_batches: Optional[int] = None
+    num_sampling_batches: Optional[int] = None
     #: ``(index, total)`` -- take only piece ``index`` of the dataset, for splitting one dataset
     #: across independent processes/machines. There is no cross-piece coordination.
     data_range: Optional[tuple] = None
 
     # === Output & resume ===
-    output_file: str = 'sampled.jsonl'
+    output_file: Optional[str] = None
     #: Continue a previous run from its checkpoint instead of starting over.
     resume: bool = False
     #: Overwrite an existing complete output file instead of returning early.

@@ -1,8 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from typing import Dict, List, Optional
 
-from swift.template.base import Template as LegacyTemplate
 from swift.dev.utils import get_logger
+from swift.template.base import Template as LegacyTemplate
 
 logger = get_logger()
 
@@ -54,8 +54,16 @@ class DevMixin:
     # reranker/seq_cls: likewise per-sequence scores/classes rather than token targets.
     _NO_SHIFT_TASK_TYPES = frozenset({'embedding', 'reranker', 'generative_reranker', 'seq_cls'})
 
-    def encode(self, inputs, return_template_inputs: bool = False, return_length: bool = False):
+    def encode(self,
+               inputs,
+               return_template_inputs: bool = False,
+               return_length: bool = False,
+               add_generation_prompt: Optional[bool] = None):
         """Encode, then shift labels to next-token alignment (training mode only).
+
+        ``twinkle.vLLMSampler`` passes ``add_generation_prompt`` explicitly. The legacy swift
+        template derives the same decision from the final message role, so the compatibility keyword
+        is accepted here while the underlying encoder remains the single source of prompt formatting.
 
         vLLM-mode guard: the next-token shift must fire ONLY in training modes. In
         inference/rollout modes (vllm/lmdeploy/sglang/transformers) legacy `is_training` is False and
@@ -65,6 +73,7 @@ class DevMixin:
 
         Task guard: only `causal_lm` labels are per-token. See ``_NO_SHIFT_TASK_TYPES``.
         """
+        del add_generation_prompt
         encoded = super().encode(inputs, return_template_inputs=return_template_inputs, return_length=return_length)
         if (self.is_training and getattr(self, 'task_type', 'causal_lm') not in self._NO_SHIFT_TASK_TYPES
                 and isinstance(encoded, dict) and encoded.get('labels') is not None
@@ -74,6 +83,26 @@ class DevMixin:
                 encoded['loss_scale'] = list(encoded['loss_scale'][1:]) + [0.0]
             encoded[self.SHIFTED_KEY] = True
         return encoded
+
+    def get_vllm_input_ids(self, input_ids):
+        """Return the token ids consumed by vLLM for text-only dev rollout."""
+        return input_ids
+
+    def concat_input_feature(self, prompt_input_feature, new_tokens: List[int]):
+        """Build a next-token-shifted training feature from a sampled completion."""
+        import copy
+
+        result = copy.deepcopy(prompt_input_feature)
+        prompt_ids = list(result['input_ids'])
+        response_ids = list(new_tokens)
+        aligned = [-100] * len(prompt_ids) + response_ids
+        result['input_ids'] = prompt_ids + response_ids
+        result['labels'] = self._shift_labels_next_token(aligned)
+        result[self.SHIFTED_KEY] = True
+        return result
+
+    def decode(self, token_ids: List[int], **kwargs) -> str:
+        return self.tokenizer.decode(token_ids, **kwargs)
 
     def batch_encode(self, trajectories, add_generation_prompt: bool = False, **kwargs):
         """twinkle's batch entry point, delegated row-by-row to swift's `encode`.

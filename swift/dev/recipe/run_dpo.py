@@ -34,6 +34,7 @@ if TYPE_CHECKING:
         CheckpointConfig,
         DatasetConfig,
         DistributedConfig,
+        LoggingConfig,
         ModelConfig,
         RLHFConfig,
         TemplateConfig,
@@ -59,6 +60,7 @@ def run_dpo(
     checkpoint_config: CheckpointConfig,
     rlhf_config: RLHFConfig,
     tuner_config: Optional[TunerConfig] = None,
+    logging_config: Optional[LoggingConfig] = None,
     *,
     output_dir: str = 'output',
     _save_final: bool = True,
@@ -90,7 +92,8 @@ def run_dpo(
         checkpoint_config,
         tuner_config,
         rlhf_config=rlhf_config,
-        output_dir=output_dir)
+        output_dir=output_dir,
+        logging_config=logging_config)
     assembly.prepare()
     TrainAssembly.initialize_twinkle(distributed_config)
 
@@ -118,6 +121,7 @@ def run_dpo(
         num_train_epochs=train_config.num_train_epochs,
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
+        logging_config=logging_config,
         output_dir=output_dir,
         eval_dataloader=assembly.eval_dataloader,
         eval_steps=train_config.eval_steps,
@@ -141,10 +145,10 @@ def _build_reference(model: TrainableModel, rlhf_config: RLHFConfig,
     """
     if rlhf_config.rlhf_type not in _REF_TYPES:
         return None
-    if tuner_config is not None:
-        # LoRA: the frozen base (adapter off) is the reference; no second model is loaded.
+    if tuner_config is not None and not rlhf_config.ref_adapters:
+        # LoRA without an explicit reference adapter: the frozen base is the reference.
         return 'disable_lora'
-    # Full fine-tuning: a genuine frozen copy. process.py defaults ref_model to the policy's init.
+    # Full fine-tuning, or an explicit reference adapter: load a separate frozen reference.
     return _load_frozen_reference(model, rlhf_config)
 
 
@@ -157,7 +161,7 @@ def _load_frozen_reference(model: TrainableModel, rlhf_config: RLHFConfig) -> An
     """
     from swift.dev.builders import build_model
     from swift.dev.config import DistributedConfig, ModelConfig
-    from swift.dev.processor import InputProcessor
+    from swift.dev.recipe.assembly import configure_frozen_adapter
 
     if rlhf_config.ref_model is None:
         raise ValueError('dpo/kto full fine-tuning needs a reference model, but RLHFConfig.ref_model is None. '
@@ -169,9 +173,11 @@ def _load_frozen_reference(model: TrainableModel, rlhf_config: RLHFConfig) -> An
     ref_cfg.model_type = rlhf_config.ref_model_type
     ref_cfg.model_revision = rlhf_config.ref_model_revision
     ref = build_model(ref_cfg, DistributedConfig(mode='local'))
-    ref.set_processor(InputProcessor)
-    ref.set_template(model.template if hasattr(model, 'template') else None)
-    return ref
+    return configure_frozen_adapter(
+        ref,
+        model.template if hasattr(model, 'template') else None,
+        rlhf_config.ref_adapters,
+        role='ref')
 
 
 class PreferenceLoop:
@@ -197,6 +203,7 @@ class PreferenceLoop:
         gradient_accumulation_steps: int = 1,
         max_grad_norm: float = 1.0,
         logging_steps: int = 1,
+        logging_config: Optional['LoggingConfig'] = None,
         save_steps: Optional[int] = None,
         output_dir: str = 'output',
         eval_dataloader: Any = None,
@@ -209,7 +216,10 @@ class PreferenceLoop:
         self.reference = reference
         self.gradient_accumulation_steps = max(1, gradient_accumulation_steps)
         self.max_grad_norm = max_grad_norm
-        self.logging_steps = logging_steps
+        self.logging_steps = logging_config.logging_steps if logging_config is not None else logging_steps
+        self.logging_config = logging_config
+        from swift.dev.recipe.tracking import RunTracker
+        self.tracker = RunTracker(logging_config, output_dir)
         self.save_steps = save_steps
         self.output_dir = output_dir
         self.num_train_epochs = num_train_epochs
@@ -276,27 +286,32 @@ class PreferenceLoop:
         """Run the preference loop; returns the per-optimizer-step loss history."""
         ga = self.gradient_accumulation_steps
         epochs = math.ceil(self.num_train_epochs) if self.max_steps <= 0 else 10**9
-        for epoch in range(epochs):
-            if self._reached_max():
-                break
-            if hasattr(self.dataloader, 'set_epoch'):
-                self.dataloader.set_epoch(epoch)
-            for rows in self.dataloader:
-                self.micro_step += 1
-                features = self._interleave(list(rows))
-                kwargs: Dict[str, Any] = {'gradient_accumulation_steps': ga}
-                if not self._is_reward:
-                    ref_logps = self._ref_logps(features)
-                    if ref_logps is not None:
-                        kwargs['ref_logps'] = ref_logps
-                self.model.forward_backward(inputs=features, **kwargs)
-                is_boundary = self._is_grad_sync_boundary()
-                self.model.clip_grad_and_step(max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
-                if is_boundary:
-                    self._record_step()
-                    if self._reached_max():
-                        break
-        return self.history
+        try:
+            for epoch in range(epochs):
+                if self._reached_max():
+                    break
+                if hasattr(self.dataloader, 'set_epoch'):
+                    self.dataloader.set_epoch(epoch)
+                for rows in self.dataloader:
+                    self.micro_step += 1
+                    features = self._interleave(list(rows))
+                    kwargs: Dict[str, Any] = {'gradient_accumulation_steps': ga}
+                    if not self._is_reward:
+                        ref_logps = self._ref_logps(features)
+                        if ref_logps is not None:
+                            kwargs['ref_logps'] = ref_logps
+                    self.model.forward_backward(inputs=features, **kwargs)
+                    is_boundary = self._is_grad_sync_boundary()
+                    self.model.clip_grad_and_step(max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
+                    if is_boundary:
+                        self._record_step()
+                        if self._reached_max():
+                            break
+                if self.history:
+                    self.tracker.log(self.history[-1], self.global_step, epoch_end=True)
+            return self.history
+        finally:
+            self.tracker.close()
 
     def _record_step(self) -> None:
         """Count one optimizer step + log / periodic save (mirrors SFTLoop._record_step)."""
@@ -306,8 +321,11 @@ class PreferenceLoop:
         record = {'step': self.global_step, 'loss': loss}
         if metrics.get('grad_norm') is not None:
             record['grad_norm'] = float(metrics['grad_norm'])
+        record = self.tracker.log(record, self.global_step)
         self.history.append(record)
-        if self.logging_steps and self.global_step % self.logging_steps == 0:
+        should_log = (self.tracker.should_log(self.global_step) if self.logging_config is not None else
+                      bool(self.logging_steps and self.global_step % self.logging_steps == 0))
+        if should_log:
             gn = record.get('grad_norm')
             gn_str = f'  grad_norm={gn:.4f}' if gn is not None else ''
             logger.info(f'step {self.global_step}  loss={loss:.4f}{gn_str}')

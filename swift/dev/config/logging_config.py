@@ -1,11 +1,9 @@
 """Logging and experiment tracking configuration."""
 from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
 
-# TODO: integrate it
 @dataclass
 class LoggingConfig:
     """SwanLab, TensorBoard, and general logging settings."""

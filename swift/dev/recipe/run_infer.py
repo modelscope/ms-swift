@@ -20,15 +20,21 @@ What is structured differently from legacy, and why:
 - the sampler is built once and shut down in a ``finally``, so a crash mid-run still frees the GPU.
 """
 from __future__ import annotations
-
-import json
 import logging
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Sequence, Tuple
 
+import json
+
 if TYPE_CHECKING:
-    from swift.dev.config import (DatasetConfig, DistributedConfig, GenerationConfig, ModelConfig, TemplateConfig,
-                                  TunerConfig)
+    from swift.dev.config import (
+        DatasetConfig,
+        DistributedConfig,
+        GenerationConfig,
+        ModelConfig,
+        TemplateConfig,
+        TunerConfig,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -460,7 +466,7 @@ class _IncrementalWriter:
     def __init__(self, output_path: Optional[str], batch_size: Optional[int]):
         self.output_path = output_path
         self.incremental = bool(output_path and batch_size)
-        self._started = False
+        self._started = bool(output_path and os.path.exists(output_path))
 
     def write(self, batch: List[Dict[str, Any]]) -> None:
         if not self.incremental:
@@ -478,7 +484,7 @@ class _IncrementalWriter:
         rows = _gather_rows(results)
         if rows is None:
             return
-        _write_jsonl(self.output_path, rows)
+        _write_jsonl(self.output_path, rows, append=os.path.exists(self.output_path))
         logger.info(f'run_infer: wrote {len(rows)} rows to {self.output_path}')
 
 

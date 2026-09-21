@@ -1,11 +1,11 @@
 """End-to-end SFT tests: the dev happy path and a legacy-vs-dev comparison.
 
 Two things the component-level alignment tests do NOT cover:
-  1. That the full assembly (CLI -> args_to_configs -> run_sft -> SFTLoop.fit -> save) runs
+  1. That the full assembly (CLI -> direct Config parsing -> run_sft -> SFTLoop.fit -> save) runs
      to completion on real weights and produces a usable checkpoint. Every builder is unit-
      tested in isolation, but the wired-together green path was only ever hand-run.
   2. That the dev pipeline agrees with the *actual legacy pipeline* (swift sft_main /
-     Seq2SeqTrainer), not just an HF shifted-CE reference. Same argv drives both.
+     Seq2SeqTrainer), not just an HF shifted-CE reference. The same training values drive both.
 
 Comparison precision (legacy uses HF Seq2SeqTrainer: internal shift + mean-reduction + HF
 scheduler; dev uses twinkle SFTLoop: encode-time shift + sum-reduction + GA lagging one
@@ -19,6 +19,7 @@ micro-step):
 All tests are @pytest.mark.slow (real 0.5B weights + GPU); run with -m slow.
 """
 import os
+
 import pytest
 
 MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
@@ -29,36 +30,54 @@ requires_gpu = pytest.mark.skipif(
     reason='set CUDA_VISIBLE_DEVICES to run the e2e SFT tests')
 
 
-def _build_sft_args(tmp_out, **overrides):
-    """Minimal legacy SftArguments shared by both pipelines (deterministic, no version dir)."""
-    from swift import SftArguments
-    base = dict(
-        model=MODEL,
-        dataset=[DATASET],
-        max_length=512,
-        max_steps=3,
-        per_device_train_batch_size=1,
-        gradient_accumulation_steps=1,
-        learning_rate=1e-4,
-        lr_scheduler_type='constant',
-        warmup_ratio=0.0,
-        split_dataset_ratio=0.0,
-        save_steps=100,
-        logging_steps=1,
-        seed=42,
-        data_seed=42,
+def _sft_values(tmp_out, **overrides):
+    """Minimal deterministic SFT settings shared by the legacy object and dev argv."""
+    base = {
+        'model': MODEL,
+        'dataset': [DATASET],
+        'max_length': 512,
+        'max_steps': 3,
+        'per_device_train_batch_size': 1,
+        'gradient_accumulation_steps': 1,
+        'learning_rate': 1e-4,
+        'lr_scheduler_type': 'constant',
+        'warmup_ratio': 0.0,
+        'split_dataset_ratio': 0.0,
+        'save_steps': 100,
+        'logging_steps': 1,
+        'seed': 42,
+        'data_seed': 42,
         # Disable BOTH shuffle knobs so legacy and dev iterate the dataset in the same natural
         # order and thus train on the same first sample (legacy's HF loader shuffles via
         # train_dataloader_shuffle=True by default; dev's loader via dataset_shuffle).
-        dataset_shuffle=False,
-        train_dataloader_shuffle=False,
-        tuner_type='full',
-        add_version=False,
-        output_dir=str(tmp_out),
-        report_to=['none'],
-    )
+        'dataset_shuffle': False,
+        'train_dataloader_shuffle': False,
+        'tuner_type': 'full',
+        'add_version': False,
+        'output_dir': str(tmp_out),
+        'report_to': ['none'],
+    }
     base.update(overrides)
-    return SftArguments(**base)
+    return base
+
+
+def _build_sft_args(tmp_out, **overrides):
+    """Build the object accepted by the legacy entry point."""
+    from swift import SftArguments
+    return SftArguments(**_sft_values(tmp_out, **overrides))
+
+
+def _build_dev_argv(tmp_out, **overrides):
+    """Build argv for the self-parsing dev entry point from the same settings."""
+    values = _sft_values(tmp_out, **overrides)
+    # Tracker setup is still fail-loud; logging_steps itself is consumed by the dev training loop.
+    values.pop('report_to')
+    argv = []
+    for name, value in values.items():
+        argv.append(f'--{name}')
+        items = value if isinstance(value, list) else [value]
+        argv.extend(str(item).lower() if isinstance(item, bool) else str(item) for item in items)
+    return argv
 
 
 # ----------------------------------------------------------------------
@@ -71,7 +90,7 @@ def _build_sft_args(tmp_out, **overrides):
 def test_dev_sft_happy_path_via_cli(tmp_path):
     """The full dev SFT assembly runs end-to-end and produces a self-describing checkpoint.
 
-    Drives the CLI mapping (sft_main -> args_to_configs -> run_sft) so this also guards the
+    Drives the CLI mapping (sft_main -> direct Config parsing -> run_sft) so this also guards the
     argv surface, not just run_sft's Python signature.
     """
     import json
@@ -79,7 +98,7 @@ def test_dev_sft_happy_path_via_cli(tmp_path):
     from swift.dev.cli.sft import sft_main
 
     out = tmp_path / 'dev_out'
-    history = sft_main(_build_sft_args(out, max_steps=3))
+    history = sft_main(_build_dev_argv(out, max_steps=3))
 
     # loss history: one record per optimizer step, readable (normalized) magnitude
     assert len(history) == 3, f'expected 3 optimizer steps, got {len(history)}'
@@ -124,15 +143,15 @@ def test_legacy_vs_dev_step1_loss_bit_close(tmp_path):
     """
     from swift.dev.cli.sft import sft_main as dev_sft_main
 
-    common = dict(
-        max_steps=1,
-        per_device_train_batch_size=1,
-        gradient_accumulation_steps=1,
-        lr_scheduler_type='constant',
-        warmup_ratio=0.0)
+    common = {
+        'max_steps': 1,
+        'per_device_train_batch_size': 1,
+        'gradient_accumulation_steps': 1,
+        'lr_scheduler_type': 'constant',
+        'warmup_ratio': 0.0}
 
     legacy_losses = _legacy_step_losses(_build_sft_args(tmp_path / 'legacy', **common))
-    dev_history = dev_sft_main(_build_sft_args(tmp_path / 'dev', **common))
+    dev_history = dev_sft_main(_build_dev_argv(tmp_path / 'dev', **common))
     dev_losses = [h['loss'] for h in dev_history]
 
     assert legacy_losses, 'legacy produced no loss log'
@@ -155,16 +174,16 @@ def test_legacy_vs_dev_multistep_trend(tmp_path):
     """
     from swift.dev.cli.sft import sft_main as dev_sft_main
 
-    common = dict(
-        max_steps=5,
-        per_device_train_batch_size=1,
-        gradient_accumulation_steps=1,
-        lr_scheduler_type='constant',
-        warmup_ratio=0.0,
-        learning_rate=1e-4)
+    common = {
+        'max_steps': 5,
+        'per_device_train_batch_size': 1,
+        'gradient_accumulation_steps': 1,
+        'lr_scheduler_type': 'constant',
+        'warmup_ratio': 0.0,
+        'learning_rate': 1e-4}
 
     legacy_losses = _legacy_step_losses(_build_sft_args(tmp_path / 'legacy', **common))
-    dev_losses = [h['loss'] for h in dev_sft_main(_build_sft_args(tmp_path / 'dev', **common))]
+    dev_losses = [h['loss'] for h in dev_sft_main(_build_dev_argv(tmp_path / 'dev', **common))]
 
     assert len(legacy_losses) >= 3 and len(dev_losses) >= 3
     n = min(len(legacy_losses), len(dev_losses))

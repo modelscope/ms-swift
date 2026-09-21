@@ -26,23 +26,29 @@ Also dropped: the md5 response cache (``cache_files``), and the ``client``/OpenA
 that ``DistillSampler`` provided.
 """
 from __future__ import annotations
-
 import hashlib
-import json
 import logging
 import os
 import shutil
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+import json
+
 if TYPE_CHECKING:
-    from swift.dev.config import (DatasetConfig, DistributedConfig, GenerationConfig, ModelConfig, SamplingConfig,
-                                  TemplateConfig)
+    from swift.dev.config import (
+        DatasetConfig,
+        DistributedConfig,
+        GenerationConfig,
+        ModelConfig,
+        SamplingConfig,
+        TemplateConfig,
+    )
 
 logger = logging.getLogger(__name__)
 
 
-def run_sampling(
+def run_sampling(  # noqa: C901
     model_config: ModelConfig,
     template_config: TemplateConfig,
     dataset_config: DatasetConfig,
@@ -100,6 +106,8 @@ def run_sampling(
 
     if backend == 'client':
         sampler = _ClientSampler(**(engine_args or {}))
+    elif backend == 'no':
+        sampler = None
     else:
         _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
         template = build_template(template_config, processor)
@@ -130,7 +138,8 @@ def run_sampling(
                 f.flush()
                 paths.checkpoint(index)
     finally:
-        if _shutdown:
+        channels.shutdown()
+        if _shutdown and sampler is not None:
             sampler.shutdown()
 
     paths.finalize()
@@ -173,6 +182,12 @@ def _build_channels(sampling_config: SamplingConfig) -> '_RewardChannels':
 
     orm_funcs, orm_names = get_reward_funcs(sampling_config.reward_funcs, sampling_config.reward_config)
     prm_funcs, prm_names = get_reward_funcs(sampling_config.prm_funcs, sampling_config.reward_config)
+    if sampling_config.orm_model:
+        orm_funcs.append(_ModelReward(sampling_config.orm_model))
+        orm_names.append(sampling_config.orm_model)
+    if sampling_config.prm_model:
+        prm_funcs.append(_ModelReward(sampling_config.prm_model))
+        prm_names.append(sampling_config.prm_model)
     channels = _RewardChannels(orm_funcs, orm_names, prm_funcs, prm_names)
     if channels.empty:
         logger.info('run_sampling: no reward funcs -- every candidate is emitted as a positive.')
@@ -302,6 +317,8 @@ def _sample_batch(
     to_sample = [index for index, hit in enumerate(cached) if hit is None]
     candidates: List[List[str]] = [hit or [] for hit in cached]
     if to_sample:
+        if sampler is None:
+            raise ValueError("sampler_engine='no' requires cache_files to cover every input prompt.")
         kwargs: Dict[str, Any] = {'strict': sampling_config.strict} if backend == 'transformers' else {}
         fresh = sampled_texts(sampler.sample([trajectories[i] for i in to_sample], params, **kwargs))
         for index, group in zip(to_sample, fresh):
@@ -398,12 +415,47 @@ class _RewardChannels:
                  sampling_config: SamplingConfig) -> List[float]:
         from swift.dev.reward import compute_rewards_per_func, weight_rewards
 
-        columns = {key: [value] * len(candidates) for key, value in row.items() if key != 'messages'}
+        columns = {key: [value] * len(candidates) for key, value in row.items()}
         rewards_per_func = compute_rewards_per_func(candidates, funcs, columns)
         scores = weight_rewards(rewards_per_func, weights).tolist()
         # Normalise per channel, before the channels are added: doing it after would let the channel
         # with the larger raw range decide the ranking regardless of the weights.
         return _normalize(scores) if sampling_config.normalize_rewards else scores
+
+    def shutdown(self) -> None:
+        for func in self.orm_funcs + self.prm_funcs:
+            shutdown = getattr(func, 'shutdown', None)
+            if shutdown is not None:
+                shutdown()
+
+
+class _ModelReward:
+    """Adapter that exposes a local reward model through the dev reward callable contract."""
+
+    def __init__(self, model: str):
+        from swift.infer_engine import TransformersEngine
+        self.engine = TransformersEngine(model, max_batch_size=64, task_type='seq_cls')
+
+    def __call__(self, completions: List[str], messages=None, **kwargs) -> List[float]:
+        from swift.infer_engine import InferRequest
+
+        messages = messages or [[] for _ in completions]
+        requests = []
+        for prompt, completion in zip(messages, completions):
+            prompt = list(prompt or [])
+            prompt.append({'role': 'assistant', 'content': completion})
+            requests.append(InferRequest(messages=prompt))
+        responses = self.engine.infer(requests)
+        scores = []
+        for response in responses:
+            value = response.choices[0].message.content
+            if isinstance(value, (list, tuple)):
+                value = min(value)
+            scores.append(float(value))
+        return scores
+
+    def shutdown(self) -> None:
+        self.engine.shutdown()
 
 
 def _normalize(scores: List[float]) -> List[float]:

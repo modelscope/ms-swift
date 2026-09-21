@@ -1,6 +1,5 @@
 """Model quantization method configuration."""
 from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -10,7 +9,7 @@ from typing import Literal, Optional
 class QuantizeConfig:
     """Quantization backend, bit-width, and BNB/HQQ options."""
 
-    quant_method: Literal['bnb', 'hqq', 'eetq', 'quanto', 'fp8', None] = None
+    quant_method: Literal['awq', 'gptq', 'gptq_v2', 'bnb', 'hqq', 'eetq', 'quanto', 'fp8', None] = None
     quant_bits: Literal[1, 2, 3, 4, 8, 'float8', None] = None
     hqq_axis: Optional[int] = None
     bnb_4bit_compute_dtype: Literal['float16', 'bfloat16', 'float32', None] = None

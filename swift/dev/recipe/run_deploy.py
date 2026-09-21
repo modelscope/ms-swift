@@ -23,15 +23,15 @@ is served by a separately-built model rather than by the sampler -- and is avail
 server was started for an embedding model.
 """
 from __future__ import annotations
-
 import asyncio
-import json
 import logging
 import os
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
+
+import json
 
 if TYPE_CHECKING:
     from swift.dev.config import GenerationConfig, ModelConfig, TemplateConfig

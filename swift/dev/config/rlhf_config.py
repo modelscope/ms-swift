@@ -1,6 +1,6 @@
 """RLHF algorithm hyperparameters (DPO/KTO/CPO/PPO/GRPO/GKD/RM)."""
-from __future__ import annotations
 
+from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
@@ -64,6 +64,17 @@ class RLHFConfig:
     dynamic_sample: bool = False
     max_resample_times: int = 3
     overlong_filter: bool = False
+
+    # === CHORD auxiliary SFT ===
+    chord_sft_dataset: List[str] = field(default_factory=list)
+    chord_sft_per_device_train_batch_size: Optional[int] = None
+    chord_enable_phi_function: bool = False
+    chord_mu_warmup_steps: Optional[int] = None
+    chord_mu_decay_steps: Optional[int] = None
+    chord_mu_peak: Optional[float] = None
+    chord_mu_valley: Optional[float] = None
+
+    # === Reference synchronization ===
     sync_ref_model: bool = False
     ref_model_sync_steps: int = 512
     ref_model_mixup_alpha: float = 0.6
@@ -76,6 +87,17 @@ class RLHFConfig:
     fipo_clip_high_only: bool = True
     fipo_safety_threshold: Optional[float] = 4.0
     teacher_kl_coef: float = 1.0
+
+    # === RLSD / SDAR self-distillation ===
+    advantage_reweight: Optional[Literal['rlsd']] = None
+    rlsd_lambda: float = 0.5
+    rlsd_reweight_clip_range: float = 0.2
+    rlsd_lambda_warmup_steps: int = 0
+    rlsd_lambda_decay_steps: int = 0
+    rlsd_negative_only: bool = False
+    sdar_loss_coef: float = 0.0
+    sdar_gate_beta: float = 5.0
+
     rollout_importance_sampling_mode: Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
                                                        'sequence_mask']] = None
     rollout_importance_sampling_threshold: float = 2.0

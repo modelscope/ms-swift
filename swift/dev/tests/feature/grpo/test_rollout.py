@@ -12,6 +12,7 @@ GRPO is algorithmically correct — weight-sync is delayed (vLLM keeps initial w
 behavior policy). Tests assert this intermediate-state fact explicitly.
 """
 import os
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -176,6 +177,9 @@ def test_rollout_sample_build_raises_on_missing_logprobs():
     # exact match is the only accepted shape
     samples = build([_response([7, 8], [-0.5, -1.5])])
     assert [sample.old_logps for sample in samples] == [[-0.5, -1.5]]
+    nested_logprobs = [[(7, -0.5)], [(8, -1.5)]]
+    nested = build([_response([7, 8], nested_logprobs)])
+    assert [sample.old_logps for sample in nested] == [[-0.5, -1.5]]
     assert samples[0].encoded['input_ids'] == [1, 2, 7, 8]
     # logprobs not requested at all -> empty list while tokens exist
     with pytest.raises(RuntimeError, match='logprobs misaligned'):
@@ -186,6 +190,224 @@ def test_rollout_sample_build_raises_on_missing_logprobs():
     # no prompt tokens at all means the sampler ran without a template -> also fatal, not guessed
     with pytest.raises(RuntimeError, match='no prompt_token_ids'):
         build([_response([7], [-0.5], prompt_tokens=())])
+
+
+class _MultiTurnTemplate:
+    tokenizer = None
+
+    def set_mode(self, mode):
+        self.mode = mode
+
+    def encode(self, row):
+        input_ids = []
+        labels = []
+        for message in row['messages']:
+            content = message.get('content')
+            if isinstance(content, dict):
+                token_ids = list(content['token_ids'])
+                loss_mask = list(content['loss_scale'])
+                input_ids.extend(token_ids)
+                labels.extend(token if mask else -100 for token, mask in zip(token_ids, loss_mask))
+            else:
+                input_ids.append(0)
+                labels.append(-100)
+        return {'input_ids': input_ids, 'labels': labels}
+
+
+class _ScriptedSampler:
+
+    def __init__(self, *, fail_on_call=None):
+        self.calls = []
+        self.fail_on_call = fail_on_call
+
+    def sample(self, trajectories, params=None, *, sampling_params=None):
+        params = sampling_params or params
+        call = len(self.calls) + 1
+        self.calls.append((trajectories, params))
+        if call == self.fail_on_call:
+            raise RuntimeError('sampler failure')
+        responses = []
+        for index in range(len(trajectories)):
+            tokens = [call * 100 + index * 10 + 1, call * 100 + index * 10 + 2]
+            if params.max_tokens is not None:
+                tokens = tokens[:params.max_tokens]
+            sequence = SimpleNamespace(
+                tokens=tokens,
+                logprobs=[[(token, -call - offset / 10)] for offset, token in enumerate(tokens)],
+                decoded=f'answer-{call}-{index}',
+                stop_reason='stop')
+            responses.append(SimpleNamespace(sequences=[sequence]))
+        return responses
+
+
+class _TwoTurnScheduler:
+
+    def __init__(self):
+        self.started = []
+
+    async def on_trajectory_start(self, requests):
+        self.started = list(requests)
+
+    async def on_turn_end(self, infer_request, response_choice, current_turn):
+        return {'done': current_turn >= 2, 'rollout_infos': {'last_turn': current_turn}}
+
+    @staticmethod
+    def check_finished(infer_request, response_choice, current_turn):
+        return False
+
+    @staticmethod
+    def step(infer_request, response_choice, current_turn):
+        infer_request.messages.append({'role': 'user', 'content': f'observation-{current_turn}'})
+        return {'infer_request': infer_request}
+
+
+def test_multi_turn_rollout_preserves_group_order_tokens_messages_and_logprobs():
+    """Each prompt expands contiguously and every sampled turn stays aligned through encoding."""
+    from swift.dev.rollout import SHIFTED_KEY
+    from swift.dev.rollout.multi_turn import MultiTurnRollout
+
+    sampler = _ScriptedSampler()
+    scheduler = _TwoTurnScheduler()
+    rollout = MultiTurnRollout(sampler, _MultiTurnTemplate(), scheduler, max_turns=2)
+    prompts = [[{'role': 'user', 'content': 'p0'}], [{'role': 'user', 'content': 'p1'}]]
+    samples = rollout.generate(
+        prompts,
+        num_samples=2,
+        sampling_params={'max_tokens': 4},
+        prompt_extras=[{'source': 'a'}, {'source': 'b'}])
+
+    assert [sample.prompt_id for sample in samples] == ['0', '0', '1', '1']
+    assert [sample.extra['source'] for sample in samples] == ['a', 'a', 'b', 'b']
+    assert len({request.uuid for request in scheduler.started}) == 4
+    assert len(sampler.calls) == 2
+    assert all(call[1].num_samples == 1 for call in sampler.calls)
+    assert all(call[1].max_tokens == 4 for call in sampler.calls)
+    for sample in samples:
+        assert len(sample.response_token_ids) == len(sample.response_loss_mask) == len(sample.rollout_logprobs) == 2
+        assert sample.response_loss_mask == [[1, 1], [1, 1]]
+        assert len(sample.old_logps) == 4
+        assert sum(label != -100 for label in sample.encoded['labels']) == len(sample.old_logps)
+        assert sample.encoded[SHIFTED_KEY] is True
+        assert [message['role'] for message in sample.messages] == ['user', 'assistant', 'user', 'assistant']
+        assert sample.rollout_infos == {'last_turn': 2, 'num_turns': 2}
+
+
+def test_multi_turn_continuation_keeps_bridge_mask_and_sampled_logprobs_aligned():
+    """Scheduler bridge tokens join a continued assistant turn but never acquire fake logprobs."""
+    from swift.dev.rollout.multi_turn import MultiTurnRollout
+
+    class Scheduler(_TwoTurnScheduler):
+
+        @staticmethod
+        def step(infer_request, response_choice, current_turn):
+            infer_request.messages[-1]['content'] += '<bridge>'
+            token_ids = list(response_choice.token_ids) + [999]
+            return {
+                'infer_request': infer_request,
+                'response_token_ids': token_ids,
+                'response_loss_mask': [1] * len(response_choice.token_ids) + [0],
+                'rollout_logprobs': [item['logprob'] for item in response_choice.logprobs['content']],
+            }
+
+    sample = MultiTurnRollout(_ScriptedSampler(), _MultiTurnTemplate(), Scheduler(), max_turns=2).generate(
+        [[{'role': 'user', 'content': 'p'}]])[0]
+    assert len(sample.response_token_ids) == 1
+    assert sample.response_token_ids[0] == [101, 102, 999, 201, 202]
+    assert sample.response_loss_mask[0] == [1, 1, 0, 1, 1]
+    assert len(sample.old_logps) == 4
+    assert sum(label != -100 for label in sample.encoded['labels']) == 4
+    assert [message['role'] for message in sample.messages] == ['user', 'assistant']
+    assert sample.messages[-1]['content'] == 'answer-1-0<bridge>answer-2-0'
+
+
+@pytest.mark.parametrize('scope, expected_limits', [('total', [3, 1]), ('per_round', [3, 3])])
+def test_multi_turn_completion_budget_scope(scope, expected_limits):
+    """The total scope deducts sampled tokens while per-round resets the full budget each turn."""
+    from swift.dev.rollout.multi_turn import MultiTurnRollout
+
+    sampler = _ScriptedSampler()
+    rollout = MultiTurnRollout(
+        sampler, _MultiTurnTemplate(), _TwoTurnScheduler(), max_turns=2, completion_length_limit_scope=scope)
+    rollout.generate([[{'role': 'user', 'content': 'p'}]], sampling_params={'max_tokens': 3})
+    assert [call[1].max_tokens for call in sampler.calls] == expected_limits
+
+
+def test_gym_rollout_isolates_envs_accumulates_rewards_and_closes(monkeypatch):
+    """Every expanded trajectory owns one env and carries its final accumulated reward."""
+    from swift.dev.rollout.multi_turn import MultiTurnRollout
+    from swift.rollout.gym_env import envs
+    from swift.rollout.multi_turn import GYMScheduler
+
+    instances = []
+
+    class Env:
+
+        def __init__(self, config):
+            self.config = config
+            self.steps = 0
+            self.closed = 0
+            instances.append(self)
+
+        async def reset(self, request):
+            return f'question-{request.data_dict["trajectory"]}', {}, 'system'
+
+        async def step(self, messages):
+            self.steps += 1
+            return f'observation-{self.steps}', float(self.steps), self.steps == 2, {}
+
+        async def close(self):
+            self.closed += 1
+
+    monkeypatch.setitem(envs, 'dev_test_env', Env)
+    sampler = _ScriptedSampler()
+    scheduler = GYMScheduler(max_turns=3, gym_env='dev_test_env')
+    rollout = MultiTurnRollout(sampler, _MultiTurnTemplate(), scheduler, max_turns=3)
+    samples = rollout.generate(
+        [[{'role': 'user', 'content': 'ignored'}]],
+        num_samples=2,
+        prompt_extras=[{'trajectory': 'x'}])
+
+    assert len(instances) == 2 and len({id(env) for env in instances}) == 2
+    assert all(env.steps == 2 and env.closed == 1 for env in instances)
+    assert [sample.rollout_infos['total_reward'] for sample in samples] == [3.0, 3.0]
+    assert all(sample.rollout_infos['step_rewards'] == [1.0, 2.0] for sample in samples)
+    assert all([message['role'] for message in sample.messages] == [
+        'system', 'user', 'assistant', 'user', 'assistant'
+    ] for sample in samples)
+
+
+def test_gym_rollout_closes_env_after_sampler_failure(monkeypatch):
+    """The generate finally block closes live environments when a later turn fails."""
+    from swift.dev.rollout.multi_turn import MultiTurnRollout
+    from swift.rollout.gym_env import envs
+    from swift.rollout.multi_turn import GYMScheduler
+
+    instances = []
+
+    class Env:
+
+        def __init__(self, config):
+            self.closed = 0
+            instances.append(self)
+
+        async def reset(self, request):
+            return 'question', {}, ''
+
+        async def step(self, messages):
+            return 'again', 0.0, False, {}
+
+        async def close(self):
+            self.closed += 1
+
+    monkeypatch.setitem(envs, 'dev_failing_env', Env)
+    rollout = MultiTurnRollout(
+        _ScriptedSampler(fail_on_call=2),
+        _MultiTurnTemplate(),
+        GYMScheduler(max_turns=3, gym_env='dev_failing_env'),
+        max_turns=3)
+    with pytest.raises(RuntimeError, match='sampler failure'):
+        rollout.generate([[{'role': 'user', 'content': 'ignored'}]])
+    assert len(instances) == 1 and instances[0].closed == 1
 
 
 # ----------------------------------------------------------------------

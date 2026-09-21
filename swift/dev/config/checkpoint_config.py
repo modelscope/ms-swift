@@ -1,6 +1,5 @@
 """Checkpoint saving and resumption configuration."""
 from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -12,7 +11,8 @@ class CheckpointConfig:
     # === Save Strategy ===
     output_dir: str = 'output'
     save_strategy: Literal['steps', 'epoch', 'no', 'best'] = 'steps'
-    save_steps: int = 500
+    #: Integer interval, or a ratio in (0, 1) resolved against total optimizer steps in TrainAssembly.plan_steps.
+    save_steps: float = 500.0
     save_total_limit: Optional[int] = None
     safe_serialization: bool = True
     max_shard_size: str = '5GB'

@@ -1,6 +1,5 @@
 """Cross-backend training hyperparameters (lr/batch/optimizer/scheduler/gradient/eval)."""
 from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
 
@@ -217,7 +216,8 @@ class TrainConfig:
 
     # === Evaluation ===
     eval_strategy: Optional[str] = None
-    eval_steps: Optional[int] = None
+    #: Integer interval, or a ratio in (0, 1) resolved against total optimizer steps in TrainAssembly.plan_steps.
+    eval_steps: Optional[float] = None
     eval_on_start: bool = False
     #: Run evaluation at all. Off by default; naming an eval strategy or dataset is the usual way to
     #: turn it on.

@@ -1,12 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Tests for dev dataset/dataloader APIs."""
+import sys
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pytest
-import sys
 import torch
 from datasets import Dataset as HfDataset
 from torch.utils.data import DataLoader, Dataset, IterableDataset
-from unittest.mock import MagicMock, patch
 
 
 def make_mock_template(max_length=2048, truncation_strategy='delete'):
@@ -791,8 +792,14 @@ class TestResumeGuards:
         Iterable datasets can't reproduce the shuffle order for a cross-epoch skip, so run_sft
         raises rather than silently mis-skipping.
         """
-        from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                       TrainConfig)
+        from swift.dev.config import (
+            CheckpointConfig,
+            DatasetConfig,
+            DistributedConfig,
+            ModelConfig,
+            TemplateConfig,
+            TrainConfig,
+        )
         from swift.dev.recipe import run_sft
         with pytest.raises(NotImplementedError, match='streaming/iterable'):
             run_sft(
@@ -934,13 +941,16 @@ class TestValidateConfigs:
         with pytest.raises(ValueError, match='only implemented by the transformers backend'):
             self._validate(distributed_config=DistributedConfig(backend='megatron', fsdp='fsdp2'))
 
-    def test_lisa_knob_is_backend_checked_from_tuner_config(self):
-        """LISA moved to TunerConfig with it; the backend check must follow the field."""
-        from swift.dev.config import DistributedConfig, TunerConfig
-        with pytest.raises(ValueError, match='only implemented by the transformers backend'):
-            self._validate(
-                distributed_config=DistributedConfig(backend='megatron'),
-                tuner_config=TunerConfig(lisa_activated_layers=4))
+    def test_lisa_knob_is_not_claimed_by_the_dev_config(self):
+        """LISA stays on the explicitly unsupported legacy CLI surface, not in dev Configs."""
+        import dataclasses
+
+        from swift.dev.config import TunerConfig
+        from swift.dev.config.validate import _HF_ONLY
+
+        assert 'lisa_activated_layers' not in {field.name for field in dataclasses.fields(TunerConfig)}
+        assert not any(holder == 'tuner_config' and field == 'lisa_activated_layers'
+                       for holder, field, _ in _HF_ONLY)
 
     def test_parallel_size_gt_1_on_hf_backend_raises(self):
         """TP/PP/CP/EP > 1 needs Megatron; the transformers path cannot provide that layout.

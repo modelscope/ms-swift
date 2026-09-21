@@ -1,6 +1,5 @@
 """Batch-inference configuration: which engine runs, and what the run writes out."""
 from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -15,9 +14,8 @@ class InferConfig:
     """
 
     # === Engine ===
-    #: 'pt' is an alias of 'transformers'. 'lmdeploy' is accepted for legacy command lines but is not
-    #: a migrated backend -- prefer 'vllm' or 'sglang'.
-    infer_backend: Literal['vllm', 'transformers', 'sglang', 'lmdeploy', 'pt'] = 'transformers'
+    #: 'pt' is a compatibility alias of 'transformers'. lmdeploy is intentionally outside v5.
+    infer_backend: Literal['vllm', 'transformers', 'sglang', 'pt'] = 'transformers'
     #: Requests batched into one engine call. Only meaningful for the transformers backend, since vLLM
     #: and SGLang do their own continuous batching and ignore it.
     max_batch_size: int = 1

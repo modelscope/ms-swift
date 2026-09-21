@@ -9,12 +9,12 @@ Cookbook users may copy this loop or write their own; CLI uses it as the default
 SFT orchestration.
 """
 from __future__ import annotations
-
 import logging
 import math
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
+    from swift.dev.config import LoggingConfig
     from swift.dev.model import TrainableModel
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,7 @@ class SFTLoop:
         gradient_accumulation_steps: int = 1,
         max_grad_norm: float = 1.0,
         logging_steps: int = 1,
+        logging_config: Optional['LoggingConfig'] = None,
         save_steps: Optional[int] = None,
         output_dir: str = 'output',
         eval_dataloader: Any = None,
@@ -69,7 +70,10 @@ class SFTLoop:
         self.dataloader = dataloader
         self.gradient_accumulation_steps = max(1, gradient_accumulation_steps)
         self.max_grad_norm = max_grad_norm
-        self.logging_steps = logging_steps
+        self.logging_steps = logging_config.logging_steps if logging_config is not None else logging_steps
+        self.logging_config = logging_config
+        from swift.dev.recipe.tracking import RunTracker
+        self.tracker = RunTracker(logging_config, output_dir)
         self.save_steps = save_steps
         self.output_dir = output_dir
         self.num_train_epochs = num_train_epochs
@@ -157,9 +161,12 @@ class SFTLoop:
             loop groups ga dataloader batches into one list and calls forward_backward ONCE per
             optimizer step (cross-microbatch loss normalization is handled inside twinkle/Megatron).
         """
-        if self._is_megatron:
-            return self._fit_megatron()
-        return self._fit_transformers()
+        try:
+            if self._is_megatron:
+                return self._fit_megatron()
+            return self._fit_transformers()
+        finally:
+            self.tracker.close()
 
     def _epochs(self) -> int:
         return math.ceil(self.num_train_epochs) if self.max_steps <= 0 else 10**9
@@ -182,8 +189,11 @@ class SFTLoop:
             if key.startswith('loss_'):
                 record[key] = float(value)
         record.update(self._mtp_metrics())
+        record = self.tracker.log(record, self.global_step)
         self.history.append(record)
-        if self.logging_steps and self.global_step % self.logging_steps == 0:
+        should_log = (self.tracker.should_log(self.global_step) if self.logging_config is not None else
+                      bool(self.logging_steps and self.global_step % self.logging_steps == 0))
+        if should_log:
             gn = record.get('grad_norm')
             gn_str = f'  grad_norm={gn:.4f}' if gn is not None else ''
             mtp = record.get('mtp_loss')
@@ -235,6 +245,8 @@ class SFTLoop:
                     self._record_step()
                     if self._reached_max():
                         break
+            if self.history:
+                self.tracker.log(self.history[-1], self.global_step, epoch_end=True)
         self._final_eval()
         return self.history
 
@@ -282,6 +294,8 @@ class SFTLoop:
                     break
             if group and not self._reached_max():  # trailing partial group
                 self._megatron_step(group)
+            if self.history:
+                self.tracker.log(self.history[-1], self.global_step, epoch_end=True)
         self._final_eval()
         return self.history
 

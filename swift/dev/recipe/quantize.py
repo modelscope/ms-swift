@@ -18,7 +18,6 @@ model: they only emit a quantization_config for ``from_pretrained``, which is wh
 ``ConfigQuantizer.quantize`` refuses to fake.
 """
 from __future__ import annotations
-
 import logging
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -104,7 +103,6 @@ def _run_load_time(quant_method: str, kwargs: Dict[str, Any], *, output_dir: str
     to pass to ``from_pretrained`` (or to merge into a model config).
     """
     import json
-
     from twinkle.quantizer import get_quantizer
 
     quantizer = get_quantizer(quant_method, **kwargs)
@@ -132,8 +130,8 @@ def _run_calibration(
     """AWQ / GPTQ: load the model, fit scales on calibration data, pack, save."""
     from twinkle.quantizer import get_quantizer
 
-    from swift.model import save_checkpoint
     from swift.dev.utils import HfConfigFactory
+    from swift.model import save_checkpoint
 
     if dataset_config is None or not dataset_config.dataset:
         raise ValueError(f'quant_method={quant_method!r} is calibration-based and needs '

@@ -15,14 +15,39 @@ Config field later cannot silently go unmapped -- which is the failure mode that
 sentinel in the first place.
 """
 from __future__ import annotations
-
 import dataclasses
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
-    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                   TrainConfig, TunerConfig)
-    from swift.megatron.arguments import MegatronSftArguments
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        LoggingConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
+
+
+@dataclass
+class MegatronCliCompatConfig:
+    """Legacy Megatron spellings not already represented by a dev Config.
+
+    This intentionally stays tiny. The current Megatron-native knobs live on Model/Train/Distributed/
+    Checkpoint Configs and parse directly; an old flag with no dev consumer is rejected as unknown
+    rather than cloned into a second 200-field legacy hierarchy and silently dropped.
+    """
+
+    attention_backend: Optional[str] = 'flash'
+    fp16: Optional[bool] = None
+    bf16: Optional[bool] = None
+    # Accepted only for argv compatibility. dev never initializes Megatron during parsing, so the safe
+    # behaviour this flag requested is already unconditional.
+    skip_megatron_init: bool = True
+
 
 # --- Explicit renames -------------------------------------
 RENAMES: Dict[str, Dict[str, str]] = {
@@ -84,6 +109,10 @@ ABSENT: Dict[str, Tuple[str, ...]] = {
         # loaded and exported but not trained -- i.e. an RL run doing speculative rollout. The legacy
         # SFT surface trains them whenever they exist, so it has no flag for the opposite.
         'mtp_freeze', ),
+    'DatasetConfig': (
+        # Megatron builds its own dataloader; dropping the last short batch is a torch-DataLoader
+        # knob (DatasetConfig.dataloader_drop_last) with no flag on the Megatron surface.
+        'dataloader_drop_last', ),
     'TrainConfig': (
         'optim_args',
         # HF-only trainer knobs (validate_configs._HF_ONLY rejects them on the Megatron backend).
@@ -111,6 +140,27 @@ ABSENT: Dict[str, Tuple[str, ...]] = {
         'eval_generation_config',
         'extra_eval_args',
         'early_stop_interval',
+        # transformers TrainingArguments knobs with no Megatron surface. The eval/precision-eval and
+        # torch.compile families are additionally refused on the Megatron backend by
+        # validate_configs (_HF_ONLY); the rest simply have no counterpart in MegatronArguments.
+        'bf16_full_eval',
+        'fp16_full_eval',
+        'tf32',
+        'torch_compile',
+        'torch_compile_backend',
+        'torch_compile_mode',
+        'torch_empty_cache_steps',
+        'auto_find_batch_size',
+        'use_cache',
+        'label_names',
+        'label_smoothing_factor',
+        'accelerator_config',
+        'liger_kernel_config',
+        'do_eval',
+        'eval_accumulation_steps',
+        'eval_delay',
+        'load_best_model_at_end',
+        'prediction_loss_only',
     ),
     'DistributedConfig': (
         # Mutually exclusive with the Megatron backend by construction.
@@ -119,6 +169,11 @@ ABSENT: Dict[str, Tuple[str, ...]] = {
         'deepspeed_autotp_size',
         'fsdp',
         'ddp_find_unused_parameters',
+        # torch DDP/FSDP tuning knobs -- the accelerate/torch backend's, ignored on the megatron path.
+        'fsdp_config',
+        'ddp_broadcast_buffers',
+        'ddp_bucket_cap_mb',
+        'ddp_static_graph',
     ),
     'CheckpointConfig': (
         # Megatron resume is `load` + `finetune` + `no_load_optim`, not resume_from_checkpoint;
@@ -131,31 +186,23 @@ ABSENT: Dict[str, Tuple[str, ...]] = {
         'save_on_each_node',
         'save_only_model',
         'use_flash_ckpt',
+        # Hub push knobs: the Megatron SFT surface has no push-to-hub flags.
+        'push_to_hub',
+        'hub_model_id',
+        'hub_private_repo',
+        'hub_strategy',
+        'hub_revision',
+        'hub_always_push',
     ),
     'TunerConfig': (
-        # Megatron-SWIFT supports LoRA only; the other PEFT families and the HF-side optimizer
-        # plugins (galore/lisa) have no Megatron surface at all.
+        # Megatron-SWIFT supports LoRA only; the other PEFT families (adalora) and the HF-side galore
+        # optimizer plugin have no Megatron surface at all.
         'target_parameters',
         'lorap_lr_ratio',
         'lorap_emb_lr',
         'use_dora',
         'init_weights',
         'trainable_token_indices',
-        'lora_ga_batch_size',
-        'lora_ga_iters',
-        'lora_ga_max_length',
-        'lora_ga_direction',
-        'lora_ga_scale',
-        'lora_ga_stable_gamma',
-        'fourier_n_frequency',
-        'fourier_scaling',
-        'boft_block_size',
-        'boft_block_num',
-        'boft_dropout',
-        'vera_rank',
-        'vera_projection_prng_key',
-        'vera_dropout',
-        'vera_d_initial',
         'adalora_target_r',
         'adalora_init_r',
         'adalora_tinit',
@@ -164,12 +211,6 @@ ABSENT: Dict[str, Tuple[str, ...]] = {
         'adalora_beta1',
         'adalora_beta2',
         'adalora_orth_reg_weight',
-        'llamapro_num_new_blocks',
-        'llamapro_num_groups',
-        'reft_layers',
-        'reft_rank',
-        'reft_intervention_type',
-        'reft_args',
         'use_galore',
         'galore_target_modules',
         'galore_rank',
@@ -185,8 +226,6 @@ ABSENT: Dict[str, Tuple[str, ...]] = {
         'galore_cos_threshold',
         'galore_gamma_proj',
         'galore_queue_size',
-        'lisa_activated_layers',
-        'lisa_step_interval',
     ),
 }
 
@@ -195,8 +234,15 @@ _CONFIG_ORDER = ('ModelConfig', 'TemplateConfig', 'DatasetConfig', 'TrainConfig'
 
 
 def _config_classes() -> Dict[str, type]:
-    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                   TrainConfig, TunerConfig)
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
     return {
         'ModelConfig': ModelConfig,
         'TemplateConfig': TemplateConfig,
@@ -208,7 +254,7 @@ def _config_classes() -> Dict[str, type]:
     }
 
 
-def audit_coverage(arg_names: Optional[set] = None) -> Dict[str, Dict[str, List[str]]]:
+def audit_coverage(arg_names: set) -> Dict[str, Dict[str, List[str]]]:
     """Classify every dev Config field against the Megatron arg surface.
 
     Returns ``{ConfigName: {'name_hit': [...], 'renamed': [...], 'derived': [...],
@@ -220,12 +266,9 @@ def audit_coverage(arg_names: Optional[set] = None) -> Dict[str, Dict[str, List[
     ``superseded`` is checked BEFORE ``name_hit``: the field exists on both surfaces but dev routes
     the setting through another Config field, so the same-name copy would be misleading.
 
-    arg_names defaults to the real MegatronSftArguments field set; tests may inject a set.
+    The caller supplies the legacy field set. Production parsing never imports or instantiates a
+    legacy Arguments class; coverage tests may inspect that class and pass only its field names here.
     """
-    if arg_names is None:
-        from swift.megatron.arguments import MegatronSftArguments
-        arg_names = {f.name for f in dataclasses.fields(MegatronSftArguments)}
-
     report: Dict[str, Dict[str, List[str]]] = {}
     for cfg_name, cls in _config_classes().items():
         renames = RENAMES.get(cfg_name, {})
@@ -395,8 +438,15 @@ def megatron_args_to_configs(
     """
     import os
 
-    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                   TrainConfig, TunerConfig)
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
     if not hasattr(args, 'train_iters'):
         raise ValueError('megatron_args_to_configs expects MegatronSftArguments (no train_iters found). Use '
@@ -447,7 +497,6 @@ def megatron_args_to_configs(
     distributed_config.nproc_per_node = world_size
 
     checkpoint_config = _fill_from_args(CheckpointConfig(), args)
-    checkpoint_config.save_steps = int(checkpoint_config.save_steps)
 
     tuner_type = args.tuner_type
     if tuner_type == 'full':
@@ -462,31 +511,108 @@ def megatron_args_to_configs(
             tuner_config)
 
 
-def megatron_sft_main(args: Optional[List[str]] = None) -> List[dict]:
-    """dev Megatron SFT entry. Same name as legacy ``swift.megatron.megatron_sft_main`` on purpose
-    (drop-in argv compatibility); import one of them under an alias when using both."""
-    from swift.dev.recipe import run_sft
-    from swift.megatron.arguments import MegatronSftArguments
-    from swift.dev.utils import parse_args
+def _apply_megatron_precision(model_config, compat: MegatronCliCompatConfig) -> None:
+    if compat.fp16 and compat.bf16:
+        raise ValueError('--fp16 and --bf16 are mutually exclusive.')
+    flag_name = 'bf16' if compat.bf16 else ('fp16' if compat.fp16 else None)
+    flag_dtype = 'bfloat16' if compat.bf16 else ('float16' if compat.fp16 else None)
+    if flag_dtype is None:
+        return
+    if model_config.torch_dtype is not None and model_config.torch_dtype != flag_dtype:
+        raise ValueError(f'--torch_dtype {model_config.torch_dtype!r} conflicts with --{flag_name}.')
+    model_config.torch_dtype = flag_dtype
 
-    if isinstance(args, MegatronSftArguments):
-        megatron_args: Any = args
-    else:
-        # skip_megatron_init: legacy MegatronSftArguments.__post_init__ eagerly runs
-        # initialize_megatron (mpu init + output-dir setup); dev instead inits mpu during
-        # build_model (MegatronStrategy.__init__), so without this the parse-time init and the
-        # build-time init collide with "data parallel group is already initialized". This is the
-        # same flag swift/ray/megatron/driver_utils.py:179 sets for the same reason -- the dev
-        # entry point owns Megatron initialization, so legacy's must be suppressed at parse time.
-        argv = list(args) if args is not None else []
-        if '--skip_megatron_init' not in argv:
-            argv = ['--skip_megatron_init', 'true'] + argv
-        megatron_args, remaining = parse_args(MegatronSftArguments, argv)
-        if remaining:
-            raise ValueError(f'Unrecognized arguments: {remaining}')
+
+def _derive_megatron_ga(train_config, distributed_config, world_size: int) -> None:
+    if train_config.global_batch_size is None:
+        return
+    micro_batch_size = train_config.micro_batch_size or train_config.per_device_train_batch_size
+    view = type('_MegatronBatchView', (), {
+        'tensor_model_parallel_size': distributed_config.tensor_model_parallel_size,
+        'pipeline_model_parallel_size': distributed_config.pipeline_model_parallel_size,
+        'context_parallel_size': distributed_config.context_parallel_size,
+        'micro_batch_size': micro_batch_size,
+        'global_batch_size': train_config.global_batch_size,
+    })()
+    train_config.gradient_accumulation_steps = _derive_gradient_accumulation_steps(view, world_size)
+
+
+def _select_megatron_tuner(tuner: 'TunerConfig') -> Optional['TunerConfig']:
+    if tuner.tuner_type == 'full':
+        return None
+    if tuner.tuner_type == 'lora':
+        return tuner
+    raise NotImplementedError(f'dev Megatron CLI supports tuner_type in {{full, lora}}, got {tuner.tuner_type!r}.')
+
+
+def parse_megatron_configs(
+    argv: Optional[List[str]] = None,
+    *,
+    world_size: Optional[int] = None,
+) -> Tuple['ModelConfig', 'TemplateConfig', 'DatasetConfig', 'TrainConfig', 'DistributedConfig', 'CheckpointConfig',
+           'LoggingConfig', Optional['TunerConfig']]:
+    """Parse Megatron argv directly into dev Configs, with a four-field compatibility shim."""
+    import os
+
+    from swift.dev.cli.parser import parse_configs, resolve_argv
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        LoggingConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
+
+    effective_argv = resolve_argv(argv)
+    classes = [
+        ModelConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig, LoggingConfig,
+        TunerConfig, MegatronCliCompatConfig
+    ]
+    configs, remaining = parse_configs(classes, effective_argv)
+    if remaining:
+        raise ValueError(f'Unrecognized arguments: {remaining}. This legacy Megatron flag has no dev Config '
+                         'consumer and is refused rather than silently dropped.')
+    (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
+     logging_config, tuner, compat) = configs
+
+    _reject_unmappable(train_config)
+    world_size = int(os.environ.get('WORLD_SIZE', '1')) if world_size is None else world_size
+    distributed_config.backend = 'megatron'
+    distributed_config.nproc_per_node = distributed_config.nproc_per_node or world_size
+    if distributed_config.use_ray:
+        distributed_config.mode = 'ray'
+
+    if compat.attention_backend is not None:
+        model_config.attn_impl = _attn_backend_name(compat.attention_backend)
+    _apply_megatron_precision(model_config, compat)
+    _fix_mtp(model_config, model_config)
+    if train_config.weight_decay_incr_style == 'constant':
+        train_config.start_weight_decay = None
+        train_config.end_weight_decay = None
+    _derive_megatron_ga(train_config, distributed_config, world_size)
+
+    return (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
+            logging_config, _select_megatron_tuner(tuner))
+
+
+def megatron_sft_main(argv: Optional[List[str]] = None) -> List[dict]:
+    """dev Megatron SFT entry, self-parsed without constructing legacy MegatronSftArguments."""
+    from swift.dev.cli.runtime import bootstrap_run
+    from swift.dev.config import process_configs, validate_configs
+    from swift.dev.recipe import run_sft
 
     (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-     tuner_config) = megatron_args_to_configs(megatron_args)
+     logging_config, tuner_config) = parse_megatron_configs(argv)
+    process_configs(
+        model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
+        tuner_config)
+    validate_configs(
+        model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
+        tuner_config, logging_config=logging_config)
+    bootstrap_run(model_config, checkpoint_config, dataset_config, tuner_config, seed=train_config.seed)
 
     return run_sft(
         model_config,
@@ -496,6 +622,7 @@ def megatron_sft_main(args: Optional[List[str]] = None) -> List[dict]:
         distributed_config=distributed_config,
         checkpoint_config=checkpoint_config,
         tuner_config=tuner_config,
+        logging_config=logging_config,
         output_dir=checkpoint_config.output_dir,
     )
 

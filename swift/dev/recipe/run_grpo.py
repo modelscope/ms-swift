@@ -43,6 +43,7 @@ if TYPE_CHECKING:
         DatasetConfig,
         DistributedConfig,
         GenerationConfig,
+        LoggingConfig,
         ModelConfig,
         RLHFConfig,
         RolloutConfig,
@@ -129,14 +130,15 @@ class SamplerRollout(RolloutEngine):
     ``remote_group``) plus the trainer model, rather than building a sampler from a model id.
     """
 
-    def __init__(self, model: Any, sampler: Any, *, colocate: bool, platform: str = 'GPU'):
+    def __init__(self, model: Any, sampler: Any, template: Any, *, colocate: bool, platform: str = 'GPU'):
         from twinkle.checkpoint_engine import CheckpointEngineManager
 
         # NB: deliberately does NOT call RolloutEngine.__init__ (which would build a fresh sampler);
-        # the sampler is built and placed by run_grpo and injected here. generate()/shutdown() only
-        # touch self.sampler, so they work against the injected one.
+        # the sampler is built and placed by run_grpo and injected here.
         self.model = model
         self.sampler = sampler
+        self.template = template
+        self._multi_turn = None
         self.colocate = colocate
         self.manager = CheckpointEngineManager(model=model, sampler=sampler, platform=platform, colocate=colocate)
         # merge_and_sync sends merged base weights every step (works for both full and LoRA); the
@@ -175,6 +177,7 @@ def run_grpo(
     rlhf_config: RLHFConfig,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
+    logging_config: Optional[LoggingConfig] = None,
     *,
     engine_args: Optional[Dict[str, Any]] = None,
     output_dir: str = 'output',
@@ -191,7 +194,7 @@ def run_grpo(
     from swift.dev.loss import configure_rlhf_loss
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly
-    from swift.dev.recipe.grpo import GRPOLoop
+    from swift.dev.recipe.grpo import GRPOLoop, _RemoteGRPOTeacher
 
     assembly = TrainAssembly(
         'run_grpo',
@@ -203,7 +206,8 @@ def run_grpo(
         checkpoint_config,
         tuner_config,
         rlhf_config=rlhf_config,
-        output_dir=output_dir)
+        output_dir=output_dir,
+        logging_config=logging_config)
     # Also imports the run's plugin files -- the reward names handed to GRPOLoop below are resolved
     # against the registry they write into.
     assembly.prepare()
@@ -233,15 +237,48 @@ def run_grpo(
         engine_args=sampler_engine_args,
         template=assembly.template,
         remote_group=sampler_remote_group)
-    rollout = SamplerRollout(assembly.model, sampler, colocate=colocate)
+    rollout = SamplerRollout(assembly.model, sampler, assembly.template, colocate=colocate)
+    scheduler_name = rlhf_config.multi_turn_scheduler
+    if rlhf_config.use_gym_env and scheduler_name is None:
+        scheduler_name = 'gym_scheduler'
+    if scheduler_name is not None:
+        rollout.configure_multi_turn(
+            scheduler_name,
+            max_turns=rlhf_config.max_turns,
+            gym_env=rlhf_config.gym_env,
+            completion_length_limit_scope=rlhf_config.completion_length_limit_scope)
 
-    prompts = _prompts_from_dataset(dataset_config)
+    prompts, prompt_extras = _prompt_rows_from_dataset(dataset_config)
+    reward_model_plugins, reward_model_names = _build_reward_model_scorers(
+        model_config, template_config, rlhf_config)
     loop = GRPOLoop(
         assembly.model,
         rollout,
         prompts,
+        prompt_extras=prompt_extras,
+        reference=_build_frozen_model(
+            model_config,
+            assembly.template,
+            model_id=rlhf_config.ref_model,
+            adapters=rlhf_config.ref_adapters,
+            adapter_role='ref',
+            disable_adapter=tuner_config is not None and not rlhf_config.ref_adapters)
+        if rlhf_config.beta and rlhf_config.calculate_KL is not False else None,
+        teacher=(_RemoteGRPOTeacher(rlhf_config.teacher_model_server)
+                 if rlhf_config.teacher_model_server else _build_frozen_model(
+                     model_config,
+                     assembly.template,
+                     model_id=rlhf_config.teacher_model,
+                     adapters=rlhf_config.teacher_adapters,
+                     adapter_role='teacher',
+                     disable_adapter=rlhf_config._teacher_use_disable_adapter)),
+        template=assembly.template,
+        teacher_tag_key=rollout_config.teacher_tag_key,
+        chord_features=_load_chord_features(rlhf_config, dataset_config, assembly.template),
         num_generations=rlhf_config.num_generations,
         reward_funcs=list(rlhf_config.reward_funcs) or None,
+        reward_model_plugins=reward_model_plugins,
+        reward_model_names=reward_model_names,
         reward_weights=rlhf_config.reward_weights,
         advantage_estimator=rlhf_config.advantage_estimator,
         scale_rewards=rlhf_config.scale_rewards or 'group',
@@ -249,7 +286,9 @@ def run_grpo(
         max_steps=max_steps,
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
-        sampling_params=_grpo_sampling_params(rlhf_config, generation_config))
+        sampling_params=_grpo_sampling_params(rlhf_config, generation_config),
+        logging_config=logging_config,
+        output_dir=output_dir)
     try:
         history = loop.fit()
     finally:
@@ -289,25 +328,136 @@ def _grpo_sampling_params(rlhf_config: RLHFConfig, generation_config: Optional[G
     return params
 
 
-def _prompts_from_dataset(dataset_config: DatasetConfig) -> List[List[dict]]:
-    """Load the prompt message-lists for rollout from the (un-encoded) dataset.
+def _build_frozen_model(model_config: ModelConfig,
+                        template: Any,
+                        *,
+                        model_id: Optional[str],
+                        adapters: Optional[List[str]] = None,
+                        adapter_role: str = 'frozen',
+                        disable_adapter: bool = False) -> Any:
+    """Build a frozen scoring owner, or select the policy's adapter-disabled base."""
+    if disable_adapter:
+        return 'disable_lora'
+    if not model_id:
+        return None
+    from copy import copy
 
-    Reuses run_infer's row loader, then keeps only the prompt turns of each row (a trailing assistant
-    message, if any, is the reference answer and must not be fed to the policy as context).
-    """
+    from swift.dev.builders import build_model
+    from swift.dev.config import DistributedConfig
+    from swift.dev.recipe.assembly import configure_frozen_adapter
+
+    config = copy(model_config)
+    config.model = model_id
+    frozen = build_model(config, DistributedConfig(mode='local'))
+    return configure_frozen_adapter(frozen, template, adapters or [], role=adapter_role)
+
+
+def _build_reward_model_scorers(model_config: ModelConfig, template_config: TemplateConfig,
+                                rlhf_config: RLHFConfig) -> Tuple[List[Any], List[str]]:
+    """Build each frozen reward model with its own tokenizer/template and adapt it to a batch scorer."""
+    reward_models = list(rlhf_config.reward_model or [])
+    if not reward_models:
+        return [], []
+
+    from copy import copy
+
+    from swift.dev.builders import build_model, build_template
+    from swift.dev.config import DistributedConfig
+    from swift.dev.recipe.assembly import configure_frozen_adapter
+    from swift.dev.reward import build_reward_model_plugins
+    from swift.model import get_model_info_meta, get_model_processor
+
+    count = len(reward_models)
+
+    def _aligned(values, default, field):
+        resolved = [default] * count if values is None else list(values)
+        if len(resolved) != count:
+            raise ValueError(f'{field} must contain exactly one value per reward_model.')
+        return resolved
+
+    model_types = _aligned(rlhf_config.reward_model_type, None, 'reward_model_type')
+    revisions = _aligned(rlhf_config.reward_model_revision, None, 'reward_model_revision')
+    template_names = _aligned(rlhf_config.reward_template, None, 'reward_template')
+    plugin_names = _aligned(rlhf_config.reward_model_plugin, 'default', 'reward_model_plugin')
+    adapters = _aligned(rlhf_config.reward_adapters or None, None, 'reward_adapters')
+
+    models = []
+    templates = []
+    for model_id, model_type, revision, template_name, adapter in zip(
+            reward_models, model_types, revisions, template_names, adapters):
+        model_info, _ = get_model_info_meta(model_id, model_type=model_type, revision=revision)
+        reward_model_config = copy(model_config)
+        reward_model_config.model = model_id
+        reward_model_config.model_type = model_type or model_info.model_type
+        reward_model_config.model_revision = revision
+        reward_model_config.task_type = model_info.task_type
+        reward_model_config.num_labels = model_info.num_labels
+
+        _, processor = get_model_processor(
+            model_id,
+            model_type=reward_model_config.model_type,
+            revision=revision,
+            task_type=reward_model_config.task_type,
+            num_labels=reward_model_config.num_labels,
+            load_model=False)
+        reward_template_config = copy(template_config)
+        reward_template_config.template = template_name
+        reward_template_config.max_length = None
+        reward_template = build_template(
+            reward_template_config, processor, task_type=reward_model_config.task_type)
+        reward_template.max_length = None
+
+        reward_model = build_model(reward_model_config, DistributedConfig(mode='local'))
+        reward_model = configure_frozen_adapter(
+            reward_model, reward_template, [adapter] if adapter else [], role='reward')
+        if getattr(reward_template, 'use_model', False):
+            reward_template.model = getattr(reward_model, 'model', reward_model)
+        models.append(reward_model)
+        templates.append(reward_template)
+
+    return build_reward_model_plugins(models, templates, plugin_names)
+
+
+def _load_chord_features(rlhf_config: RLHFConfig, dataset_config: DatasetConfig, template: Any) -> List[dict]:
+    """Encode CHORD's expert SFT rows once; the loop cycles over these features."""
+    if not rlhf_config.chord_sft_dataset:
+        return []
+    from copy import copy
+
+    from swift.dev.recipe.run_infer import _load_prompt_rows
+
+    chord_config = copy(dataset_config)
+    chord_config.dataset = list(rlhf_config.chord_sft_dataset)
+    chord_config.val_dataset = []
+    rows = _load_prompt_rows(chord_config, None, split_dataset_ratio=0.0)
+    features = [template.encode(row) for row in rows]
+    if not features:
+        raise ValueError('chord_sft_dataset produced no encodable rows.')
+    return features
+
+
+def _prompt_rows_from_dataset(dataset_config: DatasetConfig) -> Tuple[List[List[dict]], List[Dict[str, Any]]]:
+    """Load prompt messages and preserve all non-message columns for rewards and teacher views."""
     from swift.dev.recipe.run_infer import _load_prompt_rows
 
     rows = _load_prompt_rows(dataset_config, None, split_dataset_ratio=0.0)
     if not rows:
         raise ValueError('run_grpo got an empty dataset. Set DatasetConfig.dataset with prompts to roll out on.')
     prompts: List[List[dict]] = []
+    extras: List[Dict[str, Any]] = []
     for row in rows:
         messages = row.get('messages') if isinstance(row, dict) else None
         if not messages:
             continue
-        if messages and messages[-1].get('role') == 'assistant':
+        if messages[-1].get('role') == 'assistant':
             messages = messages[:-1]
         prompts.append(list(messages))
+        extras.append({key: value for key, value in row.items() if key != 'messages'})
     if not prompts:
         raise ValueError('run_grpo found no prompt messages in the dataset rows (expected a `messages` column).')
-    return prompts
+    return prompts, extras
+
+
+def _prompts_from_dataset(dataset_config: DatasetConfig) -> List[List[dict]]:
+    """Compatibility helper used by PPO/GKD, which only need message lists."""
+    return _prompt_rows_from_dataset(dataset_config)[0]

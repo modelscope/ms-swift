@@ -15,6 +15,8 @@ Why reduction='sum':
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
+from twinkle.loss import Loss
+
 if TYPE_CHECKING:
     from swift.dev.config import RLHFConfig
     from swift.dev.model import TrainableModel
@@ -173,6 +175,314 @@ _RLHF_LOSS_NAME = {
 }
 
 
+class _AdvancedGKDLoss(Loss):
+    """GKD with the optional supervised CE term used for dataset-sourced batches."""
+
+    require_logits = True
+
+    def __init__(self, base_loss, *, sft_alpha: float):
+        self.base_loss = base_loss
+        self.sft_alpha = sft_alpha
+        self.require_logps = getattr(base_loss, 'require_logps', True)
+        self.require_entropy = getattr(base_loss, 'require_entropy', False)
+
+    def __call__(self, inputs, outputs, *, apply_sft_loss=False, **kwargs):
+        import torch.nn.functional as F
+        from twinkle.data_format import LossOutput
+
+        result = self.base_loss(inputs, outputs, **kwargs)
+        loss = result['loss']
+        if apply_sft_loss and self.sft_alpha > 0:
+            labels = inputs['labels']
+            logits = outputs['logits']
+            if logits.shape[1] != labels.shape[1]:
+                logits = logits[:, -labels.shape[1]:]
+            sft_loss = F.cross_entropy(
+                logits.reshape(-1, logits.shape[-1]), labels.reshape(-1), ignore_index=-100, reduction='mean')
+            loss = loss + self.sft_alpha * sft_loss
+        return LossOutput(loss=loss, num_tokens=result['num_tokens'])
+
+
+class _ConfiguredGRPOLoss(Loss):
+    """Apply dev-only GRPO controls around a twinkle policy loss."""
+
+    def __init__(
+        self,
+        base_loss,
+        *,
+        importance_sampling_level: str,
+        delta: Optional[float],
+        top_entropy_quantile: float,
+        log_entropy: bool,
+        rollout_importance_sampling_mode: Optional[str],
+        rollout_importance_sampling_threshold: float,
+        log_rollout_offpolicy_metrics: bool,
+        off_policy_sequence_mask_delta: Optional[float],
+        loss_type: str,
+        fipo_decay_rate: float,
+        fipo_clip_range: Optional[float],
+        fipo_clip_high_only: bool,
+        fipo_safety_threshold: Optional[float],
+    ):
+        self.base_loss = base_loss
+        self.importance_sampling_level = importance_sampling_level
+        self.delta = delta
+        self.top_entropy_quantile = top_entropy_quantile
+        self.log_entropy = log_entropy
+        self.rollout_importance_sampling_mode = rollout_importance_sampling_mode
+        self.rollout_importance_sampling_threshold = rollout_importance_sampling_threshold
+        self.log_rollout_offpolicy_metrics = log_rollout_offpolicy_metrics
+        self.off_policy_sequence_mask_delta = off_policy_sequence_mask_delta
+        self.loss_type = loss_type
+        self.fipo_gamma = 2**(-1 / fipo_decay_rate)
+        self.fipo_clip_range = fipo_clip_range
+        self.fipo_clip_high_only = fipo_clip_high_only
+        self.fipo_safety_threshold = fipo_safety_threshold
+        self.require_logps = True
+        self.require_logits = getattr(base_loss, 'require_logits', False)
+        self.require_entropy = log_entropy or top_entropy_quantile < 1.0
+
+    def _importance_weights(self, logps, old_logps, mask):
+        import torch
+
+        log_ratio = torch.clamp(logps - old_logps, min=-20.0, max=20.0)
+        if self.importance_sampling_level == 'token':
+            log_weights = log_ratio
+        else:
+            sequence = ((log_ratio * mask).sum(-1) / mask.sum(-1).clamp(min=1.0)).unsqueeze(-1)
+            if self.importance_sampling_level == 'sequence':
+                log_weights = sequence
+            elif self.importance_sampling_level == 'sequence_token':
+                log_weights = logps - logps.detach() + sequence.detach()
+            else:
+                raise ValueError(f'Unknown importance_sampling_level={self.importance_sampling_level!r}.')
+        return log_ratio, torch.exp(log_weights)
+
+    def _rollout_weights(self, log_ratio, mask):
+        import torch
+
+        ratio = torch.exp(torch.clamp(log_ratio, min=-20.0, max=20.0))
+        mode = self.rollout_importance_sampling_mode
+        threshold = self.rollout_importance_sampling_threshold
+        if mode == 'token_truncate':
+            return torch.clamp(ratio, max=threshold)
+        if mode == 'token_mask':
+            return torch.where(ratio <= threshold, ratio, torch.zeros_like(ratio))
+        sequence = torch.exp((torch.log(ratio.clamp(min=1e-10)) * mask).sum(-1)
+                             / mask.sum(-1).clamp(min=1.0))
+        if mode == 'sequence_truncate':
+            return torch.clamp(sequence, max=threshold).unsqueeze(-1).expand_as(ratio)
+        if mode == 'sequence_mask':
+            return ratio * (sequence <= threshold).unsqueeze(-1)
+        return ratio
+
+    def _policy_loss(self, ratio, advantages, logps):
+        """Preserve legacy dual-clip ordering: PPO clipping sees the raw ratio."""
+        import torch
+
+        if self.delta is None or self.loss_type not in {'grpo', 'dapo', 'fipo', 'bnpo', 'dr_grpo'}:
+            return self.base_loss._compute_per_token_loss(ratio, advantages, logps)
+        clipped_ratio = torch.clamp(
+            ratio,
+            1 - self.base_loss.epsilon,
+            1 + self.base_loss.epsilon_high,
+        )
+        dual_clipped_ratio = torch.clamp(ratio, max=self.delta)
+        return -torch.min(dual_clipped_ratio * advantages, clipped_ratio * advantages)
+
+    def _fipo_weights(self, log_ratio, ratio, advantages, mask):
+        import torch
+
+        future_delta = log_ratio.masked_fill(~mask, 0.0)
+        if self.delta is not None:
+            future_delta = torch.where(ratio > self.delta, torch.zeros_like(future_delta), future_delta)
+        seq_len = future_delta.shape[1]
+        positions = torch.arange(seq_len, device=log_ratio.device).unsqueeze(1)
+        future_kl = torch.zeros_like(future_delta)
+        for start in range(0, seq_len, 128):
+            end = min(seq_len, start + 128)
+            block_positions = torch.arange(start, end, device=log_ratio.device).unsqueeze(0)
+            distance = block_positions - positions
+            decay = torch.pow(
+                torch.as_tensor(self.fipo_gamma, dtype=log_ratio.dtype, device=log_ratio.device),
+                distance.clamp(min=0))
+            decay = decay * (distance >= 0).to(log_ratio.dtype)
+            future_kl += torch.matmul(future_delta[:, start:end], decay.t())
+        weights = torch.exp(future_kl.masked_fill(~mask, 0.0))
+        if self.fipo_clip_range:
+            lower = 1.0 if self.fipo_clip_high_only else 1.0 - self.fipo_clip_range
+            weights = torch.clamp(weights, min=lower, max=1.0 + self.fipo_clip_range)
+        if self.fipo_safety_threshold is not None:
+            unsafe = (advantages < 0) & (ratio > self.fipo_safety_threshold)
+            weights = torch.where(unsafe, torch.clamp(weights, min=0.8, max=1.0), weights)
+        return weights.detach()
+
+    def __call__(  # noqa: C901
+        self,
+        inputs,
+        outputs,
+        *,
+        old_logps=None,
+        ref_logps=None,
+        advantages=None,
+        rollout_logps=None,
+        truncated=None,
+        **kwargs,
+    ):
+        import torch
+        from twinkle.data_format import LossOutput
+
+        labels = inputs['labels']
+        if not torch.is_tensor(labels):
+            labels = torch.as_tensor(labels)
+        if labels.dim() == 1:
+            labels = labels.unsqueeze(0)
+        logps = outputs.get('logps')
+        if logps is None:
+            raise RuntimeError('Configured GRPO loss requires outputs["logps"].')
+        alignment_mask = labels.ne(getattr(self.base_loss, 'ignore_index', -100))
+        device, dtype = logps.device, logps.dtype
+        old = (logps.detach() if old_logps is None else self.base_loss._pad_and_align_to_batch(
+            old_logps, alignment_mask, device, dtype))
+        advantages = self.base_loss._pad_and_align_to_batch(advantages, alignment_mask, device, dtype)
+        mask = alignment_mask.clone()
+
+        channel_loss = {}
+        entropy_mask = None
+        if self.require_entropy:
+            entropies = outputs.get('entropies')
+            if entropies is None:
+                raise RuntimeError('Entropy logging/filtering requires outputs["entropies"].')
+            if self.log_entropy:
+                count = alignment_mask.sum().detach().float()
+                channel_loss['entropy'] = torch.stack(
+                    ((entropies * alignment_mask).sum().detach().float(), count))
+            if self.top_entropy_quantile < 1.0 and alignment_mask.any():
+                threshold = torch.quantile(
+                    entropies[alignment_mask].float(), 1.0 - self.top_entropy_quantile)
+                entropy_mask = entropies.ge(threshold)
+
+        if truncated is not None:
+            truncated_mask = torch.as_tensor(truncated, dtype=torch.bool, device=device).reshape(-1, 1)
+            mask = mask & ~truncated_mask
+
+        log_ratio, ratio = self._importance_weights(logps, old, mask)
+        per_token_loss = self._policy_loss(ratio, advantages, logps)
+        if self.loss_type == 'fipo':
+            per_token_loss = per_token_loss * self._fipo_weights(log_ratio, ratio, advantages, mask)
+        if entropy_mask is not None:
+            per_token_loss = per_token_loss * entropy_mask
+
+        beta = float(getattr(self.base_loss, 'beta', 0.0))
+        if beta > 0.0 and ref_logps is not None:
+            ref = self.base_loss._pad_and_align_to_batch(ref_logps, alignment_mask, device, dtype)
+            ref_delta = torch.clamp(ref - logps, min=-20.0, max=20.0)
+            per_token_kl = torch.clamp(torch.exp(ref_delta) - ref_delta - 1.0, min=-10.0, max=10.0)
+            per_token_loss = per_token_loss + beta * per_token_kl
+
+        rollout = None
+        if rollout_logps is not None:
+            rollout = self.base_loss._pad_and_align_to_batch(rollout_logps, alignment_mask, device, dtype)
+            rollout_log_ratio = old - rollout
+            if self.log_rollout_offpolicy_metrics:
+                count = mask.sum().detach().float()
+                channel_loss['rollout_log_ratio'] = torch.stack(
+                    ((rollout_log_ratio.abs() * mask).sum().detach().float(), count))
+            if self.rollout_importance_sampling_mode is not None:
+                per_token_loss = per_token_loss * self._rollout_weights(rollout_log_ratio, mask)
+        elif self.rollout_importance_sampling_mode is not None:
+            raise ValueError('rollout_importance_sampling_mode requires rollout_logps from the sampler.')
+
+        if self.off_policy_sequence_mask_delta is not None:
+            old_policy = rollout if rollout is not None else old
+            sequence_delta = ((old_policy - logps) * mask).sum(-1) / mask.sum(-1).clamp(min=1.0)
+            sequence_advantage = (advantages * mask).sum(-1) / mask.sum(-1).clamp(min=1.0)
+            keep = ~((sequence_delta > self.off_policy_sequence_mask_delta) & (sequence_advantage < 0))
+            mask = mask & keep.unsqueeze(-1)
+
+        if self.loss_type == 'fipo':
+            loss = (per_token_loss * mask).sum() / mask.sum().clamp(min=1.0)
+        else:
+            loss = self.base_loss._aggregate_loss(per_token_loss, mask, **kwargs)
+        result = LossOutput(loss=loss, num_tokens=0)
+        if channel_loss:
+            result['channel_loss'] = channel_loss
+        return result
+
+
+class _AdvancedGRPOLoss(Loss):
+    """GRPO plus optional SDAR distillation and CHORD's auxiliary SFT objective."""
+
+    def __init__(self, base_loss, *, sdar_loss_coef: float = 0.0, sdar_gate_beta: float = 5.0):
+        self.base_loss = base_loss
+        self.sdar_loss_coef = sdar_loss_coef
+        self.sdar_gate_beta = sdar_gate_beta
+        self.require_logps = True
+        self.require_logits = True
+        self.require_entropy = getattr(base_loss, 'require_entropy', False)
+
+    @staticmethod
+    def _slice_batch(values, end):
+        if values is None:
+            return None
+        try:
+            return values[:end]
+        except (TypeError, KeyError):
+            return values
+
+    def __call__(self, inputs, outputs, *, chord_count=0, chord_mu=0.0, chord_phi=False, teacher_logps=None, **kwargs):
+        import torch
+        import torch.nn.functional as F
+        from twinkle.data_format import LossOutput
+
+        labels = inputs['labels']
+        batch_size = labels.shape[0]
+        rl_count = batch_size - int(chord_count)
+        if rl_count < 1:
+            raise ValueError('advanced GRPO batches must contain at least one rollout sample.')
+        rl_inputs = dict(inputs)
+        rl_inputs['labels'] = labels[:rl_count]
+        rl_outputs = {
+            name: self._slice_batch(value, rl_count)
+            for name, value in outputs.items()
+        }
+        rl_kwargs = {
+            name: self._slice_batch(value, rl_count)
+            for name, value in kwargs.items()
+        }
+        result = self.base_loss(rl_inputs, rl_outputs, **rl_kwargs)
+        loss = result['loss'] * (1.0 - float(chord_mu))
+
+        if teacher_logps is not None and self.sdar_loss_coef > 0:
+            from swift.rl_core.advantage import compute_sdar_loss
+
+            student_logps = rl_outputs['logps']
+            response_mask = rl_inputs['labels'].ne(-100)
+            teacher = self.base_loss._pad_and_align_to_batch(
+                teacher_logps, response_mask, student_logps.device, student_logps.dtype)
+            sdar_loss, _ = compute_sdar_loss(student_logps, teacher, response_mask, self.sdar_gate_beta)
+            loss = loss + self.sdar_loss_coef * sdar_loss
+
+        if chord_count:
+            chord_logits = outputs['logits'][rl_count:]
+            chord_labels = labels[rl_count:]
+            token_loss = F.cross_entropy(
+                chord_logits.reshape(-1, chord_logits.shape[-1]),
+                chord_labels.reshape(-1),
+                ignore_index=-100,
+                reduction='none')
+            valid = chord_labels.reshape(-1).ne(-100)
+            if chord_phi:
+                probability = torch.exp(-token_loss.detach())
+                token_loss = token_loss * probability * (1.0 - probability)
+            chord_loss = token_loss[valid].mean() if valid.any() else token_loss.sum() * 0.0
+            loss = loss + float(chord_mu) * chord_loss
+        output = LossOutput(loss=loss, num_tokens=0)
+        if result.get('channel_loss') is not None:
+            output['channel_loss'] = result['channel_loss']
+        return output
+
+
 def configure_rlhf_loss(model: TrainableModel, rlhf_config: 'RLHFConfig') -> None:
     """Set the RLHF/RL loss on ``model`` from ``rlhf_config.rlhf_type`` and its hyperparameters.
 
@@ -195,8 +505,42 @@ def configure_rlhf_loss(model: TrainableModel, rlhf_config: 'RLHFConfig') -> Non
     if rlhf_type not in _RLHF_LOSS_NAME:
         raise ValueError(f'Unknown rlhf_type={rlhf_type!r}; expected one of {sorted(_RLHF_LOSS_NAME)}.')
 
-    loss_cls = resolve_loss(_RLHF_LOSS_NAME[rlhf_type])
-    model.set_loss(loss_cls(**_rlhf_loss_kwargs(rlhf_type, rlhf_config)))
+    loss_name = _RLHF_LOSS_NAME[rlhf_type]
+    grpo_loss_type = 'grpo'
+    if rlhf_type == 'grpo' and rlhf_config.loss_type:
+        grpo_loss_type = rlhf_config.loss_type[0]
+        loss_name = {'dapo': 'bnpo', 'fipo': 'grpo'}.get(grpo_loss_type, grpo_loss_type)
+    loss_cls = resolve_loss(loss_name)
+    loss = loss_cls(**_rlhf_loss_kwargs(rlhf_type, rlhf_config))
+    configured_grpo = bool(
+        rlhf_type == 'grpo' and (grpo_loss_type == 'fipo' or rlhf_config.importance_sampling_level != 'token'
+                                  or rlhf_config.delta is not None or rlhf_config.top_entropy_quantile < 1.0
+                                  or rlhf_config.log_entropy or rlhf_config.overlong_filter
+                                  or rlhf_config.rollout_importance_sampling_mode
+                                  or rlhf_config.log_rollout_offpolicy_metrics
+                                  or rlhf_config.off_policy_sequence_mask_delta is not None))
+    if configured_grpo:
+        loss = _ConfiguredGRPOLoss(
+            loss,
+            importance_sampling_level=rlhf_config.importance_sampling_level,
+            delta=rlhf_config.delta,
+            top_entropy_quantile=rlhf_config.top_entropy_quantile,
+            log_entropy=rlhf_config.log_entropy,
+            rollout_importance_sampling_mode=rlhf_config.rollout_importance_sampling_mode,
+            rollout_importance_sampling_threshold=rlhf_config.rollout_importance_sampling_threshold,
+            log_rollout_offpolicy_metrics=rlhf_config.log_rollout_offpolicy_metrics,
+            off_policy_sequence_mask_delta=rlhf_config.off_policy_sequence_mask_delta,
+            loss_type=grpo_loss_type,
+            fipo_decay_rate=rlhf_config.fipo_decay_rate,
+            fipo_clip_range=rlhf_config.fipo_clip_range,
+            fipo_clip_high_only=rlhf_config.fipo_clip_high_only,
+            fipo_safety_threshold=rlhf_config.fipo_safety_threshold)
+    if rlhf_type == 'grpo' and (rlhf_config.chord_sft_dataset or rlhf_config.sdar_loss_coef > 0):
+        loss = _AdvancedGRPOLoss(
+            loss, sdar_loss_coef=rlhf_config.sdar_loss_coef, sdar_gate_beta=rlhf_config.sdar_gate_beta)
+    elif rlhf_type == 'gkd' and rlhf_config.sft_alpha > 0:
+        loss = _AdvancedGKDLoss(loss, sft_alpha=rlhf_config.sft_alpha)
+    model.set_loss(loss)
 
 
 def configure_ppo_value_loss(value_model: TrainableModel, rlhf_config: 'RLHFConfig') -> None:
@@ -237,8 +581,9 @@ def _online_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig') -> Dict[str, 
         # double-counting.
         kwargs['epsilon'] = rlhf_config.cliprange
         return kwargs
-    # grpo
-    if rlhf_config.beta is not None:
+    # grpo: KL is either folded into the reward or added by GRPOLoss, never both.
+    calculate_kl = rlhf_config.calculate_KL is not False
+    if rlhf_config.beta is not None and not rlhf_config.kl_in_reward and calculate_kl:
         kwargs['beta'] = rlhf_config.beta
     kwargs['epsilon'] = rlhf_config.epsilon
     if rlhf_config.epsilon_high is not None:

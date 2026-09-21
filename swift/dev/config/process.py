@@ -12,14 +12,23 @@
 # the driver running this is not even the process that trains.
 
 from __future__ import annotations
-
 import dataclasses
 import logging
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, MegatronConfig, ModelConfig,
-                                  QuantizeConfig, RLHFConfig, TemplateConfig, TrainConfig, TunerConfig)
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        MegatronConfig,
+        ModelConfig,
+        QuantizeConfig,
+        RLHFConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +54,7 @@ def process_configs(
     is_megatron = is_megatron_backend(distributed_config)
 
     _parse_json_fields(model_config, dataset_config, train_config, distributed_config, megatron_config)
+    _derive_launch_mode(distributed_config, is_megatron)
     _coerce_mrl_dims(train_config)
     _fold_megatron_aliases(train_config)
     # Order matters below: the eval schedule reads split_dataset_ratio after the val-dataset rule has
@@ -59,6 +69,7 @@ def process_configs(
     _derive_rlhf_task_type(model_config, rlhf_config)
     _derive_rlhf_beta(rlhf_config)
     _derive_rlhf_ref_model(model_config, tuner_config, rlhf_config)
+    _derive_rlhf_teacher(model_config, tuner_config, rlhf_config)
     _derive_grpo_reward_defaults(rlhf_config)
     _derive_best_model_metric(train_config, rlhf_config)
     _normalize_recompute_granularity(distributed_config)
@@ -80,6 +91,7 @@ _JSON_FIELDS = (
     ('train_config', 'gradient_checkpointing_kwargs', True),
     ('train_config', 'vit_gradient_checkpointing_kwargs', True),
     ('train_config', 'accelerator_config', True),
+    ('train_config', 'liger_kernel_config', True),
     ('train_config', 'mrl_dims', True),
     ('distributed_config', 'fsdp_config', True),
     ('megatron_config', 'megatron_extra_kwargs', True),
@@ -115,6 +127,21 @@ def _parse_json_fields(model_config, dataset_config, train_config, distributed_c
         if value is None or not isinstance(value, str):
             continue
         setattr(holder, attr, json_parse_to_dict(value, strict=strict))
+
+
+def _derive_launch_mode(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+    """Fold the legacy ``use_ray`` switch into twinkle's launch ``mode``.
+
+    The current assembly has a Ray DeviceGroup path only for Megatron. Accepting ``use_ray`` on the
+    transformers backend would still initialize twinkle locally, so reject that combination instead
+    of preserving the old silent no-op.
+    """
+    if not distributed_config.use_ray:
+        return
+    if not is_megatron:
+        raise NotImplementedError('DistributedConfig.use_ray is only wired for the Megatron backend in dev. '
+                                  'The transformers backend would run locally, so this combination is refused.')
+    distributed_config.mode = 'ray'
 
 
 def _coerce_mrl_dims(train_config: 'TrainConfig') -> None:
@@ -492,10 +519,34 @@ def _derive_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['
     tuner_type = getattr(tuner_config, 'tuner_type', 'full') if tuner_config is not None else 'full'
     if rlhf_type == 'grpo' and rlhf_config.beta == 0.0:
         rlhf_config.ref_model = None
-    elif rlhf_type in ('dpo', 'kto', 'ppo', 'grpo') and tuner_type == 'full':
+    elif rlhf_type in ('dpo', 'kto', 'ppo', 'grpo') and (tuner_type == 'full' or rlhf_config.ref_adapters):
         rlhf_config.ref_model = rlhf_config.ref_model or model_config.model
         rlhf_config.ref_model_type = rlhf_config.ref_model_type or model_config.model_type
         rlhf_config.ref_model_revision = rlhf_config.ref_model_revision or model_config.model_revision
+
+
+def _derive_rlhf_teacher(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
+                         rlhf_config: Optional['RLHFConfig']) -> None:
+    """Resolve self-distillation and gym defaults without loading a teacher or environment."""
+    if rlhf_config is None:
+        return
+    if isinstance(rlhf_config.teacher_adapters, str):
+        rlhf_config.teacher_adapters = [rlhf_config.teacher_adapters]
+    for field in ('reward_model', 'reward_adapters', 'reward_model_type', 'reward_model_revision',
+                  'reward_model_plugin', 'reward_template'):
+        value = getattr(rlhf_config, field)
+        if isinstance(value, str):
+            setattr(rlhf_config, field, [value])
+    if rlhf_config.use_gym_env is None and (
+            rlhf_config.gym_env is not None
+            or rlhf_config.multi_turn_scheduler in ('gym_scheduler', 'openenv_scheduler')):
+        rlhf_config.use_gym_env = True
+    if rlhf_config.use_gym_env and rlhf_config.multi_turn_scheduler is None:
+        rlhf_config.multi_turn_scheduler = 'gym_scheduler'
+    if (rlhf_config.teacher_model == model_config.model and tuner_config is not None
+            and not rlhf_config.teacher_adapters):
+        rlhf_config._teacher_use_disable_adapter = True
+        rlhf_config.teacher_model = None
 
 
 def _derive_grpo_reward_defaults(rlhf_config: Optional['RLHFConfig']) -> None:

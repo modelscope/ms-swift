@@ -1,6 +1,5 @@
 """OpenAI-compatible server configuration."""
 from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -34,6 +33,7 @@ class DeployConfig:
     # === Response detail ===
     #: Ceiling on a request's ``top_logprobs``. Bounded because each extra entry is paid for per token.
     max_logprobs: int = 20
+    max_concurrency: int = 64
 
     # === Logging ===
     #: Log every request, including its prompt and completion.
@@ -41,6 +41,7 @@ class DeployConfig:
     #: Requests between throughput summaries. Only consulted when ``verbose`` is off, where it is the
     #: sole indication the server is alive.
     log_interval: int = 20
+    request_log_path: Optional[str] = None
     log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
 
     # === Extension ===
