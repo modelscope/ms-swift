@@ -633,36 +633,7 @@ class Qwen3_5Template(Qwen3VLTemplate):
                     message['content'] = f'<think>\n{reasoning}\n</think>\n\n{rest}'
                 else:
                     message['content'] = stripped
-        self._merge_tool_user_inputs(inputs)
         super()._swift_prepare_inputs(inputs)
-
-    def _merge_tool_user_inputs(self, inputs: StdTemplateInputs) -> None:
-        # The pairwise encoder needs one query before each assistant response.
-        # Preserve native user-turn boundaries inside that query, including tool results.
-        if (self.template_backend != 'swift' or not self.use_chat_template or self._agent_template != 'qwen3_5'
-                or inputs.is_multimodal):
-            return
-        messages = inputs.messages
-        i = 1
-        while i < len(messages):
-            if messages[i]['role'] != 'tool' or messages[i - 1]['role'] not in {'assistant', 'tool_call'}:
-                i += 1
-                continue
-            tool_end = i
-            while tool_end < len(messages) and messages[tool_end]['role'] == 'tool':
-                tool_end += 1
-            user_end = tool_end
-            while (user_end < len(messages) and messages[user_end]['role'] == 'user'
-                   and isinstance(messages[user_end]['content'], str)):
-                user_end += 1
-            if user_end > tool_end:
-                query_prefix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)[0]
-                separator = ''.join(self.template_meta.chat_sep) + query_prefix
-                contents = [self.agent_template._get_tool_responses(messages[i:tool_end])]
-                contents += [message['content'] for message in messages[tool_end:user_end]]
-                # Keep the last user message's metadata and last-round loss semantics.
-                messages[i:user_end] = [{**messages[user_end - 1], 'content': separator.join(contents)}]
-            i += 1
 
 
 class Qwen3_8Template(Qwen3_5Template):
