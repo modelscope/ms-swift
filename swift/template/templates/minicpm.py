@@ -137,11 +137,31 @@ class MiniCPMVTemplate(Template):
         inputs_embeds, _ = model.get_vllm_embedding(inputs)
         return {'inputs_embeds': inputs_embeds}
 
+    def _adjust_bounds_for_padding(self, res: Dict[str, Any], seq_lens: List[int], bound_keys: List[str]) -> None:
+        padding_side = self.padding_side if self.is_training else 'left'
+        if self.padding_free or padding_side != 'left':
+            return
+
+        padded_seq_len = res['input_ids'].shape[-1]
+        padding_lengths = [padded_seq_len - seq_len for seq_len in seq_lens]
+        for key in bound_keys:
+            bounds_list = res.get(key)
+            if not bounds_list:
+                continue
+            assert len(bounds_list) == len(padding_lengths), (
+                f'len({key}): {len(bounds_list)}, len(padding_lengths): {len(padding_lengths)}')
+            res[key] = [
+                bounds + padding_length if isinstance(bounds, torch.Tensor) else bounds
+                for bounds, padding_length in zip(bounds_list, padding_lengths)
+            ]
+
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        seq_lens = [len(b['input_ids']) for b in batch]
         res = {}
         for k in ['pixel_values', 'image_bound', 'tgt_sizes']:
             res[k] = self.gather_list(batch, k)
         res.update(super()._data_collator(batch, padding_to=padding_to))
+        self._adjust_bounds_for_padding(res, seq_lens, ['image_bound'])
         return res
 
 
@@ -301,10 +321,12 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template):
         return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        seq_lens = [len(b['input_ids']) for b in batch]
         res = {}
         for k in ['pixel_values', 'image_bound', 'tgt_sizes', 'temporal_ids']:
             res[k] = self.gather_list(batch, k)
         res.update(Template._data_collator(self, batch, padding_to=padding_to))
+        self._adjust_bounds_for_padding(res, seq_lens, ['image_bound'])
         return res
 
 
@@ -576,6 +598,7 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
         return {'inputs_embeds': inputs_embeds}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        seq_lens = [len(b['input_ids']) for b in batch]
         res = {}
         # Vision data
         for k in ['pixel_values', 'image_bound', 'tgt_sizes']:
@@ -617,6 +640,7 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
         res['audio_bounds'] = audio_bounds_list if audio_bounds_list else []
 
         res.update(Template._data_collator(self, batch, padding_to=padding_to))
+        self._adjust_bounds_for_padding(res, seq_lens, ['image_bound', 'audio_bounds'])
         return res
 
 
