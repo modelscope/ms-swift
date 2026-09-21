@@ -672,6 +672,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     moe_pad_expert_input_to_capacity: bool = False
     moe_token_drop_policy: Literal['probs', 'position'] = 'probs'
 
+    # engram
+    engram_tokenizer_map: Optional[str] = None
+
     # mtp
     mtp_num_layers: Optional[int] = None
     mtp_loss_scaling_factor: float = 0.1

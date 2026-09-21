@@ -218,6 +218,8 @@ def _inject_dataset_routing_tag(dataset: DATASET_TYPE, ds_name: str) -> DATASET_
     """Inject ``dataset`` column for multi-teacher routing (constant per source dataset)."""
     if isinstance(dataset, HfIterableDataset):
         return dataset.map(lambda example: {**example, 'dataset': ds_name})
+    if 'dataset' in dataset.column_names:
+        dataset = dataset.remove_columns('dataset')
     return dataset.add_column('dataset', [ds_name] * len(dataset))
 
 

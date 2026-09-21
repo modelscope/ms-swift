@@ -54,6 +54,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                  *_args,
                  **kwargs):
         args = kwargs['args']
+        if args.precompute_ref_log_probs:
+            raise ValueError(
+                'precompute_ref_log_probs=True is not supported by Swift DPOTrainer. '
+                'Set precompute_ref_log_probs=False to compute reference log probabilities during training.')
         self.label_smoothing = args.label_smoothing
         if 'loss_weights' in DPOConfig.__dict__:
             # trl >= 0.20
@@ -95,6 +99,20 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         if self.template.packing:
             self.accelerator.gather_for_metrics = new_gather_function
+
+    def get_batch_samples(self, *args, **kwargs):
+        batch_samples, num_items_in_batch = super().get_batch_samples(*args, **kwargs)
+        if self.template.packing and batch_samples:
+            num_pairs = 0
+            for batch in batch_samples:
+                position_ids = batch.get('text_position_ids')
+                if position_ids is None:
+                    position_ids = batch['position_ids']
+                # Packed chosen/rejected sequences each start at position zero.
+                num_pairs += (position_ids == 0).sum() // 2
+            # DDP averages gradients, so use the mean window count per rank.
+            num_items_in_batch = self.accelerator.gather(num_pairs.to(self.accelerator.device)).float().mean()
+        return batch_samples, num_items_in_batch
 
     def concatenated_forward(
         self,
@@ -346,6 +364,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         model: Union[PreTrainedModel, nn.Module],
         batch: Dict[str, Union[List, torch.LongTensor]],
         train_eval: Literal['train', 'eval'] = 'train',
+        pair_loss_scale: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         metrics = {}
 
@@ -383,6 +402,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                 loss_type,
                 model_output,
             )
+            if pair_loss_scale is not None and loss_type != 'sft':
+                # Preserve the existing reduction of SFT/RPO and router losses.
+                _losses = _losses * (_losses.numel() * pair_loss_scale)
             weight = loss_weights[idx] if loss_weights else 1.0
             losses = losses + _losses * weight
             chosen_rewards = chosen_rewards + _chosen_rewards * weight
@@ -445,10 +467,17 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         return Trainer.log(self, logs, start_time)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        pair_loss_scale = None
+        if self.template.packing and num_items_in_batch is not None:
+            accumulation_steps = self.args.gradient_accumulation_steps
+            if not self.model_accepts_loss_kwargs:
+                accumulation_steps = getattr(self, 'current_gradient_accumulation_steps', accumulation_steps)
+            pair_loss_scale = accumulation_steps / num_items_in_batch
         compute_loss_context_manager = (
             torch.autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext())
         with compute_loss_context_manager:
-            loss, metrics = self.get_batch_loss_metrics(model, inputs, train_eval='train')
+            loss, metrics = self.get_batch_loss_metrics(
+                model, inputs, train_eval='train', pair_loss_scale=pair_loss_scale)
 
         loss = loss.to(self.args.device)
         self.store_metrics(metrics, train_eval='train')

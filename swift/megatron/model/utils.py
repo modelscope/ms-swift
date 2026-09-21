@@ -37,7 +37,8 @@ def get_mcore_model_config(args, hf_config):
     kwargs = hf_to_mcore_config(hf_config)
     kwargs['mcore_model_type'] = args.megatron_model_meta.model_type
     kwargs['hf_config'] = hf_config
-    for f in fields(ModelConfig):
+    config_cls = getattr(args.megatron_model_meta, 'config_cls', ModelConfig)
+    for f in fields(config_cls):
         key, value = f.name, getattr(args, f.name, None)
         if value is None or isinstance(value, (list, tuple)) and len(value) == 0:
             continue
@@ -70,7 +71,7 @@ def get_mcore_model_config(args, hf_config):
         kwargs['moe_enable_routing_replay'] = True
     if args.megatron_extra_kwargs:
         kwargs.update(args.megatron_extra_kwargs)
-    config = ModelConfig(**kwargs)
+    config = config_cls(**kwargs)
     _check_attention_backend(args, config)
     _check_padding_free(args, config)
     return config
@@ -111,7 +112,10 @@ class MegatronBridgeBackend:
                        converter=None,
                        tqdm_desc='Exporting: ',
                        disable_tqdm=True,
-                       _is_saving=False) -> Generator[Tuple[str, 'torch.Tensor'], None, None]:
+                       _is_saving=False,
+                       skip_unsupported_export=False) -> Generator[Tuple[str, Any], None, None]:
+        # Keep the export contract shared with mcore-bridge. AutoBridge owns its complete
+        # model mapping, so there is no separate unsupported-weight stream to suppress.
         if peft_format:
             raise NotImplementedError('LoRA export via megatron-bridge backend is not yet supported. '
                                       'Please use bridge_backend="mcore-bridge" for LoRA training.')

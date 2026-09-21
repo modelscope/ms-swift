@@ -20,6 +20,7 @@ from datasets import Dataset as HfDataset
 from unittest import mock
 
 from swift.dataset import DatasetMeta, load_dataset, register_dataset
+from swift.dataset.loader import _inject_dataset_routing_tag
 
 _ORIGINAL_FLATTEN_INDICES = HfDataset.flatten_indices
 
@@ -75,6 +76,40 @@ class TestDatasetRoutingTag(unittest.TestCase):
         self.assertEqual(set(train_dataset['dataset']), {self.dataset_path})
         self.assertEqual(set(val_dataset['dataset']), {self.dataset_path})
         self.assertEqual(len(train_dataset) + len(val_dataset), 100)
+
+    def test_existing_dataset_column_in_local_file(self):
+        with open(self.dataset_path, encoding='utf-8') as f:
+            rows = [json.loads(line) for line in f]
+        with open(self.dataset_path, 'w', encoding='utf-8') as f:
+            for i, row in enumerate(rows):
+                row.update(dataset=f'previous-source-{i % 2}', row_id=i)
+                f.write(json.dumps(row) + '\n')
+
+        for streaming in [False, True]:
+            for remove_unused_columns in [False, True]:
+                with self.subTest(streaming=streaming, remove_unused_columns=remove_unused_columns):
+                    with _track_flatten_indices() as flatten_indices:
+                        train_dataset, val_dataset = load_dataset(
+                            f'{self.dataset_name}#50',
+                            streaming=streaming,
+                            remove_unused_columns=remove_unused_columns,
+                            split_dataset_ratio=0.2,
+                            seed=42)
+                    flatten_indices.assert_not_called()
+                    train_rows, val_rows = list(train_dataset), list(val_dataset)
+                    self.assertEqual(len(train_rows), 40)
+                    self.assertEqual(len(val_rows), 10)
+                    for row in train_rows + val_rows:
+                        self.assertEqual(row['dataset'], self.dataset_path)
+                        self.assertEqual('row_id' in row, not remove_unused_columns)
+                        self.assertEqual(len(row['messages']), 2)
+
+    def test_replacing_tag_preserves_input_dataset(self):
+        original = HfDataset.from_dict({'dataset': ['old-a', 'old-b'], 'value': [1, 2]})
+        tagged = _inject_dataset_routing_tag(original, 'current-source')
+        self.assertEqual(list(original['dataset']), ['old-a', 'old-b'])
+        self.assertEqual(list(tagged['dataset']), ['current-source'] * 2)
+        self.assertEqual(list(tagged['value']), [1, 2])
 
 
 if __name__ == '__main__':

@@ -2,6 +2,7 @@
 import torch
 import unittest
 from transformers import GenerationConfig
+from transformers.utils import is_torch_npu_available
 from types import SimpleNamespace
 
 from swift.infer_engine import RequestConfig, TransformersEngine
@@ -28,6 +29,8 @@ class TestPromptUsage(unittest.TestCase):
         }
         self.engine = object.__new__(TransformersEngine)
         self.engine.model = lambda **kw: SimpleNamespace(logits=torch.tensor([[1., 0.], [0., 1.]]))
+        if is_torch_npu_available():
+            self.engine.model.device = torch.npu.current_device()
         self.engine.model_name = 'test-model'
         self.engine.processor = SimpleNamespace(pad_token_id=0)
         self.engine._adapters_pool = {}

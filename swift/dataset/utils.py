@@ -85,10 +85,15 @@ class LazyLLMDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         if isinstance(idx, str):
             return self.dataset[idx]
+        initial_idx = idx % len(self.dataset)
         for i in range(self.n_try_fetch):
             if i > 0:
-                idx = self._idx_list[self._idx]
-                self._idx = (self._idx + 1) % len(self.dataset)
+                # The initial sample may also appear in the fallback permutation.
+                while True:
+                    idx = self._idx_list[self._idx]
+                    self._idx = (self._idx + 1) % len(self.dataset)
+                    if idx != initial_idx:
+                        break
             data = self.dataset[idx]
             try:
                 return self.encode_func(data, return_length=True)
