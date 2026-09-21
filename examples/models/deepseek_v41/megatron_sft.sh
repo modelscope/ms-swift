@@ -53,7 +53,11 @@ MAX_LENGTH=${MAX_LENGTH:-8192}
 TRAIN_ITERS=${TRAIN_ITERS:-100}
 SAVE_STEPS=${SAVE_STEPS:-100}
 
-# Engram does not support activation recomputation, so recompute_granularity must stay none.
+# Activation recomputation is now Engram-safe (DeepseekV41EngramConfig defers the decision to the V4.1
+# backbone, and _checkpointed_forward threads input_ids for the replayed Engram forward): full-layer
+# recompute below trades compute for the largest memory saving. For less saving switch to selective with
+# engram-safe modules (--recompute_granularity selective --recompute_modules moe moe_act layernorm
+# mla_up_proj shared_experts), or set --recompute_granularity none to disable.
 
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 megatron sft \
@@ -79,7 +83,9 @@ megatron sft \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer \
     --finetune true \
-    --recompute_granularity none \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
     --masked_softmax_fusion false \
     --attention_backend flash \
     --logging_steps 1 \
