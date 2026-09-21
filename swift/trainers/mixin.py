@@ -47,7 +47,8 @@ from swift.hub import get_hub
 from swift.loss import loss_map
 from swift.metrics import MeanMetric, compute_acc, eval_metrics_map
 from swift.model import get_llm_model, get_lm_head_model, save_checkpoint
-from swift.model.patcher import gather_sequence_parallel_outputs, revert_padding_free, transformers_seq_cls_forward
+from swift.model.patcher import (gather_sequence_parallel_outputs, patch_frozen_module, revert_padding_free,
+                                 transformers_seq_cls_forward)
 from swift.optimizers import OptimizerCallback, optimizers_map
 from swift.sequence_parallel import SequenceParallelDispatcher, SequenceParallelSampler, sequence_parallel
 from swift.template import Template, update_generation_config_eos_token
@@ -987,6 +988,8 @@ class SwiftMixin:
                             vision_tower.disable_input_require_grads()
                     except (NotImplementedError, AttributeError, ValueError) as e:
                         logger.warning(f'prepare gradient_checkpointing failed: {e}')
+                if isinstance(vision_tower, nn.Module):
+                    patch_frozen_module(vision_tower)
         # Avoid vit_gradient_checkpointing being overwritten by transformers.Trainer.gradient_checkpointing_enable.
         self.args.gradient_checkpointing = False
 
