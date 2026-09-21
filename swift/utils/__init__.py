@@ -26,8 +26,8 @@ if TYPE_CHECKING:
                               gc_collect, get_current_device, get_device, get_device_count,
                               get_generative_reranker_logits, get_last_valid_indices, get_max_reserved_memory,
                               get_physical_device_count, get_torch_device, init_process_group, ipc_collect,
-                              is_torch_musa_available, is_torch_rocm, nanstd, safe_ddp_context, set_default_ddp_config,
-                              set_device, synchronize, time_synchronize, to_device, to_float_dtype)
+                              is_torch_rocm, nanstd, safe_ddp_context, set_default_ddp_config, set_device, synchronize,
+                              time_synchronize, to_device, to_float_dtype)
     from .transformers_utils import (activate_parameters, disable_deepspeed_zero3, find_all_linears, find_embedding,
                                      find_layers, find_norm, find_sub_module, freeze_parameters,
                                      get_cu_seqlens_from_position_ids, get_model_parameter_info,
@@ -73,8 +73,7 @@ else:
             'get_current_device', 'get_device', 'get_device_count', 'get_generative_reranker_logits',
             'get_last_valid_indices', 'get_max_reserved_memory', 'get_torch_device', 'init_process_group',
             'ipc_collect', 'safe_ddp_context', 'set_default_ddp_config', 'set_device', 'synchronize',
-            'time_synchronize', 'to_device', 'to_float_dtype', 'nanstd', 'get_physical_device_count', 'is_torch_rocm',
-            'is_torch_musa_available'
+            'time_synchronize', 'to_device', 'to_float_dtype', 'nanstd', 'get_physical_device_count', 'is_torch_rocm'
         ],
         'transformers_utils': [
             'activate_parameters', 'disable_deepspeed_zero3', 'find_all_linears', 'find_embedding', 'find_layers',

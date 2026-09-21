@@ -12,21 +12,12 @@ import uuid
 from contextlib import contextmanager
 from datasets.utils.filelock import FileLock
 from datetime import timedelta
-from functools import lru_cache
 from modelscope.hub.utils.utils import get_cache_dir
-from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
+from transformers.utils import (is_torch_cuda_available, is_torch_mps_available, is_torch_musa_available,
+                                is_torch_npu_available)
 from typing import Any, Mapping, Optional, Union
 
 from .env import get_dist_setting, get_node_setting, is_dist, is_local_master, is_master, is_mp
-
-
-@lru_cache
-def is_torch_musa_available() -> bool:
-    """True when torch_musa (Moore Threads GPU) is loaded and a MUSA device is usable.
-
-    ``torch.cuda.is_available()`` is intentionally False on MUSA (see torchada), so MUSA needs its own check.
-    """
-    return getattr(torch, 'musa', None) is not None and torch.musa.is_available()
 
 
 def nanstd(tensor: torch.Tensor, dim: Optional[Union[int, tuple]] = None, keepdim: bool = False) -> torch.Tensor:

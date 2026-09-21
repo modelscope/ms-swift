@@ -11,12 +11,12 @@ from torch import nn
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_mps_available,
-                                is_torch_npu_available, strtobool)
+                                is_torch_musa_available, is_torch_npu_available, strtobool)
 from types import MethodType
 from typing import List, Optional, TypeVar, Union
 
 from swift.utils import (HfConfigFactory, Processor, deep_getattr, get_dist_setting, get_env_args, get_logger, is_mp,
-                         is_torch_musa_available, to_device)
+                         to_device)
 
 logger = get_logger()
 

@@ -38,6 +38,7 @@ try:
     from transformers.trainer_utils import sort_checkpoints
 except ImportError:
     sort_checkpoints = None
+from transformers.utils import is_torch_musa_available
 from types import MethodType
 from typing import Callable, Dict, List, Optional
 
@@ -55,8 +56,8 @@ from swift.template import Template, update_generation_config_eos_token
 from swift.tuner_plugin import tuners_map
 from swift.tuners import SwiftModel
 from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device, get_logger,
-                         get_packed_seq_params, is_dist, is_mp, is_mp_ddp, is_torch_musa_available, ms_logger_context,
-                         seed_worker, update_last_checkpoint_symlink)
+                         get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker,
+                         update_last_checkpoint_symlink)
 from .arguments import TrainingArguments
 from .utils import (accepts_parameter, can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function,
                     get_resume_dir, is_instance_of_ms_model, patch_modelscope_hub_timeout, replace_index_file)
