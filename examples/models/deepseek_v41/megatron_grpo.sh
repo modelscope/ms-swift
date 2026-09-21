@@ -27,12 +27,6 @@
 #      tensor_model_parallel_size stays 1 and there is no --sequence_parallel. CP / PP / EP / DP are supported.
 #      --vllm_tensor_parallel_size is the inference-side TP, independent of the (unsupported) training TP;
 #      keep it within one node.
-#
-# Defaults target the real deepseek-ai/DeepSeek-V4.1-Flash on an H200-class cluster: EP=8 / PP=4 / vLLM-TP=8
-# assume 4 nodes x 8 GPUs (world_size 32), so the scheduler must inject NNODES=4 -- adjust EP/PP/NNODES to your
-# hardware. For a small-node smoke test, override MODEL with a tiny checkpoint and shrink the sizes, e.g.:
-#   MODEL=.temp/dsv41_tiny_sft NPROC_PER_NODE=2 EP_SIZE=1 PP_SIZE=1 VLLM_TP=1 NUM_GENERATIONS=2 \
-#   MAX_LENGTH=512 MAX_COMPLETION_LENGTH=128 VLLM_MAX_MODEL_LEN=1024 TRAIN_ITERS=5 SAVE_STEPS=5 bash megatron_grpo.sh
 set -e
 cd "$(git rev-parse --show-toplevel)"
 export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${LD_LIBRARY_PATH:-}"   # newer libstdc++ (CXXABI) than the system one

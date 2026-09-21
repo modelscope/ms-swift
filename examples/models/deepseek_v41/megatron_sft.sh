@@ -18,12 +18,6 @@
 #
 # 3. No TP/SP: DeepSeek-V4.1 does not support tensor/sequence parallel (we have not implemented it), so
 #      tensor_model_parallel_size stays 1 and there is no --sequence_parallel. CP / PP / EP / DP are supported.
-#
-# Defaults target the real deepseek-ai/DeepSeek-V4.1-Flash on an H200-class cluster: EP=8 / PP=4 assume
-# 4 nodes x 8 GPUs (world_size 32), so the scheduler must inject NNODES=4 -- adjust EP/PP/NNODES to your
-# hardware. For a small-node smoke test, override MODEL with a tiny checkpoint and shrink the sizes, e.g.:
-#   MODEL=.temp/dsv41_tiny_sft NPROC_PER_NODE=2 EP_SIZE=1 PP_SIZE=1 \
-#   MAX_LENGTH=4096 TRAIN_ITERS=5 SAVE_STEPS=5 bash megatron_sft.sh
 set -e
 cd "$(git rev-parse --show-toplevel)"
 export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${LD_LIBRARY_PATH:-}"   # newer libstdc++ (CXXABI) than the system one
