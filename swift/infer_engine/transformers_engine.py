@@ -57,6 +57,7 @@ class TransformersEngine(InferEngine):
             adapters: Optional[List[str]] = None,
             adapter_names: Optional[List[str]] = None,
             max_batch_size: int = 1,  # 0/1: no limit
+            strict: bool = False,
             reranker_use_activation: bool = True,
             # model kwargs
             torch_dtype: Optional[torch.dtype] = None,
@@ -77,6 +78,7 @@ class TransformersEngine(InferEngine):
             adapters = [adapters]
         self.adapters = adapters or []
         self.max_batch_size = max_batch_size
+        self.strict = strict
         self.reranker_use_activation = reranker_use_activation
 
         self.torch_dtype = torch_dtype
