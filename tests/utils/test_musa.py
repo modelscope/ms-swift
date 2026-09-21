@@ -8,8 +8,40 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from swift.cli.utils import sync_musa_visible_devices, try_use_single_device_mode
 from swift.utils import torch_utils
 from swift.utils.import_utils import is_torch_musa_installed, is_torchada_available
+
+_DEVICE_ENV_KEYS = ('CUDA_VISIBLE_DEVICES', 'MUSA_VISIBLE_DEVICES', 'LOCAL_RANK', 'SWIFT_SINGLE_DEVICE_MODE')
+
+# Stub torchada that records the state it is imported in, so the tests can check what `import swift` did before it.
+_STUB_TORCHADA = """import os, sys
+MUSA_VISIBLE_DEVICES = os.environ.get('MUSA_VISIBLE_DEVICES')
+LOCAL_RANK = os.environ.get('LOCAL_RANK')
+TORCH_IMPORTED = 'torch' in sys.modules
+"""
+
+
+def _run_python(code, env=None, stubs=(), hidden=()):
+    """Run `code` in a clean interpreter with stub packages, hidden packages and a clean device env."""
+    with tempfile.TemporaryDirectory() as tmp:
+        for name, source in stubs:
+            (Path(tmp) / name).mkdir()
+            (Path(tmp) / name / '__init__.py').write_text(source)
+        # sys.modules[name] = None makes find_spec() return None, which hides a real install.
+        code = f'import sys; sys.modules.update(dict.fromkeys({list(hidden)!r})); {code}'
+        root = Path(__file__).resolve().parents[2]
+        base_env = {k: v for k, v in os.environ.items() if k not in _DEVICE_ENV_KEYS}
+        base_env['PYTHONPATH'] = os.pathsep.join([tmp, str(root), os.environ.get('PYTHONPATH', '')])
+        out = subprocess.run([sys.executable, '-c', code],
+                             env={
+                                 **base_env,
+                                 **(env or {})
+                             },
+                             capture_output=True,
+                             text=True,
+                             check=True)
+    return out.stdout.strip().splitlines()[-1]
 
 
 def _fake_musa(bf16=True):
@@ -43,21 +75,10 @@ class TestTorchadaBootstrap(unittest.TestCase):
 
     @staticmethod
     def _torchada_imported(torch_musa, torchada):
-        """Run `import swift` in a clean interpreter with stub torch_musa/torchada packages (or none)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            hidden = []
-            for name, present in [('torch_musa', torch_musa), ('torchada', torchada)]:
-                if present:
-                    (Path(tmp) / name).mkdir()
-                    (Path(tmp) / name / '__init__.py').write_text('')
-                else:
-                    hidden.append(name)  # hide a real install: find_spec() returns None for sys.modules[name] = None
-            code = (f'import sys; sys.modules.update(dict.fromkeys({hidden!r})); '
-                    'import swift; print(sys.modules.get("torchada") is not None)')
-            root = Path(__file__).resolve().parents[2]
-            env = {**os.environ, 'PYTHONPATH': os.pathsep.join([tmp, str(root), os.environ.get('PYTHONPATH', '')])}
-            out = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, text=True, check=True)
-        return out.stdout.strip().splitlines()[-1] == 'True'
+        stubs = [(name, '') for name, present in [('torch_musa', torch_musa), ('torchada', torchada)] if present]
+        hidden = [name for name, present in [('torch_musa', torch_musa), ('torchada', torchada)] if not present]
+        code = 'import swift; print(sys.modules.get("torchada") is not None)'
+        return _run_python(code, stubs=stubs, hidden=hidden) == 'True'
 
     def test_imported_when_torch_musa_is_installed(self):
         self.assertTrue(self._torchada_imported(torch_musa=True, torchada=True))
@@ -67,6 +88,56 @@ class TestTorchadaBootstrap(unittest.TestCase):
 
     def test_skipped_without_torchada(self):
         self.assertFalse(self._torchada_imported(torch_musa=True, torchada=False))
+
+    def test_visible_devices_are_final_before_torch_is_imported(self):
+        # torch autoloads torch_musa, which reads MUSA_VISIBLE_DEVICES once, so it must be set before torch loads.
+        code = ('import swift, torchada; '
+                'print(torchada.MUSA_VISIBLE_DEVICES, torchada.LOCAL_RANK, torchada.TORCH_IMPORTED)')
+        env = {'CUDA_VISIBLE_DEVICES': '2,3', 'SWIFT_SINGLE_DEVICE_MODE': '1', 'LOCAL_RANK': '1'}
+        out = _run_python(code, env=env, stubs=[('torch_musa', ''), ('torchada', _STUB_TORCHADA)])
+        self.assertEqual(out, '3 0 False')
+
+    def test_device_env_untouched_without_torch_musa(self):
+        code = 'import os, swift; print(os.environ.get("MUSA_VISIBLE_DEVICES"), os.environ["CUDA_VISIBLE_DEVICES"])'
+        out = _run_python(code, env={'CUDA_VISIBLE_DEVICES': '2,3'}, hidden=['torch_musa'])
+        self.assertEqual(out, 'None 2,3')
+
+
+class TestMusaVisibleDevices(unittest.TestCase):
+
+    def setUp(self):
+        patcher = patch.dict(os.environ)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for key in _DEVICE_ENV_KEYS:
+            os.environ.pop(key, None)
+
+    def test_sync_copies_cuda_visible_devices(self):
+        os.environ['CUDA_VISIBLE_DEVICES'] = '1,2'
+        sync_musa_visible_devices()
+        self.assertEqual(os.environ['MUSA_VISIBLE_DEVICES'], '1,2')
+
+    def test_sync_keeps_explicit_musa_visible_devices(self):
+        os.environ.update(CUDA_VISIBLE_DEVICES='1,2', MUSA_VISIBLE_DEVICES='5')
+        sync_musa_visible_devices()
+        self.assertEqual(os.environ['MUSA_VISIBLE_DEVICES'], '5')
+
+    def test_sync_is_noop_without_cuda_visible_devices(self):
+        sync_musa_visible_devices()
+        self.assertNotIn('MUSA_VISIBLE_DEVICES', os.environ)
+
+    def test_single_device_mode_uses_musa_visible_devices(self):
+        os.environ.update(SWIFT_SINGLE_DEVICE_MODE='1', LOCAL_RANK='1', MUSA_VISIBLE_DEVICES='4,6')
+        try_use_single_device_mode()
+        self.assertEqual((os.environ['MUSA_VISIBLE_DEVICES'], os.environ['LOCAL_RANK']), ('6', '0'))
+        try_use_single_device_mode()  # idempotent: the CLI entry points call it again after `import swift`
+        self.assertEqual((os.environ['MUSA_VISIBLE_DEVICES'], os.environ['LOCAL_RANK']), ('6', '0'))
+
+    def test_single_device_mode_on_cuda_is_unchanged(self):
+        os.environ.update(SWIFT_SINGLE_DEVICE_MODE='1', LOCAL_RANK='1', CUDA_VISIBLE_DEVICES='4,6')
+        try_use_single_device_mode()
+        self.assertEqual((os.environ['CUDA_VISIBLE_DEVICES'], os.environ['LOCAL_RANK']), ('6', '0'))
+        self.assertNotIn('MUSA_VISIBLE_DEVICES', os.environ)
 
 
 class TestMusaDeviceHelpers(unittest.TestCase):
@@ -184,6 +255,17 @@ class TestMusaOptimizerDefault(unittest.TestCase):
         self.assertEqual(self._optim(False, optim='adamw_torch_fused'), 'adamw_torch_fused')
 
 
+class TestMusaActivationOffload(unittest.TestCase):
+
+    def test_offload_streams_use_musa(self):
+        from swift.callbacks import activation_cpu_offload as offload
+        fake = _fake_musa()
+        with patch.object(offload, 'is_cuda_available', False), patch.object(offload, 'is_npu_available', False), \
+                patch.object(offload, 'is_musa_available', True), patch.object(torch, 'musa', fake, create=True):
+            self.assertEqual(offload.get_device_name(), 'musa')
+            self.assertIs(offload.get_torch_device(), fake)
+
+
 @unittest.skipUnless(torch_utils.is_torch_musa_available(), 'requires a MUSA device')
 class TestMusaHardware(unittest.TestCase):
 
@@ -202,6 +284,17 @@ class TestMusaHardware(unittest.TestCase):
     def test_cuda_apis_are_redirected_by_torchada(self):
         self.assertEqual(torch.device('cuda:0').type, 'musa')
         self.assertEqual(torch.cuda.device_count(), torch.musa.device_count())
+
+    @unittest.skipUnless(is_torchada_available(), 'requires torchada')
+    def test_cuda_visible_devices_limits_musa_devices(self):
+        code = 'import os, swift, torch; print(torch.musa.device_count(), os.environ["CUDA_VISIBLE_DEVICES"])'
+        self.assertEqual(_run_python(code, env={'CUDA_VISIBLE_DEVICES': '1'}), '1 1')
+
+    @unittest.skipUnless(is_torchada_available(), 'requires torchada')
+    def test_single_device_mode_limits_musa_devices(self):
+        code = 'import os, swift, torch; print(torch.musa.device_count(), os.environ["LOCAL_RANK"])'
+        env = {'CUDA_VISIBLE_DEVICES': '0,1', 'SWIFT_SINGLE_DEVICE_MODE': '1', 'LOCAL_RANK': '1'}
+        self.assertEqual(_run_python(code, env=env), '1 0')
 
 
 if __name__ == '__main__':

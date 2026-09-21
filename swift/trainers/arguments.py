@@ -282,7 +282,7 @@ class TrainArgumentsMixin:
         if is_torch_musa_available() and self.optim == 'adamw_torch_fused':
             # torch.optim.AdamW(fused=True) is not supported on MUSA.
             self.optim = 'adamw_torch'
-            logger.info("Setting args.optim: 'adamw_torch' because the fused AdamW is not supported on MUSA.")
+            logger.warning("Setting args.optim: 'adamw_torch' because the fused AdamW is not supported on MUSA.")
         if self.optimizer is None and (self.vit_lr is not None or self.aligner_lr is not None):
             self.optimizer = 'multimodal'
         self._init_callbacks()

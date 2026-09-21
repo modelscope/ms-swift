@@ -162,6 +162,7 @@ def get_current_device():
 
 
 def get_torch_device():
+    # MUSA goes first: MUSA patches such as megatron-lm-musa-patch make torch.cuda.is_available() return True.
     if is_torch_musa_available():
         return torch.musa
     elif is_torch_cuda_available():

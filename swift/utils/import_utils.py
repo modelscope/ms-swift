@@ -21,11 +21,16 @@ def is_vllm_metax_available():
 
 
 def is_torch_musa_installed():
-    """Whether torch_musa (Moore Threads GPU support for PyTorch) is installed."""
+    """Whether torch_musa (Moore Threads GPU support for PyTorch) is installed.
+
+    It does not import torch, so it is safe to call before torch is loaded. Use
+    `swift.utils.is_torch_musa_available` to check for a usable MUSA device.
+    """
     return importlib.util.find_spec('torch_musa') is not None
 
 
 def is_torchada_available():
+    """Whether torchada (the CUDA-to-MUSA adapter for torch_musa) is installed."""
     return importlib.util.find_spec('torchada') is not None
 
 
