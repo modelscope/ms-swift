@@ -18,7 +18,7 @@ from typing import Dict, List, Tuple, Type
 
 from swift.utils import TB_COLOR, TB_COLOR_SMOOTH, format_time, get_logger, read_tensorboard_file, tensorboard_smoothing
 from ..base import BaseUI
-from .utils import close_loop, run_command_in_subprocess
+from .utils import close_loop, run_command_in_subprocess, validate_cmd
 
 logger = get_logger()
 
@@ -684,6 +684,10 @@ class Runtime(BaseUI):
     @classmethod
     def save_cmd(cls, cmd):
         if len(cmd) > 0:
+            try:
+                validate_cmd(cmd)
+            except ValueError as e:
+                raise gr.Error(str(e))
             cmd_sh, output_dir = Runtime.cmd_to_sh_format(cmd)
             os.makedirs(output_dir, exist_ok=True)
             sh_file_path = os.path.join(output_dir, 'train.sh')
