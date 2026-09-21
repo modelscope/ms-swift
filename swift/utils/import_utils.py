@@ -20,6 +20,15 @@ def is_vllm_metax_available():
     return importlib.util.find_spec('vllm_metax') is not None
 
 
+def is_torch_musa_installed():
+    """Whether torch_musa (Moore Threads GPU support for PyTorch) is installed."""
+    return importlib.util.find_spec('torch_musa') is not None
+
+
+def is_torchada_available():
+    return importlib.util.find_spec('torchada') is not None
+
+
 def is_vllm_kunlun_available():
     return importlib.util.find_spec('vllm_kunlun') is not None
 

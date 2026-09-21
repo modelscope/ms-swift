@@ -160,6 +160,7 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 | RTX 20/30/40 Series  |                                                        |
 | T4/V100              | Some models may encounter NAN                          |
 | Ascend NPU           | Some models may encounter NAN or unsupported operators |
+| Moore Threads MUSA   | Requires [torch_musa](https://github.com/MooreThreads/torch_musa); install [torchada](https://github.com/MooreThreads/torchada) (`pip install -r requirements/musa.txt`), which is imported automatically |
 | MPS                  |   Refer to [issue 4572](https://github.com/modelscope/ms-swift/issues/4572)                         |
 | CPU                  |                                                        |
 

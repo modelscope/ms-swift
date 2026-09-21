@@ -16,7 +16,7 @@ from types import MethodType
 from typing import List, Optional, TypeVar, Union
 
 from swift.utils import (HfConfigFactory, Processor, deep_getattr, get_dist_setting, get_env_args, get_logger, is_mp,
-                         to_device)
+                         is_torch_musa_available, to_device)
 
 logger = get_logger()
 
@@ -234,6 +234,8 @@ def get_default_device_map():
         local_rank = 0
     if is_torch_npu_available():
         return 'auto' if is_mp() else f'npu:{local_rank}'
+    elif is_torch_musa_available():
+        return 'auto' if is_mp() else f'musa:{local_rank}'
     elif is_torch_mps_available():
         return f'mps:{local_rank}'
     elif is_torch_cuda_available():
@@ -248,12 +250,13 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
         return torch_dtype
 
     try:
-        is_bf16_available = is_torch_bf16_gpu_available() or (is_torch_npu_available()
-                                                              and torch.npu.is_bf16_supported())
+        is_bf16_available = (
+            is_torch_bf16_gpu_available() or (is_torch_npu_available() and torch.npu.is_bf16_supported())
+            or (is_torch_musa_available() and torch.musa.is_bf16_supported()))
     except Exception:  # noqa
         is_bf16_available = False
 
-    if is_torch_cuda_available() or is_torch_npu_available():
+    if is_torch_cuda_available() or is_torch_npu_available() or is_torch_musa_available():
         if is_bf16_available:
             return torch.bfloat16
         else:

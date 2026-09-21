@@ -1,7 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from typing import TYPE_CHECKING
 
-from .utils.import_utils import _LazyModule
+from .utils.import_utils import _LazyModule, is_torch_musa_installed, is_torchada_available
+
+if is_torch_musa_installed() and is_torchada_available():
+    # torchada redirects the torch.cuda.* APIs to torch.musa, so it must be imported before anything uses them.
+    import torchada  # noqa: F401
 
 if TYPE_CHECKING:
     from .agent_template import BaseAgentTemplate, agent_template_map

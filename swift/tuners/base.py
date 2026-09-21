@@ -19,7 +19,7 @@ from transformers.utils import is_torch_npu_available
 from types import MethodType
 from typing import Dict, List, Literal, Optional, Union
 
-from swift.utils import get_device_count, get_logger
+from swift.utils import get_device_count, get_logger, is_torch_musa_available
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
 from .mapping import SwiftTuners
 from .peft import PeftConfig, PeftModel, get_peft_model
@@ -252,6 +252,8 @@ class SwiftModel(nn.Module):
                 device = 'cuda'
             elif is_torch_npu_available():
                 device = 'npu'
+            elif is_torch_musa_available():
+                device = 'musa'
             else:
                 device = 'cpu'
         if os.path.exists(os.path.join(path, SAFETENSORS_WEIGHTS_NAME)):
