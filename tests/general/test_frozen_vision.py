@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import copy
+import inspect
 import torch
 import unittest
 from peft import LoraConfig, get_peft_model
@@ -169,6 +170,9 @@ class TestFrozenVision(unittest.TestCase):
                     pixel_values=torch.randn(16, 24),
                     image_grid_thw=torch.tensor([[1, 4, 4]]),
                     use_cache=False)
+                if 'mm_token_type_ids' in inspect.signature(model.forward).parameters:
+                    # Newer processors mark image tokens as 1 and text tokens as 0 for M-RoPE.
+                    inputs['mm_token_type_ids'] = (tokens == config.image_token_id).long()
                 actual, expected = model(**inputs), reference(**inputs)
                 torch.testing.assert_close(actual.logits, expected.logits)
                 torch.testing.assert_close(actual.loss, expected.loss)
