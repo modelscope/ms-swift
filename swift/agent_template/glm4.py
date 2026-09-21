@@ -160,6 +160,12 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             res.append('<|assistant|>')
         return assistant_content, res
 
+    def _format_tool_user_followup(self, tool_messages, user_messages) -> 'Prompt':
+        # Keep the native tool turns and replace only their trailing assistant transition.
+        _, tool_content = self._format_tool_responses('', tool_messages)
+        prefix, suffix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)
+        return tool_content[:-1] + [prefix + message['content'] for message in user_messages] + [suffix]
+
     def _format_standalone_tool_responses(self, tool_messages) -> 'Prompt':
         res = ['<|observation|>']
         for tool_message in tool_messages:
