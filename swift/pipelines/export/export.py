@@ -7,6 +7,7 @@ from swift.tuners import swift_to_peft_format
 from swift.utils import get_logger
 from .cached_dataset import export_cached_dataset
 from .merge_lora import merge_lora
+from .model_summary import export_model_summary
 from .ollama import export_to_ollama
 from .quant import quantize_model
 
@@ -31,6 +32,8 @@ class SwiftExport(SwiftPipeline):
             quantize_model(args)
         elif args.to_ollama:
             export_to_ollama(args)
+        elif args.to_model_summary:
+            export_model_summary(args)
         elif args.to_cached_dataset:
             export_cached_dataset(args)
         elif args.to_hf or args.mcore_adapter and args.to_mcore:
