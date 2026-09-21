@@ -868,8 +868,8 @@ In addition to the parameters listed above, some models support additional model
 - Note: If you specify model-specific parameters during training, please also set the corresponding parameters during inference to achieve optimal performance.
 
 
-### deepseek_v4, deepseek_v4_flash, glm5_2, hy_v3_preview
-- 🔥REASONING_EFFORT: Thinking effort, effective only when thinking is enabled. The accepted values vary by model: `'high'`/`'max'` for `deepseek_v4` (default `'high'`); `'low'`/`'high'`/`'max'` for `deepseek_v4_flash` (default `'low'`); `'high'`/`'max'` for `glm5_2` (default `'max'`); `'no_think'`/`'low'`/`'high'` for `hy_v3_preview` (default `'high'`).
+### deepseek_v4, deepseek_v4_flash, glm5_2, glm5_3, hy_v3_preview
+- 🔥REASONING_EFFORT: Thinking effort, effective only when thinking is enabled (except for `glm5_3`, which has no non-thinking mode and always applies it). The accepted values vary by model: `'high'`/`'max'` for `deepseek_v4` (default `'high'`); `'low'`/`'high'`/`'max'` for `deepseek_v4_flash` (default `'low'`); `'high'`/`'max'` for `glm5_2` (default `'max'`); `'low'`/`'high'`/`'max'` for `glm5_3` (default `'max'`); `'no_think'`/`'low'`/`'high'` for `hy_v3_preview` (default `'high'`).
   - It can also be set per sample by passing `chat_template_kwargs` in the dataset or the inference request, e.g. `{"chat_template_kwargs": {"reasoning_effort": "max"}}`, which takes precedence over the environment variable.
 
 
