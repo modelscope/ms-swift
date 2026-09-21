@@ -26,6 +26,9 @@ class Runtime(BaseUI):
 
     log_event = {}
 
+    # Used for validating log paths when the originating process has exited.
+    _ARTIFACT_FILES = ['args.json', 'logging']
+
     locale_dict = {
         'runtime_tab': {
             'label': {
@@ -119,8 +122,45 @@ class Runtime(BaseUI):
                 )
 
     @classmethod
+    def _is_known_task(cls, task):
+        """Verify that the task string corresponds to a real server-side process,
+        or that the log_file path points to a legitimate output location when
+        the process has already exited.
+        """
+        if not task or 'pid:' not in task:
+            return False
+        try:
+            pid, all_args = cls.parse_info_from_cmdline(task)
+            pid_int = int(pid)
+        except Exception:
+            return False
+        # Check if the process is still alive
+        try:
+            proc = psutil.Process(pid_int)
+            cmdlines = proc.cmdline()
+            process_name = 'swift'
+            negative_name = 'swift.exe'
+            cmd_name = cls.cmd
+            return (any(process_name in c for c in cmdlines) and not any(negative_name in c for c in cmdlines)
+                    and any(cmd_name == c for c in cmdlines))
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+        # Process has exited — fall back to validating the log_file path.
+        log_file = all_args.get('log_file', '')
+        if not log_file:
+            return False
+        log_file = os.path.realpath(os.path.expanduser(log_file))
+        log_dir = os.path.dirname(log_file)
+        if not os.path.isdir(log_dir):
+            return False
+        return any(os.path.exists(os.path.join(log_dir, f)) for f in cls._ARTIFACT_FILES)
+
+    @classmethod
     def break_log_event(cls, task):
         if not task:
+            return
+        if not cls._is_known_task(task):
+            logger.warning(f'Rejected unknown task in break_log_event: {task[:80]}')
             return
         pid, all_args = cls.parse_info_from_cmdline(task)
         cls.log_event[all_args['log_file']] = True
@@ -132,6 +172,9 @@ class Runtime(BaseUI):
     @classmethod
     def wait(cls, task):
         if not task:
+            return [None]
+        if not cls._is_known_task(task):
+            logger.warning(f'Rejected unknown task in wait: {task[:80]}')
             return [None]
         _, args = cls.parse_info_from_cmdline(task)
         log_file = args['log_file']
@@ -247,6 +290,9 @@ class Runtime(BaseUI):
     @classmethod
     def kill_task(cls, task):
         if task:
+            if not cls._is_known_task(task):
+                logger.warning(f'Rejected unknown task in kill_task: {task[:80]}')
+                return [cls.refresh_tasks()] + [gr.update(value=None)]
             pid, all_args = cls.parse_info_from_cmdline(task)
             log_file = all_args['log_file']
             if sys.platform == 'win32':
@@ -264,7 +310,10 @@ class Runtime(BaseUI):
     @classmethod
     def task_changed(cls, task, base_tab):
         if task:
-            _, all_args = cls.parse_info_from_cmdline(task)
+            try:
+                _, all_args = cls.parse_info_from_cmdline(task)
+            except Exception:
+                all_args = {}
         else:
             all_args = {}
         elements = list(base_tab.valid_elements().values())
