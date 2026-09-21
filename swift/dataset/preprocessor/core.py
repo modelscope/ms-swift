@@ -72,6 +72,9 @@ class RowPreprocessor:
         # fix swift/SlimOrca (concat)
         for message in messages:
             keys = set(message.keys()) - {'role', 'content', 'loss', 'loss_scale'}
+            if message.get('role') in {'tool', 'tool_response'}:
+                # Native agent templates (e.g. Gemma4) use the tool response name.
+                keys.discard('name')
             for key in keys:
                 message.pop(key)
 

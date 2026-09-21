@@ -211,6 +211,7 @@ class MLLMModelType:
     llava_onevision1_5 = 'llava_onevision1_5'
     llava_onevision2 = 'llava_onevision2'
 
+    deepseek_v41 = 'deepseek_v41'
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'

@@ -106,7 +106,7 @@ class DistillSampler(VanillaSampler):
         resp_all = []
         infer_requests = []
         sent = 0
-        rows = self.convert_data_to_rows(data)
+        rows = self.convert_data_to_rows(data, system=self.args.system)
         for idx, row in enumerate(rows):
             row = deepcopy(row)
             messages = row['messages']
@@ -115,11 +115,6 @@ class DistillSampler(VanillaSampler):
                 choices = self.caches[uuid]['choices']
                 if len(choices) == self.args.num_return_sequences:
                     continue
-            if self.args.system:
-                if messages[0]['role'] == 'system':
-                    messages[0]['content'] = self.args.system
-                else:
-                    messages.insert(0, {'role': 'system', 'content': self.args.system})
             if messages[-1]['role'] == 'assistant':
                 messages = messages[:-1]
 

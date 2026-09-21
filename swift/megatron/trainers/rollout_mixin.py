@@ -615,7 +615,14 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         target_device = 'cpu' if self.args.offload_bridge else None
 
         with profiling_context(self, 'export_weights'):
-            weight_iterator = self.bridge.export_weights(self.unwrapped_models, target_device=target_device)
+            # skip_unsupported_export: RL weight sync skips weights whose Megatron->HF export is not
+            # implemented and that stay fixed in the rollout engine (e.g. frozen DeepSeek-V4.1 Engram
+            # tables). No-op for models without such weights. Guard with signature inspection so an
+            # older bridge whose export_weights predates this kwarg does not raise TypeError.
+            export_kwargs = {'target_device': target_device}
+            if 'skip_unsupported_export' in inspect.signature(self.bridge.export_weights).parameters:
+                export_kwargs['skip_unsupported_export'] = True
+            weight_iterator = self.bridge.export_weights(self.unwrapped_models, **export_kwargs)
 
         if self.rollout_enable_lora:
             vllm_param_names = self._get_vllm_param_names_for_mapping()
