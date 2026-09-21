@@ -419,15 +419,6 @@ class Runtime(BaseUI):
         """Verify that the task string corresponds to a real server-side process,
         or that the output_dir path points to a legitimate output location when
         the process has already exited.
-
-        This prevents forged task strings from being used to read arbitrary files
-        via the logging_dir path used in wait().
-
-        Instead of exact string matching (which would fail because the 'running:'
-        field changes over time), we verify that the PID extracted from the task
-        string corresponds to a live swift training process. If the process has
-        exited, we fall back to checking that the output_dir from the task string
-        points to a plausible output directory.
         """
         if not task or 'pid:' not in task:
             return False
