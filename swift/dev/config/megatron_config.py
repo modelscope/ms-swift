@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Optional, Union
+from typing import Any, Dict, Literal, Optional
 
 
 @dataclass
@@ -100,7 +100,6 @@ class MegatronConfig:
     sequence_packing_scheduler: Optional[Literal['dp_balanced', 'default_dynamic_cp']] = None
 
     # === Escape hatch ===
-    #: Passed straight through to Megatron's own argument namespace. A dict, or a JSON string for
-    #: command lines. This exists so a Megatron flag that has no field here is still reachable, and is
-    #: the reason this config does not need to mirror all of Megatron's several hundred arguments.
-    megatron_extra_kwargs: Optional[Union[dict, str]] = None
+    #: Passed straight through to Megatron's own argument namespace. The CLI accepts a JSON object or
+    #: JSON file. This keeps Megatron flags without dedicated fields reachable.
+    megatron_extra_kwargs: Optional[Dict[str, Any]] = None

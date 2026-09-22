@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import concurrent.futures
+import inspect
 import logging
 import os
 import torch
@@ -125,10 +126,14 @@ def _patch_mcore_bridge():
         output_dir: str,
         peft_format: bool = False,
         max_shard_size: str = '5GB',
+        save_missing_weights=True,
         args=None,
         processor=None,
     ) -> None:
-        origin_save_weights(self, mg_models, output_dir, peft_format=peft_format, max_shard_size=max_shard_size)
+        save_kwargs = {'peft_format': peft_format, 'max_shard_size': max_shard_size}
+        if 'save_missing_weights' in inspect.signature(origin_save_weights).parameters:
+            save_kwargs['save_missing_weights'] = save_missing_weights
+        origin_save_weights(self, mg_models, output_dir, **save_kwargs)
         if processor is None or args is None:
             return
         hf_config = self.config.hf_config

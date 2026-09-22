@@ -12,7 +12,7 @@ this one adds no new Config.
 from __future__ import annotations
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from swift.dev.config import CheckpointConfig, ModelConfig, TemplateConfig, TunerConfig
@@ -90,19 +90,15 @@ def _load_base_model(model_config: ModelConfig, *, device_map: Optional[Any]):
     (huggingface/peft#2321) -- so the merge always runs on the unquantized weights. legacy does the
     same by clearing args.quant_method before loading.
     """
-    from swift.model import get_model_processor
+    from copy import copy
 
-    kwargs: Dict[str, Any] = {}
-    if model_config.torch_dtype:
-        import torch
-        kwargs['torch_dtype'] = getattr(torch, model_config.torch_dtype)
-    if model_config.model_type:
-        kwargs['model_type'] = model_config.model_type
+    from swift.dev.builders import load_model_processor
+
     resolved_device_map = device_map or model_config.device_map
-    if resolved_device_map:
-        kwargs['device_map'] = resolved_device_map
     logger.info(f'merge_device_map: {resolved_device_map}')
-    return get_model_processor(model_config.model, **kwargs)
+    load_config = copy(model_config)
+    load_config.device_map = resolved_device_map
+    return load_model_processor(load_config, load_model=True)
 
 
 def _build_template(template_config: Optional[TemplateConfig], processor, model):
@@ -165,13 +161,12 @@ def _render_ollama_parts(template, parts, placeholder: str, replacement: str) ->
 
 def run_export_ollama(model_config, template_config, generation_config, output_dir: str) -> str:
     """Write an Ollama Modelfile for a resolved local model directory."""
-    from swift.dev.builders import build_template
-    from swift.model import get_model_processor
+    from swift.dev.builders import build_template, load_model_processor
 
     if not model_config.model or not os.path.isdir(model_config.model):
         raise ValueError('Ollama export requires a local model directory.')
     os.makedirs(output_dir, exist_ok=True)
-    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
+    _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
     meta = template.template_meta
     suffix = _render_ollama_parts(template, meta.suffix, '', '')

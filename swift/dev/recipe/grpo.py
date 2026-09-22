@@ -192,7 +192,15 @@ class GRPOLoop:
                  max_grad_norm: float = 1.0,
                  sampling_params: Optional[dict] = None,
                  logging_config: Optional['LoggingConfig'] = None,
-                 output_dir: str = 'output'):
+                 output_dir: str = 'output',
+                 save_steps: Optional[int] = None,
+                 no_save_optim: bool = False,
+                 no_save_rng: bool = False,
+                 safe_serialization: bool = True,
+                 max_shard_size: str = '5GB',
+                 save_total_limit: Optional[int] = None,
+                 manual_gc: bool = False,
+                 manual_gc_steps: int = 0):
         self.model = model
         self.rollout = rollout_engine
         self.prompts = prompts
@@ -228,6 +236,16 @@ class GRPOLoop:
         from swift.dev.recipe.tracking import RunTracker
         self.tracker = RunTracker(logging_config, output_dir)
         self.output_dir = output_dir
+        self.save_steps = save_steps
+        self.no_save_optim = no_save_optim
+        self.no_save_rng = no_save_rng
+        self.safe_serialization = safe_serialization
+        self.max_shard_size = max_shard_size
+        self.save_total_limit = save_total_limit
+        self.manual_gc = manual_gc
+        self.manual_gc_steps = manual_gc_steps
+        if self.manual_gc_steps < 0:
+            raise ValueError('manual_gc_steps must be >= 0.')
         self.global_step = 0
         self.micro_step = 0
         self.history: list = []
@@ -592,8 +610,13 @@ class GRPOLoop:
 
     def fit(self) -> list:  # noqa: C901
         """Train for ``max_steps`` optimizer steps, reusing each rollout ``num_iterations`` times."""
+        from swift.dev.recipe.train_loop import collect_manual_gc, finish_manual_gc, start_manual_gc
+
         ga = self.gradient_accumulation_steps
         group = self._active_group()
+        manual_gc = getattr(self, 'manual_gc', False)
+        manual_gc_steps = getattr(self, 'manual_gc_steps', 0)
+        gc_was_enabled = start_manual_gc(manual_gc)
         try:
             while self.global_step < self.max_steps:
                 batch = self._rollout_step()
@@ -629,6 +652,7 @@ class GRPOLoop:
                         self.model.clip_grad_and_step(max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
                         if is_boundary:
                             self.global_step += 1
+                            collect_manual_gc(manual_gc, manual_gc_steps, self.global_step)
                             self._sync_reference()
                             metrics = group.calculate_metrics(True)
                             loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
@@ -641,6 +665,30 @@ class GRPOLoop:
                             self.history.append(record)
                             if self.tracker.should_log(self.global_step):
                                 logger.info(f'step {self.global_step}  loss={record["loss"]:.4f}')
+                            save_steps = getattr(self, 'save_steps', None)
+                            if save_steps and self.global_step % save_steps == 0:
+                                self.save(f'checkpoint-{self.global_step}')
             return self.history
         finally:
+            finish_manual_gc(gc_was_enabled)
             self.tracker.close()
+
+    def save(self, name: str = 'checkpoint-final') -> str:
+        """Persist the policy and its optimizer/RNG state."""
+        from swift.dev.recipe.train_loop import save_training_checkpoint
+
+        return save_training_checkpoint(
+            self.model,
+            name,
+            output_dir=self.output_dir,
+            consumed_train_samples=self.global_step,
+            no_save_optim=self.no_save_optim,
+            no_save_rng=self.no_save_rng,
+            safe_serialization=self.safe_serialization,
+            max_shard_size=self.max_shard_size,
+            save_total_limit=self.save_total_limit)
+
+    def resume(self, state: dict) -> None:
+        """Resume optimizer phase and completed rollout-step count."""
+        self.micro_step = int(state['cur_step'])
+        self.global_step = int(state.get('consumed_train_samples', 0))

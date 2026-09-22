@@ -14,6 +14,7 @@ from swift.dev.config import (
     DistributedConfig,
     LoggingConfig,
     ModelConfig,
+    QuantizeConfig,
     RLHFConfig,
     TemplateConfig,
     TrainConfig,
@@ -24,7 +25,7 @@ from swift.dev.recipe.assembly import TrainAssembly, _resolve_step_interval
 
 
 def test_defaults_come_from_configs():
-    _, template, _, train, _, checkpoint, logging, tuner = parse_sft_configs(
+    _, template, _, train, _, checkpoint, logging, tuner, quantize = parse_sft_configs(
         ['--model', 'm', '--dataset', 'd', '--tuner_type', 'lora'])
     assert template.padding_side == TemplateConfig().padding_side == 'right'
     assert train.warmup_ratio == TrainConfig().warmup_ratio == 0.0
@@ -32,10 +33,11 @@ def test_defaults_come_from_configs():
     assert checkpoint.output_dir == CheckpointConfig().output_dir == 'output'
     assert logging.logging_steps == LoggingConfig().logging_steps == 5
     assert tuner.lora_rank == TunerConfig().lora_rank
+    assert quantize == QuantizeConfig()
 
 
 def test_explicit_values_land_in_owning_configs():
-    model, template, dataset, train, dist, checkpoint, logging, tuner = parse_sft_configs([
+    model, template, dataset, train, dist, checkpoint, logging, tuner, quantize = parse_sft_configs([
         '--model', 'm', '--dataset', 'd1', 'd2', '--val_dataset', 'v', '--torch_dtype', 'bfloat16',
         '--padding_side', 'left', '--max_length', '256', '--learning_rate', '0.0001', '--save_steps', '500',
         '--eval_steps', '100', '--logging_steps', '2', '--cp_comm_type', 'p2p', '--tuner_type', 'lora', '--lora_rank',
@@ -57,6 +59,7 @@ def test_explicit_values_land_in_owning_configs():
     assert logging.logging_steps == 2
     assert dist.cp_comm_type == 'p2p'
     assert tuner.lora_rank == 16 and tuner.lora_alpha == 64
+    assert quantize.quant_method is None
 
 
 def test_mapping_annotations_parse_stably_after_other_typing_imports():
@@ -75,17 +78,18 @@ def test_mapping_annotations_parse_stably_after_other_typing_imports():
 def test_legacy_precision_aliases_map_to_torch_dtype():
     model, *_ = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--bf16', 'true'])
     assert model.torch_dtype == 'bfloat16'
-    with pytest.raises(ValueError, match='mutually exclusive'):
+    with pytest.raises(ValueError, match='Conflicting values for --torch_dtype'):
         parse_sft_configs(['--model', 'm', '--dataset', 'd', '--bf16', 'true', '--fp16', 'true'])
 
 
 def test_full_training_yields_no_tuner_config():
-    *_, tuner = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--tuner_type', 'full'])
+    *_, tuner, quantize = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--tuner_type', 'full'])
     assert tuner is None
+    assert quantize.quant_method is None
 
 
 def test_fractional_intervals_survive_parse_for_step_planning():
-    _, _, _, train, _, checkpoint, _, _ = parse_sft_configs(
+    _, _, _, train, _, checkpoint, _, _, _ = parse_sft_configs(
         ['--model', 'm', '--dataset', 'd', '--save_steps', '0.25', '--eval_steps', '0.1'])
     assert checkpoint.save_steps == 0.25
     assert train.eval_steps == 0.1
@@ -96,21 +100,44 @@ def test_unknown_and_unwired_flags_fail_loudly():
         parse_sft_configs(['--model', 'm', '--dataset', 'd', '--definitely_unknown', 'x'])
     with pytest.raises(NotImplementedError, match='optimizer'):
         parse_sft_configs(['--model', 'm', '--dataset', 'd', '--optimizer', 'muon'])
-    *_, tuner = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--tuner_type', 'vera'])
+    *_, tuner, _ = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--tuner_type', 'vera'])
     assert tuner.tuner_type == 'vera'
 
 
-def test_megatron_spellings_fail_on_transformers_backend():
-    with pytest.raises(NotImplementedError, match='Megatron spellings'):
-        parse_sft_configs(['--model', 'm', '--dataset', 'd', '--lr', '0.001'])
+def test_megatron_aliases_work_on_transformers_backend():
+    *_, train, _, _, _, _, _ = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--lr', '0.001'])
+    assert train.learning_rate == 0.001
+
+
+@pytest.mark.parametrize('argv', [
+    ['--lr', '0.001', '--learning_rate=0.001'],
+    ['--lr=1', '--learning-rate', '1.0'],
+])
+def test_aliases_accept_space_equals_hyphens_and_equal_double_writes(argv):
+    *_, train, _, _, _, _, _ = parse_sft_configs(['--model=m', '--dataset', 'd', *argv])
+    assert train.learning_rate == pytest.approx(float(argv[1] if argv[0] == '--lr' else argv[0].split('=', 1)[1]))
+    assert 'learning_rate' in train._explicit_fields
+
+
+def test_aliases_reject_conflicting_double_writes():
+    with pytest.raises(ValueError, match='Conflicting values for --learning_rate'):
+        parse_sft_configs(['--model', 'm', '--dataset', 'd', '--lr=0.001', '--learning-rate', '0.002'])
+    with pytest.raises(ValueError, match='Conflicting values for --torch_dtype'):
+        parse_sft_configs(['--model', 'm', '--dataset', 'd', '--bf16=1', '--torch-dtype', 'float16'])
+
+
+def test_false_precision_alias_does_not_override_canonical_dtype():
+    model, *_ = parse_sft_configs(
+        ['--model', 'm', '--dataset', 'd', '--bf16=0', '--torch_dtype', 'float16'])
+    assert model.torch_dtype == 'float16'
 
 
 def test_legacy_only_gap_is_exhaustively_classified():
     from swift.arguments import SftArguments
-    from swift.dev.config import GenerationConfig, LoggingConfig, QuantizeConfig
+    from swift.dev.config import LoggingConfig, QuantizeConfig
 
     classes = [ModelConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig,
-               TunerConfig, LoggingConfig, QuantizeConfig, GenerationConfig]
+               TunerConfig, LoggingConfig, QuantizeConfig]
     config_fields = {field.name for cls in classes for field in dataclasses.fields(cls)}
     legacy_only = {field.name for field in dataclasses.fields(SftArguments)} - config_fields
     classified = {name for names in LEGACY_ONLY_CLASSIFICATION.values() for name in names} | {'bf16', 'fp16'}
@@ -118,18 +145,19 @@ def test_legacy_only_gap_is_exhaustively_classified():
 
 
 def test_unconsumed_existing_configs_fail_loudly():
-    *_, logging, _ = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--report_to', 'wandb'])
+    *_, logging, _, quantize = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--report_to', 'wandb'])
     assert logging.report_to == ['wandb']
-    with pytest.raises(NotImplementedError, match='quantization Config'):
-        parse_sft_configs(['--model', 'm', '--dataset', 'd', '--quant_method', 'bnb'])
-    with pytest.raises(NotImplementedError, match='generation Config'):
+    *_, quantize = parse_sft_configs(
+        ['--model', 'm', '--dataset', 'd', '--tuner_type', 'lora', '--quant_method', 'bnb', '--quant_bits', '4'])
+    assert quantize.quant_method == 'bnb' and quantize.quant_bits == 4
+    with pytest.raises(ValueError, match='no generation phase'):
         parse_sft_configs(['--model', 'm', '--dataset', 'd', '--top_p', '0.9'])
 
 
 def test_sft_config_field_names_do_not_collide():
     classes = [
         ModelConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig, LoggingConfig,
-        TunerConfig
+        TunerConfig, QuantizeConfig
     ]
     owners = {}
     for cls in classes:
@@ -149,8 +177,8 @@ def test_fractional_intervals_resolve_after_total_steps_are_known():
 def test_prepare_processes_before_validation(monkeypatch):
     events = []
     monkeypatch.setattr('swift.dev.plugin.PluginRegistry.load_configured', lambda *_: events.append('plugins'))
-    monkeypatch.setattr('swift.dev.config.process_configs', lambda *_: events.append('process'))
-    monkeypatch.setattr('swift.dev.config.validate_configs', lambda *_: events.append('validate'))
+    monkeypatch.setattr('swift.dev.config.process_configs', lambda *_args, **_kwargs: events.append('process'))
+    monkeypatch.setattr('swift.dev.config.validate_configs', lambda *_args, **_kwargs: events.append('validate'))
     assembly = TrainAssembly(
         'test', ModelConfig(model='m'), TemplateConfig(), DatasetConfig(), TrainConfig(), DistributedConfig(),
         CheckpointConfig(), logging_config=LoggingConfig())
@@ -170,12 +198,43 @@ def test_logging_steps_reaches_training_loop(monkeypatch):
     monkeypatch.setattr('swift.dev.optimizer.resolve_max_grad_norm', lambda _: 1.0)
     assembly = TrainAssembly(
         'test', ModelConfig(model='m'), TemplateConfig(), DatasetConfig(), TrainConfig(), DistributedConfig(),
-        CheckpointConfig(), logging_config=LoggingConfig(logging_steps=7))
+        CheckpointConfig(save_only_model=True), logging_config=LoggingConfig(logging_steps=7))
     assembly.model = object()
     assembly.dataloader = []
     assembly.total_opt_steps = 1
     assembly.build_loop()
     assert captured['logging_config'].logging_steps == 7
+    assert captured['no_save_optim'] is True
+    assert captured['no_save_rng'] is True
+
+
+def test_model_only_resume_without_trainer_state_starts_from_zero(tmp_path):
+    checkpoint = CheckpointConfig(resume_from_checkpoint=str(tmp_path), resume_only_model=True)
+    assembly = TrainAssembly(
+        'test', ModelConfig(model='m'), TemplateConfig(), DatasetConfig(), TrainConfig(gradient_accumulation_steps=3),
+        DistributedConfig(), checkpoint, tuner_config=TunerConfig(tuner_type='lora'))
+
+    class Model:
+
+        def __init__(self):
+            self.calls = []
+
+        def load(self, *args, **kwargs):
+            self.calls.append((args, kwargs))
+
+    assembly.model = Model()
+    state = assembly.resume_model()
+    assert state == {'cur_step': 0, 'consumed_train_samples': 0, 'gradient_accumulation_steps': 3}
+    assert assembly.model.calls == [((str(tmp_path), ), {'adapter_name': 'default'})]
+
+
+def test_full_resume_refuses_model_only_checkpoint(tmp_path):
+    checkpoint = CheckpointConfig(resume_from_checkpoint=str(tmp_path), resume_only_model=False)
+    assembly = TrainAssembly(
+        'test', ModelConfig(model='m'), TemplateConfig(), DatasetConfig(), TrainConfig(), DistributedConfig(), checkpoint)
+    assembly.model = object()
+    with pytest.raises(FileNotFoundError, match='resume_only_model'):
+        assembly.resume_model()
 
 
 def test_use_ray_is_wired_for_megatron_and_refused_for_transformers():

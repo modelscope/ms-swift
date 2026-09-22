@@ -34,7 +34,10 @@ if TYPE_CHECKING:
         DatasetConfig,
         DistributedConfig,
         LoggingConfig,
+        MegatronConfig,
         ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
         RLHFConfig,
         TemplateConfig,
         TrainConfig,
@@ -99,6 +102,9 @@ class TrainAssembly:
     task: Optional[str] = None
     output_dir: str = 'output'
     logging_config: Optional['LoggingConfig'] = None
+    quantize_config: Optional['QuantizeConfig'] = None
+    megatron_config: Optional['MegatronConfig'] = None
+    moe_config: Optional['MoEConfig'] = None
 
     # --- stage results, in the order the stages produce them ---
     sp_mesh: Any = field(default=None, init=False)
@@ -161,27 +167,14 @@ class TrainAssembly:
             twinkle.initialize(mode='local')
 
     def prepare(self) -> 'TrainAssembly':
-        """Load the run's plugins, resolve cross-config derivations, then cross-validate the Configs.
-        Every recipe's first step.
+        """Process and validate Configs before building anything heavy.
 
-        Plugins first: a plugin file may register the reward / loss the Configs name, so importing it
-        after validation would reject a run that is in fact valid. Which Config fields name those files
-        is ``PluginRegistry.load_configured``'s business, not a recipe's.
-
-        ``process_configs`` before ``validate_configs`` is the fixed contract (see process.py): the
-        first WRITES every value derived from another Config (packing length, eval schedule, task_type
-        rm->seq_cls, Megatron aliases, ...), the second only READS and refuses, so validating first
-        would test the un-derived state. It is idempotent, so a caller that already ran it (e.g. a
-        Ray driver) is not harmed by this second pass.
-
-        Validation runs before anything heavy is built, so an illegal combination fails in
-        milliseconds rather than after a dataset encode and a weight load. Rules that need a runtime
-        quantity (the zero-optimizer-steps check in :meth:`plan_steps`) stay at their call site.
+        ``process_configs`` loads configured plugins and resolves derived values. ``validate_configs``
+        then reads that resolved state and rejects invalid combinations. Both are idempotent, so CLI
+        callers may safely have completed the same lifecycle before entering the recipe.
         """
         from swift.dev.config import process_configs, validate_configs
-        from swift.dev.plugin import PluginRegistry
 
-        PluginRegistry.load_configured(self.model_config)
         process_configs(
             self.model_config,
             self.template_config,
@@ -191,6 +184,8 @@ class TrainAssembly:
             self.checkpoint_config,
             self.tuner_config,
             self.rlhf_config,
+            megatron_config=self.megatron_config,
+            quantize_config=self.quantize_config,
         )
         validate_configs(
             self.model_config,
@@ -202,6 +197,9 @@ class TrainAssembly:
             self.tuner_config,
             self.rlhf_config,
             self.logging_config,
+            quantize_config=self.quantize_config,
+            megatron_config=self.megatron_config,
+            moe_config=self.moe_config,
         )
         return self
 
@@ -241,14 +239,22 @@ class TrainAssembly:
         which a ``load_model=False`` processor never populates -- it would default to 'causal_lm' and
         encode single-sequence rows instead of this task's layout.
         """
-        from swift.dev.builders import build_template
-        from swift.model import get_model_processor
+        from swift.dev.builders import build_template, load_model_processor
 
         # TODO: refactor to get only processor
-        _, self.processor = get_model_processor(
-            self.model_config.model, model_type=self.model_config.model_type, load_model=False)
+        _, self.processor = load_model_processor(self.model_config)
         kwargs = {'task_type': self.task_type} if self.task_type else {}
         self.template = build_template(self.template_config, self.processor, **kwargs)
+        # Match legacy save_args: keep one run-level args.json that every periodic/final checkpoint copies.
+        # This makes --load_args work for a checkpoint produced before training reaches checkpoint-final.
+        self.write_ckpt_args_json(
+            self.output_dir,
+            self.processor,
+            self.model_config,
+            self.template_config,
+            self.tuner_config,
+            self.quantize_config,
+            task_type=self.task_type)
         return self.template
 
     def build_dataset(self, **kwargs) -> Any:
@@ -296,12 +302,15 @@ class TrainAssembly:
                              f'dataset with no max_steps. Set TrainConfig.max_steps explicitly, or provide enough '
                              f'data.')
 
-        self.train_config.eval_steps = _resolve_step_interval(
-            self.train_config.eval_steps, self.total_opt_steps, 'eval_steps')
+        self.resolve_step_intervals(self.total_opt_steps)
+        return self.total_opt_steps
+
+    def resolve_step_intervals(self, total_steps: int) -> None:
+        """Resolve ratio-valued eval/save intervals for dataloader-free online recipes."""
+        self.train_config.eval_steps = _resolve_step_interval(self.train_config.eval_steps, total_steps, 'eval_steps')
         if self.checkpoint_config is not None:
             self.checkpoint_config.save_steps = _resolve_step_interval(
-                self.checkpoint_config.save_steps, self.total_opt_steps, 'save_steps')
-        return self.total_opt_steps
+                self.checkpoint_config.save_steps, total_steps, 'save_steps')
 
     def build_model(self) -> Any:
         """Build the model, apply the tuner, and install dev's processor + template on it.
@@ -329,17 +338,30 @@ class TrainAssembly:
         from swift.dev.processor import InputProcessor
 
         resume_dir = self.resume_dir
-        redirect_to_ckpt = bool(resume_dir) and (not self.resume_only_model) and (self.tuner_config is None)
+        # Full-parameter checkpoints always provide the model weights, including resume_only_model;
+        # that flag only suppresses optimizer/scheduler/RNG restoration. LoRA keeps the original base
+        # and reloads the adapter through resume_from_checkpoint after apply_tuner.
+        redirect_to_ckpt = bool(resume_dir) and self.tuner_config is None
         model_config = self.model_config
         if redirect_to_ckpt:
             model_config = copy.copy(model_config)
             model_config.model = resume_dir
 
         self.model = build_model(
-            model_config, self.distributed_config, self.train_config, self.tuner_config, device_mesh=self.sp_mesh)
+            model_config,
+            self.distributed_config,
+            self.train_config,
+            self.tuner_config,
+            device_mesh=self.sp_mesh,
+            quantize_config=self.quantize_config,
+            megatron_config=self.megatron_config,
+            moe_config=self.moe_config)
         if self.tuner_config is not None:
             apply_tuner(self.model, self.tuner_config, gradient_accumulation_steps=self.ga)
-        self.model.set_processor(InputProcessor, padding_free=self.template_config.padding_free)
+        self.model.set_processor(
+            InputProcessor,
+            padding_free=self.template_config.padding_free,
+            cp_partition_mode=self.distributed_config.cp_partition_mode)
         self.model.set_template(self.template)
         return self.model
 
@@ -367,15 +389,68 @@ class TrainAssembly:
             output_dir=self.output_dir,
             eval_dataloader=self.eval_dataloader,
             eval_steps=self.train_config.eval_steps,
+            eval_iters=self.train_config.eval_iters,
             save_steps=self.checkpoint_config.save_steps if self.checkpoint_config else None,
+            no_save_optim=bool(self.checkpoint_config
+                               and (self.checkpoint_config.no_save_optim or self.checkpoint_config.save_only_model)),
+            no_save_rng=bool(self.checkpoint_config
+                             and (self.checkpoint_config.no_save_rng or self.checkpoint_config.save_only_model)),
+            safe_serialization=(self.checkpoint_config.safe_serialization if self.checkpoint_config else True),
+            max_shard_size=(self.checkpoint_config.max_shard_size if self.checkpoint_config else '5GB'),
+            save_total_limit=(self.checkpoint_config.save_total_limit if self.checkpoint_config else None),
+            ignore_data_skip=bool(self.checkpoint_config and self.checkpoint_config.ignore_data_skip),
+            manual_gc=bool(self.megatron_config and self.megatron_config.manual_gc),
+            manual_gc_eval=bool(self.megatron_config and self.megatron_config.manual_gc_eval),
+            manual_gc_steps=self.megatron_config.manual_gc_steps if self.megatron_config else 0,
             **kwargs)
 
         if self.resume_dir:
-            resume_kwargs = {'resume_only_model': self.resume_only_model}
-            if self.tuner_config is not None:
-                resume_kwargs['adapter_name'] = 'default'
-            self.loop.resume(self.model.resume_from_checkpoint(self.resume_dir, **resume_kwargs))
+            self.loop.resume(self.resume_model())
         return self.loop
+
+    def resume_model(self, model: Any = None, checkpoint_dir: Optional[str] = None, *,
+                     adapter_name: Optional[str] = None) -> dict:
+        """Restore one trainable model and return twinkle's training-progress state.
+
+        Custom RLHF loops use the same checkpoint semantics as :meth:`build_loop`. PPO passes its
+        critic explicitly with ``checkpoint_dir=<policy checkpoint>/value_model``; the policy uses
+        the assembly defaults.
+        """
+        from swift.dev.builders import is_megatron_backend
+
+        target = model or self.model
+        path = checkpoint_dir or self.resume_dir
+        if not path:
+            return {}
+        resume_kwargs = {'resume_only_model': self.resume_only_model}
+        if self.checkpoint_config is not None and is_megatron_backend(self.distributed_config):
+            resume_kwargs.update(
+                no_load_optim=self.checkpoint_config.no_load_optim,
+                no_load_rng=self.checkpoint_config.no_load_rng,
+                data_parallel_random_init=bool(self.megatron_config and self.megatron_config.data_parallel_random_init),
+            )
+        if adapter_name is None and target is self.model and self.tuner_config is not None:
+            adapter_name = 'default'
+        if adapter_name is not None:
+            resume_kwargs['adapter_name'] = adapter_name
+
+        trainer_state_path = os.path.join(path, 'trainer_state.json')
+        if not os.path.isfile(trainer_state_path):
+            if not self.resume_only_model:
+                raise FileNotFoundError(
+                    f'{trainer_state_path} is missing, so this model-only checkpoint cannot resume optimizer, '
+                    'scheduler, RNG, or progress state. Set --resume_only_model true to start a new run from its '
+                    'weights, or resume from a checkpoint saved without --no_save_optim/--save_only_model.')
+            # Full-parameter models were constructed from ``path`` by build_model(). A tuned policy still
+            # needs its adapter weights loaded explicitly; no trainer state means this is a new run at step 0.
+            if adapter_name:
+                target.load(path, adapter_name=adapter_name)
+            return {
+                'cur_step': 0,
+                'consumed_train_samples': 0,
+                'gradient_accumulation_steps': self.ga,
+            }
+        return target.resume_from_checkpoint(path, **resume_kwargs)
 
     @property
     def resume_dir(self) -> Optional[str]:
@@ -408,7 +483,11 @@ class TrainAssembly:
         self.plan_steps()
         self.build_model()
         configure_loss(self.model)
-        configure_optimizer(self.model, self.train_config, num_training_steps=self.total_opt_steps)
+        configure_optimizer(
+            self.model,
+            self.train_config,
+            num_training_steps=self.total_opt_steps,
+            distributed_config=self.distributed_config)
         self.build_loop()
 
         history = self.loop.fit()
@@ -430,6 +509,7 @@ class TrainAssembly:
             self.model_config,
             self.template_config,
             self.tuner_config,
+            self.quantize_config,
             task_type=self.task_type)
         return ckpt_dir
 
@@ -439,6 +519,7 @@ class TrainAssembly:
                              model_config: 'ModelConfig',
                              template_config: 'TemplateConfig',
                              tuner_config: Optional['TunerConfig'] = None,
+                             quantize_config: Optional['QuantizeConfig'] = None,
                              *,
                              task_type: Optional[str] = None) -> None:
         """Write the self-describing args.json swift infer reads back from the ckpt.
@@ -450,8 +531,8 @@ class TrainAssembly:
             seq_cls / reranker / LoRA checkpoints.
           - load_keys (applied only when the current value is None/empty): model, model_type,
             model_revision, torch_dtype, attn_impl, template, system, truncation_strategy, ...
-        We write that consumed subset (not the full dict): the two force_load keys that training can
-        set (tuner_type/task_type; bnb_* is quant, not wired) plus the load_keys dev already knows.
+        We write that consumed subset (not the full dict): the force-loaded tuner/task/BNB keys plus
+        the load-if-empty model, template, and quantization keys dev already knows.
 
         Master-only: the checkpoint dir exists on the master rank alone (twinkle's save_pretrained
         guards on Platform.is_master()), so an unguarded open() elsewhere raised FileNotFoundError
@@ -476,7 +557,15 @@ class TrainAssembly:
             'swift_version': swift_version,
             # force_load_keys: infer applies these regardless of its current value.
             'task_type': model_config.task_type or task_type,
-            'tuner_type': tuner_config.tuner_type if tuner_config is not None else None,
+            'tuner_type': tuner_config.tuner_type if tuner_config is not None else 'full',
+            'quant_method': quantize_config.quant_method if quantize_config is not None else None,
+            'quant_bits': quantize_config.quant_bits if quantize_config is not None else None,
+            'bnb_4bit_compute_dtype': (
+                quantize_config.bnb_4bit_compute_dtype if quantize_config is not None else None),
+            'bnb_4bit_quant_type': quantize_config.bnb_4bit_quant_type if quantize_config is not None else None,
+            'bnb_4bit_use_double_quant': (
+                quantize_config.bnb_4bit_use_double_quant if quantize_config is not None else None),
+            'bnb_4bit_quant_storage': quantize_config.bnb_4bit_quant_storage if quantize_config is not None else None,
             # load_keys: infer applies these only when its own value is None/empty.
             'model': model_config.model,
             'model_type': getattr(model_meta, 'model_type', None),

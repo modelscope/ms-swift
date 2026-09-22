@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 import json
 
 if TYPE_CHECKING:
-    from swift.dev.config import GenerationConfig, ModelConfig, TemplateConfig
+    from swift.dev.config import GenerationConfig, ModelConfig, QuantizeConfig, TemplateConfig
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,7 @@ def run_deploy(
     backend: Literal['vllm', 'sglang', 'transformers'] = 'vllm',
     engine_args: Optional[Dict[str, Any]] = None,
     adapter_mapping: Optional[Dict[str, str]] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
     merge_lora: bool = False,
     host: str = '0.0.0.0',
     port: int = 8000,
@@ -112,6 +113,7 @@ def run_deploy(
         backend=backend,
         engine_args=engine_args,
         adapter_mapping=adapter_mapping,
+        quantize_config=quantize_config,
         merge_lora=merge_lora,
         served_model_name=served_model_name,
         owned_by=owned_by,
@@ -143,6 +145,7 @@ def build_app(
     backend: Literal['vllm', 'sglang', 'transformers'] = 'vllm',
     engine_args: Optional[Dict[str, Any]] = None,
     adapter_mapping: Optional[Dict[str, str]] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
     merge_lora: bool = False,
     served_model_name: Optional[str] = None,
     owned_by: str = 'swift',
@@ -164,14 +167,13 @@ def build_app(
     from fastapi import FastAPI, Request
     from fastapi.responses import Response
 
-    from swift.dev.builders import build_sampler, build_template, to_sampling_params
-    from swift.model import get_model_processor
+    from swift.dev.builders import build_sampler, build_template, load_model_processor, to_sampling_params
 
     adapter_mapping = dict(adapter_mapping or {})
     if merge_lora and adapter_mapping:
         model_config, adapter_mapping = _merge_single_adapter(model_config, template_config, adapter_mapping)
 
-    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
+    _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
     model_name = served_model_name or os.path.basename(str(model_config.model).rstrip('/'))
     sampler = build_sampler(
@@ -179,7 +181,8 @@ def build_app(
         backend=backend,
         engine_args=engine_args,
         template=template,
-        adapters=list(adapter_mapping.values()) or None)
+        adapters=list(adapter_mapping.values()) or None,
+        quantize_config=quantize_config)
 
     # A thread pool, not the event loop: see the module docstring. max_workers is the real concurrency
     # ceiling, since each in-flight request holds one thread for the length of its generation.
@@ -204,6 +207,7 @@ def build_app(
         template_config=template_config,
         to_sampling_params=to_sampling_params,
         model_config=model_config,
+        quantize_config=quantize_config,
         stats=stats,
         request_log=request_log,
     )
@@ -553,7 +557,8 @@ def _embed(ctx: _ServerContext, texts: List[str]) -> List[List[float]]:
     from swift.dev.config import DistributedConfig
 
     if getattr(ctx, 'embedding_model', None) is None:
-        ctx.embedding_model = build_model(ctx.model_config, DistributedConfig())
+        ctx.embedding_model = build_model(
+            ctx.model_config, DistributedConfig(), quantize_config=ctx.quantize_config)
     features = [{'messages': [{'role': 'user', 'content': text}]} for text in texts]
     outputs = ctx.embedding_model.forward_only(inputs=features, task='embedding')
     tensor = outputs['embedding'] if isinstance(outputs, dict) and 'embedding' in outputs else outputs
@@ -695,9 +700,9 @@ def _sampling_params_from_body(body: Dict[str, Any], ctx: _ServerContext, want_l
 def _tokenizer(ctx: _ServerContext):
     """The sampler's tokenizer, for the endpoints that must bypass the chat template."""
     if getattr(ctx, '_tokenizer_cache', None) is None:
-        from swift.model import get_model_processor
+        from swift.dev.builders import load_model_processor
 
-        _, processor = get_model_processor(ctx.model_config.model, load_model=False)
+        _, processor = load_model_processor(ctx.model_config)
         ctx._tokenizer_cache = getattr(processor, 'tokenizer', processor)
     return ctx._tokenizer_cache
 

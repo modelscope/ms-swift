@@ -34,11 +34,9 @@ DEV_ROUTE_MAPPING: Dict[str, str] = {
     'infer': 'swift.dev.cli.infer',
     'merge-lora': 'swift.dev.cli.merge_lora',
     'deploy': 'swift.dev.cli.deploy',
-    'rollout': 'swift.dev.cli.rollout',
     'sample': 'swift.dev.cli.sample',
     'export': 'swift.dev.cli.export',
     'eval': 'swift.dev.cli.eval',
-    'app': 'swift.dev.cli.app',
 }
 DEV_MEGATRON_ROUTE_MAPPING: Dict[str, str] = {
     'pt': 'swift.dev.cli.megatron_pt',

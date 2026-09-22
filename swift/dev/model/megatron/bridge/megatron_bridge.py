@@ -105,6 +105,10 @@ class _MCoreCompatBridgeShim:
         (twinkle writes the matching ``adapter_config.json`` / hf_config / tokenizer separately)."""
         if converter is not None:
             raise NotImplementedError('save_weights does not support a converter hook.')
+        if max_shard_size != '5GB':
+            raise NotImplementedError(
+                'megatron-bridge AutoBridge does not expose max_shard_size. Use --bridge_backend mcore-bridge or '
+                'remove the custom --max_shard_size value.')
         if peft_format:
             import torch.distributed as dist
             self._reject_sharded_peft()
@@ -119,7 +123,7 @@ class _MCoreCompatBridgeShim:
             if dist.is_initialized():
                 dist.barrier()
             return
-        # save_hf_weights decides sharding internally; it takes no max_shard_size.
+        # save_hf_weights decides sharding internally and exposes no shard-size override.
         self._bridge.save_hf_weights(mg_models, output_dir)
 
     def export_weights(self,
@@ -175,8 +179,16 @@ class MegatronBridgeBackend:
         if not model_path:
             raise ValueError('MegatronBridgeBackend needs hf_config.name_or_path (a local model dir).')
         trust_remote_code = bool(kwargs.pop('trust_remote_code', True))
+        strict_model_kwargs = set(kwargs.pop('_strict_model_kwargs', ()))
         bridge = AutoBridge.from_hf_pretrained(model_path, trust_remote_code=trust_remote_code)
         provider = bridge.to_megatron_provider(load_weights=False)
+
+        unsupported = sorted(name for name in strict_model_kwargs if not hasattr(provider, name))
+        if unsupported:
+            raise NotImplementedError(
+                f'The installed megatron-bridge provider for {type(provider).__name__} does not expose explicitly '
+                f'requested model options {unsupported}. Use --bridge_backend mcore-bridge, remove these options, '
+                'or upgrade megatron-bridge/Megatron-LM.')
 
         overrides: Dict[str, Any] = dict(parallel_kwargs)
         overrides['sequence_parallel'] = strategy.sequence_parallel
@@ -186,8 +198,8 @@ class MegatronBridgeBackend:
         # Config ran a different attention kernel depending on bridge_backend. It is now resolved once
         # in builders/model.py (from ModelConfig.attn_impl, defaulting to flash like legacy) and
         # arrives through kwargs below, which both backends share.
-        # Fold through explicit config kwargs the provider declares; apply_overrides_and_finalize
-        # raises on unknown attrs, so drop keys the provider does not model.
+        # Fold through config kwargs the provider declares. Unsupported defaults may use the provider's
+        # own version-specific defaults; explicitly requested fields were checked above and never disappear.
         for k, v in kwargs.items():
             if hasattr(provider, k):
                 overrides[k] = v

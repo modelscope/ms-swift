@@ -369,6 +369,35 @@ def test_megatron_bridge_backend_selectable_via_strategy():
     assert strat.backend.backend_name == 'megatron-bridge'
 
 
+def test_megatron_bridge_rejects_explicit_provider_option_it_cannot_apply(monkeypatch):
+    """Version-skew may drop compatibility defaults, but never a user-requested model option."""
+    import sys
+    from types import ModuleType, SimpleNamespace
+
+    from swift.dev.model.megatron.bridge import MegatronBridgeBackend
+
+    class Provider:
+
+        def apply_overrides_and_finalize(self, **kwargs):
+            raise AssertionError('unsupported explicit options must fail before provider finalization')
+
+    bridge = SimpleNamespace(to_megatron_provider=lambda load_weights: Provider())
+    auto_bridge_module = ModuleType('megatron.bridge.models.conversion.auto_bridge')
+    auto_bridge_module.AutoBridge = SimpleNamespace(from_hf_pretrained=lambda *_args, **_kwargs: bridge)
+    for package in ('megatron.bridge', 'megatron.bridge.models', 'megatron.bridge.models.conversion'):
+        module = ModuleType(package)
+        module.__path__ = []
+        monkeypatch.setitem(sys.modules, package, module)
+    monkeypatch.setitem(sys.modules, auto_bridge_module.__name__, auto_bridge_module)
+    strategy = SimpleNamespace(params_type=torch.bfloat16, sequence_parallel=False, variable_seq_lengths=False)
+
+    with pytest.raises(NotImplementedError, match='explicitly requested model options.*future_knob'):
+        MegatronBridgeBackend().build_model_config(
+            SimpleNamespace(name_or_path='/tmp/model'), {}, strategy,
+            future_knob=True,
+            _strict_model_kwargs=('future_knob',))
+
+
 def test_megatron_bridge_shim_per_adapter_state_dict_is_isolated():
     """The shim's peft_format=True save/export path (multi-tenant: distinct adapter per tenant)
     extracts ONLY the requested adapter's LoRA delta via peft.get_peft_model_state_dict. Verified

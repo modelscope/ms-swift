@@ -26,6 +26,9 @@ class MCoreBridgeBackend:
         from twinkle.model.megatron._mindspeed_runtime import configure_mindspeed_runtime_args
         from twinkle.model.megatron.strategy.megatron import finalize_model_grads_for_lora
 
+        # Internal provenance used by MegatronBridgeBackend to distinguish an explicit user option
+        # from a compatibility default. mcore's ModelConfig consumes the actual values, not this marker.
+        kwargs.pop('_strict_model_kwargs', None)
         config_kwargs = hf_to_mcore_config(hf_config)
         config_kwargs.update(kwargs)
         # per-token-mean grad normalization (mcore default is False; twinkle forces True).

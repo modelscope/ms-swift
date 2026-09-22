@@ -1,7 +1,7 @@
 """Best-of-n sampling: how many candidates, how they are scored, and how a run resumes."""
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 
 @dataclass
@@ -18,7 +18,7 @@ class SamplingConfig:
     sampler_engine: Literal['transformers', 'vllm', 'sglang', 'client', 'no', 'pt'] = 'transformers'
     prm_model: Optional[str] = None
     orm_model: Optional[str] = None
-    engine_kwargs: Optional[Any] = None
+    engine_kwargs: Optional[Dict[str, Any]] = None
 
     # === Candidates ===
     #: Completions generated per prompt. The group the reward ranking then sorts.
@@ -72,9 +72,6 @@ class SamplingConfig:
     #: Stop after this many batches. None runs the whole dataset.
     max_batches: Optional[int] = None
     num_sampling_batches: Optional[int] = None
-    #: ``(index, total)`` -- take only piece ``index`` of the dataset, for splitting one dataset
-    #: across independent processes/machines. There is no cross-piece coordination.
-    data_range: Optional[tuple] = None
 
     # === Output & resume ===
     output_file: Optional[str] = None

@@ -1,19 +1,13 @@
-# Cross-config derivation: the one place where a Config's value is computed from other Configs.
-#
-# Split from validate.py on purpose. That module only reads and refuses; this one writes. Keeping the
-# two apart means a reader can trust that validation never quietly changes a run, and that every
-# derived value has exactly one origin. Call process_configs() FIRST, then validate_configs(): the
-# checks are written against resolved values, so validating first would test the un-derived state.
-#
-# What is deliberately NOT here: anything that touches the world. legacy's __post_init__ also set
-# environment variables, initialised process groups, downloaded checkpoints and imported plugin
-# modules (base_args.py:172-203, sft_args.py:198-238, megatron_args.py:790-902). Those need a real
-# runtime and belong where the model is built, not in a pass over dataclasses -- and on the Ray path
-# the driver running this is not even the process that trains.
+"""Config processing and run initialization.
 
+Everything that changes Config or runtime state lives here. ``validate.py`` only reads the resolved
+state and rejects invalid combinations. Programmatic callers use :func:`process_configs`; CLI entry
+points use :func:`process_and_validate_configs` for the complete run lifecycle.
+"""
 from __future__ import annotations
 import dataclasses
 import logging
+import os
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -45,23 +39,25 @@ def process_configs(
     megatron_config: Optional['MegatronConfig'] = None,
     quantize_config: Optional['QuantizeConfig'] = None,
 ) -> None:
-    """Resolve every value that is derived from another Config, in place.
+    """Load configured plugins and resolve every cross-Config derived value in place.
 
-    Idempotent: running it twice leaves the same result, so a caller that cannot easily tell whether an
-    earlier stage already ran it does not have to find out.
+    Idempotent: running it twice leaves the same result, so callers may safely repeat the lifecycle.
     """
     from swift.dev.builders.model import is_megatron_backend
+    from swift.dev.plugin import PluginRegistry
+
+    # Plugins must be registered before validation resolves their configured names.
+    PluginRegistry.load_configured(model_config)
     is_megatron = is_megatron_backend(distributed_config)
 
-    _parse_json_fields(model_config, dataset_config, train_config, distributed_config, megatron_config)
-    _derive_launch_mode(distributed_config, is_megatron)
-    _coerce_mrl_dims(train_config)
     _fold_megatron_aliases(train_config)
+    _derive_gradient_accumulation_steps(train_config, distributed_config, is_megatron)
+    _derive_finetune_resume(train_config, checkpoint_config, is_megatron)
     # Order matters below: the eval schedule reads split_dataset_ratio after the val-dataset rule has
     # zeroed it, and task_type must be settled (rm -> seq_cls) before the per-token-loss default and
     # the best-model metric read it.
     _derive_vit_gradient_checkpointing(train_config, tuner_config)
-    _derive_packing_length(dataset_config, template_config)
+    _derive_packing(dataset_config, template_config)
     _derive_split_dataset_ratio(dataset_config)
     _derive_eval_schedule(train_config, dataset_config, checkpoint_config)
     _derive_streaming_dataloader_workers(dataset_config)
@@ -79,84 +75,137 @@ def process_configs(
     _derive_per_token_loss(model_config, train_config, rlhf_config, is_megatron)
 
 
-#: (config attribute, field, strict) for every field that accepts a JSON string as well as its parsed
-#: form. ``strict=False`` is for the fields where a bare word is also legal -- ``device_map='auto'`` is
-#: not JSON, and repairing it into something else would be worse than leaving it alone.
-_JSON_FIELDS = (
-    ('model_config', 'model_kwargs', True),
-    ('model_config', 'max_memory', True),
-    ('model_config', 'device_map', False),
-    ('dataset_config', 'columns', True),
-    ('train_config', 'lr_scheduler_kwargs', True),
-    ('train_config', 'gradient_checkpointing_kwargs', True),
-    ('train_config', 'vit_gradient_checkpointing_kwargs', True),
-    ('train_config', 'accelerator_config', True),
-    ('train_config', 'liger_kernel_config', True),
-    ('train_config', 'mrl_dims', True),
-    ('distributed_config', 'fsdp_config', True),
-    ('megatron_config', 'megatron_extra_kwargs', True),
-)
+def process_and_validate_configs(
+    configs: dict,
+    *,
+    add_version: Optional[bool] = None,
+    create_output_dir: bool = True,
+    resolve_model: bool = True,
+) -> None:
+    """Process, validate, and initialize a parsed Config mapping."""
+    from .distributed_config import DistributedConfig
+    from .train_config import TrainConfig
+    from .validate import validate_configs
+
+    train_config = configs.get('train_config') or TrainConfig()
+    distributed_config = configs.get('distributed_config') or DistributedConfig()
+    process_configs(
+        configs['model_config'],
+        configs['template_config'],
+        configs['dataset_config'],
+        train_config,
+        distributed_config,
+        configs.get('checkpoint_config'),
+        configs.get('tuner_config'),
+        rlhf_config=configs.get('rlhf_config'),
+        megatron_config=configs.get('megatron_config'),
+        quantize_config=configs.get('quantize_config'),
+    )
+    validate_configs(
+        configs['model_config'],
+        configs['template_config'],
+        configs['dataset_config'],
+        train_config,
+        distributed_config,
+        configs.get('checkpoint_config'),
+        configs.get('tuner_config'),
+        configs.get('rlhf_config'),
+        configs.get('logging_config'),
+        quantize_config=configs.get('quantize_config'),
+        megatron_config=configs.get('megatron_config'),
+        moe_config=configs.get('moe_config'),
+        training='train_config' in configs,
+    )
+    seed_config = configs.get('train_config') or configs.get('runtime_config')
+    bootstrap_run(
+        configs['model_config'],
+        configs['checkpoint_config'],
+        configs.get('dataset_config'),
+        configs.get('tuner_config'),
+        seed=getattr(seed_config, 'seed', None),
+        add_version=add_version,
+        create_output_dir=create_output_dir,
+        resolve_model=resolve_model,
+    )
 
 
-def _parse_json_fields(model_config, dataset_config, train_config, distributed_config, megatron_config) -> None:
-    """Turn JSON strings into dicts once, here, instead of at each point of use.
-
-    A command line can only carry text, so every nested config arrives as a string; every consumer
-    would otherwise have to remember to parse it, and the one that forgets sees a str where it expects
-    a mapping. legacy did this per field inside __post_init__ (e.g. base_args.py:205 for model_kwargs);
-    this is the same conversion in one table.
-
-    ``None`` is left as ``None`` rather than becoming ``{}``, which is what ``json_parse_to_dict`` does
-    on its own: for most of these fields None means "let the library choose its own defaults" and an
-    empty dict does not say that -- ``fsdp_config={}`` would claim FSDP was configured with nothing.
-    """
-    from swift.dev.utils import json_parse_to_dict
-
-    holders = {
-        'model_config': model_config,
-        'dataset_config': dataset_config,
-        'train_config': train_config,
-        'distributed_config': distributed_config,
-        'megatron_config': megatron_config,
-    }
-    for holder_name, attr, strict in _JSON_FIELDS:
-        holder = holders[holder_name]
-        if holder is None:
-            continue
-        value = getattr(holder, attr)
-        if value is None or not isinstance(value, str):
-            continue
-        setattr(holder, attr, json_parse_to_dict(value, strict=strict))
+def bootstrap_run(
+    model_config: 'ModelConfig',
+    checkpoint_config: 'CheckpointConfig',
+    dataset_config: Optional['DatasetConfig'] = None,
+    tuner_config: Optional['TunerConfig'] = None,
+    *,
+    seed: Optional[int] = None,
+    add_version: Optional[bool] = None,
+    create_output_dir: bool = True,
+    resolve_model: bool = True,
+) -> None:
+    """Apply CLI runtime side effects after processing and validation."""
+    if seed is not None:
+        from swift.utils import seed_everything
+        rank = max(int(os.environ.get('RANK', '-1')), 0)
+        seed_everything(seed + rank)
+    if dataset_config is not None and dataset_config.use_hf:
+        os.environ['USE_HF'] = '1'
+    _prepare_output_dir(checkpoint_config, add_version=add_version, create_output_dir=create_output_dir)
+    _export_model_kwargs(model_config)
+    _login_hub(dataset_config)
+    if resolve_model:
+        _resolve_model(model_config, dataset_config)
+    _resolve_adapters(tuner_config, dataset_config)
 
 
-def _derive_launch_mode(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
-    """Fold the legacy ``use_ray`` switch into twinkle's launch ``mode``.
+def _prepare_output_dir(checkpoint_config: 'CheckpointConfig', *, add_version: Optional[bool],
+                        create_output_dir: bool) -> None:
+    from swift.utils import add_version_to_work_dir
 
-    The current assembly has a Ray DeviceGroup path only for Megatron. Accepting ``use_ray`` on the
-    transformers backend would still initialize twinkle locally, so reject that combination instead
-    of preserving the old silent no-op.
-    """
-    if not distributed_config.use_ray:
+    checkpoint_config.output_dir = os.path.abspath(os.path.expanduser(checkpoint_config.output_dir))
+    use_version = checkpoint_config.add_version if add_version is None else add_version
+    if use_version:
+        checkpoint_config.output_dir = add_version_to_work_dir(checkpoint_config.output_dir)
+    if create_output_dir:
+        os.makedirs(checkpoint_config.output_dir, exist_ok=True)
+
+    if checkpoint_config.resume_from_checkpoint:
+        resume = os.path.abspath(os.path.expanduser(checkpoint_config.resume_from_checkpoint))
+        if not os.path.exists(resume):
+            raise ValueError(f'resume_from_checkpoint does not exist: {resume}')
+        checkpoint_config.resume_from_checkpoint = resume
+
+
+def _export_model_kwargs(model_config: 'ModelConfig') -> None:
+    for key, value in (model_config.model_kwargs or {}).items():
+        os.environ[key.upper()] = str(value)
+
+
+def _resolve_model(model_config: 'ModelConfig', dataset_config: Optional['DatasetConfig']) -> None:
+    if not model_config.model:
         return
-    if not is_megatron:
-        raise NotImplementedError('DistributedConfig.use_ray is only wired for the Megatron backend in dev. '
-                                  'The transformers backend would run locally, so this combination is refused.')
-    distributed_config.mode = 'ray'
+    from swift.dev.utils.hub import safe_snapshot_download
+
+    use_hf = dataset_config.use_hf if dataset_config is not None else None
+    hub_token = dataset_config.hub_token if dataset_config is not None else None
+    model_config.model = safe_snapshot_download(
+        model_config.model, revision=model_config.model_revision, use_hf=use_hf, hub_token=hub_token)
 
 
-def _coerce_mrl_dims(train_config: 'TrainConfig') -> None:
-    """Give `mrl_dims` the {int: float} shape the Matryoshka aggregation indexes with.
-
-    JSON object keys are always strings, so `{"768": 1.0}` parses to a str key that no lookup by
-    dimension finds; the loss then silently aggregates nothing at that dimension. legacy coerces the
-    same pair right after parsing (megatron_args.py:842-844).
-
-    Kept separate from _JSON_FIELDS because that table only decides *whether* a field is JSON; this is
-    the one field whose parsed form still needs its key/value types fixed.
-    """
-    if not isinstance(train_config.mrl_dims, dict):
+def _resolve_adapters(tuner_config: Optional['TunerConfig'], dataset_config: Optional['DatasetConfig']) -> None:
+    if tuner_config is None or not tuner_config.adapters:
         return
-    train_config.mrl_dims = {int(k): float(v) for k, v in train_config.mrl_dims.items()}
+    from swift.dev.utils.hub import safe_snapshot_download
+
+    use_hf = dataset_config.use_hf if dataset_config is not None else None
+    hub_token = dataset_config.hub_token if dataset_config is not None else None
+    tuner_config.adapters = [
+        safe_snapshot_download(adapter, use_hf=use_hf, hub_token=hub_token) for adapter in tuner_config.adapters
+    ]
+
+
+def _login_hub(dataset_config: Optional['DatasetConfig']) -> None:
+    if dataset_config is None or not dataset_config.hub_token:
+        return
+    from swift.dev.utils.hub import get_hub
+    get_hub(dataset_config.use_hf).try_login(dataset_config.hub_token)
 
 
 #: (megatron spelling, HF spelling) for the aliases that are one knob under two names. Only exact 1:1
@@ -169,6 +218,7 @@ _MEGATRON_ALIASES = (
     ('micro_batch_size', 'per_device_train_batch_size'),
     ('lr_warmup_fraction', 'warmup_ratio'),
     ('lr_warmup_iters', 'warmup_steps'),
+    ('adam_eps', 'adam_epsilon'),
 )
 
 
@@ -187,8 +237,9 @@ def _fold_megatron_aliases(train_config: 'TrainConfig') -> None:
     `clip_grad` is deprecated and has exactly one consumer, but these five are current spellings with
     many.
 
-    When both names are set the HF one wins and the conflict is reported, matching resolve_max_grad_norm
-    so the two aliases do not disagree about precedence.
+    When both names are set, equal values are accepted and different values fail. CLI aliases are
+    normally folded before dataclass construction; this path preserves the same rule for programmatic
+    Config construction.
     """
     defaults = {f.name: f.default for f in dataclasses.fields(train_config)}
     for mg_name, hf_name in _MEGATRON_ALIASES:
@@ -196,12 +247,78 @@ def _fold_megatron_aliases(train_config: 'TrainConfig') -> None:
         if mg_value is None:
             continue
         hf_value = getattr(train_config, hf_name)
-        if hf_value != defaults[hf_name]:
-            logger.warning(
-                'Both %s=%r and %s=%r are set; they are the same knob under two spellings, so %s is '
-                'ignored and %r is used.', hf_name, hf_value, mg_name, mg_value, mg_name, hf_value)
-            continue
+        if hf_value != defaults[hf_name] and hf_value != mg_value:
+            raise ValueError(
+                f'{mg_name}={mg_value!r} conflicts with its canonical spelling {hf_name}={hf_value!r}. '
+                'Use one spelling or pass the same value.')
         setattr(train_config, hf_name, mg_value)
+
+
+def _derive_gradient_accumulation_steps(train_config: 'TrainConfig', distributed_config: 'DistributedConfig',
+                                        is_megatron: bool) -> None:
+    """Derive gradient accumulation from Megatron's global batch size."""
+    if train_config.global_batch_size is None:
+        return
+    if not is_megatron:
+        raise ValueError('global_batch_size is a Megatron-only derived setting. Use '
+                         'gradient_accumulation_steps with the transformers backend.')
+
+    import os
+    world_size = int(os.environ.get('WORLD_SIZE') or distributed_config.nproc_per_node or 1)
+    tp = distributed_config.tensor_model_parallel_size
+    pp = distributed_config.pipeline_model_parallel_size
+    cp = distributed_config.context_parallel_size
+    model_parallel_size = tp * pp * cp
+    if model_parallel_size < 1 or world_size % model_parallel_size:
+        raise ValueError(
+            f'world_size={world_size} must be divisible by tp*pp*cp={model_parallel_size} '
+            f'(tp={tp}, pp={pp}, cp={cp}).')
+    data_parallel_size = world_size // model_parallel_size
+    micro_batch_size = train_config.per_device_train_batch_size
+    denominator = micro_batch_size * data_parallel_size
+    if train_config.global_batch_size % denominator:
+        raise ValueError(
+            f'global_batch_size={train_config.global_batch_size} must be divisible by '
+            f'micro_batch_size*data_parallel_size={denominator}.')
+    derived = train_config.global_batch_size // denominator
+    explicit = 'gradient_accumulation_steps' in getattr(train_config, '_explicit_fields', set())
+    default = next(f.default for f in dataclasses.fields(train_config) if f.name == 'gradient_accumulation_steps')
+    if ((explicit or train_config.gradient_accumulation_steps != default)
+            and train_config.gradient_accumulation_steps != derived):
+        raise ValueError(
+            f'gradient_accumulation_steps={train_config.gradient_accumulation_steps} conflicts with '
+            f'global_batch_size={train_config.global_batch_size}, which derives {derived}.')
+    train_config.gradient_accumulation_steps = derived
+
+
+def _derive_finetune_resume(train_config: 'TrainConfig', checkpoint_config: Optional['CheckpointConfig'],
+                            is_megatron: bool) -> None:
+    """Translate Megatron's ``finetune`` intent onto the dev checkpoint contract.
+
+    A fresh dev run already loads the HF model weights and starts optimizer state at step zero, which
+    is exactly legacy ``finetune=True``. For a dev checkpoint, ``finetune=True`` means weights-only
+    restore and therefore derives ``resume_only_model=True``; ``finetune=False`` means a full resume.
+    Native mcore checkpoint directories are rejected earlier by the CLI contract because their layout
+    is not interchangeable with Twinkle's HF-weights-plus-mcore-state format.
+    """
+    if not is_megatron or 'finetune' not in getattr(train_config, '_explicit_fields', set()):
+        return
+    if checkpoint_config is None or not checkpoint_config.resume_from_checkpoint:
+        if not train_config.finetune:
+            raise ValueError(
+                'Megatron --finetune false requires --resume_from_checkpoint pointing to a checkpoint written by '
+                'the dev runtime. Native mcore checkpoints must first be converted with `swift megatron export '
+                '--to_hf true`.')
+        return
+
+    derived = bool(train_config.finetune)
+    resume_explicit = 'resume_only_model' in getattr(checkpoint_config, '_explicit_fields', set())
+    if resume_explicit and checkpoint_config.resume_only_model != derived:
+        raise ValueError(
+            f'finetune={train_config.finetune!r} conflicts with resume_only_model='
+            f'{checkpoint_config.resume_only_model!r}. Megatron finetune=true means a weights-only new run; '
+            'finetune=false means a full resume.')
+    checkpoint_config.resume_only_model = derived
 
 
 def _derive_lr_decay_style(train_config: 'TrainConfig', is_megatron: bool) -> None:
@@ -218,17 +335,21 @@ def _derive_lr_decay_style(train_config: 'TrainConfig', is_megatron: bool) -> No
     """
     if not is_megatron:
         return
-    default = next(f.default for f in dataclasses.fields(train_config) if f.name == 'lr_decay_style')
-    if train_config.lr_decay_style != default:
-        # Explicit, and possibly 'WSD'. Nothing to derive; only report if the other name disagrees.
-        derived = _try_megatron_decay_style(train_config.lr_scheduler_type)
-        if derived is not None and derived != train_config.lr_decay_style:
-            logger.warning(
-                'lr_decay_style=%r and lr_scheduler_type=%r describe different schedules; the Megatron '
-                'backend follows lr_decay_style. Drop one of the two.', train_config.lr_decay_style,
-                train_config.lr_scheduler_type)
-        return
+    explicit = getattr(train_config, '_explicit_fields', set())
+    defaults = {f.name: f.default for f in dataclasses.fields(train_config)}
+    style_explicit = ('lr_decay_style' in explicit
+                      or train_config.lr_decay_style != defaults['lr_decay_style'])
+    scheduler_explicit = ('lr_scheduler_type' in explicit
+                          or train_config.lr_scheduler_type != defaults['lr_scheduler_type'])
     derived = _try_megatron_decay_style(train_config.lr_scheduler_type)
+
+    if style_explicit:
+        if scheduler_explicit and derived is not None and derived != train_config.lr_decay_style:
+            raise ValueError(
+                f'lr_decay_style={train_config.lr_decay_style!r} conflicts with '
+                f'lr_scheduler_type={train_config.lr_scheduler_type!r}, which maps to {derived!r}. '
+                'Use one spelling or select equivalent schedules.')
+        return
     if derived is not None:
         train_config.lr_decay_style = derived
 
@@ -310,7 +431,9 @@ def _derive_grad_accum_dtype(model_config: 'ModelConfig', train_config: 'TrainCo
     Only ever turns it on. A user who explicitly wants bf16 accumulation can say so, and legacy's
     version could not tell that apart from the default.
     """
-    if not is_megatron or train_config.accumulate_allreduce_grads_in_fp32:
+    explicit = getattr(train_config, '_explicit_fields', set())
+    if (not is_megatron or train_config.accumulate_allreduce_grads_in_fp32
+            or 'accumulate_allreduce_grads_in_fp32' in explicit):
         return
     if model_config.torch_dtype == 'bfloat16' and train_config.main_grads_dtype == 'fp32':
         train_config.accumulate_allreduce_grads_in_fp32 = True
@@ -354,20 +477,14 @@ def _derive_vit_gradient_checkpointing(train_config: 'TrainConfig', tuner_config
     train_config.vit_gradient_checkpointing = not freeze_vit
 
 
-def _derive_packing_length(dataset_config: 'DatasetConfig', template_config: 'TemplateConfig') -> None:
-    """Pack to the sequence length unless a shorter packing window was asked for.
-
-    Mirrors legacy base_args.py:198-199. packing bin-packs samples up to `packing_length`; when it is
-    unset the natural target is the model's `max_length`, so a `--packing true` with no explicit window
-    packs to the same length the samples are truncated to rather than to some library default.
-
-    Only acts when packing is on and the window is unset, and only when `max_length` is itself known --
-    `max_length` is otherwise derived from the model's own limit at build time, which this pass does
-    not touch.
-    """
-    if not dataset_config.packing or dataset_config.packing_length is not None:
+def _derive_packing(dataset_config: 'DatasetConfig', template_config: 'TemplateConfig') -> None:
+    """Enable the padding-free representation required by packing and derive its default length."""
+    if not dataset_config.packing:
         return
-    if template_config.max_length is not None:
+    if not template_config.padding_free:
+        logger.info('Setting padding_free=True because packing is enabled.')
+        template_config.padding_free = True
+    if dataset_config.packing_length is None and template_config.max_length is not None:
         dataset_config.packing_length = template_config.max_length
 
 

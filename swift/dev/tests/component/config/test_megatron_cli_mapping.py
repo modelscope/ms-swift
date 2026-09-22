@@ -28,15 +28,20 @@ from swift.dev.cli.megatron import (
 )
 from swift.dev.config import (
     CheckpointConfig,
+    ConvertConfig,
     DatasetConfig,
     DistributedConfig,
+    MegatronConfig,
     ModelConfig,
+    MoEConfig,
     TemplateConfig,
     TrainConfig,
     TunerConfig,
+    process_configs,
 )
 
-_CONFIGS = (ModelConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig, TunerConfig)
+_CONFIGS = (ModelConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig, TunerConfig,
+            MegatronConfig, MoEConfig)
 
 
 def _legacy_arg_names():
@@ -46,18 +51,21 @@ def _legacy_arg_names():
 
 
 def test_self_parser_maps_legacy_compat_fields_without_legacy_arguments():
-    model, _, _, train, dist, checkpoint, logging, tuner = parse_megatron_configs([
+    model, _, _, train, dist, checkpoint, logging, tuner, quantize, megatron, moe = parse_megatron_configs([
         '--model', 'm', '--dataset', 'd', '--tuner_type', 'full', '--bf16', 'true', '--attention_backend', 'fused',
         '--lr', '0.0002', '--train_iters', '20', '--micro_batch_size', '2', '--global_batch_size', '8',
         '--tensor_model_parallel_size', '2', '--save_steps', '0.25', '--logging_steps', '2',
     ], world_size=4)
     assert model.torch_dtype == 'bfloat16' and model.attn_impl == 'fused'
-    assert train.lr == 0.0002 and train.train_iters == 20
+    assert train.learning_rate == 0.0002 and train.max_steps == 20
     assert train.gradient_accumulation_steps == 2
     assert dist.backend == 'megatron' and dist.nproc_per_node == 4
     assert checkpoint.save_steps == 0.25
     assert logging.logging_steps == 2
     assert tuner is None
+    assert quantize.quant_method is None
+    assert isinstance(megatron, MegatronConfig)
+    assert isinstance(moe, MoEConfig)
 
 
 def test_self_parser_rejects_legacy_field_without_dev_consumer():
@@ -66,8 +74,77 @@ def test_self_parser_rejects_legacy_field_without_dev_consumer():
 
 
 def test_self_parser_accepts_tracker_config():
-    *_, logging, _ = parse_megatron_configs(['--model', 'm', '--dataset', 'd', '--report_to', 'wandb'])
-    assert logging.report_to == ['wandb']
+    configs = parse_megatron_configs(['--model', 'm', '--dataset', 'd', '--report_to', 'wandb'])
+    assert configs[6].report_to == ['wandb']
+
+
+@pytest.mark.parametrize(('command', 'argv'), [
+    ('megatron_sft', ['--model', 'm', '--dataset', 'd', '--mcore_model', '/legacy/mcore']),
+    ('megatron_pt', ['--model', 'm', '--dataset', 'd', '--mcore_adapter', '/legacy/adapter']),
+])
+def test_native_mcore_training_checkpoints_fail_with_conversion_hint(command, argv):
+    with pytest.raises(ValueError, match='megatron export --to_hf'):
+        parse_megatron_configs(argv, command=command)
+
+
+def test_native_mcore_reference_checkpoint_fails_with_conversion_hint():
+    from swift.dev.cli.rlhf import parse_rlhf_configs
+
+    with pytest.raises(ValueError, match='megatron export --to_hf'):
+        parse_rlhf_configs(
+            ['--model', 'm', '--dataset', 'd', '--mcore_ref_model', '/legacy/reference'], megatron=True)
+
+
+@pytest.mark.parametrize(('finetune', 'resume_only_model'), [('true', True), ('false', False)])
+def test_megatron_finetune_derives_dev_checkpoint_resume_mode(finetune, resume_only_model):
+    configs = parse_megatron_configs([
+        '--model', 'm', '--dataset', 'd', '--resume_from_checkpoint', '/tmp/dev-checkpoint', '--finetune', finetune
+    ])
+    model, template, dataset, train, dist, checkpoint, _, tuner, quantize, megatron, _ = configs
+    process_configs(
+        model,
+        template,
+        dataset,
+        train,
+        dist,
+        checkpoint,
+        tuner,
+        megatron_config=megatron,
+        quantize_config=quantize)
+    assert checkpoint.resume_only_model is resume_only_model
+
+
+def test_megatron_finetune_resume_conflicts_fail_and_false_requires_checkpoint():
+    configs = parse_megatron_configs([
+        '--model', 'm', '--dataset', 'd', '--resume_from_checkpoint', '/tmp/dev-checkpoint', '--finetune', 'true',
+        '--resume_only_model', 'false'
+    ])
+    model, template, dataset, train, dist, checkpoint, _, tuner, quantize, megatron, _ = configs
+    with pytest.raises(ValueError, match='conflicts with resume_only_model'):
+        process_configs(
+            model,
+            template,
+            dataset,
+            train,
+            dist,
+            checkpoint,
+            tuner,
+            megatron_config=megatron,
+            quantize_config=quantize)
+
+    configs = parse_megatron_configs(['--model', 'm', '--dataset', 'd', '--finetune', 'false'])
+    model, template, dataset, train, dist, checkpoint, _, tuner, quantize, megatron, _ = configs
+    with pytest.raises(ValueError, match='requires --resume_from_checkpoint'):
+        process_configs(
+            model,
+            template,
+            dataset,
+            train,
+            dist,
+            checkpoint,
+            tuner,
+            megatron_config=megatron,
+            quantize_config=quantize)
 
 
 def _args(**overrides):
@@ -270,14 +347,17 @@ class TestWeightDecayRampIsNotForwardedWhenDerived:
                 end_weight_decay=0.1,
                 lr_decay_style='constant'),
             world_size=1)
-        model, template, dataset, train, dist, checkpoint, tuner = configs
-        validate_configs(model, template, dataset, train, dist, checkpoint, tuner)
+        model, template, dataset, train, dist, checkpoint, tuner, megatron, moe = configs
+        validate_configs(
+            model, template, dataset, train, dist, checkpoint, tuner,
+            megatron_config=megatron, moe_config=moe)
 
 
 def test_name_hit_fields_still_copy():
     """The renames must not disturb the fields that already share a name on both surfaces."""
-    _, _, _, train, _, checkpoint, _ = megatron_args_to_configs(
+    configs = megatron_args_to_configs(
         _args(min_lr=1e-7, weight_decay=0.2, seed=7, save_steps=123), world_size=1)
+    train, checkpoint = configs[3], configs[5]
     assert train.min_lr == 1e-7
     assert train.weight_decay == 0.2
     assert train.seed == 7
@@ -294,7 +374,7 @@ def test_clip_grad_lands_on_max_grad_norm_and_clears_the_alias():
     """
     from swift.dev.optimizer import resolve_max_grad_norm
 
-    _, _, _, train, _, _, _ = megatron_args_to_configs(_args(clip_grad=0.5), world_size=1)
+    train = megatron_args_to_configs(_args(clip_grad=0.5), world_size=1)[3]
     assert train.max_grad_norm == 0.5
     assert train.clip_grad is None
     assert resolve_max_grad_norm(train) == 0.5
@@ -428,21 +508,21 @@ class TestDecayStyleReverse:
 def test_dev_only_launch_knobs_are_set_by_the_entry_point():
     """backend/mode/nproc_per_node do not exist on the Megatron surface: copying would leave
     backend=None and the run would build a TransformersModel instead."""
-    *_, dist, _, _ = megatron_args_to_configs(_args(), world_size=4)
+    dist = megatron_args_to_configs(_args(), world_size=4)[4]
     assert dist.backend == 'megatron'
     assert dist.mode == 'local'
     assert dist.nproc_per_node == 4
 
 
 def test_parallel_sizes_pass_through():
-    *_, dist, _, _ = megatron_args_to_configs(
+    dist = megatron_args_to_configs(
         _args(
             tensor_model_parallel_size=2,
             pipeline_model_parallel_size=1,
             context_parallel_size=1,
             global_batch_size=2,
             micro_batch_size=1),
-        world_size=2)
+        world_size=2)[4]
     assert dist.tensor_model_parallel_size == 2
 
 
@@ -481,9 +561,9 @@ def test_warmup_priority_is_inverted_on_the_transformers_backend():
     assert warmup_budget(cfg, 50, is_megatron=True) == 0.1 * 50
 
 
-def test_non_adam_optimizer_is_refused():
-    with pytest.raises(NotImplementedError, match='optimizer'):
-        megatron_args_to_configs(_args(optimizer='muon'), world_size=1)
+def test_non_adam_optimizer_reaches_train_config():
+    _, _, _, train, *_ = megatron_args_to_configs(_args(optimizer='muon'), world_size=1)
+    assert train.optimizer == 'muon'
 
 
 def test_hf_surface_args_are_refused():
@@ -494,10 +574,10 @@ def test_hf_surface_args_are_refused():
 
 
 def test_tuner_dispatch():
-    *_, tuner = megatron_args_to_configs(_args(tuner_type='full'), world_size=1)
+    tuner = megatron_args_to_configs(_args(tuner_type='full'), world_size=1)[6]
     assert tuner is None
-    *_, tuner = megatron_args_to_configs(
-        _args(tuner_type='lora', lora_rank=16, target_modules=['q_proj']), world_size=1)
+    tuner = megatron_args_to_configs(
+        _args(tuner_type='lora', lora_rank=16, target_modules=['q_proj']), world_size=1)[6]
     assert isinstance(tuner, TunerConfig)
     assert tuner.tuner_type == 'lora' and tuner.lora_rank == 16
     with pytest.raises(NotImplementedError, match='tuner_type'):
@@ -510,11 +590,49 @@ def test_torch_dtype_object_is_normalized():
     assert model.torch_dtype == 'bfloat16'
 
 
-def test_returns_the_same_seven_config_types_as_the_hf_entry():
-    model, template, dataset, train, dist, checkpoint, _ = megatron_args_to_configs(_args(), world_size=1)
+def test_returns_megatron_runtime_config_types():
+    model, template, dataset, train, dist, checkpoint, _, megatron, moe = megatron_args_to_configs(
+        _args(), world_size=1)
     assert isinstance(model, ModelConfig)
     assert isinstance(template, TemplateConfig)
     assert isinstance(dataset, DatasetConfig)
     assert isinstance(train, TrainConfig)
     assert isinstance(dist, DistributedConfig)
     assert isinstance(checkpoint, CheckpointConfig)
+    assert isinstance(megatron, MegatronConfig)
+    assert isinstance(moe, MoEConfig)
+
+
+def test_export_maps_parallel_megatron_and_moe_configs(monkeypatch, tmp_path):
+    import torch
+    from swift.megatron.arguments import MegatronArguments
+
+    from swift.dev.recipe.convert import _build_megatron_args
+
+    monkeypatch.setattr(MegatronArguments, '__post_init__', lambda self: None)
+    processor = SimpleNamespace(model_info=SimpleNamespace(is_moe_model=True, torch_dtype=torch.float16))
+    args = _build_megatron_args(
+        ModelConfig(model='m', torch_dtype='bfloat16'),
+        ConvertConfig(to_mcore=True),
+        DistributedConfig(
+            tensor_model_parallel_size=2,
+            pipeline_model_parallel_size=3,
+            context_parallel_size=4,
+            expert_model_parallel_size=5,
+            sequence_parallel=True,
+            bridge_backend='megatron-bridge'),
+        processor=processor,
+        output_dir=str(tmp_path),
+        megatron_config=MegatronConfig(attention_softmax_in_fp32=False),
+        moe_config=MoEConfig(moe_router_dtype='fp64'))
+
+    assert args.tensor_model_parallel_size == 2
+    assert args.pipeline_model_parallel_size == 3
+    assert args.context_parallel_size == 4
+    assert args.expert_model_parallel_size == 5
+    assert args.sequence_parallel is True
+    assert args.bridge_backend == 'megatron-bridge'
+    assert args.attention_softmax_in_fp32 is False
+    assert args.moe_router_dtype == 'fp64'
+    assert args.moe_grouped_gemm is True
+    assert args.torch_dtype is torch.bfloat16

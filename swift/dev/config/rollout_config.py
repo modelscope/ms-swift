@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 
 # TODO: integrate it
 @dataclass
 class RolloutConfig:
-    """Rollout/inference engine configuration for vLLM, async scheduling, and generation."""
+    """Rollout/inference engine configuration, scheduling, and weight synchronization."""
 
     # === vLLM Engine Parameters ===
     vllm_gpu_memory_utilization: float = 0.9
@@ -19,7 +19,7 @@ class RolloutConfig:
     vllm_max_model_len: Optional[int] = None
     vllm_disable_custom_all_reduce: bool = True
     vllm_enforce_eager: bool = False
-    vllm_limit_mm_per_prompt: Optional[str] = None
+    vllm_limit_mm_per_prompt: Optional[Dict[str, int]] = None
     vllm_max_lora_rank: int = 16
     vllm_enable_prefix_caching: bool = True
     vllm_use_async_engine: Optional[bool] = None
@@ -27,8 +27,8 @@ class RolloutConfig:
     vllm_reasoning_parser: Optional[str] = None
     vllm_disable_cascade_attn: bool = False
     vllm_mm_processor_cache_gb: Optional[float] = None
-    vllm_speculative_config: Optional[str] = None
-    vllm_engine_kwargs: Optional[str] = None
+    vllm_speculative_config: Optional[Dict[str, Any]] = None
+    vllm_engine_kwargs: Optional[Dict[str, Any]] = None
     vllm_data_parallel_size: int = 1
 
     # === SGLang Engine Parameters ===
@@ -79,13 +79,6 @@ class RolloutConfig:
     offload_optimizer: bool = False
     offload_model: bool = False
     enable_flattened_weight_sync: bool = True
-
-    # === Generation Parameters ===
-    top_k: int = -1
-    top_p: float = 1.0
-    repetition_penalty: float = 1.0
-    stop_words: List[str] = field(default_factory=list)
-    structured_outputs_regex: Optional[str] = None
 
     # === Batch Control ===
     generation_batch_size: Optional[int] = None

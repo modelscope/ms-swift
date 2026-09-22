@@ -288,28 +288,6 @@ def parse_optim_args(optim_args: Optional[str]) -> dict:
     return parsed
 
 
-def parse_scheduler_kwargs(lr_scheduler_kwargs) -> dict:
-    """TrainConfig.lr_scheduler_kwargs (dict, or a JSON string from the CLI) -> kwargs.
-
-    Legacy swift accepts JSON here (``--lr_scheduler_kwargs '{"min_lr": 1e-6}'``), so a string must
-    be parsed rather than forwarded, and a malformed one must say so instead of reaching the
-    scheduler constructor as a str.
-    """
-    if not lr_scheduler_kwargs:
-        return {}
-    if isinstance(lr_scheduler_kwargs, dict):
-        return dict(lr_scheduler_kwargs)
-    import json
-    try:
-        parsed = json.loads(lr_scheduler_kwargs)
-    except json.JSONDecodeError as e:
-        raise ValueError(f'lr_scheduler_kwargs is not valid JSON: {lr_scheduler_kwargs!r} ({e})')
-    if not isinstance(parsed, dict):
-        raise ValueError(f'lr_scheduler_kwargs must be a JSON object, got {type(parsed).__name__}: '
-                         f'{lr_scheduler_kwargs!r}')
-    return parsed
-
-
 def _coerce(value: str):
     lowered = value.lower()
     if lowered in ('true', 'false'):

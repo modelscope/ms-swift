@@ -10,7 +10,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 
-def parse_export_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
+def parse_export_configs(argv: Optional[List[str]] = None, *, command: str = 'export') -> Dict[str, Any]:
     """Parse argv directly into the Configs consumed by export recipes."""
     from swift.dev.cli.legacy_coverage import reject_legacy_only_flags
     from swift.dev.cli.parser import flag_names, parse_configs, resolve_argv
@@ -20,7 +20,9 @@ def parse_export_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         DatasetConfig,
         DistributedConfig,
         GenerationConfig,
+        MegatronConfig,
         ModelConfig,
+        MoEConfig,
         QuantizeConfig,
         RuntimeConfig,
         TemplateConfig,
@@ -28,15 +30,16 @@ def parse_export_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     )
 
     effective_argv = resolve_argv(argv)
-    reject_legacy_only_flags('export', effective_argv)
+    reject_legacy_only_flags(command, effective_argv)
     classes = [ModelConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig, QuantizeConfig,
-               ConvertConfig, TunerConfig, GenerationConfig, RuntimeConfig]
-    configs, remaining = parse_configs(classes, effective_argv)
+               ConvertConfig, TunerConfig, GenerationConfig, RuntimeConfig, MegatronConfig, MoEConfig]
+    configs, remaining = parse_configs(classes, effective_argv, load_args_default=True)
     if remaining:
         raise ValueError(f'Unrecognized arguments: {remaining}. The dev export CLI parses the Config surface '
                          'directly; a flag with no matching Config field is refused rather than dropped.')
     names = ('model_config', 'template_config', 'dataset_config', 'distributed_config', 'checkpoint_config',
-             'quantize_config', 'convert_config', 'tuner_config', 'generation_config', 'runtime_config')
+             'quantize_config', 'convert_config', 'tuner_config', 'generation_config', 'runtime_config',
+             'megatron_config', 'moe_config')
     result = dict(zip(names, configs))
     result['checkpoint_config']._output_dir_explicit = 'output_dir' in flag_names(effective_argv)
     return result
@@ -78,6 +81,8 @@ def _validate_export(configs: Dict[str, Any]) -> None:
     quantize_config = configs['quantize_config']
     convert_config = configs['convert_config']
     dataset_config = configs['dataset_config']
+    checkpoint_config = configs['checkpoint_config']
+    distributed_config = configs['distributed_config']
 
     if quantize_config.quant_bits is not None and quantize_config.quant_method is None:
         raise ValueError('Please specify the quantization method using `--quant_method`.')
@@ -92,10 +97,27 @@ def _validate_export(configs: Dict[str, Any]) -> None:
     if convert_config.to_mcore and convert_config.to_hf:
         raise ValueError('Choose exactly one conversion direction: --to_mcore or --to_hf.')
 
+    requested_save_options = {'safe_serialization', 'max_shard_size'}.intersection(
+        getattr(checkpoint_config, '_explicit_fields', ()))
+    chained_merge = bool(convert_config.merge_lora
+                         and (quantize_config.quant_method or convert_config.to_ollama
+                              or checkpoint_config.push_to_hub))
+    if requested_save_options and not ((convert_config.merge_lora and not chained_merge) or convert_config.to_hf):
+        raise NotImplementedError(
+            f'{sorted(requested_save_options)} do not configure the selected export operation. They are supported '
+            'for a standalone LoRA merge, or for mcore-to-HF conversion where applicable.')
+    if convert_config.to_hf and not checkpoint_config.safe_serialization:
+        raise NotImplementedError('mcore-to-HF conversion always writes safetensors; use --safe_serialization true.')
+    if (convert_config.to_hf and distributed_config.bridge_backend == 'megatron-bridge'
+            and 'max_shard_size' in requested_save_options):
+        raise NotImplementedError(
+            'megatron-bridge AutoBridge does not expose max_shard_size. Use --bridge_backend mcore-bridge or '
+            'remove the option.')
+
 
 def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
     """Execute an already parsed export Config set."""
-    from swift.dev.cli.runtime import bootstrap_run, process_and_validate_configs
+    from swift.dev.config import process_and_validate_configs
     from swift.dev.recipe import (
         export_cached_dataset,
         run_convert,
@@ -106,9 +128,11 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
         run_to_peft_format,
     )
 
-    process_and_validate_configs(configs)
     _validate_export(configs)
     _derive_output_dir(configs)
+    # Export output is a final artifact, not a training work directory. Recipes own directory creation
+    # and their replace/overwrite policy, so run initialization only normalizes the path.
+    process_and_validate_configs(configs, add_version=False, create_output_dir=False)
 
     model_config = configs['model_config']
     template_config = configs['template_config']
@@ -120,16 +144,6 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
     tuner_config = configs['tuner_config']
     generation_config = configs['generation_config']
 
-    # Export output is a final artifact, not a training work directory: do not append vN-timestamp.
-    # Recipes own creation and their replace/overwrite policy, so bootstrap only normalises the path.
-    bootstrap_run(
-        model_config,
-        checkpoint_config,
-        dataset_config,
-        tuner_config,
-        seed=configs['runtime_config'].seed,
-        add_version=False,
-        create_output_dir=False)
     output_dir = checkpoint_config.output_dir
     result: Optional[str] = None
 
@@ -177,6 +191,8 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
             template_config=template_config,
             distributed_config=distributed_config,
             checkpoint_config=checkpoint_config,
+            megatron_config=configs['megatron_config'],
+            moe_config=configs['moe_config'],
             output_dir=output_dir)
     if checkpoint_config.push_to_hub:
         source = result or (tuner_config.adapters[0] if tuner_config.adapters else model_config.model)

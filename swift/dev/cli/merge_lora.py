@@ -10,7 +10,8 @@ class MergeLoraCliConfig:
 
 
 def parse_merge_lora_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
-    from swift.dev.cli.parser import parse_configs_strict
+    from swift.dev.cli.legacy_coverage import reject_legacy_only_flags
+    from swift.dev.cli.parser import parse_configs_strict, resolve_argv
     from swift.dev.config import (
         CheckpointConfig,
         DatasetConfig,
@@ -20,24 +21,24 @@ def parse_merge_lora_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]
         TunerConfig,
     )
 
+    effective_argv = resolve_argv(argv)
+    reject_legacy_only_flags('merge_lora', effective_argv)
     classes = [
         ModelConfig, TemplateConfig, DatasetConfig, CheckpointConfig, TunerConfig, MergeLoraCliConfig, RuntimeConfig
     ]
-    configs = parse_configs_strict(classes, argv, command='swift merge-lora')
+    configs = parse_configs_strict(
+        classes, effective_argv, command='swift merge-lora', load_args_default=True)
     names = ('model_config', 'template_config', 'dataset_config', 'checkpoint_config', 'tuner_config', 'cli_config',
              'runtime_config')
     return dict(zip(names, configs))
 
 
 def merge_lora_main(argv: Optional[List[str]] = None) -> str:
-    from swift.dev.cli.runtime import bootstrap_run, process_and_validate_configs
+    from swift.dev.config import process_and_validate_configs
     from swift.dev.recipe import run_merge_lora
 
     configs = parse_merge_lora_configs(argv)
-    process_and_validate_configs(configs)
-    bootstrap_run(
-        configs['model_config'], configs['checkpoint_config'], configs['dataset_config'], configs['tuner_config'],
-        seed=configs['runtime_config'].seed, add_version=False, create_output_dir=False)
+    process_and_validate_configs(configs, add_version=False, create_output_dir=False)
     return run_merge_lora(
         configs['model_config'],
         configs['tuner_config'],

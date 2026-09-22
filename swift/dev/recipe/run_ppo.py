@@ -28,6 +28,7 @@ Placement (colocate vs heterogeneous) and weight-sync are identical to run_grpo.
 """
 from __future__ import annotations
 import logging
+import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
@@ -37,7 +38,10 @@ if TYPE_CHECKING:
         DistributedConfig,
         GenerationConfig,
         LoggingConfig,
+        MegatronConfig,
         ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
         RLHFConfig,
         RolloutConfig,
         TemplateConfig,
@@ -63,6 +67,9 @@ def run_ppo(
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
+    megatron_config: Optional[MegatronConfig] = None,
+    moe_config: Optional[MoEConfig] = None,
     *,
     engine_args: Optional[Dict[str, Any]] = None,
     output_dir: str = 'output',
@@ -99,7 +106,10 @@ def run_ppo(
         tuner_config,
         rlhf_config=rlhf_config,
         output_dir=output_dir,
-        logging_config=logging_config)
+        logging_config=logging_config,
+        quantize_config=quantize_config,
+        megatron_config=megatron_config,
+        moe_config=moe_config)
     assembly.prepare()
 
     sampler_world_size = rollout_config.vllm_tensor_parallel_size * rollout_config.vllm_data_parallel_size
@@ -112,17 +122,28 @@ def run_ppo(
     template = assembly.build_template()
     # No dataloader to derive a step budget from -- prompts are rolled out, not iterated.
     max_steps = train_config.max_steps or 1
+    assembly.resolve_step_intervals(max_steps)
 
     # Policy (trainer): the clipped surrogate is the PPO policy loss (configure_rlhf_loss maps ppo).
     assembly.build_model()
     model = assembly.model
     configure_rlhf_loss(model, rlhf_config)
-    configure_optimizer(model, train_config, num_training_steps=max_steps)
+    configure_optimizer(
+        model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
 
     # Critic: a trainable seq_cls (num_labels=1) value model, trained by the clipped value loss.
-    value_model = _build_value_model(model_config, rlhf_config, distributed_config, train_config, template)
+    value_model = _build_value_model(
+        model_config,
+        rlhf_config,
+        distributed_config,
+        train_config,
+        template,
+        model_path=(os.path.join(assembly.resume_dir, 'value_model') if assembly.resume_dir else None),
+        megatron_config=megatron_config,
+        moe_config=moe_config)
     configure_ppo_value_loss(value_model, rlhf_config)
-    configure_optimizer(value_model, train_config, num_training_steps=max_steps)
+    configure_optimizer(
+        value_model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
 
     # Rollout (weight-syncable, exactly as run_grpo), reward model(s) and reference for the KL penalty.
     sampler = build_sampler(
@@ -149,17 +170,34 @@ def run_ppo(
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=_grpo_sampling_params(rlhf_config, generation_config),
         logging_config=logging_config,
-        output_dir=output_dir)
+        output_dir=output_dir,
+        save_steps=checkpoint_config.save_steps,
+        no_save_optim=checkpoint_config.no_save_optim or checkpoint_config.save_only_model,
+        no_save_rng=checkpoint_config.no_save_rng or checkpoint_config.save_only_model,
+        safe_serialization=checkpoint_config.safe_serialization,
+        max_shard_size=checkpoint_config.max_shard_size,
+        save_total_limit=checkpoint_config.save_total_limit,
+        manual_gc=bool(megatron_config and megatron_config.manual_gc),
+        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0)
+    assembly.loop = loop
+    if assembly.resume_dir:
+        policy_state = assembly.resume_model()
+        value_state = assembly.resume_model(
+            value_model, os.path.join(assembly.resume_dir, 'value_model'), adapter_name='')
+        loop.resume(policy_state, value_state=value_state)
     try:
         history = loop.fit()
+        if _save_final:
+            assembly.save_final()
+        return history
     finally:
         rollout.shutdown()
-    del output_dir, _save_final  # policy checkpointing of the RL run is a follow-up; smoke returns history
-    return history
 
 
 def _build_value_model(model_config: ModelConfig, rlhf_config: RLHFConfig, distributed_config: DistributedConfig,
-                       train_config: TrainConfig, template: Any) -> Any:
+                       train_config: TrainConfig, template: Any, *, model_path: Optional[str] = None,
+                       megatron_config: Optional[MegatronConfig] = None,
+                       moe_config: Optional[MoEConfig] = None) -> Any:
     """Build the trainable critic: a ``seq_cls`` num_labels=1 model, forwarded with ``task='value'``.
 
     Initialised from the first reward model when one is given (closest to TRL, which inits the value
@@ -175,11 +213,16 @@ def _build_value_model(model_config: ModelConfig, rlhf_config: RLHFConfig, distr
 
     init_from = rlhf_config.reward_model[0] if rlhf_config.reward_model else model_config.model
     value_cfg = copy(model_config)
-    value_cfg.model = init_from
+    value_cfg.model = model_path or init_from
     value_cfg.task_type = 'seq_cls'  # the per-token value rides the seq_cls score head
     value_cfg.num_labels = 1
-    value_model = build_model(value_cfg, distributed_config, train_config)
-    value_model.set_processor(InputProcessor)
+    value_model = build_model(
+        value_cfg,
+        distributed_config,
+        train_config,
+        megatron_config=megatron_config,
+        moe_config=moe_config)
+    value_model.set_processor(InputProcessor, cp_partition_mode=distributed_config.cp_partition_mode)
     value_model.set_template(template)
     return value_model
 
@@ -262,6 +305,14 @@ class PPOLoop:
         sampling_params: Optional[dict] = None,
         logging_config: Optional['LoggingConfig'] = None,
         output_dir: str = 'output',
+        save_steps: Optional[int] = None,
+        no_save_optim: bool = False,
+        no_save_rng: bool = False,
+        safe_serialization: bool = True,
+        max_shard_size: str = '5GB',
+        save_total_limit: Optional[int] = None,
+        manual_gc: bool = False,
+        manual_gc_steps: int = 0,
     ):
         self.model = model
         self.value_model = value_model
@@ -277,6 +328,17 @@ class PPOLoop:
         self.logging_config = logging_config
         from swift.dev.recipe.tracking import RunTracker
         self.tracker = RunTracker(logging_config, output_dir)
+        self.output_dir = output_dir
+        self.save_steps = save_steps
+        self.no_save_optim = no_save_optim
+        self.no_save_rng = no_save_rng
+        self.safe_serialization = safe_serialization
+        self.max_shard_size = max_shard_size
+        self.save_total_limit = save_total_limit
+        self.manual_gc = manual_gc
+        self.manual_gc_steps = manual_gc_steps
+        if self.manual_gc_steps < 0:
+            raise ValueError('manual_gc_steps must be >= 0.')
         self.num_generations = rlhf_config.num_generations
         self.num_ppo_epochs = max(1, rlhf_config.num_ppo_epochs)
         from twinkle.advantage import GAEAdvantage
@@ -376,9 +438,12 @@ class PPOLoop:
 
     def fit(self) -> list:
         """Run max_steps PPO steps (each: rollout -> per-token GAE -> num_ppo_epochs of policy+critic)."""
+        from swift.dev.recipe.train_loop import finish_manual_gc, start_manual_gc
+
         ga = self.gradient_accumulation_steps
+        gc_was_enabled = start_manual_gc(self.manual_gc)
         try:
-            for _ in range(self.max_steps):
+            while self.global_step < self.max_steps:
                 if hasattr(self.rollout, 'sync_weights'):
                     self.rollout.sync_weights()
                 samples = self.rollout.generate(
@@ -407,10 +472,14 @@ class PPOLoop:
                 self._record_step(mean_reward)
             return self.history
         finally:
+            finish_manual_gc(gc_was_enabled)
             self.tracker.close()
 
     def _record_step(self, mean_reward: float) -> None:
+        from swift.dev.recipe.train_loop import collect_manual_gc
+
         self.global_step += 1
+        collect_manual_gc(self.manual_gc, self.manual_gc_steps, self.global_step)
         metrics = self.model.calculate_metric(is_training=True)
         value_metrics = self.value_model.calculate_metric(is_training=True)
         record = {
@@ -424,3 +493,38 @@ class PPOLoop:
         if self.tracker.should_log(self.global_step):
             logger.info(f"step {self.global_step}  loss={record['loss']:.4f}  value_loss={record['value_loss']:.4f}  "
                         f"reward={record['reward']:.4f}")
+        if self.save_steps and self.global_step % self.save_steps == 0:
+            self.save(f'checkpoint-{self.global_step}')
+
+    def save(self, name: str = 'checkpoint-final') -> str:
+        """Persist policy and critic checkpoints under one RL checkpoint directory."""
+        from swift.dev.recipe.train_loop import save_training_checkpoint
+
+        save_training_checkpoint(
+            self.model,
+            name,
+            output_dir=self.output_dir,
+            consumed_train_samples=self.global_step,
+            no_save_optim=self.no_save_optim,
+            no_save_rng=self.no_save_rng,
+            safe_serialization=self.safe_serialization,
+            max_shard_size=self.max_shard_size,
+            save_total_limit=self.save_total_limit)
+        checkpoint_dir = os.path.join(self.output_dir, name)
+        save_training_checkpoint(
+            self.value_model,
+            'value_model',
+            output_dir=checkpoint_dir,
+            consumed_train_samples=self.global_step,
+            no_save_optim=self.no_save_optim,
+            no_save_rng=self.no_save_rng,
+            safe_serialization=self.safe_serialization,
+            max_shard_size=self.max_shard_size,
+            save_total_limit=self.save_total_limit)
+        return checkpoint_dir
+
+    def resume(self, state: dict, *, value_state: Optional[dict] = None) -> None:
+        """Resume both optimizer phases and the completed rollout-step count."""
+        self.global_step = int(state.get('consumed_train_samples', 0))
+        if value_state is not None and int(value_state.get('consumed_train_samples', 0)) != self.global_step:
+            raise ValueError('PPO policy and value checkpoints contain different completed-step counts.')

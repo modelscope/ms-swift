@@ -50,7 +50,8 @@ class CheckpointConfig:
     #: Write the checkpoint from a background thread so training continues during the write. The step
     #: after a save stops waiting on disk; a crash mid-write leaves that checkpoint incomplete.
     async_save: bool = False
-    #: Save in safetensors rather than Megatron's torch format.
+    #: Legacy Megatron compatibility switch. The dev runtime always emits HF-format safetensors,
+    #: so True is supported and False is rejected explicitly.
     save_safetensors: bool = True
     #: Keep one writer process alive across saves instead of starting one each time.
     use_persistent_ckpt_worker: bool = False
@@ -66,5 +67,8 @@ class CheckpointConfig:
     add_version: bool = True
     create_checkpoint_symlink: bool = False
     use_flash_ckpt: bool = False
+    #: Restore model/template/quantization metadata from a checkpoint args.json. Training defaults this
+    #: off; inference and artifact CLIs enable it unless the flag is explicitly set.
     load_args: bool = False
+    #: With load_args, also restore DatasetConfig fields from the checkpoint.
     load_data_args: bool = False

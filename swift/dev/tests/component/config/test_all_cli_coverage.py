@@ -9,20 +9,28 @@ from swift.arguments import (
     EvalArguments,
     ExportArguments,
     InferArguments,
+    PretrainArguments,
     RLHFArguments,
     RolloutArguments,
     SamplingArguments,
+    SftArguments,
 )
 from swift.dev.cli.app import parse_app_configs
 from swift.dev.cli.deploy import DeployCliConfig, parse_deploy_configs
 from swift.dev.cli.eval import parse_eval_configs
 from swift.dev.cli.export import parse_export_configs
 from swift.dev.cli.infer import InferCliConfig, parse_infer_configs
-from swift.dev.cli.legacy_coverage import classified_fields
-from swift.dev.cli.rlhf import _RLHF_EXTENSION_FIELDS, RlhfCliCompatConfig, parse_rlhf_configs
+from swift.dev.cli.legacy_coverage import (
+    COMMAND_RUNTIME_CONSUMERS,
+    audit_config_consumers,
+    build_legacy_contract,
+    classified_fields,
+    unsupported_contracts,
+)
+from swift.dev.cli.rlhf import RlhfCliCompatConfig, parse_rlhf_configs
 from swift.dev.cli.rollout import parse_rollout_configs
 from swift.dev.cli.sample import parse_sample_configs
-from swift.dev.cli.sft import LEGACY_ONLY_CLASSIFICATION, SftCliCompatConfig
+from swift.dev.cli.sft import SftCliCompatConfig
 from swift.dev.config import (
     AppConfig,
     CheckpointConfig,
@@ -34,7 +42,9 @@ from swift.dev.config import (
     GenerationConfig,
     InferConfig,
     LoggingConfig,
+    MegatronConfig,
     ModelConfig,
+    MoEConfig,
     QuantizeConfig,
     RLHFConfig,
     RolloutConfig,
@@ -46,18 +56,24 @@ from swift.dev.config import (
 )
 
 _BASE = [ModelConfig, TemplateConfig, DatasetConfig, CheckpointConfig, TunerConfig]
+_TRAIN = _BASE + [TrainConfig, DistributedConfig, LoggingConfig, QuantizeConfig, SftCliCompatConfig]
 CLI_SURFACES = {
+    'pt': (PretrainArguments, _TRAIN),
+    'sft': (SftArguments, _TRAIN),
+    'rlhf': (RLHFArguments, _TRAIN + [GenerationConfig, RolloutConfig, RLHFConfig, MegatronConfig, MoEConfig,
+                                     RlhfCliCompatConfig]),
     'infer': (InferArguments, _BASE + [DistributedConfig, GenerationConfig, RolloutConfig, InferConfig,
-                                      InferCliConfig, RuntimeConfig]),
+                                      QuantizeConfig, InferCliConfig, RuntimeConfig]),
     'deploy': (DeployArguments, _BASE + [GenerationConfig, RolloutConfig, InferConfig, DeployConfig,
-                                         DeployCliConfig, RuntimeConfig]),
-    'rollout': (RolloutArguments, _BASE + [GenerationConfig, RolloutConfig, RLHFConfig, DeployConfig, RuntimeConfig]),
+                                         QuantizeConfig, DeployCliConfig, RuntimeConfig]),
+    'rollout': (RolloutArguments,
+                _BASE + [GenerationConfig, RolloutConfig, RLHFConfig, DeployConfig, QuantizeConfig, RuntimeConfig]),
     'sample': (SamplingArguments, _BASE + [DistributedConfig, GenerationConfig, RolloutConfig, InferConfig,
-                                           SamplingConfig, RLHFConfig, RuntimeConfig]),
+                                           SamplingConfig, RLHFConfig, QuantizeConfig, RuntimeConfig]),
     'eval': (EvalArguments, _BASE + [GenerationConfig, RolloutConfig, InferConfig, DeployConfig, EvalConfig,
-                                     DeployCliConfig, RuntimeConfig]),
+                                     QuantizeConfig, DeployCliConfig, RuntimeConfig]),
     'app': (AppArguments, _BASE + [GenerationConfig, RolloutConfig, InferConfig, DeployConfig, AppConfig,
-                                   DeployCliConfig, RuntimeConfig]),
+                                   QuantizeConfig, DeployCliConfig, RuntimeConfig]),
     'export': (ExportArguments, _BASE + [DistributedConfig, QuantizeConfig, ConvertConfig, GenerationConfig,
                                          RuntimeConfig]),
 }
@@ -68,7 +84,43 @@ def test_legacy_only_fields_are_exhaustively_classified(command):
     legacy_class, config_classes = CLI_SURFACES[command]
     legacy_fields = {field.name for field in dataclasses.fields(legacy_class)}
     config_fields = {field.name for cls in config_classes for field in dataclasses.fields(cls)}
-    assert legacy_fields - config_fields == classified_fields(command)
+    classified = classified_fields(command).intersection(legacy_fields)
+    assert legacy_fields - config_fields <= classified
+
+
+@pytest.mark.parametrize('command', CLI_SURFACES)
+def test_legacy_contract_partitions_every_field_once(command):
+    legacy_class, config_classes = CLI_SURFACES[command]
+    legacy_fields = {field.name for field in dataclasses.fields(legacy_class)}
+    contract, unaccounted = build_legacy_contract(command, legacy_fields, config_classes)
+    assert not unaccounted
+    assert set(contract) == legacy_fields
+    assert all(item.kind in {'direct', 'alias', 'derived', 'unsupported'} for item in contract.values())
+    assert all(item.consumer for item in contract.values() if item.kind != 'unsupported')
+
+
+@pytest.mark.parametrize('command', CLI_SURFACES)
+def test_command_runtime_consumer_is_a_real_entrypoint(command):
+    import importlib
+
+    module_name, function_name = COMMAND_RUNTIME_CONSUMERS[command].rsplit('.', 1)
+    assert callable(getattr(importlib.import_module(module_name), function_name))
+
+
+@pytest.mark.parametrize('command', CLI_SURFACES)
+def test_every_accepted_config_field_has_an_owner_consumer(command):
+    _, config_classes = CLI_SURFACES[command]
+    consumers = audit_config_consumers(command, config_classes)
+    expected = {field.name for cls in config_classes for field in dataclasses.fields(cls)}
+    assert set(consumers) == expected
+    assert all('swift.dev.cli.' in consumer and ' -> ' in consumer for consumer in consumers.values())
+
+
+@pytest.mark.parametrize('command', CLI_SURFACES)
+def test_unsupported_contracts_explain_reason_and_alternative(command):
+    for item in unsupported_contracts(command).values():
+        assert item.reason
+        assert item.replacement
 
 
 @pytest.mark.parametrize(
@@ -77,7 +129,6 @@ def test_legacy_only_fields_are_exhaustively_classified(command):
         (parse_infer_configs, ['--model', 'm', '--lmdeploy_tp', '2'], ValueError),
         (parse_deploy_configs, ['--model', 'm', '--use_ray', 'true'], ValueError),
         (parse_rollout_configs, ['--model', 'm', '--result_path', 'x'], ValueError),
-        (parse_sample_configs, ['--model', 'm', '--quant_method', 'bnb'], NotImplementedError),
         (parse_eval_configs, ['--model', 'm', '--use_swift_lora', 'true'], ValueError),
         (parse_app_configs, ['--model', 'm', '--ignore_args_error', 'true'], ValueError),
         (parse_export_configs, ['--model', 'm', '--use_swift_lora', 'true'], ValueError),
@@ -86,20 +137,6 @@ def test_legacy_only_fields_are_exhaustively_classified(command):
 def test_classified_legacy_fields_fail_with_explicit_reason(parser, argv, error):
     with pytest.raises(error):
         parser(argv)
-
-
-def test_rlhf_legacy_only_fields_are_exhaustively_classified():
-    config_classes = _BASE + [TrainConfig, DistributedConfig, LoggingConfig, GenerationConfig, RolloutConfig,
-                              RLHFConfig, SftCliCompatConfig, RlhfCliCompatConfig]
-    legacy_fields = {field.name for field in dataclasses.fields(RLHFArguments)}
-    config_fields = {field.name for cls in config_classes for field in dataclasses.fields(cls)}
-    classified = {name for names in LEGACY_ONLY_CLASSIFICATION.values() for name in names}
-    classified.update(_RLHF_EXTENSION_FIELDS)
-    classified.update({
-        'bnb_4bit_compute_dtype', 'bnb_4bit_quant_storage', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant',
-        'hqq_axis', 'quant_bits', 'quant_method'
-    })
-    assert legacy_fields - config_fields == classified
 
 
 def test_rlhf_response_length_alias_and_deprecated_seq_kd():

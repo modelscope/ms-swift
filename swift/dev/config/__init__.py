@@ -1,5 +1,4 @@
 from .adapter_config import TunerConfig
-from .app_config import AppConfig
 from .checkpoint_config import CheckpointConfig
 from .convert_config import ConvertConfig
 from .dataset_config import DatasetConfig
@@ -12,7 +11,7 @@ from .logging_config import LoggingConfig
 from .megatron_config import MegatronConfig
 from .model_config import ModelConfig
 from .moe_config import MoEConfig
-from .process import process_configs
+from .process import bootstrap_run, process_and_validate_configs, process_configs
 from .quantize_config import QuantizeConfig
 from .rlhf_config import RLHFConfig
 from .rollout_config import RolloutConfig
@@ -23,7 +22,6 @@ from .train_config import TrainConfig
 from .validate import validate_configs
 
 __all__ = [
-    'AppConfig',
     'CheckpointConfig',
     'ConvertConfig',
     'DatasetConfig',
@@ -44,6 +42,8 @@ __all__ = [
     'TemplateConfig',
     'TrainConfig',
     'TunerConfig',
+    'bootstrap_run',
+    'process_and_validate_configs',
     'process_configs',
     'validate_configs',
 ]

@@ -13,7 +13,7 @@ Why reduction='sum':
   micro-batch has the same token count. So SFT must use SUM.
 """
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from twinkle.loss import Loss
 
@@ -61,7 +61,7 @@ def configure_loss(model: TrainableModel,
 def configure_embedding_loss(model: TrainableModel,
                              *,
                              loss_type: str = 'infonce',
-                             mrl_dims: Optional[Union[Dict[int, float], str]] = None,
+                             mrl_dims: Optional[Dict[int, float]] = None,
                              **kwargs) -> None:
     """Set the embedding (contrastive) loss on ``model``.
 
@@ -77,8 +77,7 @@ def configure_embedding_loss(model: TrainableModel,
     Args:
         model: a twinkle-derived Model (has set_loss).
         loss_type: one of :data:`EMBEDDING_LOSS_TYPES`.
-        mrl_dims: Matryoshka ``{dim: weight}``; a JSON string is parsed (legacy passes
-            ``'{"32": 1.0}'``). ``None`` trains the full width only. Rejected by
+        mrl_dims: Matryoshka ``{dim: weight}``. ``None`` trains the full width only. Rejected by
             ``cosine_similarity``, whose absolute-similarity target has no per-prefix reading.
         **kwargs: forwarded to the loss constructor (temperature, margin, distance_metric, ...).
     """
@@ -89,28 +88,12 @@ def configure_embedding_loss(model: TrainableModel,
                                   f'got {loss_type!r}. Reranker losses score query-document pairs '
                                   'from logits and belong to a reranker recipe.')
     loss_cls = resolve_loss(loss_type)
-    parsed = _parse_mrl_dims(mrl_dims)
-    if parsed is not None:
-        kwargs['mrl_dims'] = parsed
+    if mrl_dims is not None:
+        kwargs['mrl_dims'] = mrl_dims
     # Pass an INSTANCE: twinkle's construct_class returns an instance unchanged, so constructing here
     # keeps the mrl_dims validation (EmbeddingLoss.__init__ raises for cosine_similarity) at the dev
     # call site rather than deep inside twinkle.
     model.set_loss(loss_cls(**kwargs))
-
-
-def _parse_mrl_dims(mrl_dims: Optional[Union[Dict[int, float], str]]) -> Optional[Dict[int, float]]:
-    """Normalize mrl_dims to ``{int: float}``, mirroring legacy's parse.
-
-    Legacy swift.trainers.arguments (arguments.py:264-266) accepts either a dict or a JSON string
-    and coerces to ``{int(k): float(v)}`` -- JSON object keys are always strings, so a raw
-    ``json.loads`` would yield str keys and every ``dim > hidden_size`` comparison would raise.
-    """
-    if not mrl_dims:
-        return None
-    if isinstance(mrl_dims, str):
-        from swift.dev.utils import json_parse_to_dict
-        mrl_dims = json_parse_to_dict(mrl_dims)
-    return {int(k): float(v) for k, v in mrl_dims.items()}
 
 
 def configure_reranker_loss(model: TrainableModel, *, loss_type: str = 'pointwise_reranker', **kwargs) -> None:

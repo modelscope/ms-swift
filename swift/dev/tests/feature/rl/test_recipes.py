@@ -361,6 +361,47 @@ def test_configure_ppo_value_loss_sets_value_loss():
     assert value_model.loss.vf_coef == 0.5
 
 
+def test_ppo_checkpoint_saves_policy_and_value_and_validates_resume(monkeypatch, tmp_path):
+    """A PPO checkpoint is one atomic policy directory with a nested, step-aligned critic."""
+    from swift.dev.recipe.run_ppo import PPOLoop
+
+    calls = []
+
+    def fake_save(model, name, **kwargs):
+        calls.append((model, name, kwargs))
+
+    monkeypatch.setattr('swift.dev.recipe.train_loop.save_training_checkpoint', fake_save)
+    loop = object.__new__(PPOLoop)
+    loop.model = 'policy'
+    loop.value_model = 'value'
+    loop.output_dir = str(tmp_path)
+    loop.global_step = 7
+    loop.no_save_optim = True
+    loop.no_save_rng = True
+
+    checkpoint_dir = loop.save('checkpoint-7')
+    assert checkpoint_dir == str(tmp_path / 'checkpoint-7')
+    assert calls == [
+        ('policy', 'checkpoint-7', {
+            'output_dir': str(tmp_path),
+            'consumed_train_samples': 7,
+            'no_save_optim': True,
+            'no_save_rng': True,
+        }),
+        ('value', 'value_model', {
+            'output_dir': checkpoint_dir,
+            'consumed_train_samples': 7,
+            'no_save_optim': True,
+            'no_save_rng': True,
+        }),
+    ]
+
+    loop.resume({'consumed_train_samples': 7}, value_state={'consumed_train_samples': 7})
+    assert loop.global_step == 7
+    with pytest.raises(ValueError, match='different completed-step counts'):
+        loop.resume({'consumed_train_samples': 7}, value_state={'consumed_train_samples': 6})
+
+
 def test_configure_rlhf_loss_refuses_unknown():
     """An unknown rlhf_type is a ValueError (ppo is now supported, so it is no longer refused)."""
     pytest.importorskip('twinkle.loss')

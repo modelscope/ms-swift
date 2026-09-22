@@ -13,7 +13,10 @@ from swift.dev.config import (
     DatasetConfig,
     DistributedConfig,
     LoggingConfig,
+    MegatronConfig,
     ModelConfig,
+    MoEConfig,
+    QuantizeConfig,
     RLHFConfig,
     TemplateConfig,
     TrainConfig,
@@ -109,7 +112,12 @@ def _training_configs(task_type='causal_lm'):
         CheckpointConfig(),
         LoggingConfig(report_to=['none']),
         None,
+        QuantizeConfig(),
     )
+
+
+def _megatron_training_configs(task_type='causal_lm'):
+    return (*_training_configs(task_type), MegatronConfig(), MoEConfig())
 
 
 @pytest.mark.parametrize('task_type,recipe_name', [
@@ -170,7 +178,7 @@ def test_rlhf_dispatches_every_supported_algorithm(monkeypatch, rlhf_type, recip
 ])
 def test_pt_entrypoints_enforce_pretraining_contract(monkeypatch, module_name, parser_path):
     module = importlib.import_module(module_name)
-    configs = _training_configs()
+    configs = _megatron_training_configs() if module_name.endswith('megatron_pt') else _training_configs()
     monkeypatch.setattr(parser_path, lambda _argv: configs)
     monkeypatch.setattr('swift.dev.config.process_configs', lambda *_args, **_kwargs: None)
     monkeypatch.setattr('swift.dev.config.validate_configs', lambda *_args, **_kwargs: None)
@@ -200,7 +208,7 @@ def test_megatron_wrappers_delegate_to_dev_entrypoints(monkeypatch):
 
     from swift.dev.cli import megatron
 
-    training = _training_configs()
+    training = _megatron_training_configs()
     monkeypatch.setattr(megatron, 'parse_megatron_configs', lambda _argv: training)
     monkeypatch.setattr('swift.dev.config.process_configs', lambda *_args, **_kwargs: None)
     monkeypatch.setattr('swift.dev.config.validate_configs', lambda *_args, **_kwargs: None)

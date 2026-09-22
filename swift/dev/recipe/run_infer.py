@@ -32,6 +32,7 @@ if TYPE_CHECKING:
         DistributedConfig,
         GenerationConfig,
         ModelConfig,
+        QuantizeConfig,
         TemplateConfig,
         TunerConfig,
     )
@@ -54,6 +55,7 @@ def run_infer(
     distributed_config: Optional[DistributedConfig] = None,
     tuner_config: Optional[TunerConfig] = None,
     adapters: Optional[List[str]] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
     merge_lora: bool = False,
     num_samples: int = 1,
     max_rows: Optional[int] = None,
@@ -118,7 +120,8 @@ def run_infer(
 
     task_type = model_config.task_type or 'causal_lm'
     if task_type in POOLING_TASKS:
-        return _run_pooling(model_config, template_config, distributed_config, rows, adapters, output_path, metric)
+        return _run_pooling(
+            model_config, template_config, distributed_config, rows, adapters, quantize_config, output_path, metric)
 
     return _run_generative(
         model_config,
@@ -129,6 +132,7 @@ def run_infer(
         engine_args=engine_args,
         distributed_config=distributed_config,
         adapters=adapters,
+        quantize_config=quantize_config,
         num_samples=num_samples,
         output_path=output_path,
         write_batch_size=write_batch_size,
@@ -148,6 +152,7 @@ def _run_generative(
     engine_args: Optional[Dict[str, Any]],
     distributed_config: Optional[DistributedConfig],
     adapters: Optional[List[str]],
+    quantize_config: Optional[QuantizeConfig],
     num_samples: int,
     output_path: Optional[str],
     write_batch_size: Optional[int],
@@ -156,11 +161,10 @@ def _run_generative(
     shutdown: bool,
 ) -> List[Dict[str, Any]]:
     """The causal-LM path: encode prompts, sample, write."""
-    from swift.dev.builders import build_sampler, build_template, to_sampling_params
-    from swift.model import get_model_processor
+    from swift.dev.builders import build_sampler, build_template, load_model_processor, to_sampling_params
 
     logger.info(f'run_infer: {len(rows)} prompts, backend={backend}, num_samples={num_samples}')
-    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
+    _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
     device_mesh = _build_device_mesh_if_dp(distributed_config)
     adapter_path = adapters[0] if adapters else None
@@ -171,7 +175,8 @@ def _run_generative(
         engine_args=engine_args,
         device_mesh=device_mesh,
         template=template,
-        adapters=adapters)
+        adapters=adapters,
+        quantize_config=quantize_config)
     try:
         params = to_sampling_params(generation_config, num_samples=num_samples)
         streaming = bool(generation_config is not None and generation_config.stream)
@@ -240,6 +245,7 @@ def _run_pooling(
     distributed_config: Optional[DistributedConfig],
     rows: List[Dict[str, Any]],
     adapters: Optional[List[str]],
+    quantize_config: Optional[QuantizeConfig],
     output_path: Optional[str],
     metric: Optional[str],
 ) -> List[Dict[str, Any]]:
@@ -250,15 +256,15 @@ def _run_pooling(
     all. The label comes from the row's own ``label`` column rather than from a trailing assistant
     turn, because there is no completion to strip.
     """
-    from swift.dev.builders import build_model, build_template
+    from swift.dev.builders import build_model, build_template, load_model_processor
     from swift.dev.config import DistributedConfig
-    from swift.model import get_model_processor
 
     task_type = model_config.task_type
     logger.info(f'run_infer: {len(rows)} rows, task_type={task_type} (forward pass, no sampler)')
-    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
+    _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
-    model = build_model(model_config, distributed_config or DistributedConfig())
+    model = build_model(
+        model_config, distributed_config or DistributedConfig(), quantize_config=quantize_config)
     if adapters:
         # add_adapter_to_model takes a checkpoint directory as well as a PeftConfig, so a trained
         # adapter is loaded here rather than built -- apply_tuner would create a fresh, untrained one.
@@ -314,6 +320,7 @@ def infer_cli(
     backend: Literal['vllm', 'sglang', 'transformers'] = 'vllm',
     engine_args: Optional[Dict[str, Any]] = None,
     adapters: Optional[List[str]] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
     multi_round: bool = True,
 ) -> None:
     """Interactive REPL, the dev counterpart of legacy ``--eval_human true``.
@@ -324,13 +331,17 @@ def infer_cli(
     Multimodal inputs are prompted for by path when the template asks for them, matching legacy's
     ``input_mm_data``. History is kept across turns unless ``multi_round`` is False.
     """
-    from swift.dev.builders import build_sampler, build_template, to_sampling_params
-    from swift.model import get_model_processor
+    from swift.dev.builders import build_sampler, build_template, load_model_processor, to_sampling_params
 
-    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
+    _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
     sampler = build_sampler(
-        model_config, backend=backend, engine_args=engine_args, template=template, adapters=adapters)
+        model_config,
+        backend=backend,
+        engine_args=engine_args,
+        template=template,
+        adapters=adapters,
+        quantize_config=quantize_config)
     adapter_path = adapters[0] if adapters else None
     params = to_sampling_params(generation_config)
     stream = bool(generation_config is not None and generation_config.stream)

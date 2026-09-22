@@ -20,6 +20,7 @@ entry point; conversion needs a plain cpu-initialized mcore model instead, which
 ``get_mcore_model`` returns.
 """
 from __future__ import annotations
+import dataclasses
 import logging
 import math
 import os
@@ -27,7 +28,15 @@ import shutil
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 if TYPE_CHECKING:
-    from swift.dev.config import CheckpointConfig, ConvertConfig, DistributedConfig, ModelConfig, TemplateConfig
+    from swift.dev.config import (
+        CheckpointConfig,
+        ConvertConfig,
+        DistributedConfig,
+        MegatronConfig,
+        ModelConfig,
+        MoEConfig,
+        TemplateConfig,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +76,8 @@ def run_convert(
     template_config: Optional[TemplateConfig] = None,
     distributed_config: Optional[DistributedConfig] = None,
     checkpoint_config: Optional[CheckpointConfig] = None,
+    megatron_config: Optional[MegatronConfig] = None,
+    moe_config: Optional[MoEConfig] = None,
     output_dir: Optional[str] = None,
 ) -> str:
     """Convert between HF and mcore formats; returns the output directory.
@@ -94,12 +105,17 @@ def run_convert(
             convert_config,
             template_config=template_config,
             distributed_config=distributed_config,
+            checkpoint_config=checkpoint_config,
+            megatron_config=megatron_config,
+            moe_config=moe_config,
             output_dir=resolved_output)
     return _convert_hf2mcore(
         model_config,
         convert_config,
         template_config=template_config,
         distributed_config=distributed_config,
+        megatron_config=megatron_config,
+        moe_config=moe_config,
         output_dir=resolved_output)
 
 
@@ -109,6 +125,8 @@ def _convert_hf2mcore(
     *,
     template_config: Optional[TemplateConfig],
     distributed_config: Optional[DistributedConfig],
+    megatron_config: Optional[MegatronConfig],
+    moe_config: Optional[MoEConfig],
     output_dir: str,
 ) -> str:
     """HF -> mcore: load the HF weights, hand them to the bridge, write a dist checkpoint."""
@@ -121,7 +139,13 @@ def _convert_hf2mcore(
     patch_torch_dist_shard(convert_config.thread_count)
 
     megatron_args = _build_megatron_args(
-        model_config, convert_config, distributed_config, processor=processor, output_dir=output_dir)
+        model_config,
+        convert_config,
+        distributed_config,
+        processor=processor,
+        output_dir=output_dir,
+        megatron_config=megatron_config,
+        moe_config=moe_config)
     mg_model = get_mcore_model(megatron_args, processor.model_info.config)[0]
     logger.info('Megatron model created successfully.')
 
@@ -148,6 +172,9 @@ def _convert_mcore(
     *,
     template_config: Optional[TemplateConfig],
     distributed_config: Optional[DistributedConfig],
+    checkpoint_config: Optional[CheckpointConfig],
+    megatron_config: Optional[MegatronConfig],
+    moe_config: Optional[MoEConfig],
     output_dir: str,
 ) -> str:
     """mcore -> HF, or mcore -> mcore (reshard / merge an mcore LoRA)."""
@@ -178,6 +205,8 @@ def _convert_mcore(
         convert_config,
         distributed_config,
         processor=processor,
+        megatron_config=megatron_config,
+        moe_config=moe_config,
         # Only the mcore->mcore direction writes a dist checkpoint into output_dir; for ->HF the
         # bridge writes it and MegatronArguments.output_dir would otherwise create a stray dir.
         output_dir=output_dir if convert_config.to_mcore else None,
@@ -199,7 +228,12 @@ def _convert_mcore(
 
         bridge = mg_model.config.bridge
         logger.info('Converting weights and saving the model...')
-        bridge.save_weights([mg_model], output_dir, args=megatron_args, processor=processor)
+        bridge.save_weights(
+            [mg_model],
+            output_dir,
+            max_shard_size=(checkpoint_config.max_shard_size if checkpoint_config else '5GB'),
+            args=megatron_args,
+            processor=processor)
         if is_master():
             # Prefer the source checkpoint's args.json so the HF export records how the weights were
             # actually trained, not how this conversion was invoked.
@@ -235,6 +269,8 @@ def _build_megatron_args(
     processor,
     output_dir: Optional[str],
     extra: Optional[Dict[str, Any]] = None,
+    megatron_config: Optional[MegatronConfig] = None,
+    moe_config: Optional[MoEConfig] = None,
 ):
     """dev Configs -> the single MegatronArguments object the legacy converters consume.
 
@@ -253,6 +289,27 @@ def _build_megatron_args(
             value = getattr(distributed_config, name, None)
             if value is not None:
                 kwargs[name] = value
+    accepted = {field.name for field in dataclasses.fields(MegatronArguments)}
+    for config in (megatron_config, moe_config):
+        if config is None:
+            continue
+        explicit = getattr(config, '_explicit_fields', None)
+        for field in dataclasses.fields(config):
+            value = getattr(config, field.name)
+            changed = field.name in explicit if explicit is not None else value != field.default
+            if not changed:
+                continue
+            if field.name == 'megatron_extra_kwargs':
+                extra_kwargs = value or {}
+                unknown = set(extra_kwargs) - accepted
+                if unknown:
+                    raise ValueError(f'Unsupported Megatron conversion options: {sorted(unknown)}.')
+                kwargs.update(extra_kwargs)
+            elif field.name in accepted:
+                kwargs[field.name] = value
+            else:
+                raise ValueError(f'{type(config).__name__}.{field.name} is not supported by Megatron conversion. '
+                                 'Remove it or upgrade the installed Megatron implementation.')
     if extra:
         kwargs.update(extra)
 
@@ -280,20 +337,21 @@ def _load_hf_model_template(
     (it dispatches to args.get_model_processor/get_template). dev has the equivalent pair already, so
     those are used instead of synthesizing a fake args object.
     """
-    from swift.dev.builders import build_template
-    from swift.dev.config import TemplateConfig
-    from swift.model import get_model_processor
+    from copy import copy
 
+    from swift.dev.builders import build_template, load_model_processor
+    from swift.dev.config import TemplateConfig
+
+    load_config = model_config
+    if model is not None and model != model_config.model:
+        load_config = copy(model_config)
+        load_config.model = model
     kwargs: Dict[str, Any] = {}
-    if model_config.torch_dtype:
-        kwargs['torch_dtype'] = _dtype(model_config.torch_dtype)
-    if model_config.model_type:
-        kwargs['model_type'] = model_config.model_type
     if load_model and patch_offload:
         # Keeps the HF weights on CPU/meta where possible so both models can coexist while the
         # precision test runs.
         kwargs['patch_offload'] = True
-    hf_model, processor = get_model_processor(model or model_config.model, load_model=load_model, **kwargs)
+    hf_model, processor = load_model_processor(load_config, load_model=load_model, **kwargs)
     template = build_template(template_config or TemplateConfig(), processor)
     if hf_model is not None and getattr(template, 'use_model', False):
         template.model = hf_model

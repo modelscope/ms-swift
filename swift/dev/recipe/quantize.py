@@ -59,7 +59,8 @@ def run_quantize(
     if quantize_config.quant_bits is None and quant_method != 'fp8':
         raise ValueError(f'QuantizeConfig.quant_bits is required for quant_method={quant_method!r}.')
 
-    kwargs = _quantizer_kwargs(quantize_config, quantizer_kwargs)
+    kwargs = _quantizer_kwargs(
+        quantize_config, quantizer_kwargs, torch_dtype=model_config.torch_dtype)
     if quant_method not in CALIBRATION_METHODS:
         return _run_load_time(quant_method, kwargs, output_dir=output_dir)
     return _run_calibration(
@@ -72,26 +73,13 @@ def run_quantize(
         quant_n_samples=quant_n_samples)
 
 
-def _quantizer_kwargs(quantize_config: QuantizeConfig, overrides: Dict[str, Any]) -> Dict[str, Any]:
-    """QuantizeConfig -> twinkle quantizer kwargs, with explicit call-site overrides winning.
-
-    Only the fields QuantizeConfig actually owns are translated; the bnb_4bit_* / hqq_axis ones are
-    passed through under the names the corresponding quantizer declares. Unset (None) values are
-    dropped so each quantizer's own default applies rather than being overwritten with None.
-    """
-    kwargs: Dict[str, Any] = {'quant_bits': quantize_config.quant_bits}
-    method = quantize_config.quant_method
-    if method == 'bnb':
-        kwargs.update(
-            bnb_4bit_compute_dtype=quantize_config.bnb_4bit_compute_dtype,
-            bnb_4bit_quant_type=quantize_config.bnb_4bit_quant_type,
-            bnb_4bit_use_double_quant=quantize_config.bnb_4bit_use_double_quant,
-            bnb_4bit_quant_storage=quantize_config.bnb_4bit_quant_storage)
-    elif method == 'hqq':
-        kwargs['axis'] = quantize_config.hqq_axis
-    kwargs = {k: v for k, v in kwargs.items() if v is not None}
-    kwargs.update(overrides)
-    return kwargs
+def _quantizer_kwargs(quantize_config: QuantizeConfig,
+                      overrides: Dict[str, Any],
+                      *,
+                      torch_dtype: Optional[str] = None) -> Dict[str, Any]:
+    """Compatibility wrapper around the shared load/export quantizer mapping."""
+    from swift.dev.builders.quantization import quantizer_kwargs
+    return quantizer_kwargs(quantize_config, overrides, torch_dtype=torch_dtype)
 
 
 def _run_load_time(quant_method: str, kwargs: Dict[str, Any], *, output_dir: str) -> str:
@@ -209,14 +197,13 @@ def _load_model_template(quant_method: str, model_config: ModelConfig, template_
     auto_model_cls). The template is put in 'train' mode because calibration wants the full
     prompt+response token stream, not a generation prompt.
     """
-    from swift.dev.builders import build_template
-    from swift.model import get_model_processor
+    from swift.dev.builders import build_template, load_model_processor
 
-    kwargs = {'model_type': model_config.model_type}
+    kwargs = {}
     if quant_method == 'awq':
         from awq import AutoAWQForCausalLM
         kwargs['auto_model_cls'] = AutoAWQForCausalLM
-    model, processor = get_model_processor(model_config.model, **kwargs)
+    model, processor = load_model_processor(model_config, load_model=True, **kwargs)
     template = build_template(template_config, processor)
     template.set_mode('train')
     if quant_method == 'awq':

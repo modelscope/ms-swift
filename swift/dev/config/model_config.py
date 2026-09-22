@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 
 @dataclass
@@ -19,14 +19,14 @@ class ModelConfig:
     new_special_tokens: List[str] = field(default_factory=list)
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification', None] = None
-    rope_scaling: Optional[str] = None
+    rope_scaling: Optional[Union[Dict[str, Any], str]] = None
     max_model_len: Optional[int] = None
-    device_map: Optional[Union[dict, str]] = None
-    max_memory: Optional[Union[dict, str]] = None
+    device_map: Optional[Union[Dict[str, Any], str]] = None
+    max_memory: Optional[Dict[str, Any]] = None
     local_repo_path: Optional[str] = None
-    #: Extra kwargs forwarded to ``from_pretrained``. Accepts a dict, or a JSON string for command lines.
+    #: Extra kwargs forwarded to ``from_pretrained``. The CLI accepts a JSON object or JSON file.
     #: The escape hatch for a model whose loading needs something this config does not name.
-    model_kwargs: Optional[Union[dict, str]] = None
+    model_kwargs: Optional[Dict[str, Any]] = None
     #: Python files imported before anything is built, so that decorated models, templates, datasets and
     #: reward functions register themselves. Import order is the order given.
     external_plugins: List[str] = field(default_factory=list)

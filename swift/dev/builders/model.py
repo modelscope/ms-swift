@@ -5,8 +5,55 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from twinkle import DeviceMesh
 
-    from swift.dev.config import DistributedConfig, ModelConfig, TrainConfig, TunerConfig
+    from swift.dev.config import (
+        DistributedConfig,
+        MegatronConfig,
+        ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
+        TrainConfig,
+        TunerConfig,
+    )
     from swift.dev.model import TrainableModel
+
+
+def load_model_processor(model_config: ModelConfig, *, load_model: bool = False, **overrides):
+    """Load a legacy-compatible processor/model with every relevant ``ModelConfig`` option.
+
+    The dev model registry is used by Twinkle model construction, while template/export paths still
+    use ``swift.model`` for its mature processor catalogue. Keeping this translation here prevents
+    those call sites from each forwarding a different subset of the same model-loading contract.
+    """
+    import torch
+
+    from swift.model import get_model_processor
+
+    kwargs = dict(model_config.model_kwargs or {})
+    values = {
+        'model_type': model_config.model_type,
+        'revision': model_config.model_revision,
+        'experts_impl': model_config.experts_impl,
+        'new_special_tokens': model_config.new_special_tokens,
+        'rope_scaling': model_config.rope_scaling,
+        'max_model_len': model_config.max_model_len,
+        'device_map': model_config.device_map,
+        'max_memory': model_config.max_memory,
+        'local_repo_path': model_config.local_repo_path,
+        'task_type': model_config.task_type,
+        'num_labels': model_config.num_labels,
+        'problem_type': model_config.problem_type,
+        'init_strategy': model_config.init_strategy,
+    }
+    if model_config.torch_dtype:
+        values['torch_dtype'] = getattr(torch, model_config.torch_dtype)
+    if model_config.attn_impl:
+        values['attn_impl'] = model_config.attn_impl
+    for name, value in values.items():
+        if value is not None and value != []:
+            _set_load_kwarg(kwargs, name, value)
+    for name, value in overrides.items():
+        _set_load_kwarg(kwargs, name, value)
+    return get_model_processor(model_config.model, load_model=load_model, **kwargs)
 
 
 def build_hf_device_mesh(distributed_config: DistributedConfig,
@@ -46,7 +93,10 @@ def build_model(model_config: ModelConfig,
                 distributed_config: DistributedConfig,
                 train_config: Optional[TrainConfig] = None,
                 tuner_config: Optional[TunerConfig] = None,
-                device_mesh: Optional['DeviceMesh'] = None) -> TrainableModel:
+                device_mesh: Optional['DeviceMesh'] = None,
+                quantize_config: Optional[QuantizeConfig] = None,
+                megatron_config: Optional[MegatronConfig] = None,
+                moe_config: Optional[MoEConfig] = None) -> TrainableModel:
     """ModelConfig + DistributedConfig -> twinkle-native Model (no loss/optim yet).
 
     Thin mapping (no Registry/Factory): model_config fields -> twinkle __init__ kwargs.
@@ -62,8 +112,19 @@ def build_model(model_config: ModelConfig,
     goes through the ordinary seq_cls build path on both backends.
     """
     if is_megatron_backend(distributed_config):
-        return _build_megatron_model(model_config, distributed_config)
-    return _build_transformers_model(model_config, distributed_config, train_config, tuner_config, device_mesh)
+        return _build_megatron_model(
+            model_config,
+            distributed_config,
+            train_config,
+            megatron_config=megatron_config,
+            moe_config=moe_config)
+    return _build_transformers_model(
+        model_config,
+        distributed_config,
+        train_config,
+        tuner_config,
+        device_mesh,
+        quantize_config=quantize_config)
 
 
 def _mixed_precision_for(torch_dtype: Optional[str]) -> str:
@@ -94,7 +155,7 @@ def is_megatron_backend(distributed_config: DistributedConfig) -> bool:
     raise ValueError(f"DistributedConfig.backend must be one of {{'megatron', 'hf'}}, got {backend!r}.")
 
 
-def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig, model_loader=None) -> None:
+def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig, config, model_loader=None) -> None:
     """Route a seq_cls/reranker model to a num_labels-wide SequenceClassification head.
 
     twinkle's TransformersModel forwards ``model_cls`` + ``config`` to ``from_pretrained``. We build
@@ -110,9 +171,6 @@ def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig, model_loader=No
     - tie_word_embeddings=False: the LM head is dropped for a fresh score head, mirroring legacy
       (register.py sets this for seq_cls/reranker).
     """
-    from transformers import AutoConfig
-    config = AutoConfig.from_pretrained(model_config.model, trust_remote_code=True)
-
     num_labels = model_config.num_labels
     if num_labels is None:
         if model_config.task_type == 'reranker':
@@ -129,10 +187,12 @@ def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig, model_loader=No
         # tokenizer from the resolved dev loader (build_processor) when there is one, else a plain
         # AutoTokenizer -- which is why dev no longer imports swift.model.get_model_processor here.
         if model_loader is not None:
-            processor = model_loader.build_processor(model_config.model, config)
+            processor = model_loader.build_processor(
+                model_config.model, config, revision=model_config.model_revision)
         else:
             from transformers import AutoTokenizer
-            processor = AutoTokenizer.from_pretrained(model_config.model, trust_remote_code=True)
+            processor = AutoTokenizer.from_pretrained(
+                model_config.model, revision=model_config.model_revision, trust_remote_code=True)
         tokenizer = processor if not hasattr(processor, 'tokenizer') else processor.tokenizer
         config.pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
 
@@ -141,21 +201,30 @@ def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig, model_loader=No
 
 
 def _apply_unsloth_kwargs(kwargs: dict, model_config: ModelConfig, tuner_config: TunerConfig,
-                          train_config: Optional[TrainConfig]) -> None:
+                          train_config: Optional[TrainConfig],
+                          quantize_config: Optional[QuantizeConfig]) -> None:
     """Add the UnslothModel-only kwargs to an otherwise unchanged TransformersModel kwargs dict.
 
     unsloth rebuilds the module graph around a causal-LM checkpoint, so the num_labels head built by
     _apply_seq_cls_head has nowhere to land -- reject those task types instead of silently training a
-    plain causal LM against a classification loss.
-
-    QLoRA is NOT wired here: build_model never receives a QuantizeConfig, so a 4bit base has to be
-    requested by constructing UnslothModel(load_in_4bit=True) directly until that config is plumbed
-    through this builder.
+    plain causal LM against a classification loss. Its load API represents BNB quantization as
+    ``load_in_4bit`` / ``load_in_8bit`` rather than a Transformers ``quantization_config``.
     """
     if model_config.task_type in ('seq_cls', 'reranker', 'generative_reranker'):
         raise NotImplementedError(f'tuner_backend="unsloth" supports causal_lm only; task_type='
                                   f'{model_config.task_type!r} needs a head unsloth does not build.')
     kwargs['full_finetuning'] = tuner_config.tuner_type == 'full'
+    if quantize_config is not None and quantize_config.quant_method is not None:
+        if quantize_config.quant_method != 'bnb':
+            raise NotImplementedError(
+                f'tuner_backend="unsloth" only supports BNB load-time quantization, got '
+                f'{quantize_config.quant_method!r}. Use tuner_backend="peft" for this method.')
+        if quantize_config.quant_bits == 4:
+            kwargs.update(load_in_4bit=True, load_in_8bit=False)
+        elif quantize_config.quant_bits == 8:
+            kwargs.update(load_in_4bit=False, load_in_8bit=True)
+        else:
+            raise ValueError(f'Unsloth BNB supports quant_bits 4 or 8, got {quantize_config.quant_bits!r}.')
     # unsloth compiles its kernels and RoPE cache for a fixed length; leave its own 2048 default in
     # place when the config says nothing.
     if model_config.max_model_len:
@@ -199,30 +268,162 @@ def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig) ->
 
 
 def _resolve_model_loader(model_config: ModelConfig):
-    """Resolve a dev :class:`ModelLoader` instance for ``model_config.model``, or None.
+    """Resolve the explicitly requested or inferred dev model family loader.
 
-    Matches the checkpoint basename against the registered families (a pre-download match that,
-    unlike ``architectures``, cannot collide). A miss returns None so an unregistered checkpoint
-    still loads through twinkle's default AutoModel path. When non-None the loader is handed to
-    ``TransformersModel(model_loader=...)`` and fully owns config/processor/model construction.
+    ``model_type`` is authoritative when supplied. Falling back to basename matching keeps the
+    zero-config path convenient, while an unknown explicit value fails immediately instead of
+    silently selecting a different family from the checkpoint name.
     """
     from swift.dev.model.loader import ModelInfo, get_model_loader, match_model_type
-    model_type = match_model_type(model_config.model)
+
+    model_type = model_config.model_type or match_model_type(model_config.model)
     if model_type is None:
         return None
+    loader_cls = get_model_loader(model_type)
     model_info = ModelInfo(
-        model_type=model_type,
+        model_type=loader_cls.model_type,
         model_dir=model_config.model,
+        max_model_len=model_config.max_model_len,
+        rope_scaling=model_config.rope_scaling if isinstance(model_config.rope_scaling, dict) else None,
         task_type=model_config.task_type,
-        num_labels=model_config.num_labels)
-    return get_model_loader(model_type)(model_info)
+        num_labels=model_config.num_labels,
+        problem_type=model_config.problem_type)
+    return loader_cls(model_info)
+
+
+def _build_hf_config(model_config: ModelConfig, model_loader=None):
+    """Build the one HF config shared by Transformers and Megatron model construction."""
+    import copy
+    import math
+
+    if model_loader is not None:
+        config = model_loader.build_config(model_config.model, revision=model_config.model_revision)
+        config = model_loader.process_config(config)
+    else:
+        from transformers import AutoConfig
+        config = AutoConfig.from_pretrained(
+            model_config.model, revision=model_config.model_revision, trust_remote_code=True)
+
+    from swift.dev.utils import HfConfigFactory
+
+    rope_scaling = model_config.rope_scaling
+    if isinstance(rope_scaling, str):
+        if rope_scaling not in ('linear', 'dynamic', 'yarn'):
+            raise ValueError('ModelConfig.rope_scaling must be a JSON object or one of: linear, dynamic, yarn.')
+        rope_scaling = {'type': rope_scaling}
+    elif rope_scaling is not None:
+        if not isinstance(rope_scaling, dict):
+            raise TypeError('ModelConfig.rope_scaling must resolve to a dict or a supported strategy name.')
+        rope_scaling = copy.deepcopy(rope_scaling)
+
+    current_rope = HfConfigFactory.get_config_attr(config, 'rope_scaling')
+    if rope_scaling is None and current_rope and model_config.max_model_len is not None:
+        rope_scaling = copy.deepcopy(current_rope)
+        rope_scaling.pop('factor', None)
+
+    if rope_scaling is not None:
+        rope_type = rope_scaling.get('rope_type', rope_scaling.get('type', 'default'))
+        origin_max_len = rope_scaling.get('original_max_position_embeddings')
+        if origin_max_len is None and current_rope:
+            origin_max_len = current_rope.get('original_max_position_embeddings')
+            if origin_max_len is None and current_rope.get('factor'):
+                current_max_len = HfConfigFactory.get_max_model_len(config)
+                if current_max_len is not None:
+                    origin_max_len = int(current_max_len / current_rope['factor'])
+        if origin_max_len is None:
+            origin_max_len = HfConfigFactory.get_max_model_len(config)
+        if 'factor' not in rope_scaling and not (model_config.max_model_len is None and rope_type == 'default'):
+            if model_config.max_model_len is None:
+                raise ValueError('ModelConfig.max_model_len is required when rope_scaling has no factor.')
+            if origin_max_len is None:
+                raise ValueError('The checkpoint does not declare a maximum length needed to derive rope_scaling.')
+            rope_scaling['factor'] = max(float(math.ceil(model_config.max_model_len / origin_max_len)), 1.0)
+        if origin_max_len is not None:
+            rope_scaling.setdefault('original_max_position_embeddings', origin_max_len)
+        HfConfigFactory.set_config_attr(config, 'rope_scaling', rope_scaling)
+
+    if model_config.max_model_len is not None:
+        HfConfigFactory.set_max_model_len(config, model_config.max_model_len)
+    return config
+
+
+def _set_load_kwarg(kwargs: dict, name: str, value) -> None:
+    """Set a named load option, rejecting disagreement with ``model_kwargs``."""
+    if value is None:
+        return
+    if name in kwargs and kwargs[name] != value:
+        raise ValueError(f'ModelConfig.model_kwargs[{name!r}]={kwargs[name]!r} conflicts with {name}={value!r}.')
+    kwargs[name] = value
+
+
+def _apply_model_post_load(model, model_config: ModelConfig) -> None:
+    """Apply ModelConfig operations that require the live Transformers module."""
+    if model_config.new_special_tokens:
+        import os
+
+        special_tokens = []
+        for token in model_config.new_special_tokens:
+            if token.endswith('.txt'):
+                if not os.path.isfile(token):
+                    raise FileNotFoundError(f'new_special_tokens file does not exist: {token}')
+                with open(token, 'r', encoding='utf-8') as file:
+                    special_tokens.extend(file.read().split())
+            else:
+                special_tokens.append(token)
+
+        processor = getattr(model, '_default_tokenizer', None)
+        if processor is None:
+            from transformers import AutoTokenizer
+            processor = AutoTokenizer.from_pretrained(
+                model_config.model, revision=model_config.model_revision, trust_remote_code=True)
+            model._default_tokenizer = processor
+        tokenizer = getattr(processor, 'tokenizer', processor)
+        added = tokenizer.add_special_tokens({'additional_special_tokens': special_tokens})
+        if added:
+            vocab_size = ((len(tokenizer) + 127) // 128) * 128
+            model.model.resize_token_embeddings(vocab_size)
+
+    if model_config.init_strategy is not None:
+        import torch
+        from torch import nn
+
+        def high_dim(param, init):
+            if param.dim() > 1:
+                init(param)
+            elif param.dim() == 1 and param.numel() > 0:
+                nn.init.zeros_(param)
+
+        initializers = {
+            'zero': nn.init.zeros_,
+            'uniform': lambda param: nn.init.uniform_(param, -0.1, 0.1),
+            'normal': lambda param: nn.init.normal_(param, 0.0, 0.01),
+            'xavier_uniform': lambda param: high_dim(param, nn.init.xavier_uniform_),
+            'xavier_normal': lambda param: high_dim(param, nn.init.xavier_normal_),
+            'kaiming_uniform': lambda param: high_dim(
+                param, lambda value: nn.init.kaiming_uniform_(value, mode='fan_out', nonlinearity='leaky_relu', a=0.1)),
+            'kaiming_normal': lambda param: high_dim(
+                param, lambda value: nn.init.kaiming_normal_(value, mode='fan_in', nonlinearity='relu')),
+            'orthogonal': lambda param: high_dim(param, nn.init.orthogonal_),
+        }
+        initialize = initializers[model_config.init_strategy]
+        with torch.no_grad():
+            for param in model.model.parameters():
+                if param.numel() == 0:
+                    continue
+                mean_abs = param.abs().mean()
+                std = param.std()
+                if not torch.isfinite(mean_abs) or not torch.isfinite(std) or mean_abs > 1e7 or std > 1e7:
+                    initialize(param)
 
 
 def _build_transformers_model(model_config: ModelConfig,
                               distributed_config: DistributedConfig,
                               train_config: Optional[TrainConfig] = None,
                               tuner_config: Optional[TunerConfig] = None,
-                              device_mesh: Optional['DeviceMesh'] = None) -> TrainableModel:
+                              device_mesh: Optional['DeviceMesh'] = None,
+                              quantize_config: Optional[QuantizeConfig] = None,
+                              megatron_config: Optional[MegatronConfig] = None,
+                              moe_config: Optional[MoEConfig] = None) -> TrainableModel:
     import torch
 
     from swift.dev.model import TransformersModel
@@ -230,19 +431,23 @@ def _build_transformers_model(model_config: ModelConfig,
     if not model_config.model:
         raise ValueError('ModelConfig.model (path/id) is required')
 
-    kwargs: dict = {'model_id': model_config.model}
+    kwargs: dict = dict(model_config.model_kwargs or {})
+    kwargs['model_id'] = model_config.model
     # dtype: ModelConfig.torch_dtype is a string ('bfloat16'); forward to from_pretrained.
     if model_config.torch_dtype:
         dt = getattr(torch, model_config.torch_dtype, None)
         if dt is not None:
-            kwargs['dtype'] = dt
-    if model_config.attn_impl:
-        kwargs['attn_implementation'] = model_config.attn_impl
-    if model_config.model_revision:
-        kwargs['revision'] = model_config.model_revision
+            _set_load_kwarg(kwargs, 'dtype', dt)
+    _set_load_kwarg(kwargs, 'attn_implementation', model_config.attn_impl)
+    _set_load_kwarg(kwargs, 'experts_implementation', model_config.experts_impl)
+    _set_load_kwarg(kwargs, 'revision', model_config.model_revision)
+    _set_load_kwarg(kwargs, 'device_map', model_config.device_map)
+    _set_load_kwarg(kwargs, 'max_memory', model_config.max_memory)
 
-    # Resolve a dev family loader from the checkpoint id (None if unregistered -> twinkle default).
+    # Resolve a dev family loader and build the config once so caller overrides also reach custom loaders.
     model_loader = _resolve_model_loader(model_config)
+    hf_config = _build_hf_config(model_config, model_loader)
+    kwargs['config'] = hf_config
 
     # seq_cls / reranker ride a num_labels-wide SequenceClassification head instead of the LM head.
     # (reranker = num_labels=1; a plain reranker maps to this same head with a reranker loss.)
@@ -250,7 +455,7 @@ def _build_transformers_model(model_config: ModelConfig,
     # PPO's value critic also rides this head (task_type='seq_cls', num_labels=1) and is forwarded with
     # task='value' to keep the per-token output.
     if model_config.task_type in ('seq_cls', 'reranker'):
-        _apply_seq_cls_head(kwargs, model_config, model_loader)
+        _apply_seq_cls_head(kwargs, model_config, hf_config, model_loader)
 
     # strategy: deepspeed/fsdp config selects the twinkle strategy (default: accelerate).
     from swift.dev.naming import resolve_strategy
@@ -300,9 +505,14 @@ def _build_transformers_model(model_config: ModelConfig,
     # derived above (dtype, strategy, mixed_precision, ddp_config) is passed through unchanged.
     if tuner_config is not None and tuner_config.tuner_backend == 'unsloth':
         from swift.dev.model import UnslothModel
-        _apply_unsloth_kwargs(kwargs, model_config, tuner_config, train_config)
+        _apply_unsloth_kwargs(kwargs, model_config, tuner_config, train_config, quantize_config)
         model = UnslothModel(**kwargs)
     else:
+        from swift.dev.builders.quantization import build_load_quantization_config
+        quantization_config = build_load_quantization_config(
+            quantize_config, model_loader=model_loader, torch_dtype=model_config.torch_dtype)
+        if quantization_config is not None:
+            kwargs['quantization_config'] = quantization_config
         # Full takeover: hand the resolved family loader to twinkle, which then builds config/
         # processor/model through it. seq_cls/reranker are excluded -- their num_labels head overrides
         # model_cls, which a family (causal-LM) loader would not build; they keep the
@@ -321,13 +531,14 @@ def _build_transformers_model(model_config: ModelConfig,
     if train_config is not None and not train_config.gradient_checkpointing:
         model.model.gradient_checkpointing_disable()
 
+    _apply_model_post_load(model, model_config)
     return model
 
 
-def _apply_mtp_kwargs(kwargs: dict, model_config: ModelConfig) -> None:
+def _apply_mtp_kwargs(kwargs: dict, model_config: ModelConfig, strict: set) -> None:
     """Forward the Multi-Token Prediction knobs into mcore-bridge's ModelConfig.
 
-    All five land on the same object (``get_model_config`` forwards **kwargs verbatim), so they are
+    All six land on the same object (``get_model_config`` forwards **kwargs verbatim), so they are
     grouped here rather than mixed into the recompute/attention block above.
 
     ``mtp_num_layers`` gates the rest: without it the bridge builds no MTP block at all, and
@@ -338,18 +549,22 @@ def _apply_mtp_kwargs(kwargs: dict, model_config: ModelConfig) -> None:
     """
     if model_config.mtp_num_layers is None:
         return
-    kwargs['mtp_num_layers'] = model_config.mtp_num_layers
-    if model_config.mtp_loss_scaling_factor is not None:
-        kwargs['mtp_loss_scaling_factor'] = model_config.mtp_loss_scaling_factor
-    if model_config.enable_mtp_training:
-        kwargs['enable_mtp_training'] = True
-    if model_config.mtp_freeze:
-        kwargs['mtp_freeze'] = True
-    if model_config.mtp_decoder_input_detach:
-        kwargs['mtp_decoder_input_detach'] = True
+    values = {
+        'mtp_num_layers': model_config.mtp_num_layers,
+        'mtp_loss_scaling_factor': model_config.mtp_loss_scaling_factor,
+        'enable_mtp_training': model_config.enable_mtp_training,
+        'mtp_freeze': model_config.mtp_freeze,
+        'mtp_decoder_input_detach': model_config.mtp_decoder_input_detach,
+        'mtp_shared_weights': model_config.mtp_shared_weights,
+    }
+    for name, value in values.items():
+        if value is not None:
+            kwargs[name] = value
+        if _field_was_requested(model_config, name):
+            strict.add(name)
 
 
-def _apply_fp4_kwargs(kwargs: dict, model_config: ModelConfig) -> None:
+def _apply_fp4_kwargs(kwargs: dict, model_config: ModelConfig, strict: set) -> None:
     """Forward the FP4 knobs into mcore-bridge's ModelConfig, under megatron's names for them.
 
     A rename, not a copy: dev's fields are named after the legacy CLI flags (``--fp4-format``,
@@ -371,9 +586,16 @@ def _apply_fp4_kwargs(kwargs: dict, model_config: ModelConfig) -> None:
     kwargs['fp4_recipe'] = model_config.fp4_recipe
     if model_config.fp4_param_gather:
         kwargs['fp4_param'] = True
+    for source, target in (
+        ('fp4_format', 'fp4'),
+        ('fp4_recipe', 'fp4_recipe'),
+        ('fp4_param_gather', 'fp4_param'),
+    ):
+        if _field_was_requested(model_config, source):
+            strict.add(target)
 
 
-def _apply_fp8_kwargs(kwargs: dict, model_config: ModelConfig) -> None:
+def _apply_fp8_kwargs(kwargs: dict, model_config: ModelConfig, strict: set) -> None:
     """Forward the FP8 knobs into mcore-bridge's ModelConfig, under megatron's names for them.
 
     Deliberately a sibling of ``_apply_fp4_kwargs`` rather than a shared loop: the two formats look
@@ -394,22 +616,15 @@ def _apply_fp8_kwargs(kwargs: dict, model_config: ModelConfig) -> None:
     kwargs['fp8_amax_compute_algo'] = model_config.fp8_amax_compute_algo
     if model_config.fp8_param_gather:
         kwargs['fp8_param'] = True
-
-
-def _apply_fsdp_kwargs(kwargs: dict, distributed_config: DistributedConfig) -> None:
-    """Forward the Megatron-FSDP switch, which travels inside ddp_config rather than on its own.
-
-    Unlike the other knobs here this is not a MegatronModel argument: twinkle reads
-    ``ddp_config['use_megatron_fsdp']`` to pick WHICH data-parallel class wraps the model, and then
-    hands the same dict to megatron's DistributedDataParallelConfig, which declares a field of that
-    name. One key, two readers -- which is why it cannot simply be passed as a top-level kwarg.
-
-    Only set when enabled, so a DDP run reaches twinkle with no ddp_config at all, exactly as it did
-    before this existed.
-    """
-    if not distributed_config.use_megatron_fsdp:
-        return
-    kwargs['ddp_config'] = {'use_megatron_fsdp': True}
+    for source, target in (
+        ('fp8_format', 'fp8'),
+        ('fp8_recipe', 'fp8_recipe'),
+        ('fp8_amax_history_len', 'fp8_amax_history_len'),
+        ('fp8_amax_compute_algo', 'fp8_amax_compute_algo'),
+        ('fp8_param_gather', 'fp8_param'),
+    ):
+        if _field_was_requested(model_config, source):
+            strict.add(target)
 
 
 def _resolve_bridge_backend(name: str):
@@ -456,6 +671,10 @@ def build_device_mesh(distributed_config: DistributedConfig):
         mesh_kwargs['cp_size'] = cp
     if ep > 1:
         mesh_kwargs['ep_size'] = ep
+    if distributed_config.expert_tensor_parallel_size > 1:
+        mesh_kwargs['etp_size'] = distributed_config.expert_tensor_parallel_size
+    if distributed_config.virtual_pipeline_model_parallel_size is not None:
+        mesh_kwargs['vpp_size'] = distributed_config.virtual_pipeline_model_parallel_size
     # Megatron TP sequence-parallelism rides on the DeviceMesh (twinkle reads it via
     # strategy.sequence_parallel -> device_mesh.sequence_parallel). Only meaningful with tp > 1.
     if distributed_config.sequence_parallel:
@@ -463,7 +682,98 @@ def build_device_mesh(distributed_config: DistributedConfig):
     return DeviceMesh.from_sizes(**mesh_kwargs)
 
 
-def _build_megatron_model(model_config: ModelConfig, distributed_config: DistributedConfig) -> TrainableModel:
+_NON_MODEL_MEGATRON_FIELDS = {
+    'attention_backend',
+    'data_parallel_random_init',
+    'skip_megatron_init',
+    'manual_gc',
+    'manual_gc_eval',
+    'manual_gc_steps',
+    'megatron_extra_kwargs',
+}
+_MEGATRON_FIELD_ALIASES = {'te_rng_tracker': 'use_te_rng_tracker'}
+_UNSUPPORTED_MEGATRON_MODEL_FIELDS = {
+    'apply_dsa_kernel_fusion',
+    'csa_dense_mode',
+    'sequence_packing_scheduler',
+    'use_fused_mhc',
+}
+
+
+def _field_was_requested(config, field_name: str) -> bool:
+    """Whether a non-default Config value was requested explicitly or programmatically."""
+    import dataclasses
+
+    explicit = getattr(config, '_explicit_fields', None)
+    if explicit is not None:
+        return field_name in explicit
+    config_field = next(field for field in dataclasses.fields(config) if field.name == field_name)
+    if config_field.default is not dataclasses.MISSING:
+        default = config_field.default
+    elif config_field.default_factory is not dataclasses.MISSING:
+        default = config_field.default_factory()
+    else:
+        return True
+    return getattr(config, field_name) != default
+
+
+def _megatron_model_kwargs(megatron_config: Optional[MegatronConfig], moe_config: Optional[MoEConfig]) -> dict:
+    """Translate backend-only Configs into model kwargs and retain explicit-field provenance.
+
+    Megatron-Bridge providers vary by installed version. Defaults which an older provider does not
+    expose may safely fall back to that provider's own default, but an explicitly requested option
+    must never disappear. ``_strict_model_kwargs`` carries that distinction to the worker-side
+    bridge backend and is removed before constructing an mcore ``ModelConfig``.
+    """
+    import dataclasses
+
+    kwargs = {}
+    strict = set()
+    if megatron_config is not None:
+        for config_field in dataclasses.fields(megatron_config):
+            name = config_field.name
+            if name in _UNSUPPORTED_MEGATRON_MODEL_FIELDS:
+                if _field_was_requested(megatron_config, name):
+                    raise NotImplementedError(
+                        f'MegatronConfig.{name} is not exposed by the installed mcore-bridge ModelConfig. '
+                        'Upgrade mcore-bridge/Megatron-LM or remove this option.')
+                continue
+            if name in _NON_MODEL_MEGATRON_FIELDS:
+                continue
+            value = getattr(megatron_config, name)
+            if value is not None:
+                target = _MEGATRON_FIELD_ALIASES.get(name, name)
+                kwargs[target] = value
+                if _field_was_requested(megatron_config, name):
+                    strict.add(target)
+
+        extra = megatron_config.megatron_extra_kwargs or {}
+        if not isinstance(extra, dict):
+            raise TypeError('MegatronConfig.megatron_extra_kwargs must be a dict after process_configs().')
+        for name, value in extra.items():
+            if name in kwargs and kwargs[name] != value:
+                raise ValueError(f'megatron_extra_kwargs[{name!r}]={value!r} conflicts with {name}={kwargs[name]!r}.')
+            kwargs[name] = value
+            strict.add(name)
+
+    if moe_config is not None:
+        for config_field in dataclasses.fields(moe_config):
+            value = getattr(moe_config, config_field.name)
+            if value is not None:
+                kwargs[config_field.name] = value
+                if _field_was_requested(moe_config, config_field.name):
+                    strict.add(config_field.name)
+    if strict:
+        kwargs['_strict_model_kwargs'] = tuple(sorted(strict))
+    return kwargs
+
+
+def _build_megatron_model(model_config: ModelConfig,
+                           distributed_config: DistributedConfig,
+                           train_config: Optional[TrainConfig] = None,
+                           *,
+                           megatron_config: Optional[MegatronConfig] = None,
+                           moe_config: Optional[MoEConfig] = None) -> TrainableModel:
     """Build a MegatronModel via the selected bridge backend.
 
     twinkle must already be initialized in Ray mode (run_sft does this) so the 'model' DeviceGroup
@@ -477,24 +787,73 @@ def _build_megatron_model(model_config: ModelConfig, distributed_config: Distrib
         raise ValueError('ModelConfig.model (path/id) is required')
 
     device_mesh = build_device_mesh(distributed_config)
+    model_loader = _resolve_model_loader(model_config)
+    hf_config = _build_hf_config(model_config, model_loader)
 
     mixed_precision = _mixed_precision_for(model_config.torch_dtype)
 
     # A few high-frequency Megatron knobs flow straight into MegatronModel.__init__. Forward
     # only when set (None -> twinkle's own default), so the bit-exact SFT baseline is unchanged
     # unless the user opts in. use_distributed_optimizer has a real default (True) so pass it.
-    extra_kwargs: dict = {'use_distributed_optimizer': distributed_config.use_distributed_optimizer}
-    # name is a dynamic attribute -> getattr is required here (not defensive over-protection).
-    for name in ('recompute_granularity', 'recompute_method', 'recompute_num_layers'):
+    extra_kwargs: dict = {
+        'use_distributed_optimizer': distributed_config.use_distributed_optimizer,
+        'align_grad_reduce': distributed_config.align_grad_reduce,
+        'nccl_comm_warmup': distributed_config.nccl_comm_warmup,
+        **_megatron_model_kwargs(megatron_config, moe_config),
+    }
+    strict_model_kwargs = set(extra_kwargs.pop('_strict_model_kwargs', ()))
+    # ModelParallelConfig/TransformerConfig fields owned by DistributedConfig. Keep the spelling
+    # translation here, next to the DeviceMesh translation, so a parsed field cannot stop at the
+    # dataclass without reaching the worker-side Megatron config.
+    model_field_aliases = {
+        'decoder_first_pipeline_num_layers': 'num_layers_in_first_pipeline_stage',
+        'decoder_last_pipeline_num_layers': 'num_layers_in_last_pipeline_stage',
+    }
+    model_fields = (
+        'recompute_granularity',
+        'recompute_method',
+        'recompute_num_layers',
+        'recompute_modules',
+        'cp_comm_type',
+        'pipeline_model_parallel_layout',
+        'decoder_first_pipeline_num_layers',
+        'decoder_last_pipeline_num_layers',
+        'account_for_embedding_in_pipeline_split',
+        'account_for_loss_in_pipeline_split',
+        'overlap_p2p_comm',
+        'batch_p2p_comm',
+        'tp_comm_overlap',
+    )
+    for name in model_fields:
         value = getattr(distributed_config, name)
         if value is not None:
-            extra_kwargs[name] = value
+            target = model_field_aliases.get(name, name)
+            extra_kwargs[target] = value
+            if _field_was_requested(distributed_config, name):
+                strict_model_kwargs.add(target)
+
+    if train_config is not None:
+        if train_config.calculate_per_token_loss is not None:
+            extra_kwargs['calculate_per_token_loss'] = train_config.calculate_per_token_loss
+            strict_model_kwargs.add('calculate_per_token_loss')
+        if train_config.microbatch_group_size_per_vp_stage is not None:
+            extra_kwargs['microbatch_group_size_per_vp_stage'] = train_config.microbatch_group_size_per_vp_stage
+            strict_model_kwargs.add('microbatch_group_size_per_vp_stage')
 
     if extra_kwargs.get('recompute_granularity') == 'selective':
         extra_kwargs['recompute_num_layers'] = None
         extra_kwargs['recompute_method'] = None
 
-    _apply_fsdp_kwargs(extra_kwargs, distributed_config)
+    ddp_config = {
+        'grad_reduce_in_fp32': bool(train_config and train_config.accumulate_allreduce_grads_in_fp32),
+        'overlap_grad_reduce': distributed_config.overlap_grad_reduce,
+        'overlap_param_gather': distributed_config.overlap_param_gather,
+        'align_param_gather': distributed_config.align_param_gather,
+        'data_parallel_sharding_strategy': distributed_config.data_parallel_sharding_strategy,
+    }
+    if distributed_config.use_megatron_fsdp:
+        ddp_config['use_megatron_fsdp'] = True
+    extra_kwargs['ddp_config'] = ddp_config
 
     # Attention kernel. Always forwarded (unlike the recompute knobs above) because the meaningful
     # default is legacy's 'flash', not mcore's AttnBackend.auto -- under auto TE picks per shape and
@@ -504,6 +863,8 @@ def _build_megatron_model(model_config: ModelConfig, distributed_config: Distrib
     # megatron-bridge path hardcoding its own.
     from swift.dev.naming import resolve_megatron_attn_backend
     extra_kwargs['attention_backend'] = resolve_megatron_attn_backend(model_config.attn_impl)
+    if _field_was_requested(model_config, 'attn_impl'):
+        strict_model_kwargs.add('attention_backend')
     # A flash_N / flash_attention_N value also pins the FA VERSION, which is enforced by mutating
     # transformer_engine module globals -- a per-process side effect, so it CANNOT be applied here:
     # in Ray mode build_model runs on the driver, which is not where the model is built. The raw
@@ -526,15 +887,26 @@ def _build_megatron_model(model_config: ModelConfig, distributed_config: Distrib
                 raise ValueError('ModelConfig.num_labels is required for task_type="seq_cls".')
             extra_kwargs['num_labels'] = model_config.num_labels
 
-    _apply_mtp_kwargs(extra_kwargs, model_config)
-    _apply_fp4_kwargs(extra_kwargs, model_config)
-    _apply_fp8_kwargs(extra_kwargs, model_config)
+    for name in ('vit_attn_impl', 'language_model_only'):
+        value = getattr(model_config, name)
+        if value:
+            extra_kwargs[name] = value
+        if _field_was_requested(model_config, name):
+            strict_model_kwargs.add(name)
+
+    _apply_mtp_kwargs(extra_kwargs, model_config, strict_model_kwargs)
+    _apply_fp4_kwargs(extra_kwargs, model_config, strict_model_kwargs)
+    _apply_fp8_kwargs(extra_kwargs, model_config, strict_model_kwargs)
+    if strict_model_kwargs:
+        extra_kwargs['_strict_model_kwargs'] = tuple(sorted(strict_model_kwargs))
 
     backend = _resolve_bridge_backend(distributed_config.bridge_backend)
     # In Ray mode the model lives in a remote DeviceGroup named 'model'; in local (torchrun) mode
     # each rank builds the model in-process, so there is no remote group to target.
     model_kwargs = dict(
         model_id=model_config.model,
+        config=hf_config,
+        revision=model_config.model_revision,
         device_mesh=device_mesh,
         mixed_precision=mixed_precision,
         backend=backend,

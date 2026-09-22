@@ -48,9 +48,8 @@ def export_cached_dataset(
     No model is loaded and no distributed init happens: this is a single-process CPU job. Run it on a
     CPU box, then reuse the output across experiments.
     """
-    from swift.dev.builders import build_template
+    from swift.dev.builders import build_template, load_model_processor
     from swift.dev.builders.dataset import _encode_mode
-    from swift.model import get_model_processor
 
     if not dataset_config.dataset and not dataset_config.val_dataset:
         raise ValueError('export_cached_dataset needs DatasetConfig.dataset (or val_dataset) to encode. '
@@ -61,7 +60,7 @@ def export_cached_dataset(
 
     # Only the processor (tokenizer) is needed -- the template encodes with it. load_model=False keeps
     # this a CPU-only job; legacy instead builds a meta-device model to satisfy SwiftSft's __init__.
-    _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
+    _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
 
     train_raw, val_raw = _load_raw(dataset_config)

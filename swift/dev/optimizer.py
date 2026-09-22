@@ -8,14 +8,13 @@ Kept tiny and explicit: no training-plan reverse-engineering, callers pass
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from swift.dev.naming import (parse_optim_args, parse_scheduler_kwargs, resolve_megatron_decay_style,
-                              resolve_optim_target, resolve_scheduler)
+from swift.dev.naming import parse_optim_args, resolve_optim_target, resolve_scheduler
 from swift.dev.utils import get_logger
 
 if TYPE_CHECKING:
-    from swift.dev.config import TrainConfig
+    from swift.dev.config import DistributedConfig, TrainConfig
     from swift.dev.model import TrainableModel
 
 logger = get_logger()
@@ -102,7 +101,11 @@ def _is_megatron_model(model) -> bool:
     return isinstance(model, MegatronModel)
 
 
-def configure_optimizer(model: TrainableModel, cfg: TrainConfig, *, num_training_steps: int) -> None:
+def configure_optimizer(model: TrainableModel,
+                        cfg: TrainConfig,
+                        *,
+                        num_training_steps: int,
+                        distributed_config: Optional[DistributedConfig] = None) -> None:
     """Set optimizer + lr_scheduler on ``model`` from a ``TrainConfig``.
 
     Args:
@@ -119,19 +122,8 @@ def configure_optimizer(model: TrainableModel, cfg: TrainConfig, *, num_training
     warmup_steps_exact = warmup_budget(cfg, num_training_steps, is_megatron=is_megatron)
 
     if is_megatron:
-        # Megatron only accepts its own distributed optimizer ('Adam' routes to it) and
-        # OptimizerParamScheduler ('default'); torch optim/scheduler names raise. cfg.optim is not
-        # consulted here at all -- validate_configs refuses a non-default optim on this backend, so
-        # an HF optimizer name can no longer be silently replaced by Adam.
-        #
-        # Megatron's other optimizer types are NOT reachable from dev yet, even though both legacy
-        # and Megatron-LM have them (legacy: optimizer=adam/sgd/muon/dist_muon plus muon_* knobs;
-        # mcore: OptimizerConfig.optimizer with 9 muon_* fields). twinkle blocks them twice:
-        # set_optimizer accepts only 'MegatronOptimizer'/'default'/'Adam', and
-        # _create_megatron_optimizer hardcodes optimizer='adam' inside OptimizerConfig(...) while
-        # also forwarding **kwargs, so passing optimizer= would raise a duplicate-keyword TypeError.
-        # Wiring sgd/muon is a separate task (it needs an upstream twinkle change plus a numerical
-        # baseline); until then the only way to ask for one is cfg.optim, which fails fast above.
+        # Megatron builds its native optimizer and OptimizerParamScheduler. cfg.optim remains the HF
+        # optimizer spelling and is validated separately; cfg.optimizer selects adam/sgd/muon/dist_muon.
         #
         # Step unit: lr_decay_steps/lr_warmup_steps are OPTIMIZER steps here, because twinkle's
         # lr_step() advances the scheduler by increment=1 per optimizer step. (Legacy megatron
@@ -157,15 +149,40 @@ def configure_optimizer(model: TrainableModel, cfg: TrainConfig, *, num_training
         # (param_group.get('min_lr', self.min_lr)). So passing min_lr only to set_lr_scheduler leaves
         # the group's 0.0 in charge and cosine decays past the floor all the way to 0 -- observed as
         # dev ending a 50-step run at lr=0 while legacy held at 1e-5 with identical flags.
+        import torch
+        dtype_map = {'fp32': torch.float32, 'fp16': torch.float16, 'bf16': torch.bfloat16, 'fp8': torch.uint8}
         model.set_optimizer(
-            'Adam',
+            'MegatronOptimizer',
+            optimizer=cfg.optimizer,
             lr=lr,
             min_lr=cfg.min_lr,
             weight_decay=cfg.weight_decay,
             clip_grad=resolve_max_grad_norm(cfg),
             adam_beta1=cfg.adam_beta1,
             adam_beta2=cfg.adam_beta2,
-            adam_eps=cfg.adam_epsilon)
+            adam_eps=cfg.adam_epsilon,
+            sgd_momentum=cfg.sgd_momentum,
+            muon_momentum=cfg.muon_momentum,
+            muon_split_qkv=cfg.muon_split_qkv,
+            muon_nesterov=cfg.muon_use_nesterov,
+            muon_scale_mode=cfg.muon_scale_mode,
+            muon_fp32_matmul_prec=cfg.muon_fp32_matmul_prec,
+            muon_coefficient_type=cfg.muon_coefficient_type,
+            muon_num_ns_steps=cfg.muon_num_ns_steps,
+            muon_tp_mode=cfg.muon_tp_mode,
+            muon_extra_scale_factor=cfg.muon_extra_scale_factor,
+            muon_scalar_optimizer=cfg.muon_scalar_optimizer,
+            use_precision_aware_optimizer=cfg.use_precision_aware_optimizer,
+            main_params_dtype=dtype_map[cfg.main_params_dtype],
+            main_grads_dtype=dtype_map[cfg.main_grads_dtype],
+            exp_avg_dtype=dtype_map[cfg.exp_avg_dtype],
+            exp_avg_sq_dtype=dtype_map[cfg.exp_avg_sq_dtype],
+            optimizer_cpu_offload=cfg.optimizer_cpu_offload,
+            optimizer_offload_fraction=cfg.optimizer_offload_fraction,
+            optimizer_cuda_graph=cfg.optimizer_cuda_graph,
+            overlap_param_gather_with_optimizer_step=bool(
+                distributed_config and distributed_config.overlap_param_gather_with_optimizer_step),
+            apply_wd_to_qk_layernorm=cfg.apply_wd_to_qk_layernorm)
         # lr_warmup_steps stays FRACTIONAL here: OptimizerParamScheduler interpolates the warmup ramp
         # linearly on this value, and legacy megatron also keeps it fractional (lr_warmup_steps =
         # lr_warmup_fraction * lr_decay_steps in SAMPLES, megatron_lm_utils.py:579-581, never rounded).
@@ -173,16 +190,25 @@ def configure_optimizer(model: TrainableModel, cfg: TrainConfig, *, num_training
         # (2.5/2) too high and moved the peak a step earlier. Verified directly against
         # OptimizerParamScheduler: fractional -> dev's 50-step lr curve is bit-identical to legacy's,
         # rounded -> all 50 steps differ.
+        lr_decay_steps = cfg.lr_decay_iters if cfg.lr_decay_iters is not None else max(1, num_training_steps)
+        warmup_steps_exact = warmup_budget(cfg, lr_decay_steps, is_megatron=True)
+        lr_decay_style = cfg.lr_decay_style
+        if lr_decay_style == 'cosine' and cfg.lr_scheduler_type != 'cosine':
+            from swift.dev.naming import resolve_megatron_decay_style
+            lr_decay_style = resolve_megatron_decay_style(cfg.lr_scheduler_type)
         model.set_lr_scheduler(
             'default',
-            lr_decay_steps=max(1, num_training_steps),
+            lr_decay_steps=lr_decay_steps,
             max_lr=lr,
+            init_lr=cfg.lr_warmup_init,
             lr_warmup_steps=warmup_steps_exact,
-            lr_decay_style=resolve_megatron_decay_style(cfg.lr_scheduler_type),
+            lr_decay_style=lr_decay_style,
             min_lr=cfg.min_lr,
             start_wd=start_wd,
             end_wd=end_wd,
-            wd_incr_style=cfg.weight_decay_incr_style)
+            wd_incr_style=cfg.weight_decay_incr_style,
+            wsd_decay_steps=cfg.lr_wsd_decay_iters,
+            lr_wsd_decay_style=cfg.lr_wsd_decay_style)
         return
 
     optim_cls, extra_kwargs = resolve_optim_target(cfg.optim)
@@ -217,7 +243,6 @@ def configure_optimizer(model: TrainableModel, cfg: TrainConfig, *, num_training
         # while steps 3-10 drifted up to 6% before training dynamics absorbed it.
         num_warmup_steps=math.ceil(warmup_steps_exact),
         num_training_steps=num_training_steps,
-        # Per-schedule extras (min_lr for cosine_with_min_lr, power for polynomial, ...). Legacy
-        # swift carries them the same way, as HF's scheduler_specific_kwargs.
-        **parse_scheduler_kwargs(cfg.lr_scheduler_kwargs),
+        # Per-schedule extras (min_lr for cosine_with_min_lr, power for polynomial, ...).
+        **(cfg.lr_scheduler_kwargs or {}),
     )

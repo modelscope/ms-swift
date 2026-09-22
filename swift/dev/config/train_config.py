@@ -1,7 +1,7 @@
 """Cross-backend training hyperparameters (lr/batch/optimizer/scheduler/gradient/eval)."""
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional
 
 
 @dataclass
@@ -11,7 +11,7 @@ class TrainConfig:
     # === Learning Rate & Scheduling ===
     learning_rate: float = 1e-5
     lr_scheduler_type: str = 'cosine'
-    lr_scheduler_kwargs: Optional[Union[dict, str]] = None
+    lr_scheduler_kwargs: Optional[Dict[str, Any]] = None
     warmup_ratio: float = 0.0
     warmup_steps: int = 0
 
@@ -30,11 +30,11 @@ class TrainConfig:
     # below for the deprecated alias.
     max_grad_norm: float = 1.0
     gradient_checkpointing: bool = True
-    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
+    gradient_checkpointing_kwargs: Optional[Dict[str, Any]] = None
     vit_gradient_checkpointing: Optional[bool] = None
     #: Checkpointing options for the vision tower, separate from ``gradient_checkpointing_kwargs``
     #: because the two towers are wrapped independently.
-    vit_gradient_checkpointing_kwargs: Optional[Union[Dict[str, Any], str]] = None
+    vit_gradient_checkpointing_kwargs: Optional[Dict[str, Any]] = None
 
     # === Optimizer ===
     optim: str = 'adamw_torch_fused'
@@ -88,7 +88,7 @@ class TrainConfig:
     sgd_momentum: float = 0.9
     #: Megatron spells adam's epsilon differently from HF's ``adam_epsilon`` above; both are kept
     #: because each backend reads its own.
-    adam_eps: float = 1e-8
+    adam_eps: Optional[float] = None
 
     # === Optimizer: precision & offload (Megatron-only) ===
     #: Keep optimizer state in lower precision than fp32, using the dtypes below. Off by default: it
@@ -163,7 +163,7 @@ class TrainConfig:
     enable_dft_loss: bool = False
     enable_channel_loss: bool = False
     loss_type: Optional[str] = None
-    mrl_dims: Optional[Union[dict, str]] = None
+    mrl_dims: Optional[Dict[int, float]] = None
     acc_strategy: Literal['token', 'seq'] = 'token'
     aligner_lr: Optional[float] = None
     vit_lr: Optional[float] = None
@@ -208,8 +208,8 @@ class TrainConfig:
     # === Nested third-party configs ===
     # Kept as opaque dicts on purpose: the keys belong to those libraries and change with their
     # versions, so enumerating them here would go stale on the next upgrade.
-    #: Accelerate integration settings; a dict, or a path to a JSON file.
-    accelerator_config: Optional[Union[Dict[str, Any], str]] = None
+    #: Accelerate integration settings. The CLI accepts a JSON object or JSON file.
+    accelerator_config: Optional[Dict[str, Any]] = None
     #: Which Liger ops to patch in, passed through to ``_apply_liger_kernel_to_instance``. Read only
     #: when ``use_liger_kernel`` is on; None patches Liger's own default set.
     liger_kernel_config: Optional[Dict[str, bool]] = None
@@ -243,10 +243,10 @@ class TrainConfig:
     # === EvalScope Integration ===
     eval_use_evalscope: bool = False
     eval_dataset: List[str] = field(default_factory=list)
-    eval_dataset_args: Optional[str] = None
+    eval_dataset_args: Optional[Dict[str, Any]] = None
     eval_limit: Optional[int] = None
-    eval_generation_config: Optional[str] = None
-    extra_eval_args: Optional[str] = None
+    eval_generation_config: Optional[Dict[str, Any]] = None
+    extra_eval_args: Optional[Dict[str, Any]] = None
 
     # === Callbacks ===
     callbacks: List[str] = field(default_factory=list)

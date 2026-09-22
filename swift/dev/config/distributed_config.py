@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 @dataclass
 class DistributedConfig:
-    """DeepSpeed, FSDP, DDP, and Ray distributed settings."""
+    """Distributed training and parallelism settings."""
 
     # === DeepSpeed ===
     deepspeed: Optional[str] = None
@@ -16,19 +16,15 @@ class DistributedConfig:
 
     # === FSDP ===
     fsdp: Optional[str] = None
-    #: FSDP's own settings -- wrapping policy, sharding strategy, offload. A dict, or a path to a JSON
-    #: file. Nested rather than flattened because the accepted keys are FSDP's and change with its
-    #: version, so naming each one here would go stale.
-    fsdp_config: Optional[Union[Dict[str, Any], str]] = None
+    #: FSDP's own settings -- wrapping policy, sharding strategy, offload. The CLI accepts a JSON
+    #: object or JSON file. Nested because the accepted keys are FSDP's and change with its version.
+    fsdp_config: Optional[Dict[str, Any]] = None
 
-    # === Ray ===
-    use_ray: bool = False
-    ray_exp_name: Optional[str] = None
-    device_groups: Optional[str] = None
+    # === Launch ===
+    mode: Literal['ray', 'local'] = 'local'
+    nproc_per_node: Optional[int] = None
 
     # === DDP ===
-    ddp_timeout: int = 18000000
-    ddp_backend: Optional[str] = None
     ddp_find_unused_parameters: Optional[bool] = None
     #: Broadcast buffers (e.g. batchnorm statistics) from rank 0 each forward. None takes torch's
     #: default of True; turning it off is a throughput win for models with no such buffers.
@@ -44,17 +40,12 @@ class DistributedConfig:
     local_rank: int = -1
 
     # === Megatron ===
-    # NOTE: this is a MINIMAL subset of legacy MegatronArguments (megatron_args.py has 200+
-    # fields). Only the parallelism sizes + the few high-frequency knobs below are wired into
-    # dev's build_model path today; the rest (fusion/fp8/mtp/muon/precision-aware-optimizer/
-    # vpp/... ) are intentionally deferred. Full alignment is a separate follow-up task.
-    # A None value means "keep twinkle MegatronModel's own default" (so the bit-exact SFT
-    # baseline is unchanged unless the user explicitly sets the knob).
+    # This contains the distributed subset of legacy MegatronArguments. Model, optimizer, scheduler,
+    # checkpoint and MoE fields live in their owning Config classes; every field below is either
+    # forwarded to Twinkle/Megatron or rejected explicitly when the active backend cannot consume it.
+    # A None value means "keep Twinkle/Megatron's own default".
     backend: Optional[Literal['megatron', 'hf']] = None
     bridge_backend: Literal['mcore-bridge', 'megatron-bridge'] = 'mcore-bridge'
-    # NB: this is the twinkle launch model, NOT legacy swift's.
-    mode: Literal['ray', 'local'] = 'local'
-    nproc_per_node: Optional[int] = None
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
     context_parallel_size: int = 1

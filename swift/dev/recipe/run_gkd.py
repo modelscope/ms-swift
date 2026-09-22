@@ -34,7 +34,10 @@ if TYPE_CHECKING:
         DistributedConfig,
         GenerationConfig,
         LoggingConfig,
+        MegatronConfig,
         ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
         RLHFConfig,
         RolloutConfig,
         TemplateConfig,
@@ -58,6 +61,9 @@ def run_gkd(
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
     rollout_config: Optional['RolloutConfig'] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
+    megatron_config: Optional[MegatronConfig] = None,
+    moe_config: Optional[MoEConfig] = None,
     *,
     output_dir: str = 'output',
     _save_final: bool = True,
@@ -87,7 +93,10 @@ def run_gkd(
         tuner_config,
         rlhf_config=rlhf_config,
         output_dir=output_dir,
-        logging_config=logging_config)
+        logging_config=logging_config,
+        quantize_config=quantize_config,
+        megatron_config=megatron_config,
+        moe_config=moe_config)
     assembly.prepare()
     TrainAssembly.initialize_twinkle(distributed_config)
 
@@ -97,7 +106,9 @@ def run_gkd(
     # No dataloader to derive a step budget from -- the prompts are sampled, not iterated -- so
     # max_steps IS the budget.
     max_steps = train_config.max_steps or 1
-    configure_optimizer(assembly.model, train_config, num_training_steps=max_steps)
+    assembly.resolve_step_intervals(max_steps)
+    configure_optimizer(
+        assembly.model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
 
     prompts, dataset_features, prompt_extras, dataset_messages = _gkd_rows_from_dataset(
         dataset_config, assembly.template)
@@ -123,7 +134,17 @@ def run_gkd(
         teacher_tag_key=(rollout_config.teacher_tag_key if rollout_config is not None else 'dataset'),
         output_dir=output_dir,
         sampling_params=_gkd_sampling_params(rlhf_config, generation_config),
-        logging_config=logging_config)
+        logging_config=logging_config,
+        save_steps=checkpoint_config.save_steps,
+        no_save_optim=checkpoint_config.no_save_optim or checkpoint_config.save_only_model,
+        no_save_rng=checkpoint_config.no_save_rng or checkpoint_config.save_only_model,
+        safe_serialization=checkpoint_config.safe_serialization,
+        max_shard_size=checkpoint_config.max_shard_size,
+        save_total_limit=checkpoint_config.save_total_limit,
+        manual_gc=bool(megatron_config and megatron_config.manual_gc),
+        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0)
+    if assembly.resume_dir:
+        assembly.loop.resume(assembly.resume_model())
     history = assembly.loop.fit()
     if _save_final:
         assembly.save_final()
@@ -272,6 +293,14 @@ class GKDLoop:
         output_dir: str = 'output',
         sampling_params: Optional[dict] = None,
         logging_config: Optional['LoggingConfig'] = None,
+        save_steps: Optional[int] = None,
+        no_save_optim: bool = False,
+        no_save_rng: bool = False,
+        safe_serialization: bool = True,
+        max_shard_size: str = '5GB',
+        save_total_limit: Optional[int] = None,
+        manual_gc: bool = False,
+        manual_gc_steps: int = 0,
     ):
         self.model = model
         self.teacher = teacher
@@ -302,6 +331,16 @@ class GKDLoop:
         self.tracker = RunTracker(logging_config, output_dir)
         self.output_dir = output_dir
         self.sampling_params = sampling_params
+        self.save_steps = save_steps
+        self.no_save_optim = no_save_optim
+        self.no_save_rng = no_save_rng
+        self.safe_serialization = safe_serialization
+        self.max_shard_size = max_shard_size
+        self.save_total_limit = save_total_limit
+        self.manual_gc = manual_gc
+        self.manual_gc_steps = manual_gc_steps
+        if self.manual_gc_steps < 0:
+            raise ValueError('manual_gc_steps must be >= 0.')
         self.global_step = 0
         self.micro_step = 0
         self.history: list = []
@@ -417,8 +456,11 @@ class GKDLoop:
 
     def fit(self) -> list:
         """Run max_steps GKD steps. Each step: generate -> teacher forward -> student forward_backward."""
+        from swift.dev.recipe.train_loop import finish_manual_gc, start_manual_gc
+
         ga = self.gradient_accumulation_steps
-        step = 0
+        step = self.global_step
+        gc_was_enabled = start_manual_gc(self.manual_gc)
         try:
             while self.global_step < self.max_steps:
                 self.micro_step += 1
@@ -441,10 +483,14 @@ class GKDLoop:
                     self._record_step()
             return self.history
         finally:
+            finish_manual_gc(gc_was_enabled)
             self.tracker.close()
 
     def _record_step(self) -> None:
+        from swift.dev.recipe.train_loop import collect_manual_gc
+
         self.global_step += 1
+        collect_manual_gc(self.manual_gc, self.manual_gc_steps, self.global_step)
         metrics = self.model.calculate_metric(is_training=True)
         loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
         record = {'step': self.global_step, 'loss': loss}
@@ -456,10 +502,28 @@ class GKDLoop:
                       bool(self.logging_steps and self.global_step % self.logging_steps == 0))
         if should_log:
             logger.info(f'step {self.global_step}  loss={record["loss"]:.4f}')
+        if self.save_steps and self.global_step % self.save_steps == 0:
+            self.save(f'checkpoint-{self.global_step}')
 
     def save(self, name: str = 'checkpoint-final') -> str:
         """Persist the student policy + training state via twinkle's native save."""
-        return self.model.save(name, output_dir=self.output_dir, save_optimizer=True)
+        from swift.dev.recipe.train_loop import save_training_checkpoint
+
+        return save_training_checkpoint(
+            self.model,
+            name,
+            output_dir=self.output_dir,
+            consumed_train_samples=self.global_step,
+            no_save_optim=self.no_save_optim,
+            no_save_rng=self.no_save_rng,
+            safe_serialization=self.safe_serialization,
+            max_shard_size=self.max_shard_size,
+            save_total_limit=self.save_total_limit)
+
+    def resume(self, state: dict) -> None:
+        """Resume the student optimizer phase and completed online-step count."""
+        self.micro_step = int(state['cur_step'])
+        self.global_step = int(state.get('consumed_train_samples', 0))
 
 
 def _gkd_rows_from_dataset(

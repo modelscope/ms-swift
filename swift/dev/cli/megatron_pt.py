@@ -6,13 +6,13 @@ from typing import List, Optional
 
 def megatron_pt_main(argv: Optional[List[str]] = None):
     from swift.dev.cli.megatron import parse_megatron_configs
-    from swift.dev.cli.runtime import bootstrap_run
-    from swift.dev.config import process_configs, validate_configs
+    from swift.dev.config import process_and_validate_configs
     from swift.dev.recipe import run_pt
 
     os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
     (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-     logging_config, tuner_config) = parse_megatron_configs(argv)
+     logging_config, tuner_config, quantize_config, megatron_config, moe_config) = parse_megatron_configs(
+         argv, command='megatron_pt')
     if model_config.task_type not in (None, 'causal_lm'):
         raise ValueError(f'PT requires task_type="causal_lm", got {model_config.task_type!r}.')
     if template_config.use_chat_template not in (None, False):
@@ -22,13 +22,19 @@ def megatron_pt_main(argv: Optional[List[str]] = None):
     model_config.task_type = 'causal_lm'
     template_config.use_chat_template = False
     template_config.loss_scale = 'all'
-    process_configs(
-        model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-        tuner_config)
-    validate_configs(
-        model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-        tuner_config, logging_config=logging_config)
-    bootstrap_run(model_config, checkpoint_config, dataset_config, tuner_config, seed=train_config.seed)
+    process_and_validate_configs({
+        'model_config': model_config,
+        'template_config': template_config,
+        'dataset_config': dataset_config,
+        'train_config': train_config,
+        'distributed_config': distributed_config,
+        'checkpoint_config': checkpoint_config,
+        'logging_config': logging_config,
+        'tuner_config': tuner_config,
+        'quantize_config': quantize_config,
+        'megatron_config': megatron_config,
+        'moe_config': moe_config,
+    })
     return run_pt(
         model_config,
         template_config,
@@ -38,6 +44,9 @@ def megatron_pt_main(argv: Optional[List[str]] = None):
         checkpoint_config,
         tuner_config,
         logging_config,
+        quantize_config=quantize_config,
+        megatron_config=megatron_config,
+        moe_config=moe_config,
         output_dir=checkpoint_config.output_dir)
 
 

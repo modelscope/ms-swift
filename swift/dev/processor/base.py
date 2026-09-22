@@ -14,10 +14,21 @@ class InputProcessor(TwinkleInputProcessor):
     and post-forward gather helpers for the transformers framework.
     """
 
-    def __init__(self, *, collate_fn: Optional[Callable] = None, **kwargs):
+    def __init__(self,
+                 *,
+                 collate_fn: Optional[Callable] = None,
+                 cp_partition_mode: str = 'zigzag',
+                 **kwargs):
         super().__init__(**kwargs)
         self._external_collate_fn = collate_fn
+        self._cp_partition_mode = cp_partition_mode
         self._template = None
+
+    def _get_packed_seq_params(self, position_ids):
+        packed = super()._get_packed_seq_params(position_ids)
+        if hasattr(packed, 'cp_partition_mode'):
+            packed.cp_partition_mode = self._cp_partition_mode
+        return packed
 
     # swift-only bookkeeping fields that must not reach the collate stage. Everything else passes
     # through untouched: the dev Template's _encode already constructs exactly the forward kwargs

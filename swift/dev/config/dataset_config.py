@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional
 
 
 @dataclass
@@ -31,7 +31,7 @@ class DatasetConfig:
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'
 
     # === Column Mapping ===
-    columns: Optional[Union[dict, str]] = None
+    columns: Optional[Dict[str, str]] = None
     strict: bool = False
     remove_unused_columns: bool = True
     disable_auto_column_mapping: bool = False

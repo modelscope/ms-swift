@@ -20,10 +20,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.config import GenerationConfig, ModelConfig
+    from swift.dev.config import GenerationConfig, InferConfig, ModelConfig, QuantizeConfig, RolloutConfig
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,27 @@ _MODEL_KNOB_NAMES = {
 _SAMPLER_CLASSES = {'vllm': 'vLLMSampler', 'sglang': 'SGLangSampler', 'transformers': 'TransformersSampler'}
 
 
+def build_engine_args(backend: str, infer_config: 'InferConfig', rollout_config: 'RolloutConfig') -> Dict[str, Any]:
+    """Map inference and rollout Config fields to sampler engine arguments."""
+    if backend == 'pt':
+        backend = 'transformers'
+    if backend == 'transformers':
+        return {'max_batch_size': infer_config.max_batch_size}
+    prefix = f'{backend}_'
+    result = {}
+    excluded = {
+        'engine_kwargs', 'mode', 'server_base_url', 'server_host', 'server_port', 'server_timeout',
+        'server_group_port', 'server_pass_dataset'
+    }
+    for name, value in asdict(rollout_config).items():
+        if name.startswith(prefix) and value is not None:
+            key = name[len(prefix):]
+            if key not in excluded:
+                result[key] = value
+    result.update(getattr(rollout_config, f'{prefix}engine_kwargs', None) or {})
+    return result
+
+
 def build_sampler(
     model_config: ModelConfig,
     *,
@@ -60,6 +82,7 @@ def build_sampler(
     template: Any = None,
     adapters: Optional[List[str]] = None,
     remote_group: Optional[str] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
 ) -> Any:
     """ModelConfig -> a twinkle Sampler, with the template already set.
 
@@ -101,6 +124,20 @@ def build_sampler(
                          '(lmdeploy is deliberately not supported.)')
 
     kwargs = dict(engine_args or {})
+    quant_method = getattr(quantize_config, 'quant_method', None)
+    if quant_method is not None:
+        if backend != 'transformers':
+            engine_option = 'vllm_quantization' if backend == 'vllm' else 'sglang_quantization'
+            raise ValueError(
+                f'quant_method={quant_method!r} is a Transformers load-time setting and cannot be translated to '
+                f'backend={backend!r}. Use --{engine_option} (or backend-specific engine_args), or rely on the '
+                'quantization metadata embedded in an AWQ/GPTQ checkpoint.')
+        from swift.dev.builders.quantization import build_load_quantization_config
+        quantization_config = build_load_quantization_config(
+            quantize_config, torch_dtype=model_config.torch_dtype)
+        if quantization_config is not None:
+            kwargs.setdefault('quantization_config', quantization_config)
+
     for cfg_name, engine_name in _MODEL_KNOB_NAMES[backend].items():
         value = getattr(model_config, cfg_name, None)
         # setdefault, not assignment: an explicit engine_args entry is the caller's override.

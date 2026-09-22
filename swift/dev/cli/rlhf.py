@@ -17,24 +17,13 @@ class RlhfCliCompatConfig:
 _RLHF_EXTENSION_FIELDS = ()
 
 
-def _configure_megatron(model_config, train_config, distributed_config, tuner_config, compat):
-    from swift.dev.cli.megatron import (
-        _apply_megatron_precision,
-        _attn_backend_name,
-        _derive_megatron_ga,
-        _fix_mtp,
-        _reject_unmappable,
-        _select_megatron_tuner,
-    )
+def _configure_megatron(model_config, train_config, distributed_config, tuner_config):
+    from swift.dev.cli.megatron import _derive_megatron_ga, _fix_mtp, _select_megatron_tuner
 
-    _reject_unmappable(train_config)
     distributed_config.backend = 'megatron'
     world_size = int(os.environ.get('WORLD_SIZE', '1'))
     distributed_config.nproc_per_node = distributed_config.nproc_per_node or world_size
-    if compat.attention_backend is not None:
-        model_config.attn_impl = _attn_backend_name(compat.attention_backend)
-    _apply_megatron_precision(model_config, compat)
-    _fix_mtp(model_config, model_config)
+    _fix_mtp(model_config)
     if train_config.weight_decay_incr_style == 'constant':
         train_config.start_weight_decay = None
         train_config.end_weight_decay = None
@@ -42,10 +31,7 @@ def _configure_megatron(model_config, train_config, distributed_config, tuner_co
     return _select_megatron_tuner(tuner_config)
 
 
-def _apply_rlhf_compat(passed, generation_config, rollout_config, rlhf_config, rlhf_compat) -> None:
-    for name in ('top_k', 'top_p', 'repetition_penalty', 'stop_words', 'structured_outputs_regex'):
-        if name in passed:
-            setattr(rollout_config, name, getattr(generation_config, name))
+def _apply_rlhf_compat(passed, generation_config, rlhf_config, rlhf_compat) -> None:
     if 'max_new_tokens' in passed and generation_config.max_new_tokens is not None:
         rlhf_config.max_completion_length = generation_config.max_new_tokens
     if rlhf_compat.response_length is not None:
@@ -55,21 +41,17 @@ def _apply_rlhf_compat(passed, generation_config, rollout_config, rlhf_config, r
 
 
 def parse_rlhf_configs(argv: Optional[List[str]] = None, *, megatron: bool = False) -> Dict[str, Any]:
-    from swift.dev.cli.legacy_coverage import LOAD_QUANTIZATION_FIELDS
-    from swift.dev.cli.parser import flag_names, parse_configs_strict, resolve_argv
-    from swift.dev.cli.sft import (
-        LEGACY_ONLY_CLASSIFICATION,
-        SftCliCompatConfig,
-        _apply_precision_aliases,
-        _select_tuner,
-    )
+    from swift.dev.cli.parser import flag_names, parse_configs_strict, resolve_argv, select_tuner
     from swift.dev.config import (
         CheckpointConfig,
         DatasetConfig,
         DistributedConfig,
         GenerationConfig,
         LoggingConfig,
+        MegatronConfig,
         ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
         RLHFConfig,
         RolloutConfig,
         TemplateConfig,
@@ -78,50 +60,40 @@ def parse_rlhf_configs(argv: Optional[List[str]] = None, *, megatron: bool = Fal
     )
 
     effective_argv = resolve_argv(argv)
+    from swift.dev.cli.legacy_coverage import reject_legacy_only_flags
+    reject_legacy_only_flags('megatron_rlhf' if megatron else 'rlhf', effective_argv)
     passed = flag_names(effective_argv)
-    unsupported = {
-        name for names in LEGACY_ONLY_CLASSIFICATION.values() for name in names
-    } | set(LOAD_QUANTIZATION_FIELDS) | set(_RLHF_EXTENSION_FIELDS)
-    matched = sorted(passed.intersection(unsupported))
-    if matched:
-        raise NotImplementedError(f'{matched} have no consumer in the dev RLHF recipes and are refused explicitly.')
-    compat_class = SftCliCompatConfig
-    if megatron:
-        from swift.dev.cli.megatron import MegatronCliCompatConfig
-        compat_class = MegatronCliCompatConfig
     classes = [
         ModelConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig, LoggingConfig,
-        TunerConfig, GenerationConfig, RolloutConfig, RLHFConfig, compat_class, RlhfCliCompatConfig
+        TunerConfig, GenerationConfig, RolloutConfig, RLHFConfig, QuantizeConfig, MegatronConfig, MoEConfig
     ]
+    if megatron:
+        from swift.dev.cli.megatron import MegatronCliCompatConfig
+        classes.append(MegatronCliCompatConfig)
+    classes.append(RlhfCliCompatConfig)
     owners = {
         'loss_scale': TemplateConfig,
         'loss_type': RLHFConfig,
         'max_new_tokens': GenerationConfig,
         'temperature': RLHFConfig,
-        'top_k': GenerationConfig,
-        'top_p': GenerationConfig,
-        'repetition_penalty': GenerationConfig,
-        'stop_words': GenerationConfig,
-        'structured_outputs_regex': GenerationConfig,
         'reward_funcs': RLHFConfig,
         'reward_weights': RLHFConfig,
     }
     configs = parse_configs_strict(classes, effective_argv, command='swift rlhf', field_owners=owners)
+    common = configs[:14]
     (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-     logging_config, tuner_config, generation_config, rollout_config, rlhf_config, compat, rlhf_compat) = configs
+     logging_config, tuner_config, generation_config, rollout_config, rlhf_config, quantize_config, megatron_config,
+     moe_config) = common
+    rlhf_compat = configs[-1]
     if megatron:
-        tuner_config = _configure_megatron(model_config, train_config, distributed_config, tuner_config, compat)
+        tuner_config = _configure_megatron(model_config, train_config, distributed_config, tuner_config)
     else:
-        _apply_precision_aliases(model_config, compat)
-        tuner_config = _select_tuner(tuner_config)
+        tuner_config = select_tuner(tuner_config)
 
-    _apply_rlhf_compat(passed, generation_config, rollout_config, rlhf_config, rlhf_compat)
+    _apply_rlhf_compat(passed, generation_config, rlhf_config, rlhf_compat)
     if rlhf_config.rlhf_type in {'grpo', 'ppo'}:
         rollout_config.use_vllm = True
         rollout_config.vllm_mode = rollout_config.vllm_mode or 'colocate'
-        distributed_config.use_ray = True
-        distributed_config.mode = 'ray'
-    elif megatron and distributed_config.use_ray:
         distributed_config.mode = 'ray'
 
     return {
@@ -136,39 +108,18 @@ def parse_rlhf_configs(argv: Optional[List[str]] = None, *, megatron: bool = Fal
         'generation_config': generation_config,
         'rollout_config': rollout_config,
         'rlhf_config': rlhf_config,
+        'quantize_config': quantize_config,
+        'megatron_config': megatron_config,
+        'moe_config': moe_config,
     }
 
 
 def run_rlhf_configs(configs: Dict[str, Any]) -> List[dict]:
     """Process, validate, bootstrap, and execute an already parsed RLHF Config set."""
-    from swift.dev.cli.runtime import bootstrap_run
-    from swift.dev.config import process_configs, validate_configs
+    from swift.dev.config import process_and_validate_configs
     from swift.dev.recipe import run_rlhf
 
-    process_configs(
-        configs['model_config'],
-        configs['template_config'],
-        configs['dataset_config'],
-        configs['train_config'],
-        configs['distributed_config'],
-        configs['checkpoint_config'],
-        configs['tuner_config'],
-        rlhf_config=configs['rlhf_config'],
-    )
-    validate_configs(
-        configs['model_config'],
-        configs['template_config'],
-        configs['dataset_config'],
-        configs['train_config'],
-        configs['distributed_config'],
-        configs['checkpoint_config'],
-        configs['tuner_config'],
-        configs['rlhf_config'],
-        configs['logging_config'],
-    )
-    bootstrap_run(
-        configs['model_config'], configs['checkpoint_config'], configs['dataset_config'], configs['tuner_config'],
-        seed=configs['train_config'].seed)
+    process_and_validate_configs(configs)
     return run_rlhf(
         configs['model_config'],
         configs['template_config'],
@@ -181,6 +132,9 @@ def run_rlhf_configs(configs: Dict[str, Any]) -> List[dict]:
         configs['tuner_config'],
         configs['generation_config'],
         configs['logging_config'],
+        configs['quantize_config'],
+        megatron_config=configs['megatron_config'],
+        moe_config=configs['moe_config'],
         output_dir=configs['checkpoint_config'].output_dir,
     )
 

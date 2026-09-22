@@ -10,7 +10,10 @@ if TYPE_CHECKING:
         DatasetConfig,
         DistributedConfig,
         LoggingConfig,
+        MegatronConfig,
         ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
         RLHFConfig,
         TemplateConfig,
         TrainConfig,
@@ -30,6 +33,11 @@ def validate_configs(
     tuner_config: Optional['TunerConfig'] = None,
     rlhf_config: Optional['RLHFConfig'] = None,
     logging_config: Optional['LoggingConfig'] = None,
+    quantize_config: Optional['QuantizeConfig'] = None,
+    megatron_config: Optional['MegatronConfig'] = None,
+    moe_config: Optional['MoEConfig'] = None,
+    *,
+    training: bool = True,
 ) -> None:
     """Validate constraints that span multiple Configs. Raises ValueError on an illegal combination.
 
@@ -40,29 +48,86 @@ def validate_configs(
 
     _check_group_by_length(dataset_config, template_config)
     _check_lazy_tokenize(dataset_config)
-    _check_packing(dataset_config, template_config)
     _check_data_sharding(dataset_config)
     _check_streaming(dataset_config, checkpoint_config)
-    _check_backend_specific(dataset_config, train_config, distributed_config, is_megatron, tuner_config)
+    _check_backend_specific(model_config, dataset_config, train_config, distributed_config, is_megatron, tuner_config)
+    _check_megatron_runtime_configs(megatron_config, moe_config, is_megatron)
     _check_megatron_optimizer(train_config, is_megatron)
     _check_muon(train_config, distributed_config, is_megatron)
     _check_megatron_recompute(train_config, distributed_config, is_megatron)
+    _check_megatron_microbatch_schedule(train_config, distributed_config, is_megatron)
+    _check_eval_iters(train_config)
     _check_megatron_attn_backend(model_config, template_config, is_megatron)
     _check_mtp(model_config, is_megatron, tuner_config)
     _check_quantization(model_config, distributed_config, is_megatron)
+    _check_load_quantization(
+        model_config, distributed_config, tuner_config, quantize_config, is_megatron, training=training)
     _check_megatron_fsdp(distributed_config, is_megatron)
     _check_selective_recompute(distributed_config, is_megatron)
     _check_pipeline_decoder_layers(distributed_config, is_megatron)
     _check_tp_comm_overlap(distributed_config, is_megatron)
     _check_sequence_parallel_tp(distributed_config, is_megatron)
+    _check_checkpoint_runtime(
+        checkpoint_config,
+        distributed_config,
+        tuner_config,
+        rlhf_config,
+        is_megatron,
+        training=training)
     _check_save_total_limit(checkpoint_config, is_megatron)
     _check_logging(logging_config)
     _check_rlhf_ref_model(model_config, tuner_config, rlhf_config)
     _check_rlhf_advanced(train_config, rlhf_config)
     _check_rlhf_padding_free(template_config, dataset_config, rlhf_config)
     _check_rlhf_sequence_parallel(template_config, rlhf_config)
-    # After _check_packing (which may force padding_free=True) and after the RLHF SP guard.
+    # Packing-derived padding_free has already been resolved by process_configs.
     _check_hf_sequence_parallel(model_config, template_config, dataset_config, distributed_config, is_megatron)
+
+
+def _changed_fields(config) -> list:
+    """Return user-visible fields that differ from defaults or were explicit on the CLI."""
+    import dataclasses
+
+    if config is None:
+        return []
+    explicit = getattr(config, '_explicit_fields', None)
+    if explicit is not None:
+        return sorted(explicit)
+    changed = []
+    for config_field in dataclasses.fields(config):
+        if config_field.default is not dataclasses.MISSING:
+            default = config_field.default
+        elif config_field.default_factory is not dataclasses.MISSING:
+            default = config_field.default_factory()
+        else:
+            continue
+        if getattr(config, config_field.name) != default:
+            changed.append(config_field.name)
+    return changed
+
+
+def _check_megatron_runtime_configs(megatron_config: Optional['MegatronConfig'], moe_config: Optional['MoEConfig'],
+                                     is_megatron: bool) -> None:
+    if not is_megatron:
+        changed = _changed_fields(megatron_config) + _changed_fields(moe_config)
+        if changed:
+            raise ValueError(f'Megatron-only options {changed} cannot be used with the transformers backend.')
+        return
+    if megatron_config is None:
+        return
+    unsupported = {
+        'apply_dsa_kernel_fusion',
+        'csa_dense_mode',
+        'sequence_packing_scheduler',
+        'use_fused_mhc',
+    }
+    requested = sorted(unsupported.intersection(_changed_fields(megatron_config)))
+    if requested:
+        raise NotImplementedError(
+            f'{requested} are not exposed by the installed mcore-bridge ModelConfig. '
+            'Upgrade mcore-bridge/Megatron-LM or remove these options.')
+    if megatron_config.manual_gc_steps < 0:
+        raise ValueError('manual_gc_steps must be >= 0.')
 
 
 def _check_rlhf_advanced(train_config: 'TrainConfig', rlhf_config: Optional['RLHFConfig']) -> None:
@@ -400,9 +465,18 @@ def _check_quantization(model_config: 'ModelConfig', distributed_config: 'Distri
     mcore-bridge's ModelConfig checks them where the model is actually built.
     """
     active = [fmt for fmt, _ in _QUANT_FORMATS if getattr(model_config, fmt) is not None]
+    explicit = getattr(model_config, '_explicit_fields', set())
+    format_dependents = {
+        'fp4_format': ('fp4_recipe', 'fp4_param_gather'),
+        'fp8_format': ('fp8_recipe', 'fp8_amax_history_len', 'fp8_amax_compute_algo', 'fp8_param_gather'),
+    }
 
     for fmt, param_gather in _QUANT_FORMATS:
         if getattr(model_config, fmt) is None:
+            requested = [name for name in format_dependents[fmt] if name in explicit]
+            if requested:
+                raise ValueError(f'ModelConfig fields {requested} need ModelConfig.{fmt} to be set. Without it the '
+                                 'model is built in its normal dtype, so these knobs would be ignored.')
             if getattr(model_config, param_gather):
                 raise ValueError(f'ModelConfig.{param_gather} needs ModelConfig.{fmt} to be set. Without it the '
                                  'model is built in its normal dtype, so this knob would be ignored.')
@@ -432,6 +506,64 @@ def _check_quantization(model_config: 'ModelConfig', distributed_config: 'Distri
                          'applies a single quantization recipe per transformer layer. Pick one.')
 
 
+def _check_load_quantization(model_config: 'ModelConfig', distributed_config: 'DistributedConfig',
+                             tuner_config: Optional['TunerConfig'], quantize_config: Optional['QuantizeConfig'],
+                             is_megatron: bool, *, training: bool) -> None:
+    """Validate training-time model loading quantization before a worker loads weights."""
+    if quantize_config is None or quantize_config.quant_method is None:
+        return
+
+    from swift.dev.builders.quantization import CALIBRATION_QUANT_METHODS, LOAD_TIME_QUANT_METHODS
+
+    method = quantize_config.quant_method
+    if method in CALIBRATION_QUANT_METHODS:
+        if training:
+            raise ValueError(
+                f'quant_method={method!r} calibrates and exports weights; it is not a training load-time method. '
+                'Train from an already quantized checkpoint, or use bnb/hqq/eetq/quanto/fp8 for loading.')
+        return
+    if method not in LOAD_TIME_QUANT_METHODS:
+        raise ValueError(f'Unknown training load-time quant_method={method!r}.')
+    if is_megatron:
+        raise ValueError(
+            f'quant_method={method!r} is a transformers load-time quantizer and is not supported by the Megatron '
+            'backend. Use ModelConfig.fp4_format/fp8_format for Transformer-Engine training quantization, or '
+            'convert a pre-quantized checkpoint to mcore first.')
+
+    tuner_type = getattr(tuner_config, 'tuner_type', 'full') if tuner_config is not None else 'full'
+    if training and tuner_type == 'full':
+        raise ValueError(
+            f'quant_method={method!r} cannot be combined with full-parameter training: load-time quantized base '
+            'weights are not trainable parameters. Select a trainable adapter such as --tuner_type lora.')
+
+    bits = quantize_config.quant_bits
+    valid_bits = {
+        'bnb': {4, 8},
+        'hqq': {1, 2, 3, 4, 8},
+        'eetq': {8},
+        'quanto': {2, 4, 8, 'float8'},
+        'fp8': {None, 8, 'float8'},
+    }[method]
+    if bits not in valid_bits:
+        raise ValueError(f'quant_method={method!r} does not support quant_bits={bits!r}; expected {sorted(valid_bits, key=str)}.')
+
+    if getattr(tuner_config, 'tuner_backend', None) == 'unsloth' and method != 'bnb':
+        raise ValueError(
+            f'Unsloth only exposes load_in_4bit/load_in_8bit for BNB, so quant_method={method!r} is unsupported. '
+            'Use --quant_method bnb or the default tuner backend.')
+
+    if distributed_config.fsdp and method == 'bnb' and bits == 4:
+        storage = quantize_config.bnb_4bit_quant_storage
+        if storage is None:
+            raise ValueError(
+                'FSDP QLoRA requires --bnb_4bit_quant_storage to match the model parameter dtype '
+                f'(--torch_dtype {model_config.torch_dtype!r}); the bitsandbytes uint8 default cannot be sharded.')
+        if model_config.torch_dtype is not None and storage != model_config.torch_dtype:
+            raise ValueError(
+                f'FSDP QLoRA requires bnb_4bit_quant_storage ({storage!r}) to match torch_dtype '
+                f'({model_config.torch_dtype!r}) so flattened FSDP parameters have one dtype.')
+
+
 def _check_mtp(model_config: 'ModelConfig', is_megatron: bool, tuner_config: Optional['TunerConfig']) -> None:
     """Reject MTP settings that cannot do what they say.
 
@@ -439,7 +571,9 @@ def _check_mtp(model_config: 'ModelConfig', is_megatron: bool, tuner_config: Opt
     exports no MTP layer -- which is why these are errors rather than warnings. The only exception is
     LoRA, which *can* work if the adapter covers the MTP modules, so it warns instead.
     """
-    mtp_dependents = ('mtp_loss_scaling_factor', 'enable_mtp_training', 'mtp_freeze', 'mtp_decoder_input_detach')
+    mtp_dependents = (
+        'mtp_loss_scaling_factor', 'enable_mtp_training', 'mtp_freeze', 'mtp_decoder_input_detach',
+        'mtp_shared_weights')
 
     if model_config.mtp_num_layers is None:
         for attr in mtp_dependents:
@@ -565,14 +699,6 @@ def _check_lazy_tokenize(dataset_config: 'DatasetConfig') -> None:
         raise ValueError('streaming and lazy_tokenize are incompatible.')
 
 
-def _check_packing(dataset_config: 'DatasetConfig', template_config: 'TemplateConfig') -> None:
-    if not dataset_config.packing:
-        return
-    if not template_config.padding_free:
-        logger.info('Setting padding_free True as packing is set')
-        template_config.padding_free = True
-
-
 def _check_data_sharding(dataset_config: 'DatasetConfig') -> None:
     """data_sharding needs a shuffled order to reshuffle; it is a no-op under sequential reads.
 
@@ -628,14 +754,57 @@ def _check_megatron_recompute(train_config: 'TrainConfig', distributed_config: '
                        "'selective') to enable it.")
 
 
+def _check_eval_iters(train_config: 'TrainConfig') -> None:
+    if train_config.eval_iters == -1 or train_config.eval_iters > 0:
+        return
+    raise ValueError('TrainConfig.eval_iters must be -1 (evaluate the full dataset) or a positive batch count.')
+
+
+def _check_megatron_microbatch_schedule(train_config: 'TrainConfig', distributed_config: 'DistributedConfig',
+                                         is_megatron: bool) -> None:
+    """Validate the VPP micro-batch group against the loop's actual micro-batch count."""
+    group = train_config.microbatch_group_size_per_vp_stage
+    if group is None:
+        return
+    if not is_megatron:
+        raise ValueError('microbatch_group_size_per_vp_stage is only implemented by the megatron backend.')
+
+    vpp = distributed_config.virtual_pipeline_model_parallel_size
+    if vpp is None:
+        raise ValueError('microbatch_group_size_per_vp_stage requires virtual_pipeline_model_parallel_size or '
+                         'pipeline_model_parallel_layout; a non-interleaved pipeline does not consume this option.')
+    if group <= 0:
+        raise ValueError('microbatch_group_size_per_vp_stage must be > 0.')
+
+    pp = distributed_config.pipeline_model_parallel_size
+    num_microbatches = train_config.gradient_accumulation_steps
+    if group < pp or group > num_microbatches:
+        raise ValueError(f'microbatch_group_size_per_vp_stage={group} must be in '
+                         f'[pipeline_model_parallel_size={pp}, gradient_accumulation_steps={num_microbatches}].')
+    remainder = num_microbatches % group
+    if 0 < remainder < pp:
+        raise ValueError(f'gradient_accumulation_steps % microbatch_group_size_per_vp_stage is {remainder}, which '
+                         f'must be 0 or at least pipeline_model_parallel_size={pp}.')
+
+
 def _check_megatron_optimizer(train_config: 'TrainConfig', is_megatron: bool) -> None:
     """Reject an inconsistent Megatron optimizer/scheduler config before the weights are loaded."""
     if not is_megatron:
         return
-    from swift.dev.optimizer import megatron_weight_decay_bounds
+    from swift.dev.optimizer import megatron_weight_decay_bounds, warmup_budget
 
     # Delegates so the weight-decay rule has one definition (configure_optimizer uses the same).
-    megatron_weight_decay_bounds(train_config)
+    start_wd, end_wd = megatron_weight_decay_bounds(train_config)
+    if start_wd < 0 or end_wd < start_wd:
+        raise ValueError(f'Megatron weight decay requires 0 <= start_weight_decay <= end_weight_decay; got '
+                         f'{start_wd} -> {end_wd}.')
+    if train_config.learning_rate <= 0:
+        raise ValueError('Megatron learning_rate must be > 0.')
+    if not 0 <= train_config.min_lr <= train_config.learning_rate:
+        raise ValueError('Megatron min_lr must satisfy 0 <= min_lr <= learning_rate.')
+    if not 0 <= train_config.lr_warmup_init <= train_config.learning_rate:
+        raise ValueError('Megatron lr_warmup_init must satisfy 0 <= lr_warmup_init <= learning_rate.')
+
     # 'cosine_with_min_lr' is Megatron's plain cosine plus a floor, so without min_lr it would run as
     # ordinary cosine -- the name silently not doing what it says. (On the HF path transformers
     # itself raises when neither min_lr nor min_lr_rate is given.)
@@ -643,6 +812,67 @@ def _check_megatron_optimizer(train_config: 'TrainConfig', is_megatron: bool) ->
         raise ValueError("lr_scheduler_type='cosine_with_min_lr' needs TrainConfig.min_lr > 0 on the Megatron "
                          'backend; with min_lr=0 it is just cosine. Set min_lr, or use '
                          "lr_scheduler_type='cosine'.")
+
+    decay_steps = train_config.lr_decay_iters
+    if decay_steps is not None and decay_steps <= 0:
+        raise ValueError('Megatron lr_decay_iters must be > 0 when set.')
+    if decay_steps is None and train_config.max_steps > 0:
+        decay_steps = train_config.max_steps
+    if decay_steps is not None:
+        warmup_steps = warmup_budget(train_config, decay_steps, is_megatron=True)
+        if warmup_steps >= decay_steps:
+            raise ValueError(
+                f'Megatron warmup ({warmup_steps} steps) must be shorter than lr decay ({decay_steps} steps).')
+
+    style = train_config.lr_decay_style
+    explicit = getattr(train_config, '_explicit_fields', set())
+    wsd_style_explicit = 'lr_wsd_decay_style' in explicit
+    if style == 'WSD':
+        if train_config.lr_wsd_decay_iters is None or train_config.lr_wsd_decay_iters <= 0:
+            raise ValueError("lr_decay_style='WSD' requires lr_wsd_decay_iters > 0.")
+        if decay_steps is not None and train_config.lr_wsd_decay_iters > decay_steps:
+            raise ValueError('lr_wsd_decay_iters cannot exceed the effective lr decay horizon.')
+    elif train_config.lr_wsd_decay_iters is not None or wsd_style_explicit:
+        raise ValueError('lr_wsd_decay_iters/lr_wsd_decay_style only apply when lr_decay_style="WSD".')
+
+    _check_optimizer_specific_fields(train_config)
+
+
+def _check_optimizer_specific_fields(train_config: 'TrainConfig') -> None:
+    """Reject optimizer options that the selected Megatron optimizer would ignore."""
+    import dataclasses
+
+    explicit = getattr(train_config, '_explicit_fields', set())
+    defaults = {field.name: field.default for field in dataclasses.fields(train_config)}
+
+    def changed(name: str) -> bool:
+        return name in explicit or getattr(train_config, name) != defaults[name]
+
+    muon_fields = (
+        'muon_momentum', 'muon_split_qkv', 'muon_use_nesterov', 'muon_scale_mode',
+        'muon_fp32_matmul_prec', 'muon_coefficient_type', 'muon_num_ns_steps', 'muon_tp_mode',
+        'muon_extra_scale_factor', 'muon_scalar_optimizer')
+    if 'muon' not in train_config.optimizer:
+        invalid = [name for name in muon_fields if changed(name)]
+        if invalid:
+            raise ValueError(f'Muon optimizer fields require optimizer="muon" or "dist_muon": {invalid}.')
+    if train_config.optimizer != 'sgd' and changed('sgd_momentum'):
+        raise ValueError('sgd_momentum only applies when optimizer="sgd".')
+    if train_config.optimizer != 'adam':
+        invalid = [name for name in ('adam_beta1', 'adam_beta2', 'adam_epsilon') if changed(name)]
+        if invalid:
+            raise ValueError(f'Adam optimizer fields only apply when optimizer="adam": {invalid}.')
+
+    precision_fields = ('main_params_dtype', 'main_grads_dtype', 'exp_avg_dtype', 'exp_avg_sq_dtype')
+    if not train_config.use_precision_aware_optimizer:
+        invalid = [name for name in precision_fields if changed(name)]
+        if invalid:
+            raise ValueError(
+                f'Precision-aware optimizer dtypes require use_precision_aware_optimizer=True: {invalid}.')
+    if not 0 <= train_config.optimizer_offload_fraction <= 1:
+        raise ValueError('optimizer_offload_fraction must be in [0, 1].')
+    if not train_config.optimizer_cpu_offload and changed('optimizer_offload_fraction'):
+        raise ValueError('optimizer_offload_fraction only applies when optimizer_cpu_offload=True.')
 
 
 def _is_off(value, off_value) -> bool:
@@ -659,24 +889,86 @@ def _is_off(value, off_value) -> bool:
 
 
 _MEGATRON_ONLY = (
+    ('model_config', 'vit_attn_impl', None),
+    ('model_config', 'language_model_only', False),
     ('dataset_config', 'data_sharding', False),
-    # NOTE: clip_grad is NOT here -- it is a deprecated alias of max_grad_norm and valid on both
-    # backends (resolve_max_grad_norm folds the two). Listing it would reject legacy Megatron argv.
+    # NOTE: clip_grad is NOT here -- CLI normalization folds it into max_grad_norm for both backends.
     ('train_config', 'weight_decay_incr_style', 'constant'),
     ('train_config', 'start_weight_decay', None),
     ('train_config', 'end_weight_decay', None),
     ('train_config', 'min_lr', 0.0),
-    ('distributed_config', 'sequence_parallel', False),
-    ('distributed_config', 'recompute_granularity', None),
-    ('distributed_config', 'recompute_method', None),
-    ('distributed_config', 'recompute_num_layers', None),
+    ('train_config', 'optimizer', 'adam'),
+    ('train_config', 'sgd_momentum', 0.9),
+    ('train_config', 'muon_momentum', 0.9),
+    ('train_config', 'muon_split_qkv', True),
+    ('train_config', 'muon_use_nesterov', False),
+    ('train_config', 'muon_scale_mode', 'spectral'),
+    ('train_config', 'muon_fp32_matmul_prec', 'medium'),
+    ('train_config', 'muon_coefficient_type', 'quintic'),
+    ('train_config', 'muon_num_ns_steps', 5),
+    ('train_config', 'muon_tp_mode', 'blockwise'),
+    ('train_config', 'muon_extra_scale_factor', 1.0),
+    ('train_config', 'muon_scalar_optimizer', 'adam'),
+    ('train_config', 'use_precision_aware_optimizer', False),
+    ('train_config', 'main_params_dtype', 'fp32'),
+    ('train_config', 'main_grads_dtype', 'fp32'),
+    ('train_config', 'exp_avg_dtype', 'fp32'),
+    ('train_config', 'exp_avg_sq_dtype', 'fp32'),
+    ('train_config', 'optimizer_cpu_offload', False),
+    ('train_config', 'optimizer_offload_fraction', 1.0),
+    ('train_config', 'optimizer_cuda_graph', False),
+    ('train_config', 'accumulate_allreduce_grads_in_fp32', False),
+    ('train_config', 'apply_wd_to_qk_layernorm', False),
+    ('train_config', 'global_batch_size', None),
+    ('train_config', 'microbatch_group_size_per_vp_stage', None),
+    ('train_config', 'calculate_per_token_loss', None),
+    ('train_config', 'finetune', True),
+    ('train_config', 'lr_decay_style', 'cosine'),
+    ('train_config', 'lr_decay_iters', None),
+    ('train_config', 'lr_warmup_init', 0.0),
+    ('train_config', 'lr_wsd_decay_iters', None),
+    ('train_config', 'lr_wsd_decay_style', 'exponential'),
+    ('distributed_config', 'bridge_backend', 'mcore-bridge'),
     ('distributed_config', 'tensor_model_parallel_size', 1),
     ('distributed_config', 'pipeline_model_parallel_size', 1),
     ('distributed_config', 'context_parallel_size', 1),
     ('distributed_config', 'expert_model_parallel_size', 1),
+    ('distributed_config', 'expert_tensor_parallel_size', 1),
+    ('distributed_config', 'sequence_parallel', False),
+    ('distributed_config', 'use_distributed_optimizer', True),
+    ('distributed_config', 'use_megatron_fsdp', False),
+    ('distributed_config', 'recompute_granularity', None),
+    ('distributed_config', 'recompute_method', None),
+    ('distributed_config', 'recompute_num_layers', None),
+    ('distributed_config', 'recompute_modules', ['core_attn']),
+    ('distributed_config', 'cp_comm_type', None),
+    ('distributed_config', 'cp_partition_mode', 'zigzag'),
+    ('distributed_config', 'data_parallel_sharding_strategy', 'optim_grads_params'),
+    ('distributed_config', 'virtual_pipeline_model_parallel_size', None),
+    ('distributed_config', 'pipeline_model_parallel_layout', None),
+    ('distributed_config', 'decoder_first_pipeline_num_layers', None),
+    ('distributed_config', 'decoder_last_pipeline_num_layers', None),
+    ('distributed_config', 'account_for_embedding_in_pipeline_split', False),
+    ('distributed_config', 'account_for_loss_in_pipeline_split', False),
+    ('distributed_config', 'overlap_grad_reduce', False),
+    ('distributed_config', 'overlap_param_gather', False),
+    ('distributed_config', 'overlap_param_gather_with_optimizer_step', False),
+    ('distributed_config', 'overlap_p2p_comm', True),
+    ('distributed_config', 'batch_p2p_comm', None),
+    ('distributed_config', 'align_grad_reduce', True),
+    ('distributed_config', 'align_param_gather', True),
+    ('distributed_config', 'tp_comm_overlap', False),
+    ('distributed_config', 'nccl_comm_warmup', False),
 )
 
 _HF_ONLY = (
+    ('model_config', 'experts_impl', None),
+    ('model_config', 'new_special_tokens', []),
+    ('model_config', 'device_map', None),
+    ('model_config', 'max_memory', None),
+    ('model_config', 'local_repo_path', None),
+    ('model_config', 'model_kwargs', None),
+    ('model_config', 'init_strategy', None),
     ('distributed_config', 'deepspeed', None),
     ('distributed_config', 'zero_hpz_partition_size', None),
     ('distributed_config', 'deepspeed_autotp_size', None),
@@ -703,13 +995,15 @@ _MEGATRON_PARALLEL_SIZES = (
 )
 
 
-def _check_backend_specific(dataset_config: 'DatasetConfig',
+def _check_backend_specific(model_config: 'ModelConfig',
+                            dataset_config: 'DatasetConfig',
                             train_config: 'TrainConfig',
                             distributed_config: 'DistributedConfig',
                             is_megatron: bool,
                             tuner_config: Optional['TunerConfig'] = None) -> None:
     """Reject knobs the active backend does not implement, so they cannot be silently ignored."""
     holders = {
+        'model_config': model_config,
         'dataset_config': dataset_config,
         'train_config': train_config,
         'distributed_config': distributed_config,
@@ -726,7 +1020,8 @@ def _check_backend_specific(dataset_config: 'DatasetConfig',
         if holder is None:
             continue
         value = getattr(holder, attr)
-        if _is_off(value, off_value):
+        explicit = attr in getattr(holder, '_explicit_fields', set())
+        if not explicit and _is_off(value, off_value):
             continue
         hint = (f'the {wrong_backend} backend runs with all Megatron parallel sizes == 1'
                 if attr in _MEGATRON_PARALLEL_SIZES else f'the active backend is {wrong_backend}')
@@ -805,25 +1100,72 @@ def _check_sequence_parallel_tp(distributed_config: 'DistributedConfig', is_mega
                          'sequence_parallel=False.')
 
 
-def _check_save_total_limit(checkpoint_config: Optional['CheckpointConfig'], is_megatron: bool) -> None:
-    """A rolling checkpoint limit needs room for two, and cannot run while a save is still in flight.
+def _check_checkpoint_runtime(checkpoint_config: Optional['CheckpointConfig'],
+                              distributed_config: 'DistributedConfig',
+                              tuner_config: Optional['TunerConfig'],
+                              rlhf_config: Optional['RLHFConfig'],
+                              is_megatron: bool, *,
+                              training: bool) -> None:
+    """Reject checkpoint semantics that the selected loop/backend cannot honor."""
+    if not training or checkpoint_config is None:
+        return
+    changed = set(_changed_fields(checkpoint_config))
+    if checkpoint_config.save_strategy != 'steps':
+        raise NotImplementedError(
+            f'save_strategy={checkpoint_config.save_strategy!r} is not implemented by the Twinkle training loop. '
+            'Use --save_strategy steps with --save_steps, or use the legacy CLI.')
+    if not is_megatron:
+        unsupported = {'no_save_rng', 'no_load_optim', 'no_load_rng'}.intersection(changed)
+        if unsupported:
+            raise NotImplementedError(
+                f'Transformers checkpoints cannot selectively omit or restore {sorted(unsupported)}. '
+                'Use --save_only_model/--resume_only_model, or switch to the Megatron backend.')
+        tuner_type = getattr(tuner_config, 'tuner_type', 'full') if tuner_config is not None else 'full'
+        if tuner_type != 'full' and 'max_shard_size' in changed:
+            raise NotImplementedError(
+                'Transformers PEFT adapter checkpoints do not support max_shard_size. Remove the option or use '
+                'full-parameter training.')
+    else:
+        if not checkpoint_config.save_safetensors:
+            raise NotImplementedError(
+                'The dev Megatron runtime always writes HF-format safetensors checkpoints; '
+                'use --save_safetensors true.')
+        if not checkpoint_config.safe_serialization:
+            raise NotImplementedError('Megatron HF-format checkpoints require --safe_serialization true.')
+        if distributed_config.bridge_backend == 'megatron-bridge' and 'max_shard_size' in changed:
+            raise NotImplementedError(
+                'megatron-bridge AutoBridge does not expose max_shard_size. Use --bridge_backend mcore-bridge or '
+                'remove the option.')
+    if rlhf_config is not None and rlhf_config.rlhf_type in {'grpo', 'gkd', 'ppo'}:
+        if 'ignore_data_skip' in changed:
+            raise NotImplementedError(
+                f'ignore_data_skip does not apply to {rlhf_config.rlhf_type} because its online loop has no resumable '
+                'dataset iterator. Remove the option.')
+        if rlhf_config.rlhf_type == 'ppo' and checkpoint_config.save_total_limit == 1:
+            raise ValueError(
+                'PPO requires save_total_limit >= 2 because the policy and value-model components are saved '
+                'sequentially; retaining one previous complete checkpoint avoids a no-valid-checkpoint window.')
 
-    Mirrors legacy megatron_args.py:857-861. `save_total_limit` keeps the newest N checkpoints; a limit
-    of 1 would delete the previous checkpoint before the current one is known-good, leaving a window
-    with no complete checkpoint, so Megatron requires >= 2. `async_save` writes in the background, and
-    the limit's delete-oldest step cannot tell whether an in-flight async save has finished, so the two
-    are incompatible.
+
+def _check_save_total_limit(checkpoint_config: Optional['CheckpointConfig'], is_megatron: bool) -> None:
+    """Validate the rolling checkpoint limit and preserve legacy Megatron's stricter lower bound.
+
+    `async_save` writes in the background, and the limit's delete-oldest step cannot tell whether an
+    in-flight async save has finished, so the two are incompatible.
     """
-    if not is_megatron or checkpoint_config is None or checkpoint_config.save_total_limit is None:
+    if checkpoint_config is None or checkpoint_config.save_total_limit is None:
+        return
+    if checkpoint_config.save_total_limit < 1:
+        raise ValueError('CheckpointConfig.save_total_limit must be >= 1.')
+    if not is_megatron:
         return
     if checkpoint_config.async_save:
         raise ValueError('CheckpointConfig.save_total_limit is incompatible with async_save=True: the rolling '
                          'delete of old checkpoints cannot tell whether a background save has finished. Disable '
                          'one of the two.')
     if checkpoint_config.save_total_limit < 2:
-        raise ValueError('CheckpointConfig.save_total_limit must be >= 2 on the Megatron backend: a limit of 1 '
-                         'deletes the previous checkpoint before the current one is complete, leaving no valid '
-                         'checkpoint if the save is interrupted.')
+        raise ValueError(
+            'CheckpointConfig.save_total_limit must be >= 2 on the Megatron backend, matching the legacy CLI.')
 
 
 #: rlhf_type -> whether it trains against a separate reference model. CPO/ORPO fold the reference into
@@ -911,9 +1253,9 @@ def _check_hf_sequence_parallel(model_config: 'ModelConfig', template_config: 'T
     """Guards for Ulysses sequence parallelism (TemplateConfig.sequence_parallel_size) on the HF backend.
 
     Every check raises: SP that cannot do what the config says would otherwise SILENTLY train with
-    SP=1 (nothing on the HF path used to read this knob) or crash deep in the first forward. Called
-    after _check_packing, which may force padding_free=True, so guard 3 sees the effective value.
-    Streaming is allowed: twinkle's IterableFetcher slices by data_world_size the same way.
+    SP=1 (nothing on the HF path used to read this knob) or crash deep in the first forward.
+    ``process_configs`` has already resolved packing-derived padding_free, so guard 3 sees the effective
+    value. Streaming is allowed: twinkle's IterableFetcher slices by data_world_size the same way.
     """
     sp = template_config.sequence_parallel_size
     if sp <= 1:

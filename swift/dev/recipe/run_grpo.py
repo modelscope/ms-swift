@@ -44,7 +44,10 @@ if TYPE_CHECKING:
         DistributedConfig,
         GenerationConfig,
         LoggingConfig,
+        MegatronConfig,
         ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
         RLHFConfig,
         RolloutConfig,
         TemplateConfig,
@@ -178,6 +181,9 @@ def run_grpo(
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
+    megatron_config: Optional[MegatronConfig] = None,
+    moe_config: Optional[MoEConfig] = None,
     *,
     engine_args: Optional[Dict[str, Any]] = None,
     output_dir: str = 'output',
@@ -207,7 +213,10 @@ def run_grpo(
         tuner_config,
         rlhf_config=rlhf_config,
         output_dir=output_dir,
-        logging_config=logging_config)
+        logging_config=logging_config,
+        quantize_config=quantize_config,
+        megatron_config=megatron_config,
+        moe_config=moe_config)
     # Also imports the run's plugin files -- the reward names handed to GRPOLoop below are resolved
     # against the registry they write into.
     assembly.prepare()
@@ -226,7 +235,9 @@ def run_grpo(
     configure_rlhf_loss(assembly.model, rlhf_config)
     # No dataloader to derive a step budget from -- prompts are rolled out, not iterated.
     max_steps = train_config.max_steps or 1
-    configure_optimizer(assembly.model, train_config, num_training_steps=max_steps)
+    assembly.resolve_step_intervals(max_steps)
+    configure_optimizer(
+        assembly.model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
 
     # Sampler: vLLMSampler placed in its group (shared 'model' for colocate, separate 'sampler'
     # otherwise). enable_sleep_mode is required for the colocate device hand-over.
@@ -288,13 +299,25 @@ def run_grpo(
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=_grpo_sampling_params(rlhf_config, generation_config),
         logging_config=logging_config,
-        output_dir=output_dir)
+        output_dir=output_dir,
+        save_steps=checkpoint_config.save_steps,
+        no_save_optim=checkpoint_config.no_save_optim or checkpoint_config.save_only_model,
+        no_save_rng=checkpoint_config.no_save_rng or checkpoint_config.save_only_model,
+        safe_serialization=checkpoint_config.safe_serialization,
+        max_shard_size=checkpoint_config.max_shard_size,
+        save_total_limit=checkpoint_config.save_total_limit,
+        manual_gc=bool(megatron_config and megatron_config.manual_gc),
+        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0)
+    assembly.loop = loop
+    if assembly.resume_dir:
+        loop.resume(assembly.resume_model())
     try:
         history = loop.fit()
+        if _save_final:
+            assembly.save_final()
+        return history
     finally:
         rollout.shutdown()
-    del output_dir, _save_final  # checkpointing of the RL policy is a follow-up; smoke returns history
-    return history
 
 
 def _sampler_engine_args(rollout_config: RolloutConfig, engine_args: Optional[Dict[str, Any]],
@@ -361,11 +384,11 @@ def _build_reward_model_scorers(model_config: ModelConfig, template_config: Temp
 
     from copy import copy
 
-    from swift.dev.builders import build_model, build_template
+    from swift.dev.builders import build_model, build_template, load_model_processor
     from swift.dev.config import DistributedConfig
     from swift.dev.recipe.assembly import configure_frozen_adapter
     from swift.dev.reward import build_reward_model_plugins
-    from swift.model import get_model_info_meta, get_model_processor
+    from swift.model import get_model_info_meta
 
     count = len(reward_models)
 
@@ -393,13 +416,7 @@ def _build_reward_model_scorers(model_config: ModelConfig, template_config: Temp
         reward_model_config.task_type = model_info.task_type
         reward_model_config.num_labels = model_info.num_labels
 
-        _, processor = get_model_processor(
-            model_id,
-            model_type=reward_model_config.model_type,
-            revision=revision,
-            task_type=reward_model_config.task_type,
-            num_labels=reward_model_config.num_labels,
-            load_model=False)
+        _, processor = load_model_processor(reward_model_config)
         reward_template_config = copy(template_config)
         reward_template_config.template = template_name
         reward_template_config.max_length = None

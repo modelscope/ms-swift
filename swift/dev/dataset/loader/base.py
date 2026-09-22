@@ -99,8 +99,8 @@ class DatasetInfo:
     bag, and every consumer would have to know which half it was looking at.
 
     It merges what legacy split across ``DatasetSyntax`` (the parse of the command-line string) and
-    the loose arguments passed alongside it. The parse itself does not live here -- a later ``syntax``
-    module owns turning ``'hf::id:sub1/sub2#5000'`` into one of these.
+    the loose arguments passed alongside it. The parse itself does not live here -- the loader turns
+    ``'hf://id:sub1/sub2#5000'`` into one of these.
 
     Args:
         dataset: The dataset as the user wrote it: a hub id, a local file, or a local directory.
@@ -712,14 +712,12 @@ class DatasetLoader:
         return train_datasets, val_datasets
 
     @staticmethod
-    def parse_legacy_syntax(entry: str) -> Tuple[str, List[str], Optional[int], Optional[bool]]:
-        """Pull legacy's one-string dataset DSL apart into the plain fields dev takes.
+    def parse_dataset_syntax(entry: str) -> Tuple[str, List[str], Optional[int], Optional[bool]]:
+        """Pull the one-string dataset syntax apart into the plain loader fields.
 
-        Legacy packed four things into a single command-line token: ``hf::org/name:sub1/sub2#500`` is
-        hub ``hf``, id ``org/name``, subsets ``sub1`` and ``sub2``, and a 500-row budget. Dev's own
-        interface takes those as ordinary arguments -- ``subsets=['sub1', 'sub2']``, ``use_hf=True`` --
-        which is the form worth writing; this exists so the strings already in scripts and docs keep
-        working, and nothing else in dev needs to know the syntax.
+        ``hf://org/name:sub1/sub2#500`` selects hub ``hf``, id ``org/name``, subsets ``sub1`` and
+        ``sub2``, and a 500-row budget. The parser keeps this per-entry notation local so nothing else
+        in the dataset stack needs to know the syntax.
 
         Returns ``(dataset, subsets, sample_count, use_hf)``, where ``use_hf`` is ``None`` when the
         string pins no hub and ``subsets`` is empty when it names none.
@@ -732,7 +730,7 @@ class DatasetLoader:
             return entry, [], None, None
 
         use_hf: Optional[bool] = None
-        hub, sep, rest = entry.partition('::')
+        hub, sep, rest = entry.partition('://')
         if sep:
             use_hf = {'hf': True, 'ms': False}.get(hub.lower())
             if use_hf is not None:
@@ -855,10 +853,9 @@ def load_dataset(
     dataset or keeps drawing until every one is spent. ``shuffle`` applies last, to the combined
     result, and in streaming mode is a ``shuffle_buffer_size`` window rather than a permutation.
 
-    ``subsets``, ``use_hf`` and a ``#N`` row budget are ordinary arguments here. Legacy instead
-    encoded them in each dataset string (``hf::org/name:sub#500``); such strings still work, being
-    unpacked by :meth:`DatasetLoader.parse_legacy_syntax`, and what a string carries wins over the
-    argument for that one dataset.
+    ``subsets``, ``use_hf`` and a ``#N`` row budget are ordinary arguments here. They may also be
+    encoded per dataset as ``hf://org/name:sub#500``; the string values win over the corresponding
+    arguments for that dataset.
     """
     if isinstance(datasets, str):
         datasets = [datasets]
@@ -871,7 +868,7 @@ def load_dataset(
     train_parts: List[DATASET_TYPE] = []
     val_parts: List[DATASET_TYPE] = []
     for entry in datasets:
-        dataset, entry_subsets, sample_count, entry_use_hf = DatasetLoader.parse_legacy_syntax(entry)
+        dataset, entry_subsets, sample_count, entry_use_hf = DatasetLoader.parse_dataset_syntax(entry)
         if entry_use_hf is None:
             entry_use_hf = use_hf
         dataset_type = match_dataset_type(dataset, use_hf=bool(entry_use_hf))

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
         DistributedConfig,
         LoggingConfig,
         ModelConfig,
+        QuantizeConfig,
         TemplateConfig,
         TrainConfig,
         TunerConfig,
@@ -41,6 +42,7 @@ def run_embedding(
     checkpoint_config: CheckpointConfig,
     tuner_config: Optional[TunerConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
     *,
     output_dir: str = 'output',
     _save_final: bool = True,
@@ -66,6 +68,7 @@ def run_embedding(
         checkpoint_config,
         tuner_config,
         logging_config,
+        quantize_config,
         output_dir=output_dir,
         _save_final=_save_final)
 
@@ -79,6 +82,7 @@ def _run_embedding_body(
     checkpoint_config: CheckpointConfig,
     tuner_config: Optional[TunerConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
     *,
     output_dir: str = 'output',
     _save_final: bool = True,
@@ -106,4 +110,5 @@ def _run_embedding_body(
         task=TASK,
         output_dir=output_dir,
         logging_config=logging_config,
+        quantize_config=quantize_config,
     ).fit(embedding_loss, save_final=_save_final)

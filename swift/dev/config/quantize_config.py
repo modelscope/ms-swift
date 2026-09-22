@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 
-# TODO: integrate it
 @dataclass
 class QuantizeConfig:
     """Quantization backend, bit-width, and BNB/HQQ options."""

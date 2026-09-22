@@ -46,6 +46,47 @@ def num_optimizer_steps(num_micro_batches: int, gradient_accumulation_steps: int
     return max(0, (num_micro_batches - 1) // ga)
 
 
+def start_manual_gc(enabled: bool) -> Optional[bool]:
+    """Disable automatic GC for a training loop and perform one full collection."""
+    if not enabled:
+        return None
+    import gc
+    was_enabled = gc.isenabled()
+    gc.disable()
+    gc.collect()
+    return was_enabled
+
+
+def collect_manual_gc(enabled: bool, interval: int, step: int) -> None:
+    """Run the configured periodic full collection after an optimizer step."""
+    if enabled and interval and step % interval == 0:
+        import gc
+        gc.collect()
+
+
+def finish_manual_gc(was_enabled: Optional[bool]) -> None:
+    """Restore the interpreter's automatic-GC state after a loop exits."""
+    if was_enabled:
+        import gc
+        gc.enable()
+
+
+def save_training_checkpoint(model: 'TrainableModel', name: str, *, output_dir: str,
+                             consumed_train_samples: int = 0, no_save_optim: bool = False,
+                             no_save_rng: bool = False, safe_serialization: bool = True,
+                             max_shard_size: str = '5GB', save_total_limit: Optional[int] = None) -> str:
+    """Save one trainable model, then retain only the newest numbered/final checkpoints."""
+    kwargs = {
+        'consumed_train_samples': consumed_train_samples,
+        'safe_serialization': safe_serialization,
+        'max_shard_size': max_shard_size,
+        'save_total_limit': save_total_limit,
+        # TransformersModel accepts extra save kwargs; MegatronModel consumes this one.
+        'no_save_rng': no_save_rng,
+    }
+    return model.save(name, output_dir=output_dir, save_optimizer=not no_save_optim, **kwargs)
+
+
 class SFTLoop:
     """Minimal SFT training loop over a dataloader yielding list[InputFeature]."""
 
@@ -64,7 +105,17 @@ class SFTLoop:
         output_dir: str = 'output',
         eval_dataloader: Any = None,
         eval_steps: Optional[int] = None,
+        eval_iters: int = -1,
         task: str = 'causal_lm',
+        no_save_optim: bool = False,
+        no_save_rng: bool = False,
+        safe_serialization: bool = True,
+        max_shard_size: str = '5GB',
+        save_total_limit: Optional[int] = None,
+        ignore_data_skip: bool = False,
+        manual_gc: bool = False,
+        manual_gc_eval: bool = True,
+        manual_gc_steps: int = 0,
     ):
         self.model = model
         self.dataloader = dataloader
@@ -80,6 +131,18 @@ class SFTLoop:
         self.max_steps = max_steps
         self.eval_dataloader = eval_dataloader
         self.eval_steps = eval_steps
+        self.eval_iters = eval_iters
+        self.no_save_optim = no_save_optim
+        self.no_save_rng = no_save_rng
+        self.safe_serialization = safe_serialization
+        self.max_shard_size = max_shard_size
+        self.save_total_limit = save_total_limit
+        self.ignore_data_skip = ignore_data_skip
+        self.manual_gc = manual_gc
+        self.manual_gc_eval = manual_gc_eval
+        self.manual_gc_steps = manual_gc_steps
+        if self.manual_gc_steps < 0:
+            raise ValueError('manual_gc_steps must be >= 0.')
         # Forwarded verbatim to twinkle's forward_backward/forward_only. task='embedding' swaps the
         # lm_head for the pooling patch, so the loss reads outputs['embeddings'] instead of logits;
         # 'causal_lm' (the default) keeps the SFT path byte-identical.
@@ -124,7 +187,12 @@ class SFTLoop:
         """
         if self.eval_dataloader is None:
             return None
-        for batch in self.eval_dataloader:
+        if self.manual_gc and self.manual_gc_eval:
+            import gc
+            gc.collect()
+        for index, batch in enumerate(self.eval_dataloader):
+            if self.eval_iters > 0 and index >= self.eval_iters:
+                break
             self.model.forward_only(inputs=batch, task=self.task)
             # Fill eval_status loss/num_tokens for this batch. On the transformers backend the CE
             # loss is computed here (forward_only only stores inputs/outputs). On Megatron the
@@ -146,6 +214,9 @@ class SFTLoop:
             if key.startswith('loss_'):
                 result[f'eval_{key}'] = float(value)
         self.eval_history.append(result)
+        if self.manual_gc and self.manual_gc_eval:
+            import gc
+            gc.collect(0)
         logger.info(f"step {self.global_step}  eval_loss={result.get('eval_loss', float('nan')):.4f}")
         return result
 
@@ -161,11 +232,13 @@ class SFTLoop:
             loop groups ga dataloader batches into one list and calls forward_backward ONCE per
             optimizer step (cross-microbatch loss normalization is handled inside twinkle/Megatron).
         """
+        gc_was_enabled = start_manual_gc(self.manual_gc)
         try:
             if self._is_megatron:
                 return self._fit_megatron()
             return self._fit_transformers()
         finally:
+            finish_manual_gc(gc_was_enabled)
             self.tracker.close()
 
     def _epochs(self) -> int:
@@ -180,6 +253,7 @@ class SFTLoop:
         token-sum, not comparable across steps -- calculate_metric divides by num_tokens and resets.
         """
         self.global_step += 1
+        collect_manual_gc(self.manual_gc, self.manual_gc_steps, self.global_step)
         metrics = self.model.calculate_metric(is_training=True)
         loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
         record = {'step': self.global_step, 'loss': loss}
@@ -318,7 +392,16 @@ class SFTLoop:
         and only its remote_functions answer. Same call the twinkle cookbooks use.
         """
         consumed = self._dataloader_state().get('consumed_train_samples', 0)
-        return self.model.save(name, output_dir=self.output_dir, save_optimizer=True, consumed_train_samples=consumed)
+        return save_training_checkpoint(
+            self.model,
+            name,
+            output_dir=self.output_dir,
+            consumed_train_samples=consumed,
+            no_save_optim=self.no_save_optim,
+            no_save_rng=self.no_save_rng,
+            safe_serialization=self.safe_serialization,
+            max_shard_size=self.max_shard_size,
+            save_total_limit=self.save_total_limit)
 
     def _dataloader_state(self) -> dict:
         """The train dataloader's ``{consumed_train_samples, resume_epoch}``, or ``{}`` if it has none."""
@@ -340,7 +423,11 @@ class SFTLoop:
         self.micro_step = cur_step
         # global_step (optimizer steps taken) derived from cur_step + ga (single source).
         self.global_step = num_optimizer_steps(cur_step, ga)
-        # dataloader skip: reproduce the exact epoch/offset from consumed_train_samples.
+        # dataloader skip: reproduce the exact epoch/offset unless the user explicitly requested
+        # a fresh pass over the data while retaining checkpoint progress/optimizer state.
+        if self.ignore_data_skip:
+            self._start_epoch = 0
+            return
         consumed = int(state['consumed_train_samples'])
         if hasattr(self.dataloader, 'skip_consumed_samples'):
             self.dataloader.skip_consumed_samples(consumed)

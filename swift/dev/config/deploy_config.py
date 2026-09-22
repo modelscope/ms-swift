@@ -6,11 +6,14 @@ from typing import Literal, Optional
 
 @dataclass
 class DeployConfig:
-    """Where the server listens, how it authenticates, and what it calls itself.
+    """How the server starts, listens, authenticates, and identifies itself.
 
-    Only the serving surface lives here. What the server generates with is GenerationConfig, and which
-    engine backs it is InferConfig -- a deployment swaps engines without touching any of these fields.
+    What the server generates with is GenerationConfig, and which engine backs it is InferConfig.
     """
+
+    # === Model startup ===
+    #: Merge a single adapter into the base weights before starting the server.
+    merge_lora: bool = False
 
     # === Address ===
     host: str = '0.0.0.0'

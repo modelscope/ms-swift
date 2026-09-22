@@ -35,7 +35,10 @@ if TYPE_CHECKING:
         DatasetConfig,
         DistributedConfig,
         LoggingConfig,
+        MegatronConfig,
         ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
         RLHFConfig,
         TemplateConfig,
         TrainConfig,
@@ -61,6 +64,9 @@ def run_dpo(
     rlhf_config: RLHFConfig,
     tuner_config: Optional[TunerConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
+    megatron_config: Optional[MegatronConfig] = None,
+    moe_config: Optional[MoEConfig] = None,
     *,
     output_dir: str = 'output',
     _save_final: bool = True,
@@ -93,7 +99,10 @@ def run_dpo(
         tuner_config,
         rlhf_config=rlhf_config,
         output_dir=output_dir,
-        logging_config=logging_config)
+        logging_config=logging_config,
+        quantize_config=quantize_config,
+        megatron_config=megatron_config,
+        moe_config=moe_config)
     assembly.prepare()
     TrainAssembly.initialize_twinkle(distributed_config)
 
@@ -109,7 +118,11 @@ def run_dpo(
     assembly.plan_steps()
     assembly.build_model()
     configure_rlhf_loss(assembly.model, rlhf_config)
-    configure_optimizer(assembly.model, train_config, num_training_steps=assembly.total_opt_steps)
+    configure_optimizer(
+        assembly.model,
+        train_config,
+        num_training_steps=assembly.total_opt_steps,
+        distributed_config=distributed_config)
 
     assembly.loop = PreferenceLoop(
         assembly.model,
@@ -125,7 +138,18 @@ def run_dpo(
         output_dir=output_dir,
         eval_dataloader=assembly.eval_dataloader,
         eval_steps=train_config.eval_steps,
-        save_steps=checkpoint_config.save_steps)
+        save_steps=checkpoint_config.save_steps,
+        no_save_optim=checkpoint_config.no_save_optim or checkpoint_config.save_only_model,
+        no_save_rng=checkpoint_config.no_save_rng or checkpoint_config.save_only_model,
+        safe_serialization=checkpoint_config.safe_serialization,
+        max_shard_size=checkpoint_config.max_shard_size,
+        save_total_limit=checkpoint_config.save_total_limit,
+        ignore_data_skip=checkpoint_config.ignore_data_skip,
+        manual_gc=bool(megatron_config and megatron_config.manual_gc),
+        manual_gc_eval=bool(megatron_config and megatron_config.manual_gc_eval),
+        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0)
+    if assembly.resume_dir:
+        assembly.loop.resume(assembly.resume_model())
     history = assembly.loop.fit()
     if _save_final:
         assembly.save_final()
@@ -208,6 +232,15 @@ class PreferenceLoop:
         output_dir: str = 'output',
         eval_dataloader: Any = None,
         eval_steps: Optional[int] = None,
+        no_save_optim: bool = False,
+        no_save_rng: bool = False,
+        safe_serialization: bool = True,
+        max_shard_size: str = '5GB',
+        save_total_limit: Optional[int] = None,
+        ignore_data_skip: bool = False,
+        manual_gc: bool = False,
+        manual_gc_eval: bool = True,
+        manual_gc_steps: int = 0,
     ):
         self.model = model
         self.dataloader = dataloader
@@ -226,6 +259,18 @@ class PreferenceLoop:
         self.max_steps = max_steps
         self.eval_dataloader = eval_dataloader
         self.eval_steps = eval_steps
+        self.no_save_optim = no_save_optim
+        self.no_save_rng = no_save_rng
+        self.safe_serialization = safe_serialization
+        self.max_shard_size = max_shard_size
+        self.save_total_limit = save_total_limit
+        self.ignore_data_skip = ignore_data_skip
+        self.manual_gc = manual_gc
+        self.manual_gc_eval = manual_gc_eval
+        self.manual_gc_steps = manual_gc_steps
+        if self.manual_gc_steps < 0:
+            raise ValueError('manual_gc_steps must be >= 0.')
+        self._start_epoch = 0
         # RM scores a seq_cls head (no labels, no logps); the rest read per-token labels.
         self._is_reward = rlhf_type == 'rm'
         self.global_step = 0
@@ -284,10 +329,13 @@ class PreferenceLoop:
 
     def fit(self) -> list:
         """Run the preference loop; returns the per-optimizer-step loss history."""
+        from swift.dev.recipe.train_loop import finish_manual_gc, start_manual_gc
+
         ga = self.gradient_accumulation_steps
         epochs = math.ceil(self.num_train_epochs) if self.max_steps <= 0 else 10**9
+        gc_was_enabled = start_manual_gc(self.manual_gc)
         try:
-            for epoch in range(epochs):
+            for epoch in range(self._start_epoch, epochs):
                 if self._reached_max():
                     break
                 if hasattr(self.dataloader, 'set_epoch'):
@@ -311,11 +359,15 @@ class PreferenceLoop:
                     self.tracker.log(self.history[-1], self.global_step, epoch_end=True)
             return self.history
         finally:
+            finish_manual_gc(gc_was_enabled)
             self.tracker.close()
 
     def _record_step(self) -> None:
         """Count one optimizer step + log / periodic save (mirrors SFTLoop._record_step)."""
+        from swift.dev.recipe.train_loop import collect_manual_gc
+
         self.global_step += 1
+        collect_manual_gc(self.manual_gc, self.manual_gc_steps, self.global_step)
         metrics = self.model.calculate_metric(is_training=True)
         loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
         record = {'step': self.global_step, 'loss': loss}
@@ -334,5 +386,35 @@ class PreferenceLoop:
 
     def save(self, name: str = 'checkpoint-final') -> str:
         """Persist the policy + training state via twinkle's native save (the reference is not saved)."""
-        consumed = getattr(self.dataloader, 'consumed_samples', 0)
-        return self.model.save(name, output_dir=self.output_dir, save_optimizer=True, consumed_train_samples=consumed)
+        from swift.dev.recipe.train_loop import save_training_checkpoint
+
+        consumed = self._dataloader_state().get('consumed_train_samples', 0)
+        return save_training_checkpoint(
+            self.model,
+            name,
+            output_dir=self.output_dir,
+            consumed_train_samples=consumed,
+            no_save_optim=self.no_save_optim,
+            no_save_rng=self.no_save_rng,
+            safe_serialization=self.safe_serialization,
+            max_shard_size=self.max_shard_size,
+            save_total_limit=self.save_total_limit)
+
+    def _dataloader_state(self) -> dict:
+        get_state = getattr(self.dataloader, 'get_state', None)
+        return get_state() if get_state is not None else {}
+
+    def resume(self, state: dict) -> None:
+        """Resume optimizer-step counters and the preference dataloader position."""
+        from swift.dev.recipe.train_loop import num_optimizer_steps
+
+        cur_step = int(state['cur_step'])
+        self.micro_step = cur_step
+        self.global_step = num_optimizer_steps(cur_step, self.gradient_accumulation_steps)
+        if self.ignore_data_skip:
+            self._start_epoch = 0
+            return
+        consumed = int(state.get('consumed_train_samples', 0))
+        if hasattr(self.dataloader, 'skip_consumed_samples'):
+            self.dataloader.skip_consumed_samples(consumed)
+        self._start_epoch = self._dataloader_state().get('resume_epoch', 0)

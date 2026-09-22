@@ -1,12 +1,6 @@
 """OpenAI-compatible deployment CLI backed by the dev serving recipe."""
 from __future__ import annotations
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-
-
-@dataclass
-class DeployCliConfig:
-    merge_lora: bool = False
 
 
 def _adapter_mapping(adapters: List[str]) -> Dict[str, str]:
@@ -23,8 +17,7 @@ def _adapter_mapping(adapters: List[str]) -> Dict[str, str]:
 
 def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     from swift.dev.cli.legacy_coverage import reject_legacy_only_flags
-    from swift.dev.cli.parser import parse_configs_strict, resolve_argv
-    from swift.dev.cli.sft import _select_tuner
+    from swift.dev.cli.parser import parse_configs_strict, resolve_argv, select_tuner
     from swift.dev.config import (
         CheckpointConfig,
         DatasetConfig,
@@ -32,6 +25,7 @@ def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         GenerationConfig,
         InferConfig,
         ModelConfig,
+        QuantizeConfig,
         RolloutConfig,
         RuntimeConfig,
         TemplateConfig,
@@ -41,34 +35,26 @@ def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     effective_argv = resolve_argv(argv)
     reject_legacy_only_flags('deploy', effective_argv)
     classes = [ModelConfig, TemplateConfig, DatasetConfig, CheckpointConfig, TunerConfig, GenerationConfig,
-               RolloutConfig, InferConfig, DeployConfig, DeployCliConfig, RuntimeConfig]
-    owners = {
-        'top_k': GenerationConfig,
-        'top_p': GenerationConfig,
-        'repetition_penalty': GenerationConfig,
-        'stop_words': GenerationConfig,
-        'structured_outputs_regex': GenerationConfig,
-    }
-    configs = parse_configs_strict(classes, effective_argv, command='swift deploy', field_owners=owners)
+               RolloutConfig, InferConfig, DeployConfig, QuantizeConfig, RuntimeConfig]
+    configs = parse_configs_strict(
+        classes, effective_argv, command='swift deploy', load_args_default=True)
     names = ('model_config', 'template_config', 'dataset_config', 'checkpoint_config', 'tuner_config',
-             'generation_config', 'rollout_config', 'infer_config', 'deploy_config', 'cli_config', 'runtime_config')
+             'generation_config', 'rollout_config', 'infer_config', 'deploy_config', 'quantize_config',
+             'runtime_config')
     result = dict(zip(names, configs))
-    result['tuner_config'] = _select_tuner(result['tuner_config'])
+    result['tuner_config'] = select_tuner(result['tuner_config'])
     if result['infer_config'].infer_backend == 'pt':
         result['infer_config'].infer_backend = 'transformers'
     return result
 
 
 def deploy_main(argv: Optional[List[str]] = None) -> None:
-    from swift.dev.cli.infer import _engine_args
-    from swift.dev.cli.runtime import bootstrap_run, process_and_validate_configs
+    from swift.dev.builders import build_engine_args
+    from swift.dev.config import process_and_validate_configs
     from swift.dev.recipe import run_deploy
 
     configs = parse_deploy_configs(argv)
-    process_and_validate_configs(configs)
-    bootstrap_run(
-        configs['model_config'], configs['checkpoint_config'], configs['dataset_config'], configs['tuner_config'],
-        seed=configs['runtime_config'].seed, add_version=False, create_output_dir=False)
+    process_and_validate_configs(configs, add_version=False, create_output_dir=False)
     tuner_config = configs['tuner_config']
     adapters = tuner_config.adapters if tuner_config is not None else []
     deploy = configs['deploy_config']
@@ -79,10 +65,11 @@ def deploy_main(argv: Optional[List[str]] = None) -> None:
         configs['template_config'],
         configs['generation_config'],
         backend=configs['infer_config'].infer_backend,
-        engine_args=_engine_args(configs['infer_config'].infer_backend, configs['infer_config'],
-                                 configs['rollout_config']),
+        engine_args=build_engine_args(configs['infer_config'].infer_backend, configs['infer_config'],
+                                      configs['rollout_config']),
         adapter_mapping=_adapter_mapping(adapters),
-        merge_lora=configs['cli_config'].merge_lora,
+        quantize_config=configs['quantize_config'],
+        merge_lora=deploy.merge_lora,
         host=deploy.host,
         port=deploy.port,
         served_model_name=deploy.served_model_name,

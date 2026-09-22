@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         DistributedConfig,
         LoggingConfig,
         ModelConfig,
+        QuantizeConfig,
         TemplateConfig,
         TrainConfig,
         TunerConfig,
@@ -44,6 +45,7 @@ def run_reranker(
     checkpoint_config: CheckpointConfig,
     tuner_config: Optional[TunerConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
     *,
     output_dir: str = 'output',
     _save_final: bool = True,
@@ -66,6 +68,7 @@ def run_reranker(
         checkpoint_config,
         tuner_config,
         logging_config,
+        quantize_config,
         output_dir=output_dir,
         _save_final=_save_final)
 
@@ -79,6 +82,7 @@ def _run_reranker_body(
     checkpoint_config: CheckpointConfig,
     tuner_config: Optional[TunerConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
     *,
     output_dir: str = 'output',
     _save_final: bool = True,
@@ -113,4 +117,5 @@ def _run_reranker_body(
         task=task_type,
         output_dir=output_dir,
         logging_config=logging_config,
+        quantize_config=quantize_config,
     ).fit(reranker_loss, save_final=_save_final)

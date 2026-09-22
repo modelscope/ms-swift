@@ -41,6 +41,7 @@ if TYPE_CHECKING:
         DistributedConfig,
         GenerationConfig,
         ModelConfig,
+        QuantizeConfig,
         SamplingConfig,
         TemplateConfig,
     )
@@ -59,6 +60,7 @@ def run_sampling(  # noqa: C901
     engine_args: Optional[Dict[str, Any]] = None,
     distributed_config: Optional[DistributedConfig] = None,
     adapters: Optional[List[str]] = None,
+    quantize_config: Optional[QuantizeConfig] = None,
     output_dir: str = 'output',
     _shutdown: bool = True,
 ) -> str:
@@ -73,10 +75,9 @@ def run_sampling(  # noqa: C901
             model is loaded here at all; put the endpoint in ``engine_args``.
         adapters: LoRA to sample with. Ignored by the 'client' backend, which has no local weights.
     """
-    from swift.dev.builders import build_sampler, build_template, to_sampling_params
+    from swift.dev.builders import build_sampler, build_template, load_model_processor, to_sampling_params
     from swift.dev.plugin import PluginRegistry
     from swift.dev.recipe.run_infer import _build_device_mesh_if_dp, _load_prompt_rows
-    from swift.model import get_model_processor
 
     # Scoring resolves reward names below, so the run's plugin files must be imported first -- a
     # user-defined ORM named in reward_funcs is otherwise "not registered".
@@ -97,19 +98,23 @@ def run_sampling(  # noqa: C901
         _initialize_for_sampling(distributed_config)
 
     rows = _load_prompt_rows(dataset_config, None, split_dataset_ratio=0.0)
-    rows = _select_piece(rows, sampling_config.data_range)
     if not rows:
         raise ValueError('run_sampling got an empty dataset. Set DatasetConfig.dataset or .val_dataset.')
 
     channels = _build_channels(sampling_config)
     cache = _CandidateCache(sampling_config.cache_files)
 
+    quant_method = getattr(quantize_config, 'quant_method', None)
+    if backend in {'client', 'no'} and quant_method is not None:
+        raise ValueError(
+            f'quant_method={quant_method!r} cannot affect sampler_engine={backend!r}, which loads no local model. '
+            'Configure quantization on the remote server or omit --quant_method.')
     if backend == 'client':
         sampler = _ClientSampler(**(engine_args or {}))
     elif backend == 'no':
         sampler = None
     else:
-        _, processor = get_model_processor(model_config.model, model_type=model_config.model_type, load_model=False)
+        _, processor = load_model_processor(model_config)
         template = build_template(template_config, processor)
         sampler = build_sampler(
             model_config,
@@ -119,7 +124,8 @@ def run_sampling(  # noqa: C901
             template=template,
             adapters=adapters,
             remote_group=_SAMPLER_GROUP if distributed_config is not None
-            and distributed_config.mode == 'ray' else None)
+            and distributed_config.mode == 'ray' else None,
+            quantize_config=quantize_config)
 
     batches = _plan_batches(len(rows), sampling_config.batch_size, sampling_config.max_batches)
     resume_from, write_mode = paths.prepare(sampling_config.resume)
@@ -554,23 +560,6 @@ def _dpo_line(row: Dict[str, Any], trajectory: Dict[str, Any], positive: str, ne
     prompt_repr = json.dumps(trajectory['messages'], sort_keys=True, ensure_ascii=False, default=str)
     out['id'] = hashlib.md5(prompt_repr.encode('utf-8')).hexdigest()
     return json.dumps(out, ensure_ascii=False, default=str) + '\n'
-
-
-def _select_piece(rows: List[Dict[str, Any]], data_range: Optional[tuple]) -> List[Dict[str, Any]]:
-    """Take piece ``index`` of ``total`` -- the manual split for running several processes at once.
-
-    The last piece absorbs the remainder, so no row is silently dropped by integer division (legacy
-    truncated to ``piece_len * total``).
-    """
-    if not data_range:
-        return rows
-    index, total = data_range
-    if not 0 <= index < total:
-        raise ValueError(f'data_range index {index} is out of range for total {total}.')
-    piece_len = len(rows) // total
-    start = piece_len * index
-    end = len(rows) if index == total - 1 else piece_len * (index + 1)
-    return rows[start:end]
 
 
 def _plan_batches(n_rows: int, batch_size: int, max_batches: Optional[int]) -> List[Tuple[int, int]]:

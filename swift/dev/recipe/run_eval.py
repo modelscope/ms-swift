@@ -120,11 +120,11 @@ def _summarize(task_config, backend: str, model_name: str):
 
 def run_eval(model_config, template_config, generation_config, infer_config, rollout_config, deploy_config,
              eval_config, *, adapter_mapping: Optional[Dict[str, str]] = None,
-             merge_lora: bool = False) -> Dict[str, Any]:
+             quantize_config=None, merge_lora: bool = False) -> Dict[str, Any]:
     """Run EvalScope, starting a temporary dev deployment when eval_url is absent."""
     from evalscope.run import run_task
 
-    from swift.dev.cli.infer import _engine_args
+    from swift.dev.builders import build_engine_args
     from swift.dev.recipe.run_deploy import run_deploy_process
     from swift.utils import append_to_jsonl
 
@@ -134,6 +134,11 @@ def run_eval(model_config, template_config, generation_config, infer_config, rol
     if eval_config.local_dataset and eval_config.eval_backend == 'OpenCompass':
         _prepare_opencompass_data()
     base_url = eval_config.eval_url
+    quant_method = getattr(quantize_config, 'quant_method', None)
+    if base_url and quant_method is not None:
+        raise ValueError(
+            f'quant_method={quant_method!r} cannot modify the model behind --eval_url. Configure quantization '
+            'on that server or omit --quant_method.')
     if base_url and '/chat/completions' in base_url:
         base_url = base_url.split('/chat/completions', 1)[0]
     deploy_context = nullcontext(base_url) if base_url else run_deploy_process(
@@ -141,8 +146,9 @@ def run_eval(model_config, template_config, generation_config, infer_config, rol
         template_config,
         generation_config,
         backend=infer_config.infer_backend,
-        engine_args=_engine_args(infer_config.infer_backend, infer_config, rollout_config),
+        engine_args=build_engine_args(infer_config.infer_backend, infer_config, rollout_config),
         adapter_mapping=adapter_mapping,
+        quantize_config=quantize_config,
         merge_lora=merge_lora,
         host=deploy_config.host,
         port=deploy_config.port,
