@@ -7,6 +7,7 @@ import json
 import multiprocessing
 import os
 import re
+import secrets
 import tempfile
 import time
 import uvicorn
@@ -122,14 +123,14 @@ class SwiftDeploy(SwiftInfer):
 
     def _check_api_key(self, raw_request: Request) -> Optional[str]:
         api_key = self.args.api_key
-        if api_key is None:
+        if not api_key:
             return
         authorization = dict(raw_request.headers).get('authorization')
         error_msg = 'API key error'
         if authorization is None or not authorization.startswith('Bearer '):
             return error_msg
         request_api_key = authorization[7:]
-        if request_api_key != api_key:
+        if not secrets.compare_digest(request_api_key, api_key):
             return error_msg
 
     def _check_max_logprobs(self, request):
@@ -337,7 +338,7 @@ class SwiftDeploy(SwiftInfer):
         server to fetch a media URL on the caller's behalf, so it should not be exposed as-is.
         """
         args = self.args
-        if args.api_key is not None or args.host in {'127.0.0.1', 'localhost', '::1'}:
+        if args.api_key or args.host in {'127.0.0.1', 'localhost', '::1'}:
             return
         logger.warning(f'The server is listening on {args.host}:{args.port} without an API key, so anyone able '
                        'to reach this port can use it. Pass `--api_key` to require one, and `--host 127.0.0.1` '
