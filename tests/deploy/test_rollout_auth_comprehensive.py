@@ -11,10 +11,9 @@ Tests cover:
 import asyncio
 import time
 import unittest
-from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
-
 from fastapi import HTTPException
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 
 class TestRolloutAuthFixVulnerability(unittest.IsolatedAsyncioTestCase):
@@ -27,9 +26,12 @@ class TestRolloutAuthFixVulnerability(unittest.IsolatedAsyncioTestCase):
         return deploy
 
     def _make_request(self, headers=None):
+
         class RawRequest:
+
             def __init__(self, headers):
                 self.headers = headers or {}
+
         return RawRequest(headers)
 
     # ---- Vulnerability is fixed ----
@@ -97,14 +99,17 @@ class TestRolloutAuthFixVulnerability(unittest.IsolatedAsyncioTestCase):
         unguarded_routes = []
 
         class FakeRouter:
+
             def get(self, path, **kwargs):
                 deps = kwargs.get('dependencies', [])
                 if deps:
                     guarded_routes.append(('GET', path))
                 else:
                     unguarded_routes.append(('GET', path))
+
                 def decorator(func):
                     return func
+
                 return decorator
 
             def post(self, path, **kwargs):
@@ -113,8 +118,10 @@ class TestRolloutAuthFixVulnerability(unittest.IsolatedAsyncioTestCase):
                     guarded_routes.append(('POST', path))
                 else:
                     unguarded_routes.append(('POST', path))
+
                 def decorator(func):
                     return func
+
                 return decorator
 
         deploy.app = FakeRouter()
@@ -126,13 +133,13 @@ class TestRolloutAuthFixVulnerability(unittest.IsolatedAsyncioTestCase):
 
         # All other routes must be guarded
         unguarded_non_health = [(m, p) for m, p in unguarded_routes if p not in ('/health', '/health/')]
-        self.assertEqual(len(unguarded_non_health), 0,
-                         f'Found unguarded non-health routes: {unguarded_non_health}')
+        self.assertEqual(len(unguarded_non_health), 0, f'Found unguarded non-health routes: {unguarded_non_health}')
 
         # Specifically verify the most dangerous routes are guarded
-        dangerous = {'/update_named_param/', '/update_flattened_params/',
-                     '/update_adapter_param/', '/update_adapter_flattened_param/',
-                     '/close_communicator/', '/init_communicator/', '/infer/'}
+        dangerous = {
+            '/update_named_param/', '/update_flattened_params/', '/update_adapter_param/',
+            '/update_adapter_flattened_param/', '/close_communicator/', '/init_communicator/', '/infer/'
+        }
         guarded_paths = {p for _, p in guarded_routes}
         for route in dangerous:
             self.assertIn(route, guarded_paths, f'Dangerous route {route} is not guarded!')
@@ -148,9 +155,12 @@ class TestRolloutAuthNormalUsage(unittest.IsolatedAsyncioTestCase):
         return deploy
 
     def _make_request(self, headers=None):
+
         class RawRequest:
+
             def __init__(self, headers):
                 self.headers = headers or {}
+
         return RawRequest(headers)
 
     async def test_no_api_key_means_no_auth(self):
@@ -232,9 +242,12 @@ class TestDeployApiKeyHardening(unittest.TestCase):
         return deploy
 
     def _make_request(self, headers=None):
+
         class RawRequest:
+
             def __init__(self, headers):
                 self.headers = headers or {}
+
         return RawRequest(headers)
 
     def test_correct_key_passes(self):
@@ -283,9 +296,12 @@ class TestTimingAttackResistance(unittest.IsolatedAsyncioTestCase):
         return deploy
 
     def _make_request(self, headers=None):
+
         class RawRequest:
+
             def __init__(self, headers):
                 self.headers = headers or {}
+
         return RawRequest(headers)
 
     async def test_compare_digest_is_used(self):
@@ -325,9 +341,12 @@ class TestNoNewRisks(unittest.IsolatedAsyncioTestCase):
         return deploy
 
     def _make_request(self, headers=None):
+
         class RawRequest:
+
             def __init__(self, headers):
                 self.headers = headers or {}
+
         return RawRequest(headers)
 
     async def test_authorization_header_case_insensitive_check(self):
