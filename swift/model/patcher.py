@@ -280,16 +280,31 @@ def _patch_save_pretrained_architectures(model):
     the name assigned by :func:`_patch_sequence_classification`. The seq_cls names
     are restored in ``PretrainedConfig.save_pretrained``, the last hook before
     ``config.json`` is written (see #9704).
+
+    The hook is installed on the model *class* and gated by an instance flag
+    rather than bound onto the instance: an instance attribute would capture the
+    original model and config in a closure, which makes ``copy.deepcopy(model)``
+    silently save the original weights and ``pickle.dumps(model)`` fail outright.
     """
     if getattr(model, '_seq_cls_arch_patched', False):
         return
-    config = model.config
-    arch_list = getattr(config, 'architectures', None)
-    arch_list = list(arch_list) if arch_list else arch_list
-    class_name = model.__class__.__name__.removeprefix('FSDP')
-    model_save_pretrained = model.save_pretrained
+    cls = model.__class__
+    origin = cls.save_pretrained
+    if getattr(origin, '_seq_cls_arch_wrapped', False):
+        # The class is already hooked; only this instance needs the flag.
+        model._seq_cls_arch_patched = True
+        return
 
-    def save_pretrained(save_directory, *args, **kwargs):
+    @wraps(origin)
+    def save_pretrained(self, *args, **kwargs):
+        if not getattr(self, '_seq_cls_arch_patched', False):
+            return origin(self, *args, **kwargs)
+        config = self.config
+        # Snapshot taken before the save starts: any change made while saving
+        # (the architectures reset) is undone, a value assigned after patching
+        # is kept as is, and a missing architectures stays missing.
+        arch_snapshot = getattr(config, 'architectures', None)
+        arch_snapshot = list(arch_snapshot) if arch_snapshot else None
         config_save_pretrained = config.save_pretrained
 
         def _config_save_pretrained(*args, **kwargs):
@@ -297,19 +312,18 @@ def _patch_save_pretrained_architectures(model):
             # serializes every instance attribute, so a bound function left on the
             # config would break json.dumps().
             config.__dict__.pop('save_pretrained', None)
-            if config.architectures == [class_name]:
-                # Only undo the reset done by PreTrainedModel.save_pretrained();
-                # a value set after patching is kept as is.
-                config.architectures = arch_list
+            if arch_snapshot is not None and config.architectures != arch_snapshot:
+                config.architectures = arch_snapshot
             return config_save_pretrained(*args, **kwargs)
 
         config.save_pretrained = _config_save_pretrained
         try:
-            return model_save_pretrained(save_directory, *args, **kwargs)
+            return origin(self, *args, **kwargs)
         finally:
             config.__dict__.pop('save_pretrained', None)
 
-    model.save_pretrained = save_pretrained
+    save_pretrained._seq_cls_arch_wrapped = True
+    cls.save_pretrained = save_pretrained
     model._seq_cls_arch_patched = True
 
 
