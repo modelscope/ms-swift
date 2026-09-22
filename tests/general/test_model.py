@@ -265,15 +265,15 @@ class TestSeqClsArchitecturesRewrite(unittest.TestCase):
         from unittest.mock import patch
 
         model = _patched_qwen2_seq_cls()
-        model._auto_class = 'AutoModel'
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Custom-code export runs after Transformers resets architectures, before config saving.
-            with patch('transformers.modeling_utils.custom_object_save', side_effect=OSError('copy failed')):
-                with self.assertRaisesRegex(OSError, 'copy failed'):
-                    model.save_pretrained(tmp_dir)
+            # Newer Transformers checks _auto_class through a classmethod, not the instance.
+            with patch.object(type(model), '_auto_class', 'AutoModel'):
+                with patch('transformers.modeling_utils.custom_object_save', side_effect=OSError('copy failed')):
+                    with self.assertRaisesRegex(OSError, 'copy failed'):
+                        model.save_pretrained(tmp_dir)
             self.assertEqual(model.config.architectures, ['Qwen2ForSequenceClassification'])
             self.assertNotIn('save_pretrained', model.config.__dict__)
-            model._auto_class = None
             model.save_pretrained(tmp_dir)
             with open(os.path.join(tmp_dir, 'config.json')) as f:
                 self.assertEqual(json.load(f)['architectures'], ['Qwen2ForSequenceClassification'])
