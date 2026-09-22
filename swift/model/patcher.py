@@ -627,6 +627,8 @@ def gather_sequence_parallel_outputs(
     for key in tensor_keys:
         if key in outputs:
             outputs[key] = GatherTensor.apply(outputs[key], 1, position_ids)
+            if position_ids is not None:
+                outputs[key] = outputs[key][:, position_ids[0] >= 0]
 
     return outputs
 
