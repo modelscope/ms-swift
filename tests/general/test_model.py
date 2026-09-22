@@ -179,7 +179,7 @@ class TestSeqClsArchitecturesRewrite(unittest.TestCase):
         self.assertNotIn('save_pretrained', copied.config.__dict__)
 
     def test_seq_cls_architectures_saved_config_pickle(self):
-        """A patched model stays picklable (the hook lives on the class)."""
+        """A patched model preserves classifier metadata after a pickle round trip."""
         import json
         import tempfile
 
@@ -192,6 +192,108 @@ class TestSeqClsArchitecturesRewrite(unittest.TestCase):
                 saved_config = json.load(f)
 
         self.assertEqual(saved_config['architectures'], ['Qwen2ForSequenceClassification'])
+
+    def test_seq_cls_architectures_non_main_then_main(self):
+        import json
+        import tempfile
+
+        model = _patched_qwen2_seq_cls()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.save_pretrained(os.path.join(tmp_dir, 'non_main'), is_main_process=False)
+            output_dir = os.path.join(tmp_dir, 'main')
+            model.save_pretrained(output_dir)
+            with open(os.path.join(output_dir, 'config.json')) as f:
+                saved_config = json.load(f)
+        self.assertEqual(saved_config['architectures'], ['Qwen2ForSequenceClassification'])
+        self.assertEqual(model.config.architectures, ['Qwen2ForSequenceClassification'])
+        self.assertNotIn('save_pretrained', model.config.__dict__)
+
+    def test_seq_cls_architectures_pickle_fresh_process(self):
+        import subprocess
+        import sys
+        import tempfile
+        import textwrap
+
+        model = _patched_qwen2_seq_cls()
+        with torch.no_grad():
+            model.score.weight.fill_(0.123)
+        script = textwrap.dedent('''\
+            import json
+            import pickle
+            import sys
+            import torch
+            from transformers import AutoModelForSequenceClassification
+
+            with open(sys.argv[1], 'rb') as f:
+                model = pickle.load(f)
+            model.save_pretrained(sys.argv[2])
+            with open(sys.argv[2] + '/config.json') as f:
+                assert json.load(f)['architectures'] == ['Qwen2ForSequenceClassification']
+            restored = AutoModelForSequenceClassification.from_pretrained(sys.argv[2])
+            torch.testing.assert_close(restored.score.weight, torch.full_like(restored.score.weight, 0.123))
+        ''')
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model_path = os.path.join(tmp_dir, 'model.pkl')
+            with open(model_path, 'wb') as f:
+                pickle.dump(model, f)
+            result = subprocess.run([sys.executable, '-c', script, model_path,
+                                     os.path.join(tmp_dir, 'saved')],
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_seq_cls_architectures_save_failure_cleanup(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        model = _patched_qwen2_seq_cls()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with patch.object(type(model.config), 'save_pretrained', side_effect=OSError('save failed')):
+                with self.assertRaisesRegex(OSError, 'save failed'):
+                    model.save_pretrained(tmp_dir)
+            self.assertEqual(model.config.architectures, ['Qwen2ForSequenceClassification'])
+            self.assertNotIn('save_pretrained', model.config.__dict__)
+            model.save_pretrained(tmp_dir)
+            with open(os.path.join(tmp_dir, 'config.json')) as f:
+                self.assertEqual(json.load(f)['architectures'], ['Qwen2ForSequenceClassification'])
+
+    def test_seq_cls_architectures_failure_before_config_save(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        model = _patched_qwen2_seq_cls()
+        model._auto_class = 'AutoModel'
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Custom-code export runs after Transformers resets architectures, before config saving.
+            with patch('transformers.modeling_utils.custom_object_save', side_effect=OSError('copy failed')):
+                with self.assertRaisesRegex(OSError, 'copy failed'):
+                    model.save_pretrained(tmp_dir)
+            self.assertEqual(model.config.architectures, ['Qwen2ForSequenceClassification'])
+            self.assertNotIn('save_pretrained', model.config.__dict__)
+            model._auto_class = None
+            model.save_pretrained(tmp_dir)
+            with open(os.path.join(tmp_dir, 'config.json')) as f:
+                self.assertEqual(json.load(f)['architectures'], ['Qwen2ForSequenceClassification'])
+
+    def test_seq_cls_architectures_existing_save_wrapper(self):
+        import json
+        import tempfile
+        from functools import partial
+
+        from swift.model.patcher import _patch_save_pretrained_architectures
+
+        model = _patched_qwen2_seq_cls()
+        model.save_pretrained = partial(type(model).save_pretrained, model, max_shard_size='1KB')
+        _patch_save_pretrained_architectures(model)
+        _patch_save_pretrained_architectures(model)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.save_pretrained(tmp_dir)
+            self.assertTrue(os.path.isfile(os.path.join(tmp_dir, 'model.safetensors.index.json')))
+            with open(os.path.join(tmp_dir, 'config.json')) as f:
+                self.assertEqual(json.load(f)['architectures'], ['Qwen2ForSequenceClassification'])
 
     def test_seq_cls_architectures_none_keeps_class_name(self):
         """A missing ``architectures`` must not be written back as ``null``.
@@ -229,13 +331,12 @@ class TestSeqClsArchitecturesRewrite(unittest.TestCase):
         self.assertEqual(saved_config['architectures'], ['MySeqClsModel'])
 
     def test_seq_cls_architectures_unpatched_instance_unaffected(self):
-        """The class-level hook is gated by an instance flag, so an unpatched
-        model of the same class saves exactly as before."""
+        """Patching one model does not affect other instances of its class."""
         import json
         import tempfile
         from transformers import Qwen2Config, Qwen2ForCausalLM
 
-        _patched_qwen2_seq_cls()  # installs the class hook
+        _patched_qwen2_seq_cls()
 
         config = Qwen2Config(
             vocab_size=32,
