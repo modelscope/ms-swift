@@ -53,8 +53,7 @@ from swift.sequence_parallel import GatherLoss, sequence_parallel
 from swift.template import Template, TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logger, is_swanlab_available,
-                         is_wandb_available, nanstd, remove_response, seed_worker, to_device,
-                         unwrap_model_for_generation)
+                         is_wandb_available, remove_response, seed_worker, to_device, unwrap_model_for_generation)
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
 from .utils import (_ForwardRedirection, collate_to_grpo_micro_batch, compute_chord_loss, encode_sample,
@@ -416,30 +415,19 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # rewards_per_func_for_metrics: [prompt_batch_size*num_generations, self.num_reward_funcs]
             mode = 'train' if self.model.training else 'eval'
             num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
-            group_rewards = rewards.view(-1, num_generations)
-            rewards_mean = group_rewards.mean(-1).mean().item()
-            if self.scale_rewards in ['group', 'none', 'gdpo']:
-                # Handle edge case when num_generations_eval=1
-                if num_generations > 1:
-                    rewards_std = group_rewards.std(-1).mean().item()
-                else:
-                    rewards_std = 0.0
-            elif self.scale_rewards == 'batch':
-                rewards_std = rewards.std().item() if rewards.numel() > 1 else 0.0
-            if num_generations > 1:
-                is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
-            else:
-                is_std_zero = torch.ones(group_rewards.size(0), dtype=torch.bool, device=group_rewards.device)
-
-            self._metrics[mode]['reward'].append(rewards_mean)
-            self._metrics[mode]['reward_std'].append(rewards_std)
-            self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
-
-            # Log per-reward-function statistics using deduplicated rewards_per_func
-            for i, name in enumerate(self.reward_func_names):
-                col = rewards_per_func_for_metrics[:, i]
-                self._metrics[mode][f'rewards/{name}/mean'].append(torch.nanmean(col).item())
-                self._metrics[mode][f'rewards/{name}/std'].append(nanstd(col).item())
+            reward_metrics = compute_reward_metrics(
+                rewards=rewards,
+                rewards_per_func=rewards_per_func_for_metrics,
+                reward_func_names=self.reward_func_names,
+                num_generations=num_generations,
+                scale_rewards=self.scale_rewards,
+            )
+            self._metrics[mode]['reward'].append(reward_metrics.reward_mean)
+            self._metrics[mode]['reward_std'].append(reward_metrics.reward_std)
+            self._metrics[mode]['frac_reward_zero_std'].append(reward_metrics.frac_reward_zero_std)
+            for name in reward_metrics.per_func_mean:
+                self._metrics[mode][f'rewards/{name}/mean'].append(reward_metrics.per_func_mean[name])
+                self._metrics[mode][f'rewards/{name}/std'].append(reward_metrics.per_func_std[name])
 
         def log_rewards_all(rewards_per_func: torch.Tensor):
             """Log all rewards for debugging."""
@@ -492,7 +480,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self._metrics[mode]['frac_reward_zero_std'].append(reward_metrics.frac_reward_zero_std)
             if kl_values is not None:
                 self._metrics[mode]['kl'].append(kl_values.nanmean().item())
-            for name in self.reward_func_names:
+            for name in reward_metrics.per_func_mean:
                 self._metrics[mode][f'rewards/{name}/mean'].append(reward_metrics.per_func_mean[name])
                 self._metrics[mode][f'rewards/{name}/std'].append(reward_metrics.per_func_std[name])
             log_rewards_all(rewards_per_func)
