@@ -113,6 +113,38 @@ Result:
 3 passed in 4.19s
 ```
 
+### NPU Validation
+
+The Twinkle kernel integration was further validated on an Ascend NPU environment.
+
+Environment:
+
+- Hardware: Ascend 910B
+- PyTorch: 2.9.0
+- torch_npu: 2.9.0
+
+Model:
+
+- Qwen2.5-0.5B-Instruct
+
+Configuration:
+
+enable_kernel=True
+
+When loading the model with `enable_kernel=True`, Twinkle successfully selected NPU kernels:
+
+```text
+[kernelize] target=transformers.models.qwen2.modeling_qwen2.Qwen2RMSNorm op=rms_norm backend=npu
+[kernelize] target=transformers.models.qwen2.modeling_qwen2.apply_rotary_pos_emb op=rotary backend=npu
+[kernelize] target=transformers.models.qwen2.modeling_qwen2.Qwen2MLP.forward op=swiglu backend=npu
+```
+
+The kernelized model completed NPU forward validation successfully:
+
+```text
+forward PASS
+```
+
 ## 🎉 News
 - 🎁 2026.07.22: Support inference for the moonshotai multimodal model [Kimi-K3](https://modelscope.cn/models/moonshotai/Kimi-K3), including the XTML chat template, thinking channel (`reasoning_effort`) and tool calling (`--agent_template kimi_k3`).
 - 🎁 2026.06.10: Megatron-Ray now supports GRPO and GKD training. See [docs](./docs/source_en/Instruction/Ray.md) and [examples](examples/ray).
