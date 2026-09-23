@@ -181,6 +181,13 @@ class TestMusaDeviceHelpers(unittest.TestCase):
         torch_utils.ipc_collect()
         self.assertEqual(self.fake.calls, [('synchronize', None), ('empty_cache', ), ('ipc_collect', )])
 
+    def test_musa_takes_precedence_over_patched_cuda(self):
+        # MUSA patches such as megatron-lm-musa-patch make torch.cuda.is_available() return True.
+        with patch.object(torch_utils, 'is_torch_cuda_available', lambda: True):
+            self.assertIs(torch_utils.get_torch_device(), self.fake)
+            torch_utils.ipc_collect()
+        self.assertEqual(self.fake.calls, [('ipc_collect', )])
+
     def test_init_process_group_defaults_to_mccl(self):
         with patch.object(torch_utils.dist, 'is_initialized', return_value=False), \
                 patch.object(torch_utils.dist, 'init_process_group') as init:
@@ -269,6 +276,25 @@ class TestMusaActivationOffload(unittest.TestCase):
                 patch.object(offload, 'is_musa_available', True), patch.object(torch, 'musa', fake, create=True):
             self.assertEqual(offload.get_device_name(), 'musa')
             self.assertIs(offload.get_torch_device(), fake)
+
+    def test_musa_takes_precedence_over_patched_cuda(self):
+        from swift.callbacks import activation_cpu_offload as offload
+        with patch.object(offload, 'is_cuda_available', True), patch.object(offload, 'is_npu_available', False), \
+                patch.object(offload, 'is_musa_available', True):
+            self.assertEqual(offload.get_device_name(), 'musa')
+
+
+class TestMusaLoadStateFile(unittest.TestCase):
+
+    def test_musa_takes_precedence_over_patched_cuda(self):
+        from swift.tuners import base
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            Path(tmp_dir, base.SAFETENSORS_WEIGHTS_NAME).touch()
+            with patch.object(base, 'is_torch_musa_available', lambda: True), \
+                    patch.object(torch.cuda, 'is_available', lambda: True), \
+                    patch('safetensors.torch.load_file') as load_file:
+                base.SwiftModel.load_state_file(tmp_dir)
+        self.assertEqual(load_file.call_args.kwargs['device'], 'musa')
 
 
 @unittest.skipUnless(torch_utils.is_torch_musa_available(), 'requires a MUSA device')

@@ -270,12 +270,13 @@ def empty_cache():
 
 
 def ipc_collect():
-    if is_torch_cuda_available():
+    # MUSA goes first, see `get_torch_device`.
+    if is_torch_musa_available():
+        torch.musa.ipc_collect()
+    elif is_torch_cuda_available():
         torch.cuda.ipc_collect()
     elif is_torch_npu_available():
         torch.npu.ipc_collect()
-    elif is_torch_musa_available():
-        torch.musa.ipc_collect()
 
 
 def gc_collect() -> None:

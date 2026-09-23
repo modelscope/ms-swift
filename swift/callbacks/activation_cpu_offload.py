@@ -29,12 +29,13 @@ def get_device_name() -> str:
     Returns:
         device
     """
-    if is_cuda_available:
+    # MUSA goes first: MUSA patches such as megatron-lm-musa-patch make torch.cuda.is_available() return True.
+    if is_musa_available:
+        device = 'musa'
+    elif is_cuda_available:
         device = 'cuda'
     elif is_npu_available:
         device = 'npu'
-    elif is_musa_available:
-        device = 'musa'
     else:
         device = 'cpu'
     return device

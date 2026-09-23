@@ -248,12 +248,13 @@ class SwiftModel(nn.Module):
             The state dict.
         """
         if device is None:
-            if torch.cuda.is_available():
+            # MUSA goes first, see `swift.utils.get_torch_device`.
+            if is_torch_musa_available():
+                device = 'musa'
+            elif torch.cuda.is_available():
                 device = 'cuda'
             elif is_torch_npu_available():
                 device = 'npu'
-            elif is_torch_musa_available():
-                device = 'musa'
             else:
                 device = 'cpu'
         if os.path.exists(os.path.join(path, SAFETENSORS_WEIGHTS_NAME)):
