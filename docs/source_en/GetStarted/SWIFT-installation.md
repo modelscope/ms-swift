@@ -154,14 +154,14 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 
 ## Supported Hardware
 
-| Hardware | Backend | Reference |
-| --- | --- | --- |
-| NVIDIA GPU | CUDA | — |
-| AMD GPU | ROCm | [AMD GPU Support](../BestPractices/AMD-support.md) |
-| Huawei Ascend NPU | torch_npu | [NPU Support](../BestPractices/NPU-support.md) |
-| MetaX GPU | MACA | [MetaX Support](../BestPractices/Metax-support.md) |
-| Apple MPS | MPS | [issue](https://github.com/modelscope/ms-swift/issues/4572) |
-| CPU | — | — |
+| Hardware | Reference |
+| --- | --- |
+| NVIDIA GPU | — |
+| AMD GPU | [AMD GPU Support](../BestPractices/AMD-support.md) |
+| Huawei Ascend NPU | [NPU Support](../BestPractices/NPU-support.md) |
+| MetaX GPU | [MetaX Support](../BestPractices/Metax-support.md) |
+| Apple MPS | [issue](https://github.com/modelscope/ms-swift/issues/4572) |
+| CPU | — |
 
 
 ## Running Environment
