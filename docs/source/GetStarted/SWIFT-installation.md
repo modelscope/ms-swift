@@ -160,7 +160,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | NVIDIA GPU | CUDA | — |
 | AMD GPU | ROCm | [AMD GPU 支持](../BestPractices/AMD-support.md) |
 | 华为 Ascend NPU | torch_npu | [NPU 支持](../BestPractices/NPU-support.md) |
-| 沐曦 MetaX | MACA | [Metax 支持](../BestPractices/Metax-support.md) |
+| 沐曦 MetaX GPU | MACA | [MetaX 支持](../BestPractices/Metax-support.md) |
 | Apple MPS | MPS | [issue](https://github.com/modelscope/ms-swift/issues/4572) |
 | CPU | — | — |
 

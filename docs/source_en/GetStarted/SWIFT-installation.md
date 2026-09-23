@@ -159,7 +159,7 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 | NVIDIA GPU | CUDA | — |
 | AMD GPU | ROCm | [AMD GPU Support](../BestPractices/AMD-support.md) |
 | Huawei Ascend NPU | torch_npu | [NPU Support](../BestPractices/NPU-support.md) |
-| Metax | MACA | [Metax Support](../BestPractices/Metax-support.md) |
+| MetaX GPU | MACA | [MetaX Support](../BestPractices/Metax-support.md) |
 | Apple MPS | MPS | [issue](https://github.com/modelscope/ms-swift/issues/4572) |
 | CPU | — | — |
 
