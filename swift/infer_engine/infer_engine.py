@@ -12,8 +12,8 @@ from swift.model import get_ckpt_dir
 from swift.template import Template, get_template
 from swift.utils import Processor, ProcessorMixin, get_logger, start_event_loop_in_daemon
 from .base import BaseInferEngine
-from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse,
-                       InferRequest, RequestConfig, UsageInfo)
+from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
+                       InferRequest, NamespacedFunction, RequestConfig, UsageInfo)
 
 logger = get_logger()
 
@@ -200,7 +200,16 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         except Exception:
             functions = None
         if functions:
-            return [ChatCompletionMessageToolCall(function=function) for function in functions]
+            tool_calls = []
+            for function in functions:
+                if isinstance(function, NamespacedFunction):
+                    tool_calls.append(
+                        ChatCompletionMessageToolCall(
+                            function=Function(name=function.name, arguments=function.arguments),
+                            namespace=function.namespace))
+                else:
+                    tool_calls.append(ChatCompletionMessageToolCall(function=function))
+            return tool_calls
 
     @staticmethod
     def _get_num_tokens(inputs: Dict[str, Any], batch_idx: Optional[int] = None) -> int:

@@ -4,6 +4,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from swift.infer_engine import Function
+from swift.infer_engine.protocol import NamespacedFunction
 from swift.template import Prompt
 from .base import BaseAgentTemplate
 
@@ -12,17 +13,17 @@ DSML_TOKEN = '｜DSML｜'
 TOOLS_TEMPLATE = """## Tools
 
 You have access to a set of tools to help answer the user's question. \
-You can invoke tools by writing a "<{dsml_token}tool_calls>" block like the following:
+You can invoke tools by writing a "<{calls_tag}>" block like the following:
 
-<{dsml_token}tool_calls>
-<{dsml_token}invoke name="$TOOL_NAME">
-<{dsml_token}parameter name="$PARAMETER_NAME" string="true|false">$PARAMETER_VALUE</{dsml_token}parameter>
+<{calls_tag}>
+<{invoke_tag} name="$TOOL_NAME">
+<{parameter_tag} name="$PARAMETER_NAME" string="true|false">$PARAMETER_VALUE</{parameter_tag}>
 ...
-</{dsml_token}invoke>
-<{dsml_token}invoke name="$TOOL_NAME2">
+</{invoke_tag}>
+<{invoke_tag} name="$TOOL_NAME2">
 ...
-</{dsml_token}invoke>
-</{dsml_token}tool_calls>
+</{invoke_tag}>
+</{calls_tag}>
 
 String parameters should be specified as is and set `string="true"`. \
 For all other types (numbers, booleans, arrays, objects), \
@@ -48,26 +49,30 @@ def _to_json(value: Any) -> str:
         return json.dumps(value, ensure_ascii=True)
 
 
-def _encode_arguments_to_dsml(arguments: Dict[str, Any]) -> str:
+def _encode_arguments_to_dsml(arguments: Dict[str, Any], parameter_tag: str = f'{DSML_TOKEN}parameter') -> str:
     """Encode tool call arguments dict into DSML parameter lines."""
     lines = []
     for k, v in arguments.items():
         is_str = 'true' if isinstance(v, str) else 'false'
         val = v if isinstance(v, str) else _to_json(v)
-        lines.append(f'<{DSML_TOKEN}parameter name="{k}" string="{is_str}">{val}</{DSML_TOKEN}parameter>')
+        lines.append(f'<{parameter_tag} name="{k}" string="{is_str}">{val}</{parameter_tag}>')
     return '\n'.join(lines)
 
 
 class DeepSeekV4AgentTemplate(BaseAgentTemplate):
 
+    calls_tag = f'{DSML_TOKEN}tool_calls'
+    invoke_tag = f'{DSML_TOKEN}invoke'
+    parameter_tag = f'{DSML_TOKEN}parameter'
+
     def get_toolcall(self, response: str) -> List[Function]:
         # Parse DSML tool calls from model output
-        # Pattern: <｜DSML｜invoke name="tool_name">...params...</｜DSML｜invoke>
-        invoke_pattern = re.compile(
-            rf'<{re.escape(DSML_TOKEN)}invoke\s+name="([^"]+)">\s*(.*?)\s*</{re.escape(DSML_TOKEN)}invoke>', re.DOTALL)
+        invoke_tag = re.escape(self.invoke_tag)
+        parameter_tag = re.escape(self.parameter_tag)
+        invoke_pattern = re.compile(rf'<{invoke_tag}\s+name="([^"]+)">\s*(.*?)\s*</{invoke_tag}>', re.DOTALL)
         param_pattern = re.compile(
-            rf'<{re.escape(DSML_TOKEN)}parameter\s+name="([^"]+)"\s+string="(true|false)">'
-            rf'(.*?)</{re.escape(DSML_TOKEN)}parameter>', re.DOTALL)
+            rf'<{parameter_tag}\s+name="([^"]+)"\s+string="(true|false)">'
+            rf'(.*?)</{parameter_tag}>', re.DOTALL)
 
         functions = []
         for match in invoke_pattern.finditer(response):
@@ -124,7 +129,9 @@ class DeepSeekV4AgentTemplate(BaseAgentTemplate):
 
         tools_section = TOOLS_TEMPLATE.format(
             tool_schemas='\n'.join(tool_schemas),
-            dsml_token=DSML_TOKEN,
+            calls_tag=self.calls_tag,
+            invoke_tag=self.invoke_tag,
+            parameter_tag=self.parameter_tag,
         )
 
         system = system or ''
@@ -138,8 +145,64 @@ class DeepSeekV4AgentTemplate(BaseAgentTemplate):
             arguments = tool_call['arguments']
             if isinstance(arguments, str):
                 arguments = json.loads(arguments)
-            dsml_args = _encode_arguments_to_dsml(arguments)
-            invocations.append(f'<{DSML_TOKEN}invoke name="{name}">\n{dsml_args}\n</{DSML_TOKEN}invoke>')
+            dsml_args = _encode_arguments_to_dsml(arguments, self.parameter_tag)
+            invocations.append(f'<{self.invoke_tag} name="{name}">\n{dsml_args}\n</{self.invoke_tag}>')
 
         tool_calls_str = '\n'.join(invocations)
-        return f'<{DSML_TOKEN}tool_calls>\n{tool_calls_str}\n</{DSML_TOKEN}tool_calls>'
+        return f'<{self.calls_tag}>\n{tool_calls_str}\n</{self.calls_tag}>'
+
+
+class DeepSeekV41AgentTemplate(DeepSeekV4AgentTemplate):
+    # V4.1 uses leading-space tag names, including ` calls` instead of `tool_calls`.
+    calls_tag = f'{DSML_TOKEN} calls'
+    invoke_tag = f'{DSML_TOKEN} invoke'
+    parameter_tag = f'{DSML_TOKEN} parameter'
+
+    @staticmethod
+    def _split_tool_name(name, namespace=None):
+        if isinstance(namespace, dict):
+            namespace = namespace['name']
+        prefix, separator, bare_name = name.partition('::')
+        if separator:
+            if namespace is not None and namespace != prefix:
+                raise ValueError(f'Conflicting tool namespaces: {namespace} != {prefix}')
+            namespace, name = prefix, bare_name
+        if '::' in name or namespace is not None and '::' in namespace:
+            raise ValueError('Tool names support a single namespace::name qualifier.')
+        return namespace, name
+
+    @classmethod
+    def _qualified_tool_name(cls, tool):
+        namespace, name = cls._split_tool_name(tool['name'], tool.get('namespace'))
+        return name if namespace is None else f'{namespace}::{name}'
+
+    @classmethod
+    def unwrap_tool(cls, tool):
+        function = dict(super().unwrap_tool(tool))
+        if tool.get('namespace') is not None:
+            function['namespace'] = tool['namespace']
+        function['name'] = cls._qualified_tool_name(function)
+        namespace = function.pop('namespace', None)
+        if isinstance(namespace, dict) and namespace.get('description'):
+            function['description'] = namespace['description'] + '\n' + (function.get('description') or '')
+        return function
+
+    @classmethod
+    def _parse_tool_call(cls, content):
+        tool_call = super()._parse_tool_call(content)
+        original = cls._parse_json(content)
+        tool_call['name'] = cls._qualified_tool_name(original)
+        return tool_call
+
+    def _format_tools(self, tools, system=None, user_message=None):
+        result = super()._format_tools(tools, system, user_message)
+        return result if system else '\n\n' + result
+
+    def get_toolcall(self, response: str) -> List[Function]:
+        functions = []
+        for function in super().get_toolcall(response):
+            namespace, name = self._split_tool_name(function.name)
+            if namespace is not None:
+                function = NamespacedFunction(name=name, arguments=function.arguments, namespace=namespace)
+            functions.append(function)
+        return functions

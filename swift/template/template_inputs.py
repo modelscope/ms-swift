@@ -55,6 +55,9 @@ def normalize_openai_tool_calls(messages: Messages) -> Messages:
                     'arguments': arguments,
                 },
             }
+            namespace = tool_call.get('namespace') or function.get('namespace')
+            if namespace is not None:
+                tool_message['content']['namespace'] = namespace
             for key in ['loss', 'loss_scale']:
                 if key in message:
                     tool_message[key] = message[key]

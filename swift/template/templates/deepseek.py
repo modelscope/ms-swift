@@ -740,7 +740,7 @@ register_template(
 
 
 class DeepseekV41Template(DeepseekV4Template):
-    """DeepSeek-V4.1 image-span expansion and official ViT patch preprocessing."""
+    """DeepSeek-V4.1 prompt protocol and official ViT patch preprocessing."""
 
     IMAGE_PLACEHOLDER = '<｜deepseek_image｜>'
     TEXT = -1
@@ -752,6 +752,92 @@ class DeepseekV41Template(DeepseekV4Template):
     # `image_token_types` is a per-token int64 tensor, so it concatenates with the packed row
     # (see Template.packing_row / gather_keys) instead of needing a batch dimension.
     support_padding_free = True
+    non_thinking_prefix_only_after_user = False
+
+    def init_env_args(self):
+        Template.init_env_args(self)
+        effort = get_env_args('reasoning_effort', str, None)
+        if effort is not None and effort.isdecimal():
+            effort = int(effort)
+        self.reasoning_effort = self._check_reasoning_effort(effort)
+        self.chat_template_kwargs['reasoning_effort'] = self.reasoning_effort
+
+    def _check_reasoning_effort(self, reasoning_effort):
+        if reasoning_effort is None:
+            return None
+        if isinstance(reasoning_effort, str):
+            reasoning_effort = {'low': 50, 'high': 75, 'max': 100}.get(reasoning_effort, reasoning_effort)
+        if type(reasoning_effort) is not int or not 1 <= reasoning_effort <= 100:
+            raise ValueError('DeepSeek-V4.1 reasoning_effort must be an integer in [1, 100] or low/high/max.')
+        return reasoning_effort
+
+    def _get_enable_thinking(self, inputs=None):
+        return Template._get_enable_thinking(self, inputs)
+
+    def _get_system(self, inputs):
+        system = Template._get_system(self, inputs)
+        effort = self._get_reasoning_effort(inputs)
+        if self._get_enable_thinking(inputs):
+            effort = 75 if effort is None else effort
+            system = (f'Reasoning Effort: {effort} '
+                      '(range 1-100, the higher the value, the more thorough the reasoning)\n\n' + (system or ''))
+        if system is not None:
+            system = '<｜System｜>' + system
+        return system
+
+    def _add_non_thinking_prefix(self, inputs, thinking_prefix='<think>') -> None:
+        # Historical tool turns keep their reasoning, so they also need explicit
+        # channel delimiters when the assistant has no reasoning content.
+        prefix = '<think></think>' if self._get_enable_thinking(inputs) else '</think>'
+        for message in inputs.messages:
+            if message['role'] != 'assistant':
+                continue
+            content = message['content']
+            first = content[0] if isinstance(content, list) and content else content
+            if isinstance(first, str) and not first.startswith((thinking_prefix, '</think>')):
+                if isinstance(content, list):
+                    content[0] = prefix + first
+                else:
+                    message['content'] = prefix + first
+
+    def _remove_thinking_content(self, content: str, thinking_suffix='</think>') -> str:
+        return self.template_meta.history_thinking_prefix + content.split(thinking_suffix)[-1]
+
+    def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
+        super()._swift_prepare_inputs(inputs)
+        if self.template_backend != 'swift' or not any(m['role'] == 'system' for m in inputs.messages):
+            return
+        # Fold adjacent query roles into one raw prompt, preserving their role tokens.
+        # The base encoder's raw `tool` prompts remain masked and count as user turns
+        # for dropping historical reasoning and choosing the last-round loss.
+        messages = []
+        i = 0
+        while i < len(inputs.messages):
+            if inputs.messages[i]['role'] == 'assistant':
+                messages.append(inputs.messages[i])
+                i += 1
+                continue
+            start = i
+            while i < len(inputs.messages) and inputs.messages[i]['role'] != 'assistant':
+                i += 1
+            queries = inputs.messages[start:i]
+            if not any(m['role'] == 'system' for m in queries):
+                messages.extend(queries)
+                continue
+            prompt = []
+            if messages and queries[0]['role'] != 'tool':
+                prompt.append('<｜end▁of▁sentence｜>')
+            for message in queries:
+                role, content = message['role'], message['content']
+                if role == 'tool':
+                    # Tool responses already include EOS, User, and Assistant tokens.
+                    prompt.extend(content[:-1] if content[-1:] == ['<｜Assistant｜>'] else content)
+                else:
+                    prefix = '<｜System｜>' if role == 'system' else '<｜User｜>'
+                    prompt.append(prefix + (content or ''))
+            prompt.append('<｜Assistant｜>')
+            messages.append({'role': 'tool', 'content': prompt})
+        inputs.messages = messages
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -856,7 +942,7 @@ class DeepseekV41Template(DeepseekV4Template):
 register_template(
     DeepseekV2_5TemplateMeta(
         MLLMTemplateType.deepseek_v41,
-        agent_template='deepseek_v4',
+        agent_template='deepseek_v41',
         is_thinking=True,
         template_cls=DeepseekV41Template,
         thinking_prefix='<think>',

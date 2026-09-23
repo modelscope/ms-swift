@@ -408,10 +408,16 @@ class Function:
 
 
 @dataclass
+class NamespacedFunction(Function):
+    namespace: str
+
+
+@dataclass
 class ChatCompletionMessageToolCall:
     function: Function
     type: str = 'function'
     id: str = field(default_factory=lambda: f'toolcall-{random_uuid()}')
+    namespace: Optional[str] = None
 
 
 @dataclass
