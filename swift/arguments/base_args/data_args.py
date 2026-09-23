@@ -125,7 +125,7 @@ class DataArguments:
                                         or self.cached_val_dataset)
 
     def get_dataset_kwargs(self):
-        return {
+        kwargs = {
             'seed': self.data_seed,
             'num_proc': self.dataset_num_proc,
             'load_from_cache_file': self.load_from_cache_file,
@@ -143,3 +143,10 @@ class DataArguments:
             'remove_unused_columns': self.remove_unused_columns,
             'disable_auto_column_mapping': self.disable_auto_column_mapping,
         }
+        if getattr(self, 'template', None) == 'deepseek_v41':
+            from functools import partial
+
+            from swift.template.templates.deepseek import prepare_deepseek_v41_inputs
+            kwargs['preprocess_inputs'] = partial(
+                prepare_deepseek_v41_inputs, enable_thinking=getattr(self, 'enable_thinking', None) is not False)
+        return kwargs

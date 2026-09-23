@@ -7,7 +7,7 @@ from datasets import IterableDataset as HfIterableDataset
 from datasets import load_dataset as hf_load_dataset
 from functools import partial
 from modelscope.hub.utils.utils import get_cache_dir
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from typing import Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.hub import get_hub
 from swift.utils import get_logger, get_seed, safe_ddp_context, use_hf_hub
@@ -32,6 +32,7 @@ class DatasetLoader(BaseDatasetLoader):
         columns: Optional[Dict[str, str]] = None,
         remove_unused_columns: bool = True,
         disable_auto_column_mapping: bool = False,
+        preprocess_inputs: Optional[Callable] = None,
     ):
         self.num_proc = num_proc
         self.load_from_cache_file = load_from_cache_file
@@ -42,6 +43,7 @@ class DatasetLoader(BaseDatasetLoader):
         self.columns = columns
         self.remove_unused_columns = remove_unused_columns
         self.disable_auto_column_mapping = disable_auto_column_mapping
+        self.preprocess_kwargs = {} if preprocess_inputs is None else {'preprocess_inputs': preprocess_inputs}
 
     def _load_dataset_path(
         self,
@@ -63,7 +65,8 @@ class DatasetLoader(BaseDatasetLoader):
             num_proc=self.num_proc,
             load_from_cache_file=self.load_from_cache_file,
             strict=self.strict,
-            enable_auto_mapping=not self.disable_auto_column_mapping)
+            enable_auto_mapping=not self.disable_auto_column_mapping,
+            **self.preprocess_kwargs)
         if self.remove_unused_columns:
             dataset = RowPreprocessor.remove_useless_columns(dataset)
         return dataset
@@ -133,7 +136,8 @@ class DatasetLoader(BaseDatasetLoader):
                 num_proc=self.num_proc,
                 load_from_cache_file=self.load_from_cache_file,
                 strict=self.strict,
-                enable_auto_mapping=not self.disable_auto_column_mapping)
+                enable_auto_mapping=not self.disable_auto_column_mapping,
+                **self.preprocess_kwargs)
             if self.remove_unused_columns:
                 dataset = RowPreprocessor.remove_useless_columns(dataset)
             datasets.append(dataset)
@@ -242,6 +246,7 @@ def load_dataset(
     columns: Optional[Dict[str, str]] = None,  # columns_mapping
     remove_unused_columns: bool = True,
     disable_auto_column_mapping: bool = False,
+    preprocess_inputs: Optional[Callable] = None,
     # self-cognition
     model_name: Optional[Union[Tuple[str, str], List[str]]] = None,  # zh, en
     model_author: Optional[Union[Tuple[str, str], List[str]]] = None,
@@ -348,6 +353,9 @@ def load_dataset(
             columns=columns,  # columns_mapping
             remove_unused_columns=remove_unused_columns,
             disable_auto_column_mapping=disable_auto_column_mapping,
+            **({} if preprocess_inputs is None else {
+                'preprocess_inputs': preprocess_inputs
+            }),
         )
         train_dataset = loader.load(dataset_syntax, dataset_meta, use_hf=use_hf)
         # Inject dataset_syntax.dataset as routing tag for multi-teacher.

@@ -5,6 +5,7 @@ import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from copy import deepcopy
 from dataclasses import dataclass, field
 from PIL import Image, ImageOps
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -14,7 +15,7 @@ from swift.utils import get_env_args, get_logger
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..template_inputs import StdTemplateInputs
+from ..template_inputs import StdTemplateInputs, TemplateInputs
 from ..utils import Context, Prompt, findall
 
 logger = get_logger()
@@ -739,6 +740,67 @@ register_template(
         history_thinking_prefix='</think>'))
 
 
+def prepare_deepseek_v41_inputs(inputs, enable_thinking=True):
+    """Preserve V4.1 provider content before the generic input conversion loses it.
+
+    Used both by the template and, explicitly opted in, by dataset preprocessing.
+    The resulting canonical messages can pass through this function again safely.
+    """
+    from swift.agent_template.deepseek_v4 import DeepSeekV41AgentTemplate
+
+    inputs = deepcopy(inputs)
+    if 'rejected_response' in inputs:
+        # A mid-conversation system message starts a new response in V4.1 too.
+        messages = inputs['messages']
+        last_query = next((i for i in range(len(messages) - 1, -1, -1)
+                           if messages[i]['role'] in {'user', 'tool', 'tool_response', 'system'}), -1)
+        TemplateInputs._compat_rejected_response(inputs, last_user_round=last_query)
+    thinking = (inputs.get('chat_template_kwargs') or {}).get('enable_thinking')
+    if thinking is None:
+        thinking = enable_thinking
+    for prefix in ['', 'rejected_']:
+        messages = inputs.get(f'{prefix}messages')
+        if not isinstance(messages, list):
+            continue
+        for message in messages:
+            if 'content_blocks' in message:
+                message['content'] = message.pop('content_blocks')
+        structured_messages = [
+            message for message in messages if isinstance(message.get('content'), list) and (
+                not message['content'] or isinstance(message['content'][0], dict))
+        ]
+        # Generic templates retain their original empty separator. Only V4.1 uses
+        # blank lines between structured content blocks, including image blocks.
+        media = StdTemplateInputs.remove_messages_media(structured_messages, separator='\n\n')
+        for key, values in media.items():
+            if values:
+                assert not inputs.get(prefix + key), f'Cannot mix content blocks with `{prefix + key}`.'
+                inputs[prefix + key] = values
+        for message in messages:
+            if message.get('role') == 'assistant':
+                reasoning = message.pop('reasoning_content', None)
+                if reasoning is not None:
+                    content = message.get('content') or ''
+                    message['content'] = f'<think>{reasoning}</think>{content}' if thinking else content
+                for call in message.get('tool_calls') or []:
+                    function = call.get('function', call)
+                    namespace = call.get('namespace') or function.get('namespace')
+                    function['name'] = DeepSeekV41AgentTemplate._qualified_tool_name({
+                        'name': function['name'],
+                        'namespace': namespace,
+                    })
+    for prefix in ['positive_', 'negative_']:
+        if inputs.get(prefix + 'messages'):
+            for i, messages in enumerate(inputs[prefix + 'messages']):
+                prepared = prepare_deepseek_v41_inputs({'messages': messages}, thinking)
+                inputs[prefix + 'messages'][i] = prepared['messages']
+                for key in ['images', 'audios', 'videos']:
+                    if prepared.get(key):
+                        assert not (inputs.get(prefix + key) or [[] for _ in inputs[prefix + 'messages']])[i]
+                        inputs.setdefault(prefix + key, [[] for _ in inputs[prefix + 'messages']])[i] = prepared[key]
+    return inputs
+
+
 class DeepseekV41Template(DeepseekV4Template):
     """DeepSeek-V4.1 prompt protocol and official ViT patch preprocessing."""
 
@@ -752,7 +814,9 @@ class DeepseekV41Template(DeepseekV4Template):
     # `image_token_types` is a per-token int64 tensor, so it concatenates with the packed row
     # (see Template.packing_row / gather_keys) instead of needing a batch dimension.
     support_padding_free = True
-    non_thinking_prefix_only_after_user = False
+
+    def _prepare_inputs_dict(self, inputs):
+        return prepare_deepseek_v41_inputs(inputs, self.enable_thinking)
 
     def init_env_args(self):
         Template.init_env_args(self)
@@ -804,6 +868,19 @@ class DeepseekV41Template(DeepseekV4Template):
         return self.template_meta.history_thinking_prefix + content.split(thinking_suffix)[-1]
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
+        if self.template_backend == 'swift':
+            # V4.1 observations are user content, including standalone results and
+            # results adjacent to user/system messages. Normalize before the base
+            # encoder checks alternating roles or formats tool response headers.
+            messages = []
+            for message in inputs.messages:
+                if message['role'] == 'tool':
+                    message = {'role': 'user', 'content': self.agent_template._get_tool_responses([message])}
+                if messages and messages[-1]['role'] == message['role'] == 'user':
+                    messages[-1]['content'] += '\n\n' + (message['content'] or '')
+                else:
+                    messages.append(message)
+            inputs.messages = messages
         super()._swift_prepare_inputs(inputs)
         if self.template_backend != 'swift' or not any(m['role'] == 'system' for m in inputs.messages):
             return
@@ -825,16 +902,12 @@ class DeepseekV41Template(DeepseekV4Template):
                 messages.extend(queries)
                 continue
             prompt = []
-            if messages and queries[0]['role'] != 'tool':
+            if messages:
                 prompt.append('<｜end▁of▁sentence｜>')
             for message in queries:
                 role, content = message['role'], message['content']
-                if role == 'tool':
-                    # Tool responses already include EOS, User, and Assistant tokens.
-                    prompt.extend(content[:-1] if content[-1:] == ['<｜Assistant｜>'] else content)
-                else:
-                    prefix = '<｜System｜>' if role == 'system' else '<｜User｜>'
-                    prompt.append(prefix + (content or ''))
+                prefix = '<｜System｜>' if role == 'system' else '<｜User｜>'
+                prompt.append(prefix + (content or ''))
             prompt.append('<｜Assistant｜>')
             messages.append({'role': 'tool', 'content': prompt})
         inputs.messages = messages

@@ -13,7 +13,7 @@ from swift.template import Template, get_template
 from swift.utils import Processor, ProcessorMixin, get_logger, start_event_loop_in_daemon
 from .base import BaseInferEngine
 from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
-                       InferRequest, NamespacedFunction, RequestConfig, UsageInfo)
+                       InferRequest, NamespacedFunction, NamespacedToolCall, RequestConfig, UsageInfo)
 
 logger = get_logger()
 
@@ -194,7 +194,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
-    def _get_toolcall(self, response: str) -> Optional[List[ChatCompletionMessageToolCall]]:
+    def _get_toolcall(self, response: str) -> Optional[List[Union[ChatCompletionMessageToolCall, NamespacedToolCall]]]:
         try:
             functions = self.template.agent_template.get_toolcall(response)
         except Exception:
@@ -204,7 +204,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             for function in functions:
                 if isinstance(function, NamespacedFunction):
                     tool_calls.append(
-                        ChatCompletionMessageToolCall(
+                        NamespacedToolCall(
                             function=Function(name=function.name, arguments=function.arguments),
                             namespace=function.namespace))
                 else:
