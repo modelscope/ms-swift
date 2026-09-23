@@ -19,6 +19,8 @@ _STUB_TORCHADA = """import os, sys
 MUSA_VISIBLE_DEVICES = os.environ.get('MUSA_VISIBLE_DEVICES')
 LOCAL_RANK = os.environ.get('LOCAL_RANK')
 TORCH_IMPORTED = 'torch' in sys.modules
+# swift.utils imports torch when trl is installed, so it must load after torchada.
+SWIFT_UTILS_IMPORTED = 'swift.utils' in sys.modules
 """
 
 
@@ -92,10 +94,11 @@ class TestTorchadaBootstrap(unittest.TestCase):
     def test_visible_devices_are_final_before_torch_is_imported(self):
         # torch autoloads torch_musa, which reads MUSA_VISIBLE_DEVICES once, so it must be set before torch loads.
         code = ('import swift, torchada; '
-                'print(torchada.MUSA_VISIBLE_DEVICES, torchada.LOCAL_RANK, torchada.TORCH_IMPORTED)')
+                'print(torchada.MUSA_VISIBLE_DEVICES, torchada.LOCAL_RANK, torchada.TORCH_IMPORTED, '
+                'torchada.SWIFT_UTILS_IMPORTED)')
         env = {'CUDA_VISIBLE_DEVICES': '2,3', 'SWIFT_SINGLE_DEVICE_MODE': '1', 'LOCAL_RANK': '1'}
         out = _run_python(code, env=env, stubs=[('torch_musa', ''), ('torchada', _STUB_TORCHADA)])
-        self.assertEqual(out, '3 0 False')
+        self.assertEqual(out, '3 0 False False')
 
     def test_device_env_untouched_without_torch_musa(self):
         code = 'import os, swift; print(os.environ.get("MUSA_VISIBLE_DEVICES"), os.environ["CUDA_VISIBLE_DEVICES"])'

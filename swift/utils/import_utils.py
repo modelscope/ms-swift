@@ -7,6 +7,9 @@ from itertools import chain
 from types import ModuleType
 from typing import Any
 
+# Defined in swift.cli.utils so that `import swift` can check them before swift.utils (which imports torch) loads.
+from ..cli.utils import is_torch_musa_installed, is_torchada_available  # noqa: F401
+
 
 def is_vllm_available():
     return importlib.util.find_spec('vllm') is not None
@@ -18,20 +21,6 @@ def is_vllm_ascend_available():
 
 def is_vllm_metax_available():
     return importlib.util.find_spec('vllm_metax') is not None
-
-
-def is_torch_musa_installed():
-    """Whether torch_musa (Moore Threads GPU support for PyTorch) is installed.
-
-    It does not import torch, so it is safe to call before torch is loaded. Use
-    `transformers.utils.is_torch_musa_available` to check for a usable MUSA device.
-    """
-    return importlib.util.find_spec('torch_musa') is not None
-
-
-def is_torchada_available():
-    """Whether torchada (the CUDA-to-MUSA adapter for torch_musa) is installed."""
-    return importlib.util.find_spec('torchada') is not None
 
 
 def is_vllm_kunlun_available():
