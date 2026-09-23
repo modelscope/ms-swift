@@ -32,7 +32,7 @@ from fastapi import FastAPI
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
-from transformers.utils import is_torch_npu_available
+from transformers.utils import is_torch_musa_available, is_torch_npu_available
 from typing import Any, Dict, List, Optional, Union
 
 from swift.arguments import RolloutArguments
@@ -602,6 +602,9 @@ def _set_visible_devices_for_dp_rank(data_parallel_rank: int, tensor_parallel_si
     def _get_device_env_var():
         if is_torch_npu_available():
             return 'ASCEND_RT_VISIBLE_DEVICES'
+        if is_torch_musa_available():
+            # CUDA_VISIBLE_DEVICES is moved to MUSA_VISIBLE_DEVICES on `import swift`.
+            return 'MUSA_VISIBLE_DEVICES'
         return 'CUDA_VISIBLE_DEVICES'
 
     env_var = _get_device_env_var()

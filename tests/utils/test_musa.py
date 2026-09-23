@@ -119,11 +119,13 @@ class TestMusaVisibleDevices(unittest.TestCase):
         os.environ['CUDA_VISIBLE_DEVICES'] = '1,2'
         sync_musa_visible_devices()
         self.assertEqual(os.environ['MUSA_VISIBLE_DEVICES'], '1,2')
+        self.assertNotIn('CUDA_VISIBLE_DEVICES', os.environ)
 
     def test_sync_keeps_explicit_musa_visible_devices(self):
         os.environ.update(CUDA_VISIBLE_DEVICES='1,2', MUSA_VISIBLE_DEVICES='5')
         sync_musa_visible_devices()
         self.assertEqual(os.environ['MUSA_VISIBLE_DEVICES'], '5')
+        self.assertNotIn('CUDA_VISIBLE_DEVICES', os.environ)
 
     def test_sync_is_noop_without_cuda_visible_devices(self):
         sync_musa_visible_devices()
@@ -290,8 +292,9 @@ class TestMusaHardware(unittest.TestCase):
 
     @unittest.skipUnless(is_torchada_available(), 'requires torchada')
     def test_cuda_visible_devices_limits_musa_devices(self):
-        code = 'import os, swift, torch; print(torch.musa.device_count(), os.environ["CUDA_VISIBLE_DEVICES"])'
-        self.assertEqual(_run_python(code, env={'CUDA_VISIBLE_DEVICES': '1'}), '1 1')
+        code = ('import os, swift, torch; print(torch.musa.device_count(), os.environ["MUSA_VISIBLE_DEVICES"], '
+                '"CUDA_VISIBLE_DEVICES" in os.environ)')
+        self.assertEqual(_run_python(code, env={'CUDA_VISIBLE_DEVICES': '1'}), '1 1 False')
 
     @unittest.skipUnless(is_torchada_available(), 'requires torchada')
     def test_single_device_mode_limits_musa_devices(self):

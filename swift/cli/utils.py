@@ -20,11 +20,13 @@ def is_torchada_available():
 def sync_musa_visible_devices():
     """Honor CUDA_VISIBLE_DEVICES on Moore Threads GPUs.
 
-    torch_musa only reads MUSA_VISIBLE_DEVICES, and torchada drops CUDA_VISIBLE_DEVICES when it is unset, so copy it
-    over. Must run before torch is imported: torch autoloads torch_musa, which reads the variable only once.
+    torch_musa only reads MUSA_VISIBLE_DEVICES, so move CUDA_VISIBLE_DEVICES over (an explicit MUSA_VISIBLE_DEVICES
+    wins). It is removed afterwards so that MUSA_VISIBLE_DEVICES is the only source of truth and no stale value is
+    left behind. Must run before torch is imported: torch autoloads torch_musa, which reads the variable only once.
     """
-    if 'MUSA_VISIBLE_DEVICES' not in os.environ and 'CUDA_VISIBLE_DEVICES' in os.environ:
-        os.environ['MUSA_VISIBLE_DEVICES'] = os.environ['CUDA_VISIBLE_DEVICES']
+    visible_devices = os.environ.pop('CUDA_VISIBLE_DEVICES', None)
+    if visible_devices is not None and 'MUSA_VISIBLE_DEVICES' not in os.environ:
+        os.environ['MUSA_VISIBLE_DEVICES'] = visible_devices
 
 
 def try_use_single_device_mode():
