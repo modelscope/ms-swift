@@ -12,8 +12,8 @@ from swift.model import get_ckpt_dir
 from swift.template import Template, get_template
 from swift.utils import Processor, ProcessorMixin, get_logger, start_event_loop_in_daemon
 from .base import BaseInferEngine
-from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
-                       InferRequest, NamespacedFunction, NamespacedToolCall, RequestConfig, UsageInfo)
+from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse,
+                       InferRequest, RequestConfig, UsageInfo)
 
 logger = get_logger()
 
@@ -194,17 +194,13 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
-    def _get_toolcall(self, response: str) -> Optional[List[Union[ChatCompletionMessageToolCall, NamespacedToolCall]]]:
+    def _get_toolcall(self, response: str) -> Optional[List[ChatCompletionMessageToolCall]]:
         try:
             functions = self.template.agent_template.get_toolcall(response)
         except Exception:
             functions = None
         if functions:
-            return [
-                NamespacedToolCall(Function(function.name, function.arguments), function.namespace) if isinstance(
-                    function, NamespacedFunction) else ChatCompletionMessageToolCall(function=function)
-                for function in functions
-            ]
+            return [ChatCompletionMessageToolCall(function=function) for function in functions]
 
     @staticmethod
     def _get_num_tokens(inputs: Dict[str, Any], batch_idx: Optional[int] = None) -> int:

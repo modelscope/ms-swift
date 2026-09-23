@@ -658,9 +658,6 @@ class Template(ProcessorMixin):
             encoded['labels'] = labels
         return encoded
 
-    def _prepare_inputs_dict(self, inputs):
-        return inputs
-
     @torch.inference_mode()
     @retry_decorator(3)
     def encode(self,
@@ -679,7 +676,7 @@ class Template(ProcessorMixin):
             inputs = asdict(inputs)
 
         if isinstance(inputs, dict):
-            inputs = TemplateInputs.from_dict(self._prepare_inputs_dict(inputs))
+            inputs = TemplateInputs.from_dict(inputs)
         elif isinstance(inputs, TemplateInputs):
             inputs = deepcopy(inputs)
         assert isinstance(inputs, TemplateInputs)

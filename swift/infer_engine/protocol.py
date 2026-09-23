@@ -408,21 +408,8 @@ class Function:
 
 
 @dataclass
-class NamespacedFunction(Function):
-    namespace: str
-
-
-@dataclass
 class ChatCompletionMessageToolCall:
     function: Function
-    type: str = 'function'
-    id: str = field(default_factory=lambda: f'toolcall-{random_uuid()}')
-
-
-@dataclass
-class NamespacedToolCall:
-    function: Function
-    namespace: str
     type: str = 'function'
     id: str = field(default_factory=lambda: f'toolcall-{random_uuid()}')
 
@@ -431,7 +418,7 @@ class NamespacedToolCall:
 class ChatMessage:
     role: Literal['system', 'user', 'assistant']
     content: Union[str, List[Dict[str, Any]], int, float, List[float]]
-    tool_calls: Optional[List[Union[NamespacedToolCall, ChatCompletionMessageToolCall]]] = None
+    tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
     reasoning_content: Optional[str] = None
 
 
@@ -580,7 +567,7 @@ class CompletionResponse:
 class DeltaMessage:
     role: Literal['system', 'user', 'assistant', None] = None
     content: Optional[str] = None
-    tool_calls: Optional[List[Union[NamespacedToolCall, ChatCompletionMessageToolCall]]] = None
+    tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
     reasoning_content: Optional[str] = None
 
 

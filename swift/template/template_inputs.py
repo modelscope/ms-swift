@@ -159,7 +159,7 @@ class StdTemplateInputs:
             **media_kwargs)
 
     @staticmethod
-    def remove_messages_media(messages: Messages, separator: str = '') -> Dict[str, Any]:
+    def remove_messages_media(messages: Messages) -> Dict[str, Any]:
         res = {'images': [], 'audios': [], 'videos': []}
         for message in messages:
             content = message.get('content')
@@ -170,9 +170,7 @@ class StdTemplateInputs:
                 continue
             # List[Dict[str, Any]]
             new_content = ''
-            for i, item in enumerate(content):
-                if i:
-                    new_content += separator
+            for item in content:
                 key: str = item['type']
                 value = item.get(key)
                 if key == 'text':
@@ -219,12 +217,12 @@ class TemplateInputs:
                 setattr(self, key, res)
 
     @staticmethod
-    def _compat_rejected_response(inputs: Dict[str, Any], last_user_round: Optional[int] = None):
+    def _compat_rejected_response(inputs: Dict[str, Any]):
         if 'rejected_response' not in inputs:
             return
         messages = inputs['messages']
         assert len(messages) > 0, f'messages: {messages}'
-        idx = (get_last_user_round(messages) if last_user_round is None else last_user_round) + 1
+        idx = get_last_user_round(messages) + 1
 
         rejected_response = inputs.pop('rejected_response')
         if isinstance(rejected_response, str):

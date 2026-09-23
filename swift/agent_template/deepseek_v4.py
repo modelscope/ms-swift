@@ -4,7 +4,6 @@ import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from swift.infer_engine import Function
-from swift.infer_engine.protocol import NamespacedFunction
 from swift.template import Prompt
 from .base import BaseAgentTemplate
 
@@ -155,50 +154,5 @@ class DeepSeekV41AgentTemplate(DeepSeekV4AgentTemplate):
     dsml_token = f'{DSML_TOKEN} '
     calls_tag = 'calls'
 
-    @staticmethod
-    def _split_tool_name(name, namespace=None):
-        if isinstance(namespace, dict):
-            namespace = namespace['name']
-        prefix, separator, bare_name = name.partition('::')
-        if separator:
-            if namespace is not None and namespace != prefix:
-                raise ValueError(f'Conflicting tool namespaces: {namespace} != {prefix}')
-            namespace, name = prefix, bare_name
-        if '::' in name or namespace is not None and '::' in namespace:
-            raise ValueError('Tool names support a single namespace::name qualifier.')
-        return namespace, name
-
-    @classmethod
-    def _qualified_tool_name(cls, tool):
-        namespace, name = cls._split_tool_name(tool['name'], tool.get('namespace'))
-        return name if namespace is None else f'{namespace}::{name}'
-
-    @classmethod
-    def unwrap_tool(cls, tool):
-        function = dict(super().unwrap_tool(tool))
-        if tool.get('namespace') is not None:
-            function['namespace'] = tool['namespace']
-        function['name'] = cls._qualified_tool_name(function)
-        namespace = function.pop('namespace', None)
-        if isinstance(namespace, dict) and namespace.get('description'):
-            function['description'] = namespace['description'] + '\n' + (function.get('description') or '')
-        return function
-
-    @classmethod
-    def _parse_tool_call(cls, content):
-        content = dict(cls._parse_json(content))
-        content['name'] = cls._qualified_tool_name(content)
-        return super()._parse_tool_call(content)
-
     def _format_tools(self, tools, system=None, user_message=None):
-        result = super()._format_tools(tools, system, user_message)
-        return result if system else '\n\n' + result
-
-    def get_toolcall(self, response: str) -> List[Function]:
-        functions = []
-        for function in super().get_toolcall(response):
-            namespace, name = self._split_tool_name(function.name)
-            if namespace is not None:
-                function = NamespacedFunction(name=name, arguments=function.arguments, namespace=namespace)
-            functions.append(function)
-        return functions
+        return ('' if system else '\n\n') + super()._format_tools(tools, system, user_message)

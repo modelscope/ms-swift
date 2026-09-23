@@ -200,12 +200,8 @@ class RowPreprocessor:
             if box[1] > box[3]:
                 box[1], box[3] = box[3], box[1]
 
-    def batched_preprocess(self,
-                           batched_row: Dict[str, Any],
-                           *,
-                           strict: bool,
-                           ignore_max_length_error: bool,
-                           preprocess_inputs=None) -> Dict[str, Any]:
+    def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool,
+                           ignore_max_length_error: bool) -> Dict[str, Any]:
         from swift.template import MaxLengthError
         batched_row = dict(batched_row)
         assert len(batched_row) > 0
@@ -215,8 +211,6 @@ class RowPreprocessor:
         new_rows = []
         for row in rows:
             try:
-                if preprocess_inputs is not None:
-                    row = preprocess_inputs(row)
                 row = self.preprocess(row)
                 # support [row1, row2, ...]
                 if row is None:
@@ -337,7 +331,6 @@ class RowPreprocessor:
         strict: bool = False,
         batch_size: Optional[int] = None,
         enable_auto_mapping: bool = False,
-        preprocess_inputs: Optional[Callable] = None,
     ) -> DATASET_TYPE:
         from ..utils import sample_dataset
         if batch_size is None:
@@ -374,20 +367,16 @@ class RowPreprocessor:
                 dataset = dataset.rename_columns(columns)
 
         ignore_max_length_error = True
-        fn_kwargs = {'strict': strict, 'ignore_max_length_error': ignore_max_length_error}
-        if preprocess_inputs is not None:
-            fn_kwargs['preprocess_inputs'] = preprocess_inputs
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             if isinstance(dataset, HfDataset) and not dataset.cache_files:
-                fingerprint = dataset._fingerprint
-                if preprocess_inputs is not None:
-                    from datasets.fingerprint import Hasher
-                    fingerprint += '-' + Hasher.hash(preprocess_inputs)
                 map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
-                                                             f'{fingerprint}.arrow')
+                                                             f'{dataset._fingerprint}.arrow')
             dataset_mapped = dataset.map(
                 self.batched_preprocess,
-                fn_kwargs=fn_kwargs,
+                fn_kwargs={
+                    'strict': strict,
+                    'ignore_max_length_error': ignore_max_length_error,
+                },
                 remove_columns=list(dataset.features.keys()),
                 **map_kwargs)
         if isinstance(dataset_mapped, HfDataset) and len(dataset) != len(dataset_mapped):
