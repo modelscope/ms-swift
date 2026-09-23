@@ -532,7 +532,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._metrics[mode]['frac_reward_zero_std'].append(reward_metrics.frac_reward_zero_std)
         if kl_values is not None:
             self._metrics[mode]['kl'].append(kl_values.nanmean().item())
-        for name in self.reward_func_names:
+        for name in reward_metrics.per_func_mean:
             self._metrics[mode][f'rewards/{name}/mean'].append(reward_metrics.per_func_mean[name])
             self._metrics[mode][f'rewards/{name}/std'].append(reward_metrics.per_func_std[name])
         self._logs['advantages'].extend(advantages.tolist())
