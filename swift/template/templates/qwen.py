@@ -360,6 +360,22 @@ class Qwen2VLTemplate(Template):
                     video, video_metadata = video
                     inputs.mm_processor_kwargs.setdefault('video_metadata', []).append(video_metadata)
                     tokens = ['<|video_pad|>']
+                elif isinstance(video, tuple):
+                    # When video_start/video_end clip a window from the source video, the
+                    # frames_indices returned by qwen_vl_utils are absolute indices of the
+                    # source video. vLLM computes per-frame timestamps as frames_indices / fps
+                    # and injects them into the prompt, which would produce absolute timestamps
+                    # (e.g. <161.4 seconds>) instead of window-relative ones. Rebase the
+                    # indices so the injected timestamps start from the clipped window.
+                    video_tensor, video_metadata = video
+                    frames_indices = video_metadata.get('frames_indices') if isinstance(video_metadata,
+                                                                                        dict) else None
+                    if frames_indices is not None and len(frames_indices) > 0:
+                        frames_indices = [int(i) for i in frames_indices]
+                        base = frames_indices[0]
+                        if base > 0:
+                            video_metadata = {**video_metadata, 'frames_indices': [i - base for i in frames_indices]}
+                            video = (video_tensor, video_metadata)
                 inputs.mm_processor_kwargs['do_sample_frames'] = False
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
