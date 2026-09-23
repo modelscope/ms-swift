@@ -486,7 +486,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                     'as vLLM currently does not support LoRA in MoE configurations. If you encounter errors, '
                     'please set vllm_enable_lora to False.')
 
-            if self.is_multimodal:
+            if model.model_meta.is_multimodal:
                 logger.warning('vLLM LoRA is enabled for a multimodal model. This may lead to unexpected issues '
                                'when applying LoRA to the ViT component, as vLLM does not yet support this setup. '
                                'If errors occur, please disable LoRA by setting vllm_enable_lora to False.')
