@@ -111,7 +111,7 @@ swift 提供三种蒸馏训练方法，它们共享同一套教师基础设施�
 
 - `--teacher_model`：在训练进程中加载一个独立的冻结教师模型。
 - `--teacher_model_server`：连接一个外部教师服务（`swift deploy`启动的vllm服务），不在训练卡上加载教师。GKD 使用 API 时需同时设置 `--gkd_logits_topk`。支持单 URL 与多 teacher JSON 配置。
-- **自蒸馏**：教师与学生同源。LoRA 训练且 `--teacher_model` 与 `--model` 相同时，自动用 `disable_adapter()` 以基座为固定教师，无需额外加载；不传 `--teacher_model` 且设置 `teacher_prompt`, 则以「学生当前权重」为动态教师。
+- **自蒸馏**：教师与学生同源。LoRA 训练且 `--teacher_model` 与 `--model` 相同、未指定 `--teacher_adapters` 时，自动用 `disable_adapter()` 以基座为固定教师，无需额外加载；同时指定 `--teacher_model` 和 `--teacher_adapters` 时则加载包含这些 adapter 的独立冻结教师，增加一份基座权重的内存开销。不传 `--teacher_model` 且设置 `teacher_prompt`, 则以「学生当前权重」为动态教师。
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
