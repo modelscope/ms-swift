@@ -13,17 +13,17 @@ DSML_TOKEN = '｜DSML｜'
 TOOLS_TEMPLATE = """## Tools
 
 You have access to a set of tools to help answer the user's question. \
-You can invoke tools by writing a "<{calls_tag}>" block like the following:
+You can invoke tools by writing a "<{dsml_token}{calls_tag}>" block like the following:
 
-<{calls_tag}>
-<{invoke_tag} name="$TOOL_NAME">
-<{parameter_tag} name="$PARAMETER_NAME" string="true|false">$PARAMETER_VALUE</{parameter_tag}>
+<{dsml_token}{calls_tag}>
+<{dsml_token}invoke name="$TOOL_NAME">
+<{dsml_token}parameter name="$PARAMETER_NAME" string="true|false">$PARAMETER_VALUE</{dsml_token}parameter>
 ...
-</{invoke_tag}>
-<{invoke_tag} name="$TOOL_NAME2">
+</{dsml_token}invoke>
+<{dsml_token}invoke name="$TOOL_NAME2">
 ...
-</{invoke_tag}>
-</{calls_tag}>
+</{dsml_token}invoke>
+</{dsml_token}{calls_tag}>
 
 String parameters should be specified as is and set `string="true"`. \
 For all other types (numbers, booleans, arrays, objects), \
@@ -49,30 +49,29 @@ def _to_json(value: Any) -> str:
         return json.dumps(value, ensure_ascii=True)
 
 
-def _encode_arguments_to_dsml(arguments: Dict[str, Any], parameter_tag: str = f'{DSML_TOKEN}parameter') -> str:
+def _encode_arguments_to_dsml(arguments: Dict[str, Any], dsml_token: str = DSML_TOKEN) -> str:
     """Encode tool call arguments dict into DSML parameter lines."""
     lines = []
     for k, v in arguments.items():
         is_str = 'true' if isinstance(v, str) else 'false'
         val = v if isinstance(v, str) else _to_json(v)
-        lines.append(f'<{parameter_tag} name="{k}" string="{is_str}">{val}</{parameter_tag}>')
+        lines.append(f'<{dsml_token}parameter name="{k}" string="{is_str}">{val}</{dsml_token}parameter>')
     return '\n'.join(lines)
 
 
 class DeepSeekV4AgentTemplate(BaseAgentTemplate):
 
-    calls_tag = f'{DSML_TOKEN}tool_calls'
-    invoke_tag = f'{DSML_TOKEN}invoke'
-    parameter_tag = f'{DSML_TOKEN}parameter'
+    dsml_token = DSML_TOKEN
+    calls_tag = 'tool_calls'
 
     def get_toolcall(self, response: str) -> List[Function]:
         # Parse DSML tool calls from model output
-        invoke_tag = re.escape(self.invoke_tag)
-        parameter_tag = re.escape(self.parameter_tag)
-        invoke_pattern = re.compile(rf'<{invoke_tag}\s+name="([^"]+)">\s*(.*?)\s*</{invoke_tag}>', re.DOTALL)
+        dsml_token = re.escape(self.dsml_token)
+        invoke_pattern = re.compile(rf'<{dsml_token}invoke\s+name="([^"]+)">\s*(.*?)\s*</{dsml_token}invoke>',
+                                    re.DOTALL)
         param_pattern = re.compile(
-            rf'<{parameter_tag}\s+name="([^"]+)"\s+string="(true|false)">'
-            rf'(.*?)</{parameter_tag}>', re.DOTALL)
+            rf'<{dsml_token}parameter\s+name="([^"]+)"\s+string="(true|false)">'
+            rf'(.*?)</{dsml_token}parameter>', re.DOTALL)
 
         functions = []
         for match in invoke_pattern.finditer(response):
@@ -129,9 +128,8 @@ class DeepSeekV4AgentTemplate(BaseAgentTemplate):
 
         tools_section = TOOLS_TEMPLATE.format(
             tool_schemas='\n'.join(tool_schemas),
+            dsml_token=self.dsml_token,
             calls_tag=self.calls_tag,
-            invoke_tag=self.invoke_tag,
-            parameter_tag=self.parameter_tag,
         )
 
         system = system or ''
@@ -145,18 +143,17 @@ class DeepSeekV4AgentTemplate(BaseAgentTemplate):
             arguments = tool_call['arguments']
             if isinstance(arguments, str):
                 arguments = json.loads(arguments)
-            dsml_args = _encode_arguments_to_dsml(arguments, self.parameter_tag)
-            invocations.append(f'<{self.invoke_tag} name="{name}">\n{dsml_args}\n</{self.invoke_tag}>')
+            dsml_args = _encode_arguments_to_dsml(arguments, self.dsml_token)
+            invocations.append(f'<{self.dsml_token}invoke name="{name}">\n{dsml_args}\n</{self.dsml_token}invoke>')
 
         tool_calls_str = '\n'.join(invocations)
-        return f'<{self.calls_tag}>\n{tool_calls_str}\n</{self.calls_tag}>'
+        return f'<{self.dsml_token}{self.calls_tag}>\n{tool_calls_str}\n</{self.dsml_token}{self.calls_tag}>'
 
 
 class DeepSeekV41AgentTemplate(DeepSeekV4AgentTemplate):
     # V4.1 uses leading-space tag names, including ` calls` instead of `tool_calls`.
-    calls_tag = f'{DSML_TOKEN} calls'
-    invoke_tag = f'{DSML_TOKEN} invoke'
-    parameter_tag = f'{DSML_TOKEN} parameter'
+    dsml_token = f'{DSML_TOKEN} '
+    calls_tag = 'calls'
 
     @staticmethod
     def _split_tool_name(name, namespace=None):
@@ -189,10 +186,9 @@ class DeepSeekV41AgentTemplate(DeepSeekV4AgentTemplate):
 
     @classmethod
     def _parse_tool_call(cls, content):
-        tool_call = super()._parse_tool_call(content)
-        original = cls._parse_json(content)
-        tool_call['name'] = cls._qualified_tool_name(original)
-        return tool_call
+        content = dict(cls._parse_json(content))
+        content['name'] = cls._qualified_tool_name(content)
+        return super()._parse_tool_call(content)
 
     def _format_tools(self, tools, system=None, user_message=None):
         result = super()._format_tools(tools, system, user_message)

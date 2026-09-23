@@ -200,16 +200,11 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         except Exception:
             functions = None
         if functions:
-            tool_calls = []
-            for function in functions:
-                if isinstance(function, NamespacedFunction):
-                    tool_calls.append(
-                        NamespacedToolCall(
-                            function=Function(name=function.name, arguments=function.arguments),
-                            namespace=function.namespace))
-                else:
-                    tool_calls.append(ChatCompletionMessageToolCall(function=function))
-            return tool_calls
+            return [
+                NamespacedToolCall(Function(function.name, function.arguments), function.namespace) if isinstance(
+                    function, NamespacedFunction) else ChatCompletionMessageToolCall(function=function)
+                for function in functions
+            ]
 
     @staticmethod
     def _get_num_tokens(inputs: Dict[str, Any], batch_idx: Optional[int] = None) -> int:

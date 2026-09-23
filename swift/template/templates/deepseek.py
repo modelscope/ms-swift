@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from copy import deepcopy
 from dataclasses import dataclass, field
+from itertools import groupby
 from PIL import Image, ImageOps
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from typing import Any, Dict, List, Literal, Optional
@@ -785,10 +786,8 @@ def prepare_deepseek_v41_inputs(inputs, enable_thinking=True):
                 for call in message.get('tool_calls') or []:
                     function = call.get('function', call)
                     namespace = call.get('namespace') or function.get('namespace')
-                    function['name'] = DeepSeekV41AgentTemplate._qualified_tool_name({
-                        'name': function['name'],
-                        'namespace': namespace,
-                    })
+                    function['name'] = DeepSeekV41AgentTemplate._qualified_tool_name(
+                        dict(function, namespace=namespace))
     for prefix in ['positive_', 'negative_']:
         if inputs.get(prefix + 'messages'):
             for i, messages in enumerate(inputs[prefix + 'messages']):
@@ -868,42 +867,30 @@ class DeepseekV41Template(DeepseekV4Template):
         return self.template_meta.history_thinking_prefix + content.split(thinking_suffix)[-1]
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
-        if self.template_backend == 'swift':
-            # V4.1 observations are user content, including standalone results and
-            # results adjacent to user/system messages. Normalize before the base
-            # encoder checks alternating roles or formats tool response headers.
-            messages = []
-            for message in inputs.messages:
-                if message['role'] == 'tool':
-                    message = {'role': 'user', 'content': self.agent_template._get_tool_responses([message])}
-                if messages and messages[-1]['role'] == message['role'] == 'user':
-                    messages[-1]['content'] += '\n\n' + (message['content'] or '')
-                else:
-                    messages.append(message)
-            inputs.messages = messages
+        if self.template_backend != 'swift':
+            return super()._swift_prepare_inputs(inputs)
+        # V4.1 observations are user content. Normalize them before the base
+        # encoder checks alternating roles or formats tool response headers.
+        messages = []
+        for message in inputs.messages:
+            if message['role'] == 'tool':
+                message = {'role': 'user', 'content': self.agent_template._get_tool_responses([message])}
+            if messages and messages[-1]['role'] == message['role'] == 'user':
+                messages[-1]['content'] += '\n\n' + (message['content'] or '')
+            else:
+                messages.append(message)
+        inputs.messages = messages
         super()._swift_prepare_inputs(inputs)
-        if self.template_backend != 'swift' or not any(m['role'] == 'system' for m in inputs.messages):
-            return
         # Fold adjacent query roles into one raw prompt, preserving their role tokens.
         # The base encoder's raw `tool` prompts remain masked and count as user turns
         # for dropping historical reasoning and choosing the last-round loss.
         messages = []
-        i = 0
-        while i < len(inputs.messages):
-            if inputs.messages[i]['role'] == 'assistant':
-                messages.append(inputs.messages[i])
-                i += 1
-                continue
-            start = i
-            while i < len(inputs.messages) and inputs.messages[i]['role'] != 'assistant':
-                i += 1
-            queries = inputs.messages[start:i]
-            if not any(m['role'] == 'system' for m in queries):
+        for is_assistant, group in groupby(inputs.messages, key=lambda m: m['role'] == 'assistant'):
+            queries = list(group)
+            if is_assistant or not any(m['role'] == 'system' for m in queries):
                 messages.extend(queries)
                 continue
-            prompt = []
-            if messages:
-                prompt.append('<｜end▁of▁sentence｜>')
+            prompt = ['<｜end▁of▁sentence｜>'] if messages else []
             for message in queries:
                 role, content = message['role'], message['content']
                 prefix = '<｜System｜>' if role == 'system' else '<｜User｜>'
