@@ -292,6 +292,20 @@ lora训练：
   - 提示：在日志中打印的"learning rate"为llm的学习率。
 - aligner_lr: 当训练多模态大模型时，该参数指定aligner的学习率，默认为None，等于learning_rate。
 
+**Profiling参数**
+- use_pytorch_profiler: 使用PyTorch内置的profiler，如果你想在tensorboard中查看profiling结果，可以开启该选项。默认为`False`。
+- use_nsys_profiler: 开启nsys profiling。使用该选项时，需要在命令行中使用nsys启动训练脚本。nsys命令行示例为 `nsys profile -s none -t nvtx,cuda -o <path/to/output_file> --force-overwrite true --capture-range=cudaProfilerApi --capture-range-end=stop`。默认为`False`。
+- profile_step_start: 开始profiling的全局step。默认为10。
+- profile_step_end: 结束profiling的全局step。默认为12。
+- pytorch_profiler_collect_shapes: 在pytorch profiler中收集tensor的形状信息。默认为`False`。
+- pytorch_profiler_collect_callstack: 在pytorch profiler中收集调用栈（callstack）。默认为`False`。
+- pytorch_profiler_collect_chakra: 在pytorch profiler中收集chakra trace（执行轨迹）。默认为`False`。
+- profile_ranks: 需要进行profiling的全局rank列表，默认为`[]`，即所有rank都进行profiling。
+- record_memory_history: 开启CUDA内存分配历史记录。开启后，会在profile_ranks指定的rank（默认为所有rank）上记录内存分配事件及调用栈，并在每次日志输出时将内存快照dump为pickle文件；训练发生OOM时会自动额外dump一份快照。默认为`False`。
+- memory_snapshot_path: 指定内存历史快照文件的输出路径，实际输出文件会追加rank后缀（如`snapshot_0.pickle`），OOM快照为`snapshot_oom_rank_0.pickle`。默认为'snapshot.pickle'。
+- record_shapes: 在Nsys profiler的`torch.autograd.profiler.emit_nvtx`中记录tensor的形状。默认为`False`。
+- nvtx_ranges: 开启用于profiling的NVTX range标注。开启后，会插入NVTX标记以对profiler输出中的执行进行分类。默认为`False`。
+
 
 **其他参数**:
 - megatron_extra_kwargs: 透传入Megatron的其他参数（透传入[mcore-bridge](https://github.com/modelscope/mcore-bridge/blob/78cb9be33ebad69a0d940a2bc4e198f866084b70/src/mcore_bridge/config/model_config.py#L116)的 `ModelConfig` 类，继承自 megatron-core 的 TransformerConfig），也可用于覆盖自动读取的`config.json`参数。传入json字符串。默认为None。

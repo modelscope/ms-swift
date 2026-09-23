@@ -76,6 +76,12 @@ class BaseMegatronTrainer(ABC):
 
         self.args = args
         self.template = template
+        # Enable CUDA memory-history recording before model construction so every
+        # tensor allocation is captured in the snapshots. Lazily imported to avoid
+        # a circular import (profiling.py imports MegatronCallback from this module).
+        if args.record_memory_history:
+            from swift.megatron.callbacks.profiling import start_memory_history_recording
+            start_memory_history_recording(args)
         self.prepare_model()
         # Sync template.padding_free after prepare_model(), because _check_padding_free
         # may override args.padding_free for certain models (e.g. DSA attention).
