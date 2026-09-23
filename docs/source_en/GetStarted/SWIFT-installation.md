@@ -154,14 +154,14 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 
 ## Supported Hardware
 
-| Hardware Environment | Remarks                                                |
-| -------------------- | ------------------------------------------------------ |
-| A10/A100/H100        |                                                        |
-| RTX 20/30/40 Series  |                                                        |
-| T4/V100              | Some models may encounter NAN                          |
-| Ascend NPU           | Some models may encounter NAN or unsupported operators |
-| MPS                  |   Refer to [issue 4572](https://github.com/modelscope/ms-swift/issues/4572)                         |
-| CPU                  |                                                        |
+| Hardware | Backend | Reference |
+| --- | --- | --- |
+| NVIDIA GPU | CUDA | — |
+| AMD GPU | ROCm | [AMD GPU Support](../BestPractices/AMD-support.md) |
+| Huawei Ascend NPU | torch_npu | [NPU Support](../BestPractices/NPU-support.md) |
+| Metax | MACA | [Metax Support](../BestPractices/Metax-support.md) |
+| Apple MPS | MPS | [issue](https://github.com/modelscope/ms-swift/issues/4572) |
+| CPU | — | — |
 
 
 ## Running Environment
@@ -169,7 +169,7 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 |              | Range        | Recommended         | Notes                                     |
 |--------------|--------------|---------------------|-------------------------------------------|
 | python       | >=3.10        | 3.12                |                                           |
-| cuda         |              | cuda12.8/13.0    | No need to install if using CPU, NPU, MPS |
+| cuda         |              | cuda12.8/13.0    | No need to install if using CPU, NPU or MPS |
 | torch        | >=2.0        | 2.8.0/2.11.0         |                            |
 | transformers | >=4.33       | 4.57.6/5.12.1              |                          |
 | modelscope   | >=1.23       |                     |                                           |
