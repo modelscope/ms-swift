@@ -318,9 +318,10 @@ class TestMusaHardware(unittest.TestCase):
 
     @unittest.skipUnless(is_torchada_available(), 'requires torchada')
     def test_cuda_visible_devices_limits_musa_devices(self):
+        # torchada mirrors MUSA_VISIBLE_DEVICES back to CUDA_VISIBLE_DEVICES on import.
         code = ('import os, swift, torch; print(torch.musa.device_count(), os.environ["MUSA_VISIBLE_DEVICES"], '
-                '"CUDA_VISIBLE_DEVICES" in os.environ)')
-        self.assertEqual(_run_python(code, env={'CUDA_VISIBLE_DEVICES': '1'}), '1 1 False')
+                'os.environ["CUDA_VISIBLE_DEVICES"])')
+        self.assertEqual(_run_python(code, env={'CUDA_VISIBLE_DEVICES': '1'}), '1 1 1')
 
     @unittest.skipUnless(is_torchada_available(), 'requires torchada')
     def test_single_device_mode_limits_musa_devices(self):
