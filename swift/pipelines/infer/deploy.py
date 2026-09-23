@@ -61,6 +61,22 @@ class SwiftDeploy(SwiftInfer):
         self.app.post('/v1/embeddings')(self.create_embedding)
         self.app.post('/infer/')(self.infer_handler)
 
+    # Endpoints exempt from API key authentication (monitoring / discovery).
+    # All other routes are authenticated by default, so new routes are protected automatically.
+    _AUTH_EXEMPT_PATHS = frozenset({'/health', '/health/', '/ping', '/v1/models'})
+
+    def _install_auth_middleware(self):
+        if not self.args.api_key:
+            return
+
+        @self.app.middleware('http')
+        async def _auth_middleware(request: Request, call_next):
+            if request.url.path not in self._AUTH_EXEMPT_PATHS:
+                error_msg = self._check_api_key(request)
+                if error_msg:
+                    return self.create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+            return await call_next(request)
+
     def __init__(self, args: Optional[Union[List[str], DeployArguments]] = None) -> None:
         super().__init__(args)
 
@@ -68,6 +84,7 @@ class SwiftDeploy(SwiftInfer):
         self.infer_stats = InferStats()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_app()
+        self._install_auth_middleware()
 
     async def _log_stats_hook(self):
         while True:
