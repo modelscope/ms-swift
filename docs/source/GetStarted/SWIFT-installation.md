@@ -157,12 +157,11 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 
 | 硬件 | 参考 |
 | --- | --- |
-| NVIDIA GPU | — |
+| NVIDIA GPU | 默认支持 |
 | AMD GPU | [AMD GPU 支持](../BestPractices/AMD-support.md) |
 | 华为 Ascend NPU | [NPU 支持](../BestPractices/NPU-support.md) |
 | 沐曦 MetaX GPU | [MetaX 支持](../BestPractices/Metax-support.md) |
 | Apple MPS | [issue](https://github.com/modelscope/ms-swift/issues/4572) |
-| CPU | — |
 
 
 ## 运行环境

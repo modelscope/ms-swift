@@ -156,12 +156,11 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 
 | Hardware | Reference |
 | --- | --- |
-| NVIDIA GPU | — |
+| NVIDIA GPU | Supported out of the box |
 | AMD GPU | [AMD GPU Support](../BestPractices/AMD-support.md) |
 | Huawei Ascend NPU | [NPU Support](../BestPractices/NPU-support.md) |
 | MetaX GPU | [MetaX Support](../BestPractices/Metax-support.md) |
 | Apple MPS | [issue](https://github.com/modelscope/ms-swift/issues/4572) |
-| CPU | — |
 
 
 ## Running Environment
