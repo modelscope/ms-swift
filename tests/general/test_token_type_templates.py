@@ -10,6 +10,70 @@ from swift.template import TEMPLATE_MAPPING
 from swift.template.base import Template
 
 
+@pytest.mark.parametrize('strategy', ['left', 'right'])
+@pytest.mark.parametrize('padding_side', ['left', 'right'])
+@pytest.mark.parametrize('training', [False, True])
+def test_paligemma_truncated_batch_forward_and_backward(strategy, padding_side, training):
+    from transformers import PaliGemmaConfig, PaliGemmaForConditionalGeneration
+
+    # A small random model exercises the real attention mask, vision projection
+    # and loss without downloading pretrained weights. Tokenization is stubbed.
+    config = PaliGemmaConfig(
+        vision_config=dict(
+            model_type='siglip_vision_model',
+            hidden_size=16,
+            intermediate_size=32,
+            num_hidden_layers=1,
+            num_attention_heads=2,
+            image_size=2,
+            patch_size=1),
+        text_config=dict(
+            model_type='gemma',
+            vocab_size=100,
+            hidden_size=16,
+            intermediate_size=32,
+            num_hidden_layers=1,
+            num_attention_heads=2,
+            num_key_value_heads=1,
+            head_dim=8,
+            max_position_embeddings=64,
+            pad_token_id=0),
+        image_token_index=90,
+        vocab_size=100,
+        projection_dim=16,
+        hidden_size=16,
+    )
+    model = PaliGemmaForConditionalGeneration(config)
+    model.train(training)
+    meta = TEMPLATE_MAPPING['paligemma']
+    template = meta.template_cls(None, meta, max_length=8, truncation_strategy=strategy, padding_side=padding_side)
+    template.processor = _Processor('paligemma')
+    template.model_info = SimpleNamespace(torch_dtype=torch.float32)
+    template.mode = 'train' if training else 'transformers'
+    template.placeholder_tokens = [90]
+    batch = []
+    for has_image in [True, False]:
+        ids = [10, 11, 90, 90, 90, 90, 12, 13, 14, 15] if has_image else [10, 12, 13]
+        labels = [-100] * 6 + [12, 13, 14, 15] if has_image else [-100, 12, 13]
+        base = {'input_ids': ids, 'labels': labels if training else None, 'loss_scale': None}
+        with patch.object(template, '_preprocess_inputs'), patch.object(Template, '_encode', return_value=base):
+            batch.append(template._encode_truncated(_inputs('image' if has_image else '')))
+    collated = template._data_collator(batch)
+    output = model(**collated, use_cache=False)
+    assert output.logits.shape == (2, 8, 100)
+    assert torch.isfinite(output.logits).all()
+    if training:
+        assert torch.isfinite(output.loss)
+        output.loss.backward()
+        projector_parameters = [
+            parameter for name, parameter in model.named_parameters() if 'multi_modal_projector' in name
+        ]
+        assert projector_parameters
+        for parameter in projector_parameters:
+            assert parameter.grad is not None
+            assert torch.isfinite(parameter.grad).all()
+
+
 class _Tokenizer:
     pad_token_id = 0
     tokens = {

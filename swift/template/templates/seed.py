@@ -199,11 +199,11 @@ class SailVLTemplate(Template):
         input_ids = encoded['input_ids']
         idx_list = findall(input_ids, -100)
         pixel_values = None
+        labels = encoded.get('labels')
         loss_scale = encoded.get('loss_scale', None)
         images = inputs.images
         processor = self.processor
         if images:
-            labels = encoded.get('labels')
             image_inputs = processor.image_processor(images)
             num_patches = image_inputs['num_patches_list']
             pixel_values = image_inputs['pixel_values']
@@ -227,10 +227,10 @@ class SailVLTemplate(Template):
         embedding = model.language_model.get_input_embeddings()
         device = embedding.weight.device
         input_ids = inputs['input_ids']
+        inputs_embeds = embedding(input_ids).to(device=device)
         pixel_values = inputs.get('pixel_values')
         if pixel_values is not None:
             vit_embeds = model.extract_feature(pixel_values)
-            inputs_embeds = embedding(input_ids)
             B, N, C = inputs_embeds.shape
             inputs_embeds = inputs_embeds.reshape(B * N, C)
 
@@ -242,7 +242,6 @@ class SailVLTemplate(Template):
 
             inputs_embeds = inputs_embeds.reshape(B, N, C)
         elif is_deepspeed_enabled():
-            inputs_embeds = embedding(input_ids).to(device=device)
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
             vit_embeds = model.extract_feature(dummy_pixel_values).to(device=device)
             inputs_embeds = inputs_embeds + vit_embeds.mean() * 0.
