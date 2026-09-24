@@ -24,7 +24,7 @@ from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
                          swanlab_get_run, to_device)
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import get_gather_if_zero3_context, identity_data_collator, profiling_decorator
+from .utils import _ForwardRedirection, get_gather_if_zero3_context, identity_data_collator, profiling_decorator
 
 try:
     from liger_kernel.chunked_loss import LigerFusedLinearJSDLoss
@@ -102,7 +102,15 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             is_training=True,
         )
 
-    def _compute_jsd_loss(self, student_logits, teacher_output: TeacherOutput, labels):
+    def get_batch_samples(self, *args, **kwargs):
+        batch_samples, _ = super().get_batch_samples(*args, **kwargs)
+        # Delay rollout until training_step, after Trainer restores checkpoint RNG.
+        # The shared window lets _prepare_inputs count every response before backward.
+        window = {'raw_batches': batch_samples}
+        # Keep Trainer's usual micro-batch scaling; the token count travels in inputs.
+        return [{'_gkd_window': window, '_gkd_index': i} for i in range(len(batch_samples))], None
+
+    def _compute_jsd_loss(self, student_logits, teacher_output: TeacherOutput, labels, num_gkd_tokens=None):
         """Compute JSD loss. teacher_output.labels is always set (equals student labels when non-OPSD)."""
         shifted_labels = torch.roll(labels, shifts=-1, dims=1)
         teacher_output.labels = torch.roll(teacher_output.labels, shifts=-1, dims=1)
@@ -111,10 +119,22 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         total, num_valid = gkd_loss(student_logits, teacher_output, shifted_labels, self.beta, self.temperature)
         if num_valid == 0:
             return total * 0
-        return total / num_valid
+        return total / (num_valid if num_gkd_tokens is None else num_gkd_tokens)
 
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        if self.use_liger_gkd_loss:
+            # Run the fused loss through the distributed wrapper so DDP prepares
+            # its gradient reduction, including parameters used outside the backbone.
+            unwrapped_model = self.accelerator.unwrap_model(model)
+            return _ForwardRedirection()(model, unwrapped_model,
+                                         lambda *_, **__: self._compute_loss(unwrapped_model, inputs, return_outputs),
+                                         **inputs['model_inputs'])
+        return self._compute_loss(model, inputs, return_outputs)
+
+    def _compute_loss(self, model, inputs, return_outputs=False):
+        num_gkd_tokens = inputs.get('num_gkd_tokens')
+        accumulation_steps = getattr(self, 'current_gradient_accumulation_steps', self.args.gradient_accumulation_steps)
         model_inputs = inputs['model_inputs']
         gkd_batch: GKDBatch = inputs['gkd_batch']
         data_source = gkd_batch.data_source
@@ -200,6 +220,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                         student_bias=getattr(student_head, 'bias', None),
                         teacher_bias=getattr(teacher_head, 'bias', None),
                     )
+                    if num_gkd_tokens is not None:
+                        # Undo Liger's local token mean before applying the window denominator.
+                        num_valid = (true_labels != -100).sum()
+                        loss = loss * num_valid * accumulation_steps / num_gkd_tokens
                 # Release hidden states after loss computation
                 del student_hidden, teacher_hidden, true_labels
             outputs_student = None
@@ -239,7 +263,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                         outputs_teacher = self.teacher_model(**t_fwd)
                 teacher_out = TeacherOutput(full_logits=outputs_teacher.logits, labels=teacher_labels)
 
-            loss = self._compute_jsd_loss(outputs_student.logits, teacher_out, model_inputs['labels'])
+            loss = self._compute_jsd_loss(outputs_student.logits, teacher_out, model_inputs['labels'], num_gkd_tokens)
+            if num_gkd_tokens is not None:
+                # Trainer divides by the actual number of micro-batches in this window.
+                loss = loss * accumulation_steps
 
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
@@ -346,6 +373,28 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     @profiling_decorator
     def _prepare_inputs(self, inputs: DataType) -> Dict[str, torch.Tensor]:
+        if isinstance(inputs, dict) and '_gkd_window' in inputs:
+            window = inputs['_gkd_window']
+            if 'batches' not in window:
+                batches = [self._prepare_inputs(batch) for batch in window.pop('raw_batches')]
+                num_tokens = 0
+                for batch in batches:
+                    if self.use_teacher_api:
+                        labels = torch.roll(batch['teacher_model_inputs']['labels'], shifts=-1, dims=1)
+                        covered = ~torch.isinf(batch['gkd_batch'].teacher_topk_logprobs).all(dim=-1)
+                        num_tokens += ((labels != -100) & covered).sum()
+                    else:
+                        labels = batch['model_inputs']['labels']
+                        if self.use_liger_gkd_loss:
+                            labels = labels[:, 1:]
+                        num_tokens += (labels != -100).sum()
+                # DDP averages gradients; use the mean window count per rank.
+                count = self.accelerator.gather(num_tokens.to(self.accelerator.device)).sum().clamp_min(1)
+                window['num_tokens'] = count / self.accelerator.num_processes
+                window['batches'] = batches
+            batch = window['batches'][inputs['_gkd_index']]
+            batch['num_gkd_tokens'] = window['num_tokens']
+            return batch
         mode = 'train' if self.model.training else 'eval'
         steps_per_generation = self.args.steps_per_generation
         if mode == 'train':
