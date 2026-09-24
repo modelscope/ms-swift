@@ -54,9 +54,9 @@ from swift.sequence_parallel import SequenceParallelDispatcher, SequenceParallel
 from swift.template import Template, update_generation_config_eos_token
 from swift.tuner_plugin import tuners_map
 from swift.tuners import SwiftModel
-from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device, get_logger,
-                         get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker,
-                         update_last_checkpoint_symlink)
+from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_cu_seqlens_from_position_ids,
+                         get_current_device, get_logger, get_packed_seq_params, is_dist, is_mp, is_mp_ddp,
+                         ms_logger_context, seed_worker, update_last_checkpoint_symlink)
 from .arguments import TrainingArguments
 from .utils import (accepts_parameter, can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function,
                     get_resume_dir, is_instance_of_ms_model, patch_modelscope_hub_timeout, replace_index_file)
@@ -1194,6 +1194,8 @@ class SwiftMixin:
                 if sequence_parallel.rp_world_size > 1:
                     position_ids = sequence_parallel.real_position_ids
                     position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
+                    if cu_seqlens is not None:
+                        cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
                 else:
                     position_ids = None
                 preds_output = sequence_parallel.gather(preds, dim=1, position_ids=position_ids)
