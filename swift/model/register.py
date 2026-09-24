@@ -245,6 +245,10 @@ class ModelLoader(BaseModelLoader):
         return config
 
     def get_config(self, model_dir: str) -> PretrainedConfig:
+        if self.default_trust_remote_code:
+            logger.warning(f'Loading config from {model_dir!r} with trust_remote_code=True. '
+                           'Custom Python code from the model repository will be executed. '
+                           'Only use models from sources you trust.')
         auto_config_cls = self.auto_config_cls or AutoConfig
         return auto_config_cls.from_pretrained(model_dir, trust_remote_code=self.default_trust_remote_code)
 
@@ -257,6 +261,10 @@ class ModelLoader(BaseModelLoader):
         return tokenizer
 
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        if self.default_trust_remote_code:
+            logger.warning(f'Loading tokenizer/processor from {model_dir!r} with trust_remote_code=True. '
+                           'Custom Python code from the model repository will be executed. '
+                           'Only use models from sources you trust.')
         auto_tokenizer_cls = self.auto_tokenizer_cls
         if auto_tokenizer_cls is None:
             if os.path.exists(os.path.join(model_dir, 'preprocessor_config.json')) or os.path.exists(

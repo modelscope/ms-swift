@@ -615,7 +615,14 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         target_device = 'cpu' if self.args.offload_bridge else None
 
         with profiling_context(self, 'export_weights'):
-            weight_iterator = self.bridge.export_weights(self.unwrapped_models, target_device=target_device)
+            # skip_unsupported_export: RL weight sync skips weights whose Megatron->HF export is not
+            # implemented and that stay fixed in the rollout engine (e.g. frozen DeepSeek-V4.1 Engram
+            # tables). No-op for models without such weights. Guard with signature inspection so an
+            # older bridge whose export_weights predates this kwarg does not raise TypeError.
+            export_kwargs = {'target_device': target_device}
+            if 'skip_unsupported_export' in inspect.signature(self.bridge.export_weights).parameters:
+                export_kwargs['skip_unsupported_export'] = True
+            weight_iterator = self.bridge.export_weights(self.unwrapped_models, **export_kwargs)
 
         if self.rollout_enable_lora:
             vllm_param_names = self._get_vllm_param_names_for_mapping()
@@ -708,15 +715,18 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         """
         samples = self._preprocess_inputs(samples)
 
-        # Wake up engine if sleeping (colocate mode)
-        if self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping:
-            wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
-            kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+        needs_weight_sync = self._step != self._last_loaded_step or self.args.sleep_level == 2
+        colocate_sleeping = (
+            self.vllm_mode == 'colocate' and self.args.sleep_level > 0 and self.engine.inner_model_executor.is_sleeping)
+        wake_up_supports_tags = (
+            colocate_sleeping and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters)
+
+        if colocate_sleeping and needs_weight_sync:
+            kwargs = {'tags': ['weights']} if wake_up_supports_tags else {}
             aggressive_empty_cache()
             self.engine.engine.wake_up(**kwargs)
 
-        # Load model weights if needed
-        if self._step != self._last_loaded_step or self.args.sleep_level == 2:
+        if needs_weight_sync:
             self._move_model_to_vllm()
             self._last_loaded_step = self._step
 
@@ -724,11 +734,14 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         with context():
             rollout_failed = False
             try:
-                if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
-                        and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
+                if colocate_sleeping and self.engine.inner_model_executor.is_sleeping:
                     aggressive_empty_cache()
                     set_expandable_segments(False)
-                    self.engine.engine.wake_up(tags=['kv_cache'])
+                    tags = ['kv_cache']
+                    if wake_up_supports_tags and not needs_weight_sync:
+                        tags.insert(0, 'weights')
+                    kwargs = {'tags': tags} if wake_up_supports_tags else {}
+                    self.engine.engine.wake_up(**kwargs)
 
                 multi_turn_scheduler = getattr(self, 'multi_turn_scheduler', None)
                 colocate_multi_turn = (

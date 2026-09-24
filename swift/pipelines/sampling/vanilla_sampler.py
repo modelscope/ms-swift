@@ -8,7 +8,7 @@ from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.ray_utils import RayHelper
 from swift.utils import get_logger
 from .base import Sampler
-from .utils import get_messages_md5, get_reward
+from .utils import get_messages_md5, get_reward, normalize_rewards
 
 logger = get_logger()
 
@@ -79,12 +79,20 @@ class VanillaSampler(Sampler):
         return caches
 
     @staticmethod
-    def convert_data_to_rows(data):
+    def convert_data_to_rows(data, system=None):
         rows = []
         key = list(data.keys())[0]
         data_len = len(data[key])
         for idx in range(data_len):
             row = {key: data[key][idx] for key in data}
+            if system:
+                # Share the effective context across cache lookup, generation, scoring and output.
+                messages = deepcopy(row['messages'])
+                if messages[0]['role'] == 'system':
+                    messages[0]['content'] = system
+                else:
+                    messages.insert(0, {'role': 'system', 'content': system})
+                row['messages'] = messages
             if row.get('images') and 'bytes' in row['images'][0]:
                 row['images'] = [img['path'] for img in row['images']]
             rows.append(row)
@@ -109,7 +117,7 @@ class VanillaSampler(Sampler):
         resp_all = []
         infer_requests = []
         sent = 0
-        rows = self.convert_data_to_rows(data)
+        rows = self.convert_data_to_rows(data, system=self.args.system)
         for idx, row in enumerate(rows):
             row = deepcopy(row)
             messages = row['messages']
@@ -118,11 +126,6 @@ class VanillaSampler(Sampler):
                 choices = self.caches[uuid]['choices']
                 if len(choices) == self.args.num_return_sequences:
                     continue
-            if self.args.system:
-                if messages[0]['role'] == 'system':
-                    messages[0]['content'] = self.args.system
-                else:
-                    messages.insert(0, {'role': 'system', 'content': self.args.system})
             if messages[-1]['role'] == 'assistant':
                 messages = messages[:-1]
 
@@ -198,11 +201,13 @@ class VanillaSampler(Sampler):
             infer_requests.append(_resps)
             if self.args.orm_model is not None:
                 orm_score, _orm_mask = self.get_orm_score(infer_requests, ground_truth)
+                orm_score = normalize_rewards(orm_score)
             else:
                 orm_score = np.array([1.0] * len(infer_requests))
                 _orm_mask = np.array([True] * len(infer_requests))
             if self.args.prm_model is not None:
                 prm_score, _prm_mask = self.get_prm_score(infer_requests, ground_truth)
+                prm_score = normalize_rewards(prm_score)
             else:
                 prm_score = np.array([1.0] * len(infer_requests))
                 _prm_mask = np.array([True] * len(infer_requests))

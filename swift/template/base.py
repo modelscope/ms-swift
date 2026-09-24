@@ -747,7 +747,7 @@ class Template(ProcessorMixin):
             keys.update(r.keys())
             length.append(r['length'])
         for key in keys:
-            if key == 'position_ids' and is_3d_position_ids or key in {'mm_token_type_ids'}:
+            if key == 'position_ids' and is_3d_position_ids or key in {'mm_token_type_ids', 'image_token_types'}:
                 packed[key] = torch.cat([x.get(key) for x in row], dim=-1)
             elif key in {'input_ids', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'}:
                 packed[key] = sum((x.get(key) or [] for x in row), start=[])
@@ -1499,10 +1499,15 @@ class Template(ProcessorMixin):
             encoded['loss_scale'] = loss_scale
         token_type_ids = encoded.get('token_type_ids')
         if token_type_ids is not None:
-            encoded['token_type_ids'] = torch.tensor(token_type_ids)[protected].tolist()
-        mm_token_type_ids = encoded.get('mm_token_type_ids')
-        if mm_token_type_ids is not None:
-            encoded['mm_token_type_ids'] = mm_token_type_ids[protected]
+            if isinstance(token_type_ids, torch.Tensor):
+                # ERNIE-VL keeps a leading batch dimension: [1, seq_len].
+                encoded['token_type_ids'] = token_type_ids[..., protected]
+            else:
+                encoded['token_type_ids'] = torch.tensor(token_type_ids)[protected].tolist()
+        for key in ('mm_token_type_ids', 'image_token_types'):
+            token_types = encoded.get(key)
+            if token_types is not None:
+                encoded[key] = token_types[protected]
         return input_ids, labels
 
     @staticmethod
@@ -1638,6 +1643,8 @@ class Template(ProcessorMixin):
                 encoded['length'] += padding_len
             if encoded.get('mm_token_type_ids') is not None:
                 encoded['mm_token_type_ids'] = F.pad(encoded['mm_token_type_ids'], (0, padding_len), value=0)
+            if encoded.get('image_token_types') is not None:
+                encoded['image_token_types'] = F.pad(encoded['image_token_types'], (0, padding_len), value=-1)
 
     def debug_logger(self, inputs):
         if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
@@ -1692,7 +1699,8 @@ class Template(ProcessorMixin):
         for k, v in old_kwargs.items():
             if k in {
                     'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep',
-                    'max_length_q', 'max_length_k', 'cu_seq_lens_q', 'cu_seq_lens_k', 'mm_token_type_ids'
+                    'output_router_logits', 'max_length_q', 'max_length_k', 'cu_seq_lens_q', 'cu_seq_lens_k',
+                    'mm_token_type_ids', 'image_token_types'
             } and k not in kwargs:
                 kwargs[k] = v
         if 'inputs_embeds' in kwargs:
@@ -1971,7 +1979,9 @@ class Template(ProcessorMixin):
                 encoded['position_ids'] = list(range(len(val)))
 
         res = {}
-        gather_keys = ['labels', 'loss_scale', 'position_ids', 'token_type_ids', 'mm_token_type_ids']
+        gather_keys = [
+            'labels', 'loss_scale', 'position_ids', 'token_type_ids', 'mm_token_type_ids', 'image_token_types'
+        ]
         if self.padding_free:
             assert len(batch) == 1, f'batch: {batch}'
             for k in ['input_ids', 'channel'] + gather_keys:
@@ -2001,7 +2011,7 @@ class Template(ProcessorMixin):
             'attention_mask',
             'attention_mask_2d',
         ] + gather_keys
-        pad_values = [self.tokenizer.pad_token_id, 0., 0, 0] + [-100, 0., 0, 0, 0]
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, 0] + [-100, 0., 0, 0, 0, -1]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in pad_keys:

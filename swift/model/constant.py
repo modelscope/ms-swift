@@ -211,6 +211,7 @@ class MLLMModelType:
     llava_onevision1_5 = 'llava_onevision1_5'
     llava_onevision2 = 'llava_onevision2'
 
+    deepseek_v41 = 'deepseek_v41'
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
@@ -276,6 +277,7 @@ class MLLMModelType:
     muse_glimmer = 'muse_glimmer'
 
     jina_reranker_m0 = 'jina_reranker_m0'
+    monkeyocrv2 = 'monkeyocrv2'
 
 
 class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):

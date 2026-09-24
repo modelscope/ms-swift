@@ -8,14 +8,14 @@ import torch.nn.functional as F
 from dataclasses import dataclass, field
 from PIL import Image, ImageOps
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from swift.utils import get_env_args, get_logger
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Prompt, findall
+from ..utils import Context, Prompt, findall
 
 logger = get_logger()
 
@@ -734,6 +734,131 @@ register_template(
         agent_template='deepseek_v4',
         is_thinking=True,
         template_cls=DeepseekV4Template,
+        thinking_prefix='<think>',
+        non_thinking_prefix='</think>',
+        history_thinking_prefix='</think>'))
+
+
+class DeepseekV41Template(DeepseekV4Template):
+    """DeepSeek-V4.1 image-span expansion and official ViT patch preprocessing."""
+
+    IMAGE_PLACEHOLDER = '<｜deepseek_image｜>'
+    TEXT = -1
+    IMAGE_START = 0
+    IMAGE = 1
+    IMAGE_NEW_LINE = 2
+    IMAGE_END = 3
+    placeholder_tokens = [IMAGE_PLACEHOLDER]
+    # `image_token_types` is a per-token int64 tensor, so it concatenates with the packed row
+    # (see Template.packing_row / gather_keys) instead of needing a batch dimension.
+    support_padding_free = True
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type != 'image':
+            raise ValueError(f'DeepSeek-V4.1 only supports images, got {media_type!r}.')
+        return [self.IMAGE_PLACEHOLDER]
+
+    @staticmethod
+    def _num_image_tokens(n_llm_h: int, n_llm_w: int) -> int:
+        return n_llm_h * (n_llm_w + 1) + 2
+
+    @classmethod
+    def _safe_resize(cls, height: int, width: int, best_height: int, best_width: int, patch_size: int,
+                     downsample_ratio: int, max_image_tokens: int):
+        n_llm_h = math.ceil((best_height // patch_size) / downsample_ratio)
+        n_llm_w = math.ceil((best_width // patch_size) / downsample_ratio)
+        if cls._num_image_tokens(n_llm_h, n_llm_w) <= max_image_tokens:
+            return n_llm_h, n_llm_w, best_height, best_width
+
+        aspect_ratio = height / width
+        max_w = math.sqrt((max_image_tokens - 2) / aspect_ratio + 0.25) - 0.5
+        max_h = max_w * aspect_ratio
+        cell_size = patch_size * downsample_ratio
+        if max_w < 1.0:
+            best_height, best_width = (max_image_tokens - 2) // 2 * cell_size, cell_size
+        elif max_h < 1.0:
+            best_height, best_width = cell_size, (max_image_tokens - 3) * cell_size
+        else:
+            scale = min(math.floor(max_w) * cell_size / width, math.floor(max_h) * cell_size / height)
+            best_height = math.floor(height * scale / patch_size) * patch_size
+            best_width = math.floor(width * scale / patch_size) * patch_size
+        n_llm_h = math.ceil((best_height // patch_size) / downsample_ratio)
+        n_llm_w = math.ceil((best_width // patch_size) / downsample_ratio)
+        if cls._num_image_tokens(n_llm_h, n_llm_w) > max_image_tokens:
+            raise ValueError('Failed to fit the DeepSeek-V4.1 image span into max_image_tokens.')
+        return n_llm_h, n_llm_w, best_height, best_width
+
+    @classmethod
+    def _process_image(cls, image: Image.Image, vision_config):
+        patch_size = vision_config.patch_size
+        downsample_ratio = vision_config.downsample_ratio
+        max_image_tokens = vision_config.max_image_tokens
+        width, height = image.size
+        max_wh_ratio = vision_config.max_wh_ratio
+        if max_wh_ratio is not None and width > height * max_wh_ratio:
+            width = height * max_wh_ratio
+        min_pixels = vision_config.min_pixels
+        if 0 < width * height < min_pixels:
+            scale = math.sqrt(min_pixels / (width * height))
+            width, height = int(width * scale), int(height * scale)
+        best_width = math.ceil(width / patch_size) * patch_size
+        best_height = math.ceil(height / patch_size) * patch_size
+        n_llm_h, n_llm_w, best_height, best_width = cls._safe_resize(height, width, best_height, best_width, patch_size,
+                                                                     downsample_ratio, max_image_tokens)
+        n_vit_h, n_vit_w = best_height // patch_size, best_width // patch_size
+        image = image.convert('RGB')
+        if max_wh_ratio is not None and image.width >= max_wh_ratio * image.height:
+            image = image.resize((best_width, best_height))
+        else:
+            image = ImageOps.pad(image, (best_width, best_height), color=(127, 127, 127))
+        pixels = torch.from_numpy(np.asarray(image, dtype=np.float32)).permute(2, 0, 1) / 255
+        pixels = ((pixels - 0.5) / 0.5).to(torch.bfloat16)
+        patches = pixels.reshape(3, n_vit_h, patch_size, n_vit_w, patch_size)
+        patches = patches.permute(1, 3, 0, 2, 4).reshape(n_vit_h * n_vit_w, 3, patch_size, patch_size)
+        types = [cls.IMAGE_START]
+        types += ([cls.IMAGE] * n_llm_w + [cls.IMAGE_NEW_LINE]) * n_llm_h
+        types.append(cls.IMAGE_END)
+        return patches, (1, n_vit_h, n_vit_w), torch.tensor(types, dtype=torch.int64)
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale')
+        image_token_id = self.config.image_token_id
+        image_indices = findall(input_ids, image_token_id)
+        images = inputs.images or []
+        if len(image_indices) != len(images):
+            raise ValueError(
+                f'Found {len(image_indices)} DeepSeek-V4.1 image placeholders but got {len(images)} images.')
+
+        processed = [self._process_image(image, self.config.vision_config) for image in images]
+        image_token_types = [self.TEXT] * len(input_ids)
+        added_tokens = 0
+        for index, (_, _, types) in zip(image_indices, processed):
+            index += added_tokens
+            image_token_types[index:index + 1] = types.tolist()
+            added_tokens += types.numel() - 1
+
+        def _get_image_tokens(index):
+            return [image_token_id] * processed[index][2].numel()
+
+        encoded['input_ids'], encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
+            input_ids, labels, loss_scale, image_indices, _get_image_tokens)
+        encoded['image_token_types'] = torch.tensor(image_token_types, dtype=torch.int64)
+        if processed:
+            encoded['pixel_values'] = torch.cat([item[0] for item in processed])
+            encoded['image_grid_thw'] = torch.tensor([item[1] for item in processed], dtype=torch.int64)
+        return encoded
+
+
+register_template(
+    DeepseekV2_5TemplateMeta(
+        MLLMTemplateType.deepseek_v41,
+        agent_template='deepseek_v4',
+        is_thinking=True,
+        template_cls=DeepseekV41Template,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
         history_thinking_prefix='</think>'))

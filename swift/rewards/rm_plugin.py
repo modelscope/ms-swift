@@ -4,11 +4,12 @@
 # including both discriminative reward models (with value heads) and
 # generative reward models (LLM-as-judge style).
 
+import math
 import re
 import textwrap
 import torch
 from copy import deepcopy
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from swift.infer_engine import ChatCompletionResponse, RequestConfig, TransformersEngine
 from swift.template import Template
@@ -119,7 +120,7 @@ class GenRMPlugin(DefaultRMPlugin):
         return rm_inputs
 
     @staticmethod
-    def extract_reward(model_output: str) -> float:
+    def extract_reward(model_output: str) -> Optional[float]:
         """
         Extract the reward score from the model's output.
 
@@ -127,17 +128,17 @@ class GenRMPlugin(DefaultRMPlugin):
             model_output (str): The model's output string, expected to follow the format "Reward: {reward}".
 
         Returns:
-            float: The extracted reward score.
-
-        Raises:
-            ValueError: If the reward score cannot be extracted or the format is incorrect.
+            The extracted finite score, or None if the score is invalid.
         """
-        match = re.search(r'Reward:\s*([0-1](?:\.\d+)?)', model_output)
+        # Parse the whole number instead of accepting a prefix of a multi-digit or exponent score.
+        match = re.search(r'Reward:\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(?![0-9A-Za-z_]|\.\d)',
+                          model_output)
         if match:
-            return float(match.group(1))
-        else:
-            logger.warning("Unable to extract reward score from the model's output, set reward to 0")
-            return None
+            reward = float(match.group(1))
+            if math.isfinite(reward):
+                return reward
+        logger.warning("Unable to extract a finite reward score from the model's output")
+        return None
 
     @staticmethod
     def messages_to_query(messages):

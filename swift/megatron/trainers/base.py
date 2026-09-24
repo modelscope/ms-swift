@@ -543,7 +543,8 @@ class BaseMegatronTrainer(ABC):
         if not os.path.exists(common_path):
             return iteration
 
-        state_dict = torch.load(common_path)
+        # Ensure there are no insecure deserialization vulnerabilities when PyTorch is version 2.6 or earlier.
+        state_dict = torch.load(common_path, weights_only=True)
         if 'args' not in state_dict:
             return iteration
         self.args.consumed_train_samples = getattr(state_dict['args'], 'consumed_train_samples', 0)

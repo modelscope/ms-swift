@@ -97,7 +97,12 @@ class SwiftRLHF(SwiftSft):
                 task_type=task_type,
                 num_labels=num_labels)
 
-        adapters = args.adapters if key == 'ref' else args.reward_adapters
+        if key == 'ref':
+            adapters = args.adapters
+        elif key == 'teacher':
+            adapters = args.teacher_adapters
+        else:
+            adapters = args.reward_adapters
         model = prepare_adapter(args, model, adapters)
         if origin_key in {'ref', 'reward', 'teacher'}:
             if self.args.sequence_parallel_size > 1:

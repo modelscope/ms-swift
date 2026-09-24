@@ -497,11 +497,11 @@ def _video_get_metadata_local(local_path: str, num_frames: int = -1) -> dict:
     if num_frames <= 0 or num_frames > total_frames:
         num_frames = total_frames
     return {
-        'total_num_frames': num_frames,
-        'fps': duration / num_frames if num_frames else fps,
+        'total_num_frames': total_frames,
+        'fps': fps,
         'duration': duration,
         'video_backend': 'opencv',
-        'frames_indices': list(range(num_frames)),
+        'frames_indices': np.linspace(0, total_frames - 1, num_frames, dtype=int).tolist(),
         'do_sample_frames': num_frames == total_frames,
     }
 
