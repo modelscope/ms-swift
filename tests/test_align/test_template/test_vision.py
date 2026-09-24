@@ -372,7 +372,7 @@ def test_llava_onevision_hf():
 
 
 def test_xcomposer2_5():
-    engine = TransformersEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base', torch_dtype=torch.float16)
+    engine = TransformersEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base', torch.float16)
     # engine = TransformersEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b')
     response = _infer_model(engine, system='')
     engine.template.template_backend = 'jinja'

@@ -55,7 +55,7 @@ def test_internvl2_5_mpo():
 
 
 def test_xcomposer2_5():
-    engine = TransformersEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base', torch_dtype=torch.float16)
+    engine = TransformersEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base', torch.float16)
     messages = [{'role': 'user', 'content': '<video>Describe the video'}]
     messages_with_system = messages.copy()
     messages_with_system.insert(0, {'role': 'system', 'content': ''})
