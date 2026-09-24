@@ -7,6 +7,7 @@ import shutil
 import torch
 import torch.nn.functional as F
 import transformers
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import partial
 from packaging import version
@@ -369,7 +370,7 @@ class Qwen2VLTemplate(Template):
                     # indices so the injected timestamps start from the clipped window.
                     video_tensor, video_metadata = video
                     frames_indices = video_metadata.get('frames_indices') if isinstance(video_metadata,
-                                                                                        dict) else None
+                                                                                        Mapping) else None
                     if frames_indices is not None and len(frames_indices) > 0:
                         frames_indices = [int(i) for i in frames_indices]
                         base = frames_indices[0]
