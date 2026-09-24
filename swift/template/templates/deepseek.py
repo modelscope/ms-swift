@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass, field
-from itertools import groupby
 from PIL import Image, ImageOps
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from typing import Any, Dict, List, Literal, Optional
@@ -740,7 +739,7 @@ register_template(
         history_thinking_prefix='</think>'))
 
 
-class DeepseekV41Template(DeepseekV4Template):
+class DeepseekV41Template(DeepseekV3_1Template):
     """DeepSeek-V4.1 prompt protocol and official ViT patch preprocessing."""
 
     IMAGE_PLACEHOLDER = '<｜deepseek_image｜>'
@@ -755,7 +754,7 @@ class DeepseekV41Template(DeepseekV4Template):
     support_padding_free = True
 
     def init_env_args(self):
-        Template.init_env_args(self)
+        super().init_env_args()
         effort = get_env_args('reasoning_effort', str, None)
         if effort is not None and effort.isdecimal():
             effort = int(effort)
@@ -771,11 +770,14 @@ class DeepseekV41Template(DeepseekV4Template):
             raise ValueError('DeepSeek-V4.1 reasoning_effort must be an integer in [1, 100] or low/high/max.')
         return reasoning_effort
 
-    def _get_enable_thinking(self, inputs=None):
-        return Template._get_enable_thinking(self, inputs)
+    def _get_reasoning_effort(self, inputs=None):
+        effort = None if inputs is None else inputs.chat_template_kwargs.get('reasoning_effort')
+        if effort is None:
+            effort = self.reasoning_effort
+        return self._check_reasoning_effort(effort)
 
     def _get_system(self, inputs):
-        system = Template._get_system(self, inputs)
+        system = super()._get_system(inputs)
         effort = self._get_reasoning_effort(inputs)
         if self._get_enable_thinking(inputs):
             effort = 75 if effort is None else effort
@@ -803,29 +805,45 @@ class DeepseekV41Template(DeepseekV4Template):
     def _remove_thinking_content(self, content: str, thinking_suffix='</think>') -> str:
         return self.template_meta.history_thinking_prefix + content.split(thinking_suffix)[-1]
 
+    def _remove_history_thinking(self, inputs) -> None:
+        # The official V4.1 encoder retains reasoning whenever tools are defined.
+        if inputs.tools:
+            return
+        super()._remove_history_thinking(inputs)
+
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         super()._swift_prepare_inputs(inputs)
         if self.template_backend != 'swift':
             return
-        # Fold adjacent query roles into one raw prompt, preserving their role tokens.
-        # Raw tool prompts stay masked and count as queries for last-round loss.
-        messages = []
-        for is_assistant, group in groupby(inputs.messages, key=lambda m: m['role'] == 'assistant'):
-            queries = list(group)
-            if is_assistant or not any(m['role'] == 'system' for m in queries):
-                messages.extend(queries)
+        messages = inputs.messages
+        start = 0
+        while start < len(messages):
+            # Find the next assistant; system messages may occur in any round.
+            end = start
+            while end < len(messages) and messages[end]['role'] != 'assistant':
+                end += 1
+            queries = messages[start:end]
+            if not any(message['role'] == 'system' for message in queries):
+                start = end + 1
                 continue
-            prompt = ['<｜end▁of▁sentence｜>'] if messages and queries[0]['role'] != 'tool' else []
+
+            prompt = []
+            if start > 0 and queries[0]['role'] != 'tool':
+                prompt.append('<｜end▁of▁sentence｜>')
             for message in queries:
                 role, content = message['role'], message['content']
                 if role == 'tool':
-                    prompt.extend(content[:-1] if content[-1:] == ['<｜Assistant｜>'] else content)
+                    # The merged query gets one assistant header at the end.
+                    if content[-1:] == ['<｜Assistant｜>']:
+                        content = content[:-1]
+                    prompt.extend(content)
                 else:
                     prefix = '<｜System｜>' if role == 'system' else '<｜User｜>'
                     prompt.append(prefix + (content or ''))
             prompt.append('<｜Assistant｜>')
-            messages.append({'role': 'tool', 'content': prompt})
-        inputs.messages = messages
+            # A raw tool prompt keeps all query tokens masked during training.
+            messages[start:end] = [{'role': 'tool', 'content': prompt}]
+            start += 2  # Skip the merged query and its assistant response.
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
