@@ -9,6 +9,10 @@ _SNIPPET = ('from swift.utils.logger import get_logger, ms_logger\n'
 
 def _resolve_levels(log_level):
     env = dict(os.environ)
+    # swift.utils.logger only applies LOG_LEVEL on the local master, and reads LOCAL_RANK with a
+    # bare int(). Drop it so this test measures the level resolution instead of the rank of the
+    # process that happens to run it (e.g. inside a torchrun-launched test suite).
+    env.pop('LOCAL_RANK', None)
     if log_level is None:
         env.pop('LOG_LEVEL', None)
     else:
