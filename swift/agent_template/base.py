@@ -166,6 +166,13 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
     - `get_toolcall`: Extract tool calls from agent responses
     """
 
+    def _format_tool_user_followup(self, tool_messages, user_messages) -> Optional['Prompt']:
+        """Render tool results and subsequent user turns, including the assistant prefix.
+
+        Return None when this agent's native turn boundaries are not supported.
+        """
+        return None
+
     def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
         """Hook to prepend a separator before tool_call content based on the preceding message.
 

@@ -1259,7 +1259,8 @@ class Template(ProcessorMixin):
         message = messages[i]
         if not (i >= start_idx and message['role'] == 'assistant'):
             return False
-        if self.non_thinking_prefix_only_after_user and not (i > 0 and messages[i - 1]['role'] == 'user'):
+        if self.non_thinking_prefix_only_after_user and not (i > 0 and (messages[i - 1]['role'] == 'user'
+                                                                        or messages[i - 1].get('_tool_user_followup'))):
             return False
         return True
 
@@ -1339,10 +1340,33 @@ class Template(ProcessorMixin):
                 i_start = i
                 while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
                     i += 1
-                pre_message['content'], tool_content = self.agent_template._format_tool_responses(
-                    pre_content, messages[i_start:i + 1])
-                # where tool_content is a List.
-                messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
+                agent = self.agent_template
+                agent.template_meta = self.template_meta  # Also needed for already-serialized tool calls.
+                pre_message['content'], tool_content = agent._format_tool_responses(pre_content,
+                                                                                    messages[i_start:i + 1])
+                query_message = {'role': 'tool', 'content': tool_content}
+                user_end = i + 1
+                while (user_end < len(messages) and messages[user_end]['role'] == 'user'
+                       and isinstance(messages[user_end]['content'], str)):
+                    user_end += 1
+                # Reuse the pairwise encoder by keeping tool results and user follow-ups
+                # in one query. Each agent retains its own native turn boundaries.
+                media_inputs_supported = not inputs.objects and (
+                    (self._agent_template == 'qwen3_5' and not inputs.audios) or
+                    (self.template_meta.template_type == 'qwen2_5_omni' and self._agent_template == 'hermes'
+                     and not inputs.images and not inputs.videos))
+                is_react = agent.keyword.action in pre_content and agent.keyword.action_input in pre_content
+                if (user_end > i + 1 and self.use_chat_template and not is_react
+                        and (not inputs.is_multimodal or media_inputs_supported)):
+                    merged = agent._format_tool_user_followup(messages[i_start:i + 1], messages[i + 1:user_end])
+                    if merged is not None:
+                        query_message = {
+                            **messages[user_end - 1], 'role': 'tool',
+                            'content': merged,
+                            '_tool_user_followup': True
+                        }
+                        i = user_end - 1
+                messages[i_start:i + 1] = [query_message]
                 i = i_start + 1
             elif pre_role == 'assistant' and role == 'assistant' or pre_role == 'user' and role == 'user':
                 # Consecutive messages from the assistant/user role need to be merged to prevent errors.
@@ -1453,6 +1477,12 @@ class Template(ProcessorMixin):
                 # final round and during inference.
                 context_list.append(response_prefix)
 
+            if query_message.get('_tool_user_followup'):
+                # This prompt already contains user data. Do not interpret literal
+                # {{QUERY}} / {{RESPONSE}} strings in it as template placeholders.
+                res_context_list.extend(prompt)
+                res_context_types.extend([ContextType.OTHER] * len(prompt))
+                context_list = context_list[len(prompt):]
             self._concat_context_list(
                 context_list,
                 res_context_list,

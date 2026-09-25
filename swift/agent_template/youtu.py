@@ -34,7 +34,7 @@ class YoutuAgentTemplate(HermesAgentTemplate):
         # For Youtu-LLM, tool responses are placed in user message
         if hasattr(self, 'template_meta'):
             prompt = self.template_meta.prompt
-            chat_sep = self.template_meta.chat_sep
+            chat_sep = self.template_meta.chat_sep or []
         else:
             prompt = ['<|User|>{{QUERY}}<|Assistant|>']
             chat_sep = ['<|end_of_text|>']
@@ -45,6 +45,12 @@ class YoutuAgentTemplate(HermesAgentTemplate):
                 context = context.replace('{{QUERY}}', total_tool)
             res.append(context)
         return assistant_content, res
+
+    def _format_tool_user_followup(self, tool_messages, user_messages) -> 'Prompt':
+        # Youtu ends assistant turns with EOS, but user turns have no suffix.
+        tool_content = self._format_standalone_tool_responses(tool_messages)
+        prefix, suffix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)
+        return tool_content + [prefix + message['content'] for message in user_messages] + [suffix]
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]
