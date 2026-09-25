@@ -140,12 +140,13 @@ class MegatronPretrainingRandomSampler:
                         self.lengths, self.micro_batch_times_data_parallel_size, generator=g)
                 else:
                     idx_range_total = torch.randperm(full_bucket_size, generator=g).tolist()
-                idx_range_active = idx_range_total[full_bucket_offset:]
+                # Drop the global tail before sharding to keep DP ranks in the same epoch.
+                idx_range_active = idx_range_total[full_bucket_offset:active_total_samples]
                 idx_range = idx_range_active[self.data_parallel_rank::self.data_parallel_size]
         else:
-            full_bucket_size = (self.total_samples // self.micro_batch_size) * self.micro_batch_size
             full_bucket_offset = current_epoch_samples
-            idx_range = range(full_bucket_offset + self.data_parallel_rank, full_bucket_size, self.data_parallel_size)
+            idx_range = range(full_bucket_offset + self.data_parallel_rank, active_total_samples,
+                              self.data_parallel_size)
 
         batch = []
         # Last batch if not complete will be dropped.
