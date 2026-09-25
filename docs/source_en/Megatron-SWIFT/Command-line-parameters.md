@@ -190,6 +190,19 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - swanlab_project: Swanlab project name. Defaults to 'megatron-swift'.
 - swanlab_exp_name: Swanlab experiment name. Defaults to the value of `--output_dir`.
 
+**Profiling Parameters**:
+- profile: Enable Megatron training profiling. Defaults to False. When enabled with `use_pytorch_profiler=False`, CUDA profiler APIs and NVTX are used; launch the training process with Nsys.
+- use_pytorch_profiler: Collect operator traces with the PyTorch profiler. Setting this to True automatically enables `profile`. Defaults to False.
+- profile_step_start: Training iteration at which collection starts. Defaults to 10.
+- profile_step_end: Training iteration at which collection ends. Defaults to 12 and must be greater than `profile_step_start`.
+- profile_ranks: Global ranks to profile. Defaults to an empty list, meaning all ranks.
+- pytorch_profiler_collect_shapes: Record tensor shapes in the PyTorch profiler. Defaults to False.
+- pytorch_profiler_collect_callstack: Record Python call stacks in the PyTorch profiler. Defaults to False.
+- pytorch_profiler_collect_chakra: Also generate a Chakra execution trace. Defaults to False.
+- record_shapes: Record tensor shapes in NVTX ranges for Nsys mode. Defaults to False.
+- nvtx_ranges: Enable Megatron Core NVTX range markers. Defaults to False.
+- profile_output_dir: Output directory for PyTorch profiler traces. Defaults to `<output_dir>/torch_profile`; each rank writes a separate file.
+
 
 **Evaluation Parameters**:
 

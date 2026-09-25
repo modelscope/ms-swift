@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from .default_flow import DefaultFlowCallback
 from .print import PrintCallback
+from .profiler import ProfilerCallback
 from .swanlab import SwanlabCallback
 from .tensorboard import TensorboardCallback
 from .wandb import WandbCallback
@@ -11,4 +12,5 @@ megatron_callbacks_map = {
     'swanlab': SwanlabCallback,
     'wandb': WandbCallback,
     'tensorboard': TensorboardCallback,
+    'profiler': ProfilerCallback,
 }

@@ -184,6 +184,19 @@
 - swanlab_project: swanlab项目名称，默认为'megatron-swift'。
 - swanlab_exp_name: swanlab 实验名称。默认为`--output_dir`的值。
 
+**性能分析参数**:
+- profile: 启用 Megatron 训练性能分析。默认为False。设为True且`use_pytorch_profiler=False`时，通过CUDA profiler API和NVTX采集，需使用Nsys命令启动训练。
+- use_pytorch_profiler: 使用PyTorch profiler采集训练算子trace。设为True时会自动启用`profile`，默认为False。
+- profile_step_start: 开始采集的训练迭代，默认为10。
+- profile_step_end: 结束采集的训练迭代，默认为12，必须大于`profile_step_start`。
+- profile_ranks: 需要采集的全局rank列表。默认为空列表，表示采集所有rank。
+- pytorch_profiler_collect_shapes: PyTorch profiler是否记录张量shape，默认为False。
+- pytorch_profiler_collect_callstack: PyTorch profiler是否记录Python调用栈，默认为False。
+- pytorch_profiler_collect_chakra: 是否额外生成Chakra execution trace，默认为False。
+- record_shapes: Nsys模式下是否在NVTX范围中记录张量shape，默认为False。
+- nvtx_ranges: 是否启用Megatron Core的NVTX范围标记，默认为False。
+- profile_output_dir: PyTorch profiler trace输出目录。默认为`<output_dir>/torch_profile`，各rank写入独立文件。
+
 **评估参数**:
 - 🔥eval_iters: 评估的迭代次数，默认为`-1`，根据验证数据集的数量设置合适的值。**若验证集数量少于global_batch_size，则不进行评估**。若使用流式数据集，该值需要手动设置。
 - 🔥eval_steps: 评估的间隔（steps），即每训练多少steps进行评估。默认为None，即设置为`save_steps`。
