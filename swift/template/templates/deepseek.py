@@ -146,7 +146,8 @@ class DeepseekVLTemplate(Template):
             bsz, max_input_token_num = input_ids.shape
             # [bsz, parallel_size*2, max_input_token_num]
             tokens = torch.zeros((bsz, parallel_size * 2, max_input_token_num),
-                                 dtype=torch.int, device=input_ids.device)
+                                 dtype=torch.int,
+                                 device=input_ids.device)
             for i in range(parallel_size * 2):
                 tokens[:, i, :] = input_ids
                 if i % 2 != 0:
@@ -155,9 +156,9 @@ class DeepseekVLTemplate(Template):
             inputs_embeds = model.language_model.get_input_embeddings()(
                 tokens)  # [bsz, parallel_size*2, max_input_token_num, 2048]
 
-            generated_tokens = torch.zeros(
-                (bsz, parallel_size, self.image_token_num_per_image),
-                dtype=torch.int, device=input_ids.device)
+            generated_tokens = torch.zeros((bsz, parallel_size, self.image_token_num_per_image),
+                                           dtype=torch.int,
+                                           device=input_ids.device)
             # [bsz, 16, image_token_num_per_image] placeholder for the generated tokens
 
             # set the first two dimensions into one dimension for batch size
