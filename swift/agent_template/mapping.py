@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from .deepseek_v3_1 import DeepSeekV31AgentTemplate
 from .deepseek_v4 import DeepSeekV4AgentTemplate
+from .deepseek_v41 import DeepSeekV41AgentTemplate
 from .extra import ReactGRPOAgentTemplate
 from .gemma4 import Gemma4AgentTemplate
 from .glm4 import (ChatGLM4AgentTemplate, GLM4_5AgentTemplate, GLM4_7AgentTemplate, GLM4AgentTemplate,
@@ -50,6 +51,7 @@ agent_template_map = {
     'deepseek_v3_1': DeepSeekV31AgentTemplate,
     # ref: https://modelscope.cn/models/deepseek-ai/DeepSeek-V4-Flash
     'deepseek_v4': DeepSeekV4AgentTemplate,
+    'deepseek_v41': DeepSeekV41AgentTemplate,
     'minimax_m2': MinimaxM2AgentTemplate,
     'minimax_m3': MinimaxM3AgentTemplate,
     'seed_oss': SeedAgentTemplate,
