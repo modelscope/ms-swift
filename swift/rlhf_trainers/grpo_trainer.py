@@ -852,9 +852,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         origin_data = inputs.get('_origin_data')
         if self.use_liger_loss:
             unwrapped_model = self.accelerator.unwrap_model(model)
-            return self._forward_redirection(
+            loss = self._forward_redirection(
                 model, unwrapped_model,
                 lambda *_, **__: self.compute_liger_loss(unwrapped_model, model_inputs, grpo_batch), **model_inputs)
+            if self.model.training and self.chord_sft_iterator is not None:
+                loss = compute_chord_loss(self, grpo_loss=loss)
+            return loss
         else:
             return self._compute_loss(model, model_inputs, grpo_batch, origin_data)
 
