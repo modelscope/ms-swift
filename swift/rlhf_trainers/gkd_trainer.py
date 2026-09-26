@@ -461,6 +461,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             assert self.args.sft_alpha == 0, 'SFT loss is not supported with liger loss'
             assert self.gkd_logits_topk is None, 'Top-k mode is not supported with liger loss'
             self.liger_jsd_loss = LigerFusedLinearJSDLoss(
+                weight_hard_loss=0.0,
+                weight_soft_loss=1.0,
                 beta=self.beta,
                 ignore_index=-100,
                 temperature=self.temperature,
