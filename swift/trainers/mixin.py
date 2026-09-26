@@ -42,6 +42,7 @@ from types import MethodType
 from typing import Callable, Dict, List, Optional
 
 from swift.callbacks import callbacks_map
+from swift.expert_parallel.trainer_mixin import ExpertParallelMixin
 from swift.dataloader import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
 from swift.hub import get_hub
 from swift.loss import loss_map
@@ -66,7 +67,7 @@ logger = get_logger()
 transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0')
 
 
-class SwiftMixin:
+class SwiftMixin(ExpertParallelMixin):
     FLASH_CKPT_WAIT_TIMEOUT = 1800
 
     def __init__(self,
@@ -285,6 +286,7 @@ class SwiftMixin:
         if self.args.resume_only_model:
             return
         super()._load_optimizer_and_scheduler(*args, **kwargs)
+        self._load_expert_optimizer(args[0] if args else kwargs.get('checkpoint'))
         callbacks = set(getattr(self.args, 'callbacks', []))
         ds_config = getattr(self.args, 'deepspeed', None) or {}
         checkpoint_config = ds_config.get('checkpoint') if isinstance(ds_config, dict) else None
@@ -610,6 +612,8 @@ class SwiftMixin:
             result = self._save_flash_checkpoint(*args, **kwargs)
         else:
             result = super()._save_checkpoint(*args, **kwargs)
+        # Expert optimizer state (CPU-offloaded, rank-local) rides the same save window.
+        self._save_expert_optimizer(self.state.last_model_checkpoint)
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         self._update_last_checkpoint_symlink()
         return result
@@ -745,42 +749,17 @@ class SwiftMixin:
     @contextmanager
     def _fix_grad_norm_nan():
         from accelerate import Accelerator
-        from accelerate.utils import DistributedType
-        origin_clip_grad_norm_ = Accelerator.clip_grad_norm_
+        from swift.expert_parallel.grad_norm import clip_grad_norm_multi_mesh
+        origin_fn = Accelerator.clip_grad_norm_
 
         def clip_grad_norm_(self, parameters, *args, **kwargs):
-            # If NaN occurs, ignore weight updates.
-            parameters = list(parameters)
-            cpu_offloaded_fsdp2 = (
-                self.distributed_type == DistributedType.FSDP and self.is_fsdp2
-                and any(p.grad is not None and p.grad.is_cpu for p in parameters))
-            if cpu_offloaded_fsdp2:
-                self.unscale_gradients()
-                max_norm = args[0] if args else kwargs['max_norm']
-                norm_type = args[1] if len(args) > 1 else kwargs.get('norm_type', 2)
-                norm_type = float(norm_type)
-                grads = [p.grad for p in parameters if p.grad is not None]
-                foreach_norm = getattr(torch, '_foreach_norm', None)
-                if foreach_norm is None:
-                    grad_norms = [torch.linalg.vector_norm(grad, ord=norm_type) for grad in grads]
-                else:
-                    grad_norms = foreach_norm(grads, norm_type)
-                grad_norm = torch.nn.utils.get_total_norm([norm.to(self.device) for norm in grad_norms], norm_type)
-                if hasattr(grad_norm, 'full_tensor'):
-                    grad_norm = grad_norm.full_tensor()
-                torch.nn.utils.clip_grads_with_norm_(parameters, max_norm, grad_norm)
-            else:
-                grad_norm = origin_clip_grad_norm_(self, parameters, *args, **kwargs)
-            if isinstance(grad_norm, torch.Tensor) and grad_norm.isnan().item():
-                for p in parameters:
-                    p.grad = None
-            return grad_norm
+            return clip_grad_norm_multi_mesh(self, parameters, *args, **kwargs, origin_fn=origin_fn)
 
         Accelerator.clip_grad_norm_ = clip_grad_norm_
         try:
             yield
         finally:
-            Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
+            Accelerator.clip_grad_norm_ = origin_fn
 
     def _patch_tasks(self):
         if isinstance(self.model, PeftModel):
@@ -1142,6 +1121,12 @@ class SwiftMixin:
         self._optimizer_ori = self.optimizer = self.optimizer_callback.create_optimizer(model=model)
         if self.optimizer is not None:
             self.optimizer.param_groups = [pg for pg in self.optimizer.param_groups if len(pg['params']) > 0]
+            self._maybe_create_expert_cpu_optimizer()
+            # Only needed when expert params remain in the main optimizer
+            # (i.e. offload_expert_optimizer is False); otherwise they have
+            # already been carved out and all params share the same mesh.
+            if self.expert_optimizer is None:
+                self._disable_fused_for_cross_mesh_params()
             self._disable_foreach_for_deepspeed()
         return self.optimizer
 
