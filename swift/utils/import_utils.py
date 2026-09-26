@@ -7,6 +7,9 @@ from itertools import chain
 from types import ModuleType
 from typing import Any
 
+# Defined in swift.cli.utils so that `import swift` can check them before swift.utils (which imports torch) loads.
+from ..cli.utils import is_torch_musa_installed, is_torchada_available  # noqa: F401
+
 
 def is_vllm_available():
     return importlib.util.find_spec('vllm') is not None

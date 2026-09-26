@@ -5,7 +5,7 @@ from torch.distributed.fsdp import FSDPModule as FSDP2
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from transformers.trainer_callback import TrainerControl, TrainerState
 from transformers.training_args import TrainingArguments
-from transformers.utils import is_torch_npu_available
+from transformers.utils import is_torch_musa_available, is_torch_npu_available
 from typing import Any, Optional
 
 from swift.utils import get_logger
@@ -15,6 +15,7 @@ logger = get_logger()
 
 is_cuda_available = torch.cuda.is_available()
 is_npu_available = is_torch_npu_available()
+is_musa_available = is_torch_musa_available()
 
 
 def _get_unique_tensor_key(tensor):
@@ -24,11 +25,14 @@ def _get_unique_tensor_key(tensor):
 
 def get_device_name() -> str:
     """Function that gets the torch.device based on the current machine.
-    This currently only supports CPU, CUDA, NPU.
+    This currently only supports CPU, CUDA, NPU, MUSA.
     Returns:
         device
     """
-    if is_cuda_available:
+    # MUSA goes first: MUSA patches such as megatron-lm-musa-patch make torch.cuda.is_available() return True.
+    if is_musa_available:
+        device = 'musa'
+    elif is_cuda_available:
         device = 'cuda'
     elif is_npu_available:
         device = 'npu'

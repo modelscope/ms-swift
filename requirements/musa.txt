@@ -1,0 +1,2 @@
+torchada>=0.1.89
+transformers>=4.45

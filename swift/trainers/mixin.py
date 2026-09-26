@@ -38,6 +38,7 @@ try:
     from transformers.trainer_utils import sort_checkpoints
 except ImportError:
     sort_checkpoints = None
+from transformers.utils import is_torch_musa_available
 from types import MethodType
 from typing import Callable, Dict, List, Optional
 
@@ -702,6 +703,12 @@ class SwiftMixin:
                 rng_states['cuda'] = torch.cuda.random.get_rng_state_all()
             else:
                 rng_states['cuda'] = torch.cuda.random.get_rng_state()
+        if is_torch_musa_available():
+            # Restored by `Trainer._load_rng_state` from the 'musa' key.
+            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
+                rng_states['musa'] = torch.musa.get_rng_state_all()
+            else:
+                rng_states['musa'] = torch.musa.get_rng_state()
 
         # A process can arrive here before the process 0 has a chance to
         # save the model, in which case output_dir may not yet exist.

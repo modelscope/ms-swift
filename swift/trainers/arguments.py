@@ -6,6 +6,7 @@ import platform
 from dataclasses import dataclass, field
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
+from transformers.utils import is_torch_musa_available
 from typing import Dict, List, Literal, Optional, Union
 
 from swift.loss import loss_map
@@ -278,6 +279,10 @@ class TrainArgumentsMixin:
             raise ValueError('liger_kernel does not support device_map. '
                              'Please use DDP/DeepSpeed for multi-GPU training.')
 
+        if is_torch_musa_available() and self.optim == 'adamw_torch_fused':
+            # torch.optim.AdamW(fused=True) is not supported on MUSA.
+            self.optim = 'adamw_torch'
+            logger.warning("Setting args.optim: 'adamw_torch' because the fused AdamW is not supported on MUSA.")
         if self.optimizer is None and (self.vit_lr is not None or self.aligner_lr is not None):
             self.optimizer = 'multimodal'
         self._init_callbacks()
