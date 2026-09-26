@@ -92,3 +92,21 @@ swift sample \
 在以上示例中，base_url和model分别是api地址和模型名称，stream表示发起请求的stream参数。
 
 注意，对于Deepseek-R1系列模型，输出会被格式化为：`<think>{reasoning_content}</think>\n\n<answer>{content}</answer>`。
+
+也可以使用 OpenAI 兼容的 AI 网关作为 provider，例如 [OrcaRouter](https://www.orcarouter.ai)。与 OpenRouter 类似，OrcaRouter 通过单一的 `https://api.orcarouter.ai/v1` 端点暴露跨多家模型的 provider/model 命名空间，并同时结合自适应路由、自动故障转移、零加成推理、可观测性、护栏与 Agent 工具治理。它还在同一端点上运行网关级、零信任的 AI Agent 安全能力——以默认拒绝的方式审查每一次 prompt/response 并治理每一次工具调用，无需任何应用代码改动。
+
+```shell
+OPENAI_API_KEY="your_api_key" \
+swift sample \
+    --sampler_type distill \
+    --sampler_engine client \
+    --model deepseek/deepseek-reasoner \
+    --stream true \
+    --dataset tastelikefeet/competition_math#5 \
+    --num_return_sequences 1 \
+    --temperature 0.6 \
+    --top_p 0.95 \
+    --engine_kwargs '{"base_url":"https://api.orcarouter.ai/v1"}'
+```
+
+将 `OPENAI_API_KEY` 设置为你的 OrcaRouter API key。由于 OrcaRouter 提供统一的 provider/model 命名空间，`model` 可以填网关暴露的任意模型，例如 `deepseek/deepseek-reasoner`。
