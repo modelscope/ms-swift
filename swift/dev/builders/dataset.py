@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-import logging
 import numpy as np
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
+
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from twinkle import DeviceMesh
 
     from swift.dev.config import DatasetConfig, DistributedConfig, TemplateConfig, TrainConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def build_dataset(dataset_config: DatasetConfig,
@@ -473,17 +474,26 @@ def load_prompt_rows(dataset_config: DatasetConfig, max_rows: Optional[int],
     from swift.dev.dataset import load_dataset
 
     kwargs = _load_kwargs(dataset_config)
+    # A val-style slice (an explicit val_dataset, or the eval split of --dataset) honours
+    # val_dataset_shuffle; a whole-dataset run honours dataset_shuffle. The seed already rides in via
+    # _load_kwargs, so the shuffle is reproducible. Shuffling BEFORE the max_rows cut is what makes
+    # val_dataset_sample a random sample rather than the file's first N rows (legacy sample_dataset).
     if dataset_config.val_dataset:
-        _, rows = load_dataset(datasets=list(dataset_config.val_dataset), split_dataset_ratio=0.0, **kwargs)
+        _, rows = load_dataset(
+            datasets=list(dataset_config.val_dataset), split_dataset_ratio=0.0,
+            shuffle=dataset_config.val_dataset_shuffle, **kwargs)
         rows = rows if rows is not None else []
     elif split_dataset_ratio:
         _, rows = load_dataset(
-            datasets=list(dataset_config.dataset), split_dataset_ratio=split_dataset_ratio, **kwargs)
+            datasets=list(dataset_config.dataset), split_dataset_ratio=split_dataset_ratio,
+            shuffle=dataset_config.val_dataset_shuffle, **kwargs)
         rows = rows if rows is not None else []
         logger.info(f'load_prompt_rows: using the eval split of --dataset (split_dataset_ratio='
                     f'{split_dataset_ratio}); pass split_dataset_ratio=0 to run over all of it.')
     else:
-        rows, _ = load_dataset(datasets=list(dataset_config.dataset), split_dataset_ratio=0.0, **kwargs)
+        rows, _ = load_dataset(
+            datasets=list(dataset_config.dataset), split_dataset_ratio=0.0,
+            shuffle=dataset_config.dataset_shuffle, **kwargs)
 
     rows = list(rows)
     if max_rows is not None:
@@ -513,9 +523,9 @@ def split_prompt_and_reference(rows: List[Dict[str, Any]],
                                template_config: TemplateConfig) -> Tuple[List[Dict[str, Any]], List[Optional[str]]]:
     """rows -> ``(trajectories, references)``, with each row's trailing assistant turn moved aside.
 
-    Shared by ``run_infer`` and ``run_sampling``: both have to hand the model a prompt that stops before
-    the reference answer, and both need that answer afterwards (as a metric label / as ground_truth).
-    Doing it in one place is what keeps "what the model saw" identical between the two recipes.
+    Shared by ``run_infer``'s generative path and its best-of-n synthesis: each has to hand the model a
+    prompt that stops before the reference answer, and each needs that answer afterwards (as a metric
+    label / as ground_truth). Doing it in one place keeps "what the model saw" identical across them.
     """
     trajectories, references = [], []
     for row in rows:

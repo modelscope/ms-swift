@@ -12,7 +12,7 @@ passed. With one, the trajectory is trainable and twinkle accounts it in tokens
 (``input_ids`` / ``labels`` / ``logprobs``); without one -- a text-only backend
 such as the ``client`` teacher -- it accounts in messages only and emits no token
 fields, so the translated sample carries an empty ``encoded`` and empty response
-arrays (which is all ``run_sampling`` reads).
+arrays (which is all ``run_infer`` reads).
 
 Labels are taken from twinkle verbatim. They are already next-token shifted
 (``append_ids`` rolls them into output order on the way out), and twinkle's GRPO
@@ -119,7 +119,7 @@ def trajectory_to_rollout_sample(traj: Dict[str, Any], prompt_id: str, extra: Di
     Token-level mode fills ``encoded`` (twinkle's labels verbatim, already shifted)
     and the one-dimensional response arrays; message-only mode (a text-only backend)
     has no token fields, so those stay empty and only ``messages`` / ``decoded`` /
-    ``truncated`` / ``rollout_infos`` carry anything -- exactly what ``run_sampling``
+    ``truncated`` / ``rollout_infos`` carry anything -- exactly what ``run_infer``
     consumes.
     """
     input_ids = list(traj.get('input_ids') or [])
@@ -214,7 +214,8 @@ class MultiTurnRollout:
                  num_samples: int = 1,
                  sampling_params: Optional[dict] = None,
                  prompt_extras: Optional[List[Dict[str, Any]]] = None,
-                 force_logprobs: bool = True) -> List[RolloutSample]:
+                 force_logprobs: bool = True,
+                 adapter_path: Optional[str] = None) -> List[RolloutSample]:
         from twinkle.data_format import SamplingParams
         if num_samples < 1:
             raise ValueError('num_samples must be >= 1.')
@@ -230,17 +231,20 @@ class MultiTurnRollout:
 
         params = dict(sampling_params or {})
         params.setdefault('temperature', 1.0)
-        params.setdefault('max_tokens', 32)
         if force_logprobs:
             # Contract 15: the token-level path's logprobs ARE old_logps, so requesting
             # them is forced. A message-only backend ignores this (it returns none).
             params['logprobs'] = max(int(params.get('logprobs') or 0), 1)
         params['num_samples'] = 1
         sp = SamplingParams(**params)
+        # twinkle's MultiTurnRollout.__call__ reads adapter_path out of its kwargs and threads it into
+        # every per-turn sampler.sample, so a LoRA reserved at engine build is selected here too --
+        # without this a multi-turn run silently samples from the base model.
+        rollout_kwargs = {'adapter_path': adapter_path} if adapter_path else {}
         if self._per_episode_tools:
-            outputs = self._generate_with_envs(trajectories, sp)
+            outputs = self._generate_with_envs(trajectories, sp, **rollout_kwargs)
         else:
-            outputs = self.rollout(trajectories, sampling_params=sp)
+            outputs = self.rollout(trajectories, sampling_params=sp, **rollout_kwargs)
         if len(outputs) != len(metadata):
             raise RuntimeError(f'multi-turn rollout returned {len(outputs)} trajectories for {len(metadata)} inputs.')
         return [
@@ -249,7 +253,8 @@ class MultiTurnRollout:
         ]
 
     def _generate_with_envs(self, trajectories: List[Dict[str, Any]],
-                            sampling_params: Any) -> List[Dict[str, Any]]:
+                            sampling_params: Any,
+                            adapter_path: Optional[str] = None) -> List[Dict[str, Any]]:
         """Roll out each trajectory alone in its own leased env, concurrently up to the pool size.
 
         A sandbox env holds one workspace, so a trajectory must be driven by itself with the tools bound
@@ -268,7 +273,8 @@ class MultiTurnRollout:
                 outputs = self.rollout(
                     [trajectories[index]],
                     sampling_params=sampling_params,
-                    tool_manager=tool_manager_for(env, self.tool_plugins))
+                    tool_manager=tool_manager_for(env, self.tool_plugins),
+                    **({'adapter_path': adapter_path} if adapter_path else {}))
                 if not outputs:
                     raise RuntimeError('multi-turn rollout returned no trajectory for a leased-env episode.')
                 return outputs[0]

@@ -16,7 +16,6 @@ from .run_ppo import PPOLoop, run_ppo
 from .run_pt import run_pt
 from .run_reranker import run_reranker
 from .run_rlhf import run_rlhf
-from .run_sampling import run_sampling
 from .run_seq_cls import run_seq_cls
 from .run_sft import run_sft
 from .train_loop import SFTLoop, num_optimizer_steps
@@ -53,5 +52,4 @@ __all__ = [
     'build_app',
     'build_eval_task',
     'run_eval',
-    'run_sampling',
 ]

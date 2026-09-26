@@ -17,7 +17,6 @@ from .quantize_config import QuantizeConfig
 from .rlhf_config import RLHFConfig
 from .rollout_config import RolloutConfig
 from .runtime_config import RuntimeConfig
-from .sampling_config import SamplingConfig
 from .template_config import TemplateConfig
 from .train_config import TrainConfig
 from .validate import validate_configs
@@ -40,7 +39,6 @@ __all__ = [
     'RLHFConfig',
     'RolloutConfig',
     'RuntimeConfig',
-    'SamplingConfig',
     'TemplateConfig',
     'TrainConfig',
     'TunerConfig',

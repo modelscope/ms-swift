@@ -143,24 +143,24 @@ class TrainAssembly:
     def initialize_twinkle(distributed_config: 'DistributedConfig') -> None:
         """Initialize twinkle for EVERY backend -- required for a DeviceMesh to reach the model.
 
-        Megatron + mode='ray' builds the 'model' DeviceGroup the workers hold; everything else
-        (including Megatron under torchrun) initializes in 'local' mode. hf + mode='ray' is not
-        rejected here -- twinkle supports it, it simply has no dev CLI path.
+        mode='ray' builds the 'model' DeviceGroup the workers hold, on EITHER backend: build_model
+        places the model there via remote_group='model' (Megatron in _build_megatron_model, the
+        transformers path in _apply_ray_placement), while the driver orchestrates and does not join
+        the group. Everything else (both backends under torchrun) initializes in 'local' mode.
 
         See doc.md 'run_sft twinkle 初始化' for why this is load-bearing on the transformers backend
         and why there is no teardown counterpart.
         """
         import twinkle
-        from swift.dev.builders import is_megatron_backend
         from twinkle import DeviceGroup
 
-        if is_megatron_backend(distributed_config) and distributed_config.mode == 'ray':
-            # The DeviceGroup named 'model' is what build_model's MegatronModel(remote_group='model')
-            # targets; the driver orchestrates and is not part of the model process group.
+        if distributed_config.mode == 'ray':
+            # The DeviceGroup named 'model' is what build_model targets with remote_group='model'
+            # (Megatron and transformers alike); the driver orchestrates and is not part of the group.
             nproc = distributed_config.nproc_per_node
             if nproc is None:
-                raise ValueError("DistributedConfig.nproc_per_node is required for the Megatron backend in mode='ray' "
-                                 '(it sizes the Ray DeviceGroup). Pass it explicitly -- there is no default.')
+                raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the Ray "
+                                 "'model' DeviceGroup). Pass it explicitly -- there is no default.")
             twinkle.initialize(
                 mode='ray',
                 nproc_per_node=nproc,

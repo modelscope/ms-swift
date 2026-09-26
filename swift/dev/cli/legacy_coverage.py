@@ -100,6 +100,7 @@ LEGACY_ALIASES: Dict[str, str] = {
     'fp16': 'torch_dtype',
     'response_length': 'max_completion_length',
     'use_ray': 'mode',
+    'sampler_engine': 'infer_backend',
 }
 
 CHECKPOINT_NON_TRAINING_FIELDS: Tuple[str, ...] = tuple(
@@ -156,16 +157,12 @@ CLI_LEGACY_ONLY: Dict[str, Mapping[str, Tuple[str, ...]]] = {
     'infer': {
         'unsupported_sampler': UNSUPPORTED_SAMPLER_FIELDS,
         'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS + CHECKPOINT_NON_TRAINING_FIELDS,
-        'removed_option': REMOVED_OPTION_FIELDS,
+        'removed_option': REMOVED_OPTION_FIELDS + ('data_range',),
     },
     'deploy': {
         'unsupported_sampler': UNSUPPORTED_SAMPLER_FIELDS,
         'unsupported_command': SERVING_DISTRIBUTED_FIELDS + CHECKPOINT_NON_TRAINING_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS,
-    },
-    'sample': {
-        'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS + CHECKPOINT_NON_TRAINING_FIELDS,
-        'removed_option': REMOVED_OPTION_FIELDS + ('data_range',),
     },
     'eval': {
         'unsupported_sampler': UNSUPPORTED_SAMPLER_FIELDS,

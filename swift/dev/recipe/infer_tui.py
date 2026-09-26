@@ -61,13 +61,14 @@ def infer_cli(
 
     History is kept across turns unless ``multi_round`` is False. When ``rollout_config.tools`` and
     ``multi_turn_config.max_turns`` are both set, each turn runs the tool-calling rollout; otherwise it is
-    a plain chat turn (streamed when ``generation_config.stream``). ``prompt_media`` is available for a
-    template that asks for multimodal inputs, matching legacy's ``input_mm_data``.
+    a plain chat turn (streamed when ``generation_config.stream``). For a multimodal template each turn
+    first calls ``prompt_media`` to collect image/audio/video paths, matching legacy's ``input_mm_data``.
     """
     from swift.dev.builders import build_sampler, build_template, load_model_processor, to_sampling_params
 
     _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
+    is_multimodal = bool(getattr(getattr(template, 'model_meta', None), 'is_multimodal', False))
     sampler = build_sampler(
         model_config,
         backend=backend,
@@ -114,6 +115,10 @@ def infer_cli(
                 break
 
             state.add_query(query)
+            if is_multimodal:
+                # A multimodal template needs its media before the turn is built: prompt_media fills
+                # state.media, which to_trajectory then attaches (legacy's input_mm_data).
+                state.prompt_media(['images', 'audios', 'videos'])
             trajectory = state.to_trajectory()
             if rollout is not None:
                 response = _run_tool_turn(rollout, trajectory, params_dict)

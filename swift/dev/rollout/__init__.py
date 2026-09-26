@@ -8,7 +8,7 @@ legacy ``swift.infer_engine.GRPOVllmEngine``. twinkle's sampler already speaks t
 contract, returns per-token logprobs natively (``sequence.logprobs``), exposes the prompt tokens vLLM
 conditioned on (``response.prompt_token_ids``), and owns multimodal placeholder logic + LoRA routing --
 so no swift engine / decode shim is needed. This makes dev's rollout twinkle-first like
-``run_infer`` / ``run_deploy`` / ``run_sampling``; the ``run_grpo`` weight-syncing ``SamplerRollout``
+``run_infer`` / ``run_deploy``; the ``run_grpo`` weight-syncing ``SamplerRollout``
 subclasses :class:`RolloutEngine`, so the rollout ``generate`` contract lives in exactly one place.
 
 Backend is vLLM-only, by design, NOT a temporary YAGNI (see design.md 5.2.1): RL rollout needs
@@ -121,7 +121,7 @@ def samples_from_responses(responses: List[Any],
     The single-turn counterpart of :func:`rollout.multi_turn.trajectory_to_rollout_sample`: a plain
     ``sampler.sample`` returns one ``SampleResponse`` per prompt (holding ``num_samples`` sequences),
     and this turns each sequence into a ``RolloutSample`` carrying the training feature and old_logps.
-    ``run_sampling`` reuses it so its single-turn path produces the SAME encoded/logprob payload the
+    ``run_infer`` reuses it so its single-turn path produces the SAME encoded/logprob payload the
     multi-turn engine does, rather than throwing the tokens away and keeping only decoded text.
 
     The training feature is rebuilt from ``prompt_token_ids`` + ``sequence.tokens`` rather than
@@ -174,7 +174,7 @@ def _message_only_samples(response: Any, pidx: int,
     The single-turn counterpart of the multi-turn engine's message-only mode: a remote teacher returns
     decoded text (and structured tool calls inside ``new_input_feature['messages']``) but no token ids,
     so ``encoded`` / ``response_token_ids`` / ``rollout_logprobs`` stay empty and only ``decoded`` /
-    ``messages`` carry anything -- exactly what ``run_sampling`` reads. A failed request degrades to an
+    ``messages`` carry anything -- exactly what ``run_infer`` reads. A failed request degrades to an
     empty ``error`` sequence with no ``new_input_feature``; its empty ``decoded`` is dropped downstream.
     """
     extra = dict(prompt_extras[pidx]) if prompt_extras and pidx < len(prompt_extras) else {}
@@ -212,7 +212,7 @@ class RolloutEngine:
         self.template = template
         self._multi_turn = None
         if sampler is not None:
-            # Injected: the caller built and placed the sampler (``run_sampling`` across backends,
+            # Injected: the caller built and placed the sampler (``run_infer`` across backends,
             # ``run_grpo``'s SamplerRollout on its own remote_group). This engine borrows it and does NOT
             # own its lifecycle -- close() releases only the multi-turn env pool; shutdown() also stops it.
             self.sampler = sampler
@@ -273,7 +273,10 @@ class RolloutEngine:
                 leaves it True; a caller needing neither old_logps nor stored tokens (plain inference)
                 passes False to skip the extra logprob compute.
             kwargs: forwarded to the single-turn ``sampler.sample`` call (e.g. ``strict`` for transformers).
-                The multi-turn engine drives its own per-turn sampling, so they are accepted but unused.
+                ``adapter_path`` is honoured by both paths: the single-turn call passes it straight to the
+                sampler, and the multi-turn engine threads it into every per-turn ``sampler.sample`` so a
+                LoRA is selected there too. Other kwargs are single-turn only -- the multi-turn engine
+                drives its own per-turn sampling and ignores them.
 
         Returns:
             flat list of RolloutSample, grouped by prompt_id (num_samples per prompt).
@@ -284,13 +287,13 @@ class RolloutEngine:
                 num_samples=num_samples,
                 sampling_params=sampling_params,
                 prompt_extras=prompt_extras,
-                force_logprobs=force_logprobs)
+                force_logprobs=force_logprobs,
+                adapter_path=kwargs.get('adapter_path'))
 
         from twinkle.data_format import SamplingParams, Trajectory
 
         sp = dict(sampling_params or {})
         sp.setdefault('temperature', 1.0)
-        sp.setdefault('max_tokens', 32)
         if force_logprobs:
             # Twinkle uses logprobs=1 for the sampled token in its normalized top-k representation.
             # Contract 15: these logprobs ARE old_logps, so requesting them is forced, not defaulted.
@@ -322,7 +325,7 @@ class RolloutEngine:
     def close(self) -> None:
         """Release the multi-turn sandbox env pool (its workspaces / microVMs) WITHOUT touching the sampler.
 
-        A caller that injected its own sampler (``run_sampling``) owns that sampler's lifecycle and calls
+        A caller that injected its own sampler (``run_infer``) owns that sampler's lifecycle and calls
         close(); closing a rollout with no env pool is a no-op.
         """
         if self._multi_turn is not None:

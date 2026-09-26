@@ -9,6 +9,7 @@ if TYPE_CHECKING:
         CheckpointConfig,
         DatasetConfig,
         DistributedConfig,
+        InferConfig,
         LoggingConfig,
         MegatronConfig,
         ModelConfig,
@@ -16,7 +17,6 @@ if TYPE_CHECKING:
         QuantizeConfig,
         RLHFConfig,
         RolloutConfig,
-        SamplingConfig,
         TemplateConfig,
         TrainConfig,
         TunerConfig,
@@ -198,20 +198,20 @@ def _check_rollout_tools(rollout_config: Optional['RolloutConfig'],
             'turns in which to call the tools. A single-turn rollout cannot invoke them.')
 
 
-def validate_sampling_config(sampling_config: Optional['SamplingConfig']) -> None:
-    """Validate the best-of-n sampling surface without imposing RL-training-only constraints.
+def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
+    """Validate the best-of-n synthesis surface without imposing RL-training-only constraints.
 
-    Sampling runs through the ``sample``/``infer`` CLI rather than a training recipe, so this is kept
-    apart from :func:`validate_configs`; it only rejects combinations that cannot work at generation time.
+    Synthesis runs through the ``infer`` CLI rather than a training recipe, so this is kept apart from
+    :func:`validate_configs`; it only rejects combinations that cannot work at generation time.
     """
-    if sampling_config is None:
+    if infer_config is None:
         return
     # save_rollout_tokens persists the per-token feature the rollout produced; the message-only ``client``
     # teacher exposes no token IDs or logprobs, so there would be nothing to write. Reject the pairing up
     # front instead of silently emitting rows that carry no token path.
-    if sampling_config.save_rollout_tokens and sampling_config.sampler_engine == 'client':
+    if infer_config.save_rollout_tokens and infer_config.infer_backend == 'client':
         raise ValueError(
-            "save_rollout_tokens requires a token-capable local backend, but sampler_engine='client' is "
+            "save_rollout_tokens requires a token-capable local backend, but infer_backend='client' is "
             'message-only (no token IDs or logprobs). Use a local backend (transformers/vllm/sglang) or '
             'drop --save_rollout_tokens.')
 

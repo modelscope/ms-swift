@@ -5,6 +5,10 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from swift.dev.utils.logger import get_logger
+
+logger = get_logger()
+
 
 @dataclass
 class InferCliConfig:
@@ -29,61 +33,64 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         RLHFConfig,
         RolloutConfig,
         RuntimeConfig,
-        SamplingConfig,
         TemplateConfig,
         TunerConfig,
     )
 
     effective_argv = resolve_argv(argv)
     reject_legacy_only_flags('infer', effective_argv)
-    # infer absorbs the whole sampling surface: SamplingConfig drives best-of-n / reward / token-dump and
-    # RLHFConfig is the multi-turn carrier (max_turns, tools). The duplicate spellings these add are each
-    # pinned to one owner so a flag never lands on the wrong Config.
+    # infer absorbs the whole synthesis surface: InferConfig now carries the best-of-n / reward / token-dump
+    # knobs, and RLHFConfig is the reward-func and multi-turn carrier (reward_funcs, max_turns, tools). The
+    # duplicate spellings these add are each pinned to one owner so a flag never lands on the wrong Config.
     classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig,
-               TunerConfig, GenerationConfig, RolloutConfig, InferConfig, SamplingConfig, RLHFConfig,
+               TunerConfig, GenerationConfig, RolloutConfig, InferConfig, RLHFConfig,
                QuantizeConfig, InferCliConfig, RuntimeConfig]
     owners = {
-        'strict': SamplingConfig,
+        'strict': InferConfig,
         'temperature': GenerationConfig,
-        'reward_funcs': SamplingConfig,
-        'reward_weights': SamplingConfig,
     }
     configs = parse_configs_strict(
         classes, effective_argv, command='swift infer', field_owners=owners, load_args_default=True)
     names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'distributed_config',
              'checkpoint_config', 'tuner_config', 'generation_config', 'rollout_config', 'infer_config',
-             'sampling_config', 'reward_config', 'quantize_config', 'cli_config', 'runtime_config')
+             'reward_config', 'quantize_config', 'cli_config', 'runtime_config')
     result = dict(zip(names, configs))
     result['tuner_config'] = select_tuner(result['tuner_config'])
-    sampling = result['sampling_config']
     infer_config = result['infer_config']
     if infer_config.infer_backend == 'pt':
         infer_config.infer_backend = 'transformers'
     passed = flag_names(effective_argv)
-    # Backend authority: an explicit --sampler_engine wins (it is the richer Literal that can name the
-    # message-only 'client'/'no' backends infer_backend cannot); otherwise it follows --infer_backend.
-    if sampling.sampler_engine == 'pt':
-        sampling.sampler_engine = 'transformers'
-    if 'sampler_engine' not in passed:
-        sampling.sampler_engine = infer_config.infer_backend
-    # Legacy sampling spellings folded into their canonical fields, mirroring the old sample CLI.
-    if sampling.num_sampling_batch_size is not None:
-        sampling.batch_size = sampling.num_sampling_batch_size
-    if sampling.num_sampling_batches is not None:
-        sampling.max_batches = sampling.num_sampling_batches
-    if sampling.prm_threshold is not None and 'reward_threshold' not in passed:
-        sampling.reward_threshold = sampling.prm_threshold
+    # Legacy sampling spellings folded into their canonical InferConfig fields, mirroring the old sample CLI.
+    if infer_config.num_sampling_batch_size is not None:
+        infer_config.batch_size = infer_config.num_sampling_batch_size
+    if infer_config.num_sampling_batches is not None:
+        infer_config.max_batches = infer_config.num_sampling_batches
+    if infer_config.prm_threshold is not None and 'reward_threshold' not in passed:
+        infer_config.reward_threshold = infer_config.prm_threshold
     if 'padding_side' not in passed:
         result['template_config'].padding_side = 'left'
-    # The RLHFConfig doubles as the reward-hyperparameter carrier and the multi-turn config, as in sample.
-    sampling.reward_config = result['reward_config']
+    # The RLHFConfig doubles as the reward-hyperparameter carrier (reward_funcs / reward_weights) and the
+    # multi-turn config; synthesis reads it directly rather than through an InferConfig field.
     result['multi_turn_config'] = result['reward_config']
-    # num_samples (plain-infer completions per prompt) and num_return_sequences (the best-of-n group) are
-    # one knob under two names; an explicit spelling drives the other so the two modes agree.
+    # num_samples (the CLI spelling) and num_return_sequences (the InferConfig field) are one knob under
+    # two names; an explicit value for either drives the other so both entry points agree. Nothing else is
+    # derived here -- how many candidates to draw, whether to score them, and how to store them
+    # (output_format) each keep their own Config default and bend only to the flags the user passes.
     if 'num_samples' in passed:
-        sampling.num_return_sequences = result['cli_config'].num_samples
+        infer_config.num_return_sequences = result['cli_config'].num_samples
     if 'num_return_sequences' in passed:
-        result['cli_config'].num_samples = sampling.num_return_sequences
+        result['cli_config'].num_samples = infer_config.num_return_sequences
+    if infer_config.output_format == 'all':
+        # The best-of-n ranking knobs only shape 'dpo' output; under 'all' every candidate is stored as-is,
+        # so a threshold set here would be silently ignored. Say so instead of dropping it on the floor.
+        ignored = [name for name, value in (('reward_threshold', infer_config.reward_threshold),
+                                            ('easy_query_threshold', infer_config.easy_query_threshold))
+                   if value is not None]
+        if 'n_best_to_keep' in passed:
+            ignored.append('n_best_to_keep')
+        if ignored:
+            logger.warning("output_format='all' ignores %s; they only shape the best-of-n ranking under "
+                           "output_format='dpo'. Switch to 'dpo' to apply them.", ', '.join(ignored))
     has_dataset = bool(result['dataset_config'].dataset or result['dataset_config'].val_dataset)
     if result['generation_config'].stream is None:
         result['generation_config'].stream = not has_dataset
@@ -95,14 +102,10 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 def _derive_result_path(configs: Dict[str, Any]) -> None:
     infer_config = configs['infer_config']
     dataset_config = configs['dataset_config']
-    sampling = configs.get('sampling_config')
+    # result_path is the single output truth for both plain infer and synthesis: an explicit --result_path
+    # wins, otherwise a dataset run falls back to a timestamped path under result/<model>/infer_result.
     if infer_config.result_path:
         infer_config.result_path = os.path.abspath(os.path.expanduser(infer_config.result_path))
-    elif sampling is not None and sampling.output_file:
-        # An explicit --output_file (the sampling spelling) still resolves to one absolute result_path, so
-        # the sampling branch can treat result_path as the single truth for where the jsonl is written.
-        output_dir = configs['checkpoint_config'].output_dir
-        infer_config.result_path = os.path.abspath(os.path.join(output_dir, sampling.output_file))
     elif dataset_config.dataset or dataset_config.val_dataset:
         model = (configs['model_config'].model or 'model').rstrip('/')
         model_suffix = os.path.basename(model)
@@ -111,40 +114,73 @@ def _derive_result_path(configs: Dict[str, Any]) -> None:
             os.path.join('result', model_suffix, 'infer_result', f'{timestamp}.jsonl'))
 
 
-def _is_sampling_mode(sampling: Any) -> bool:
-    """Whether a dataset run goes through best-of-n sampling rather than plain inference.
+def _interactive_dp_width(distributed_config: Any) -> int:
+    """How many data-parallel drivers an interactive run would have.
 
-    Any sampling-only intent -- reward scoring, distillation, token dumping, resume, a candidate cache, or
-    a message-only backend run_infer cannot drive -- routes to run_sampling; otherwise it is plain infer.
+    Under ``mode='ray'`` the recipe runs once on a single driver and DP is expressed inside the sampler's
+    device mesh, so the width is that mesh's data world size (1 when no DP mesh is built). Under local
+    (torchrun) mode every rank runs this same recipe, so the width is the torchrun world size.
     """
-    return bool(sampling.reward_funcs or sampling.prm_funcs or sampling.sampler_type == 'distill'
-                or sampling.save_rollout_tokens or sampling.resume or sampling.cache_files
-                or sampling.sampler_engine in {'client', 'no'})
+    if distributed_config is not None and distributed_config.mode == 'ray':
+        from swift.dev.builders import build_device_mesh_if_dp
+        mesh = build_device_mesh_if_dp(distributed_config)
+        return int(getattr(mesh, 'data_world_size', 1)) if mesh is not None else 1
+    return max(1, int(os.getenv('WORLD_SIZE') or 1))
+
+
+def _guard_interactive(distributed_config: Any, task_type: Optional[str]) -> None:
+    """Reject interactive REPL runs that cannot drive a single turn-by-turn conversation.
+
+    Two cases, matching legacy's ``_init_ddp`` assertion that DDP forbids ``eval_human``/``stream``:
+
+    * A non-generative ``task_type`` (pooling / reranker) scores a forward pass; the REPL only generates
+      text, so it would silently produce the wrong thing. Score those over a dataset instead.
+    * More than one data-parallel driver: under torchrun every rank would open a competing REPL, and a
+      DP>1 sampler shards the batch across ranks. A single DP rank is fine, so ray with dp=1 (tp=N) --
+      one driver, tensor parallelism inside the engine -- is allowed.
+    """
+    from swift.dev.builders import is_pooling_task
+    task_type = task_type or 'causal_lm'
+    if is_pooling_task(task_type) or task_type == 'generative_reranker':
+        raise ValueError(
+            f'task_type={task_type!r} scores a forward pass, which the interactive REPL cannot drive (it '
+            'only generates text). Run over a dataset (--dataset / --val_dataset) to score it.')
+    dp = _interactive_dp_width(distributed_config)
+    if dp > 1:
+        raise ValueError(
+            f'The interactive REPL needs a single data-parallel driver, but this run has dp={dp}: under '
+            'torchrun every rank would open its own REPL, and a DP>1 sampler shards the batch across '
+            'ranks. Run with dp=1 (tensor parallelism is fine), or infer over a dataset.')
 
 
 def infer_main(argv: Optional[List[str]] = None):
     from swift.dev.builders import build_engine_args
     from swift.dev.config import process_and_validate_configs
-    from swift.dev.recipe import infer_cli, run_infer, run_sampling
+    from swift.dev.recipe import infer_cli, run_infer
 
     configs = parse_infer_configs(argv)
-    sampling = configs['sampling_config']
+    infer_config = configs['infer_config']
+    rlhf_config = configs['reward_config']
     cli_config = configs['cli_config']
     has_dataset = bool(configs['dataset_config'].dataset or configs['dataset_config'].val_dataset)
     interactive = cli_config.eval_human or not has_dataset
-    sampling_mode = not interactive and _is_sampling_mode(sampling)
-    # A message-only sampling backend loads no local weights, so skip model resolution for it (as sample did).
-    resolve_model = not (sampling_mode and sampling.sampler_engine in {'client', 'no'})
+    if interactive:
+        _guard_interactive(configs['distributed_config'], configs['model_config'].task_type)
+    # A message-only backend ('client'/'no') loads no local weights, so a dataset run skips model
+    # resolution. Interactive still resolves: the REPL builds its chat template from the model even when
+    # the completions come from a remote client.
+    resolve_model = interactive or infer_config.infer_backend not in {'client', 'no'}
     process_and_validate_configs(
         configs, add_version=False, create_output_dir=False, resolve_model=resolve_model)
     _derive_result_path(configs)
     adapters = configs['tuner_config'].adapters if configs['tuner_config'] is not None else None
-    # Sampling honors an explicit --sampler_engine (which may be client/no); the other paths run a local
-    # engine and stay on infer_backend.
-    backend = sampling.sampler_engine if sampling_mode else configs['infer_config'].infer_backend
-    engine_args = build_engine_args(backend, configs['infer_config'], configs['rollout_config'])
-    if sampling_mode:
-        engine_args.update(sampling.engine_kwargs or {})
+    # backend is unified on infer_backend, whose Literal names the message-only 'client'/'no' too.
+    backend = infer_config.infer_backend
+    engine_args = build_engine_args(backend, infer_config, configs['rollout_config'])
+    # engine_kwargs is a generic escape hatch into the engine args, not a synthesis-only knob: a plain
+    # inference run tunes its engine the same way, so it is merged regardless of intent.
+    if infer_config.engine_kwargs:
+        engine_args.update(infer_config.engine_kwargs)
 
     if interactive:
         return infer_cli(
@@ -160,49 +196,27 @@ def infer_main(argv: Optional[List[str]] = None):
             multi_turn_config=configs['multi_turn_config'],
         )
 
-    if sampling_mode:
-        # result_path is the single output truth: run_sampling writes output_dir/output_file, so point both
-        # halves at result_path's split and its checkpoint/token sidecars land beside the jsonl.
-        result_path = configs['infer_config'].result_path
-        sampling.output_file = os.path.basename(result_path)
-        output_dir = os.path.dirname(result_path) or configs['checkpoint_config'].output_dir
-        return run_sampling(
-            configs['model_config'],
-            configs['template_config'],
-            configs['dataset_config'],
-            sampling,
-            configs['generation_config'],
-            multi_turn_config=configs['multi_turn_config'],
-            backend=backend,
-            engine_args=engine_args,
-            distributed_config=configs['distributed_config'],
-            adapters=adapters,
-            quantize_config=configs['quantize_config'],
-            plugin_config=configs['plugin_config'],
-            rollout_config=configs['rollout_config'],
-            output_dir=output_dir,
-        )
-
+    # result_path is the single output truth: run_infer splits a 'dpo'/resumed run's path into
+    # output_dir/output_file, so its checkpoint/token sidecars land beside the jsonl.
     return run_infer(
         configs['model_config'],
         configs['template_config'],
         configs['dataset_config'],
+        infer_config,
         configs['generation_config'],
+        rlhf_config=rlhf_config,
+        rollout_config=configs['rollout_config'],
         backend=backend,
         engine_args=engine_args,
         distributed_config=configs['distributed_config'],
         tuner_config=configs['tuner_config'],
+        adapters=adapters,
         quantize_config=configs['quantize_config'],
         plugin_config=configs['plugin_config'],
-        adapters=adapters,
         merge_lora=cli_config.merge_lora,
-        num_samples=cli_config.num_samples,
-        max_rows=configs['infer_config'].val_dataset_sample,
+        max_rows=infer_config.val_dataset_sample,
         split_dataset_ratio=configs['dataset_config'].split_dataset_ratio,
-        output_path=configs['infer_config'].result_path,
-        write_batch_size=configs['infer_config'].write_batch_size,
-        metric=configs['infer_config'].metric,
-        strict=sampling.strict,
+        output_path=infer_config.result_path,
     )
 
 

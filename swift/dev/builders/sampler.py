@@ -1,7 +1,7 @@
 """Builders for twinkle's Sampler: config -> sampler, GenerationConfig -> SamplingParams.
 
 Peer of ``build_model`` / ``build_template``, and the single place dev maps its Configs onto
-twinkle's sampling surface. ``run_infer`` / ``run_deploy`` / ``run_sampling`` all come through here,
+twinkle's sampling surface. ``run_infer`` / ``run_deploy`` all come through here,
 so a backend quirk is fixed once.
 
 Backends are vLLM, SGLang and transformers. The first two are the throughput engines; transformers is

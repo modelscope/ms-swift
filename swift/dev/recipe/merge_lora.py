@@ -52,7 +52,6 @@ def run_merge_lora(
 
     from peft import PeftModel
     from swift.model import save_checkpoint
-
     model, processor = _load_base_model(model_config, device_map=device_map)
     # Built (and attached) before merging because some multimodal templates patch the model on attach;
     # the template itself is not used afterwards, only its side effect on the model.

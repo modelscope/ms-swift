@@ -129,10 +129,10 @@ def process_and_validate_configs(
         # max_turns lives on the RLHFConfig for GRPO and on the multi-turn/reward config for sampling.
         multi_turn_carrier = multi_turn_config if multi_turn_config is not None else configs.get('rlhf_config')
         validate_rollout_config(rollout_config, multi_turn_carrier)
-    sampling_config = configs.get('sampling_config')
-    if sampling_config is not None:
-        from .validate import validate_sampling_config
-        validate_sampling_config(sampling_config)
+    infer_config = configs.get('infer_config')
+    if infer_config is not None:
+        from .validate import validate_infer_config
+        validate_infer_config(infer_config)
     seed_config = configs.get('train_config') or configs.get('runtime_config')
     bootstrap_run(
         configs['model_config'],
