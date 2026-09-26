@@ -18,6 +18,19 @@ class SamplingConfig:
     sampler_engine: Literal['transformers', 'vllm', 'sglang', 'client', 'no', 'pt'] = 'transformers'
     prm_model: Optional[str] = None
     orm_model: Optional[str] = None
+    #: Frozen LoRA attached to a model reward channel, positional with ``orm_model`` / ``prm_model``.
+    #: For a SCALAR (seq_cls) RM it is loaded onto the separately-built reward model; for a GENERATIVE
+    #: judge RM whose base is the sampler's own model, it is merged into the sampler's adapter list at
+    #: construction and selected per request -- the "reward LoRA on the sampling model" case. Setting
+    #: this WITHOUT the matching ``*_model`` means "reuse the sampler's model as a generative judge,
+    #: plus this LoRA"; a ``*_model`` that is an http(s) URL routes to the API judge instead.
+    orm_adapter: Optional[str] = None
+    prm_adapter: Optional[str] = None
+    #: Override for the built-in generative-judge prompt. A ``str.format`` template rendered with
+    #: ``prompt=`` (the original conversation) and ``completion=`` (the candidate being scored); the
+    #: judge model is asked to emit a single number, which ``_parse_judge_score`` reads back. Only used
+    #: by a generative (judge) RM channel -- a scalar seq_cls RM scores by forward, not by prompting.
+    judge_template: Optional[str] = None
     engine_kwargs: Optional[Dict[str, Any]] = None
 
     # === Candidates ===
@@ -75,6 +88,11 @@ class SamplingConfig:
 
     # === Output & resume ===
     output_file: Optional[str] = None
+    #: Persist each kept candidate's rollout tokens (input_ids / labels / logprobs / loss mask) to an NPZ
+    #: sidecar beside the jsonl, and embed the relative path plus the reward score in the row. Off by
+    #: default: it needs a token-capable local backend (not the message-only ``client`` teacher) and
+    #: forces per-token logprobs at generation time.
+    save_rollout_tokens: bool = False
     #: Continue a previous run from its checkpoint instead of starting over.
     resume: bool = False
     #: Overwrite an existing complete output file instead of returning early.

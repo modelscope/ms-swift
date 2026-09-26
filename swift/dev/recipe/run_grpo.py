@@ -249,15 +249,19 @@ def run_grpo(
         template=assembly.template,
         remote_group=sampler_remote_group)
     rollout = SamplerRollout(assembly.model, sampler, assembly.template, colocate=colocate)
-    scheduler_name = rlhf_config.multi_turn_scheduler
-    if rlhf_config.use_gym_env and scheduler_name is None:
-        scheduler_name = 'gym_scheduler'
-    if scheduler_name is not None:
+    # Multi-turn is requested by setting max_turns; the engine is twinkle-native (no scheduler, no
+    # gym). Per-round length is sampling_params.max_tokens, whole-trajectory length is
+    # max_trajectory_tokens. Tools are opt-in via RolloutConfig.tools: when set, a sandbox env pool is
+    # built and each episode leases its own env (see swift.dev.rollout.sandbox); harness / followup_fn
+    # remain caller-supplied extension points. The env pool is closed by rollout.shutdown().
+    if rlhf_config.max_turns is not None:
+        from swift.dev.rollout.sandbox import build_tool_sandbox
+        env_pool, tool_plugins = build_tool_sandbox(rollout_config)
         rollout.configure_multi_turn(
-            scheduler_name,
             max_turns=rlhf_config.max_turns,
-            gym_env=rlhf_config.gym_env,
-            completion_length_limit_scope=rlhf_config.completion_length_limit_scope)
+            max_trajectory_tokens=rlhf_config.max_trajectory_tokens,
+            env_pool=env_pool,
+            tool_plugins=tool_plugins)
 
     prompts, prompt_extras = _prompt_rows_from_dataset(dataset_config)
     reward_model_plugins, reward_model_names = _build_reward_model_scorers(
@@ -382,13 +386,7 @@ def _build_reward_model_scorers(model_config: ModelConfig, template_config: Temp
     if not reward_models:
         return [], []
 
-    from copy import copy
-
-    from swift.dev.builders import build_model, build_template, load_model_processor
-    from swift.dev.config import DistributedConfig
-    from swift.dev.recipe.assembly import configure_frozen_adapter
-    from swift.dev.reward import build_reward_model_plugins
-    from swift.model import get_model_info_meta
+    from swift.dev.reward import build_frozen_reward_model, build_reward_model_plugins
 
     count = len(reward_models)
 
@@ -408,27 +406,14 @@ def _build_reward_model_scorers(model_config: ModelConfig, template_config: Temp
     templates = []
     for model_id, model_type, revision, template_name, adapter in zip(
             reward_models, model_types, revisions, template_names, adapters):
-        model_info, _ = get_model_info_meta(model_id, model_type=model_type, revision=revision)
-        reward_model_config = copy(model_config)
-        reward_model_config.model = model_id
-        reward_model_config.model_type = model_type or model_info.model_type
-        reward_model_config.model_revision = revision
-        reward_model_config.task_type = model_info.task_type
-        reward_model_config.num_labels = model_info.num_labels
-
-        _, processor = load_model_processor(reward_model_config)
-        reward_template_config = copy(template_config)
-        reward_template_config.template = template_name
-        reward_template_config.max_length = None
-        reward_template = build_template(
-            reward_template_config, processor, task_type=reward_model_config.task_type)
-        reward_template.max_length = None
-
-        reward_model = build_model(reward_model_config, DistributedConfig(mode='local'))
-        reward_model = configure_frozen_adapter(
-            reward_model, reward_template, [adapter] if adapter else [], role='reward')
-        if getattr(reward_template, 'use_model', False):
-            reward_template.model = getattr(reward_model, 'model', reward_model)
+        reward_model, reward_template = build_frozen_reward_model(
+            model_id,
+            model_config,
+            template_config,
+            model_type=model_type,
+            revision=revision,
+            template_name=template_name,
+            adapter=adapter)
         models.append(reward_model)
         templates.append(reward_template)
 
@@ -441,12 +426,12 @@ def _load_chord_features(rlhf_config: RLHFConfig, dataset_config: DatasetConfig,
         return []
     from copy import copy
 
-    from swift.dev.recipe.run_infer import _load_prompt_rows
+    from swift.dev.builders import load_prompt_rows
 
     chord_config = copy(dataset_config)
     chord_config.dataset = list(rlhf_config.chord_sft_dataset)
     chord_config.val_dataset = []
-    rows = _load_prompt_rows(chord_config, None, split_dataset_ratio=0.0)
+    rows = load_prompt_rows(chord_config, None, split_dataset_ratio=0.0)
     features = [template.encode(row) for row in rows]
     if not features:
         raise ValueError('chord_sft_dataset produced no encodable rows.')
@@ -455,9 +440,9 @@ def _load_chord_features(rlhf_config: RLHFConfig, dataset_config: DatasetConfig,
 
 def _prompt_rows_from_dataset(dataset_config: DatasetConfig) -> Tuple[List[List[dict]], List[Dict[str, Any]]]:
     """Load prompt messages and preserve all non-message columns for rewards and teacher views."""
-    from swift.dev.recipe.run_infer import _load_prompt_rows
+    from swift.dev.builders import load_prompt_rows
 
-    rows = _load_prompt_rows(dataset_config, None, split_dataset_ratio=0.0)
+    rows = load_prompt_rows(dataset_config, None, split_dataset_ratio=0.0)
     if not rows:
         raise ValueError('run_grpo got an empty dataset. Set DatasetConfig.dataset with prompts to roll out on.')
     prompts: List[List[dict]] = []

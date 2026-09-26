@@ -454,7 +454,7 @@ eval 功能暂时不迁移。dev 侧目前连 eval recipe 都没有。
 
 > legacy 把推导、校验、副作用全混在 `__post_init__` 里。dev 拆成三处：`process.py` **只写推导值**，`validate.py` **只读只拒**，副作用归建模时。调用顺序固定：先 `process_configs()` 后 `validate_configs()`（校验针对已推导的值写）。
 
-## 5.1 推导已迁入 `process.py`（13 项）
+## 5.1 推导已迁入 `process.py`（14 项）
 
 均为“只填默认/只规范化、不覆盖显式值”，与已有的 `_fold_megatron_aliases` / `_derive_*` 同风格：
 
@@ -473,8 +473,11 @@ eval 功能暂时不迁移。dev 侧目前连 eval recipe 都没有。
 | `_derive_grpo_reward_defaults` | `scale_rewards`/`kl_in_reward` 按 `advantage_estimator` | `rlhf_args.py::_init_grpo` | `RLHFConfig` |
 | `_derive_best_model_metric` | metric 与 greater_is_better 按任务推 | `sft_args.py::_init_metric_for_best_model` `megatron_args.py:862-865` | `TrainConfig` × `RLHFConfig` |
 | `_normalize_recompute_granularity` | 字符串 `'none'` → `None` | `megatron_args.py:797-798` | `DistributedConfig` |
+| `_derive_virtual_pipeline` | layout 反推 vpp 宽度；宽度 1 归 None；无交错时关 `overlap_p2p_comm`/`align_param_gather`、`batch_p2p_comm` 取其反 | `megatron_args.py::_init_vpp_size` | `DistributedConfig.virtual_pipeline_model_parallel_size` × `pipeline_model_parallel_layout` × `overlap_p2p_comm`/`align_param_gather`/`batch_p2p_comm` |
 
 新增形参：`process_configs()` 加 `quantize_config`；`process_configs` 已在 `config/__init__.py` 导出（之前只定义未导出）。
+
+> **VPP 仅推导、未接线**：`_derive_virtual_pipeline` 把 `virtual_pipeline_model_parallel_size` 连同 layout / overlap 开关推导一致了，但该值全仓仅出现在 `process.py` 与 `distributed_config.py:103` 的字段声明处，**从未转发进 twinkle `MegatronModel` 的建模路径**（grep 实测 0 处消费）。这与第零节 `distributed_config.py:46-52` 自述的 vpp「intentionally deferred」一致：参数能解析、能推导、能校验，但建模时不生效。第零节 G 组其余流水线布局字段（`pipeline_model_parallel_layout` / `decoder_first|last_pipeline_num_layers` 等）同样只落到字段与推导，未接入建模。
 
 ## 5.2 校验已迁入 `validate.py`（8 项）
 
@@ -580,3 +583,12 @@ critic 复用 **seq_cls `num_labels=1` 头**（两后端同构：mcore-bridge `O
 训练/eval history 分别记录 `loss_<channel>` / `eval_loss_<channel>`。单元测试覆盖注册、CE 的 loss_scale、
 DFT/loss_scale 组合、默认 channel、padding-free 解包、CP padding/split、指标累计与配置选择；多卡 PP/CP
 端到端仍需在 GPU 环境执行。
+
+## 8. 序列并行（Ulysses + Ring-Attention）能力现状
+
+> 记录 transformers 后端序列并行的 twinkle 能力与 dev 接线现状，纠正早前「dev 未接线 / ring 缺失」的判断。
+
+- **twinkle 侧两种 SP 同处一处、自动派生共用**：实现集中在 `twinkle/model/transformers/strategy/sequence_parallel/`。总 SP 度数由 `utils.py::_derive_sequence_parallel_sizes(num_heads, seq_world_size)` 拆成两个因子——`sp_world_size = gcd(num_heads, seq_world_size)`（Ulysses，按注意力头切）与 `rp_world_size = seq_world_size // sp_world_size`（Ring，按序列维环形）。Ulysses 先吃掉能被头数整除的部分，剩下的自动落给 Ring。`rp_world_size > 1` 时走 `zigzag_ring_attn.py::zigzag_ring_flash_attn_varlen_func`（代码称 "derived ring attention"），否则只做 Ulysses 的 all-to-all。约束：Ring 路径只支持 `flash_attention_2`（SDPA 抛 `NotImplementedError`）；Qwen3.5 线性注意力 SP 不支持 `rp_world_size > 1`。
+- **dev 侧只透出一个旋钮**：`TemplateConfig.sequence_parallel_size`（`template_config.py:23`，CLI `--sp_size`）是 HF Ulysses 的开关，也是 Ring 的总度数入口——**Ring 不额外暴露参数**，当 sp 度数超过头数所能吸收的部分时自动接管。Megatron 的 TP-SP 是另一个字段 `DistributedConfig.sequence_parallel`（`distributed_config.py:62-64`），语义不同（TP 区内按序列切激活）。
+- **校验已就位**：`validate.py::_check_hf_sequence_parallel` 守住 HF Ulysses 边界（仅 `mode='local'`/torchrun、不支持 FSDP 组合、需 `padding_side='right'`、padding-free 需 flash attn、需 `WORLD_SIZE>=2`）；`_check_rlhf_sequence_parallel` 拒绝在 RLHF 路径上开 SP。e2e 测试（`tests/feature/sft/test_e2e.py`）实际拉起训练并断言 device mesh 的 `ulysses_size` 与数据切分。
+- **结论**：Ulysses 与 Ring-Attention 均已在 twinkle 实现，并通过 dev 的单一 `sequence_parallel_size` 一并可用——这一项**不属于待接线**。ring-attention 之前被误记为「两边都没有」，实为「和 ulysses 同处一实现、随 sp_size 自动派生、不额外透出」。

@@ -116,11 +116,10 @@ class RLHFConfig:
     soft_cache_length: Optional[int] = None
 
     # === GRPO Multi-turn ===
-    multi_turn_scheduler: Optional[str] = None
+    # Multi-turn is enabled by setting max_turns. Per-turn length is sampling_params.max_tokens;
+    # max_trajectory_tokens caps the whole trajectory (both are independent knobs, either may be None).
     max_turns: Optional[int] = None
-    completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
-    use_gym_env: Optional[bool] = None
-    gym_env: Optional[str] = None
+    max_trajectory_tokens: Optional[int] = None
 
     # === GKD ===
     sft_alpha: float = 0

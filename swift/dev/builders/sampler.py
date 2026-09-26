@@ -6,9 +6,11 @@ so a backend quirk is fixed once.
 
 Backends are vLLM, SGLang and transformers. The first two are the throughput engines; transformers is
 the reach engine -- it loads whatever ``AutoModelForCausalLM`` loads, needs no extra install, and is
-the only one that degrades per input instead of failing a batch. Anything needing a HF *forward* rather
-than generation (embedding/seq_cls/reward scoring) still goes through the model side (``build_model`` +
-``task=``), not through here.
+the only one that degrades per input instead of failing a batch. vLLM and SGLang also serve the
+pooling tasks (embedding/seq_cls/reranker) through ``sampler.encode``; transformers has no pooling
+head, so anything needing a HF *forward* on that backend still goes through the model side
+(``build_model`` + ``task=``). A generative reranker is not pooling -- it is a decoder-only model
+scored off generation, so it builds here as a generation sampler (see ``_GENERATIVE_TASK_TYPES``).
 
 The template contract is twinkle's: ``sample()`` calls ``encode`` / ``decode`` /
 ``get_vllm_input_ids`` / ``concat_input_feature`` on whatever ``set_template`` stored, and
@@ -51,6 +53,27 @@ _MODEL_KNOB_NAMES = {
 
 _SAMPLER_CLASSES = {'vllm': 'vLLMSampler', 'sglang': 'SGLangSampler', 'transformers': 'TransformersSampler'}
 
+#: dev ``task_type`` values that are a pooling forward rather than generation, and the twinkle/vLLM
+#: pooling head each one runs. ``embedding``->``embed`` (a sentence vector), ``seq_cls``->``classify``
+#: (per-class logits/probs), ``reranker``->``classify`` (a cross-encoder relevance score is what a
+#: ``classify`` scoring model returns; vLLM has no separate ``score`` pooling task). These need a
+#: backend with a pooling head, so only vLLM/SGLang serve them; transformers has none and still goes
+#: through ``build_model`` + ``task=``. A *generative* reranker is deliberately absent -- see
+#: ``_GENERATIVE_TASK_TYPES``.
+_POOLING_TASK_MAP = {
+    'embedding': 'embed',
+    'seq_cls': 'classify',
+    'reranker': 'classify',
+}
+
+#: dev ``task_type`` values served by the *generation* path rather than a pooling head. ``causal_lm`` is
+#: plain generation; ``generative_reranker`` is a decoder-only reranker (e.g. Qwen3-Reranker) scored by
+#: the yes/no logprob difference of its first generated token, so it needs a generation engine, not a
+#: pooling runner -- neither vLLM nor sglang serves it through ``encode`` (sglang's docs are explicit:
+#: launch it *without* ``--is-embedding``). ``run_infer`` builds the sampler here and does the yes/no
+#: scoring itself.
+_GENERATIVE_TASK_TYPES = ('causal_lm', 'generative_reranker')
+
 
 def build_engine_args(backend: str, infer_config: 'InferConfig', rollout_config: 'RolloutConfig') -> Dict[str, Any]:
     """Map inference and rollout Config fields to sampler engine arguments."""
@@ -88,8 +111,12 @@ def build_sampler(
 
     Args:
         model_config: supplies ``model`` (the model id/path) plus the knobs in
-            ``_MODEL_KNOB_NAMES``. ``task_type`` must be causal_lm or unset: the other task types
-            need a pooling forward that no sampler has.
+            ``_MODEL_KNOB_NAMES``. ``task_type`` may be a generation task in ``_GENERATIVE_TASK_TYPES``
+            (``causal_lm``, or ``generative_reranker``, a decoder-only reranker scored off generation)
+            or one of the pooling tasks in ``_POOLING_TASK_MAP`` (embedding/seq_cls/reranker); a pooling
+            task builds the engine as a pooling model and is served by ``sampler.encode``. Pooling needs
+            a backend with a pooling head, so it is vLLM/SGLang only -- transformers still goes through
+            ``build_model`` + ``task=``.
         backend: 'vllm', 'sglang' or 'transformers'.
         engine_args: passed verbatim to the engine, and wins over the ModelConfig knobs so a caller
             can always reach an engine flag dev does not model.
@@ -115,10 +142,14 @@ def build_sampler(
     if model_config.model is None:
         raise ValueError('ModelConfig.model is required to build a sampler (it is the model id/path).')
     task_type = model_config.task_type or 'causal_lm'
-    if task_type != 'causal_lm':
-        raise ValueError(f'build_sampler supports task_type="causal_lm" only, got {task_type!r}. '
-                         'Pooling tasks (seq_cls/embedding/reranker) have no sampler: they need a HF '
-                         'forward, so build them with build_model(..) and pass task= instead.')
+    is_pooling = task_type in _POOLING_TASK_MAP
+    if task_type not in _GENERATIVE_TASK_TYPES and not is_pooling:
+        raise ValueError(f'build_sampler got task_type={task_type!r}; expected one of the generation tasks '
+                         f'{list(_GENERATIVE_TASK_TYPES)} or the pooling tasks {sorted(_POOLING_TASK_MAP)}.')
+    if is_pooling and backend == 'transformers':
+        raise ValueError(f'backend="transformers" cannot serve the pooling task_type={task_type!r}: it has '
+                         'no pooling head. Build it with build_model(..) and pass task= instead, or use '
+                         'backend="vllm"/"sglang".')
     if backend not in _SAMPLER_CLASSES:
         raise ValueError(f'Unknown sampler backend {backend!r}; expected one of {sorted(_SAMPLER_CLASSES)}. '
                          '(lmdeploy is deliberately not supported.)')
@@ -143,6 +174,14 @@ def build_sampler(
         # setdefault, not assignment: an explicit engine_args entry is the caller's override.
         if value is not None:
             kwargs.setdefault(engine_name, value)
+    if is_pooling:
+        # Route the model to the backend's pooling forward. vLLM spells it ``runner='pooling'`` (which
+        # swaps the LM head for the pooling head and serves requests through ``encode``); sglang spells
+        # it ``is_embedding=True``. setdefault so an explicit engine_args entry still wins.
+        if backend == 'vllm':
+            kwargs.setdefault('runner', 'pooling')
+        elif backend == 'sglang':
+            kwargs.setdefault('is_embedding', True)
     if adapters:
         _enable_lora(kwargs, backend, adapters)
 
@@ -246,3 +285,49 @@ def sampled_texts(responses: List[Any]) -> List[List[str]]:
     ``num_samples`` entries long), so it lives here rather than being written twice.
     """
     return [[seq.decoded for seq in response.sequences] for response in responses]
+
+
+def pooling_task_for(task_type: Optional[str]) -> str:
+    """dev ``task_type`` -> the twinkle/vLLM pooling head name, or ``None`` for a generation task.
+
+    The single place the dev-vocabulary to pooling-vocabulary mapping is applied, so ``run_infer`` and
+    ``run_deploy`` do not each carry their own copy of it.
+    """
+    return _POOLING_TASK_MAP.get(task_type or 'causal_lm')
+
+
+def is_pooling_task(task_type: Optional[str]) -> bool:
+    """Whether ``task_type`` is a pooling forward rather than generation."""
+    return (task_type or 'causal_lm') in _POOLING_TASK_MAP
+
+
+def to_pooling_params(task_type: Optional[str] = None, **overrides) -> Any:
+    """dev ``task_type`` (+ overrides) -> twinkle ``PoolingParams``.
+
+    The pooling counterpart of :func:`to_sampling_params`. ``task_type`` selects the head via
+    :func:`pooling_task_for` (defaulting to ``embed``), and a ``reranker`` also sets ``is_cross_encoder``
+    (see below); ``overrides`` win and carry the post-processing knobs ``PoolingParams`` exposes
+    (``use_activation``/``dimensions``/``normalize``), which have no dev Config field and are expected to
+    arrive that way.
+    """
+    from twinkle.data_format import PoolingParams
+
+    task_type = task_type or 'causal_lm'
+    params: Dict[str, Any] = {'task': pooling_task_for(task_type) or 'embed'}
+    # A dev ``reranker`` is a cross-encoder: it scores a (query, document) pair rather than classifying
+    # a single sequence. vLLM infers this from the scoring model, so the flag is a no-op there, but
+    # sglang routes on it (and then wants the raw text pair, not token ids).
+    if task_type == 'reranker':
+        params['is_cross_encoder'] = True
+    params.update(overrides)
+    return PoolingParams(**params)
+
+
+def pooled_data(responses: List[Any]) -> List[List[float]]:
+    """PoolingResponse list -> the pooled floats of each, one entry per input.
+
+    The pooling counterpart of :func:`sampled_texts`: ``data`` is already a flat ``List[float]`` (see
+    ``pooling_to_list``), so this is just the projection, kept here so the recipes do not each reach
+    into the response.
+    """
+    return [list(response.data) for response in responses]

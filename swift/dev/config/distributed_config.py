@@ -46,6 +46,15 @@ class DistributedConfig:
     # A None value means "keep Twinkle/Megatron's own default".
     backend: Optional[Literal['megatron', 'hf']] = None
     bridge_backend: Literal['mcore-bridge', 'megatron-bridge'] = 'mcore-bridge'
+    #: A whole parallel layout as one string, e.g. 'dp4tp2pp2' or 'dp2_cp2_tp2' -- a lossless sugar
+    #: form of the integer size fields below, parsed by ``DeviceMesh.from_spec`` (keys: dp/fsdp/tp/pp/
+    #: cp/ep/etp/epfsdp/vpp sizes plus the bare boolean 'sp' for Megatron sequence parallelism).
+    #: Backend-agnostic: both the Megatron mesh (build_device_mesh) and the transformers mesh
+    #: (build_hf_device_mesh) consume it, and each model backend rejects any dimension it does not
+    #: implement (TransformersModel reads dp/fsdp/ep/ulysses, not tp/pp), so there is no allow-list
+    #: here. Prefer it over the integer fields rather than mixing the two forms. The dims must fill the
+    #: world (nproc_per_node for Megatron, the torchrun world for transformers); from_sizes raises else.
+    parallel_spec: Optional[str] = None
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
     context_parallel_size: int = 1

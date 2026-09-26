@@ -42,7 +42,7 @@ from swift.dev.utils import get_logger
 
 logger = get_logger()
 
-__all__ = ['SwiftPlugin', 'RewardPlugin', 'AsyncRewardPlugin', 'PluginKind', 'PluginRegistry']
+__all__ = ['SwiftPlugin', 'RewardPlugin', 'AsyncRewardPlugin', 'ToolPlugin', 'PluginKind', 'PluginRegistry']
 
 
 class SwiftPlugin:
@@ -83,6 +83,27 @@ class AsyncRewardPlugin(SwiftPlugin):
     """
 
     async def __call__(self, **kwargs) -> List[float]:
+        raise NotImplementedError
+
+
+class ToolPlugin(SwiftPlugin):
+    """Build the tools a multi-turn rollout exposes to the model, bound to one sandbox env.
+
+    A tool plugin is constructed once per run (``cls(args=RolloutConfig)``) and then asked for its tools
+    per episode: :meth:`build` receives the leased twinkle ``Env`` and returns the twinkle ``Tool``
+    instances (usually ``EnvTool``s) the agent may call that turn. Returning ``[]`` means the plugin
+    contributes nothing for that env, so a run with no tool plugins -- the default -- rolls out with no
+    tools at all.
+
+    Example::
+
+        @PluginRegistry.register('tool', 'my_tools')
+        class MyTools(ToolPlugin):
+            def build(self, env):
+                return [MyTool(env)]
+    """
+
+    def build(self, env: Any) -> List[Any]:
         raise NotImplementedError
 
 
@@ -198,16 +219,19 @@ class PluginRegistry:
         return getattr(plugin, '__name__', None) or plugin.__class__.__name__
 
     @staticmethod
-    def load_configured(model_config: Any) -> List[str]:
-        """Load every plugin file a run's ``ModelConfig`` names -- the only place that knows which fields
+    def load_configured(plugin_config: Optional[Any]) -> List[str]:
+        """Load every plugin file a run's ``PluginConfig`` names -- the one object that knows which fields
         those are, so a recipe cannot load half of them.
 
         ``custom_register_path`` is loaded alongside ``external_plugins`` because legacy concatenates the
         two before importing (base_args.py): both mean "import this .py first", one named for the
         hooks (rewards, losses) and one for registrations (models, datasets), and nothing tells them
-        apart at load time.
+        apart at load time. ``None`` loads nothing, for a caller that holds no PluginConfig (the plugin
+        files were then already imported earlier in the run's config lifecycle).
         """
-        return PluginRegistry.load_external([*model_config.external_plugins, *model_config.custom_register_path])
+        if plugin_config is None:
+            return []
+        return PluginRegistry.load_external([*plugin_config.external_plugins, *plugin_config.custom_register_path])
 
     @staticmethod
     def load_external(paths: Union[str, Iterable[str], None]) -> List[str]:

@@ -37,6 +37,7 @@ if TYPE_CHECKING:
         MegatronConfig,
         ModelConfig,
         MoEConfig,
+        PluginConfig,
         QuantizeConfig,
         RLHFConfig,
         TemplateConfig,
@@ -105,6 +106,7 @@ class TrainAssembly:
     quantize_config: Optional['QuantizeConfig'] = None
     megatron_config: Optional['MegatronConfig'] = None
     moe_config: Optional['MoEConfig'] = None
+    plugin_config: Optional['PluginConfig'] = None
 
     # --- stage results, in the order the stages produce them ---
     sp_mesh: Any = field(default=None, init=False)
@@ -186,6 +188,7 @@ class TrainAssembly:
             self.rlhf_config,
             megatron_config=self.megatron_config,
             quantize_config=self.quantize_config,
+            plugin_config=self.plugin_config,
         )
         validate_configs(
             self.model_config,

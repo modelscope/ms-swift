@@ -15,6 +15,8 @@ if TYPE_CHECKING:
         MoEConfig,
         QuantizeConfig,
         RLHFConfig,
+        RolloutConfig,
+        SamplingConfig,
         TemplateConfig,
         TrainConfig,
         TunerConfig,
@@ -136,9 +138,9 @@ def _check_rlhf_advanced(train_config: 'TrainConfig', rlhf_config: Optional['RLH
         return
     cfg = rlhf_config
     online_only = bool(cfg.chord_sft_dataset or cfg.advantage_reweight or cfg.sdar_loss_coef > 0 or cfg.dynamic_sample
-                       or cfg.sync_ref_model or cfg.multi_turn_scheduler or cfg.use_gym_env)
+                       or cfg.sync_ref_model or cfg.max_turns is not None)
     if online_only and cfg.rlhf_type != 'grpo':
-        raise ValueError('CHORD, RLSD, SDAR, dynamic sampling, reference sync, and multi-turn/gym are GRPO-only.')
+        raise ValueError('CHORD, RLSD, SDAR, dynamic sampling, reference sync, and multi-turn are GRPO-only.')
     _check_dynamic_sampling(cfg)
     _check_grpo_controls(cfg)
     _check_reference_sync(cfg, train_config)
@@ -151,37 +153,67 @@ def _check_rlhf_advanced(train_config: 'TrainConfig', rlhf_config: Optional['RLH
         raise ValueError('teacher_model and teacher_model_server are mutually exclusive.')
 
 
-def _check_multi_turn(cfg: 'RLHFConfig') -> None:
-    if cfg.max_turns is not None and cfg.max_turns < 1:
-        raise ValueError('max_turns must be >= 1.')
-    if cfg.completion_length_limit_scope not in ('total', 'per_round'):
-        raise ValueError("completion_length_limit_scope must be 'total' or 'per_round'.")
-    if cfg.gym_env is not None and cfg.use_gym_env is False:
-        raise ValueError('gym_env cannot be set when use_gym_env=False.')
-    if not cfg.multi_turn_scheduler:
-        if cfg.use_gym_env:
-            raise ValueError('use_gym_env requires a multi_turn_scheduler.')
-        return
+def validate_multi_turn_config(config: 'RLHFConfig') -> None:
+    """Validate the shared multi-turn surface without imposing RL-training-only constraints."""
+    _check_multi_turn(config)
 
-    _check_multi_turn_registry(cfg)
+
+def _check_multi_turn(cfg: 'RLHFConfig') -> None:
+    # Multi-turn is on iff max_turns is set. Per-turn length is sampling_params.max_tokens;
+    # max_trajectory_tokens caps the whole trajectory. Both are independent, either may be None.
+    if cfg.max_turns is None:
+        return
+    if cfg.max_turns < 1:
+        raise ValueError('max_turns must be >= 1.')
+    if cfg.max_trajectory_tokens is not None and cfg.max_trajectory_tokens < 1:
+        raise ValueError('max_trajectory_tokens must be >= 1.')
     if cfg.teacher_model_server:
         raise ValueError('teacher_model_server is not supported with multi-turn GRPO; use a local teacher model.')
 
 
-def _check_multi_turn_registry(cfg: 'RLHFConfig') -> None:
-    from swift.rollout.multi_turn import GYMScheduler, multi_turns
-    if cfg.multi_turn_scheduler not in multi_turns:
+def validate_rollout_config(rollout_config: Optional['RolloutConfig'],
+                            multi_turn_config: Optional['RLHFConfig']) -> None:
+    """Validate the rollout tools/sandbox surface without imposing RL-training-only constraints.
+
+    ``multi_turn_config`` is whatever carries ``max_turns`` for the active recipe (the RLHFConfig for
+    GRPO, the reward/multi-turn config for sampling); it may be None when multi-turn is not offered.
+    """
+    _check_rollout_tools(rollout_config, multi_turn_config)
+
+
+def _check_rollout_tools(rollout_config: Optional['RolloutConfig'],
+                         multi_turn_config: Optional['RLHFConfig']) -> None:
+    if rollout_config is None:
+        return
+    if rollout_config.sandbox_num_envs < 1:
+        raise ValueError(f'sandbox_num_envs must be >= 1, got {rollout_config.sandbox_num_envs}.')
+    if not rollout_config.tools:
+        return
+    # Tools are injected per-turn by the multi-turn engine, so a single-turn rollout has no turn to
+    # call them in -- requiring max_turns turns a silent no-op into a clear error.
+    max_turns = multi_turn_config.max_turns if multi_turn_config is not None else None
+    if max_turns is None:
         raise ValueError(
-            f'Unknown multi_turn_scheduler {cfg.multi_turn_scheduler!r}; available: {sorted(multi_turns)}.')
-    scheduler_cls = multi_turns[cfg.multi_turn_scheduler]
-    if cfg.use_gym_env and not issubclass(scheduler_cls, GYMScheduler):
-        raise ValueError('use_gym_env requires a GYMScheduler-compatible multi_turn_scheduler.')
-    if issubclass(scheduler_cls, GYMScheduler) and not cfg.use_gym_env:
-        raise ValueError('A gym multi_turn_scheduler requires use_gym_env=True.')
-    if cfg.multi_turn_scheduler == 'gym_scheduler':
-        from swift.rollout.gym_env import envs
-        if cfg.gym_env not in envs:
-            raise ValueError(f'Unknown gym_env {cfg.gym_env!r}; available: {sorted(envs)}.')
+            'RolloutConfig.tools requires a multi-turn rollout: set max_turns (>= 1) so the engine has '
+            'turns in which to call the tools. A single-turn rollout cannot invoke them.')
+
+
+def validate_sampling_config(sampling_config: Optional['SamplingConfig']) -> None:
+    """Validate the best-of-n sampling surface without imposing RL-training-only constraints.
+
+    Sampling runs through the ``sample``/``infer`` CLI rather than a training recipe, so this is kept
+    apart from :func:`validate_configs`; it only rejects combinations that cannot work at generation time.
+    """
+    if sampling_config is None:
+        return
+    # save_rollout_tokens persists the per-token feature the rollout produced; the message-only ``client``
+    # teacher exposes no token IDs or logprobs, so there would be nothing to write. Reject the pairing up
+    # front instead of silently emitting rows that carry no token path.
+    if sampling_config.save_rollout_tokens and sampling_config.sampler_engine == 'client':
+        raise ValueError(
+            "save_rollout_tokens requires a token-capable local backend, but sampler_engine='client' is "
+            'message-only (no token IDs or logprobs). Use a local backend (transformers/vllm/sglang) or '
+            'drop --save_rollout_tokens.')
 
 
 def _check_grpo_controls(cfg: 'RLHFConfig') -> None:

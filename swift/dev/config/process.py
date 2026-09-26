@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         DistributedConfig,
         MegatronConfig,
         ModelConfig,
+        PluginConfig,
         QuantizeConfig,
         RLHFConfig,
         TemplateConfig,
@@ -38,6 +39,7 @@ def process_configs(
     rlhf_config: Optional['RLHFConfig'] = None,
     megatron_config: Optional['MegatronConfig'] = None,
     quantize_config: Optional['QuantizeConfig'] = None,
+    plugin_config: Optional['PluginConfig'] = None,
 ) -> None:
     """Load configured plugins and resolve every cross-Config derived value in place.
 
@@ -47,7 +49,7 @@ def process_configs(
     from swift.dev.plugin import PluginRegistry
 
     # Plugins must be registered before validation resolves their configured names.
-    PluginRegistry.load_configured(model_config)
+    PluginRegistry.load_configured(plugin_config)
     is_megatron = is_megatron_backend(distributed_config)
 
     _fold_megatron_aliases(train_config)
@@ -100,7 +102,9 @@ def process_and_validate_configs(
         rlhf_config=configs.get('rlhf_config'),
         megatron_config=configs.get('megatron_config'),
         quantize_config=configs.get('quantize_config'),
+        plugin_config=configs.get('plugin_config'),
     )
+    multi_turn_config = configs.get('multi_turn_config')
     validate_configs(
         configs['model_config'],
         configs['template_config'],
@@ -116,6 +120,19 @@ def process_and_validate_configs(
         moe_config=configs.get('moe_config'),
         training='train_config' in configs,
     )
+    if multi_turn_config is not None and multi_turn_config is not configs.get('rlhf_config'):
+        from .validate import validate_multi_turn_config
+        validate_multi_turn_config(multi_turn_config)
+    rollout_config = configs.get('rollout_config')
+    if rollout_config is not None:
+        from .validate import validate_rollout_config
+        # max_turns lives on the RLHFConfig for GRPO and on the multi-turn/reward config for sampling.
+        multi_turn_carrier = multi_turn_config if multi_turn_config is not None else configs.get('rlhf_config')
+        validate_rollout_config(rollout_config, multi_turn_carrier)
+    sampling_config = configs.get('sampling_config')
+    if sampling_config is not None:
+        from .validate import validate_sampling_config
+        validate_sampling_config(sampling_config)
     seed_config = configs.get('train_config') or configs.get('runtime_config')
     bootstrap_run(
         configs['model_config'],
@@ -644,7 +661,7 @@ def _derive_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['
 
 def _derive_rlhf_teacher(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
                          rlhf_config: Optional['RLHFConfig']) -> None:
-    """Resolve self-distillation and gym defaults without loading a teacher or environment."""
+    """Resolve self-distillation defaults without loading a teacher."""
     if rlhf_config is None:
         return
     if isinstance(rlhf_config.teacher_adapters, str):
@@ -654,12 +671,6 @@ def _derive_rlhf_teacher(model_config: 'ModelConfig', tuner_config: Optional['Tu
         value = getattr(rlhf_config, field)
         if isinstance(value, str):
             setattr(rlhf_config, field, [value])
-    if rlhf_config.use_gym_env is None and (
-            rlhf_config.gym_env is not None
-            or rlhf_config.multi_turn_scheduler in ('gym_scheduler', 'openenv_scheduler')):
-        rlhf_config.use_gym_env = True
-    if rlhf_config.use_gym_env and rlhf_config.multi_turn_scheduler is None:
-        rlhf_config.multi_turn_scheduler = 'gym_scheduler'
     if (rlhf_config.teacher_model == model_config.model and tuner_config is not None
             and not rlhf_config.teacher_adapters):
         rlhf_config._teacher_use_disable_adapter = True

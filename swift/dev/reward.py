@@ -26,6 +26,7 @@ RewardFunc = Callable[..., List[float]]
 
 __all__ = [
     'RewardFunc',
+    'build_frozen_reward_model',
     'build_reward_model_plugins',
     'build_reward_weights',
     'compute_reward_model_scores',
@@ -82,6 +83,77 @@ class _DefaultRewardModelPlugin:
         if logits is None:
             raise RuntimeError('reward model forward returned no logits.')
         return torch.as_tensor(logits).reshape(-1)
+
+
+def build_frozen_reward_model(model_id: str,
+                              model_config: Any,
+                              template_config: Any,
+                              *,
+                              model_type: Optional[str] = None,
+                              revision: Optional[str] = None,
+                              template_name: Optional[str] = None,
+                              adapter: Optional[str] = None,
+                              distributed_config: Optional['DistributedConfig'] = None,
+                              remote_group: Optional[str] = None) -> Tuple[Any, Any]:
+    """Build ONE frozen reward model plus its own template -> ``(model, template)``.
+
+    The shared core of the GRPO and best-of-n sampling reward paths, so a reward model is built the
+    same way everywhere: its real ``task_type`` / ``num_labels`` come from the checkpoint's metadata
+    (``get_model_info_meta``) rather than a hard-coded head -- a scalar RM resolves to ``seq_cls`` with
+    ``num_labels=1``, a reranker to ``num_labels=1`` -- and it is built with ``build_model``, in local
+    mode unless a ``distributed_config`` is threaded in. An optional frozen LoRA is attached through
+    ``configure_frozen_adapter(role='reward')``.
+
+    Callers own the scoring contract: GRPO wraps the pair in :func:`build_reward_model_plugins`
+    (``plugin(inputs=rows)``), sampling wraps it in a ``func(completions, **columns)`` callable. This
+    function only builds; it does not score.
+
+    Args:
+        model_id: the reward model path/id.
+        model_config: the run's ModelConfig, copied then overridden with this reward model's identity
+            (model/type/revision/task_type/num_labels) -- the caller's config is not mutated.
+        template_config: the run's TemplateConfig, copied; ``template`` is overridden by
+            ``template_name`` and ``max_length`` cleared so a reward model is not truncated to the
+            policy's budget.
+        template_name: this reward model's own chat template (a reward model need not share the
+            policy's); None keeps the config's.
+        adapter: an optional frozen LoRA checkpoint dir to attach.
+        distributed_config: optional parallel config for the reward model itself. None keeps the
+            historical single-process local build; threading the run's config lets a ``parallel_spec``
+            (or the integer parallel sizes) drive the reward model's DeviceMesh as well.
+        remote_group: optional Ray DeviceGroup name for the reward model (mode='ray' only). It
+            defaults to None so ``build_model`` uses its own 'model' group; a sampling run threads a
+            dedicated reward group so the frozen RM lands on its own GPUs instead of the trainable
+            model's.
+    """
+    from swift.dev.builders import build_model, build_template, load_model_processor
+    from swift.dev.config import DistributedConfig
+    from swift.dev.recipe.assembly import configure_frozen_adapter
+    from swift.model import get_model_info_meta
+
+    model_info, _ = get_model_info_meta(model_id, model_type=model_type, revision=revision)
+    reward_model_config = copy.copy(model_config)
+    reward_model_config.model = model_id
+    reward_model_config.model_type = model_type or model_info.model_type
+    reward_model_config.model_revision = revision
+    reward_model_config.task_type = model_info.task_type
+    reward_model_config.num_labels = model_info.num_labels
+
+    _, processor = load_model_processor(reward_model_config)
+    reward_template_config = copy.copy(template_config)
+    reward_template_config.template = template_name
+    reward_template_config.max_length = None
+    reward_template = build_template(
+        reward_template_config, processor, task_type=reward_model_config.task_type)
+    reward_template.max_length = None
+
+    reward_model = build_model(
+        reward_model_config, distributed_config or DistributedConfig(mode='local'), remote_group=remote_group)
+    reward_model = configure_frozen_adapter(
+        reward_model, reward_template, [adapter] if adapter else [], role='reward')
+    if getattr(reward_template, 'use_model', False):
+        reward_template.model = getattr(reward_model, 'model', reward_model)
+    return reward_model, reward_template
 
 
 def build_reward_model_plugins(models: Sequence[Any], templates: Sequence[Any],

@@ -505,10 +505,12 @@ async def _handle_completion(body: Dict[str, Any], request: Any, ctx: _ServerCon
 
 
 async def _handle_embeddings(body: Dict[str, Any], request: Any, ctx: _ServerContext):
-    """/v1/embeddings: a pooling forward, which is why it does not go through the sampler.
+    """/v1/embeddings: a pooling forward.
 
-    Only available when the server was started for an embedding model. Refusing loudly beats returning
-    hidden states from a causal LM, which would look like embeddings and rank nothing correctly.
+    On vLLM/SGLang it runs through the server's pooling sampler (``encode``); on other backends through
+    a lazily built HF model. Only available when the server was started for an embedding model.
+    Refusing loudly beats returning hidden states from a causal LM, which would look like embeddings and
+    rank nothing correctly.
     """
     from fastapi.responses import JSONResponse
 
@@ -552,7 +554,30 @@ async def _handle_embeddings(body: Dict[str, Any], request: Any, ctx: _ServerCon
 
 
 def _embed(ctx: _ServerContext, texts: List[str]) -> List[List[float]]:
-    """Lazily build the pooling model on first use and run it. Blocking; called off the event loop."""
+    """Produce one embedding vector per text. Blocking; called off the event loop.
+
+    Two routes, chosen by the backend the server was built with:
+
+    - vLLM / SGLang have a pooling head, so the server's own ``sampler`` -- already built as a pooling
+      engine by ``build_sampler`` -- serves this through ``encode``. No second model is loaded.
+    - anything else falls back to a lazily built HF model and ``forward_only(task='embedding')``.
+    """
+    if getattr(ctx, 'backend', None) in ('vllm', 'sglang'):
+        return _embed_via_sampler(ctx, texts)
+    return _embed_via_forward(ctx, texts)
+
+
+def _embed_via_sampler(ctx: _ServerContext, texts: List[str]) -> List[List[float]]:
+    """Run the embedding on the server's pooling sampler (vLLM/SGLang)."""
+    from swift.dev.builders import pooled_data, to_pooling_params
+
+    trajectories = [{'messages': [{'role': 'user', 'content': text}]} for text in texts]
+    pooling_params = to_pooling_params(getattr(ctx.model_config, 'task_type', None) or 'embedding')
+    return pooled_data(ctx.sampler.encode(trajectories, pooling_params))
+
+
+def _embed_via_forward(ctx: _ServerContext, texts: List[str]) -> List[List[float]]:
+    """Lazily build the HF pooling model on first use and run it (non-vLLM/SGLang backends)."""
     from swift.dev.builders import build_model
     from swift.dev.config import DistributedConfig
 

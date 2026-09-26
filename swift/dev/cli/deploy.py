@@ -25,6 +25,7 @@ def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         GenerationConfig,
         InferConfig,
         ModelConfig,
+        PluginConfig,
         QuantizeConfig,
         RolloutConfig,
         RuntimeConfig,
@@ -34,13 +35,13 @@ def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 
     effective_argv = resolve_argv(argv)
     reject_legacy_only_flags('deploy', effective_argv)
-    classes = [ModelConfig, TemplateConfig, DatasetConfig, CheckpointConfig, TunerConfig, GenerationConfig,
-               RolloutConfig, InferConfig, DeployConfig, QuantizeConfig, RuntimeConfig]
+    classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, CheckpointConfig, TunerConfig,
+               GenerationConfig, RolloutConfig, InferConfig, DeployConfig, QuantizeConfig, RuntimeConfig]
     configs = parse_configs_strict(
         classes, effective_argv, command='swift deploy', load_args_default=True)
-    names = ('model_config', 'template_config', 'dataset_config', 'checkpoint_config', 'tuner_config',
-             'generation_config', 'rollout_config', 'infer_config', 'deploy_config', 'quantize_config',
-             'runtime_config')
+    names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'checkpoint_config',
+             'tuner_config', 'generation_config', 'rollout_config', 'infer_config', 'deploy_config',
+             'quantize_config', 'runtime_config')
     result = dict(zip(names, configs))
     result['tuner_config'] = select_tuner(result['tuner_config'])
     if result['infer_config'].infer_backend == 'pt':

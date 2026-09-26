@@ -27,12 +27,6 @@ class ModelConfig:
     #: Extra kwargs forwarded to ``from_pretrained``. The CLI accepts a JSON object or JSON file.
     #: The escape hatch for a model whose loading needs something this config does not name.
     model_kwargs: Optional[Dict[str, Any]] = None
-    #: Python files imported before anything is built, so that decorated models, templates, datasets and
-    #: reward functions register themselves. Import order is the order given.
-    external_plugins: List[str] = field(default_factory=list)
-    #: Files whose ``register_model`` / ``register_template`` calls add entries the built-in registries
-    #: do not have. Distinct from ``external_plugins``, which is for behaviour rather than registration.
-    custom_register_path: List[str] = field(default_factory=list)
     #: Apply swift's Ascend-specific model patches. On by default and only consulted on NPU, where a few
     #: models otherwise hit unsupported ops.
     enable_npu_model_patch: bool = True

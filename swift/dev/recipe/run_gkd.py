@@ -531,9 +531,9 @@ def _gkd_rows_from_dataset(
     template: Any,
 ) -> Tuple[List[List[dict]], List[Optional[dict]], List[dict], List[List[dict]]]:
     """Load prompts, encoded completions, routing extras, and exact dataset messages."""
-    from swift.dev.recipe.run_infer import _load_prompt_rows
+    from swift.dev.builders import load_prompt_rows
 
-    rows = _load_prompt_rows(dataset_config, None, split_dataset_ratio=0.0)
+    rows = load_prompt_rows(dataset_config, None, split_dataset_ratio=0.0)
     prompts: List[List[dict]] = []
     features: List[Optional[dict]] = []
     extras: List[dict] = []

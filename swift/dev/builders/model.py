@@ -1,6 +1,6 @@
 """build_model: ModelConfig + DistributedConfig -> twinkle-native TransformersModel / MegatronModel."""
 from __future__ import annotations
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from twinkle import DeviceMesh
@@ -73,7 +73,17 @@ def build_hf_device_mesh(distributed_config: DistributedConfig,
     NOT a mesh dim in twinkle -- the dp dim spans ALL ranks (dp_size=world) and ``data_world_size``
     derives world/ulysses from it (utils/device_mesh.py), so SP peers share one data rank and
     receive identical samples.
+
+    With ``parallel_spec`` set, the string is parsed and handed straight to DeviceMesh over the torchrun
+    world instead -- from_sizes raises if the dims do not fill it and TransformersModel rejects any
+    dimension it does not implement, so there is no validation layer here.
     """
+    spec = distributed_config.parallel_spec
+    if spec:
+        from twinkle import DeviceMesh
+        from twinkle.utils import Platform
+        return DeviceMesh.from_spec(spec, world_size=Platform.get_world_size())
+
     if sequence_parallel_size <= 1 or distributed_config.mode != 'local':
         return None
 
@@ -96,8 +106,13 @@ def build_model(model_config: ModelConfig,
                 device_mesh: Optional['DeviceMesh'] = None,
                 quantize_config: Optional[QuantizeConfig] = None,
                 megatron_config: Optional[MegatronConfig] = None,
-                moe_config: Optional[MoEConfig] = None) -> TrainableModel:
+                moe_config: Optional[MoEConfig] = None,
+                remote_group: Optional[str] = None) -> TrainableModel:
     """ModelConfig + DistributedConfig -> twinkle-native Model (no loss/optim yet).
+
+    ``remote_group`` overrides the Ray DeviceGroup the model is placed in (mode='ray' only);
+    it defaults to 'model' so the training path is unchanged, and a frozen reward model can
+    target its own dedicated group instead of colliding with the trainable one.
 
     Thin mapping (no Registry/Factory): model_config fields -> twinkle __init__ kwargs.
     DistributedConfig.backend=='megatron' builds a MegatronModel (via the selected bridge
@@ -117,14 +132,16 @@ def build_model(model_config: ModelConfig,
             distributed_config,
             train_config,
             megatron_config=megatron_config,
-            moe_config=moe_config)
+            moe_config=moe_config,
+            remote_group=remote_group)
     return _build_transformers_model(
         model_config,
         distributed_config,
         train_config,
         tuner_config,
         device_mesh,
-        quantize_config=quantize_config)
+        quantize_config=quantize_config,
+        remote_group=remote_group)
 
 
 def _mixed_precision_for(torch_dtype: Optional[str]) -> str:
@@ -248,13 +265,15 @@ def _apply_hf_sp_mesh(kwargs: dict, device_mesh: Optional['DeviceMesh'],
         kwargs['device_mesh'] = device_mesh
 
 
-def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig) -> None:
-    """Place the transformers model in the remote 'model' DeviceGroup under mode='ray'.
+def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig,
+                         remote_group: str = 'model') -> None:
+    """Place the transformers model in a remote DeviceGroup under mode='ray'.
 
     The transformers backend has no TP/PP, so the mesh is pure data parallel over nproc_per_node.
     Local (torchrun) mode leaves both device_mesh and remote_group unset, exactly as before -- see
     the note in _build_transformers_model on why a None mesh is the correct (and load-bearing)
-    choice there.
+    choice there. ``remote_group`` defaults to 'model' (the trainable group); a frozen reward model
+    passes its own group name so it lands on dedicated GPUs instead of the trainable ones.
     """
     if distributed_config.mode == 'local':
         return
@@ -264,7 +283,7 @@ def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig) ->
         raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the 'model' "
                          'DeviceGroup and its data-parallel mesh). Pass it explicitly -- there is no default.')
     kwargs['device_mesh'] = DeviceMesh.from_sizes(world_size=nproc, dp_size=nproc)
-    kwargs['remote_group'] = 'model'
+    kwargs['remote_group'] = remote_group
 
 
 def _resolve_model_loader(model_config: ModelConfig):
@@ -423,7 +442,8 @@ def _build_transformers_model(model_config: ModelConfig,
                               device_mesh: Optional['DeviceMesh'] = None,
                               quantize_config: Optional[QuantizeConfig] = None,
                               megatron_config: Optional[MegatronConfig] = None,
-                              moe_config: Optional[MoEConfig] = None) -> TrainableModel:
+                              moe_config: Optional[MoEConfig] = None,
+                              remote_group: Optional[str] = None) -> TrainableModel:
     import torch
 
     from swift.dev.model import TransformersModel
@@ -498,7 +518,7 @@ def _build_transformers_model(model_config: ModelConfig,
     # the same group _initialize_twinkle builds -- mirroring the Megatron branch below. This is what
     # an online RL recipe needs so the trainer and a vLLMSampler are SEPARATE Ray actors that
     # CheckpointEngineManager can weight-sync between (it asserts both have `_actors`+`device_mesh`).
-    _apply_ray_placement(kwargs, distributed_config)
+    _apply_ray_placement(kwargs, distributed_config, remote_group or 'model')
 
     # tuner_backend='unsloth' swaps the class: unsloth owns both construction (its Triton kernels /
     # optional 4bit base) and LoRA installation -- see swift/dev/model/unsloth_model.py. Everything
@@ -646,6 +666,13 @@ def build_device_mesh(distributed_config: DistributedConfig):
     """
     from twinkle import DeviceMesh
 
+    spec = distributed_config.parallel_spec
+    if spec:
+        # A parallel_spec string is a lossless alternative to the integer size fields. Parse it and hand
+        # the dims straight to DeviceMesh: from_sizes raises if they do not fill nproc_per_node exactly,
+        # and each model backend rejects any dimension it does not implement. No validation layer here.
+        return DeviceMesh.from_spec(spec, world_size=distributed_config.nproc_per_node)
+
     tp = distributed_config.tensor_model_parallel_size
     pp = distributed_config.pipeline_model_parallel_size
     cp = distributed_config.context_parallel_size
@@ -680,6 +707,19 @@ def build_device_mesh(distributed_config: DistributedConfig):
     if distributed_config.sequence_parallel:
         mesh_kwargs['sequence_parallel'] = True
     return DeviceMesh.from_sizes(**mesh_kwargs)
+
+
+def build_device_mesh_if_dp(distributed_config: Optional[DistributedConfig]) -> Any:
+    """A DeviceMesh only when DP > 1: a single-process run wants a plain in-process engine.
+
+    The inference/sampling recipes share this so "when does a sampler get a device mesh" has one
+    answer: ``None`` for no config or a single data-parallel rank (the engine stays in-process), the
+    mesh only when there are actually multiple DP ranks to slice across.
+    """
+    if distributed_config is None:
+        return None
+    mesh = build_device_mesh(distributed_config)
+    return mesh if mesh is not None and getattr(mesh, 'data_world_size', 1) > 1 else None
 
 
 _NON_MODEL_MEGATRON_FIELDS = {
@@ -773,7 +813,8 @@ def _build_megatron_model(model_config: ModelConfig,
                            train_config: Optional[TrainConfig] = None,
                            *,
                            megatron_config: Optional[MegatronConfig] = None,
-                           moe_config: Optional[MoEConfig] = None) -> TrainableModel:
+                           moe_config: Optional[MoEConfig] = None,
+                           remote_group: Optional[str] = None) -> TrainableModel:
     """Build a MegatronModel via the selected bridge backend.
 
     twinkle must already be initialized in Ray mode (run_sft does this) so the 'model' DeviceGroup
@@ -912,5 +953,5 @@ def _build_megatron_model(model_config: ModelConfig,
         backend=backend,
         **extra_kwargs)
     if distributed_config.mode != 'local':
-        model_kwargs['remote_group'] = 'model'
+        model_kwargs['remote_group'] = remote_group or 'model'
     return MegatronModel(**model_kwargs)

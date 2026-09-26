@@ -23,6 +23,7 @@ def parse_export_configs(argv: Optional[List[str]] = None, *, command: str = 'ex
         MegatronConfig,
         ModelConfig,
         MoEConfig,
+        PluginConfig,
         QuantizeConfig,
         RuntimeConfig,
         TemplateConfig,
@@ -31,15 +32,15 @@ def parse_export_configs(argv: Optional[List[str]] = None, *, command: str = 'ex
 
     effective_argv = resolve_argv(argv)
     reject_legacy_only_flags(command, effective_argv)
-    classes = [ModelConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig, QuantizeConfig,
-               ConvertConfig, TunerConfig, GenerationConfig, RuntimeConfig, MegatronConfig, MoEConfig]
+    classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig,
+               QuantizeConfig, ConvertConfig, TunerConfig, GenerationConfig, RuntimeConfig, MegatronConfig, MoEConfig]
     configs, remaining = parse_configs(classes, effective_argv, load_args_default=True)
     if remaining:
         raise ValueError(f'Unrecognized arguments: {remaining}. The dev export CLI parses the Config surface '
                          'directly; a flag with no matching Config field is refused rather than dropped.')
-    names = ('model_config', 'template_config', 'dataset_config', 'distributed_config', 'checkpoint_config',
-             'quantize_config', 'convert_config', 'tuner_config', 'generation_config', 'runtime_config',
-             'megatron_config', 'moe_config')
+    names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'distributed_config',
+             'checkpoint_config', 'quantize_config', 'convert_config', 'tuner_config', 'generation_config',
+             'runtime_config', 'megatron_config', 'moe_config')
     result = dict(zip(names, configs))
     result['checkpoint_config']._output_dir_explicit = 'output_dir' in flag_names(effective_argv)
     return result

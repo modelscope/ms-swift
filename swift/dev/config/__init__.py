@@ -11,6 +11,7 @@ from .logging_config import LoggingConfig
 from .megatron_config import MegatronConfig
 from .model_config import ModelConfig
 from .moe_config import MoEConfig
+from .plugin_config import PluginConfig
 from .process import bootstrap_run, process_and_validate_configs, process_configs
 from .quantize_config import QuantizeConfig
 from .rlhf_config import RLHFConfig
@@ -34,6 +35,7 @@ __all__ = [
     'MegatronConfig',
     'ModelConfig',
     'MoEConfig',
+    'PluginConfig',
     'QuantizeConfig',
     'RLHFConfig',
     'RolloutConfig',

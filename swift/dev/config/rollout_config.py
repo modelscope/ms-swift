@@ -86,3 +86,27 @@ class RolloutConfig:
 
     # === Other ===
     teacher_tag_key: str = 'dataset'
+
+    # === Tools & sandbox (multi-turn rollout) ===
+    # A multi-turn rollout lets the model call tools inside a sandbox env. Tools are opt-in and come
+    # from tool plugins: ``tools`` names registered 'tool' plugins (resolved through PluginRegistry),
+    # and an empty list -- the default -- rolls out with no tools at all, exactly as before. The sandbox
+    # is a local ``LocalEnv`` by default (light enough to run in-process); naming a ``sandbox_template``
+    # switches it to an ``AgentEnv`` microVM instead.
+    #: Registered 'tool' plugin names to expose to the model. Empty = no tools.
+    tools: List[str] = field(default_factory=list)
+    #: AgentENV template name/ID. None builds a local ``LocalEnv``; a value builds an ``AgentEnv`` microVM.
+    sandbox_template: Optional[str] = None
+    #: Root directory the per-slot ``LocalEnv`` workspaces are created under. None uses a temp dir.
+    sandbox_workspace_root: Optional[str] = None
+    #: How many env instances to pool. One is leased per concurrent episode, so this is also the max
+    #: number of trajectories rolled out at once. Must be >= 1.
+    sandbox_num_envs: int = 1
+    #: AgentENV control-plane base URL (``sandbox_template`` set). None lets the SDK read ``E2B_API_URL``.
+    sandbox_api_url: Optional[str] = None
+    #: AgentENV sandbox idle timeout in seconds. None takes ``AgentEnv``'s own default.
+    sandbox_timeout: Optional[int] = None
+    #: Default per-command timeout in seconds, for both ``LocalEnv`` and ``AgentEnv``.
+    sandbox_command_timeout: int = 60
+    #: Address-space cap per call for a ``LocalEnv``; None does not cap.
+    sandbox_memory_limit_gb: Optional[float] = 2.0

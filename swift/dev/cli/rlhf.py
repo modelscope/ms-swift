@@ -51,6 +51,7 @@ def parse_rlhf_configs(argv: Optional[List[str]] = None, *, megatron: bool = Fal
         MegatronConfig,
         ModelConfig,
         MoEConfig,
+        PluginConfig,
         QuantizeConfig,
         RLHFConfig,
         RolloutConfig,
@@ -64,8 +65,9 @@ def parse_rlhf_configs(argv: Optional[List[str]] = None, *, megatron: bool = Fal
     reject_legacy_only_flags('megatron_rlhf' if megatron else 'rlhf', effective_argv)
     passed = flag_names(effective_argv)
     classes = [
-        ModelConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig, LoggingConfig,
-        TunerConfig, GenerationConfig, RolloutConfig, RLHFConfig, QuantizeConfig, MegatronConfig, MoEConfig
+        ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig,
+        LoggingConfig, TunerConfig, GenerationConfig, RolloutConfig, RLHFConfig, QuantizeConfig, MegatronConfig,
+        MoEConfig
     ]
     if megatron:
         from swift.dev.cli.megatron import MegatronCliCompatConfig
@@ -80,10 +82,10 @@ def parse_rlhf_configs(argv: Optional[List[str]] = None, *, megatron: bool = Fal
         'reward_weights': RLHFConfig,
     }
     configs = parse_configs_strict(classes, effective_argv, command='swift rlhf', field_owners=owners)
-    common = configs[:14]
-    (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-     logging_config, tuner_config, generation_config, rollout_config, rlhf_config, quantize_config, megatron_config,
-     moe_config) = common
+    common = configs[:15]
+    (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,
+     checkpoint_config, logging_config, tuner_config, generation_config, rollout_config, rlhf_config, quantize_config,
+     megatron_config, moe_config) = common
     rlhf_compat = configs[-1]
     if megatron:
         tuner_config = _configure_megatron(model_config, train_config, distributed_config, tuner_config)
@@ -98,6 +100,7 @@ def parse_rlhf_configs(argv: Optional[List[str]] = None, *, megatron: bool = Fal
 
     return {
         'model_config': model_config,
+        'plugin_config': plugin_config,
         'template_config': template_config,
         'dataset_config': dataset_config,
         'train_config': train_config,

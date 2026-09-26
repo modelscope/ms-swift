@@ -287,8 +287,9 @@ _CHECKPOINT_DATA_FIELDS = (
     'disable_auto_column_mapping', 'model_name', 'model_author', 'custom_dataset_info')
 _CHECKPOINT_LOAD_FIELDS = {
     'model_config': (
-        'external_plugins', 'model', 'model_type', 'model_revision', 'torch_dtype', 'attn_impl', 'experts_impl',
+        'model', 'model_type', 'model_revision', 'torch_dtype', 'attn_impl', 'experts_impl',
         'new_special_tokens', 'num_labels', 'problem_type', 'rope_scaling', 'max_model_len'),
+    'plugin_config': ('external_plugins', ),
     'quantize_config': (
         'quant_method', 'quant_bits', 'hqq_axis', 'bnb_4bit_compute_dtype', 'bnb_4bit_quant_storage'),
     'template_config': (

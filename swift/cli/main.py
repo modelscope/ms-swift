@@ -34,7 +34,6 @@ DEV_ROUTE_MAPPING: Dict[str, str] = {
     'infer': 'swift.dev.cli.infer',
     'merge-lora': 'swift.dev.cli.merge_lora',
     'deploy': 'swift.dev.cli.deploy',
-    'sample': 'swift.dev.cli.sample',
     'export': 'swift.dev.cli.export',
     'eval': 'swift.dev.cli.eval',
 }

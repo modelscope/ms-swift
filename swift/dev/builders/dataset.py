@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import numpy as np
-from typing import TYPE_CHECKING, Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
 
 if TYPE_CHECKING:
     from twinkle import DeviceMesh
@@ -459,3 +459,68 @@ def _pack(dataset: Any, template: Any, *, streaming: bool, packing_length: Optio
     cls = IterablePackingDataset if streaming else PackingDataset
     return cls(
         template, dataset, num_proc=num_proc, packing_length=length, packing_strategy=packing_strategy, strict=strict)
+
+
+def load_prompt_rows(dataset_config: DatasetConfig, max_rows: Optional[int],
+                     split_dataset_ratio: float = 0.01) -> List[Dict[str, Any]]:
+    """Load the raw rows to infer/sample over, restoring legacy's split semantics.
+
+    Shared by the inference-style recipes (infer / sampling / gkd / grpo) so "which rows does a prompt
+    run consume" has one answer. ``val_dataset`` wins outright. Otherwise ``dataset`` is split and only
+    the eval slice is used -- which is what a single ``--dataset`` meant in legacy. Set
+    ``split_dataset_ratio=0`` to run over the whole thing.
+    """
+    from swift.dev.dataset import load_dataset
+
+    kwargs = _load_kwargs(dataset_config)
+    if dataset_config.val_dataset:
+        _, rows = load_dataset(datasets=list(dataset_config.val_dataset), split_dataset_ratio=0.0, **kwargs)
+        rows = rows if rows is not None else []
+    elif split_dataset_ratio:
+        _, rows = load_dataset(
+            datasets=list(dataset_config.dataset), split_dataset_ratio=split_dataset_ratio, **kwargs)
+        rows = rows if rows is not None else []
+        logger.info(f'load_prompt_rows: using the eval split of --dataset (split_dataset_ratio='
+                    f'{split_dataset_ratio}); pass split_dataset_ratio=0 to run over all of it.')
+    else:
+        rows, _ = load_dataset(datasets=list(dataset_config.dataset), split_dataset_ratio=0.0, **kwargs)
+
+    rows = list(rows)
+    if max_rows is not None:
+        rows = rows[:max_rows]
+    return rows
+
+
+def to_trajectory(row: Dict[str, Any], messages: List[Dict[str, Any]],
+                  template_config: TemplateConfig) -> Dict[str, Any]:
+    """Build the twinkle Trajectory for one row.
+
+    ``TemplateConfig.system`` REPLACES a system turn the row already has rather than stacking a second
+    one, matching legacy: two system messages is not a supported prompt shape for most templates.
+    """
+    trajectory: Dict[str, Any] = {'messages': messages}
+    system = getattr(template_config, 'system', None)
+    if system:
+        without_system = [message for message in messages if message.get('role') != 'system']
+        trajectory['messages'] = [{'role': 'system', 'content': system}] + without_system
+    for key in ('images', 'audios', 'videos', 'objects', 'tools'):
+        if row.get(key):
+            trajectory[key] = row[key]
+    return trajectory
+
+
+def split_prompt_and_reference(rows: List[Dict[str, Any]],
+                               template_config: TemplateConfig) -> Tuple[List[Dict[str, Any]], List[Optional[str]]]:
+    """rows -> ``(trajectories, references)``, with each row's trailing assistant turn moved aside.
+
+    Shared by ``run_infer`` and ``run_sampling``: both have to hand the model a prompt that stops before
+    the reference answer, and both need that answer afterwards (as a metric label / as ground_truth).
+    Doing it in one place is what keeps "what the model saw" identical between the two recipes.
+    """
+    trajectories, references = [], []
+    for row in rows:
+        messages = list(row['messages'])
+        reference = messages.pop()['content'] if messages and messages[-1]['role'] == 'assistant' else None
+        references.append(reference)
+        trajectories.append(to_trajectory(row, messages, template_config))
+    return trajectories, references

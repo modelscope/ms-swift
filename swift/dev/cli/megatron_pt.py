@@ -10,9 +10,9 @@ def megatron_pt_main(argv: Optional[List[str]] = None):
     from swift.dev.recipe import run_pt
 
     os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
-    (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-     logging_config, tuner_config, quantize_config, megatron_config, moe_config) = parse_megatron_configs(
-         argv, command='megatron_pt')
+    (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,
+     checkpoint_config, logging_config, tuner_config, quantize_config, megatron_config,
+     moe_config) = parse_megatron_configs(argv, command='megatron_pt')
     if model_config.task_type not in (None, 'causal_lm'):
         raise ValueError(f'PT requires task_type="causal_lm", got {model_config.task_type!r}.')
     if template_config.use_chat_template not in (None, False):
@@ -24,6 +24,7 @@ def megatron_pt_main(argv: Optional[List[str]] = None):
     template_config.loss_scale = 'all'
     process_and_validate_configs({
         'model_config': model_config,
+        'plugin_config': plugin_config,
         'template_config': template_config,
         'dataset_config': dataset_config,
         'train_config': train_config,

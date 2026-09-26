@@ -16,6 +16,7 @@ def parse_merge_lora_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]
         CheckpointConfig,
         DatasetConfig,
         ModelConfig,
+        PluginConfig,
         RuntimeConfig,
         TemplateConfig,
         TunerConfig,
@@ -24,12 +25,13 @@ def parse_merge_lora_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]
     effective_argv = resolve_argv(argv)
     reject_legacy_only_flags('merge_lora', effective_argv)
     classes = [
-        ModelConfig, TemplateConfig, DatasetConfig, CheckpointConfig, TunerConfig, MergeLoraCliConfig, RuntimeConfig
+        ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, CheckpointConfig, TunerConfig, MergeLoraCliConfig,
+        RuntimeConfig
     ]
     configs = parse_configs_strict(
         classes, effective_argv, command='swift merge-lora', load_args_default=True)
-    names = ('model_config', 'template_config', 'dataset_config', 'checkpoint_config', 'tuner_config', 'cli_config',
-             'runtime_config')
+    names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'checkpoint_config',
+             'tuner_config', 'cli_config', 'runtime_config')
     return dict(zip(names, configs))
 
 

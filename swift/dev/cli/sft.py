@@ -22,6 +22,7 @@ if TYPE_CHECKING:
         DistributedConfig,
         LoggingConfig,
         ModelConfig,
+        PluginConfig,
         QuantizeConfig,
         TemplateConfig,
         TrainConfig,
@@ -40,8 +41,8 @@ def parse_sft_configs(
     argv: Optional[List[str]] = None,
     *,
     command: str = 'sft',
-) -> Tuple['ModelConfig', 'TemplateConfig', 'DatasetConfig', 'TrainConfig', 'DistributedConfig', 'CheckpointConfig',
-           'LoggingConfig', Optional['TunerConfig'], 'QuantizeConfig']:
+) -> Tuple['ModelConfig', 'PluginConfig', 'TemplateConfig', 'DatasetConfig', 'TrainConfig', 'DistributedConfig',
+           'CheckpointConfig', 'LoggingConfig', Optional['TunerConfig'], 'QuantizeConfig']:
     """Parse argv into the Configs run_sft consumes; dispatch the tuner by ``tuner_type``.
 
     Returns tuner_config=None for full-parameter training (tuner_type='full') and a filled TunerConfig
@@ -54,6 +55,7 @@ def parse_sft_configs(
         DistributedConfig,
         LoggingConfig,
         ModelConfig,
+        PluginConfig,
         QuantizeConfig,
         TemplateConfig,
         TrainConfig,
@@ -65,28 +67,29 @@ def parse_sft_configs(
     reject_legacy_only_flags(command, effective_argv)
 
     classes = [
-        ModelConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig, LoggingConfig,
-        TunerConfig, QuantizeConfig
+        ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig,
+        LoggingConfig, TunerConfig, QuantizeConfig
     ]
     configs, remaining = parse_configs(classes, effective_argv)
     if remaining:
         raise ValueError(f'Unrecognized arguments: {remaining}. The dev SFT CLI parses the Config surface '
                          'directly; a flag with no matching Config field is refused rather than dropped.')
-    (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-     logging_config, tuner, quantize_config) = configs
+    (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,
+     checkpoint_config, logging_config, tuner, quantize_config) = configs
 
-    return (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-            logging_config, select_tuner(tuner), quantize_config)
+    return (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,
+            checkpoint_config, logging_config, select_tuner(tuner), quantize_config)
 
 
 def sft_main(argv: Optional[List[str]] = None) -> List[dict]:
     from swift.dev.config import process_and_validate_configs
     from swift.dev.recipe import run_embedding, run_reranker, run_seq_cls, run_sft
 
-    (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-     logging_config, tuner_config, quantize_config) = parse_sft_configs(argv)
+    (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,
+     checkpoint_config, logging_config, tuner_config, quantize_config) = parse_sft_configs(argv)
     process_and_validate_configs({
         'model_config': model_config,
+        'plugin_config': plugin_config,
         'template_config': template_config,
         'dataset_config': dataset_config,
         'train_config': train_config,

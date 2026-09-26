@@ -59,10 +59,9 @@ def toy_length_reward(sample: Any) -> float:
     """Deterministic toy reward: normalized completion length. Reward quality is out of scope
     here — we only need a real, non-constant advantage signal so the loss is non-trivial.
 
-    ``response_token_ids`` is per-turn (``List[List[int]]``), so total length sums inner turns.
+    ``response_token_ids`` is a flat ``List[int]`` (twinkle accounts a trajectory in one array).
     """
-    turns = getattr(sample, 'response_token_ids', None) or []
-    return float(sum(len(turn) for turn in turns))
+    return float(len(getattr(sample, 'response_token_ids', None) or []))
 
 
 class _RemoteGRPOTeacher:
@@ -95,7 +94,7 @@ class _RemoteGRPOTeacher:
 
     @staticmethod
     def _response_ids(sample: Any) -> List[int]:
-        return [int(token) for turn in sample.response_token_ids for token in turn]
+        return [int(token) for token in sample.response_token_ids]
 
     def _requests(self, samples: List[Any], prompts: List[List[dict]], template: Any) -> List[Any]:
         from swift.infer_engine.protocol import RolloutInferRequest
@@ -225,8 +224,6 @@ class GRPOLoop:
         if model_names and len(model_names) != len(self.reward_model_plugins):
             raise ValueError('reward_model_names must align one-to-one with reward_model_plugins.')
         self.reward_func_names.extend(model_names or [type(plugin).__name__ for plugin in self.reward_model_plugins])
-        if rlhf_config is not None and rlhf_config.use_gym_env:
-            self.reward_func_names.append('gym')
         self.reward_fn = reward_fn
         self.max_steps = max_steps
         self.gradient_accumulation_steps = max(1, gradient_accumulation_steps)
@@ -308,15 +305,6 @@ class GRPOLoop:
             reward_parts.append(compute_rewards_per_func(completions, self.reward_funcs, columns))
         if self.reward_model_plugins:
             reward_parts.append(compute_reward_model_scores(self._reward_rows(samples), self.reward_model_plugins))
-        if getattr(getattr(self, 'rlhf_config', None), 'use_gym_env', False):
-            gym_rewards = []
-            for index, sample in enumerate(samples):
-                rollout_infos = getattr(sample, 'rollout_infos', None) or {}
-                if 'total_reward' not in rollout_infos:
-                    raise RuntimeError(
-                        f'gym rollout sample[{index}] has no total_reward; the configured scheduler must expose it.')
-                gym_rewards.append([float(rollout_infos['total_reward'])])
-            reward_parts.append(torch.tensor(gym_rewards, dtype=torch.float32))
         if reward_parts:
             return torch.cat(reward_parts, dim=1)
         return torch.tensor([[self.reward_fn(sample)] for sample in samples], dtype=torch.float32)
@@ -406,16 +394,13 @@ class GRPOLoop:
             if message.get('role') == 'user':
                 message['content'] = teacher_prompt
                 break
-        response_ids = [token for turn in sample.response_token_ids for token in turn]
+        response_ids = [int(token) for token in sample.response_token_ids]
         if not is_multi_turn:
             messages.append({'role': 'assistant', 'content': response_ids})
             return messages, response_ids
 
         from swift.dev.rollout.multi_turn import _messages_with_token_ids
-        response_loss_mask = getattr(sample, 'response_loss_mask', None)
-        if not response_loss_mask:
-            response_loss_mask = [[1] * len(turn) for turn in sample.response_token_ids]
-        return _messages_with_token_ids(messages, sample.response_token_ids, response_loss_mask), response_ids
+        return _messages_with_token_ids(messages, sample.input_feature), response_ids
 
     def _teacher_feature(self, sample: Any) -> dict:
         teacher_prompt = (getattr(sample, 'extra', None) or {}).get('teacher_prompt')

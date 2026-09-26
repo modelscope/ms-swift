@@ -5,16 +5,19 @@ dev counterpart of legacy ``swift infer`` (``swift/pipelines/infer/infer.py::Swi
 
 - three generation backends (vllm / sglang / transformers; lmdeploy is deliberately dropped),
 - LoRA, either applied at request time or merged in first,
-- the pooling task types (seq_cls / embedding / reranker), which do not go through a sampler at all
-  because they need a forward pass rather than generation,
-- streaming to the terminal, an interactive REPL (:func:`infer_cli`), incremental result writing with
-  cross-process gathering, and the acc/rouge metrics.
+- the pooling task types (seq_cls / embedding / reranker), which run a forward pass rather than
+  generation: on vLLM/SGLang through the sampler's ``encode``, on transformers through a HF forward,
+- a generative reranker, which is a decoder-only causal LM scored off generation (the yes/no logprob
+  difference of its first token) on vLLM/SGLang, and through a HF forward on transformers,
+- streaming to the terminal, incremental result writing with cross-process gathering, and the
+  acc/rouge metrics. The interactive REPL now lives in :mod:`swift.dev.recipe.infer_tui`.
 
 What is structured differently from legacy, and why:
 
 - generation and pooling are two functions with one dispatcher, instead of ``task_type`` branches
-  threaded through a single ``_batch_infer``. They share almost nothing -- one wants a Sampler, the
-  other a model forward -- so keeping them apart is what stops each from carrying the other's cases.
+  threaded through a single ``_batch_infer``. They share the sampler surface but not the call -- one
+  decodes tokens via ``sample``, the other runs one forward via ``encode`` (or a HF forward on
+  transformers) -- so keeping them apart is what stops each from carrying the other's cases.
 - there is no ``__getattr__`` proxy onto the engine. Legacy's ``SwiftInfer.infer`` was actually the
   engine's method, which made the public surface depend on the backend; here the recipe owns it.
 - the sampler is built once and shut down in a ``finally``, so a crash mid-run still frees the GPU.
@@ -22,7 +25,7 @@ What is structured differently from legacy, and why:
 from __future__ import annotations
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
 
 import json
 
@@ -32,6 +35,7 @@ if TYPE_CHECKING:
         DistributedConfig,
         GenerationConfig,
         ModelConfig,
+        PluginConfig,
         QuantizeConfig,
         TemplateConfig,
         TunerConfig,
@@ -39,9 +43,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#: Task types that need a forward pass, not generation. They have no sampler: the model produces a
-#: pooled vector or a class score in one shot, and there is nothing to decode.
-POOLING_TASKS = ('seq_cls', 'embedding', 'reranker', 'generative_reranker')
+#: How many top logprobs to request when scoring a generative reranker off generation. The positive and
+#: negative tokens must both land in this window or the score cannot be read; 20 is within the default
+#: ``max_logprobs`` of both vLLM and sglang and comfortably covers the two tokens a trained reranker
+#: puts its mass on.
+_GENERATIVE_RERANKER_TOP_LOGPROBS = 20
 
 
 def run_infer(
@@ -56,6 +62,7 @@ def run_infer(
     tuner_config: Optional[TunerConfig] = None,
     adapters: Optional[List[str]] = None,
     quantize_config: Optional[QuantizeConfig] = None,
+    plugin_config: Optional[PluginConfig] = None,
     merge_lora: bool = False,
     num_samples: int = 1,
     max_rows: Optional[int] = None,
@@ -70,7 +77,9 @@ def run_infer(
 
     Args:
         model_config: model id/path, dtype, ``task_type``. A pooling ``task_type`` (see
-            :data:`POOLING_TASKS`) switches to the forward path and ignores ``backend``.
+            ``builders.is_pooling_task``) switches to the forward path, which still honours ``backend``:
+            vLLM/SGLang serve it through ``sampler.encode``, transformers through a HF forward. A
+            ``generative_reranker`` also returns one value per row but scores off generation.
         template_config: chat template, and the ``system`` that overrides the dataset's.
         dataset_config: what to infer over. See ``split_dataset_ratio`` for how the split is chosen.
         generation_config: decoding knobs. ``stream=True`` prints tokens as they arrive.
@@ -103,25 +112,52 @@ def run_infer(
         Result rows, each with ``response`` / ``responses`` / ``labels`` / ``messages`` plus every
         column the dataset row already had.
     """
+    from swift.dev.builders import is_pooling_task, load_prompt_rows
     from swift.dev.plugin import PluginRegistry
     from swift.dev.recipe.assembly import TrainAssembly
 
     # Inference has no Configs to cross-validate, but it still needs the run's plugin files imported:
     # a custom model or dataset lives in one, and its registration must precede the first name lookup.
-    PluginRegistry.load_configured(model_config)
+    PluginRegistry.load_configured(plugin_config)
     TrainAssembly.initialize_twinkle(distributed_config)
     adapters = _resolve_adapters(adapters, tuner_config)
     if merge_lora and adapters:
         model_config, adapters = _merge_adapters(model_config, template_config, adapters)
 
-    rows = _load_prompt_rows(dataset_config, max_rows, split_dataset_ratio)
+    rows = load_prompt_rows(dataset_config, max_rows, split_dataset_ratio)
     if not rows:
         raise ValueError('run_infer got an empty dataset. Set DatasetConfig.dataset or .val_dataset.')
 
     task_type = model_config.task_type or 'causal_lm'
-    if task_type in POOLING_TASKS:
+    if is_pooling_task(task_type):
         return _run_pooling(
-            model_config, template_config, distributed_config, rows, adapters, quantize_config, output_path, metric)
+            model_config,
+            template_config,
+            distributed_config,
+            rows,
+            adapters,
+            quantize_config,
+            output_path,
+            metric,
+            backend=backend,
+            engine_args=engine_args,
+            shutdown=_shutdown,
+        )
+    if task_type == 'generative_reranker':
+        return _run_generative_reranker(
+            model_config,
+            template_config,
+            generation_config,
+            distributed_config,
+            rows,
+            adapters,
+            quantize_config,
+            output_path,
+            metric,
+            backend=backend,
+            engine_args=engine_args,
+            shutdown=_shutdown,
+        )
 
     return _run_generative(
         model_config,
@@ -161,12 +197,13 @@ def _run_generative(
     shutdown: bool,
 ) -> List[Dict[str, Any]]:
     """The causal-LM path: encode prompts, sample, write."""
-    from swift.dev.builders import build_sampler, build_template, load_model_processor, to_sampling_params
+    from swift.dev.builders import (build_device_mesh_if_dp, build_sampler, build_template, load_model_processor,
+                                    split_prompt_and_reference, to_sampling_params)
 
     logger.info(f'run_infer: {len(rows)} prompts, backend={backend}, num_samples={num_samples}')
     _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
-    device_mesh = _build_device_mesh_if_dp(distributed_config)
+    device_mesh = build_device_mesh_if_dp(distributed_config)
     adapter_path = adapters[0] if adapters else None
 
     sampler = build_sampler(
@@ -248,19 +285,129 @@ def _run_pooling(
     quantize_config: Optional[QuantizeConfig],
     output_path: Optional[str],
     metric: Optional[str],
+    *,
+    backend: str,
+    engine_args: Optional[Dict[str, Any]],
+    shutdown: bool,
 ) -> List[Dict[str, Any]]:
     """The forward-pass path for seq_cls / embedding / reranker.
 
-    Deliberately not a sampler: these produce a vector or a score from one forward, so a generation
-    engine has nothing to contribute and (for vLLM/sglang) would refuse to load the pooling head at
-    all. The label comes from the row's own ``label`` column rather than from a trailing assistant
-    turn, because there is no completion to strip.
+    Two ways to run the same pooling forward, chosen by ``backend``:
+
+    - vLLM / SGLang have a pooling head, so the model is built as a pooling engine and served through
+      ``sampler.encode`` -- the same sampler surface the generative path uses, which is what lets one
+      backend serve both. This is the throughput path.
+    - transformers has no pooling head, so it falls back to ``build_model`` + ``forward_only(task=..)``,
+      a plain HF forward. This is the reach path.
+
+    Either way each row yields one plain-Python value (a vector, class logits, or a score), so the
+    result assembly (:func:`_finalize_forward_results`) is shared with the generative-reranker path. The
+    label comes from the row's own ``label`` column rather than from a trailing assistant turn, because
+    there is no completion to strip.
     """
+    from swift.dev.builders import to_trajectory
+
+    task_type = model_config.task_type
+    trajectories = [to_trajectory(row, list(row['messages']), template_config) for row in rows]
+
+    if backend in ('vllm', 'sglang'):
+        per_row = _pooling_via_sampler(
+            model_config, template_config, distributed_config, trajectories, adapters, quantize_config, backend,
+            engine_args, shutdown)
+    else:
+        per_row = _pooling_via_forward(
+            model_config, template_config, distributed_config, rows, trajectories, adapters, quantize_config)
+
+    return _finalize_forward_results(rows, per_row, task_type, backend, output_path, metric)
+
+
+def _finalize_forward_results(
+    rows: List[Dict[str, Any]],
+    per_row: List[Any],
+    task_type: Optional[str],
+    backend: str,
+    output_path: Optional[str],
+    metric: Optional[str],
+) -> List[Dict[str, Any]]:
+    """Assemble, write and score the one-value-per-row output of a forward-pass path.
+
+    Shared by :func:`_run_pooling` and :func:`_run_generative_reranker`: both produce exactly one plain
+    value per row (a vector, class logits, or a relevance score), so the row shape is the same. The label
+    comes from the row's own ``label`` column rather than a trailing assistant turn, because there is no
+    completion to strip.
+    """
+    logger.info(f'run_infer: {len(rows)} rows, task_type={task_type}, backend={backend}')
+    results = []
+    for row, output in zip(rows, per_row):
+        passthrough = {key: value for key, value in row.items() if key != 'messages'}
+        results.append({
+            'response': output,
+            'responses': [output],
+            'labels': row.get('label'),
+            'messages': list(row['messages']),
+            **passthrough
+        })
+    if output_path:
+        _write_jsonl(output_path, results)
+        logger.info(f'run_infer: wrote {len(results)} rows to {output_path}')
+    if metric:
+        logger.info(f'run_infer metric: {compute_metric(results, metric)}')
+    return results
+
+
+def _pooling_via_sampler(
+    model_config: ModelConfig,
+    template_config: TemplateConfig,
+    distributed_config: Optional[DistributedConfig],
+    trajectories: List[Dict[str, Any]],
+    adapters: Optional[List[str]],
+    quantize_config: Optional[QuantizeConfig],
+    backend: str,
+    engine_args: Optional[Dict[str, Any]],
+    shutdown: bool,
+) -> List[Any]:
+    """Run the pooling forward on a vLLM/SGLang sampler's ``encode``, one plain value per row."""
+    from swift.dev.builders import (build_device_mesh_if_dp, build_sampler, build_template, load_model_processor,
+                                    pooled_data, to_pooling_params)
+
+    _, processor = load_model_processor(model_config)
+    template = build_template(template_config, processor)
+    device_mesh = build_device_mesh_if_dp(distributed_config)
+    adapter_path = adapters[0] if adapters else None
+
+    sampler = build_sampler(
+        model_config,
+        backend=backend,
+        engine_args=engine_args,
+        device_mesh=device_mesh,
+        template=template,
+        adapters=adapters,
+        quantize_config=quantize_config)
+    try:
+        pooling_params = to_pooling_params(model_config.task_type)
+        kwargs: Dict[str, Any] = {}
+        if adapter_path is not None:
+            kwargs['adapter_path'] = adapter_path
+        return pooled_data(sampler.encode(trajectories, pooling_params, **kwargs))
+    finally:
+        if shutdown:
+            sampler.shutdown()
+
+
+def _pooling_via_forward(
+    model_config: ModelConfig,
+    template_config: TemplateConfig,
+    distributed_config: Optional[DistributedConfig],
+    rows: List[Dict[str, Any]],
+    trajectories: List[Dict[str, Any]],
+    adapters: Optional[List[str]],
+    quantize_config: Optional[QuantizeConfig],
+) -> List[Any]:
+    """Run the pooling forward as a plain HF forward (transformers backend), one plain value per row."""
     from swift.dev.builders import build_model, build_template, load_model_processor
     from swift.dev.config import DistributedConfig
 
     task_type = model_config.task_type
-    logger.info(f'run_infer: {len(rows)} rows, task_type={task_type} (forward pass, no sampler)')
     _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
     model = build_model(
@@ -271,25 +418,9 @@ def _run_pooling(
         for index, adapter in enumerate(adapters):
             model.add_adapter_to_model(f'adapter_{index}' if index else 'default', adapter)
 
-    encoded = [template.encode(_to_trajectory(row, list(row['messages']), template_config)) for row in rows]
+    encoded = [template.encode(trajectory) for trajectory in trajectories]
     outputs = model.forward_only(inputs=encoded, task=task_type, return_logits=True)
-
-    results = []
-    for row, output in zip(rows, _per_row_outputs(outputs, len(rows))):
-        result = {key: value for key, value in row.items() if key != 'messages'}
-        results.append({
-            'response': output,
-            'responses': [output],
-            'labels': row.get('label'),
-            'messages': list(row['messages']),
-            **result
-        })
-    if output_path:
-        _write_jsonl(output_path, results)
-        logger.info(f'run_infer: wrote {len(results)} rows to {output_path}')
-    if metric:
-        logger.info(f'run_infer metric: {compute_metric(results, metric)}')
-    return results
+    return _per_row_outputs(outputs, len(rows))
 
 
 def _per_row_outputs(outputs: Any, num_rows: int) -> List[Any]:
@@ -312,155 +443,128 @@ def _per_row_outputs(outputs: Any, num_rows: int) -> List[Any]:
     return list(tensor) if isinstance(tensor, (list, tuple)) else [tensor] * num_rows
 
 
-def infer_cli(
+def _run_generative_reranker(
     model_config: ModelConfig,
     template_config: TemplateConfig,
-    generation_config: Optional[GenerationConfig] = None,
+    generation_config: Optional[GenerationConfig],
+    distributed_config: Optional[DistributedConfig],
+    rows: List[Dict[str, Any]],
+    adapters: Optional[List[str]],
+    quantize_config: Optional[QuantizeConfig],
+    output_path: Optional[str],
+    metric: Optional[str],
     *,
-    backend: Literal['vllm', 'sglang', 'transformers'] = 'vllm',
-    engine_args: Optional[Dict[str, Any]] = None,
-    adapters: Optional[List[str]] = None,
-    quantize_config: Optional[QuantizeConfig] = None,
-    multi_round: bool = True,
-) -> None:
-    """Interactive REPL, the dev counterpart of legacy ``--eval_human true``.
+    backend: str,
+    engine_args: Optional[Dict[str, Any]],
+    shutdown: bool,
+) -> List[Dict[str, Any]]:
+    """Score a decoder-only (generative) reranker, one relevance score per row.
 
-    Commands (legacy's, unchanged, because muscle memory is the point of a REPL):
-        ``clear`` / ``reset-system`` / ``multi-line`` / ``single-line`` / ``quit``.
+    A generative reranker is a causal LM, not a pooling model: its score is the difference between the
+    logprob of a positive token (``yes``) and a negative one (``no``) at the first generated position.
+    That is exactly what ``swift.utils.torch_utils.get_generative_reranker_logits`` computes from the
+    lm_head for the HF path, and what the generation path reproduces here from logprobs -- the two agree
+    because the log-softmax normaliser cancels in the difference.
 
-    Multimodal inputs are prompted for by path when the template asks for them, matching legacy's
-    ``input_mm_data``. History is kept across turns unless ``multi_round`` is False.
+    So the backend split differs from pooling: vLLM/SGLang run it through *generation* (``sample``),
+    since neither serves a decoder-only reranker through ``encode`` (sglang's docs are explicit that it
+    must not be launched with ``--is-embedding``); transformers runs the same HF forward the pooling
+    path uses, with ``task='generative_reranker'``. Either way each row yields one score, so the result
+    assembly is shared.
     """
-    from swift.dev.builders import build_sampler, build_template, load_model_processor, to_sampling_params
+    from swift.dev.builders import to_trajectory
+
+    task_type = model_config.task_type
+    trajectories = [to_trajectory(row, list(row['messages']), template_config) for row in rows]
+
+    if backend in ('vllm', 'sglang'):
+        per_row = _generative_reranker_via_sampler(
+            model_config, template_config, generation_config, distributed_config, trajectories, adapters,
+            quantize_config, backend, engine_args, shutdown)
+    else:
+        per_row = _pooling_via_forward(
+            model_config, template_config, distributed_config, rows, trajectories, adapters, quantize_config)
+
+    return _finalize_forward_results(rows, per_row, task_type, backend, output_path, metric)
+
+
+def _generative_reranker_via_sampler(
+    model_config: ModelConfig,
+    template_config: TemplateConfig,
+    generation_config: Optional[GenerationConfig],
+    distributed_config: Optional[DistributedConfig],
+    trajectories: List[Dict[str, Any]],
+    adapters: Optional[List[str]],
+    quantize_config: Optional[QuantizeConfig],
+    backend: str,
+    engine_args: Optional[Dict[str, Any]],
+    shutdown: bool,
+) -> List[float]:
+    """Score a generative reranker on a vLLM/SGLang generation engine, one score per row."""
+    from swift.dev.builders import (build_device_mesh_if_dp, build_sampler, build_template, load_model_processor,
+                                    to_sampling_params)
 
     _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
+    device_mesh = build_device_mesh_if_dp(distributed_config)
+    adapter_path = adapters[0] if adapters else None
+
+    # Built as a generation engine, not a pooling runner: build_sampler treats ``generative_reranker`` as
+    # a generative task_type, so no ``runner='pooling'``/``is_embedding`` is injected.
     sampler = build_sampler(
         model_config,
         backend=backend,
         engine_args=engine_args,
+        device_mesh=device_mesh,
         template=template,
         adapters=adapters,
         quantize_config=quantize_config)
-    adapter_path = adapters[0] if adapters else None
-    params = to_sampling_params(generation_config)
-    stream = bool(generation_config is not None and generation_config.stream)
-
-    state = _CliState(system=template_config.system)
-    print('Interactive inference. Commands: clear | reset-system | multi-line | single-line | quit')
     try:
-        while True:
-            try:
-                query = state.read_query()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                break
-            if query is None:
-                continue
-            if query is _QUIT:
-                break
-
-            state.add_query(query)
-            trajectory = state.to_trajectory()
-            if stream:
-                pieces = []
-                for delta, _ in sampler.sample_stream(trajectory, params, adapter_path=adapter_path):
-                    if delta:
-                        print(delta, end='', flush=True)
-                        pieces.append(delta)
-                print(flush=True)
-                response = ''.join(pieces)
-            else:
-                from swift.dev.builders import sampled_texts
-                texts = sampled_texts(sampler.sample([trajectory], params, adapter_path=adapter_path))
-                response = texts[0][0] if texts and texts[0] else ''
-                print(response, flush=True)
-            if multi_round:
-                state.add_response(response)
-            else:
-                state.clear()
+        tokenizer = _tokenizer_of(processor)
+        positive_id, negative_id = _generative_reranker_token_ids(tokenizer)
+        # temperature is forced to 1.0 so the reported logprobs are the log-softmax of the raw logits:
+        # only then does logprob(yes) - logprob(no) equal the logit difference the HF path returns (any
+        # other temperature scales the logits before the softmax and changes the gap). max_tokens=1 --
+        # not 0 -- because twinkle's max_tokens==0 logprobs-only path drops logprobs, and we need the
+        # first generated token's.
+        params = to_sampling_params(
+            generation_config, max_tokens=1, temperature=1.0, logprobs=_GENERATIVE_RERANKER_TOP_LOGPROBS)
+        kwargs: Dict[str, Any] = {}
+        if adapter_path is not None:
+            kwargs['adapter_path'] = adapter_path
+        responses = sampler.sample(trajectories, params, **kwargs)
+        return [_score_from_logprobs(response, positive_id, negative_id) for response in responses]
     finally:
-        sampler.shutdown()
+        if shutdown:
+            sampler.shutdown()
 
 
-#: Sentinel returned by ``_CliState.read_query`` for 'quit', kept distinct from an empty line (which
-#: means "reprompt") and from None (a command that was already handled).
-_QUIT = object()
+def _score_from_logprobs(response: Any, positive_id: int, negative_id: int) -> float:
+    """``logprob(yes) - logprob(no)`` at the first generated position of one SampleResponse."""
+    sequence = response.sequences[0]
+    if not sequence.logprobs:
+        raise RuntimeError('generative reranker scoring requested logprobs but the sampler returned none; '
+                           'the backend may not honour logprobs on this path.')
+    topk = dict(sequence.logprobs[0])
+    if positive_id not in topk or negative_id not in topk:
+        raise RuntimeError(
+            f'generative reranker: the positive/negative tokens ({positive_id}/{negative_id}) are not both '
+            f'in the top-{len(topk)} logprobs of the first generated token. Raise '
+            '_GENERATIVE_RERANKER_TOP_LOGPROBS (or check GENERATIVE_RERANKER_POSITIVE_TOKEN/'
+            'GENERATIVE_RERANKER_NEGATIVE_TOKEN) so both are returned.')
+    return topk[positive_id] - topk[negative_id]
 
 
-class _CliState:
-    """Conversation state for :func:`infer_cli`, i.e. legacy's ``InferCliState``."""
+def _generative_reranker_token_ids(tokenizer: Any) -> Tuple[int, int]:
+    """The (positive, negative) token ids, from the same env vars the HF scoring path reads."""
+    positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+    negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
+    return tokenizer.convert_tokens_to_ids(positive_token), tokenizer.convert_tokens_to_ids(negative_token)
 
-    def __init__(self, system: Optional[str] = None):
-        self.system = system
-        self.messages: List[Dict[str, Any]] = []
-        self.media: Dict[str, List[str]] = {'images': [], 'audios': [], 'videos': []}
-        self.multiline = False
 
-    def clear(self) -> None:
-        self.messages = []
-        self.media = {key: [] for key in self.media}
-
-    def add_query(self, query: str) -> None:
-        self.messages.append({'role': 'user', 'content': query})
-
-    def add_response(self, response: str) -> None:
-        self.messages.append({'role': 'assistant', 'content': response})
-
-    def to_trajectory(self) -> Dict[str, Any]:
-        trajectory: Dict[str, Any] = {'messages': list(self.messages)}
-        if self.system:
-            trajectory['messages'] = [{'role': 'system', 'content': self.system}] + trajectory['messages']
-        for key, values in self.media.items():
-            if values:
-                trajectory[key] = list(values)
-        return trajectory
-
-    def read_query(self):
-        """Read one turn, handling the commands. Returns the query, None (handled), or ``_QUIT``."""
-        raw = self._read_raw()
-        stripped = raw.strip()
-        if not stripped:
-            return None
-        lowered = stripped.lower()
-        if lowered in ('quit', 'exit'):
-            return _QUIT
-        if lowered == 'clear':
-            self.clear()
-            print('History cleared.')
-            return None
-        if lowered == 'reset-system':
-            self.system = input('Enter the new system prompt: ').strip() or None
-            self.clear()
-            print(f'System set to {self.system!r}; history cleared (a mid-conversation system swap '
-                  'would leave turns answered under the old one).')
-            return None
-        if lowered in ('multi-line', 'single-line'):
-            self.multiline = lowered == 'multi-line'
-            print(f'multi-line mode: {self.multiline}')
-            return None
-        return stripped
-
-    def _read_raw(self) -> str:
-        if not self.multiline:
-            return input('<<< ')
-        print('<<< (multi-line; end with a single "#" on its own line)')
-        lines = []
-        while True:
-            line = input()
-            if line.strip() == '#':
-                break
-            lines.append(line)
-        return '\n'.join(lines)
-
-    def prompt_media(self, kinds: Sequence[str]) -> None:
-        """Ask for media paths, blank line to stop -- legacy's ``input_mm_data``."""
-        for kind in kinds:
-            while True:
-                path = input(f'Input a {kind[:-1]} path/url (blank to finish): ').strip()
-                if not path:
-                    break
-                self.media.setdefault(kind, []).append(path)
+def _tokenizer_of(processor: Any) -> Any:
+    """A tokenizer from whatever ``load_model_processor`` returned (a tokenizer, or a processor wrapping one)."""
+    return getattr(processor, 'tokenizer', processor)
 
 
 class _IncrementalWriter:
@@ -510,23 +614,6 @@ def _gather_rows(rows: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
 
     gathered = framework_util.gather_object(rows, device_mesh=None)
     return gathered if is_master() else None
-
-
-def split_prompt_and_reference(rows: List[Dict[str, Any]],
-                               template_config: TemplateConfig) -> Tuple[List[Dict[str, Any]], List[Optional[str]]]:
-    """rows -> ``(trajectories, references)``, with each row's trailing assistant turn moved aside.
-
-    Shared with ``run_sampling``: both have to hand the model a prompt that stops before the reference
-    answer, and both need that answer afterwards (as a metric label / as ground_truth). Doing it in one
-    place is what keeps "what the model saw" identical between the two recipes.
-    """
-    trajectories, references = [], []
-    for row in rows:
-        messages = list(row['messages'])
-        reference = messages.pop()['content'] if messages and messages[-1]['role'] == 'assistant' else None
-        references.append(reference)
-        trajectories.append(_to_trajectory(row, messages, template_config))
-    return trajectories, references
 
 
 def _assemble_results(
@@ -582,64 +669,6 @@ def _merge_adapters(model_config: ModelConfig, template_config: TemplateConfig,
         model_config, TunerConfig(adapters=list(adapters)), template_config=template_config, device_map='cpu')
     logger.info(f'run_infer: merged {len(adapters)} adapter(s) into {merged}')
     return dataclasses.replace(model_config, model=merged), None
-
-
-def _build_device_mesh_if_dp(distributed_config: Optional[DistributedConfig]) -> Any:
-    """A DeviceMesh only when DP > 1: a single-process run wants a plain in-process engine."""
-    if distributed_config is None:
-        return None
-    from swift.dev.builders import build_device_mesh
-
-    mesh = build_device_mesh(distributed_config)
-    return mesh if mesh is not None and getattr(mesh, 'data_world_size', 1) > 1 else None
-
-
-def _to_trajectory(row: Dict[str, Any], messages: List[Dict[str, Any]],
-                   template_config: TemplateConfig) -> Dict[str, Any]:
-    """Build the twinkle Trajectory for one row.
-
-    ``TemplateConfig.system`` REPLACES a system turn the row already has rather than stacking a second
-    one, matching legacy: two system messages is not a supported prompt shape for most templates.
-    """
-    trajectory: Dict[str, Any] = {'messages': messages}
-    system = getattr(template_config, 'system', None)
-    if system:
-        without_system = [message for message in messages if message.get('role') != 'system']
-        trajectory['messages'] = [{'role': 'system', 'content': system}] + without_system
-    for key in ('images', 'audios', 'videos', 'objects', 'tools'):
-        if row.get(key):
-            trajectory[key] = row[key]
-    return trajectory
-
-
-def _load_prompt_rows(dataset_config: DatasetConfig, max_rows: Optional[int],
-                      split_dataset_ratio: float = 0.01) -> List[Dict[str, Any]]:
-    """Load the rows to infer over, restoring legacy's split semantics.
-
-    ``val_dataset`` wins outright. Otherwise ``dataset`` is split and only the eval slice is used --
-    which is what a single ``--dataset`` meant in legacy. Set ``split_dataset_ratio=0`` to infer over
-    the whole thing.
-    """
-    from swift.dev.builders.dataset import _load_kwargs
-    from swift.dev.dataset import load_dataset
-
-    kwargs = _load_kwargs(dataset_config)
-    if dataset_config.val_dataset:
-        _, rows = load_dataset(datasets=list(dataset_config.val_dataset), split_dataset_ratio=0.0, **kwargs)
-        rows = rows if rows is not None else []
-    elif split_dataset_ratio:
-        _, rows = load_dataset(
-            datasets=list(dataset_config.dataset), split_dataset_ratio=split_dataset_ratio, **kwargs)
-        rows = rows if rows is not None else []
-        logger.info(f'run_infer: using the eval split of --dataset (split_dataset_ratio='
-                    f'{split_dataset_ratio}); pass split_dataset_ratio=0 to infer over all of it.')
-    else:
-        rows, _ = load_dataset(datasets=list(dataset_config.dataset), split_dataset_ratio=0.0, **kwargs)
-
-    rows = list(rows)
-    if max_rows is not None:
-        rows = rows[:max_rows]
-    return rows
 
 
 def _batches(rows: List[Dict[str, Any]], size: int):

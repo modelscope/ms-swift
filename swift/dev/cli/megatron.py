@@ -12,6 +12,7 @@ if TYPE_CHECKING:
         MegatronConfig,
         ModelConfig,
         MoEConfig,
+        PluginConfig,
         QuantizeConfig,
         TemplateConfig,
         TrainConfig,
@@ -64,8 +65,9 @@ def parse_megatron_configs(
     *,
     world_size: Optional[int] = None,
     command: str = 'megatron_sft',
-) -> Tuple['ModelConfig', 'TemplateConfig', 'DatasetConfig', 'TrainConfig', 'DistributedConfig', 'CheckpointConfig',
-           'LoggingConfig', Optional['TunerConfig'], 'QuantizeConfig', 'MegatronConfig', 'MoEConfig']:
+) -> Tuple['ModelConfig', 'PluginConfig', 'TemplateConfig', 'DatasetConfig', 'TrainConfig', 'DistributedConfig',
+           'CheckpointConfig', 'LoggingConfig', Optional['TunerConfig'], 'QuantizeConfig', 'MegatronConfig',
+           'MoEConfig']:
     """Parse Megatron argv directly into dev Configs, with a compatibility shim."""
     import os
 
@@ -78,6 +80,7 @@ def parse_megatron_configs(
         MegatronConfig,
         ModelConfig,
         MoEConfig,
+        PluginConfig,
         QuantizeConfig,
         TemplateConfig,
         TrainConfig,
@@ -88,15 +91,15 @@ def parse_megatron_configs(
     from swift.dev.cli.legacy_coverage import reject_legacy_only_flags
     reject_legacy_only_flags(command, effective_argv)
     classes = [
-        ModelConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig, LoggingConfig,
-        TunerConfig, QuantizeConfig, MegatronConfig, MoEConfig, MegatronCliCompatConfig
+        ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig,
+        LoggingConfig, TunerConfig, QuantizeConfig, MegatronConfig, MoEConfig, MegatronCliCompatConfig
     ]
     configs, remaining = parse_configs(classes, effective_argv)
     if remaining:
         raise ValueError(f'Unrecognized arguments: {remaining}. This legacy Megatron flag has no dev Config '
                          'consumer and is refused rather than silently dropped.')
-    (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-     logging_config, tuner, quantize_config, megatron_config, moe_config, compat) = configs
+    (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,
+     checkpoint_config, logging_config, tuner, quantize_config, megatron_config, moe_config, compat) = configs
 
     world_size = int(os.environ.get('WORLD_SIZE', '1')) if world_size is None else world_size
     distributed_config.backend = 'megatron'
@@ -111,8 +114,9 @@ def parse_megatron_configs(
         train_config.end_weight_decay = None
     _derive_megatron_ga(train_config, distributed_config, world_size)
 
-    return (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-            logging_config, _select_megatron_tuner(tuner), quantize_config, megatron_config, moe_config)
+    return (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,
+            checkpoint_config, logging_config, _select_megatron_tuner(tuner), quantize_config, megatron_config,
+            moe_config)
 
 
 def megatron_sft_main(argv: Optional[List[str]] = None) -> List[dict]:
@@ -120,10 +124,12 @@ def megatron_sft_main(argv: Optional[List[str]] = None) -> List[dict]:
     from swift.dev.config import process_and_validate_configs
     from swift.dev.recipe import run_sft
 
-    (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-     logging_config, tuner_config, quantize_config, megatron_config, moe_config) = parse_megatron_configs(argv)
+    (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,
+     checkpoint_config, logging_config, tuner_config, quantize_config, megatron_config,
+     moe_config) = parse_megatron_configs(argv)
     process_and_validate_configs({
         'model_config': model_config,
+        'plugin_config': plugin_config,
         'template_config': template_config,
         'dataset_config': dataset_config,
         'train_config': train_config,
