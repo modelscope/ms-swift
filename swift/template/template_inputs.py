@@ -222,7 +222,8 @@ class TemplateInputs:
             return
         messages = inputs['messages']
         assert len(messages) > 0, f'messages: {messages}'
-        idx = get_last_user_round(messages) + 1
+        # Replace the entire response trajectory, including tool calls and results.
+        idx = get_last_user_round(messages, include_tool=False) + 1
 
         rejected_response = inputs.pop('rejected_response')
         if isinstance(rejected_response, str):
