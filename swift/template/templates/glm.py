@@ -577,6 +577,9 @@ class CogTemplate(Template):
         encoded['input_ids'] = input_ids[:1] + [self.processor.pad_token_id] * image_token_len + input_ids[1:]
         if labels is not None:
             encoded['labels'] = labels[:1] + [-100] * image_token_len + labels[1:]
+        loss_scale = encoded.get('loss_scale')
+        if loss_scale is not None:
+            encoded['loss_scale'] = loss_scale[:1] + [0.] * image_token_len + loss_scale[1:]
         if len(image) > 0:
             encoded['images'] = [[img.to(dtype=self.model_info.torch_dtype)] for img in inputs2['images']]
             if 'cross_images' in inputs2:
@@ -586,11 +589,13 @@ class CogTemplate(Template):
         return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        if any(b.get('cross_images') for b in batch) and not all(b.get('cross_images') for b in batch):
+            raise ValueError('CogAgent requires an image for every sample in a multimodal batch.')
         res = super()._data_collator(batch, padding_to=padding_to)
         keys = ['images', 'cross_images']
         for key in keys:
-            if key in batch[0]:
-                res[key] = [b[key][0] for b in batch]
+            if any(b.get(key) for b in batch):
+                res[key] = [b[key][0] if b.get(key) else [] for b in batch]
         return res
 
 
@@ -648,6 +653,9 @@ class Cog2VideoTemplate(CogTemplate):
         encoded['input_ids'] = input_ids[:1] + [self.processor.pad_token_id] * video_token_len + input_ids[1:]
         if labels is not None:
             encoded['labels'] = labels[:1] + [-100] * video_token_len + labels[1:]
+        loss_scale = encoded.get('loss_scale')
+        if loss_scale is not None:
+            encoded['loss_scale'] = loss_scale[:1] + [0.] * video_token_len + loss_scale[1:]
         if len(video) > 0:
             dtype = model.dtype
             encoded['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]

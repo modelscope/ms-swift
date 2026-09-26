@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import get_logger, upper_bound
+from swift.utils import get_logger, lower_bound
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -48,7 +48,7 @@ class PaliGemmaTemplate(Template):
         raw_image = inputs.images
         processor = self.processor
         if encoded['labels'] is not None:
-            n = upper_bound(0, len(encoded['labels']), lambda idx: encoded['labels'][idx] == -100)
+            n = lower_bound(0, len(encoded['labels']), lambda idx: encoded['labels'][idx] != -100)
             n2 = len(encoded['labels']) - n
             encoded['token_type_ids'] = [0] * n + [1] * n2
         else:
