@@ -10,7 +10,7 @@ import transformers
 from accelerate.utils import find_device
 from collections.abc import Mapping
 from contextlib import contextmanager
-from functools import wraps
+from functools import partial, wraps
 from packaging import version
 from peft import PeftModel
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
@@ -281,6 +281,65 @@ def transformers_seq_cls_forward(self, *args, origin_forward, padding_side=None,
     )
 
 
+def _seq_cls_architectures(arch_list):
+    """Rewrite architectures to the matching ``*ForSequenceClassification`` class.
+
+    Used by :func:`_patch_sequence_classification` so that the on-disk
+    ``config.json`` produced by ``PreTrainedModel.save_pretrained`` references
+    the seq_cls architecture (e.g. ``Qwen3VLForSequenceClassification``) instead
+    of the generation architecture that the model class is actually an instance
+    of. Without this, downstream vLLM deployment fails because the checkpoint
+    advertises ``Qwen3VLForConditionalGeneration`` while shipping a
+    ``score`` head and ``num_labels`` / ``problem_type`` fields — see #9704.
+    """
+    if not arch_list:
+        return arch_list
+    res = []
+    for arch in arch_list:
+        if arch.endswith('ForConditionalGeneration'):
+            arch = arch[:-len('ForConditionalGeneration')] + 'ForSequenceClassification'
+        elif arch.endswith('ForCausalLM'):
+            arch = arch[:-len('ForCausalLM')] + 'ForSequenceClassification'
+        res.append(arch)
+    return res
+
+
+def _seq_cls_save_pretrained(model, save_pretrained, *args, **kwargs):
+    """Preserve classifier metadata through Transformers' architecture reset."""
+    config = model.config
+    architectures = getattr(config, 'architectures', None)
+    architectures = list(architectures) if architectures else None
+    config_save_pretrained = config.save_pretrained
+
+    def save_config(*args, **kwargs):
+        # Config serialization includes instance attributes, so remove the temporary callable first.
+        config.__dict__.pop('save_pretrained', None)
+        if architectures is not None:
+            config.architectures = architectures
+        return config_save_pretrained(*args, **kwargs)
+
+    config.save_pretrained = save_config
+    try:
+        return save_pretrained(*args, **kwargs)
+    finally:
+        config.__dict__.pop('save_pretrained', None)
+        # Non-main saves skip save_config; failed saves must not leave the model's metadata changed either.
+        if architectures is not None:
+            config.architectures = architectures
+
+
+def _patch_save_pretrained_architectures(model):
+    """Bind a pickle-safe save wrapper without modifying other instances of the model class."""
+    save_pretrained = model.save_pretrained
+    if isinstance(save_pretrained, partial) and save_pretrained.func is _seq_cls_save_pretrained:
+        return
+    if isinstance(save_pretrained, MethodType):
+        # Pickling a bound method looks it up by name on the restored instance, where our wrapper
+        # will live. Bind the original function explicitly so it cannot resolve back to the wrapper.
+        save_pretrained = partial(save_pretrained.__func__, model)
+    model.save_pretrained = partial(_seq_cls_save_pretrained, model, save_pretrained)
+
+
 def _patch_sequence_classification(model, model_meta):
     hidden_size = HfConfigFactory.get_config_attr(model.config, 'hidden_size')
     initializer_range = HfConfigFactory.get_config_attr(model.config, 'initializer_range')
@@ -305,6 +364,13 @@ def _patch_sequence_classification(model, model_meta):
         return transformers_seq_cls_forward(self, *args, origin_forward=origin_forward, **kwargs)
 
     lm_head_model.forward = MethodType(new_forward, lm_head_model)
+
+    # Align the on-disk `architectures` with the task. PreTrainedModel.save_pretrained
+    # writes `model.__class__.__name__` for `architectures`, but the seq_cls patcher
+    # monkey-patches a `score` head onto the generation class without swapping it,
+    # so the saved checkpoint would otherwise advertise the wrong class (see #9704).
+    model.config.architectures = _seq_cls_architectures(getattr(model.config, 'architectures', None))
+    _patch_save_pretrained_architectures(model)
 
 
 @contextmanager
