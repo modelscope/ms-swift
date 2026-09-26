@@ -14,6 +14,14 @@ def _is_local_master():
     return local_rank in {-1, 0}
 
 
+def _get_log_level():
+    # A blank or unknown LOG_LEVEL (e.g. `LOG_LEVEL=` in a shell script or Dockerfile)
+    # must fall back to INFO instead of raising, otherwise importing swift.utils fails.
+    log_level = os.getenv('LOG_LEVEL', '').strip().upper()
+    log_level = getattr(logging, log_level, logging.INFO)
+    return log_level if isinstance(log_level, int) else logging.INFO
+
+
 init_loggers = {}
 
 # old format
@@ -63,8 +71,7 @@ def get_logger(log_file: Optional[str] = None, log_level: Optional[int] = None, 
             specified (if filemode is unspecified, it defaults to 'w').
     """
     if log_level is None:
-        log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
-        log_level = getattr(logging, log_level, logging.INFO)
+        log_level = _get_log_level()
     logger_name = __name__.split('.')[0]
     logger = logging.getLogger(logger_name)
     logger.propagate = False
@@ -116,9 +123,8 @@ ms_logger = get_ms_logger()
 
 logger.handlers[0].setFormatter(logger_format)
 ms_logger.handlers[0].setFormatter(logger_format)
-log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
 if _is_local_master():
-    ms_logger.setLevel(log_level)
+    ms_logger.setLevel(_get_log_level())
 else:
     ms_logger.setLevel(logging.ERROR)
 
