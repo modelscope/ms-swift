@@ -21,8 +21,8 @@ logger = get_logger()
 class Idefics3Loader(ModelLoader):
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
-        from transformers import AutoModelForVision2Seq
-        self.auto_model_cls = self.auto_model_cls or AutoModelForVision2Seq
+        from transformers import AutoModelForImageTextToText
+        self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
         return super().get_model(model_dir, *args, **kwargs)
 
 
