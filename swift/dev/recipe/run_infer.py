@@ -91,7 +91,8 @@ def run_infer(
     The generative path is a single pipeline -- sample a candidate group per prompt, optionally score
     it, then shape the rows -- whose behavior is set by three orthogonal knobs on ``infer_config``:
     ``num_return_sequences`` (candidates per prompt), the reward funcs (score every candidate, for any
-    n), and ``output_format`` ('all' stores the whole group, 'dpo' stores best-of-n pairs). A pooling
+    n), and ``output_format`` ('all' stores the whole group, 'dpo' stores best-of-n pairs, 'grpo' stores
+    the whole scored group with group-relative advantages). A pooling
     ``task_type`` (seq_cls / embedding / reranker) or a ``generative_reranker`` instead runs a forward
     pass and returns one value per row.
 
@@ -212,6 +213,20 @@ def _run_generative(
             raise ValueError(f'n_best_to_keep={infer_config.n_best_to_keep} must be < '
                              f'num_return_sequences={num_return}: the lowest-scoring candidate becomes the '
                              'rejected response, so it cannot also be a positive.')
+    elif output_format == 'grpo':
+        # A GRPO dump is the group itself -- every candidate's trajectory, trainable mask and rollout logps,
+        # plus its reward when a channel scored it -- and the group-relative advantage is recomputed at
+        # train time, not here. So it needs a real group (>= 2 candidates) and the rollout-token sidecar
+        # that carries the logps: save_rollout_tokens is what forces logprob computation, so without it
+        # there would be no old_logps to store. This is an explicit requirement, not a default derived from
+        # output_format (a lone param never silently sets another).
+        if num_return < 2:
+            raise ValueError(f"output_format='grpo' needs num_return_sequences >= 2 to dump a group, got "
+                             f'{num_return}.')
+        if not infer_config.save_rollout_tokens:
+            raise ValueError("output_format='grpo' stores each candidate's rollout logprobs (old_logps), "
+                             'which are only produced when save_rollout_tokens forces logprob computation. '
+                             'Re-run with --save_rollout_tokens true.')
     multi_turn_enabled = bool(rlhf_config and rlhf_config.max_turns is not None)
     if infer_config.score_ground_truth and multi_turn_enabled:
         # The reference answer is a single assistant turn with no tool trajectory, while a multi-turn
@@ -326,6 +341,13 @@ def _run_generative(
         recorder = _RolloutRecorder(
             output_path + '.rollout_tokens', base_dir=os.path.dirname(output_path) or 'output', enabled=True)
 
+    if output_format == 'grpo' and channels.empty:
+        # No reward channel is a valid GRPO dump -- the group's trajectories, masks and old_logps are the
+        # corpus, and training scores/advantages them later. Note once why ``scores`` comes out null.
+        logger.info("output_format='grpo' with no reward channel (--reward_funcs / --prm_model / --orm_model) "
+                    "stores each prompt's group trajectories + rollout logps with null scores; reward is "
+                    'left to the training step.')
+
     results: List[Dict[str, Any]] = []
     # Throughput/token summary, the dev counterpart of legacy's InferStats: prompts and generated tokens
     # are counted as batches complete, then reported once at the end. Token counts come only from a local
@@ -342,7 +364,7 @@ def _run_generative(
             trajectories, ground_truths, groups = _sample_candidates(
                 sampler, rollout, batch, params, template_config, infer_config, cache, backend,
                 adapter_path, multi_turn_enabled)
-            emit = _emit_dpo if output_format == 'dpo' else _emit_all
+            emit = {'dpo': _emit_dpo, 'grpo': _emit_grpo}.get(output_format, _emit_all)
             batch_rows: List[Dict[str, Any]] = []
             for row, trajectory, ground_truth, group in zip(batch, trajectories, ground_truths, groups):
                 group = [candidate for candidate in group if candidate.text]
@@ -374,10 +396,11 @@ def _run_generative(
         stats['tokens/s'] = round(num_generated_tokens / runtime, 1) if runtime > 0 else 0.0
     logger.info(f'run_infer stats: {stats}')
     if infer_config.metric:
-        if output_format == 'dpo':
-            logger.warning("metric=%r does not apply to output_format='dpo' rows: they carry chosen/rejected "
-                           "pairs, not a single response/labels to score. Use output_format='all' for a "
-                           'metric.', infer_config.metric)
+        if output_format != 'all':
+            logger.warning("metric=%r applies only to output_format='all' rows, which carry one response/"
+                           'labels to score; %r rows store a whole candidate group, so the metric is '
+                           "skipped. Re-run with output_format='all' for a metric.", infer_config.metric,
+                           output_format)
         else:
             logger.info(f'run_infer metric: {compute_metric(results, infer_config.metric)}')
     return results
@@ -614,6 +637,42 @@ def _dpo_row(row: Dict[str, Any], trajectory: Dict[str, Any], positive: '_Candid
     return out
 
 
+def _emit_grpo(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Optional[str],
+               candidates: List['_Candidate'], scores: Optional[List[float]], infer_config: InferConfig,
+               recorder: Any = None) -> List[Dict[str, Any]]:
+    """'grpo' format: one row per prompt holding the whole sampled group as an offline GRPO corpus.
+
+    The row stores what GRPO training reads and nothing it recomputes. Every candidate keeps its full
+    ``all_messages`` trajectory (multi-turn candidates diverge at their own tool calls, so each is stored
+    whole rather than collapsed to one response) and its rollout tokens -- ``rollout_tokens``, the NPZ
+    sidecar with input_ids / labels / completion_mask / logprobs / loss_mask (the old-policy logps) -- plus
+    a stable group ``id`` and ``num_generations``. The group-relative advantage is deliberately NOT
+    computed here: it is cheap and belongs to the training step, which recomputes it from the stored
+    rewards and logps. When a reward channel (``--reward_funcs`` / ``--prm_model`` / ``--orm_model``) scored
+    the group, each candidate's ``scores`` entry rides along; with no reward channel ``scores`` is null and
+    only the trajectories + logps are stored, which is a valid GRPO corpus the trainer scores later.
+    """
+    prompt_id = _prompt_key(trajectory['messages'])
+    out: Dict[str, Any] = {key: value for key, value in row.items() if key != 'messages'}
+    out['id'] = prompt_id
+    out['messages'] = copy.deepcopy(trajectory['messages'])
+    out['completions'] = [candidate.text for candidate in candidates]
+    out['all_messages'] = [_candidate_messages(candidate, trajectory) for candidate in candidates]
+    out['num_generations'] = len(candidates)
+    if ground_truth is not None:
+        out['labels'] = ground_truth
+    if recorder is not None:
+        out['rollout_tokens'] = [
+            recorder.record(prompt_id, index, candidate) for index, candidate in enumerate(candidates)
+        ]
+    if scores is not None:
+        # A judge that returned nothing numeric scores nan; null it so the row stays json-serialisable.
+        out['scores'] = [None if score != score else score for score in scores]
+    else:
+        out['scores'] = None
+    return [out]
+
+
 def _run_pooling(
     model_config: ModelConfig,
     template_config: TemplateConfig,
@@ -792,6 +851,14 @@ def _forward_via_transformers(
     task_type = model_config.task_type
     _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
+    # build_template leaves the template in 'train' mode (its default caller is the dataset/training
+    # path). This is the INFERENCE forward, and a train-mode ``_embedding_encode`` / ``_reranker_encode``
+    # reads ``positive_messages`` / ``negative_messages`` off the row -- pairs that only exist for
+    # contrastive training. run_infer's ``to_trajectory`` carries just the anchor ``messages``, so train
+    # mode hit ``positive[0]`` on an empty list and raised IndexError. Switching to an inference mode
+    # makes both encoders take their anchor-only branch, which is what a forward pass wants. causal_lm /
+    # seq_cls encode the anchor identically in either mode, so this does not change them.
+    template.set_mode('transformers')
     model = build_model(
         model_config, distributed_config or DistributedConfig(), quantize_config=quantize_config)
     if adapters:
@@ -831,7 +898,10 @@ def _per_row_outputs(outputs: Any, num_rows: int) -> List[Any]:
     """
     tensor = outputs
     if isinstance(outputs, dict):
-        for key in ('logits', 'embedding', 'last_hidden_state'):
+        # forward_only(task='embedding') returns the pooled vectors under 'embeddings' (plural); the
+        # other heads use 'logits' / 'embedding' / 'last_hidden_state'. Missing the plural key left the
+        # raw output dict (tensors and all) as the row value, which is neither a vector nor serialisable.
+        for key in ('logits', 'embeddings', 'embedding', 'last_hidden_state'):
             if key in outputs:
                 tensor = outputs[key]
                 break
@@ -1212,6 +1282,18 @@ class _RolloutRecorder:
 
     def record(self, prompt_id: str, candidate_index: int, candidate: Any) -> Optional[str]:
         """Persist one candidate's rollout tokens; return the NPZ path relative to ``base_dir``.
+
+        The sidecar holds the token-level training payload every dump format shares (SFT/DPO/GRPO alike,
+        not a GRPO special case): ``input_ids`` / ``labels`` / ``completion_mask`` (the trainable mask over
+        the full sequence) / ``response_token_ids`` / ``response_loss_mask`` / ``rollout_logprobs`` (the
+        sampling-policy old_logps). old_logps are the one thing training cannot recompute -- the policy has
+        drifted -- so they must be stored; the rest pins the response boundary the logps align to.
+
+        Multimodal tensors (pixel_values / image_grid_thw / ...) are deliberately NOT written: they are
+        large and, unlike old_logps, fully reproducible. Each output row keeps the dataset's image/video
+        columns and the candidate messages (with their placeholders), so training re-encodes the vision
+        inputs from those -- the same re-encode an online rollout does -- and the stored token arrays line
+        up because the template is deterministic for identical messages + images.
 
         Returns None when disabled, or when the candidate carries no token feature (a message-only
         backend), so a path is embedded only for candidates that actually have tokens. ``candidate`` is

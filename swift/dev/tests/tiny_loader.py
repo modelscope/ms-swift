@@ -14,7 +14,7 @@ rather than a re-implementation of it -- a family that overrides ``build_config`
 ``build_processor`` / ``process_model`` keeps doing so under the tiny sizes.
 """
 from __future__ import annotations
-from typing import Any, Dict, Type
+from typing import Any, Dict, Optional, Type
 
 from transformers import PretrainedConfig
 
@@ -74,7 +74,13 @@ def tiny_loader_cls(model_type: str, dims: Dict[str, Any]) -> Type[ModelLoader]:
             return shrink(super().build_config(model_dir, **kwargs), dims)
 
         def build_model(self, model_dir: str, config: PretrainedConfig, processor, **kwargs):
-            return self.resolve_model_cls().from_config(config, **kwargs)
+            model_cls = self.resolve_model_cls()
+            # transformers 5.x dropped the public ``from_config`` on concrete model classes (a VL
+            # ``...ForConditionalGeneration`` only exposes the private ``_from_config``); fall back to
+            # it, mirroring the same hasattr check twinkle's own empty-init path uses. An Auto class
+            # that still carries ``from_config`` is unaffected.
+            factory = model_cls.from_config if hasattr(model_cls, 'from_config') else model_cls._from_config
+            return factory(config, **kwargs)
 
     TinyLoader.__name__ = f'Tiny{base.__name__}'
     TinyLoader.__qualname__ = TinyLoader.__name__
@@ -97,3 +103,37 @@ def loader_builder(model_type: str) -> Builder:
         return loader.process_model(loader.build_model(snapshot_dir, config, processor))
 
     return _build
+
+
+#: Layer counts only -- a VL tower wires ``out_hidden_size`` to the text ``hidden_size`` and its
+#: mrope / merger geometry to ``head_dim``, so shrinking anything but the depth desyncs the two
+#: sub-configs. Two layers is enough to prove the vision path is wired without the weight cost.
+_VL_DIMS: Dict[str, Any] = {'num_hidden_layers': 2, 'depth': 2, 'fullatt_block_indexes': [1]}
+
+
+def build_tiny_multimodal(dest: str,
+                          model_type: str = 'qwen2_5_vl',
+                          model_id: str = 'Qwen/Qwen2.5-VL-3B-Instruct',
+                          dims: Optional[Dict[str, Any]] = None) -> str:
+    """Build a tiny vision-language checkpoint (random weights) and save model *and* processor to ``dest``.
+
+    :meth:`~swift.dev.tests.tiny.TinyModel.build` is text-shaped: it saves an ``AutoTokenizer`` and
+    forces the dense ``DIMS``, neither of which a VL checkpoint survives -- the image processor would
+    be missing and the tower's ``out_hidden_size`` would no longer match the text ``hidden_size``. So a
+    VL model is built through its own family loader here, shrinking only the layer counts, and the
+    processor (image processor included) is saved next to the weights so the template can encode images.
+    """
+    import torch
+
+    from swift.dev.tests.tiny import TinyModel
+
+    _dims = {'dtype': torch.bfloat16, **_VL_DIMS, **(dims or {})}
+    snapshot = TinyModel.tokenizer_dir(model_id)
+    loader = tiny_loader_cls(model_type, _dims)(
+        ModelInfo(model_type=model_type, model_dir=snapshot, torch_dtype=torch.bfloat16))
+    config = loader.process_config(loader.build_config(snapshot))
+    processor = loader.build_processor(snapshot, config)
+    model = loader.process_model(loader.build_model(snapshot, config, processor, torch_dtype=torch.bfloat16))
+    model.save_pretrained(dest)
+    processor.save_pretrained(dest)
+    return str(dest)

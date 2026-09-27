@@ -80,17 +80,17 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         infer_config.num_return_sequences = result['cli_config'].num_samples
     if 'num_return_sequences' in passed:
         result['cli_config'].num_samples = infer_config.num_return_sequences
-    if infer_config.output_format == 'all':
-        # The best-of-n ranking knobs only shape 'dpo' output; under 'all' every candidate is stored as-is,
-        # so a threshold set here would be silently ignored. Say so instead of dropping it on the floor.
+    if infer_config.output_format != 'dpo':
+        # The best-of-n ranking knobs only shape 'dpo' output; under 'all'/'grpo' every candidate is stored
+        # as-is, so a threshold set here would be silently ignored. Say so instead of dropping it on the floor.
         ignored = [name for name, value in (('reward_threshold', infer_config.reward_threshold),
                                             ('easy_query_threshold', infer_config.easy_query_threshold))
                    if value is not None]
         if 'n_best_to_keep' in passed:
             ignored.append('n_best_to_keep')
         if ignored:
-            logger.warning("output_format='all' ignores %s; they only shape the best-of-n ranking under "
-                           "output_format='dpo'. Switch to 'dpo' to apply them.", ', '.join(ignored))
+            logger.warning(f"output_format={infer_config.output_format!r} ignores {', '.join(ignored)}; they only "
+                           "shape the best-of-n ranking under output_format='dpo'. Switch to 'dpo' to apply them.")
     has_dataset = bool(result['dataset_config'].dataset or result['dataset_config'].val_dataset)
     if result['generation_config'].stream is None:
         result['generation_config'].stream = not has_dataset

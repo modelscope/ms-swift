@@ -131,9 +131,20 @@ def infer_cli(
             else:
                 state.clear()
     finally:
-        if rollout is not None:
-            rollout.close()
-        sampler.shutdown()
+        # Releasing the model spins down the vLLM engine core and its worker subprocesses, which
+        # takes a few seconds and prints nothing. Say so: a second Ctrl+C during that pause (the
+        # natural reaction to a silent hang) interrupts the workers mid-exit, dumps a traceback that
+        # looks like a crash, and leaks their IPC semaphores/shared memory to resource_tracker.
+        print(f'\n{_DIM}Shutting down (releasing the model and sandbox), please wait...{_RESET}', flush=True)
+        try:
+            if rollout is not None:
+                rollout.close()
+            sampler.shutdown()
+        except KeyboardInterrupt:
+            # Interrupted anyway -- the OS reclaims the workers' memory and IPC objects once the
+            # process dies, so acknowledge instead of propagating a scary stack. atexit's shutdown is
+            # idempotent (guarded by _shutdown_called), so nothing runs twice.
+            print(f'{_YELLOW}Interrupted during shutdown; exiting.{_RESET}', flush=True)
     print(f'\n{_DIM}Bye.{_RESET}')
 
 
@@ -284,10 +295,19 @@ class _CliState:
         return '\n'.join(lines)
 
     def prompt_media(self, kinds: Sequence[str]) -> None:
-        """Ask for media paths, blank line to stop -- legacy's ``input_mm_data``."""
+        """Ask for media paths -- one per line, blank line to finish each kind (legacy's ``input_mm_data``).
+
+        Each kind loops until a blank line, so any number of images/audios/videos can be attached to this
+        turn; the paths land in ``self.media`` and ``to_trajectory`` attaches them to the trajectory. The
+        running count in the prompt is what signals "you can keep going" -- without it the repeated
+        one-per-line prompt reads as if only a single path is expected.
+        """
         for kind in kinds:
+            singular = kind[:-1]
             while True:
-                path = input(f'Input a {kind[:-1]} path/url (blank to finish): ').strip()
+                collected = len(self.media.get(kind) or [])
+                hint = f', {collected} added' if collected else ''
+                path = input(f'Input {singular} path/url, one per line (blank to finish{hint}): ').strip()
                 if not path:
                     break
                 self.media.setdefault(kind, []).append(path)

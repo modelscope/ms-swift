@@ -41,10 +41,14 @@ class InferConfig:
     #: How sampled candidates become output rows. 'all' writes one row per prompt carrying every
     #: completion in ``responses`` (plus per-candidate ``scores`` when a reward func scored them) --
     #: plain inference and scored-corpus dumping alike. 'dpo' scores the group and writes best-of-n
-    #: chosen/rejected pairs for DPO training (needs ``num_return_sequences >= 2``). Scoring is
-    #: orthogonal to this knob: a reward func set on an 'all' run still scores every candidate and
-    #: stores its score. A future 'grpo' would write the whole scored group with group-relative stats.
-    output_format: Literal['all', 'dpo'] = 'all'
+    #: chosen/rejected pairs for DPO training (needs ``num_return_sequences >= 2``). 'grpo' writes one row
+    #: per prompt holding the whole sampled group as an offline GRPO corpus: every candidate's full
+    #: trajectory plus its rollout tokens -- input_ids / labels / completion_mask / old_logps, via
+    #: ``save_rollout_tokens``, which 'grpo' requires -- and each candidate's ``scores`` when a reward
+    #: channel scored the group. The group-relative advantage is NOT computed here; training recomputes it
+    #: from the stored rewards + logps. Needs ``num_return_sequences >= 2``. Scoring is orthogonal to this
+    #: knob: a reward func set on an 'all' run still scores every candidate and stores its score.
+    output_format: Literal['all', 'dpo', 'grpo'] = 'all'
 
     # === Scoring ===
     #: Metric computed over the completions once the run finishes. None only generates.

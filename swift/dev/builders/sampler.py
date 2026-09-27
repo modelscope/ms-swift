@@ -185,6 +185,18 @@ def build_sampler(
     if adapters:
         _enable_lora(kwargs, backend, adapters)
 
+    if backend == 'transformers':
+        # The transformers engine defaults to AutoModelForCausalLM, which cannot load a vision-language
+        # checkpoint (a VL config is not a causal-LM config, so from_pretrained rejects it). Hand it the
+        # family loader's declared model_cls so a VL model loads with its ...ForConditionalGeneration
+        # class; a text model's loader declares AutoModelForCausalLM, so this is a no-op there. The class
+        # travels as the loader's 'module:ClassName' string, which is what the engine resolves and what
+        # survives Ray engine_args. setdefault keeps an explicit engine_args entry authoritative.
+        from swift.dev.builders.model import _resolve_model_loader
+        loader = _resolve_model_loader(model_config)
+        if loader is not None:
+            kwargs.setdefault('model_cls', loader.model_cls)
+
     import twinkle.sampler as twinkle_sampler
     sampler_cls = getattr(twinkle_sampler, _SAMPLER_CLASSES[backend])
 

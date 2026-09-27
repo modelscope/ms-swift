@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from swift.dev.utils import get_logger
 from swift.template.base import Template as LegacyTemplate
@@ -88,18 +88,139 @@ class DevMixin:
         """Return the token ids consumed by vLLM for text-only dev rollout."""
         return input_ids
 
-    def concat_input_feature(self, prompt_input_feature, new_tokens: List[int]):
-        """Build a next-token-shifted training feature from a sampled completion."""
+    def concat_input_feature(self,
+                             prompt_input_feature,
+                             new_tokens: List[int],
+                             *,
+                             appended_as: str = 'completion',
+                             tool_calls: Optional[List[Dict[str, Any]]] = None):
+        """Append one sampled turn to an already-encoded prefix, keeping the token account whole.
+
+        Mirrors twinkle's native ``concat_input_feature``: unroll the prefix's ``labels`` /
+        ``completion_mask`` from output order back to input order, append the new tokens (trainable
+        for a completion, masked for ``context``), then re-roll through ``_invoke_post_pipeline`` --
+        the exact inverse of what the next ``observe`` / ``append_ids`` does, so the two stay aligned
+        turn after turn.
+
+        The unroll-append-reroll is load-bearing in the MULTI-turn path, which the single-turn
+        shortcut this replaced silently broke. There the prefix already carries earlier turns'
+        trainable labels plus a ``completion_mask`` the ledger's ``audit`` zips against ``labels``
+        position-by-position. Rebuilding ``labels`` as ``[-100] * prompt + response`` wiped every
+        earlier turn's labels, and leaving ``completion_mask`` untouched let it fall behind the
+        growing tokens -- so the second assistant turn of any tool episode died in ``audit`` with a
+        ``completion_mask/labels misaligned`` length mismatch (the gap that surfaced only once
+        ``_invoke_post_pipeline`` let the observe path run at all). Single-turn is unaffected either
+        way: ``samples_from_responses`` rebuilds ``encoded`` from ``prompt_token_ids`` and never reads
+        this feature's labels, and an opening prompt is all-masked so both forms agree.
+
+        The message append is not cosmetic: the multi-turn ledger adopts this feature wholesale
+        (``record`` does ``_pif = new_input_feature``), and every consumer reads the episode back off
+        ``messages`` -- ``run_infer`` / the TUI take the reply from the last assistant turn, and the
+        rollout loop's ``last_msg`` is ``messages[-1]``. A reply that parses as a call is stored with
+        the markup cleaned out of ``content`` and the structured calls in their own field; a sampler
+        that already parsed ``tool_calls`` passes them so the text is not re-parsed.
+        ``appended_as='context'`` masks the turn out of the labels and the completion_mask (history a
+        later turn sees but no loss may touch). Text-only: multimodal ``mm_token_type_ids`` padding is
+        left to ``append_ids``, the only grower a dev multimodal episode uses.
+        """
         import copy
 
         result = copy.deepcopy(prompt_input_feature)
         prompt_ids = list(result['input_ids'])
         response_ids = list(new_tokens)
-        aligned = [-100] * len(prompt_ids) + response_ids
+        scored = appended_as != 'context'
+
+        # Unroll the prefix's labels (output -> input order). An opening prompt encoded for generation
+        # has none, so it is all-masked; a multi-turn prefix carries earlier turns' trainable labels,
+        # which the circular unroll recovers exactly because position 0 is always a masked prompt token
+        # (so the wrapped value is -100 either way, matching dev's non-circular encode shift).
+        labels = list(result.get('labels') or [])
+        labels = (labels[-1:] + labels[:-1]) if labels else [-100] * len(prompt_ids)
+        # completion_mask lives on labels' index space, so it unrolls in step. Derived from labels when
+        # the prefix predates the field (the single-turn opening), which keeps old and new trajectories
+        # equivalent because the trainable positions were exactly ``labels != -100``.
+        mask = result.get('completion_mask')
+        if mask is None:
+            mask = [0 if label == -100 else 1 for label in labels]
+        else:
+            mask = list(mask)
+            mask = mask[-1:] + mask[:-1]
+            if len(mask) != len(prompt_ids):
+                raise ValueError(f'prefix completion_mask has {len(mask)} entries for {len(prompt_ids)} '
+                                 'input_ids; appending would misalign every position after it.')
+
         result['input_ids'] = prompt_ids + response_ids
-        result['labels'] = self._shift_labels_next_token(aligned)
+        result['labels'] = labels + (response_ids if scored else [-100] * len(response_ids))
+        result['completion_mask'] = mask + ([1] * len(response_ids) if scored else [0] * len(response_ids))
         result[self.SHIFTED_KEY] = True
+        # Re-roll into output order and refresh the sequence-aligned fields, the same post pipeline
+        # append_ids runs, so labels and completion_mask stay the same length and in the same order.
+        result = self._invoke_post_pipeline([result])[0]
+
+        messages = result.get('messages')
+        if messages is not None:
+            response_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
+            if tool_calls is None:
+                parsed = self.parse_tool_call(response_text) or []
+                content_text = self.clean_tool_call(response_text) if parsed else response_text
+            else:
+                parsed = list(tool_calls)
+                content_text = response_text
+            assistant_message: Dict[str, Any] = {'role': 'assistant', 'content': content_text}
+            if parsed:
+                assistant_message['tool_calls'] = parsed
+            messages.append(assistant_message)
+            result['messages'] = messages
         return result
+
+    def _invoke_post_pipeline(self, input_features: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """twinkle's post-encode pipeline, reimplemented on dev's label convention.
+
+        twinkle's multi-turn ledger grows an episode with ``append_ids`` / ``extend_with_bridge``
+        (a tool observation, a bridge to the next generation prompt). After splicing the new ids in
+        INPUT order, ``append_ids`` calls ``template._invoke_post_pipeline([result])`` to (1) enforce
+        ``max_length``, (2) refresh the sequence-aligned fields and (3) roll ``labels`` (and
+        ``completion_mask``) from input order back into the next-token/output order that the rest of
+        twinkle -- and dev's own ``concat_input_feature`` and ``trajectory_to_rollout_sample`` -- read.
+        A swift legacy template has none of twinkle's pipeline stages, so the first tool observation
+        died with ``AttributeError: 'Shifted*Template' object has no attribute '_invoke_post_pipeline'``
+        (the third gap in the same "DevMixin did not fully bridge the twinkle Template contract" seam).
+
+        The roll MUST be circular (``x[1:] + x[:1]``, i.e. ``np.roll(-1)``) so it is the exact inverse
+        of the unroll ``append_ids``/``_prefix_completion_mask`` do on the next turn (``x[-1:] + x[:-1]``)
+        and of dev's ``_input_order_labels``. That is also what makes it agree with dev's
+        ``concat_input_feature`` shift, which is non-circular but identical here because position 0 is
+        always a masked prompt token (label -100 / mask 0). ``labels`` and ``completion_mask`` are rolled
+        TOGETHER because the ledger's ``audit`` zips them position-by-position to count policy tokens.
+
+        Only the ordering and the max_length verdict are load-bearing downstream: the vLLM sampler
+        re-feeds ``input_ids``, and ``trajectory_to_rollout_sample`` reads ``labels``/``completion_mask``.
+        ``attention_mask``/``length`` are refreshed for faithfulness; ``position_ids`` is left to the
+        engine (vLLM derives its own, and dev has no ``set_mm_position_ids``). ``max_length`` overflow
+        under the 'delete' strategy drops the feature (empty list -> ``append_ids`` returns None ->
+        ``ledger.observe`` False -> the engine flags ``truncated``); other strategies keep it whole,
+        since dev bounds rollout length with ``max_trajectory_tokens`` rather than a hard re-raise here.
+        """
+        max_length = getattr(self, 'max_length', None)
+        strategy = getattr(self, 'truncation_strategy', 'raise')
+        out: List[Dict[str, Any]] = []
+        for feature in input_features:
+            input_ids = feature.get('input_ids')
+            if input_ids is None:
+                out.append(feature)
+                continue
+            if max_length and len(input_ids) > max_length and strategy == 'delete':
+                continue  # dropped: signals graceful truncation to append_ids/observe
+            feature['attention_mask'] = [1] * len(input_ids)
+            feature['length'] = len(input_ids)
+            if feature.get('labels') is not None:
+                labels = list(feature['labels'])
+                feature['labels'] = labels[1:] + labels[:1]
+            if feature.get('completion_mask') is not None:
+                mask = list(feature['completion_mask'])
+                feature['completion_mask'] = mask[1:] + mask[:1]
+            out.append(feature)
+        return out
 
     def decode(self, token_ids: List[int], **kwargs) -> str:
         return self.tokenizer.decode(token_ids, **kwargs)
@@ -123,6 +244,29 @@ class DevMixin:
         if isinstance(trajectories, dict):
             raise NotImplementedError('batch_encode expects a list of trajectories, not a columnar dict.')
         return [self.encode(dict(trajectory), **kwargs) for trajectory in trajectories]
+
+    # twinkle's AGENT contract (the rollout half; the Model half is encode/batch_encode above): a multi-turn
+    # tool loop parses tool calls off the model's decoded text THROUGH the template -- twinkle_agentic's
+    # rollout ledger calls template.parse_tool_call / tool_call_errors, and its endpoint path calls
+    # clean_tool_call. twinkle's native Template answers these from its ToolCallRegistry; a swift legacy
+    # template has none of them, so the first tool turn dies with AttributeError. Delegate to the SAME
+    # registry twinkle uses: its parsers are format detectors, and HermesQwenParser matches the
+    # <tool_response> markup swift's own Qwen agent templates render, so a dev template parses its own
+    # tool calls correctly. Imported lazily to keep this module cheap to import.
+    def parse_tool_call(self, decoded: str) -> List[Dict[str, Any]]:
+        from twinkle.template.tools import ToolCallRegistry
+        parser = ToolCallRegistry.detect_first(decoded or '')
+        return parser.parse(decoded) if parser else []
+
+    def clean_tool_call(self, decoded: str) -> str:
+        from twinkle.template.tools import ToolCallRegistry
+        parser = ToolCallRegistry.detect_first(decoded or '')
+        return parser.clean(decoded) if parser else (decoded or '').rstrip()
+
+    def tool_call_errors(self, decoded: str) -> List[str]:
+        from twinkle.template.tools import ToolCallRegistry
+        parser = ToolCallRegistry.detect_first(decoded or '')
+        return parser.parse_errors(decoded) if parser else []
 
 
 # Cache keyed by legacy class: one derived class per family, so `isinstance` stays meaningful across

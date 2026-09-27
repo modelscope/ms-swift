@@ -134,9 +134,25 @@ def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool =
     else:
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, file_path, *argv]
     print(f"run sh: `{' '.join(args)}`", flush=True)
-    result = subprocess.run(args)
-    if result.returncode != 0:
-        sys.exit(result.returncode)
+    # Not subprocess.run: its `except: process.kill()` sends SIGKILL to the child on KeyboardInterrupt.
+    # Ctrl+C is delivered to the whole foreground process group, so the child (e.g. `swift infer`) has
+    # already received SIGINT and is running its own graceful shutdown -- releasing the model, spinning
+    # down the vLLM engine and its worker subprocesses. SIGKILLing it mid-shutdown is exactly what dumped
+    # the parent traceback and leaked the workers' IPC semaphores/shared memory to resource_tracker. Use
+    # Popen and keep waiting instead, so the child finishes cleanly and we exit with its real status.
+    process = subprocess.Popen(args)
+    try:
+        returncode = process.wait()
+    except KeyboardInterrupt:
+        try:
+            # First Ctrl+C: let the child's graceful shutdown run to completion.
+            returncode = process.wait()
+        except KeyboardInterrupt:
+            # Second Ctrl+C: the user really wants out now, so stop the child and stop waiting on it.
+            process.terminate()
+            returncode = process.wait()
+    if returncode != 0:
+        sys.exit(returncode)
 
 
 if __name__ == '__main__':

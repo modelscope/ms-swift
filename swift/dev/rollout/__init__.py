@@ -115,7 +115,8 @@ def _sampled_token_logprobs(tokens: List[int], logprobs) -> List[float]:
 def samples_from_responses(responses: List[Any],
                           prompt_extras: Optional[List[Dict[str, Any]]] = None,
                           *,
-                          allow_message_only: bool = False) -> List[RolloutSample]:
+                          allow_message_only: bool = False,
+                          require_logprobs: bool = True) -> List[RolloutSample]:
     """Build RolloutSamples from twinkle SampleResponses (one group per response).
 
     The single-turn counterpart of :func:`rollout.multi_turn.trajectory_to_rollout_sample`: a plain
@@ -130,6 +131,11 @@ def samples_from_responses(responses: List[Any],
     RL forward computes logps via no-shift ``selective_log_softmax(logits, masked_labels)`` where
     ``logits[i]`` predicts ``token[i+1]``, so the masked labels must be next-token shifted or logps
     are off-by-one vs vLLM old_logps and the whole GRPO importance ratio is wrong.
+
+    ``require_logprobs`` says whether the caller forced per-token logprobs. GRPO leaves it True, so a
+    missing/short ``sequence.logprobs`` is fatal (see the alignment check below); a plain inference run
+    passes False -- it requests no logprobs, so ``sequence.logprobs`` is None and an empty old_logps is
+    the expected, correct result rather than an error.
     """
     out: List[RolloutSample] = []
     for pidx, response in enumerate(responses):
@@ -146,12 +152,26 @@ def samples_from_responses(responses: List[Any],
             response_tokens = list(seq.tokens or [])
             aligned = [-100] * len(prompt_tokens) + response_tokens
             labels = list(aligned[1:]) + [-100]
-            encoded = {'input_ids': prompt_tokens + response_tokens, 'labels': labels, SHIFTED_KEY: True}
+            encoded = {
+                'input_ids': prompt_tokens + response_tokens,
+                'labels': labels,
+                # completion_mask marks the policy-produced tokens over the FULL sequence in input order
+                # (0 on the prompt, 1 on each response token) -- the same shape/semantics the multi-turn
+                # builder carries, and the trainable mask every dump format reads (SFT/DPO/GRPO alike, not
+                # GRPO-only). It lines up exactly with ``labels != -100`` once labels are un-shifted back to
+                # input order, so _trainable_positions intersects them consistently. The recorder persists
+                # it beside the tokens so training knows which positions are trainable without re-deriving.
+                'completion_mask': [0] * len(prompt_tokens) + [1] * len(response_tokens),
+                SHIFTED_KEY: True,
+            }
             old_logps = _sampled_token_logprobs(response_tokens, seq.logprobs)
-            # A length mismatch is raised, never padded: these values ARE old_logps, and 0.0 is a
-            # legal logprob (p=1.0), not a sentinel -- padding it would turn a missing-logprob bug
-            # into a silently wrong importance ratio exp(logps - 0).
-            if len(old_logps) != len(response_tokens):
+            # Enforce alignment only when logprobs were requested (``require_logprobs``). GRPO forces
+            # them, so there a length mismatch is raised, never padded: these values ARE old_logps, and
+            # 0.0 is a legal logprob (p=1.0), not a sentinel -- padding it would turn a missing-logprob
+            # bug into a silently wrong importance ratio exp(logps - 0). A plain inference run requests
+            # none (``force_logprobs=False``), the sampler returns ``logprobs=None``, and old_logps is
+            # legitimately empty -- the consumer never reads it, so the check is skipped.
+            if require_logprobs and len(old_logps) != len(response_tokens):
                 raise RuntimeError(f'rollout logprobs misaligned: {len(old_logps)} logprobs for '
                                    f'{len(response_tokens)} tokens. These are old_logps; a mismatch would '
                                    'silently corrupt the GRPO importance ratio, so it is fatal.')
@@ -307,20 +327,28 @@ class RolloutEngine:
         # response is carried as messages instead of a training feature -- the same rule the multi-turn
         # engine uses to pick its message-only mode.
         return self._samples_from_responses(
-            responses, prompt_extras=prompt_extras, allow_message_only=self.template is None)
+            responses,
+            prompt_extras=prompt_extras,
+            allow_message_only=self.template is None,
+            require_logprobs=force_logprobs)
 
     @staticmethod
     def _samples_from_responses(responses: List[Any],
                                 prompt_extras: Optional[List[Dict[str, Any]]] = None,
                                 *,
-                                allow_message_only: bool = False) -> List[RolloutSample]:
+                                allow_message_only: bool = False,
+                                require_logprobs: bool = True) -> List[RolloutSample]:
         """Delegate to :func:`samples_from_responses`.
 
         Kept as a staticmethod on the engine because ``run_grpo``'s ``SamplerRollout`` inherits
         :meth:`generate` (which calls ``self._samples_from_responses``) and the rollout unit test
         drives ``RolloutEngine._samples_from_responses`` directly.
         """
-        return samples_from_responses(responses, prompt_extras=prompt_extras, allow_message_only=allow_message_only)
+        return samples_from_responses(
+            responses,
+            prompt_extras=prompt_extras,
+            allow_message_only=allow_message_only,
+            require_logprobs=require_logprobs)
 
     def close(self) -> None:
         """Release the multi-turn sandbox env pool (its workspaces / microVMs) WITHOUT touching the sampler.
