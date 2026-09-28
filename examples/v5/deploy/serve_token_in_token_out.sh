@@ -26,7 +26,7 @@
 # applies each request's own sampling params, so a server-side default would be silently ignored (dev
 # warns if you set one). Send them per request instead; only engine args like --vllm_gpu_memory_utilization
 # belong here.
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=4,5,6,7 \
 USE_SWIFT_V5=1 \
 swift deploy \
     --model Qwen/Qwen3.5-4B \

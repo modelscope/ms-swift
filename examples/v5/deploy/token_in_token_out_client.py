@@ -56,6 +56,8 @@ def sample_token_in_token_out(sampler: vLLMSampler, prompt_token_ids: list[int])
             feature = sequence.new_input_feature or {}
             print(f'[lightweight] stop={sequence.stop_reason} new_tokens={len(sequence.tokens)} '
                   f'trainable_len={len(feature.get("input_ids") or [])}')
+            # The sampler decodes each sequence too; show it so the run reads as text, not just shapes.
+            print(f'[lightweight] decoded={(sequence.decoded or "")!r}')
     return responses
 
 
@@ -74,6 +76,8 @@ async def rollout_to_data_plane(sampler: vLLMSampler, data_plane: DataPlaneClien
     )
     rows = await data_plane.aget(ref, fields=['decoded'])
     print(f'[data-plane] generated {len(rows)} sequences server-side')
+    for index, row in enumerate(rows):
+        print(f'[data-plane] candidate {index} decoded={(row.get("decoded") or "")!r}')
     # Score on the client (your reward fn), then append the per-sequence training targets back onto the
     # same ref; the trainer reads them via kwarg_fields={'advantages': 'advantage', ...}.
     rewards = [1.0 if (row.get('decoded') or '').strip() else 0.0 for row in rows]
