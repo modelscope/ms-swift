@@ -129,6 +129,24 @@ class PluginKind:
         return ' / '.join(base.__name__ for base in bases)
 
 
+#: Modules whose import declares swift's built-in plugin kinds (each runs ``register_kind`` at module
+#: top level). A user's ``--external_plugins`` file may ``@register`` against any built-in kind -- the
+#: ``tool`` kind (``swift.dev.rollout.sandbox``) or the ``reward`` kind (``swift.dev.rewards.orm``) -- so
+#: the loader must guarantee those kinds are declared BEFORE it imports the user file. Nothing in the
+#: CLI's config lifecycle imports them that early (``process_configs`` calls ``load_configured`` before
+#: any recipe runs), so a plugin registering a built-in kind would otherwise hit an empty ``KINDS``.
+_BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.rollout.sandbox')
+
+
+def _declare_builtin_kinds() -> None:
+    """Import the modules that declare swift's built-in plugin kinds. Idempotent (Python caches modules)
+    and lazy (a function-level import) so it runs after this module is fully loaded, avoiding the cycle
+    those modules create by importing :class:`PluginRegistry` at their own top level."""
+    import importlib
+    for name in _BUILTIN_KIND_MODULES:
+        importlib.import_module(name)
+
+
 class PluginRegistry:
     """The registry of kinds, and of the implementations of each kind."""
 
@@ -243,7 +261,12 @@ class PluginRegistry:
         The file's directory joins ``sys.path`` so a plugin may import its own neighbours.
         """
         loaded: List[str] = []
-        for raw in ([paths] if isinstance(paths, str) else list(paths or [])):
+        raw_paths = [paths] if isinstance(paths, str) else list(paths or [])
+        if raw_paths:
+            # Declare swift's own extension points first: a user plugin file may @register against any
+            # built-in kind, which fails if that kind's declaring module has not been imported yet.
+            _declare_builtin_kinds()
+        for raw in raw_paths:
             path = Path(raw).expanduser().resolve()
             if not path.is_file():
                 raise FileNotFoundError(f'external plugin {raw!r} is not a file (resolved to {path}).')

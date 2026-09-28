@@ -131,11 +131,10 @@ def run_infer(
     from swift.dev.builders import is_pooling_task
     from swift.dev.plugin import PluginRegistry
 
-    # A custom model / dataset / reward lives in a plugin file, so its registration must precede the
-    # first name lookup. Importing the sandbox module registers the 'tool' extension point (and its
-    # built-in plugin) so a user's external @register('tool', ...) finds the kind already declared; its
-    # twinkle env/tool imports are lazy, so this stays cheap when tools are off.
-    import swift.dev.rollout.sandbox  # noqa: F401
+    # A custom model / dataset / reward / tool lives in a plugin file, so its registration must precede
+    # the first name lookup. ``load_configured`` declares swift's built-in kinds before importing the
+    # user file (see ``_declare_builtin_kinds``), so an external ``@register('tool'/'reward', ...)`` finds
+    # its kind already declared.
     PluginRegistry.load_configured(plugin_config)
 
     adapters = _resolve_adapters(adapters, tuner_config)

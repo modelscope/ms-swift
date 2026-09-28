@@ -45,9 +45,18 @@ def _trainable_positions(input_ids: List[int], labels: List[int], completion_mas
     of logprobs the sampler returned. In the twinkle multi-turn path a whole
     generation is recorded trainable and every observation masked, so this is also
     ``completion_mask == 1``.
+
+    ``labels`` AND ``completion_mask`` both arrive in output/shifted order (the post
+    pipeline rolls them together), so both must be unrolled to input order before
+    they are intersected position-by-position. Intersecting the output-order mask
+    against the input-order labels slips it by one: every trainable run shifts a
+    position, ``response_token_ids`` no longer names the tokens the sampler actually
+    returned, and ``rollout_logprobs`` (old_logps) misaligns against them -- which
+    ``_sampled_token_logprobs`` then rejects, or, worse, a lenient consumer stores a
+    silently off-by-one GRPO sidecar.
     """
     in_labels = _input_order_labels(list(labels or []))
-    mask = (list(completion_mask)
+    mask = (_input_order_labels(list(completion_mask))
             if completion_mask is not None and len(completion_mask) == len(in_labels) else None)
     positions: List[int] = []
     for j, lab in enumerate(in_labels):
