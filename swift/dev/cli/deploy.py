@@ -22,6 +22,7 @@ def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         CheckpointConfig,
         DatasetConfig,
         DeployConfig,
+        DistributedConfig,
         GenerationConfig,
         InferConfig,
         ModelConfig,
@@ -35,13 +36,14 @@ def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 
     effective_argv = resolve_argv(argv)
     reject_legacy_only_flags('deploy', effective_argv)
-    classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, CheckpointConfig, TunerConfig,
-               GenerationConfig, RolloutConfig, InferConfig, DeployConfig, QuantizeConfig, RuntimeConfig]
+    classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig,
+               TunerConfig, GenerationConfig, RolloutConfig, InferConfig, DeployConfig, QuantizeConfig,
+               RuntimeConfig]
     configs = parse_configs_strict(
         classes, effective_argv, command='swift deploy', load_args_default=True)
-    names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'checkpoint_config',
-             'tuner_config', 'generation_config', 'rollout_config', 'infer_config', 'deploy_config',
-             'quantize_config', 'runtime_config')
+    names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'distributed_config',
+             'checkpoint_config', 'tuner_config', 'generation_config', 'rollout_config', 'infer_config',
+             'deploy_config', 'quantize_config', 'runtime_config')
     result = dict(zip(names, configs))
     result['tuner_config'] = select_tuner(result['tuner_config'])
     if result['infer_config'].infer_backend == 'pt':
@@ -59,8 +61,6 @@ def deploy_main(argv: Optional[List[str]] = None) -> None:
     tuner_config = configs['tuner_config']
     adapters = tuner_config.adapters if tuner_config is not None else []
     deploy = configs['deploy_config']
-    if deploy.context_manager is not None:
-        raise ValueError('`context_manager` has been removed; use a MultiTurnScheduler plugin instead.')
     return run_deploy(
         configs['model_config'],
         configs['template_config'],
@@ -70,20 +70,8 @@ def deploy_main(argv: Optional[List[str]] = None) -> None:
                                       configs['rollout_config']),
         adapter_mapping=_adapter_mapping(adapters),
         quantize_config=configs['quantize_config'],
-        merge_lora=deploy.merge_lora,
-        host=deploy.host,
-        port=deploy.port,
-        served_model_name=deploy.served_model_name,
-        owned_by=deploy.owned_by,
-        api_key=deploy.api_key,
-        max_logprobs=deploy.max_logprobs,
-        max_concurrency=deploy.max_concurrency,
-        log_interval=deploy.log_interval,
-        request_log_path=deploy.request_log_path,
-        verbose=deploy.verbose,
-        ssl_keyfile=deploy.ssl_keyfile,
-        ssl_certfile=deploy.ssl_certfile,
-        log_level=deploy.log_level,
+        distributed_config=configs['distributed_config'],
+        deploy_config=deploy,
     )
 
 

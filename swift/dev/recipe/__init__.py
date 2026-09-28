@@ -5,7 +5,7 @@ from .convert import run_convert
 from .infer_tui import infer_cli
 from .merge_lora import run_export_ollama, run_merge_lora, run_push_to_hub, run_to_peft_format
 from .quantize import run_quantize
-from .run_deploy import build_app, run_deploy, run_deploy_process
+from .run_deploy import build_server_config, run_deploy, run_deploy_process
 from .run_dpo import PreferenceLoop, run_dpo
 from .run_embedding import run_embedding
 from .run_eval import build_eval_task, run_eval
@@ -49,7 +49,7 @@ __all__ = [
     'infer_cli',
     'run_deploy',
     'run_deploy_process',
-    'build_app',
+    'build_server_config',
     'build_eval_task',
     'run_eval',
 ]

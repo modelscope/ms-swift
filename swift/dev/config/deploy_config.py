@@ -47,7 +47,32 @@ class DeployConfig:
     request_log_path: Optional[str] = None
     log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
 
-    # === Extension ===
-    #: Registered name of a context manager wrapped around each request, for callers that need
-    #: per-request setup or teardown the server itself does not provide.
-    context_manager: Optional[str] = None
+    # === Ray Serve runtime ===
+    #: twinkle-server runs on Ray Serve. ``None`` or ``'local'`` starts an in-process local Ray head, so
+    #: a single ``swift deploy`` command serves without a pre-existing cluster; ``'auto'`` attaches to a
+    #: cluster already reachable at the default address (the ``DistributedConfig.mode='ray'`` case).
+    ray_address: Optional[str] = None
+    #: Ray namespace the deployments and their named actors are registered under.
+    ray_namespace: str = 'twinkle_cluster'
+    #: Mount prefix of the gateway app. ``'/v1'`` reproduces the legacy OpenAI paths, so clients hit
+    #: ``/v1/chat/completions``, ``/v1/completions``, ``/v1/embeddings`` and ``/v1/models``.
+    route_prefix: str = '/v1'
+    #: Sampler deployment kind. ``None`` derives it from the backend and ``enable_data_plane``: vLLM
+    #: becomes ``'vllm_async'`` with the data plane else ``'vllm'``, sglang becomes ``'sglang_async'``
+    #: with the data plane else ``'sglang'``, transformers becomes ``'torch'``. The ``*_async`` variants
+    #: are the only ones that can hand a rollout a ``DataRef``, so an explicit non-async ``sampler_type``
+    #: together with ``enable_data_plane`` is rejected at config-build time.
+    sampler_type: Optional[Literal['mock', 'vllm', 'vllm_async', 'sglang', 'sglang_async', 'torch']] = None
+    #: Serve token-in-token-out over the data plane: adds a ``data_plane`` application and points the
+    #: sampler at it, so a rollout can ``asample_to_data_plane`` and train on the returned ``DataRef``.
+    enable_data_plane: bool = False
+
+    # === Persistence (forwarded to ServerConfig.persistence) ===
+    persistence_mode: Optional[str] = None
+    persistence_file_path: Optional[str] = None
+
+    # === Scaling (forwarded to each application's deployment) ===
+    #: Replica count per application. ``None`` keeps Ray Serve's single-replica default.
+    num_replicas: Optional[int] = None
+    #: Enable Ray Serve autoscaling instead of a fixed ``num_replicas``.
+    autoscaling: bool = False

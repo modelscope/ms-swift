@@ -26,7 +26,8 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.config import GenerationConfig, InferConfig, ModelConfig, QuantizeConfig, RolloutConfig
+    from swift.dev.config import (GenerationConfig, InferConfig, ModelConfig, QuantizeConfig, RolloutConfig,
+                                  TemplateConfig)
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,68 @@ def build_engine_args(backend: str, infer_config: 'InferConfig', rollout_config:
                 result[key] = value
     result.update(getattr(rollout_config, f'{prefix}engine_kwargs', None) or {})
     return result
+
+
+def resolve_twinkle_template(template_config: Optional['TemplateConfig'],
+                             model_config: 'ModelConfig') -> Dict[str, Any]:
+    """dev Configs -> a serializable twinkle template spec, for a sampler that runs in a Ray actor.
+
+    Returns ``{'template_cls': <name>, **kwargs}`` -- a *class name* plus keyword args, not the
+    ``ShiftedTemplate`` instance :func:`build_template` produces. The instance carries a DevMixin and
+    training-time label logic, so it cannot cross Ray's actor boundary; a served OpenAI chat needs none
+    of that, and twinkle's native template (which reads the model's own jinja ``chat_template``) is both
+    correct and picklable-by-name. The class name comes from twinkle's own :func:`get_template_for_model`
+    so dev keeps no second mapping table, and the kwargs are the subset of ``TemplateConfig`` that
+    ``twinkle.template.Template.__init__`` accepts. ``model_id`` is left out: the sampler fills it from
+    its own, which is the same model.
+
+    The result is what ``SamplerArgs.template`` pins at construction (see ``run_deploy``), so the
+    replica serves trajectories from its first request instead of waiting on the gateway's lazy
+    name-based ``set_template`` fallback.
+    """
+    from twinkle.server.utils import get_template_for_model
+
+    spec: Dict[str, Any] = {'template_cls': get_template_for_model(str(model_config.model or ''))}
+    if template_config is None:
+        return spec
+    # TemplateConfig field -> Template.__init__ parameter. Only values the config actually sets are
+    # carried, so twinkle's own defaults (use_chat_template=True, max_length=8192, enable_thinking=True)
+    # stand for the rest rather than being overwritten with None.
+    for spec_key, value in (('use_chat_template', template_config.use_chat_template),
+                            ('max_length', template_config.max_length),
+                            ('truncation_strategy', template_config.truncation_strategy),
+                            ('default_system', template_config.system), ('enable_thinking',
+                                                                        template_config.enable_thinking)):
+        if value is not None:
+            spec[spec_key] = value
+    return spec
+
+
+def _derive_sampler_type(backend: str, enable_data_plane: bool = False) -> str:
+    """Map a dev backend (+ the data-plane flag) to a twinkle-server ``sampler_type``.
+
+    The server sampler implements ``mock`` / ``vllm`` / ``vllm_async`` / ``sglang`` / ``sglang_async`` /
+    ``torch``. Each engine has a plain variant and an ``_async`` variant: the async one adds the
+    non-blocking ``submit_generation`` that ``sample_to_data_plane`` needs to hand a rollout a ``DataRef``
+    for token-in-token-out training. So ``enable_data_plane`` selects the async variant (vLLM ->
+    ``vllm_async``, sglang -> ``sglang_async``) and otherwise the plain one; transformers runs on
+    ``torch`` and has no async variant (it does not serve the data plane).
+    """
+    if backend == 'pt':
+        backend = 'transformers'
+    if backend == 'vllm':
+        return 'vllm_async' if enable_data_plane else 'vllm'
+    if backend == 'sglang':
+        return 'sglang_async' if enable_data_plane else 'sglang'
+    if backend == 'transformers':
+        if enable_data_plane:
+            raise ValueError('backend="transformers" cannot serve the data plane: sample_to_data_plane needs '
+                             'the sampler\'s non-blocking submit_generation, which only the vllm_async / '
+                             'sglang_async backends provide. Use backend="vllm" or "sglang" with '
+                             'enable_data_plane, or drop enable_data_plane.')
+        return 'torch'
+    raise ValueError(f'backend={backend!r} has no twinkle-server sampler; `swift deploy` serves vllm, sglang '
+                     'or transformers (pt).')
 
 
 def build_sampler(
