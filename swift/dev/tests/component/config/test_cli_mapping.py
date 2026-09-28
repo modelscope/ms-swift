@@ -6,7 +6,6 @@ import pytest
 
 from swift.cli.main import ROUTE_MAPPING, cli_main, resolve_route
 from swift.dev.cli.export import parse_export_configs
-from swift.dev.cli.runtime import bootstrap_run
 from swift.dev.cli.sft import LEGACY_ONLY_CLASSIFICATION, parse_sft_configs
 from swift.dev.config import (
     CheckpointConfig,
@@ -19,14 +18,16 @@ from swift.dev.config import (
     TemplateConfig,
     TrainConfig,
     TunerConfig,
+    bootstrap_run,
     process_configs,
 )
 from swift.dev.recipe.assembly import TrainAssembly, _resolve_step_interval
 
 
 def test_defaults_come_from_configs():
-    _, template, _, train, _, checkpoint, logging, tuner, quantize = parse_sft_configs(
-        ['--model', 'm', '--dataset', 'd', '--tuner_type', 'lora'])
+    configs = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--tuner_type', 'lora'])
+    template, train, checkpoint = configs['template_config'], configs['train_config'], configs['checkpoint_config']
+    logging, tuner, quantize = configs['logging_config'], configs['tuner_config'], configs['quantize_config']
     assert template.padding_side == TemplateConfig().padding_side == 'right'
     assert train.warmup_ratio == TrainConfig().warmup_ratio == 0.0
     assert train.optim == TrainConfig().optim == 'adamw_torch_fused'
@@ -37,13 +38,16 @@ def test_defaults_come_from_configs():
 
 
 def test_explicit_values_land_in_owning_configs():
-    model, template, dataset, train, dist, checkpoint, logging, tuner, quantize = parse_sft_configs([
+    configs = parse_sft_configs([
         '--model', 'm', '--dataset', 'd1', 'd2', '--val_dataset', 'v', '--torch_dtype', 'bfloat16',
         '--padding_side', 'left', '--max_length', '256', '--learning_rate', '0.0001', '--save_steps', '500',
         '--eval_steps', '100', '--logging_steps', '2', '--cp_comm_type', 'p2p', '--tuner_type', 'lora', '--lora_rank',
         '16',
         '--lora_alpha', '64', '--target_modules', 'q_proj',
     ])
+    model, template, dataset = configs['model_config'], configs['template_config'], configs['dataset_config']
+    train, dist, checkpoint = configs['train_config'], configs['distributed_config'], configs['checkpoint_config']
+    logging, tuner, quantize = configs['logging_config'], configs['tuner_config'], configs['quantize_config']
     assert isinstance(model, ModelConfig)
     assert isinstance(template, TemplateConfig)
     assert isinstance(dataset, DatasetConfig)
@@ -65,10 +69,11 @@ def test_explicit_values_land_in_owning_configs():
 def test_mapping_annotations_parse_stably_after_other_typing_imports():
     import swift.rollout.gym_env  # noqa: F401 -- reproduces typing Union cache reordering
 
-    model, _, _, train, dist, *_ = parse_sft_configs([
+    configs = parse_sft_configs([
         '--model', 'm', '--dataset', 'd', '--model_kwargs', '{"x": 1}', '--liger_kernel_config',
         '{"fused_linear_cross_entropy": true}', '--fsdp_config', '{"limit_all_gathers": true}',
     ])
+    model, train, dist = configs['model_config'], configs['train_config'], configs['distributed_config']
     process_configs(model, TemplateConfig(), DatasetConfig(), train, dist)
     assert model.model_kwargs == {'x': 1}
     assert train.liger_kernel_config == {'fused_linear_cross_entropy': True}
@@ -76,23 +81,23 @@ def test_mapping_annotations_parse_stably_after_other_typing_imports():
 
 
 def test_legacy_precision_aliases_map_to_torch_dtype():
-    model, *_ = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--bf16', 'true'])
+    model = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--bf16', 'true'])['model_config']
     assert model.torch_dtype == 'bfloat16'
     with pytest.raises(ValueError, match='Conflicting values for --torch_dtype'):
         parse_sft_configs(['--model', 'm', '--dataset', 'd', '--bf16', 'true', '--fp16', 'true'])
 
 
 def test_full_training_yields_no_tuner_config():
-    *_, tuner, quantize = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--tuner_type', 'full'])
-    assert tuner is None
-    assert quantize.quant_method is None
+    configs = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--tuner_type', 'full'])
+    assert configs['tuner_config'] is None
+    assert configs['quantize_config'].quant_method is None
 
 
 def test_fractional_intervals_survive_parse_for_step_planning():
-    _, _, _, train, _, checkpoint, _, _, _ = parse_sft_configs(
+    configs = parse_sft_configs(
         ['--model', 'm', '--dataset', 'd', '--save_steps', '0.25', '--eval_steps', '0.1'])
-    assert checkpoint.save_steps == 0.25
-    assert train.eval_steps == 0.1
+    assert configs['checkpoint_config'].save_steps == 0.25
+    assert configs['train_config'].eval_steps == 0.1
 
 
 def test_unknown_and_unwired_flags_fail_loudly():
@@ -100,12 +105,12 @@ def test_unknown_and_unwired_flags_fail_loudly():
         parse_sft_configs(['--model', 'm', '--dataset', 'd', '--definitely_unknown', 'x'])
     with pytest.raises(NotImplementedError, match='optimizer'):
         parse_sft_configs(['--model', 'm', '--dataset', 'd', '--optimizer', 'muon'])
-    *_, tuner, _ = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--tuner_type', 'vera'])
+    tuner = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--tuner_type', 'vera'])['tuner_config']
     assert tuner.tuner_type == 'vera'
 
 
 def test_megatron_aliases_work_on_transformers_backend():
-    *_, train, _, _, _, _, _ = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--lr', '0.001'])
+    train = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--lr', '0.001'])['train_config']
     assert train.learning_rate == 0.001
 
 
@@ -114,7 +119,7 @@ def test_megatron_aliases_work_on_transformers_backend():
     ['--lr=1', '--learning-rate', '1.0'],
 ])
 def test_aliases_accept_space_equals_hyphens_and_equal_double_writes(argv):
-    *_, train, _, _, _, _, _ = parse_sft_configs(['--model=m', '--dataset', 'd', *argv])
+    train = parse_sft_configs(['--model=m', '--dataset', 'd', *argv])['train_config']
     assert train.learning_rate == pytest.approx(float(argv[1] if argv[0] == '--lr' else argv[0].split('=', 1)[1]))
     assert 'learning_rate' in train._explicit_fields
 
@@ -127,8 +132,8 @@ def test_aliases_reject_conflicting_double_writes():
 
 
 def test_false_precision_alias_does_not_override_canonical_dtype():
-    model, *_ = parse_sft_configs(
-        ['--model', 'm', '--dataset', 'd', '--bf16=0', '--torch_dtype', 'float16'])
+    model = parse_sft_configs(
+        ['--model', 'm', '--dataset', 'd', '--bf16=0', '--torch_dtype', 'float16'])['model_config']
     assert model.torch_dtype == 'float16'
 
 
@@ -145,10 +150,11 @@ def test_legacy_only_gap_is_exhaustively_classified():
 
 
 def test_unconsumed_existing_configs_fail_loudly():
-    *_, logging, _, quantize = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--report_to', 'wandb'])
+    logging = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--report_to', 'wandb'])['logging_config']
     assert logging.report_to == ['wandb']
-    *_, quantize = parse_sft_configs(
-        ['--model', 'm', '--dataset', 'd', '--tuner_type', 'lora', '--quant_method', 'bnb', '--quant_bits', '4'])
+    quantize = parse_sft_configs(
+        ['--model', 'm', '--dataset', 'd', '--tuner_type', 'lora', '--quant_method', 'bnb', '--quant_bits',
+         '4'])['quantize_config']
     assert quantize.quant_method == 'bnb' and quantize.quant_bits == 4
     with pytest.raises(ValueError, match='no generation phase'):
         parse_sft_configs(['--model', 'm', '--dataset', 'd', '--top_p', '0.9'])
@@ -294,23 +300,35 @@ def test_dev_route_switch_is_opt_in(monkeypatch):
     monkeypatch.setenv('USE_SWIFT_V5', '1')
     assert resolve_route('sft', ROUTE_MAPPING) == 'swift.dev.cli.sft'
     assert resolve_route('export', ROUTE_MAPPING) == 'swift.dev.cli.export'
-    megatron_routes = {'sft': 'swift.cli._megatron.sft'}
-    assert resolve_route('sft', megatron_routes, is_megatron=True) == 'swift.dev.cli.megatron'
+    # twinkle unifies the Megatron/Transformers stacks, so v5 has no separate `megatron` command: the
+    # backend is a single flag, and routing the legacy `megatron` command redirects instead of resolving.
+    with pytest.raises(RuntimeError, match='--backend megatron'):
+        resolve_route('sft', {'sft': 'swift.cli._megatron.sft'}, is_megatron=True)
 
 
 def test_dev_torchrun_route_executes_as_module(monkeypatch):
     captured = {}
     monkeypatch.setenv('USE_SWIFT_V5', '1')
-    monkeypatch.setattr('sys.argv', ['swift-megatron', 'sft', '--model', 'm'])
+    monkeypatch.setattr('sys.argv', ['swift', 'export', '--model', 'm', '--backend', 'megatron'])
     monkeypatch.setattr('swift.cli.main.get_torchrun_args', lambda: ['--nproc_per_node', '2'])
 
-    def fake_run(args):
-        captured['args'] = args
-        return type('Result', (), {'returncode': 0})()
+    class FakeProcess:
+        returncode = 0
 
-    monkeypatch.setattr('swift.cli.main.subprocess.run', fake_run)
-    cli_main({'sft': 'swift.cli._megatron.sft'}, is_megatron=True)
-    assert captured['args'][-4:] == ['--module', 'swift.dev.cli.megatron', '--model', 'm']
+        def wait(self):
+            return 0
+
+    def fake_popen(args):
+        captured['args'] = args
+        return FakeProcess()
+
+    monkeypatch.setattr('swift.cli.main.subprocess.Popen', fake_popen)
+    cli_main()
+    # `swift export --backend megatron` is the single distributed Megatron export entry, so the dev
+    # export route relaunches under torchrun as a module when NPROC_PER_NODE/NNODES is set.
+    assert captured['args'][-6:] == [
+        '--module', 'swift.dev.cli.export', '--model', 'm', '--backend', 'megatron'
+    ]
 
 
 def test_export_parses_actions_into_existing_configs():
@@ -329,15 +347,17 @@ def test_export_parses_actions_into_existing_configs():
 
 
 def test_all_v5_routes_are_complete(monkeypatch):
-    from swift.cli.main import DEV_MEGATRON_ROUTE_MAPPING, DEV_ROUTE_MAPPING
+    from swift.cli.main import DEV_ROUTE_MAPPING
 
     monkeypatch.setenv('USE_SWIFT_V5', '1')
-    for command in ('pt', 'sft', 'rlhf', 'infer', 'merge-lora', 'deploy', 'rollout', 'sample', 'export', 'eval', 'app'):
-        assert resolve_route(command, ROUTE_MAPPING) == DEV_ROUTE_MAPPING[command]
+    # Every dev route resolves to its dev module; the legacy `merge-lora` command is `merge` in v5.
+    for command, module in DEV_ROUTE_MAPPING.items():
+        assert resolve_route(command, ROUTE_MAPPING) == module
     assert resolve_route('web-ui', ROUTE_MAPPING) == ROUTE_MAPPING['web-ui']
-    legacy_megatron = {command: f'swift.cli._megatron.{command}' for command in ('pt', 'sft', 'rlhf', 'export')}
-    for command, module in DEV_MEGATRON_ROUTE_MAPPING.items():
-        assert resolve_route(command, legacy_megatron, is_megatron=True) == module
+    # v5 has no separate `megatron` command for any of the unified commands: routing one redirects.
+    for command in ('pt', 'sft', 'rlhf', 'export'):
+        with pytest.raises(RuntimeError, match='--backend megatron'):
+            resolve_route(command, ROUTE_MAPPING, is_megatron=True)
 
 
 def test_all_cli_parsers_accept_minimal_argv(tmp_path):
@@ -345,7 +365,7 @@ def test_all_cli_parsers_accept_minimal_argv(tmp_path):
     from swift.dev.cli.deploy import parse_deploy_configs
     from swift.dev.cli.eval import parse_eval_configs
     from swift.dev.cli.infer import parse_infer_configs
-    from swift.dev.cli.merge_lora import parse_merge_lora_configs
+    from swift.dev.cli.merge import parse_merge_configs
     from swift.dev.cli.rlhf import parse_rlhf_configs
     from swift.dev.cli.rollout import parse_rollout_configs
     from swift.dev.cli.sample import parse_sample_configs
@@ -356,7 +376,7 @@ def test_all_cli_parsers_accept_minimal_argv(tmp_path):
     assert parse_sample_configs(['--model', 'm', '--dataset', 'd'])['sampling_config'].sampler_engine == 'transformers'
     assert parse_eval_configs(['--model', 'm', '--eval_url', 'http://localhost:8000'])['eval_config'].eval_url
     assert parse_app_configs(['--model', 'm', '--base_url', 'http://localhost:8000'])['app_config'].base_url
-    assert parse_merge_lora_configs(['--model', 'm', '--adapters', 'a'])['tuner_config'].adapters == ['a']
+    assert parse_merge_configs(['--model', 'm', '--adapters', 'a'])['tuner_config'].adapters == ['a']
     for rlhf_type in ('dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm', 'grpo', 'ppo', 'gkd'):
         configs = parse_rlhf_configs(['--model', 'm', '--dataset', 'd', '--rlhf_type', rlhf_type])
         assert configs['rlhf_config'].rlhf_type == rlhf_type
@@ -368,8 +388,8 @@ def test_megatron_rlhf_parser_applies_megatron_surface(monkeypatch):
     monkeypatch.setenv('WORLD_SIZE', '4')
     configs = parse_rlhf_configs([
         '--model', 'm', '--dataset', 'd', '--rlhf_type', 'dpo', '--lr', '0.0002', '--micro_batch_size', '2',
-        '--global_batch_size', '8', '--bf16', 'true', '--attention_backend', 'fused',
-    ], megatron=True)
+        '--global_batch_size', '8', '--bf16', 'true', '--attention_backend', 'fused', '--backend', 'megatron',
+    ])
     assert configs['distributed_config'].backend == 'megatron'
     assert configs['distributed_config'].nproc_per_node == 4
     assert configs['train_config'].gradient_accumulation_steps == 1

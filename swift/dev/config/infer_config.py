@@ -49,6 +49,17 @@ class InferConfig:
     #: from the stored rewards + logps. Needs ``num_return_sequences >= 2``. Scoring is orthogonal to this
     #: knob: a reward func set on an 'all' run still scores every candidate and stores its score.
     output_format: Literal['all', 'dpo', 'grpo'] = 'all'
+    #: Container the result is written in, orthogonal to ``output_format`` above (that is the row shape,
+    #: this is the serialisation). Shared vocabulary with ``export --to_cached_dataset`` (see
+    #: swift.dev.dataset.store). ``jsonl`` (default) keeps the current line-delimited dump with its
+    #: resumable checkpoint writers and, under ``save_rollout_tokens``, the per-candidate NPZ sidecar.
+    #: ``arrow`` writes one ``save_to_disk`` table at the end of the run through the shared store writer;
+    #: it is not incrementally resumable, so it is rejected together with ``resume``. ``bin`` is a named
+    #: later phase and raises until it exists.
+    store_format: Literal['arrow', 'jsonl', 'bin'] = 'jsonl'
+    #: Restrict the persisted columns to this allow-list; None keeps every column the emit produced. A
+    #: name that matches no column is rejected rather than silently dropped.
+    store_fields: Optional[List[str]] = None
 
     # === Scoring ===
     #: Metric computed over the completions once the run finishes. None only generates.

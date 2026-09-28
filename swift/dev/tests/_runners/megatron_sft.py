@@ -117,7 +117,7 @@ def _dev_cli_argv(data_path, out_dir, steps, lr):
 
 
 def _run_dev_cli(data_path, out_dir, steps, lr):
-    """dev-Megatron driven through the CLI (swift.dev.cli.megatron.megatron_sft_main).
+    """dev-Megatron driven through the CLI (swift.dev.cli.sft.sft_main --backend megatron).
 
     Distinct from _run_dev, which builds Configs directly: this exercises the argv -> Config mapping
     (renames lr/train_iters/micro_batch_size, the GA derivation from global_batch_size, and the
@@ -127,9 +127,9 @@ def _run_dev_cli(data_path, out_dir, steps, lr):
     Named `dev_cli` rather than replacing `dev` so the two remain separable: if only this one moves,
     the mapping is at fault; if both move, the Megatron path itself is.
     """
-    from swift.dev.cli.megatron import megatron_sft_main as dev_megatron_sft_main
+    from swift.dev.cli.sft import sft_main as dev_megatron_sft_main
 
-    history = dev_megatron_sft_main(_dev_cli_argv(data_path, out_dir, steps, lr))
+    history = dev_megatron_sft_main([*_dev_cli_argv(data_path, out_dir, steps, lr), '--backend', 'megatron'])
     return [r['loss'] for r in history]
 
 

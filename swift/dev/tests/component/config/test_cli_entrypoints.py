@@ -28,7 +28,7 @@ def _patch_service_runtime(monkeypatch, events):
     monkeypatch.setattr('swift.dev.cli.runtime.bootstrap_run', lambda *_args, **_kwargs: events.append('bootstrap'))
 
 
-@pytest.mark.parametrize('command', ['infer', 'deploy', 'rollout', 'sample', 'eval', 'app', 'merge_lora', 'export'])
+@pytest.mark.parametrize('command', ['infer', 'deploy', 'rollout', 'sample', 'eval', 'app', 'merge', 'export'])
 def test_service_and_artifact_entrypoints_follow_lifecycle(monkeypatch, tmp_path, command):
     events = []
     _patch_service_runtime(monkeypatch, events)
@@ -64,16 +64,19 @@ def test_service_and_artifact_entrypoints_follow_lifecycle(monkeypatch, tmp_path
         monkeypatch.setattr(app_cli, '_derive_ui_defaults', lambda _configs: events.append('derive'))
         monkeypatch.setattr('swift.dev.recipe.run_app', lambda *_args, **_kwargs: events.append('recipe'))
         app_cli.app_main(['--model', 'm', '--base_url', 'http://localhost:8000'])
-    elif command == 'merge_lora':
-        from swift.dev.cli.merge_lora import merge_lora_main
+    elif command == 'merge':
+        from swift.dev.cli.merge import merge_main
 
         monkeypatch.setattr('swift.dev.recipe.run_merge_lora', lambda *_args, **_kwargs: events.append('recipe'))
-        merge_lora_main(['--model', 'm', '--adapters', 'a'])
+        merge_main(['--model', 'm', '--adapters', 'a'])
     else:
         from swift.dev.cli.export import export_main
 
-        monkeypatch.setattr('swift.dev.recipe.run_export_ollama', lambda *_args, **_kwargs: events.append('recipe'))
-        export_main(['--model', 'm', '--to_ollama', 'true', '--output_dir', str(tmp_path / 'out')])
+        monkeypatch.setattr('swift.dev.recipe.run_to_peft_format', lambda *_args, **_kwargs: events.append('recipe'))
+        export_main([
+            '--model', 'm', '--to_peft_format', 'true', '--adapters', 'a', '--output_dir',
+            str(tmp_path / 'out')
+        ])
 
     expected_prefix = ['process', 'derive', 'bootstrap'] if command == 'app' else ['process', 'bootstrap']
     assert events[:len(expected_prefix)] == expected_prefix
@@ -102,22 +105,22 @@ def test_lmdeploy_is_rejected_at_parse_time(parser, flag):
         parse([flag, 'lmdeploy'])
 
 
-def _training_configs(task_type='causal_lm'):
-    return (
-        ModelConfig(model='m', task_type=task_type),
-        TemplateConfig(),
-        DatasetConfig(dataset=['d']),
-        TrainConfig(),
-        DistributedConfig(),
-        CheckpointConfig(),
-        LoggingConfig(report_to=['none']),
-        None,
-        QuantizeConfig(),
-    )
-
-
-def _megatron_training_configs(task_type='causal_lm'):
-    return (*_training_configs(task_type), MegatronConfig(), MoEConfig())
+def _training_configs(task_type='causal_lm', backend=None):
+    """A parsed-Config mapping shaped like parse_sft_configs' return (backend selectable)."""
+    return {
+        'model_config': ModelConfig(model='m', task_type=task_type),
+        'plugin_config': None,
+        'template_config': TemplateConfig(),
+        'dataset_config': DatasetConfig(dataset=['d']),
+        'train_config': TrainConfig(),
+        'distributed_config': DistributedConfig(backend=backend),
+        'checkpoint_config': CheckpointConfig(),
+        'logging_config': LoggingConfig(report_to=['none']),
+        'tuner_config': None,
+        'quantize_config': QuantizeConfig(),
+        'megatron_config': MegatronConfig(),
+        'moe_config': MoEConfig(),
+    }
 
 
 @pytest.mark.parametrize('task_type,recipe_name', [
@@ -131,9 +134,7 @@ def test_sft_dispatches_every_supported_task(monkeypatch, task_type, recipe_name
     from swift.dev.cli import sft as sft_cli
 
     monkeypatch.setattr(sft_cli, 'parse_sft_configs', lambda _argv: _training_configs(task_type))
-    monkeypatch.setattr('swift.dev.config.process_configs', lambda *_args, **_kwargs: None)
-    monkeypatch.setattr('swift.dev.config.validate_configs', lambda *_args, **_kwargs: None)
-    monkeypatch.setattr('swift.dev.cli.runtime.bootstrap_run', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr('swift.dev.config.process_and_validate_configs', lambda *_args, **_kwargs: None)
     expected = object()
     for name in ('run_sft', 'run_seq_cls', 'run_embedding', 'run_reranker'):
         result = expected if name == recipe_name else object()
@@ -172,49 +173,26 @@ def test_rlhf_dispatches_every_supported_algorithm(monkeypatch, rlhf_type, recip
     assert result is expected
 
 
-@pytest.mark.parametrize('module_name,parser_path', [
-    ('swift.dev.cli.pt', 'swift.dev.cli.sft.parse_sft_configs'),
-    ('swift.dev.cli.megatron_pt', 'swift.dev.cli.megatron.parse_megatron_configs'),
-])
-def test_pt_entrypoints_enforce_pretraining_contract(monkeypatch, module_name, parser_path):
-    module = importlib.import_module(module_name)
-    configs = _megatron_training_configs() if module_name.endswith('megatron_pt') else _training_configs()
-    monkeypatch.setattr(parser_path, lambda _argv: configs)
-    monkeypatch.setattr('swift.dev.config.process_configs', lambda *_args, **_kwargs: None)
-    monkeypatch.setattr('swift.dev.config.validate_configs', lambda *_args, **_kwargs: None)
-    monkeypatch.setattr('swift.dev.cli.runtime.bootstrap_run', lambda *_args, **_kwargs: None)
-    monkeypatch.setattr('swift.dev.recipe.run_pt', lambda *_args, **_kwargs: 'pt')
+@pytest.mark.parametrize('backend,expects_megatron', [(None, False), ('megatron', True)])
+def test_pt_entrypoint_enforces_pretraining_contract(monkeypatch, backend, expects_megatron):
+    from swift.dev.cli import pt as pt_cli
 
-    entry = module.megatron_pt_main if module_name.endswith('megatron_pt') else module.pt_main
-    assert entry([]) == 'pt'
-    assert configs[0].task_type == 'causal_lm'
-    assert configs[1].use_chat_template is False
-    assert configs[1].loss_scale == 'all'
+    configs = _training_configs(backend=backend)
+    monkeypatch.setattr('swift.dev.cli.sft.parse_sft_configs', lambda _argv, command='pt': configs)
+    monkeypatch.setattr('swift.dev.config.process_and_validate_configs', lambda *_args, **_kwargs: None)
+    captured = {}
 
+    def fake_run_pt(*_args, **kwargs):
+        captured.update(kwargs)
+        return 'pt'
 
-def test_megatron_wrappers_delegate_to_dev_entrypoints(monkeypatch):
-    from swift.dev.cli import megatron_export, megatron_rlhf
-
-    sentinel = object()
-    monkeypatch.setattr('swift.dev.cli.rlhf.parse_rlhf_configs', lambda argv, megatron: (argv, megatron))
-    monkeypatch.setattr('swift.dev.cli.rlhf.run_rlhf_configs', lambda configs: configs)
-    assert megatron_rlhf.megatron_rlhf_main(['--model', 'm']) == (['--model', 'm'], True)
-
-    configs = {'distributed_config': DistributedConfig()}
-    monkeypatch.setattr('swift.dev.cli.export.parse_export_configs', lambda _argv: configs)
-    monkeypatch.setattr('swift.dev.cli.export.run_export_configs', lambda value: sentinel if value is configs else None)
-    assert megatron_export.megatron_export_main([]) is sentinel
-    assert configs['distributed_config'].backend == 'megatron'
-
-    from swift.dev.cli import megatron
-
-    training = _megatron_training_configs()
-    monkeypatch.setattr(megatron, 'parse_megatron_configs', lambda _argv: training)
-    monkeypatch.setattr('swift.dev.config.process_configs', lambda *_args, **_kwargs: None)
-    monkeypatch.setattr('swift.dev.config.validate_configs', lambda *_args, **_kwargs: None)
-    monkeypatch.setattr('swift.dev.cli.runtime.bootstrap_run', lambda *_args, **_kwargs: None)
-    monkeypatch.setattr('swift.dev.recipe.run_sft', lambda *_args, **_kwargs: sentinel)
-    assert megatron.megatron_sft_main([]) is sentinel
+    monkeypatch.setattr('swift.dev.recipe.run_pt', fake_run_pt)
+    assert pt_cli.pt_main([]) == 'pt'
+    assert configs['model_config'].task_type == 'causal_lm'
+    assert configs['template_config'].use_chat_template is False
+    assert configs['template_config'].loss_scale == 'all'
+    # The Megatron Configs reach run_pt only on the megatron backend; the HF task recipes do not take them.
+    assert ('megatron_config' in captured) is expects_megatron
 
 
 def test_rollout_app_protocol_and_shutdown(monkeypatch):

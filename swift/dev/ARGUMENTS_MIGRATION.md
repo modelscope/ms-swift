@@ -34,7 +34,7 @@
 | `rollout_config.py` | 16 | 全部 `sglang_*`（规则 4） |
 | `train_config.py` | 18 | 精度/性能 9 + 评估 5 + 损失 2 + 嵌套 2 |
 | `logging_config.py` | 9 | swanlab 邮件 5 + `run_name` `logging_strategy` `logging_nan_inf_filter` `disable_tqdm` |
-| `convert_config.py` | 7 | `merge_lora` `to_peft_format` `to_ollama` `to_cached_dataset` `template_mode` `commit_message` `exist_ok` |
+| `convert_config.py` | 6 | `merge_lora` `to_peft_format` `to_cached_dataset` `template_mode` `commit_message` `exist_ok` |
 | `checkpoint_config.py` | 6 | hub 全套（已去重，见下） |
 | `distributed_config.py` | 6 | `fsdp_config` `ddp_broadcast_buffers` `ddp_bucket_cap_mb` `ddp_static_graph` `local_rank` |
 | `model_config.py` | 4 | `model_kwargs` `external_plugins` `custom_register_path` `enable_npu_model_patch` |
@@ -348,7 +348,7 @@ eval 功能暂时不迁移。dev 侧目前连 eval recipe 都没有。
 | 落点 Config | 数量 | 字段 | 依据 |
 |---|---|---|---|
 | `rollout_config.py` | 16 | `sglang_tp_size` `sglang_dp_size` `sglang_pp_size` `sglang_ep_size` `sglang_context_length` `sglang_mem_fraction_static` `sglang_kv_cache_dtype` `sglang_quantization` `sglang_disable_cuda_graph` `sglang_disable_custom_all_reduce` `sglang_enable_dp_attention` `sglang_enable_ep_moe` `sglang_speculative_algorithm` `sglang_speculative_eagle_topk` `sglang_speculative_num_draft_tokens` `sglang_speculative_num_steps` | 规则 4 |
-| `convert_config.py` | 12 | hub：`push_to_hub` `hub_model_id` `hub_private_repo` `commit_message` `exist_ok` ｜ 导出目标：`to_ollama` `to_peft_format` `to_cached_dataset` `template_mode` ｜ 量化：`quant_batch_size` `quant_n_samples` `group_size` | — |
+| `convert_config.py` | 11 | hub：`push_to_hub` `hub_model_id` `hub_private_repo` `commit_message` `exist_ok` ｜ 导出目标：`to_peft_format` `to_cached_dataset` `template_mode` ｜ 量化：`quant_batch_size` `quant_n_samples` `group_size` | — |
 | **新建 `deploy_config.py`** | 12 | `host` `port` `api_key` `ssl_keyfile` `ssl_certfile` `served_model_name` `owned_by` `max_logprobs` `log_interval` `log_level` `verbose` `context_manager` | 规则 9 |
 | `sampling_config.py` | 8 | `sampler_engine` `sampler_type` `orm_model` `prm_model` `prm_threshold` `engine_kwargs` `num_sampling_batches` `num_sampling_batch_size` | 规则 7 |
 | `generation_config.py` 或新 infer config | 7 | `infer_backend` `max_batch_size` `metric` `result_path` `val_dataset_sample` `write_batch_size` `reranker_use_activation` | — |

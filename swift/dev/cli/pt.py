@@ -8,8 +8,9 @@ def pt_main(argv: Optional[List[str]] = None) -> List[dict]:
     from swift.dev.config import process_and_validate_configs
     from swift.dev.recipe import run_pt
 
-    (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,
-     checkpoint_config, logging_config, tuner_config, quantize_config) = parse_sft_configs(argv, command='pt')
+    configs = parse_sft_configs(argv, command='pt')
+    model_config = configs['model_config']
+    template_config = configs['template_config']
     if model_config.task_type not in (None, 'causal_lm'):
         raise ValueError(f'PT requires task_type="causal_lm", got {model_config.task_type!r}.')
     if template_config.use_chat_template not in (None, False):
@@ -19,29 +20,24 @@ def pt_main(argv: Optional[List[str]] = None) -> List[dict]:
     model_config.task_type = 'causal_lm'
     template_config.use_chat_template = False
     template_config.loss_scale = 'all'
-    process_and_validate_configs({
-        'model_config': model_config,
-        'plugin_config': plugin_config,
-        'template_config': template_config,
-        'dataset_config': dataset_config,
-        'train_config': train_config,
-        'distributed_config': distributed_config,
-        'checkpoint_config': checkpoint_config,
-        'logging_config': logging_config,
-        'tuner_config': tuner_config,
-        'quantize_config': quantize_config,
-    })
+    process_and_validate_configs(configs)
+    is_megatron = configs['distributed_config'].backend == 'megatron'
+    megatron_kwargs = ({
+        'megatron_config': configs['megatron_config'],
+        'moe_config': configs['moe_config']
+    } if is_megatron else {})
     return run_pt(
         model_config,
         template_config,
-        dataset_config,
-        train_config,
-        distributed_config,
-        checkpoint_config,
-        tuner_config,
-        logging_config,
-        quantize_config,
-        output_dir=checkpoint_config.output_dir,
+        configs['dataset_config'],
+        configs['train_config'],
+        configs['distributed_config'],
+        configs['checkpoint_config'],
+        configs['tuner_config'],
+        configs['logging_config'],
+        quantize_config=configs['quantize_config'],
+        output_dir=configs['checkpoint_config'].output_dir,
+        **megatron_kwargs,
     )
 
 

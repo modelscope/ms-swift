@@ -83,11 +83,14 @@ def run_merge_lora(
 
 
 def _load_base_model(model_config: ModelConfig, *, device_map: Optional[Any]):
-    """Load the base model in full precision, ignoring any quantization on ModelConfig.
+    """Load the base model in full precision for the merge.
 
     A quantized base cannot absorb LoRA deltas correctly -- peft raises / silently degrades
-    (huggingface/peft#2321) -- so the merge always runs on the unquantized weights. legacy does the
-    same by clearing args.quant_method before loading.
+    (huggingface/peft#2321) -- so the merge must run on unquantized weights. dev needs no explicit
+    clearing step (legacy clears ``args.quant_method`` before loading): ``load_model_processor`` reads
+    no transformers load-time quantization off ``ModelConfig`` -- the only quant fields there are
+    Megatron fp8 knobs, unused on this path -- and the `swift merge` CLI does not parse ``QuantizeConfig``,
+    so the base is loaded full-precision by construction.
     """
     from copy import copy
 
@@ -137,60 +140,6 @@ def _check_tie_word_embeddings(model) -> None:
         HfConfigFactory.set_config_attr(config, 'tie_word_embeddings', False)
     except Exception:
         pass
-
-
-def _render_ollama_parts(template, parts, placeholder: str, replacement: str) -> str:
-    text = ''
-    for part in parts:
-        if isinstance(part, str):
-            text += part.replace(placeholder, replacement)
-        elif isinstance(part, (tuple, list)):
-            if part and isinstance(part[0], int):
-                text += template.tokenizer.decode(part)
-            else:
-                for name in part:
-                    if name == 'bos_token_id':
-                        text += template.tokenizer.bos_token or ''
-                    elif name == 'eos_token_id':
-                        text += template.tokenizer.eos_token or ''
-                    else:
-                        raise ValueError(f'Unknown template token: {name}')
-    return text
-
-
-def run_export_ollama(model_config, template_config, generation_config, output_dir: str) -> str:
-    """Write an Ollama Modelfile for a resolved local model directory."""
-    from swift.dev.builders import build_template, load_model_processor
-
-    if not model_config.model or not os.path.isdir(model_config.model):
-        raise ValueError('Ollama export requires a local model directory.')
-    os.makedirs(output_dir, exist_ok=True)
-    _, processor = load_model_processor(model_config)
-    template = build_template(template_config, processor)
-    meta = template.template_meta
-    suffix = _render_ollama_parts(template, meta.suffix, '', '')
-    with open(os.path.join(output_dir, 'Modelfile'), 'w', encoding='utf-8') as file:
-        file.write(f'FROM {model_config.model}\n')
-        file.write('TEMPLATE """{{ if .System }}')
-        file.write(_render_ollama_parts(template, meta.system_prefix, '{{SYSTEM}}', '{{ .System }}'))
-        file.write('{{ else }}')
-        file.write(_render_ollama_parts(template, meta.prefix, '', ''))
-        file.write('{{ end }}{{ if .Prompt }}')
-        file.write(_render_ollama_parts(template, meta.prompt, '{{QUERY}}', '{{ .Prompt }}'))
-        file.write('{{ end }}{{ .Response }}')
-        file.write(suffix + '"""\n')
-        file.write(f'PARAMETER stop "{suffix}"\n')
-        for stop_word in generation_config.stop_words:
-            file.write(f'PARAMETER stop "{stop_word}"\n')
-        temperature = generation_config.temperature if generation_config.temperature is not None else 1.0
-        top_k = generation_config.top_k if generation_config.top_k is not None else -1
-        top_p = generation_config.top_p if generation_config.top_p is not None else 1.0
-        penalty = generation_config.repetition_penalty if generation_config.repetition_penalty is not None else 1.0
-        file.write(f'PARAMETER temperature {temperature}\n')
-        file.write(f'PARAMETER top_k {top_k}\n')
-        file.write(f'PARAMETER top_p {top_p}\n')
-        file.write(f'PARAMETER repeat_penalty {penalty}\n')
-    return output_dir
 
 
 def run_to_peft_format(adapter: str, output_dir: str) -> str:

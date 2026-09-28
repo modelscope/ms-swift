@@ -3,7 +3,7 @@ from __future__ import annotations
 from .cached_dataset import export_cached_dataset
 from .convert import run_convert
 from .infer_tui import infer_cli
-from .merge_lora import run_export_ollama, run_merge_lora, run_push_to_hub, run_to_peft_format
+from .merge_lora import run_merge_lora, run_push_to_hub, run_to_peft_format
 from .quantize import run_quantize
 from .run_deploy import build_server_config, run_deploy, run_deploy_process
 from .run_dpo import PreferenceLoop, run_dpo
@@ -42,7 +42,6 @@ __all__ = [
     'run_quantize',
     'run_convert',
     'run_merge_lora',
-    'run_export_ollama',
     'run_to_peft_format',
     'run_push_to_hub',
     'run_infer',

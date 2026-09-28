@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 
 @dataclass
@@ -48,14 +48,26 @@ class ConvertConfig:
     # === Other export targets ===
     # These leave the HF <-> mcore axis entirely: each writes a different artefact from the same model,
     # and at most one applies to a run.
-    #: Emit a Modelfile so the weights can be served by ollama.
-    to_ollama: bool = False
     #: Tokenise the dataset and save the result, so later runs skip encoding. The one target that
     #: produces a dataset rather than a model, hence the template mode below.
     to_cached_dataset: bool = False
     #: Which encoding the cached dataset is built for. It has to be stated because the same rows encode
     #: differently per objective, and a cache built for one is wrong for the others.
     template_mode: Literal['train', 'rlhf', 'kto'] = 'train'
+    #: Materialise the encoded tokens (input_ids / labels) into the store instead of keeping the raw row
+    #: plus a ``lengths`` column. Off by default, which mirrors the eager training path (tokenisation then
+    #: still happens per batch at train time); on, the store is directly trainable -- the model forward's
+    #: ``_not_encoded`` guard skips re-encoding any row that already carries ``input_ids``. Text only for
+    #: now: a multimodal row's ``input_ids`` depend on the image grid, so the recipe refuses that combo.
+    store_encoded: bool = False
+    #: Container the store is written in, shared with ``swift infer`` (see swift.dev.dataset.store).
+    #: ``arrow`` (default) is a single ``save_to_disk`` table, the directly-trainable form; ``jsonl`` is a
+    #: portable line-delimited dump. ``bin`` (the flat mmap pretraining layout) is a named later phase and
+    #: raises until it exists rather than silently falling back.
+    store_format: Literal['arrow', 'jsonl', 'bin'] = 'arrow'
+    #: Restrict the persisted columns to this allow-list; None keeps every column the encoding produced.
+    #: A name that matches no column is rejected rather than silently dropped.
+    store_fields: Optional[List[str]] = None
 
     # === Hub upload ===
     #: Message on the commit created by the upload. The hub credentials and repo id are not here: they

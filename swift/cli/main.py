@@ -32,16 +32,10 @@ DEV_ROUTE_MAPPING: Dict[str, str] = {
     'sft': 'swift.dev.cli.sft',
     'rlhf': 'swift.dev.cli.rlhf',
     'infer': 'swift.dev.cli.infer',
-    'merge-lora': 'swift.dev.cli.merge_lora',
+    'merge': 'swift.dev.cli.merge',
     'deploy': 'swift.dev.cli.deploy',
     'export': 'swift.dev.cli.export',
     'eval': 'swift.dev.cli.eval',
-}
-DEV_MEGATRON_ROUTE_MAPPING: Dict[str, str] = {
-    'pt': 'swift.dev.cli.megatron_pt',
-    'sft': 'swift.dev.cli.megatron',
-    'rlhf': 'swift.dev.cli.megatron_rlhf',
-    'export': 'swift.dev.cli.megatron_export',
 }
 
 
@@ -52,12 +46,16 @@ def _use_dev_cli() -> bool:
 def resolve_route(method_name: str, route_mapping: Dict[str, str], is_megatron: bool = False) -> str:
     if not _use_dev_cli():
         return route_mapping[method_name]
-    if not is_megatron and method_name == 'web-ui':
+    if is_megatron:
+        # twinkle unifies the Megatron and Transformers stacks, so v5 has no separate `megatron`
+        # command: the backend is a single flag on the shared command. Redirect instead of routing.
+        raise RuntimeError('USE_SWIFT_V5 is enabled, but v5 has no separate `megatron` command. '
+                           f'Use `swift {method_name} --backend megatron` instead.')
+    if method_name == 'web-ui':
         return route_mapping[method_name]
-    dev_routes = DEV_MEGATRON_ROUTE_MAPPING if is_megatron else DEV_ROUTE_MAPPING
-    if method_name not in dev_routes:
+    if method_name not in DEV_ROUTE_MAPPING:
         raise RuntimeError(f'USE_SWIFT_V5 is enabled but no dev route exists for {method_name!r}.')
-    return dev_routes[method_name]
+    return DEV_ROUTE_MAPPING[method_name]
 
 
 def use_torchrun() -> bool:
@@ -127,7 +125,12 @@ def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool =
     parse_yaml_args(argv)
     torchrun_args = get_torchrun_args()
     python_cmd = sys.executable
-    if torchrun_args is None or (not is_megatron and method_name not in {'pt', 'sft', 'rlhf', 'infer'}):
+    distributed_methods = {'pt', 'sft', 'rlhf', 'infer'}
+    if is_dev_route:
+        # `swift export --backend megatron` (mcore convert) is distributed as well, so the dev export
+        # entry also relaunches under torchrun when NPROC_PER_NODE/NNODES is set.
+        distributed_methods = distributed_methods | {'export'}
+    if torchrun_args is None or (not is_megatron and method_name not in distributed_methods):
         args = [python_cmd, '-m', route, *argv] if is_dev_route else [python_cmd, file_path, *argv]
     elif is_dev_route:
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, '--module', route, *argv]

@@ -1,6 +1,5 @@
 """RLHF CLI: atomic Config parsing and algorithm dispatch."""
 from __future__ import annotations
-import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -17,20 +16,6 @@ class RlhfCliCompatConfig:
 _RLHF_EXTENSION_FIELDS = ()
 
 
-def _configure_megatron(model_config, train_config, distributed_config, tuner_config):
-    from swift.dev.cli.megatron import _derive_megatron_ga, _fix_mtp, _select_megatron_tuner
-
-    distributed_config.backend = 'megatron'
-    world_size = int(os.environ.get('WORLD_SIZE', '1'))
-    distributed_config.nproc_per_node = distributed_config.nproc_per_node or world_size
-    _fix_mtp(model_config)
-    if train_config.weight_decay_incr_style == 'constant':
-        train_config.start_weight_decay = None
-        train_config.end_weight_decay = None
-    _derive_megatron_ga(train_config, distributed_config, world_size)
-    return _select_megatron_tuner(tuner_config)
-
-
 def _apply_rlhf_compat(passed, generation_config, rlhf_config, rlhf_compat) -> None:
     if 'max_new_tokens' in passed and generation_config.max_new_tokens is not None:
         rlhf_config.max_completion_length = generation_config.max_new_tokens
@@ -40,7 +25,8 @@ def _apply_rlhf_compat(passed, generation_config, rlhf_config, rlhf_compat) -> N
         raise ValueError('`--seq_kd` is deprecated and was never implemented; use the GKD objective directly.')
 
 
-def parse_rlhf_configs(argv: Optional[List[str]] = None, *, megatron: bool = False) -> Dict[str, Any]:
+def parse_rlhf_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
+    from swift.dev.cli._megatron_compat import MegatronCliCompatConfig, configure_megatron, is_megatron_argv
     from swift.dev.cli.parser import flag_names, parse_configs_strict, resolve_argv, select_tuner
     from swift.dev.config import (
         CheckpointConfig,
@@ -61,6 +47,7 @@ def parse_rlhf_configs(argv: Optional[List[str]] = None, *, megatron: bool = Fal
     )
 
     effective_argv = resolve_argv(argv)
+    megatron = is_megatron_argv(effective_argv)
     from swift.dev.cli.legacy_coverage import reject_legacy_only_flags
     reject_legacy_only_flags('megatron_rlhf' if megatron else 'rlhf', effective_argv)
     passed = flag_names(effective_argv)
@@ -70,7 +57,6 @@ def parse_rlhf_configs(argv: Optional[List[str]] = None, *, megatron: bool = Fal
         MoEConfig
     ]
     if megatron:
-        from swift.dev.cli.megatron import MegatronCliCompatConfig
         classes.append(MegatronCliCompatConfig)
     classes.append(RlhfCliCompatConfig)
     owners = {
@@ -88,7 +74,7 @@ def parse_rlhf_configs(argv: Optional[List[str]] = None, *, megatron: bool = Fal
      megatron_config, moe_config) = common
     rlhf_compat = configs[-1]
     if megatron:
-        tuner_config = _configure_megatron(model_config, train_config, distributed_config, tuner_config)
+        tuner_config = configure_megatron(model_config, train_config, distributed_config, tuner_config)
     else:
         tuner_config = select_tuner(tuner_config)
 

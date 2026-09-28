@@ -19,7 +19,6 @@ def parse_export_configs(argv: Optional[List[str]] = None, *, command: str = 'ex
         ConvertConfig,
         DatasetConfig,
         DistributedConfig,
-        GenerationConfig,
         MegatronConfig,
         ModelConfig,
         MoEConfig,
@@ -33,15 +32,20 @@ def parse_export_configs(argv: Optional[List[str]] = None, *, command: str = 'ex
     effective_argv = resolve_argv(argv)
     reject_legacy_only_flags(command, effective_argv)
     classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig,
-               QuantizeConfig, ConvertConfig, TunerConfig, GenerationConfig, RuntimeConfig, MegatronConfig, MoEConfig]
+               QuantizeConfig, ConvertConfig, TunerConfig, RuntimeConfig, MegatronConfig, MoEConfig]
     configs, remaining = parse_configs(classes, effective_argv, load_args_default=True)
     if remaining:
         raise ValueError(f'Unrecognized arguments: {remaining}. The dev export CLI parses the Config surface '
                          'directly; a flag with no matching Config field is refused rather than dropped.')
     names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'distributed_config',
-             'checkpoint_config', 'quantize_config', 'convert_config', 'tuner_config', 'generation_config',
-             'runtime_config', 'megatron_config', 'moe_config')
+             'checkpoint_config', 'quantize_config', 'convert_config', 'tuner_config', 'runtime_config',
+             'megatron_config', 'moe_config')
     result = dict(zip(names, configs))
+    # `swift export --backend megatron` is the single Megatron export entry (there is no separate
+    # `megatron export` command): pin the runtime prerequisites the mcore convert path needs.
+    if result['distributed_config'].backend == 'megatron':
+        from swift.dev.cli._megatron_compat import enter_megatron_backend
+        enter_megatron_backend(result['distributed_config'])
     result['checkpoint_config']._output_dir_explicit = 'output_dir' in flag_names(effective_argv)
     return result
 
@@ -63,8 +67,6 @@ def _derive_output_dir(configs: Dict[str, Any]) -> None:  # noqa: C901
         suffix = quantize.quant_method
         if quantize.quant_bits is not None:
             suffix += f'-int{quantize.quant_bits}'
-    elif convert.to_ollama:
-        suffix = 'ollama'
     elif convert.merge_lora:
         suffix = 'merged'
     elif convert.to_mcore:
@@ -101,12 +103,12 @@ def _validate_export(configs: Dict[str, Any]) -> None:
     requested_save_options = {'safe_serialization', 'max_shard_size'}.intersection(
         getattr(checkpoint_config, '_explicit_fields', ()))
     chained_merge = bool(convert_config.merge_lora
-                         and (quantize_config.quant_method or convert_config.to_ollama
-                              or checkpoint_config.push_to_hub))
-    if requested_save_options and not ((convert_config.merge_lora and not chained_merge) or convert_config.to_hf):
+                         and (quantize_config.quant_method or checkpoint_config.push_to_hub))
+    if requested_save_options and not ((convert_config.merge_lora and not chained_merge) or convert_config.to_hf
+                                       or quantize_config.quant_method):
         raise NotImplementedError(
             f'{sorted(requested_save_options)} do not configure the selected export operation. They are supported '
-            'for a standalone LoRA merge, or for mcore-to-HF conversion where applicable.')
+            'for a standalone LoRA merge, for quantization, or for mcore-to-HF conversion where applicable.')
     if convert_config.to_hf and not checkpoint_config.safe_serialization:
         raise NotImplementedError('mcore-to-HF conversion always writes safetensors; use --safe_serialization true.')
     if (convert_config.to_hf and distributed_config.bridge_backend == 'megatron-bridge'
@@ -122,7 +124,6 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
     from swift.dev.recipe import (
         export_cached_dataset,
         run_convert,
-        run_export_ollama,
         run_merge_lora,
         run_push_to_hub,
         run_quantize,
@@ -143,7 +144,6 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
     quantize_config = configs['quantize_config']
     convert_config = configs['convert_config']
     tuner_config = configs['tuner_config']
-    generation_config = configs['generation_config']
 
     output_dir = checkpoint_config.output_dir
     result: Optional[str] = None
@@ -156,7 +156,7 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
         result = converted
 
     if convert_config.merge_lora:
-        chains = bool(quantize_config.quant_method or convert_config.to_ollama or checkpoint_config.push_to_hub)
+        chains = bool(quantize_config.quant_method or checkpoint_config.push_to_hub)
         merged = run_merge_lora(
             model_config,
             tuner_config,
@@ -177,13 +177,15 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
             dataset_config,
             output_dir=output_dir,
             quant_n_samples=quantize_config.quant_n_samples,
+            safe_serialization=checkpoint_config.safe_serialization,
+            max_shard_size=checkpoint_config.max_shard_size,
             batch_size=quantize_config.quant_batch_size,
             group_size=quantize_config.group_size)
-    elif convert_config.to_ollama:
-        result = run_export_ollama(model_config, template_config, generation_config, output_dir)
     elif convert_config.to_cached_dataset:
         train_dir, _ = export_cached_dataset(
-            model_config, template_config, dataset_config, output_dir=output_dir)
+            model_config, template_config, dataset_config, output_dir=output_dir,
+            template_mode=convert_config.template_mode, store_format=convert_config.store_format,
+            store_encoded=convert_config.store_encoded, store_fields=convert_config.store_fields)
         result = train_dir
     elif convert_config.to_hf or convert_config.to_mcore:
         result = run_convert(

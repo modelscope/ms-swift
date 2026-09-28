@@ -13,9 +13,10 @@ draw:
     what produces them.
 
 So the flow is: build template -> build calibration samples -> get_quantizer(...) -> quantize ->
-save. Load-time schemes (bnb/fp8/hqq/quanto/eetq) skip calibration entirely and do not even load the
-model: they only emit a quantization_config for ``from_pretrained``, which is what
-``ConfigQuantizer.quantize`` refuses to fake.
+save. Load-time schemes (bnb/fp8/hqq/quanto/eetq) skip calibration: their scales are fitted by
+transformers WHILE it materializes the weights, so the recipe loads the model WITH the scheme's
+quantization_config and then persists it -- a full, directly loadable model directory, exactly what
+legacy ``QuantEngine.quantize`` writes for bnb/fp8 (``save_pretrained`` + ``save_checkpoint``).
 """
 from __future__ import annotations
 import logging
@@ -40,6 +41,8 @@ def run_quantize(
     *,
     output_dir: str = 'output',
     quant_n_samples: int = 256,
+    safe_serialization: bool = True,
+    max_shard_size: str = '5GB',
     **quantizer_kwargs,
 ) -> str:
     """Quantize ``model_config`` and write the result to ``output_dir``; returns that path.
@@ -62,7 +65,13 @@ def run_quantize(
     kwargs = _quantizer_kwargs(
         quantize_config, quantizer_kwargs, torch_dtype=model_config.torch_dtype)
     if quant_method not in CALIBRATION_METHODS:
-        return _run_load_time(quant_method, kwargs, output_dir=output_dir)
+        return _run_load_time(
+            quant_method,
+            kwargs,
+            model_config=model_config,
+            output_dir=output_dir,
+            safe_serialization=safe_serialization,
+            max_shard_size=max_shard_size)
     return _run_calibration(
         quant_method,
         kwargs,
@@ -70,7 +79,9 @@ def run_quantize(
         template_config=template_config,
         dataset_config=dataset_config,
         output_dir=output_dir,
-        quant_n_samples=quant_n_samples)
+        quant_n_samples=quant_n_samples,
+        safe_serialization=safe_serialization,
+        max_shard_size=max_shard_size)
 
 
 def _quantizer_kwargs(quantize_config: QuantizeConfig,
@@ -82,27 +93,42 @@ def _quantizer_kwargs(quantize_config: QuantizeConfig,
     return quantizer_kwargs(quantize_config, overrides, torch_dtype=torch_dtype)
 
 
-def _run_load_time(quant_method: str, kwargs: Dict[str, Any], *, output_dir: str) -> str:
-    """bnb / fp8 / hqq / quanto / eetq: emit the quantization_config, do not touch weights.
+def _run_load_time(quant_method: str,
+                   kwargs: Dict[str, Any],
+                   *,
+                   model_config: ModelConfig,
+                   output_dir: str,
+                   safe_serialization: bool = True,
+                   max_shard_size: str = '5GB') -> str:
+    """bnb / fp8 / hqq / quanto / eetq: load the model quantized, then save the full directory.
 
-    These schemes quantize while transformers MATERIALIZES the weights, so there is nothing to do to
-    an already-loaded model -- ``ConfigQuantizer.quantize`` raises rather than pretend otherwise. The
-    useful artifact is the config itself, so it is written as quantization_config.json for the caller
-    to pass to ``from_pretrained`` (or to merge into a model config).
+    These schemes quantize WHILE transformers materializes the weights, so there is nothing to rewrite
+    on an already-loaded model -- ``ConfigQuantizer.quantize`` raises rather than pretend otherwise.
+    The export therefore hands the scheme's ``quantization_config`` to the loader (which quantizes on
+    the way in) and persists the result with ``save_pretrained`` + ``save_checkpoint``, producing a
+    directly loadable checkpoint. This mirrors legacy ``QuantEngine.quantize`` for bnb/fp8; emitting
+    only the config json (the previous behaviour here) left the user with no model to load.
     """
-    import json
     from twinkle.quantizer import get_quantizer
 
-    quantizer = get_quantizer(quant_method, **kwargs)
-    quant_config = quantizer.get_quantization_config()
+    from swift.dev.builders import load_model_processor
+    from swift.model import save_checkpoint
+
+    quant_config = get_quantizer(quant_method, **kwargs).get_quantization_config()
+    model, processor = load_model_processor(model_config, load_model=True, quantization_config=quant_config)
     os.makedirs(output_dir, exist_ok=True)
-    path = os.path.join(output_dir, 'quantization_config.json')
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(quant_config.to_dict(), f, ensure_ascii=False, indent=2)
-    logger.info(f'{quant_method} is applied at LOAD time; no weights were rewritten. '
-                f'Wrote the quantization_config to `{path}` -- pass it to from_pretrained '
-                '(quantization_config=...) to load the model quantized.')
-    return path
+    model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
+    # Copy the processor + the model's declared extra files so the output is self-contained and
+    # loadable on its own (legacy runs the same save_checkpoint after the weights are written).
+    save_checkpoint(
+        None,
+        processor,
+        output_dir,
+        model_dirs=[model.model_dir],
+        additional_saved_files=model.model_meta.additional_saved_files)
+    logger.info(f'Successfully quantized the model ({quant_method}, applied at load time) '
+                f'and saved in `{output_dir}`.')
+    return output_dir
 
 
 def _run_calibration(
@@ -114,6 +140,8 @@ def _run_calibration(
     dataset_config: Optional[DatasetConfig],
     output_dir: str,
     quant_n_samples: int,
+    safe_serialization: bool = True,
+    max_shard_size: str = '5GB',
 ) -> str:
     """AWQ / GPTQ: load the model, fit scales on calibration data, pack, save."""
     from twinkle.quantizer import get_quantizer
@@ -158,7 +186,7 @@ def _run_calibration(
 
     logger.info(f'Start {quant_method} quantization ({len(calib)} calibration batches)...')
     model = quantizer.quantize(model)
-    quantizer.save(model, output_dir)
+    quantizer.save(model, output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
 
     # Copy the processor + the model's declared extra files so the output is directly loadable
     # (legacy does the same after every backend's writer runs).

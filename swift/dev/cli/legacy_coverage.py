@@ -173,11 +173,7 @@ CLI_LEGACY_ONLY: Dict[str, Mapping[str, Tuple[str, ...]]] = {
         'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS + CHECKPOINT_EXPORT_UNSUPPORTED_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS,
     },
-    'megatron_export': {
-        'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS + CHECKPOINT_EXPORT_UNSUPPORTED_FIELDS,
-        'removed_option': REMOVED_OPTION_FIELDS,
-    },
-    'merge_lora': {
+    'merge': {
         'unsupported_command': SERVING_DISTRIBUTED_FIELDS + CHECKPOINT_MERGE_UNSUPPORTED_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS,
     },

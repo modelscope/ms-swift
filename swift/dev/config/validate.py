@@ -214,6 +214,12 @@ def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
             "save_rollout_tokens requires a token-capable local backend, but infer_backend='client' is "
             'message-only (no token IDs or logprobs). Use a local backend (transformers/vllm/sglang) or '
             'drop --save_rollout_tokens.')
+    # store_format='arrow' serialises the whole run once at the end and writes no checkpoint files, so it
+    # cannot continue a previous run -- resume needs the jsonl checkpoint writer's .tmp/.resume/state.
+    if infer_config.store_format == 'arrow' and infer_config.resume:
+        raise ValueError("store_format='arrow' writes one Arrow table at the end of the run and cannot "
+                         'checkpoint, so it cannot be combined with resume=True. Use --store_format jsonl '
+                         'for a resumable run.')
 
 
 def _check_grpo_controls(cfg: 'RLHFConfig') -> None:

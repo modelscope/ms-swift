@@ -244,8 +244,19 @@ def _convert_mcore(
             else:
                 _save_args(megatron_args, output_dir)
         if convert_config.test_convert_precision:
+            # Pin the model_type AND template resolved from the source model (the load_model=False
+            # call above): output_dir is a freshly-written dir with no hub name to match, so an
+            # unpinned re-load falls back to ambiguous config architectures / candidate templates.
+            # legacy gets both for free off its cached args.model_type / args.template.
+            resolved_model_type = processor.model_info.model_type
+            resolved_template = template.template_meta.template_type
             hf_model, template, _ = _load_hf_model_template(
-                model_config, template_config, load_model=True, model=output_dir)
+                model_config,
+                template_config,
+                load_model=True,
+                model=output_dir,
+                model_type=resolved_model_type,
+                template_type=resolved_template)
             test_convert_precision(
                 megatron_args,
                 hf_model,
@@ -329,6 +340,8 @@ def _load_hf_model_template(
     *,
     load_model: bool,
     model: Optional[str] = None,
+    model_type: Optional[str] = None,
+    template_type: Optional[str] = None,
     patch_offload: bool = False,
 ) -> Tuple[Any, Any, Any]:
     """Load the HF model (optionally) + template, via dev's own builders.
@@ -336,6 +349,14 @@ def _load_hf_model_template(
     legacy calls ``prepare_model_template(args)``, which only works off an ExportArguments instance
     (it dispatches to args.get_model_processor/get_template). dev has the equivalent pair already, so
     those are used instead of synthesizing a fake args object.
+
+    ``model_type``/``template_type`` pin the types resolved from the source model for a load whose
+    ``model`` is a freshly-written directory (the to-HF precision re-load). swift name-matches a hub id
+    to a registered model_type/template, but an arbitrary output dir has no name to match and falls
+    back to config architectures / candidate templates, which is ambiguous for some families (qwen2 vs
+    qwen2_gte; qwen2_5 vs qwq vs deepseek_r1). legacy is immune because BaseArguments caches
+    args.model_type and args.template on first resolution; dev's atomic Configs are never mutated, so
+    both resolved values are threaded in explicitly.
     """
     from copy import copy
 
@@ -343,16 +364,25 @@ def _load_hf_model_template(
     from swift.dev.config import TemplateConfig
 
     load_config = model_config
-    if model is not None and model != model_config.model:
+    override_model = model is not None and model != model_config.model
+    override_type = model_type is not None and model_config.model_type is None
+    if override_model or override_type:
         load_config = copy(model_config)
-        load_config.model = model
+        if override_model:
+            load_config.model = model
+        if override_type:
+            load_config.model_type = model_type
+    build_config = template_config or TemplateConfig()
+    if template_type is not None and build_config.template is None:
+        build_config = copy(build_config)
+        build_config.template = template_type
     kwargs: Dict[str, Any] = {}
     if load_model and patch_offload:
         # Keeps the HF weights on CPU/meta where possible so both models can coexist while the
         # precision test runs.
         kwargs['patch_offload'] = True
     hf_model, processor = load_model_processor(load_config, load_model=load_model, **kwargs)
-    template = build_template(template_config or TemplateConfig(), processor)
+    template = build_template(build_config, processor)
     if hf_model is not None and getattr(template, 'use_model', False):
         template.model = hf_model
     return hf_model, template, processor

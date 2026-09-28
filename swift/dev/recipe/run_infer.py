@@ -267,7 +267,14 @@ def _run_generative(
     # atomic finalize); a plain 'all' run uses the incremental writer, which also gathers across DP
     # ranks. An existing complete checkpoint output short-circuits the run unless override_exist_file,
     # so re-running a finished job is a no-op.
-    use_checkpoint = bool(output_path) and (output_format == 'dpo' or infer_config.resume)
+    # store_format='arrow' serialises once at finish (no incremental checkpoint), so it never uses the
+    # resumable writer; validate_infer_config has already rejected arrow+resume. A 'dpo' run that picks
+    # arrow forfeits its crash-safe checkpointing -- say so rather than let the choice pass silently.
+    if infer_config.store_format == 'arrow' and output_format == 'dpo':
+        logger.warning("output_format='dpo' with store_format='arrow' writes one Arrow table at the end, so it "
+                       'cannot checkpoint/resume a long best-of-n run; use --store_format jsonl for that.')
+    use_checkpoint = (bool(output_path) and infer_config.store_format != 'arrow'
+                      and (output_format == 'dpo' or infer_config.resume))
     if use_checkpoint:
         probe = _CheckpointPaths(os.path.dirname(output_path) or 'output', os.path.basename(output_path))
         if os.path.exists(probe.final) and not infer_config.override_exist_file:
@@ -328,8 +335,12 @@ def _run_generative(
 
     batches = _plan_batches(len(rows), infer_config.batch_size, infer_config.max_batches)
     params = to_sampling_params(generation_config, num_samples=num_return)
-    writer = (_CheckpointWriter(output_path, infer_config.resume) if use_checkpoint else
-              _IncrementalWriter(output_path, 1 if output_path else None))
+    if infer_config.store_format == 'arrow' and output_path:
+        writer = _ArrowWriter(output_path, infer_config.store_fields)
+    elif use_checkpoint:
+        writer = _CheckpointWriter(output_path, infer_config.resume)
+    else:
+        writer = _IncrementalWriter(output_path, 1 if output_path else None)
     # Rollout-token sidecar: only built when save_rollout_tokens is on, and only a local backend can feed
     # it (a message-only client has no tokens; validate rejects that combination). The NPZ dir sits beside
     # the jsonl and each row embeds a path relative to output_dir, so the pair stays portable.
@@ -1110,6 +1121,44 @@ class _CheckpointWriter:
         self._f.close()
         self.paths.finalize()
         logger.info(f'run_infer: wrote {self.paths.final}')
+
+
+class _ArrowWriter:
+    """Write the run's rows as one Arrow ``save_to_disk`` table at the end, via the shared store writer.
+
+    The ``store_format='arrow'`` counterpart of :class:`_IncrementalWriter`: same emit surface, but the
+    rows are serialised once at :meth:`finish` into the directly-trainable container ``swift export
+    --to_cached_dataset`` also produces (:mod:`swift.dev.dataset.store`). There is no incremental flush, so
+    a crash loses the run -- which is why ``store_format='arrow'`` is rejected together with ``resume``
+    (:func:`swift.dev.config.validate.validate_infer_config`).
+
+    The token payload stays in the NPZ sidecar the rows reference via ``rollout_tokens``; inlining those
+    arrays as Arrow list columns belongs to the offline-RL reader (a later phase), so this phase unifies
+    the container, not the token layout.
+    """
+
+    def __init__(self, output_path: str, store_fields: Optional[List[str]] = None):
+        # The Arrow store is a directory; derive it from the jsonl path so the pair sits together and the
+        # sidecar-relative ``rollout_tokens`` paths embedded in the rows stay valid.
+        base = output_path[:-len('.jsonl')] if output_path.endswith('.jsonl') else output_path
+        self.arrow_path = base + '.arrow'
+        self.store_fields = store_fields
+
+    def skip(self, index: int) -> bool:
+        return False
+
+    def write(self, batch: List[Dict[str, Any]]) -> None:
+        pass  # rows are serialised once, at finish
+
+    def checkpoint(self, index: int) -> None:
+        pass
+
+    def finish(self, results: List[Dict[str, Any]]) -> None:
+        rows = _gather_rows(results)
+        if rows is None:
+            return  # not the writing rank under DP
+        from swift.dev.dataset import write_dataset_store
+        write_dataset_store(rows, self.arrow_path, backend='arrow', fields=self.store_fields)
 
 
 def _gather_rows(rows: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:

@@ -7,6 +7,8 @@
   produces, :class:`MeasurePreprocessor` keeps only the token count.
 - :mod:`mm_download` -- fetch the media archives multimodal datasets reference by relative path
 - :mod:`loader` -- name resolution + load orchestration + the built-in dataset registrations
+- :mod:`store` -- the one write/read flow for precomputed rows shared by ``export --to_cached_dataset``
+  and ``infer`` (pluggable ``arrow`` / ``jsonl`` backend, one field vocabulary)
 
 Directly under this package is the torch-facing layer -- what the DataLoader consumes. Each class there
 settles for itself when a row is encoded, so nothing outside has to arrange them:
@@ -40,13 +42,21 @@ from .loader import (
 )
 from .packing import IterablePackingDataset, PackingDataset
 from .preprocessor import EncodePreprocessor, MeasurePreprocessor, Preprocessor
+from .store import (
+    CORE_STORE_FIELDS,
+    KNOWN_STORE_FIELDS,
+    load_dataset_store,
+    validate_store_fields,
+    write_dataset_store,
+)
 from .swift_dataset import SwiftDataset
 
 __all__ = [
     'DATASET_MAPPING', 'DATASET_TYPE', 'DatasetInfo', 'DatasetLoader', 'SubsetMeta', 'Preprocessor',
     'get_dataset_loader', 'load_dataset', 'match_dataset_type', 'register_dataset', 'register_dataset_info',
     'LazyLLMDataset', 'PackingDataset', 'IterablePackingDataset', 'EncodePreprocessor', 'MeasurePreprocessor',
-    'SwiftDataset', 'EncodedDataset'
+    'SwiftDataset', 'EncodedDataset', 'CORE_STORE_FIELDS', 'KNOWN_STORE_FIELDS', 'load_dataset_store',
+    'validate_store_fields', 'write_dataset_store'
 ]
 
 register_dataset_info()

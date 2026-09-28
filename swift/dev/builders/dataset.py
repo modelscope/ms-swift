@@ -420,7 +420,7 @@ def _drop_last(distributed_config: DistributedConfig, *, is_val: bool) -> bool:
 
 
 def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream'], num_proc: int, strict: bool,
-            data_seed: int) -> Any:
+            data_seed: int, materialize: bool = False) -> Any:
     """Encode a raw messages split into trainable samples.
 
     Routes:
@@ -430,6 +430,11 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
                   many, so it must fully encode with EncodePreprocessor; otherwise use
                   MeasurePreprocessor, which keeps the raw row and only adds a `lengths` column
                   (rows are encoded later by the lazy/collate path).
+
+    ``materialize`` forces the full EncodePreprocessor on the eager non-split path too, so the rows carry
+    ``input_ids``/``labels`` instead of the raw row. Only the cached-dataset exporter sets it (via
+    ``ConvertConfig.store_encoded``); training leaves it False and keeps encoding at train time, where the
+    forward's ``_not_encoded`` guard would skip the work anyway once a row is materialised.
     """
     from swift.dev.dataset import EncodePreprocessor, LazyLLMDataset, MeasurePreprocessor
 
@@ -442,9 +447,9 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
         random_state = np.random.RandomState(data_seed)
         return LazyLLMDataset(raw, template.encode, strict=strict, random_state=random_state)
 
-    # eager / stream: 'split' needs a full encode (emits multiple samples per input); otherwise
-    # MeasurePreprocessor only writes `lengths` and leaves rows raw.
-    if truncation_strategy == 'split':
+    # eager / stream: 'split' needs a full encode (emits multiple samples per input), and so does an
+    # explicit materialize request; otherwise MeasurePreprocessor only writes `lengths`, leaving rows raw.
+    if truncation_strategy == 'split' or materialize:
         preprocessor = EncodePreprocessor(template)
     else:
         preprocessor = MeasurePreprocessor(template)

@@ -324,8 +324,8 @@ def _derive_finetune_resume(train_config: 'TrainConfig', checkpoint_config: Opti
         if not train_config.finetune:
             raise ValueError(
                 'Megatron --finetune false requires --resume_from_checkpoint pointing to a checkpoint written by '
-                'the dev runtime. Native mcore checkpoints must first be converted with `swift megatron export '
-                '--to_hf true`.')
+                'the dev runtime. Native mcore checkpoints must first be converted with `swift export '
+                '--backend megatron --to_hf true`.')
         return
 
     derived = bool(train_config.finetune)
