@@ -56,7 +56,7 @@
 **为什么选择ms-swift？**
 - 🍎 **模型类型**：支持**600+纯文本大模型**、**400+多模态大模型**以及All-to-All全模态模型训练到部署全流程，热门模型Day0支持。
 - **数据集类型**：内置150+预训练、微调、人类对齐、多模态等各种任务数据集，并支持自定义数据集，用户只需准备数据集即可一键训练。
-- **硬件支持**：支持A10/A100/H100、RTX系列、T4/V100、CPU、MPS以及国产硬件Ascend NPU等。
+- **硬件支持**：支持 NVIDIA GPU（A100/H100/RTX 系列等，CUDA）、AMD GPU（MI300 系列等，ROCm）、国产硬件（Ascend NPU、MetaX GPU）、Apple MPS 与 CPU。
 - **轻量训练**：支持了LoRA、QLoRA、DoRA、LoRA+、LLaMAPro、LongLoRA、LoRA-GA、ReFT、RS-LoRA、Adapter、LISA等轻量微调方式。
 - **量化训练**：支持对BNB、AWQ、GPTQ、AQLM、HQQ、EETQ量化模型进行训练，7B模型训练只需9GB训练资源。
 - **显存优化**: GaLore、Q-Galore、UnSloth、Liger-Kernel、Flash-Attention 2/3 以及 **Ulysses和Ring-Attention序列并行技术**支持，降低长文本训练显存占用。
