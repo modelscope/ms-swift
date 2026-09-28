@@ -9,9 +9,18 @@ from typing import Optional
 
 
 # Avoid circular reference
+def _get_local_rank():
+    # Logging is configured while this module is imported, so a blank or non-numeric LOCAL_RANK
+    # (e.g. `LOCAL_RANK=` left in a launcher script or a Dockerfile) must fall back to the unset
+    # default instead of raising, otherwise importing swift.utils fails.
+    try:
+        return int(os.getenv('LOCAL_RANK', -1))
+    except ValueError:
+        return -1
+
+
 def _is_local_master():
-    local_rank = int(os.getenv('LOCAL_RANK', -1))
-    return local_rank in {-1, 0}
+    return _get_local_rank() in {-1, 0}
 
 
 def _get_log_level():
@@ -151,7 +160,7 @@ def add_file_handler_if_needed(logger, log_file, file_mode, log_level):
             return
 
     if importlib.util.find_spec('torch') is not None:
-        is_worker0 = int(os.getenv('LOCAL_RANK', -1)) in {-1, 0}
+        is_worker0 = _get_local_rank() in {-1, 0}
     else:
         is_worker0 = True
 
