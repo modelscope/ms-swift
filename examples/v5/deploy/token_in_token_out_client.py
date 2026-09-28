@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 
 from twinkle.data_format import InputFeature
 from twinkle_client import DataPlaneClient, init_twinkle_client
@@ -29,8 +30,10 @@ from twinkle_client.sampler import vLLMSampler
 
 # The client's base_url is the gateway root INCLUDING its route_prefix: the sampler is mounted at
 # '{route_prefix}/sampler/{served_model_name}' and the data plane at '{route_prefix}/data-plane', both of
-# which the client rebuilds off base_url. This is the URL run_deploy_process yields.
-BASE_URL = os.environ.get('TWINKLE_SERVER_URL', 'http://127.0.0.1:8000/v1')
+# which the client rebuilds off base_url. This is the URL run_deploy_process yields. NOTE: twinkle_client's
+# get_base_url() appends '/api/v1' unless the url already ends with it, so the server MUST be started with
+# --route_prefix /api/v1 (see serve_token_in_token_out.sh) for these paths to resolve.
+BASE_URL = os.environ.get('TWINKLE_SERVER_URL', 'http://127.0.0.1:8000/api/v1')
 API_KEY = os.environ.get('TWINKLE_SERVER_TOKEN', 'EMPTY')
 # Must equal the deployment's --served_model_name (the sampler is mounted under it).
 MODEL = os.environ.get('TWINKLE_MODEL', 'policy')
@@ -79,10 +82,28 @@ async def rollout_to_data_plane(sampler: vLLMSampler, data_plane: DataPlaneClien
         ref, [{'reward': float(r), 'advantage': float(r - mean)} for r in rewards])
 
 
+def connect_sampler(model: str, timeout: float = 600.0) -> vLLMSampler:
+    """Create the server-side sampler, waiting for its replica to become healthy.
+
+    The gateway's /models goes ready in seconds, but the sampler replica (engine load + warmup) only
+    registers its HTTP routes once healthy, so an immediate ``vLLMSampler(...)`` can 404. Retry until then.
+    """
+    deadline = time.time() + timeout
+    last_error: Exception | None = None
+    while time.time() < deadline:
+        try:
+            return vLLMSampler(model)
+        except Exception as error:  # 404/503 until the sampler replica is up
+            last_error = error
+            print(f'[client] sampler not ready yet ({error}); retrying in 5s...')
+            time.sleep(5.0)
+    raise RuntimeError(f'sampler {model!r} did not become ready within {timeout}s') from last_error
+
+
 async def main() -> None:
     client = init_twinkle_client(base_url=BASE_URL, api_key=API_KEY)
     try:
-        sampler = vLLMSampler(MODEL)
+        sampler = connect_sampler(MODEL)
         sample_token_in_token_out(sampler, PROMPT_TOKEN_IDS)
         if ENABLE_DATA_PLANE:
             data_plane = DataPlaneClient()

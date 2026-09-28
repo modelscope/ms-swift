@@ -718,6 +718,13 @@ def build_device_mesh_if_dp(distributed_config: Optional[DistributedConfig]) -> 
     """
     if distributed_config is None:
         return None
+    # No world size and no explicit layout means the run was not launched distributed: a single
+    # in-process engine, which is definitionally not multi-rank DP. Return None here rather than let
+    # build_device_mesh raise for the missing nproc_per_node -- the recipes call this on a default
+    # DistributedConfig (e.g. a programmatic run_deploy/run_infer that never went through
+    # process_and_validate_configs), and every caller already reads None as "no mesh, dp_size 1".
+    if distributed_config.nproc_per_node is None and not distributed_config.parallel_spec:
+        return None
     mesh = build_device_mesh(distributed_config)
     return mesh if mesh is not None and getattr(mesh, 'data_world_size', 1) > 1 else None
 
