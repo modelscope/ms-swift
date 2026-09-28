@@ -167,9 +167,16 @@ The above format is equivalent to:
 
 You can also organize the Agent dataset in the following format:
 
+`rejected_response` replaces all messages after the last `user` message in `messages` to form `rejected_messages`. Provide the complete rejected message sequence after the last `user` message, including any tool calls and tool results, in order. These messages are not automatically retained from the chosen conversation. If the rejected response consists of a single plain-text assistant reply, you can use either a string or a message list containing only that reply. The message list must not contain `user` messages.
+
 ```jsonl
-# It will find the position of the last user in `messages`, and replace the subsequent content with `rejected_response` to form `rejected_messages`
 {"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"Weather forecast. Get real-time air quality, including current air quality, PM2.5, and PM10 information.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g., Shanghai\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "What is the weather like in Beijing and Shanghai today?"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Beijing\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Shanghai\"}}"}, {"role": "tool_response", "content": "{\"city\": \"Beijing\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"Shanghai\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution."}], "rejected_response": [{"role": "assistant", "content": "I don't know."}]}
+```
+
+The rejected response above answers "I don't know." without calling a tool. In the following example, the rejected response uses the same tool call and result as the chosen response but reports an incorrect AQI value in its final answer. These tool messages must therefore also be explicitly included in `rejected_response`:
+
+```jsonl
+{"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"get_aqi\", \"description\": \"Get the air quality index for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "What is the current air quality index in Beijing?"}, {"role": "tool_call", "content": "{\"name\": \"get_aqi\", \"arguments\": {\"city\": \"Beijing\"}}"}, {"role": "tool_response", "content": "{\"aqi\": 50}"}, {"role": "assistant", "content": "The current air quality index in Beijing is 50."}], "rejected_response": [{"role": "tool_call", "content": "{\"name\": \"get_aqi\", \"arguments\": {\"city\": \"Beijing\"}}"}, {"role": "tool_response", "content": "{\"aqi\": 50}"}, {"role": "assistant", "content": "The current air quality index in Beijing is 100."}]}
 ```
 
 How to debug:
