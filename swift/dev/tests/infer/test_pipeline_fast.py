@@ -9,6 +9,7 @@ output_format) and both writers end to end, which is the surface the slow GPU te
 real engine.
 """
 import json
+import os
 
 import pytest
 
@@ -102,6 +103,86 @@ def test_all_format_metric_acc_against_reference(tmp_path, patch_prompt_rows):
 
     assert results[0]['labels'] == '4'
     assert results[0]['response'] == '4'  # first candidate matches the reference -> acc 1.0
+
+
+# --- store_format: the shared store writer infer now serialises through ----------------
+
+
+def test_arrow_format_writes_one_table_not_jsonl(tmp_path, patch_prompt_rows):
+    """``store_format='arrow'`` swaps the incremental jsonl writer for :class:`_ArrowWriter`: the whole
+    run is serialised once at finish into the same ``save_to_disk`` container ``swift export
+    --to_cached_dataset`` writes, at the ``.arrow`` path derived from the jsonl one -- and NO jsonl is
+    produced. This is the end-to-end regression for infer's storage change: same rows, new container."""
+    from swift.dev.dataset.store import load_dataset_store
+    patch_prompt_rows(_rows())
+    out_path = str(tmp_path / 'out.jsonl')
+    infer_config = InferConfig(
+        cache_files=[_cache(tmp_path)], num_return_sequences=3, batch_size=2, output_format='all',
+        store_format='arrow')
+    results = run_infer(
+        ModelConfig(task_type='causal_lm'), TemplateConfig(), DatasetConfig(), infer_config,
+        GenerationConfig(), backend='no', output_path=out_path)
+
+    arrow_path = str(tmp_path / 'out.arrow')
+    assert not os.path.exists(out_path)  # the jsonl writer was not used
+    assert os.path.isdir(arrow_path)  # an Arrow store is a save_to_disk directory
+    ds = load_dataset_store(arrow_path)
+    assert len(ds) == len(results) == 2
+    assert ds['response'] == [r['response'] for r in results]
+    assert ds['responses'] == [r['responses'] for r in results]
+
+
+def test_arrow_format_honours_store_fields(tmp_path, patch_prompt_rows):
+    """``InferConfig.store_fields`` reaches the writer as the column allow-list, so an arrow dump keeps
+    only the named columns -- the offline-RL corpus does not want every emit field."""
+    from swift.dev.dataset.store import load_dataset_store
+    patch_prompt_rows(_rows())
+    out_path = str(tmp_path / 'out.jsonl')
+    infer_config = InferConfig(
+        cache_files=[_cache(tmp_path)], num_return_sequences=3, batch_size=2, output_format='all',
+        store_format='arrow', store_fields=['response', 'messages'])
+    run_infer(
+        ModelConfig(task_type='causal_lm'), TemplateConfig(), DatasetConfig(), infer_config,
+        GenerationConfig(), backend='no', output_path=out_path)
+
+    ds = load_dataset_store(str(tmp_path / 'out.arrow'))
+    assert set(ds.column_names) == {'response', 'messages'}  # 'responses' / 'solution' dropped
+
+
+def test_arrow_format_overrides_dpo_checkpoint_writer(tmp_path, patch_prompt_rows):
+    """Writer-selection precedence: a 'dpo' run normally uses the checkpointed jsonl writer, but
+    ``store_format='arrow'`` wins -- ``use_checkpoint`` excludes arrow, so the run serialises one Arrow
+    table at finish instead of the tmp/resume/state checkpoint files (and forfeits resume, which the
+    validate guard and a runtime warning both flag). Pins the ``store_format != 'arrow'`` clause."""
+    from swift.dev.dataset.store import load_dataset_store
+    patch_prompt_rows(_rows())
+    out_path = str(tmp_path / 'dpo.jsonl')
+    infer_config = InferConfig(
+        cache_files=[_cache(tmp_path)], num_return_sequences=3, n_best_to_keep=1, batch_size=1,
+        output_format='dpo', store_format='arrow')
+    run_infer(
+        ModelConfig(task_type='causal_lm'), TemplateConfig(), DatasetConfig(), infer_config,
+        GenerationConfig(), rlhf_config=RLHFConfig(reward_funcs=[_exact_reward]), backend='no', output_path=out_path)
+
+    assert not os.path.exists(out_path)  # no checkpointed jsonl was published
+    assert os.path.isdir(str(tmp_path / 'dpo.arrow'))
+    ds = load_dataset_store(str(tmp_path / 'dpo.arrow'))
+    assert len(ds) == 2 and 'messages' in ds.column_names  # dpo pairs, one per prompt
+
+
+def test_jsonl_is_the_default_store_format(tmp_path, patch_prompt_rows):
+    """Regression for the default: with ``store_format`` left unset the run still writes jsonl (the arrow
+    branch is opt-in), so the storage change did not move the default container out from under callers."""
+    patch_prompt_rows(_rows())
+    out_path = str(tmp_path / 'out.jsonl')
+    assert InferConfig().store_format == 'jsonl'
+    infer_config = InferConfig(cache_files=[_cache(tmp_path)], num_return_sequences=3, batch_size=2, output_format='all')
+    results = run_infer(
+        ModelConfig(task_type='causal_lm'), TemplateConfig(), DatasetConfig(), infer_config,
+        GenerationConfig(), backend='no', output_path=out_path)
+
+    assert os.path.isfile(out_path) and not os.path.isdir(str(tmp_path / 'out.arrow'))
+    assert _read_jsonl(out_path) == results
 
 
 # --- 'dpo' format ---------------------------------------------------------------------

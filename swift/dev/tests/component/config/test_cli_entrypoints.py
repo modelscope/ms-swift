@@ -298,10 +298,12 @@ def test_export_merge_then_quantize_chains_model(monkeypatch, tmp_path):
 
     configs = parse_export_configs([
         '--model', 'm', '--adapters', 'a', '--merge_lora', 'true', '--quant_method', 'gptq', '--quant_bits', '4',
-        '--dataset', 'd', '--output_dir', str(tmp_path / 'out'),
+        '--dataset', 'd', '--load_args', 'false', '--output_dir', str(tmp_path / 'out'),
     ])
-    monkeypatch.setattr('swift.dev.cli.runtime.process_and_validate_configs', lambda _configs: None)
-    monkeypatch.setattr('swift.dev.cli.runtime.bootstrap_run', lambda *_args, **_kwargs: None)
+    # run_export_configs imports process_and_validate_configs from swift.dev.config and calls it with
+    # add_version/create_output_dir kwargs; --load_args false keeps parse off the checkpoint-args restore
+    # path, which would otherwise try to fetch the fake model id 'm' from the hub.
+    monkeypatch.setattr('swift.dev.config.process_and_validate_configs', lambda *_args, **_kwargs: None)
     monkeypatch.setattr('swift.dev.recipe.run_merge_lora', lambda *_args, **_kwargs: 'merged')
 
     def quantize(model_config, *_args, **_kwargs):
@@ -311,3 +313,121 @@ def test_export_merge_then_quantize_chains_model(monkeypatch, tmp_path):
     monkeypatch.setattr('swift.dev.recipe.run_quantize', quantize)
     assert run_export_configs(configs) == 'quantized'
     assert configs['tuner_config'].adapters == []
+
+
+def test_export_to_cached_dataset_forwards_store_flags(monkeypatch, tmp_path):
+    """``--to_cached_dataset`` dispatches to ``export_cached_dataset`` and threads every store knob through
+    verbatim: the CLI flags land on the recipe (template_mode / store_format / store_encoded /
+    store_fields), and the returned train_dir becomes the command's result. This pins the CLI->recipe
+    wiring for the unified store so a renamed or dropped flag is caught here. ``--load_args false`` keeps
+    the parse off the checkpoint-args restoration path, which would otherwise try to fetch model 'm'."""
+    from swift.dev.cli.export import parse_export_configs, run_export_configs
+
+    configs = parse_export_configs([
+        '--model', 'm', '--dataset', 'd', '--to_cached_dataset', 'true', '--template_mode', 'rlhf',
+        '--store_format', 'jsonl', '--store_encoded', 'true', '--store_fields', 'input_ids', 'labels',
+        '--load_args', 'false', '--output_dir', str(tmp_path / 'out'),
+    ])
+    monkeypatch.setattr('swift.dev.config.process_and_validate_configs', lambda *_a, **_k: None)
+
+    captured = {}
+
+    def fake_export(model_config, template_config, dataset_config, **kwargs):
+        captured.update(kwargs)
+        return str(tmp_path / 'out' / 'train'), None
+
+    monkeypatch.setattr('swift.dev.recipe.export_cached_dataset', fake_export)
+    assert run_export_configs(configs) == str(tmp_path / 'out' / 'train')
+    assert captured['template_mode'] == 'rlhf'
+    assert captured['store_format'] == 'jsonl'
+    assert captured['store_encoded'] is True
+    assert captured['store_fields'] == ['input_ids', 'labels']
+    assert captured['output_dir'] == str(tmp_path / 'out')
+
+
+def test_export_to_mcore_dispatches_run_convert(monkeypatch, tmp_path):
+    """``--to_mcore`` dispatches to ``run_convert`` with the parsed ConvertConfig (direction flag set) and
+    the resolved output_dir, and the recipe's return becomes the command's result. Pins the CLI->recipe
+    wiring for HF->mcore. ``--load_args false`` keeps the parse off the checkpoint-args restore path,
+    which would otherwise try to fetch the fake model id 'm' from the hub."""
+    from swift.dev.cli.export import parse_export_configs, run_export_configs
+
+    configs = parse_export_configs([
+        '--model', 'm', '--to_mcore', 'true', '--load_args', 'false', '--output_dir',
+        str(tmp_path / 'mcore'),
+    ])
+    monkeypatch.setattr('swift.dev.config.process_and_validate_configs', lambda *_a, **_k: None)
+
+    captured = {}
+
+    def fake_convert(model_config, convert_config, **kwargs):
+        captured['convert_config'] = convert_config
+        captured['output_dir'] = kwargs.get('output_dir')
+        return str(tmp_path / 'mcore')
+
+    monkeypatch.setattr('swift.dev.recipe.run_convert', fake_convert)
+    assert run_export_configs(configs) == str(tmp_path / 'mcore')
+    assert captured['convert_config'].to_mcore is True
+    assert captured['convert_config'].to_hf is False
+    assert captured['output_dir'] == str(tmp_path / 'mcore')
+
+
+def test_export_to_hf_dispatches_run_convert(monkeypatch, tmp_path):
+    """``--to_hf`` (with ``--mcore_model`` as the source) dispatches to ``run_convert`` carrying both the
+    direction flag and the mcore source path. ``--safe_serialization true`` is required by the to_hf
+    guard, so it is passed explicitly here."""
+    from swift.dev.cli.export import parse_export_configs, run_export_configs
+
+    configs = parse_export_configs([
+        '--model', 'm', '--mcore_model', '/src/mcore', '--to_hf', 'true', '--safe_serialization', 'true',
+        '--load_args', 'false', '--output_dir',
+        str(tmp_path / 'hf'),
+    ])
+    monkeypatch.setattr('swift.dev.config.process_and_validate_configs', lambda *_a, **_k: None)
+
+    captured = {}
+
+    def fake_convert(model_config, convert_config, **kwargs):
+        captured['convert_config'] = convert_config
+        return str(tmp_path / 'hf')
+
+    monkeypatch.setattr('swift.dev.recipe.run_convert', fake_convert)
+    assert run_export_configs(configs) == str(tmp_path / 'hf')
+    assert captured['convert_config'].to_hf is True
+    assert captured['convert_config'].mcore_model == '/src/mcore'
+
+
+def test_export_rejects_merge_lora_with_to_mcore(tmp_path):
+    """``--merge_lora`` and ``--to_mcore``/``--to_hf`` are separate commands in the dev export CLI; the
+    combination is refused by ``_validate_export`` before any recipe runs."""
+    from swift.dev.cli.export import parse_export_configs, run_export_configs
+
+    configs = parse_export_configs([
+        '--model', 'm', '--merge_lora', 'true', '--to_mcore', 'true', '--load_args', 'false',
+    ])
+    with pytest.raises(ValueError, match='cannot be combined'):
+        run_export_configs(configs)
+
+
+def test_export_rejects_both_convert_directions(tmp_path):
+    """Setting both ``--to_mcore`` and ``--to_hf`` is ambiguous and refused at the CLI validate step."""
+    from swift.dev.cli.export import parse_export_configs, run_export_configs
+
+    configs = parse_export_configs([
+        '--model', 'm', '--to_mcore', 'true', '--to_hf', 'true', '--load_args', 'false',
+    ])
+    with pytest.raises(ValueError, match='exactly one conversion direction'):
+        run_export_configs(configs)
+
+
+def test_export_to_hf_requires_safe_serialization(tmp_path):
+    """mcore->HF always writes safetensors, so ``--safe_serialization false`` is refused rather than
+    silently producing a format the bridge cannot write."""
+    from swift.dev.cli.export import parse_export_configs, run_export_configs
+
+    configs = parse_export_configs([
+        '--model', 'm', '--mcore_model', '/src/mcore', '--to_hf', 'true', '--safe_serialization', 'false',
+        '--load_args', 'false',
+    ])
+    with pytest.raises(NotImplementedError, match='always writes safetensors'):
+        run_export_configs(configs)

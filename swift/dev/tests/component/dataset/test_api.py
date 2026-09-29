@@ -112,6 +112,32 @@ class TestEncode:
         _encode(dataset, template, mode='eager', num_proc=1, strict=False, data_seed=42)
         MockPreprocessor.assert_called_once_with(template)
 
+    @patch('swift.dev.dataset.EncodePreprocessor')
+    def test_materialize_uses_full_encode(self, MockPreprocessor):
+        """``materialize=True`` (the cached-dataset exporter's ``store_encoded``) fully encodes even without
+        'split', so the store carries ``input_ids``/``labels`` and trains with no re-encoding."""
+        from swift.dev.builders.dataset import _encode
+        mock_instance = MagicMock()
+        mock_instance.return_value = make_mock_dataset(5)
+        MockPreprocessor.return_value = mock_instance
+        dataset = make_mock_dataset(10)
+        template = make_mock_template()  # default truncation_strategy, NOT 'split'
+        _encode(dataset, template, mode='eager', num_proc=1, strict=False, data_seed=42, materialize=True)
+        MockPreprocessor.assert_called_once_with(template)
+
+    @patch('swift.dev.dataset.MeasurePreprocessor')
+    def test_materialize_false_keeps_measure(self, MockMeasure):
+        """The training path passes ``materialize=False`` (the default): rows stay raw + ``lengths`` and the
+        tokens are still produced per batch at train time. Pins that an explicit False does not materialize."""
+        from swift.dev.builders.dataset import _encode
+        mock_instance = MagicMock()
+        mock_instance.return_value = make_mock_dataset(5)
+        MockMeasure.return_value = mock_instance
+        dataset = make_mock_dataset(10)
+        template = make_mock_template()
+        _encode(dataset, template, mode='eager', num_proc=1, strict=False, data_seed=42, materialize=False)
+        MockMeasure.assert_called_once_with(template)
+
 
 # === TestPack (build_dataset's private pack helper) ===
 

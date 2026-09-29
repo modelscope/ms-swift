@@ -58,7 +58,8 @@ class ConvertConfig:
     #: plus a ``lengths`` column. Off by default, which mirrors the eager training path (tokenisation then
     #: still happens per batch at train time); on, the store is directly trainable -- the model forward's
     #: ``_not_encoded`` guard skips re-encoding any row that already carries ``input_ids``. Text only for
-    #: now: a multimodal row's ``input_ids`` depend on the image grid, so the recipe refuses that combo.
+    #: now: this materialises tokens but not the vision tensors, and a multimodal row needs both stored
+    #: together (the guard is all-or-nothing), so the recipe refuses that combo until vision lands too.
     store_encoded: bool = False
     #: Container the store is written in, shared with ``swift infer`` (see swift.dev.dataset.store).
     #: ``arrow`` (default) is a single ``save_to_disk`` table, the directly-trainable form; ``jsonl`` is a

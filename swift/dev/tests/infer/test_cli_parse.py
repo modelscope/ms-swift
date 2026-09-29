@@ -348,6 +348,19 @@ def test_validate_save_rollout_tokens_rejects_client_backend():
     validate_infer_config(InferConfig(save_rollout_tokens=True, infer_backend='transformers'))
 
 
+def test_validate_arrow_store_format_rejects_resume():
+    """``store_format='arrow'`` serialises the whole run once at finish and writes no checkpoint files, so
+    it cannot continue a previous run: the arrow+resume pairing is rejected up front, and jsonl (the
+    resumable container) still passes."""
+    from swift.dev.config import InferConfig
+    from swift.dev.config.validate import validate_infer_config
+    with pytest.raises(ValueError, match='cannot be combined with resume'):
+        validate_infer_config(InferConfig(store_format='arrow', resume=True))
+    # jsonl + resume is the resumable combination, and arrow without resume is fine
+    validate_infer_config(InferConfig(store_format='jsonl', resume=True))
+    validate_infer_config(InferConfig(store_format='arrow', resume=False))
+
+
 def test_validate_multi_turn_bounds():
     from swift.dev.config import RLHFConfig
     from swift.dev.config.validate import validate_multi_turn_config

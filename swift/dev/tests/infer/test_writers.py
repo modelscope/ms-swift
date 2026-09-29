@@ -9,7 +9,7 @@ import os
 
 import json
 
-from swift.dev.recipe.run_infer import (_CandidateCache, _CheckpointPaths, _CheckpointWriter,
+from swift.dev.recipe.run_infer import (_ArrowWriter, _CandidateCache, _CheckpointPaths, _CheckpointWriter,
                                         _IncrementalWriter)
 from swift.dev.tests.infer.conftest import write_cache_file
 
@@ -147,6 +147,59 @@ def test_checkpoint_writer_resume_skips_finished_batches(tmp_path):
     w2.finish([])
     rows = _read_jsonl(path)
     assert {'response': 'a'} in rows and {'response': 'b'} in rows
+
+
+# --- _ArrowWriter ---------------------------------------------------------------------
+
+
+def _rows():
+    """Two infer-emit-shaped rows: a semantic column plus the token/rollout columns infer produces."""
+    return [
+        {'response': 'a', 'messages': [{'role': 'user', 'content': 'q'}], 'id': 0},
+        {'response': 'b', 'messages': [{'role': 'user', 'content': 'q'}], 'id': 1},
+    ]
+
+
+def test_arrow_writer_serialises_once_at_finish(tmp_path):
+    """``write()`` is a no-op (nothing lands until the run ends); ``finish()`` writes one Arrow
+    ``save_to_disk`` table through the shared store writer, readable by the same reader the export half
+    writes for."""
+    from swift.dev.dataset.store import load_dataset_store
+    path = str(tmp_path / 'out.jsonl')
+    writer = _ArrowWriter(path)
+    writer.write(_rows())  # buffered, not flushed
+    assert not os.path.exists(writer.arrow_path)
+    writer.finish(_rows())
+    assert os.path.isdir(writer.arrow_path)  # an Arrow store is a directory
+    ds = load_dataset_store(writer.arrow_path)
+    assert len(ds) == 2 and ds['response'] == ['a', 'b']
+
+
+def test_arrow_writer_derives_path_from_jsonl(tmp_path):
+    """The Arrow dir sits beside the jsonl path it was derived from: ``.jsonl`` is stripped, ``.arrow``
+    appended, so the sidecar-relative ``rollout_tokens`` paths embedded in the rows stay valid."""
+    assert _ArrowWriter(str(tmp_path / 'run.jsonl')).arrow_path == str(tmp_path / 'run.arrow')
+    # a path with no .jsonl suffix just gains .arrow (it is not stripped from the middle of a name)
+    assert _ArrowWriter(str(tmp_path / 'run')).arrow_path == str(tmp_path / 'run.arrow')
+
+
+def test_arrow_writer_store_fields_restricts_columns(tmp_path):
+    """``store_fields`` is forwarded to the writer as the column allow-list, so only the named columns
+    are persisted (an infer emit row carries more than a training cache wants)."""
+    from swift.dev.dataset.store import load_dataset_store
+    writer = _ArrowWriter(str(tmp_path / 'out.jsonl'), store_fields=['response', 'id'])
+    writer.finish(_rows())
+    ds = load_dataset_store(writer.arrow_path)
+    assert set(ds.column_names) == {'response', 'id'}  # 'messages' dropped
+
+
+def test_arrow_writer_skip_and_checkpoint_are_noops(tmp_path):
+    """The Arrow writer never resumes (validate rejects arrow+resume), so ``skip`` is always False and
+    ``checkpoint`` does nothing -- it shares the emit surface without the checkpoint semantics."""
+    writer = _ArrowWriter(str(tmp_path / 'out.jsonl'))
+    assert writer.skip(0) is False and writer.skip(5) is False
+    writer.checkpoint(3)  # must not raise or touch disk
+    assert not os.path.exists(writer.arrow_path)
 
 
 # --- _CandidateCache ------------------------------------------------------------------
