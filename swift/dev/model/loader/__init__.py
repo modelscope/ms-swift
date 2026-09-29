@@ -16,10 +16,12 @@ from .base import (
     ModelArch,
     ModelInfo,
     ModelLoader,
+    build_model_loader,
     get_model_loader,
     match_model_type,
     match_model_types_by_architectures,
     register_model,
+    resolve_loader_cls,
     resolve_template,
 )
 
@@ -31,6 +33,7 @@ for _module in pkgutil.iter_modules(__path__):
 del _module
 
 __all__ = [
-    'MODEL_ALIASES', 'MODEL_MAPPING', 'ModelArch', 'ModelInfo', 'ModelLoader', 'get_model_loader',
-    'match_model_type', 'match_model_types_by_architectures', 'register_model', 'resolve_template'
+    'MODEL_ALIASES', 'MODEL_MAPPING', 'ModelArch', 'ModelInfo', 'ModelLoader', 'build_model_loader',
+    'get_model_loader', 'match_model_type', 'match_model_types_by_architectures', 'register_model',
+    'resolve_loader_cls', 'resolve_template'
 ]

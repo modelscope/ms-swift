@@ -308,9 +308,9 @@ class TestInputProcessor:
 class TestTrainableModelContract:
 
     def test_is_twinkle_base(self):
-        """TrainableModel is twinkle's TwinkleModel (design: twinkle is the contract)."""
-        from twinkle.model.base import TwinkleModel
-        assert TrainableModel is TwinkleModel
+        """swift's TrainableModel is twinkle's base TrainableModel (design: twinkle is the contract)."""
+        from twinkle.model.base import TrainableModel as TwinkleTrainableModel
+        assert TrainableModel is TwinkleTrainableModel
 
     def test_contract_methods_present(self):
         """The twinkle contract exposes the atomic training method set."""

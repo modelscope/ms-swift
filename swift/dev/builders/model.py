@@ -303,21 +303,11 @@ def _resolve_model_loader(model_config: ModelConfig):
     value that is neither a family key nor a loadable plugin fails immediately instead of silently
     selecting a different family from the checkpoint name.
     """
-    from swift.dev.model.loader import (MODEL_ALIASES, MODEL_MAPPING, ModelInfo, ModelLoader, get_model_loader,
-                                        match_model_type)
-    from swift.dev.naming import resolve_plugin_class
+    from swift.dev.model.loader import ModelInfo, resolve_loader_cls
 
-    model_type = model_config.model_type
-    if model_type:
-        if model_type in MODEL_MAPPING or model_type in MODEL_ALIASES:
-            loader_cls = get_model_loader(model_type)
-        else:
-            loader_cls = resolve_plugin_class(model_type, ModelLoader, MODEL_MAPPING, kind='model')
-    else:
-        matched = match_model_type(model_config.model)
-        if matched is None:
-            return None
-        loader_cls = get_model_loader(matched)
+    loader_cls = resolve_loader_cls(model_config.model_type, model_config.model)
+    if loader_cls is None:
+        return None
     model_info = ModelInfo(
         model_type=loader_cls.model_type or model_config.model_type,
         model_dir=model_config.model,

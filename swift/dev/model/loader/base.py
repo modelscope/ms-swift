@@ -306,6 +306,43 @@ def resolve_template(model_type: str) -> Optional[str]:
     return get_model_loader(model_type).template
 
 
+def resolve_loader_cls(model_type: Optional[str], model_id: str) -> Optional[Type['ModelLoader']]:
+    """The family loader class for an explicit ``model_type``, else one inferred from ``model_id``.
+
+    ``model_type`` is authoritative when given: a registered family key/alias, or an external plugin
+    source (a local file/folder or a ``hf://`` / ``ms://`` id) resolved through the registry. With no
+    explicit type the family is inferred from the checkpoint name; ``None`` comes back when nothing
+    matches, so the caller falls back to the generic transformers load path instead of guessing a
+    different family from the checkpoint name.
+    """
+    from swift.dev.naming import resolve_plugin_class
+    if model_type:
+        if model_type in MODEL_MAPPING or model_type in MODEL_ALIASES:
+            return get_model_loader(model_type)
+        return resolve_plugin_class(model_type, ModelLoader, MODEL_MAPPING, kind='model')
+    matched = match_model_type(model_id)
+    return get_model_loader(matched) if matched is not None else None
+
+
+def build_model_loader(model_id: str, model_type: Optional[str] = None, **kwargs) -> Optional['ModelLoader']:
+    """Build the family loader for one checkpoint id -- the entry a twinkle server names in its
+    ``model_loader`` import spec (``swift.dev.model.loader:build_model_loader``).
+
+    The server is configured with plain data and has only the checkpoint id (no ``ModelConfig``), so
+    this builds a minimal ``ModelInfo`` from the id. The six construction hooks take ``model_dir``
+    explicitly and never read the rest of ``ModelInfo``, so the omitted fields are irrelevant on this
+    path; dev's ``_resolve_model_loader`` fills them because it also drives quantization/seq_cls-head
+    decisions the server does not make. ``model_type`` overrides family inference when given. Returns
+    ``None`` when no family matches, leaving the server on the generic AutoConfig/AutoModel path --
+    the same fallback dev uses.
+    """
+    loader_cls = resolve_loader_cls(model_type, model_id)
+    if loader_cls is None:
+        return None
+    model_info = ModelInfo(model_type=loader_cls.model_type or model_type, model_dir=model_id, **kwargs)
+    return loader_cls(model_info)
+
+
 def _import_cls(spec: str) -> type:
     """Resolve ``'transformers:Qwen3VLForConditionalGeneration'`` lazily.
 
