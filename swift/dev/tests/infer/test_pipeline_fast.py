@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """End-to-end pipeline tests over ``run_infer`` with no GPU, no model, no network.
 
-``infer_backend='no'`` builds no sampler and no rollout engine: every candidate is served from
+``sampler='no'`` builds no sampler and no rollout engine: every candidate is served from
 ``cache_files``, so the whole generative pipeline -- sample (from cache) -> score -> shape -> write --
 runs in-process. ``load_prompt_rows`` is patched to hand back fixed rows, and a callable ORM stands in
 for a reward model. This exercises the three orthogonal knobs (num_return_sequences / reward funcs /

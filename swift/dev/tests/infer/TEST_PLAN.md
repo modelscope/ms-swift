@@ -5,7 +5,7 @@
 
 - **fast 层**（默认套件运行，无 GPU、不载权重）：纯函数、行整形（emit）、写盘/续跑（writer）、
   候选缓存（cache）、TUI 状态机、CLI 解析、以及两类端到端接线——
-  (a) 用 `infer_backend='no'` + `cache_files` 回放候选驱动 **采样→打分→整形→落盘** 全链（不建 sampler）；
+  (a) 用 `sampler='no'` + `cache_files` 回放候选驱动 **采样→打分→整形→落盘** 全链（不建 sampler）；
   (b) 用**真实模板**（`load_model=False`，只加载已缓存 tokenizer）+ **脚本化 sampler**（返回预置 token，
   不碰模型权重）驱动**真实 twinkle 引擎**跑完整多轮工具循环 / generative-judge 打分（`test_tools_multiturn_e2e.py`、
   `test_reward_channels.py`、`test_template_contract.py`）。(b) 类证明「完整引擎级端到端不需要 GPU」：
@@ -48,8 +48,8 @@
 ### 4. megatron 与 transformers
 - `test_backends_e2e.py`（slow）：`transformers` 后端生成（单卡即可，all/dpo/callable-reward 三形状）
   + `vllm` 后端（`importorskip` 门控，小显存引擎参数）。
-- **megatron 不是 infer 后端**（经用户决策：仅文档说明，不加测试）：`InferConfig.infer_backend` 的
-  Literal 只含 `vllm/transformers/sglang/pt/client/no`，不含 megatron；`run_infer`/`build_sampler`
+- **megatron 不是 infer 后端**（经用户决策：仅文档说明，不加测试）：`InferConfig.sampler` 的
+  内建引擎名只含 `vllm/transformers/sglang/pt/client/no`，不含 megatron；`run_infer`/`build_sampler`
   也无 megatron 分支。megatron 在 dev 侧只作训练后端（`DistributedConfig.backend='megatron'` →
   `build_model` 建 `MegatronModel`）。推理没有 megatron 生成路径，故无对应 e2e 测试。
 
@@ -157,7 +157,7 @@
 - `test_pure.py`（fast）：`_normalize`（min-max 到 [0,1]、退化组塌缩为常数、nan 透传不污染）、
   `_is_too_easy`、`_plan_batches`（固定区间、保留尾部不满批、batch_size<1 报错、max_batches 截断）、
   `_prompt_key`（md5 稳定、与顺序无关）、`_sigmoid`（正负分支数值稳定）、`_tool_names`。
-- `test_pipeline_fast.py`（fast）：`infer_backend='no'` 缺 cache 覆盖时报错；已完成 checkpoint +
+- `test_pipeline_fast.py`（fast）：`sampler='no'` 缺 cache 覆盖时报错；已完成 checkpoint +
   `override_exist_file=False` 短路返回 []；空数据集报错；dpo 校验（num_return<2、
   n_best_to_keep>=num_return 报错）；save_rollout_tokens 无 output_path 报错；metric+dpo 跳过告警。
 

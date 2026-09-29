@@ -49,7 +49,7 @@ def test_legacy_num_samples_drives_num_return_sequences(fake_model):
 
 def test_legacy_pt_backend_alias(fake_model):
     r = parse_infer_configs(['--model', fake_model, '--infer_backend', 'pt'])
-    assert r['infer_config'].infer_backend == 'transformers'
+    assert r['infer_config'].sampler == 'transformers'
 
 
 def test_legacy_prm_threshold_folds_into_reward_threshold(fake_model):
@@ -204,7 +204,7 @@ def test_tui_multigpu_flags(fake_model):
         '--vllm_gpu_memory_utilization', '0.9', '--max_new_tokens', '2048', '--temperature', '0.7',
         '--stream', 'true',
     ])
-    assert r['infer_config'].infer_backend == 'vllm'
+    assert r['infer_config'].sampler == 'vllm'
     # vLLM engine parameters live on RolloutConfig, never on InferConfig/GenerationConfig
     assert r['rollout_config'].vllm_tensor_parallel_size == 2
     assert r['rollout_config'].vllm_gpu_memory_utilization == 0.9
@@ -343,9 +343,9 @@ def test_validate_save_rollout_tokens_rejects_client_backend():
     from swift.dev.config import InferConfig
     from swift.dev.config.validate import validate_infer_config
     with pytest.raises(ValueError, match='token-capable local backend'):
-        validate_infer_config(InferConfig(save_rollout_tokens=True, infer_backend='client'))
+        validate_infer_config(InferConfig(save_rollout_tokens=True, sampler='client'))
     # a local backend is fine
-    validate_infer_config(InferConfig(save_rollout_tokens=True, infer_backend='transformers'))
+    validate_infer_config(InferConfig(save_rollout_tokens=True, sampler='transformers'))
 
 
 def test_validate_arrow_store_format_rejects_resume():

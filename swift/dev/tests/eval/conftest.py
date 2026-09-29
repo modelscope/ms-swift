@@ -53,7 +53,7 @@ QA_PAIRS: Tuple[Tuple[str, str], ...] = (
 )
 
 
-def build_configs(*, eval_overrides: Optional[Dict[str, Any]] = None, infer_backend: str = 'vllm',
+def build_configs(*, eval_overrides: Optional[Dict[str, Any]] = None, sampler: str = 'vllm',
                   model: str = MODEL):
     """The dev Configs ``run_eval`` needs, with ``EvalConfig`` overridden per test.
 
@@ -64,7 +64,7 @@ def build_configs(*, eval_overrides: Optional[Dict[str, Any]] = None, infer_back
     model_config = ModelConfig(model=model, torch_dtype='bfloat16')
     template_config = TemplateConfig()
     eval_config = EvalConfig(**(eval_overrides or {}))
-    infer_config = InferConfig(infer_backend=infer_backend)
+    infer_config = InferConfig(sampler=sampler)
     return model_config, template_config, eval_config, infer_config
 
 

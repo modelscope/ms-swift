@@ -60,12 +60,12 @@ def test_relative_output_dir_is_absolutized():
 # --------------------------------------------------------------------------- backend selection
 @pytest.mark.parametrize('backend', ['vllm', 'sglang', 'transformers'])
 def test_local_infer_backend_lands_on_infer_config(backend):
-    assert _parse('--infer_backend', backend)['infer_config'].infer_backend == backend
+    assert _parse('--infer_backend', backend)['infer_config'].sampler == backend
 
 
 def test_pt_backend_is_rewritten_to_transformers():
     """``pt`` is the legacy spelling; eval normalizes it so ``build_sampler``/``build_engine_args`` see one name."""
-    assert _parse('--infer_backend', 'pt')['infer_config'].infer_backend == 'transformers'
+    assert _parse('--infer_backend', 'pt')['infer_config'].sampler == 'transformers'
 
 
 # --------------------------------------------------------------------------- engine args verbatim

@@ -23,6 +23,8 @@ REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
     'custom_register_path': 'use --external_plugins (local file | local folder | hub id)',
     'agent_template': 'express the agent format through --template and the template registry',
     'callbacks': 'compose training callbacks in code; this pass-through list was never consumed',
+    'merge_lora': 'this command merges the adapter implicitly; drop --merge_lora',
+    'exist_ok': 'use --replace_if_exists to overwrite an existing output directory',
 }
 # eval scores a local sampler through the Native runner only, so its former remote-service URL, its
 # backend choice (OpenCompass/VLMEvalKit are gone) and the OpenCompass-only local-data toggle are obsolete.
@@ -81,6 +83,18 @@ CHECKPOINT_EXPORT_SUPPORTED_FIELDS = {
     'output_dir', 'safe_serialization', 'max_shard_size', 'push_to_hub', 'hub_model_id', 'hub_private_repo', 'hub_revision'
 }
 CHECKPOINT_MERGE_SUPPORTED_FIELDS = {'output_dir', 'safe_serialization', 'max_shard_size'}
+# `swift merge` only folds a LoRA adapter into its base weights. The quantization and format-conversion
+# operations below are `swift export`'s job, so merge rejects them and points there; the per-flag decoding
+# knobs (GENERATION_OPTION_FIELDS) are likewise never consumed by a command that generates no text.
+QUANTIZE_OPERATION_FIELDS: Tuple[str, ...] = (
+    'quant_method', 'quant_bits', 'quant_batch_size', 'quant_n_samples', 'group_size', 'hqq_axis',
+    'bnb_4bit_compute_dtype', 'bnb_4bit_quant_storage', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant')
+CONVERT_OPERATION_FIELDS: Tuple[str, ...] = (
+    'to_hf', 'to_mcore', 'to_cached_dataset', 'to_peft_format', 'mcore_model', 'mcore_adapter',
+    'test_convert_dtype', 'test_convert_precision', 'template_mode', 'thread_count', 'commit_message')
+# Flags the `swift merge` command makes redundant: merging is the command itself, and its overwrite knob
+# is spelled --replace_if_exists rather than the export-side --exist_ok.
+MERGE_IMPLICIT_FIELDS: Tuple[str, ...] = ('merge_lora', 'exist_ok')
 
 
 @dataclass(frozen=True)
@@ -218,7 +232,8 @@ CLI_LEGACY_ONLY: Dict[str, Mapping[str, Tuple[str, ...]]] = {
         'removed_option': REMOVED_OPTION_FIELDS,
     },
     'merge': {
-        'unsupported_command': SERVING_DISTRIBUTED_FIELDS + CHECKPOINT_MERGE_UNSUPPORTED_FIELDS,
+        'unsupported_command': SERVING_DISTRIBUTED_FIELDS + CHECKPOINT_MERGE_UNSUPPORTED_FIELDS
+        + QUANTIZE_OPERATION_FIELDS + CONVERT_OPERATION_FIELDS + GENERATION_OPTION_FIELDS + MERGE_IMPLICIT_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS,
     },
 }

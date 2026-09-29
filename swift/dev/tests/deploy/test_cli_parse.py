@@ -80,7 +80,7 @@ def test_model_and_template_land(fake_model):
                                                ('transformers', 'transformers')])
 def test_infer_backend(fake_model, spelling, expected):
     r = parse_deploy_configs(['--model', fake_model, '--infer_backend', spelling])
-    assert r['infer_config'].infer_backend == expected
+    assert r['infer_config'].sampler == expected
 
 
 def test_sampler_type_pins_to_deploy_config(fake_model):

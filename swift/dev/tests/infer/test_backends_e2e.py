@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """End-to-end generative-backend coverage for ``run_infer`` (real TinyModel + GPU).
 
-The fast tier (``test_pipeline_fast.py``) drives the generative pipeline through ``infer_backend='no'``:
+The fast tier (``test_pipeline_fast.py``) drives the generative pipeline through ``sampler='no'``:
 candidates come from a cache, so sampling itself is never exercised. This tier loads a real 4-layer
 ``TinyModel`` and runs an actual backend, so the sampler -> score -> shape -> write path is covered with
 real generation rather than canned text. The weights are random, so the assertions are about SHAPE and

@@ -9,7 +9,7 @@ The other infer tests each stop short of this seam:
   ``ToolManager`` -- it never crosses dev's ``RolloutEngine`` / ``configure_multi_turn`` /
   ``_generate_with_envs`` per-episode path, and never runs dev's ``trajectory_to_rollout_sample`` (the
   translation layer where ``_trainable_positions`` lives).
-* ``test_pipeline_fast.py`` serves candidates from a cache (``infer_backend='no'``), so it never samples.
+* ``test_pipeline_fast.py`` serves candidates from a cache (``sampler='no'``), so it never samples.
 
 This file closes that gap the way the two tool examples (``dataset_tools_grpo.sh`` / ``tui_tools_multiturn.sh``)
 actually run: ``run_infer`` and ``infer_cli`` build the REAL ``RolloutEngine``, call

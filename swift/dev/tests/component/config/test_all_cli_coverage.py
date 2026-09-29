@@ -29,6 +29,7 @@ from swift.dev.cli.legacy_coverage import (
     classified_fields,
     unsupported_contracts,
 )
+from swift.dev.cli.merge import MergeCliConfig, parse_merge_configs
 from swift.dev.cli.rlhf import RlhfCliCompatConfig, parse_rlhf_configs
 from swift.dev.config import (
     CheckpointConfig,
@@ -78,6 +79,12 @@ CLI_SURFACES = {
         ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig, QuantizeConfig,
         ConvertConfig, TunerConfig, RuntimeConfig, MegatronConfig, MoEConfig
     ]),
+    # legacy `swift merge-lora` parsed ExportArguments too, so merge's legacy surface is the same class;
+    # merge keeps only the LoRA-folding subset and rejects the quant/convert/generation operations.
+    'merge': (ExportArguments, [
+        ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, CheckpointConfig, TunerConfig, MergeCliConfig,
+        RuntimeConfig
+    ]),
 }
 
 
@@ -116,6 +123,8 @@ def test_unsupported_contracts_explain_reason_and_alternative(command):
         (parse_deploy_configs, ['--model', 'm', '--use_ray', 'true'], ValueError),
         (parse_eval_configs, ['--model', 'm', '--use_swift_lora', 'true'], ValueError),
         (parse_export_configs, ['--model', 'm', '--use_swift_lora', 'true'], ValueError),
+        (parse_merge_configs, ['--model', 'm', '--quant_method', 'bnb'], ValueError),
+        (parse_merge_configs, ['--model', 'm', '--exist_ok', 'true'], ValueError),
     ],
 )
 def test_classified_legacy_fields_fail_with_explicit_reason(parser, argv, error):

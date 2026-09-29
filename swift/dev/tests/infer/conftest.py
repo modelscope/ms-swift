@@ -2,7 +2,7 @@
 """Shared fixtures for the swift infer suite.
 
 Two tiers live here. The fast tier (no GPU, no model download) drives the real generative pipeline
-through its cleanest seam: ``infer_backend='no'`` builds no sampler and loads no weights, so every
+through its cleanest seam: ``sampler='no'`` builds no sampler and loads no weights, so every
 prompt must be served from ``cache_files``. That exercises sampling -> scoring -> emit -> writer end
 to end while staying offline. The slow tier (``@pytest.mark.slow``) builds a real ``TinyModel`` and
 runs an actual backend.

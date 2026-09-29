@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """End-to-end task-type coverage for ``run_infer``'s forward-pass paths (real TinyModel + GPU).
 
-The fast tier drives the generative pipeline through ``infer_backend='no'`` (cache-only, no weights).
+The fast tier drives the generative pipeline through ``sampler='no'`` (cache-only, no weights).
 This tier loads a real 4-layer ``TinyModel`` and runs the OTHER ``run_infer`` branch: the pooling /
 forward path that ``task_type in {seq_cls, embedding, reranker}`` takes through ``_run_pooling`` ->
 ``_forward_via_transformers`` (a plain HF ``forward_only``). It asserts the wiring and the shape of the
