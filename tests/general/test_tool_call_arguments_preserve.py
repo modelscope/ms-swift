@@ -44,10 +44,21 @@ class TestNormalizeOpenAIToolCallsPreservesArguments(unittest.TestCase):
 
     def test_arguments_string_is_preserved_for_multiple_calls(self):
         messages = [{
-            'role': 'assistant',
+            'role':
+            'assistant',
             'tool_calls': [
-                {'function': {'name': 'a', 'arguments': '{"x": 0.1, "y": 0.2}'}},
-                {'function': {'name': 'b', 'arguments': '{"x": 0.7}'}},
+                {
+                    'function': {
+                        'name': 'a',
+                        'arguments': '{"x": 0.1, "y": 0.2}'
+                    }
+                },
+                {
+                    'function': {
+                        'name': 'b',
+                        'arguments': '{"x": 0.7}'
+                    }
+                },
             ],
         }]
         normalized = normalize_openai_tool_calls(messages)
@@ -138,7 +149,8 @@ class TestStdTemplateInputsFromDictPreservesToolCallArguments(unittest.TestCase)
     def test_round_trip_preserves_multiple_float_arguments(self):
         inputs = {
             'messages': [{
-                'role': 'assistant',
+                'role':
+                'assistant',
                 'tool_calls': [{
                     'function': {
                         'name': 'configure',
