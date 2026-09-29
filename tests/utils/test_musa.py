@@ -35,6 +35,9 @@ def _run_python(code, env=None, stubs=(), hidden=()):
         root = Path(__file__).resolve().parents[2]
         base_env = {k: v for k, v in os.environ.items() if k not in _DEVICE_ENV_KEYS}
         base_env['PYTHONPATH'] = os.pathsep.join([tmp, str(root), os.environ.get('PYTHONPATH', '')])
+        # torch_musa registers a `torch.backends` entry point that `import torch` autoloads, which fails once
+        # torch_musa is hidden or replaced by a stub above.
+        base_env['TORCH_DEVICE_BACKEND_AUTOLOAD'] = '0'
         out = subprocess.run([sys.executable, '-c', code],
                              env={
                                  **base_env,
