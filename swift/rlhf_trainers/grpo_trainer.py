@@ -2090,8 +2090,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
             if (self.loss_type == 'dapo'
                     and 'num_items_in_batch' not in inspect.signature(LigerFusedLinearGRPOLoss.forward).parameters):
-                logger.warning('Installed liger-kernel does not support num_items_in_batch; '
-                               'falling back to the standard DAPO loss for correct token normalization.')
                 self.use_liger_loss = False
                 return
             self.liger_grpo_loss = LigerFusedLinearGRPOLoss(
