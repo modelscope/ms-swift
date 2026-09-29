@@ -29,7 +29,7 @@ Design (per-category target differs on purpose — do NOT pretend they were all 
 """
 from __future__ import annotations
 
-from typing import Any, Optional, Type
+from typing import Any, Callable, Mapping, Optional, Type
 
 # --- optimizer: swift optim name -> torch.optim class name (twinkle-resolvable) ---
 # Value is either a name string resolved against torch.optim, or a (type, extra_kwargs) pair when
@@ -61,7 +61,7 @@ _OPTIM_EXTRA_KWARGS = {
     },
 }
 
-# --- scheduler: swift lr_scheduler_type -> what to hand twinkle's set_lr_scheduler.
+# --- scheduler: swift lr_scheduler -> what to hand twinkle's set_lr_scheduler.
 #     None (explicit key) => constant lr, no scheduler set.
 #     A str is resolved by twinkle from [torch.optim.lr_scheduler, twinkle.module.scheduler]; a CLASS
 #     is constructed directly, which is how the HF-backed schedules get in (see dev/scheduler.py --
@@ -79,7 +79,7 @@ _SCHED_NAME_MAP = {
     'inverse_sqrt': 'InverseSqrtScheduler',
 }
 
-# --- megatron scheduler: swift lr_scheduler_type -> Megatron OptimizerParamScheduler
+# --- megatron scheduler: swift lr_scheduler -> Megatron OptimizerParamScheduler
 #     lr_decay_style. Values must stay inside Megatron's legal set -- the same Literal legacy swift
 #     accepts in MegatronArguments.lr_decay_style ('constant', 'linear', 'cosine',
 #     'inverse-square-root', 'WSD') -- which test_optimizer_config pins.
@@ -304,12 +304,12 @@ def _coerce(value: str):
 
 def _unsupported_scheduler(swift_name: str, *, backend: str, supported: dict, other_backend: str,
                            other_supported: dict) -> NotImplementedError:
-    """Build the rejection for an lr_scheduler_type the given backend cannot run.
+    """Build the rejection for an lr_scheduler the given backend cannot run.
 
     Names the backend that refused, because the two backends support different sets on purpose --
     otherwise "not supported" reads like a dev-wide limitation when the other backend would run it.
     """
-    msg = (f'lr_scheduler_type {swift_name!r} is not supported on the {backend} backend. '
+    msg = (f'lr_scheduler {swift_name!r} is not supported on the {backend} backend. '
            f'Supported there: {sorted(k for k in supported)}.')
     if swift_name.lower() in other_supported:
         msg += (f' ({swift_name!r} IS supported on the {other_backend} backend -- the two run '
@@ -318,7 +318,7 @@ def _unsupported_scheduler(swift_name: str, *, backend: str, supported: dict, ot
 
 
 def resolve_scheduler(swift_name: str):
-    """swift lr_scheduler_type -> a name twinkle can resolve, a class, or None for constant lr.
+    """swift lr_scheduler -> a name twinkle can resolve, a class, or None for constant lr.
 
     dev's own adapters (dev/scheduler.py) are returned as CLASSES: twinkle resolves a string only
     against [torch.optim.lr_scheduler, twinkle.module.scheduler], and dev's module is in neither, so
@@ -341,7 +341,7 @@ def resolve_scheduler(swift_name: str):
 
 
 def resolve_megatron_decay_style(swift_name: str) -> str:
-    """swift lr_scheduler_type -> Megatron lr_decay_style.
+    """swift lr_scheduler -> Megatron lr_decay_style.
 
     Fail-fast on unsupported names instead of falling back to 'cosine': a silent fallback would
     train a different schedule than requested -- the same class of bug as the old
@@ -446,3 +446,45 @@ def resolve(category: str, swift_name: str) -> Any:
     if fn is None:
         raise ValueError(f'Unknown resolve category {category!r}. Known: {sorted(_RESOLVERS)}')
     return fn(swift_name)
+
+
+def resolve_plugin_class(spec: Any,
+                         base: Type,
+                         registry: Optional[Mapping[str, Type]] = None,
+                         *,
+                         kind: str = 'plugin',
+                         resolve_id: Optional[Callable[[str], Optional[Type]]] = None) -> Type:
+    """Resolve one plugin spec to the implementation CLASS that backs it.
+
+    Every swift extension point selects an implementation the same way, so the resolution lives here
+    once instead of each kind re-deriving "is it a name, a class, or something to import". ``spec``
+    may be:
+      - a class -> itself, after checking it subclasses ``base``;
+      - a registered name (a key of ``registry``) -> the class registered under it;
+      - a string ``resolve_id`` recognises -> whatever the kind's own id/path resolution returns (a
+        model id -> its family loader, a dataset id -> its loader). ``resolve_id`` returning ``None``
+        means "not an id I know", and resolution continues to the external-source fallback;
+      - any other string -> an external plugin source (a local ``.py`` file, a local folder, or a
+        ``hf://`` / ``ms://`` id): twinkle's loader imports it and returns the ``base`` subclass it
+        defines. This is the same fallback ``construct_class`` uses, so a hub-hosted plugin resolves
+        identically here and inside twinkle.
+
+    Instances are deliberately NOT accepted: this returns a class for the caller to construct with the
+    arguments that kind needs (``args=config`` for a reward, engine kwargs for a sampler, a dataset
+    info for a loader), which differ per kind and so stay at the call site rather than being forced
+    into one signature here.
+    """
+    if isinstance(spec, type):
+        if not issubclass(spec, base):
+            raise TypeError(f'{spec.__name__} must subclass {base.__name__} to be used as a {kind}.')
+        return spec
+    if not isinstance(spec, str):
+        raise ValueError(f'{kind} {spec!r} must be a registered name, a class, or an external source.')
+    if registry is not None and spec in registry:
+        return registry[spec]
+    if resolve_id is not None:
+        resolved = resolve_id(spec)
+        if resolved is not None:
+            return resolved
+    from twinkle.utils import Plugin
+    return Plugin.load_plugin(spec, base)

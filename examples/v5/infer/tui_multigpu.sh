@@ -8,7 +8,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 USE_SWIFT_V5=1 \
 swift infer \
     --model Qwen/Qwen3.5-4B \
-    --infer_backend vllm \
+    --sampler vllm \
     --vllm_tensor_parallel_size 2 \
     --vllm_gpu_memory_utilization 0.9 \
     --max_new_tokens 2048 \

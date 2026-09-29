@@ -374,7 +374,7 @@ def test_all_cli_parsers_accept_minimal_argv(tmp_path):
     assert parse_deploy_configs(['--model', 'm'])['model_config'].model == 'm'
     assert parse_rollout_configs(['--model', 'm'])['rollout_config'].vllm_mode == 'server'
     assert parse_sample_configs(['--model', 'm', '--dataset', 'd'])['sampling_config'].sampler_engine == 'transformers'
-    assert parse_eval_configs(['--model', 'm', '--eval_url', 'http://localhost:8000'])['eval_config'].eval_url
+    assert parse_eval_configs(['--model', 'm', '--eval_dataset', 'bench'])['eval_config'].eval_dataset == ['bench']
     assert parse_app_configs(['--model', 'm', '--base_url', 'http://localhost:8000'])['app_config'].base_url
     assert parse_merge_configs(['--model', 'm', '--adapters', 'a'])['tuner_config'].adapters == ['a']
     for rlhf_type in ('dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm', 'grpo', 'ppo', 'gkd'):

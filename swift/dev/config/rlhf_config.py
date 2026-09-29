@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 
 
 # TODO: integrate it
@@ -48,10 +48,35 @@ class RLHFConfig:
     num_sample_generations: int = 10
     missing_eos_penalty: Optional[float] = None
 
+    # === Reward channels (one selector shared by GRPO and best-of-n synthesis) ===
+    #: Outcome-reward channel. Each item is a registered rule name (an ``orms`` key), a reward plugin
+    #: class/callable, or a reward-model id -- the merge of the old ``reward_funcs`` (rules) and infer's
+    #: ``orm_model`` (a model) into one list, so a channel mixes rules and a model in the order typed and
+    #: ``orm_weights`` aligns to that order. GRPO reads ``orm`` as rules only (its reward models come from
+    #: ``reward_model`` below); best-of-n synthesis resolves a non-rule item through the reward-model path.
+    orm: List[Any] = field(default_factory=list)
+    #: Per-item weights for ``orm``; ``None`` weights every item equally. Length must match the resolved
+    #: channel (rules + model), enforced when the per-item scores are combined.
+    orm_weights: Optional[List[float]] = None
+    #: Parallel layout for this channel's reward model when ``orm`` names a model id (a scalar RM or an
+    #: independent generative judge) -- e.g. ``dp2``, ``tp2``. It is the reward model's OWN layout, apart
+    #: from the run's ``--parallel_spec`` (the policy / sampler's): it sizes the channel's dedicated
+    #: DeviceGroup and drives the model's DeviceMesh (scalar RM) or the judge engine's
+    #: ``tensor_parallel_size`` (independent judge). ``None`` keeps the old behavior -- the channel
+    #: inherits ``nproc_per_node`` as a pure data-parallel replica set. A scalar RM rides the transformers
+    #: backend, which does not shard weights by tp/pp, so its spec expresses dp/fsdp/ep/ulysses; tp/pp need
+    #: the megatron backend or a generative judge. Rule items in the channel hold no model and ignore this.
+    orm_parallel_spec: Optional[str] = None
+    #: Process-reward channel: the second axis of the best-of-n synthesis ranking, with the same
+    #: heterogeneous item grammar as ``orm``. Synthesis-only -- GRPO scores outcomes, not processes.
+    prm: List[Any] = field(default_factory=list)
+    #: Per-item weights for ``prm``; ``None`` weights every item equally.
+    prm_weights: Optional[List[float]] = None
+    #: Parallel layout for this channel's reward model, exactly as ``orm_parallel_spec`` but for ``prm``.
+    prm_parallel_spec: Optional[str] = None
+
     # === GRPO ===
     num_generations: int = 8
-    reward_funcs: List[str] = field(default_factory=list)
-    reward_weights: Optional[List[float]] = None
     log_completions: bool = False
     num_iterations: int = 1
     epsilon: float = 0.2
@@ -144,7 +169,6 @@ class RLHFConfig:
     reward_adapters: List[str] = field(default_factory=list)
     reward_model_type: Optional[List[str]] = None
     reward_model_revision: Optional[List[str]] = None
-    reward_model_plugin: Optional[List[str]] = None
     #: Chat template per reward model, positional with ``reward_model``. Needed because a reward model
     #: is often trained under a different template than the policy, and scoring under the wrong one
     #: silently changes what it rewards. None lets each model use its own default.

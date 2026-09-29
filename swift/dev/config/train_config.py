@@ -10,7 +10,11 @@ class TrainConfig:
 
     # === Learning Rate & Scheduling ===
     learning_rate: float = 1e-5
-    lr_scheduler_type: str = 'cosine'
+    #: LR schedule name. Renamed from the HF spelling ``lr_scheduler_type`` to the kind name
+    #: ``lr_scheduler`` so the flag matches what it selects; ``--lr_scheduler_type`` still resolves
+    #: through LEGACY_ALIASES. Resolved by naming.resolve_scheduler, which also accepts an external
+    #: scheduler class/source, not just the built-in names.
+    lr_scheduler: str = 'cosine'
     lr_scheduler_kwargs: Optional[Dict[str, Any]] = None
     warmup_ratio: float = 0.0
     warmup_steps: int = 0
@@ -135,7 +139,7 @@ class TrainConfig:
     # HF has no equivalent for.
     #: Megatron spelling of ``learning_rate``.
     lr: Optional[float] = None
-    #: Megatron spelling of ``lr_scheduler_type``. 'WSD' (warmup-stable-decay) is the one value with no
+    #: Megatron spelling of ``lr_scheduler``. 'WSD' (warmup-stable-decay) is the one value with no
     #: HF counterpart, and the reason the two cannot simply be merged.
     lr_decay_style: Literal['constant', 'linear', 'cosine', 'inverse-square-root', 'WSD'] = 'cosine'
     #: Megatron spelling of ``warmup_ratio``.
@@ -162,7 +166,10 @@ class TrainConfig:
     router_aux_loss_coef: float = 0.0
     enable_dft_loss: bool = False
     enable_channel_loss: bool = False
-    loss_type: Optional[str] = None
+    #: Supervised-loss name for SFT/embedding/reranker. Renamed from ``loss_type`` to the kind name
+    #: ``loss`` (``--loss_type`` still resolves through LEGACY_ALIASES). Distinct from
+    #: ``RLHFConfig.loss_type``, which names the GRPO objective and keeps that name.
+    loss: Optional[str] = None
     mrl_dims: Optional[Dict[int, float]] = None
     acc_strategy: Literal['token', 'seq'] = 'token'
     aligner_lr: Optional[float] = None
@@ -248,8 +255,7 @@ class TrainConfig:
     eval_generation_config: Optional[Dict[str, Any]] = None
     extra_eval_args: Optional[Dict[str, Any]] = None
 
-    # === Callbacks ===
-    callbacks: List[str] = field(default_factory=list)
+    # === Early stopping ===
     early_stop_interval: Optional[int] = None
 
     # === Other ===

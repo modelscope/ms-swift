@@ -111,7 +111,7 @@ def configure_optimizer(model: TrainableModel,
     Args:
         model: a twinkle-derived Model (has set_optimizer / set_lr_scheduler).
         cfg: TrainConfig (learning_rate / optim / weight_decay / adam_* /
-             lr_scheduler_type / warmup_ratio). learning_rate is read as-is: the default lives on
+             lr_scheduler / warmup_ratio). learning_rate is read as-is: the default lives on
              TrainConfig, so no hidden fallback here can disagree with what the Config reports.
         num_training_steps: total optimizer steps (for warmup + decay schedule).
     """
@@ -193,9 +193,9 @@ def configure_optimizer(model: TrainableModel,
         lr_decay_steps = cfg.lr_decay_iters if cfg.lr_decay_iters is not None else max(1, num_training_steps)
         warmup_steps_exact = warmup_budget(cfg, lr_decay_steps, is_megatron=True)
         lr_decay_style = cfg.lr_decay_style
-        if lr_decay_style == 'cosine' and cfg.lr_scheduler_type != 'cosine':
+        if lr_decay_style == 'cosine' and cfg.lr_scheduler != 'cosine':
             from swift.dev.naming import resolve_megatron_decay_style
-            lr_decay_style = resolve_megatron_decay_style(cfg.lr_scheduler_type)
+            lr_decay_style = resolve_megatron_decay_style(cfg.lr_scheduler)
         model.set_lr_scheduler(
             'default',
             lr_decay_steps=lr_decay_steps,
@@ -229,7 +229,7 @@ def configure_optimizer(model: TrainableModel,
     # weight_decay to norms/biases, diverging from legacy swift.
     model.set_optimizer(optim_cls, **opt_kwargs)
 
-    sched_cls = resolve_scheduler(cfg.lr_scheduler_type)
+    sched_cls = resolve_scheduler(cfg.lr_scheduler)
     if sched_cls is None:
         return  # constant lr: no scheduler
     model.set_lr_scheduler(

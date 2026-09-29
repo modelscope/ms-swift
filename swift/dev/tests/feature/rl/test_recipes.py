@@ -489,8 +489,8 @@ def test_grpo_tensor_alignment_and_reward_weights_keep_device():
     assert weighted.tolist() == pytest.approx([7.0, 2.0])
 
 
-def test_reward_model_default_plugin_encodes_rows_and_scores_batch():
-    """The default RM adapter uses its own template and the twinkle forward-only contract."""
+def test_reward_model_plugin_encodes_rows_and_scores_batch():
+    """The scalar RM scorer uses its own template and the twinkle forward-only contract."""
     torch = pytest.importorskip('torch')
     from swift.dev.reward import build_reward_model_plugins, compute_reward_model_scores
 
@@ -515,7 +515,7 @@ def test_reward_model_default_plugin_encodes_rows_and_scores_batch():
     scores = compute_reward_model_scores(rows, plugins)
 
     assert scores.tolist() == [[2.0]]
-    assert names == ['_DefaultRewardModelPlugin']
+    assert names == ['_ScalarRewardModelPlugin']
     assert template.rows == rows
     assert template.rows[0] is not rows[0]
 

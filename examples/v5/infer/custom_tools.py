@@ -7,9 +7,11 @@ like this, register it under a name, then point the run at the file and the name
 
     swift infer ... --external_plugins examples/v5/infer/custom_tools.py --tools calculator
 
-``--external_plugins`` imports this file before anything is built (``PluginRegistry.load_configured``),
-so the ``@PluginRegistry.register`` below has run by the time ``--tools calculator`` is resolved. Tools
-are a multi-turn feature, so a run that names any tool also needs ``--max_turns``.
+``--external_plugins`` accepts a local .py file, a local folder (its ``__init__.py`` is imported), or a
+hub id (``hf://``/``ms://``, downloaded if absent), and imports it before anything is built
+(``PluginRegistry.load_configured``), so the ``@PluginRegistry.register`` below has run by the time
+``--tools calculator`` is resolved. Tools are a multi-turn feature, so a run that names any tool also
+needs ``--max_turns``.
 
 Contract (see ``swift.dev.plugin.ToolPlugin`` and ``twinkle_agentic.tools.base.Tool``):
   * ``ToolPlugin.build(env)`` is called once per episode with the sandbox ``Env`` this episode leased,

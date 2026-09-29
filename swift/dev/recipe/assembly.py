@@ -560,7 +560,7 @@ class TrainAssembly:
             'swift_version': swift_version,
             # force_load_keys: infer applies these regardless of its current value.
             'task_type': model_config.task_type or task_type,
-            'tuner_type': tuner_config.tuner_type if tuner_config is not None else 'full',
+            'tuner_type': tuner_config.tuner if tuner_config is not None else 'full',
             'quant_method': quantize_config.quant_method if quantize_config is not None else None,
             'quant_bits': quantize_config.quant_bits if quantize_config is not None else None,
             'bnb_4bit_compute_dtype': (

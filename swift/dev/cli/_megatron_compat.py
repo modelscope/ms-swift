@@ -82,11 +82,11 @@ def _derive_megatron_ga(train_config: 'TrainConfig', distributed_config: 'Distri
 
 
 def _select_megatron_tuner(tuner: 'TunerConfig') -> Optional['TunerConfig']:
-    if tuner.tuner_type == 'full':
+    if tuner.tuner == 'full':
         return None
-    if tuner.tuner_type == 'lora':
+    if tuner.tuner == 'lora':
         return tuner
-    raise NotImplementedError(f'dev Megatron training supports tuner_type in {{full, lora}}, got {tuner.tuner_type!r}.')
+    raise NotImplementedError(f'dev Megatron training supports tuner in {{full, lora}}, got {tuner.tuner!r}.')
 
 
 def configure_megatron(model_config: 'ModelConfig', train_config: 'TrainConfig',

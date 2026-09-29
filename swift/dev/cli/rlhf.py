@@ -64,8 +64,8 @@ def parse_rlhf_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         'loss_type': RLHFConfig,
         'max_new_tokens': GenerationConfig,
         'temperature': RLHFConfig,
-        'reward_funcs': RLHFConfig,
-        'reward_weights': RLHFConfig,
+        'orm': RLHFConfig,
+        'orm_weights': RLHFConfig,
     }
     configs = parse_configs_strict(classes, effective_argv, command='swift rlhf', field_owners=owners)
     common = configs[:15]

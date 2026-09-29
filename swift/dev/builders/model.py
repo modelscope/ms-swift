@@ -230,7 +230,7 @@ def _apply_unsloth_kwargs(kwargs: dict, model_config: ModelConfig, tuner_config:
     if model_config.task_type in ('seq_cls', 'reranker', 'generative_reranker'):
         raise NotImplementedError(f'tuner_backend="unsloth" supports causal_lm only; task_type='
                                   f'{model_config.task_type!r} needs a head unsloth does not build.')
-    kwargs['full_finetuning'] = tuner_config.tuner_type == 'full'
+    kwargs['full_finetuning'] = tuner_config.tuner == 'full'
     if quantize_config is not None and quantize_config.quant_method is not None:
         if quantize_config.quant_method != 'bnb':
             raise NotImplementedError(
@@ -266,41 +266,60 @@ def _apply_hf_sp_mesh(kwargs: dict, device_mesh: Optional['DeviceMesh'],
 
 
 def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig,
-                         remote_group: str = 'model') -> None:
+                         remote_group: str = 'model',
+                         device_mesh: Optional['DeviceMesh'] = None) -> None:
     """Place the transformers model in a remote DeviceGroup under mode='ray'.
 
-    The transformers backend has no TP/PP, so the mesh is pure data parallel over nproc_per_node.
-    Local (torchrun) mode leaves both device_mesh and remote_group unset, exactly as before -- see
-    the note in _build_transformers_model on why a None mesh is the correct (and load-bearing)
-    choice there. ``remote_group`` defaults to 'model' (the trainable group); a frozen reward model
-    passes its own group name so it lands on dedicated GPUs instead of the trainable ones.
+    ``device_mesh`` is the caller's mesh when it has one (a frozen reward model built from a
+    ``parallel_spec``); it is installed as-is so the caller's layout is honored. Only when the caller
+    passes none is the default mesh synthesized -- pure data parallel over nproc_per_node, since the
+    transformers backend has no TP/PP weight sharding. Local (torchrun) mode leaves both device_mesh and
+    remote_group unset, exactly as before -- see the note in _build_transformers_model on why a None mesh
+    is the correct (and load-bearing) choice there. ``remote_group`` defaults to 'model' (the trainable
+    group); a frozen reward model passes its own group name so it lands on dedicated GPUs instead of the
+    trainable ones.
     """
     if distributed_config.mode == 'local':
         return
-    from twinkle import DeviceMesh
-    nproc = distributed_config.nproc_per_node
-    if nproc is None:
-        raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the 'model' "
-                         'DeviceGroup and its data-parallel mesh). Pass it explicitly -- there is no default.')
-    kwargs['device_mesh'] = DeviceMesh.from_sizes(world_size=nproc, dp_size=nproc)
+    if device_mesh is None:
+        from twinkle import DeviceMesh
+        nproc = distributed_config.nproc_per_node
+        if nproc is None:
+            raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the 'model' "
+                             'DeviceGroup and its data-parallel mesh). Pass it explicitly -- there is no default.')
+        device_mesh = DeviceMesh.from_sizes(world_size=nproc, dp_size=nproc)
+    kwargs['device_mesh'] = device_mesh
     kwargs['remote_group'] = remote_group
 
 
 def _resolve_model_loader(model_config: ModelConfig):
     """Resolve the explicitly requested or inferred dev model family loader.
 
-    ``model_type`` is authoritative when supplied. Falling back to basename matching keeps the
-    zero-config path convenient, while an unknown explicit value fails immediately instead of
-    silently selecting a different family from the checkpoint name.
+    ``model_type`` is authoritative when supplied. It is normally a registered family key, but it may
+    also be a :class:`ModelLoader` subclass or an external plugin source (a local file/folder or a
+    ``hf://`` / ``ms://`` id): a complex model that implements the loader hooks plugs in that way,
+    without joining the family registry. ``model`` stays the checkpoint id/path the weights load from.
+    Falling back to basename matching keeps the zero-config path convenient, while an unknown explicit
+    value that is neither a family key nor a loadable plugin fails immediately instead of silently
+    selecting a different family from the checkpoint name.
     """
-    from swift.dev.model.loader import ModelInfo, get_model_loader, match_model_type
+    from swift.dev.model.loader import (MODEL_ALIASES, MODEL_MAPPING, ModelInfo, ModelLoader, get_model_loader,
+                                        match_model_type)
+    from swift.dev.naming import resolve_plugin_class
 
-    model_type = model_config.model_type or match_model_type(model_config.model)
-    if model_type is None:
-        return None
-    loader_cls = get_model_loader(model_type)
+    model_type = model_config.model_type
+    if model_type:
+        if model_type in MODEL_MAPPING or model_type in MODEL_ALIASES:
+            loader_cls = get_model_loader(model_type)
+        else:
+            loader_cls = resolve_plugin_class(model_type, ModelLoader, MODEL_MAPPING, kind='model')
+    else:
+        matched = match_model_type(model_config.model)
+        if matched is None:
+            return None
+        loader_cls = get_model_loader(matched)
     model_info = ModelInfo(
-        model_type=loader_cls.model_type,
+        model_type=loader_cls.model_type or model_config.model_type,
         model_dir=model_config.model,
         max_model_len=model_config.max_model_len,
         rope_scaling=model_config.rope_scaling if isinstance(model_config.rope_scaling, dict) else None,
@@ -518,7 +537,9 @@ def _build_transformers_model(model_config: ModelConfig,
     # the same group _initialize_twinkle builds -- mirroring the Megatron branch below. This is what
     # an online RL recipe needs so the trainer and a vLLMSampler are SEPARATE Ray actors that
     # CheckpointEngineManager can weight-sync between (it asserts both have `_actors`+`device_mesh`).
-    _apply_ray_placement(kwargs, distributed_config, remote_group or 'model')
+    # A caller-supplied device_mesh (a frozen reward model's parallel_spec) is threaded through and
+    # honored; only when there is none does placement synthesize the default pure-DP mesh.
+    _apply_ray_placement(kwargs, distributed_config, remote_group or 'model', device_mesh)
 
     # tuner_backend='unsloth' swaps the class: unsloth owns both construction (its Triton kernels /
     # optional 4bit base) and LoRA installation -- see swift/dev/model/unsloth_model.py. Everything

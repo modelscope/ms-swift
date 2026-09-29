@@ -8,7 +8,7 @@ from .quantize import run_quantize
 from .run_deploy import build_server_config, run_deploy, run_deploy_process
 from .run_dpo import PreferenceLoop, run_dpo
 from .run_embedding import run_embedding
-from .run_eval import build_eval_task, run_eval
+from .run_eval import run_eval
 from .run_gkd import GKDLoop, run_gkd
 from .run_grpo import SamplerRollout, plan_rl_device_groups, run_grpo
 from .run_infer import run_infer
@@ -49,6 +49,5 @@ __all__ = [
     'run_deploy',
     'run_deploy_process',
     'build_server_config',
-    'build_eval_task',
     'run_eval',
 ]

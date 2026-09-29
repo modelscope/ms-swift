@@ -18,7 +18,11 @@ class TunerConfig:
 
     # === Base ===
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
-    tuner_type: str = 'lora'
+    #: Which PEFT-backed tuner to build -- 'lora' / 'adalora' / 'trainable_tokens', or 'full' for no
+    #: adapter. ``swift.dev.adapter.apply_tuner`` maps it onto the peft config; 'full' is carried as a
+    #: None TunerConfig (see ``cli/parser.select_tuner``). DoRA / rsLoRA / QLoRA are LoRA *flags*, not
+    #: separate tuners, so there is deliberately no 'dora' / 'rslora' / 'qlora' value here.
+    tuner: str = 'lora'
     adapters: List[str] = field(default_factory=list)
 
     # === Freeze Parameters ===

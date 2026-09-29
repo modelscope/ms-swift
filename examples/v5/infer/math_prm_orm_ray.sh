@@ -1,9 +1,9 @@
 # v5 best-of-n scoring over a math dataset with TWO heterogeneous reward channels.
 #
-#   PRM channel -- a separate process-reward MODEL (Qwen/Qwen2.5-Math-PRM-7B) via --prm_model. It keeps
-#                  its own weights resident on GPU.
-#   ORM channel -- a pure FUNCTION (accuracy = MathAccuracy, backed by math_verify) via --reward_funcs.
-#                  It scores the sampled text and needs no GPU.
+#   PRM channel -- a separate process-reward MODEL (Qwen/Qwen2.5-Math-PRM-7B) passed as an item of --prm.
+#                  It keeps its own weights resident on GPU.
+#   ORM channel -- a pure FUNCTION (accuracy = MathAccuracy, backed by math_verify) passed as an item of
+#                  --orm. It scores the sampled text and needs no GPU.
 #
 # A GPU-resident reward model needs its own Ray DeviceGroup, so mode=ray is REQUIRED (run_infer raises
 # otherwise). plan_sampling_device_groups sizes every role off nproc_per_node: with nproc_per_node=2 the
@@ -17,12 +17,12 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 USE_SWIFT_V5=1 \
 swift infer \
     --model Qwen/Qwen3.5-4B \
-    --infer_backend vllm \
+    --sampler vllm \
     --dataset 'AI-MO/NuminaMath-TIR#500' \
     --num_samples 8 \
     --output_format all \
-    --reward_funcs accuracy \
-    --prm_model Qwen/Qwen2.5-Math-PRM-7B \
+    --orm accuracy \
+    --prm Qwen/Qwen2.5-Math-PRM-7B \
     --mode ray \
     --nproc_per_node 2 \
     --vllm_gpu_memory_utilization 0.85 \

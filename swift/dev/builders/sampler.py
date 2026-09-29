@@ -23,7 +23,10 @@ import json
 import logging
 import os
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
+
+from swift.dev.naming import resolve_plugin_class
+from swift.dev.plugin import PluginKind, PluginRegistry
 
 if TYPE_CHECKING:
     from swift.dev.config import (GenerationConfig, InferConfig, ModelConfig, QuantizeConfig, RolloutConfig,
@@ -31,6 +34,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+#: The built-in engine names a ``--sampler`` resolves to with no external source. Any other twinkle
+#: ``Sampler`` subclass is a custom sampler, reached by class or by source (see :func:`_resolve_sampler`).
 SamplerBackend = Literal['vllm', 'sglang', 'transformers']
 
 #: ModelConfig knobs the engines accept, under the name each one uses for them. Everything else
@@ -52,7 +57,49 @@ _MODEL_KNOB_NAMES = {
     },
 }
 
-_SAMPLER_CLASSES = {'vllm': 'vLLMSampler', 'sglang': 'SGLangSampler', 'transformers': 'TransformersSampler'}
+#: The 'sampler' plugin registry: name -> twinkle ``Sampler`` subclass. Seeded lazily with the built-in
+#: engines by :func:`_sampler_kind`; an external plugin adds to it with ``@register('sampler', name)``.
+_SAMPLERS: Dict[str, type] = {}
+
+
+def _sampler_kind() -> PluginKind:
+    """Declare (once) and seed the 'sampler' plugin kind, then return it.
+
+    Declared lazily rather than at import or in ``PluginRegistry._BUILTIN_KIND_MODULES``: seeding it needs
+    twinkle's ``Sampler`` base, whose package ``__init__`` pulls in vLLM. Declaring it during config load
+    would force that import on every ``--external_plugins`` run -- including training runs that build no
+    sampler -- so it happens here, inside :func:`build_sampler`, where the engine stack is imported anyway.
+    The engines live in twinkle and cannot carry a swift ``@register`` decorator, so they are seeded by
+    name here; that keeps one table the built-ins and any external ``@register('sampler', ...)`` plugin
+    both write to.
+    """
+    if 'sampler' not in PluginRegistry.KINDS:
+        import twinkle.sampler as twinkle_sampler
+        PluginRegistry.register_kind('sampler', twinkle_sampler.Sampler, config_field='sampler', entries=_SAMPLERS)
+        for name, cls in (('vllm', twinkle_sampler.vLLMSampler), ('sglang', twinkle_sampler.SGLangSampler),
+                          ('transformers', twinkle_sampler.TransformersSampler)):
+            _SAMPLERS[name] = cls
+    return PluginRegistry.kind('sampler')
+
+
+def _resolve_sampler(spec: Any) -> Tuple[type, Optional[str]]:
+    """A ``--sampler`` spec -> ``(sampler class, engine key)``.
+
+    ``engine key`` is 'vllm' / 'sglang' / 'transformers' for a built-in engine -- it selects the
+    ModelConfig knob mapping, LoRA and pooling rules in :func:`build_sampler` -- and ``None`` for a custom
+    sampler, which is built with ``engine_args`` verbatim. ``spec`` may be a built-in name, 'pt' (an alias
+    of 'transformers'), a twinkle ``Sampler`` subclass, or an external source (a local ``.py`` file, a
+    local folder, or a ``hf://`` / ``ms://`` id) resolved through the unified plugin loader. A custom
+    sampler must follow the built-ins' constructor contract: ``Cls(model, *, engine_args, device_mesh,
+    remote_group)``.
+    """
+    if spec == 'pt':
+        spec = 'transformers'
+    kind = _sampler_kind()
+    sampler_cls = resolve_plugin_class(spec, kind.base, kind.entries, kind='sampler')
+    engine = next((name for name, cls in kind.entries.items() if cls is sampler_cls), None)
+    return sampler_cls, engine
+
 
 #: dev ``task_type`` values that are a pooling forward rather than generation, and the twinkle/vLLM
 #: pooling head each one runs. ``embedding``->``embed`` (a sentence vector), ``seq_cls``->``classify``
@@ -162,7 +209,7 @@ def _derive_sampler_type(backend: str, enable_data_plane: bool = False) -> str:
 def build_sampler(
     model_config: ModelConfig,
     *,
-    backend: SamplerBackend = 'vllm',
+    backend: Any = 'vllm',
     engine_args: Optional[Dict[str, Any]] = None,
     device_mesh: Any = None,
     template: Any = None,
@@ -180,7 +227,9 @@ def build_sampler(
             task builds the engine as a pooling model and is served by ``sampler.encode``. Pooling needs
             a backend with a pooling head, so it is vLLM/SGLang only -- transformers still goes through
             ``build_model`` + ``task=``.
-        backend: 'vllm', 'sglang' or 'transformers'.
+        backend: the ``--sampler`` spec -- a built-in engine name ('vllm' / 'sglang' / 'transformers',
+            with 'pt' an alias of 'transformers'), a twinkle ``Sampler`` subclass, or an external source
+            (see :func:`_resolve_sampler`).
         engine_args: passed verbatim to the engine, and wins over the ModelConfig knobs so a caller
             can always reach an engine flag dev does not model.
         device_mesh: twinkle DeviceMesh for data parallelism. ``sample`` is declared
@@ -209,61 +258,66 @@ def build_sampler(
     if task_type not in _GENERATIVE_TASK_TYPES and not is_pooling:
         raise ValueError(f'build_sampler got task_type={task_type!r}; expected one of the generation tasks '
                          f'{list(_GENERATIVE_TASK_TYPES)} or the pooling tasks {sorted(_POOLING_TASK_MAP)}.')
-    if is_pooling and backend == 'transformers':
+    sampler_cls, engine = _resolve_sampler(backend)
+    if is_pooling and engine == 'transformers':
         raise ValueError(f'backend="transformers" cannot serve the pooling task_type={task_type!r}: it has '
                          'no pooling head. Build it with build_model(..) and pass task= instead, or use '
                          'backend="vllm"/"sglang".')
-    if backend not in _SAMPLER_CLASSES:
-        raise ValueError(f'Unknown sampler backend {backend!r}; expected one of {sorted(_SAMPLER_CLASSES)}. '
-                         '(lmdeploy is deliberately not supported.)')
 
     kwargs = dict(engine_args or {})
     quant_method = getattr(quantize_config, 'quant_method', None)
-    if quant_method is not None:
-        if backend != 'transformers':
-            engine_option = 'vllm_quantization' if backend == 'vllm' else 'sglang_quantization'
+    if engine is None:
+        # A custom sampler owns its engine's knob vocabulary, so dev passes engine_args through verbatim and
+        # applies none of the built-in engines' ModelConfig / LoRA / pooling mapping below. quant_method is a
+        # transformers load-time setting with no meaning for an arbitrary sampler, so it is refused, not dropped.
+        if quant_method is not None:
             raise ValueError(
-                f'quant_method={quant_method!r} is a Transformers load-time setting and cannot be translated to '
-                f'backend={backend!r}. Use --{engine_option} (or backend-specific engine_args), or rely on the '
-                'quantization metadata embedded in an AWQ/GPTQ checkpoint.')
-        from swift.dev.builders.quantization import build_load_quantization_config
-        quantization_config = build_load_quantization_config(
-            quantize_config, torch_dtype=model_config.torch_dtype)
-        if quantization_config is not None:
-            kwargs.setdefault('quantization_config', quantization_config)
+                f'quant_method={quant_method!r} is a Transformers load-time setting and cannot be applied to the '
+                f'custom sampler {sampler_cls.__name__}. Quantize inside the sampler, or pass its own engine_args.')
+    else:
+        if quant_method is not None:
+            if engine != 'transformers':
+                engine_option = 'vllm_quantization' if engine == 'vllm' else 'sglang_quantization'
+                raise ValueError(
+                    f'quant_method={quant_method!r} is a Transformers load-time setting and cannot be translated to '
+                    f'backend={engine!r}. Use --{engine_option} (or backend-specific engine_args), or rely on the '
+                    'quantization metadata embedded in an AWQ/GPTQ checkpoint.')
+            from swift.dev.builders.quantization import build_load_quantization_config
+            quantization_config = build_load_quantization_config(
+                quantize_config, torch_dtype=model_config.torch_dtype)
+            if quantization_config is not None:
+                kwargs.setdefault('quantization_config', quantization_config)
 
-    for cfg_name, engine_name in _MODEL_KNOB_NAMES[backend].items():
-        value = getattr(model_config, cfg_name, None)
-        # setdefault, not assignment: an explicit engine_args entry is the caller's override.
-        if value is not None:
-            kwargs.setdefault(engine_name, value)
-    if is_pooling:
-        # Route the model to the backend's pooling forward. vLLM spells it ``runner='pooling'`` (which
-        # swaps the LM head for the pooling head and serves requests through ``encode``); sglang spells
-        # it ``is_embedding=True``. setdefault so an explicit engine_args entry still wins.
-        if backend == 'vllm':
-            kwargs.setdefault('runner', 'pooling')
-        elif backend == 'sglang':
-            kwargs.setdefault('is_embedding', True)
-    if adapters:
-        _enable_lora(kwargs, backend, adapters)
+        for cfg_name, engine_name in _MODEL_KNOB_NAMES[engine].items():
+            value = getattr(model_config, cfg_name, None)
+            # setdefault, not assignment: an explicit engine_args entry is the caller's override.
+            if value is not None:
+                kwargs.setdefault(engine_name, value)
+        if is_pooling:
+            # Route the model to the backend's pooling forward. vLLM spells it ``runner='pooling'`` (which
+            # swaps the LM head for the pooling head and serves requests through ``encode``); sglang spells
+            # it ``is_embedding=True``. setdefault so an explicit engine_args entry still wins.
+            if engine == 'vllm':
+                kwargs.setdefault('runner', 'pooling')
+            elif engine == 'sglang':
+                kwargs.setdefault('is_embedding', True)
+        if adapters:
+            _enable_lora(kwargs, engine, adapters)
 
-    if backend == 'transformers':
-        # The transformers engine defaults to AutoModelForCausalLM, which cannot load a vision-language
-        # checkpoint (a VL config is not a causal-LM config, so from_pretrained rejects it). Hand it the
-        # family loader's declared model_cls so a VL model loads with its ...ForConditionalGeneration
-        # class; a text model's loader declares AutoModelForCausalLM, so this is a no-op there. The class
-        # travels as the loader's 'module:ClassName' string, which is what the engine resolves and what
-        # survives Ray engine_args. setdefault keeps an explicit engine_args entry authoritative.
-        from swift.dev.builders.model import _resolve_model_loader
-        loader = _resolve_model_loader(model_config)
-        if loader is not None:
-            kwargs.setdefault('model_cls', loader.model_cls)
+        if engine == 'transformers':
+            # The transformers engine defaults to AutoModelForCausalLM, which cannot load a vision-language
+            # checkpoint (a VL config is not a causal-LM config, so from_pretrained rejects it). Hand it the
+            # family loader's declared model_cls so a VL model loads with its ...ForConditionalGeneration
+            # class; a text model's loader declares AutoModelForCausalLM, so this is a no-op there. The class
+            # travels as the loader's 'module:ClassName' string, which is what the engine resolves and what
+            # survives Ray engine_args. setdefault keeps an explicit engine_args entry authoritative.
+            from swift.dev.builders.model import _resolve_model_loader
+            loader = _resolve_model_loader(model_config)
+            if loader is not None:
+                kwargs.setdefault('model_cls', loader.model_cls)
 
-    import twinkle.sampler as twinkle_sampler
-    sampler_cls = getattr(twinkle_sampler, _SAMPLER_CLASSES[backend])
-
-    logger.info(f'Building {backend} sampler for {model_config.model} with engine_args={kwargs}')
+    logger.info(f'Building {engine or sampler_cls.__name__} sampler for {model_config.model} '
+                f'with engine_args={kwargs}')
     extra: Dict[str, Any] = {'remote_group': remote_group} if remote_group else {}
     sampler = sampler_cls(model_config.model, engine_args=kwargs, device_mesh=device_mesh, **extra)
     if template is not None:

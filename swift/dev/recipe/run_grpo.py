@@ -291,10 +291,10 @@ def run_grpo(
         teacher_tag_key=rollout_config.teacher_tag_key,
         chord_features=_load_chord_features(rlhf_config, dataset_config, assembly.template),
         num_generations=rlhf_config.num_generations,
-        reward_funcs=list(rlhf_config.reward_funcs) or None,
+        reward_funcs=list(rlhf_config.orm) or None,
         reward_model_plugins=reward_model_plugins,
         reward_model_names=reward_model_names,
-        reward_weights=rlhf_config.reward_weights,
+        reward_weights=rlhf_config.orm_weights,
         advantage_estimator=rlhf_config.advantage_estimator,
         scale_rewards=rlhf_config.scale_rewards or 'group',
         rlhf_config=rlhf_config,
@@ -399,7 +399,6 @@ def _build_reward_model_scorers(model_config: ModelConfig, template_config: Temp
     model_types = _aligned(rlhf_config.reward_model_type, None, 'reward_model_type')
     revisions = _aligned(rlhf_config.reward_model_revision, None, 'reward_model_revision')
     template_names = _aligned(rlhf_config.reward_template, None, 'reward_template')
-    plugin_names = _aligned(rlhf_config.reward_model_plugin, 'default', 'reward_model_plugin')
     adapters = _aligned(rlhf_config.reward_adapters or None, None, 'reward_adapters')
 
     models = []
@@ -417,7 +416,7 @@ def _build_reward_model_scorers(model_config: ModelConfig, template_config: Temp
         models.append(reward_model)
         templates.append(reward_template)
 
-    return build_reward_model_plugins(models, templates, plugin_names)
+    return build_reward_model_plugins(models, templates)
 
 
 def _load_chord_features(rlhf_config: RLHFConfig, dataset_config: DatasetConfig, template: Any) -> List[dict]:

@@ -30,7 +30,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 \
 USE_SWIFT_V5=1 \
 swift deploy \
     --model Qwen/Qwen3.5-4B \
-    --infer_backend vllm \
+    --sampler vllm \
     --served_model_name policy \
     --host 0.0.0.0 \
     --port 8000 \

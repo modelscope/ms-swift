@@ -341,13 +341,13 @@ def _derive_finetune_resume(train_config: 'TrainConfig', checkpoint_config: Opti
 def _derive_lr_decay_style(train_config: 'TrainConfig', is_megatron: bool) -> None:
     """Make `lr_decay_style` the single value the Megatron scheduler reads.
 
-    These two are not a plain alias pair. `lr_scheduler_type` is dev's canonical field and already maps
+    These two are not a plain alias pair. `lr_scheduler` is dev's canonical field and already maps
     onto Megatron's styles through resolve_megatron_decay_style; `lr_decay_style` is Megatron's own
-    spelling, and it carries one value -- 'WSD' -- that has no `lr_scheduler_type` equivalent, so it
+    spelling, and it carries one value -- 'WSD' -- that has no `lr_scheduler` equivalent, so it
     cannot simply be folded away.
 
     So the rule is by precedence rather than by copying: an explicitly chosen `lr_decay_style` stands,
-    otherwise it is derived from `lr_scheduler_type`. Either way exactly one field holds the answer
+    otherwise it is derived from `lr_scheduler`. Either way exactly one field holds the answer
     afterwards, which is the point -- the previous state had two fields and no rule.
     """
     if not is_megatron:
@@ -356,23 +356,23 @@ def _derive_lr_decay_style(train_config: 'TrainConfig', is_megatron: bool) -> No
     defaults = {f.name: f.default for f in dataclasses.fields(train_config)}
     style_explicit = ('lr_decay_style' in explicit
                       or train_config.lr_decay_style != defaults['lr_decay_style'])
-    scheduler_explicit = ('lr_scheduler_type' in explicit
-                          or train_config.lr_scheduler_type != defaults['lr_scheduler_type'])
-    derived = _try_megatron_decay_style(train_config.lr_scheduler_type)
+    scheduler_explicit = ('lr_scheduler' in explicit
+                          or train_config.lr_scheduler != defaults['lr_scheduler'])
+    derived = _try_megatron_decay_style(train_config.lr_scheduler)
 
     if style_explicit:
         if scheduler_explicit and derived is not None and derived != train_config.lr_decay_style:
             raise ValueError(
                 f'lr_decay_style={train_config.lr_decay_style!r} conflicts with '
-                f'lr_scheduler_type={train_config.lr_scheduler_type!r}, which maps to {derived!r}. '
+                f'lr_scheduler={train_config.lr_scheduler!r}, which maps to {derived!r}. '
                 'Use one spelling or select equivalent schedules.')
         return
     if derived is not None:
         train_config.lr_decay_style = derived
 
 
-def _try_megatron_decay_style(lr_scheduler_type: str) -> Optional[str]:
-    """The Megatron style for an `lr_scheduler_type`, or None when there is no mapping.
+def _try_megatron_decay_style(lr_scheduler: str) -> Optional[str]:
+    """The Megatron style for an `lr_scheduler`, or None when there is no mapping.
 
     Swallowing the error is right here and only here: resolve_megatron_decay_style fails fast so an
     unsupported schedule cannot silently become cosine, and that report belongs to the scheduler build,
@@ -381,7 +381,7 @@ def _try_megatron_decay_style(lr_scheduler_type: str) -> Optional[str]:
     """
     from swift.dev.naming import resolve_megatron_decay_style
     try:
-        return resolve_megatron_decay_style(lr_scheduler_type)
+        return resolve_megatron_decay_style(lr_scheduler)
     except Exception:
         return None
 
@@ -650,10 +650,10 @@ def _derive_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['
     if isinstance(rlhf_config.ref_adapters, str):
         rlhf_config.ref_adapters = [rlhf_config.ref_adapters]
     rlhf_type = getattr(rlhf_config, 'rlhf_type', None)
-    tuner_type = getattr(tuner_config, 'tuner_type', 'full') if tuner_config is not None else 'full'
+    tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
     if rlhf_type == 'grpo' and rlhf_config.beta == 0.0:
         rlhf_config.ref_model = None
-    elif rlhf_type in ('dpo', 'kto', 'ppo', 'grpo') and (tuner_type == 'full' or rlhf_config.ref_adapters):
+    elif rlhf_type in ('dpo', 'kto', 'ppo', 'grpo') and (tuner == 'full' or rlhf_config.ref_adapters):
         rlhf_config.ref_model = rlhf_config.ref_model or model_config.model
         rlhf_config.ref_model_type = rlhf_config.ref_model_type or model_config.model_type
         rlhf_config.ref_model_revision = rlhf_config.ref_model_revision or model_config.model_revision
@@ -667,7 +667,7 @@ def _derive_rlhf_teacher(model_config: 'ModelConfig', tuner_config: Optional['Tu
     if isinstance(rlhf_config.teacher_adapters, str):
         rlhf_config.teacher_adapters = [rlhf_config.teacher_adapters]
     for field in ('reward_model', 'reward_adapters', 'reward_model_type', 'reward_model_revision',
-                  'reward_model_plugin', 'reward_template'):
+                  'reward_template'):
         value = getattr(rlhf_config, field)
         if isinstance(value, str):
             setattr(rlhf_config, field, [value])

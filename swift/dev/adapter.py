@@ -1,4 +1,4 @@
-"""Map a TunerConfig onto the peft adapter config the requested tuner_type needs.
+"""Map a TunerConfig onto the peft adapter config the requested tuner needs.
 
 Every tuner here is peft-backed, so ``add_adapter_to_model`` receives a plain peft config and the
 model-side path is identical for all of them. What differs is only which config class is built and
@@ -6,13 +6,13 @@ which TunerConfig fields feed it:
 
   - lora        -> LoraConfig. Covers QLoRA (= 4bit base model, see QuantizeConfig, + plain LoRA),
                    DoRA (use_dora) and rsLoRA (use_rslora), which are LoRA *flags*, not separate
-                   tuners -- there is deliberately no 'dora'/'rslora'/'qlora' tuner_type.
+                   tuners -- there is deliberately no 'dora'/'rslora'/'qlora' tuner.
   - adalora     -> AdaLoraConfig (LoraConfig subclass + rank-allocation schedule).
   - trainable_tokens -> TrainableTokensConfig, for training only a few embedding rows standalone.
                    Note LoRA can also carry trainable tokens via its own trainable_token_indices,
                    so this type is only for the "no LoRA at all" case.
 
-LoRA+ is NOT a tuner_type: it changes the optimizer's param groups, not the module graph. It is
+LoRA+ is NOT a tuner: it changes the optimizer's param groups, not the module graph. It is
 requested through lorap_lr_ratio/lorap_emb_lr plus the 'lorap' optimizer, and so has no config here.
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from swift.dev.config import TunerConfig
     from swift.dev.model import TrainableModel
 
-# tuner_types that are peft-backed and reachable from dev. Anything else fails fast in apply_tuner
+# tuners that are peft-backed and reachable from dev. Anything else fails fast in apply_tuner
 # rather than being silently downgraded to LoRA.
 SUPPORTED_TUNER_TYPES = ('lora', 'adalora', 'trainable_tokens')
 
@@ -75,7 +75,7 @@ def _lora_common_kwargs(cfg: TunerConfig) -> dict:
 
 
 def _build_adapter_config(cfg: TunerConfig, *, num_training_steps: Optional[int] = None):
-    """Build the peft config for ``cfg.tuner_type``.
+    """Build the peft config for ``cfg.tuner``.
 
     task_type is intentionally NOT set: get_peft_model then returns a base PeftModel that forwards
     straight to the wrapped model, matching every twinkle cookbook. Setting task_type='CAUSAL_LM'
@@ -88,13 +88,13 @@ def _build_adapter_config(cfg: TunerConfig, *, num_training_steps: Optional[int]
         num_training_steps: total optimizer steps, required by adalora only (its rank-allocation
             schedule is expressed in steps).
     """
-    tuner_type = cfg.tuner_type
+    tuner = cfg.tuner
 
-    if tuner_type == 'lora':
+    if tuner == 'lora':
         from peft import LoraConfig
         return LoraConfig(**_lora_common_kwargs(cfg))
 
-    if tuner_type == 'adalora':
+    if tuner == 'adalora':
         from peft import AdaLoraConfig
         # AdaLoRA budgets its rank allocation over the whole run, so peft rejects total_step=None
         # outright. dev knows the step count only at build time, hence the explicit argument --
@@ -107,7 +107,7 @@ def _build_adapter_config(cfg: TunerConfig, *, num_training_steps: Optional[int]
         kwargs.pop('r', None)
         # AdaLoRA reimplements the LoRA forward and has no DoRA path.
         if cfg.use_dora:
-            raise ValueError('use_dora is not supported by adalora; use tuner_type="lora" instead.')
+            raise ValueError('use_dora is not supported by adalora; use tuner="lora" instead.')
         kwargs.pop('use_dora', None)
         return AdaLoraConfig(
             target_r=cfg.adalora_target_r,
@@ -122,23 +122,23 @@ def _build_adapter_config(cfg: TunerConfig, *, num_training_steps: Optional[int]
             **kwargs,
         )
 
-    if tuner_type == 'trainable_tokens':
+    if tuner == 'trainable_tokens':
         from peft import TrainableTokensConfig
         # Standalone TrainableTokens spells the indices token_indices (LoRA's own passthrough field
         # is trainable_token_indices); it needs the embedding module as its target.
         if not cfg.trainable_token_indices:
-            raise ValueError('tuner_type="trainable_tokens" requires trainable_token_indices.')
+            raise ValueError('tuner="trainable_tokens" requires trainable_token_indices.')
         kwargs = {}
         # Default to the standard HF embedding module name only when the user did not target one.
         if cfg.target_regex or cfg.target_modules != ['all-linear']:
             kwargs['target_modules'] = _resolve_target_modules(cfg)
         return TrainableTokensConfig(token_indices=cfg.trainable_token_indices, **kwargs)
 
-    raise NotImplementedError(f'tuner_type={tuner_type!r} is not supported by dev; '
+    raise NotImplementedError(f'tuner={tuner!r} is not supported by dev; '
                               f'supported: {", ".join(SUPPORTED_TUNER_TYPES)}. '
-                              f'(DoRA/rsLoRA are LoRA flags -- use tuner_type="lora" with '
+                              f'(DoRA/rsLoRA are LoRA flags -- use tuner="lora" with '
                               f'use_dora/use_rslora; QLoRA is LoRA + a quantized base model via '
-                              f'QuantizeConfig; LoRA+ is the "lorap" optimizer, not a tuner_type.)')
+                              f'QuantizeConfig; LoRA+ is the "lorap" optimizer, not a tuner.)')
 
 
 def apply_tuner(model: TrainableModel,

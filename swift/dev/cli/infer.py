@@ -40,7 +40,7 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     effective_argv = resolve_argv(argv)
     reject_legacy_only_flags('infer', effective_argv)
     # infer absorbs the whole synthesis surface: InferConfig now carries the best-of-n / reward / token-dump
-    # knobs, and RLHFConfig is the reward-func and multi-turn carrier (reward_funcs, max_turns, tools). The
+    # knobs, and RLHFConfig is the reward-channel and multi-turn carrier (orm, prm, max_turns, tools). The
     # duplicate spellings these add are each pinned to one owner so a flag never lands on the wrong Config.
     classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig,
                TunerConfig, GenerationConfig, RolloutConfig, InferConfig, RLHFConfig,
@@ -57,8 +57,8 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     result = dict(zip(names, configs))
     result['tuner_config'] = select_tuner(result['tuner_config'])
     infer_config = result['infer_config']
-    if infer_config.infer_backend == 'pt':
-        infer_config.infer_backend = 'transformers'
+    if infer_config.sampler == 'pt':
+        infer_config.sampler = 'transformers'
     passed = flag_names(effective_argv)
     # Legacy sampling spellings folded into their canonical InferConfig fields, mirroring the old sample CLI.
     if infer_config.num_sampling_batch_size is not None:
@@ -69,7 +69,7 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         infer_config.reward_threshold = infer_config.prm_threshold
     if 'padding_side' not in passed:
         result['template_config'].padding_side = 'left'
-    # The RLHFConfig doubles as the reward-hyperparameter carrier (reward_funcs / reward_weights) and the
+    # The RLHFConfig doubles as the reward-channel carrier (orm / prm and their weights) and the
     # multi-turn config; synthesis reads it directly rather than through an InferConfig field.
     result['multi_turn_config'] = result['reward_config']
     # num_samples (the CLI spelling) and num_return_sequences (the InferConfig field) are one knob under
@@ -169,13 +169,13 @@ def infer_main(argv: Optional[List[str]] = None):
     # A message-only backend ('client'/'no') loads no local weights, so a dataset run skips model
     # resolution. Interactive still resolves: the REPL builds its chat template from the model even when
     # the completions come from a remote client.
-    resolve_model = interactive or infer_config.infer_backend not in {'client', 'no'}
+    resolve_model = interactive or infer_config.sampler not in {'client', 'no'}
     process_and_validate_configs(
         configs, add_version=False, create_output_dir=False, resolve_model=resolve_model)
     _derive_result_path(configs)
     adapters = configs['tuner_config'].adapters if configs['tuner_config'] is not None else None
-    # backend is unified on infer_backend, whose Literal names the message-only 'client'/'no' too.
-    backend = infer_config.infer_backend
+    # backend is unified on sampler, whose value names the message-only 'client'/'no' too.
+    backend = infer_config.sampler
     engine_args = build_engine_args(backend, infer_config, configs['rollout_config'])
     # engine_kwargs is a generic escape hatch into the engine args, not a synthesis-only knob: a plain
     # inference run tunes its engine the same way, so it is merged regardless of intent.

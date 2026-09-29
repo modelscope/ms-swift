@@ -9,10 +9,13 @@ dataset columns, so any caller (CLI recipe, cookbook loop, server) can use them.
 about rollout sample classes or training loops.
 
 Reward models are adapted to the same batch scorer contract through
-:func:`build_reward_model_plugins`; asynchronous rule rewards remain out of scope.
+:func:`build_reward_model_plugins`. A rule reward may be written ``async def``: the scoring loop
+detects the coroutines and resolves them with one ``asyncio.gather``, so their I/O overlaps.
 """
 from __future__ import annotations
+import asyncio
 import copy
+import inspect
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import torch
@@ -32,8 +35,26 @@ __all__ = [
     'compute_reward_model_scores',
     'compute_rewards_per_func',
     'get_reward_funcs',
+    'is_registered_reward',
     'weight_rewards',
 ]
+
+
+def is_registered_reward(spec: Any) -> bool:
+    """True when ``spec`` is a reward RULE rather than a reward-model id.
+
+    The merged ``--orm`` / ``--prm`` selectors mix rule names with reward-model ids in one list, so a
+    caller must tell them apart before resolving: a registered name (a key of the ``orms`` registry the
+    ``reward`` extension point adopts), a plugin class, or an already-callable reward is a rule scored
+    on completions; anything else is a reward-model id, resolved through the model path. Registered-name-
+    first is the rule, so an id that happens to equal a rule name is taken as the rule.
+    """
+    from swift.dev.plugin import PluginRegistry
+    from swift.dev.rewards import REWARD
+
+    if isinstance(spec, str):
+        return spec in PluginRegistry.kind(REWARD).entries
+    return isinstance(spec, type) or callable(spec)
 
 
 def get_reward_funcs(reward_funcs: Sequence[Any], config: Optional[Any] = None) -> Tuple[List[RewardFunc], List[str]]:
@@ -68,7 +89,7 @@ def get_reward_funcs(reward_funcs: Sequence[Any], config: Optional[Any] = None) 
     return funcs, names
 
 
-class _DefaultRewardModelPlugin:
+class _ScalarRewardModelPlugin:
     """Run a twinkle frozen seq-cls model behind the legacy RM-plugin call contract."""
 
     def __init__(self, model: Any, template: Any):
@@ -94,7 +115,8 @@ def build_frozen_reward_model(model_id: str,
                               template_name: Optional[str] = None,
                               adapter: Optional[str] = None,
                               distributed_config: Optional['DistributedConfig'] = None,
-                              remote_group: Optional[str] = None) -> Tuple[Any, Any]:
+                              remote_group: Optional[str] = None,
+                              parallel_spec: Optional[str] = None) -> Tuple[Any, Any]:
     """Build ONE frozen reward model plus its own template -> ``(model, template)``.
 
     The shared core of the GRPO and best-of-n sampling reward paths, so a reward model is built the
@@ -125,7 +147,15 @@ def build_frozen_reward_model(model_id: str,
             defaults to None so ``build_model`` uses its own 'model' group; a sampling run threads a
             dedicated reward group so the frozen RM lands on its own GPUs instead of the trainable
             model's.
+        parallel_spec: this reward model's OWN parallel layout (e.g. ``dp2``, ``fsdp2``), parsed into a
+            ``DeviceMesh`` and handed to ``build_model`` so the frozen RM is placed/sharded by it instead
+            of the default pure data-parallel mesh. None keeps that default. A scalar RM is built on the
+            transformers backend, which shards by dp/fsdp/ep/ulysses; tp/pp are not weight-sharding dims
+            there (they have no sharding effect on a frozen forward), so express those through the
+            megatron backend or a generative judge (whose tp reaches the engine) instead.
     """
+    from twinkle import DeviceMesh
+
     from swift.dev.builders import build_model, build_template, load_model_processor
     from swift.dev.config import DistributedConfig
     from swift.dev.recipe.assembly import configure_frozen_adapter
@@ -147,8 +177,12 @@ def build_frozen_reward_model(model_id: str,
         reward_template_config, processor, task_type=reward_model_config.task_type)
     reward_template.max_length = None
 
+    device_mesh = DeviceMesh.from_spec(parallel_spec) if parallel_spec else None
     reward_model = build_model(
-        reward_model_config, distributed_config or DistributedConfig(mode='local'), remote_group=remote_group)
+        reward_model_config,
+        distributed_config or DistributedConfig(mode='local'),
+        device_mesh=device_mesh,
+        remote_group=remote_group)
     reward_model = configure_frozen_adapter(
         reward_model, reward_template, [adapter] if adapter else [], role='reward')
     if getattr(reward_template, 'use_model', False):
@@ -156,29 +190,24 @@ def build_frozen_reward_model(model_id: str,
     return reward_model, reward_template
 
 
-def build_reward_model_plugins(models: Sequence[Any], templates: Sequence[Any],
-                               plugin_names: Optional[Sequence[str]] = None) -> Tuple[List[Callable], List[str]]:
-    """Construct per-model reward scorers, preserving legacy custom ``rm_plugins`` compatibility."""
-    from swift.rewards import rm_plugins
+def build_reward_model_plugins(models: Sequence[Any], templates: Sequence[Any]) -> Tuple[List[Callable], List[str]]:
+    """Construct one scalar reward-model scorer per model, plus its display name.
 
+    Every model is scored by :class:`_ScalarRewardModelPlugin` (a frozen seq-cls forward). The legacy
+    ``rm_plugins`` roster -- a name -> custom-scorer table selected per model by ``reward_model_plugin``
+    -- is gone: dev scores a reward model natively, and the "score by prompting" case is the generative
+    judge on the infer path, so there is no second scorer registry to keep in sync (nor a half-wired
+    'default'-only route into legacy ``swift.rewards``).
+    """
     if len(models) != len(templates):
         raise ValueError(f'reward models/templates length mismatch: {len(models)} != {len(templates)}.')
-    names = list(plugin_names) if plugin_names is not None else ['default'] * len(models)
-    if len(names) != len(models):
-        raise ValueError(f'reward_model_plugin length {len(names)} != reward_model length {len(models)}.')
     plugins: List[Callable] = []
     display_names: List[str] = []
-    for model, template, name in zip(models, templates, names):
-        if name not in rm_plugins:
-            raise ValueError(f'Unknown reward_model_plugin={name!r}; expected one of {sorted(rm_plugins)}.')
-        if name == 'default':
-            plugin = _DefaultRewardModelPlugin(model, template)
-        else:
-            raw_model = getattr(model, 'model', model)
-            plugin = rm_plugins[name](model=raw_model, template=template)
+    for model, template in zip(models, templates):
+        plugin = _ScalarRewardModelPlugin(model, template)
         plugins.append(plugin)
-        display_names.append(getattr(getattr(raw_model if name != 'default' else model, 'config', None),
-                                     '_name_or_path', None) or type(plugin).__name__)
+        display_names.append(
+            getattr(getattr(model, 'config', None), '_name_or_path', None) or type(plugin).__name__)
     return plugins, display_names
 
 
@@ -205,6 +234,27 @@ def compute_reward_model_scores(inputs: Sequence[Dict[str, Any]],
     return rewards
 
 
+def _resolve_awaitables(results: List[Any]) -> List[Any]:
+    """Resolve any awaitable reward results concurrently, keeping the rest in place.
+
+    A rule reward may be written ``async def`` (its scoring does I/O -- an API call, a database
+    query), so calling it yields a coroutine instead of scores. Gathering every awaitable in one
+    ``asyncio.run`` overlaps those round trips; a synchronous batch has no awaitable and is returned
+    untouched, so no event loop is started for the common case.
+    """
+    pending = [i for i, out in enumerate(results) if inspect.isawaitable(out)]
+    if not pending:
+        return results
+
+    async def _gather() -> None:
+        resolved = await asyncio.gather(*(results[i] for i in pending))
+        for i, value in zip(pending, resolved):
+            results[i] = value
+
+    asyncio.run(_gather())
+    return results
+
+
 def compute_rewards_per_func(completions: Sequence[str],
                              reward_funcs: Sequence[RewardFunc],
                              columns: Optional[Dict[str, List[Any]]] = None,
@@ -213,7 +263,8 @@ def compute_rewards_per_func(completions: Sequence[str],
 
     Args:
         completions: one completion string per sample.
-        reward_funcs: resolved reward callables (see :func:`get_reward_funcs`).
+        reward_funcs: resolved reward callables (see :func:`get_reward_funcs`). A function may be
+            ``async def``; its coroutine is resolved alongside the others with one ``asyncio.gather``.
         columns: batched dataset columns, ``{name: [value_per_sample, ...]}``. Each list must align
             with ``completions`` (so e.g. ``MathAccuracy(completions, solution)`` gets a matching
             ``solution`` list). Passed through as keyword arguments.
@@ -238,8 +289,9 @@ def compute_rewards_per_func(completions: Sequence[str],
             raise ValueError(f'reward column {key!r} has length {len(values)} but there are {n} completions.')
 
     kwargs: Dict[str, Any] = {**columns, **extra_kwargs}
-    for i, func in enumerate(reward_funcs):
-        out = func(list(completions), **kwargs)
+    results = [func(list(completions), **kwargs) for func in reward_funcs]
+    results = _resolve_awaitables(results)
+    for i, (func, out) in enumerate(zip(reward_funcs, results)):
         if len(out) != n:
             name = getattr(func, '__name__', func.__class__.__name__)
             raise ValueError(f'reward function {name!r} returned {len(out)} scores for {n} completions.')

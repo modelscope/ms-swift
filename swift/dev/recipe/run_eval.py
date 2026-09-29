@@ -1,180 +1,143 @@
-"""EvalScope orchestration over a remote or temporary dev deployment."""
+"""In-process evaluation: build a twinkle sampler and drive it through EvalScope's Native runner.
+
+``swift eval`` scores a model by constructing a twinkle sampler in this process and handing it to
+``twinkle_agentic.evaluator.Evaluator``, which adapts the sampler to EvalScope's Native (custom-model)
+runner. There is no HTTP deployment and no remote service: the sampler *is* the model under test, so a
+LoRA adapter loads live into the engine and generation is driven per trajectory by EvalScope's own
+concurrency -- a continuous-batching backend (vLLM/SGLang) keeps the engine saturated without one
+trajectory waiting on another.
+"""
 from __future__ import annotations
 import datetime as dt
 import os
-from contextlib import nullcontext
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+from swift.dev.utils.logger import get_logger
+
+logger = get_logger()
 
 
-def _model_name(model_config, deploy_config) -> str:
-    return deploy_config.served_model_name or os.path.basename((model_config.model or 'model').rstrip('/'))
+def _model_name(model_config) -> str:
+    """A short, report-friendly name for the model: the last path segment of its id/path."""
+    return os.path.basename((model_config.model or 'model').rstrip('/'))
+
+
+def _guard_backend(backend: str) -> None:
+    """Reject the message-only backends: eval builds and scores a local model, it cannot score a remote one."""
+    if backend in {'client', 'no'}:
+        raise ValueError(
+            f'swift eval builds a local sampler to score, but sampler={backend!r} loads no local model. '
+            'Use a local backend (vllm, sglang or transformers); to score an already-served model, evaluate it '
+            'out of process against that service.')
 
 
 def _validate_eval_datasets(eval_config) -> None:
+    """Normalize ``--eval_dataset`` names against EvalScope's Native benchmark registry, rejecting unknowns."""
     from evalscope.api.registry import BENCHMARK_REGISTRY
-    from evalscope.backend.opencompass import OpenCompassBackendManager
 
-    supported = {
-        'Native': sorted(BENCHMARK_REGISTRY),
-        'OpenCompass': sorted(OpenCompassBackendManager.list_datasets()),
-    }
-    if eval_config.eval_backend == 'VLMEvalKit':
-        from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
-        supported['VLMEvalKit'] = sorted(VLMEvalKitBackendManager.list_supported_datasets())
-    mapping = {name.lower(): name for name in supported[eval_config.eval_backend]}
+    supported = sorted(BENCHMARK_REGISTRY)
+    mapping = {name.lower(): name for name in supported}
     invalid = [name for name in eval_config.eval_dataset if name.lower() not in mapping]
     if invalid:
-        raise ValueError(f'eval_dataset {invalid} is not supported by {eval_config.eval_backend}; '
-                         f'supported datasets: {supported[eval_config.eval_backend]}')
+        raise ValueError(f'eval_dataset {invalid} is not supported by the Native backend; '
+                         f'supported datasets: {supported}')
     eval_config.eval_dataset = [mapping[name.lower()] for name in eval_config.eval_dataset]
 
 
-def _prepare_opencompass_data() -> None:
-    if os.path.exists('data'):
-        if not os.path.exists(os.path.join('data', 'CMB')):
-            raise RuntimeError('OpenCompass requires its own `data` folder, but an unrelated path already exists.')
-        return
-    from swift.dataset import MediaResource
-    local_dir = MediaResource.download(
-        'https://modelscope.cn/datasets/opencompass/OpenCompassDataComplete/'
-        'resolve/master/OpenCompassData-complete-20240207.zip', 'OpenCompassData')
-    os.symlink(os.path.join(local_dir, 'data'), 'data')
+def _build_task_config(eval_config) -> Dict[str, Any]:
+    """dev ``EvalConfig`` -> the EvalScope ``TaskConfig`` kwargs the Evaluator does not own.
+
+    The Evaluator pins ``model`` / ``datasets`` / ``eval_type`` / ``eval_backend`` / ``model_task`` itself,
+    so none of those may appear here. ``extra_eval_args`` is the escape hatch for any other EvalScope
+    ``TaskConfig`` field and is merged last; an owned key smuggled through it is rejected loudly by the
+    Evaluator rather than silently dropped. ``eval_num_proc`` becomes ``eval_batch_size``, which is both
+    EvalScope's request concurrency and (for a non-continuous backend) the sampler micro-batch width.
+    """
+    task_config: Dict[str, Any] = {
+        'work_dir': eval_config.eval_output_dir,
+        'limit': eval_config.eval_limit,
+        'eval_batch_size': eval_config.eval_num_proc,
+        'dataset_args': eval_config.eval_dataset_args,
+        'generation_config': eval_config.eval_generation_config,
+    }
+    task_config.update(eval_config.extra_eval_args or {})
+    return task_config
 
 
-def build_eval_task(eval_config, deploy_config, model_name: str, base_url: str):
-    """Build an EvalScope TaskConfig without running it."""
-    from evalscope.constants import EvalBackend, EvalType
-    from evalscope.run import TaskConfig
-
-    datasets = eval_config.eval_dataset
-    api_key = deploy_config.api_key or 'EMPTY'
-    if eval_config.eval_backend == 'OpenCompass':
-        work_dir = os.path.join(eval_config.eval_output_dir, 'opencompass')
-        return TaskConfig(
-            eval_backend=EvalBackend.OPEN_COMPASS,
-            eval_config={
-                'datasets': datasets,
-                'batch_size': eval_config.eval_num_proc,
-                'work_dir': work_dir,
-                'models': [{
-                    'path': model_name,
-                    'openai_api_base': f"{base_url.rstrip('/')}/chat/completions",
-                    'key': api_key,
-                    'is_chat': eval_config.use_chat_template,
-                }],
-                'limit': eval_config.eval_limit,
-            },
-            work_dir=work_dir)
-    if eval_config.eval_backend == 'VLMEvalKit':
-        work_dir = os.path.join(eval_config.eval_output_dir, 'vlmeval')
-        return TaskConfig(
-            eval_backend=EvalBackend.VLM_EVAL_KIT,
-            eval_config={
-                'data': datasets,
-                'model': [{
-                    'type': model_name,
-                    'name': 'CustomAPIModel',
-                    'api_base': f"{base_url.rstrip('/')}/chat/completions",
-                    'key': api_key,
-                    **(eval_config.eval_generation_config or {}),
-                }],
-                'nproc': eval_config.eval_num_proc,
-                'limit': eval_config.eval_limit,
-            },
-            work_dir=work_dir)
-    work_dir = os.path.join(eval_config.eval_output_dir, 'native')
-    return TaskConfig(
-        model=model_name,
-        eval_type=EvalType.SERVICE,
-        api_url=base_url,
-        api_key=api_key,
-        datasets=datasets,
-        work_dir=work_dir,
-        limit=eval_config.eval_limit,
-        eval_batch_size=eval_config.eval_num_proc,
-        dataset_args=eval_config.eval_dataset_args,
-        generation_config=eval_config.eval_generation_config,
-        **(eval_config.extra_eval_args or {}))
-
-
-def _summarize(task_config, backend: str, model_name: str):
-    from evalscope.constants import EvalBackend
+def _summarize(task_config):
+    """EvalScope report rows for the finished Native task, in the shape ``result_jsonl`` records."""
     from evalscope.summarizer import Summarizer
 
-    reports = Summarizer.get_report_from_cfg(task_cfg=task_config)
-    if backend == 'OpenCompass':
-        result = {}
-        for report in reports:
-            if report[model_name] != '-':
-                result[report['dataset']] = {report['metric']: report[model_name]}
-        return result
-    if backend == 'VLMEvalKit':
-        result = {}
-        for report in reports:
-            parts = next(iter(report)).rsplit('_', 2)
-            dataset, metric = (parts[1], parts[2]) if len(parts) == 3 else ('-', '-')
-            result[dataset] = {metric: next(iter(report.values()))}
-        return result
-    return reports
+    return Summarizer.get_report_from_cfg(task_cfg=task_config)
 
 
-def run_eval(model_config, template_config, generation_config, infer_config, rollout_config, deploy_config,
-             eval_config, *, adapter_mapping: Optional[Dict[str, str]] = None,
-             quantize_config=None, merge_lora: bool = False) -> Dict[str, Any]:
-    """Run EvalScope, starting a temporary dev deployment when eval_url is absent."""
-    from evalscope.run import run_task
+def run_eval(model_config, template_config, eval_config, *, backend: str = 'vllm',
+             engine_args: Optional[Dict[str, Any]] = None, adapters: Optional[List[str]] = None,
+             quantize_config=None) -> Dict[str, Any]:
+    """Score a model by building a twinkle sampler in-process and running EvalScope's Native runner on it.
 
-    from swift.dev.builders import build_engine_args
-    from swift.dev.recipe.run_deploy import run_deploy_process
+    Args:
+        model_config: model id/path plus the engine knobs ``build_sampler`` reads (dtype, max_model_len).
+        template_config: chat template; the Evaluator uses it to decode and to parse tool calls.
+        eval_config: datasets, limit, generation config, output dir, result jsonl.
+        backend: 'vllm' / 'sglang' / 'transformers' -- the local engine that serves the model under test.
+        engine_args: forwarded verbatim to the engine (tensor parallelism, memory fraction, ...).
+        adapters: LoRA checkpoints loaded live into the engine; the first is selected for every request.
+        quantize_config: load-time quantization for the transformers backend (see ``build_sampler``).
+
+    Returns:
+        The report dict that is also appended to ``eval_config.result_jsonl`` when set.
+    """
+    import twinkle
+    from twinkle_agentic.evaluator import Evaluator
+
+    from swift.dev.builders import build_sampler, build_template, load_model_processor
     from swift.utils import append_to_jsonl
 
     if not eval_config.eval_dataset:
         raise ValueError('At least one --eval_dataset is required.')
+    _guard_backend(backend)
     _validate_eval_datasets(eval_config)
-    if eval_config.local_dataset and eval_config.eval_backend == 'OpenCompass':
-        _prepare_opencompass_data()
-    base_url = eval_config.eval_url
-    quant_method = getattr(quantize_config, 'quant_method', None)
-    if base_url and quant_method is not None:
-        raise ValueError(
-            f'quant_method={quant_method!r} cannot modify the model behind --eval_url. Configure quantization '
-            'on that server or omit --quant_method.')
-    if base_url and '/chat/completions' in base_url:
-        base_url = base_url.split('/chat/completions', 1)[0]
-    deploy_context = nullcontext(base_url) if base_url else run_deploy_process(
-        model_config,
-        template_config,
-        generation_config,
-        backend=infer_config.infer_backend,
-        engine_args=build_engine_args(infer_config.infer_backend, infer_config, rollout_config),
-        adapter_mapping=adapter_mapping,
-        quantize_config=quantize_config,
-        merge_lora=merge_lora,
-        host=deploy_config.host,
-        port=deploy_config.port,
-        served_model_name=deploy_config.served_model_name,
-        owned_by=deploy_config.owned_by,
-        api_key=deploy_config.api_key,
-        max_logprobs=deploy_config.max_logprobs,
-        max_concurrency=deploy_config.max_concurrency,
-        log_interval=deploy_config.log_interval,
-        request_log_path=deploy_config.request_log_path,
-        verbose=deploy_config.verbose,
-        ssl_keyfile=deploy_config.ssl_keyfile,
-        ssl_certfile=deploy_config.ssl_certfile,
-        log_level=deploy_config.log_level)
-    model_name = _model_name(model_config, deploy_config)
-    with deploy_context as active_url:
-        task_config = build_eval_task(eval_config, deploy_config, model_name, active_url)
-        run_task(task_cfg=task_config)
-        report = {eval_config.eval_backend: _summarize(task_config, eval_config.eval_backend, model_name)}
-    report.update({
+
+    # One local engine, no Ray placement and no data-parallel mesh: multi-GPU tensor parallelism still works
+    # through engine_args (e.g. vllm_tensor_parallel_size), but DP-across-replicas is not wired for eval.
+    twinkle.initialize(mode='local')
+    _, processor = load_model_processor(model_config)
+    template = build_template(template_config, processor)
+    sampler = build_sampler(
+        model_config, backend=backend, engine_args=engine_args, template=template,
+        adapters=adapters or None, quantize_config=quantize_config)
+
+    # build_sampler only reserves the engine's LoRA slots; the adapter is selected per request, so pin the
+    # one being scored. eval scores a single model, hence adapters[0] (more than one is ambiguous).
+    sampler_kwargs: Optional[Dict[str, Any]] = None
+    if adapters:
+        if len(adapters) > 1:
+            logger.warning(f'eval scores a single model; using adapters[0]={adapters[0]!r} and ignoring the rest.')
+        sampler_kwargs = {'adapter_path': adapters[0]}
+
+    model_name = _model_name(model_config)
+    evaluator = Evaluator(
+        sampler=sampler,
+        datasets=eval_config.eval_dataset,
+        template=template,
+        model_id=model_name,
+        sampler_kwargs=sampler_kwargs,
+        task_config=_build_task_config(eval_config))
+    try:
+        evaluator.run()
+        summary = _summarize(evaluator.resolved_task_config)
+    finally:
+        sampler.shutdown()
+
+    report: Dict[str, Any] = {
+        'Native': summary,
         'time': dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'),
         'model': model_config.model,
-        'adapters': list((adapter_mapping or {}).values()),
+        'adapters': list(adapters or []),
         'eval_output_dir': eval_config.eval_output_dir,
         'eval_limit': eval_config.eval_limit,
-    })
+    }
     if eval_config.result_jsonl:
         append_to_jsonl(eval_config.result_jsonl, report)
     return report

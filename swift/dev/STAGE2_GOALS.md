@@ -66,18 +66,30 @@
 - 边界：client 后端（外部 OpenAI 兼容 API）缺 token/logprobs/template 协议，validate 层显式拒绝其 scheduler 多轮模式。
 - 状态：改动位于 `cli/sample.py`、`config/process.py`、`config/validate.py`、`recipe/run_sampling.py`，4 文件过 AST；未跑测试/lint（按约束待授权）。这兑现了本文「多轮 RL 与 gym 在 twinkle_agentic 有底层而 dev 无消费方」的 stage-2 目标——sample 侧现已成为消费方。
 
-### 待处理：`_ModelReward` 越层依赖 legacy（对应目标三）
+### 已落地：奖励通道重构与每通道布局（infer / synthesis 侧）（对应目标一 / 目标三）
 
-- 现状：`recipe/run_sampling.py::_ModelReward` 由 `SamplingConfig.orm_model / prm_model` 触发，直接 import legacy `swift.infer_engine.TransformersEngine`，绕过 dev builders 与 twinkle；Ray 下在 driver 创建、不属任何 DeviceGroup，可能与 sampler 抢卡；`prm_model` 被硬编码 `task_type='seq_cls'`（并非真 PRM 推理）；文件注释「评分路径无本地模型」与实现直接矛盾。
-- 硬约束（已核实）：`build_sampler` 只支持 `task_type='causal_lm'`，池化前向（seq_cls/reranker/embedding）没有 sampler，打分必须走 `build_model(task='seq_cls')`。故「复用 sampler 对象本身打分」不可行；能讨论的只是复用**权重 / DeviceGroup**。
-- 分场景方案（按 RM 相对 sampler 底模的形态）：
-  - **A 独立本地模型**：`build_model(task='seq_cls')` 放独立 DeviceGroup（orm/prm），不复用。
-  - **B RM = sampler 底模本身**：需 twinkle 支持在同一份权重上挂 seq_cls 头，否则只能按同路径二次加载（费显存，非真复用）。
-  - **C RM = 底模的 LoRA**：底座共享、adapter 不同；sampler 已支持 `adapters=` / `enable_lora`，但打分仍需前向路径。
-  - **D 远程 API**：无本地前向、无 GPU，做成独立 API reward plugin（类比 `_ClientSampler`）。
-- 配置面缺口：`orm_model / prm_model` 目前是裸字符串路径，**无法表达 A/B/C/D**。需先决定表达方式（裸路径→A、URL 前缀→D、哨兵值或新增 `reward_source` 字段→B/C）。
-- 两个待拍板点：(1) B/C 的真权重复用需先核实 twinkle 是否支持同权重 seq_cls 前向 / 权重共享，否则 B/C 退化为 A；(2) 配置面用前缀 / 哨兵判别，还是新增显式 `reward_source` 字段。
-- 建议落地顺序：先做 A（独立本地模型 `build_model` + 独立 DeviceGroup）+ D（远程 API plugin），覆盖绝大多数真实用法；B/C 待 twinkle 能力核实后再定真做或退化。
+- **标量打分器改名**：`reward.py::_DefaultRewardModelPlugin` → `_ScalarRewardModelPlugin`。它是唯一的标量 RM 打分适配器，`default` 是 legacy `rm_plugins` 的残留语义、名不副实；改名后 `build_reward_model_plugins` 的构造点与 docstring 同步。GRPO 与 infer 共用此适配器，改名对两侧同时生效。
+- **异步奖励塌缩为单基类并接通消费**：删 `plugin.py::AsyncRewardPlugin` 与 `rewards/orm.py::AsyncORM` 别名，`RewardPlugin` 成为唯一奖励基类——作者写 `async def __call__` 即可，无需在两个基类间选。`reward.py::compute_rewards_per_func` 照常收集每个 func 的返回值后，探测其中 `inspect.isawaitable` 的项、用一次 `asyncio.gather` 并发解析、非 awaitable 原样保留，再做长度校验与 nan 填充。同步批次直调、零行为变化；`--orm` 里同步规则与异步规则可混排。两个调用点（`recipe/grpo.py`、`recipe/run_infer.py`）均为同步上下文且在 rollout 收完 candidates 之后，`asyncio.run` 不撞已有 loop。
+- **打分器构造协议**：`run_infer.py` 新增最小 `RewardScorer` `Protocol`（`__call__(completions, **columns) -> List[Optional[float]]` + `shutdown()`），仅用于类型标注与文档化 `_ModelReward`/`_GenerativeJudgeReward`/`_ApiJudgeReward` 与规则 callable 的统一契约，不改其继承。删除 `_EXCLUSIVE_REWARD_KINDS` frozenset，「哪些 kind 需独占卡」收敛为 `_RewardModelSpec.needs_device_group` property，`_exclusive_reward_groups` 与 `_build_slot_funcs` 两处消费点统一改用它。
+- **每通道并行布局**：`RLHFConfig.orm_parallel_spec`/`prm_parallel_spec`（`Optional[str]`）已接线，「按模型 id 传入的该通道奖励模型」现有配套的 dist 布局参数（详见 `PLUGIN_MIGRATION.md` 四）。设备组按各组自己的宽度切不相交 rank 块、按 spec 的 tp 维设 `gpus_per_worker`（不再写死 1）。
+- 状态：改动位于 `reward.py`、`plugin.py`、`rewards/orm.py`、`rewards/__init__.py`、`config/rlhf_config.py`、`recipe/run_infer.py`、`builders/model.py`，7 文件过 AST；未跑测试/lint（按约束待授权）。已知测试后果：`tests/component/plugin/test_registry.py` 的 `AsyncORM is AsyncRewardPlugin` 断言与「一个 kind 接受多契约」的 base 二元组断言会失效，待「补测试」授权时统一处理。
+
+### 已落地：`_ModelReward` 越层依赖 legacy 已消除（对应目标三）
+
+- 现状（已改）：`recipe/run_infer.py::_ModelReward` 不再 import legacy `swift.infer_engine.TransformersEngine`，而是走与 GRPO 共用的 `swift.dev.reward.build_frozen_reward_model` → `build_model`，`task_type`/`num_labels` 从 checkpoint 元数据取而非硬编码，Ray 下放进该通道专属 `DeviceGroup`（`remote_group`）并按 `parallel_spec` 布局，不再在 driver 裸建、与 sampler 抢卡。触发它的 `orm_model`/`prm_model` 已并入 `--orm`/`--prm`（模型 id 作为列表一项）。
+- 分场景现状：
+  - **A 独立本地标量 RM**：已落地（`_ModelReward`，`build_model(task='seq_cls')` + 独立 DeviceGroup + `parallel_spec`）。
+  - **D 远程 API judge**：已落地（`_ApiJudgeReward`，无本地前向、无 GPU，类比 `_ClientSampler`）。
+  - **生成式 judge**：已落地（`_GenerativeJudgeReward`）；当其底模就是 sampler 底模时复用同一 sampler 角色，属 B 的一部分。
+  - **B / C 真权重复用**（在 sampler 底模上挂 seq_cls 头 / 共享底座只换 adapter 打分）：仍待核实 twinkle 是否支持同权重的 seq_cls 前向；否则退化为按同路径二次加载（费显存，非真复用）。
+- 硬约束（仍成立）：`build_sampler` 只支持 `task_type='causal_lm'`，池化前向（seq_cls/reranker/embedding）没有 sampler，标量打分必须走 `build_model(task='seq_cls')`；能复用的只是权重 / DeviceGroup，不是 sampler 对象本身。
+
+### 待处理（后续）：GRPO `--reward_model`（列表）每组件 dist 布局
+
+- 本轮 infer/synthesis 侧的每通道布局（`orm_parallel_spec`/`prm_parallel_spec`，每通道至多一个模型 id，故为标量 `Optional[str]`）**未覆盖 GRPO 训练侧**。
+- 现状：GRPO 的 `RLHFConfig.reward_model`（`Optional[List[str]]`）经 `recipe/run_grpo.py` 用 `DistributedConfig(mode='local')` 本地构建（`build_model(config, DistributedConfig(mode='local'))`），`plan_rl_device_groups` 只规划 model + sampler 两组、无奖励组，故每个奖励模型没有配套的 dist 布局参数、也不占独立 DeviceGroup。
+- 待训练代码整体梳理后再决定：字段形状倾向 `reward_model_parallel_spec: Optional[List[str]]`（与 `reward_model` 按位置对齐，因 GRPO 是模型列表而非单 id），以及是否给奖励模型加独立 DeviceGroup（现 `plan_rl_device_groups` 需扩出奖励组）。
+- 无害性：本轮两条通用重构（改名 / 异步 / 构造协议）对 GRPO 自动生效——GRPO 的标量 RM 也经 `build_reward_model_plugins` → `_ScalarRewardModelPlugin`，异步消费同在 `compute_rewards_per_func`。
 
 ### 下一个议题（未展开）
 

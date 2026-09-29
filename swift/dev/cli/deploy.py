@@ -102,8 +102,8 @@ def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     if tuner_config is not None and adapter_names and len(adapter_names) == len(tuner_config.adapters):
         tuner_config.adapters = [f'{name}={path}' if name else path
                                  for name, path in zip(adapter_names, tuner_config.adapters)]
-    if result['infer_config'].infer_backend == 'pt':
-        result['infer_config'].infer_backend = 'transformers'
+    if result['infer_config'].sampler == 'pt':
+        result['infer_config'].sampler = 'transformers'
     return result
 
 
@@ -121,8 +121,8 @@ def deploy_main(argv: Optional[List[str]] = None) -> None:
         configs['model_config'],
         configs['template_config'],
         configs['generation_config'],
-        backend=configs['infer_config'].infer_backend,
-        engine_args=build_engine_args(configs['infer_config'].infer_backend, configs['infer_config'],
+        backend=configs['infer_config'].sampler,
+        engine_args=build_engine_args(configs['infer_config'].sampler, configs['infer_config'],
                                       configs['rollout_config']),
         adapter_mapping=_adapter_mapping(adapters),
         quantize_config=configs['quantize_config'],

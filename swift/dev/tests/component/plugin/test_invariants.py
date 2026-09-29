@@ -31,38 +31,25 @@ _LOOKS_LIKE_A_PLUGIN = re.compile(r'(^|_)(plugins?|funcs?|callbacks|metric)$')
 
 #: Candidates whose names do not follow that shape but which do name an implementation.
 _ALSO_CANDIDATES = {
-    ('ModelConfig', 'custom_register_path'),
-    ('TemplateConfig', 'agent_template'),
-    ('RLHFConfig', 'multi_turn_scheduler'),
     ('RLHFConfig', 'loss_scale'),
 }
 
 #: Consumed, but not through PluginRegistry -- with the consumer named, so the claim is checkable.
 WIRED_ELSEWHERE = {
-    ('ModelConfig', 'external_plugins'): 'PluginRegistry.load_configured, via TrainAssembly.prepare',
-    ('ModelConfig', 'custom_register_path'): 'PluginRegistry.load_configured (joined to external_plugins)',
+    ('PluginConfig', 'external_plugins'): 'PluginRegistry.load_configured imports every source it names',
     ('TemplateConfig', 'loss_scale'): "builders/template.py passes it to legacy get_template, whose own "
     'loss_scale registry resolves the name',
-    ('SamplingConfig', 'prm_funcs'): 'swift.dev.reward.get_reward_funcs -> the reward kind',
-    ('RLHFConfig', 'reward_model_plugin'): 'run_grpo builds one scorer per reward model via '
-    'swift.dev.reward.build_reward_model_plugins',
-    ('RLHFConfig', 'multi_turn_scheduler'): 'run_grpo configures the dev-owned MultiTurnRollout driver with '
-    'the selected swift scheduler',
+    ('InferConfig', 'metric'): "run_infer reads infer_config.metric and hands it to compute_metric (a closed "
+    "'acc' / 'rouge' choice, not a registry lookup)",
 }
 
 #: Declared and reaching NOTHING. Allowed, but each row states why -- an ignored knob must be a
 #: decision, not a surprise. Deleting the field is what removes the row.
 UNWIRED = {
-    ('TrainConfig', 'callbacks'): 'legacy callbacks are HfTrainer TrainerCallbacks; twinkle drives its own '
-    'loop, so there is no object for them to attach to. A dev callback point would be a new design.',
     ('TrainConfig', 'eval_metric'): 'metrics are twinkle Metric objects added to the optimizer status; dev '
     'never reads this name. Wiring it means a metric kind whose base is twinkle Metric.',
-    ('TemplateConfig', 'agent_template'): 'agent templates format tool calls inside the legacy template; the '
-    'dev template inherits the legacy behavior and exposes no selector.',
     ('RLHFConfig', 'loss_scale'): 'the RLHF losses come from twinkle and take no loss_scale; the template-side '
     'loss_scale (TemplateConfig) is the one that is honoured.',
-    ('InferConfig', 'metric'): 'InferConfig is not threaded into run_infer at all yet (it takes metric as a '
-    "parameter, and the value is a closed 'acc' / 'rouge' choice rather than a registry lookup).",
 }
 
 

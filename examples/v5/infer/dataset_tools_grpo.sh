@@ -6,7 +6,7 @@
 # and selects the `calculator` tool registered there -- the bring-your-own-tool path. Tool calling is
 # inherently multi-turn (the model emits a call, reads the observation back, then answers), so --max_turns
 # caps the rounds, and a math dataset like NuminaMath pairs naturally with a calculator. NO reward channel
-# here (no --reward_funcs / --prm_model / --orm_model): scores are null and reward is left to training.
+# here (no --orm / --prm): scores are null and reward is left to training.
 #
 # --output_format grpo writes one row per prompt holding the whole sampled group as an offline GRPO corpus:
 # every candidate's full multi-turn trajectory (--num_samples of them, messages intact) plus its rollout
@@ -14,7 +14,7 @@
 # rollout_logprobs (the old-policy logps) / loss_mask -- with the relative path embedded in the row. The
 # group-relative advantage is NOT computed here: it is cheap and belongs to the training step, which
 # recomputes it from the stored rewards + logps. With no reward channel the row's scores are null (reward
-# is left to training); add --reward_funcs / --prm_model / --orm_model to store per-candidate rewards too.
+# is left to training); add --orm / --prm to store per-candidate rewards too.
 # grpo requires --num_samples >= 2 and --save_rollout_tokens true (the logps only exist when that forces
 # logprob computation). Multimodal inputs are not stored as tensors -- the row keeps the dataset's image
 # columns + messages, so training re-encodes the vision inputs (deterministic for identical images).
@@ -27,7 +27,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 USE_SWIFT_V5=1 \
 swift infer \
     --model Qwen/Qwen3.5-4B \
-    --infer_backend vllm \
+    --sampler vllm \
     --dataset 'AI-MO/NuminaMath-TIR#500' \
     --external_plugins examples/v5/infer/custom_tools.py \
     --tools calculator \

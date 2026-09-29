@@ -7,7 +7,39 @@ from typing import Dict, Iterable, Literal, Mapping, Optional, Sequence, Tuple, 
 UNSUPPORTED_SAMPLER_FIELDS: Tuple[str, ...] = (
     'lmdeploy_cache_max_entry_count', 'lmdeploy_quant_policy', 'lmdeploy_session_len', 'lmdeploy_tp',
     'lmdeploy_vision_batch_size')
-REMOVED_OPTION_FIELDS: Tuple[str, ...] = ('ignore_args_error', 'use_swift_lora')
+# write_batch_size was the old incremental-result write knob (superseded by InferConfig.batch_size) and
+# to_ollama was a dropped export target; both survive only in the legacy v4 argument classes. The rest
+# were removed from the dev Configs outright: the reward selectors merged into `--orm`/`--prm`, plugin
+# registration collapsed onto `--external_plugins`, and `agent_template`/`callbacks` were never consumed.
+REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
+    'ignore_args_error', 'use_swift_lora', 'write_batch_size', 'to_ollama', 'orm_model', 'prm_model',
+    'reward_model_plugin', 'custom_register_path', 'agent_template', 'callbacks')
+#: Per-field replacement text overriding the generic 'removed_option' guidance where the migration path
+#: is specific enough to name, so the failure points at the exact flag that replaced it.
+REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
+    'orm_model': 'pass the reward-model id as an item of --orm instead',
+    'prm_model': 'pass the reward-model id as an item of --prm instead',
+    'reward_model_plugin': 'reward-model scoring is built in now; configure --orm/--prm directly',
+    'custom_register_path': 'use --external_plugins (local file | local folder | hub id)',
+    'agent_template': 'express the agent format through --template and the template registry',
+    'callbacks': 'compose training callbacks in code; this pass-through list was never consumed',
+}
+# eval scores a local sampler through the Native runner only, so its former remote-service URL, its
+# backend choice (OpenCompass/VLMEvalKit are gone) and the OpenCompass-only local-data toggle are obsolete.
+EVAL_REMOTE_EVAL_FIELDS: Tuple[str, ...] = ('eval_url', 'eval_backend', 'local_dataset')
+# The individual decoding knobs. Commands that never decode text (export) or that set decoding through one
+# structured flag (eval's --eval_generation_config) don't consume these per-flag generation options.
+GENERATION_OPTION_FIELDS: Tuple[str, ...] = (
+    'temperature', 'top_p', 'top_k', 'num_beams', 'repetition_penalty', 'stop_words', 'stream', 'logprobs',
+    'top_logprobs', 'max_new_tokens', 'structured_outputs_regex')
+# Rollout knobs retired together with the gym environments and the pluggable multi-turn scheduler.
+RLHF_REMOVED_ROLLOUT_FIELDS: Tuple[str, ...] = (
+    'gym_env', 'use_gym_env', 'multi_turn_scheduler', 'completion_length_limit_scope')
+# eval scores an in-process sampler and starts no HTTP deployment, so the server knobs it once accepted
+# through DeployConfig belong to `swift deploy`, not here.
+EVAL_SERVING_FIELDS: Tuple[str, ...] = (
+    'host', 'port', 'api_key', 'served_model_name', 'owned_by', 'ssl_certfile', 'ssl_keyfile', 'max_logprobs',
+    'log_interval', 'log_level', 'verbose')
 UNSUPPORTED_DISTRIBUTED_FIELDS: Tuple[str, ...] = ('ddp_backend', 'ddp_timeout', 'device_groups', 'ray_exp_name')
 SERVING_DISTRIBUTED_FIELDS: Tuple[str, ...] = UNSUPPORTED_DISTRIBUTED_FIELDS + ('use_ray',)
 TRAIN_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
@@ -100,7 +132,17 @@ LEGACY_ALIASES: Dict[str, str] = {
     'fp16': 'torch_dtype',
     'response_length': 'max_completion_length',
     'use_ray': 'mode',
-    'sampler_engine': 'infer_backend',
+    'sampler_engine': 'sampler',
+    'infer_backend': 'sampler',
+    'tuner_type': 'tuner',
+    'reward_funcs': 'orm',
+    'reward_weights': 'orm_weights',
+    'prm_funcs': 'prm',
+    'lr_scheduler_type': 'lr_scheduler',
+    # Only TrainConfig's supervised-loss field was renamed to `loss`; RLHFConfig.loss_type (the GRPO
+    # objective) keeps its name. normalize_argv/build_legacy_contract suppress this alias on commands
+    # where `loss_type` is itself a live field (rlhf), so the two never collide.
+    'loss_type': 'loss',
 }
 
 CHECKPOINT_NON_TRAINING_FIELDS: Tuple[str, ...] = tuple(
@@ -134,7 +176,7 @@ CLI_LEGACY_ONLY: Dict[str, Mapping[str, Tuple[str, ...]]] = {
         'unsupported_training': TRAIN_UNSUPPORTED_FIELDS + TUNER_UNSUPPORTED_FIELDS,
         'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + CHECKPOINT_TRANSFORMERS_STATE_FIELDS
         + CHECKPOINT_HUB_FIELDS + MCORE_REFERENCE_CHECKPOINT_FIELDS,
-        'removed_option': REMOVED_OPTION_FIELDS + ('seq_kd',),
+        'removed_option': REMOVED_OPTION_FIELDS + ('seq_kd',) + RLHF_REMOVED_ROLLOUT_FIELDS,
     },
     'megatron_pt': {
         'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS,
@@ -166,11 +208,13 @@ CLI_LEGACY_ONLY: Dict[str, Mapping[str, Tuple[str, ...]]] = {
     },
     'eval': {
         'unsupported_sampler': UNSUPPORTED_SAMPLER_FIELDS,
-        'unsupported_command': SERVING_DISTRIBUTED_FIELDS + CHECKPOINT_NON_TRAINING_FIELDS,
-        'removed_option': REMOVED_OPTION_FIELDS,
+        'unsupported_command': SERVING_DISTRIBUTED_FIELDS + CHECKPOINT_NON_TRAINING_FIELDS + EVAL_SERVING_FIELDS
+        + ('merge_lora',),
+        'removed_option': REMOVED_OPTION_FIELDS + EVAL_REMOTE_EVAL_FIELDS + GENERATION_OPTION_FIELDS,
     },
     'export': {
-        'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS + CHECKPOINT_EXPORT_UNSUPPORTED_FIELDS,
+        'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS + CHECKPOINT_EXPORT_UNSUPPORTED_FIELDS
+        + GENERATION_OPTION_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS,
     },
     'merge': {
@@ -204,7 +248,7 @@ def unsupported_contracts(command: str) -> Dict[str, LegacyFieldContract]:
                 name=name,
                 kind='unsupported',
                 reason=reason,
-                replacement=replacement,
+                replacement=REMOVED_OPTION_REPLACEMENTS.get(name, replacement),
             )
     return result
 
@@ -229,7 +273,13 @@ def build_legacy_contract(command: str,
         if name in contracts:
             continue
         target = LEGACY_ALIASES.get(name)
-        if target in config_owners:
+        # A legacy spelling that is itself a live field of a DIFFERENT Config than the alias target is
+        # that Config's own current flag, not a rename -- `loss_type` on RLHFConfig (the GRPO objective)
+        # vs `loss` on TrainConfig (the supervised loss). Classify it as direct so the audit matches
+        # what normalize_argv does at runtime; same-owner pairs (`lr`/`learning_rate`, both TrainConfig)
+        # are genuine renames and stay aliases.
+        cross_owner_field = config_owners.get(name) is not None and config_owners.get(target) is not config_owners[name]
+        if target in config_owners and not cross_owner_field:
             owner = config_owners[target]
             if name in {'bf16', 'fp16'}:
                 transform = 'precision_bool_to_dtype'

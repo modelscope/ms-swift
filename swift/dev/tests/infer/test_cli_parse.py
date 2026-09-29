@@ -271,19 +271,19 @@ def test_dataset_tools_grpo_flags(fake_model):
 
 
 def test_math_prm_orm_ray_flags(fake_model):
-    """math_prm_orm_ray.sh: a model PRM channel + a function ORM channel over ray. reward_funcs ->
-    reward_config, prm_model -> InferConfig, num_samples/output_format -> InferConfig, mode/nproc ->
-    DistributedConfig."""
+    """math_prm_orm_ray.sh: a model PRM channel + a rule ORM channel over ray. Both ``--orm`` and ``--prm``
+    land on the RLHFConfig reward surface (``reward_config``) -- rules and model ids share one merged list
+    per channel; num_samples/output_format -> InferConfig, mode/nproc -> DistributedConfig."""
     r = parse_infer_configs([
         '--model', fake_model, '--infer_backend', 'vllm', '--dataset', '/tmp/x.jsonl',
-        '--num_samples', '8', '--output_format', 'all', '--reward_funcs', 'accuracy',
-        '--prm_model', 'Qwen/Qwen2.5-Math-PRM-7B', '--mode', 'ray', '--nproc_per_node', '2',
+        '--num_samples', '8', '--output_format', 'all', '--orm', 'accuracy',
+        '--prm', 'Qwen/Qwen2.5-Math-PRM-7B', '--mode', 'ray', '--nproc_per_node', '2',
         '--vllm_gpu_memory_utilization', '0.85', '--max_new_tokens', '2048', '--temperature', '1.0',
     ])
-    # the ORM function channel is the RLHFConfig reward-func registry surface (shared with GRPO)
-    assert r['reward_config'].reward_funcs == ['accuracy']
-    # the PRM model channel is an InferConfig knob
-    assert r['infer_config'].prm_model == 'Qwen/Qwen2.5-Math-PRM-7B'
+    # both reward channels are the RLHFConfig registry surface (shared with GRPO): the ORM rule and the
+    # PRM model id each land on their own channel, in the order typed.
+    assert r['reward_config'].orm == ['accuracy']
+    assert r['reward_config'].prm == ['Qwen/Qwen2.5-Math-PRM-7B']
     assert r['infer_config'].num_return_sequences == 8
     assert r['infer_config'].output_format == 'all'
     assert r['distributed_config'].mode == 'ray'

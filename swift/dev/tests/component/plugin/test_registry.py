@@ -9,7 +9,7 @@ import textwrap
 
 import pytest
 
-from swift.dev.plugin import AsyncRewardPlugin, PluginKind, PluginRegistry, RewardPlugin, SwiftPlugin
+from swift.dev.plugin import PluginKind, PluginRegistry, RewardPlugin, SwiftPlugin
 
 
 @pytest.fixture
@@ -37,10 +37,9 @@ def test_the_legacy_dict_is_the_registry():
 
 def test_orm_is_the_reward_plugin_base():
     """``ORM`` is an alias, not a parallel class: a legacy plugin file subclassing ORM registers."""
-    from swift.dev.rewards import ORM, AsyncORM
+    from swift.dev.rewards import ORM
 
     assert ORM is RewardPlugin
-    assert AsyncORM is AsyncRewardPlugin
 
 
 def test_register_then_get(kind):
@@ -88,17 +87,32 @@ def test_register_refuses_a_silent_overwrite(kind):
     assert PluginRegistry.get(kind, 'dup') is First
 
 
-def test_a_kind_may_accept_more_than_one_contract():
-    """sync and async rewards are one extension point, so ``base`` takes a tuple.
+def test_one_base_covers_sync_and_async_rewards(kind):
+    """Sync and async rewards are ONE extension point on ONE base.
 
-    ``AsyncRewardPlugin`` is deliberately NOT a subclass of ``RewardPlugin`` (an awaited ``__call__``
-    is a different contract, not a refinement of one), so a single base would have rejected it.
+    An ``async def __call__`` is just a ``RewardPlugin`` whose scoring does I/O; the scoring loop
+    (:func:`swift.dev.reward.compute_rewards_per_func`) resolves the returned coroutines with one
+    ``asyncio.gather``. There is no separate async base to choose, so the ``reward`` kind's base is a
+    single class, and both a sync and an async reward register against it.
     """
     from swift.dev.rewards import REWARD
 
-    assert isinstance(REWARD.base, tuple)
-    assert set(REWARD.base) == {RewardPlugin, AsyncRewardPlugin}
-    assert 'RewardPlugin' in REWARD.base_names and 'AsyncRewardPlugin' in REWARD.base_names
+    assert REWARD.base is RewardPlugin and not isinstance(REWARD.base, tuple)
+
+    @PluginRegistry.register(kind, 'sync_reward')
+    class Sync(RewardPlugin):
+
+        def __call__(self, completions, **kwargs):
+            return [1.0] * len(completions)
+
+    @PluginRegistry.register(kind, 'async_reward')
+    class Async(RewardPlugin):
+
+        async def __call__(self, completions, **kwargs):
+            return [2.0] * len(completions)
+
+    assert PluginRegistry.get(kind, 'sync_reward') is Sync
+    assert PluginRegistry.get(kind, 'async_reward') is Async
 
 
 def test_unknown_name_lists_what_is_available(kind):
@@ -180,18 +194,20 @@ def test_two_plugin_files_with_the_same_stem_do_not_shadow_each_other(kind, tmp_
 
 
 def test_loading_the_same_file_twice_is_a_no_op(kind, tmp_path):
-    """Idempotent by path: a re-import would re-run ``@register`` and raise 'already registered'."""
+    """Idempotent by path: twinkle's loader caches the module, so a second load neither re-runs
+    ``@register`` (which would raise 'already registered') nor duplicates the entry. swift keeps no
+    parallel path cache of its own -- it hands every source to twinkle and lets twinkle dedupe."""
     path = tmp_path / 'plugin.py'
     path.write_text(_PLUGIN_FILE.format(name='once', cls='Once', score=1.0))
 
     assert PluginRegistry.load_external([str(path)]) == [str(path)]
-    assert PluginRegistry.load_external([str(path)]) == []  # second call loads nothing
+    assert PluginRegistry.load_external([str(path)]) == [str(path)]  # cached import, @register not re-run
     assert set(kind.entries) == {'once'}
 
 
 def test_a_missing_plugin_file_fails_immediately(tmp_path):
     """A typo'd --external_plugins path must not be silently skipped."""
-    with pytest.raises(FileNotFoundError, match='is not a file'):
+    with pytest.raises(FileNotFoundError, match='neither a file nor a folder'):
         PluginRegistry.load_external([str(tmp_path / 'nope.py')])
 
 
@@ -207,17 +223,18 @@ def test_a_broken_plugin_file_does_not_leave_a_half_imported_module(kind, tmp_pa
     assert set(kind.entries) == {'fixed'}
 
 
-def test_load_configured_reads_both_config_fields(kind, tmp_path):
-    """external_plugins and custom_register_path are loaded together, as legacy does."""
-    from swift.dev.config import ModelConfig
+def test_load_configured_reads_the_plugin_config(kind, tmp_path):
+    """``load_configured`` reads the run's ``PluginConfig.external_plugins`` -- the one object that knows
+    which field names the plugin sources, so a recipe cannot load half of them. The legacy second flag
+    (``custom_register_path``) is gone; ``external_plugins`` is the single loading entry point."""
+    from swift.dev.config import PluginConfig
 
     first = tmp_path / 'a.py'
     first.write_text(_PLUGIN_FILE.format(name='a', cls='A', score=1.0))
     second = tmp_path / 'b.py'
     second.write_text(_PLUGIN_FILE.format(name='b', cls='B', score=1.0))
 
-    model_config = ModelConfig(model='/m', external_plugins=[str(first)], custom_register_path=[str(second)])
-    PluginRegistry.load_configured(model_config)
+    PluginRegistry.load_configured(PluginConfig(external_plugins=[str(first), str(second)]))
     assert set(kind.entries) == {'a', 'b'}
 
 

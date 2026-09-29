@@ -50,7 +50,7 @@ class _HFSchedulerAdapter(LambdaLR):
 
 class CosineWithMinLRScheduler(_HFSchedulerAdapter):
     """Cosine decay to a floor. The combination swift's own docs recommend:
-    ``--lr_scheduler_type cosine_with_min_lr --lr_scheduler_kwargs '{"min_lr": 1e-6}'``."""
+    ``--lr_scheduler cosine_with_min_lr --lr_scheduler_kwargs '{"min_lr": 1e-6}'``."""
 
     hf_name = 'cosine_with_min_lr'
 

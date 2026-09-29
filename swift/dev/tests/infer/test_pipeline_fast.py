@@ -81,7 +81,7 @@ def test_all_format_scores_with_callable_reward(tmp_path, patch_prompt_rows):
     infer_config = InferConfig(cache_files=[_cache(tmp_path)], num_return_sequences=3, batch_size=2, output_format='all')
     results = run_infer(
         ModelConfig(task_type='causal_lm'), TemplateConfig(), DatasetConfig(), infer_config,
-        GenerationConfig(), rlhf_config=RLHFConfig(reward_funcs=[_exact_reward]), backend='no')
+        GenerationConfig(), rlhf_config=RLHFConfig(orm=[_exact_reward]), backend='no')
 
     # only the first candidate matches the solution, and normalize_rewards is off by default
     assert results[0]['scores'] == [1.0, 0.0, 0.0]
@@ -162,7 +162,7 @@ def test_arrow_format_overrides_dpo_checkpoint_writer(tmp_path, patch_prompt_row
         output_format='dpo', store_format='arrow')
     run_infer(
         ModelConfig(task_type='causal_lm'), TemplateConfig(), DatasetConfig(), infer_config,
-        GenerationConfig(), rlhf_config=RLHFConfig(reward_funcs=[_exact_reward]), backend='no', output_path=out_path)
+        GenerationConfig(), rlhf_config=RLHFConfig(orm=[_exact_reward]), backend='no', output_path=out_path)
 
     assert not os.path.exists(out_path)  # no checkpointed jsonl was published
     assert os.path.isdir(str(tmp_path / 'dpo.arrow'))
@@ -199,7 +199,7 @@ def test_dpo_format_pairs_best_against_worst(tmp_path, patch_prompt_rows):
         output_format='dpo')
     results = run_infer(
         ModelConfig(task_type='causal_lm'), TemplateConfig(), DatasetConfig(), infer_config,
-        GenerationConfig(), rlhf_config=RLHFConfig(reward_funcs=[_exact_reward]), backend='no')
+        GenerationConfig(), rlhf_config=RLHFConfig(orm=[_exact_reward]), backend='no')
 
     assert len(results) == 2  # one chosen/rejected pair per prompt (n_best_to_keep=1)
     row = results[0]
@@ -236,7 +236,7 @@ def test_dpo_format_writes_checkpointed_final(tmp_path, patch_prompt_rows):
         cache_files=[_cache(tmp_path)], num_return_sequences=3, n_best_to_keep=1, batch_size=1, output_format='dpo')
     run_infer(
         ModelConfig(task_type='causal_lm'), TemplateConfig(), DatasetConfig(), infer_config,
-        GenerationConfig(), rlhf_config=RLHFConfig(reward_funcs=[_exact_reward]), backend='no', output_path=out_path)
+        GenerationConfig(), rlhf_config=RLHFConfig(orm=[_exact_reward]), backend='no', output_path=out_path)
 
     rows = _read_jsonl(out_path)
     assert len(rows) == 2

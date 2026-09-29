@@ -28,15 +28,15 @@ def parse_sft_configs(
     *,
     command: str = 'sft',
 ) -> Dict[str, Any]:
-    """Parse argv into the Configs run_sft/run_pt consume; dispatch the tuner by ``tuner_type``.
+    """Parse argv into the Configs run_sft/run_pt consume; dispatch the tuner by ``tuner``.
 
     The backend is a single flag: ``--backend megatron`` selects the Megatron path (and its own
     legacy-flag contract, keyed ``megatron_<command>``), while the default Transformers path is
     unchanged. MegatronConfig/MoEConfig are always parsed so the Megatron knobs are expressible; on
     the Transformers backend validate_configs rejects any of them that were actually set.
 
-    ``tuner_config`` is None for full-parameter training (tuner_type='full') and a filled TunerConfig
-    for 'lora'. Any other tuner_type is refused rather than silently building LoRA.
+    ``tuner_config`` is None for full-parameter training (tuner='full') and a filled TunerConfig
+    for 'lora'. Any other tuner is refused rather than silently building LoRA.
     """
     from swift.dev.cli._megatron_compat import MegatronCliCompatConfig, configure_megatron, is_megatron_argv
     from swift.dev.cli.parser import parse_configs, resolve_argv, select_tuner

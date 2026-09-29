@@ -52,7 +52,7 @@ def run_embedding(
     Orchestration mirrors ``run_sft`` step for step (see its docstring for the resume ordering
     contract, which is unchanged here); ``_save_final`` has the same test-oriented meaning.
 
-    The loss is chosen by ``TrainConfig.loss_type`` (default 'infonce') and Matryoshka aggregation by
+    The loss is chosen by ``TrainConfig.loss`` (default 'infonce') and Matryoshka aggregation by
     ``TrainConfig.mrl_dims``; both are read here rather than passed separately so the same Config
     that drives legacy drives this recipe.
     """
@@ -96,7 +96,7 @@ def _run_embedding_body(
         # last stage's output and calls loss_instance explicitly instead of its internal vocab-parallel
         # CE, and its set_loss binds process_group to the DP group so InfonceLoss's in-batch all-gather
         # does not deadlock ranks on earlier pipeline stages.
-        configure_embedding_loss(model, loss_type=train_config.loss_type or 'infonce', mrl_dims=train_config.mrl_dims)
+        configure_embedding_loss(model, loss_type=train_config.loss or 'infonce', mrl_dims=train_config.mrl_dims)
 
     return TrainAssembly(
         'run_embedding',

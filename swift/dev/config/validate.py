@@ -209,9 +209,9 @@ def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
     # save_rollout_tokens persists the per-token feature the rollout produced; the message-only ``client``
     # teacher exposes no token IDs or logprobs, so there would be nothing to write. Reject the pairing up
     # front instead of silently emitting rows that carry no token path.
-    if infer_config.save_rollout_tokens and infer_config.infer_backend == 'client':
+    if infer_config.save_rollout_tokens and infer_config.sampler == 'client':
         raise ValueError(
-            "save_rollout_tokens requires a token-capable local backend, but infer_backend='client' is "
+            "save_rollout_tokens requires a token-capable local backend, but sampler='client' is "
             'message-only (no token IDs or logprobs). Use a local backend (transformers/vllm/sglang) or '
             'drop --save_rollout_tokens.')
     # store_format='arrow' serialises the whole run once at the end and writes no checkpoint files, so it
@@ -269,9 +269,9 @@ def _check_grpo_loss_type(cfg: 'RLHFConfig', loss_type: str) -> None:
 def _check_dynamic_sampling(cfg: 'RLHFConfig') -> None:
     if not cfg.dynamic_sample:
         return
-    if not (cfg.reward_funcs or cfg.reward_model):
+    if not (cfg.orm or cfg.reward_model):
         raise ValueError(
-            'dynamic_sample requires reward_funcs or reward_model because it filters groups by reward variance.')
+            'dynamic_sample requires orm or reward_model because it filters groups by reward variance.')
     if cfg.num_generations < 2:
         raise ValueError('dynamic_sample requires num_generations >= 2 to measure reward variance.')
     if cfg.max_resample_times < 1:
@@ -327,8 +327,8 @@ def _check_rlsd(cfg: 'RLHFConfig') -> None:
         raise ValueError('rlsd_reweight_clip_range must be >= 0.')
     if cfg.rlsd_lambda_warmup_steps < 0 or cfg.rlsd_lambda_decay_steps < 0:
         raise ValueError('RLSD warmup and decay steps must be non-negative.')
-    if not (cfg.reward_funcs or cfg.reward_model):
-        raise ValueError('advantage_reweight=rlsd requires reward_funcs or reward_model.')
+    if not (cfg.orm or cfg.reward_model):
+        raise ValueError('advantage_reweight=rlsd requires orm or reward_model.')
     if cfg.teacher_model_server:
         raise ValueError('RLSD requires a local or self-distillation teacher, not teacher_model_server.')
 
@@ -377,7 +377,6 @@ def _check_auxiliary_adapters(cfg: 'RLHFConfig') -> None:
         'reward_adapters': cfg.reward_adapters,
         'reward_model_type': cfg.reward_model_type,
         'reward_model_revision': cfg.reward_model_revision,
-        'reward_model_plugin': cfg.reward_model_plugin,
         'reward_template': cfg.reward_template,
     }
     for field, values in reward_fields.items():
@@ -385,8 +384,8 @@ def _check_auxiliary_adapters(cfg: 'RLHFConfig') -> None:
             raise ValueError(f'{field} requires reward_model.')
         if values and len(values) != len(reward_models):
             raise ValueError(f'{field} must contain exactly one value per reward_model.')
-    if cfg.rlhf_type != 'grpo' and (cfg.reward_model_plugin or cfg.reward_template):
-        raise ValueError('reward_model_plugin and reward_template are supported by GRPO only.')
+    if cfg.rlhf_type != 'grpo' and cfg.reward_template:
+        raise ValueError('reward_template is supported by GRPO only.')
 
 
 def _check_logging(logging_config: Optional['LoggingConfig']) -> None:
@@ -568,11 +567,11 @@ def _check_load_quantization(model_config: 'ModelConfig', distributed_config: 'D
             'backend. Use ModelConfig.fp4_format/fp8_format for Transformer-Engine training quantization, or '
             'convert a pre-quantized checkpoint to mcore first.')
 
-    tuner_type = getattr(tuner_config, 'tuner_type', 'full') if tuner_config is not None else 'full'
-    if training and tuner_type == 'full':
+    tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
+    if training and tuner == 'full':
         raise ValueError(
             f'quant_method={method!r} cannot be combined with full-parameter training: load-time quantized base '
-            'weights are not trainable parameters. Select a trainable adapter such as --tuner_type lora.')
+            'weights are not trainable parameters. Select a trainable adapter such as --tuner lora.')
 
     bits = quantize_config.quant_bits
     valid_bits = {
@@ -643,13 +642,13 @@ def _check_mtp(model_config: 'ModelConfig', is_megatron: bool, tuner_config: Opt
                          'ModelConfig.enable_mtp_training=True to mean anything.')
 
     if (model_config.enable_mtp_training and tuner_config is not None
-            and getattr(tuner_config, 'tuner_type', 'full') != 'full'):
+            and getattr(tuner_config, 'tuner', 'full') != 'full'):
         # Not an error: this is trainable if the adapter targets the MTP modules, which we cannot
         # decide from target_modules alone (it may be 'all-linear', or name them explicitly).
         # twinkle re-checks against the built model and warns if nothing ended up trainable.
-        logger.warning('enable_mtp_training with tuner_type=%r: the MTP layers are base parameters, so they only '
+        logger.warning('enable_mtp_training with tuner=%r: the MTP layers are base parameters, so they only '
                        'train if the adapter covers them. Otherwise the MTP loss is computed and discarded.',
-                       tuner_config.tuner_type)
+                       tuner_config.tuner)
 
 
 def _check_megatron_attn_backend(model_config: 'ModelConfig', template_config: 'TemplateConfig',
@@ -846,10 +845,10 @@ def _check_megatron_optimizer(train_config: 'TrainConfig', is_megatron: bool) ->
     # 'cosine_with_min_lr' is Megatron's plain cosine plus a floor, so without min_lr it would run as
     # ordinary cosine -- the name silently not doing what it says. (On the HF path transformers
     # itself raises when neither min_lr nor min_lr_rate is given.)
-    if train_config.lr_scheduler_type.lower() == 'cosine_with_min_lr' and not train_config.min_lr:
-        raise ValueError("lr_scheduler_type='cosine_with_min_lr' needs TrainConfig.min_lr > 0 on the Megatron "
+    if train_config.lr_scheduler.lower() == 'cosine_with_min_lr' and not train_config.min_lr:
+        raise ValueError("lr_scheduler='cosine_with_min_lr' needs TrainConfig.min_lr > 0 on the Megatron "
                          'backend; with min_lr=0 it is just cosine. Set min_lr, or use '
-                         "lr_scheduler_type='cosine'.")
+                         "lr_scheduler='cosine'.")
 
     decay_steps = train_config.lr_decay_iters
     if decay_steps is not None and decay_steps <= 0:
@@ -1158,8 +1157,8 @@ def _check_checkpoint_runtime(checkpoint_config: Optional['CheckpointConfig'],
             raise NotImplementedError(
                 f'Transformers checkpoints cannot selectively omit or restore {sorted(unsupported)}. '
                 'Use --save_only_model/--resume_only_model, or switch to the Megatron backend.')
-        tuner_type = getattr(tuner_config, 'tuner_type', 'full') if tuner_config is not None else 'full'
-        if tuner_type != 'full' and 'max_shard_size' in changed:
+        tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
+        if tuner != 'full' and 'max_shard_size' in changed:
             raise NotImplementedError(
                 'Transformers PEFT adapter checkpoints do not support max_shard_size. Remove the option or use '
                 'full-parameter training.')
@@ -1224,8 +1223,8 @@ def _check_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['T
     if rlhf_config is None:
         return
     rlhf_type = getattr(rlhf_config, 'rlhf_type', None)
-    tuner_type = getattr(tuner_config, 'tuner_type', 'full') if tuner_config is not None else 'full'
-    uses_ref = rlhf_type in _RLHF_USES_REF_MODEL and (tuner_type == 'full' or bool(rlhf_config.ref_adapters))
+    tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
+    uses_ref = rlhf_type in _RLHF_USES_REF_MODEL and (tuner == 'full' or bool(rlhf_config.ref_adapters))
     if rlhf_config.ref_model is None:
         if rlhf_config.ref_adapters:
             raise ValueError('ref_adapters requires a reference model; call process_configs or set ref_model.')
@@ -1235,7 +1234,7 @@ def _check_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['T
         uses_ref = False
     if not uses_ref:
         raise ValueError(f'RLHFConfig.ref_model={rlhf_config.ref_model!r} is not used by rlhf_type={rlhf_type!r}'
-                         f' with tuner_type={tuner_type!r}: CPO/ORPO fold the reference into their loss and LoRA '
+                         f' with tuner={tuner!r}: CPO/ORPO fold the reference into their loss and LoRA '
                          'uses the adapter-disabled base as the reference, so no separate ref_model is loaded. '
                          'Remove it.')
 

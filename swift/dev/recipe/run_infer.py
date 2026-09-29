@@ -32,7 +32,7 @@ import shutil
 import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Protocol, Tuple
 
 import json
 
@@ -100,13 +100,13 @@ def run_infer(
         model_config: model id/path, dtype, ``task_type`` (selects the path).
         template_config: chat template, and the ``system`` that overrides the dataset's.
         dataset_config: what to infer over. See ``split_dataset_ratio`` for how the split is chosen.
-        infer_config: engine choice plus every generation/output/scoring knob (``infer_backend``,
+        infer_config: engine choice plus every generation/output/scoring knob (``sampler``,
             ``num_return_sequences``, ``output_format``, ``batch_size``, ``metric``, ``strict``, the
             reward channels, resume / cache / rollout-token dumping).
         generation_config: decoding knobs. ``stream`` only affects the interactive REPL
             (:mod:`swift.dev.recipe.infer_tui`); this dataset pipeline always samples in batch.
-        rlhf_config: the reward-func registry surface (``reward_funcs`` / ``reward_weights``) and the
-            multi-turn config (``max_turns`` / ``max_trajectory_tokens``), shared with GRPO.
+        rlhf_config: the reward-channel registry surface (``orm`` / ``prm`` and their ``*_weights``) and
+            the multi-turn config (``max_turns`` / ``max_trajectory_tokens``), shared with GRPO.
         rollout_config: tool/sandbox config for a multi-turn rollout.
         backend: generation engine -- 'vllm' / 'sglang' / 'transformers' to sample locally, or
             'client' / 'no' for a remote teacher / a cache-only run.
@@ -237,23 +237,27 @@ def _run_generative(
             "tool trajectory to score against the candidates'. Turn off score_ground_truth, or run "
             'single-turn.')
 
-    # Resolve the model-reward channels BEFORE twinkle init and the sampler build: the specs decide
-    # whether a reward model needs its own GPU DeviceGroup (declared at init), and a generative judge
-    # reusing the sampler needs its reward LoRA resident in the engine's adapter list at construction
-    # (vLLM/SGLang size their adapter slots up front). The channels themselves are built after the
-    # sampler, since a judge scores through it.
+    # Resolve the reward channels BEFORE twinkle init and the sampler build: each merged --orm/--prm list
+    # becomes ordered rule/model slots, and the model slots' specs decide whether a reward model needs its
+    # own GPU DeviceGroup (declared at init) and whether a generative judge reusing the sampler needs its
+    # reward LoRA resident in the engine's adapter list at construction (vLLM/SGLang size their adapter
+    # slots up front). The channel callables are built after the sampler, since a judge scores through it.
     sampler_model = model_config.model
-    orm_spec = _resolve_reward_model(infer_config.orm_model, infer_config.orm_adapter, sampler_model, backend)
-    prm_spec = _resolve_reward_model(infer_config.prm_model, infer_config.prm_adapter, sampler_model, backend)
-    reuse_adapters = [spec.adapter for spec in (orm_spec, prm_spec)
-                      if spec is not None and spec.kind == 'generative_reuse' and spec.adapter]
-    reward_groups = _exclusive_reward_groups(orm_spec, prm_spec)
+    orm_slots = _resolve_reward_channel(
+        rlhf_config.orm if rlhf_config is not None else [], infer_config.orm_adapter, sampler_model, backend,
+        parallel_spec=rlhf_config.orm_parallel_spec if rlhf_config is not None else None, channel='orm')
+    prm_slots = _resolve_reward_channel(
+        rlhf_config.prm if rlhf_config is not None else [], infer_config.prm_adapter, sampler_model, backend,
+        parallel_spec=rlhf_config.prm_parallel_spec if rlhf_config is not None else None, channel='prm')
+    reuse_adapters = [slot.spec.adapter for slots in (orm_slots, prm_slots) for slot in slots
+                      if slot.is_model and slot.spec.kind == 'generative_reuse' and slot.spec.adapter]
+    reward_groups = _exclusive_reward_groups(orm_slots, prm_slots, distributed_config)
     if reward_groups and (distributed_config is None or distributed_config.mode != 'ray'):
         raise ValueError(
-            f'reward channel(s) {reward_groups} keep their own model resident on GPU and need a dedicated '
-            "DeviceGroup, which only DistributedConfig.mode='ray' can place. Run with mode='ray' (and "
-            'nproc_per_node), or use a sampler-reusing generative judge / an http(s) endpoint, which need '
-            'no extra device.')
+            f'reward channel(s) {[name for name, _, _ in reward_groups]} keep their own model resident on '
+            "GPU and need a dedicated DeviceGroup, which only DistributedConfig.mode='ray' can place. Run "
+            "with mode='ray' (and nproc_per_node), or use a sampler-reusing generative judge / an http(s) "
+            'endpoint, which need no extra device.')
     if distributed_config is not None:
         _initialize_for_sampling(distributed_config, reward_groups)
 
@@ -285,7 +289,7 @@ def _run_generative(
     quant_method = getattr(quantize_config, 'quant_method', None)
     if backend in {'client', 'no'} and quant_method is not None:
         raise ValueError(
-            f'quant_method={quant_method!r} cannot affect infer_backend={backend!r}, which loads no local '
+            f'quant_method={quant_method!r} cannot affect sampler={backend!r}, which loads no local '
             'model. Configure quantization on the remote server or omit --quant_method.')
 
     template = None
@@ -312,7 +316,7 @@ def _run_generative(
             quantize_config=quantize_config)
 
     channels = _build_channels(
-        infer_config, rlhf_config, orm_spec=orm_spec, prm_spec=prm_spec, sampler=sampler,
+        infer_config, rlhf_config, orm_slots=orm_slots, prm_slots=prm_slots, sampler=sampler,
         model_config=model_config, template_config=template_config, backend=backend,
         engine_args=engine_args, distributed_config=distributed_config, quantize_config=quantize_config)
 
@@ -354,7 +358,7 @@ def _run_generative(
     if output_format == 'grpo' and channels.empty:
         # No reward channel is a valid GRPO dump -- the group's trajectories, masks and old_logps are the
         # corpus, and training scores/advantages them later. Note once why ``scores`` comes out null.
-        logger.info("output_format='grpo' with no reward channel (--reward_funcs / --prm_model / --orm_model) "
+        logger.info("output_format='grpo' with no reward channel (--orm / --prm) "
                     "stores each prompt's group trajectories + rollout logps with null scores; reward is "
                     'left to the training step.')
 
@@ -445,7 +449,7 @@ def _sample_candidates(
     candidates: List[List[_Candidate]] = [hit or [] for hit in cached]
     if to_sample:
         if sampler is None:
-            raise ValueError("infer_backend='no' requires cache_files to cover every input prompt.")
+            raise ValueError("sampler='no' requires cache_files to cover every input prompt.")
         if rollout is None:
             raise RuntimeError('sampling was requested but no rollout engine was built.')
         selected_trajectories = [trajectories[i] for i in to_sample]
@@ -658,7 +662,7 @@ def _emit_grpo(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Op
     sidecar with input_ids / labels / completion_mask / logprobs / loss_mask (the old-policy logps) -- plus
     a stable group ``id`` and ``num_generations``. The group-relative advantage is deliberately NOT
     computed here: it is cheap and belongs to the training step, which recomputes it from the stored
-    rewards and logps. When a reward channel (``--reward_funcs`` / ``--prm_model`` / ``--orm_model``) scored
+    rewards and logps. When a reward channel (``--orm`` / ``--prm``) scored
     the group, each candidate's ``scores`` entry rides along; with no reward channel ``scores`` is null and
     only the trajectories + logps are stored, which is a valid GRPO corpus the trainer scores later.
     """
@@ -1236,48 +1240,54 @@ def compute_metric(results: List[Dict[str, Any]], metric: Literal['acc', 'rouge'
 #: Name of the twinkle DeviceGroup the sampling engine is placed in under mode='ray'.
 _SAMPLER_GROUP = 'sampler'
 
-#: Reward-model kinds that keep their own weights resident on GPU and so need a dedicated DeviceGroup.
-#: A ``generative_reuse`` judge scores through the sampler's engine, and an ``api`` judge has no local
-#: model -- neither needs its own cards.
-_EXCLUSIVE_REWARD_KINDS = frozenset({'scalar', 'generative_independent'})
 
+def _exclusive_reward_groups(orm_slots: List['_RewardSlot'], prm_slots: List['_RewardSlot'],
+                             distributed_config: Optional[DistributedConfig]
+                             ) -> List[Tuple[str, int, int]]:
+    """The DeviceGroups the GPU-resident reward channels need, in declaration order ('orm', 'prm').
 
-def _exclusive_reward_groups(orm_spec: Optional['_RewardModelSpec'],
-                             prm_spec: Optional['_RewardModelSpec']) -> List[str]:
-    """The DeviceGroup names the GPU-resident reward channels need, in declaration order ('orm', 'prm')."""
-    groups: List[str] = []
-    for spec, name in ((orm_spec, 'orm'), (prm_spec, 'prm')):
-        if spec is not None and spec.kind in _EXCLUSIVE_REWARD_KINDS:
-            groups.append(name)
+    A channel needs a group when its reward model keeps weights resident (see
+    :attr:`_RewardModelSpec.needs_device_group`); a sampler-reusing judge and an API judge need none. Each
+    channel resolves at most one model (see :func:`_resolve_reward_channel`), so this yields at most one
+    ``(name, world_size, gpus_per_worker)`` per channel -- the group's width and per-worker GPU count
+    derived from that model's own ``parallel_spec``, or the sampler width / one GPU when it has none.
+    """
+    groups: List[Tuple[str, int, int]] = []
+    for slots, name in ((orm_slots, 'orm'), (prm_slots, 'prm')):
+        spec = next((slot.spec for slot in slots if slot.is_model and slot.spec.needs_device_group), None)
+        if spec is not None:
+            groups.append((name, spec.group_world_size(distributed_config), spec.group_gpus_per_worker()))
     return groups
 
 
-def plan_sampling_device_groups(ranks_per_group: Optional[int],
-                                reward_group_names: List[str]) -> Tuple[List[Tuple[str, List[int]]], int]:
+def plan_sampling_device_groups(sampler_ranks: Optional[int],
+                                reward_groups: List[Tuple[str, int, int]]
+                                ) -> Tuple[List[Tuple[str, List[int], int]], int]:
     """Plan the twinkle DeviceGroups for a sampling run. Pure function (no twinkle import).
 
-    ``ranks_per_group`` is the GPU width of ONE role -- the sampler and every GPU-resident reward
-    channel each get their own disjoint block of that size. It is ``DistributedConfig.nproc_per_node``,
-    NOT twinkle's ``nproc_per_node`` (which is the total rank count, returned as ``total_ranks``). So a
-    run with R reward groups needs ``ranks_per_group * (1 + R)`` GPUs. Mirrors ``plan_rl_device_groups``
-    in run_grpo: the reward group is sized off the same world size the sampler uses rather than a
-    separate GPU-count knob.
+    The sampler and every GPU-resident reward channel each get a disjoint block of ranks. The sampler's
+    block is ``sampler_ranks`` wide (``DistributedConfig.nproc_per_node``, NOT twinkle's ``nproc_per_node``
+    -- that is the total rank count, returned as ``total_ranks``); each reward group carries its OWN width
+    and per-worker GPU count, derived from that channel's ``parallel_spec``. So the total is
+    ``sampler_ranks + sum(group widths)`` rather than a uniform ``ranks_per_group * (1 + R)`` -- a channel
+    may be wider or narrower than the sampler.
 
-    Returns ``(groups, total_ranks)`` where ``groups`` is a list of ``(name, ranks)`` to hand
-    twinkle.initialize and ``total_ranks`` is the summed GPU count.
+    ``reward_groups`` is ``(name, world_size, gpus_per_worker)`` per channel. Returns ``(groups,
+    total_ranks)`` where ``groups`` is ``(name, ranks, gpus_per_worker)`` to hand twinkle.initialize. The
+    sampler keeps ``gpus_per_worker=1`` (its engine's own TP is a separate, pre-existing concern).
     """
-    if ranks_per_group is None or ranks_per_group < 1:
-        raise ValueError(f'ranks_per_group must be >= 1 (the sampler GPU count), got {ranks_per_group!r}.')
-    groups: List[Tuple[str, List[int]]] = [(_SAMPLER_GROUP, list(range(ranks_per_group)))]
-    start = ranks_per_group
-    for name in reward_group_names:
-        groups.append((name, list(range(start, start + ranks_per_group))))
-        start += ranks_per_group
+    if sampler_ranks is None or sampler_ranks < 1:
+        raise ValueError(f'the sampler GPU count must be >= 1, got {sampler_ranks!r}.')
+    groups: List[Tuple[str, List[int], int]] = [(_SAMPLER_GROUP, list(range(sampler_ranks)), 1)]
+    start = sampler_ranks
+    for name, world_size, gpus_per_worker in reward_groups:
+        groups.append((name, list(range(start, start + world_size)), gpus_per_worker))
+        start += world_size
     return groups, start
 
 
 def _initialize_for_sampling(distributed_config: DistributedConfig,
-                            reward_groups: Optional[List[str]] = None) -> None:
+                            reward_groups: Optional[List[Tuple[str, int, int]]] = None) -> None:
     """Initialize twinkle, giving the sampler -- and each GPU-resident reward model -- its own DeviceGroup.
 
     A scalar seq_cls/reranker RM (built through ``build_frozen_reward_model`` -> ``build_model``) and an
@@ -1286,6 +1296,10 @@ def _initialize_for_sampling(distributed_config: DistributedConfig,
     cards; ``build_model`` / ``build_sampler`` target the group by the same name via ``remote_group``.
     A sampler-reusing judge and an http(s) judge need no device and declare no group. Local mode has no
     groups to declare (and the caller forbids a GPU-resident reward there), so it initializes plainly.
+
+    Each reward group is built with its OWN ``gpus_per_worker`` (from its ``parallel_spec``), so an
+    independent judge told ``tensor_parallel_size=N`` sees N GPUs per worker instead of one -- the mesh's
+    tp dim is real here, not dead info. The sampler group keeps ``gpus_per_worker=1``.
     """
     import twinkle
     from twinkle import DeviceGroup
@@ -1299,16 +1313,17 @@ def _initialize_for_sampling(distributed_config: DistributedConfig,
     # DistributedConfig.nproc_per_node is the SAMPLER's GPU width (one role); twinkle's nproc_per_node
     # below is the TOTAL rank count across every group. Same spelling, two meanings -- the planner maps
     # the former to the latter.
-    ranks_per_group = distributed_config.nproc_per_node
-    if ranks_per_group is None:
+    sampler_ranks = distributed_config.nproc_per_node
+    if sampler_ranks is None:
         raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the sampler's "
-                         'Ray DeviceGroup and each reward group). Pass it explicitly -- there is no default.')
-    planned, total_ranks = plan_sampling_device_groups(ranks_per_group, reward_groups or [])
+                         'Ray DeviceGroup). Pass it explicitly -- there is no default.')
+    planned, total_ranks = plan_sampling_device_groups(sampler_ranks, reward_groups or [])
     twinkle.initialize(
         mode='ray',
         nproc_per_node=total_ranks,
         groups=[
-            DeviceGroup(name=name, ranks=ranks, device_type='GPU', gpus_per_worker=1) for name, ranks in planned
+            DeviceGroup(name=name, ranks=ranks, device_type='GPU', gpus_per_worker=gpus_per_worker)
+            for name, ranks, gpus_per_worker in planned
         ])
 
 
@@ -1374,8 +1389,8 @@ class _RolloutRecorder:
 def _build_channels(infer_config: InferConfig,
                     rlhf_config: Optional[RLHFConfig] = None,
                     *,
-                    orm_spec: Optional['_RewardModelSpec'] = None,
-                    prm_spec: Optional['_RewardModelSpec'] = None,
+                    orm_slots: Optional[List['_RewardSlot']] = None,
+                    prm_slots: Optional[List['_RewardSlot']] = None,
                     sampler: Any = None,
                     model_config: Optional[ModelConfig] = None,
                     template_config: Optional[TemplateConfig] = None,
@@ -1383,49 +1398,76 @@ def _build_channels(infer_config: InferConfig,
                     engine_args: Optional[Dict[str, Any]] = None,
                     distributed_config: Optional[DistributedConfig] = None,
                     quantize_config: Optional[QuantizeConfig] = None) -> '_RewardChannels':
-    """Resolve reward channels from the configured ORM and PRM funcs plus any model-reward specs.
+    """Build the ORM and PRM scoring channels from their resolved rule/model slots.
 
-    The model-reward channels arrive as pre-resolved specs (see :func:`_resolve_reward_model`) rather
-    than being resolved here, because a generative judge that reuses the sampler needs the sampler
-    already built. Each spec is turned into its callable -- a scalar seq_cls RM scored by forward, a
-    generative judge (reusing the sampler or owning its own engine), or an API judge -- by
-    :func:`_build_model_reward`.
+    Each channel's slots were resolved before the sampler (see :func:`_resolve_reward_channel`); here a
+    rule slot becomes its reward callable and a model slot becomes its scorer -- a scalar seq_cls RM
+    scored by forward, a generative judge (reusing the sampler or owning its own engine), or an API judge
+    -- through :func:`_build_model_reward`. Slots are built in order so the channel weights, which align
+    to the merged ``--orm`` / ``--prm`` list the user typed, line up with the funcs. A generative judge
+    that reuses the sampler is why this runs AFTER the sampler is built.
     """
-    from swift.dev.reward import get_reward_funcs
-
-    # reward_funcs / reward_weights live on RLHFConfig (the shared registry surface GRPO also uses); the
-    # rest of the synthesis knobs are on InferConfig. RLHFConfig doubles as the ORM hyperparameter carrier.
-    reward_funcs = rlhf_config.reward_funcs if rlhf_config is not None else []
-    orm_weights = rlhf_config.reward_weights if rlhf_config is not None else None
-    orm_funcs, orm_names = get_reward_funcs(reward_funcs, rlhf_config)
-    prm_funcs, prm_names = get_reward_funcs(infer_config.prm_funcs, rlhf_config)
     ray = distributed_config is not None and distributed_config.mode == 'ray'
-    for spec, funcs, names, group in ((orm_spec, orm_funcs, orm_names, 'orm'), (prm_spec, prm_funcs, prm_names, 'prm')):
-        if spec is None:
-            continue
-        # A GPU-resident reward model targets the DeviceGroup declared for its channel, and only under
-        # ray (local mode has no groups); a sampler-reusing judge or an API judge stays group-less.
-        remote_group = group if ray and spec.kind in _EXCLUSIVE_REWARD_KINDS else None
-        funcs.append(
-            _build_model_reward(
-                spec,
-                infer_config,
-                sampler=sampler,
-                model_config=model_config,
-                template_config=template_config,
-                backend=backend,
-                engine_args=engine_args,
-                distributed_config=distributed_config,
-                quantize_config=quantize_config,
-                remote_group=remote_group))
-        names.append(spec.display_name)
-    channels = _RewardChannels(orm_funcs, orm_names, prm_funcs, prm_names, orm_weights=orm_weights)
+    orm_funcs, orm_names = _build_slot_funcs(
+        orm_slots or [], 'orm', rlhf_config, infer_config, sampler, model_config, template_config, backend,
+        engine_args, distributed_config, quantize_config, ray)
+    prm_funcs, prm_names = _build_slot_funcs(
+        prm_slots or [], 'prm', rlhf_config, infer_config, sampler, model_config, template_config, backend,
+        engine_args, distributed_config, quantize_config, ray)
+    # The channel selectors and their weights live on RLHFConfig (the shared surface GRPO also uses); the
+    # rest of the synthesis knobs are on InferConfig. RLHFConfig doubles as the reward hyperparameter
+    # carrier, so a rule plugin reads its own knobs (cosine_* / repetition_*) off it.
+    orm_weights = rlhf_config.orm_weights if rlhf_config is not None else None
+    prm_weights = rlhf_config.prm_weights if rlhf_config is not None else None
+    channels = _RewardChannels(
+        orm_funcs, orm_names, prm_funcs, prm_names, orm_weights=orm_weights, prm_weights=prm_weights)
     if channels.empty:
         logger.info('run_infer: no reward funcs -- every candidate is emitted as a positive.')
     else:
         logger.info(f'run_infer: orm={orm_names} (x{infer_config.orm_channel_weight}) prm={prm_names}, '
                     f'normalize={infer_config.normalize_rewards}')
     return channels
+
+
+def _build_slot_funcs(slots: List['_RewardSlot'], group: str, rlhf_config: Optional[RLHFConfig],
+                      infer_config: InferConfig, sampler: Any, model_config: Optional[ModelConfig],
+                      template_config: Optional[TemplateConfig], backend: str,
+                      engine_args: Optional[Dict[str, Any]], distributed_config: Optional[DistributedConfig],
+                      quantize_config: Optional[QuantizeConfig], ray: bool) -> Tuple[List[Any], List[str]]:
+    """Turn one channel's ordered slots into ``(funcs, names)``, preserving slot order.
+
+    A rule slot resolves through the ``reward`` extension point (``cls(args=rlhf_config)``, so a plugin
+    reads its own hyperparameters off the config); a model slot builds its scorer, targeting the channel's
+    DeviceGroup only under ray and only for a GPU-resident kind (local mode has no groups; a sampler-reusing
+    or API judge stays group-less).
+    """
+    from swift.dev.plugin import PluginRegistry
+    from swift.dev.rewards import REWARD
+
+    funcs: List[Any] = []
+    names: List[str] = []
+    for slot in slots:
+        if slot.is_model:
+            spec = slot.spec
+            remote_group = group if ray and spec.needs_device_group else None
+            funcs.append(
+                _build_model_reward(
+                    spec,
+                    infer_config,
+                    sampler=sampler,
+                    model_config=model_config,
+                    template_config=template_config,
+                    backend=backend,
+                    engine_args=engine_args,
+                    distributed_config=distributed_config,
+                    quantize_config=quantize_config,
+                    remote_group=remote_group))
+            names.append(spec.display_name)
+        else:
+            func = PluginRegistry.resolve(REWARD, slot.rule, config=rlhf_config)
+            funcs.append(func)
+            names.append(PluginRegistry.display_name(func))
+    return funcs, names
 
 
 class _ClientSampler:
@@ -1625,14 +1667,16 @@ class _RewardChannels:
                  orm_names: List[str],
                  prm_funcs: List[Any],
                  prm_names: List[str],
-                 orm_weights: Optional[List[float]] = None):
+                 orm_weights: Optional[List[float]] = None,
+                 prm_weights: Optional[List[float]] = None):
         self.orm_funcs = orm_funcs
         self.orm_names = orm_names
         self.prm_funcs = prm_funcs
         self.prm_names = prm_names
-        # ORM channel weights come from RLHFConfig.reward_weights (captured in _build_channels); keeping
-        # them here avoids threading rlhf_config through every score call.
+        # Channel weights come from RLHFConfig.orm_weights / prm_weights (captured in _build_channels);
+        # keeping them here avoids threading rlhf_config through every score call.
         self.orm_weights = orm_weights
+        self.prm_weights = prm_weights
 
     @property
     def empty(self) -> bool:
@@ -1652,7 +1696,7 @@ class _RewardChannels:
             total = [t + infer_config.orm_channel_weight * value for t, value in zip(total, orm)]
         if self.prm_funcs:
             prm = self._channel(
-                candidates, row, trajectory, self.prm_funcs, infer_config.prm_weights, infer_config)
+                candidates, row, trajectory, self.prm_funcs, self.prm_weights, infer_config)
             total = [t + value for t, value in zip(total, prm)]
         return total
 
@@ -1717,16 +1761,75 @@ class _RewardModelSpec:
     - ``generative_reuse``: a causal_lm judge sharing the sampler's model, scored through that sampler.
     - ``generative_independent``: a causal_lm judge on its own model, scored through its own engine.
     - ``api``: an http(s) endpoint judged through an OpenAI-compatible client (:class:`_ApiJudgeReward`).
+
+    ``parallel_spec`` is this reward model's OWN parallel layout (``--orm_parallel_spec`` /
+    ``--prm_parallel_spec``), distinct from the run's ``DistributedConfig.parallel_spec`` (the policy /
+    sampler's). None means the channel inherits the sampler's width as a pure data-parallel replica set.
     """
 
     kind: str
     model_id: Optional[str] = None
     adapter: Optional[str] = None
     task_type: Optional[str] = None
+    parallel_spec: Optional[str] = None
 
     @property
     def display_name(self) -> str:
         return self.model_id or self.adapter or 'judge'
+
+    @property
+    def needs_device_group(self) -> bool:
+        """True when this reward keeps its own weights resident on GPU and so needs a dedicated DeviceGroup.
+
+        A scalar RM and an independent generative judge own their weights; a sampler-reusing judge scores
+        through the sampler's engine and an API judge has no local model -- neither needs its own cards.
+        """
+        return self.kind in ('scalar', 'generative_independent')
+
+    def group_world_size(self, distributed_config: Optional['DistributedConfig']) -> int:
+        """The GPU width this reward's DeviceGroup needs.
+
+        With a ``parallel_spec`` it is the spec's own world size (the product of its mesh dims); without
+        one the channel inherits the sampler's width (``nproc_per_node``). ``distributed_config`` may be
+        None when the caller is only probing whether a group is needed, so the no-spec fallback degrades
+        to 1 rather than failing -- a GPU-resident reward with no ray config is rejected upstream anyway.
+        """
+        if self.parallel_spec is not None:
+            from twinkle import DeviceMesh
+            return DeviceMesh.from_spec(self.parallel_spec).world_size
+        return getattr(distributed_config, 'nproc_per_node', None) or 1
+
+    def group_gpus_per_worker(self) -> int:
+        """GPUs each worker in this reward's DeviceGroup sees: the spec's tp width, else one.
+
+        An independent judge's engine is told ``tensor_parallel_size`` = the spec's tp (see
+        :func:`_build_judge_sampler`), so each of its workers must see exactly that many GPUs -- this is
+        what makes the mesh's tp dim real instead of dead info. A scalar RM has no tp (the transformers
+        backend does not shard weights by tp), so this is one and its group is a pure data-parallel set.
+        """
+        if self.parallel_spec is None:
+            return 1
+        from twinkle import DeviceMesh
+        return DeviceMesh.from_spec(self.parallel_spec).tp_world_size or 1
+
+
+@dataclass
+class _RewardSlot:
+    """One item of a merged ``--orm`` / ``--prm`` list, resolved but not yet built.
+
+    A slot is EITHER a rule (``rule`` holds the registered name / plugin class / callable the ``reward``
+    extension point resolves) OR a reward model (``spec`` holds how it is served). Keeping the two in one
+    ordered list is what lets ``orm_weights`` / ``prm_weights`` align to the order the user typed: a rule
+    is built after the sampler, a model spec is resolved before it (its LoRA and DeviceGroup must be known
+    up front), yet each stays at the position it was given.
+    """
+
+    rule: Optional[Any] = None
+    spec: Optional[_RewardModelSpec] = None
+
+    @property
+    def is_model(self) -> bool:
+        return self.spec is not None
 
 
 def _resolve_reward_model(value: Optional[str], adapter: Optional[str], sampler_model: Optional[str],
@@ -1772,6 +1875,69 @@ def _resolve_reward_model(value: Optional[str], adapter: Optional[str], sampler_
                      f'RM {sorted(_SCALAR_TASK_TYPES)} nor a generative judge {sorted(_GENERATIVE_TASK_TYPES)}.')
 
 
+def _resolve_reward_channel(items: List[Any], adapter: Optional[str], sampler_model: Optional[str], backend: str,
+                            *, parallel_spec: Optional[str] = None, channel: str) -> List[_RewardSlot]:
+    """Resolve one merged ``--orm`` / ``--prm`` list into ordered rule/model slots.
+
+    Registered-name-first: an item that names a registered reward rule (or is a plugin class/callable) is a
+    rule slot; any other item is a reward-model id, resolved through :func:`_resolve_reward_model`. Order is
+    preserved so the channel's ``*_weights`` align to the list the user typed.
+
+    A channel carries at most ONE reward model -- the historical ``orm_model`` / ``prm_model`` were singular,
+    and one DeviceGroup and one LoRA pair with one model -- so a second model id is rejected rather than
+    silently sharing the channel's group and adapter. The channel's LoRA (``orm_adapter`` / ``prm_adapter``)
+    pairs with that model; with no model id in the list it keeps its old meaning -- reuse the sampler's own
+    model as a generative judge wearing the LoRA -- and is appended after the rules.
+
+    ``parallel_spec`` (``--orm_parallel_spec`` / ``--prm_parallel_spec``) is that model's own parallel
+    layout; it is attached to the channel's model spec so the DeviceGroup width, the scalar RM's DeviceMesh
+    and an independent judge's engine TP all derive from one place. A rule slot holds no model and ignores
+    it; a sampler-reusing / API judge needs no device group, so the spec is inert there.
+    """
+    from swift.dev.reward import is_registered_reward
+
+    is_rule = [is_registered_reward(item) for item in items]
+    model_ids = [item for item, rule in zip(items, is_rule) if not rule]
+    if len(model_ids) > 1:
+        raise ValueError(
+            f'--{channel} resolves at most one reward model alongside any number of rule names, but got '
+            f'{len(model_ids)} model ids: {model_ids}. Keep one model id per channel.')
+    slots: List[_RewardSlot] = []
+    for item, rule in zip(items, is_rule):
+        if rule:
+            slots.append(_RewardSlot(rule=item))
+        else:
+            spec = _resolve_reward_model(item, adapter, sampler_model, backend)
+            if spec is not None:
+                spec.parallel_spec = parallel_spec
+            slots.append(_RewardSlot(spec=spec))
+    if adapter is not None and not model_ids:
+        # No model id in the list: the adapter alone means "reuse the sampler as a generative judge".
+        spec = _resolve_reward_model(None, adapter, sampler_model, backend)
+        if spec is not None:
+            spec.parallel_spec = parallel_spec
+            slots.append(_RewardSlot(spec=spec))
+    return slots
+
+
+class RewardScorer(Protocol):
+    """The one contract every reward-model scorer meets: score a batch of completions, then release.
+
+    Structural (a :class:`typing.Protocol`), so it names and documents the shape
+    :func:`_build_model_reward` returns without forcing the concrete scorers (:class:`_ModelReward`,
+    :class:`_GenerativeJudgeReward`, :class:`_ApiJudgeReward`) to inherit anything -- each already has a
+    ``__call__(completions, **columns)`` and a ``shutdown()``. A plain rule callable meets ``__call__``
+    too but has no ``shutdown`` (it holds no GPU); rules are resolved elsewhere and are not annotated
+    here, and :meth:`_RewardChannels.shutdown` calls ``shutdown`` only when a func has one.
+    """
+
+    def __call__(self, completions: List[str], **columns: Any) -> List[Optional[float]]:
+        ...
+
+    def shutdown(self) -> None:
+        ...
+
+
 def _build_model_reward(spec: '_RewardModelSpec',
                         infer_config: InferConfig,
                         *,
@@ -1782,7 +1948,7 @@ def _build_model_reward(spec: '_RewardModelSpec',
                         engine_args: Optional[Dict[str, Any]] = None,
                         distributed_config: Optional[DistributedConfig] = None,
                         quantize_config: Optional[QuantizeConfig] = None,
-                        remote_group: Optional[str] = None) -> Any:
+                        remote_group: Optional[str] = None) -> 'RewardScorer':
     """Turn a resolved :class:`_RewardModelSpec` into a ``func(completions, **columns)`` callable."""
     from swift.dev.builders import to_sampling_params
 
@@ -1792,7 +1958,8 @@ def _build_model_reward(spec: '_RewardModelSpec',
                             template_config,
                             adapter=spec.adapter,
                             distributed_config=distributed_config,
-                            remote_group=remote_group)
+                            remote_group=remote_group,
+                            parallel_spec=spec.parallel_spec)
     if spec.kind == 'api':
         return _ApiJudgeReward(
             spec.model_id, model=(engine_args or {}).get('model'), judge_template=infer_config.judge_template)
@@ -1825,6 +1992,12 @@ def _build_judge_sampler(spec: '_RewardModelSpec', model_config: ModelConfig, te
     sampler backend is substituted. Under ray it is placed in its channel's own reward DeviceGroup
     (``remote_group``) so it does not collide with the sampler; in local mode there is no group to
     target and it shares the process's devices.
+
+    The judge's own ``parallel_spec`` (``--orm_parallel_spec`` / ``--prm_parallel_spec``), when given,
+    drives BOTH its DP mesh and its engine tensor-parallel width, so the mesh's tp dim is real rather
+    than dead info: ``tensor_parallel_size`` is set to the spec's tp (matching the ``gpus_per_worker``
+    the DeviceGroup was planned with), and the DP mesh comes from the spec instead of the run's config.
+    With no spec it inherits the run's ``engine_args`` and DP-only mesh, exactly as before.
     """
     from swift.dev.builders import build_device_mesh_if_dp, build_sampler, build_template, load_model_processor
 
@@ -1834,11 +2007,21 @@ def _build_judge_sampler(spec: '_RewardModelSpec', model_config: ModelConfig, te
     judge_model_config.task_type = spec.task_type or 'causal_lm'
     _, processor = load_model_processor(judge_model_config)
     judge_template = build_template(template_config, processor)
+    if spec.parallel_spec is not None:
+        from twinkle import DeviceMesh
+        judge_mesh = DeviceMesh.from_spec(spec.parallel_spec)
+        # Both vLLM and SGLang read the engine's TP from engine_args['tensor_parallel_size']; setting it
+        # from the same spec that sized the DeviceGroup's gpus_per_worker keeps the two in agreement.
+        judge_engine_args = dict(engine_args or {})
+        judge_engine_args['tensor_parallel_size'] = judge_mesh.tp_world_size or 1
+    else:
+        judge_mesh = build_device_mesh_if_dp(distributed_config)
+        judge_engine_args = engine_args
     return build_sampler(
         judge_model_config,
         backend=judge_backend,
-        engine_args=engine_args,
-        device_mesh=build_device_mesh_if_dp(distributed_config),
+        engine_args=judge_engine_args,
+        device_mesh=judge_mesh,
         template=judge_template,
         adapters=[spec.adapter] if spec.adapter else None,
         remote_group=remote_group,
@@ -2001,9 +2184,10 @@ class _ModelReward:
 
     Built through the SAME shared builder GRPO uses (:func:`swift.dev.reward.build_frozen_reward_model`),
     so a scalar RM here and in RL are identical: its real ``task_type`` / ``num_labels`` come from the
-    checkpoint's metadata rather than a hard-coded head, it is built with ``build_model`` in local mode,
+    checkpoint's metadata rather than a hard-coded head, it is built with ``build_model`` (the run's
+    ``distributed_config``, a dedicated ``remote_group`` and its own ``parallel_spec`` threaded through),
     and an optional frozen LoRA is attached the same way. It scores by ``forward_only`` logits (via the
-    'default' RM plugin), NOT by prompting -- that is the generative judge's job.
+    scalar seq-cls RM plugin), NOT by prompting -- that is the generative judge's job.
     """
 
     def __init__(self,
@@ -2016,7 +2200,8 @@ class _ModelReward:
                  revision: Optional[str] = None,
                  template_name: Optional[str] = None,
                  distributed_config: Optional[DistributedConfig] = None,
-                 remote_group: Optional[str] = None):
+                 remote_group: Optional[str] = None,
+                 parallel_spec: Optional[str] = None):
         from swift.dev.reward import build_frozen_reward_model, build_reward_model_plugins
 
         model, template = build_frozen_reward_model(
@@ -2028,8 +2213,9 @@ class _ModelReward:
             template_name=template_name,
             adapter=adapter,
             distributed_config=distributed_config,
-            remote_group=remote_group)
-        plugins, _ = build_reward_model_plugins([model], [template], ['default'])
+            remote_group=remote_group,
+            parallel_spec=parallel_spec)
+        plugins, _ = build_reward_model_plugins([model], [template])
         self.model = model
         self.plugin = plugins[0]
 

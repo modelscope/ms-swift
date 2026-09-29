@@ -8,16 +8,18 @@ substitute, and the two are not the same thing:
     dataset columns (``(completions, **columns) -> List[float]``, which is also what every legacy
     ``ORM`` and every user plugin file already implements); twinkle's ``Reward`` scores ``Trajectory``
     objects. twinkle's own base is not consumed anywhere inside twinkle -- it exists for its cookbook.
-  - twinkle's string-to-class path (``construct_class`` -> ``Plugin.load_plugin``) only accepts
-    ``hf://`` / ``ms://`` ids and demands trust_remote_code, so "a name plus a local ``.py``" -- the
-    only interface a CLI can offer -- cannot be expressed there at all.
+  - twinkle's string-to-class path (``construct_class`` -> ``Plugin.load_plugin`` -> ``load_module``)
+    resolves a name in a kernel namespace, a class, or a source to import. Its loader now accepts a
+    local ``.py`` file, a local folder, or a ``hf://`` / ``ms://`` id under one unique-module-name
+    scheme, so swift delegates loading to it instead of keeping a parallel loader of its own.
 
-So: swift owns the base classes, the registry and the loading; twinkle is handed constructed objects.
+So: swift owns the base classes, the registry and the kind declarations; twinkle owns loading, and is
+handed constructed objects.
 
 Two levels, so the mechanism itself is extensible -- a third party adds a whole new *kind* of plugin
 without editing swift:
 
-    kind  = PluginRegistry.register_kind('reward', RewardPlugin, config_field='reward_funcs')
+    kind  = PluginRegistry.register_kind('reward', RewardPlugin, config_field='orm')
     @PluginRegistry.register('reward', 'my_reward')
     class MyReward(RewardPlugin): ...
 
@@ -30,19 +32,14 @@ Deliberately NOT extension points: the optimizer (dev refuses ``--optimizer`` ou
 ``cli/sft.py``) and the tuner (a capability, not a hook).
 """
 from __future__ import annotations
-import hashlib
-import importlib.util
-import sys
 from dataclasses import dataclass, field
-from pathlib import Path
-from types import ModuleType
 from typing import Any, ClassVar, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 from swift.dev.utils import get_logger
 
 logger = get_logger()
 
-__all__ = ['SwiftPlugin', 'RewardPlugin', 'AsyncRewardPlugin', 'ToolPlugin', 'PluginKind', 'PluginRegistry']
+__all__ = ['SwiftPlugin', 'RewardPlugin', 'ToolPlugin', 'PluginKind', 'PluginRegistry']
 
 
 class SwiftPlugin:
@@ -64,6 +61,12 @@ class SwiftPlugin:
 class RewardPlugin(SwiftPlugin):
     """Score model completions against dataset columns.
 
+    ``__call__`` may be written ``async def`` when its scoring does I/O (an API call, a database
+    query): the scoring loop (:func:`swift.dev.reward.compute_rewards_per_func`) detects the returned
+    coroutines and resolves them with one ``asyncio.gather``, so a batch's round trips overlap instead
+    of running one after another. There is no separate async base to choose -- the same class covers
+    both, and a run may mix sync and async rewards freely.
+
     Example::
 
         class MyReward(RewardPlugin):
@@ -72,17 +75,6 @@ class RewardPlugin(SwiftPlugin):
     """
 
     def __call__(self, **kwargs) -> List[float]:
-        raise NotImplementedError
-
-
-class AsyncRewardPlugin(SwiftPlugin):
-    """A reward whose scoring does I/O (an API call, a database query).
-
-    Async rewards are gathered with ``asyncio.gather``, so the round trips of one batch overlap
-    instead of running one after another.
-    """
-
-    async def __call__(self, **kwargs) -> List[float]:
         raise NotImplementedError
 
 
@@ -113,10 +105,10 @@ class PluginKind:
 
     name: str
     #: Every implementation must subclass this. Usually a class from this module; a tuple when one point
-    #: accepts more than one contract (a reward may be sync or async). It may be a twinkle base when the
-    #: product's plugin *is* a kernel part (loss), which avoids forking twinkle's roster.
+    #: accepts more than one contract. It may be a twinkle base when the product's plugin *is* a kernel
+    #: part (loss), which avoids forking twinkle's roster.
     base: Union[type, Tuple[type, ...]]
-    #: The Config field a run picks an implementation with, e.g. ``reward_funcs``. Recorded so the
+    #: The Config field a run picks an implementation with, e.g. ``orm``. Recorded so the
     #: "no plugin field is silently ignored" test can pair kinds with Config fields generically.
     config_field: Optional[str] = None
     #: name -> implementation. Shared by reference when a kind adopts a pre-existing registry.
@@ -151,8 +143,6 @@ class PluginRegistry:
     """The registry of kinds, and of the implementations of each kind."""
 
     KINDS: ClassVar[Dict[str, PluginKind]] = {}
-    #: abspath -> module, so loading the same file twice is a no-op rather than a re-registration error.
-    LOADED: ClassVar[Dict[str, ModuleType]] = {}
 
     @staticmethod
     def register_kind(name: str,
@@ -238,55 +228,33 @@ class PluginRegistry:
 
     @staticmethod
     def load_configured(plugin_config: Optional[Any]) -> List[str]:
-        """Load every plugin file a run's ``PluginConfig`` names -- the one object that knows which fields
-        those are, so a recipe cannot load half of them.
+        """Load every plugin source a run's ``PluginConfig`` names -- the one object that knows which
+        field that is, so a recipe cannot load half of them.
 
-        ``custom_register_path`` is loaded alongside ``external_plugins`` because legacy concatenates the
-        two before importing (base_args.py): both mean "import this .py first", one named for the
-        hooks (rewards, losses) and one for registrations (models, datasets), and nothing tells them
-        apart at load time. ``None`` loads nothing, for a caller that holds no PluginConfig (the plugin
-        files were then already imported earlier in the run's config lifecycle).
+        ``None`` loads nothing, for a caller that holds no PluginConfig (the plugin sources were then
+        already imported earlier in the run's config lifecycle).
         """
         if plugin_config is None:
             return []
-        return PluginRegistry.load_external([*plugin_config.external_plugins, *plugin_config.custom_register_path])
+        return PluginRegistry.load_external(plugin_config.external_plugins)
 
     @staticmethod
     def load_external(paths: Union[str, Iterable[str], None]) -> List[str]:
-        """Import user ``.py`` files so the ``@register`` calls inside them run.
+        """Import user plugin sources so the ``@register`` calls inside them run.
 
-        Idempotent, and every file gets a module name derived from its path. twinkle's loader instead
-        imports every plugin as ``__init__``, so a second plugin hits ``sys.modules`` and silently
-        hands back the first one's classes -- a name collision that reads as "my plugin was ignored".
-        The file's directory joins ``sys.path`` so a plugin may import its own neighbours.
+        Each entry may be a local ``.py`` file, a local folder, or a ``hf://`` / ``ms://`` id; all three
+        go through twinkle's single loader (:func:`twinkle.utils.load_module`), which imports under a
+        unique path-derived module name and caches the result, so loading is idempotent and two plugins
+        never collide on a shared name. swift keeps no parallel loader of its own.
         """
-        loaded: List[str] = []
         raw_paths = [paths] if isinstance(paths, str) else list(paths or [])
-        if raw_paths:
-            # Declare swift's own extension points first: a user plugin file may @register against any
-            # built-in kind, which fails if that kind's declaring module has not been imported yet.
-            _declare_builtin_kinds()
+        if not raw_paths:
+            return []
+        # Declare swift's own extension points first: a user plugin file may @register against any
+        # built-in kind, which fails if that kind's declaring module has not been imported yet.
+        _declare_builtin_kinds()
+        from twinkle.utils import load_module
         for raw in raw_paths:
-            path = Path(raw).expanduser().resolve()
-            if not path.is_file():
-                raise FileNotFoundError(f'external plugin {raw!r} is not a file (resolved to {path}).')
-            key = str(path)
-            if key in PluginRegistry.LOADED:
-                continue
-            parent = str(path.parent)
-            if parent not in sys.path:
-                sys.path.insert(0, parent)
-            module_name = f'swift_dev_plugin_{hashlib.sha1(key.encode()).hexdigest()[:8]}_{path.stem}'
-            spec = importlib.util.spec_from_file_location(module_name, key)
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            try:
-                spec.loader.exec_module(module)
-            except Exception:
-                sys.modules.pop(module_name, None)
-                raise
-            PluginRegistry.LOADED[key] = module
-            loaded.append(key)
-        if loaded:
-            logger.info(f'Loaded {len(loaded)} external plugin file(s): {loaded}')
-        return loaded
+            load_module(raw)
+        logger.info(f'Loaded {len(raw_paths)} external plugin source(s): {raw_paths}')
+        return list(raw_paths)

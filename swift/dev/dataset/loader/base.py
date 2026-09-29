@@ -222,6 +222,13 @@ def match_dataset_type(dataset: str, *, use_hf: bool = False) -> Optional[str]:
     but two hubs can host different datasets whose ids end in the same word, so it must never
     override an exact hit.
     """
+    # A family may be named directly (``--dataset <dataset_type>``), which is also how an external
+    # loader registered with ``@register_dataset`` (via ``--external_plugins``) is selected. Checked
+    # first so an explicit registered name wins over a coincidental id/basename hit; the loader then
+    # resolves the real data location from its own declared ids (see :meth:`DatasetLoader.resolve_id`),
+    # so the name is never mistaken for a hub id.
+    if dataset in DATASET_MAPPING:
+        return dataset
     if not _ID_MAPPING:
         for dataset_type, cls in DATASET_MAPPING.items():
             for ms_id, hf_id in cls.iter_ids():

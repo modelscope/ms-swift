@@ -114,7 +114,7 @@ def _run_sft_body(
     def sft_loss(model) -> None:
         configure_loss(
             model,
-            loss_type=train_config.loss_type or 'cross_entropy',
+            loss_type=train_config.loss or 'cross_entropy',
             enable_channel_loss=train_config.enable_channel_loss,
             dft=train_config.enable_dft_loss,
         )

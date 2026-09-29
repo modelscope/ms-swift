@@ -11,17 +11,17 @@ import os
 import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from swift.dev.plugin import AsyncRewardPlugin, PluginRegistry, RewardPlugin
+from swift.dev.plugin import PluginRegistry, RewardPlugin
 
 if TYPE_CHECKING:
     from swift.infer_engine import InferRequest
 
-#: The reward plugin base under its historical names. A reward ORM *is* swift's reward plugin -- same
+#: The reward plugin base under its historical name. A reward ORM *is* swift's reward plugin -- same
 #: ``cls(args=...)`` construction, same ``__call__(completions, **columns) -> List[float]`` contract --
-#: so these are aliases rather than a parallel base class, and a user's existing ``class
-#: MyReward(ORM)`` keeps working while gaining the registry's shape check.
+#: so this is an alias rather than a parallel base class, and a user's existing ``class MyReward(ORM)``
+#: keeps working while gaining the registry's shape check. An async reward needs no separate base: it
+#: writes ``async def __call__`` on this same ``ORM`` / ``RewardPlugin`` and the scoring loop gathers it.
 ORM = RewardPlugin
-AsyncORM = AsyncRewardPlugin
 
 
 class MathAccuracy(ORM):
@@ -424,6 +424,7 @@ orms = {
 #: The 'reward' extension point adopts ``orms`` *itself* as its registry, so
 #: ``@PluginRegistry.register('reward', ...)`` and the historical ``orms['my'] = MyReward`` write to one
 #: dict -- no consumer has to know which form a plugin arrived in, and there is no second roster to keep
-#: in sync. Async rewards are accepted here too: they are selected by the same ``--reward_funcs``.
+#: in sync. An async reward is just a ``RewardPlugin`` with ``async def __call__``; it registers and is
+#: selected by the same ``--orm`` / ``--prm`` as any other.
 REWARD = PluginRegistry.register_kind(
-    'reward', (RewardPlugin, AsyncRewardPlugin), config_field='reward_funcs', entries=orms)
+    'reward', RewardPlugin, config_field='orm', entries=orms)

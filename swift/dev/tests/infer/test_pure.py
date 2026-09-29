@@ -94,28 +94,38 @@ def test_compute_metric_skips_rows_without_reference():
 
 def test_plan_sampling_device_groups_sizes_sampler_plus_each_reward():
     from swift.dev.recipe.run_infer import plan_sampling_device_groups
-    groups, total = plan_sampling_device_groups(2, ['orm', 'prm'])
-    # the sampler group occupies ranks [0,1]; each reward group its own disjoint block of the same width
-    assert groups == [('sampler', [0, 1]), ('orm', [2, 3]), ('prm', [4, 5])]
+    # reward_groups is (name, world_size, gpus_per_worker); each channel carries its OWN width, so the
+    # total is sampler_ranks + sum(widths), not a uniform ranks * (1 + R).
+    groups, total = plan_sampling_device_groups(2, [('orm', 2, 1), ('prm', 2, 1)])
+    assert groups == [('sampler', [0, 1], 1), ('orm', [2, 3], 1), ('prm', [4, 5], 1)]
     assert total == 6
+    # a channel wider than the sampler takes a wider block, with its own gpus_per_worker
+    groups, total = plan_sampling_device_groups(1, [('prm', 4, 2)])
+    assert groups == [('sampler', [0], 1), ('prm', [1, 2, 3, 4], 2)] and total == 5
     # no reward groups -> just the sampler
     groups, total = plan_sampling_device_groups(1, [])
-    assert groups == [('sampler', [0])] and total == 1
-    with pytest.raises(ValueError, match='ranks_per_group must be >= 1'):
+    assert groups == [('sampler', [0], 1)] and total == 1
+    with pytest.raises(ValueError, match='sampler GPU count must be >= 1'):
         plan_sampling_device_groups(0, [])
 
 
 def test_exclusive_reward_groups_only_for_gpu_resident_kinds():
-    from swift.dev.recipe.run_infer import _RewardModelSpec, _exclusive_reward_groups
-    scalar = _RewardModelSpec(kind='scalar', model_id='rm')
-    reuse = _RewardModelSpec(kind='generative_reuse', model_id='base')
-    independent = _RewardModelSpec(kind='generative_independent', model_id='judge')
-    api = _RewardModelSpec(kind='api', model_id='http://x')
-    # scalar (orm) + independent (prm) each need their own DeviceGroup, in declaration order
-    assert _exclusive_reward_groups(scalar, independent) == ['orm', 'prm']
-    # a sampler-reusing judge and an API judge keep no local weights -> no group
-    assert _exclusive_reward_groups(reuse, api) == []
-    assert _exclusive_reward_groups(None, None) == []
+    from swift.dev.recipe.run_infer import _RewardModelSpec, _RewardSlot, _exclusive_reward_groups
+
+    def slot(kind, model_id):
+        return _RewardSlot(spec=_RewardModelSpec(kind=kind, model_id=model_id))
+
+    scalar = slot('scalar', 'rm')
+    reuse = slot('generative_reuse', 'base')
+    independent = slot('generative_independent', 'judge')
+    api = slot('api', 'http://x')
+    rule = _RewardSlot(rule='accuracy')
+    # scalar (orm) + independent (prm) each need their own DeviceGroup, in declaration order; with no
+    # parallel_spec and no ray config their (width, gpus) fall back to (1, 1).
+    assert _exclusive_reward_groups([scalar], [independent], None) == [('orm', 1, 1), ('prm', 1, 1)]
+    # a sampler-reusing judge, an API judge and a rule keep no local weights -> no group
+    assert _exclusive_reward_groups([reuse, rule], [api], None) == []
+    assert _exclusive_reward_groups([], [], None) == []
 
 
 def test_pooling_task_map_and_is_pooling():

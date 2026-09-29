@@ -42,6 +42,17 @@ def _patch_type_hints():
     def get_type_hints(*args, **kwargs):
         hints = origin_get_type_hints(*args, **kwargs)
         for k, v in hints.items():
+            # ``Any`` cannot be coerced from a string by argparse (it would call ``Any(value)``). A
+            # field declared ``Any``/``List[Any]`` accepts a class object when built in Python, but
+            # every value crossing the CLI is a string spec (name | id | path | class name) the resolve
+            # layer parses, so argparse only needs to collect strings. Only the parser's view changes;
+            # the dataclass field keeps ``Any`` for programmatic construction.
+            if v is Any:
+                hints[k] = str
+                continue
+            if get_origin(v) is list and get_args(v) == (Any, ):
+                hints[k] = List[str]
+                continue
             union_args = get_args(v)
             mapping, _ = _mapping_hint(v)
             list_args = [arg for arg in union_args if get_origin(arg) is list]
@@ -145,7 +156,7 @@ def flag_names(argv: Sequence[str]) -> set:
 
 def select_tuner(tuner):
     """Represent full-parameter runs without a TunerConfig."""
-    return None if tuner.tuner_type == 'full' else tuner
+    return None if tuner.tuner == 'full' else tuner
 
 
 # Public compatibility export; the declaration itself lives with the executable legacy contract.
@@ -178,15 +189,33 @@ def _comparable_value(value: str):
         return value
 
 
-def normalize_argv(argv: Sequence[str], available_fields: Sequence[str]) -> List[str]:
+def normalize_argv(argv: Sequence[str],
+                   available_fields: Sequence[str],
+                   field_owners: Optional[Dict[str, Type]] = None) -> List[str]:
     """Rewrite legacy aliases to canonical Config flags and reject conflicting double writes.
 
     Scalar aliases accept both ``--name value`` and ``--name=value``. Hyphens and underscores are
     equivalent. If an alias and its canonical spelling are both explicit, equal values are accepted
     while different values fail before argparse can silently let the last occurrence win.
+
+    ``field_owners`` maps each available field name to the Config that owns it, used to suppress an
+    alias whose source is a live field of a different Config than its target (see below).
     """
     available = set(available_fields)
-    aliases = {alias: target for alias, target in CLI_ALIASES.items() if target in available}
+    owner_of = dict(field_owners or {})
+    aliases: Dict[str, str] = {}
+    for alias, target in CLI_ALIASES.items():
+        if target not in available:
+            continue
+        # A legacy spelling that is itself a live field of a DIFFERENT Config than its alias target is
+        # that Config's own current flag, not a rename -- `--loss_type` under `rlhf` selects the GRPO
+        # objective on RLHFConfig, while `--loss` names the supervised loss on TrainConfig. Aliasing it
+        # would silently retarget the flag, so leave it direct. Same-owner pairs (`--lr` ->
+        # `--learning_rate`, both TrainConfig) are genuine renames and still fold.
+        source_owner = owner_of.get(alias)
+        if source_owner is not None and owner_of.get(target) is not source_owner:
+            continue
+        aliases[alias] = target
     if 'torch_dtype' in available:
         aliases.update({name: 'torch_dtype' for name in _PRECISION_ALIASES})
 
@@ -275,10 +304,14 @@ def _merged_parse_class(config_classes: Sequence[Type], field_owners: Optional[D
     return make_dataclass('MergedCliConfig', [spec for spec in specs if spec is not None])
 
 
+#: Checkpoint args.json keys infer applies regardless of the current value. An entry is a plain field
+#: name (the JSON key equals it), or a ``(json_key, field_name)`` pair when a persisted key kept its
+#: historical spelling after the Config field was renamed -- args.json still carries 'tuner_type' (which
+#: legacy infer also force-loads) even though the field is now ``tuner``.
 _CHECKPOINT_FORCE_LOAD_FIELDS = {
     'model_config': ('task_type',),
     'quantize_config': ('bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'),
-    'tuner_config': ('tuner_type',),
+    'tuner_config': (('tuner_type', 'tuner'),),
 }
 _CHECKPOINT_DATA_FIELDS = (
     'dataset', 'val_dataset', 'cached_dataset', 'cached_val_dataset', 'split_dataset_ratio', 'data_seed',
@@ -293,8 +326,7 @@ _CHECKPOINT_LOAD_FIELDS = {
     'quantize_config': (
         'quant_method', 'quant_bits', 'hqq_axis', 'bnb_4bit_compute_dtype', 'bnb_4bit_quant_storage'),
     'template_config': (
-        'template', 'system', 'truncation_strategy', 'agent_template', 'norm_bbox', 'use_chat_template',
-        'response_prefix'),
+        'template', 'system', 'truncation_strategy', 'norm_bbox', 'use_chat_template', 'response_prefix'),
 }
 
 
@@ -380,9 +412,10 @@ def _restore_checkpoint_args(configs: Sequence[Any], *, default_load_args: bool)
         config = mapped.get(config_name)
         if config is None:
             continue
-        for name in names:
-            if old_args.get(name) is not None:
-                setattr(config, name, old_args[name])
+        for entry in names:
+            key, field_name = entry if isinstance(entry, tuple) else (entry, entry)
+            if old_args.get(key) is not None:
+                setattr(config, field_name, old_args[key])
     for config_name, names in load_fields.items():
         config = mapped.get(config_name)
         if config is None:
@@ -415,17 +448,21 @@ def parse_configs(
     """
     effective_argv = resolve_argv(argv)
     merged_class = _merged_parse_class(config_classes, field_owners)
-    effective_argv = normalize_argv(effective_argv, [config_field.name for config_field in fields(merged_class)])
-    explicit_fields = flag_names(effective_argv)
-    with _patch_type_hints():
-        parser = HfArgumentParser(merged_class)
-    merged, remaining = parser.parse_args_into_dataclasses(effective_argv, return_remaining_strings=True)
-    values = vars(merged)
     owners = dict(field_owners or {})
     first_owner = {}
     for config_class in config_classes:
         for config_field in fields(config_class):
             first_owner.setdefault(config_field.name, config_class)
+    # Effective owner per field name (an explicit pin wins), so normalize_argv can tell a genuine
+    # rename from a legacy spelling that is another Config's own current flag.
+    owner_of = {name: owners.get(name, cls) for name, cls in first_owner.items()}
+    effective_argv = normalize_argv(
+        effective_argv, [config_field.name for config_field in fields(merged_class)], field_owners=owner_of)
+    explicit_fields = flag_names(effective_argv)
+    with _patch_type_hints():
+        parser = HfArgumentParser(merged_class)
+    merged, remaining = parser.parse_args_into_dataclasses(effective_argv, return_remaining_strings=True)
+    values = vars(merged)
 
     configs = []
     for config_class in config_classes:

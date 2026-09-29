@@ -54,7 +54,7 @@ def run_reranker(
 
     Orchestration mirrors ``run_embedding`` step for step (see its docstring for the resume ordering
     contract, which is unchanged here); ``_save_final`` has the same test-oriented meaning. The loss
-    is chosen by ``TrainConfig.loss_type`` (default 'pointwise_reranker').
+    is chosen by ``TrainConfig.loss`` (default 'pointwise_reranker').
     """
     from swift.dev.recipe.assembly import TrainAssembly
 
@@ -103,7 +103,7 @@ def _run_reranker_body(
         # Runs on Megatron too: under task='reranker' the Megatron scheduler reduces the per-token head
         # output to the last valid token and calls loss_instance explicitly, and set_loss binds the DP
         # process group.
-        configure_reranker_loss(model, loss_type=train_config.loss_type or 'pointwise_reranker')
+        configure_reranker_loss(model, loss_type=train_config.loss or 'pointwise_reranker')
 
     return TrainAssembly(
         'run_reranker',

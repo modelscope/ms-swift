@@ -3,8 +3,8 @@
 
 ``--reward_funcs`` (a callable ORM) is already covered end to end by ``test_pipeline_fast`` /
 ``test_backends_e2e``. This file covers the OTHER reward surface the ``math_prm_orm_ray.sh`` example and
-its cousins ride: a MODEL reward channel (``--orm_model`` / ``--prm_model``), which ``run_infer`` resolves
-into one of four kinds before it builds anything --
+its cousins ride: a MODEL reward channel (a model id named in ``--orm`` / ``--prm``), which ``run_infer``
+resolves into one of four kinds before it builds anything --
 
 * ``api``: an http(s) endpoint (checked first, so a URL is never fed to ``get_model_info_meta``);
 * ``scalar``: a seq_cls/reranker RM scored by a forward -- GPU-resident, so it needs its own twinkle
@@ -146,45 +146,50 @@ def test_parse_judge_score(text, expected):
 
 
 def test_exclusive_reward_groups_names_only_gpu_resident_channels():
-    """A scalar PRM needs its own DeviceGroup; a generative_reuse ORM and an API judge do not."""
-    from swift.dev.recipe.run_infer import _RewardModelSpec
-    scalar_prm = _RewardModelSpec('scalar', model_id='prm', task_type='seq_cls')
-    reuse_orm = _RewardModelSpec('generative_reuse', model_id=MODEL, task_type='causal_lm')
-    assert _exclusive_reward_groups(reuse_orm, scalar_prm) == ['prm']
-    assert _exclusive_reward_groups(reuse_orm, None) == []
+    """A scalar PRM needs its own DeviceGroup; a generative_reuse ORM, a rule and an API judge do not."""
+    from swift.dev.recipe.run_infer import _RewardModelSpec, _RewardSlot
+    scalar_prm = _RewardSlot(spec=_RewardModelSpec('scalar', model_id='prm', task_type='seq_cls'))
+    reuse_orm = _RewardSlot(spec=_RewardModelSpec('generative_reuse', model_id=MODEL, task_type='causal_lm'))
+    rule_orm = _RewardSlot(rule='accuracy')
+    # The scalar PRM is GPU-resident, so it yields one ``(name, world_size, gpus_per_worker)`` group; with
+    # no parallel_spec and no ray config its width/gpus degrade to the no-spec fallback (1, 1). A reuse
+    # judge scores through the sampler and a rule holds no model, so neither declares a group.
+    assert _exclusive_reward_groups([reuse_orm, rule_orm], [scalar_prm], None) == [('prm', 1, 1)]
+    assert _exclusive_reward_groups([reuse_orm, rule_orm], [], None) == []
 
 
 def test_plan_sampling_device_groups_gives_each_role_a_disjoint_block():
-    """``nproc_per_node`` sizes ONE role; the sampler and each GPU-resident reward get their own block, so
-    a run with R reward groups needs ``ranks * (1 + R)`` GPUs (the ``math_prm_orm_ray.sh`` placement)."""
-    groups, total = plan_sampling_device_groups(2, ['prm'])
+    """``nproc_per_node`` sizes ONE role; the sampler and each GPU-resident reward get their own block. Each
+    reward group carries its OWN width and per-worker GPU count (from its ``parallel_spec``), so the total
+    is ``sampler_ranks + sum(group widths)`` rather than a uniform ``ranks * (1 + R)``."""
+    groups, total = plan_sampling_device_groups(2, [('prm', 2, 1)])
     assert total == 4
-    assert groups[0][1] == [0, 1]  # the sampler role
-    assert groups[1] == ('prm', [2, 3])  # the scalar PRM's own disjoint group
+    assert groups[0] == ('sampler', [0, 1], 1)  # the sampler role
+    assert groups[1] == ('prm', [2, 3], 1)  # the scalar PRM's own disjoint group
 
-    groups, total = plan_sampling_device_groups(2, ['orm', 'prm'])
+    groups, total = plan_sampling_device_groups(2, [('orm', 2, 1), ('prm', 2, 1)])
     assert total == 6
-    assert groups[1] == ('orm', [2, 3]) and groups[2] == ('prm', [4, 5])
+    assert groups[1] == ('orm', [2, 3], 1) and groups[2] == ('prm', [4, 5], 1)
 
-    with pytest.raises(ValueError, match='ranks_per_group'):
-        plan_sampling_device_groups(None, ['prm'])
+    with pytest.raises(ValueError, match='sampler GPU count'):
+        plan_sampling_device_groups(None, [('prm', 2, 1)])
 
 
 def test_scalar_reward_needs_ray(monkeypatch):
     """The guard ``math_prm_orm_ray.sh`` satisfies with ``--mode ray``: a scalar PRM keeps its own model
     resident on GPU, which only a ray DeviceGroup can place, so a non-ray run is rejected up front --
     before any dataset load, sampler build or model download."""
-    from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig,
+    from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, RLHFConfig,
                                   TemplateConfig)
     from swift.dev.recipe.run_infer import run_infer
 
     _patch_task_type(monkeypatch, 'seq_cls')
-    infer_config = InferConfig(prm_model='Qwen/Qwen2.5-Math-PRM-7B', num_return_sequences=1,
-                               output_format='all')
     with pytest.raises(ValueError, match="mode='ray'"):
         run_infer(
-            ModelConfig(task_type='causal_lm'), TemplateConfig(), DatasetConfig(), infer_config,
-            GenerationConfig(), backend='transformers', distributed_config=None)
+            ModelConfig(task_type='causal_lm'), TemplateConfig(), DatasetConfig(),
+            InferConfig(num_return_sequences=1, output_format='all'), GenerationConfig(),
+            rlhf_config=RLHFConfig(prm=['Qwen/Qwen2.5-Math-PRM-7B']),
+            backend='transformers', distributed_config=None)
 
 
 # --- the full generative-judge chain, end to end, no GPU --------------------------------
@@ -251,7 +256,7 @@ class _ScriptedJudgeSampler:
 
 
 def test_generative_judge_scores_candidates_through_run_infer(template, monkeypatch, tmp_path):
-    """The end-to-end model-reward chain on one card with no download: ``--orm_model`` equal to the
+    """The end-to-end model-reward chain on one card with no download: an ``--orm`` naming the
     sampler's model resolves to ``generative_reuse``, so the judge scores THROUGH the (scripted) sampler,
     its ``Reward: <score>`` verdicts are parsed, weighted by ``orm_channel_weight`` (1.0, unnormalized) and
     emitted per candidate. Asserts the exact scores, proving resolve -> build -> judge -> channels -> emit
@@ -277,10 +282,10 @@ def test_generative_judge_scores_candidates_through_run_infer(template, monkeypa
         ModelConfig(model=MODEL, task_type='causal_lm'),
         TemplateConfig(template='qwen2_5', max_length=2048),
         DatasetConfig(),
-        # orm_model == the sampler's model -> generative_reuse (no ray, no second engine).
-        InferConfig(orm_model=MODEL, num_return_sequences=2, batch_size=1, output_format='all'),
+        InferConfig(num_return_sequences=2, batch_size=1, output_format='all'),
         GenerationConfig(max_new_tokens=16, temperature=0.8),
-        rlhf_config=RLHFConfig(),
+        # --orm naming the sampler's own model -> generative_reuse (no ray, no second engine).
+        rlhf_config=RLHFConfig(orm=[MODEL]),
         backend='transformers',
         distributed_config=None,
         split_dataset_ratio=0.0,
