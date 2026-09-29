@@ -58,6 +58,7 @@ class LLMTemplateType:
     glm4_7 = 'glm4_7'
     glm5_1 = 'glm5_1'
     glm5_2 = 'glm5_2'
+    glm5_3 = 'glm5_3'
     codegeex4 = 'codegeex4'
     longwriter_llama = 'longwriter_llama'
 

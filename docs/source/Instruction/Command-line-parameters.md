@@ -592,7 +592,7 @@ reward模型参数将在PPO、GRPO中使用；teacher模型参数在GKD与GRPO�
 - reward_model_type: 默认为None。
 - reward_model_revision: 默认为None。
 - teacher_model: 默认为None。
-- teacher_adapters: 默认为`[]`。
+- teacher_adapters: `teacher_model` 加载的 LoRA 权重路径，默认为`[]`。与 `teacher_model` 一起显式指定时，即使 `teacher_model` 与 `model` 相同，也会加载独立的冻结教师模型（增加一份 base 权重的内存开销），而不使用 `disable_adapter()` 优化。
 - teacher_model_type: 默认为None。
 - teacher_model_revision: 默认为None。
 - teacher_model_server: 教师模型服务地址，通过 `swift deploy` 部署后用于获取 logprobs。支持单 teacher URL（如 `http://localhost:8000`）或多 teacher JSON（如 `'[{"url":"http://t1:8000","tags":["data/math.jsonl"]},{"url":"http://t2:8001","tags":["data/code.jsonl"]}]'`）。`tags` 与数据集或样本标识的对应关系见[蒸馏文档](./Distillation.md#multi-teacher多教师路由)。
@@ -844,8 +844,8 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#web-ui参数)�
 - 特定模型参数可以通过`--model_kwargs`或者环境变量进行设置，例如: `--model_kwargs '{"fps_max_frames": 12}'`或者`FPS_MAX_FRAMES=12`。
 - 注意：若你在训练时指定了特定模型参数，请在推理时也设置对应的参数，这可以提高训练效果。
 
-### deepseek_v4, deepseek_v4_flash, glm5_2, hy_v3_preview
-- 🔥REASONING_EFFORT: 思考强度，仅在开启思考时生效。取值范围因模型而异：`deepseek_v4`为'high'/'max'（默认'high'）；`deepseek_v4_flash`为'low'/'high'/'max'（默认'low'）；`glm5_2`为'high'/'max'（默认'max'）；`hy_v3_preview`为'no_think'/'low'/'high'（默认'high'）。
+### deepseek_v4, deepseek_v4_flash, glm5_2, glm5_3, hy_v3_preview
+- 🔥REASONING_EFFORT: 思考强度，仅在开启思考时生效（`glm5_3`除外：它没有非思考模式，该参数始终生效）。取值范围因模型而异：`deepseek_v4`为'high'/'max'（默认'high'）；`deepseek_v4_flash`为'low'/'high'/'max'（默认'low'）；`glm5_2`为'high'/'max'（默认'max'）；`glm5_3`为'low'/'high'/'max'（默认'max'）；`hy_v3_preview`为'no_think'/'low'/'high'（默认'high'）。
   - 也可以在数据集或推理请求中传入`chat_template_kwargs`进行样本级设置，例如`{"chat_template_kwargs": {"reasoning_effort": "max"}}`，优先级高于环境变量。
 
 ### qwen2_vl, qvq, qwen2_5_vl, mimo_vl, keye_vl, keye_vl_1_5

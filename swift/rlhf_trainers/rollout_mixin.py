@@ -55,8 +55,6 @@ from .vllm_client import VLLMInferClient
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
 
-_TEMPLATE_CONTEXT_USE_ORIGINAL = object()
-
 
 @dataclass
 class DataCache:
@@ -488,7 +486,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                     'as vLLM currently does not support LoRA in MoE configurations. If you encounter errors, '
                     'please set vllm_enable_lora to False.')
 
-            if self.is_multimodal:
+            if model.model_meta.is_multimodal:
                 logger.warning('vLLM LoRA is enabled for a multimodal model. This may lead to unexpected issues '
                                'when applying LoRA to the ViT component, as vLLM does not yet support this setup. '
                                'If errors occur, please disable LoRA by setting vllm_enable_lora to False.')
@@ -1775,13 +1773,12 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
     def _template_context(self,
                           template: Template,
                           inputs: Optional['DataType'] = None,
-                          max_length: Any = _TEMPLATE_CONTEXT_USE_ORIGINAL,
+                          max_length: Optional[int] = None,
                           mode: Optional[str] = None):
-        # Preserve the existing max_length unless a caller explicitly overrides it.
+        # used for unsetting max_length
         original_max_length = template.max_length
         original_mode = template.mode
-        if max_length is not _TEMPLATE_CONTEXT_USE_ORIGINAL:
-            template.max_length = max_length
+        template.max_length = max_length
         if mode is not None:
             template.set_mode(mode)
         forward_ctx = template.forward_context(self.model, inputs) if inputs is not None else nullcontext()

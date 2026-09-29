@@ -428,6 +428,8 @@
 |[ZhipuAI/GLM-5.1-FP8](https://modelscope.cn/models/ZhipuAI/GLM-5.1-FP8)|glm_moe_dsa|glm5_1|glm5_1|transformers>=5.2.0|&#x2714;|-|[ZhipuAI/GLM-5.1-FP8](https://huggingface.co/ZhipuAI/GLM-5.1-FP8)|
 |[ZhipuAI/GLM-5.2](https://modelscope.cn/models/ZhipuAI/GLM-5.2)|glm_moe_dsa|glm5_2|glm5_1|transformers>=5.2.0|&#x2714;|-|[ZhipuAI/GLM-5.2](https://huggingface.co/ZhipuAI/GLM-5.2)|
 |[ZhipuAI/GLM-5.2-FP8](https://modelscope.cn/models/ZhipuAI/GLM-5.2-FP8)|glm_moe_dsa|glm5_2|glm5_1|transformers>=5.2.0|&#x2714;|-|[ZhipuAI/GLM-5.2-FP8](https://huggingface.co/ZhipuAI/GLM-5.2-FP8)|
+|[ZhipuAI/GLM-5.3](https://modelscope.cn/models/ZhipuAI/GLM-5.3)|glm_moe_dsa|glm5_3|glm5_1|transformers>=5.2.0|&#x2714;|-|[zai-org/GLM-5.3](https://huggingface.co/zai-org/GLM-5.3)|
+|[ZhipuAI/GLM-5.3-BF16](https://modelscope.cn/models/ZhipuAI/GLM-5.3-BF16)|glm_moe_dsa|glm5_3|glm5_1|transformers>=5.2.0|&#x2714;|-|[zai-org/GLM-5.3-BF16](https://huggingface.co/zai-org/GLM-5.3-BF16)|
 |[ZhipuAI/glm-edge-1.5b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-1.5b-chat)|glm_edge|chatglm4|chatglm4|transformers>=4.46|&#x2718;|-|[zai-org/glm-edge-1.5b-chat](https://huggingface.co/zai-org/glm-edge-1.5b-chat)|
 |[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat)|glm_edge|chatglm4|chatglm4|transformers>=4.46|&#x2718;|-|[zai-org/glm-edge-4b-chat](https://huggingface.co/zai-org/glm-edge-4b-chat)|
 |[codefuse-ai/CodeFuse-CodeGeeX2-6B](https://modelscope.cn/models/codefuse-ai/CodeFuse-CodeGeeX2-6B)|codefuse_codegeex2|codefuse||transformers<4.34|&#x2718;|coding|[codefuse-ai/CodeFuse-CodeGeeX2-6B](https://huggingface.co/codefuse-ai/CodeFuse-CodeGeeX2-6B)|
@@ -882,8 +884,8 @@
 |[ZhipuAI/GLM-4.5V-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.5V-FP8)|glm4v_moe|glm4_5v|glm4_5|transformers>=4.56|&#x2714;|-|[zai-org/GLM-4.5V-FP8](https://huggingface.co/zai-org/GLM-4.5V-FP8)|
 |[ZhipuAI/GLM-4.6V](https://modelscope.cn/models/ZhipuAI/GLM-4.6V)|glm4v_moe|glm4_5v|glm4_5|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/GLM-4.6V](https://huggingface.co/zai-org/GLM-4.6V)|
 |[ZhipuAI/GLM-4.6V-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.6V-FP8)|glm4v_moe|glm4_5v|glm4_5|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/GLM-4.6V-FP8](https://huggingface.co/zai-org/GLM-4.6V-FP8)|
-|[ZhipuAI/GLM-5.3-Flash](https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash)|glm5_next|glm5_next|glm5_1|transformers>=5.16.0|&#x2718;|vision, video|[zai-org/GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash)|
-|[ZhipuAI/GLM-5.3-Flash-BF16](https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash-BF16)|glm5_next|glm5_next|glm5_1|transformers>=5.16.0|&#x2718;|vision, video|[zai-org/GLM-5.3-Flash-BF16](https://huggingface.co/zai-org/GLM-5.3-Flash-BF16)|
+|[ZhipuAI/GLM-5.3-Flash](https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash)|glm5_next|glm5_next|glm5_1|transformers>=5.16.0|&#x2714;|vision, video|[zai-org/GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash)|
+|[ZhipuAI/GLM-5.3-Flash-BF16](https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash-BF16)|glm5_next|glm5_next|glm5_1|transformers>=5.16.0|&#x2714;|vision, video|[zai-org/GLM-5.3-Flash-BF16](https://huggingface.co/zai-org/GLM-5.3-Flash-BF16)|
 |[ZhipuAI/glm-edge-v-2b](https://modelscope.cn/models/ZhipuAI/glm-edge-v-2b)|glm_edge_v|glm_edge_v|chatglm4|transformers>=4.46|&#x2718;|vision|[zai-org/glm-edge-v-2b](https://huggingface.co/zai-org/glm-edge-v-2b)|
 |[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat)|glm_edge_v|glm_edge_v|chatglm4|transformers>=4.46|&#x2718;|vision|[zai-org/glm-edge-4b-chat](https://huggingface.co/zai-org/glm-edge-4b-chat)|
 |[ZhipuAI/GLM-OCR](https://modelscope.cn/models/ZhipuAI/GLM-OCR)|glm_ocr|glm_ocr|glm4|transformers>=5.0.1dev0|&#x2718;|-|[zai-org/GLM-OCR](https://huggingface.co/zai-org/GLM-OCR)|
@@ -1071,6 +1073,7 @@
 |[lmms-lab/LLaVA-OneVision-1.5-4B-Base](https://modelscope.cn/models/lmms-lab/LLaVA-OneVision-1.5-4B-Base)|llava_onevision1_5|llava_onevision1_5||transformers>=4.53.0, qwen_vl_utils|&#x2714;|vision|[lmms-lab/LLaVA-OneVision-1.5-4B-Base](https://huggingface.co/lmms-lab/LLaVA-OneVision-1.5-4B-Base)|
 |[lmms-lab/LLaVA-OneVision-1.5-8B-Base](https://modelscope.cn/models/lmms-lab/LLaVA-OneVision-1.5-8B-Base)|llava_onevision1_5|llava_onevision1_5||transformers>=4.53.0, qwen_vl_utils|&#x2714;|vision|[lmms-lab/LLaVA-OneVision-1.5-8B-Base](https://huggingface.co/lmms-lab/LLaVA-OneVision-1.5-8B-Base)|
 |[lmms-lab/LLaVA-OneVision-2-8B-Instruct](https://modelscope.cn/models/lmms-lab/LLaVA-OneVision-2-8B-Instruct)|llava_onevision2|llava_onevision2||transformers>=5.0, qwen_vl_utils|&#x2718;|vision, video|[lmms-lab/LLaVA-OneVision-2-8B-Instruct](https://huggingface.co/lmms-lab/LLaVA-OneVision-2-8B-Instruct)|
+|[deepseek-ai/DeepSeek-V4.1-Flash](https://modelscope.cn/models/deepseek-ai/DeepSeek-V4.1-Flash)|deepseek_v41|deepseek_v41|deepseek_v4|-|&#x2714;|vision|[deepseek-ai/DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash)|
 |[deepseek-ai/deepseek-vl-1.3b-chat](https://modelscope.cn/models/deepseek-ai/deepseek-vl-1.3b-chat)|deepseek_vl|deepseek_vl||-|&#x2718;|vision|[deepseek-ai/deepseek-vl-1.3b-chat](https://huggingface.co/deepseek-ai/deepseek-vl-1.3b-chat)|
 |[deepseek-ai/deepseek-vl-7b-chat](https://modelscope.cn/models/deepseek-ai/deepseek-vl-7b-chat)|deepseek_vl|deepseek_vl||-|&#x2718;|vision|[deepseek-ai/deepseek-vl-7b-chat](https://huggingface.co/deepseek-ai/deepseek-vl-7b-chat)|
 |[deepseek-ai/deepseek-vl2-tiny](https://modelscope.cn/models/deepseek-ai/deepseek-vl2-tiny)|deepseek_vl2|deepseek_vl2||transformers<4.42|&#x2718;|vision|[deepseek-ai/deepseek-vl2-tiny](https://huggingface.co/deepseek-ai/deepseek-vl2-tiny)|
@@ -1202,6 +1205,8 @@
 |[stepfun-ai/Step3-VL-10B](https://modelscope.cn/models/stepfun-ai/Step3-VL-10B)|step3_vl|step3_vl|hermes|transformers>=4.57.0|&#x2718;|vision|[stepfun-ai/Step3-VL-10B](https://huggingface.co/stepfun-ai/Step3-VL-10B)|
 |[meta-models/Muse-Glimmer-30B](https://modelscope.cn/models/meta-models/Muse-Glimmer-30B)|muse_glimmer|muse_glimmer||transformers>=5.15|&#x2714;|vision, video|[meta-models/Muse-Glimmer-30B](https://huggingface.co/meta-models/Muse-Glimmer-30B)|
 |[JinaAI/jina-reranker-m0](https://modelscope.cn/models/JinaAI/jina-reranker-m0)|jina_reranker_m0|jina_reranker_m0||-|&#x2718;|reranker, vision|[JinaAI/jina-reranker-m0](https://huggingface.co/JinaAI/jina-reranker-m0)|
+|[zenosai/MonkeyOCRv2-S](https://modelscope.cn/models/zenosai/MonkeyOCRv2-S)|monkeyocrv2|monkeyocrv2||transformers>=4.45, qwen_vl_utils|&#x2718;|vision, embedding, document-understanding|[zenosai/MonkeyOCRv2-S](https://huggingface.co/zenosai/MonkeyOCRv2-S)|
+|[zenosai/MonkeyOCRv2-B](https://modelscope.cn/models/zenosai/MonkeyOCRv2-B)|monkeyocrv2|monkeyocrv2||transformers>=4.45, qwen_vl_utils|&#x2718;|vision, embedding, document-understanding|[zenosai/MonkeyOCRv2-B](https://huggingface.co/zenosai/MonkeyOCRv2-B)|
 
 
 ## 数据集

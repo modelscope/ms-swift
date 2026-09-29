@@ -25,7 +25,7 @@ class DataLoaderDispatcher:
         return dist.group.WORLD if dist.is_initialized() else 1
 
     def _scatter_object_list(self, inputs):
-        if not dist.is_initialized():
+        if self.world_size == 1:
             return inputs[0]
         outputs = [None]
         global_src_rank = dist.get_global_rank(self.group, 0)

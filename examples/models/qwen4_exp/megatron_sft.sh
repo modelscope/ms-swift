@@ -1,5 +1,8 @@
 # 8*70G
 # BestPractices/Qwen3_8-Flash-Next-Best-Practice
+#
+# To train the checkpoint's MTP head, add `--mtp_num_layers 1` and
+# `--mtp_loss_scaling_factor 0.1` to the command below.
 
 PLE_CPU_OFFLOAD=1 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \

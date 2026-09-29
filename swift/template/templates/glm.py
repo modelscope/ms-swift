@@ -349,6 +349,9 @@ register_template(GLM4_7TemplateMeta(
 
 
 class GLM5_2Template(GLM4_5Template):
+    # GLM-5.2's chat template renders `Reasoning Effort:` only while thinking is on. GLM-5.3
+    # dropped that gate.
+    reasoning_effort_needs_thinking = True
 
     def init_env_args(self):
         super().init_env_args()
@@ -361,7 +364,7 @@ class GLM5_2Template(GLM4_5Template):
         reasoning_effort = inputs.chat_template_kwargs.get('reasoning_effort')
         if reasoning_effort is None:
             reasoning_effort = self.reasoning_effort
-        if self._get_enable_thinking(inputs):
+        if not self.reasoning_effort_needs_thinking or self._get_enable_thinking(inputs):
             effort_str = f'Reasoning Effort: {reasoning_effort.capitalize()}'
             if system:
                 system = f'{effort_str}<|system|>{system}'
@@ -377,6 +380,35 @@ register_template(
         agent_template='glm5_1',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
+    ))
+
+
+class GLM5_3Template(GLM5_2Template):
+    """GLM-5.3: same `GlmMoeDsa` weights layout as GLM-5.2, but its chat template moved on.
+
+    * `Reasoning Effort:` lost its `enable_thinking` gate, and `reasoning_effort` now also
+      accepts `'low'` on top of `'high'` / `'max'`.
+    * `enable_thinking` disappeared from the template altogether -- the generation prompt is
+      unconditionally `<|assistant|><think>`, so there is no non-thinking mode left to select.
+      `non_thinking_prefix` is still needed: it is what `_add_non_thinking_prefix` prepends to a
+      history assistant turn carrying no reasoning, which the template renders as `<think></think>`.
+    * `clear_thinking` defaults to false, which keeps historical `<think>` blocks instead of
+      stripping them as GLM-5.2 did. Hence `preserve_thinking=True` on the template meta.
+    """
+    reasoning_effort_needs_thinking = False
+
+    def _get_enable_thinking(self, inputs=None):
+        return True
+
+
+register_template(
+    GLM4_7TemplateMeta(
+        LLMTemplateType.glm5_3,
+        template_cls=GLM5_3Template,
+        agent_template='glm5_1',
+        non_thinking_prefix='<think></think>',
+        history_thinking_prefix='<think></think>',
+        preserve_thinking=True,
     ))
 
 
