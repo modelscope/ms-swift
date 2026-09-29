@@ -346,7 +346,13 @@ class ChatCompletionRequest(RequestConfig, MultiModalRequestMixin, ChatCompletio
                     value = value['url']
                 if isinstance(value, str):
                     is_remote = value.strip().lower().startswith(('http://', 'https://'))
-                    if value.startswith('data:') or is_remote or len(value) > 200:
+                    suffix = os.path.splitext(value)[1].lower()
+                    # A long string is usually raw base64. A local media path can be long too,
+                    # including one that is not on disk, so the allowlist still sees it.
+                    is_local_path = os.path.isfile(value) or (
+                        suffix in {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.mp3', '.wav', '.mp4', '.webm'}
+                        and (os.sep in value or value.startswith('~')))
+                    if value.startswith('data:') or is_remote or (len(value) > 200 and not is_local_path):
                         continue
 
                 # local_path / PIL.Image
