@@ -167,7 +167,7 @@ class Qwen3_5AgentTemplate(Qwen3CoderAgentTemplate):
 
     def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
         """Qwen3.5/3.6 jinja keeps the preceding assistant ``content``
-        (including ``<think>...</think>`` reasoning) before ``<​tool_call>``
+        (including ``<think>...</think>`` reasoning) before ``<tool_call>``
         and inserts ``\n\n`` between them only when the effective content
         (after stripping the <think> block and its trailing newlines) is
         non-empty.

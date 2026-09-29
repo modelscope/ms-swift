@@ -7,7 +7,7 @@ the history-thinking path, whenever a tool message sat between the user prompt
 and the assistant reasoning). The official ``chat_template.jinja`` (used by
 vLLM / transformers at inference) keeps both, which is the root cause of the
 train/infer mismatch on Qwen3.5/3.6 agent data (the same upstream issue as
-#9234 — ``</think><|im_end|>`` / empty ``<​tool_call>`` after SFT).
+#9234 — ``</think><|im_end|>`` / empty ``<tool_call>`` after SFT).
 
 These tests exercise the agent-template and template-base hooks directly,
 without loading a model or downloading tokenizer files, so they run on CPU
@@ -23,7 +23,7 @@ from swift.template.utils import get_last_user_round
 
 class TestQwen3_5AddToolCallPrefix(unittest.TestCase):
     """The Qwen3.5/3.6 jinja keeps the preceding assistant ``content`` (including
-    ``<think>...</think>`` reasoning) before ``<​tool_call>`` and only inserts
+    ``<think>...</think>`` reasoning) before ``<tool_call>`` and only inserts
     ``\\n\\n`` between them when the effective (post-think) content is
     non-empty. The previous swift implementation used ``pre_message['content']``
     only to decide on the separator and dropped the reasoning entirely — see
@@ -68,7 +68,7 @@ class TestQwen3_5AddToolCallPrefix(unittest.TestCase):
         self.assertIn('only thinking, no post-text', out)
         # No inserted '\\n\\n' separator between </think> and <tool_call> when
         # there is no post-think text — the jinja template just concatenates.
-        self.assertNotIn('</think>\n\n<​tool_call>', out)
+        self.assertNotIn('</think>\n\n<tool_call>', out)
         self.assertTrue(out.endswith('</think>' + self.tool_content))
 
     def test_think_plus_post_text_then_tool_call_inserts_separator(self):
@@ -80,7 +80,7 @@ class TestQwen3_5AddToolCallPrefix(unittest.TestCase):
         # Reasoning preserved.
         self.assertIn('plan', out)
         # Separator before tool_call when effective content is non-empty.
-        self.assertIn('Some preamble text.\n\n<​tool_call>', out)
+        self.assertIn('Some preamble text.\n\n<tool_call>', out)
 
     def test_no_pre_message_returns_tool_content_unchanged(self):
         out = self.tpl._add_tool_call_prefix(self.tool_content, None)
@@ -111,22 +111,52 @@ class TestGetLastUserRoundIncludeTool(unittest.TestCase):
 
     def test_include_tool_false_ignores_tool_messages(self):
         messages = [
-            {'role': 'user', 'content': 'first user'},
-            {'role': 'assistant', 'content': 'first assistant'},
-            {'role': 'tool', 'content': 'tool result'},
-            {'role': 'assistant', 'content': 'second assistant'},
+            {
+                'role': 'user',
+                'content': 'first user'
+            },
+            {
+                'role': 'assistant',
+                'content': 'first assistant'
+            },
+            {
+                'role': 'tool',
+                'content': 'tool result'
+            },
+            {
+                'role': 'assistant',
+                'content': 'second assistant'
+            },
         ]
         self.assertEqual(get_last_user_round(messages, include_tool=False), 0)
         self.assertEqual(get_last_user_round(messages, include_tool=True), 2)
 
     def test_include_tool_false_matches_first_user(self):
         messages = [
-            {'role': 'user', 'content': 'only user'},
-            {'role': 'assistant', 'content': 'a1'},
-            {'role': 'tool', 'content': 't1'},
-            {'role': 'assistant', 'content': 'a2'},
-            {'role': 'tool', 'content': 't2'},
-            {'role': 'assistant', 'content': 'a3'},
+            {
+                'role': 'user',
+                'content': 'only user'
+            },
+            {
+                'role': 'assistant',
+                'content': 'a1'
+            },
+            {
+                'role': 'tool',
+                'content': 't1'
+            },
+            {
+                'role': 'assistant',
+                'content': 'a2'
+            },
+            {
+                'role': 'tool',
+                'content': 't2'
+            },
+            {
+                'role': 'assistant',
+                'content': 'a3'
+            },
         ]
         # The last user message is at index 0; everything from index 1
         # onward (including all tool messages and assistants after them)
