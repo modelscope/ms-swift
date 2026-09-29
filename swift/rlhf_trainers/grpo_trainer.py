@@ -1793,6 +1793,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         advantages = grpo_batch.advantages
         advantages = (advantages * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
 
+        loss_kwargs = {}
+        if self.loss_type == 'dapo':
+            # Liger divides the global count by world size; do not use the current micro-batch's token count.
+            loss_kwargs['num_items_in_batch'] = grpo_batch.num_items_in_batch
         loss, metrics = self.liger_grpo_loss(
             _input=last_hidden_state,
             lin_weight=unwrapped_model.lm_head.weight,
@@ -1803,6 +1807,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             old_per_token_logps=old_per_token_logps,
             ref_per_token_logps=grpo_batch.ref_per_token_logps,
             vllm_is_ratio=vllm_is_ratio,
+            **loss_kwargs,
         )
 
         mean_kl = metrics[0] if self.beta != 0.0 else None
@@ -1812,6 +1817,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.beta != 0.0:
             self._metrics[mode]['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
         self._metrics[mode]['clip_ratio'].append(self.accelerator.gather_for_metrics(clip_ratio).mean().item())
+        if self.loss_type == 'dapo':
+            # Compensate before compute_loss adds the micro-batch-mean CHORD loss.
+            loss = self._undo_gradient_accumulation_scaling(loss)
         return loss
 
     def evaluation_loop(self, dataloader, *args, **kwargs):
@@ -2080,6 +2088,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.use_liger_loss = self.args.use_liger_kernel
         if self.use_liger_loss:
             from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
+            if (self.loss_type == 'dapo'
+                    and 'num_items_in_batch' not in inspect.signature(LigerFusedLinearGRPOLoss.forward).parameters):
+                logger.warning('Installed liger-kernel does not support num_items_in_batch; '
+                               'falling back to the standard DAPO loss for correct token normalization.')
+                self.use_liger_loss = False
+                return
             self.liger_grpo_loss = LigerFusedLinearGRPOLoss(
                 beta=self.beta,
                 compiled=False,
