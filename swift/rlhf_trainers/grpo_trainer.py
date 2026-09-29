@@ -57,8 +57,8 @@ from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logg
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
 from .utils import (_ForwardRedirection, collate_to_grpo_micro_batch, compute_chord_loss, encode_sample,
-                    identity_data_collator, load_pil_img, make_chord_sft_dataset, pad_logps_back_to_batch,
-                    patch_save_last_checkpoint, profiling_context, profiling_decorator,
+                    get_even_process_data, identity_data_collator, load_pil_img, make_chord_sft_dataset,
+                    pad_logps_back_to_batch, patch_save_last_checkpoint, profiling_context, profiling_decorator,
                     replace_assistant_response_with_ids, swanlab_get_run)
 
 try:
@@ -238,18 +238,22 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         total_advantages = self._compute_advantages(samples, self._rewards_per_func, batch_encoded_inputs)
 
         sample_counts = batch_encoded_inputs[0].pop('_sample_counts')
-        local_advantages = get_local_rollout_values(total_advantages, sample_counts, self.accelerator.process_index)
+        if sample_counts is None:
+            local_advantages = get_even_process_data(self, total_advantages)
+        else:
+            local_advantages = get_local_rollout_values(total_advantages, sample_counts, self.accelerator.process_index)
         assert len(local_advantages) == len(samples)
         for i, advantage in enumerate(local_advantages):
             samples[i].advantages = advantage
         # log metrics in samples
         self._logs['advantages'].extend(total_advantages.tolist())
 
+        batch_advantages = total_advantages if sample_counts is not None else local_advantages
         for batch_encoded in batch_encoded_inputs:
             device = self.accelerator.device
             grpo_batch: GRPOBatch = batch_encoded['grpo_batch']
             # Reuse the original grouping without gathering the full rollout samples again under SP.
-            base_advantages = total_advantages[batch_encoded.pop('_sample_indices')].to(device)
+            base_advantages = batch_advantages[batch_encoded.pop('_sample_indices')].to(device)
             use_rlsd = (self.advantage_reweight == 'rlsd' and grpo_batch.teacher_per_token_logps is not None)
             use_sdar = (self.sdar_loss_coef > 0 and grpo_batch.teacher_per_token_logps is not None)
             if use_rlsd:
@@ -723,9 +727,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             organized as [steps_per_generation][batch_size]
         """
         template = self.template
-        # Carry global positions through the first split, including repeated request IDs and uneven ranks.
-        sample_counts = gather_object([len(samples)])
-        sample_offset = sum(sample_counts[:self.accelerator.process_index])
+        sample_counts = None
+        sample_offset = 0
+        if template.sequence_parallel_size > 1:
+            # Carry global positions through the first split, including repeated request IDs and uneven ranks.
+            sample_counts = gather(torch.tensor([len(samples)], device=self.accelerator.device)).tolist()
+            sample_offset = sum(sample_counts[:self.accelerator.process_index])
         gas_chunks = self.split_by_mini_batches(list(enumerate(samples, start=sample_offset)))
         ga_batch_encoded_inputs: List[Dict[str, Any]] = []
         for indexed_batch in gas_chunks:
