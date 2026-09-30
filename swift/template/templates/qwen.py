@@ -1174,6 +1174,10 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         else:
             audio_feature_lengths = None
         video_second_per_grid = inputs.pop('video_second_per_grid', None)
+        if video_second_per_grid is not None and not isinstance(video_second_per_grid, torch.Tensor):
+            # `get_rope_index` indexes `second_per_grids` per video and calls `.cpu()` on each item,
+            # so the fps override in `_encode` (a python list) must be converted back to a tensor.
+            video_second_per_grid = torch.tensor(video_second_per_grid, dtype=torch.float32)
         input_ids = inputs['input_ids']
         attention_mask = inputs.get('attention_mask_2d')
         if attention_mask is None:
