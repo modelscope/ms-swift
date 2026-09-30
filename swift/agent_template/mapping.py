@@ -22,6 +22,7 @@ from .react import ReactEnAgentTemplate, ReactZnAgentTemplate
 from .seed_oss import SeedAgentTemplate
 from .spark import Spark2_5AgentTemplate
 from .toolbench import ToolBenchAgentTemplate
+from .xing4_0 import Xing4_0AgentTemplate
 from .youtu import YoutuAgentTemplate
 
 agent_template_map = {
@@ -57,6 +58,8 @@ agent_template_map = {
     'seed_oss': SeedAgentTemplate,
     # ref: https://modelscope.cn/models/XHToken/Spark-X2.5-4B
     'spark2_5': Spark2_5AgentTemplate,
+    # ref: https://modelscope.cn/models/XingChen-AGI/Xing4.0-29B-A4B
+    'xing4_0': Xing4_0AgentTemplate,
     # ref: https://modelscope.cn/models/google/gemma-4-12B-it
     'gemma4': Gemma4AgentTemplate,
     # extra
