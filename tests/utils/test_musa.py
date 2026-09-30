@@ -8,9 +8,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from swift.cli.utils import sync_musa_visible_devices, try_use_single_device_mode
+from swift.cli.utils import (is_torch_musa_installed, is_torchada_available, sync_musa_visible_devices,
+                             try_use_single_device_mode)
 from swift.utils import torch_utils
-from swift.utils.import_utils import is_torch_musa_installed, is_torchada_available
 
 _DEVICE_ENV_KEYS = ('CUDA_VISIBLE_DEVICES', 'MUSA_VISIBLE_DEVICES', 'LOCAL_RANK', 'SWIFT_SINGLE_DEVICE_MODE')
 
