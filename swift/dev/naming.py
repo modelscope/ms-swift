@@ -41,6 +41,23 @@ _OPTIM_NAME_MAP = {
     'adam': 'Adam',
     'sgd': 'SGD',
     'adafactor': 'Adafactor',
+    # Muon on the transformers backend. twinkle's MuonClip is the HF-path counterpart of Megatron's
+    # `optimizer='muon'`; it is selected with `optim='muon'` (validate._check_muon rejects the Megatron
+    # `optimizer` knob here and points at `optim`). MuonClip needs a `muon_config` to be more than
+    # momentum SGD -- configure_optimizer builds it and passes it to set_optimizer.
+    'muon': 'MuonClip',
+}
+
+# --- galore: base optimizer -> its GaLore variant in twinkle.module.optimizer.galore.
+#     `galore_config` only takes effect on these (set_optimizer builds the low-rank projection param
+#     groups for them and ignores it elsewhere), so `use_galore` UPGRADES the resolved base optimizer
+#     rather than being a standalone optim name. AdamW and Adafactor are the two bases dev maps that
+#     have a GaLore counterpart; anything else (Adam / SGD / MuonClip) has none, and
+#     resolve_galore_target refuses it instead of silently training without the projection. The
+#     quantized variant (QGaLore) is AdamW-only and handled in resolve_galore_target, not in this map.
+_GALORE_VARIANT = {
+    'AdamW': 'GaLoreAdamW',
+    'Adafactor': 'GaLoreAdafactor',
 }
 
 # Optim names needing extra constructor kwargs to match transformers' Trainer exactly.
@@ -269,6 +286,38 @@ def resolve_optim_target(swift_name: str) -> tuple:
         from transformers.optimization import Adafactor
         return Adafactor, extra
     return name, extra
+
+
+def resolve_galore_target(optim_target, *, quantize: bool = False) -> str:
+    """Map a resolved base optimizer to its GaLore variant, or refuse one that has no counterpart.
+
+    ``optim_target`` is what :func:`resolve_optim_target` returned: a class NAME for the AdamW family
+    and the HF Adafactor CLASS for 'adafactor' (see _OPTIM_EXTRA_KWARGS), so the key is read off
+    ``__name__`` for a class. GaLore projects the gradient of the matched weights into a low-rank
+    subspace, which only the GaLore* optimizers implement -- so ``use_galore`` swaps the base for its
+    variant, and a base with no variant (Adam / SGD / Muon) cannot do GaLore at all and is refused
+    here rather than silently training an unprojected optimizer.
+
+    ``quantize`` selects QGaLore -- the quantized low-rank projection, implemented only for the AdamW
+    base (twinkle's ``QGaLoreAdamW8bit``, which provisions the external ``q_galore_torch`` optimizer
+    and fails loudly at construction if it is missing). Adafactor has no quantized counterpart, so
+    ``quantize`` + Adafactor is refused here rather than silently dropping the quantization.
+    """
+    key = optim_target if isinstance(optim_target, str) else getattr(optim_target, '__name__', None)
+    if quantize:
+        if key != 'AdamW':
+            raise NotImplementedError(
+                f'use_galore with galore_quantization has no QGaLore variant for optimizer {key!r}. '
+                'QGaLore (quantized low-rank projection) is implemented for the AdamW base only -- set '
+                'optim to an adamw variant (e.g. adamw_torch), or drop galore_quantization.')
+        return 'QGaLoreAdamW8bit'
+    variant = _GALORE_VARIANT.get(key)
+    if variant is None:
+        raise NotImplementedError(
+            f'use_galore has no GaLore variant for optimizer {key!r}. GaLore is implemented for the '
+            f'AdamW and Adafactor bases only -- set optim to one of those (e.g. adamw_torch), or drop '
+            f'use_galore.')
+    return variant
 
 
 def parse_optim_args(optim_args: Optional[str]) -> dict:

@@ -188,6 +188,7 @@ class GemmaEmbLoader(ModelLoader):
     architectures = ['Gemma3TextModel']
     template = 'dummy'
     task_type = 'embedding'
+    model_framework = 'sentence_transformers'
     models = [('google/embeddinggemma-300m', 'google/embeddinggemma-300m')]
 
 

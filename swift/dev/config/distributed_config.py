@@ -23,8 +23,16 @@ class DistributedConfig:
     # === Launch ===
     mode: Literal['ray', 'local'] = 'local'
     nproc_per_node: Optional[int] = None
+    #: Name of this run, handed to ``twinkle.initialize(name=...)`` so the Ray session and twinkle's
+    #: own run bookkeeping carry it. Only read in ``mode='ray'`` (a local/torchrun run has no Ray
+    #: experiment to name); None leaves twinkle's unnamed default.
+    ray_exp_name: Optional[str] = None
 
     # === DDP ===
+    #: Collective timeout in seconds for the process group the transformers backend initialises
+    #: (accelerate / DeepSpeed). None keeps twinkle's own default. A long first step -- a large model
+    #: load or a slow dataset cache -- can otherwise trip the default and tear the group down.
+    ddp_timeout: Optional[int] = None
     ddp_find_unused_parameters: Optional[bool] = None
     #: Broadcast buffers (e.g. batchnorm statistics) from rank 0 each forward. None takes torch's
     #: default of True; turning it off is a throughput win for models with no such buffers.

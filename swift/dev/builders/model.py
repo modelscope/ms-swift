@@ -1,5 +1,6 @@
 """build_model: ModelConfig + DistributedConfig -> twinkle-native TransformersModel / MegatronModel."""
 from __future__ import annotations
+import os
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -491,10 +492,17 @@ def _build_transformers_model(model_config: ModelConfig,
     strategy = 'accelerate'
     if distributed_config.deepspeed:
         strategy = 'deepspeed'
-        raise NotImplementedError('DeepSpeed is not supported yet')
+        # twinkle's DeepSpeedStrategy wants a config dict; the dev field is the same string the legacy
+        # CLI accepts (preset name / JSON file / inline JSON), so resolve it here.
+        kwargs['deepspeed_config'] = _resolve_deepspeed_config(distributed_config)
     elif distributed_config.fsdp:
         strategy = 'native_fsdp'
     kwargs['strategy'] = resolve_strategy(strategy)
+    # twinkle's transformers strategies (accelerate / deepspeed) take the process-group timeout from
+    # this env var, not a constructor arg (see AccelerateStrategy.__init__), so the configured
+    # --ddp_timeout reaches them through it. None leaves twinkle's own default in place.
+    if distributed_config.ddp_timeout is not None:
+        os.environ['TWINKLE_DIST_TIMEOUT_SECONDS'] = str(distributed_config.ddp_timeout)
     # Derived from torch_dtype, exactly like the Megatron branch below. This used to be hardcoded to
     # 'bf16', so --torch_dtype float16 silently trained in bf16 and --torch_dtype float32 did too --
     # the flag reached from_pretrained but never the autocast mode.
@@ -503,6 +511,8 @@ def _build_transformers_model(model_config: ModelConfig,
     # DDP find_unused_parameters: mirror HF Trainer's three-way derivation
     find_unused = distributed_config.ddp_find_unused_parameters
     if find_unused is None:
+        # A None TunerConfig means full-parameter training (select_tuner maps tuner='full' to None);
+        # any config here is an adapter, whose unused-parameter gradients need find_unused_parameters.
         is_peft = tuner_config is not None
         if is_peft:
             find_unused = True
@@ -531,10 +541,25 @@ def _build_transformers_model(model_config: ModelConfig,
     # honored; only when there is none does placement synthesize the default pure-DP mesh.
     _apply_ray_placement(kwargs, distributed_config, remote_group or 'model', device_mesh)
 
-    # tuner_backend='unsloth' swaps the class: unsloth owns both construction (its Triton kernels /
-    # optional 4bit base) and LoRA installation -- see swift/dev/model/unsloth_model.py. Everything
-    # derived above (dtype, strategy, mixed_precision, ddp_config) is passed through unchanged.
-    if tuner_config is not None and tuner_config.tuner_backend == 'unsloth':
+    # Three mutually exclusive construction paths:
+    #   - a family naming an external ``model_framework`` builds through that framework's own pipeline --
+    #     today only ``sentence_transformers``, whose embedding model builds Transformer -> Pooling ->
+    #     Normalize and pools per sentence, so it must NOT ride the plain HF embedding task (which re-pools
+    #     per-token features) -- see _resolve_model_framework;
+    #   - tuner_backend='unsloth' swaps the class: unsloth owns both construction (its Triton kernels /
+    #     optional 4bit base) and LoRA installation -- see swift/dev/model/unsloth_model.py. Everything
+    #     derived above (dtype, strategy, mixed_precision, ddp_config) is passed through unchanged;
+    #   - otherwise the plain twinkle TransformersModel, with the resolved family loader handed over.
+    model_framework = _resolve_model_framework(model_config, model_loader)
+    if model_framework == 'sentence_transformers':
+        model = _build_sentence_transformer_model(kwargs, model_config, distributed_config, tuner_config,
+                                                  quantize_config, train_config)
+    elif model_framework is not None:
+        # A declared framework with no builder wired here would otherwise fall through and build as a plain
+        # TransformersModel, silently ignoring the framework -- fail loudly instead, so a typo in a loader's
+        # ``model_framework`` cannot train a different model than the family declares.
+        raise ValueError(f'No builder is wired for model_framework={model_framework!r}; add a branch here.')
+    elif tuner_config is not None and tuner_config.tuner_backend == 'unsloth':
         from swift.dev.model import UnslothModel
         _apply_unsloth_kwargs(kwargs, model_config, tuner_config, train_config, quantize_config)
         model = UnslothModel(**kwargs)
@@ -560,10 +585,172 @@ def _build_transformers_model(model_config: ModelConfig,
     # constructor argument (gradient_checkpointing=...); switch to passing it once that lands, so the
     # model is never built in a state the caller did not ask for.
     if train_config is not None and not train_config.gradient_checkpointing:
-        model.model.gradient_checkpointing_disable()
+        _disable_gradient_checkpointing(model)
+
+    # Liger op-level kernels (rms_norm / rotary / swiglu / ...) replace layers on the unwrapped HF
+    # module, so this runs after construction and before the loss/optimizer are set. The
+    # fused-linear-CE op is deliberately NOT here -- it skips the lm_head GEMM rather than swapping a
+    # layer, so it is a loss-path selection (see swift.dev.loss.configure_loss), not a kernelize target.
+    if train_config is not None and train_config.use_liger_kernel:
+        _apply_liger_kernel(model, train_config)
 
     _apply_model_post_load(model, model_config)
     return model
+
+
+def _resolve_model_framework(model_config: ModelConfig, model_loader) -> Optional[str]:
+    """The external framework that must construct this embedding model, or None for the plain HF path
+    (TransformersModel + task='embedding'). The returned name keys the dispatch in ``build_model``.
+
+    Only an embedding task can ride a special framework today (``sentence_transformers`` is the sole one
+    wired). A resolved family loader is authoritative: qwen2_gte / gemma_emb declare
+    ``model_framework='sentence_transformers'`` (legacy loaded them via ``SentenceTransformer``), while
+    e.g. qwen3_emb deliberately does not -- its checkpoint ships an ST layout, but there that layout is an
+    *export* artifact and training still rides the HF embedding task. With no loader resolved (an
+    unregistered checkpoint), fall back to the on-disk ST layout so a re-trained/exported
+    sentence-transformers directory still routes correctly.
+    """
+    if model_config.task_type != 'embedding':
+        return None
+    if model_loader is not None:
+        return getattr(model_loader, 'model_framework', None)
+    return 'sentence_transformers' if _has_sentence_transformer_layout(model_config.model) else None
+
+
+def _has_sentence_transformer_layout(model_dir) -> bool:
+    """True when a local checkpoint directory carries the sentence-transformers pipeline files.
+
+    A hub id (not yet downloaded) is not a directory, so this is False there -- the loader marker is the
+    signal for registered families; this only catches an unregistered *local* ST checkpoint.
+    """
+    import os
+    if not model_dir or not os.path.isdir(model_dir):
+        return False
+    return any(
+        os.path.exists(os.path.join(model_dir, name))
+        for name in ('modules.json', 'config_sentence_transformers.json', '1_Pooling'))
+
+
+def _build_sentence_transformer_model(kwargs: dict, model_config: ModelConfig,
+                                      distributed_config: DistributedConfig,
+                                      tuner_config: Optional[TunerConfig],
+                                      quantize_config: Optional[QuantizeConfig],
+                                      train_config: Optional[TrainConfig]) -> TrainableModel:
+    """Construct a SentenceTransformerModel from the shared transformers-build kwargs.
+
+    Only the plumbing ST shares with the base transformers model is forwarded (strategy / precision /
+    ddp / mesh / ray placement); the ``from_pretrained`` load kwargs and the family ``model_loader`` are
+    dropped because ST builds its backbone through ``SentenceTransformer(model_id)``. ``config`` is left
+    unset so ST exposes the *backbone's* config (its own documented intent) rather than the dev-built
+    one, which the ST backbone never consumed.
+
+    The features the plain transformers build honors but the ST pipeline cannot are rejected here rather
+    than silently dropped: this is where the embedding model is diverted off the TransformersModel path,
+    and knowing it is ST needs the resolved loader / on-disk layout, which only exist at build time -- so
+    validate_configs (config-only) cannot catch these combinations.
+    """
+    if distributed_config.deepspeed:
+        raise NotImplementedError(
+            'A sentence-transformers embedding model cannot train under DeepSpeed: SentenceTransformerModel '
+            'builds its own module pipeline and wires no deepspeed_config into its strategy, so ZeRO would be '
+            'silently ignored. Use --fsdp or plain DDP for this model.')
+    if tuner_config is not None and tuner_config.tuner_backend == 'unsloth':
+        raise NotImplementedError(
+            'tuner_backend="unsloth" cannot wrap a sentence-transformers embedding model: unsloth rebuilds a '
+            'causal-LM module graph, while this checkpoint trains as an ST pooling pipeline. Use '
+            'tuner_backend="peft" (LoRA) or full fine-tuning.')
+    if quantize_config is not None and quantize_config.quant_method is not None:
+        raise NotImplementedError(
+            f'Load-time quantization ({quantize_config.quant_method!r}) is not applied to a sentence-transformers '
+            'embedding model: ST builds its backbone via SentenceTransformer(model_id), which takes no '
+            'transformers quantization_config. Train this model unquantized.')
+    if train_config is not None and train_config.use_liger_kernel:
+        raise NotImplementedError(
+            'use_liger_kernel is not composed with a sentence-transformers embedding model: Liger replaces '
+            'causal-LM decoder ops / the fused-linear-CE loss path, while this checkpoint trains an ST pooling '
+            'pipeline with an embedding loss. Disable use_liger_kernel for this model.')
+    from swift.dev.model import SentenceTransformerModel
+    st_kwargs = {
+        'model_id': kwargs['model_id'],
+        'strategy': kwargs['strategy'],
+        'mixed_precision': kwargs['mixed_precision'],
+        'ddp_config': kwargs.get('ddp_config'),
+    }
+    # SP mesh (local) / DeviceGroup placement (ray) were installed on the shared kwargs by
+    # _apply_hf_sp_mesh / _apply_ray_placement; forward them so ST lands on the right ranks. ST's own
+    # forward guard rejects an SP mesh (a whole-sentence pooling head cannot see a sequence shard).
+    for key in ('device_mesh', 'remote_group'):
+        if key in kwargs:
+            st_kwargs[key] = kwargs[key]
+    return SentenceTransformerModel(**st_kwargs)
+
+
+def _disable_gradient_checkpointing(model: TrainableModel) -> None:
+    """Undo twinkle's unconditional gradient_checkpointing_enable() when the config turned it off.
+
+    A plain transformers build holds an HF backbone at ``model.model``; a SentenceTransformerModel holds a
+    ``SentenceTransformer`` pipeline there instead, so it exposes its own disable that drives the leading
+    Transformer module's backbone.
+    """
+    disable = getattr(model, 'gradient_checkpointing_disable', None)
+    if callable(disable):
+        disable()
+    else:
+        model.model.gradient_checkpointing_disable()
+
+
+def _apply_liger_kernel(model: TrainableModel, train_config: TrainConfig) -> None:
+    """Patch the HF module's per-layer ops with Liger kernels via twinkle's mapping-driven kernelize.
+
+    ``liger_kernel_config`` (an ``{op: bool}`` dict) switches individual ops off on top of Liger's
+    default set; None keeps the default. kernelize mutates the module in place (class / forward
+    replacement), which is why it belongs at the end of model construction.
+    """
+    from twinkle.kernel import kernelize
+    kernelize(model.model, _liger_kernel_mapping(train_config.liger_kernel_config))
+
+
+def _liger_kernel_mapping(liger_kernel_config: Optional[dict]) -> Optional[dict]:
+    """DEFAULT_KERNEL_CONFIG minus any op the config switches off; None keeps the built-in default.
+
+    Returning None rather than a copy of the default matters: kernelize logs family-skips at DEBUG on
+    the default path but raises them to WARNING for any explicit mapping. 'fused_linear_cross_entropy'
+    is not a kernelize op, so it matches no DEFAULT_KERNEL_CONFIG entry and is ignored here (it is
+    consumed on the loss side instead).
+    """
+    if not liger_kernel_config:
+        return None
+    from twinkle.kernel.config import DEFAULT_KERNEL_CONFIG
+    disabled = {op for op, enabled in liger_kernel_config.items() if not enabled}
+    return {
+        target: choice
+        for target, choice in DEFAULT_KERNEL_CONFIG.items()
+        if getattr(choice, 'op', None) not in disabled
+    }
+
+
+def _resolve_deepspeed_config(distributed_config: DistributedConfig) -> Optional[dict]:
+    """Resolve ``DistributedConfig.deepspeed`` (preset name / JSON file / JSON string) into a dict.
+
+    twinkle's DeepSpeedStrategy takes a config dict, while the dev field carries the same string the
+    legacy CLI accepts. The preset-name -> bundled-JSON mapping lives in ``swift.dev.utils`` (shared with
+    config validation, which reads the ZeRO stage from the same resolution); only the ZeRO++
+    ``zero_hpz_partition_size`` injection -- a strategy-construction concern -- stays here. Returns None
+    when DeepSpeed is not requested.
+    """
+    from swift.dev.utils import resolve_deepspeed_config
+
+    config = resolve_deepspeed_config(distributed_config.deepspeed)
+    if config is None:
+        return None
+    if distributed_config.zero_hpz_partition_size is not None:
+        # ZeRO++ hpz shards within a node and replicates across nodes; it only means something inside a
+        # zero_optimization section, so refuse rather than drop it when the resolved config has none.
+        if 'zero_optimization' not in config:
+            raise ValueError('zero_hpz_partition_size (ZeRO++) needs a deepspeed config with a zero_optimization '
+                             'section; the resolved config has none.')
+        config['zero_optimization']['zero_hpz_partition_size'] = distributed_config.zero_hpz_partition_size
+    return config
 
 
 def _apply_mtp_kwargs(kwargs: dict, model_config: ModelConfig, strict: set) -> None:

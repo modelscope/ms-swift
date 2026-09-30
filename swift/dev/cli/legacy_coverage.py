@@ -10,10 +10,10 @@ UNSUPPORTED_SAMPLER_FIELDS: Tuple[str, ...] = (
 # write_batch_size was the old incremental-result write knob (superseded by InferConfig.batch_size) and
 # to_ollama was a dropped export target; both survive only in the legacy v4 argument classes. The rest
 # were removed from the dev Configs outright: the reward selectors merged into `--orm`/`--prm`, plugin
-# registration collapsed onto `--external_plugins`, and `agent_template`/`callbacks` were never consumed.
+# registration collapsed onto `--external_plugins`, and `agent_template` was never consumed.
 REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
     'ignore_args_error', 'use_swift_lora', 'write_batch_size', 'to_ollama', 'orm_model', 'prm_model',
-    'reward_model_plugin', 'custom_register_path', 'agent_template', 'callbacks')
+    'reward_model_plugin', 'custom_register_path', 'agent_template')
 #: Per-field replacement text overriding the generic 'removed_option' guidance where the migration path
 #: is specific enough to name, so the failure points at the exact flag that replaced it.
 REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
@@ -22,7 +22,6 @@ REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
     'reward_model_plugin': 'reward-model scoring is built in now; configure --orm/--prm directly',
     'custom_register_path': 'use --external_plugins (local file | local folder | hub id)',
     'agent_template': 'express the agent format through --template and the template registry',
-    'callbacks': 'compose training callbacks in code; this pass-through list was never consumed',
     'merge_lora': 'this command merges the adapter implicitly; drop --merge_lora',
     'exist_ok': 'use --replace_if_exists to overwrite an existing output directory',
 }
@@ -44,6 +43,11 @@ EVAL_SERVING_FIELDS: Tuple[str, ...] = (
     'log_interval', 'log_level', 'verbose')
 UNSUPPORTED_DISTRIBUTED_FIELDS: Tuple[str, ...] = ('ddp_backend', 'ddp_timeout', 'device_groups', 'ray_exp_name')
 SERVING_DISTRIBUTED_FIELDS: Tuple[str, ...] = UNSUPPORTED_DISTRIBUTED_FIELDS + ('use_ray',)
+# A training run names its Ray experiment (--ray_exp_name -> twinkle.initialize) and sets its process-group
+# timeout (--ddp_timeout -> the transformers strategy), so those two are consumed and no longer refused here.
+# The process-group backend is fixed by the device platform (nccl on GPU) and the device-group layout is
+# derived from the parallel spec, so those two stay refused even on the training commands.
+TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS: Tuple[str, ...] = ('ddp_backend', 'device_groups')
 TRAIN_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
     'optim_target_modules', 'log_on_each_node', 'include_num_input_tokens_seen', 'log_level', 'log_level_replica',
     'project', 'trackio_space_id', 'trackio_bucket_id', 'trackio_static_space_id', 'eval_do_concat_batches',
@@ -75,8 +79,6 @@ CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
     'distrib_optim_fully_reshardable_mem_efficient', 'dist_ckpt_save_pre_mcore_014', 'create_checkpoint_symlink',
     'use_flash_ckpt')
 CHECKPOINT_ARGS_RESTORE_FIELDS: Tuple[str, ...] = ('load_args', 'load_data_args')
-CHECKPOINT_HUB_FIELDS: Tuple[str, ...] = (
-    'push_to_hub', 'hub_model_id', 'hub_private_repo', 'hub_strategy', 'hub_revision', 'hub_always_push')
 CHECKPOINT_TRANSFORMERS_STATE_FIELDS: Tuple[str, ...] = (
     'no_save_rng', 'no_load_optim', 'no_load_rng', 'save_safetensors')
 CHECKPOINT_EXPORT_SUPPORTED_FIELDS = {
@@ -170,44 +172,40 @@ CHECKPOINT_MERGE_UNSUPPORTED_FIELDS: Tuple[str, ...] = tuple(
 
 CLI_LEGACY_ONLY: Dict[str, Mapping[str, Tuple[str, ...]]] = {
     'pt': {
-        'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS,
+        'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
         'unsupported_training': TRAIN_UNSUPPORTED_FIELDS + TUNER_UNSUPPORTED_FIELDS
         + TRAINING_GENERATION_UNSUPPORTED_FIELDS,
-        'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + CHECKPOINT_TRANSFORMERS_STATE_FIELDS
-        + CHECKPOINT_HUB_FIELDS,
+        'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + CHECKPOINT_TRANSFORMERS_STATE_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS,
     },
     'sft': {
-        'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS,
+        'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
         'unsupported_training': TRAIN_UNSUPPORTED_FIELDS + TUNER_UNSUPPORTED_FIELDS
         + TRAINING_GENERATION_UNSUPPORTED_FIELDS,
-        'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + CHECKPOINT_TRANSFORMERS_STATE_FIELDS
-        + CHECKPOINT_HUB_FIELDS,
+        'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + CHECKPOINT_TRANSFORMERS_STATE_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS,
     },
     'rlhf': {
-        'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS,
+        'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
         'unsupported_training': TRAIN_UNSUPPORTED_FIELDS + TUNER_UNSUPPORTED_FIELDS,
         'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + CHECKPOINT_TRANSFORMERS_STATE_FIELDS
-        + CHECKPOINT_HUB_FIELDS + MCORE_REFERENCE_CHECKPOINT_FIELDS,
+        + MCORE_REFERENCE_CHECKPOINT_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS + ('seq_kd',) + RLHF_REMOVED_ROLLOUT_FIELDS,
     },
     'megatron_pt': {
-        'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS,
-        'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + CHECKPOINT_HUB_FIELDS
-        + MCORE_TRAINING_CHECKPOINT_FIELDS,
+        'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
+        'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + MCORE_TRAINING_CHECKPOINT_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS,
     },
     'megatron_sft': {
-        'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS,
-        'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + CHECKPOINT_HUB_FIELDS
-        + MCORE_TRAINING_CHECKPOINT_FIELDS,
+        'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
+        'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + MCORE_TRAINING_CHECKPOINT_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS,
     },
     'megatron_rlhf': {
-        'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS,
-        'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + CHECKPOINT_HUB_FIELDS
-        + MCORE_TRAINING_CHECKPOINT_FIELDS + MCORE_REFERENCE_CHECKPOINT_FIELDS,
+        'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
+        'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + MCORE_TRAINING_CHECKPOINT_FIELDS
+        + MCORE_REFERENCE_CHECKPOINT_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS + ('seq_kd',),
     },
     'infer': {

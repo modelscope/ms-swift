@@ -394,6 +394,16 @@ class ModelLoader:
     # num_labels=1 default and reward-specific load handling, while task resolution still lands on
     # seq_cls. Left ``False`` for every non-reward family.
     is_reward: bool = False
+    # Names the external framework that constructs this family's model when it is not the plain twinkle
+    # ``TransformersModel`` path; ``None`` (default) means that path. ``'sentence_transformers'`` marks an
+    # embedding family whose checkpoint is a ``sentence-transformers`` pipeline (Transformer -> Pooling ->
+    # Normalize, legacy ``SentenceTransformer(model_dir)``): it pools per sentence, so it trains through
+    # ``SentenceTransformerModel`` rather than the HF embedding task (which re-pools per-token features).
+    # Declared per family, not inferred from the on-disk layout -- ``qwen3_emb`` ships that layout as an
+    # *export* artifact yet still trains on the HF embedding task. One open-ended name rather than an
+    # ``is_<framework>`` boolean per framework, so adding a framework is a new value here plus a branch in
+    # ``builders/model.py``'s dispatch (``_resolve_model_framework``), never a new field on this base.
+    model_framework: Optional[str] = None
 
     # Declared per family; resolved lazily so an absent transformers class costs nothing. Leave
     # `config_cls` / `processor_cls` unset to fall back to Auto*; `model_cls` has no safe default.

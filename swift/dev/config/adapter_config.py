@@ -7,7 +7,7 @@ from typing import List, Literal, Optional
 
 @dataclass
 class TunerConfig:
-    """LoRA (+QLoRA/DoRA/rsLoRA/LoRA+/LoRA-GA), AdaLoRA, TrainableTokens, GaLore, and LISA settings.
+    """LoRA (+QLoRA/DoRA/rsLoRA/LoRA+/LoRA-GA), AdaLoRA, TrainableTokens, and LISA settings.
 
     Scope note: only the tuners that see real-world use on text/multimodal LLMs are covered here.
     The image-generation-oriented methods (LoHa/LoKr/OFT/BOFT ...) are intentionally left out --
@@ -73,20 +73,3 @@ class TunerConfig:
     adalora_beta1: float = 0.85
     adalora_beta2: float = 0.85
     adalora_orth_reg_weight: float = 0.5
-
-    # === GaLore ===
-    use_galore: bool = False
-    galore_target_modules: Optional[List[str]] = None
-    galore_rank: int = 128
-    galore_update_proj_gap: int = 50
-    galore_scale: float = 1.0
-    galore_proj_type: str = 'std'
-    galore_optim_per_parameter: bool = False
-    galore_with_embedding: bool = False
-    galore_quantization: bool = False
-    galore_proj_quant: bool = False
-    galore_proj_bits: int = 4
-    galore_proj_group_size: int = 256
-    galore_cos_threshold: float = 0.4
-    galore_gamma_proj: int = 2
-    galore_queue_size: int = 5

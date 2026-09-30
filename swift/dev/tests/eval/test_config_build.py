@@ -1,28 +1,31 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Fast tier: ``run_eval``'s pure helpers and the ``Evaluator``/adapter construction guards.
+"""Fast tier: the shared EvalScope helpers, ``run_eval``'s backend guard, and the ``Evaluator``/adapter
+guards.
 
 No GPU, no model, no EvalScope ``run_task``: these assert the config-to-task translation and the fail-loudly
-guards that protect the sampler-only, Native-only contract. The real end-to-end run lives in
-``test_evaluator_e2e.py``; the real command in the slow tier.
+guards that protect the sampler-only, Native-only contract. The EvalScope adaptation moved to
+``swift.dev.eval.evalscope_runner`` (shared with the in-training eval); ``_guard_backend`` stays with the
+``swift eval`` recipe. The real end-to-end run lives in ``test_evaluator_e2e.py``; the real command in the
+slow tier.
 """
 import pytest
 
 from swift.dev.config import EvalConfig, ModelConfig, TemplateConfig
-from swift.dev.recipe.run_eval import (_build_task_config, _guard_backend, _model_name, _validate_eval_datasets,
-                                       run_eval)
+from swift.dev.eval import build_task_config, model_name, validate_eval_datasets
+from swift.dev.recipe.run_eval import _guard_backend, run_eval
 
 
-# --------------------------------------------------------------------------- _model_name
+# --------------------------------------------------------------------------- model_name
 def test_model_name_is_last_path_segment():
-    assert _model_name(ModelConfig(model='Qwen/Qwen2.5-0.5B-Instruct')) == 'Qwen2.5-0.5B-Instruct'
+    assert model_name(ModelConfig(model='Qwen/Qwen2.5-0.5B-Instruct')) == 'Qwen2.5-0.5B-Instruct'
 
 
 def test_model_name_strips_trailing_slash():
-    assert _model_name(ModelConfig(model='/data/checkpoints/lora-merged/')) == 'lora-merged'
+    assert model_name(ModelConfig(model='/data/checkpoints/lora-merged/')) == 'lora-merged'
 
 
 def test_model_name_falls_back_when_unset():
-    assert _model_name(ModelConfig(model=None)) == 'model'
+    assert model_name(ModelConfig(model=None)) == 'model'
 
 
 # --------------------------------------------------------------------------- _guard_backend
@@ -41,17 +44,14 @@ def test_guard_backend_allows_local_backends(backend):
     assert _guard_backend(backend) is None
 
 
-# --------------------------------------------------------------------------- _validate_eval_datasets
-def test_validate_eval_datasets_normalizes_case_in_place():
-    eval_config = EvalConfig(eval_dataset=['GSM8K', 'MmLu'])
-    _validate_eval_datasets(eval_config)
-    assert eval_config.eval_dataset == ['gsm8k', 'mmlu']
+# --------------------------------------------------------------------------- validate_eval_datasets
+def test_validate_eval_datasets_normalizes_case():
+    assert validate_eval_datasets(['GSM8K', 'MmLu']) == ['gsm8k', 'mmlu']
 
 
 def test_validate_eval_datasets_rejects_unknown_benchmark():
-    eval_config = EvalConfig(eval_dataset=['gsm8k', 'not_a_real_benchmark'])
     with pytest.raises(ValueError) as exc:
-        _validate_eval_datasets(eval_config)
+        validate_eval_datasets(['gsm8k', 'not_a_real_benchmark'])
     message = str(exc.value)
     assert 'not_a_real_benchmark' in message
     # the message must point at what IS supported, not just say "no".
@@ -64,20 +64,19 @@ def test_run_eval_requires_at_least_one_dataset():
         run_eval(ModelConfig(model='m'), TemplateConfig(), EvalConfig(eval_dataset=[]))
 
 
-# --------------------------------------------------------------------------- _build_task_config
-def test_build_task_config_maps_eval_config_onto_evalscope_fields():
-    eval_config = EvalConfig(
-        eval_dataset=['gsm8k'],
-        eval_limit=7,
-        eval_num_proc=4,
-        eval_dataset_args={'gsm8k': {'few_shot_num': 2}},
-        eval_generation_config={'max_tokens': 32, 'temperature': 0.0},
-        eval_output_dir='/tmp/eval_out',
+# --------------------------------------------------------------------------- build_task_config
+def test_build_task_config_maps_onto_evalscope_fields():
+    task_config = build_task_config(
+        work_dir='/tmp/eval_out',
+        limit=7,
+        eval_batch_size=4,
+        dataset_args={'gsm8k': {'few_shot_num': 2}},
+        generation_config={'max_tokens': 32, 'temperature': 0.0},
     )
-    task_config = _build_task_config(eval_config)
     assert task_config['work_dir'] == '/tmp/eval_out'
     assert task_config['limit'] == 7
-    # eval_num_proc is EvalScope's request concurrency AND the non-continuous sampler micro-batch width.
+    # eval_batch_size is EvalScope's request concurrency AND the non-continuous sampler micro-batch width;
+    # run_eval maps EvalConfig.eval_num_proc onto it, the in-training eval its own concurrency.
     assert task_config['eval_batch_size'] == 4
     assert task_config['dataset_args'] == {'gsm8k': {'few_shot_num': 2}}
     assert task_config['generation_config'] == {'max_tokens': 32, 'temperature': 0.0}
@@ -85,8 +84,7 @@ def test_build_task_config_maps_eval_config_onto_evalscope_fields():
 
 def test_build_task_config_merges_extra_eval_args_last():
     """``extra_eval_args`` is the escape hatch for any other EvalScope field and wins over the mapped ones."""
-    eval_config = EvalConfig(eval_limit=7, extra_eval_args={'limit': 99, 'use_cache': False})
-    task_config = _build_task_config(eval_config)
+    task_config = build_task_config(work_dir='wd', limit=7, extra_eval_args={'limit': 99, 'use_cache': False})
     assert task_config['limit'] == 99
     assert task_config['use_cache'] is False
 
@@ -94,7 +92,7 @@ def test_build_task_config_merges_extra_eval_args_last():
 def test_build_task_config_never_carries_owned_keys():
     """The Evaluator pins model/datasets/eval_type/eval_backend/model_task; the recipe must not set them."""
     from twinkle_agentic.evaluator.evaluator import _OWNED_TASK_KEYS
-    task_config = _build_task_config(EvalConfig(eval_dataset=['gsm8k']))
+    task_config = build_task_config(work_dir='wd')
     assert _OWNED_TASK_KEYS.isdisjoint(task_config)
 
 

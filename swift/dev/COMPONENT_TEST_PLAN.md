@@ -305,3 +305,28 @@ A → B → C → D → E → F → G（先 dev 数据集与新特性，再 mode
   - G4 回归门禁：`CUDA_VISIBLE_DEVICES="" pytest twinkle/tests/sampler/` → **42 passed, 23 skipped**（红灯转绿）；
         因改动 megatron.py（model 层），复跑 `PYTHONPATH=peft/src CUDA_VISIBLE_DEVICES="" pytest twinkle/tests/model/`
         → **62 passed, 15 skipped**，确认无回归。
+  - G5 补真 GPU e2e（用户指出「hard-skip 的 vllm/sglang e2e 从没真跑，UT 全绿不等于功能可用」后返工）：
+        * 环境核查：4 个 Python（/usr/local、miniconda base/grpo/lxy）**均装 vllm（0.23.0）、均未装 sglang**；
+          8 卡 GPU，Qwen/Qwen2.5-0.5B-Instruct 已在 ModelScope 缓存（VLLM_USE_MODELSCOPE=True 可离线解析）。
+        * 修门控（test bug）：`test_sampler_e2e.py` 原用**模块级无条件 `pytest.mark.skip`**（理由「dual-V100 CI 跑不动」），
+          违背项目自身分层（conftest：`accel(N)` 卡不足才跳、`slow` 由 `-m 'not slow'` 排除），导致 8 卡机也永不执行 →
+          改为 `pytestmark = [slow, accel(1)]`，能力机真跑、CI/CPU 自动排除。
+        * 修网络守卫（test bug）：`_skip_if_no_network` 写死探测 huggingface.co，但本项目默认走 ModelScope 离线缓存 →
+          改为「模型已在本地缓存即放行，仅冷缓存才探测对应 hub」。
+        * **真跑当场抓出 2 处过时调用（正是 hard-skip 长期不运行导致的 API 漂移）**：测试用旧 kwarg
+          `engine.sample(prompt_token_ids=...)`，而现行 `VLLMEngine.sample(self, prompt, ...)` 首参已改名 `prompt` →
+          抛 `TypeError: missing 1 required positional argument: 'prompt'`。归属＝测试过时（产品 API 是现行正确形态），
+          修两处调用点为 `prompt=`。修后真跑（GPU1，离线缓存）：`test_vllm_engine_with_input_ids` +
+          `test_vllm_engine_batch` → **2 passed**，真实生成（"4. The sum of two equal numbers..."、批量 3 条真回复）。
+        * 新增 `test_vllm_sampler_e2e.py`（**4 passed**，GPU，真 vLLMSampler×真 Template×真生成，非替身）：走完整
+          `vLLMSampler.sample()`——trajectory(chat messages)→Template.encode→vLLM 生成→SampleResponse.tokens/decoded；
+          贪心确定性（两次同 prompt token 全等，钉住 sampling_params 真抵达引擎）；InputFeature 路径绕过 template；
+          批量 3 条按序对齐。门控 `[slow, accel(1), skipif no vllm]`，模块级 fixture 复用引擎、shutdown 容错。
+        * **sglang 缺口如实记录**：sglang 全环境未安装，`test_sglang_sampler.py` 本机无法真跑；需先安装方能验证，已向用户请示。
+        * **用户决定（本轮收尾）**：(1) sglang 先不装，缺口如实保留，待有 sglang 的环境再验证；
+          (2) 其余仍写死 skip 的重 e2e（weight_sync 2-4卡 / megatron_weight_sync TP2+27B / 30b_weight_sync / ipc_checkpoint_engine）
+          「有 UT 即可、先不跑」，保持现状不动门控、不拉大权重占卡。
+  - G6 收尾门禁：`CUDA_VISIBLE_DEVICES="" pytest twinkle/tests/sampler/` → **42 passed, 27 skipped**，无收集错误；
+        重门控后 test_sampler_e2e.py 与新增 test_vllm_sampler_e2e.py 在 CPU 下按 accel(1) 正确跳过，既有全绿不受影响。
+        （真 GPU 下已单独验证：vllm engine 2 passed + 完整 vllm sampler 4 passed。）
+

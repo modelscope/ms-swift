@@ -112,6 +112,43 @@ def json_parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Un
     return value
 
 
+# DeepSpeed preset names map to the bundled JSON configs (swift/config/<name>.json), exactly like the
+# legacy CLI; anything else is read as a JSON file path or an inline JSON string. Shared by the model
+# builder (which resolves the full config) and config validation (which reads the ZeRO stage), so the
+# two never disagree on what a spec means.
+_DEEPSPEED_PRESETS = ('zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload')
+
+
+def resolve_deepspeed_config(spec: Union[str, Dict, None]) -> Optional[Dict]:
+    """Resolve a ``DistributedConfig.deepspeed`` spec (preset name / JSON path / inline JSON) to a dict.
+
+    Returns None when DeepSpeed is not requested. This is the single source of the preset-name ->
+    bundled-JSON mapping; the ZeRO++ ``zero_hpz_partition_size`` injection stays in the builder that
+    needs it, since it is a strategy-construction concern rather than a spec-reading one.
+    """
+    if not spec:
+        return None
+    if isinstance(spec, str) and spec in _DEEPSPEED_PRESETS:
+        import swift
+        spec = os.path.join(os.path.dirname(swift.__file__), 'config', f'{spec}.json')
+    config = json_parse_to_dict(spec)
+    return config if isinstance(config, dict) else None
+
+
+def deepspeed_zero_stage(spec: Union[str, Dict, None]) -> Optional[int]:
+    """The ZeRO stage a ``DistributedConfig.deepspeed`` spec selects (None if DeepSpeed is off / unset).
+
+    Stage 3 is the only one that shards parameters across ranks; stages 0-2 replicate them and keep the
+    forward rank-local. Config validation keys on this to tell a hang-prone generative-eval setup apart
+    from a merely slower one.
+    """
+    config = resolve_deepspeed_config(spec)
+    if not config:
+        return None
+    stage = (config.get('zero_optimization') or {}).get('stage')
+    return int(stage) if stage is not None else None
+
+
 def deep_getattr(obj, attr: str, default=None):
     attrs = attr.split('.')
     for a in attrs:

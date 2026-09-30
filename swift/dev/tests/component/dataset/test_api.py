@@ -940,13 +940,14 @@ class TestValidateConfigs:
         with pytest.raises(ValueError, match='only implemented by the transformers backend'):
             self._validate(distributed_config=DistributedConfig(backend='megatron', deepspeed='zero2'))
 
-    def test_hf_only_tuner_knob_on_megatron_backend_raises(self):
-        """use_galore lives on TunerConfig (it drives the optimizer branch), so the backend check
-        must read it from there -- a stale 'train_config' holder would AttributeError instead."""
-        from swift.dev.config import DistributedConfig, TunerConfig
+    def test_hf_only_galore_knob_on_megatron_backend_raises(self):
+        """use_galore lives on TrainConfig (it is an optimizer technique consumed by configure_optimizer),
+        so the backend check reads it from there -- Megatron has no GaLore path and must refuse the knob
+        rather than silently ignore it."""
+        from swift.dev.config import DistributedConfig, TrainConfig
         with pytest.raises(ValueError, match='only implemented by the transformers backend'):
             self._validate(
-                distributed_config=DistributedConfig(backend='megatron'), tuner_config=TunerConfig(use_galore=True))
+                distributed_config=DistributedConfig(backend='megatron'), train_config=TrainConfig(use_galore=True))
 
     def test_tuner_only_knobs_skipped_when_tuner_config_is_none(self):
         """tuner_config=None is full-param training: its knobs cannot be set, so the check must
@@ -1022,6 +1023,7 @@ class TestValidateConfigs:
 
         from swift.dev.config import validate as validate_module
         holders = {
+            'model_config': 'ModelConfig',
             'dataset_config': 'DatasetConfig',
             'train_config': 'TrainConfig',
             'distributed_config': 'DistributedConfig',

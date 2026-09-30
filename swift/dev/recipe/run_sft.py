@@ -108,8 +108,14 @@ def _run_sft_body(
     Separate from ``run_sft`` because twinkle initialization must NOT be repeated: the Megatron Ray
     path initializes once and then drives this body inside the workers.
     """
-    from swift.dev.loss import configure_loss
+    from swift.dev.loss import configure_loss, liger_fused_ce_enabled
     from swift.dev.recipe.assembly import TrainAssembly
+
+    # Fused-linear-CE pairs a loss choice with the loop's forward task: configure_loss selects Liger's
+    # fused kernel, and loop_task='fused_lm_ce' makes the forward skip the lm_head GEMM and stash the
+    # head for it. Both read the one predicate so the two cannot drift apart. (use_liger_kernel is
+    # HF-only -- validate rejects it on Megatron -- so fused_ce is always False on the Megatron path.)
+    fused_ce = liger_fused_ce_enabled(train_config)
 
     def sft_loss(model) -> None:
         configure_loss(
@@ -117,6 +123,7 @@ def _run_sft_body(
             loss_type=train_config.loss or 'cross_entropy',
             enable_channel_loss=train_config.enable_channel_loss,
             dft=train_config.enable_dft_loss,
+            fused_linear_cross_entropy=fused_ce,
         )
 
     return TrainAssembly(
@@ -133,4 +140,5 @@ def _run_sft_body(
         megatron_config=megatron_config,
         moe_config=moe_config,
         output_dir=output_dir,
+        loop_task='fused_lm_ce' if fused_ce else None,
     ).fit(sft_loss, save_final=_save_final)

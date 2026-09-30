@@ -155,8 +155,17 @@ def flag_names(argv: Sequence[str]) -> set:
 
 
 def select_tuner(tuner):
-    """Represent full-parameter runs without a TunerConfig."""
-    return None if tuner.tuner == 'full' else tuner
+    """Represent a full-parameter run without a TunerConfig.
+
+    ``tuner='full'`` maps to None, and every adapter/full-param branch downstream reads a None
+    TunerConfig as "no adapter applied" (``tuner_config is None``). GaLore is a full-parameter
+    optimizer technique, but its ``use_galore`` / ``galore_*`` knobs live on TrainConfig -- not here --
+    so a GaLore run no longer needs the config kept: full is full, and the optimizer knobs travel with
+    TrainConfig regardless.
+    """
+    if tuner.tuner == 'full':
+        return None
+    return tuner
 
 
 # Public compatibility export; the declaration itself lives with the executable legacy contract.

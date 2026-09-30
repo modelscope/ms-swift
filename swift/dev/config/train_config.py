@@ -48,6 +48,32 @@ class TrainConfig:
     adam_beta2: float = 0.95
     adam_epsilon: float = 1e-8
 
+    # === Optimizer: GaLore ===
+    #: Project the FULL-PARAMETER gradient into a low-rank subspace and keep optimizer state only there.
+    #: A full-parameter optimizer technique (requires ``tuner=full``), not an adapter, so it lives with
+    #: the other optimizer knobs rather than on TunerConfig, and ``configure_optimizer`` reads it off
+    #: this config -- the only place it is consumed. transformers backend only (see validate._HF_ONLY).
+    #: rank / target_modules / update_proj_gap / scale / proj_type drive the plain low-rank projection;
+    #: galore_quantization (+ proj_quant / proj_bits / proj_group_size / cos_threshold / gamma_proj /
+    #: queue_size) turns on QGaLore's quantized projection, resolved to twinkle's QGaLoreAdamW8bit (which
+    #: needs the external ``q_galore_torch``). Only galore_optim_per_parameter / galore_with_embedding have
+    #: no twinkle counterpart and are rejected by ``validate._check_galore``.
+    use_galore: bool = False
+    galore_target_modules: Optional[List[str]] = None
+    galore_rank: int = 128
+    galore_update_proj_gap: int = 50
+    galore_scale: float = 1.0
+    galore_proj_type: str = 'std'
+    galore_optim_per_parameter: bool = False
+    galore_with_embedding: bool = False
+    galore_quantization: bool = False
+    galore_proj_quant: bool = False
+    galore_proj_bits: int = 4
+    galore_proj_group_size: int = 256
+    galore_cos_threshold: float = 0.4
+    galore_gamma_proj: int = 2
+    galore_queue_size: int = 5
+
     # === Optimizer: Megatron-only ===
     # Deprecated alias of max_grad_norm, kept so existing Megatron scripts/argv keep working.
     # `None` means "not set" -- it must stay Optional to tell an explicit `--clip_grad 1.0` apart
@@ -61,32 +87,39 @@ class TrainConfig:
     # cosine_with_min_lr means here
     min_lr: float = 0.0
 
-    # === Optimizer: Muon (Megatron-only) ===
+    # === Optimizer: Muon ===
     #: Which optimizer Megatron builds. Distinct from ``optim`` above, which names a torch/HF optimizer
     #: for the transformers backend -- the two backends construct optimizers by different means, and
     #: neither accepts the other's names. Only consulted when the Megatron backend is in use.
     #: 'dist_muon' is the sharded variant, and the only one compatible with the overlap options in
     #: DistributedConfig: plain 'muon' needs both overlaps off, because it reads whole parameters.
     optimizer: Literal['adam', 'sgd', 'muon', 'dist_muon'] = 'adam'
-    #: The rest are read only when ``optimizer`` selects a muon variant. Requires megatron-core>=0.16.
+    #: Muon momentum. Dual-backend: Megatron reads it when ``optimizer`` selects a muon variant
+    #: (requires megatron-core>=0.16); the transformers backend reads it into MuonClip's MuonConfig when
+    #: ``optim='muon'``. muon_use_nesterov and muon_num_ns_steps below are dual-backend the same way --
+    #: the OTHER muon_* fields are Megatron-only (twinkle's MuonConfig has no counterpart for them).
     muon_momentum: float = 0.9
     #: Orthogonalise q, k and v separately rather than as one fused matrix. On by default because the
     #: fused weight's singular values mix the three heads' scales, which is not what muon assumes.
+    #: Megatron-only.
     muon_split_qkv: bool = True
+    #: Blend the raw gradient into the momentum buffer before orthogonalising it. Dual-backend (see
+    #: muon_momentum).
     muon_use_nesterov: bool = False
-    #: How the orthogonalised update is rescaled before it is applied.
+    #: How the orthogonalised update is rescaled before it is applied. Megatron-only.
     muon_scale_mode: Literal['spectral', 'unit_rms_norm', 'shape_scaling'] = 'spectral'
-    #: Precision of the matmuls inside the Newton-Schulz iteration, not of the weights.
+    #: Precision of the matmuls inside the Newton-Schulz iteration, not of the weights. Megatron-only.
     muon_fp32_matmul_prec: Literal['low', 'medium', 'high'] = 'medium'
     muon_coefficient_type: str = 'quintic'
     #: Newton-Schulz iterations per step. More is a closer orthogonalisation at linear cost.
+    #: Dual-backend (see muon_momentum).
     muon_num_ns_steps: int = 5
     #: How the update is computed across tensor-parallel ranks. 'blockwise' orthogonalises each shard
-    #: on its own, so its result depends on the TP width; the other two do not.
+    #: on its own, so its result depends on the TP width; the other two do not. Megatron-only.
     muon_tp_mode: Literal['blockwise', 'duplicated', 'distributed'] = 'blockwise'
     muon_extra_scale_factor: float = 1.
     #: Optimizer used for the parameters muon does not handle -- scalars, biases, norms, which have no
-    #: matrix structure to orthogonalise.
+    #: matrix structure to orthogonalise. Megatron-only.
     muon_scalar_optimizer: str = 'adam'
     #: Megatron's SGD momentum, read only when ``optimizer='sgd'``.
     sgd_momentum: float = 0.9
@@ -254,9 +287,22 @@ class TrainConfig:
     eval_limit: Optional[int] = None
     eval_generation_config: Optional[Dict[str, Any]] = None
     extra_eval_args: Optional[Dict[str, Any]] = None
+    #: Which engine serves the model under test when ``predict_with_generate`` runs EvalScope inside
+    #: training. 'transformers' wraps the live training module in-process (no weight copy, no extra
+    #: GPU, but generation is not sequence-parallel aware); 'vllm'/'sglang' place a co-resident engine
+    #: and weight-sync into it (offload+colocate, ray mode only). Standalone ``swift eval`` reads the
+    #: equivalent off its own ``--sampler``.
+    eval_sampler_backend: Literal['transformers', 'vllm', 'sglang'] = 'transformers'
 
     # === Early stopping ===
     early_stop_interval: Optional[int] = None
+
+    # === Callbacks ===
+    #: Registered callback names (see ``swift.dev.callbacks``), fired at transformers-Trainer-equivalent
+    #: points by ``SFTLoop``. Custom callbacks are loaded through ``--external_plugins`` and selected
+    #: here by name; the built-in early-stop / perf-log / graceful-exit callbacks are appended from
+    #: their own config knobs rather than named in this list.
+    callbacks: List[str] = field(default_factory=list)
 
     # === Other ===
     check_model: bool = True

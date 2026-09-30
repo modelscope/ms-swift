@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from twinkle.loss import Loss
 
 if TYPE_CHECKING:
-    from swift.dev.config import RLHFConfig
+    from swift.dev.config import RLHFConfig, TrainConfig
     from swift.dev.model import TrainableModel
 
 # Losses that read ``outputs['embeddings']`` (the pooled, L2-normalized sentence vector) rather
@@ -32,12 +32,27 @@ RERANKER_LOSS_TYPES = ('pointwise_reranker', 'listwise_reranker')
 PROBLEM_TYPES = ('regression', 'single_label_classification', 'multi_label_classification')
 
 
+def liger_fused_ce_enabled(train_config: TrainConfig) -> bool:
+    """True when the run asked for Liger's fused-linear-cross-entropy loss path.
+
+    Both switches must be on: ``use_liger_kernel`` (the master Liger flag) and the op-level
+    ``liger_kernel_config['fused_linear_cross_entropy']``. This is the single source of truth shared
+    by :func:`configure_loss` (which selects the loss) and the recipe (which sets the loop's forward
+    task to ``'fused_lm_ce'`` so TransformersFusedCEPatch skips the lm_head GEMM and stashes the head).
+    The two must agree: a fused loss under task='causal_lm' silently degrades to unfused CE, while a
+    standard CE under task='fused_lm_ce' would read hidden states as if they were logits.
+    """
+    return bool(train_config.use_liger_kernel
+                and (train_config.liger_kernel_config or {}).get('fused_linear_cross_entropy'))
+
+
 def configure_loss(model: TrainableModel,
                    *,
                    loss_type: str = 'cross_entropy',
                    reduction: str = 'sum',
                    enable_channel_loss: bool = False,
                    dft: bool = False,
+                   fused_linear_cross_entropy: bool = False,
                    **kwargs) -> None:
     """Set the SFT loss on ``model`` with an explicit reduction (default 'sum').
 
@@ -49,11 +64,23 @@ def configure_loss(model: TrainableModel,
         reduction: 'sum' (default; GA-correct, aligns legacy) or 'mean'.
         enable_channel_loss: Report token-level loss grouped by the dataset's sample-level ``channel`` field.
         dft: Apply DFT entropy weighting before total and channel aggregation.
+        fused_linear_cross_entropy: select Liger's fused lm_head+CE loss (see
+            :func:`liger_fused_ce_enabled`). The caller must also run the forward under
+            task='fused_lm_ce'; the recipe wires both from that one predicate.
     """
     from swift.dev.naming import resolve_loss
 
     if loss_type != 'cross_entropy':
         raise NotImplementedError(f"SFT configure_loss only supports 'cross_entropy', got {loss_type!r}")
+    if fused_linear_cross_entropy:
+        # The fused kernel computes CE itself, so the channel-grouped and DFT-weighted aggregations
+        # (which wrap the standard CE) do not apply -- refuse rather than silently drop them.
+        if enable_channel_loss or dft:
+            raise ValueError('fused_linear_cross_entropy replaces the standard CE path and cannot be combined '
+                             'with enable_channel_loss or enable_dft_loss.')
+        loss_cls = resolve_loss('liger_fused_linear_cross_entropy')
+        model.set_loss(loss_cls(reduction=reduction, **kwargs))
+        return
     loss_cls = resolve_loss('channel' if enable_channel_loss else loss_type)
     model.set_loss(loss_cls(reduction=reduction, dft=dft, **kwargs))
 

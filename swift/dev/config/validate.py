@@ -53,6 +53,10 @@ def validate_configs(
     _check_data_sharding(dataset_config)
     _check_streaming(dataset_config, checkpoint_config)
     _check_backend_specific(model_config, dataset_config, train_config, distributed_config, is_megatron, tuner_config)
+    _check_galore(train_config, tuner_config)
+    _check_unsloth_strategy(tuner_config, distributed_config, template_config)
+    _check_deepspeed_autotp(distributed_config)
+    _check_eval_generation(train_config, template_config, distributed_config)
     _check_megatron_runtime_configs(megatron_config, moe_config, is_megatron)
     _check_megatron_optimizer(train_config, is_megatron)
     _check_muon(train_config, distributed_config, is_megatron)
@@ -412,6 +416,52 @@ def _check_logging(logging_config: Optional['LoggingConfig']) -> None:
                              'smtp_port.')
 
 
+_GALORE_UNSUPPORTED = (
+    'galore_optim_per_parameter',
+    'galore_with_embedding',
+)
+
+
+def _check_galore(train_config: 'TrainConfig', tuner_config: Optional['TunerConfig']) -> None:
+    """Refuse GaLore combinations that cannot train the way the user asked.
+
+    ``use_galore`` is transformers-only (it is in _HF_ONLY, so _check_backend_specific already rejects
+    it on Megatron). GaLore projects the FULL-PARAMETER gradient into a low-rank subspace, which is a
+    different low-rank approximation than an adapter, so three combinations are fatal here rather than
+    silently degraded:
+      - GaLore alongside an adapter (a non-None TunerConfig -- ``select_tuner`` maps ``tuner='full'`` to
+        None, so any config here means an adapter is applied): stacking two low-rank maps trains their
+        product, not either method. GaLore is a full-parameter technique.
+      - the legacy GaLore knobs twinkle's GaLoreConfig does not implement (per-parameter optimizers,
+        the with_embedding switch): accepting them would train without them. QGaLore (quantized
+        projection, ``galore_quantization`` + its knobs) IS implemented -- twinkle resolves it to
+        QGaLoreAdamW8bit -- so it is not in this list.
+      - a base optim with no GaLore variant (Adam / SGD / muon), or a quantized projection on a base
+        with no QGaLore variant (anything but AdamW): resolve_galore_target refuses both, so the error
+        surfaces here, before the weights load, rather than deep in configure_optimizer.
+    """
+    if not train_config.use_galore:
+        return
+    if tuner_config is not None:
+        raise ValueError(
+            f'use_galore cannot be combined with tuner={tuner_config.tuner!r}: GaLore projects the '
+            'full-parameter gradient into a low-rank subspace, a different low-rank approximation than '
+            'the adapter. Train full-param with GaLore (--tuner full --use_galore true), or use the '
+            'adapter without GaLore.')
+    unsupported = [name for name in _GALORE_UNSUPPORTED if name in _changed_fields(train_config)]
+    if unsupported:
+        raise NotImplementedError(
+            f'{unsupported} are legacy GaLore extensions that twinkle\'s GaLoreConfig does not implement '
+            '(it projects the full-precision gradient with the rank / target_modules / update_proj_gap / '
+            'scale / proj_type knobs, plus QGaLore quantized projection via galore_quantization). Remove '
+            'them, or keep use_galore to the supported fields.')
+    from swift.dev.naming import resolve_galore_target, resolve_optim_target
+    try:
+        resolve_galore_target(resolve_optim_target(train_config.optim)[0], quantize=train_config.galore_quantization)
+    except NotImplementedError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
     """Reject muon pairings that Megatron itself refuses, or that would train something else.
 
@@ -423,14 +473,35 @@ def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedCon
     The mcore version gate is legacy's too. Checking it here means a CLI mistake fails on the driver;
     it is safe to read on this side because it is a package version rather than a device property, so
     unlike the FP8/Blackwell checks it does not describe hardware this process may not have.
+
+    The transformers backend selects muon differently -- with ``optim='muon'`` (twinkle MuonClip), not
+    the Megatron-only ``optimizer`` knob -- so its guards live in the ``not is_megatron`` branch below.
     """
-    if 'muon' not in train_config.optimizer:
+    if not is_megatron:
+        # Point a Megatron `optimizer='muon'` mistake at the transformers spelling instead of letting
+        # it be silently ignored (the Megatron branch is the only one that reads `optimizer`).
+        if 'muon' in train_config.optimizer:
+            raise ValueError(
+                f'TrainConfig.optimizer={train_config.optimizer!r} is a Megatron optimizer, but the active '
+                'backend is transformers. Use TrainConfig.optim for the transformers path, or switch '
+                'DistributedConfig.backend.')
+        # muon_momentum / muon_use_nesterov / muon_num_ns_steps are dual-backend (MegatronOptimizer on
+        # Megatron, MuonClip's MuonConfig here), but on transformers they are read ONLY when
+        # optim='muon'. The Megatron-specific muon_* fields stay in _MEGATRON_ONLY, so
+        # _check_backend_specific already refuses those here; this guards the three dual ones against
+        # being silently ignored by a non-muon optim.
+        if train_config.optim.lower() != 'muon':
+            stray = [n for n in ('muon_momentum', 'muon_use_nesterov', 'muon_num_ns_steps')
+                     if n in _changed_fields(train_config)]
+            if stray:
+                raise ValueError(
+                    f'{stray} configure the muon optimizer, but TrainConfig.optim={train_config.optim!r} '
+                    "on the transformers backend, so they would be ignored. Set optim='muon' to use "
+                    'them, or drop them.')
         return
 
-    if not is_megatron:
-        raise ValueError(f'TrainConfig.optimizer={train_config.optimizer!r} is a Megatron optimizer, but the active '
-                         'backend is transformers. Use TrainConfig.optim for the transformers path, or switch '
-                         'DistributedConfig.backend.')
+    if 'muon' not in train_config.optimizer:
+        return
 
     from swift.dev.naming import mcore_version_at_least
     if not mcore_version_at_least('0.16'):
@@ -452,6 +523,111 @@ def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedCon
                          'DistributedConfig.use_distributed_optimizer=True; muon maintains its own state layout. '
                          'legacy turned the distributed optimizer off silently here -- set it to False explicitly, '
                          'so the memory profile and checkpoint contents of the run are not a surprise.')
+
+
+def _check_unsloth_strategy(tuner_config: Optional['TunerConfig'], distributed_config: 'DistributedConfig',
+                            template_config: 'TemplateConfig') -> None:
+    """Refuse the strategies unsloth cannot co-exist with.
+
+    unsloth rebuilds the module graph around a causal-LM checkpoint and compiles its own Triton
+    kernels/RoPE cache, so a strategy that shards the parameters (DeepSpeed ZeRO / FSDP) or splits the
+    sequence across ranks (Ulysses SP) either wraps a graph unsloth has already rewritten or feeds its
+    fused kernels a sequence shard they do not expect. Each combination is refused here rather than left
+    to crash inside unsloth's patcher or silently train an unsharded replica.
+    """
+    if tuner_config is None or getattr(tuner_config, 'tuner_backend', None) != 'unsloth':
+        return
+    if distributed_config.deepspeed:
+        raise NotImplementedError(
+            'tuner_backend="unsloth" cannot run under DeepSpeed: unsloth installs its own kernels and module '
+            'graph and does not compose with a ZeRO strategy. Drop --deepspeed, or use tuner_backend="peft".')
+    if distributed_config.fsdp:
+        raise NotImplementedError(
+            'tuner_backend="unsloth" cannot run under FSDP: unsloth installs its own kernels and module graph '
+            'and does not compose with parameter sharding. Drop --fsdp, or use tuner_backend="peft".')
+    if template_config.sequence_parallel_size > 1:
+        raise NotImplementedError(
+            f'tuner_backend="unsloth" cannot run under sequence_parallel_size='
+            f'{template_config.sequence_parallel_size}: unsloth\'s fused kernels assume a whole sequence per '
+            'rank. Set sequence_parallel_size=1, or use tuner_backend="peft".')
+
+
+def _check_deepspeed_autotp(distributed_config: 'DistributedConfig') -> None:
+    """DeepSpeed AutoTP is not implemented on the twinkle strategy, so refuse the knob rather than drop it.
+
+    AutoTP needs two things the twinkle DeepSpeed path does not provide: tensor-parallel groups built from
+    ``tensor_parallel.autotp_size`` in the config, AND a data sampler that treats each TP group as one data
+    rank (legacy shards its BatchSamplerShard with ``tp_size=autotp_size``). Injecting only the config key
+    would leave every rank in a TP group fed different data -- a silent correctness bug -- so the knob is
+    rejected on both backends instead of half-wired. (It is deliberately NOT in _HF_ONLY: that table's
+    "only implemented by transformers" message would be wrong, since neither backend implements it.)
+    """
+    if distributed_config.deepspeed_autotp_size is None:
+        return
+    raise NotImplementedError(
+        f'deepspeed_autotp_size={distributed_config.deepspeed_autotp_size} (DeepSpeed AutoTP) is not implemented '
+        'by the twinkle DeepSpeed strategy: AutoTP needs tensor-parallel groups plus a TP-aware data sampler, and '
+        'only the ZeRO config side exists here. Drop it and rely on ZeRO sharding (the deepspeed presets), or use '
+        'the megatron backend for tensor parallelism.')
+
+
+def _check_eval_generation(train_config: 'TrainConfig', template_config: 'TemplateConfig',
+                           distributed_config: 'DistributedConfig') -> None:
+    """Guards for the in-training generative eval path (``predict_with_generate`` -> EvalScope).
+
+    ``predict_with_generate`` is transformers-only (it is in _HF_ONLY, so _check_backend_specific already
+    refused it on Megatron before this runs). Four combinations cannot evaluate the way they claim and are
+    refused here rather than producing a number from a partial/wrong setup:
+      - no ``eval_dataset``: the generative path runs an EvalScope benchmark, so there is nothing to serve
+        without one (the validation-loss path uses the split-off validation set instead).
+      - transformers sampler under sequence parallelism: HF ``.generate()`` runs the whole sequence on one
+        rank and is unaware of the ulysses/ring shard, so it would generate from a partial sequence.
+      - vllm/sglang sampler outside ray: those backends weight-sync into a co-resident engine through a Ray
+        DeviceGroup (CheckpointEngineManager), which a local/torchrun launch has no way to place.
+      - transformers sampler under a parameter-sharding strategy in a multi-rank local/torchrun launch: only
+        rank 0 drives EvalScope while its peers park at the eval barrier, so a sharded forward's all-gather
+        never completes and the run hangs (see the guard below).
+    """
+    if not train_config.predict_with_generate:
+        return
+    if not train_config.eval_dataset:
+        raise ValueError(
+            'predict_with_generate=True runs an EvalScope benchmark inside training, so it needs '
+            'TrainConfig.eval_dataset; got none. Pass --eval_dataset <name>, or use the validation-loss path '
+            '(--predict_with_generate false) which evaluates the split-off validation set.')
+    backend = train_config.eval_sampler_backend
+    if backend == 'transformers' and template_config.sequence_parallel_size > 1:
+        raise ValueError(
+            f'predict_with_generate=True with eval_sampler_backend="transformers" cannot run under '
+            f'sequence_parallel_size={template_config.sequence_parallel_size}: HF .generate() runs the whole '
+            'sequence on one rank and is unaware of the ulysses/ring shard, so it would generate from a partial '
+            'sequence. Evaluate with the validation-loss path (--predict_with_generate false), or serve generation '
+            'from a co-resident engine (--eval_sampler_backend vllm|sglang, which needs --mode ray).')
+    if backend in ('vllm', 'sglang') and distributed_config.mode != 'ray':
+        raise NotImplementedError(
+            f'eval_sampler_backend={backend!r} weight-syncs the training weights into a co-resident engine through '
+            f'a Ray DeviceGroup (CheckpointEngineManager), which mode={distributed_config.mode!r} cannot place. Run '
+            'under --mode ray, or use --eval_sampler_backend transformers (which wraps the live training module).')
+    # rank0-only generation is safe only while the model's forward is rank-local. A parameter-sharding
+    # strategy rebuilds each weight through a collective all-gather inside forward; under torchrun the
+    # peers park at the eval barrier (dist.barrier in _evaluate_generate), so rank 0's all-gather never
+    # completes and the run hangs at the first generative eval. Only ZeRO-3 shards params -- ZeRO-1/2 and
+    # DDP replicate them and stay rank-local -- so those are allowed (the loop warns about their 1/N
+    # throughput at runtime). Refuse here, before ranks spawn, rather than deadlock mid-training.
+    if backend == 'transformers' and distributed_config.mode == 'local':
+        from swift.dev.utils import deepspeed_zero_stage, get_dist_setting
+        world_size = get_dist_setting()[2]
+        shards_params = bool(distributed_config.fsdp) or deepspeed_zero_stage(distributed_config.deepspeed) == 3
+        if shards_params and world_size > 1:
+            sharding = 'FSDP (--fsdp)' if distributed_config.fsdp else 'DeepSpeed ZeRO-3 (--deepspeed)'
+            raise ValueError(
+                f'predict_with_generate=True with eval_sampler_backend="transformers" drives generation from rank 0 '
+                f'only, but the transformers path shards parameters under {sharding} across {world_size} ranks: '
+                "rank 0's .generate() all-gathers weights that its peers -- parked at the eval barrier -- never "
+                'join, so the run hangs at the first generative eval. Run it under --mode ray (the driver '
+                'dispatches generate across the group), or serve generation from a co-resident engine '
+                '(--eval_sampler_backend vllm|sglang, which needs --mode ray), or use a replicated strategy '
+                '(plain DDP, or DeepSpeed ZeRO-1/2), or the validation-loss path (--predict_with_generate false).')
 
 
 def _check_megatron_fsdp(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
@@ -936,13 +1112,16 @@ _MEGATRON_ONLY = (
     ('train_config', 'min_lr', 0.0),
     ('train_config', 'optimizer', 'adam'),
     ('train_config', 'sgd_momentum', 0.9),
-    ('train_config', 'muon_momentum', 0.9),
+    # muon_momentum / muon_use_nesterov / muon_num_ns_steps are deliberately NOT here: they are
+    # dual-backend (MegatronOptimizer reads them here, MuonClip's MuonConfig reads them on the
+    # transformers path), so _check_backend_specific must not reject them on transformers. The
+    # remaining muon_* fields are Megatron-implementation-specific (split_qkv / scale_mode / tp_mode
+    # / ... have no MuonConfig counterpart) and stay transformers-rejected. _check_muon additionally
+    # refuses the three dual ones on transformers unless optim='muon' actually consumes them.
     ('train_config', 'muon_split_qkv', True),
-    ('train_config', 'muon_use_nesterov', False),
     ('train_config', 'muon_scale_mode', 'spectral'),
     ('train_config', 'muon_fp32_matmul_prec', 'medium'),
     ('train_config', 'muon_coefficient_type', 'quintic'),
-    ('train_config', 'muon_num_ns_steps', 5),
     ('train_config', 'muon_tp_mode', 'blockwise'),
     ('train_config', 'muon_extra_scale_factor', 1.0),
     ('train_config', 'muon_scalar_optimizer', 'adam'),
@@ -1008,10 +1187,9 @@ _HF_ONLY = (
     ('model_config', 'init_strategy', None),
     ('distributed_config', 'deepspeed', None),
     ('distributed_config', 'zero_hpz_partition_size', None),
-    ('distributed_config', 'deepspeed_autotp_size', None),
     ('distributed_config', 'fsdp', None),
     ('distributed_config', 'ddp_find_unused_parameters', None),
-    ('tuner_config', 'use_galore', False),
+    ('train_config', 'use_galore', False),
     ('train_config', 'use_liger_kernel', False),
     ('train_config', 'neftune_noise_alpha', None),
     ('train_config', 'optim', 'adamw_torch_fused'),

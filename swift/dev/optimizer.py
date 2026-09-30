@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING, Optional
 
-from swift.dev.naming import parse_optim_args, resolve_optim_target, resolve_scheduler
+from swift.dev.naming import parse_optim_args, resolve_galore_target, resolve_optim_target, resolve_scheduler
 from swift.dev.utils import get_logger
 
 if TYPE_CHECKING:
@@ -101,6 +101,60 @@ def _is_megatron_model(model) -> bool:
     return isinstance(model, MegatronModel)
 
 
+def _galore_config(cfg: TrainConfig) -> dict:
+    """The ``GaLoreConfig`` fields set_optimizer turns into low-rank projection param groups.
+
+    The plain-GaLore knobs (rank / target_modules / update_proj_gap / galore_scale / proj_type) are
+    always read; when ``galore_quantization`` is set the QGaLore knobs (quantize + the projection
+    quantization / subspace-reuse / gradient-queue settings) are added too, and twinkle resolves the
+    optimizer to ``QGaLoreAdamW8bit``, which reads those keys off the param group. The two remaining
+    legacy ``galore_*`` fields (optim_per_parameter / with_embedding) have no counterpart and are
+    rejected up front by ``validate._check_galore``, so this builder never has to account for them.
+    ``target_modules`` is passed only when set: GaLoreConfig defaults it to the attn/mlp
+    Linear+Embedding weights, and forwarding an explicit None would override that default with None.
+    """
+    config = {
+        'rank': cfg.galore_rank,
+        'update_proj_gap': cfg.galore_update_proj_gap,
+        'galore_scale': cfg.galore_scale,
+        'proj_type': cfg.galore_proj_type,
+    }
+    if cfg.galore_target_modules is not None:
+        config['target_modules'] = cfg.galore_target_modules
+    if cfg.galore_quantization:
+        config.update({
+            'quantize': True,
+            'proj_quant': cfg.galore_proj_quant,
+            'proj_bits': cfg.galore_proj_bits,
+            'proj_group_size': cfg.galore_proj_group_size,
+            'cos_threshold': cfg.galore_cos_threshold,
+            'gamma_proj': cfg.galore_gamma_proj,
+            'queue_size': cfg.galore_queue_size,
+        })
+    return config
+
+
+def _muon_config(cfg: TrainConfig) -> dict:
+    """The ``MuonConfig`` fields set_optimizer turns into Muon/QK-Clip param groups for MuonClip.
+
+    MuonClip reads its update rules off per-group defaults that ``create_muon_param_groups`` installs
+    from this config; without it MuonClip is plain momentum SGD. Only the knobs TrainConfig exposes
+    generally are mapped -- ``adam_beta1/2`` and ``adam_epsilon`` feed the AdamW step Muon applies to
+    the groups it does not orthogonalise, and the three dual-backend ``muon_*`` fields feed the Muon
+    update itself. The Megatron-specific muon fields (split_qkv / scale_mode / tp_mode / ...) have no
+    MuonConfig counterpart and stay rejected on this backend by ``validate._check_backend_specific``.
+    The remaining MuonConfig knobs (qk_clip_*, rms_scale_factor, exclude/qk keys) keep twinkle's
+    defaults, which dev has no field for.
+    """
+    return {
+        'momentum': cfg.muon_momentum,
+        'nesterov': cfg.muon_use_nesterov,
+        'newton_schulz_steps': cfg.muon_num_ns_steps,
+        'adamw_betas': (cfg.adam_beta1, cfg.adam_beta2),
+        'adamw_eps': cfg.adam_epsilon,
+    }
+
+
 def configure_optimizer(model: TrainableModel,
                         cfg: TrainConfig,
                         *,
@@ -111,8 +165,9 @@ def configure_optimizer(model: TrainableModel,
     Args:
         model: a twinkle-derived Model (has set_optimizer / set_lr_scheduler).
         cfg: TrainConfig (learning_rate / optim / weight_decay / adam_* /
-             lr_scheduler / warmup_ratio). learning_rate is read as-is: the default lives on
-             TrainConfig, so no hidden fallback here can disagree with what the Config reports.
+             lr_scheduler / warmup_ratio, and ``use_galore`` / ``galore_*``). learning_rate is read
+             as-is: the default lives on TrainConfig, so no hidden fallback here can disagree with
+             what the Config reports.
         num_training_steps: total optimizer steps (for warmup + decay schedule).
     """
     lr = cfg.learning_rate
@@ -212,9 +267,23 @@ def configure_optimizer(model: TrainableModel,
         return
 
     optim_cls, extra_kwargs = resolve_optim_target(cfg.optim)
+    # GaLore: upgrade the base optimizer to its GaLore variant and hand set_optimizer the config it
+    # turns into low-rank projection param groups (galore_config is inert on a non-GaLore optimizer).
+    galore_config = None
+    if cfg.use_galore:
+        optim_cls = resolve_galore_target(optim_cls, quantize=cfg.galore_quantization)
+        # Neither GaLoreAdamW nor QGaLoreAdamW8bit has a fused CUDA kernel; `fused` is an AdamW-only
+        # constructor arg.
+        extra_kwargs.pop('fused', None)
+        galore_config = _galore_config(cfg)
+    # MuonClip is more than momentum SGD only with a muon_config (it drives the param grouping and
+    # QK-Clip), so build one whenever the resolved optimizer is MuonClip.
+    muon_config = _muon_config(cfg) if optim_cls == 'MuonClip' else None
+
     opt_kwargs: dict = {'lr': lr, 'weight_decay': cfg.weight_decay}
-    # betas/eps only for the Adam family; Adafactor and SGD reject them.
-    if optim_cls in ('AdamW', 'Adam'):
+    # betas/eps only for the Adam family (incl. its GaLore variant); Adafactor, SGD and MuonClip take
+    # different coefficient names -- MuonClip reads adamw_betas/adamw_eps off muon_config instead.
+    if optim_cls in ('AdamW', 'Adam', 'GaLoreAdamW', 'QGaLoreAdamW8bit'):
         opt_kwargs['betas'] = (cfg.adam_beta1, cfg.adam_beta2)
         opt_kwargs['eps'] = cfg.adam_epsilon
     # Name-specific constructor args (fused / Adafactor flags) -- see naming._OPTIM_EXTRA_KWARGS.
@@ -222,11 +291,16 @@ def configure_optimizer(model: TrainableModel,
     # optim_args last: it is the user's explicit escape hatch, so it wins over our defaults
     # (matches HF, where _parse_optim_args output is merged into optimizer_kwargs).
     opt_kwargs.update(parse_optim_args(cfg.optim_args))
+    if galore_config is not None:
+        opt_kwargs['galore_config'] = galore_config
+    if muon_config is not None:
+        opt_kwargs['muon_config'] = muon_config
     # NOTE: `params` is deliberately NOT passed. twinkle's set_optimizer builds the two
     # weight-decay param groups itself (_create_param_group), reusing transformers'
     # get_decay_parameter_names rules (bias / *norm excluded from decay) AND filtering by
     # adapter_name for LoRA. Passing a flat param list here would BYPASS that and apply
-    # weight_decay to norms/biases, diverging from legacy swift.
+    # weight_decay to norms/biases, diverging from legacy swift. galore_config / muon_config are NOT
+    # `params`: set_optimizer pops them and reshapes the param groups it built itself.
     model.set_optimizer(optim_cls, **opt_kwargs)
 
     sched_cls = resolve_scheduler(cfg.lr_scheduler)

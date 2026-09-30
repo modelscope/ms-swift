@@ -119,7 +119,10 @@ def _initialize_twinkle_rl(distributed_config: DistributedConfig,
     twinkle.initialize(
         mode='ray',
         nproc_per_node=total,
-        groups=[DeviceGroup(name=name, ranks=ranks, device_type='GPU', gpus_per_worker=1) for name, ranks in groups])
+        # --ray_exp_name names this Ray run (cluster/worker-name prefix); online RL is always ray mode.
+        name=distributed_config.ray_exp_name,
+        groups=[DeviceGroup(name=group_name, ranks=ranks, device_type='GPU', gpus_per_worker=1)
+                for group_name, ranks in groups])
 
 
 class SamplerRollout(RolloutEngine):

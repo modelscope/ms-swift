@@ -121,6 +121,15 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         if auto_model is not None and hasattr(auto_model, 'gradient_checkpointing_enable'):
             auto_model.gradient_checkpointing_enable()
 
+    def gradient_checkpointing_disable(self):
+        """Symmetric with :meth:`_enable_gradient_checkpointing` -- a ``SentenceTransformer`` has no
+        top-level toggle, so drive the backbone. The builder calls this for ``gradient_checkpointing=False``
+        (twinkle enables it unconditionally at construction); a plain transformers build instead disables
+        it on ``model.model`` directly, which here is the pipeline, not an HF backbone."""
+        auto_model = getattr(self._first_module(), 'auto_model', None)
+        if auto_model is not None and hasattr(auto_model, 'gradient_checkpointing_disable'):
+            auto_model.gradient_checkpointing_disable()
+
     # --- forward --------------------------------------------------------------
 
     def _encode_sentence_embeddings(self, inputs: Dict[str, Any]):

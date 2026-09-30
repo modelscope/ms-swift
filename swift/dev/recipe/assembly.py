@@ -24,7 +24,7 @@ from __future__ import annotations
 import math
 import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from swift.dev.utils import get_logger
 
@@ -101,6 +101,11 @@ class TrainAssembly:
     rlhf_config: Optional['RLHFConfig'] = None
     #: The twinkle task the loop runs (``None`` -> the loop's own default, ``'causal_lm'``).
     task: Optional[str] = None
+    #: Override for the LOOP's forward task only, leaving ``task`` (and so task_type / template
+    #: encoding) untouched. Fused-linear-CE needs the split: rows still encode as causal_lm, but the
+    #: training forward must run under 'fused_lm_ce' so TransformersFusedCEPatch skips the lm_head
+    #: GEMM for the Liger fused kernel. ``None`` -> fall back to ``task``.
+    loop_task: Optional[str] = None
     output_dir: str = 'output'
     logging_config: Optional['LoggingConfig'] = None
     quantize_config: Optional['QuantizeConfig'] = None
@@ -164,6 +169,9 @@ class TrainAssembly:
             twinkle.initialize(
                 mode='ray',
                 nproc_per_node=nproc,
+                # --ray_exp_name names this Ray run (the cluster/worker-name prefix); a local run has
+                # no Ray experiment to name, so it is read only here. None keeps twinkle's default.
+                name=distributed_config.ray_exp_name,
                 groups=[DeviceGroup(name='model', ranks=list(range(nproc)), device_type='GPU', gpus_per_worker=1)])
         else:
             twinkle.initialize(mode='local')
@@ -309,11 +317,29 @@ class TrainAssembly:
         return self.total_opt_steps
 
     def resolve_step_intervals(self, total_steps: int) -> None:
-        """Resolve ratio-valued eval/save intervals for dataloader-free online recipes."""
-        self.train_config.eval_steps = _resolve_step_interval(self.train_config.eval_steps, total_steps, 'eval_steps')
+        """Resolve the eval/save intervals into the concrete optimizer-step counts the loop uses."""
+        self.train_config.eval_steps = self._resolve_eval_steps(total_steps)
         if self.checkpoint_config is not None:
             self.checkpoint_config.save_steps = _resolve_step_interval(
                 self.checkpoint_config.save_steps, total_steps, 'save_steps')
+
+    def _resolve_eval_steps(self, total_steps: int) -> Optional[int]:
+        """Turn ``eval_strategy`` into the optimizer-step interval the loop counts evals against.
+
+        ``process_configs`` already chose the strategy (defaulting it to ``save_strategy`` and forcing
+        'no' when the run has nothing to evaluate); this resolves it to a number:
+          - 'no': no periodic eval.
+          - 'epoch': one eval per epoch, i.e. the per-epoch share of the step budget.
+          - 'steps' -- or a bare ``--eval_steps`` with no strategy -- the configured interval: a ratio
+            in (0, 1) against ``total_steps``, else an absolute count.
+        """
+        strategy = (self.train_config.eval_strategy or '').lower()
+        if strategy == 'no':
+            return None
+        if strategy == 'epoch':
+            epochs = self.train_config.num_train_epochs or 1.0
+            return max(1, math.ceil(total_steps / epochs))
+        return _resolve_step_interval(self.train_config.eval_steps, total_steps, 'eval_steps')
 
     def build_model(self) -> Any:
         """Build the model, apply the tuner, and install dev's processor + template on it.
@@ -377,10 +403,12 @@ class TrainAssembly:
         the dataloader skip position. LoRA passes ``adapter_name`` because twinkle defaults it to ''
         while ``apply_tuner`` created 'default'.
         """
+        from swift.dev.callbacks import build_callbacks
         from swift.dev.optimizer import resolve_max_grad_norm
         from swift.dev.recipe.train_loop import SFTLoop
 
-        kwargs = {'task': self.task} if self.task else {}
+        loop_task = self.loop_task or self.task
+        kwargs = {'task': loop_task} if loop_task else {}
         self.loop = SFTLoop(
             self.model,
             self.dataloader,
@@ -405,11 +433,146 @@ class TrainAssembly:
             manual_gc=bool(self.megatron_config and self.megatron_config.manual_gc),
             manual_gc_eval=bool(self.megatron_config and self.megatron_config.manual_gc_eval),
             manual_gc_steps=self.megatron_config.manual_gc_steps if self.megatron_config else 0,
+            callbacks=build_callbacks(self.train_config),
+            eval_delay=int(self.train_config.eval_delay or 0),
+            eval_on_start=self.train_config.eval_on_start,
+            metric_for_best_model=self.train_config.metric_for_best_model,
+            greater_is_better=self.train_config.greater_is_better,
+            load_best_model_at_end=self.train_config.load_best_model_at_end,
+            best_model_adapter_name=(None if self.tuner_config is None else 'default'),
+            hub_pusher=self._build_hub_pusher(),
+            hub_strategy=(self.checkpoint_config.hub_strategy if self.checkpoint_config else 'every_save'),
+            **self._generative_eval_kwargs(),
             **kwargs)
 
         if self.resume_dir:
             self.loop.resume(self.resume_model())
         return self.loop
+
+    def _generative_eval_kwargs(self) -> Dict[str, Any]:
+        """The loop kwargs for in-training generative eval; empty when the run scores val-loss instead.
+
+        Builds the resident EvalScope sampler once (design 1.4) plus the inputs the loop hands to
+        ``run_evalscope``: the normalized benchmark names, the report model id, and the TaskConfig
+        kwargs. The sampler backend decides whether a colocate memory schedule brackets each run.
+        """
+        if not self.train_config.predict_with_generate:
+            return {}
+        from swift.dev.eval import build_task_config, model_name, validate_eval_datasets
+
+        cfg = self.train_config
+        eval_sampler, eval_enter, eval_exit = self._build_eval_sampler()
+        return {
+            'predict_with_generate': True,
+            'eval_sampler': eval_sampler,
+            'eval_template': self.template,
+            'eval_datasets': validate_eval_datasets(cfg.eval_dataset),
+            'eval_model_id': model_name(self.model_config),
+            # TrainConfig carries no eval_output_dir / eval_num_proc (those belong to the standalone
+            # ``swift eval`` EvalConfig), so the work dir is derived from the run's output dir and the
+            # request concurrency is left to EvalScope's default.
+            'eval_task_config': build_task_config(
+                work_dir=os.path.join(self.output_dir, 'eval'),
+                limit=cfg.eval_limit,
+                dataset_args=cfg.eval_dataset_args,
+                generation_config=cfg.eval_generation_config,
+                extra_eval_args=cfg.extra_eval_args),
+            'eval_enter': eval_enter,
+            'eval_exit': eval_exit,
+        }
+
+    def _build_eval_sampler(self) -> Tuple[Any, Optional[Callable], Optional[Callable]]:
+        """Build the resident generative-eval sampler and its optional colocate memory schedule.
+
+        Returns ``(eval_sampler, eval_enter, eval_exit)``. Two backends, per
+        ``TrainConfig.eval_sampler_backend``:
+
+        - 'transformers' (default): a facade over the live training module. ``TransformersSampler(model=..)``
+          holds no weights of its own -- it generates on the model's workers, on the weights they already
+          have -- so there is no second copy and no weight sync, and it is built on the driver with no
+          remote_group. No memory schedule is needed, so eval_enter/eval_exit are None.
+        - 'vllm' / 'sglang': a co-resident engine placed in the trainer's 'model' DeviceGroup and
+          weight-synced through a CheckpointEngineManager (ray mode only -- validate.py refuses it
+          otherwise). eval_enter/eval_exit run the colocate device hand-over around each eval so the
+          engine and the trainer take turns on the GPU, mirroring the GRPO rollout schedule.
+        """
+        backend = self.train_config.eval_sampler_backend
+        if backend == 'transformers':
+            from twinkle.sampler import TransformersSampler
+            sampler = TransformersSampler(model=self.model)
+            sampler.set_template(self.template)
+            return sampler, None, None
+
+        from twinkle.checkpoint_engine import CheckpointEngineManager
+
+        from swift.dev.builders import build_sampler
+        # The colocate hand-over sleeps the engine to free the GPU for the trainer, which each backend
+        # only permits when it was built with its own memory-saver flag on (vLLM: enable_sleep_mode,
+        # sglang: enable_memory_saver); without it sleep()/wake_up() warn and no-op, leaving the trainer
+        # offloaded and the engine without a KV cache.
+        sleep_arg = 'enable_sleep_mode' if backend == 'vllm' else 'enable_memory_saver'
+        sampler = build_sampler(
+            self.model_config,
+            backend=backend,
+            engine_args={sleep_arg: True},
+            template=self.template,
+            remote_group='model')
+        manager = CheckpointEngineManager(model=self.model, sampler=sampler, platform='GPU', mode='colocate')
+
+        def eval_enter() -> None:
+            # The manager's documented colocate order: wake the engine's weights, sync the trained policy
+            # into them, step the trainer aside, then give the engine its KV cache so it can generate.
+            sampler.wake_up(tags=['weights'])
+            manager.sync_weights(merge_and_sync=True)
+            self.model.offload_to_cpu()
+            sampler.wake_up()
+
+        def eval_exit() -> None:
+            sampler.sleep()
+            self.model.reload_to_gpu()
+
+        return sampler, eval_enter, eval_exit
+
+    def _build_hub_pusher(self) -> Optional[Callable[[str], None]]:
+        """A callable that uploads one checkpoint dir to the hub, or None when pushing is off.
+
+        Built here -- the assembly owns the hub target and credentials -- and injected into the loop,
+        which fires ``on_push_begin`` then calls it after a save (main process only). Goes through
+        twinkle's ``HubOperation`` rather than ``TrainableModel.upload_to_hub``: the latter hardcodes
+        ``private=True`` and never passes a revision, so it would silently ignore ``hub_private_repo`` /
+        ``hub_revision``. ``HubOperation.push_to_hub`` honors both and dispatches ModelScope vs HF off the
+        repo_id prefix (``hf://`` / ``ms://``).
+        """
+        cfg = self.checkpoint_config
+        if cfg is None or not cfg.push_to_hub:
+            return None
+        if not cfg.hub_model_id:
+            raise ValueError('CheckpointConfig.push_to_hub is set but hub_model_id is empty, so there is no '
+                             'target repo to upload to. Pass --hub_model_id <repo_id>.')
+        from twinkle.hub import HubOperation
+
+        token = self.dataset_config.hub_token if self.dataset_config is not None else None
+        repo_id = cfg.hub_model_id
+        private = cfg.hub_private_repo
+        revision = cfg.hub_revision or 'master'
+        # hub_always_push blocks until each upload lands, for a run where a dropped push would go
+        # unnoticed; off by default so uploads run on a background thread and do not stall training.
+        async_upload = not cfg.hub_always_push
+
+        def push(checkpoint_dir: str) -> None:
+            push_kwargs = dict(
+                repo_id=repo_id,
+                folder_path=checkpoint_dir,
+                token=token,
+                private=private,
+                revision=revision,
+                commit_message=f'Upload {os.path.basename(checkpoint_dir.rstrip("/"))} from swift.dev training')
+            if async_upload:
+                HubOperation.async_push_to_hub(**push_kwargs)
+            else:
+                HubOperation.push_to_hub(**push_kwargs)
+
+        return push
 
     def resume_model(self, model: Any = None, checkpoint_dir: Optional[str] = None, *,
                      adapter_name: Optional[str] = None) -> dict:
@@ -504,7 +667,7 @@ class TrainAssembly:
         The path is recomputed rather than taken from ``loop.save``: in Ray (Megatron) mode save()
         returns a deferred handle, not a path.
         """
-        self.loop.save(name)
+        self.loop.save(name, is_final=True)
         ckpt_dir = os.path.join(self.output_dir, name)
         TrainAssembly.write_ckpt_args_json(
             ckpt_dir,

@@ -873,6 +873,7 @@ class Qwen2GteLoader(Qwen2Loader):
     architectures = ['Qwen2ForCausalLM']
     template = 'dummy'
     task_type = 'embedding'
+    model_framework = 'sentence_transformers'
     trust_remote_code = True
     models = [
         ('iic/gte_Qwen2-1.5B-instruct', 'Alibaba-NLP/gte-Qwen2-1.5B-instruct'),

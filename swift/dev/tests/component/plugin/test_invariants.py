@@ -18,6 +18,7 @@ import re
 from pathlib import Path
 
 import swift.dev
+import swift.dev.callbacks  # noqa: F401 -- registers the `callback` kind, whose config_field is TrainConfig.callbacks
 import swift.dev.config as configs
 import swift.dev.rewards  # noqa: F401 -- importing the declaring module is what registers its kind
 from swift.dev.plugin import PluginRegistry

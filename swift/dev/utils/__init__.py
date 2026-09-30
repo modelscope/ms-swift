@@ -12,7 +12,8 @@ from .hf_config import HfConfigFactory
 from .hub import get_hub, safe_snapshot_download
 from .logger import get_logger
 from .torch_utils import get_n_params_grads, to_device
-from .utils import check_json_format, deep_getattr, get_env_args, json_parse_to_dict, parse_args, split_list
+from .utils import (check_json_format, deep_getattr, deepspeed_zero_stage, get_env_args, json_parse_to_dict,
+                    parse_args, resolve_deepspeed_config, split_list)
 
 __all__ = [
     'get_logger',
@@ -25,6 +26,8 @@ __all__ = [
     'get_n_params_grads',
     'check_json_format',
     'deep_getattr',
+    'deepspeed_zero_stage',
+    'resolve_deepspeed_config',
     'get_env_args',
     'json_parse_to_dict',
     'parse_args',

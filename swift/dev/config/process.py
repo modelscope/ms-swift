@@ -532,8 +532,10 @@ def _derive_eval_schedule(train_config: 'TrainConfig', dataset_config: 'DatasetC
     Mirrors legacy sft_args.py::_init_eval_strategy plus the guard at sft_args.py:231-232. Three
     couplings, each removing a knob the user would otherwise have to keep in sync by hand:
 
-    - No validation data (no val_dataset, no split, no cached val) means there is nothing to evaluate,
-      so the strategy is forced to 'no'; leaving it on would evaluate an empty set every period.
+    - No data to evaluate means there is nothing to score, so the strategy is forced to 'no'; leaving it
+      on would evaluate an empty set every period. What counts as "data to evaluate" follows the path:
+      the validation-loss path scores a split-off val set, while the generative path
+      (``predict_with_generate``) scores an EvalScope ``eval_dataset`` benchmark and needs no val split.
     - `eval_strategy` defaults to `save_strategy`, so a run that saves every N steps also evaluates
       every N steps without being told twice.
     - When evaluating by steps without an explicit `eval_steps`, it inherits `save_steps` for the same
@@ -541,9 +543,12 @@ def _derive_eval_schedule(train_config: 'TrainConfig', dataset_config: 'DatasetC
 
     Only fills in unset fields.
     """
-    has_val = (bool(dataset_config.val_dataset) or bool(dataset_config.cached_val_dataset)
-               or (bool(dataset_config.dataset) and dataset_config.split_dataset_ratio > 0))
-    if not has_val:
+    if train_config.predict_with_generate:
+        has_eval_data = bool(train_config.eval_dataset)
+    else:
+        has_eval_data = (bool(dataset_config.val_dataset) or bool(dataset_config.cached_val_dataset)
+                         or (bool(dataset_config.dataset) and dataset_config.split_dataset_ratio > 0))
+    if not has_eval_data:
         train_config.eval_strategy = 'no'
         train_config.eval_steps = None
         return

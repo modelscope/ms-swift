@@ -123,11 +123,12 @@ class PluginKind:
 
 #: Modules whose import declares swift's built-in plugin kinds (each runs ``register_kind`` at module
 #: top level). A user's ``--external_plugins`` file may ``@register`` against any built-in kind -- the
-#: ``tool`` kind (``swift.dev.rollout.sandbox``) or the ``reward`` kind (``swift.dev.rewards.orm``) -- so
-#: the loader must guarantee those kinds are declared BEFORE it imports the user file. Nothing in the
-#: CLI's config lifecycle imports them that early (``process_configs`` calls ``load_configured`` before
-#: any recipe runs), so a plugin registering a built-in kind would otherwise hit an empty ``KINDS``.
-_BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.rollout.sandbox')
+#: ``tool`` kind (``swift.dev.rollout.sandbox``), the ``reward`` kind (``swift.dev.rewards.orm``) or the
+#: ``callback`` kind (``swift.dev.callbacks``) -- so the loader must guarantee those kinds are declared
+#: BEFORE it imports the user file. Nothing in the CLI's config lifecycle imports them that early
+#: (``process_configs`` calls ``load_configured`` before any recipe runs), so a plugin registering a
+#: built-in kind would otherwise hit an empty ``KINDS``.
+_BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.rollout.sandbox', 'swift.dev.callbacks')
 
 
 def _declare_builtin_kinds() -> None:
