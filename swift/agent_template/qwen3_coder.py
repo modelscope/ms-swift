@@ -33,7 +33,42 @@ TOOL_DESC_SUFFIX = (
 class Qwen3CoderAgentTemplate(HermesAgentTemplate):
 
     @staticmethod
-    def _find_function_call(single_content: str) -> Optional[Function]:
+    def _parse_parameter(value: str, schema: dict):
+        schemas = [schema]
+        types = set()
+        while schemas:
+            schema = schemas.pop()
+            if not isinstance(schema, dict):
+                continue
+            schema_type = schema.get('type', [])
+            types.update([schema_type] if isinstance(schema_type, str) else schema_type)
+            for key in ('anyOf', 'oneOf'):
+                schemas.extend(schema.get(key, []))
+
+        # XML does not distinguish string literals from JSON values. Preserve
+        # text when the schema is absent or allows strings.
+        if not types or 'string' in types:
+            return value
+        try:
+            parsed = json.loads(value)
+            json.dumps(parsed, allow_nan=False)
+        except ValueError:
+            return value
+        value_type = {
+            int: 'integer',
+            float: 'number',
+            bool: 'boolean',
+            list: 'array',
+            dict: 'object',
+            type(None): 'null'
+        }
+        parsed_type = value_type.get(type(parsed))
+        if parsed_type in types or (parsed_type == 'integer' and 'number' in types):
+            return parsed
+        return value
+
+    @staticmethod
+    def _find_function_call(single_content: str, tools: Optional[List[dict]] = None) -> Optional[Function]:
         single_content = single_content.strip()
         # Check whether the complete function tag is included
         if not single_content.startswith('<function=') or not single_content.endswith('</function>'):
@@ -46,25 +81,36 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
 
         func_name = func_name_match.group(1).strip()
         parameters = {}
+        properties = {}
+        for tool in tools or []:
+            tool = tool.get('function', tool)
+            if tool.get('name') == func_name:
+                properties = tool.get('parameters', {}).get('properties', {})
+                break
 
         # Use regular expressions to match parameters
         # Match any content of <parameter=name>content</parameter>
-        param_pattern = r'<parameter=([^>]+)>\s*(.*?)\s*</parameter>'
+        param_pattern = r'<parameter=([^>]+)>(.*?)</parameter>'
         param_matches = re.findall(param_pattern, single_content, re.DOTALL)
 
         for param_name, param_value in param_matches:
-            # Clear the parameter values and remove any possible additional whitespace
-            clean_value = param_value.strip()
-            parameters[param_name.strip()] = clean_value
+            # Remove only the delimiter newlines inserted by _format_tool_calls.
+            if param_value.startswith('\n'):
+                param_value = param_value[1:]
+            if param_value.endswith('\n'):
+                param_value = param_value[:-1]
+            param_name = param_name.strip()
+            parameters[param_name] = Qwen3CoderAgentTemplate._parse_parameter(param_value,
+                                                                              properties.get(param_name, {}))
 
         return Function(name=func_name, arguments=json.dumps(parameters, ensure_ascii=False))
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    def get_toolcall(self, response: str, tools: Optional[List[dict]] = None) -> List[Function]:
         # Extract the tool call parameters from the model's response
         toolcall_list = re.findall(r'<tool_call>(.*?)</tool_call>', response, re.DOTALL)
         functions = []
         for toolcall in toolcall_list:
-            function = self._find_function_call(toolcall)
+            function = self._find_function_call(toolcall, tools)
             if function:
                 functions.append(function)
         if len(functions) == 0:
