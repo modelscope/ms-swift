@@ -161,6 +161,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | AMD GPU | [AMD GPU 支持](../BestPractices/AMD-support.md) |
 | 华为 Ascend NPU | [NPU 支持](../BestPractices/NPU-support.md) |
 | 沐曦 MetaX GPU | [MetaX 支持](../BestPractices/Metax-support.md) |
+| 摩尔线程 MUSA GPU | [MUSA 支持](../BestPractices/MUSA-support.md) |
 | Apple MPS | [issue](https://github.com/modelscope/ms-swift/issues/4572) |
 
 

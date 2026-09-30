@@ -1,0 +1,2 @@
+torchada>=0.1.89
+transformers>=5.2.0,<5.17.0
