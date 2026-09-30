@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import numpy as np
 import torch
+from accelerate.utils import extract_model_from_parallel
 from typing import TYPE_CHECKING
 
 from .base import TrainerCallback
@@ -16,10 +17,24 @@ class LISACallback(TrainerCallback):
         super().__init__(args, trainer)
         self.n_layers = args.lisa_activated_layers
         self.step_interval = args.lisa_step_interval
-        self.model = self.trainer.model
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        # Wait until the model exists and the optimizer has registered all layers.
+        self.model = extract_model_from_parallel(kwargs['model'], keep_torch_compile=False)
+        model_arch = getattr(getattr(self.model, 'model_meta', None), 'model_arch', None)
+        layer_prefixes = getattr(model_arch, 'language_model', None)
+        if getattr(model_arch, 'module_list', None):
+            layer_prefixes = [model_arch.module_list]
+        excluded_prefixes = [
+            prefix for key in ('vision_tower', 'aligner', 'generator') for prefix in getattr(model_arch, key, [])
+        ]
         layers_name = None
         layers = None
         for name, module in self.model.named_modules():
+            if layer_prefixes and not any(name == prefix or name.startswith(f'{prefix}.') for prefix in layer_prefixes):
+                continue
+            if any(name == prefix or name.startswith(f'{prefix}.') for prefix in excluded_prefixes):
+                continue
             if isinstance(module, torch.nn.ModuleList):
                 layers_name = name
                 layers = module
@@ -28,8 +43,6 @@ class LISACallback(TrainerCallback):
         self.layers_attribute = layers_name
         self.total_layers = len(layers)
 
-        # Freeze all layers upon initialization
-        self.freeze_all_layers()
         self.active_layers_indices = []
         self.switch_active_layers()
 

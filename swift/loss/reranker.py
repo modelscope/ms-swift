@@ -58,7 +58,7 @@ class ListwiseRerankerLoss(BaseLoss):
 
         if len(positive_indices) == 0:
             # No positive samples in this batch, return zero loss
-            return torch.tensor(0.0, device=logits.device, requires_grad=True)
+            return logits[:0].sum()
 
         # Ensure positive_indices is 1D
         if positive_indices.dim() == 0:
@@ -103,7 +103,8 @@ class ListwiseRerankerLoss(BaseLoss):
             num_groups += 1
 
         if num_groups == 0:
-            return torch.tensor(0.0, device=logits.device, requires_grad=True)
+            # Keep skipped batches in the autograd graph without reading their scores.
+            return logits[:0].sum()
 
         # Return average loss across all groups
         return total_loss / num_groups

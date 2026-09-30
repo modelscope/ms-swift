@@ -19,6 +19,7 @@ import asyncio
 import inspect
 import multiprocessing
 import os
+import secrets
 import time
 import torch
 import torch.distributed.distributed_c10d as c10d
@@ -28,7 +29,7 @@ from aiohttp import ClientConnectorError
 from collections.abc import Sequence
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
@@ -501,7 +502,7 @@ class WeightSyncWorkerExtension:
                 raw = buffer[offset:offset + size]
                 tensor = raw.view(dtype=dtype).view(shape)
                 if use_shm:
-                    tensor = tensor.to(device)
+                    tensor = tensor.to(device, copy=True)
                 else:
                     tensor = tensor.clone()
                 weights.append((name, tensor))
@@ -509,11 +510,13 @@ class WeightSyncWorkerExtension:
             if _torch.cuda.is_available():
                 _torch.cuda.synchronize()
 
-            if is_driver:
-                socket.send(b'')  # bucket received
-
+            # The sender can overwrite the shared buffer as soon as it receives
+            # the ACK, so every TP rank must finish its local copies first.
             if tp_size > 1:
                 _dist.barrier(group=cpu_group)
+
+            if is_driver:
+                socket.send(b'')  # all TP ranks have copied this bucket
 
             if is_lora_sync:
                 for name, tensor in weights:
@@ -728,23 +731,49 @@ class SwiftRolloutDeploy(SwiftPipeline):
     args_class = RolloutArguments
     args: args_class
 
+    def _require_api_key(self):
+        """enforces the inherited ``api_key`` on every route."""
+
+        async def _dep(request: Request) -> None:
+            api_key = self.args.api_key
+            if not api_key:
+                return  # explicitly unauthenticated
+            authorization = request.headers.get('Authorization', '')
+            if not authorization or not authorization.startswith('Bearer '):
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, 'Missing bearer token')
+            if not secrets.compare_digest(authorization[7:], api_key):
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, 'Invalid API key')
+
+        return _dep
+
+    def _warn_if_unauthenticated(self):
+        """Warn when the rollout server is reachable from other hosts with authentication disabled."""
+        args = self.args
+        if args.api_key or args.host in {'127.0.0.1', 'localhost', '::1'}:
+            return
+        logger.warning(f'The rollout server is listening on {args.host}:{args.port} without an API key, so '
+                       'anyone able to reach this port can overwrite model weights, run inference, or '
+                       'disrupt the service. Pass `--api_key` to require one, and `--host 127.0.0.1` '
+                       'to accept local connections only.')
+
     def _register_rl_rollout_app(self):
+        guard = [Depends(self._require_api_key())]
         self.app.get('/health')(self.health)
         self.app.get('/health/')(self.health)
-        self.app.get('/get_world_size/')(self.get_world_size)
-        self.app.get('/get_model_state_keys/')(self.get_model_state_keys)
-        self.app.post('/init_communicator/')(self.init_communicator)
-        self.app.post('/update_named_param/')(self.update_named_param)
-        self.app.post('/update_adapter_flattened_param/')(self.update_adapter_flattened_param)
-        self.app.post('/update_adapter_param/')(self.update_adapter_param)
-        self.app.post('/update_flattened_params/')(self.update_flattened_params)
-        self.app.post('/process_weights_after_loading/')(self.process_weights_after_loading)
-        self.app.post('/reset_prefix_cache/')(self.reset_prefix_cache)
-        self.app.post('/reset_encoder_cache/')(self.reset_encoder_cache)
-        self.app.post('/reset_mm_cache/')(self.reset_mm_cache)
-        self.app.post('/close_communicator/')(self.close_communicator)
-        self.app.post('/infer/', response_model=None)(self.infer)
-        self.app.post('/get_engine_type/')(self.get_engine_type)
+        self.app.get('/get_world_size/', dependencies=guard)(self.get_world_size)
+        self.app.get('/get_model_state_keys/', dependencies=guard)(self.get_model_state_keys)
+        self.app.post('/init_communicator/', dependencies=guard)(self.init_communicator)
+        self.app.post('/update_named_param/', dependencies=guard)(self.update_named_param)
+        self.app.post('/update_adapter_flattened_param/', dependencies=guard)(self.update_adapter_flattened_param)
+        self.app.post('/update_adapter_param/', dependencies=guard)(self.update_adapter_param)
+        self.app.post('/update_flattened_params/', dependencies=guard)(self.update_flattened_params)
+        self.app.post('/process_weights_after_loading/', dependencies=guard)(self.process_weights_after_loading)
+        self.app.post('/reset_prefix_cache/', dependencies=guard)(self.reset_prefix_cache)
+        self.app.post('/reset_encoder_cache/', dependencies=guard)(self.reset_encoder_cache)
+        self.app.post('/reset_mm_cache/', dependencies=guard)(self.reset_mm_cache)
+        self.app.post('/close_communicator/', dependencies=guard)(self.close_communicator)
+        self.app.post('/infer/', response_model=None, dependencies=guard)(self.infer)
+        self.app.post('/get_engine_type/', dependencies=guard)(self.get_engine_type)
 
     def __init__(self, args: Optional[Union[List[str], RolloutArguments]] = None):
         super().__init__(args)
@@ -1076,6 +1105,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
     def run(self):
         args = self.args
+        self._warn_if_unauthenticated()
         uvicorn.run(self.app, host=args.host, port=args.port, log_level=args.log_level)
 
 

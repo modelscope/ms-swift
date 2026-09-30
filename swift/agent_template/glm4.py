@@ -176,6 +176,9 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             tool_call = self._parse_tool_call(message['content'])
             tool_calls.append(f"<tool_call>{tool_call['name']}")
             for arg_key, arg_value in tool_call['arguments'].items():
+                if not isinstance(arg_value, str):
+                    # `{{ v | tojson(ensure_ascii=False) if v is not string else v }}`
+                    arg_value = json.dumps(arg_value, ensure_ascii=False)
                 tool_calls.append(f'<arg_key>{arg_key}</arg_key>')
                 tool_calls.append(f'<arg_value>{arg_value}</arg_value>')
             tool_calls.append('</tool_call>')

@@ -735,6 +735,29 @@ def test_minicpm5():
     assert swift_response == jinja_response
 
 
+def test_minicpm5_2b():
+    engine = TransformersEngine('OpenBMB/MiniCPM5-2B')
+    template = engine.template
+    assert template.template_meta.template_type == 'minicpm5_2b'
+    # Unlike MiniCPM5-1B, MiniCPM5-2B keeps historical thinking.
+    assert template.template_meta.preserve_thinking is True
+    messages = [{
+        'role': 'user',
+        'content': '1+1等于几'
+    }, {
+        'role': 'assistant',
+        'content': '<think>\n简单加法。\n</think>\n\n等于2。'
+    }, {
+        'role': 'user',
+        'content': '那再加3呢'
+    }]
+    assert '简单加法' in template.safe_decode(template.encode({'messages': messages})['input_ids'])
+    swift_response = _infer_model(engine, messages=messages)
+    engine.template.template_backend = 'jinja'
+    jinja_response = _infer_model(engine, messages=messages)
+    assert swift_response == jinja_response
+
+
 def test_qwen3_8():
     engine = TransformersEngine('Qwen/Qwen3.8-27B')
     template = engine.template
@@ -836,5 +859,6 @@ if __name__ == '__main__':
     # test_glm4_moe_lite()
     # test_olmoe()
     # test_minicpm5()
-    test_qwen3_8()
-    test_qwen3_8_reasoning_effort()
+    # test_qwen3_8()
+    # test_qwen3_8_reasoning_effort()
+    test_minicpm5_2b()

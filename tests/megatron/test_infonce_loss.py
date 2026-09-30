@@ -10,6 +10,7 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+from types import SimpleNamespace
 
 from swift.loss.embedding import InfonceLoss
 
@@ -41,8 +42,10 @@ def parallel_groups(request, distributed):
         mpu.destroy_model_parallel()
 
 
+@pytest.mark.parametrize('calculate_per_token_loss', [False, True])
 @pytest.mark.parametrize('uneven_negatives', [False, True])
-def test_infonce_data_parallel_loss_and_gradients(parallel_groups, monkeypatch, uneven_negatives):
+def test_infonce_data_parallel_loss_and_gradients(parallel_groups, monkeypatch, uneven_negatives,
+                                                  calculate_per_token_loss):
     rank, world_size = parallel_groups
     for name, value in {
             'INFONCE_TEMPERATURE': '0.5',
@@ -63,6 +66,7 @@ def test_infonce_data_parallel_loss_and_gradients(parallel_groups, monkeypatch, 
     labels = torch.tensor([1] + [0] * (len(local) - 2), device=local.device)
     loss_func = InfonceLoss(None, None)
     loss_func.is_megatron = True
+    loss_func.args = SimpleNamespace(calculate_per_token_loss=calculate_per_token_loss)
     actual = loss_func({'last_hidden_state': local}, labels)
 
     # All queries classify their positive among every rank's documents.
@@ -76,4 +80,8 @@ def test_infonce_data_parallel_loss_and_gradients(parallel_groups, monkeypatch, 
     torch.testing.assert_close(actual, expected)
     actual_grad, = torch.autograd.grad(actual, local)
     expected_grad, = torch.autograd.grad(expected, reference[rank])
-    torch.testing.assert_close(actual_grad, expected_grad)
+    # calculate_per_token_loss=False: Megatron averages local grads by the DP world size, so the
+    # loss premultiplies by it to recover the summed gradient. calculate_per_token_loss=True sums
+    # grads without the 1/dp scaling, so no compensation is applied.
+    grad_scale = 1 if calculate_per_token_loss else world_size
+    torch.testing.assert_close(actual_grad, grad_scale * expected_grad)

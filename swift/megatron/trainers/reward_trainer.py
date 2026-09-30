@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 from functools import partial
+from megatron.core.utils import get_attr_wrapped_model
 from torch import nn
 
 from swift.utils import get_logger
@@ -44,7 +45,7 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
         return loss, metric
 
     def forward_step(self, data_iterator, model):
-        vp_stage = model.module.module.vp_stage
+        vp_stage = get_attr_wrapped_model(model, 'vp_stage')
         data = self.get_batch(data_iterator, vp_stage)
         data.pop('loss_scale', None)
         output_tensor = model(**data)

@@ -49,7 +49,7 @@ class TrainArgumentsMixin:
             and specify the API KEY corresponding to your account through `WANDB_API_KEY`.
         dataloader_num_workers (Optional[int]): The number of subprocesses to use for data loading. Defaults to None.
         dataloader_persistent_workers (bool): If True, the data loader workers will not be shut down after a dataset
-            has been consumed once. Defaults to True.
+            has been consumed once. Defaults to True. Disabled when dataloader_num_workers is 0.
         dataloader_prefetch_factor (Optional[int]): The number of batches loaded in advance by each worker. Defaults
             to None.
         use_liger_kernel (bool): Whether to use the Liger kernel for optimization. Defaults to False.
@@ -304,6 +304,9 @@ class TrainArgumentsMixin:
             else:
                 self.dataloader_num_workers = 1
             logger.info(f'Setting args.dataloader_num_workers: {self.dataloader_num_workers}')
+        if self.dataloader_num_workers == 0 and self.dataloader_persistent_workers:
+            self.dataloader_persistent_workers = False
+            logger.info('Setting args.dataloader_persistent_workers: False because dataloader_num_workers is 0.')
         if self.dataloader_prefetch_factor is None and self.dataloader_num_workers > 0:
             self.dataloader_prefetch_factor = 2
         if self.eval_use_evalscope:

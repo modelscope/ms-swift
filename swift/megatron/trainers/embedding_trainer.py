@@ -2,6 +2,8 @@
 import torch.nn
 import torch.nn.functional as F
 from functools import partial
+from megatron.core import mpu
+from megatron.core.utils import get_attr_wrapped_model
 
 from swift.loss import loss_map
 from swift.metrics import eval_metrics_map
@@ -18,6 +20,7 @@ class MegatronEmbeddingTrainer(BaseMegatronTrainer):
         self._loss_func = loss_map[args.loss_type](args, self)
         eval_metric = 'infonce' if args.loss_type == 'infonce' else 'paired'
         self.eval_metrics = eval_metrics_map[eval_metric](args, self)
+        self.eval_metrics.group = mpu.get_data_parallel_group()
 
     def loss_func(self,
                   output_tensor: torch.Tensor,
@@ -49,7 +52,7 @@ class MegatronEmbeddingTrainer(BaseMegatronTrainer):
         return loss, metric
 
     def forward_step(self, data_iterator, model):
-        vp_stage = model.module.module.vp_stage
+        vp_stage = get_attr_wrapped_model(model, 'vp_stage')
         data = self.get_batch(data_iterator, vp_stage)
         labels = data.pop('labels', None)
         output_tensor = model(**data)

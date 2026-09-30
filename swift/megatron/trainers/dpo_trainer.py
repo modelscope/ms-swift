@@ -3,6 +3,7 @@ import torch
 from collections import namedtuple
 from functools import partial
 from megatron.core import mpu
+from megatron.core.utils import get_attr_wrapped_model
 from torch.distributed.nn import all_reduce
 
 from swift.rlhf_trainers import DPOTrainer
@@ -75,7 +76,7 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         return loss, metric
 
     def forward_step(self, data_iterator, model):
-        unwrapped_model = model.module.module
+        unwrapped_model = get_attr_wrapped_model(model, 'get_input_tensor', return_model_obj=True)
         input_tensor = unwrapped_model.get_input_tensor()
         vp_stage = unwrapped_model.vp_stage
         data = self.get_batch(data_iterator, vp_stage)

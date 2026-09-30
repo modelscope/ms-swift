@@ -23,6 +23,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 from swift.metrics import Metric
 from swift.model import get_model_processor
 from swift.template import Template
+from swift.template.utils import StopWordsCriteria
 from swift.tuners import Swift
 from swift.utils import get_last_valid_indices, patch_kernels, safe_snapshot_download, to_device
 from .infer_engine import InferEngine
@@ -145,7 +146,7 @@ class TransformersEngine(InferEngine):
     def _fetch_infer_requests(self):
         while not self._queue.empty():
             infer_request, kwargs, queue = self._queue.get()
-            info = hashlib.sha256(pickle.dumps((kwargs['request_config']))).hexdigest()
+            info = hashlib.sha256(pickle.dumps((kwargs['request_config'], kwargs['adapter_request']))).hexdigest()
             if info not in self._task_pool:
                 self._task_pool[info] = kwargs, []
             self._task_pool[info][1].append((infer_request, queue))
@@ -172,20 +173,26 @@ class TransformersEngine(InferEngine):
             if item is not None:
                 kwargs, queue_list = item
                 request_config = kwargs['request_config']
-                res_list_or_gen = self._infer(**kwargs)
-                if request_config.stream:
-                    finished = False
-                    while not finished:
-                        try:
-                            res_list = next(res_list_or_gen)
-                        except StopIteration:
-                            finished = True
-                            res_list = [None] * len(queue_list)
-                        for (queue, loop), res in zip(queue_list, res_list):
+                try:
+                    res_list_or_gen = self._infer(**kwargs)
+                    if request_config.stream:
+                        finished = False
+                        while not finished:
+                            try:
+                                res_list = next(res_list_or_gen)
+                            except StopIteration:
+                                finished = True
+                                res_list = [None] * len(queue_list)
+                            for (queue, loop), res in zip(queue_list, res_list):
+                                # A missing chunk is not the end-of-stream sentinel.
+                                if res is not None or finished:
+                                    asyncio.run_coroutine_threadsafe(queue.put(res), loop)
+                    else:
+                        for (queue, loop), res in zip(queue_list, res_list_or_gen):
                             asyncio.run_coroutine_threadsafe(queue.put(res), loop)
-                else:
-                    for (queue, loop), res in zip(queue_list, res_list_or_gen):
-                        asyncio.run_coroutine_threadsafe(queue.put(res), loop)
+                except Exception as e:
+                    for queue, loop in queue_list:
+                        asyncio.run_coroutine_threadsafe(queue.put(e), loop)
 
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
@@ -264,9 +271,19 @@ class TransformersEngine(InferEngine):
             self.template.generate(self.model, **kwargs)
 
         generate_kwargs = self.template.prepare_generate_kwargs(generate_kwargs, model=self.model)
+        # Generation runs ahead in another thread; keep independent stop-word state.
+        stream_stop_criteria = [
+            StopWordsCriteria(criteria.tokenizer, criteria.stop_words, **criteria.tokenizer_kwargs)
+            for criteria in generate_kwargs.get('stopping_criteria', []) if isinstance(criteria, StopWordsCriteria)
+        ]
+        eos_token_ids = generation_config.eos_token_id
+        if isinstance(eos_token_ids, int):
+            eos_token_ids = [eos_token_ids]
+        eos_token_ids = set(eos_token_ids or [])
         thread = Thread(target=_model_generate, kwargs=generate_kwargs)
-        thread.start()
         batch_size = inputs['attention_mask'].shape[0]
+        prompt_token_counts = [self._get_num_tokens(inputs, batch_idx=i) for i in range(batch_size)]
+        thread.start()
         all_is_finished = False
         is_finished = [False] * batch_size
         infer_streamers = [InferStreamer(self.template, template_inputs=template_inputs[i]) for i in range(batch_size)]
@@ -274,10 +291,14 @@ class TransformersEngine(InferEngine):
         token_idxs = [0] * batch_size
 
         raw_batched_generate_ids = None  # or torch.Tensor: [batch_size, seq_len]
+        num_stream_input_tokens = 0
         batched_logprobs = [[] for _ in range(batch_size)]
         while not all_is_finished:
             try:
                 batched_tokens = next(streamer)
+                if raw_batched_generate_ids is None and batched_tokens.ndim == 2:
+                    # HF first streams the prompt (or encoder-decoder start token).
+                    num_stream_input_tokens = batched_tokens.shape[1]
                 if batched_tokens.ndim == 1:
                     batched_tokens = batched_tokens[:, None]
 
@@ -291,6 +312,9 @@ class TransformersEngine(InferEngine):
             batched_generate_ids = self.template.get_generate_ids(raw_batched_generate_ids, num_prompt_tokens)
             self._update_batched_logprobs(batched_logprobs, logits_streamer, batched_generate_ids,
                                           request_config.top_logprobs)
+            new_token_ids = raw_batched_generate_ids[:, num_stream_input_tokens:]
+            num_generated_tokens = new_token_ids.shape[1]
+            stop_results = [criteria(new_token_ids, None) for criteria in stream_stop_criteria if num_generated_tokens]
 
             res = []
             for i in range(batched_generate_ids.shape[0]):
@@ -298,17 +322,20 @@ class TransformersEngine(InferEngine):
                     res.append(None)
                     continue
                 generate_ids = batched_generate_ids[i]
+                eos_finished = num_generated_tokens > 0 and new_token_ids[i, -1].item() in eos_token_ids
+                stop_finished = eos_finished or any(stopped[i] for stopped in stop_results)
+                is_finished[i] = all_is_finished or stop_finished
 
                 # ignore pad_token
                 masks = generate_ids != self.tokenizer.pad_token_id
+                if eos_finished:
+                    # A terminating EOS still counts as a generated token when EOS == PAD.
+                    masks[-1] = True
                 generate_ids = generate_ids[masks].tolist()
                 logprobs_list = None
                 if batched_logprobs[i]:
                     logprobs_list = [logprobs for m, logprobs in zip(masks, batched_logprobs[i]) if m.item()]
 
-                is_finished[i] = (
-                    all_is_finished or is_finished[i]
-                    or len(generate_ids) > 0 and generate_ids[-1] == self.tokenizer.pad_token_id)
                 delta_text = infer_streamers[i].get_printable_text(generate_ids, is_finished[i])
                 if not delta_text and not is_finished[i]:
                     res.append(None)
@@ -316,13 +343,15 @@ class TransformersEngine(InferEngine):
                 logprobs = self._get_logprobs(logprobs_list, generate_ids[token_idxs[i]:], request_config.top_logprobs)
                 token_idxs[i] = len(generate_ids)
 
-                usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
+                usage_info = self._get_usage_info(prompt_token_counts[i], num_generated_tokens)
                 toolcall = None
                 if is_finished[i]:
                     toolcall = self._get_toolcall(
                         self.template.decode_generate_ids(generate_ids, template_inputs=template_inputs[i]))
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, usage_info.completion_tokens,
                                                         is_finished[i])
+                if stop_finished:
+                    finish_reason = 'stop'
 
                 choices = [
                     ChatCompletionResponseStreamChoice(
@@ -344,8 +373,8 @@ class TransformersEngine(InferEngine):
             return
         adapter_name = adapter_request.name
         if adapter_name not in self._adapters_pool:
-            self._adapters_pool[adapter_name] = adapter_request
             self._add_adapter(adapter_request.path, adapter_name)
+            self._adapters_pool[adapter_name] = adapter_request
         return [adapter_name]
 
     def _infer_forward(self, inputs: Dict[str, Any], adapter_request: Optional[AdapterRequest],
@@ -355,7 +384,6 @@ class TransformersEngine(InferEngine):
         adapter_names = self._get_adapter_names(adapter_request)
         if adapter_names is not None:
             call_kwargs['adapter_names'] = adapter_names
-        num_prompt_tokens = self._get_num_tokens(inputs)
         inputs.pop('labels', None)
         output = self.model(**inputs, **call_kwargs)
         if hasattr(output, 'logits'):
@@ -390,7 +418,7 @@ class TransformersEngine(InferEngine):
 
         res = []
         for i, pred in enumerate(preds):
-            usage_info = self._get_usage_info(num_prompt_tokens, 1)
+            usage_info = self._get_usage_info(self._get_num_tokens(inputs, batch_idx=i), 1)
             if task_type == 'embedding':
                 res.append(
                     EmbeddingResponse(
@@ -428,7 +456,7 @@ class TransformersEngine(InferEngine):
         num_return_sequences = generation_config.num_return_sequences
         for i in range(inputs['attention_mask'].shape[0]):
             choices = []
-            usage_info = self._get_usage_info(num_prompt_tokens, 0)
+            usage_info = self._get_usage_info(self._get_num_tokens(inputs, batch_idx=i), 0)
             for j in range(num_return_sequences):
                 batched_index = i * num_return_sequences + j
                 generate_ids = batched_generate_ids[batched_index]
@@ -501,11 +529,19 @@ class TransformersEngine(InferEngine):
                     await asyncio.sleep(0)
                     if item is None:
                         break
+                    if isinstance(item, Exception):
+                        raise item
                     yield item
+                    choices = getattr(item, 'choices', None)
+                    if choices and all(choice.finish_reason is not None for choice in choices):
+                        break
 
             return _gen_wrapper()
         else:
-            return await queue.get()
+            item = await queue.get()
+            if isinstance(item, Exception):
+                raise item
+            return item
 
     # Ensure `template._post_encode` has no gradient.
     @torch.inference_mode()

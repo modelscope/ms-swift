@@ -486,33 +486,23 @@ def reconstruct_tensor_cp(cp_size, tensor, packed_seq_params, num_samples, cp_pa
         return output_full
 
     if packed_seq_params is not None:
-        cu_seqlens_full = packed_seq_params.cu_seqlens_q
-        cu_seqlens_cp = cu_seqlens_full // cp_size
-
-        # Calculate total packed length
+        cu_seqlens_full = packed_seq_params.cu_seqlens_q[:num_samples + 1]
         total_packed_len = cu_seqlens_full[num_samples].item()
-        output_full = tensor.new_zeros(1, total_packed_len)
+        cu_seqlens_full = cu_seqlens_full.to(device=tensor.device)
+        starts = cu_seqlens_full[:-1, None]
+        half_chunks = (cu_seqlens_full[1:, None] - starts) // (2 * cp_size)
+        chunks = torch.arange(2 * cp_size, device=tensor.device)
 
-        # Reconstruct each sequence
-        for i in range(num_samples):
-            start_full = cu_seqlens_full[i].item()
-            end_full = cu_seqlens_full[i + 1].item()
-            seq_len = end_full - start_full
-
-            # Length of each chunk after CP split
-            chunk_len = seq_len // cp_size
-            half_chunk = chunk_len // 2
-
-            # Concatenate from each CP rank's output (load-balanced split)
-            for j in range(cp_size):
-                o = output_list[j][0]
-                start_cp = cu_seqlens_cp[i].item()
-                o0 = o[start_cp:start_cp + half_chunk]
-                o1 = o[start_cp + half_chunk:start_cp + chunk_len]
-
-                # Place back to full sequence
-                output_full[0, start_full + j * half_chunk:start_full + (j + 1) * half_chunk] = o0
-                output_full[0, end_full - (j + 1) * half_chunk:end_full - j * half_chunk] = o1
+        # Each sequence has 2 * cp_size chunks; rank j owns chunks j and 2 * cp_size - j - 1.
+        ranks = torch.where(chunks < cp_size, chunks, 2 * cp_size - chunks - 1)
+        source_starts = ranks * tensor.shape[1] + starts // cp_size + (chunks >= cp_size) * half_chunks
+        output_starts = starts + chunks * half_chunks
+        repeats = half_chunks.expand(-1, 2 * cp_size).reshape(-1)
+        # Supplying output_size avoids synchronizing to read the sum of the device-side repeats.
+        indices = torch.repeat_interleave(
+            (source_starts - output_starts).reshape(-1), repeats, output_size=total_packed_len)
+        indices += torch.arange(total_packed_len, device=tensor.device)
+        output_full = torch.cat(output_list, dim=1)[:1].index_select(1, indices)
     else:
         # non-padding_free mode: [batch_size, seq_len/cp_size] -> [batch_size, seq_len]
         # Each CP rank has chunks split with load-balanced pattern (2*cp_size chunks)

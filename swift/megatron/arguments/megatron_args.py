@@ -672,6 +672,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     moe_pad_expert_input_to_capacity: bool = False
     moe_token_drop_policy: Literal['probs', 'position'] = 'probs'
 
+    # engram
+    engram_tokenizer_map: Optional[str] = None
+
     # mtp
     mtp_num_layers: Optional[int] = None
     mtp_loss_scaling_factor: float = 0.1
@@ -761,7 +764,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 self.lr = 1e-4
         if self.task_type is None:
             self.task_type = 'causal_lm'
-        if self.calculate_per_token_loss is None:
+        if self.rlhf_type == 'gkd':
+            if self.calculate_per_token_loss is False:
+                logger.warning("calculate_per_token_loss=False is incompatible with rlhf_type='gkd'; forcing True.")
+            self.calculate_per_token_loss = True
+        elif self.calculate_per_token_loss is None:
             self.calculate_per_token_loss = (self.task_type == 'causal_lm' and self.rlhf_type is None)
 
     def _init_mixed_precision(self):
@@ -794,6 +801,22 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             _patch_mcore_bridge()
             self._check_mcore_bridge()
 
+    def _check_recompute(self):
+        """Reject the LoRA + selective-recomputation combination for deepseek_v41."""
+        # For deepseek_v41 selective recomputation drives the per-module
+        # CheckpointWithoutOutput path, which discards a submodule output and registers a
+        # recompute backward hook on a downstream tensor (e.g. the attention output). LoRA
+        # inserts adapter autograd nodes that reorder the backward pass so the checkpoint's
+        # own backward frees its saved inputs before that hook fires; recomputation then
+        # crashes reading the freed ctx.saved_tensors. Full-parameter tuning keeps the
+        # expected ordering, so selective is only safe there.
+        if (self.model_type == 'deepseek_v41' and self.tuner_type in ('lora', 'lora_llm')
+                and self.recompute_granularity == 'selective'):
+            raise ValueError('recompute_granularity="selective" is not supported with LoRA for deepseek_v41: '
+                             'the recompute backward hook crashes on the freed activation graph. Use '
+                             '--recompute_granularity full (recommended, largest memory saving) or none, or '
+                             'switch to tuner_type="full" to keep selective recomputation.')
+
     def __post_init__(self):
         if self.tuner_type != 'full':
             require_version('peft>=0.15', 'Please install peft>=0.15 to use LoRA in Megatron-SWIFT.')
@@ -821,6 +844,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.model_type = self.model_info.model_type
         self.model_dir = self.model_info.model_dir
         self.is_multimodal = self.model_meta.is_multimodal
+        self._check_recompute()
         if self.bridge_backend == 'megatron-bridge':
             self.megatron_model_meta = None
             if self.is_multimodal:
