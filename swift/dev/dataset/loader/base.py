@@ -430,8 +430,10 @@ class DatasetLoader:
         """Fetch one (subset, split) as rows, before any preprocessing.
 
         Dispatches on :attr:`DatasetInfo.source`: a local file is read by its extension, a local
-        directory and any hub id go through the hub. A family that has to reach past this -- a manual
-        file download, an archive to unpack -- overrides this hook, and should keep the lock.
+        directory and any hub id go through the hub -- except a local path holding a columnar data-lake
+        format `datasets` cannot route on its own (``orc`` has no builder; a ``lance`` directory is
+        never folder-detected), which is loaded explicitly first. A family that has to reach past this
+        -- a manual file download, an archive to unpack -- overrides this hook, and should keep the lock.
 
         The fetch is serialised across ranks: one downloads and writes the cache while the others wait,
         then read it. ``sticky`` because the key names the *result* -- this (dataset, subset, split) --
@@ -440,15 +442,25 @@ class DatasetLoader:
         """
         info = self._dataset_info
         with self.serialised(f'{info.dataset}/{subset.subset}/{split}', sticky=True):
-            if info.source == 'path' and not os.path.isdir(info.dataset):
-                extension = os.path.splitext(info.dataset)[1].lstrip('.') or 'json'
-                extension = {'jsonl': 'json', 'txt': 'text'}.get(extension, extension)
-                if extension == 'csv':
-                    # Without this, pandas reads an empty cell as NaN, and a float NaN reaches the
-                    # template where a string was meant. An empty field means an empty string.
-                    kwargs['na_filter'] = False
-                return hf_load_dataset(extension, data_files=info.dataset, split=split, **kwargs)
             if info.source == 'path':
+                # A local path may hold a columnar data-lake format that the ordinary dispatch below
+                # cannot load: `datasets` ships no orc builder at all, and its lance builder is only
+                # reached by name, which the folder scanner never selects for a `.lance` directory.
+                # Those two are handled explicitly; parquet, arrow and the rest keep the extension /
+                # folder path, which already resolves them.
+                lake_format = self.resolve_lake_format(info.dataset)
+                if lake_format == 'orc':
+                    return self.load_orc(info.dataset, split=split, streaming=kwargs.get('streaming', False))
+                if lake_format == 'lance':
+                    return self.load_lance(info.dataset, split=split, **kwargs)
+                if not os.path.isdir(info.dataset):
+                    extension = os.path.splitext(info.dataset)[1].lstrip('.') or 'json'
+                    extension = {'jsonl': 'json', 'txt': 'text'}.get(extension, extension)
+                    if extension == 'csv':
+                        # Without this, pandas reads an empty cell as NaN, and a float NaN reaches the
+                        # template where a string was meant. An empty field means an empty string.
+                        kwargs['na_filter'] = False
+                    return hf_load_dataset(extension, data_files=info.dataset, split=split, **kwargs)
                 # A downloaded snapshot directory. `datasets` reads a folder as a dataset by itself, so
                 # this goes through the HF loader whichever hub the copy came from.
                 self.hide_dataset_infos(info.dataset)
@@ -457,6 +469,71 @@ class DatasetLoader:
             dataset_id = self.resolve_id(use_hf=use_hf) or info.dataset
             return self.load_from_hub(
                 dataset_id, subset.subset, split, use_hf=use_hf, revision=info.revision, **kwargs)
+
+    # Columnar data-lake formats :meth:`build_dataset` has to load itself. ``orc`` has no packaged
+    # `datasets` builder; ``lance`` has one but it is only reached by name, so a ``.lance`` directory
+    # never gets picked up by the folder scanner.
+    _LAKE_FORMATS = ('orc', 'lance')
+
+    @staticmethod
+    def resolve_lake_format(path: str) -> Optional[str]:
+        """The data-lake format ``path`` holds, when it is one :meth:`build_dataset` must load itself.
+
+        Returns ``'orc'`` or ``'lance'``, or ``None`` to take the ordinary extension / folder dispatch.
+        A single file is judged by its own extension; a directory by the extensions of the entries it
+        holds plus its own name -- a lance *dataset* is a directory called ``something.lance`` whose
+        contents are version/data subfolders rather than loose ``.lance`` files, so the name is what
+        identifies it.
+        """
+        if os.path.isfile(path):
+            extensions = {os.path.splitext(path)[1].lstrip('.').lower()}
+        else:
+            extensions = {os.path.splitext(name)[1].lstrip('.').lower() for name in os.listdir(path)}
+            if path.rstrip(os.sep).lower().endswith('.lance'):
+                extensions.add('lance')
+        for lake_format in DatasetLoader._LAKE_FORMATS:
+            if lake_format in extensions:
+                return lake_format
+        return None
+
+    @staticmethod
+    def load_orc(path: str, *, split: str = 'train', streaming: bool = False) -> DATASET_TYPE:
+        """Read ORC into rows through pyarrow, the one common columnar format `datasets` has no builder for.
+
+        A single file and a directory of ``*.orc`` shards both become one table; shards are read in
+        sorted order so the row order is stable across runs. ``split`` is accepted for signature parity
+        with the other loaders but an ORC table carries no splits, so the rows are returned whole.
+        """
+        import glob
+
+        import pyarrow as pa
+        import pyarrow.orc
+
+        files = sorted(glob.glob(os.path.join(path, '*.orc'))) if os.path.isdir(path) else [path]
+        if not files:
+            raise FileNotFoundError(f'No .orc files found under {path}')
+        tables = [pa.orc.read_table(file) for file in files]
+        table = tables[0] if len(tables) == 1 else pa.concat_tables(tables)
+        dataset = HfDataset(table)
+        return dataset.to_iterable_dataset() if streaming else dataset
+
+    @staticmethod
+    def load_lance(path: str, *, split: str = 'train', **kwargs) -> DATASET_TYPE:
+        """Read a lance file or dataset directory through `datasets`' own lance builder.
+
+        The builder exists but is only reached by name, and the folder scanner never picks it for a
+        ``.lance`` directory, so it is called explicitly here -- a single file via ``data_files``, a
+        directory via ``data_dir``. It needs ``pylance``; a missing install is reported as such rather
+        than surfacing later as an opaque builder error.
+        """
+        try:
+            import lance  # noqa: F401
+        except ImportError as exc:
+            raise ImportError('Loading a lance dataset needs the `pylance` package. '
+                              'Install it with `pip install pylance`.') from exc
+        if os.path.isdir(path):
+            return hf_load_dataset('lance', data_dir=path, split=split, **kwargs)
+        return hf_load_dataset('lance', data_files=path, split=split, **kwargs)
 
     @staticmethod
     def serialised(key: str, sticky: bool = False):
