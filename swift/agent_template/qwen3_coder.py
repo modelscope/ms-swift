@@ -41,13 +41,15 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
             if not isinstance(schema, dict):
                 continue
             schema_type = schema.get('type', [])
-            types.update([schema_type] if isinstance(schema_type, str) else schema_type)
-            for key in ('anyOf', 'oneOf'):
-                schemas.extend(schema.get(key, []))
+            if schema_type:
+                types.update([schema_type] if isinstance(schema_type, str) else schema_type)
+            else:
+                for key in ('anyOf', 'oneOf'):
+                    schemas.extend(schema.get(key, []))
 
-        # XML does not distinguish string literals from JSON values. Preserve
-        # text when the schema is absent or allows strings.
-        if not types or 'string' in types:
+        # Preserve string-only and untyped parameters. For unions, prefer a
+        # matching JSON value (e.g. null for a nullable string) over raw text.
+        if not types or types == {'string'}:
             return value
         try:
             parsed = json.loads(value)
@@ -63,6 +65,8 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
             type(None): 'null'
         }
         parsed_type = value_type.get(type(parsed))
+        if parsed_type == 'number' and 'integer' in types and parsed.is_integer():
+            return int(parsed)
         if parsed_type in types or (parsed_type == 'integer' and 'number' in types):
             return parsed
         return value
