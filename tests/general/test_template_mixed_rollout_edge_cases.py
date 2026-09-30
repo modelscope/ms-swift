@@ -71,14 +71,13 @@ def make_template():
 
 def encode_response(response):
     template = make_template()
-    inputs = StdTemplateInputs(
-        messages=[{
-            'role': 'user',
-            'content': 'question'
-        }, {
-            'role': 'assistant',
-            'content': response
-        }])
+    inputs = StdTemplateInputs(messages=[{
+        'role': 'user',
+        'content': 'question'
+    }, {
+        'role': 'assistant',
+        'content': response
+    }])
     template._swift_encode(inputs)
     return template
 
@@ -106,12 +105,14 @@ def test_mixed_response_with_long_text_segment_only_decodes_trailing_dict_tokens
     assert template.recorded_responses[0] is response
 
 
-@pytest.mark.parametrize('token_count, expected_decoded_tail_len', [
-    (19, 19),  # smaller than the 20-token slice window
-    (20, 20),  # exactly fills the window
-    (21, 20),  # one over — slice must drop the oldest
-    (100, 20),  # large: only the last 20 are decoded
-])
+@pytest.mark.parametrize(
+    'token_count, expected_decoded_tail_len',
+    [
+        (19, 19),  # smaller than the 20-token slice window
+        (20, 20),  # exactly fills the window
+        (21, 20),  # one over — slice must drop the oldest
+        (100, 20),  # large: only the last 20 are decoded
+    ])
 def test_token_ids_slice_is_capped_at_20(token_count, expected_decoded_tail_len):
     response = [{
         'loss_scale': [1] * token_count,
