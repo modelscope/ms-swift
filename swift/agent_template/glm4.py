@@ -199,6 +199,9 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         content = pre_message.get('content', '')
         if not isinstance(content, str) or not content.strip():
             return tool_content
+        # The official template strips content before adding the separator. This
+        # message is merged with tool_content later, so normalize it here too.
+        pre_message['content'] = content.strip()
         return '\n' + tool_content
 
 
