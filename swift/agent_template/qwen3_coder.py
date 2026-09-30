@@ -162,6 +162,17 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
             res_tool.append(f'<tool_response>\n{tool_content}\n</tool_response>\n')
         return ''.join(res_tool)
 
+    def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
+        """Qwen3-Coder chat_template renders ``'\\n' + content|trim + '\\n'`` before
+        ``'\\n<tool_call>'``, so '\\n\\n' separates the assistant's non-empty content
+        from ``<tool_call>``."""
+        if not pre_message or pre_message.get('role') != 'assistant':
+            return tool_content
+        content = pre_message.get('content', '')
+        if not isinstance(content, str) or not content.strip():
+            return tool_content
+        return '\n\n' + tool_content
+
 
 class Qwen3_5AgentTemplate(Qwen3CoderAgentTemplate):
 
