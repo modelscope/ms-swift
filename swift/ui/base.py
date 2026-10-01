@@ -342,13 +342,11 @@ class BaseUI:
         if os.path.exists(local_args_path):
             try:
                 if hasattr(arg_cls, 'resume_from_checkpoint'):
-                    try:
+                    # Use adapter vs full-model constructor by path type (avoids fragile exception message check).
+                    if BaseArguments._check_is_adapter(model):
                         args = arg_cls(resume_from_checkpoint=model, load_data_args=True)
-                    except Exception as e:
-                        if 'using `--model`' in str(e):  # TODO a dirty fix
-                            args = arg_cls(model=model, load_data_args=True)
-                        else:
-                            raise e
+                    else:
+                        args = arg_cls(model=model, load_data_args=True)
                 else:
                     if os.path.exists(os.path.join(model, 'adapter_config.json')):
                         args = arg_cls(adapters=model, load_data_args=True)
