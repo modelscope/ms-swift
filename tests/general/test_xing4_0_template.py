@@ -76,7 +76,7 @@ def test_template_meta(make_template):
     assert meta.chat_sep == [f'{EOS}\n']
     assert meta.suffix == [f'{EOS}\n']
     assert meta.agent_template == 'xing4_0'
-    assert meta.preserve_thinking
+    assert meta.preserve_thinking is False
     # The jinja template thinks unless `enable_thinking` is explicitly false, so the default is on.
     assert make_template().enable_thinking is True
 
@@ -115,8 +115,8 @@ def test_history_without_reasoning(make_template):
     (False, f'{THINK_CLOSE}A1'),
 ])
 def test_history_reasoning(make_template, preserve_thinking, history):
-    # Unlike the official jinja template, which drops the reasoning of historical turns, swift keeps it
-    # by default so that the history matches what the model generates.
+    # The default (preserve_thinking=False) drops historical reasoning to match the official jinja;
+    # preserve_thinking=True is an explicit opt-in that keeps it.
     template = make_template(preserve_thinking=preserve_thinking)
     text, _ = render(template, [{
         'role': 'user',

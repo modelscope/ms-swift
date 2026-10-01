@@ -223,9 +223,9 @@ register_template(
         thinking_prefix='<think>\n',
         non_thinking_prefix='</think>',
         history_thinking_prefix='</think>',
-        # The official jinja template drops the reasoning of historical turns. We keep it instead,
-        # so that the history looks like what the model generates itself.
-        preserve_thinking=True))
+        # The official jinja template drops the reasoning of historical turns; match it so the
+        # rendered prompt is byte-for-byte identical to chat_template.jinja in every mode.
+        preserve_thinking=False))
 
 DBRX_SYSTEM = (
     'You are DBRX, created by Databricks. You were last updated in December 2023. '
