@@ -155,14 +155,14 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 
 ## 支持的硬件
 
-| 硬件环境        | 备注                        |
-| --------------- | --------------------------- |
-| A10/A100/H100   |                             |
-| RTX20/30/40系列 |                             |
-| T4/V100         | 部分模型出现NAN             |
-| Ascend NPU      | 部分模型出现NAN或算子不支持 |
-| MPS             | 参考[issue 4572](https://github.com/modelscope/ms-swift/issues/4572)                         |
-| CPU             |                             |
+| 硬件 | 参考 |
+| --- | --- |
+| NVIDIA GPU | 默认支持 |
+| AMD GPU | [AMD GPU 支持](../BestPractices/AMD-support.md) |
+| 华为 Ascend NPU | [NPU 支持](../BestPractices/NPU-support.md) |
+| 沐曦 MetaX GPU | [MetaX 支持](../BestPractices/Metax-support.md) |
+| 摩尔线程 MUSA GPU | [MUSA 支持](../BestPractices/MUSA-support.md) |
+| Apple MPS | [issue](https://github.com/modelscope/ms-swift/issues/4572) |
 
 
 ## 运行环境
@@ -170,11 +170,11 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 |              | 范围           | 推荐                  | 备注                 |
 |--------------|--------------|---------------------|--------------------|
 | python       | >=3.10        | 3.12            |                    |
-| cuda         |              | cuda12.8/13.0       | 使用cpu、npu、mps则无需安装 |
+| cuda         |              | cuda12.8/13.0       | 使用 CPU、NPU、MPS 则无需安装 |
 | torch        | >=2.0        | 2.8.0/2.11.0         |                    |
 | transformers | >=4.33       | 4.57.6/5.12.1        |                    |
 | modelscope   | >=1.23       |                     |                    |
-| datasets     | >=3.0,<4.8.5 | 3.6.0/4.8.4         |                    |
+| datasets     | >=4.0,<4.8.5 | 4.8.4               |                    |
 | peft         | >=0.11,<0.20 |                     |                    |
 | flash_attn   |              | 2.8.3/4.0.0b15 |                    |
 | trl          | >=0.15,<1.0 | 0.29.1              | RLHF               |

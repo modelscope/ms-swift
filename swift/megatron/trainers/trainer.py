@@ -5,6 +5,7 @@ import torch.nn
 from collections import defaultdict
 from functools import partial
 from megatron.core import mpu
+from megatron.core.utils import get_attr_wrapped_model
 from torch.distributed.nn import all_reduce
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from typing import List, Optional
@@ -131,7 +132,7 @@ class MegatronTrainer(BaseMegatronTrainer):
         super()._log_callback(logs, n_steps)
 
     def forward_step(self, data_iterator, model):
-        vp_stage = model.module.module.vp_stage
+        vp_stage = get_attr_wrapped_model(model, 'vp_stage')
         data = self.get_batch(data_iterator, vp_stage)
         loss_scale = data.pop('loss_scale', None)
         channels = data.pop('channel', None)

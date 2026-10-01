@@ -23,6 +23,7 @@ import pickle
 import shutil
 import sys
 import tempfile
+import time
 import torch
 import types
 import unittest
@@ -31,7 +32,7 @@ from unittest import mock
 
 import swift.utils.utils as utils_module
 from swift.dataset.packing import IterablePackingDataset, PackingDataset, _resolve_mp_context, _spawn_workers
-from swift.template.base import Template
+from swift.template.base import MaxLengthError, Template
 from swift.utils import get_external_files, import_external_file, patch_dataloader_external_plugins
 
 FORK_AVAILABLE = 'fork' in mp.get_all_start_methods()
@@ -58,6 +59,45 @@ class UnpicklableTemplate(FakeTemplate):
     def __init__(self):
         # a lambda attribute makes the whole object un-picklable under spawn/forkserver
         self._not_picklable = lambda x: x
+
+
+class FailingTemplate(FakeTemplate):
+
+    def encode(self, data, return_length=True):
+        if data.get('error') == 'exit':
+            os._exit(1)
+        if data.get('error') == 'length':
+            raise MaxLengthError('sample exceeds max_length')
+        if data.get('error') == 'invalid':
+            raise ValueError('invalid training sample')
+        if data.get('delay'):
+            time.sleep(data['delay'])
+        return super().encode(data, return_length=return_length)
+
+
+def _collect_packing_result(queue, context, rows, strict, dataloader_num_workers=0):
+    dataset = IterablePackingDataset(
+        FailingTemplate(), rows, strict=strict, packing_interval=4, multiprocessing_context=context)
+    if dataloader_num_workers:
+        iterator = iter(
+            DataLoader(
+                dataset,
+                batch_size=None,
+                num_workers=dataloader_num_workers,
+                multiprocessing_context='fork',
+                timeout=20))
+    else:
+        iterator = iter(dataset)
+    try:
+        queue.put(('ok', [row['input_ids'] for pack in iterator for row in pack]))
+    except Exception as exc:
+        queue.put(('error', type(exc).__name__, str(exc)))
+    finally:
+        if dataloader_num_workers:
+            iterator._shutdown_workers()
+        for worker in dataset.workers:
+            worker.terminate()
+            worker.join(timeout=5)
 
 
 class ListDataset:
@@ -345,6 +385,57 @@ class TestIterablePackingDatasetContexts(unittest.TestCase):
         loudly instead of silently degrading to fork."""
         with self.assertRaises(Exception):
             _run_iter_packing('spawn', self.rows, template=UnpicklableTemplate())
+
+
+class TestIterablePackingWorkerErrors(unittest.TestCase):
+
+    def _result(self, rows, strict, context='spawn', dataloader_num_workers=0):
+        ctx = mp.get_context(context)
+        queue = ctx.Queue()
+        process = ctx.Process(
+            target=_collect_packing_result, args=(queue, context, rows, strict, dataloader_num_workers))
+        process.start()
+        try:
+            # Both the consumer and packing worker need time to start under spawn.
+            return queue.get(timeout=60)
+        finally:
+            process.join(timeout=5)
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+            queue.close()
+
+    def test_strict_encoding_error_reaches_consumer(self):
+        result = self._result([{'error': 'invalid'}], strict=True)
+        self.assertEqual(result[:2], ('error', 'RuntimeError'))
+        self.assertIn('worker', result[2].lower())
+
+    def test_unexpected_worker_exit_reaches_consumer(self):
+        result = self._result([{'error': 'exit'}], strict=False)
+        self.assertEqual(result[:2], ('error', 'RuntimeError'))
+
+    @unittest.skipUnless(FORK_AVAILABLE, 'fork is required to inherit packing worker handles')
+    def test_failed_worker_reaches_dataloader_consumer(self):
+        result = self._result([{'error': 'invalid'}], strict=True, dataloader_num_workers=1)
+        self.assertEqual(result[:2], ('error', 'RuntimeError'))
+        self.assertIn('packing worker exited unexpectedly', result[2])
+
+    @unittest.skipUnless(FORK_AVAILABLE, 'fork is required to inherit packing worker handles')
+    def test_live_worker_with_dataloader_consumer(self):
+        result = self._result([{'input_ids': [1, 2], 'delay': 2}], strict=True, dataloader_num_workers=1)
+        self.assertEqual(result, ('ok', [[1, 2]]))
+
+    def test_non_strict_error_still_skips_sample(self):
+        result = self._result([{'error': 'invalid'}, {'input_ids': [1, 2]}], strict=False)
+        self.assertEqual(result, ('ok', [[1, 2]]))
+
+    def test_strict_length_error_still_skips_sample(self):
+        result = self._result([{'error': 'length'}, {'input_ids': [1, 2]}], strict=True)
+        self.assertEqual(result, ('ok', [[1, 2]]))
+
+    def test_live_worker_is_allowed_to_finish(self):
+        result = self._result([{'input_ids': [1, 2], 'delay': 2}], strict=True)
+        self.assertEqual(result, ('ok', [[1, 2]]))
 
 
 class TestDataloaderContextInjection(unittest.TestCase):

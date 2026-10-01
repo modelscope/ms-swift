@@ -3,14 +3,14 @@ import asyncio
 import concurrent.futures
 import os
 from queue import Queue
-from threading import Thread
+from threading import Lock, Thread
 from tqdm import tqdm
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
 from swift.model import get_ckpt_dir
 from swift.template import Template, get_template
-from swift.utils import Processor, ProcessorMixin, get_logger
+from swift.utils import Processor, ProcessorMixin, get_logger, start_event_loop_in_daemon
 from .base import BaseInferEngine
 from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse,
                        InferRequest, RequestConfig, UsageInfo)
@@ -19,6 +19,8 @@ logger = get_logger()
 
 
 class InferEngine(BaseInferEngine, ProcessorMixin):
+
+    _event_loop_lock = Lock()
 
     def __init__(self, template: Template):
         processor = template.processor
@@ -83,12 +85,12 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         output-handler task on the first loop that drives them and never recreate it, so running a later
         batch on a fresh loop would leave that task parked on a stopped loop and hang forever.
         """
-        loop = getattr(self, '_event_loop', None)
-        if loop is None or loop.is_closed():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            self._event_loop = loop
-        return loop
+        with self._event_loop_lock:
+            loop = getattr(self, '_event_loop', None)
+            if loop is None or loop.is_closed():
+                self._event_loop_thread, loop, _ = start_event_loop_in_daemon(name='InferEngine')
+                self._event_loop = loop
+            return loop
 
     def async_iter_to_iter(self, async_iter, prog_bar, metrics) -> Iterator:
         queue = Queue()
@@ -103,8 +105,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 queue.put(None)
 
         loop = self._get_event_loop()
-        thread = Thread(target=lambda: loop.run_until_complete(_run_async_iter()))
-        thread.start()
+        asyncio.run_coroutine_threadsafe(_run_async_iter(), loop)
         pre_output = None
         while True:
             output = queue.get()
@@ -146,7 +147,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 return res
 
             new_tasks = [_new_run(task) for task in tasks]
-            return self._get_event_loop().run_until_complete(self.batch_run(new_tasks))
+            loop = self._get_event_loop()
+            return asyncio.run_coroutine_threadsafe(self.batch_run(new_tasks), loop).result()
 
     @staticmethod
     def _get_usage_info(num_prompt_tokens: int, num_generated_tokens: int) -> UsageInfo:

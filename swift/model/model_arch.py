@@ -66,6 +66,7 @@ class MLLMModelArch:
     deepseek_janus = 'deepseek_janus'
     deepseek_ocr = 'deepseek_ocr'
     deepseek_ocr2 = 'deepseek_ocr2'
+    deepseek_v41 = 'deepseek_v41'
     unlimited_ocr = 'unlimited_ocr'
     kimi_k25 = 'kimi_k25'
 
@@ -102,6 +103,7 @@ class MLLMModelArch:
     paddleocr_vl = 'paddleocr_vl'
     minimax_m3_vl = 'minimax_m3_vl'
     muse_glimmer = 'muse_glimmer'
+    monkeyocrv2 = 'monkeyocrv2'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -499,6 +501,14 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.deepseek_v41,
+        language_model='model',
+        vision_tower='vision',
+        aligner='aligner',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.minicpmv,
         language_model='llm',
         aligner='resampler',
@@ -891,6 +901,14 @@ register_model_arch(
         aligner='model.visual.merger',
         vision_tower='model.visual',
         mlp='model.language_model.layers.{}.mlp',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.monkeyocrv2,
+        language_model=[],
+        aligner=[],
+        vision_tower=['', 'head'],
     ))
 
 

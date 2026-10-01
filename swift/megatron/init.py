@@ -197,6 +197,57 @@ def _patch_vllm_qwen4_exp_config():
                             f'(vLLM does not declare it; needed by the Transformers modeling code).')
 
 
+def _patch_vllm_glm5_next_config():
+    """Backfill the config aliases vLLM's glm5_next config classes do not declare.
+
+    Sibling of `_patch_vllm_qwen4_exp_config` and the same failure class: vLLM ships its own
+    `Glm5NextTextConfig` and registers it for the `glm5_next` / `glm5_next_text` model types via
+    `AutoConfig.register(..., exist_ok=True)`, which replaces the Transformers classes in the
+    process-wide `CONFIG_MAPPING`. Under colocate GRPO the rollout engine lives in the training
+    process, so every later `AutoConfig.from_pretrained` resolves to vLLM's classes -- including
+    the one used to build the dummy HF model when saving. Transformers' own `Glm5NextTextExperts`
+    reads `config.num_local_experts`, which resolves only through
+    `attribute_map = {'num_local_experts': 'n_routed_experts'}`; vLLM's class keeps the real field
+    but declares no map, so saving dies with
+    `AttributeError: 'Glm5NextTextConfig' object has no attribute 'num_local_experts'`.
+
+    `attribute_map` is merged key by key instead of probed with `hasattr`, because
+    `PretrainedConfig` already defines it as `{}` -- the attribute exists, the entries do not.
+    Only class-level entries are added, so an explicit value from `config.json` still wins
+    (instance `__dict__` takes precedence) and a future vLLM that declares the map is untouched.
+    """
+    if 'vllm' not in sys.modules:
+        return  # vLLM never loaded -> the Transformers classes are still in charge
+    try:
+        from transformers.models.auto.configuration_auto import CONFIG_MAPPING
+        # Imported by module path on purpose: AutoConfig lookups already resolve to vLLM's
+        # classes at this point, so they cannot supply the reference aliases.
+        from transformers.models.glm5_next.configuration_glm5_next import Glm5NextConfig, Glm5NextTextConfig
+        from vllm.transformers_utils.config import _CONFIG_REGISTRY
+    except Exception:
+        return  # no glm5_next on either side -> nothing to mirror
+    # vLLM only registers the outer model type it actually loaded; the text config class is
+    # reached through that class's `sub_configs`, never via CONFIG_MAPPING. So gate on the outer
+    # override being live, then fix up both classes.
+    active_outer = CONFIG_MAPPING._extra_content.get('glm5_next') if hasattr(CONFIG_MAPPING, '_extra_content') else None
+    if active_outer is None or active_outer is Glm5NextConfig:
+        return  # Transformers' class still in charge -> nothing to do
+    for model_type, hf_cls in (('glm5_next', Glm5NextConfig), ('glm5_next_text', Glm5NextTextConfig)):
+        try:
+            vllm_cls = _CONFIG_REGISTRY[model_type]  # LazyConfigDict resolves on access
+        except Exception:
+            continue
+        if vllm_cls is hf_cls:
+            continue
+        hf_map = getattr(hf_cls, 'attribute_map', None) or {}
+        vllm_map = getattr(vllm_cls, 'attribute_map', None) or {}
+        missing = {alias: target for alias, target in hf_map.items() if alias not in vllm_map}
+        if missing:
+            setattr(vllm_cls, 'attribute_map', {**vllm_map, **missing})
+            logger.info(f'Backfilled `attribute_map` {missing} onto vLLM {model_type} config '
+                        f'(vLLM does not declare it; needed by the Transformers modeling code).')
+
+
 def _patch_mcore_bridge():
     import mcore_bridge
     from mcore_bridge import GPTBridge
@@ -233,6 +284,7 @@ def _patch_mcore_bridge():
                 self.hf_model.model_info = processor.model_info
             else:
                 _patch_vllm_qwen4_exp_config()
+                _patch_vllm_glm5_next_config()
                 with torch.device('meta'), disable_safe_ddp_context_use_barrier():
                     self.hf_model = get_model_processor(
                         args.model_dir, model_type=args.model_type, return_dummy_model=True)[0]

@@ -1,10 +1,31 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import asyncio
 import os
+import re
 import subprocess
 import sys
 from asyncio.subprocess import PIPE, STDOUT
 from copy import deepcopy
+
+# Control characters
+_CMD_CONTROL_CHARS = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')
+
+# ZIP format signatures:
+_CMD_ZIP_SIGNATURES = (b'PK\x03\x04', b'PK\x01\x02', b'PK\x05\x06')
+
+
+def validate_cmd(cmd: str) -> None:
+    """Validate that a command string is safe to write to a shell script.
+
+    Raises:
+        ValueError: If forbidden control characters or ZIP signatures are found.
+    """
+    if _CMD_CONTROL_CHARS.search(cmd):
+        raise ValueError('Command contains forbidden control characters')
+    cmd_bytes = cmd.encode('utf-8')
+    for sig in _CMD_ZIP_SIGNATURES:
+        if sig in cmd_bytes:
+            raise ValueError('Command contains forbidden ZIP signature bytes')
 
 
 async def run_and_get_log(*args, timeout=None):

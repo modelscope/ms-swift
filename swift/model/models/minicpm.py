@@ -60,6 +60,12 @@ class MiniCPMVLoader(ModelLoader):
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         model = super().get_model(model_dir, config, processor, model_kwargs)
         model.resampler.to(self.torch_dtype)  # fix float32
+        if hasattr(model.resampler, '_adjust_pos_cache'):
+            # Each rank grows this non-persistent buffer independently.
+            ignored = set(getattr(model, '_ddp_params_and_buffers_to_ignore', []))
+            # Full tuning, SwiftModel and PEFT expose different buffer prefixes.
+            ignored.update(f'{prefix}resampler.pos_embed' for prefix in ('', 'base_model.', 'base_model.model.'))
+            model._ddp_params_and_buffers_to_ignore = ignored
         _patch_minicpmv_device_map(model)
         func_list = ['generate', 'get_input_embeddings', 'forward']
         use_submodel_func(model, 'llm', func_list)
