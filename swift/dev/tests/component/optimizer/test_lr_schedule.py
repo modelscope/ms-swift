@@ -114,7 +114,7 @@ def _dense_cfg(**overrides) -> TrainConfig:
         learning_rate=LR,
         min_lr=MIN_LR,
         warmup_ratio=WARMUP_FRACTION,
-        lr_scheduler_type='cosine',
+        lr_scheduler='cosine',
         weight_decay=0.1,
         weight_decay_incr_style='constant',
         clip_grad=1.0)
@@ -222,7 +222,7 @@ def test_configure_optimizer_passes_min_lr_and_fractional_warmup():
 def test_decay_style_and_wd_bounds_match_the_config():
     """The remaining schedule knobs the Megatron branch forwards."""
     cfg = _dense_cfg()
-    assert resolve_megatron_decay_style(cfg.lr_scheduler_type) == 'cosine'
+    assert resolve_megatron_decay_style(cfg.lr_scheduler) == 'cosine'
     assert megatron_weight_decay_bounds(cfg) == (cfg.weight_decay, cfg.weight_decay)
 
 

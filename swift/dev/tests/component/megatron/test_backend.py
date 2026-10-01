@@ -34,7 +34,7 @@ def test_megatron_step1_loss_matches_hf_bf16_reference():
     from modelscope import snapshot_download
 
     import twinkle
-    from swift.dev.model.megatron.model import MegatronModel
+    from twinkle.model.megatron import MegatronModel
     from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
@@ -100,8 +100,7 @@ def test_megatron_bridge_step1_loss_matches_hf_bf16_reference():
     from modelscope import snapshot_download
 
     import twinkle
-    from swift.dev.model.megatron.bridge import MegatronBridgeBackend
-    from swift.dev.model.megatron.model import MegatronModel
+    from twinkle.model.megatron import MegatronModel
     from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
@@ -122,7 +121,7 @@ def test_megatron_bridge_step1_loss_matches_hf_bf16_reference():
             device_mesh=dm,
             mixed_precision='bf16',
             remote_group='model',
-            backend=MegatronBridgeBackend())
+            bridge_backend='megatron-bridge')
         model.set_optimizer('Adam', lr=1e-5)
         labels_shifted = labels_aligned[1:] + [-100]
         batch = [{
@@ -176,8 +175,7 @@ def test_megatron_bridge_save_produces_loadable_hf_checkpoint(tmp_path):
     from modelscope import snapshot_download
 
     import twinkle
-    from swift.dev.model.megatron.bridge import MegatronBridgeBackend
-    from swift.dev.model.megatron.model import MegatronModel
+    from twinkle.model.megatron import MegatronModel
     from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
@@ -197,7 +195,7 @@ def test_megatron_bridge_save_produces_loadable_hf_checkpoint(tmp_path):
             device_mesh=dm,
             mixed_precision='bf16',
             remote_group='model',
-            backend=MegatronBridgeBackend())
+            bridge_backend='megatron-bridge')
         model.set_optimizer('Adam', lr=1e-5)
         labels_shifted = labels_aligned[1:] + [-100]
         batch = [{
@@ -237,7 +235,7 @@ def test_megatron_bridge_save_produces_loadable_hf_checkpoint(tmp_path):
 
 
 # The loss test above is the *behavioral* proof (runs the real mcore path through
-# DevMegatronStrategy). These tests are the *structural* proof that delegation is wired
+# MegatronStrategy). These tests are the *structural* proof that delegation is wired
 # correctly, so a plumbing regression is caught without a 2-GPU Ray run.
 
 
@@ -261,19 +259,19 @@ class _FakeBackend:
 
 
 def test_mcore_backend_satisfies_protocol():
-    from swift.dev.model.megatron.bridge import BridgeBackend, MCoreBridgeBackend
+    from twinkle.model.megatron.bridge import BridgeBackend, MCoreBridgeBackend
     b = MCoreBridgeBackend()
     assert isinstance(b, BridgeBackend)
     assert b.backend_name == 'mcore-bridge'
     assert b.is_multimodal is False
 
 
-def test_dev_strategy_delegates_both_methods_to_backend():
+def test_strategy_delegates_both_methods_to_backend():
     """get_model_config / create_megatron_model route to the backend with the exact args
-    twinkle's originals used -- bypassing the heavy __init__ (no dist / no mcore)."""
-    from swift.dev.model.megatron.strategy import DevMegatronStrategy
+    the originals used -- bypassing the heavy __init__ (no dist / no mcore)."""
+    from twinkle.model.megatron.strategy.megatron import MegatronStrategy
 
-    strat = DevMegatronStrategy.__new__(DevMegatronStrategy)  # skip __init__ (needs dist)
+    strat = MegatronStrategy.__new__(MegatronStrategy)  # skip __init__ (needs dist)
     backend = _FakeBackend()
     strat._backend = backend
     # Stand-ins for the attributes the real backend would read off the strategy.
@@ -300,45 +298,20 @@ def test_dev_strategy_delegates_both_methods_to_backend():
     assert move_to_gpu is strat._move_model_to_gpu
 
 
-def test_dev_strategy_defaults_to_mcore_backend():
-    from swift.dev.model.megatron.bridge import MCoreBridgeBackend
-    from swift.dev.model.megatron.strategy import DevMegatronStrategy
+def test_strategy_defaults_to_mcore_backend():
+    """MegatronStrategy's bridge_backend default resolves to the mcore backend, so a dev Config
+    that leaves bridge_backend unset runs the same backend as before the twinkle sink-down.
 
-    strat = DevMegatronStrategy.__new__(DevMegatronStrategy)
-    # Re-run only the backend-selection line of __init__ (the rest needs dist).
-    strat._backend = None or MCoreBridgeBackend()
-    assert isinstance(strat.backend, MCoreBridgeBackend)
+    The default is a NAME (not an instance) because that is what rides across the ray worker
+    boundary; assert both the declared default and that it resolves to the mcore backend."""
+    import inspect
 
+    from twinkle.model.megatron.bridge import MCoreBridgeBackend, resolve_bridge_backend
+    from twinkle.model.megatron.strategy.megatron import MegatronStrategy
 
-def test_dev_model_injects_dev_strategy_during_super_init(monkeypatch):
-    """DevMegatronModel.__init__ rebinds the module-level MegatronStrategy that twinkle's
-    __init__ reads, so twinkle instantiates DevMegatronStrategy(backend=...) instead. We stub
-    the parent __init__ to capture what the rebound symbol resolves to -- no dist/mcore."""
-    import twinkle.model.megatron.megatron as tw_mod
-
-    from swift.dev.model.megatron import model as dev_mod
-    from swift.dev.model.megatron.bridge import MCoreBridgeBackend
-    from swift.dev.model.megatron.strategy import DevMegatronStrategy
-
-    captured = {}
-    original_symbol = tw_mod.MegatronStrategy
-
-    def fake_parent_init(self, *args, **kwargs):
-        # Inside the parent init the module symbol must be the injected partial, not the
-        # original class -- this is what makes twinkle build DevMegatronStrategy(backend=...).
-        captured['symbol'] = tw_mod.MegatronStrategy
-
-    monkeypatch.setattr(dev_mod.TwinkleMegatronModel, '__init__', fake_parent_init)
-
-    backend = MCoreBridgeBackend()
-    dev_mod.MegatronModel(model_id='x', backend=backend)
-
-    # During init the symbol was a partial(DevMegatronStrategy, backend=backend)...
-    injected = captured['symbol']
-    assert getattr(injected, 'func', None) is DevMegatronStrategy
-    assert injected.keywords.get('backend') is backend
-    # ...and after construction the scoped patch restored the original class.
-    assert tw_mod.MegatronStrategy is original_symbol
+    default = inspect.signature(MegatronStrategy.__init__).parameters['bridge_backend'].default
+    assert default == 'mcore-bridge'
+    assert isinstance(resolve_bridge_backend(default), MCoreBridgeBackend)
 
 
 # ----------------------------------------------------------------------
@@ -349,7 +322,7 @@ def test_dev_model_injects_dev_strategy_during_super_init(monkeypatch):
 
 
 def test_megatron_bridge_backend_satisfies_protocol():
-    from swift.dev.model.megatron.bridge import BridgeBackend, MegatronBridgeBackend
+    from twinkle.model.megatron.bridge import BridgeBackend, MegatronBridgeBackend
     b = MegatronBridgeBackend()
     assert isinstance(b, BridgeBackend)
     assert b.backend_name == 'megatron-bridge'
@@ -357,16 +330,15 @@ def test_megatron_bridge_backend_satisfies_protocol():
     assert b.is_multimodal is False
 
 
-def test_megatron_bridge_backend_selectable_via_strategy():
-    """DevMegatronStrategy accepts the megatron-bridge backend the same way it accepts mcore
-    (bypassing the heavy __init__), so the two backends are truly interchangeable."""
-    from swift.dev.model.megatron.bridge import MegatronBridgeBackend
-    from swift.dev.model.megatron.strategy import DevMegatronStrategy
+def test_megatron_bridge_backend_selectable_by_name():
+    """resolve_bridge_backend maps the 'megatron-bridge' NAME to the AutoBridge backend -- the name
+    (not an instance) is what rides across the ray worker boundary and what MegatronStrategy.__init__
+    resolves, so the two backends are truly interchangeable by string alone."""
+    from twinkle.model.megatron.bridge import MegatronBridgeBackend, resolve_bridge_backend
 
-    strat = DevMegatronStrategy.__new__(DevMegatronStrategy)
-    strat._backend = MegatronBridgeBackend()
-    assert isinstance(strat.backend, MegatronBridgeBackend)
-    assert strat.backend.backend_name == 'megatron-bridge'
+    backend = resolve_bridge_backend('megatron-bridge')
+    assert isinstance(backend, MegatronBridgeBackend)
+    assert backend.backend_name == 'megatron-bridge'
 
 
 def test_megatron_bridge_rejects_explicit_provider_option_it_cannot_apply(monkeypatch):
@@ -374,7 +346,7 @@ def test_megatron_bridge_rejects_explicit_provider_option_it_cannot_apply(monkey
     import sys
     from types import ModuleType, SimpleNamespace
 
-    from swift.dev.model.megatron.bridge import MegatronBridgeBackend
+    from twinkle.model.megatron.bridge import MegatronBridgeBackend
 
     class Provider:
 
@@ -409,7 +381,7 @@ def test_megatron_bridge_shim_per_adapter_state_dict_is_isolated():
     import torch.nn as nn
 
     from peft import LoraConfig, get_peft_model
-    from swift.dev.model.megatron.bridge.megatron_bridge import _MCoreCompatBridgeShim
+    from twinkle.model.megatron.bridge.megatron_bridge import _MCoreCompatBridgeShim
 
     class _Tiny(nn.Module):
 
@@ -466,7 +438,7 @@ def test_megatron_bridge_shim_rejects_sharded_peft_save(monkeypatch):
     import torch.nn as nn
 
     from peft import LoraConfig, get_peft_model
-    from swift.dev.model.megatron.bridge.megatron_bridge import _MCoreCompatBridgeShim
+    from twinkle.model.megatron.bridge.megatron_bridge import _MCoreCompatBridgeShim
 
     class _Tiny(nn.Module):
 
@@ -586,7 +558,7 @@ def test_megatron_lora_resume_restores_adapter_bit_identical(tmp_path):
 
     import twinkle
     from swift.dev.adapter import apply_tuner
-    from swift.dev.model.megatron.model import MegatronModel
+    from twinkle.model.megatron import MegatronModel
     from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
@@ -700,8 +672,7 @@ def test_megatron_bridge_lora_save_produces_loadable_peft_adapter(tmp_path):
 
     import twinkle
     from swift.dev.adapter import apply_tuner
-    from swift.dev.model.megatron.bridge import MegatronBridgeBackend
-    from swift.dev.model.megatron.model import MegatronModel
+    from twinkle.model.megatron import MegatronModel
     from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
@@ -730,7 +701,7 @@ def test_megatron_bridge_lora_save_produces_loadable_peft_adapter(tmp_path):
             device_mesh=dm,
             mixed_precision='no',
             remote_group='model',
-            backend=MegatronBridgeBackend())
+            bridge_backend='megatron-bridge')
         apply_tuner(m, _TunerCfg())
         m.set_optimizer('Adam', lr=1e-2)
         m.forward_backward(inputs=micro, micro_batch_size=1)
@@ -780,8 +751,7 @@ def test_megatron_bridge_lora_resume_restores_adapter_bit_identical(tmp_path):
 
     import twinkle
     from swift.dev.adapter import apply_tuner
-    from swift.dev.model.megatron.bridge import MegatronBridgeBackend
-    from swift.dev.model.megatron.model import MegatronModel
+    from twinkle.model.megatron import MegatronModel
     from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
@@ -819,7 +789,7 @@ def test_megatron_bridge_lora_resume_restores_adapter_bit_identical(tmp_path):
                 device_mesh=dm,
                 mixed_precision='no',
                 remote_group='model',
-                backend=MegatronBridgeBackend())
+                bridge_backend='megatron-bridge')
             torch.manual_seed(tuner_seed)
             apply_tuner(m, _TunerCfg())
             m.set_optimizer('Adam', lr=1e-4)
@@ -887,8 +857,7 @@ def test_megatron_bridge_lora_non_default_adapter_save_isolated(tmp_path):
 
     import twinkle
     from swift.dev.adapter import _build_adapter_config
-    from swift.dev.model.megatron.bridge import MegatronBridgeBackend
-    from swift.dev.model.megatron.model import MegatronModel
+    from twinkle.model.megatron import MegatronModel
     from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
@@ -927,7 +896,7 @@ def test_megatron_bridge_lora_non_default_adapter_save_isolated(tmp_path):
                 device_mesh=dm,
                 mixed_precision='no',
                 remote_group='model',
-                backend=MegatronBridgeBackend())
+                bridge_backend='megatron-bridge')
             torch.manual_seed(seed)
             # NON-default adapter name -> twinkle is_peft_format=True -> shim peft_format save branch.
             m.add_adapter_to_model(adapter_name, _build_adapter_config(_TunerCfg()), gradient_accumulation_steps=1)

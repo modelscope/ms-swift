@@ -34,3 +34,18 @@ def _reclaim_heavy_tmp(request):
     if heavy_tmp is None or report is None or not report.passed:
         return
     shutil.rmtree(heavy_tmp, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_twinkle_runtime():
+    """Reset twinkle's Ray cluster and infra globals after every test.
+
+    A pytest session drives MANY recipes through ONE process, so the second ``mode='ray'`` test would
+    otherwise reuse the first test's live cluster and collide on twinkle's deterministic worker-actor
+    name. The mechanics (and why each step is needed) live in ``reset_twinkle_runtime``; this fixture
+    is the between-tests caller, and a multi-session test that runs ``run_sft`` twice in-process calls
+    the same helper between its own runs.
+    """
+    from swift.dev.tests._twinkle_runtime import reset_twinkle_runtime
+    yield
+    reset_twinkle_runtime()

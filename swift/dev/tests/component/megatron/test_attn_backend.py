@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import pytest
 import sys
+from contextlib import contextmanager
 from unittest import mock
 
 pytest.importorskip('megatron.core', reason='needs megatron-core for AttnBackend')
@@ -192,18 +193,34 @@ def test_unknown_value_is_rejected():
         resolve_megatron_attn_backend('nonsense')
 
 
+@contextmanager
+def _capture_megatron_kwargs():
+    """Run build_model's Megatron path with a bogus model id and capture MegatronModel's kwargs.
+
+    build_model resolves the HF config from ``model_config.model`` BEFORE it constructs
+    MegatronModel, so a driver-side forwarding test must stub that load (no network / no real
+    checkpoint) or it dies on the fake path before ever reaching the constructor. Yields the mock
+    class so the caller asserts on ``.call_args.kwargs`` -- the exact kwargs that ride the Ray worker
+    boundary, which is what bug#4 turned on.
+    """
+    from unittest.mock import MagicMock, patch
+
+    with patch('swift.dev.builders.model._resolve_model_loader', return_value=None), \
+            patch('swift.dev.builders.model._build_hf_config', return_value=MagicMock()), \
+            patch('twinkle.model.megatron.MegatronModel') as mock_model:
+        yield mock_model
+
+
 def test_build_model_forwards_the_backend_to_megatron():
     """The resolver is useless unless build_model actually passes it down.
 
     Asserted on the kwargs handed to twinkle's MegatronModel, which is where mcore reads it from
     (get_model_config does config_kwargs.update(kwargs), strategy/megatron.py:271-272).
     """
-    from unittest.mock import patch
-
     from swift.dev.builders.model import build_model
     from swift.dev.config import DistributedConfig, ModelConfig
 
-    with patch('swift.dev.model.megatron.model.MegatronModel') as mock_model:
+    with _capture_megatron_kwargs() as mock_model:
         build_model(
             ModelConfig(model='/does/not/matter', attn_impl='fused'),
             DistributedConfig(backend='megatron', mode='local', nproc_per_node=1))
@@ -217,16 +234,14 @@ def test_build_model_forwards_attn_impl_for_the_worker_side_pin():
 
     The version pin is applied by flipping transformer_engine module globals, a PER-PROCESS side
     effect. In Ray mode build_model runs on the driver, which is not the process that builds or runs
-    the model, so the pin cannot be applied there -- DevMegatronStrategy (worker-side) needs the
+    the model, so the pin cannot be applied there -- MegatronStrategy (worker-side) needs the
     original string. Forwarding only the enum would collapse flash_3 to AttnBackend.flash and lose the
     version for good.
     """
-    from unittest.mock import patch
-
     from swift.dev.builders.model import build_model
     from swift.dev.config import DistributedConfig, ModelConfig
 
-    with patch('swift.dev.model.megatron.model.MegatronModel') as mock_model:
+    with _capture_megatron_kwargs() as mock_model:
         build_model(
             ModelConfig(model='/does/not/matter', attn_impl='flash_3'),
             DistributedConfig(backend='megatron', mode='local', nproc_per_node=1))
@@ -236,24 +251,39 @@ def test_build_model_forwards_attn_impl_for_the_worker_side_pin():
 
 
 def test_strategy_applies_the_pin_and_keeps_attn_impl_out_of_the_mcore_config():
-    """DevMegatronStrategy applies the pin on the worker AND swallows the dev-only kwarg.
+    """MegatronStrategy.__init__ applies the pin on the worker AND binds attn_impl as a named param.
 
-    attn_impl is dev's field name; TransformerConfig has no such attribute, so leaking it through
-    **kwargs into get_model_config would break construction. It must be consumed by __init__.
+    attn_impl is a caller field name; mcore's ModelConfig has no such attribute, so letting it ride
+    in **kwargs into get_model_config is exactly bug#4's TypeError. A named param is bound by Python
+    and never reaches that **kwargs. The pin runs here rather than in build_model because it flips
+    transformer_engine module globals -- in Ray mode this __init__ is the worker that builds the
+    model, while build_model runs on the driver.
     """
-    from swift.dev.model.megatron.strategy import DevMegatronStrategy
+    from twinkle.model.megatron.strategy.megatron import MegatronStrategy
 
     seen = {}
 
-    def _fake_init(self, *args, **kwargs):
-        seen['kwargs'] = kwargs
+    def _fake_get_model_config(self, hf_config, parallel_kwargs, **kwargs):
+        seen['config_kwargs'] = kwargs
+        return object()
 
-    with mock.patch('swift.dev.naming.apply_flash_version_pin', return_value=3) as pin, \
-            mock.patch.object(DevMegatronStrategy.__mro__[1], '__init__', _fake_init):
-        DevMegatronStrategy('/model/dir', attn_impl='flash_3', variable_seq_lengths=True)
+    class _FakeMesh:
+        tp_world_size = pp_world_size = cp_world_size = 1
+        ep_size = etp_world_size = 1
+        vpp_size = 1
+        order = None
+        sequence_parallel = False
+
+    with mock.patch('twinkle.model.megatron._flash_attn.apply_flash_version_pin', return_value=3) as pin, \
+            mock.patch('megatron.core.mpu.initialize_model_parallel'), \
+            mock.patch('megatron.core.tensor_parallel.random.model_parallel_cuda_manual_seed'), \
+            mock.patch.object(MegatronStrategy, 'get_model_config', _fake_get_model_config), \
+            mock.patch.object(MegatronStrategy, '_finalize_quantized_param_config'), \
+            mock.patch.object(MegatronStrategy, '_check_fsdp'):
+        MegatronStrategy('/model/dir', device_mesh=_FakeMesh(), attn_impl='flash_3', config=mock.MagicMock())
     pin.assert_called_once_with('flash_3')
-    assert 'attn_impl' not in seen['kwargs'], \
-        'attn_impl must not reach MegatronStrategy/TransformerConfig'
+    assert 'attn_impl' not in seen['config_kwargs'], \
+        'attn_impl must be bound by __init__, never forwarded into ModelConfig'
 
 
 def test_both_bridge_backends_get_the_same_backend():
@@ -263,14 +293,12 @@ def test_both_bridge_backends_get_the_same_backend():
     path on auto: the same dev Config ran a different kernel depending on bridge_backend. Both now
     read the single resolved value, so this compares them rather than trusting the removal.
     """
-    from unittest.mock import patch
-
     from swift.dev.builders.model import build_model
     from swift.dev.config import DistributedConfig, ModelConfig
 
     seen = {}
     for bridge in ('mcore-bridge', 'megatron-bridge'):
-        with patch('swift.dev.model.megatron.model.MegatronModel') as mock_model:
+        with _capture_megatron_kwargs() as mock_model:
             build_model(
                 ModelConfig(model='/does/not/matter'),
                 DistributedConfig(backend='megatron', mode='local', nproc_per_node=1, bridge_backend=bridge))

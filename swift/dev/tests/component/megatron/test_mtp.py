@@ -116,7 +116,7 @@ def test_lora_plus_joint_training_warns_instead_of_failing(caplog):
         _check_mtp(
             ModelConfig(model='dummy', mtp_num_layers=1, enable_mtp_training=True),
             is_megatron=True,
-            tuner_config=TunerConfig(tuner_type='lora'),
+            tuner_config=TunerConfig(tuner='lora'),
         )
     assert 'enable_mtp_training' in caplog.text
 

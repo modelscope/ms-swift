@@ -97,7 +97,7 @@ def test_calibration_quantizers_are_not_accepted_as_load_time_configs():
 
 def test_unsloth_maps_only_bnb_4bit_and_8bit():
     model = ModelConfig(model='m')
-    tuner = TunerConfig(tuner_backend='unsloth', tuner_type='lora')
+    tuner = TunerConfig(tuner_backend='unsloth', tuner='lora')
     kwargs = {}
     _apply_unsloth_kwargs(kwargs, model, tuner, TrainConfig(), QuantizeConfig(quant_method='bnb', quant_bits=4))
     assert kwargs['load_in_4bit'] is True and kwargs['load_in_8bit'] is False
@@ -138,12 +138,12 @@ def test_training_quantization_requires_adapter_and_rejects_megatron():
         validate_configs(*common, DistributedConfig(), quantize_config=quant)
     with pytest.raises(ValueError, match='not supported by the Megatron backend'):
         validate_configs(
-            *common, DistributedConfig(backend='megatron'), TunerConfig(tuner_type='lora'), quantize_config=quant)
+            *common, DistributedConfig(backend='megatron'), TunerConfig(tuner='lora'), quantize_config=quant)
 
 
 def test_bnb_compute_dtype_is_derived_from_model_dtype():
     model = ModelConfig(model='m', torch_dtype='bfloat16')
     quant = QuantizeConfig(quant_method='bnb', quant_bits=4)
     process_configs(model, TemplateConfig(), DatasetConfig(), TrainConfig(), DistributedConfig(),
-                    TunerConfig(tuner_type='lora'), quantize_config=quant)
+                    TunerConfig(tuner='lora'), quantize_config=quant)
     assert quant.bnb_4bit_compute_dtype == 'bfloat16'

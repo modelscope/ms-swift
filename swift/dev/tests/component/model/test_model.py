@@ -3,7 +3,7 @@
 The dev Model classes now inherit twinkle's concrete Model implementations
 directly, so tests focus on:
 - the shared data-format / loss / InputProcessor contracts (lightweight), and
-- the inheritance wiring (TransformersModel/MegatronModel subclass twinkle,
+- the inheritance wiring (TransformersModel subclasses twinkle,
   TrainableModel == twinkle base).
 
 Constructing a real twinkle Model needs a downloadable model + process group, so
@@ -18,7 +18,6 @@ from twinkle.utils import selective_log_softmax
 from swift.dev.data_format import InputFeature, LossOutput, ModelOutput
 from swift.dev.loss import CrossEntropyLoss, GRPOLoss, Loss
 from swift.dev.model.base import TrainableModel
-from swift.dev.model.megatron.model import MegatronModel
 from swift.dev.model.strategy import AccelerateStrategy, NativeFSDPStrategy
 from swift.dev.model.transformers_model import TransformersModel
 from swift.dev.processor import InputProcessor
@@ -351,14 +350,6 @@ class TestTransformersModelInheritance:
         assert TransformersModel.forward is not None
         assert TransformersModel.forward_backward is not None
         assert TransformersModel.save is not None
-
-
-class TestMegatronModelInheritance:
-
-    def test_inherits_twinkle(self):
-        from twinkle.model.megatron import MegatronModel as TwinkleMegatronModel
-        assert issubclass(MegatronModel, TwinkleMegatronModel)
-        assert issubclass(MegatronModel, TrainableModel)
 
 
 # ======================================================================

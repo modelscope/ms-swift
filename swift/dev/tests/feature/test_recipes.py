@@ -52,8 +52,7 @@ class RecipeHarness:
     @staticmethod
     def pool(case: Case, model_dir: str, data_path: str, out_dir: str) -> dict:
         from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig,
-                                      ModelConfig, RLHFConfig, RolloutConfig, SamplingConfig, TemplateConfig,
-                                      TrainConfig)
+                                      ModelConfig, RLHFConfig, RolloutConfig, TemplateConfig, TrainConfig)
         pool = {
             'model_config':
             ModelConfig(model=model_dir, model_type=TinyModel.MODEL_TYPE, torch_dtype='bfloat16', **case.model),
@@ -72,8 +71,6 @@ class RecipeHarness:
             GenerationConfig(max_new_tokens=8),
             'rollout_config':
             RolloutConfig(),
-            'sampling_config':
-            SamplingConfig(),
             'tuner_config':
             None,
             'output_dir':

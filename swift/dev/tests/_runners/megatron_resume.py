@@ -51,8 +51,7 @@ def _build(seed):
     from modelscope import snapshot_download
     from twinkle import DeviceMesh
 
-    from swift.dev.model.megatron.bridge import MCoreBridgeBackend
-    from swift.dev.model.megatron.model import MegatronModel
+    from twinkle.model.megatron import MegatronModel
 
     twinkle.initialize(mode='local')
     ws = int(os.environ.get('WORLD_SIZE', '2'))
@@ -65,7 +64,7 @@ def _build(seed):
         model_id=model_path,
         device_mesh=mesh,
         mixed_precision='no',
-        backend=MCoreBridgeBackend(),
+        bridge_backend='mcore-bridge',
         use_distributed_optimizer=True)
     # lr=1e-6: small enough that single-sample training loss decreases smoothly/monotonically. A
     # larger lr (1e-4) makes the toy single-sample loss diverge/oscillate (0.63->9.38->...), and on

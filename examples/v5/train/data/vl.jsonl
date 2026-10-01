@@ -1,0 +1,8 @@
+{"messages": [{"role": "user", "content": "<image>这张图里有什么动物？"}, {"role": "assistant", "content": "图里是一只猫。"}], "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png"]}
+{"messages": [{"role": "user", "content": "<image>描述一下这张图片。"}, {"role": "assistant", "content": "这是一只猫的照片。"}], "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png"]}
+{"messages": [{"role": "user", "content": "<image>图里是什么？"}, {"role": "assistant", "content": "图中有一些动物。"}], "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png"]}
+{"messages": [{"role": "user", "content": "<image>这张图片的主要内容是什么？"}, {"role": "assistant", "content": "主要内容是一只猫。"}], "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png"]}
+{"messages": [{"role": "user", "content": "<image>请识别图中的文字。"}, {"role": "assistant", "content": "图中是一段用于OCR识别的文字。"}], "images": ["https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png"]}
+{"messages": [{"role": "user", "content": "<image>图里有什么动物？"}, {"role": "assistant", "content": "图里是一只猫。"}], "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png"]}
+{"messages": [{"role": "user", "content": "<image>简述这张图。"}, {"role": "assistant", "content": "这是一张猫的图片。"}], "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png"]}
+{"messages": [{"role": "user", "content": "<image>这张图里有什么？"}, {"role": "assistant", "content": "图中有动物。"}], "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png"]}

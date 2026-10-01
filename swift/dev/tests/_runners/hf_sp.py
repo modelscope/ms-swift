@@ -85,7 +85,7 @@ def _run(shape, data_path, out_dir, padding_free, max_length, sp_size, max_steps
             # identical samples and each computes half of every sequence.
             TrainConfig(
                 learning_rate=1e-5,
-                lr_scheduler_type="constant",
+                lr_scheduler="constant",
                 warmup_ratio=0.0,
                 per_device_train_batch_size=2,
                 gradient_accumulation_steps=1,
@@ -94,7 +94,7 @@ def _run(shape, data_path, out_dir, padding_free, max_length, sp_size, max_steps
             DistributedConfig(),
             CheckpointConfig(),
             # LoRA, mirroring the dp runner: exercises a second OptimizerGroup and keeps the run light.
-            tuner_config=TunerConfig(tuner_type="lora"),
+            tuner_config=TunerConfig(tuner="lora"),
             output_dir=out_dir,
             _save_final=False,
         )

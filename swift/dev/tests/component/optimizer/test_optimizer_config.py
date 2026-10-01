@@ -22,7 +22,7 @@ def _recording_megatron_model():
     Subclassed rather than mocked so ``_is_megatron_model``'s isinstance check picks the Megatron
     branch for real. Megatron's own __init__ is skipped: nothing here touches the model.
     """
-    from swift.dev.model.megatron.model import MegatronModel
+    from twinkle.model.megatron import MegatronModel
 
     class _Recorder(MegatronModel):
 
@@ -51,7 +51,7 @@ def _configure(**cfg_kwargs):
 
 def test_megatron_forwards_weight_decay_clip_grad_and_decay_style():
     calls = _configure(
-        learning_rate=3e-5, weight_decay=0.123, clip_grad=0.456, lr_scheduler_type='linear', warmup_ratio=0.1)
+        learning_rate=3e-5, weight_decay=0.123, clip_grad=0.456, lr_scheduler='linear', warmup_ratio=0.1)
 
     _, opt_kwargs = calls['optimizer']
     assert opt_kwargs['weight_decay'] == 0.123
@@ -82,9 +82,9 @@ def test_megatron_weight_decay_survives_a_scheduler_step():
     """
     import torch
 
-    from swift.dev.model.megatron.model import MegatronModel
+    from twinkle.model.megatron import MegatronModel
 
-    calls = _configure(learning_rate=3e-5, weight_decay=0.123, lr_scheduler_type='cosine')
+    calls = _configure(learning_rate=3e-5, weight_decay=0.123, lr_scheduler='cosine')
     _, opt_kwargs = calls['optimizer']
     _, sched_kwargs = calls['scheduler']
 
@@ -377,7 +377,7 @@ def _hf_warmup_steps(warmup_ratio, num_training_steps):
     model = _recording_hf_model()
     configure_optimizer(
         model,
-        TrainConfig(learning_rate=1e-4, lr_scheduler_type='linear', warmup_ratio=warmup_ratio),
+        TrainConfig(learning_rate=1e-4, lr_scheduler='linear', warmup_ratio=warmup_ratio),
         num_training_steps=num_training_steps)
     return model.calls['scheduler'][1]['num_warmup_steps']
 
@@ -448,7 +448,7 @@ def test_megatron_warmup_stays_fractional_while_hf_rounds():
     compare the step index against an integer boundary, where 2.5 is meaningless. Asserting both in
     one place keeps a future 'simplification' from unifying them.
     """
-    megatron_calls = _configure(learning_rate=1e-4, lr_scheduler_type='linear', warmup_ratio=0.05)
+    megatron_calls = _configure(learning_rate=1e-4, lr_scheduler='linear', warmup_ratio=0.05)
     _, sched_kwargs = megatron_calls['scheduler']
     megatron_warmup = sched_kwargs['lr_warmup_steps']
     assert megatron_warmup == pytest.approx(0.05 * 10), \
@@ -559,7 +559,7 @@ def test_constant_with_warmup_holds_instead_of_decaying():
 
 def test_megatron_cosine_with_min_lr_needs_no_extra_schedule():
     """On Megatron the floor is a first-class scheduler arg, so 'cosine' + min_lr is the whole story."""
-    calls = _configure(learning_rate=3e-5, lr_scheduler_type='cosine_with_min_lr', min_lr=1e-6)
+    calls = _configure(learning_rate=3e-5, lr_scheduler='cosine_with_min_lr', min_lr=1e-6)
 
     _, sched_kwargs = calls['scheduler']
     assert sched_kwargs['lr_decay_style'] == 'cosine'
@@ -569,8 +569,8 @@ def test_megatron_cosine_with_min_lr_needs_no_extra_schedule():
 def test_megatron_cosine_with_min_lr_requires_a_floor():
     """Accepting the name without min_lr would run plain cosine -- the name silently not honoured."""
     with pytest.raises(ValueError, match='needs TrainConfig.min_lr'):
-        _validate(lr_scheduler_type='cosine_with_min_lr')
-    _validate(lr_scheduler_type='cosine_with_min_lr', min_lr=1e-6)
+        _validate(lr_scheduler='cosine_with_min_lr')
+    _validate(lr_scheduler='cosine_with_min_lr', min_lr=1e-6)
 
 
 def test_scheduler_kwargs_accepts_cli_json_and_rejects_garbage():
@@ -601,7 +601,7 @@ def test_unsupported_lr_scheduler_type_fails_fast_on_both_backends():
     with pytest.raises(NotImplementedError, match='Transformers'):
         resolve_scheduler('reduce_lr_on_plateau')
     with pytest.raises(NotImplementedError):
-        _configure(lr_scheduler_type='reduce_lr_on_plateau')
+        _configure(lr_scheduler='reduce_lr_on_plateau')
 
 
 def test_backends_may_support_different_scheduler_sets():

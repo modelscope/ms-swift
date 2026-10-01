@@ -53,7 +53,7 @@ def _run(shape, data_path, out_dir):
             # same two samples per step either way.
             TrainConfig(
                 learning_rate=1e-5,
-                lr_scheduler_type='constant',
+                lr_scheduler='constant',
                 warmup_ratio=0.0,
                 per_device_train_batch_size=(1 if shape == 'dp2' else 2),
                 gradient_accumulation_steps=1,
@@ -63,7 +63,7 @@ def _run(shape, data_path, out_dir):
             # LoRA on purpose: it is the DDP shape that used to crash outright without
             # ddp_find_unused_parameters, and it exercises the adapter's own OptimizerGroup (a second
             # group, built after __init__) rather than only the default one.
-            tuner_config=TunerConfig(tuner_type='lora'),
+            tuner_config=TunerConfig(tuner='lora'),
             output_dir=out_dir,
             _save_final=False)
     finally:

@@ -111,6 +111,30 @@ def loader_builder(model_type: str) -> Builder:
 _VL_DIMS: Dict[str, Any] = {'num_hidden_layers': 2, 'depth': 2, 'fullatt_block_indexes': [1]}
 
 
+def _copy_additional_saved_files(model_type: str, model_id: str, dest: str) -> None:
+    """Fetch the family's ``additional_saved_files`` next to the tiny random weights.
+
+    Some families ship a non-weight file their ``from_pretrained`` loads unconditionally -- Qwen2.5-Omni
+    reads ``spk_dict.pt`` (the talker's speaker embeddings) and raises ``OSError`` when it is absent, so
+    a checkpoint without it is not loadable even though the weights are complete. The tiny build only
+    snapshots config/tokenizer files, so these extras are pulled from the real repo (they are tiny --
+    ``spk_dict.pt`` is ~0.3 MB) and copied beside the weights, mirroring what a full-parameter save does.
+    """
+    import os
+    import shutil
+
+    from modelscope import snapshot_download
+
+    extras = list(getattr(get_model_loader(model_type), 'additional_saved_files', []) or [])
+    if not extras:
+        return
+    src = snapshot_download(model_id, allow_patterns=extras)
+    for name in extras:
+        found = os.path.join(src, name)
+        if os.path.exists(found):
+            shutil.copy(found, os.path.join(dest, name))
+
+
 def build_tiny_multimodal(dest: str,
                           model_type: str = 'qwen2_5_vl',
                           model_id: str = 'Qwen/Qwen2.5-VL-3B-Instruct',
@@ -136,4 +160,5 @@ def build_tiny_multimodal(dest: str,
     model = loader.process_model(loader.build_model(snapshot, config, processor, torch_dtype=torch.bfloat16))
     model.save_pretrained(dest)
     processor.save_pretrained(dest)
+    _copy_additional_saved_files(model_type, model_id, dest)
     return str(dest)

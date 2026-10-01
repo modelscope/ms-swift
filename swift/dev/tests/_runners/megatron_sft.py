@@ -45,7 +45,7 @@ def _run_dev(data_path, out_dir, steps, lr):
         # change what this test trains -- it just stops the run from failing validation.
         TrainConfig(
             learning_rate=lr,
-            lr_scheduler_type='constant',
+            lr_scheduler='constant',
             warmup_ratio=0.0,
             per_device_train_batch_size=1,
             gradient_accumulation_steps=1,

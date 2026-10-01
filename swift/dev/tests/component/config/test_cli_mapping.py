@@ -106,7 +106,7 @@ def test_unknown_and_unwired_flags_fail_loudly():
     with pytest.raises(NotImplementedError, match='optimizer'):
         parse_sft_configs(['--model', 'm', '--dataset', 'd', '--optimizer', 'muon'])
     tuner = parse_sft_configs(['--model', 'm', '--dataset', 'd', '--tuner_type', 'vera'])['tuner_config']
-    assert tuner.tuner_type == 'vera'
+    assert tuner.tuner == 'vera'
 
 
 def test_megatron_aliases_work_on_transformers_backend():
@@ -218,7 +218,7 @@ def test_model_only_resume_without_trainer_state_starts_from_zero(tmp_path):
     checkpoint = CheckpointConfig(resume_from_checkpoint=str(tmp_path), resume_only_model=True)
     assembly = TrainAssembly(
         'test', ModelConfig(model='m'), TemplateConfig(), DatasetConfig(), TrainConfig(gradient_accumulation_steps=3),
-        DistributedConfig(), checkpoint, tuner_config=TunerConfig(tuner_type='lora'))
+        DistributedConfig(), checkpoint, tuner_config=TunerConfig(tuner='lora'))
 
     class Model:
 

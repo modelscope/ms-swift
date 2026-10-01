@@ -445,7 +445,7 @@ def test_grpo_rollout_e2e_updates_params_intermediate_state():
     torch.manual_seed(0)
     apply_tuner(
         model,
-        TunerConfig(tuner_type='lora', lora_rank=8, lora_alpha=16, target_modules=['q_proj', 'v_proj']),
+        TunerConfig(tuner='lora', lora_rank=8, lora_alpha=16, target_modules=['q_proj', 'v_proj']),
         gradient_accumulation_steps=1)
     model.set_processor(InputProcessor())
     from twinkle.loss import GRPOLoss
