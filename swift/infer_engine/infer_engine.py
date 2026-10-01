@@ -194,9 +194,13 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
-    def _get_toolcall(self, response: str) -> Optional[List[ChatCompletionMessageToolCall]]:
+    def _get_toolcall(self, response: str, template_inputs=None) -> Optional[List[ChatCompletionMessageToolCall]]:
         try:
-            functions = self.template.agent_template.get_toolcall(response)
+            agent_template = self.template.agent_template
+            kwargs = {}
+            if getattr(agent_template, 'supports_tool_schema', False):
+                kwargs['tools'] = getattr(template_inputs, 'tools', None)
+            functions = agent_template.get_toolcall(response, **kwargs)
         except Exception:
             functions = None
         if functions:
