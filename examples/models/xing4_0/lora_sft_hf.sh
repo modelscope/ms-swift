@@ -1,5 +1,13 @@
 # Xing4.0-29B-A4B: trust_remote_code MoE (64 routed experts, top-4) + MLA + mHC.
-# bf16 LoRA sft fits on one 80GB+ GPU (~58GB), so this example is single-card.
+# 8-GPU DeepSpeed ZeRO-3 version: weights are sharded across the 8 ranks, so each GPU peaks at
+# ~13GiB (measured), vs ~60GiB for plain DDP. Verified 8-GPU: loss 2.45->2.31, grad_norm
+# 5.8->4.2, 0.7208% trainable, z3_leaf_modules auto-set to Xing4_0MoE.
+# For max throughput on 80GB+ cards, drop --deepspeed zero3 to run plain DDP (~60GiB/GPU, ~3x
+# faster per step); DDP was also verified and reports no unused parameters with this config.
+# Expert parallel (EP) is NOT available here: swift's HF training path has no EP flag, and EP would
+# need transformers-native patches (base_model_ep_plan + EP-aware experts forward + a swift
+# distributed_config passthrough) or the Megatron path. Since 29B/64 experts fit on one GPU and
+# ZeRO-3 already shards to ~13GiB, EP's communication savings don't pay off at this scale.
 #
 # Key constraints:
 #   1. --experts_impl grouped_mm: stacks the 64 per-expert nn.Linear into 3D tensors and uses
@@ -13,7 +21,9 @@
 #   4. mHC compile is OFF by default for grad parity. For ~34% more speed at a ~6% grad_norm
 #      deviation, set SWIFT_XING4_0_COMPILE_MHC=1.
 
-CUDA_VISIBLE_DEVICES=0 \
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+NPROC_PER_NODE=8 \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 swift sft \
     --model XingChen-AGI/Xing4.0-29B-A4B \
     --tuner_type lora \
@@ -38,5 +48,6 @@ swift sft \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
+    --deepspeed zero3 \
     --model_author swift \
     --model_name swift-robot
