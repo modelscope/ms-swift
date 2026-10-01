@@ -83,6 +83,7 @@ class LLMTemplateType:
     minicpm5_2b = 'minicpm5_2b'
     telechat = 'telechat'
     telechat2 = 'telechat2'
+    xing4_0 = 'xing4_0'
 
     codefuse = 'codefuse'
     codefuse_codellama = 'codefuse_codellama'

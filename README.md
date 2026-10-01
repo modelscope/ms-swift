@@ -77,6 +77,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🔥 2026.10.01: Support for [Xing4.0-29B-A4B](https://www.modelscope.cn/models/XingChen-AGI/Xing4.0-29B-A4B): transformers-backend training and inference, with LoRA & full-parameter SFT on single/multi-GPU (DDP & DeepSpeed ZeRO-3) and grouped_mm expert acceleration (~3.7x). Refer to the [examples](examples/models/xing4_0).
 - 🔥 2026.09.21: Support for [DeepSeek-V4.1-Flash](https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V4.1-Flash): Megatron-SWIFT full-parameter training (SFT and GRPO) plus vLLM inference. Refer to the [examples](examples/models/deepseek_v41).
 - 🔥 2026.09.01: Support inference and training for the Tencent Hunyuan multimodal embedding model [WeMM-Embedding](https://www.modelscope.cn/models/Tencent-Hunyuan/WeMM-Embedding-2B) (2B/4B/9B), supporting image-text mixed input for vector representation. Refer to [embedding example](examples/train/embedding).
 - 🔥 2026.08.26: Day-0 Support for [Qwen3.8-Flash-Next](https://www.modelscope.cn/models/Qwen/Qwen3.8-Flash-Next), refer to [sft example](examples/models/qwen4_exp/megatron_sft.sh) for training.
