@@ -145,13 +145,21 @@ class TrainAssembly:
         return self.task or self.model_config.task_type
 
     @staticmethod
-    def initialize_twinkle(distributed_config: 'DistributedConfig') -> None:
+    def initialize_twinkle(distributed_config: 'DistributedConfig',
+                           *,
+                           seed: int = 42,
+                           full_determinism: bool = False) -> None:
         """Initialize twinkle for EVERY backend -- required for a DeviceMesh to reach the model.
 
         mode='ray' builds the 'model' DeviceGroup the workers hold, on EITHER backend: build_model
         places the model there via remote_group='model' (Megatron in _build_megatron_model, the
         transformers path in _apply_ray_placement), while the driver orchestrates and does not join
         the group. Everything else (both backends under torchrun) initializes in 'local' mode.
+
+        ``seed`` / ``full_determinism`` are forwarded to ``twinkle.initialize`` so the user's
+        TrainConfig.seed actually steers the run: twinkle seeds the driver here and re-seeds each ray
+        worker from the same values (infra/__init__.py), so without this twinkle would fall back to
+        its own default (seed=42) and silently overwrite the configured seed.
 
         See doc.md 'run_sft twinkle 初始化' for why this is load-bearing on the transformers backend
         and why there is no teardown counterpart.
@@ -169,12 +177,14 @@ class TrainAssembly:
             twinkle.initialize(
                 mode='ray',
                 nproc_per_node=nproc,
+                seed=seed,
+                full_determinism=full_determinism,
                 # --ray_exp_name names this Ray run (the cluster/worker-name prefix); a local run has
                 # no Ray experiment to name, so it is read only here. None keeps twinkle's default.
                 name=distributed_config.ray_exp_name,
                 groups=[DeviceGroup(name='model', ranks=list(range(nproc)), device_type='GPU', gpus_per_worker=1)])
         else:
-            twinkle.initialize(mode='local')
+            twinkle.initialize(mode='local', seed=seed, full_determinism=full_determinism)
 
     def prepare(self) -> 'TrainAssembly':
         """Process and validate Configs before building anything heavy.
@@ -363,7 +373,7 @@ class TrainAssembly:
         import copy
 
         from swift.dev.adapter import apply_tuner
-        from swift.dev.builders import build_model
+        from swift.dev.builders import apply_full_param_freeze, build_model
         from swift.dev.processor import InputProcessor
 
         resume_dir = self.resume_dir
@@ -386,11 +396,20 @@ class TrainAssembly:
             megatron_config=self.megatron_config,
             moe_config=self.moe_config)
         if self.tuner_config is not None:
-            apply_tuner(self.model, self.tuner_config, gradient_accumulation_steps=self.ga)
+            # task_type is threaded so a seq_cls/reranker LoRA run adds the freshly-built
+            # classification head to modules_to_save -- LoRA trains/saves target_modules only, so
+            # without it the head is neither trained nor persisted (checkpoint reloads random).
+            apply_tuner(self.model, self.tuner_config, gradient_accumulation_steps=self.ga, task_type=self.task_type)
+        else:
+            # Full-parameter path: consume the freeze_parameters / trainable_parameters knobs here,
+            # before configure_optimizer reads requires_grad to build its param groups. An adapter run
+            # skips this -- it selects what trains through target_modules / modules_to_save instead.
+            apply_full_param_freeze(self.model, self.train_config)
         self.model.set_processor(
             InputProcessor,
             padding_free=self.template_config.padding_free,
-            cp_partition_mode=self.distributed_config.cp_partition_mode)
+            cp_partition_mode=self.distributed_config.cp_partition_mode,
+            task_type=self.task_type)
         self.model.set_template(self.template)
         return self.model
 
@@ -505,7 +524,7 @@ class TrainAssembly:
 
         from twinkle.checkpoint_engine import CheckpointEngineManager
 
-        from swift.dev.builders import build_sampler
+        from swift.dev.builders import build_ray_dp_mesh, build_sampler
         # The colocate hand-over sleeps the engine to free the GPU for the trainer, which each backend
         # only permits when it was built with its own memory-saver flag on (vLLM: enable_sleep_mode,
         # sglang: enable_memory_saver); without it sleep()/wake_up() warn and no-op, leaving the trainer
@@ -516,6 +535,11 @@ class TrainAssembly:
             backend=backend,
             engine_args={sleep_arg: True},
             template=self.template,
+            # Co-resident in the model's 'model' DeviceGroup (colocate), so it carries the SAME pure-DP
+            # mesh the training model was placed with: a Ray-remote twinkle object built with
+            # device_mesh=None and no global default is rejected, and a colocated engine that sliced its
+            # sample inputs across a different rank layout than the weights it syncs would be wrong.
+            device_mesh=build_ray_dp_mesh(self.distributed_config),
             remote_group='model')
         manager = CheckpointEngineManager(model=self.model, sampler=sampler, platform='GPU', mode='colocate')
 
@@ -733,7 +757,10 @@ class TrainAssembly:
                 quantize_config.bnb_4bit_use_double_quant if quantize_config is not None else None),
             'bnb_4bit_quant_storage': quantize_config.bnb_4bit_quant_storage if quantize_config is not None else None,
             # load_keys: infer applies these only when its own value is None/empty.
-            'model': model_config.model,
+            # Record the portable id/path the user passed, not the machine-local snapshot dir
+            # _resolve_model substituted for loading: legacy saves the id, and `swift infer <ckpt>`
+            # re-resolves it on any machine. Falls back to .model when no resolution happened.
+            'model': getattr(model_config, '_model_id_or_path', None) or model_config.model,
             'model_type': getattr(model_meta, 'model_type', None),
             'model_revision': model_config.model_revision,
             'torch_dtype': model_config.torch_dtype,

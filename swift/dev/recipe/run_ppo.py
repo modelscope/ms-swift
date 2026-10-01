@@ -115,7 +115,8 @@ def run_ppo(
     sampler_world_size = rollout_config.vllm_tensor_parallel_size * rollout_config.vllm_data_parallel_size
     groups, sampler_remote_group, colocate = plan_rl_device_groups(distributed_config.nproc_per_node,
                                                                    rollout_config.vllm_mode, sampler_world_size)
-    _initialize_twinkle_rl(distributed_config, groups)
+    _initialize_twinkle_rl(
+        distributed_config, groups, seed=train_config.seed, full_determinism=train_config.full_determinism)
 
     # The critic, the reference and the reward models all encode with the SAME template as the policy,
     # so a batch lines up token-for-token across the four forwards.
@@ -496,8 +497,12 @@ class PPOLoop:
         if self.save_steps and self.global_step % self.save_steps == 0:
             self.save(f'checkpoint-{self.global_step}')
 
-    def save(self, name: str = 'checkpoint-final') -> str:
-        """Persist policy and critic checkpoints under one RL checkpoint directory."""
+    def save(self, name: str = 'checkpoint-final', *, is_final: bool = False) -> str:
+        """Persist policy and critic checkpoints under one RL checkpoint directory.
+
+        ``is_final`` is accepted for the shared loop.save contract (``TrainAssembly.save_final`` passes it
+        to gate hub-push 'end'); this loop carries no hub_pusher, so it is inert here.
+        """
         from swift.dev.recipe.train_loop import save_training_checkpoint
 
         save_training_checkpoint(

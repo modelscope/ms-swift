@@ -658,8 +658,12 @@ class GRPOLoop:
             finish_manual_gc(gc_was_enabled)
             self.tracker.close()
 
-    def save(self, name: str = 'checkpoint-final') -> str:
-        """Persist the policy and its optimizer/RNG state."""
+    def save(self, name: str = 'checkpoint-final', *, is_final: bool = False) -> str:
+        """Persist the policy and its optimizer/RNG state.
+
+        ``is_final`` is accepted for the shared loop.save contract (``TrainAssembly.save_final`` passes it
+        to gate hub-push 'end'); this loop carries no hub_pusher, so it is inert here.
+        """
         from swift.dev.recipe.train_loop import save_training_checkpoint
 
         return save_training_checkpoint(

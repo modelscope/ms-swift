@@ -210,6 +210,27 @@ class TrainConfig:
     use_logits_to_keep: Optional[bool] = None
     ds3_gather_for_generation: bool = True
 
+    # === Full-parameter freeze ===
+    # Consumed ONLY on the full-parameter path (tuner_config is None), where legacy runs
+    # ``requires_grad_(True)`` then ``freeze_parameters(ratio/list/regex)`` then
+    # ``activate_parameters(trainable_*)`` -- so trainable_* WINS over freeze_*. They live on
+    # TrainConfig, not TunerConfig, because a full run carries no TunerConfig (select_tuner maps
+    # tuner='full' to None); this is the same reason the full-parameter GaLore knobs are here.
+    # freeze_parameters_ratio is mutually exclusive with Megatron PP>1 (validate._check_freeze_ratio_pp):
+    # a pipeline rank holds only its own layers, so "freeze the first N% by element count" per rank
+    # freezes a different, meaningless slice on each stage.
+    #: Freeze parameters whose name starts with any of these prefixes.
+    freeze_parameters: List[str] = field(default_factory=list)
+    #: Freeze parameters whose name matches (re.search) this regex.
+    freeze_parameters_regex: Optional[str] = None
+    #: Freeze the leading fraction (0~1) of parameters, counted by cumulative element count in
+    #: model.parameters() order.
+    freeze_parameters_ratio: float = 0.0
+    #: Re-enable parameters whose name starts with any of these prefixes (applied after freeze_*).
+    trainable_parameters: List[str] = field(default_factory=list)
+    #: Re-enable parameters whose name matches (re.search) this regex (applied after freeze_*).
+    trainable_parameters_regex: Optional[str] = None
+
     # === Precision & Performance ===
     # torch_dtype in ModelConfig is what the weights are; these are about the run around them.
     #: Run evaluation in bf16 / fp16 regardless of the training dtype. Saves memory at eval time, and

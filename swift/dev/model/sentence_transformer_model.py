@@ -8,7 +8,7 @@ from transformers import PreTrainedModel
 from twinkle import Platform, remote_function
 from twinkle.data_format import InputFeature, Trajectory
 from twinkle.hub import HubOperation
-from twinkle.infra import collect_tensor_dict
+from twinkle.infra import collect_tensor_dict, get_device_mesh
 from twinkle.model.transformers.transformers import TransformersModel as TwinkleTransformersModel
 from twinkle.model.transformers.transformers import _default_adapter_name
 from twinkle.processor import InputProcessor
@@ -67,7 +67,10 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         self._try_init_process_group()
         super(PreTrainedModel, self).__init__()
         self._default_tokenizer = None
-        self.device_mesh = device_mesh
+        # This __init__ overrides the @remote_class-wrapped base, so it does NOT receive the base's
+        # automatic device_mesh injection; resolve the global default here to uphold the same invariant
+        # (a constructed model holds a real mesh) the wrapped TransformersModel.__init__ guarantees.
+        self.device_mesh = device_mesh if device_mesh is not None else get_device_mesh()
         self.mixed_precision = mixed_precision
         self._fsdp_config = dict(fsdp_config or {})
         self._ddp_config = ddp_config or {}
@@ -151,8 +154,16 @@ class SentenceTransformerModel(TwinkleTransformersModel):
 
     @staticmethod
     def _is_packed_position_ids(position_ids) -> bool:
-        # A packed [1, total] batch restarts position ids at 0 for each concatenated sequence.
-        flat = position_ids.squeeze(0) if position_ids.dim() == 2 else position_ids
+        # Padding-free packing concatenates every sequence into a SINGLE [1, total] row whose position
+        # ids restart at 0 per sequence, so only a single-row layout can be a packed one -- detect it by
+        # an internal restart. A normal [B, T] batch (B > 1) is never packed: each row is one sequence
+        # that legitimately starts at position 0, so scanning across rows would false-positive on that.
+        if position_ids.dim() == 2:
+            if position_ids.shape[0] != 1:
+                return False
+            flat = position_ids.squeeze(0)
+        else:
+            flat = position_ids
         return bool((flat[1:] == 0).any()) if flat.numel() > 1 else False
 
     def _prepare_forward(self, inputs, adapter_name):

@@ -59,13 +59,21 @@ def build_task_config(*,
     ``EvalConfig`` (``eval_output_dir`` / ``eval_num_proc``), the in-training path off ``TrainConfig`` plus
     the run's output dir, and the two do not share field names.
     """
-    task_config: Dict[str, Any] = {
-        'work_dir': work_dir,
+    task_config: Dict[str, Any] = {'work_dir': work_dir}
+    # Optional EvalScope fields are written only when the caller sets them. Emitting a present None
+    # instead would override a downstream default with an invalid value: TaskConfig rejects
+    # generation_config=None (it wants a dict / GenerateConfig), and the Evaluator rejects
+    # eval_batch_size=None -- it sizes its sampler batcher with ``get('eval_batch_size', 8)`` and
+    # ``setdefault('eval_batch_size', 8)``, both of which read an ABSENT key as "use 8". The in-training
+    # path sets none of these (TrainConfig carries no eval concurrency / generation override), so it must
+    # fall through to those defaults rather than poison them.
+    optional = {
         'limit': limit,
         'eval_batch_size': eval_batch_size,
         'dataset_args': dataset_args,
         'generation_config': generation_config,
     }
+    task_config.update({key: value for key, value in optional.items() if value is not None})
     task_config.update(extra_eval_args or {})
     return task_config
 

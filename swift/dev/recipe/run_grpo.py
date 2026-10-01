@@ -102,11 +102,19 @@ def plan_rl_device_groups(nproc_per_node: int, vllm_mode: Optional[str],
 
 
 def _initialize_twinkle_rl(distributed_config: DistributedConfig,
-                           groups: List[Tuple[str, List[int]]]) -> None:
+                           groups: List[Tuple[str, List[int]]],
+                           *,
+                           seed: int = 42,
+                           full_determinism: bool = False) -> None:
     """Initialize twinkle in Ray mode with the planned RL DeviceGroups.
 
     Online RL is Ray-only: the trainer and sampler are separate Ray actors the driver talks to (the
     GRPO loop runs on the driver and calls both), which local/torchrun mode cannot express.
+
+    ``seed`` / ``full_determinism`` are forwarded to ``twinkle.initialize`` (see
+    ``TrainAssembly.initialize_twinkle``): twinkle seeds the driver and re-seeds each Ray worker from
+    the same values, so the configured TrainConfig.seed steers rollout + training reproducibly
+    instead of being overwritten by twinkle's default.
     """
     import twinkle
     from twinkle import DeviceGroup
@@ -119,6 +127,8 @@ def _initialize_twinkle_rl(distributed_config: DistributedConfig,
     twinkle.initialize(
         mode='ray',
         nproc_per_node=total,
+        seed=seed,
+        full_determinism=full_determinism,
         # --ray_exp_name names this Ray run (cluster/worker-name prefix); online RL is always ray mode.
         name=distributed_config.ray_exp_name,
         groups=[DeviceGroup(name=group_name, ranks=ranks, device_type='GPU', gpus_per_worker=1)
@@ -229,7 +239,8 @@ def run_grpo(
                                                                    rollout_config.vllm_mode, sampler_world_size)
     # RL initializes twinkle itself rather than through the assembly: it needs two device groups (trainer
     # + sampler), whose placement was just planned.
-    _initialize_twinkle_rl(distributed_config, groups)
+    _initialize_twinkle_rl(
+        distributed_config, groups, seed=train_config.seed, full_determinism=train_config.full_determinism)
 
     assembly.build_template()
     # Trainer: a Ray-actor model in the 'model' group (build_model sets remote_group='model' under

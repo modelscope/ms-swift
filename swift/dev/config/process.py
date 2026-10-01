@@ -202,6 +202,11 @@ def _resolve_model(model_config: 'ModelConfig', dataset_config: Optional['Datase
 
     use_hf = dataset_config.use_hf if dataset_config is not None else None
     hub_token = dataset_config.hub_token if dataset_config is not None else None
+    # Preserve what the user actually passed before overwriting it with the resolved local dir. The
+    # checkpoint's args.json must record this portable id/path -- legacy saves the id, and `swift infer
+    # <ckpt>` re-resolves it on any machine, whereas the snapshot dir below is local to this one. Kept as
+    # a transient attribute (not a dataclass field) so it does not surface as a CLI flag.
+    model_config._model_id_or_path = model_config.model
     model_config.model = safe_snapshot_download(
         model_config.model, revision=model_config.model_revision, use_hf=use_hf, hub_token=hub_token)
 

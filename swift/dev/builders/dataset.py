@@ -298,9 +298,16 @@ def _twinkle_loader_layout(distributed_config: DistributedConfig,
         ``mesh.data_world_size`` (= world/ulysses), so SP peers receive IDENTICAL samples and only DP
         groups differ -- exactly what Ulysses needs, since each SP rank re-splits the same sequence.
         The global batch is scaled by data_world_size so twinkle's divisibility assert holds.
-      - local mode: the loader owns DP sharding, so it is given the DeviceMesh and each rank takes its
-        own slice (worker-fetcher). ``nproc_per_node`` MUST be set for a multi-GPU local run -- it
-        sizes the DP layout; without it dp defaults to 1 (single process) and no sharding happens.
+      - local mode with ``nproc_per_node`` set (the Megatron path, whose CLI compat derives it from the
+        torchrun env): ``build_device_mesh`` sizes the DP layout off it and the loader is given that
+        mesh, so each rank takes its own slice (worker-fetcher).
+      - local mode with ``nproc_per_node`` UNSET (a plain transformers torchrun launch -- the world size
+        lives in the env, not the config): the DP width is ``Platform.get_world_size()``, the SAME source
+        twinkle's ``initialize(mode='local')`` and ``build_hf_device_mesh`` read. twinkle substitutes its
+        global pure-DP mesh (``data_world_size == world``) into a loader built with ``device_mesh=None``
+        and slices the GLOBAL batch across it, so the batch MUST be scaled by the world size here or the
+        loader's ``batch_size >= data_world_size`` assert fires for any ``per_device < world`` run. The
+        mesh is left None to inherit twinkle's global one -- the same mesh the model was placed with.
       - ray mode: the loader is a bare driver loader (``device_mesh=None``); the DP scatter happens
         later in ``model.forward_backward(dispatch='slice_dp')``, so only the global batch WIDTH is
         needed here.
@@ -308,7 +315,11 @@ def _twinkle_loader_layout(distributed_config: DistributedConfig,
     if device_mesh is not None:
         return per_device_batch_size * device_mesh.data_world_size, device_mesh
     if distributed_config.nproc_per_node is None:
-        return per_device_batch_size, None
+        # Only local mode reaches here with nproc unset (ray requires it -- see initialize_twinkle), so
+        # the DP width is the torchrun env world size, read exactly where twinkle's local initialize and
+        # build_hf_device_mesh read it. A single process reports 1, which leaves the batch unscaled.
+        from twinkle.utils import Platform
+        return per_device_batch_size * Platform.get_world_size(), None
     from swift.dev.builders.model import build_device_mesh
     mesh = build_device_mesh(distributed_config)
     global_batch_size = per_device_batch_size * mesh.data_world_size

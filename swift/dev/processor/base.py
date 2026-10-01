@@ -18,11 +18,19 @@ class InputProcessor(TwinkleInputProcessor):
                  *,
                  collate_fn: Optional[Callable] = None,
                  cp_partition_mode: str = 'zigzag',
+                 task_type: Optional[str] = None,
                  **kwargs):
         super().__init__(**kwargs)
         self._external_collate_fn = collate_fn
         self._cp_partition_mode = cp_partition_mode
         self._template = None
+        #: The task_type the template encoded with. embedding / reranker / generative_reranker rows are
+        #: GROUP-shaped (one row holds an anchor + candidates, not a single sequence), so prepare_inputs
+        #: must flatten them into per-sequence rows before twinkle's collate -- see _flatten_group_rows.
+        self._task_type = task_type
+        #: Persistent RNG for the reranker positive/negative subsampling, seeded to match legacy's
+        #: _reranker_data_collator (np.random.RandomState(42)) so dev trains on the same candidate subset.
+        self._reranker_rng = None
 
     def _get_packed_seq_params(self, position_ids):
         packed = super()._get_packed_seq_params(position_ids)
@@ -79,6 +87,10 @@ class InputProcessor(TwinkleInputProcessor):
         """
         if isinstance(inputs, dict):
             inputs = [inputs]
+        # embedding / reranker rows are GROUP-shaped (anchor + candidates in one row); expand them into
+        # flat per-sequence rows FIRST, so the packing flatten / position_ids / to_tensor below see the
+        # same single-sequence layout causal_lm and seq_cls already arrive in.
+        inputs = self._flatten_group_rows(inputs)
         if inputs and isinstance(inputs[0], list):
             inputs = [row for item in inputs for row in item]
         cleaned = [{k: v for k, v in feat.items() if k not in self._DROP_KEYS} for feat in inputs]
@@ -87,6 +99,95 @@ class InputProcessor(TwinkleInputProcessor):
                 feat['position_ids'] = list(range(len(feat['input_ids'])))
         self._fill_optional_sequence_fields(cleaned)
         return super().prepare_inputs(cleaned, **kwargs)
+
+    # --- embedding / reranker group flatten -------------------------------------------------
+    # The dev Template reuses legacy's encode, which stores an embedding / reranker example as ONE
+    # GROUP-shaped row rather than one row per sequence. twinkle's collate (and its InfoNCE / reranker
+    # losses) instead want flat per-sequence rows plus a per-row label, so the group is expanded here --
+    # the dev counterpart of legacy's _embedding_data_collator / _reranker_data_collator, minus their
+    # padding (twinkle pads downstream). The label FORM differs from legacy on purpose: twinkle's
+    # InfonceLoss takes a per-ROW mask (1.0 at each group's anchor, len(labels) == len(sentences)) and
+    # finds groups via nonzero(labels), whereas legacy emits one fewer label per group and re-inserts
+    # the anchor offset inside its own _parse_multi_negative_sentences.
+    _EMBEDDING_TASK_TYPES = frozenset({'embedding'})
+    _RERANKER_TASK_TYPES = frozenset({'reranker', 'generative_reranker'})
+
+    def _flatten_group_rows(self, inputs: List[InputFeature]) -> List[InputFeature]:
+        """Expand embedding / reranker group rows into flat per-sequence rows; pass others through."""
+        if self._task_type in self._EMBEDDING_TASK_TYPES:
+            return self._flatten_embedding_rows(inputs)
+        if self._task_type in self._RERANKER_TASK_TYPES:
+            return self._flatten_reranker_rows(inputs)
+        return inputs
+
+    def _flatten_embedding_rows(self, rows: List[InputFeature]) -> List[InputFeature]:
+        """Flatten legacy's ``anchor_* / positive_* / negative_*`` embedding encode into sequences.
+
+        Each row carries the anchor and positive as single prefixed fields and the hard negatives as
+        LIST-valued ``negative_<field>`` (one entry per negative). The flat order is anchor, positive,
+        then each negative -- the group layout InfonceLoss expects (element 0 is the query, the rest
+        are documents). Each flat row gets a scalar mask label: 1.0 on the anchor (group start), 0.0 on
+        the positive and negatives.
+        """
+        flat: List[InputFeature] = []
+        for row in rows:
+            row = dict(row)
+            # negative_<field> holds a list over negatives; split it into negative{i}_<field> scalars so
+            # every candidate is addressable by a single prefix, mirroring legacy's collator.
+            num_negatives = 0
+            for key in [k for k in row if k.startswith('negative_')]:
+                values = row.pop(key)
+                suffix = key[len('negative_'):]
+                num_negatives = len(values)
+                for i, value in enumerate(values):
+                    row[f'negative{i}_{suffix}'] = value
+            prefixes = ['anchor_', 'positive_'] + [f'negative{i}_' for i in range(num_negatives)]
+            group = []
+            for prefix in prefixes:
+                stripped = {k[len(prefix):]: v for k, v in row.items() if k.startswith(prefix)}
+                if stripped:
+                    group.append(stripped)
+            for i, seq in enumerate(group):
+                seq['labels'] = 1.0 if i == 0 else 0.0
+                flat.append(seq)
+        return flat
+
+    def _flatten_reranker_rows(self, rows: List[InputFeature]) -> List[InputFeature]:
+        """Flatten legacy's list-valued reranker encode into per-candidate rows.
+
+        Each row stores every field as a LIST over candidates (positives first, then negatives) with
+        ``labels = [1]*P + [0]*N``. Legacy caps each query at MAX_POSITIVE_SAMPLES positives and, per
+        positive, MAX_NEGATIVE_SAMPLES negatives, drawing which survive from a persistent
+        ``RandomState(42)``; dev reproduces that exactly so both train on the same subset. Each selected
+        candidate becomes a flat row carrying its scalar relevance label (1 relevant / 0 not).
+        """
+        import os
+
+        import numpy as np
+        if self._reranker_rng is None:
+            self._reranker_rng = np.random.RandomState(42)
+        max_positive = int(os.environ.get('MAX_POSITIVE_SAMPLES', 1))
+        max_negative = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
+        flat: List[InputFeature] = []
+        for row in rows:
+            row = dict(row)
+            labels = list(row.pop('labels', []))
+            positive_num = int(sum(labels))
+            negative_num = len(labels) - positive_num
+            keep_positive = min(positive_num, max_positive)
+            keep_negative = min(negative_num, max_negative)
+            list_keys = [k for k, v in row.items() if isinstance(v, list)]
+
+            def candidate(index, label):
+                seq = {k: row[k][index] for k in list_keys if row[k][index] is not None}
+                seq['labels'] = label
+                return seq
+
+            for i in self._reranker_rng.choice(positive_num, keep_positive, replace=False):
+                flat.append(candidate(i, 1))
+                for j in self._reranker_rng.choice(negative_num, keep_negative, replace=False):
+                    flat.append(candidate(j + positive_num, 0))
+        return flat
 
     # Sequence-level fields that only multimodal samples carry (e.g. mm_token_type_ids): the dev
     # Template emits them for image/video rows and omits them for pure-text rows, exactly like

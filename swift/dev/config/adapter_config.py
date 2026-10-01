@@ -25,12 +25,15 @@ class TunerConfig:
     tuner: str = 'lora'
     adapters: List[str] = field(default_factory=list)
 
-    # === Freeze Parameters ===
-    freeze_parameters: List[str] = field(default_factory=list)
-    freeze_parameters_regex: Optional[str] = None
-    freeze_parameters_ratio: float = 0.0
-    trainable_parameters: List[str] = field(default_factory=list)
-    trainable_parameters_regex: Optional[str] = None
+    # === Freeze Parameters (multimodal targeting) ===
+    # These three stay on TunerConfig: they select WHICH tower of a multimodal model an adapter's
+    # target_modules may reach (see get_multimodal_target_regex / _derive_vit_gradient_checkpointing),
+    # so they are PEFT-targeting knobs. The full-parameter freeze knobs (freeze_parameters /
+    # freeze_parameters_regex / freeze_parameters_ratio / trainable_parameters /
+    # trainable_parameters_regex) deliberately do NOT live here: a full run carries no TunerConfig at
+    # all (cli/parser.select_tuner and _megatron_compat._select_megatron_tuner both map tuner='full'
+    # to None), so those five moved to TrainConfig -- the same reason the full-parameter GaLore knobs
+    # live there rather than here.
     freeze_llm: bool = False
     freeze_vit: bool = True
     freeze_aligner: bool = True

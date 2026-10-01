@@ -93,9 +93,9 @@ def resolve_max_grad_norm(cfg: TrainConfig) -> float:
 
 
 def _is_megatron_model(model) -> bool:
-    """True for the dev MegatronModel (whose optimizer/scheduler are Megatron-native, not torch)."""
+    """True for the MegatronModel (whose optimizer/scheduler are Megatron-native, not torch)."""
     try:
-        from swift.dev.model.megatron.model import MegatronModel
+        from twinkle.model.megatron import MegatronModel
     except Exception:
         return False
     return isinstance(model, MegatronModel)

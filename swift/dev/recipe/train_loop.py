@@ -33,7 +33,7 @@ def _backend_owns_gradient_accumulation(model) -> bool:
     capability rather than growing a branch per backend name.
     """
     try:
-        from swift.dev.model.megatron.model import MegatronModel
+        from twinkle.model.megatron import MegatronModel
     except Exception:
         return False
     return isinstance(model, MegatronModel)
@@ -503,6 +503,26 @@ class SFTLoop:
     def _epochs(self) -> int:
         return math.ceil(self.num_train_epochs) if self.max_steps <= 0 else 10**9
 
+    def _guard_nonempty_epoch(self, epoch: int, batches: int) -> None:
+        """Fail loudly if an epoch produced no batches, instead of spinning empty epochs forever.
+
+        When ``max_steps > 0``, :meth:`_epochs` returns a synthetic ``10**9`` bound, so the loop only
+        ends once a step limit or stop flag trips. A dataloader that yields nothing -- the usual cause
+        is a global batch (``per_device_train_batch_size * gradient_accumulation_steps *
+        data_parallel_size``) larger than the dataset, whose remainder ``drop_last`` then discards --
+        never runs a step, so nothing ever trips that bound and training would burn a billion empty
+        epochs in silence. Raise instead, naming the knob to lower. Skipped once the run is already
+        at its step cap or externally stopped, where an empty final epoch is expected.
+        """
+        if batches or self._reached_max() or self._should_stop():
+            return
+        raise ValueError(
+            f'Epoch {epoch} yielded no training batches, so no optimizer step can ever be taken. This '
+            'almost always means the global batch (per_device_train_batch_size * '
+            'gradient_accumulation_steps * data_parallel_size) exceeds the dataset size, and drop_last '
+            'discards the remainder. Enlarge the dataset or lower the batch size; otherwise training '
+            'would loop empty epochs forever.')
+
     def _record_step(self) -> None:
         """Count one completed optimizer step + log / periodic save / periodic eval (shared).
 
@@ -589,7 +609,9 @@ class SFTLoop:
                 self.dataloader.set_epoch(epoch)
             self._sync_state()
             handler.on_epoch_begin()
+            batches_this_epoch = 0
             for batch in self.dataloader:
+                batches_this_epoch += 1
                 if at_window_start:
                     self._sync_state()
                     handler.on_step_begin()
@@ -610,6 +632,7 @@ class SFTLoop:
                     at_window_start = True
                     if self._reached_max() or self._should_stop():
                         break
+            self._guard_nonempty_epoch(epoch, batches_this_epoch)
             self._sync_state()
             handler.on_epoch_end()
             if self.history:
@@ -655,8 +678,10 @@ class SFTLoop:
             handler.on_epoch_begin()
             group: list = []
             batches_in_group = 0
+            batches_this_epoch = 0
             for batch in self.dataloader:
                 self.micro_step += 1
+                batches_this_epoch += 1
                 group.extend(batch)
                 batches_in_group += 1
                 if batches_in_group < ga:
@@ -667,6 +692,7 @@ class SFTLoop:
                     break
             if group and not self._reached_max() and not self._should_stop():  # trailing partial group
                 self._megatron_step(group)
+            self._guard_nonempty_epoch(epoch, batches_this_epoch)
             self._sync_state()
             handler.on_epoch_end()
             if self.history:

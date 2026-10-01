@@ -71,6 +71,7 @@ def validate_configs(
     _check_megatron_fsdp(distributed_config, is_megatron)
     _check_selective_recompute(distributed_config, is_megatron)
     _check_pipeline_decoder_layers(distributed_config, is_megatron)
+    _check_freeze_ratio_pp(train_config, distributed_config, is_megatron, tuner_config)
     _check_tp_comm_overlap(distributed_config, is_megatron)
     _check_sequence_parallel_tp(distributed_config, is_megatron)
     _check_checkpoint_runtime(
@@ -1278,6 +1279,31 @@ def _check_pipeline_decoder_layers(distributed_config: 'DistributedConfig', is_m
             raise ValueError(f'DistributedConfig.{attr} needs pipeline_model_parallel_size > 1: with a single '
                              'pipeline stage there is no first/last stage to move layers onto. Set a pipeline '
                              f'size, or drop {attr}.')
+
+
+def _check_freeze_ratio_pp(train_config: 'TrainConfig', distributed_config: 'DistributedConfig', is_megatron: bool,
+                           tuner_config: Optional['TunerConfig']) -> None:
+    """freeze_parameters_ratio cannot be combined with Megatron pipeline parallelism.
+
+    The ratio freezes the leading fraction of parameters by cumulative element count in
+    ``named_parameters()`` order. Under PP>1 each pipeline rank holds a DIFFERENT set of layers, so
+    "the first N% by element count" selects a different, meaningless slice on each stage -- and the
+    freeze runs per rank (twinkle's remote seam has no cross-stage view to make it consistent). Mirrors
+    legacy Megatron-SWIFT, which documents the two as mutually exclusive. Name-prefix / regex freeze is
+    unaffected (it matches by name on whatever a rank holds) and stays allowed.
+
+    Only the full-parameter path consumes the ratio (tuner_config is None); an adapter run ignores it,
+    so there is nothing to reject there.
+    """
+    if not is_megatron or tuner_config is not None:
+        return
+    if train_config.freeze_parameters_ratio and distributed_config.pipeline_model_parallel_size > 1:
+        raise ValueError(
+            'TrainConfig.freeze_parameters_ratio cannot be combined with Megatron '
+            f'pipeline_model_parallel_size={distributed_config.pipeline_model_parallel_size} > 1: each pipeline '
+            'rank holds different layers, so freezing a fraction by element count selects a different slice per '
+            'stage. Use freeze_parameters / freeze_parameters_regex (name-based, consistent across stages), or '
+            'drop pipeline parallelism.')
 
 
 def _check_tp_comm_overlap(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:

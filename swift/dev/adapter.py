@@ -27,6 +27,23 @@ if TYPE_CHECKING:
 # rather than being silently downgraded to LoRA.
 SUPPORTED_TUNER_TYPES = ('lora', 'adalora', 'trainable_tokens')
 
+#: The classification-head module names a HF ``*ForSequenceClassification`` model may use, added to
+#: ``modules_to_save`` for a seq_cls / reranker LoRA run so the freshly-initialized head is trained AND
+#: saved (otherwise the checkpoint reloads with a random head). Both are listed because the name is
+#: family-specific -- Qwen/LLaMA-style use ``score``, Bert/Deberta-style use ``classifier`` -- and it
+#: cannot be probed from the built model here: under Ray ``apply_tuner`` runs on the driver against a
+#: model PROXY with no modules, and the peft config (modules_to_save included) is serialized to the
+#: workers before ``add_adapter_to_model`` builds the adapter on the real model. peft matches
+#: modules_to_save by ``name.endswith(entry)`` and silently ignores an entry that matches nothing
+#: (_set_trainable, strict_module_check=False), so listing both is safe: the one the family actually
+#: has gets wrapped, the other is a no-op.
+_SEQ_CLS_HEAD_MODULES = ('score', 'classifier')
+#: task_types that ride a separate classification head needing the modules_to_save treatment above.
+#: generative_reranker is deliberately excluded -- it keeps the CausalLM vocab head (no new module),
+#: and the PPO value critic rides task_type='seq_cls' so it is covered by the same rule.
+_HEAD_SAVING_TASK_TYPES = ('seq_cls', 'reranker')
+
+
 
 def _resolve_target_modules(cfg: TunerConfig):
     """target_regex wins over target_modules; collapse the 1-element 'all-linear' list peft wants
@@ -51,15 +68,23 @@ def _resolve_init_weights(cfg: TunerConfig):
     return init_weights
 
 
-def _lora_common_kwargs(cfg: TunerConfig) -> dict:
+def _lora_common_kwargs(cfg: TunerConfig, task_type: Optional[str] = None) -> dict:
     """The LoraConfig fields AdaLoraConfig also takes (it subclasses LoraConfig)."""
+    # A seq_cls / reranker run builds a fresh classification head on top of the base model. LoRA only
+    # wraps/trains target_modules, so without the head in modules_to_save it is neither trained nor
+    # saved -- the checkpoint reloads with a randomly-initialized head. Add the candidate head names
+    # (peft ignores the one this model family does not have). cfg.modules_to_save is copied, not
+    # mutated, so a reused TunerConfig keeps whatever the user set.
+    modules_to_save = list(cfg.modules_to_save or [])
+    if task_type in _HEAD_SAVING_TASK_TYPES:
+        modules_to_save += [name for name in _SEQ_CLS_HEAD_MODULES if name not in modules_to_save]
     kwargs = dict(
         r=cfg.lora_rank,
         lora_alpha=cfg.lora_alpha,
         lora_dropout=cfg.lora_dropout,
         bias=cfg.lora_bias,
         target_modules=_resolve_target_modules(cfg),
-        modules_to_save=(cfg.modules_to_save or None),
+        modules_to_save=(modules_to_save or None),
         use_rslora=cfg.use_rslora,
         use_dora=cfg.use_dora,
         init_lora_weights=_resolve_init_weights(cfg),
@@ -74,25 +99,32 @@ def _lora_common_kwargs(cfg: TunerConfig) -> dict:
     return kwargs
 
 
-def _build_adapter_config(cfg: TunerConfig, *, num_training_steps: Optional[int] = None):
+def _build_adapter_config(cfg: TunerConfig,
+                          *,
+                          num_training_steps: Optional[int] = None,
+                          task_type: Optional[str] = None):
     """Build the peft config for ``cfg.tuner``.
 
-    task_type is intentionally NOT set: get_peft_model then returns a base PeftModel that forwards
-    straight to the wrapped model, matching every twinkle cookbook. Setting task_type='CAUSAL_LM'
-    yields PeftModelForCausalLM, whose forward reads base_model.config.model_type -- fine for a HF
-    model, but the Megatron path's config is mcore's ModelConfig (only hf_model_type), so it raises
-    AttributeError under forward_backward. Omitting it keeps both backends on the same, safe wrapper.
+    peft's own ``task_type`` FIELD is intentionally NOT set: get_peft_model then returns a base
+    PeftModel that forwards straight to the wrapped model, matching every twinkle cookbook. Setting it
+    to 'CAUSAL_LM' yields PeftModelForCausalLM, whose forward reads base_model.config.model_type --
+    fine for a HF model, but the Megatron path's config is mcore's ModelConfig (only hf_model_type),
+    so it raises AttributeError under forward_backward. Omitting it keeps both backends on the same,
+    safe wrapper. The ``task_type`` ARGUMENT here is dev's task_type (seq_cls/reranker/...), used
+    only to decide whether the classification head must be added to modules_to_save -- unrelated to
+    the peft field.
 
     Args:
         cfg: the TunerConfig.
         num_training_steps: total optimizer steps, required by adalora only (its rank-allocation
             schedule is expressed in steps).
+        task_type: dev's task_type; seq_cls/reranker add the classification head to modules_to_save.
     """
     tuner = cfg.tuner
 
     if tuner == 'lora':
         from peft import LoraConfig
-        return LoraConfig(**_lora_common_kwargs(cfg))
+        return LoraConfig(**_lora_common_kwargs(cfg, task_type=task_type))
 
     if tuner == 'adalora':
         from peft import AdaLoraConfig
@@ -102,7 +134,7 @@ def _build_adapter_config(cfg: TunerConfig, *, num_training_steps: Optional[int]
         if not num_training_steps:
             raise ValueError('adalora needs the total training step count for its rank-allocation '
                              'schedule; pass num_training_steps to _build_adapter_config.')
-        kwargs = _lora_common_kwargs(cfg)
+        kwargs = _lora_common_kwargs(cfg, task_type=task_type)
         # init_r is the STARTING rank AdaLoRA prunes down to target_r, so it supersedes lora_rank.
         kwargs.pop('r', None)
         # AdaLoRA reimplements the LoRA forward and has no DoRA path.
@@ -146,6 +178,7 @@ def apply_tuner(model: TrainableModel,
                 *,
                 adapter_name: str = 'default',
                 gradient_accumulation_steps: int = 1,
-                num_training_steps: Optional[int] = None) -> None:
-    adapter_config = _build_adapter_config(tuner_cfg, num_training_steps=num_training_steps)
+                num_training_steps: Optional[int] = None,
+                task_type: Optional[str] = None) -> None:
+    adapter_config = _build_adapter_config(tuner_cfg, num_training_steps=num_training_steps, task_type=task_type)
     model.add_adapter_to_model(adapter_name, adapter_config, gradient_accumulation_steps=gradient_accumulation_steps)

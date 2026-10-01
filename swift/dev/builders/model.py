@@ -145,6 +145,37 @@ def build_model(model_config: ModelConfig,
         remote_group=remote_group)
 
 
+def apply_full_param_freeze(model: TrainableModel, train_config: Optional[TrainConfig]) -> None:
+    """Consume TrainConfig's freeze_parameters / trainable_parameters knobs on a full-parameter model.
+
+    Called ONLY on the full-param path (``tuner_config is None``): an adapter run selects what trains
+    through target_modules / modules_to_save, not ``requires_grad`` on the base weights. It must run
+    BEFORE ``configure_optimizer`` -- the optimizer builds its param groups from ``requires_grad``, so
+    a param frozen after that point would still be stepped. It forwards to twinkle's
+    ``model.freeze_parameters`` remote seam (dispatch='all'), which is what reaches the workers under
+    Ray; freeze order and the trainable-wins rule live there.
+
+    A no-op when no knob is set, so an ordinary full run pays no remote round-trip. The
+    ``freeze_parameters_ratio`` + Megatron PP>1 mutual exclusion is rejected earlier, in
+    ``validate._check_freeze_ratio_pp`` (config-only), so this just forwards resolved values.
+    """
+    if train_config is None:
+        return
+    freeze_names = train_config.freeze_parameters
+    trainable_names = train_config.trainable_parameters
+    freeze_regex = train_config.freeze_parameters_regex
+    trainable_regex = train_config.trainable_parameters_regex
+    freeze_ratio = train_config.freeze_parameters_ratio
+    if not (freeze_ratio or freeze_names or freeze_regex or trainable_names or trainable_regex):
+        return
+    model.freeze_parameters(
+        freeze_ratio=freeze_ratio,
+        freeze_names=freeze_names,
+        freeze_regex=freeze_regex,
+        trainable_names=trainable_names,
+        trainable_regex=trainable_regex)
+
+
 def _mixed_precision_for(torch_dtype: Optional[str]) -> str:
     """torch_dtype -> twinkle's mixed_precision mode. Shared by both backends so they cannot drift.
 
@@ -266,6 +297,29 @@ def _apply_hf_sp_mesh(kwargs: dict, device_mesh: Optional['DeviceMesh'],
         kwargs['device_mesh'] = device_mesh
 
 
+def build_ray_dp_mesh(distributed_config: DistributedConfig) -> 'DeviceMesh':
+    """The pure data-parallel DeviceMesh a transformers model group spans under mode='ray'.
+
+    The transformers backend has no TP/PP weight sharding, so its Ray DeviceGroup is data parallel
+    over every rank. Both the training model (see :func:`_apply_ray_placement`) and any engine
+    colocated in the same 'model' group -- the vLLM/SGLang generative-eval sampler -- must carry this
+    SAME mesh: a Ray-remote twinkle object built with ``device_mesh=None`` and no global default is
+    rejected (infra raises "Set device_mesh=DeviceMesh(...) to enable ray"), and a colocated engine
+    that disagreed with the model's mesh would slice its ``sample`` inputs across a different rank
+    layout than the weights it syncs from that model.
+
+    Distinct from :func:`build_device_mesh_if_dp`, which deliberately returns None for a single DP
+    rank so an in-process (non-Ray) engine stays mesh-free; a Ray group needs an explicit mesh even
+    at dp==1, which is exactly the nproc_per_node==1 colocate-eval case.
+    """
+    from twinkle import DeviceMesh
+    nproc = distributed_config.nproc_per_node
+    if nproc is None:
+        raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the 'model' "
+                         'DeviceGroup and its data-parallel mesh). Pass it explicitly -- there is no default.')
+    return DeviceMesh.from_sizes(world_size=nproc, dp_size=nproc)
+
+
 def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig,
                          remote_group: str = 'model',
                          device_mesh: Optional['DeviceMesh'] = None) -> None:
@@ -283,12 +337,7 @@ def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig,
     if distributed_config.mode == 'local':
         return
     if device_mesh is None:
-        from twinkle import DeviceMesh
-        nproc = distributed_config.nproc_per_node
-        if nproc is None:
-            raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the 'model' "
-                             'DeviceGroup and its data-parallel mesh). Pass it explicitly -- there is no default.')
-        device_mesh = DeviceMesh.from_sizes(world_size=nproc, dp_size=nproc)
+        device_mesh = build_ray_dp_mesh(distributed_config)
     kwargs['device_mesh'] = device_mesh
     kwargs['remote_group'] = remote_group
 
@@ -845,17 +894,6 @@ def _apply_fp8_kwargs(kwargs: dict, model_config: ModelConfig, strict: set) -> N
             strict.add(target)
 
 
-def _resolve_bridge_backend(name: str):
-    """bridge_backend name (DistributedConfig default: 'mcore-bridge') -> a BridgeBackend instance."""
-    from swift.dev.model.megatron.bridge import MCoreBridgeBackend, MegatronBridgeBackend
-    key = name.lower()
-    if key == 'mcore-bridge':
-        return MCoreBridgeBackend()
-    if key == 'megatron-bridge':
-        return MegatronBridgeBackend()
-    raise NotImplementedError(f"Unknown bridge_backend {name!r}. Known: 'mcore-bridge', 'megatron-bridge'.")
-
-
 def build_device_mesh(distributed_config: DistributedConfig):
     """DistributedConfig -> the Megatron DeviceMesh (parallel layout).
 
@@ -1027,7 +1065,7 @@ def _build_megatron_model(model_config: ModelConfig,
     derived from it and the model-parallel sizes. Driver-side dist.get_world_size() is NOT used --
     in Ray mode the driver is not part of the model process group (its world size is 1).
     """
-    from swift.dev.model.megatron.model import MegatronModel
+    from twinkle.model.megatron import MegatronModel
 
     if not model_config.model:
         raise ValueError('ModelConfig.model (path/id) is required')
@@ -1114,7 +1152,7 @@ def _build_megatron_model(model_config: ModelConfig,
     # A flash_N / flash_attention_N value also pins the FA VERSION, which is enforced by mutating
     # transformer_engine module globals -- a per-process side effect, so it CANNOT be applied here:
     # in Ray mode build_model runs on the driver, which is not where the model is built. The raw
-    # string is forwarded so DevMegatronStrategy (worker-side) can apply the pin itself.
+    # string is forwarded so MegatronStrategy (worker-side) can apply the pin itself.
     extra_kwargs['attn_impl'] = model_config.attn_impl
 
     # task_type / num_labels flow straight into mcore-bridge's ModelConfig (get_model_config forwards
@@ -1146,7 +1184,6 @@ def _build_megatron_model(model_config: ModelConfig,
     if strict_model_kwargs:
         extra_kwargs['_strict_model_kwargs'] = tuple(sorted(strict_model_kwargs))
 
-    backend = _resolve_bridge_backend(distributed_config.bridge_backend)
     # In Ray mode the model lives in a remote DeviceGroup named 'model'; in local (torchrun) mode
     # each rank builds the model in-process, so there is no remote group to target.
     model_kwargs = dict(
@@ -1155,7 +1192,10 @@ def _build_megatron_model(model_config: ModelConfig,
         revision=model_config.model_revision,
         device_mesh=device_mesh,
         mixed_precision=mixed_precision,
-        backend=backend,
+        # A NAME, not a built instance: twinkle's strategy resolves it to a backend, and only a
+        # string survives the Ray worker boundary (@remote_class forwards constructor kwargs, not
+        # live objects -- which is exactly why the old dev subclass + mock.patch could not reach it).
+        bridge_backend=distributed_config.bridge_backend,
         **extra_kwargs)
     if distributed_config.mode != 'local':
         model_kwargs['remote_group'] = remote_group or 'model'

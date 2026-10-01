@@ -104,7 +104,8 @@ def run_dpo(
         megatron_config=megatron_config,
         moe_config=moe_config)
     assembly.prepare()
-    TrainAssembly.initialize_twinkle(distributed_config)
+    TrainAssembly.initialize_twinkle(
+        distributed_config, seed=train_config.seed, full_determinism=train_config.full_determinism)
 
     assembly.build_template()
     # Encode with the preference template mode: 'kto' for kto (allows a missing rejected), else
@@ -384,8 +385,12 @@ class PreferenceLoop:
         if self.save_steps and self.global_step % self.save_steps == 0:
             self.save(f'checkpoint-{self.global_step}')
 
-    def save(self, name: str = 'checkpoint-final') -> str:
-        """Persist the policy + training state via twinkle's native save (the reference is not saved)."""
+    def save(self, name: str = 'checkpoint-final', *, is_final: bool = False) -> str:
+        """Persist the policy + training state via twinkle's native save (the reference is not saved).
+
+        ``is_final`` is accepted for the shared loop.save contract (``TrainAssembly.save_final`` passes it
+        to gate hub-push 'end'); this loop carries no hub_pusher, so it is inert here.
+        """
         from swift.dev.recipe.train_loop import save_training_checkpoint
 
         consumed = self._dataloader_state().get('consumed_train_samples', 0)

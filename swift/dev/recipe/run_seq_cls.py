@@ -56,7 +56,8 @@ def run_seq_cls(
     """
     from swift.dev.recipe.assembly import TrainAssembly
 
-    TrainAssembly.initialize_twinkle(distributed_config)
+    TrainAssembly.initialize_twinkle(
+        distributed_config, seed=train_config.seed, full_determinism=train_config.full_determinism)
     return _run_seq_cls_body(
         model_config,
         template_config,
