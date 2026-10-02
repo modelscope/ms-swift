@@ -7,11 +7,12 @@ outputs.  Shared by the HF and Megatron GKD trainers.
 """
 import copy
 import torch
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from swift.rl_core.data import GKDSample, OnPolicySample
 from swift.template.base import Template
+from swift.template.template_inputs import StdTemplateInputs
 from swift.utils import get_cu_seqlens_from_position_ids, get_logger, json_parse_to_dict
 from .gkd_loss import TeacherOutput
 from .utils import (assemble_teacher_topk_logprobs, encode_sample, get_response_prefix_ids,
@@ -80,6 +81,22 @@ def encode_gkd_samples(
     return student_encoded_list, teacher_encoded_list, has_opsd
 
 
+def set_teacher_request_eos(request, sample: GKDSample, template: Optional[Template] = None) -> None:
+    """Resolve the training suffix policy before sending a GKD teacher request."""
+    request.add_eos = sample.add_eos
+    if request.add_eos is not None or template is None or template.template_backend != 'swift':
+        return
+    # Render on a copy to reuse model-specific stop/overlap rules without changing
+    # the shared inference template or running multimodal processors again.
+    template = copy.copy(template)
+    template.set_mode('train')
+    inputs = StdTemplateInputs.from_dict(asdict(request))
+    template._swift_prepare_inputs(inputs)
+    _, _, answer_len = template._swift_encode(inputs)
+    # The final answer consists of its response plus any appended suffix contexts.
+    request.add_eos = answer_len > 1
+
+
 def build_teacher_requests(samples: List[OnPolicySample], template: Optional[Template] = None) -> List[Any]:
     """Build teacher API requests from samples (GKD or GRPO/OPD-RL).
 
@@ -100,8 +117,6 @@ def build_teacher_requests(samples: List[OnPolicySample], template: Optional[Tem
             request_sample = copy.copy(s)
             request_sample.images = s.teacher_images
         req = request_sample.to_infer_request()
-        if isinstance(s, GKDSample):
-            req.chat_template_kwargs = {**req.chat_template_kwargs, 'add_eos': s.add_eos}
         # OPSD: score the teacher on its privileged prompt instead of the student prompt.
         teacher_messages = getattr(s, 'teacher_messages', None)
         messages = teacher_messages if teacher_messages else req.messages
@@ -119,6 +134,8 @@ def build_teacher_requests(samples: List[OnPolicySample], template: Optional[Tem
                                                            loss_mask,
                                                            non_thinking_prefix_ids=prefix_ids)
         req.messages = messages
+        if isinstance(s, GKDSample):
+            set_teacher_request_eos(req, s, template)
         requests.append(req)
     return requests
 

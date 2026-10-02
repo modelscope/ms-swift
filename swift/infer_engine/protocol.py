@@ -156,6 +156,7 @@ class RolloutInferRequest(InferRequest):
     images: List[str] = field(default_factory=list)
     data_dict: Dict = field(default_factory=dict)
     uuid: Optional[str] = None
+    add_eos: Optional[bool] = None
 
 
 def random_uuid() -> str:
