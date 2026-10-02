@@ -713,6 +713,20 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     use_fused_mhc: bool = False
     mhc_recompute_layer_num: Optional[int] = None
 
+    # profiling
+    use_nsys_profiler: bool = False
+    use_pytorch_profiler: bool = False
+    profile_step_start: int = 10
+    profile_step_end: int = 12
+    pytorch_profiler_collect_shapes: bool = False
+    pytorch_profiler_collect_callstack: bool = False
+    pytorch_profiler_collect_chakra: bool = False
+    profile_ranks: List[int] = field(default_factory=lambda: [])
+    record_memory_history: bool = False
+    memory_snapshot_path: str = 'snapshot.pickle'
+    record_shapes: bool = False
+    nvtx_ranges: bool = False
+
     # other
     megatron_extra_kwargs: Optional[Union[dict, str]] = None
     language_model_only: bool = False
@@ -887,6 +901,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 self.gradient_accumulation_fusion = False
         self.callbacks += ['print', 'default_flow']
         self.callbacks += self.report_to
+        # Auto-register the profiling callback so that profiling args take effect
+        # even when the user does not explicitly pass --callbacks profiling.
+        if (self.use_pytorch_profiler or self.use_nsys_profiler or self.record_memory_history) \
+                and 'profiling' not in self.callbacks:
+            self.callbacks.append('profiling')
         if self.save_total_limit is not None:
             if self.async_save:
                 raise ValueError('async_save is not supported with save_total_limit.')
@@ -933,6 +952,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self._check_megatron_fsdp()
         self._init_distributed()
         self._check_muon()
+        self._check_profiling()
 
     def _check_megatron_fsdp(self):
         if not self.use_megatron_fsdp:
@@ -1058,6 +1078,18 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if unsupported:
             raise ValueError(f'megatron-core {megatron.core.__version__} does not support: '
                              f'{", ".join(unsupported)}. Leave them at their default or upgrade megatron-core.')
+
+    def _check_profiling(self):
+        if not (self.use_pytorch_profiler or self.use_nsys_profiler):
+            return
+        if self.use_pytorch_profiler and self.use_nsys_profiler:
+            raise ValueError(
+                'use_pytorch_profiler and use_nsys_profiler are mutually exclusive; enable only one of them.')
+        if self.profile_step_start < 0:
+            raise ValueError(f'profile_step_start must be >= 0, got {self.profile_step_start}.')
+        if self.profile_step_end <= self.profile_step_start:
+            raise ValueError(f'profile_step_end ({self.profile_step_end}) must be greater than '
+                             f'profile_step_start ({self.profile_step_start}).')
 
     def _init_teacher_model(self):
         if self.teacher_model is None:

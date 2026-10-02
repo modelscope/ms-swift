@@ -307,6 +307,20 @@ LoRA Training:
   - Note: The "learning rate" printed in the logs is the learning rate of the LLM.
 - aligner_lr: Specifies the learning rate for the aligner module in multimodal models. Default is `None`, same as `learning_rate`.
 
+**Profiling Parameters**
+- use_pytorch_profiler: Use the built-in pytorch profiler. Useful if you wish to view profiles in tensorboard. Defaults to `False`.
+- use_nsys_profiler: Enable nsys profiling. When using this option, nsys options should be specified in commandline. An example nsys commandline is `nsys profile -s none -t nvtx,cuda -o <path/to/output_file> --force-overwrite true --capture-range=cudaProfilerApi --capture-range-end=stop`. Defaults to `False`.
+- profile_step_start: Global step to start profiling. Defaults to `10`.
+- profile_step_end: Global step to stop profiling. Defaults to `12`.
+- pytorch_profiler_collect_shapes: Collect tensor shape in pytorch profiler. Defaults to `False`.
+- pytorch_profiler_collect_callstack: Collect callstack in pytorch profiler. Defaults to `False`.
+- pytorch_profiler_collect_chakra: Collect chakra trace in pytorch profiler. Defaults to `False`.
+- profile_ranks: Global ranks to profile. Defaults to `[]`, which means all ranks are profiled.
+- record_memory_history: Enable CUDA memory allocation history recording. When enabled, allocation events and Python call stacks are recorded on the ranks specified by `profile_ranks` (all ranks by default), and a memory snapshot pickle is dumped at every logging interval; an extra snapshot is also dumped automatically when a training OOM occurs. Defaults to `False`.
+- memory_snapshot_path: Specifies where to dump the memory history pickle. The actual output filename carries a rank suffix (e.g. `snapshot_0.pickle`), and OOM snapshots use an `_oom_rank_{rank}` suffix. Defaults to `'snapshot.pickle'`.
+- record_shapes: Record shapes of tensors in `torch.autograd.profiler.emit_nvtx` for the Nsys profiler. Defaults to `False`.
+- nvtx_ranges: Enable NVTX range annotations for profiling. When enabled, inserts NVTX markers to categorize execution in profiler output. Defaults to `False`.
+
 
 **Other Parameters**:
 - megatron_extra_kwargs: Additional arguments passed directly to Megatron (forwarded to the `ModelConfig` class in [mcore-bridge](https://github.com/modelscope/mcore-bridge/blob/78cb9be33ebad69a0d940a2bc4e198f866084b70/src/mcore_bridge/config/model_config.py#L116), which inherits from megatron-core's `TransformerConfig`). Can also be used to override parameters automatically read from `config.json`. Accepts a JSON string. Defaults to None.
