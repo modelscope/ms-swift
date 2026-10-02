@@ -89,14 +89,23 @@ class Xing4_0Loader(ModelLoader):
         """
         model_cls = get_class_from_dynamic_module('modeling_xing4_0.Xing4_0ForCausalLM', model_dir)
         modeling_module = sys.modules[model_cls.__module__]
-        if getattr(modeling_module, '_swift_patched', False):
+        stacked_experts = transformers_5 and get_env_args(
+            'swift_xing4_0_stacked_experts', bool, default_value=experts_impl not in (None, 'eager'))
+        compile_mhc = get_env_args('swift_xing4_0_compile_mhc', bool, False)
+        patch_options = (stacked_experts, compile_mhc)
+        previous_options = getattr(modeling_module, '_swift_patch_options', None)
+        if previous_options is not None:
+            if previous_options != patch_options:
+                raise ValueError(
+                    f'Xing4.0 remote code was already patched with (stacked_experts, compile_mhc)='
+                    f'{previous_options}, but this load requests {patch_options}. '
+                    'Use a separate process for different patch options; existing models share these classes.')
             return
-        modeling_module._swift_patched = True
 
         # Stacking only pays off with a grouped expert backend, so it follows `--experts_impl`:
         # off by default (keep the official per-expert nn.Linear, which all-linear LoRA covers and
         # which trains at grad parity), on automatically when a grouped backend is requested.
-        if transformers_5 and get_env_args('swift_xing4_0_stacked_experts', bool, experts_impl is not None):
+        if stacked_experts:
             Xing4_0Loader._stack_experts(modeling_module)
             # transformers gates the grouped_mm backend on a source-text heuristic: it greps the
             # model class's own module for the literal `@use_experts_implementation`. Our decorator
@@ -112,10 +121,11 @@ class Xing4_0Loader(ModelLoader):
         # Off by default: torch.compile fuses the mHC `collapsed` reduction and shifts its bf16
         # result by 1 ULP, which 38 layers of backward amplify into a ~6% (grouped) / ~33% (eager)
         # grad_norm deviation. Opt in for ~34% more end-to-end speed when that trade is acceptable.
-        if get_env_args('swift_xing4_0_compile_mhc', bool, False):
+        if compile_mhc:
             # Fuses the sinkhorn loop; Megatron-LM compiles the same function on its native path.
             modeling_module.Xing4_0HyperConnection.forward = torch.compile(
                 modeling_module.Xing4_0HyperConnection.forward)
+        modeling_module._swift_patch_options = patch_options
 
     @staticmethod
     def _stack_experts(modeling_module) -> None:
