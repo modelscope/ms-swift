@@ -1497,6 +1497,13 @@ class Template(ProcessorMixin):
             loss_scale = torch.tensor(loss_scale)[protected].tolist()
             loss_scale[0] = 0
             encoded['loss_scale'] = loss_scale
+        token_type_ids = encoded.get('token_type_ids')
+        if token_type_ids is not None:
+            if isinstance(token_type_ids, torch.Tensor):
+                # ERNIE-VL keeps a leading batch dimension: [1, seq_len].
+                encoded['token_type_ids'] = token_type_ids[..., protected]
+            else:
+                encoded['token_type_ids'] = torch.tensor(token_type_ids)[protected].tolist()
         for key in ('mm_token_type_ids', 'image_token_types'):
             token_types = encoded.get(key)
             if token_types is not None:
