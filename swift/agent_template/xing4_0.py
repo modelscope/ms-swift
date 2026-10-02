@@ -32,10 +32,13 @@ class Xing4_0AgentTemplate(BaseAgentTemplate):
         if len(keys) != len(values):
             return None
         properties = (tool_schemas or {}).get(func_name, {}).get('properties', {})
+        if not isinstance(properties, dict):
+            properties = {}
         args = {}
         for key, value in zip(keys, values):
             key = key.strip()
-            param_type = properties.get(key, {}).get('type')
+            param_schema = properties.get(key, {})
+            param_type = param_schema.get('type') if isinstance(param_schema, dict) else None
             # The wire format leaves strings unquoted, including JSON-looking strings and whitespace.
             is_string = param_type == 'string' or isinstance(param_type, list) and 'string' in param_type
             if not is_string:
@@ -50,8 +53,14 @@ class Xing4_0AgentTemplate(BaseAgentTemplate):
         tool_schemas = {}
         for tool in tools or []:
             tool = self._parse_json(tool)
-            function = tool.get('function', tool)
-            tool_schemas[function['name']] = function.get('parameters', {})
+            if not isinstance(tool, dict):
+                continue
+            function = self.unwrap_tool(tool)
+            if not isinstance(function, dict):
+                continue
+            parameters = self._parse_json(function.get('parameters'))
+            if isinstance(parameters, dict):
+                tool_schemas[self._get_tool_name(function)] = parameters
         toolcall_list = re.findall(r'<tool_call>(.*?)</tool_call>', response, re.DOTALL)
         functions = []
         for toolcall in toolcall_list:
