@@ -11,7 +11,6 @@ from typing import List
 
 from swift.infer_engine.protocol import RequestConfig, RolloutOutput
 from swift.rl_core.data import GKDSample
-from swift.rlhf_trainers.gkd_helpers import set_teacher_request_eos
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput
 from swift.rlhf_trainers.utils import parse_prompt_logprobs
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
@@ -326,7 +325,7 @@ class GKDTrainer(BaseRayTrainer):
                 teacher_encodeds.append(teacher_encoded)
             else:
                 teacher_encodeds.append(None)
-            set_teacher_request_eos(req, s, self.template)
+            req.add_eos = 'auto' if s.add_eos is None else s.add_eos
             requests.append(req)
 
         request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)

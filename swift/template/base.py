@@ -1443,8 +1443,8 @@ class Template(ProcessorMixin):
                 # self.is_training needed because we may want to continue generation from
                 # the current response
                 add_eos = inputs.extra_kwargs.get('add_eos')
-                if add_eos is None:
-                    add_eos = (self.is_training
+                if add_eos is None or add_eos == 'auto':
+                    add_eos = (self.is_training or add_eos == 'auto'
                                or self.task_type != 'causal_lm') and not sep_token and not endswith_stop_words
                 if add_eos:
                     extra_context_list = template_meta.suffix
