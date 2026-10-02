@@ -228,15 +228,16 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             # cycle's train steps. Defer to _replace_data_iterator so each train step recomputes the
             # teacher with up-to-date student weights (weights are constant within a train step).
             return
+        if self.gkd_logits_topk is None:
+            # Full-vocabulary local teacher logits are materialized just-in-time in forward_step so
+            # only one [S, V] tensor is alive per micro-batch instead of one per rollout batch.
+            return
         self._compute_teacher_logits_local(encoded_batches, vp_stage)
 
-    def _compute_teacher_logits_local(self, encoded_batches: List[Dict], vp_stage: Optional[int] = None) -> None:
-        """Compute teacher_output for each micro-batch via a local forward.
-
-        Handles both a separate fixed teacher and self-distillation (teacher == current student
-        weights). For self-distillation the caller is responsible for invoking this per train step
-        so the weights are current.
-        """
+    def _compute_teacher_output_local(self,
+                                      teacher_model_inputs: Dict,
+                                      vp_stage: Optional[int] = None) -> TeacherOutput:
+        """Run one local teacher forward and return its TeacherOutput."""
         topk = self.gkd_logits_topk
         if self._is_self_distillation:
             teacher_model = self.unwrapped_models[vp_stage or 0]
@@ -249,27 +250,36 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             outer_context = self.load_teacher_model_context()
 
         with torch.no_grad(), outer_context:
-            for encoded_batch in encoded_batches:
-                teacher_model_inputs = encoded_batch['teacher_model_inputs']
-                teacher_batch = {
-                    k: v.clone() if isinstance(v, torch.Tensor) else v
-                    for k, v in teacher_model_inputs.items()
-                }
-                teacher_data = self._prepare_batch(teacher_batch, vp_stage)
-                teacher_data.pop('loss_scale', None)
-                teacher_labels = teacher_data.pop('labels', None)
-                teacher_logits = forward_step_helper(teacher_model, teacher_data)
-                if teacher_logits is not None:
-                    teacher_logits = teacher_logits.detach()
+            teacher_batch = {
+                k: v.clone() if isinstance(v, torch.Tensor) else v
+                for k, v in teacher_model_inputs.items()
+            }
+            teacher_data = self._prepare_batch(teacher_batch, vp_stage)
+            teacher_data.pop('loss_scale', None)
+            teacher_labels = teacher_data.pop('labels', None)
+            teacher_logits = forward_step_helper(teacher_model, teacher_data)
+            if teacher_logits is not None:
+                teacher_logits = teacher_logits.detach()
 
-                if topk is not None and teacher_logits is not None:
-                    topk_logits, topk_indices = vocab_parallel_topk(teacher_logits, k=topk)
-                    teacher_out = TeacherOutput(topk_logprobs=topk_logits, topk_indices=topk_indices)
-                else:
-                    teacher_out = TeacherOutput(full_logits=teacher_logits)
+            if topk is not None and teacher_logits is not None:
+                topk_logits, topk_indices = vocab_parallel_topk(teacher_logits, k=topk)
+                teacher_out = TeacherOutput(topk_logprobs=topk_logits, topk_indices=topk_indices)
+            else:
+                teacher_out = TeacherOutput(full_logits=teacher_logits)
 
-                teacher_out.labels = teacher_labels
-                encoded_batch['teacher_output'] = teacher_out
+            teacher_out.labels = teacher_labels
+            return teacher_out
+
+    def _compute_teacher_logits_local(self, encoded_batches: List[Dict], vp_stage: Optional[int] = None) -> None:
+        """Compute teacher_output for each micro-batch via a local forward.
+
+        Handles both a separate fixed teacher and self-distillation (teacher == current student
+        weights). For self-distillation the caller is responsible for invoking this per train step
+        so the weights are current.
+        """
+        for encoded_batch in encoded_batches:
+            teacher_model_inputs = encoded_batch['teacher_model_inputs']
+            encoded_batch['teacher_output'] = self._compute_teacher_output_local(teacher_model_inputs, vp_stage)
 
     def _generate_and_score_completions(self, inputs: List[Dict]) -> List[Dict]:
         """Unified rollout → teacher → encode pipeline (mirrors Megatron GRPO).
@@ -405,8 +415,13 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         data = next(data_iterator)
         data_source = data.pop('data_source', DataSource.DATASET)
-        teacher_output = data.pop('teacher_output')
-        data.pop('teacher_model_inputs', None)  # consumed by _compute_teacher_logits; not needed for student forward
+        teacher_output = data.pop('teacher_output', None)
+        teacher_model_inputs = data.pop('teacher_model_inputs', None)
+        if teacher_output is None:
+            if teacher_model_inputs is None:
+                raise RuntimeError('encoded batch is missing both teacher_output and teacher_model_inputs; '
+                                   'cannot compute GKD teacher logits')
+            teacher_output = self._compute_teacher_output_local(teacher_model_inputs, vp_stage)
         data = self._prepare_batch(data, vp_stage)
         if self.use_teacher_api:
             teacher_output = cp_slice_teacher_output(teacher_output, data.get('packed_seq_params'),
