@@ -77,67 +77,78 @@ class DatasetLoader(BaseDatasetLoader):
         revision: Optional[str] = None,
     ) -> HfDataset:
         datasets = []
-        if os.path.isdir(dataset_id):
-            retry = 1
-            load_context = nullcontext
-            use_hf = True
-            dataset_str = f'Use local folder, dataset_dir: {dataset_id}'
-            # The dataset downloaded from modelscope will have an additional dataset_infos.json file.
-            with safe_ddp_context('dataset_infos_rename'):
-                dataset_infos_path = os.path.join(dataset_id, 'dataset_infos.json')
-                if os.path.isfile(dataset_infos_path):
-                    os.rename(dataset_infos_path, f'{dataset_infos_path}_bak')
-        elif dataset_id.startswith('/'):
-            raise ValueError(f'The local path does not exist, dataset_id: `{dataset_id}`. '
-                             f'os.path.exists(dataset_id): {os.path.exists(dataset_id)}')
-        else:
-            retry = 3
-            load_context = partial(safe_ddp_context, hash_id=dataset_id, use_barrier=True)
-            dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
-            if use_hf:
-                dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id)
+        # `dataset_infos.json` is only hidden while the folder is loaded, it must be moved back afterwards.
+        dataset_infos_hidden = None
+        try:
+            if os.path.isdir(dataset_id):
+                retry = 1
+                load_context = nullcontext
+                use_hf = True
+                dataset_str = f'Use local folder, dataset_dir: {dataset_id}'
+                # The dataset downloaded from modelscope will have an additional dataset_infos.json file.
+                with safe_ddp_context('dataset_infos_rename'):
+                    dataset_infos_path = os.path.join(dataset_id, 'dataset_infos.json')
+                    if os.path.isfile(dataset_infos_path):
+                        os.rename(dataset_infos_path, f'{dataset_infos_path}_bak')
+                        dataset_infos_hidden = dataset_infos_path
+            elif dataset_id.startswith('/'):
+                raise ValueError(f'The local path does not exist, dataset_id: `{dataset_id}`. '
+                                 f'os.path.exists(dataset_id): {os.path.exists(dataset_id)}')
             else:
-                dataset_str = dataset_str_f.format(hub='ModelScope', dataset_id=dataset_id)
-        logger.info(dataset_str)
-        hub = get_hub(use_hf)
-        for split in subset.split:
-            i = 1
-            with load_context():
-                while True:
-                    try:
-                        dataset = hub.load_dataset(
-                            dataset_id,
-                            subset.subset,
-                            split,
-                            streaming=self.streaming,
-                            revision=revision,
-                            download_mode=self.download_mode,
-                            hub_token=self.hub_token,
-                            num_proc=self.num_proc)
-                    except Exception as e:
-                        if i == retry:
-                            raise
-                        i += 1
-                        logger.error(f'Dataset {dataset_id} load failed: subset_name={subset.subset},'
-                                     f'split={split} with error: {e}')
-                    else:
-                        break
-            if hasattr(dataset, '_hf_ds'):
-                dataset = dataset._hf_ds
-                if self.streaming and isinstance(dataset, HfDataset):
-                    dataset = dataset.to_iterable_dataset()
-            if self.columns:
-                dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns)
-            dataset = subset.preprocess_func(
-                dataset,
-                num_proc=self.num_proc,
-                load_from_cache_file=self.load_from_cache_file,
-                strict=self.strict,
-                enable_auto_mapping=not self.disable_auto_column_mapping)
-            if self.remove_unused_columns:
-                dataset = RowPreprocessor.remove_useless_columns(dataset)
-            datasets.append(dataset)
-        return self.concat_datasets(datasets)
+                retry = 3
+                load_context = partial(safe_ddp_context, hash_id=dataset_id, use_barrier=True)
+                dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
+                if use_hf:
+                    dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id)
+                else:
+                    dataset_str = dataset_str_f.format(hub='ModelScope', dataset_id=dataset_id)
+            logger.info(dataset_str)
+            hub = get_hub(use_hf)
+            for split in subset.split:
+                i = 1
+                with load_context():
+                    while True:
+                        try:
+                            dataset = hub.load_dataset(
+                                dataset_id,
+                                subset.subset,
+                                split,
+                                streaming=self.streaming,
+                                revision=revision,
+                                download_mode=self.download_mode,
+                                hub_token=self.hub_token,
+                                num_proc=self.num_proc)
+                        except Exception as e:
+                            if i == retry:
+                                raise
+                            i += 1
+                            logger.error(f'Dataset {dataset_id} load failed: subset_name={subset.subset},'
+                                         f'split={split} with error: {e}')
+                        else:
+                            break
+                if hasattr(dataset, '_hf_ds'):
+                    dataset = dataset._hf_ds
+                    if self.streaming and isinstance(dataset, HfDataset):
+                        dataset = dataset.to_iterable_dataset()
+                if self.columns:
+                    dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns)
+                dataset = subset.preprocess_func(
+                    dataset,
+                    num_proc=self.num_proc,
+                    load_from_cache_file=self.load_from_cache_file,
+                    strict=self.strict,
+                    enable_auto_mapping=not self.disable_auto_column_mapping)
+                if self.remove_unused_columns:
+                    dataset = RowPreprocessor.remove_useless_columns(dataset)
+                datasets.append(dataset)
+            return self.concat_datasets(datasets)
+        finally:
+            if dataset_infos_hidden is not None:
+                dataset_infos_bak = f'{dataset_infos_hidden}_bak'
+                with safe_ddp_context('dataset_infos_restore'):
+                    # The load itself may have left its own dataset_infos.json behind, never overwrite it.
+                    if not os.path.exists(dataset_infos_hidden) and os.path.exists(dataset_infos_bak):
+                        os.rename(dataset_infos_bak, dataset_infos_hidden)
 
     @staticmethod
     def _select_subsets(subsets: List[str], dataset_meta: DatasetMeta) -> List[SubsetDataset]:
