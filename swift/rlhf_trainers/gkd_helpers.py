@@ -100,6 +100,8 @@ def build_teacher_requests(samples: List[OnPolicySample], template: Optional[Tem
             request_sample = copy.copy(s)
             request_sample.images = s.teacher_images
         req = request_sample.to_infer_request()
+        if isinstance(s, GKDSample):
+            req.chat_template_kwargs = {**req.chat_template_kwargs, 'add_eos': s.add_eos}
         # OPSD: score the teacher on its privileged prompt instead of the student prompt.
         teacher_messages = getattr(s, 'teacher_messages', None)
         messages = teacher_messages if teacher_messages else req.messages

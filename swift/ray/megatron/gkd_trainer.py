@@ -319,6 +319,7 @@ class GKDTrainer(BaseRayTrainer):
         teacher_encodeds = []  # teacher-side encoded (OPSD) or None (non-OPSD)
         for s, sample in zip(gkd_samples, samples):
             req = s.to_infer_request()
+            req.chat_template_kwargs = {**req.chat_template_kwargs, 'add_eos': s.add_eos}
             teacher_encoded = sample.get('teacher_encoded')
             if s.teacher_messages:
                 req.messages = s.teacher_messages
