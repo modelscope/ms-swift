@@ -6,9 +6,11 @@ methods.  Backend-specific rollout infrastructure (vLLM engine setup, weight
 sync, distributed groups) stays in the respective mixins.
 """
 import copy
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TypeVar
 
 from swift.rl_core.data import OnPolicySample
+
+T = TypeVar('T')
 
 
 class BaseRolloutTrainerMixin:
@@ -24,14 +26,14 @@ class BaseRolloutTrainerMixin:
         return [r if isinstance(r, OnPolicySample) else self.sample_cls.from_row(r) for r in rows]
 
     @staticmethod
-    def _split_data_by_steps(samples: List[OnPolicySample], steps: int) -> List[List[OnPolicySample]]:
+    def _split_data_by_steps(samples: List[T], steps: int) -> List[List[T]]:
         """Split a list of samples into ``steps`` chunks with balanced sizes."""
         if steps <= 1:
             return [samples]
 
         chunk_size = len(samples) // steps
         remainder = len(samples) % steps
-        chunks: List[List[OnPolicySample]] = []
+        chunks: List[List[T]] = []
         start_idx = 0
         for i in range(steps):
             current_chunk_size = chunk_size + (1 if i < remainder else 0)
