@@ -40,7 +40,7 @@ class Xing4_0AgentTemplate(BaseAgentTemplate):
             param_schema = properties.get(key, {})
             param_type = param_schema.get('type') if isinstance(param_schema, dict) else None
             # The wire format leaves strings unquoted, including JSON-looking strings and whitespace.
-            is_string = param_type == 'string' or isinstance(param_type, list) and 'string' in param_type
+            is_string = param_type == 'string' or param_type == ['string']
             if not is_string:
                 try:
                     value = json.loads(value)

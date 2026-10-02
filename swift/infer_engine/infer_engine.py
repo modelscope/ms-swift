@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import asyncio
 import concurrent.futures
+import inspect
 import os
 from queue import Queue
 from threading import Lock, Thread
@@ -203,7 +204,12 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             kwargs = {}
             # Other agent templates and plugins may only accept the response argument.
             if getattr(agent_template, 'supports_tool_schema', False):
-                kwargs['tools'] = getattr(template_inputs, 'tools', None)
+                try:
+                    inspect.signature(agent_template.get_toolcall).bind(response, tools=None)
+                except (TypeError, ValueError):
+                    pass
+                else:
+                    kwargs['tools'] = getattr(template_inputs, 'tools', None)
             functions = agent_template.get_toolcall(response, **kwargs)
         except Exception:
             functions = None
