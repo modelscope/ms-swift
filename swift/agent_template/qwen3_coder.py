@@ -178,12 +178,22 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
 class Qwen3_5AgentTemplate(Qwen3CoderAgentTemplate):
 
     def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
-        """Qwen3.5/3.6 jinja inserts \n\n between assistant content and <tool_call>
-        only when effective content (after think removal) is non-empty."""
+        """Qwen3.5/3.6 jinja keeps the preceding assistant ``content``
+        (including ``<think>...</think>`` reasoning) before ``<tool_call>``
+        and inserts ``\n\n`` between them only when the effective content
+        (after stripping the <think> block and its trailing newlines) is
+        non-empty.
+
+        The previous implementation used ``pre_message['content']`` only to
+        decide on the separator and dropped the reasoning entirely — this
+        is the root cause of #10255. Mirror the jinja by always preserving
+        the preceding assistant content, and only inserting the separator
+        when there is non-empty effective (post-think) text.
+        """
         if not pre_message or pre_message.get('role') != 'assistant':
             return tool_content
         content = pre_message.get('content', '')
-        if not isinstance(content, str):
+        if not isinstance(content, str) or not content:
             return tool_content
         # Mirror jinja: content.split('</think>')[-1].lstrip('\n') then content|trim
         if '</think>' in content:
@@ -191,8 +201,10 @@ class Qwen3_5AgentTemplate(Qwen3CoderAgentTemplate):
         else:
             effective = content
         if effective.strip():
-            return '\n\n' + tool_content
-        return tool_content
+            return content + '\n\n' + tool_content
+        # Pure-reasoning turn (only `<think>...</think>`): preserve the
+        # reasoning and emit the tool_call directly after, matching jinja.
+        return content + tool_content
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]
