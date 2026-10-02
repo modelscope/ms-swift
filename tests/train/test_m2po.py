@@ -1,0 +1,239 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
+import pytest
+import tempfile
+import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from pathlib import Path
+
+from swift.rl_core.m2po import (compute_m2po_log_ratio, compute_m2po_mask, compute_m2po_masks_for_batches,
+                                compute_m2po_token_loss, compute_m2po_token_loss_from_mask)
+
+
+def test_m2po_log_ratio_prefers_rollout_policy_and_falls_back_to_old_policy():
+    current = torch.tensor([[-1.0, -2.0]])
+    old = torch.tensor([[-1.1, -2.1]])
+    rollout = torch.tensor([[-1.5, -2.5]])
+
+    torch.testing.assert_close(compute_m2po_log_ratio(current, old, rollout), current - rollout)
+    torch.testing.assert_close(compute_m2po_log_ratio(current, old), current - old)
+
+    with pytest.raises(ValueError, match='behavior policy'):
+        compute_m2po_log_ratio(current, old, allow_old_policy_fallback=False)
+
+
+def test_m2po_selects_once_across_all_optimizer_micro_batches():
+    log_ratios = [torch.tensor([[0.05, 0.4]]), torch.tensor([[0.19, 0.21]])]
+    completion_masks = [torch.ones_like(value, dtype=torch.bool) for value in log_ratios]
+    advantages = [torch.ones_like(value) for value in log_ratios]
+
+    batch_masks, metrics = compute_m2po_masks_for_batches(log_ratios, completion_masks, advantages, m2_threshold=0.04)
+    independently_selected = [
+        compute_m2po_mask(log_ratio, completion_mask, advantage, m2_threshold=0.04)[0]
+        for log_ratio, completion_mask, advantage in zip(log_ratios, completion_masks, advantages)
+    ]
+
+    assert [mask.tolist() for mask in batch_masks] == [[[True, False]], [[True, True]]]
+    assert [mask.tolist() for mask in independently_selected] == [[[True, False]], [[True, False]]]
+    assert metrics['masked_fraction'].item() == pytest.approx(0.25)
+
+
+def test_m2po_masks_largest_trust_region_outlier():
+    log_ratio = torch.tensor([[0.1, 0.2, 0.3]])
+    completion_mask = torch.ones_like(log_ratio, dtype=torch.bool)
+    advantages = torch.ones_like(log_ratio)
+
+    mask, metrics = compute_m2po_mask(log_ratio, completion_mask, advantages, m2_threshold=0.04)
+
+    assert torch.equal(mask, torch.tensor([[True, True, False]]))
+    assert metrics['m2_before'].item() == pytest.approx((0.01 + 0.04 + 0.09) / 3)
+    assert metrics['m2_after'].item() == pytest.approx(0.025)
+    assert metrics['masked_fraction'].item() == pytest.approx(1 / 3)
+    assert metrics['trust_region_fraction'].item() == pytest.approx(1.0)
+
+
+def test_m2po_only_constrains_active_ppo_quadrants_and_valid_tokens():
+    log_ratio = torch.tensor([[1.0, -1.0, 1.0, -1.0, 2.0]])
+    advantages = torch.tensor([[-1.0, 1.0, 1.0, -1.0, 1.0]])
+    completion_mask = torch.tensor([[True, True, True, True, False]])
+
+    mask, metrics = compute_m2po_mask(log_ratio, completion_mask, advantages, m2_threshold=0.1)
+
+    assert torch.equal(mask, torch.tensor([[True, True, False, False, False]]))
+    assert metrics['trust_region_fraction'].item() == pytest.approx(0.5)
+
+
+def test_m2po_vectorized_selection_matches_algorithm_one():
+    threshold = 0.04
+    for seed in range(10):
+        generator = torch.Generator().manual_seed(seed)
+        log_ratio = 0.8 * torch.randn(4, 7, generator=generator)
+        advantages = torch.randn(4, 7, generator=generator)
+        completion_mask = torch.rand(4, 7, generator=generator) > 0.2
+
+        actual, _ = compute_m2po_mask(log_ratio, completion_mask, advantages, threshold)
+
+        expected = completion_mask.clone()
+        trust_region = completion_mask & (((advantages > 0) & (log_ratio > 0)) | ((advantages < 0) & (log_ratio < 0)))
+        active = torch.nonzero(trust_region.reshape(-1), as_tuple=False).squeeze(-1)
+        second_moment = log_ratio.float().square().reshape(-1)
+        while active.numel() and second_moment[active].mean() > threshold:
+            largest = torch.argmax(second_moment[active])
+            expected.reshape(-1)[active[largest]] = False
+            active = torch.cat((active[:largest], active[largest + 1:]))
+
+        assert torch.equal(actual, expected)
+
+
+def test_m2po_loss_keeps_original_denominator_and_masks_gradients():
+    log_ratio = torch.tensor([[0.0, 1.0]], requires_grad=True)
+    completion_mask = torch.ones_like(log_ratio, dtype=torch.bool)
+    advantages = torch.ones_like(log_ratio)
+
+    per_token_loss, mask, metrics = compute_m2po_token_loss(log_ratio, completion_mask, advantages, m2_threshold=0.1)
+    loss = (per_token_loss * completion_mask).sum() / completion_mask.sum()
+    loss.backward()
+
+    assert torch.equal(mask, torch.tensor([[True, False]]))
+    assert loss.item() == pytest.approx(-0.5)
+    assert torch.allclose(log_ratio.grad, torch.tensor([[-0.5, 0.0]]))
+    assert metrics['masked_fraction'].item() == pytest.approx(0.5)
+
+
+def test_m2po_empty_mask_and_extreme_non_trust_ratio_are_finite():
+    empty_log_ratio = torch.tensor([[1.0, -1.0]], requires_grad=True)
+    empty_mask = torch.zeros_like(empty_log_ratio, dtype=torch.bool)
+    empty_loss, final_mask, metrics = compute_m2po_token_loss(empty_log_ratio, empty_mask,
+                                                              torch.ones_like(empty_log_ratio))
+
+    assert not final_mask.any()
+    assert empty_loss.sum().item() == pytest.approx(0.0)
+    assert metrics['masked_fraction'].item() == pytest.approx(0.0)
+
+    extreme_log_ratio = torch.tensor([[100.0]], requires_grad=True)
+    extreme_loss, _, _ = compute_m2po_token_loss(extreme_log_ratio,
+                                                 torch.ones_like(extreme_log_ratio,
+                                                                 dtype=torch.bool), -torch.ones_like(extreme_log_ratio))
+    extreme_loss.sum().backward()
+
+    assert torch.isfinite(extreme_loss).all()
+    assert torch.isfinite(extreme_log_ratio.grad).all()
+    assert extreme_log_ratio.grad.item() > 0
+
+    padded_log_ratio = torch.tensor([[float('nan'), 0.0]], requires_grad=True)
+    padded_advantages = torch.tensor([[float('nan'), 1.0]])
+    padded_loss = compute_m2po_token_loss_from_mask(padded_log_ratio, padded_advantages, torch.tensor([[False, True]]))
+    padded_loss.sum().backward()
+
+    assert torch.isfinite(padded_loss).all()
+    assert torch.isfinite(padded_log_ratio.grad).all()
+    assert padded_log_ratio.grad[0, 0].item() == pytest.approx(0.0)
+
+
+def test_m2po_rejects_invalid_inputs():
+    values = torch.zeros(1, 2)
+    mask = torch.ones_like(values, dtype=torch.bool)
+    advantages = torch.ones_like(values)
+
+    with pytest.raises(ValueError, match='non-negative'):
+        compute_m2po_mask(values, mask, advantages, m2_threshold=-0.01)
+    with pytest.raises(ValueError, match='finite'):
+        compute_m2po_mask(values, mask, advantages, m2_threshold=float('nan'))
+    with pytest.raises(ValueError, match='identical shapes'):
+        compute_m2po_mask(values, mask[:, :1], advantages)
+    with pytest.raises(ValueError, match='non-finite'):
+        compute_m2po_mask(torch.tensor([[float('nan'), 0.0]]), mask, advantages)
+    with pytest.raises(ValueError, match='advantages'):
+        compute_m2po_mask(values, mask, torch.tensor([[float('nan'), 0.0]]))
+
+
+def _distributed_m2po_worker(rank, world_size, init_method, result_queue):
+    dist.init_process_group('gloo', rank=rank, world_size=world_size, init_method=init_method)
+    try:
+        local_ratios = [torch.tensor([[0.05, 0.4]]), torch.tensor([[0.2, 0.21]])][rank]
+        ratio_batches = [local_ratios[:, :1], local_ratios[:, 1:]]
+        local_masks, metrics = compute_m2po_masks_for_batches(
+            ratio_batches,
+            [torch.ones_like(value, dtype=torch.bool) for value in ratio_batches],
+            [torch.ones_like(value) for value in ratio_batches],
+            m2_threshold=0.04,
+        )
+        local_mask = torch.cat(local_masks, dim=-1)
+        result_queue.put((rank, local_mask.tolist(), {key: value.item() for key, value in metrics.items()}))
+    finally:
+        dist.destroy_process_group()
+
+
+def test_m2po_uses_one_threshold_across_distributed_ranks():
+    world_size = 2
+    spawn_context = mp.get_context('spawn')
+    result_queue = spawn_context.SimpleQueue()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        init_method = (Path(tmp_dir) / 'm2po_dist_init').as_uri()
+        mp.spawn(
+            _distributed_m2po_worker,
+            args=(world_size, init_method, result_queue),
+            nprocs=world_size,
+            join=True,
+        )
+
+    results = sorted([result_queue.get() for _ in range(world_size)])
+    assert results[0][1] == [[True, False]]
+    assert results[1][1] == [[True, True]]
+    for _, _, metrics in results:
+        assert metrics['m2_after'] == pytest.approx((0.05**2 + 0.2**2 + 0.21**2) / 3)
+        assert metrics['masked_fraction'] == pytest.approx(0.25)
+
+
+def _distributed_cp_replica_worker(rank, world_size, init_method, result_queue):
+    dist.init_process_group('gloo', rank=rank, world_size=world_size, init_method=init_method)
+    try:
+        # Context-parallel ranks reconstruct the same full sequence before the loss.
+        local_ratios = torch.tensor([[0.1, 0.3]])
+        completion_mask = torch.ones_like(local_ratios, dtype=torch.bool)
+        advantages = torch.ones_like(local_ratios)
+
+        replicated_mask, _ = compute_m2po_mask(
+            local_ratios,
+            completion_mask,
+            advantages,
+            m2_threshold=0.04,
+        )
+
+        # Simulate pure-DP groups for dp_size=1, cp_size=world_size. All ranks must
+        # create the groups in the same order even though each rank uses only its own.
+        pure_dp_groups = [dist.new_group(ranks=[group_rank]) for group_rank in range(world_size)]
+        pure_dp_mask, _ = compute_m2po_mask(
+            local_ratios,
+            completion_mask,
+            advantages,
+            m2_threshold=0.04,
+            process_group=pure_dp_groups[rank],
+        )
+        result_queue.put((rank, replicated_mask.tolist(), pure_dp_mask.tolist()))
+    finally:
+        dist.destroy_process_group()
+
+
+def test_m2po_excludes_context_parallel_replicas_from_threshold_selection():
+    world_size = 2
+    spawn_context = mp.get_context('spawn')
+    result_queue = spawn_context.SimpleQueue()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        init_method = (Path(tmp_dir) / 'm2po_cp_replica_init').as_uri()
+        mp.spawn(
+            _distributed_cp_replica_worker,
+            args=(world_size, init_method, result_queue),
+            nprocs=world_size,
+            join=True,
+        )
+
+    results = sorted([result_queue.get() for _ in range(world_size)])
+    replicated_masks = [replicated_mask for _, replicated_mask, _ in results]
+    pure_dp_masks = [pure_dp_mask for _, _, pure_dp_mask in results]
+
+    # Counting both CP replicas keeps three of four duplicated values, so only one
+    # replica masks the 0.3 token. Pure-DP selection gives both replicas the mask
+    # that Algorithm 1 produces for the single logical sequence.
+    assert sorted(replicated_masks) == sorted([[[True, True]], [[True, False]]])
+    assert pure_dp_masks == [[[True, False]], [[True, False]]]
