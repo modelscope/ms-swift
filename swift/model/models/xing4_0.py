@@ -89,8 +89,8 @@ class Xing4_0Loader(ModelLoader):
         """
         model_cls = get_class_from_dynamic_module('modeling_xing4_0.Xing4_0ForCausalLM', model_dir)
         modeling_module = sys.modules[model_cls.__module__]
-        stacked_experts = transformers_5 and get_env_args('swift_xing4_0_stacked_experts', bool, experts_impl
-                                                          not in (None, 'eager'))
+        stacked_experts = transformers_5 and get_env_args(
+            'swift_xing4_0_stacked_experts', bool, default_value=experts_impl not in (None, 'eager'))
         compile_mhc = get_env_args('swift_xing4_0_compile_mhc', bool, False)
         patch_options = (stacked_experts, compile_mhc)
         previous_options = getattr(modeling_module, '_swift_patch_options', None)
