@@ -127,22 +127,31 @@ class SeedTemplate(Template):
             if budget is not None:
                 for message in inputs.messages:
                     if message['role'] == 'assistant':
-                        if '<think>' in message['content'] and '</think>' in message['content']:
-                            pre_text, post_text = message['content'].split('<think>', maxsplit=1)
-                            think, post_text = post_text.split('</think>', maxsplit=1)
-                            if '<seed:cot_budget_reflect>' not in message['content'] and strtobool(
-                                    os.environ.get('SEED_USE_BUDGET_INTERVAL', 'false')):
-                                think = self.insert_budget_markers(think, self.tokenizer, interval, budget)
-                            message['content'] = pre_text + '<seed:think>' + think + '</seed:think>' + post_text
-                        elif budget > 0:
-                            message['content'] = message['content'].replace('<think>', '').replace('</think>', '')
-                            message['content'] = '<seed:think></seed:think>' + message['content']
-                        elif budget <= 0:
-                            message['content'] = message['content'].replace('<think>', '').replace('</think>', '')
-                            message['content'] = (
-                                '<seed:think><seed:cot_budget_reflect>The current thinking budget is 0, '
-                                'so I will directly start answering the question.'
-                                '</seed:cot_budget_reflect>\n</seed:think>') + message['content']
+                        content = message['content']
+                        if isinstance(content, list):
+                            # Merged assistant segments (e.g. text followed by tool calls) keep their
+                            # loss/loss_scale alignment; the thinking block opens the first segment.
+                            message['content'] = [self._convert_think(content[0], budget, interval)] + content[1:]
+                        else:
+                            message['content'] = self._convert_think(content, budget, interval)
+
+    def _convert_think(self, content: str, budget: int, interval: int) -> str:
+        if '<think>' in content and '</think>' in content:
+            pre_text, post_text = content.split('<think>', maxsplit=1)
+            think, post_text = post_text.split('</think>', maxsplit=1)
+            if '<seed:cot_budget_reflect>' not in content and strtobool(
+                    os.environ.get('SEED_USE_BUDGET_INTERVAL', 'false')):
+                think = self.insert_budget_markers(think, self.tokenizer, interval, budget)
+            content = pre_text + '<seed:think>' + think + '</seed:think>' + post_text
+        elif budget > 0:
+            content = content.replace('<think>', '').replace('</think>', '')
+            content = '<seed:think></seed:think>' + content
+        elif budget <= 0:
+            content = content.replace('<think>', '').replace('</think>', '')
+            content = ('<seed:think><seed:cot_budget_reflect>The current thinking budget is 0, '
+                       'so I will directly start answering the question.'
+                       '</seed:cot_budget_reflect>\n</seed:think>') + content
+        return content
 
     def _simplify_context_list(self, context_list, loss_scale_list, inputs):
         res, res_loss_scale = super()._simplify_context_list(context_list, loss_scale_list, inputs)
