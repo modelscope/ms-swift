@@ -50,17 +50,7 @@ class Xing4_0AgentTemplate(BaseAgentTemplate):
         return Function(name=func_name, arguments=json.dumps(args, ensure_ascii=False))
 
     def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
-        tool_schemas = {}
-        for tool in tools or []:
-            tool = self._parse_json(tool)
-            if not isinstance(tool, dict):
-                continue
-            function = self.unwrap_tool(tool)
-            if not isinstance(function, dict):
-                continue
-            parameters = self._parse_json(function.get('parameters'))
-            if isinstance(parameters, dict):
-                tool_schemas[self._get_tool_name(function)] = parameters
+        tool_schemas = self._get_tool_schemas(tools)
         toolcall_list = re.findall(r'<tool_call>(.*?)</tool_call>', response, re.DOTALL)
         functions = []
         for toolcall in toolcall_list:
