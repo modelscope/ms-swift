@@ -97,9 +97,9 @@ class DistillSampler(VanillaSampler):
 
     @RayHelper.function(
         group='sampler',
-        dispatch=lambda n, i, data:
-        ([{
-            'messages': data['messages'][i * len(data['messages']) // n:(i + 1) * len(data['messages']) // n]
+        dispatch=lambda n, i, data: ([{
+            key: values[i * len(data['messages']) // n:(i + 1) * len(data['messages']) // n]
+            for key, values in data.items()
         }], {}),
         collect='flatten')
     def generate(self, data):
