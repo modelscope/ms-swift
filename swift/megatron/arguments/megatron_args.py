@@ -634,6 +634,19 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     swanlab_project: str = 'megatron-swift'
     swanlab_exp_name: Optional[str] = None
 
+    # profiling
+    profile: bool = False
+    profile_step_start: int = 10
+    profile_step_end: int = 12
+    use_pytorch_profiler: bool = False
+    pytorch_profiler_collect_shapes: bool = False
+    pytorch_profiler_collect_callstack: bool = False
+    pytorch_profiler_collect_chakra: bool = False
+    profile_ranks: List[int] = field(default_factory=list)
+    record_shapes: bool = False
+    nvtx_ranges: bool = False
+    profile_output_dir: Optional[str] = None
+
     # evaluate
     eval_iters: int = -1
     eval_steps: Optional[int] = None
@@ -887,6 +900,15 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 self.gradient_accumulation_fusion = False
         self.callbacks += ['print', 'default_flow']
         self.callbacks += self.report_to
+        if self.use_pytorch_profiler:
+            self.profile = True
+        if self.profile:
+            if self.profile_step_start < 0:
+                raise ValueError('profile_step_start must be greater than or equal to 0.')
+            if self.profile_step_end <= self.profile_step_start:
+                raise ValueError('profile_step_end must be greater than profile_step_start.')
+            if 'profiler' not in self.callbacks:
+                self.callbacks.append('profiler')
         if self.save_total_limit is not None:
             if self.async_save:
                 raise ValueError('async_save is not supported with save_total_limit.')
