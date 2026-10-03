@@ -1307,6 +1307,47 @@ class Template(ProcessorMixin):
                 elif isinstance(content, str):
                     message['content'] = self._remove_thinking_content(content)
 
+    def _merge_tool_user_inputs(self, inputs: StdTemplateInputs) -> None:
+        # The pairwise encoder needs one query before each assistant response, so a user turn that
+        # follows tool results (e.g. the user interrupts after a tool call, or an agent harness injects
+        # a reminder) would otherwise pair a `tool` query with a `user` response and hit the
+        # `response_role` assertion in `_swift_encode`. Merge the tool results and the following user
+        # turns into a single prompt-side query, preserving each native user-turn boundary.
+        #
+        # Only applies to ChatML-style agent templates that render tool results as a user turn (those
+        # exposing `_get_tool_responses`). ReAct-style templates render tool results as observations
+        # glued to the assistant turn, so this reconstruction does not fit them and they are skipped.
+        # Access `self._agent_template` (raw field) instead of the `self.agent_template` property here:
+        # the property raises `ValueError` when no agent template was matched, which `getattr(..., None)`
+        # would not swallow, so it must not run before this gate on plain (non-agent) templates.
+        if (self.template_backend != 'swift' or not self.use_chat_template or inputs.is_multimodal
+                or self._agent_template is None):
+            return
+        agent_template = self.agent_template
+        if not hasattr(agent_template, '_get_tool_responses'):
+            return
+        messages = inputs.messages
+        i = 1
+        while i < len(messages):
+            if messages[i]['role'] != 'tool' or messages[i - 1]['role'] not in {'assistant', 'tool_call'}:
+                i += 1
+                continue
+            tool_end = i
+            while tool_end < len(messages) and messages[tool_end]['role'] == 'tool':
+                tool_end += 1
+            user_end = tool_end
+            while (user_end < len(messages) and messages[user_end]['role'] == 'user'
+                   and isinstance(messages[user_end]['content'], str)):
+                user_end += 1
+            if user_end > tool_end:
+                query_prefix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)[0]
+                separator = ''.join(self.template_meta.chat_sep) + query_prefix
+                contents = [agent_template._get_tool_responses(messages[i:tool_end])]
+                contents += [message['content'] for message in messages[tool_end:user_end]]
+                # Keep the last user message's metadata and last-round loss semantics.
+                messages[i:user_end] = [{**messages[user_end - 1], 'content': separator.join(contents)}]
+            i += 1
+
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         """
         Preprocesses the list of messages in the input by merging and formatting consecutive messages
@@ -1325,6 +1366,7 @@ class Template(ProcessorMixin):
         Returns:
             None. The input messages list is updated in-place.
         """
+        self._merge_tool_user_inputs(inputs)
         self._preprocess_tool_call(inputs)
         self._preprocess_standalone_tools(inputs)
         messages = inputs.messages
