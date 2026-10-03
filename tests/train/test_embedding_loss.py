@@ -1,10 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+from collections import defaultdict
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 import torch
 import torch.nn.functional as F
 
 from swift.loss.embedding import InfonceLoss, _parse_multi_negative_sentences
+from swift.metrics import MeanMetric
+from swift.trainers.embedding_trainer import EmbeddingTrainer, Trainer
 
 
 @pytest.mark.parametrize('negative_count', [1, 2])
@@ -74,3 +79,31 @@ def test_infonce_padded_loss_and_gradients(monkeypatch, device, dtype, use_batch
     actual_grad, = torch.autograd.grad(actual, embeddings)
     expected_grad, = torch.autograd.grad(expected, reference)
     torch.testing.assert_close(actual_grad, expected_grad)
+
+
+def test_mrl_loss_logs_each_dimension(monkeypatch):
+    monkeypatch.setattr(Trainer, '__init__', lambda self, *args, **kwargs: None)
+    trainer = EmbeddingTrainer.__new__(EmbeddingTrainer)
+    trainer.args = SimpleNamespace(mrl_dims={2: 0.25, 4: 0.75, 8: 1.0})
+    trainer.model = SimpleNamespace(training=True)
+    trainer.custom_metrics = {
+        mode: defaultdict(lambda: MeanMetric(nan_value=None, device=torch.device('cpu')))
+        for mode in ('train', 'eval')
+    }
+
+    def loss_func(outputs, labels, **kwargs):
+        return outputs['last_hidden_state'].square().sum() + labels.float().sum()
+
+    trainer.compute_loss_func = loss_func
+    EmbeddingTrainer.__init__(trainer)
+
+    hidden_states = torch.tensor([[3., 4., 0., 0.], [0., 0., 5., 12.]], requires_grad=True)
+    labels = torch.tensor([1, 0])
+    loss = trainer.compute_loss_func({'last_hidden_state': hidden_states}, labels)
+
+    dim_2_loss = loss_func({'last_hidden_state': F.normalize(hidden_states[..., :2], p=2, dim=-1)}, labels)
+    dim_4_loss = loss_func({'last_hidden_state': F.normalize(hidden_states, p=2, dim=-1)}, labels)
+    torch.testing.assert_close(loss, 0.25 * dim_2_loss + 0.75 * dim_4_loss)
+    assert trainer.custom_metrics['train']['mrl_loss_2'].compute()['value'] == pytest.approx(dim_2_loss.item())
+    assert trainer.custom_metrics['train']['mrl_loss_4'].compute()['value'] == pytest.approx(dim_4_loss.item())
+    assert 'mrl_loss_8' not in trainer.custom_metrics['train']
