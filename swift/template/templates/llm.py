@@ -70,6 +70,51 @@ register_template(
         chat_sep=[],
         prompt=['{{QUERY}}']))
 
+
+class JinaRerankerV3Template(Template):
+    system_prompt = (
+        'You are a search relevance expert who can determine a ranking of the passages based on how relevant '
+        'they are to the query. If the query is a question, how relevant a passage is depends on how well it '
+        'answers the question. If not, try to analyze the intent of the query and assess how well each passage '
+        'satisfies the intent. If an instruction is provided, you should follow the instruction when determining '
+        'the ranking.')
+    doc_embed_token = '<|embed_token|>'
+    query_embed_token = '<|rerank_token|>'
+
+    @classmethod
+    def format_prompt(cls, query: str, document: str, instruction: Optional[str] = None) -> str:
+        for token in [cls.doc_embed_token, cls.query_embed_token]:
+            query = query.replace(token, '')
+            document = document.replace(token, '')
+        prompt = (f'<|im_start|>system\n{cls.system_prompt}<|im_end|>\n<|im_start|>user\n'
+                  f'I will provide you with 1 passages, each indicated by a numerical identifier. '
+                  f'Rank the passages based on their relevance to query: {query}\n')
+        if instruction:
+            prompt += f'<instruct>\n{instruction}\n</instruct>\n'
+        prompt += (f'<passage id="0">\n{document}{cls.doc_embed_token}\n</passage>\n'
+                   f'<query>\n{query}{cls.query_embed_token}\n</query>'
+                   '<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n')
+        return prompt
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        instruction = inputs.system
+        inputs.system = None
+        query = inputs.messages[0]['content']
+        document = inputs.messages[1]['content']
+        inputs.messages = [{'role': 'user', 'content': self.format_prompt(query, document, instruction)}]
+        return inputs
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.jina_reranker_v3,
+        template_cls=JinaRerankerV3Template,
+        prefix=[],
+        prompt=['{{QUERY}}'],
+        chat_sep=[],
+        suffix=[]))
+
 register_template(
     TemplateMeta(LLMTemplateType.baichuan, prefix=['{{SYSTEM}}'], prompt=[[195], '{{QUERY}}', [196]], chat_sep=[]))
 

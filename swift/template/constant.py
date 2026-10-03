@@ -19,6 +19,7 @@ class LLMTemplateType:
     qwen3_coder = 'qwen3_coder'
     qwen3_emb = 'qwen3_emb'
     qwen3_reranker = 'qwen3_reranker'
+    jina_reranker_v3 = 'jina_reranker_v3'
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
     nemotron_h = 'nemotron_h'
