@@ -307,8 +307,10 @@ def unwrap_model_for_generation(
             with deepspeed.zero.GatheredParameters(parameters):
                 from trl.models.utils import add_hooks, remove_hooks
                 remove_hooks(model)
-                yield accelerator.unwrap_model(model)
-                add_hooks(model)
+                try:
+                    yield accelerator.unwrap_model(model)
+                finally:
+                    add_hooks(model)
     else:
         yield unwrapped_model
 
