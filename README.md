@@ -33,6 +33,7 @@
 - [Groups](#-Groups)
 - [Introduction](#-introduction)
 - [News](#-news)
+- [Twinkle Kernel Integration](#-twinkle-kernel-integration)
 - [Installation](#%EF%B8%8F-installation)
 - [Quick Start](#-quick-Start)
 - [Usage](#-Usage)
@@ -75,6 +76,74 @@ You can contact us and communicate with us by adding our group:
 - **Model Evaluation**: Uses EvalScope as the evaluation backend, supporting 100+ evaluation datasets for evaluating text-only and multimodal models.
 - **Model Quantization**: Supports quantization export for AWQ, GPTQ, FP8, and BNB. Exported models support inference acceleration using vLLM/SGLang/LmDeploy.
 
+
+## ⚡ Twinkle Kernel Integration
+
+ms-swift's dev training path now supports optional Twinkle kernelization for supported models. Kernelization is disabled by default and can be enabled with `--enable_kernel true`.
+
+The integration adds `enable_kernel` to `ModelConfig` and `SftArguments`. When enabled, `TransformersModel` is constructed first and Twinkle's `kernelize()` is then applied to the underlying model.
+
+The Swift-to-Twinkle integration was locally verified with the following result:
+
+```text
+enable_kernel = True
+kernelize = <function kernelize ...>
+kernelize signature = (model: 'nn.Module', mapping: 'dict | None' = None) -> 'nn.Module'
+PASS: Swift -> Twinkle kernel integration is available
+```
+
+Twinkle's kernel registry includes supported kernels such as RMSNorm, Rotary, SwiGLU and MoE-related operators. Backend execution depends on the available hardware and kernel dependencies.
+
+### Validation
+
+Two dedicated tests were added to validate the kernel integration:
+
+- `swift/dev/tests/component/config/test_kernel_config.py` — verifies that `enable_kernel` is disabled by default and can be enabled through `ModelConfig`.
+- `swift/dev/tests/component/model/test_kernel.py` — verifies that enabling the kernel integration invokes Twinkle's `kernelize()` on the underlying model.
+
+The tests were executed locally with:
+
+```bash
+python -m pytest swift/dev/tests/component/config/test_kernel_config.py swift/dev/tests/component/model/test_kernel.py
+```
+
+Result:
+
+```text
+3 passed in 4.19s
+```
+
+### NPU Validation
+
+The Twinkle kernel integration was further validated on an Ascend NPU environment.
+
+Environment:
+
+- Hardware: Ascend 910B
+- PyTorch: 2.9.0
+- torch_npu: 2.9.0
+
+Model:
+
+- Qwen2.5-0.5B-Instruct
+
+Configuration:
+
+enable_kernel=True
+
+When loading the model with `enable_kernel=True`, Twinkle successfully selected NPU kernels:
+
+```text
+[kernelize] target=transformers.models.qwen2.modeling_qwen2.Qwen2RMSNorm op=rms_norm backend=npu
+[kernelize] target=transformers.models.qwen2.modeling_qwen2.apply_rotary_pos_emb op=rotary backend=npu
+[kernelize] target=transformers.models.qwen2.modeling_qwen2.Qwen2MLP.forward op=swiglu backend=npu
+```
+
+The kernelized model completed NPU forward validation successfully:
+
+```text
+forward PASS
+```
 
 ## 🎉 News
 - 🎁 2026.07.22: Support inference for the moonshotai multimodal model [Kimi-K3](https://modelscope.cn/models/moonshotai/Kimi-K3), including the XTML chat template, thinking channel (`reasoning_effort`) and tool calling (`--agent_template kimi_k3`).
