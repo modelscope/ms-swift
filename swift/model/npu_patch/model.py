@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
+import os
 import torch
 import torch.nn.functional as F
 import torch_npu
@@ -195,6 +196,76 @@ def npu_swiglu_forward(self, hidden_state):
         torch_npu.npu_swiglu(torch.cat((self.gate_proj(hidden_state), self.up_proj(hidden_state)), dim=-1), dim=-1))
 
 
+def apply_swift_trainer_patch():
+    """
+    Apply the safeguard patch to the Swift Trainer.
+
+    The import of `swift.trainers.mixin` is performed lazily inside this function
+    (instead of at module top-level) to avoid a circular import:
+    `swift.model.npu_patch.model` -> `swift.trainers.mixin` -> `swift.model`.
+    """
+    from swift.trainers.mixin import SwiftMixin
+
+    _orig_compute_acc = SwiftMixin._compute_acc
+
+    def _npu_safe_compute_acc(self, outputs, labels, *args, **kwargs):
+        """
+        Safeguard for accuracy computation during Fused Linear Cross-Entropy training.
+
+        Background:
+            When the memory-efficient Fused Linear Cross-Entropy optimization is enabled,
+            the materialization of the full vocabulary-sized `logits` tensor is bypassed
+            to save significant VRAM (e.g., ~2.3GB for Qwen2-7B). Instead, a 0-element
+            dummy tensor (`torch.empty(0)`) is returned in the `CausalLMOutput` to maintain
+            API compatibility without incurring memory costs.
+
+        Problem:
+            The default `SwiftMixin._compute_acc` method attempts to calculate training
+            accuracy by performing `logits.argmax(dim=-1)`. Calling `argmax` on a 0-size
+            tensor raises an `IndexError: Expected reduction dim 0 to have non-zero size`.
+
+        Solution:
+            This monkey-patch intercepts the `_compute_acc` call. If the `logits` tensor
+            is empty (`numel() == 0`), it gracefully short-circuits and skips the accuracy
+            computation, allowing the training loop to proceed without crashing.
+        """
+        logits = getattr(outputs, 'logits', None)
+
+        # Gracefully skip if logits is a memory-saving dummy tensor
+        if logits is None or (isinstance(logits, torch.Tensor) and logits.numel() == 0):
+            return
+
+        # Fallback to the original accuracy computation
+        return _orig_compute_acc(self, outputs, labels, *args, **kwargs)
+
+    SwiftMixin._compute_acc = _npu_safe_compute_acc
+    logger.info('Patched `SwiftMixin._compute_acc` to support empty logits from Fused LM-Head.')
+
+
+def enable_npu_fused_linear_ce(model: torch.nn.Module):
+    supported_classes = ('Qwen2ForCausalLM', 'Qwen3ForCausalLM')
+
+    target_model = model
+    if hasattr(target_model, 'get_base_model'):
+        target_model = target_model.get_base_model()
+    elif hasattr(target_model, 'base_model'):
+        target_model = target_model.base_model
+        if hasattr(target_model, 'model'):
+            target_model = target_model.model
+    logger.info(f'Target model for Fused CE patch resolved to: {target_model.__class__.__name__}')
+
+    if target_model.__class__.__name__ in supported_classes:
+        import types
+
+        from . import fused_linear_ce
+        target_model.forward = types.MethodType(fused_linear_ce.npu_fused_lm_forward, target_model)
+        logger.info(f'NPU Fused LM-Head CE dynamically enabled for {target_model.__class__.__name__} instance.')
+        return True
+    else:
+        logger.warning(f'Fused LM-Head CE does not support architecture: {target_model.__class__.__name__}')
+        return False
+
+
 QWEN2_PATCHES = {
     'Qwen2RMSNorm': NpuRMSNorm,
     'apply_rotary_pos_emb': npu_apply_rotary_pos_emb,
@@ -284,7 +355,7 @@ def _patch_transformers_flash_linear_attention_available_for_npu() -> None:
             return _is_flash_linear_attention_importable_on_npu()
 
         _is_flash_linear_attention_available._ms_swift_npu_patched = True
-        setattr(module, 'is_flash_linear_attention_available', _is_flash_linear_attention_available)
+        module.is_flash_linear_attention_available = _is_flash_linear_attention_available
 
 
 QWEN3_5_PATCHES = {
@@ -526,7 +597,7 @@ def apply_patch() -> None:
     # Keep only that operation on the native Qwen3.5 path; GDN comes from FLA.
     for module in (modeling_qwen3_5, modeling_qwen3_5_moe):
         if module is not None:
-            setattr(module, 'FusedRMSNormGated', None)
+            module.FusedRMSNormGated = None
 
     if modeling_qwen3_5 is not None:
         patch_groups.append(('qwen3_5', modeling_qwen3_5, QWEN3_5_PATCHES, {}))

@@ -617,6 +617,31 @@ ms-swift 在 NPU 环境下默认会启用模型层 patch，以适配部分 Trans
 swift sft ... --enable_npu_model_patch false
 ```
 
+### Qwen2/Qwen3 可选 NPU Fused Linear CE
+
+对于受支持的 Qwen2/Qwen3 非 MoE 模型，可以在 Ascend NPU 上通过 `--use_npu_fused_linear_ce true` 启用可选的 Fused Linear Cross-Entropy 路径。该能力默认关闭，属于显式 opt-in 开关，主要用于 `swift sft` 训练场景；可在长序列 / 大词表（如 Qwen2 152K vocab）任务下显著降低 LM-Head 与 CrossEntropy 的显存占用（避免物化 `[Batch * SeqLen, VocabSize]` 的 logits 张量）。
+
+使用前请先确认以下条件：
+- 当前仅适用于受支持的 Qwen2/Qwen3 架构（非 MoE）。
+- 仅在 Ascend NPU 环境下生效；在推理 / 生成（`labels=None`）时会自动回退到标准 `lm_head`。
+- 该能力通过分块 autograd 在序列维度上计算 local logits 与 local cross-entropy 并即时累加梯度，数学上与标准全局计算严格等价（梯度余弦相似度 = 1.000000）。
+
+如果模型架构不满足兼容条件，即使设置了 `--use_npu_fused_linear_ce true`，也会自动回退到标准 LM-Head，不影响训练正确性。
+
+例如：
+
+```shell
+swift sft \
+    --model Qwen/Qwen3-8B \
+    --dataset AI-ModelScope/alpaca-gpt4-data-zh#2000 \
+    --torch_dtype bfloat16 \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 8 \
+    --use_npu_fused_linear_ce true \
+    --output_dir output/Qwen3-8B-fused-ce
+```
+
 ## 模型保存、Merge LoRA 和断点续训
 
 训练时通过 `--output_dir` 指定输出目录，通过 `--save_steps` 控制 checkpoint 保存间隔，通过 `--save_total_limit` 控制最多保留多少个 checkpoint。LoRA 训练结束后，checkpoint 目录中会保存 adapter 权重、训练参数和 trainer 状态；常见目录形态如下：
