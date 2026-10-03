@@ -108,7 +108,8 @@ def build_model(model_config: ModelConfig,
                 quantize_config: Optional[QuantizeConfig] = None,
                 megatron_config: Optional[MegatronConfig] = None,
                 moe_config: Optional[MoEConfig] = None,
-                remote_group: Optional[str] = None) -> TrainableModel:
+                remote_group: Optional[str] = None,
+                enable_router_replay: bool = False) -> TrainableModel:
     """ModelConfig + DistributedConfig -> twinkle-native Model (no loss/optim yet).
 
     ``remote_group`` overrides the Ray DeviceGroup the model is placed in (mode='ray' only);
@@ -123,10 +124,26 @@ def build_model(model_config: ModelConfig,
     SP is off); it is forwarded to the TransformersModel build only and must NOT be set for the
     Megatron backend, which derives its own mesh from DistributedConfig.
 
+    ``enable_router_replay`` turns on MoE routing replay in the built model (RLHFConfig.router_replay_mode
+    != 'disabled'). It is a construction-time flag on BOTH backends -- TransformersModel takes it directly,
+    MegatronModel translates it to the mcore ``moe_enable_routing_replay`` TransformerConfig field -- so the
+    policy can later RECORD (R2) or REPLAY (R3) expert routing during the RL update. Only the trainable
+    policy sets it; frozen auxiliaries and the sampler do not.
+
     PPO's value critic is NOT a special build flag: it is a ``task_type='seq_cls', num_labels=1`` model
     forwarded with ``task='value'`` (which keeps the head's per-token output instead of pooling), so it
     goes through the ordinary seq_cls build path on both backends.
     """
+    # Auxiliary models (teacher / reference / reward / value) are built inside recipes from a bare hub id
+    # via ``ModelConfig(model=<id>)`` and never pass through ``process._resolve_model`` (which resolves the
+    # PRIMARY model's id to a local snapshot dir before its build). Resolve here so any caller may hand in
+    # either a hub id or a local dir: ``safe_snapshot_download`` short-circuits an existing local path, so
+    # the already-resolved primary model is a cheap no-op and only bare-id aux models actually download.
+    # It follows the ``USE_HF`` env and needs no token by default; a gated aux model would need the primary
+    # path's explicit ``use_hf``/``hub_token`` threading, which the aux sites do not carry (known limit).
+    if model_config.model:
+        from swift.dev.utils.hub import safe_snapshot_download
+        model_config.model = safe_snapshot_download(model_config.model, revision=model_config.model_revision)
     if is_megatron_backend(distributed_config):
         return _build_megatron_model(
             model_config,
@@ -134,7 +151,8 @@ def build_model(model_config: ModelConfig,
             train_config,
             megatron_config=megatron_config,
             moe_config=moe_config,
-            remote_group=remote_group)
+            remote_group=remote_group,
+            enable_router_replay=enable_router_replay)
     return _build_transformers_model(
         model_config,
         distributed_config,
@@ -142,7 +160,8 @@ def build_model(model_config: ModelConfig,
         tuner_config,
         device_mesh,
         quantize_config=quantize_config,
-        remote_group=remote_group)
+        remote_group=remote_group,
+        enable_router_replay=enable_router_replay)
 
 
 def apply_full_param_freeze(model: TrainableModel, train_config: Optional[TrainConfig]) -> None:
@@ -202,6 +221,41 @@ def is_megatron_backend(distributed_config: DistributedConfig) -> bool:
     if backend == 'megatron':
         return True
     raise ValueError(f"DistributedConfig.backend must be one of {{'megatron', 'hf'}}, got {backend!r}.")
+
+
+def frozen_auxiliary_distributed_config(distributed_config: DistributedConfig,
+                                        world_size: int,
+                                        *,
+                                        parallel_spec: Optional[str] = None,
+                                        deepspeed: Optional[str] = None) -> DistributedConfig:
+    """The DistributedConfig a FROZEN auxiliary model (reference / teacher / reward scorer) is built with.
+
+    Every RL auxiliary model is built by :func:`build_model` from its OWN DistributedConfig, so this is the
+    single place that fixes two invariants the auxiliary build sites used to get wrong:
+
+    1. **Backend-agnostic** (RL_PLAN basic principle 1): it inherits ONLY the run's backend identity
+       (``backend`` + ``bridge_backend``), so a megatron policy gets megatron auxiliaries and a transformers
+       policy gets transformers ones -- an auxiliary only ever ``forward_only``s, which both backends
+       implement identically. Building one with a backend-less config (the old ``mode='local'`` sites did)
+       silently pinned it to transformers even under a megatron run.
+    2. **Always a Ray actor** (basic principle 2): ``mode`` is forced to ``'ray'``. RL never runs
+       ``mode='local'``; under Ray the driver holds no GPU, so a ``mode='local'`` auxiliary would be a
+       driver-process model with no device -- it must be an actor on its own planned DeviceGroup.
+
+    It deliberately does NOT inherit the trainer's parallel layout / deepspeed / fsdp: those size and shard
+    the TRAINABLE model's optimizer states. A frozen forward-only auxiliary is sized by ``world_size`` (which
+    MUST equal the rank count ``plan_rl_device_groups`` allocated to its DeviceGroup, since build_model reads
+    ``nproc_per_node`` as the group size) and laid out by its own optional ``parallel_spec``; it needs no
+    optimizer sharding, so ``deepspeed`` stays None unless a caller passes an auxiliary-specific one.
+    """
+    from swift.dev.config import DistributedConfig as _DistributedConfig
+    return _DistributedConfig(
+        mode='ray',
+        backend=distributed_config.backend,
+        bridge_backend=distributed_config.bridge_backend,
+        nproc_per_node=world_size,
+        parallel_spec=parallel_spec,
+        deepspeed=deepspeed)
 
 
 def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig, config, model_loader=None) -> None:
@@ -297,8 +351,8 @@ def _apply_hf_sp_mesh(kwargs: dict, device_mesh: Optional['DeviceMesh'],
         kwargs['device_mesh'] = device_mesh
 
 
-def build_ray_dp_mesh(distributed_config: DistributedConfig) -> 'DeviceMesh':
-    """The pure data-parallel DeviceMesh a transformers model group spans under mode='ray'.
+def build_ray_dp_mesh(distributed_config: DistributedConfig, sequence_parallel_size: int = 1) -> 'DeviceMesh':
+    """The data-parallel DeviceMesh a transformers model group spans under mode='ray'.
 
     The transformers backend has no TP/PP weight sharding, so its Ray DeviceGroup is data parallel
     over every rank. Both the training model (see :func:`_apply_ray_placement`) and any engine
@@ -307,6 +361,15 @@ def build_ray_dp_mesh(distributed_config: DistributedConfig) -> 'DeviceMesh':
     rejected (infra raises "Set device_mesh=DeviceMesh(...) to enable ray"), and a colocated engine
     that disagreed with the model's mesh would slice its ``sample`` inputs across a different rank
     layout than the weights it syncs from that model.
+
+    ``sequence_parallel_size`` is the HF Ulysses degree (TemplateConfig.sequence_parallel_size), the ray
+    counterpart of what :func:`build_hf_device_mesh` does for local/torchrun. Ulysses is NOT an extra mesh
+    dim: the dp dim still spans ALL ranks (``dp_size=nproc``) and ``data_world_size`` derives
+    ``nproc/ulysses`` from it, so SP peers share one data rank and receive identical samples (each computes
+    a slice of every sequence). Every consumer of this mesh for one run -- model placement, the colocated
+    sampler, the global default mesh, and the ``train_batch_size = per_device * data_world_size`` formula --
+    must pass the SAME ``sequence_parallel_size`` or the layouts disagree; default 1 keeps the pure-DP
+    callers (SP off) bit-for-bit unchanged.
 
     Distinct from :func:`build_device_mesh_if_dp`, which deliberately returns None for a single DP
     rank so an in-process (non-Ray) engine stays mesh-free; a Ray group needs an explicit mesh even
@@ -317,7 +380,11 @@ def build_ray_dp_mesh(distributed_config: DistributedConfig) -> 'DeviceMesh':
     if nproc is None:
         raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the 'model' "
                          'DeviceGroup and its data-parallel mesh). Pass it explicitly -- there is no default.')
-    return DeviceMesh.from_sizes(world_size=nproc, dp_size=nproc)
+    if sequence_parallel_size > 1:
+        if nproc % sequence_parallel_size != 0:
+            raise ValueError(f'nproc_per_node={nproc} is not divisible by sequence_parallel_size='
+                             f'{sequence_parallel_size}: SP peers must evenly partition the data-parallel ranks.')
+    return DeviceMesh.from_sizes(world_size=nproc, dp_size=nproc, ulysses_size=sequence_parallel_size)
 
 
 def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig,
@@ -502,7 +569,8 @@ def _build_transformers_model(model_config: ModelConfig,
                               quantize_config: Optional[QuantizeConfig] = None,
                               megatron_config: Optional[MegatronConfig] = None,
                               moe_config: Optional[MoEConfig] = None,
-                              remote_group: Optional[str] = None) -> TrainableModel:
+                              remote_group: Optional[str] = None,
+                              enable_router_replay: bool = False) -> TrainableModel:
     import torch
 
     from swift.dev.model import TransformersModel
@@ -589,6 +657,12 @@ def _build_transformers_model(model_config: ModelConfig,
     # A caller-supplied device_mesh (a frozen reward model's parallel_spec) is threaded through and
     # honored; only when there is none does placement synthesize the default pure-DP mesh.
     _apply_ray_placement(kwargs, distributed_config, remote_group or 'model', device_mesh)
+
+    # MoE routing replay (RLHFConfig.router_replay_mode != 'disabled'): a construction-time flag twinkle's
+    # TransformersModel.__init__ pops (enable_router_replay). Set it in the common kwargs so all three
+    # construction paths below carry it; only the trainable policy is built with it True.
+    if enable_router_replay:
+        kwargs['enable_router_replay'] = True
 
     # Three mutually exclusive construction paths:
     #   - a family naming an external ``model_framework`` builds through that framework's own pipeline --
@@ -1057,7 +1131,8 @@ def _build_megatron_model(model_config: ModelConfig,
                            *,
                            megatron_config: Optional[MegatronConfig] = None,
                            moe_config: Optional[MoEConfig] = None,
-                           remote_group: Optional[str] = None) -> TrainableModel:
+                           remote_group: Optional[str] = None,
+                           enable_router_replay: bool = False) -> TrainableModel:
     """Build a MegatronModel via the selected bridge backend.
 
     twinkle must already be initialized in Ray mode (run_sft does this) so the 'model' DeviceGroup
@@ -1181,6 +1256,12 @@ def _build_megatron_model(model_config: ModelConfig,
     _apply_mtp_kwargs(extra_kwargs, model_config, strict_model_kwargs)
     _apply_fp4_kwargs(extra_kwargs, model_config, strict_model_kwargs)
     _apply_fp8_kwargs(extra_kwargs, model_config, strict_model_kwargs)
+    # MoE routing replay (RLHFConfig.router_replay_mode != 'disabled'): MegatronModel.__init__ pops
+    # enable_router_replay and translates it to the mcore ``moe_enable_routing_replay`` TransformerConfig
+    # field -- the Megatron counterpart of TransformersModel's flag (basic principle 1). Only the trainable
+    # policy is built with it True.
+    if enable_router_replay:
+        extra_kwargs['enable_router_replay'] = True
     if strict_model_kwargs:
         extra_kwargs['_strict_model_kwargs'] = tuple(sorted(strict_model_kwargs))
 

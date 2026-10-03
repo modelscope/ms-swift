@@ -76,12 +76,25 @@ class DevMixin:
         del add_generation_prompt
         encoded = super().encode(inputs, return_template_inputs=return_template_inputs, return_length=return_length)
         if (self.is_training and getattr(self, 'task_type', 'causal_lm') not in self._NO_SHIFT_TASK_TYPES
-                and isinstance(encoded, dict) and encoded.get('labels') is not None
-                and not encoded.get(self.SHIFTED_KEY)):
-            encoded['labels'] = self._shift_labels_next_token(list(encoded['labels']))
-            if encoded.get('loss_scale') is not None:
-                encoded['loss_scale'] = list(encoded['loss_scale'][1:]) + [0.0]
-            encoded[self.SHIFTED_KEY] = True
+                and isinstance(encoded, dict) and not encoded.get(self.SHIFTED_KEY)):
+            # Every label key the encoders emit needs the same next-token shift, not just the SFT bare
+            # `labels`. The preference path (`_rlhf_encode`) emits `chosen_labels`/`rejected_labels`
+            # instead of a bare `labels` (run_dpo._encode_pair strips the prefix back to `labels` later),
+            # so shifting only the bare key left dpo/kto/cpo/orpo/simpo feeding ALIGNED labels to
+            # twinkle's no-shift selective_log_softmax -- log P(x_i | x_<=i), scoring the model on a token
+            # it can already see. Each `<side>_labels` carries a matching `<side>_loss_scale` shifted in
+            # step; seq_cls/rm is excluded by the task guard above (its per-side labels are popped).
+            shifted = False
+            for label_key in ('labels', 'chosen_labels', 'rejected_labels'):
+                if encoded.get(label_key) is None:
+                    continue
+                encoded[label_key] = self._shift_labels_next_token(list(encoded[label_key]))
+                scale_key = label_key.replace('labels', 'loss_scale')
+                if encoded.get(scale_key) is not None:
+                    encoded[scale_key] = list(encoded[scale_key][1:]) + [0.0]
+                shifted = True
+            if shifted:
+                encoded[self.SHIFTED_KEY] = True
         return encoded
 
     def get_vllm_input_ids(self, input_ids):

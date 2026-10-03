@@ -23,7 +23,8 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict, List, Optional
 
-from . import SHIFTED_KEY, RolloutSample, _sampled_token_logprobs
+from . import (SHIFTED_KEY, RolloutSample, _MULTIMODAL_PROMPT_KEYS, _merge_multimodal_keys,
+               _sampled_token_logprobs)
 
 
 def _input_order_labels(labels: List[int]) -> List[int]:
@@ -145,6 +146,11 @@ def trajectory_to_rollout_sample(traj: Dict[str, Any], prompt_id: str, extra: Di
         encoded = {'input_ids': input_ids, 'labels': labels, SHIFTED_KEY: True}
         if completion_mask is not None:
             encoded['completion_mask'] = list(completion_mask)
+        # Multimodal: lift any vision/audio tensors the engine propagated onto the output trajectory
+        # (pixel_values / image_grid_thw / mm_token_type_ids / ...) into the training feature; they cannot
+        # be rebuilt from token ids. No-op when the trajectory carries none (text-only, or an engine that
+        # does not propagate media), so the single-turn and multi-turn paths stay consistent.
+        _merge_multimodal_keys(encoded, traj)
         positions = _trainable_positions(input_ids, labels, completion_mask)
         response_token_ids = [input_ids[j] for j in positions]
         response_loss_mask = [1] * len(response_token_ids)
@@ -235,7 +241,13 @@ class MultiTurnRollout:
         for prompt_index, prompt in enumerate(prompts):
             for _ in range(num_samples):
                 extra = copy.deepcopy(extras[prompt_index])
-                trajectories.append({'messages': copy.deepcopy(prompt)})
+                trajectory: Dict[str, Any] = {'messages': copy.deepcopy(prompt)}
+                # Thread the prompt row's media columns onto the trajectory so a multimodal episode is
+                # sampled with its images/videos/audios (mirrors the single-turn _prompt_trajectory).
+                for key in _MULTIMODAL_PROMPT_KEYS:
+                    if extra.get(key):
+                        trajectory[key] = copy.deepcopy(extra[key])
+                trajectories.append(trajectory)
                 metadata.append((str(prompt_index), extra))
 
         params = dict(sampling_params or {})

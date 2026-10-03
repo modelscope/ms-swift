@@ -10,11 +10,14 @@ from .run_dpo import PreferenceLoop, run_dpo
 from .run_embedding import run_embedding
 from .run_eval import run_eval
 from .run_gkd import GKDLoop, run_gkd
-from .run_grpo import SamplerRollout, plan_rl_device_groups, run_grpo
+from .run_grpo import SyncableRollout, plan_rl_device_groups, run_grpo
 from .run_infer import run_infer
+from .run_mopd import MOPDLoop, run_mopd
+from .run_opsd import OPSDLoop, run_opsd
 from .run_ppo import PPOLoop, run_ppo
 from .run_pt import run_pt
 from .run_reranker import run_reranker
+from .run_rft import RFTLoop, run_rft
 from .run_rlhf import run_rlhf
 from .run_seq_cls import run_seq_cls
 from .run_sft import run_sft
@@ -29,11 +32,17 @@ __all__ = [
     'run_seq_cls',
     'run_grpo',
     'plan_rl_device_groups',
-    'SamplerRollout',
+    'SyncableRollout',
     'run_dpo',
     'PreferenceLoop',
     'run_gkd',
     'GKDLoop',
+    'run_opsd',
+    'OPSDLoop',
+    'run_mopd',
+    'MOPDLoop',
+    'run_rft',
+    'RFTLoop',
     'run_ppo',
     'PPOLoop',
     'run_rlhf',

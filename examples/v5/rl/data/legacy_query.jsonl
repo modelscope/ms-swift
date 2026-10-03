@@ -1,0 +1,4 @@
+{"query": "What is 3 * 9? Put your final answer within \\boxed{}.", "response": "3 * 9 = 27, so the answer is \\boxed{27}."}
+{"query": "What is 50 + 25? Put your final answer within \\boxed{}.", "response": "50 + 25 = 75, so the answer is \\boxed{75}."}
+{"query": "How many minutes are in 2 hours? Put your final answer within \\boxed{}.", "response": "One hour has 60 minutes, so 2 hours have 2 * 60 = 120 minutes. \\boxed{120}."}
+{"query": "What is the perimeter of a square with side 6? Put your final answer within \\boxed{}.", "response": "Perimeter = 4 * side = 4 * 6 = 24. \\boxed{24}."}

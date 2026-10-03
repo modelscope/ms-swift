@@ -67,7 +67,7 @@ def parse_rlhf_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         'orm': RLHFConfig,
         'orm_weights': RLHFConfig,
     }
-    configs = parse_configs_strict(classes, effective_argv, command='swift rlhf', field_owners=owners)
+    configs = parse_configs_strict(classes, effective_argv, command='swift rl', field_owners=owners)
     common = configs[:15]
     (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,
      checkpoint_config, logging_config, tuner_config, generation_config, rollout_config, rlhf_config, quantize_config,
@@ -79,9 +79,19 @@ def parse_rlhf_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         tuner_config = select_tuner(tuner_config)
 
     _apply_rlhf_compat(passed, generation_config, rlhf_config, rlhf_compat)
-    if rlhf_config.rlhf_type in {'grpo', 'ppo'}:
+    # Every online algorithm -- grpo/ppo/rft and the distillation family gkd/opsd/mopd -- rolls out on a
+    # separate vLLM sampler over Ray and syncs the trained weights into it, so all of them force the
+    # Ray+vLLM placement. On-policy generation must be backend-general: a separate sampler + weight sync
+    # works for both transformers and megatron, whereas in-process ``model.generate`` is transformers-only.
+    if rlhf_config.rlhf_type in {'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'}:
         rollout_config.use_vllm = True
         rollout_config.vllm_mode = rollout_config.vllm_mode or 'colocate'
+        distributed_config.mode = 'ray'
+    # The offline preference family (dpo/kto/cpo/orpo/simpo/rm) is RL too (RL_PLAN basic principle 2): it
+    # runs mode='ray' with the policy as a Ray actor on the 'model' group, and a FULL-PARAMETER frozen
+    # reference (dpo/kto full fine-tuning) as a separate actor on its own 'ref' group. It rolls out nothing,
+    # so -- unlike the online family above -- it sets no vLLM sampler; only the mode is forced.
+    elif rlhf_config.rlhf_type in {'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'}:
         distributed_config.mode = 'ray'
 
     return {

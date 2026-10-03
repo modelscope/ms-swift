@@ -20,6 +20,8 @@ ROUTE_MAPPING: Dict[str, str] = {
     'web-ui': 'swift.cli.web_ui',
     'deploy': 'swift.cli.deploy',
     'rollout': 'swift.cli.rollout',
+    # `rl` is the canonical name; `rlhf` is kept as a compatible alias for the same entry point.
+    'rl': 'swift.cli.rlhf',
     'rlhf': 'swift.cli.rlhf',
     'sample': 'swift.cli.sample',
     'export': 'swift.cli.export',
@@ -30,6 +32,8 @@ ROUTE_MAPPING: Dict[str, str] = {
 DEV_ROUTE_MAPPING: Dict[str, str] = {
     'pt': 'swift.dev.cli.pt',
     'sft': 'swift.dev.cli.sft',
+    # `rl` is the canonical name; `rlhf` is kept as a compatible alias for the same entry point.
+    'rl': 'swift.dev.cli.rlhf',
     'rlhf': 'swift.dev.cli.rlhf',
     'infer': 'swift.dev.cli.infer',
     'merge': 'swift.dev.cli.merge',
@@ -125,7 +129,7 @@ def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool =
     parse_yaml_args(argv)
     torchrun_args = get_torchrun_args()
     python_cmd = sys.executable
-    distributed_methods = {'pt', 'sft', 'rlhf', 'infer'}
+    distributed_methods = {'pt', 'sft', 'rl', 'rlhf', 'infer'}
     if is_dev_route:
         # `swift export --backend megatron` (mcore convert) is distributed as well, so the dev export
         # entry also relaunches under torchrun when NPROC_PER_NODE/NNODES is set.

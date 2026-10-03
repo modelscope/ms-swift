@@ -24,7 +24,7 @@ from __future__ import annotations
 import math
 import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from swift.dev.utils import get_logger
 
@@ -46,6 +46,23 @@ if TYPE_CHECKING:
     )
 
 logger = get_logger()
+
+
+def single_teacher_id(teacher_model: Optional[List[str]], *, algo: str) -> Optional[str]:
+    """Resolve the one teacher id a single-teacher algorithm distils from, or ``None`` for no teacher.
+
+    ``RLHFConfig.teacher_model`` is a list (shared with MOPD, which distils from K teachers); GKD/OPSD and
+    GRPO's RLSD/SDAR take exactly one. ``None``/empty passes through so the caller applies its own
+    no-teacher semantics (self-distillation, or its own error); more than one is rejected here rather than
+    silently training on the first and ignoring the rest.
+    """
+    if not teacher_model:
+        return None
+    if len(teacher_model) != 1:
+        raise ValueError(f'{algo} distils from a single teacher but RLHFConfig.teacher_model has '
+                         f'{len(teacher_model)} entries ({list(teacher_model)}); pass exactly one, or use '
+                         '--rlhf_type mopd to distil from multiple teachers.')
+    return teacher_model[0]
 
 
 def configure_frozen_adapter(model: Any, template: Any, adapters: List[str], *, role: str) -> Any:
@@ -148,13 +165,23 @@ class TrainAssembly:
     def initialize_twinkle(distributed_config: 'DistributedConfig',
                            *,
                            seed: int = 42,
-                           full_determinism: bool = False) -> None:
+                           full_determinism: bool = False,
+                           auxiliary_groups: Sequence[Tuple[str, int]] = ()) -> None:
         """Initialize twinkle for EVERY backend -- required for a DeviceMesh to reach the model.
 
         mode='ray' builds the 'model' DeviceGroup the workers hold, on EITHER backend: build_model
         places the model there via remote_group='model' (Megatron in _build_megatron_model, the
         transformers path in _apply_ray_placement), while the driver orchestrates and does not join
         the group. Everything else (both backends under torchrun) initializes in 'local' mode.
+
+        ``auxiliary_groups`` is ``(name, world_size)`` per FULL-PARAMETER frozen auxiliary model that
+        needs its own GPUs (RL_PLAN §3.5) -- e.g. the offline preference family's full-fine-tuning
+        reference. One disjoint group is appended after the 'model' ranks per entry, and
+        ``nproc_per_node`` grows to the total rank count so Ray reserves those extra GPUs. A LoRA /
+        reference-free run passes none, keeping the default ``nproc_per_node=nproc`` behavior. The
+        auxiliary model is later built with ``remote_group=name``; it self-derives its DeviceMesh from
+        its OWN DistributedConfig (``frozen_auxiliary_distributed_config``, sized to world_size), so no
+        global mesh is installed here (unlike the online-RL path's sampler, which needs one).
 
         ``seed`` / ``full_determinism`` are forwarded to ``twinkle.initialize`` so the user's
         TrainConfig.seed actually steers the run: twinkle seeds the driver here and re-seeds each ray
@@ -174,15 +201,34 @@ class TrainAssembly:
             if nproc is None:
                 raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the Ray "
                                  "'model' DeviceGroup). Pass it explicitly -- there is no default.")
+            groups = [DeviceGroup(name='model', ranks=list(range(nproc)), device_type='GPU', gpus_per_worker=1)]
+            # Append one disjoint group per full-parameter frozen auxiliary, after the 'model' ranks, so
+            # Ray reserves its GPUs too; total is the sum of every group's rank count.
+            next_rank = nproc
+            planned: List[str] = ['model']
+            for name, world_size in auxiliary_groups:
+                if world_size < 0:
+                    raise ValueError(f'auxiliary DeviceGroup {name!r} world_size must be >= 0, got {world_size}.')
+                if world_size == 0:
+                    continue
+                if name in planned:
+                    raise ValueError(f'auxiliary DeviceGroup name {name!r} collides with a reserved or already-planned '
+                                     f'group ({planned}); each frozen model needs a unique name.')
+                groups.append(
+                    DeviceGroup(
+                        name=name, ranks=list(range(next_rank, next_rank + world_size)), device_type='GPU',
+                        gpus_per_worker=1))
+                planned.append(name)
+                next_rank += world_size
             twinkle.initialize(
                 mode='ray',
-                nproc_per_node=nproc,
+                nproc_per_node=next_rank,
                 seed=seed,
                 full_determinism=full_determinism,
                 # --ray_exp_name names this Ray run (the cluster/worker-name prefix); a local run has
                 # no Ray experiment to name, so it is read only here. None keeps twinkle's default.
                 name=distributed_config.ray_exp_name,
-                groups=[DeviceGroup(name='model', ranks=list(range(nproc)), device_type='GPU', gpus_per_worker=1)])
+                groups=groups)
         else:
             twinkle.initialize(mode='local', seed=seed, full_determinism=full_determinism)
 
@@ -229,14 +275,30 @@ class TrainAssembly:
 
         The mesh is the only thing twinkle's SP needs: the model activates its SP strategy from
         ``mesh.ulysses_size > 1``, and the dataloader slices by ``mesh.data_world_size`` so SP peers
-        receive identical samples. ``build_hf_device_mesh`` returns None for sp<=1 or non-local mode,
-        preserving the deliberate no-mesh local path bit-for-bit. Runs AFTER :meth:`prepare`:
-        ``_check_hf_sequence_parallel`` has already rejected the combinations where this mesh would
-        be meaningless or harmful (megatron backend, rlhf, ray, fsdp, non-divisible world).
-        """
-        from swift.dev.builders import build_hf_device_mesh
+        receive identical samples. SP is off (``sp<=1``) -> None, preserving the deliberate no-mesh path
+        bit-for-bit (local: twinkle's default pure-DP mesh; ray: ``_apply_ray_placement`` synthesizes the
+        pure-DP mesh). Otherwise the mesh is mode-specific but carries the SAME ``dp x ulysses`` layout:
 
-        self.sp_mesh = build_hf_device_mesh(self.distributed_config, self.template_config.sequence_parallel_size)
+        - ``mode='local'`` (torchrun SFT/offline): :func:`build_hf_device_mesh` over the WORLD_SIZE ranks.
+        - ``mode='ray'`` (online RL): :func:`build_ray_dp_mesh` over ``nproc_per_node`` ranks -- the ray
+          counterpart, so the trainable model, its colocated sampler and the ``data_world_size`` batch-width
+          formula all agree on one ulysses degree.
+
+        Runs AFTER :meth:`prepare`: the sequence-parallel validate guards have already rejected the
+        combinations where this mesh would be meaningless or harmful (megatron backend, fsdp, a non-flash
+        attn under padding_free/packing, non-divisible world, and -- for ray -- any rlhf_type whose SP
+        consumer wiring is not in place).
+        """
+        sp = self.template_config.sequence_parallel_size
+        if sp <= 1:
+            self.sp_mesh = None
+            return self.sp_mesh
+        if self.distributed_config.mode == 'ray':
+            from swift.dev.builders import build_ray_dp_mesh
+            self.sp_mesh = build_ray_dp_mesh(self.distributed_config, sp)
+        else:
+            from swift.dev.builders import build_hf_device_mesh
+            self.sp_mesh = build_hf_device_mesh(self.distributed_config, sp)
         return self.sp_mesh
 
     def require_task_type(self) -> str:
@@ -394,7 +456,11 @@ class TrainAssembly:
             device_mesh=self.sp_mesh,
             quantize_config=self.quantize_config,
             megatron_config=self.megatron_config,
-            moe_config=self.moe_config)
+            moe_config=self.moe_config,
+            # MoE routing replay is a trainable-policy concern (RLHFConfig.router_replay_mode); the frozen
+            # auxiliaries built elsewhere never RECORD/REPLAY routing, so only this build enables it.
+            enable_router_replay=bool(self.rlhf_config
+                                      and self.rlhf_config.router_replay_mode != 'disabled'))
         if self.tuner_config is not None:
             # task_type is threaded so a seq_cls/reranker LoRA run adds the freshly-built
             # classification head to modules_to_save -- LoRA trains/saves target_modules only, so
@@ -535,27 +601,22 @@ class TrainAssembly:
             backend=backend,
             engine_args={sleep_arg: True},
             template=self.template,
-            # Co-resident in the model's 'model' DeviceGroup (colocate), so it carries the SAME pure-DP
-            # mesh the training model was placed with: a Ray-remote twinkle object built with
-            # device_mesh=None and no global default is rejected, and a colocated engine that sliced its
-            # sample inputs across a different rank layout than the weights it syncs would be wrong.
-            device_mesh=build_ray_dp_mesh(self.distributed_config),
+            # Co-resident in the model's 'model' DeviceGroup (colocate), so it carries the SAME mesh the
+            # training model was placed with (pure-DP, or dp x ulysses under sequence parallelism): a
+            # Ray-remote twinkle object built with device_mesh=None and no global default is rejected, and a
+            # colocated engine that sliced its sample inputs across a different rank layout than the weights
+            # it syncs would be wrong.
+            device_mesh=build_ray_dp_mesh(self.distributed_config, self.template_config.sequence_parallel_size),
             remote_group='model')
         manager = CheckpointEngineManager(model=self.model, sampler=sampler, platform='GPU', mode='colocate')
 
-        def eval_enter() -> None:
-            # The manager's documented colocate order: wake the engine's weights, sync the trained policy
-            # into them, step the trainer aside, then give the engine its KV cache so it can generate.
-            sampler.wake_up(tags=['weights'])
-            manager.sync_weights(merge_and_sync=True)
-            self.model.offload_to_cpu()
-            sampler.wake_up()
-
-        def eval_exit() -> None:
-            sampler.sleep()
-            self.model.reload_to_gpu()
-
-        return sampler, eval_enter, eval_exit
+        # The colocate hand-over around each eval is the SAME sequence the on-policy RL rollout runs, so it
+        # is ColocateHandover's (see swift.dev.recipe._colocate) rather than a second hand-written copy that
+        # could drift from it -- including the tag-disjoint wake ordering that a naive wake_up() gets wrong.
+        # Eval is always colocate: the engine shares the trainer's 'model' DeviceGroup.
+        from swift.dev.recipe._colocate import ColocateHandover
+        handover = ColocateHandover(self.model, sampler, manager, colocate=True)
+        return sampler, handover.enter, handover.exit
 
     def _build_hub_pusher(self) -> Optional[Callable[[str], None]]:
         """A callable that uploads one checkpoint dir to the hub, or None when pushing is off.

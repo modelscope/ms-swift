@@ -1,31 +1,50 @@
 """On-policy GKD assembly: run_gkd orchestration (generalized knowledge distillation).
 
-Peer of ``run_sft`` for GKD. GKD trains a student to match a frozen teacher on sequences the STUDENT
-itself generates -- so the student learns to correct its own mistakes rather than only imitating a
-fixed corpus. The key simplification that keeps this recipe free of weight-sync machinery: the student
-generates from its OWN live weights via ``model.generate`` (twinkle stands a sampler over the resident
-weights, no second copy, no ``CheckpointEngineManager``), so the behaviour policy is trivially the
-current policy. run_grpo needs weight-sync only because its rollout runs in a SEPARATE vLLM process;
-GKD's on-policy generation is in-process, so it does not.
+Peer of ``run_grpo`` / ``run_rft`` for GKD. GKD trains a student to match a frozen teacher on sequences
+the STUDENT itself generates, so it learns to correct its own mistakes rather than only imitating a fixed
+corpus. This recipe is built on the SAME online-RL primitives as GRPO/RFT -- a weight-syncing vLLM
+sampler rollout over Ray, a data-parallel trainer, and design-B mini-batches -- because on-policy
+generation must be backend-general (a separate sampler + weight sync works for both transformers and
+megatron; in-process ``model.generate`` is transformers-only and megatron raises). The teacher is a
+frozen twinkle model actor (or the LoRA student's own adapter-disabled base) scored with ``forward_only``,
+never an HTTP server (no-server / all-Ray premise, RL_PLAN §2.H).
 
-Per step:
-  1. take a batch of prompts, ``model.generate`` on-policy completions (student's current weights);
-  2. rebuild the training features (prompt+response, response-only labels, next-token shifted);
-  3. teacher ``forward_only(return_logits=True)`` -> full-vocab ``teacher_logits`` (a frozen separate
-     model, or -- for a LoRA student whose teacher IS its base -- the adapter-disabled student);
-  4. student ``forward_backward(teacher_logits=...)`` -> GKDLoss (β-JSD, optional top-k).
+Per round (one rollout, split into ``train_batch_size`` mini-batches):
+  1. with probability ``lmbda`` roll out on-policy completions from the student's live weights (pushed
+     into the sampler first, so the behaviour policy tracks the trained one); otherwise take the
+     dataset's own completions for this round (GKD's on/off-policy mixing);
+  2. score each mini-batch with the teacher ``forward_only(return_logits=True)`` -> full-vocab
+     ``teacher_logits``, lazily per mini-batch so peak memory is one mini-batch, not the whole round;
+  3. student ``forward_backward(teacher_logits=...)`` -> GKDLoss (β-JSD, optional top-k); ``sft_alpha>0``
+     adds supervised CE on the dataset-sourced rounds.
 
-NOTE ON MODE: on-policy generation and the teacher forward both run on the driver's in-process model,
-so this recipe targets mode='local'. ``lmbda`` selects student-generated versus dataset completions,
-``sft_alpha`` adds supervised CE on dataset batches, and a separate local teacher can be offloaded
-between scoring calls.
+Placement, backend and Ray requirements are therefore identical to ``run_grpo`` (Ray-only, vLLM sampler,
+heterogeneous or colocate device groups).
 """
 from __future__ import annotations
+import copy
 import logging
-import math
 import random
-from copy import deepcopy
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
+
+from swift.dev.recipe._distill import (
+    DistillRow,
+    build_frozen_teacher,
+    distill_rows_from_dataset,
+    distill_sampling_params,
+)
+from swift.dev.recipe._teacher import DisableAdapterTeacher
+from swift.dev.recipe.grpo import GRPOLoop
+from swift.dev.recipe.run_grpo import (
+    SyncableRollout,
+    _TEACHER_GROUP,
+    _initialize_twinkle_rl,
+    _sampler_backend,
+    _sampler_engine_args,
+    _sampler_world_size,
+    plan_rl_device_groups,
+    teacher_group_world_size,
+)
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -56,29 +75,32 @@ def run_gkd(
     train_config: TrainConfig,
     distributed_config: DistributedConfig,
     checkpoint_config: CheckpointConfig,
+    rollout_config: RolloutConfig,
     rlhf_config: RLHFConfig,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
-    rollout_config: Optional['RolloutConfig'] = None,
     quantize_config: Optional[QuantizeConfig] = None,
     megatron_config: Optional[MegatronConfig] = None,
     moe_config: Optional[MoEConfig] = None,
     *,
+    engine_args: Optional[Dict[str, Any]] = None,
     output_dir: str = 'output',
     _save_final: bool = True,
 ) -> List[dict]:
-    """Assemble and run on-policy GKD from atomic Configs. Returns the loss history.
+    """Assemble and run on-policy GKD with weight sync. Returns the loss history.
 
-    The build order is :class:`~swift.dev.recipe.assembly.TrainAssembly`'s, shared with every other
-    recipe; GKD then adds the frozen teacher and an on-policy generation loop, and drives the stages one
-    by one because it has no dataloader (it generates its own data). The student is the trained model;
-    the teacher is a separate frozen model (rlhf_config.teacher_model) or, for a LoRA student whose
-    teacher is its own base, the adapter-disabled student (rlhf_config._teacher_use_disable_adapter).
+    Mirrors :func:`run_rft`'s assembly (train/sampler device groups, weight-syncable ``SyncableRollout``,
+    design-B mini-batch width) but sets the GKD loss (``configure_rlhf_loss``) and drives
+    :class:`GKDLoop` (teacher-scored distillation) instead of a policy-gradient or SFT step. The student
+    is the trained model; the teacher is a frozen separate model (``rlhf_config.teacher_model``) or, for a
+    LoRA student whose teacher is its own base, the adapter-disabled student
+    (``rlhf_config._teacher_use_disable_adapter``).
     """
+    from swift.dev.builders import build_ray_dp_mesh, build_sampler
     from swift.dev.loss import configure_rlhf_loss
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
-    from swift.dev.recipe.assembly import TrainAssembly
+    from swift.dev.recipe.assembly import TrainAssembly, single_teacher_id
 
     if rlhf_config.rlhf_type != 'gkd':
         raise ValueError(f'run_gkd requires rlhf_type="gkd", got {rlhf_config.rlhf_type!r}.')
@@ -98,44 +120,87 @@ def run_gkd(
         megatron_config=megatron_config,
         moe_config=moe_config)
     assembly.prepare()
-    TrainAssembly.initialize_twinkle(
-        distributed_config, seed=train_config.seed, full_determinism=train_config.full_determinism)
+
+    # A separate frozen teacher is a Ray actor on its own DeviceGroup (plan §3.3), which
+    # plan_rl_device_groups must allocate BEFORE twinkle.initialize; the adapter-disabled teacher
+    # (DisableAdapterTeacher) reuses the student's own actor and needs no group (teacher_world_size=0).
+    separate_teacher = (not rlhf_config._teacher_use_disable_adapter
+                        and single_teacher_id(rlhf_config.teacher_model, algo='GKD') is not None)
+    teacher_world_size = teacher_group_world_size(rlhf_config) if separate_teacher else 0
+
+    backend = _sampler_backend(rollout_config)
+    sampler_world_size = _sampler_world_size(rollout_config, backend)
+    groups, sampler_remote_group, colocate = plan_rl_device_groups(distributed_config.nproc_per_node,
+                                                                   rollout_config.vllm_mode, sampler_world_size,
+                                                                   teacher_world_size)
+    _initialize_twinkle_rl(
+        distributed_config, groups, seed=train_config.seed, full_determinism=train_config.full_determinism)
 
     assembly.build_template()
     assembly.build_model()
     configure_rlhf_loss(assembly.model, rlhf_config)
-    # No dataloader to derive a step budget from -- the prompts are sampled, not iterated -- so
-    # max_steps IS the budget.
-    max_steps = train_config.max_steps or 1
+    # Prompts are rolled out, not iterated by a dataloader, so the step budget is derived from the prompt
+    # set (B1): one generation batch per round, exhausted after num_train_epochs passes. Load the prompts +
+    # design-B mini-batch width first, then size max_steps (the LR horizon); --max_steps still overrides.
+    prompts, prompt_extras, dataset_rows = distill_rows_from_dataset(dataset_config, assembly.template)
+    if rlhf_config.lmbda < 1.0 and not dataset_rows:
+        raise ValueError('GKD with lmbda < 1 distils some rounds on the dataset\'s own completions, but no dataset '
+                         'row carries an assistant completion. Add completions, or set lmbda=1 for purely on-policy '
+                         'GKD.')
+    # Design-B mini-batch width (per_device_train_batch_size * dp_size); see run_grpo for why dp_size comes
+    # off build_ray_dp_mesh (online RL is Ray-only, pure data-parallel over nproc_per_node).
+    train_batch_size = train_config.per_device_train_batch_size * build_ray_dp_mesh(
+        distributed_config).data_world_size
+    # GKD replays each round once (no num_iterations), so the budget uses num_iterations=1. Under lmbda<1 the
+    # off-policy rounds size their mini-batches from dataset_rows instead of the rollout, so the LR horizon is
+    # approximate there; the scheduler's exhaustion still bounds the actual round count.
+    from swift.dev.recipe.train_loop import resolve_rollout_max_steps, rollout_step_budget
+    max_steps = resolve_rollout_max_steps(
+        train_config.max_steps,
+        rollout_step_budget(
+            num_prompts=len(prompts),
+            num_generations=rlhf_config.num_generations,
+            train_batch_size=train_batch_size,
+            gradient_accumulation_steps=assembly.ga,
+            num_train_epochs=train_config.num_train_epochs,
+            generation_batch_size=rollout_config.generation_batch_size),
+        recipe='run_gkd')
     assembly.resolve_step_intervals(max_steps)
     configure_optimizer(
         assembly.model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
 
-    prompts, dataset_features, prompt_extras, dataset_messages = _gkd_rows_from_dataset(
-        dataset_config, assembly.template)
-    if rlhf_config.lmbda < 1.0 and any(feature is None for feature in dataset_features):
-        raise ValueError('GKD with lmbda < 1 requires every dataset row to contain an assistant completion.')
+    sampler_engine_args = _sampler_engine_args(rollout_config, engine_args, colocate, backend)
+    sampler = build_sampler(
+        model_config,
+        backend=backend,
+        engine_args=sampler_engine_args,
+        template=assembly.template,
+        remote_group=sampler_remote_group)
+    rollout = SyncableRollout(assembly.model, sampler, assembly.template, colocate=colocate)
+
     assembly.loop = GKDLoop(
         assembly.model,
-        _build_teacher(assembly.model, rlhf_config, tuner_config),
-        assembly.template,
+        rollout,
         prompts,
-        dataset_features=dataset_features,
+        teacher=_build_teacher(assembly.model, rlhf_config, tuner_config, teacher_world_size, distributed_config),
+        template=assembly.template,
         prompt_extras=prompt_extras,
-        dataset_messages=dataset_messages,
+        dataset_rows=dataset_rows,
         lmbda=rlhf_config.lmbda,
         sft_alpha=rlhf_config.sft_alpha,
         gkd_logits_topk=rlhf_config.gkd_logits_topk,
+        num_generations=rlhf_config.num_generations,
+        seed=train_config.seed,
+        rlhf_config=rlhf_config,
         max_steps=max_steps,
-        batch_size=train_config.per_device_train_batch_size,
+        train_batch_size=train_batch_size,
+        generation_batch_size=rollout_config.generation_batch_size,
+        num_train_epochs=train_config.num_train_epochs,
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
-        seed=train_config.seed,
-        offload_teacher_model=rlhf_config.offload_teacher_model,
-        teacher_tag_key=(rollout_config.teacher_tag_key if rollout_config is not None else 'dataset'),
-        output_dir=output_dir,
-        sampling_params=_gkd_sampling_params(rlhf_config, generation_config),
+        sampling_params=distill_sampling_params(rlhf_config, generation_config),
         logging_config=logging_config,
+        output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
         no_save_optim=checkpoint_config.no_save_optim or checkpoint_config.save_only_model,
         no_save_rng=checkpoint_config.no_save_rng or checkpoint_config.save_only_model,
@@ -146,154 +211,83 @@ def run_gkd(
         manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0)
     if assembly.resume_dir:
         assembly.loop.resume(assembly.resume_model())
-    history = assembly.loop.fit()
-    if _save_final:
-        assembly.save_final()
-    return history
+    try:
+        history = assembly.loop.fit()
+        if _save_final:
+            assembly.save_final()
+        return history
+    finally:
+        rollout.shutdown()
 
 
-def _build_teacher(model: TrainableModel, rlhf_config: RLHFConfig, tuner_config: Optional[TunerConfig]) -> Any:
-    """The teacher the student distils from: 'disable_lora', or a frozen separate model.
+def _build_teacher(model: TrainableModel, rlhf_config: RLHFConfig, tuner_config: Optional[TunerConfig],
+                   teacher_world_size: int, distributed_config: DistributedConfig) -> Any:
+    """Resolve the GKD teacher: the LoRA student's own adapter-disabled base, or a frozen Ray-actor model.
 
-    Returns 'disable_lora' when the teacher is exactly the LoRA student's own base (no second model is
-    loaded -- the loop runs ``forward_only(disable_lora=True)``); otherwise a frozen model built from
-    ``teacher_model`` sharing the student's processor/template so both encode a batch identically.
+    There is no HTTP teacher server (removed, RL_PLAN §2.H): the teacher is either a
+    :class:`DisableAdapterTeacher` -- the paper's headline self-distillation setting, scoring with
+    ``forward_only(disable_lora=True)`` on the student's own actor (no separate group) -- or a
+    :class:`FrozenModelTeacher` wrapping a separate frozen twinkle model actor built from ``teacher_model``
+    on its own ``'teacher'`` DeviceGroup (``teacher_world_size`` ranks, planned by ``plan_rl_device_groups``).
+    ``offload_teacher_model`` is applied inside the frozen teacher (its full-vocab logits are the memory
+    hook), so it is rejected for the adapter-disabled base, which has no separate weights to offload.
     """
     if rlhf_config._teacher_use_disable_adapter:
         if tuner_config is None:
             raise ValueError('rlhf_config._teacher_use_disable_adapter=True requires a LoRA student (tuner_config), '
                              'since it distils from the adapter-disabled base of that same model.')
-        return 'disable_lora'
-    if rlhf_config.teacher_model_server is not None:
-        return _RemoteGKDTeacher(rlhf_config.teacher_model_server, rlhf_config.gkd_logits_topk)
-    if rlhf_config.teacher_model is None:
+        if rlhf_config.offload_teacher_model:
+            raise ValueError('offload_teacher_model requires a distinct frozen teacher model, not the '
+                             'adapter-disabled base of the student (which has no separate weights to offload).')
+        return DisableAdapterTeacher(model)
+    from swift.dev.recipe.assembly import single_teacher_id
+    teacher_model = single_teacher_id(rlhf_config.teacher_model, algo='GKD')
+    if teacher_model is None:
         raise ValueError('GKD needs a teacher: set RLHFConfig.teacher_model, or use a LoRA student with '
                          '_teacher_use_disable_adapter=True to distil from its own frozen base.')
-
-    from swift.dev.builders import build_model
-    from swift.dev.config import DistributedConfig, ModelConfig
-    from swift.dev.recipe.assembly import configure_frozen_adapter
-
-    teacher_cfg = ModelConfig(model=rlhf_config.teacher_model)
-    teacher_cfg.model_type = rlhf_config.teacher_model_type
-    teacher_cfg.model_revision = rlhf_config.teacher_model_revision
-    teacher_dist = DistributedConfig(mode='local', deepspeed=rlhf_config.teacher_deepspeed)
-    teacher = build_model(teacher_cfg, teacher_dist)
-    return configure_frozen_adapter(
-        teacher,
-        model.template if hasattr(model, 'template') else None,
-        rlhf_config.teacher_adapters,
-        role='teacher')
+    template = model.template if hasattr(model, 'template') else None
+    return build_frozen_teacher(
+        rlhf_config, template, teacher_model, distributed_config=distributed_config, remote_group=_TEACHER_GROUP,
+        teacher_world_size=teacher_world_size, adapters=rlhf_config.teacher_adapters, role='teacher',
+        offload=rlhf_config.offload_teacher_model)
 
 
-class _RemoteGKDTeacher:
-    """Sparse top-k teacher backed by one or more vLLM ``/infer/`` servers."""
+class GKDLoop(GRPOLoop):
+    """On-policy GKD loop: student rolls out, a frozen teacher scores, the student distils toward it.
 
-    def __init__(self, server_spec: str, topk: Optional[int], *, client_factory=None):
-        if topk is None or topk < 1:
-            raise ValueError('GKD teacher_model_server requires gkd_logits_topk >= 1.')
-        from swift.rlhf_trainers.gkd_helpers import parse_teacher_model_server
-
-        self.configs = parse_teacher_model_server(server_spec)
-        self.topk = topk
-        if client_factory is None:
-            from swift.rlhf_trainers.vllm_client import VLLMInferClient
-
-            def client_factory(url):
-                return VLLMInferClient(base_urls=[url])
-        self.clients = [client_factory(config.url) for config in self.configs]
-
-    def _routing(self, extras: List[dict], tag_key: str) -> Dict[int, List[int]]:
-        if len(self.configs) == 1:
-            return {0: list(range(len(extras)))}
-        tag_to_teacher = {tag: index for index, config in enumerate(self.configs) for tag in config.tags}
-        routing = {index: [] for index in range(len(self.configs))}
-        for sample_index, extra in enumerate(extras):
-            value = extra.get(tag_key)
-            tag = str(value) if value is not None else None
-            teacher_index = tag_to_teacher.get(tag)
-            if teacher_index is None:
-                raise ValueError(f'GKD sample[{sample_index}] tag {tag!r} from {tag_key!r} matches no teacher.')
-            routing[teacher_index].append(sample_index)
-        return routing
-
-    def score(self, features: List[dict], requests: List[Any], extras: List[dict], tag_key: str) -> Dict[str, Any]:
-        import torch
-
-        from swift.infer_engine import RequestConfig
-        from swift.rlhf_trainers.utils import assemble_teacher_topk_logprobs, parse_prompt_logprobs
-
-        parsed: List[Any] = [None] * len(requests)
-        request_config = RequestConfig(prompt_logprobs=self.topk, max_tokens=1, temperature=0.0)
-        for teacher_index, sample_indices in self._routing(extras, tag_key).items():
-            if not sample_indices:
-                continue
-            subset = [requests[index] for index in sample_indices]
-            responses = self.clients[teacher_index].infer(subset, request_config=request_config, use_tqdm=False)
-            if len(responses) != len(subset):
-                raise RuntimeError(f'Teacher server returned {len(responses)} responses for {len(subset)} requests.')
-            for sample_index, response in zip(sample_indices, responses):
-                parsed[sample_index] = parse_prompt_logprobs(response, topk=self.topk)
-        if any(item is None for item in parsed):
-            raise RuntimeError('Teacher server routing left one or more GKD samples unscored.')
-        seq_len = max(len(feature['input_ids']) for feature in features)
-        logprobs, indices = assemble_teacher_topk_logprobs(
-            parsed,
-            batch_size=len(features),
-            seq_len=seq_len,
-            cu_seqlens=None,
-            topk=self.topk,
-            device=torch.device('cpu'))
-        return {'teacher_topk_logprobs': logprobs, 'teacher_topk_indices': indices}
-
-
-def _gkd_sampling_params(rlhf_config: RLHFConfig, generation_config: Optional[GenerationConfig]) -> Dict[str, Any]:
-    """SamplingParams dict for on-policy generation (max_completion_length + temperature)."""
-    params: Dict[str, Any] = {
-        'max_tokens': rlhf_config.max_completion_length,
-        'temperature': rlhf_config.temperature,
-    }
-    if generation_config is not None:
-        if generation_config.top_p is not None:
-            params['top_p'] = generation_config.top_p
-        if generation_config.top_k is not None:
-            params['top_k'] = generation_config.top_k
-    return params
-
-
-class GKDLoop:
-    """On-policy GKD loop: student generates, teacher scores, student distils toward the teacher.
-
-    Peer of :class:`SFTLoop`. Uses the same one-micro-batch-per-forward_backward GA shape (so twinkle's
-    grad-sync gate lines up), replacing the SFT forward with: generate -> teacher forward -> student
-    forward_backward(teacher_logits=...). ``lmbda`` is the per-step probability of using on-policy
-    generations vs. the dataset's own reference completions.
+    Reuses :class:`GRPOLoop`'s weight-synced rollout (``_generate``), design-B mini-batch planning
+    (``_plan_mini_batches``) and per-step cadence; overrides ``fit`` to replace the advantage/policy-gradient
+    step with teacher-scored distillation. Each round is on-policy (a rollout) or off-policy (dataset
+    completions) per ``lmbda``, and both reduce to a list of :class:`DistillRow` so the mini-batch split and
+    teacher scoring never branch on the source. The teacher signal is full-vocab ``teacher_logits``, scored
+    lazily one mini-batch at a time.
     """
 
     def __init__(
         self,
         model: TrainableModel,
-        teacher: Any,
-        template: Any,
+        rollout_engine: Any,
         prompts: List[List[dict]],
         *,
-        dataset_features: Optional[List[Optional[dict]]] = None,
+        teacher: Any,
+        template: Any = None,
         prompt_extras: Optional[List[dict]] = None,
-        dataset_messages: Optional[List[List[dict]]] = None,
+        dataset_rows: Optional[List[DistillRow]] = None,
         lmbda: float = 0.5,
         sft_alpha: float = 0.0,
         gkd_logits_topk: Optional[int] = None,
+        num_generations: int = 1,
+        seed: int = 42,
+        rlhf_config: Optional['RLHFConfig'] = None,
         max_steps: int = 1,
-        batch_size: int = 1,
+        train_batch_size: int = 1,
+        generation_batch_size: Optional[int] = None,
+        num_train_epochs: float = 1.0,
         gradient_accumulation_steps: int = 1,
         max_grad_norm: float = 1.0,
-        seed: int = 42,
-        offload_teacher_model: bool = False,
-        teacher_tag_key: str = 'dataset',
-        logging_steps: int = 1,
-        output_dir: str = 'output',
         sampling_params: Optional[dict] = None,
         logging_config: Optional['LoggingConfig'] = None,
+        output_dir: str = 'output',
         save_steps: Optional[int] = None,
         no_save_optim: bool = False,
         no_save_rng: bool = False,
@@ -303,255 +297,156 @@ class GKDLoop:
         manual_gc: bool = False,
         manual_gc_steps: int = 0,
     ):
-        self.model = model
-        self.teacher = teacher
-        self.template = template
-        self.prompts = prompts
-        self.dataset_features = dataset_features or [None] * len(prompts)
-        self.prompt_extras = prompt_extras or [{} for _ in prompts]
-        self.dataset_messages = dataset_messages or list(prompts)
-        if not (len(self.dataset_features) == len(self.prompt_extras) == len(self.dataset_messages) == len(prompts)):
-            raise ValueError('GKD features, extras, dataset messages, and prompts must have equal lengths.')
+        # Resolve the dataset rows BEFORE super().__init__, so a misconfiguration still happens before the
+        # tracker initialises its reporters (a RunTracker side effect). The teacher offload now lives in
+        # FrozenModelTeacher, built at recipe time (also before the tracker).
+        if not 0.0 <= lmbda <= 1.0:
+            raise ValueError(f'GKD lmbda must be in [0, 1], got {lmbda}.')
+        resolved_dataset_rows = list(dataset_rows or [])
+
+        super().__init__(
+            model,
+            rollout_engine,
+            prompts,
+            prompt_extras=prompt_extras,
+            teacher=teacher,
+            template=template,
+            num_generations=num_generations,
+            rlhf_config=rlhf_config,
+            max_steps=max_steps,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            train_batch_size=train_batch_size,
+            generation_batch_size=generation_batch_size,
+            num_train_epochs=num_train_epochs,
+            seed=seed,
+            max_grad_norm=max_grad_norm,
+            sampling_params=sampling_params,
+            logging_config=logging_config,
+            output_dir=output_dir,
+            save_steps=save_steps,
+            no_save_optim=no_save_optim,
+            no_save_rng=no_save_rng,
+            safe_serialization=safe_serialization,
+            max_shard_size=max_shard_size,
+            save_total_limit=save_total_limit,
+            manual_gc=manual_gc,
+            manual_gc_steps=manual_gc_steps)
+        self.dataset_rows = resolved_dataset_rows
         self.lmbda = lmbda
         self.sft_alpha = sft_alpha
         self.gkd_logits_topk = gkd_logits_topk
-        self.max_steps = max_steps
-        self.batch_size = max(1, batch_size)
-        self.gradient_accumulation_steps = max(1, gradient_accumulation_steps)
-        self.max_grad_norm = max_grad_norm
         self.seed = seed
-        self.offload_teacher_model = offload_teacher_model
-        self.teacher_tag_key = teacher_tag_key
-        if offload_teacher_model:
-            if teacher in (None, 'disable_lora') or isinstance(teacher, _RemoteGKDTeacher):
-                raise ValueError('offload_teacher_model requires a distinct local teacher model.')
-            teacher.offload_to_cpu()
-        self.logging_steps = logging_config.logging_steps if logging_config is not None else logging_steps
-        self.logging_config = logging_config
-        from swift.dev.recipe.tracking import RunTracker
-        self.tracker = RunTracker(logging_config, output_dir)
-        self.output_dir = output_dir
-        self.sampling_params = sampling_params
-        self.save_steps = save_steps
-        self.no_save_optim = no_save_optim
-        self.no_save_rng = no_save_rng
-        self.safe_serialization = safe_serialization
-        self.max_shard_size = max_shard_size
-        self.save_total_limit = save_total_limit
-        self.manual_gc = manual_gc
-        self.manual_gc_steps = manual_gc_steps
-        if self.manual_gc_steps < 0:
-            raise ValueError('manual_gc_steps must be >= 0.')
-        self.global_step = 0
-        self.micro_step = 0
-        self.history: list = []
 
-    def _is_grad_sync_boundary(self) -> bool:
-        ga = self.gradient_accumulation_steps
-        return ga == 1 or ((self.micro_step - 1) % ga == 0 and self.micro_step > 1)
+    def _uses_student_generation(self, round_index: int) -> bool:
+        """Per-round on/off-policy coin flip: with probability ``lmbda`` this round rolls out on-policy."""
+        return random.Random(self.seed + round_index).random() <= self.lmbda
 
-    def _batch_indices(self, step: int) -> List[int]:
-        n = len(self.prompts)
-        if n == 0:
-            raise ValueError('GKD requires at least one prompt.')
-        start = (step * self.batch_size) % n
-        return [(start + i) % n for i in range(self.batch_size)]
+    def _round_rows(self, round_index: int, use_student: bool, prompt_indices: Sequence[int]) -> List[DistillRow]:
+        """This round's training rows, uniform across the on-policy and off-policy sources.
 
-    def _prompt_batch(self, step: int) -> List[List[dict]]:
-        """The prompts for one step: a rolling window over the prompt list (wraps around)."""
-        return [self.prompts[index] for index in self._batch_indices(step)]
-
-    def _dataset_batch(self, step: int) -> List[dict]:
-        features = [self.dataset_features[index] for index in self._batch_indices(step)]
-        if any(feature is None for feature in features):
-            raise ValueError('The selected GKD dataset batch contains a row without an assistant completion.')
-        return [deepcopy(feature) for feature in features]
-
-    def _extras_batch(self, step: int) -> List[dict]:
-        return [deepcopy(self.prompt_extras[index]) for index in self._batch_indices(step)]
-
-    def _messages_batch(self, step: int, *, dataset: bool) -> List[List[dict]]:
-        source = self.dataset_messages if dataset else self.prompts
-        return [deepcopy(source[index]) for index in self._batch_indices(step)]
-
-    def _uses_student_generation(self, step: int) -> bool:
-        return random.Random(self.seed + step).random() <= self.lmbda
-
-    def _generate_features(self, prompts: List[List[dict]]) -> List[dict]:
-        """On-policy generate from the student's live weights and rebuild training features.
-
-        Rebuilds each feature from the prompt+response token ids with response-only, next-token
-        shifted labels (identical convention to run_grpo's SamplerRollout), so the teacher and student
-        forwards both see the same tokens and the JSD is computed over the response positions only.
+        An on-policy round rolls out the scheduler's generation batch (``prompt_indices``); an off-policy
+        round ignores it and takes the dataset's own completions window instead (GKD's on/off mixing).
         """
-        from twinkle.data_format import SamplingParams, Trajectory
+        if use_student:
+            samples = self._generate(prompt_indices)
+            return [
+                DistillRow(sample.input_feature,
+                           sample.messages if sample.messages is not None else self.prompts[int(sample.prompt_id)],
+                           sample.extra or {}) for sample in samples
+            ]
+        return self._dataset_round_rows(round_index)
 
-        from swift.dev.rollout import SHIFTED_KEY
-
-        params = SamplingParams(**dict(self.sampling_params or {}))
-        trajectories = [Trajectory(messages=list(messages)) for messages in prompts]
-        responses = self.model.generate(trajectories, sampling_params=params)
-
-        features: List[dict] = []
-        for response in responses:
-            prompt_tokens = list(response.prompt_token_ids or [])
-            if not prompt_tokens:
-                raise RuntimeError('model.generate returned no prompt_token_ids; a template must be set so the '
-                                   'prompt is encoded before generation.')
-            for seq in response.sequences:
-                response_tokens = list(seq.tokens or [])
-                if not response_tokens:
-                    continue
-                aligned = [-100] * len(prompt_tokens) + response_tokens
-                labels = list(aligned[1:]) + [-100]
-                features.append({'input_ids': prompt_tokens + response_tokens, 'labels': labels, SHIFTED_KEY: True})
-        if not features:
-            raise RuntimeError('GKD step produced no non-empty completions to distil on.')
-        return features
+    def _dataset_round_rows(self, round_index: int) -> List[DistillRow]:
+        """A rolling window over the dataset completions, so successive off-policy rounds cover new rows."""
+        if not self.dataset_rows:
+            raise RuntimeError('an off-policy GKD round needs dataset completions, but the dataset provided none; '
+                               'set lmbda=1 for purely on-policy GKD, or add assistant completions to the dataset.')
+        count = len(self.dataset_rows)
+        offset = (round_index * self.train_batch_size) % count
+        return [self.dataset_rows[(offset + i) % count] for i in range(count)]
 
     def _teacher_logits(self, features: List[dict]) -> Any:
-        """Full-vocab teacher logits for a local teacher."""
-        if self.teacher == 'disable_lora':
-            outputs = self.model.forward_only(inputs=features, disable_lora=True, return_logits=True)
-            return outputs['logits']
-        if self.offload_teacher_model:
-            self.teacher.reload_to_gpu()
-        try:
-            outputs = self.teacher.forward_only(inputs=features, return_logits=True)
-            return outputs['logits']
-        finally:
-            if self.offload_teacher_model:
-                self.teacher.offload_to_cpu()
+        """Full-vocab teacher logits for ONE mini-batch, scored lazily to bound peak memory.
 
-    def _teacher_requests(
-        self, features: List[dict], messages_batch: List[List[dict]], extras: List[dict]
-    ) -> List[Any]:
-        from swift.infer_engine.protocol import RolloutInferRequest
-        from swift.rlhf_trainers.utils import get_response_prefix_ids, replace_assistant_response_with_ids
+        The signal is materialised per mini-batch (``train_batch_size`` rows), never for a whole round: a
+        full-vocab ``[rows, seq, vocab]`` tensor over an entire rollout would not fit. ``forward_only`` is a
+        slice_dp method, so the mini-batch (>= dp_size rows) feeds every DP rank; the collected logits are
+        then handed to ``forward_backward``, which slice_dp-splits them along dim0 to match each rank's
+        ``inputs`` shard.
+        """
+        inputs = [copy.deepcopy(feature) for feature in features]
+        outputs = self.teacher.forward_only(inputs=inputs, return_logits=True)
+        return outputs['logits']
 
-        requests = []
-        prefix_ids = get_response_prefix_ids(self.template) if self.template is not None else None
-        request_fields = ('images', 'audios', 'videos', 'tools', 'objects', 'chat_template_kwargs')
-        for feature, messages, extra in zip(features, messages_batch, extras):
-            labels = feature.get('labels')
-            if labels is None:
-                raise ValueError('GKD teacher-server features require labels to recover exact response token ids.')
-            response_ids = [int(label) for label in labels if int(label) != -100]
-            if not response_ids:
-                raise ValueError('GKD teacher-server features contain no response tokens to score.')
-            if not messages or messages[-1].get('role') != 'assistant':
-                messages.append({'role': 'assistant', 'content': None})
-            messages = replace_assistant_response_with_ids(
-                messages, response_ids, non_thinking_prefix_ids=prefix_ids)
-            kwargs = {name: deepcopy(extra[name]) for name in request_fields if extra.get(name) is not None}
-            requests.append(RolloutInferRequest(messages=messages, **kwargs))
-        return requests
+    def _teacher_kwargs(self, rows: List[DistillRow], use_student: bool) -> Dict[str, Any]:
+        """The teacher signal for one mini-batch. GKD scores the SHARED prompt+response (full-vocab logits).
 
-    def _teacher_kwargs(
-        self, features: List[dict], messages_batch: List[List[dict]], extras: List[dict]
-    ) -> Dict[str, Any]:
-        if isinstance(self.teacher, _RemoteGKDTeacher):
-            requests = self._teacher_requests(features, messages_batch, extras)
-            return self.teacher.score(features, requests, extras, self.teacher_tag_key)
-        return {'teacher_logits': self._teacher_logits(features)}
+        A hook so the OPSD/MOPD subclasses -- which reuse this loop's rollout/mini-batch/step skeleton but a
+        different teacher view and signal (response-only ``teacher_logps``) -- can override just this and
+        :meth:`_forward_kwargs`.
+        """
+        return {'teacher_logits': self._teacher_logits([row.feature for row in rows])}
+
+    def _forward_kwargs(self, teacher_kwargs: Dict[str, Any], use_student: bool) -> Dict[str, Any]:
+        """The extra ``forward_backward`` kwargs beyond ``inputs``/GA: teacher signal + GKD loss knobs.
+
+        GKD's JSD loss scores top-k teacher logits when ``gkd_logits_topk`` is set and adds supervised CE on
+        the dataset-sourced rounds when ``sft_alpha > 0``.
+        """
+        return {
+            **teacher_kwargs,
+            'topk': self.gkd_logits_topk,
+            'apply_sft_loss': bool(self.sft_alpha > 0 and not use_student),
+        }
 
     def fit(self) -> list:
-        """Run max_steps GKD steps. Each step: generate -> teacher forward -> student forward_backward."""
+        """Train over the prompt set for ``num_train_epochs`` passes of teacher-scored distillation.
+
+        Design B (see :meth:`GRPOLoop.fit`): the prompt-set scheduler yields one generation batch per round
+        and is exhausted after ``num_train_epochs`` passes (B1); an explicit ``max_steps`` still caps the
+        optimizer-step count early. Each round's rows are split into ``train_batch_size``-row mini-batches,
+        one ``forward_backward`` runs per mini-batch and ``gradient_accumulation_steps`` mini-batches make
+        one optimizer step. A round is on-policy (a weight-synced rollout of the batch) or off-policy
+        (dataset completions) per ``lmbda``.
+        """
         from swift.dev.recipe.train_loop import finish_manual_gc, start_manual_gc
 
-        ga = self.gradient_accumulation_steps
-        step = self.global_step
         gc_was_enabled = start_manual_gc(self.manual_gc)
         try:
-            while self.global_step < self.max_steps:
-                self.micro_step += 1
-                use_student = self._uses_student_generation(step)
-                features = (self._generate_features(self._prompt_batch(step)) if use_student else
-                            self._dataset_batch(step))
-                messages_batch = self._messages_batch(step, dataset=not use_student)
-                extras = self._extras_batch(step)
-                step += 1
-                teacher_kwargs = self._teacher_kwargs(features, messages_batch, extras)
-                self.model.forward_backward(
-                    inputs=features,
-                    gradient_accumulation_steps=ga,
-                    **teacher_kwargs,
-                    topk=self.gkd_logits_topk,
-                    apply_sft_loss=bool(self.sft_alpha > 0 and not use_student))
-                is_boundary = self._is_grad_sync_boundary()
-                self.model.clip_grad_and_step(max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
-                if is_boundary:
-                    self._record_step()
+            # round_index is the scheduler's emitted-batch position, NOT global_step: it seeds the per-round
+            # lmbda coin flip and offsets the off-policy dataset window, so it must stay aligned with the
+            # prompt batch actually being processed. Deriving it from enumerate keeps the two in lockstep
+            # within a run and across a resume (the scheduler restarts from batch 0, so the pairing restarts
+            # with it); seeding it from global_step misaligns them whenever GA>1 or a round spans several
+            # mini-batches, because global_step counts optimizer steps, not rounds (W27).
+            for round_index, prompt_indices in enumerate(self._prompt_batches):
+                if self._reached_max():
+                    break
+                use_student = self._uses_student_generation(round_index)
+                rows = self._round_rows(round_index, use_student, prompt_indices)
+                for mini_batch in self._plan_mini_batches(rows):
+                    if self._reached_max():
+                        break
+                    teacher_kwargs = self._teacher_kwargs(mini_batch, use_student)
+                    self._run_micro_step({
+                        'inputs': [copy.deepcopy(row.feature) for row in mini_batch],
+                        'gradient_accumulation_steps': self.gradient_accumulation_steps,
+                        **self._forward_kwargs(teacher_kwargs, use_student),
+                    })
             return self.history
         finally:
             finish_manual_gc(gc_was_enabled)
             self.tracker.close()
 
-    def _record_step(self) -> None:
-        from swift.dev.recipe.train_loop import collect_manual_gc
+    # GKD has no reference model and no RL-loss channels, so it resets the two GRPOLoop hooks that would
+    # otherwise inject a reference sync and policy-gradient metrics. The rest of the per-step cadence
+    # (counter, GC tick, log-on-tracker, periodic save) is TrainLoop's.
+    def _pre_metric_step(self) -> None:
+        """No reference model to sync on a distillation step (overrides GRPOLoop's reference sync)."""
 
-        self.global_step += 1
-        collect_manual_gc(self.manual_gc, self.manual_gc_steps, self.global_step)
-        metrics = self.model.calculate_metric(is_training=True)
-        loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
-        record = {'step': self.global_step, 'loss': loss}
+    def _extra_step_metrics(self, metrics: dict) -> dict:
+        """GKD logs grad_norm beside the distillation loss; it has no entropy/rollout-ratio channels."""
+        extra: dict = {}
         if metrics.get('grad_norm') is not None:
-            record['grad_norm'] = float(metrics['grad_norm'])
-        record = self.tracker.log(record, self.global_step)
-        self.history.append(record)
-        should_log = (self.tracker.should_log(self.global_step) if self.logging_config is not None else
-                      bool(self.logging_steps and self.global_step % self.logging_steps == 0))
-        if should_log:
-            logger.info(f'step {self.global_step}  loss={record["loss"]:.4f}')
-        if self.save_steps and self.global_step % self.save_steps == 0:
-            self.save(f'checkpoint-{self.global_step}')
-
-    def save(self, name: str = 'checkpoint-final', *, is_final: bool = False) -> str:
-        """Persist the student policy + training state via twinkle's native save.
-
-        ``is_final`` is accepted for the shared loop.save contract (``TrainAssembly.save_final`` passes it
-        to gate hub-push 'end'); this loop carries no hub_pusher, so it is inert here.
-        """
-        from swift.dev.recipe.train_loop import save_training_checkpoint
-
-        return save_training_checkpoint(
-            self.model,
-            name,
-            output_dir=self.output_dir,
-            consumed_train_samples=self.global_step,
-            no_save_optim=self.no_save_optim,
-            no_save_rng=self.no_save_rng,
-            safe_serialization=self.safe_serialization,
-            max_shard_size=self.max_shard_size,
-            save_total_limit=self.save_total_limit)
-
-    def resume(self, state: dict) -> None:
-        """Resume the student optimizer phase and completed online-step count."""
-        self.micro_step = int(state['cur_step'])
-        self.global_step = int(state.get('consumed_train_samples', 0))
-
-
-def _gkd_rows_from_dataset(
-    dataset_config: DatasetConfig,
-    template: Any,
-) -> Tuple[List[List[dict]], List[Optional[dict]], List[dict], List[List[dict]]]:
-    """Load prompts, encoded completions, routing extras, and exact dataset messages."""
-    from swift.dev.builders import load_prompt_rows
-
-    rows = load_prompt_rows(dataset_config, None, split_dataset_ratio=0.0)
-    prompts: List[List[dict]] = []
-    features: List[Optional[dict]] = []
-    extras: List[dict] = []
-    dataset_messages: List[List[dict]] = []
-    for row in rows:
-        messages = deepcopy(row.get('messages') or [])
-        if not messages:
-            continue
-        has_completion = messages[-1].get('role') == 'assistant'
-        prompts.append(deepcopy(messages[:-1] if has_completion else messages))
-        dataset_messages.append(messages)
-        features.append(template.encode(row) if has_completion else None)
-        extras.append({key: deepcopy(value) for key, value in row.items() if key != 'messages'})
-    if not prompts:
-        raise ValueError('run_gkd found no prompt messages in the dataset rows.')
-    return prompts, features, extras, dataset_messages
+            extra['grad_norm'] = float(metrics['grad_norm'])
+        return extra

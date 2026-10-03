@@ -46,7 +46,10 @@ def run_rlhf(
     from swift.dev.recipe.run_dpo import run_dpo
     from swift.dev.recipe.run_gkd import run_gkd
     from swift.dev.recipe.run_grpo import run_grpo
+    from swift.dev.recipe.run_mopd import run_mopd
+    from swift.dev.recipe.run_opsd import run_opsd
     from swift.dev.recipe.run_ppo import run_ppo
+    from swift.dev.recipe.run_rft import run_rft
 
     common = {
         'tuner_config': tuner_config,
@@ -81,6 +84,19 @@ def run_rlhf(
             generation_config=generation_config,
             **common,
         )
+    if rlhf_config.rlhf_type == 'rft':
+        return run_rft(
+            model_config,
+            template_config,
+            dataset_config,
+            train_config,
+            distributed_config,
+            checkpoint_config,
+            rollout_config,
+            rlhf_config,
+            generation_config=generation_config,
+            **common,
+        )
     if rlhf_config.rlhf_type == 'ppo':
         return run_ppo(
             model_config,
@@ -102,9 +118,35 @@ def run_rlhf(
             train_config,
             distributed_config,
             checkpoint_config,
+            rollout_config,
             rlhf_config,
             generation_config=generation_config,
-            rollout_config=rollout_config,
+            **common,
+        )
+    if rlhf_config.rlhf_type == 'opsd':
+        return run_opsd(
+            model_config,
+            template_config,
+            dataset_config,
+            train_config,
+            distributed_config,
+            checkpoint_config,
+            rollout_config,
+            rlhf_config,
+            generation_config=generation_config,
+            **common,
+        )
+    if rlhf_config.rlhf_type == 'mopd':
+        return run_mopd(
+            model_config,
+            template_config,
+            dataset_config,
+            train_config,
+            distributed_config,
+            checkpoint_config,
+            rollout_config,
+            rlhf_config,
+            generation_config=generation_config,
             **common,
         )
     raise ValueError(f'Unsupported rlhf_type: {rlhf_config.rlhf_type!r}.')

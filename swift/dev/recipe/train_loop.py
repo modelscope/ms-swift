@@ -12,7 +12,8 @@ from __future__ import annotations
 import logging
 import math
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+import random
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 if TYPE_CHECKING:
     from swift.dev.config import LoggingConfig
@@ -39,6 +40,21 @@ def _backend_owns_gradient_accumulation(model) -> bool:
     return isinstance(model, MegatronModel)
 
 
+def is_grad_sync_boundary(micro_step: int, gradient_accumulation_steps: int) -> bool:
+    """Whether ``micro_step`` is an optimizer-update boundary, computed driver-side.
+
+    Replicates twinkle's ``OptimizerGroup.do_grad_sync`` (a pure function of ``cur_step`` and the
+    accumulation size: boundary when ga==1, else one micro-step late at cur_step = ga+1, 2ga+1, ...) using
+    the loop's own ``micro_step`` as ``cur_step``, which the loops advance once per ``forward_backward`` and
+    ``resume()`` keeps aligned. It is a module-level helper rather than a read of ``model.optimizer_group``
+    because that group lives on the WORKERS: under Ray the driver-side model is a proxy with no such
+    attribute, so both the in-process transformers loop and the Ray-remote loops (SFT/GRPO/RFT) must derive
+    the boundary here instead of reaching into the proxy.
+    """
+    ga = gradient_accumulation_steps
+    return ga == 1 or ((micro_step - 1) % ga == 0 and micro_step > 1)
+
+
 def flatten_evalscope_report(summary: Any) -> Dict[str, float]:
     """Flatten EvalScope report rows into a ``{metric_name: score}`` dict.
 
@@ -59,9 +75,9 @@ def flatten_evalscope_report(summary: Any) -> Dict[str, float]:
     return flat
 
 
-# GA step arithmetic (twinkle's grad-sync gate lags one micro-step). Lives here because the
-# only current consumer is the SFT loop; not inherently SFT-specific, so if another training
-# path needs it later, lift it to a shared home.
+# GA step arithmetic (twinkle's grad-sync gate lags one micro-step). Shared by the SFT loop (which sizes
+# its LR-scheduler horizon from a dataloader) and the on-policy RL budget below (which sizes it from a
+# prompt-set pass count), so it lives here rather than in either consumer.
 def num_optimizer_steps(num_micro_batches: int, gradient_accumulation_steps: int) -> int:
     """Optimizer-update count for a given number of micro-batches under twinkle GA.
 
@@ -74,6 +90,123 @@ def num_optimizer_steps(num_micro_batches: int, gradient_accumulation_steps: int
     if ga == 1:
         return num_micro_batches
     return max(0, (num_micro_batches - 1) // ga)
+
+
+class PromptBatchScheduler:
+    """Iterate the prompt dataset in shuffled generation batches for ``num_train_epochs`` full passes.
+
+    A *generation batch* is the slice of prompts one rollout regenerates. The on-policy loops (GRPO/PPO/
+    GKD, hence RFT/OPSD/MOPD) historically rolled out the WHOLE prompt set every step, so ``num_train_epochs``
+    had no meaning and only ``max_steps`` bounded training. This scheduler makes an epoch a real pass over
+    the dataset: ``generation_batch_size`` prompts are drawn per batch, so one epoch spans
+    ``ceil(num_prompts / generation_batch_size)`` batches, and the stream is exhausted after
+    ``num_train_epochs`` passes. ``generation_batch_size=None`` (the default) draws the whole set per batch,
+    which reproduces the historical one-rollout-per-epoch behaviour exactly -- sharding is opt-in.
+
+    Batches are drawn from a seeded reshuffled permutation, so a run is reproducible; the permutation is
+    refilled cyclically, so every batch is exactly ``generation_batch_size`` long (never a short tail that
+    could starve a slice_dp rank). Yielded values are the GLOBAL prompt indices, so downstream ``prompt_id``
+    and dataset-column lookups stay correct whether or not the set is sharded.
+    """
+
+    def __init__(self,
+                 num_prompts: int,
+                 *,
+                 generation_batch_size: Optional[int] = None,
+                 num_train_epochs: float = 1.0,
+                 seed: int = 42):
+        if num_prompts <= 0:
+            raise ValueError(f'PromptBatchScheduler needs at least one prompt, got {num_prompts}.')
+        if generation_batch_size is not None and generation_batch_size <= 0:
+            raise ValueError(f'generation_batch_size must be > 0 or None, got {generation_batch_size}.')
+        if num_train_epochs <= 0:
+            raise ValueError(f'num_train_epochs must be > 0, got {num_train_epochs}.')
+        self.num_prompts = num_prompts
+        self.batch_size = min(generation_batch_size or num_prompts, num_prompts)
+        self.batches_per_epoch = math.ceil(num_prompts / self.batch_size)
+        # A fractional epoch still runs one (truncated) pass, so ceil -- matching assembly's dataloader budget.
+        self.total_batches = max(1, math.ceil(num_train_epochs * self.batches_per_epoch))
+        self._rng = random.Random(seed)
+        self._pending: List[int] = []
+        self._emitted = 0
+
+    def __len__(self) -> int:
+        return self.total_batches
+
+    def __iter__(self) -> Iterator[List[int]]:
+        return self
+
+    def __next__(self) -> List[int]:
+        if self._emitted >= self.total_batches:
+            raise StopIteration
+        while len(self._pending) < self.batch_size:
+            permutation = list(range(self.num_prompts))
+            self._rng.shuffle(permutation)
+            self._pending.extend(permutation)
+        batch = self._pending[:self.batch_size]
+        del self._pending[:self.batch_size]
+        self._emitted += 1
+        return batch
+
+
+def prompt_batch_count(num_prompts: int,
+                       num_train_epochs: float,
+                       generation_batch_size: Optional[int] = None) -> int:
+    """Generation batches :class:`PromptBatchScheduler` yields for ``num_train_epochs`` dataset passes.
+
+    One batch rolls out ``generation_batch_size`` prompts (None -> the whole set, so one batch per epoch);
+    an epoch spans ``ceil(num_prompts / batch_size)`` batches, and a fractional epoch still runs one
+    (truncated) pass. PPO -- whose ``global_step`` counts rollouts, not optimizer steps -- sizes its
+    ``max_steps`` to exactly this count.
+    """
+    batch_size = min(generation_batch_size or num_prompts, num_prompts)
+    batches_per_epoch = math.ceil(num_prompts / batch_size)
+    return max(1, math.ceil(num_train_epochs * batches_per_epoch))
+
+
+def rollout_step_budget(*,
+                        num_prompts: int,
+                        num_generations: int,
+                        train_batch_size: int,
+                        gradient_accumulation_steps: int,
+                        num_train_epochs: float,
+                        generation_batch_size: Optional[int] = None,
+                        num_iterations: int = 1) -> int:
+    """Optimizer steps for ``num_train_epochs`` passes over the prompt set (the LR-scheduler horizon).
+
+    The rollout-side mirror of ``TrainAssembly``'s dataloader budget: :class:`PromptBatchScheduler` draws
+    ``prompt_batch_count`` generation batches; each rolls out ``batch_size * num_generations`` completions,
+    splits into full ``train_batch_size`` mini-batches (an undersized tail is dropped, exactly as
+    ``_plan_mini_batches`` does), and replays them ``num_iterations`` times. Those micro-steps become
+    optimizer steps under twinkle GA (a continuous stream, since ``micro_step`` never resets across
+    batches). Returns 0 when a generation batch cannot fill even one mini-batch, so the caller fails loudly
+    rather than sizing a 0-step schedule.
+    """
+    batch_size = min(generation_batch_size or num_prompts, num_prompts)
+    total_batches = prompt_batch_count(num_prompts, num_train_epochs, generation_batch_size)
+    mini_batches = (batch_size * num_generations) // max(1, train_batch_size)
+    micro_per_batch = mini_batches * max(1, num_iterations)
+    return num_optimizer_steps(micro_per_batch * total_batches, gradient_accumulation_steps)
+
+
+def resolve_rollout_max_steps(explicit_max_steps: int, budget: int, *, recipe: str) -> int:
+    """The step budget an on-policy recipe trains for: explicit ``--max_steps`` wins, else the epoch budget.
+
+    Mirrors ``TrainAssembly``'s dataloader branch (``max_steps`` if set, else derived from
+    ``num_train_epochs``). ``budget`` is ``rollout_step_budget`` for the optimizer-step loops (GRPO/GKD) or
+    ``prompt_batch_count`` for PPO (whose step is one rollout). A non-positive budget means a generation
+    batch cannot fill one ``train_batch_size`` mini-batch, so no optimizer step is possible -- fail loudly
+    (the same condition ``_plan_mini_batches`` guards at runtime) instead of sizing a 0-step schedule.
+    """
+    if explicit_max_steps and explicit_max_steps > 0:
+        return explicit_max_steps
+    if budget <= 0:
+        raise ValueError(
+            f'{recipe}: derived {budget} training steps from num_train_epochs -- a generation batch cannot '
+            'fill one train_batch_size (per_device_train_batch_size * dp_size) mini-batch, so no optimizer '
+            'step is possible. Enlarge the prompt dataset or num_generations, lower '
+            'per_device_train_batch_size / the DP world size, or set --max_steps explicitly.')
+    return budget
 
 
 def start_manual_gc(enabled: bool) -> Optional[bool]:
@@ -117,7 +250,185 @@ def save_training_checkpoint(model: 'TrainableModel', name: str, *, output_dir: 
     return model.save(name, output_dir=output_dir, save_optimizer=not no_save_optim, **kwargs)
 
 
-class SFTLoop:
+class TrainLoop:
+    """Shared training-loop scaffolding for every dev recipe (SFT / GRPO / GKD / RFT / OPSD / MOPD).
+
+    Holds the state and per-step cadence all loops share -- the optimizer-step counter, the metric
+    tracker, the checkpoint knobs, the manual-GC settings and the grad-sync boundary test -- and factors
+    the method that used to be copy-pasted across loops (``_record_step``) into a template method. The
+    recipe-specific behaviour lives in the small hooks the template calls, so a subclass overrides only
+    what actually differs and inherits an identical step cadence:
+
+    * ``_pre_metric_step``    -- after the GC tick, before ``calculate_metric`` (GRPO syncs its reference
+      model here; it must precede the metric read, exactly as before).
+    * ``_extra_step_metrics`` -- per-recipe fields folded into this step's logged record.
+    * ``_post_record``        -- once the record is appended to history (SFT publishes loop state onto the
+      callback state here).
+    * ``_should_log`` / ``_log_step`` -- whether and how to emit the human-readable step line.
+    * ``_post_step``          -- end-of-step side effects (SFT runs eval + callback ``on_step_end`` here).
+    * ``_consumed_train_samples`` -- the resume counter written into a checkpoint.
+
+    Subclasses keep their own public ``__init__`` signature and call ``super().__init__`` for the common
+    part. They must run any input validation *before* that call: ``RunTracker`` initialises the configured
+    reporters (wandb/swanlab/tensorboard) as a construction side effect, so a misconfiguration must still
+    fail before a tracker is built.
+    """
+
+    def __init__(self,
+                 model: 'TrainableModel',
+                 *,
+                 gradient_accumulation_steps: int = 1,
+                 max_grad_norm: float = 1.0,
+                 max_steps: int = -1,
+                 logging_steps: int = 1,
+                 logging_config: Optional['LoggingConfig'] = None,
+                 output_dir: str = 'output',
+                 save_steps: Optional[int] = None,
+                 no_save_optim: bool = False,
+                 no_save_rng: bool = False,
+                 safe_serialization: bool = True,
+                 max_shard_size: str = '5GB',
+                 save_total_limit: Optional[int] = None,
+                 manual_gc: bool = False,
+                 manual_gc_steps: int = 0):
+        self.model = model
+        self.gradient_accumulation_steps = max(1, gradient_accumulation_steps)
+        self.max_grad_norm = max_grad_norm
+        self.max_steps = max_steps
+        self.logging_steps = logging_config.logging_steps if logging_config is not None else logging_steps
+        self.logging_config = logging_config
+        from swift.dev.recipe.tracking import RunTracker
+        self.tracker = RunTracker(logging_config, output_dir)
+        self.output_dir = output_dir
+        self.save_steps = save_steps
+        self.no_save_optim = no_save_optim
+        self.no_save_rng = no_save_rng
+        self.safe_serialization = safe_serialization
+        self.max_shard_size = max_shard_size
+        self.save_total_limit = save_total_limit
+        self.manual_gc = manual_gc
+        self.manual_gc_steps = manual_gc_steps
+        if self.manual_gc_steps < 0:
+            raise ValueError('manual_gc_steps must be >= 0.')
+        # optimizer-step counter (increments once per GA window) and the micro-step counter the loops
+        # advance once per forward_backward; resume() keeps both aligned with twinkle's cur_step.
+        self.global_step = 0
+        self.micro_step = 0
+        self.history: list = []
+
+    def _reached_max(self) -> bool:
+        return self.max_steps > 0 and self.global_step >= self.max_steps
+
+    def _is_grad_sync_boundary(self) -> bool:
+        """Whether the current micro_step is an optimizer-update boundary (see is_grad_sync_boundary)."""
+        return is_grad_sync_boundary(self.micro_step, self.gradient_accumulation_steps)
+
+    def _record_step(self) -> None:
+        """Count one completed optimizer step, then log / periodic-save through the recipe hooks.
+
+        Reads the NORMALIZED per-token loss (+ any extra fields) via the driver-callable
+        model.calculate_metric (works for transformers + Ray-remote Megatron; resolves the active optimizer
+        group on the worker). Raw forward_backward loss under reduction='sum' is a token-sum, not
+        comparable across steps -- calculate_metric divides by num_tokens and resets. The cadence below is
+        shared by every loop; the hook calls are the only points where recipes differ.
+        """
+        self.global_step += 1
+        collect_manual_gc(self.manual_gc, self.manual_gc_steps, self.global_step)
+        self._pre_metric_step()
+        metrics = self.model.calculate_metric(is_training=True)
+        loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
+        record = {'step': self.global_step, 'loss': loss}
+        record.update(self._extra_step_metrics(metrics))
+        record = self.tracker.log(record, self.global_step)
+        self.history.append(record)
+        self._post_record(record, loss)
+        if self._should_log():
+            self._log_step(record, loss)
+        if self.save_steps and self.global_step % self.save_steps == 0:
+            self.save(f'checkpoint-{self.global_step}')
+        self._post_step()
+
+    def _run_micro_step(self, forward_kwargs: Dict[str, Any]) -> None:
+        """One GA micro-step: count it, ``forward_backward``, then step the optimizer on a grad-sync boundary.
+
+        The cadence the on-policy loops (GRPO/RFT's rollout replay, GKD/OPSD/MOPD's distillation rounds)
+        share verbatim, and the one that must stay in phase with twinkle's grad-sync gate: the loop advances
+        ``micro_step`` once per ``forward_backward`` and steps the optimizer only on the boundary
+        :meth:`_is_grad_sync_boundary` reports (twinkle's gate lags one micro-step). Kept in one place so the
+        two on-policy ``fit`` loops cannot drift out of phase with the worker's optimizer. SFT does not use
+        it -- its micro-step interleaves callback events (``on_step_begin``/``on_substep_end``/
+        ``on_pre_optimizer_step``/``on_optimizer_step``), so SFTLoop keeps its own richer cadence.
+
+        ``forward_kwargs`` is the fully-built ``forward_backward`` argument dict (the caller owns what varies
+        -- GRPO's advantages/old_logps, a distill loop's teacher signal -- including its own
+        ``gradient_accumulation_steps`` and ``inputs``).
+        """
+        self.micro_step += 1
+        self.model.forward_backward(**forward_kwargs)
+        is_boundary = self._is_grad_sync_boundary()
+        self.model.clip_grad_and_step(max_grad_norm=self.max_grad_norm,
+                                      gradient_accumulation_steps=self.gradient_accumulation_steps)
+        if is_boundary:
+            self._record_step()
+
+    # --- hooks: defaults are the no-op / plain-log form shared by the RL + distill loops; a subclass
+    #     overrides only the points where it genuinely diverges. ---
+    def _pre_metric_step(self) -> None:
+        """Runs after the GC tick and before calculate_metric (GRPO syncs its reference model here)."""
+
+    def _extra_step_metrics(self, metrics: dict) -> dict:
+        """Extra fields folded into this step's logged record (none by default)."""
+        return {}
+
+    def _post_record(self, record: dict, loss: float) -> None:
+        """Runs once the record is appended to history (SFT publishes it onto the callback state)."""
+
+    def _should_log(self) -> bool:
+        """Whether to emit the human-readable step line: the tracker's cadence, else a logging_steps gate."""
+        return (self.tracker.should_log(self.global_step) if self.logging_config is not None else
+                bool(self.logging_steps and self.global_step % self.logging_steps == 0))
+
+    def _log_step(self, record: dict, loss: float) -> None:
+        logger.info(f'step {self.global_step}  loss={record["loss"]:.4f}')
+
+    def _post_step(self) -> None:
+        """End-of-step side effects (SFT runs eval + the on_step_end callback fan-out here)."""
+
+    def _consumed_train_samples(self) -> int:
+        """The resume counter written into a checkpoint (defaults to the optimizer-step count)."""
+        return self.global_step
+
+    def save(self, name: str = 'checkpoint-final', *, is_final: bool = False) -> str:
+        """Persist the model + optimizer/RNG state via twinkle's native save.
+
+        ``is_final`` is part of the shared loop.save contract (``TrainAssembly.save_final`` passes it to
+        gate hub-push 'end'); loops without a hub_pusher ignore it. SFTLoop overrides this to wrap the
+        write with its save/hub callbacks.
+        """
+        return save_training_checkpoint(
+            self.model,
+            name,
+            output_dir=self.output_dir,
+            consumed_train_samples=self._consumed_train_samples(),
+            no_save_optim=self.no_save_optim,
+            no_save_rng=self.no_save_rng,
+            safe_serialization=self.safe_serialization,
+            max_shard_size=self.max_shard_size,
+            save_total_limit=self.save_total_limit)
+
+    def resume(self, state: dict) -> None:
+        """Seed the loop counters from a restored twinkle trainer_state.
+
+        ``state`` carries twinkle's schema (``cur_step`` / ``consumed_train_samples`` /
+        ``gradient_accumulation_steps``). Weights/optimizer/scheduler/RNG are already restored by
+        model.resume_from_checkpoint BEFORE this call. SFTLoop overrides this to also skip the dataloader
+        to its resume offset and re-derive global_step from cur_step + ga.
+        """
+        self.micro_step = int(state['cur_step'])
+        self.global_step = int(state.get('consumed_train_samples', 0))
+
+
+class SFTLoop(TrainLoop):
     """Minimal SFT training loop over a dataloader yielding list[InputFeature]."""
 
     def __init__(
@@ -164,32 +475,31 @@ class SFTLoop:
         hub_pusher: Optional[Any] = None,
         hub_strategy: str = 'every_save',
     ):
-        self.model = model
+        # Common loop state (counters, tracker, checkpoint knobs, manual-GC) lives in TrainLoop. SFT runs
+        # no raising/side-effecting validation before its tracker, so super().__init__ goes first here.
+        super().__init__(
+            model,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            max_grad_norm=max_grad_norm,
+            max_steps=max_steps,
+            logging_steps=logging_steps,
+            logging_config=logging_config,
+            output_dir=output_dir,
+            save_steps=save_steps,
+            no_save_optim=no_save_optim,
+            no_save_rng=no_save_rng,
+            safe_serialization=safe_serialization,
+            max_shard_size=max_shard_size,
+            save_total_limit=save_total_limit,
+            manual_gc=manual_gc,
+            manual_gc_steps=manual_gc_steps)
         self.dataloader = dataloader
-        self.gradient_accumulation_steps = max(1, gradient_accumulation_steps)
-        self.max_grad_norm = max_grad_norm
-        self.logging_steps = logging_config.logging_steps if logging_config is not None else logging_steps
-        self.logging_config = logging_config
-        from swift.dev.recipe.tracking import RunTracker
-        self.tracker = RunTracker(logging_config, output_dir)
-        self.save_steps = save_steps
-        self.output_dir = output_dir
         self.num_train_epochs = num_train_epochs
-        self.max_steps = max_steps
         self.eval_dataloader = eval_dataloader
         self.eval_steps = eval_steps
         self.eval_iters = eval_iters
-        self.no_save_optim = no_save_optim
-        self.no_save_rng = no_save_rng
-        self.safe_serialization = safe_serialization
-        self.max_shard_size = max_shard_size
-        self.save_total_limit = save_total_limit
         self.ignore_data_skip = ignore_data_skip
-        self.manual_gc = manual_gc
         self.manual_gc_eval = manual_gc_eval
-        self.manual_gc_steps = manual_gc_steps
-        if self.manual_gc_steps < 0:
-            raise ValueError('manual_gc_steps must be >= 0.')
         # Forwarded verbatim to twinkle's forward_backward/forward_only. task='embedding' swaps the
         # lm_head for the pooling patch, so the loss reads outputs['embeddings'] instead of logits;
         # 'causal_lm' (the default) keeps the SFT path byte-identical.
@@ -203,10 +513,6 @@ class SFTLoop:
         # Warn once about the 1/N generative-eval throughput under torchrun (see _evaluate_generate).
         self._warned_eval_dp = False
 
-        # optimizer step counter (increments once per GA window)
-        self.global_step = 0
-        self.micro_step = 0
-        self.history: list = []
         self.eval_history: list = []
         # First epoch to run; advanced by resume() so cross-epoch resume doesn't replay
         # already-consumed epochs.
@@ -257,21 +563,6 @@ class SFTLoop:
         self._epoch = 0
         self._sync_state()
         self.handler.on_init_end()
-
-    def _reached_max(self) -> bool:
-        return self.max_steps > 0 and self.global_step >= self.max_steps
-
-    def _is_grad_sync_boundary(self) -> bool:
-        """Whether the current micro_step is an optimizer-update boundary.
-
-        Replicates twinkle optimizer_group.do_grad_sync loop-side (using self.micro_step as
-        twinkle's cur_step, which resume() keeps aligned): boundary when ga==1, else one micro-step
-        late at cur_step = ga+1, 2ga+1, .... Computed here rather than read off model.optimizer_group
-        so it works for BOTH the in-process transformers model and the Ray-remote Megatron model
-        (whose optimizer_group lives on the workers, not the driver handle).
-        """
-        ga = self.gradient_accumulation_steps
-        return ga == 1 or ((self.micro_step - 1) % ga == 0 and self.micro_step > 1)
 
     def _sync_state(self, *, loss: Optional[float] = None, metrics: Optional[dict] = None) -> None:
         """Publish the loop's current position onto the shared CallbackState before an event fires.
@@ -523,41 +814,36 @@ class SFTLoop:
             'discards the remainder. Enlarge the dataset or lower the batch size; otherwise training '
             'would loop empty epochs forever.')
 
-    def _record_step(self) -> None:
-        """Count one completed optimizer step + log / periodic save / periodic eval (shared).
-
-        Reads the NORMALIZED per-token loss (+ grad_norm) via the driver-callable
-        model.calculate_metric (works for transformers + Ray-remote Megatron; resolves the active
-        optimizer group on the worker). Raw forward_backward loss under reduction='sum' is a
-        token-sum, not comparable across steps -- calculate_metric divides by num_tokens and resets.
-        """
-        self.global_step += 1
-        collect_manual_gc(self.manual_gc, self.manual_gc_steps, self.global_step)
-        metrics = self.model.calculate_metric(is_training=True)
-        loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
-        record = {'step': self.global_step, 'loss': loss}
+    def _extra_step_metrics(self, metrics: dict) -> dict:
+        """grad_norm + every per-channel ``loss_*`` term + this step's drained MTP metrics."""
+        extra: dict = {}
         if metrics.get('grad_norm') is not None:
-            record['grad_norm'] = float(metrics['grad_norm'])
+            extra['grad_norm'] = float(metrics['grad_norm'])
         for key, value in metrics.items():
             if key.startswith('loss_'):
-                record[key] = float(value)
-        record.update(self._mtp_metrics())
-        record = self.tracker.log(record, self.global_step)
-        self.history.append(record)
+                extra[key] = float(value)
+        extra.update(self._mtp_metrics())
+        return extra
+
+    def _post_record(self, record: dict, loss: float) -> None:
+        """Publish this step's loss/record onto the shared CallbackState before any event fires."""
         self._sync_state(loss=loss, metrics=record)
-        should_log = (self.tracker.should_log(self.global_step) if self.logging_config is not None else
-                      bool(self.logging_steps and self.global_step % self.logging_steps == 0))
-        should_log = should_log or self.handler.control.should_log
-        if should_log:
-            gn = record.get('grad_norm')
-            gn_str = f'  grad_norm={gn:.4f}' if gn is not None else ''
-            mtp = record.get('mtp_loss')
-            mtp_str = f'  mtp_loss={mtp:.4f}' if mtp is not None else ''
-            channel_str = ''.join(f'  {key}={value:.4f}' for key, value in record.items() if key.startswith('loss_'))
-            logger.info(f'step {self.global_step}  loss={loss:.4f}{gn_str}{mtp_str}{channel_str}')
-            self.handler.on_log(logs=record)
-        if self.save_steps and self.global_step % self.save_steps == 0:
-            self.save(f'checkpoint-{self.global_step}')
+
+    def _should_log(self) -> bool:
+        """Base cadence, plus a callback's one-shot should_log request (EarlyStop/GracefulExit etc.)."""
+        return super()._should_log() or self.handler.control.should_log
+
+    def _log_step(self, record: dict, loss: float) -> None:
+        gn = record.get('grad_norm')
+        gn_str = f'  grad_norm={gn:.4f}' if gn is not None else ''
+        mtp = record.get('mtp_loss')
+        mtp_str = f'  mtp_loss={mtp:.4f}' if mtp is not None else ''
+        channel_str = ''.join(f'  {key}={value:.4f}' for key, value in record.items() if key.startswith('loss_'))
+        logger.info(f'step {self.global_step}  loss={loss:.4f}{gn_str}{mtp_str}{channel_str}')
+        self.handler.on_log(logs=record)
+
+    def _post_step(self) -> None:
+        """Periodic eval + the on_step_end fan-out, then honour (and clear) the callback control flags."""
         if self._due_for_eval():
             self.evaluate()
         # on_step_end is where EarlyStop / GracefulExit raise their flags; honour them, then clear the
@@ -719,28 +1005,14 @@ class SFTLoop:
         self._record_step()
 
     def save(self, name: str = 'checkpoint-final', *, is_final: bool = False) -> str:
-        """Persist the model + full training state via twinkle's native save.
+        """Persist the model + full training state, then fire the save / hub callbacks.
 
-        Passes save_optimizer=True so twinkle writes optimizer.pt / scheduler.pt / scaler.pt /
-        rng_state.pt / trainer_state.json (twinkle schema: cur_step / gradient_accumulation_steps
-        / consumed_train_samples). dev does NOT hand-roll trainer_state; it feeds the dataloader's
-        own consumed count so the resume position is recoverable.
-
-        Read through ``get_state()`` rather than off an attribute: the dataloader is a twinkle
-        ``remote_class``, so in ray mode the driver holds a handle whose attributes live in the worker
-        and only its remote_functions answer. Same call the twinkle cookbooks use.
+        The twinkle-native write (optimizer.pt / scheduler.pt / scaler.pt / rng_state.pt / trainer_state.json
+        with schema cur_step / gradient_accumulation_steps / consumed_train_samples) is TrainLoop.save; SFT
+        adds the callback fan-out and the optional hub push. dev does NOT hand-roll trainer_state -- the
+        resume position comes from the dataloader's own consumed count (see _consumed_train_samples).
         """
-        consumed = self._dataloader_state().get('consumed_train_samples', 0)
-        result = save_training_checkpoint(
-            self.model,
-            name,
-            output_dir=self.output_dir,
-            consumed_train_samples=consumed,
-            no_save_optim=self.no_save_optim,
-            no_save_rng=self.no_save_rng,
-            safe_serialization=self.safe_serialization,
-            max_shard_size=self.max_shard_size,
-            save_total_limit=self.save_total_limit)
+        result = super().save(name, is_final=is_final)
         # on_save reports the resolved dir rather than ``result``: in Ray (Megatron) mode save()
         # returns a deferred handle, not a path, so recompute the same way save_final does.
         self._sync_state()
@@ -754,6 +1026,15 @@ class SFTLoop:
             self.handler.on_push_begin(checkpoint_dir=ckpt_dir)
             self.hub_pusher(ckpt_dir)
         return result
+
+    def _consumed_train_samples(self) -> int:
+        """SFT's resume counter is the dataloader's consumed count, not the optimizer-step count.
+
+        Read through ``get_state()`` rather than off an attribute: the dataloader is a twinkle
+        ``remote_class``, so in ray mode the driver holds a handle whose attributes live in the worker and
+        only its remote_functions answer. Same call the twinkle cookbooks use.
+        """
+        return self._dataloader_state().get('consumed_train_samples', 0)
 
     def _dataloader_state(self) -> dict:
         """The train dataloader's ``{consumed_train_samples, resume_epoch}``, or ``{}`` if it has none."""

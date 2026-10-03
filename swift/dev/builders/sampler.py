@@ -131,10 +131,9 @@ def build_engine_args(backend: str, infer_config: 'InferConfig', rollout_config:
         return {'max_batch_size': infer_config.max_batch_size}
     prefix = f'{backend}_'
     result = {}
-    excluded = {
-        'engine_kwargs', 'mode', 'server_base_url', 'server_host', 'server_port', 'server_timeout',
-        'server_group_port', 'server_pass_dataset'
-    }
+    #: Prefix-stripped rollout fields that are not sampler engine args: ``mode`` is the trainer/sampler
+    #: GPU-placement knob (``vllm_mode``) and ``engine_kwargs`` is merged verbatim below.
+    excluded = {'engine_kwargs', 'mode'}
     for name, value in asdict(rollout_config).items():
         if name.startswith(prefix) and value is not None:
             key = name[len(prefix):]

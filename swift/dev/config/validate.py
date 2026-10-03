@@ -86,9 +86,12 @@ def validate_configs(
     _check_rlhf_ref_model(model_config, tuner_config, rlhf_config)
     _check_rlhf_advanced(train_config, rlhf_config)
     _check_rlhf_padding_free(template_config, dataset_config, rlhf_config)
-    _check_rlhf_sequence_parallel(template_config, rlhf_config)
-    # Packing-derived padding_free has already been resolved by process_configs.
-    _check_hf_sequence_parallel(model_config, template_config, dataset_config, distributed_config, is_megatron)
+    _check_rlhf_sequence_parallel(
+        model_config, template_config, dataset_config, distributed_config, rlhf_config, is_megatron)
+    # Packing-derived padding_free has already been resolved by process_configs. RLHF SP is fully governed
+    # by _check_rlhf_sequence_parallel above, so this early-returns for a non-None rlhf_config.
+    _check_hf_sequence_parallel(
+        model_config, template_config, dataset_config, distributed_config, is_megatron, rlhf_config)
 
 
 def _changed_fields(config) -> list:
@@ -150,12 +153,64 @@ def _check_rlhf_advanced(train_config: 'TrainConfig', rlhf_config: Optional['RLH
     _check_grpo_controls(cfg)
     _check_reference_sync(cfg, train_config)
     _check_chord(cfg)
+    _check_router_replay(cfg)
+    _check_sampling_replay(cfg)
+    _check_prm(cfg)
     _check_self_distillation(cfg, train_config)
-    _check_gkd(cfg)
+    _check_distillation(cfg)
     _check_auxiliary_adapters(cfg)
     _check_multi_turn(cfg)
-    if cfg.teacher_model is not None and cfg.teacher_model_server is not None:
-        raise ValueError('teacher_model and teacher_model_server are mutually exclusive.')
+    _check_preference_reference(cfg)
+    _check_unwired_rlhf_knobs(cfg)
+
+
+#: RLHFConfig knobs that are parsed but no code path reads (verified by grep across swift/dev + twinkle).
+#: Each names an unported feature; setting one must fail loudly rather than be silently dropped, so a run
+#: never trains without a knob the user believes is active. ``desirable_weight``/``undesirable_weight`` are
+#: NOT here -- the KTO fix (W12) wires them into twinkle's KTOLoss via configure._preference_loss_kwargs.
+_UNWIRED_RLHF_KNOBS = {
+    'ld_alpha': 'length-desensitization DPO',
+    'discopop_tau': 'DiscoPOP DPO',
+    'loss_weights': 'multi-loss weighting',
+    'f_divergence_type': 'selecting the distillation f-divergence (the JSD interpolation is set by beta)',
+    'real_tau': 'REAL soft-constraint temperature',
+    'num_generations_eval': 'per-prompt generations during evaluation',
+    'num_mini_batches': 'PPO mini-batch splitting',
+    'local_rollout_forward_batch_size': 'PPO rollout forward batching',
+    'num_sample_generations': 'PPO round-based sample reuse',
+    'missing_eos_penalty': 'PPO missing-EOS penalty',
+    'offload_bridge': 'weight-bridge offload between syncs',
+}
+
+
+def _check_unwired_rlhf_knobs(cfg: 'RLHFConfig') -> None:
+    """Refuse RLHF knobs that are accepted but not implemented, so none is silently ignored (W20-W25).
+
+    A user who sets one expects it to shape training; refusing at validation is the fail-loudly contract.
+    Only fields the user actually set are flagged (``_changed_fields``), so defaults never trip this.
+    """
+    requested = sorted(set(_UNWIRED_RLHF_KNOBS).intersection(_changed_fields(cfg)))
+    if requested:
+        details = ', '.join(f'--{name} ({_UNWIRED_RLHF_KNOBS[name]})' for name in requested)
+        raise NotImplementedError(
+            f'These options are not implemented yet and would be silently ignored: {details}. '
+            'Remove them; no currently-wired option is equivalent.')
+
+
+def _check_preference_reference(cfg: 'RLHFConfig') -> None:
+    """Reject reference-free KTO: KTO has no reference-free form (W12).
+
+    KTO's implicit reward IS the policy-vs-reference log-ratio, and its z_KL anchor is a KL against that
+    same reference, so both terms need reference logps. ``reference_free=True`` would leave KTOLoss with
+    none -- it raises mid-training -- so refuse here and point at the fix: under LoRA the adapter-disabled
+    base is the reference (run_dpo builds it automatically), and full fine-tuning derives one from the
+    policy init.
+    """
+    if cfg.rlhf_type == 'kto' and cfg.reference_free:
+        raise ValueError('KTO cannot be reference-free: its implicit reward is the log-ratio against a '
+                         'reference and z_KL is a KL against that reference. Remove --reference_free; '
+                         'under LoRA the adapter-disabled base serves as the reference automatically, and '
+                         'full fine-tuning derives one from the policy init.')
 
 
 def validate_multi_turn_config(config: 'RLHFConfig') -> None:
@@ -172,18 +227,122 @@ def _check_multi_turn(cfg: 'RLHFConfig') -> None:
         raise ValueError('max_turns must be >= 1.')
     if cfg.max_trajectory_tokens is not None and cfg.max_trajectory_tokens < 1:
         raise ValueError('max_trajectory_tokens must be >= 1.')
-    if cfg.teacher_model_server:
-        raise ValueError('teacher_model_server is not supported with multi-turn GRPO; use a local teacher model.')
 
 
 def validate_rollout_config(rollout_config: Optional['RolloutConfig'],
-                            multi_turn_config: Optional['RLHFConfig']) -> None:
+                            multi_turn_config: Optional['RLHFConfig'],
+                            rlhf_config: Optional['RLHFConfig'] = None) -> None:
     """Validate the rollout tools/sandbox surface without imposing RL-training-only constraints.
 
     ``multi_turn_config`` is whatever carries ``max_turns`` for the active recipe (the RLHFConfig for
     GRPO, the reward/multi-turn config for sampling); it may be None when multi-turn is not offered.
+    ``rlhf_config`` is the training config when this rollout backs an RL recipe (None for sampling); it
+    is only read by :func:`_check_async_generate`, which cross-checks the ``async_generate`` rollout knob
+    against the training surface. That check no-ops when ``async_generate`` is unset, so sampling recipes
+    -- which never set it -- are unaffected.
     """
+    _check_rollout_sampler(rollout_config)
     _check_rollout_tools(rollout_config, multi_turn_config)
+    _check_unwired_rollout_knobs(rollout_config)
+    _check_async_generate(rollout_config, rlhf_config)
+
+
+def _check_async_generate(rollout_config: Optional['RolloutConfig'], rlhf_config: Optional['RLHFConfig']) -> None:
+    """Reject ``async_generate`` combinations the GRPO loop cannot honour (fail-loudly).
+
+    Async rollout overlaps generation with training via one-batch look-ahead, so the batch trained at
+    step ``b+1`` was generated by policy ``v_b`` -- always one step stale. That is a real off-policy
+    gap and a real deployment constraint, so every one of the following is refused here rather than
+    silently degrading:
+
+    - Only the GRPO loop implements the double-buffered dispatch; RFT/PPO override ``fit`` and would
+      ignore the flag, so ``rlhf_type`` must be ``'grpo'``.
+    - Staleness > 0 means off-policy, so ``rollout_importance_sampling_mode`` must be set to correct it.
+    - Weight sync rewrites live sampler weights and needs the sampler quiescent; only the disaggregated
+      placement gives it its own GPUs so generation can overlap training. ``colocate`` time-shares one
+      DeviceGroup and cannot overlap.
+    - ``dynamic_sample`` regenerates zero-variance groups adaptively after seeing rewards, and multi-turn
+      rolls out turn-by-turn with self-eviction -- neither can be pre-submitted a batch ahead.
+    """
+    if rollout_config is None or not rollout_config.async_generate:
+        return
+    if rlhf_config is None or rlhf_config.rlhf_type != 'grpo':
+        rlhf_type = None if rlhf_config is None else rlhf_config.rlhf_type
+        raise ValueError(
+            f'--async_generate is only implemented on the GRPO loop (got rlhf_type={rlhf_type!r}); the other '
+            'recipes override the training loop and would silently ignore it. Remove --async_generate.')
+    if rlhf_config.rollout_importance_sampling_mode is None:
+        raise ValueError(
+            '--async_generate trains on a rollout batch that is always one step stale (off-policy), so it '
+            'requires off-policy correction: set --rollout_importance_sampling_mode (e.g. token_truncate or '
+            'sequence_mask). Remove --async_generate if you want a strictly on-policy loop.')
+    if rollout_config.vllm_mode != 'disaggregated':
+        raise ValueError(
+            f"--async_generate needs the sampler on its own GPUs to overlap generation with training, but "
+            f"vllm_mode={rollout_config.vllm_mode!r}. Set --vllm_mode disaggregated; 'colocate' time-shares "
+            'one DeviceGroup and cannot overlap.')
+    if rlhf_config.dynamic_sample:
+        raise ValueError(
+            '--async_generate cannot be combined with --dynamic_sample: dynamic sampling regenerates '
+            'zero-variance groups after rewards are seen, which cannot be pre-submitted a batch ahead. '
+            'Disable one of them.')
+    if rlhf_config.max_turns is not None:
+        raise ValueError(
+            '--async_generate cannot be combined with a multi-turn rollout (max_turns is set): multi-turn '
+            'rolls out turn-by-turn with self-eviction and cannot be pre-submitted a batch ahead. '
+            'Remove --async_generate or unset --max_turns.')
+
+
+#: RolloutConfig scheduling / offload knobs that no code path reads (verified by grep). The engine knobs
+#: (``vllm_*``/``sglang_*``) ARE wired -- run_grpo._sampler_engine_args forwards them through
+#: build_engine_args -- ``generation_batch_size`` is wired (PromptBatchScheduler shards the prompt set
+#: per rollout, B1), and ``async_generate`` is wired (GRPOLoop double-buffered rollout, guarded by
+#: _check_async_generate), so none of those appear here; these are the unported rollout-loop controls.
+_UNWIRED_ROLLOUT_KNOBS = {
+    'sleep_level': 'sampler sleep-level memory offload',
+    'move_model_batches': 'batched weight moves during sync',
+    'offload_optimizer': 'optimizer offload during rollout',
+    'offload_model': 'policy offload during rollout',
+    'enable_flattened_weight_sync': 'flattened weight-sync buffers',
+}
+
+
+def _check_unwired_rollout_knobs(rollout_config: Optional['RolloutConfig']) -> None:
+    """Refuse rollout scheduling/offload knobs that are accepted but not implemented (fail-loudly)."""
+    if rollout_config is None:
+        return
+    requested = sorted(set(_UNWIRED_ROLLOUT_KNOBS).intersection(_changed_fields(rollout_config)))
+    if requested:
+        details = ', '.join(f'--{name} ({_UNWIRED_ROLLOUT_KNOBS[name]})' for name in requested)
+        raise NotImplementedError(
+            f'These rollout options are not implemented yet and would be silently ignored: {details}. '
+            'Remove them; no currently-wired option is equivalent.')
+    # steps_per_generation is TRL's "reuse one generation batch across N optimizer steps"; dev's native
+    # equivalent is RLHFConfig.num_iterations (one rollout replayed N times), so point there rather than
+    # lumping it in with the knobs that have no equivalent.
+    if 'steps_per_generation' in _changed_fields(rollout_config):
+        raise NotImplementedError(
+            '--steps_per_generation is not wired; the dev equivalent is --num_iterations, which replays one '
+            'rollout across several optimizer steps. Remove --steps_per_generation and set --num_iterations.')
+
+
+def _check_rollout_sampler(rollout_config: Optional['RolloutConfig']) -> None:
+    """Reject a rollout engine dev cannot wire as an independent-process, weight-synced sampler.
+
+    ``'vllm'`` and ``'sglang'`` are both wired (GRPO/PPO/RFT and the distill family read it for the
+    rollout sampler). ``'transformers'`` is not: the online loop syncs the trained policy into the
+    sampler every step through a CheckpointEngineManager, which needs a CheckpointEngineMixin engine,
+    and TransformersSampler deliberately has none (it generates on the trainer's own weights). The
+    ``rollout_sampler`` Literal already excludes it; this is the loud backstop so a mis-set value fails
+    at validation rather than silently running without weight sync.
+    """
+    if rollout_config is None:
+        return
+    if rollout_config.rollout_sampler not in ('vllm', 'sglang'):
+        raise ValueError(
+            f"rollout_sampler={rollout_config.rollout_sampler!r} cannot back an online-RL rollout: weight "
+            "sync into the sampler needs a CheckpointEngineMixin engine, which only 'vllm' and 'sglang' "
+            "provide (TransformersSampler has none by design). Use rollout_sampler='vllm' or 'sglang'.")
 
 
 def _check_rollout_tools(rollout_config: Optional['RolloutConfig'],
@@ -238,8 +397,6 @@ def _check_grpo_controls(cfg: 'RLHFConfig') -> None:
     if cfg.rlhf_type != 'grpo':
         if grpo_only:
             raise ValueError('GRPO clipping, replay, entropy, FIPO, and completion logging controls are GRPO-only.')
-        if cfg.teacher_model_server and cfg.rlhf_type != 'gkd':
-            raise ValueError('teacher_model_server is supported only by GRPO and GKD.')
         return
     _check_grpo_loss_type(cfg, loss_type)
     positive = {
@@ -269,6 +426,15 @@ def _check_grpo_loss_type(cfg: 'RLHFConfig', loss_type: str) -> None:
         raise ValueError('GRPO supports exactly one loss_type.')
     if loss_type not in supported:
         raise ValueError(f'Unsupported GRPO loss_type={loss_type!r}; expected one of {sorted(supported)}.')
+    # GSPO IS sequence-level importance sampling; an explicit token-level request contradicts it and would
+    # silently downgrade GSPO to token-level GRPO (W13). The default 'token' is promoted to 'sequence' by
+    # configure_rlhf_loss, so only an explicitly-set 'token' is a real contradiction worth rejecting.
+    if (loss_type == 'gspo' and cfg.importance_sampling_level == 'token'
+            and 'importance_sampling_level' in _changed_fields(cfg)):
+        raise ValueError(
+            'loss_type=gspo IS sequence-level importance sampling; --importance_sampling_level token contradicts '
+            'it and would silently downgrade GSPO to token-level GRPO. Drop the flag (gspo defaults to '
+            'sequence-level), or use loss_type=grpo for token-level IS.')
 
 
 def _check_dynamic_sampling(cfg: 'RLHFConfig') -> None:
@@ -316,6 +482,117 @@ def _check_chord(cfg: 'RLHFConfig') -> None:
         raise ValueError('CHORD requires 0 <= chord_mu_valley <= chord_mu_peak <= 1.')
 
 
+def _check_router_replay(cfg: 'RLHFConfig') -> None:
+    """Reject MoE routing-replay combinations dev cannot honour, so the knob is never silently dropped.
+
+    ``router_replay_mode`` was a parsed-but-unwired dead knob; R2/R3 are now wired into GRPOLoop. Two
+    combinations remain infeasible and must fail loudly here rather than corrupt a run:
+
+    - Only GRPO consumes it: the RECORD/REPLAY driving lives in ``GRPOLoop._mini_batch_kwargs``, while the
+      RFT/GKD/OPSD/PPO loops override ``fit`` and build their own ``forward_backward`` kwargs, so a non-GRPO
+      run would set ``enable_router_replay`` on the model yet never pass a replay action -- a silent no-op.
+    - CHORD appends auxiliary SFT rows that carry no expert routing, so they cannot share the REPLAY forward
+      (twinkle's ``set_router_replay_data`` aligns routing to every row); the two are mutually exclusive.
+
+    The MoE-only and sampler-export requirements are checked at runtime instead (a dense policy records no
+    routing; a non-exporting engine leaves R3 with none) -- both surface as loud errors in the loop, since
+    validate has no model/engine to inspect.
+    """
+    mode = cfg.router_replay_mode
+    if mode == 'disabled':
+        return
+    if cfg.rlhf_type != 'grpo':
+        raise ValueError(f'router_replay_mode={mode!r} is GRPO-only: R2/R3 routing replay is driven by '
+                         'GRPOLoop, and the RFT/GKD/OPSD/PPO loops build their own forward_backward kwargs '
+                         'without it. Use rlhf_type=grpo, or router_replay_mode=disabled.')
+    if cfg.chord_sft_dataset:
+        raise ValueError('router_replay_mode cannot be combined with CHORD: the auxiliary SFT rows carry no '
+                         'expert routing, so they cannot share the REPLAY forward. Drop chord_sft_dataset, or '
+                         'set router_replay_mode=disabled.')
+
+
+def _check_sampling_replay(cfg: 'RLHFConfig') -> None:
+    """Reject sampling-replay combinations dev cannot honour, so the knob is never silently dropped.
+
+    ``enable_sampling_replay`` makes the training forward recompute each token's log-prob over the sampler's
+    exact support set (twinkle ``replayed_selective_log_softmax``), so the GRPO ratio is measured against the
+    distribution the token was actually drawn from. twinkle's GRPOLoss/forward impose hard constraints; the
+    ones decidable from RLHFConfig alone are enforced here, the rest fail loudly at their own site:
+
+    - GRPO-only: the ``sampling_masks`` column is assembled by ``GRPOLoop`` (``_rollout_step`` /
+      ``_mini_batch_kwargs``); the RFT/GKD/OPSD/PPO loops override ``fit`` and never carry it.
+    - No loss-side KL penalty: GRPOLoss raises when ``enable_sampling_replay`` and ``beta != 0``. dev only
+      forwards ``beta`` to the loss when it is set, KL is not folded into the reward, and KL is calculated
+      (mirroring ``_online_loss_kwargs``) -- so only that resolved value is checked here; a KL-in-reward run
+      keeps the loss ``beta`` at 0 and is allowed.
+    - No CHORD: its auxiliary SFT rows are not sampled, so they have no sampling mask to replay against
+      (GRPOLoss rejects the resulting ``loss_mask != trainable``); the two are mutually exclusive.
+
+    The entropy bonus (``entropy_coef``) has no dev knob, so it stays 0 and needs no guard. Sequence/context
+    parallelism is rejected by the twinkle forward itself (and, today, by the blanket RLHF-SP guard), which
+    this config-only check has no parallel sizes to inspect.
+    """
+    if not cfg.enable_sampling_replay:
+        return
+    if cfg.rlhf_type != 'grpo':
+        raise ValueError(f'enable_sampling_replay is GRPO-only: the sampling_masks column is assembled by '
+                         f'GRPOLoop, but rlhf_type={cfg.rlhf_type!r} builds its own forward_backward kwargs '
+                         'without it. Use rlhf_type=grpo, or disable enable_sampling_replay.')
+    calculate_kl = cfg.calculate_KL is not False
+    loss_beta = cfg.beta if (cfg.beta is not None and not cfg.kl_in_reward and calculate_kl) else None
+    if loss_beta:
+        raise ValueError(f'enable_sampling_replay forbids a GRPO KL penalty in the loss (beta must be 0), but '
+                         f'beta={loss_beta} would reach GRPOLoss. Set beta=0, or fold the KL into the reward '
+                         'with kl_in_reward=True, or disable enable_sampling_replay.')
+    if cfg.chord_sft_dataset:
+        raise ValueError('enable_sampling_replay cannot be combined with CHORD: the auxiliary SFT rows are not '
+                         'sampled, so they have no sampling mask to replay against. Drop chord_sft_dataset, or '
+                         'disable enable_sampling_replay.')
+    if cfg.max_turns is not None:
+        raise ValueError('enable_sampling_replay does not support multi-turn rollouts: tool/observation turns '
+                         'are trainable but were not drawn from the sampled policy, so they have no sampling '
+                         'mask to replay against (GRPOLoss rejects the resulting loss_mask != trainable). Set '
+                         'max_turns=None, or disable enable_sampling_replay.')
+
+
+def _check_prm(cfg: 'RLHFConfig') -> None:
+    """Reject GRPO process-reward (PRM) combinations the loop cannot honour, so no knob is silently dead.
+
+    ``--prm`` is a dual-use selector: best-of-n synthesis ranks with it as a scalar axis, while GRPO turns it
+    into a per-token *process* reward (each reasoning step scored by its response prefix, broadcast onto the
+    step's tokens -- see :mod:`swift.dev.rewards.prm`). Only the GRPO consumer is validated here; for any other
+    ``rlhf_type`` (synthesis runs under the ``dpo`` default) ``prm`` is just a ranking axis and the
+    process-reward knobs do not apply.
+
+    - Multi-turn is unsupported: a step prefix would span several assistant turns, so per-step scoring is
+      undefined (``GRPOLoop._apply_prm`` raises at runtime; refused here up front).
+    - Mutually exclusive with RLSD/SDAR: both replace the scalar advantage with a per-token one from a
+      different source (teacher-signal reweighting vs process reward), and ``_training_advantage`` passes a
+      per-token PRM advantage straight through -- it cannot also apply the teacher reweighting.
+    - A process-reward knob with no ``--prm`` channel is dead: ``prm_scorer``/``prm_step_delimiter`` only shape
+      how PRM steps are segmented and scored, so setting one without any PRM item would do nothing.
+    """
+    if cfg.rlhf_type != 'grpo':
+        return
+    scorer_knobs = sorted({'prm_scorer', 'prm_step_delimiter'}.intersection(_changed_fields(cfg)))
+    if not cfg.prm:
+        if scorer_knobs:
+            details = ', '.join(f'--{name}' for name in scorer_knobs)
+            raise ValueError(
+                f'{details} shape the GRPO process reward but no --prm channel is set, so they would do '
+                'nothing. Add a --prm item (a rule name or a frozen PRM model id), or drop them.')
+        return
+    if cfg.max_turns is not None:
+        raise ValueError(
+            'The --prm process reward does not support multi-turn rollouts: a reasoning-step prefix would span '
+            'several assistant turns, so per-step scoring is undefined. Set max_turns=None, or drop --prm.')
+    if cfg.advantage_reweight == 'rlsd' or cfg.sdar_loss_coef > 0:
+        raise ValueError(
+            'The --prm process reward cannot be combined with RLSD/SDAR: both turn the scalar advantage into a '
+            'per-token one from different sources (process reward vs teacher-signal reweighting), and only one '
+            'can drive the loss. Drop --prm, or disable advantage_reweight=rlsd / sdar_loss_coef.')
+
+
 def _check_self_distillation(cfg: 'RLHFConfig', train_config: 'TrainConfig') -> None:
     _check_rlsd(cfg)
     _check_sdar(cfg)
@@ -334,8 +611,6 @@ def _check_rlsd(cfg: 'RLHFConfig') -> None:
         raise ValueError('RLSD warmup and decay steps must be non-negative.')
     if not (cfg.orm or cfg.reward_model):
         raise ValueError('advantage_reweight=rlsd requires orm or reward_model.')
-    if cfg.teacher_model_server:
-        raise ValueError('RLSD requires a local or self-distillation teacher, not teacher_model_server.')
 
 
 def _check_sdar(cfg: 'RLHFConfig') -> None:
@@ -345,27 +620,40 @@ def _check_sdar(cfg: 'RLHFConfig') -> None:
         raise ValueError('sdar_gate_beta must be > 0.')
     if cfg.advantage_reweight == 'rlsd':
         raise ValueError('SDAR and RLSD cannot be enabled together.')
-    if cfg.teacher_model_server:
-        raise ValueError('SDAR requires a local or self-distillation teacher, not teacher_model_server.')
 
 
-def _check_gkd(cfg: 'RLHFConfig') -> None:
-    if cfg.rlhf_type != 'gkd':
+def _check_distillation(cfg: 'RLHFConfig') -> None:
+    """Validate the on-policy distillation family (gkd / opsd / mopd).
+
+    ``lmbda`` and the "offload / teacher_deepspeed need a distinct local teacher_model" guards are shared
+    by all three (each may generate on-policy and may distil from a separate frozen teacher). The
+    full-vocab JSD knobs (``temperature`` / ``gkd_logits_topk`` / ``sft_alpha``) are GKD-only: OPSD/MOPD
+    use the logits-free sampled-token k3 surrogate, which reads none of them.
+    """
+    if cfg.rlhf_type not in ('gkd', 'opsd', 'mopd'):
         return
     if not 0.0 <= cfg.lmbda <= 1.0:
-        raise ValueError('GKD lmbda must be in [0, 1].')
+        raise ValueError(f'{cfg.rlhf_type} lmbda must be in [0, 1].')
+    if cfg.offload_teacher_model and cfg.teacher_model is None:
+        raise ValueError('offload_teacher_model requires a distinct local teacher_model.')
+    if cfg.teacher_deepspeed and cfg.teacher_model is None:
+        raise ValueError('teacher_deepspeed requires a distinct local teacher_model.')
+    if cfg.rlhf_type in ('opsd', 'mopd'):
+        # OPSD/MOPD v1 distils with the sampled-token k3 surrogate only: it applies no reference-KL term,
+        # so a non-zero beta would be a silently-ignored knob. Reject rather than drop. (The GKD-only
+        # full-vocab knobs temperature/gkd_logits_topk/sft_alpha are simply never read here.)
+        if cfg.beta not in (None, 0, 0.0):
+            raise ValueError(f'{cfg.rlhf_type} v1 has no reference-KL term; beta={cfg.beta!r} would be ignored. '
+                             'Leave beta unset/0 -- self-distillation pulls the student toward the teacher directly.')
+        return
+    if cfg.rlhf_type != 'gkd':
+        return
     if cfg.sft_alpha < 0:
         raise ValueError('GKD sft_alpha must be >= 0.')
     if cfg.temperature <= 0:
         raise ValueError('GKD temperature must be > 0.')
     if cfg.gkd_logits_topk is not None and cfg.gkd_logits_topk < 1:
         raise ValueError('GKD gkd_logits_topk must be >= 1 when set.')
-    if cfg.teacher_model_server and cfg.gkd_logits_topk is None:
-        raise ValueError('GKD teacher_model_server requires gkd_logits_topk >= 1.')
-    if cfg.offload_teacher_model and cfg.teacher_model is None:
-        raise ValueError('offload_teacher_model requires a distinct local teacher_model.')
-    if cfg.teacher_deepspeed and cfg.teacher_model is None:
-        raise ValueError('teacher_deepspeed requires a distinct local teacher_model.')
 
 
 def _check_auxiliary_adapters(cfg: 'RLHFConfig') -> None:
@@ -375,8 +663,6 @@ def _check_auxiliary_adapters(cfg: 'RLHFConfig') -> None:
         raise ValueError('teacher_adapters currently supports one frozen teacher adapter.')
     if cfg.teacher_adapters and cfg.teacher_model is None:
         raise ValueError('teacher_adapters requires a distinct local teacher_model.')
-    if cfg.teacher_adapters and cfg.teacher_model_server:
-        raise ValueError('teacher_adapters cannot be combined with teacher_model_server.')
     reward_models = cfg.reward_model or []
     reward_fields = {
         'reward_adapters': cfg.reward_adapters,
@@ -389,8 +675,8 @@ def _check_auxiliary_adapters(cfg: 'RLHFConfig') -> None:
             raise ValueError(f'{field} requires reward_model.')
         if values and len(values) != len(reward_models):
             raise ValueError(f'{field} must contain exactly one value per reward_model.')
-    if cfg.rlhf_type != 'grpo' and cfg.reward_template:
-        raise ValueError('reward_template is supported by GRPO only.')
+    if cfg.rlhf_type not in ('grpo', 'rft') and cfg.reward_template:
+        raise ValueError('reward_template is supported by GRPO and RFT only.')
 
 
 def _check_logging(logging_config: Optional['LoggingConfig']) -> None:
@@ -1377,7 +1663,7 @@ def _check_checkpoint_runtime(checkpoint_config: Optional['CheckpointConfig'],
             raise NotImplementedError(
                 'megatron-bridge AutoBridge does not expose max_shard_size. Use --bridge_backend mcore-bridge or '
                 'remove the option.')
-    if rlhf_config is not None and rlhf_config.rlhf_type in {'grpo', 'gkd', 'ppo'}:
+    if rlhf_config is not None and rlhf_config.rlhf_type in {'grpo', 'gkd', 'ppo', 'opsd', 'mopd', 'rft'}:
         if 'ignore_data_skip' in changed:
             raise NotImplementedError(
                 f'ignore_data_skip does not apply to {rlhf_config.rlhf_type} because its online loop has no resumable '
@@ -1443,43 +1729,61 @@ def _check_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['T
                          'Remove it.')
 
 
+#: rlhf_types whose training loss path is verified correct under the packed / variable-length layout that
+#: padding_free (and packing, which implies it) produces. The transformers forward normalizes every packed
+#: micro batch back to per-sequence ``[num_seq, max_seq]`` via ``processor.unpack_packed_sequences`` BEFORE
+#: calculate_loss, so a loss reading per-token logps/labels off that unpacked frame is packing-agnostic:
+#:   - grpo / rft: online RL -- GRPOLoss, and rft's plain cross_entropy (the SFT loss), over the unpacked
+#:     frame; both share GRPOLoop's rollout + micro-step path.
+#:   - dpo / kto / cpo / orpo / simpo: the offline PreferenceLossBase family -- all five subclass it and
+#:     consume ``_split_chosen_rejected`` + ``_compute_sequence_logps``/``_compute_avg_logps`` over the same
+#:     unpacked per-token logps, on the one run_dpo encode path (dpo/kto were the legacy-verified seeds).
+#:   - gkd: teacher-student divergence over the unpacked labels/logits.
+_RL_PADDING_FREE_WIRED_TYPES = ('grpo', 'rft', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'gkd')
+
+#: rlhf_types refused BY NAME (never silently) because one component of their path is not packed-safe.
+_RL_PADDING_FREE_REFUSED_REASONS = {
+    'ppo':
+    "PPO's per-token value-head critic does not cover the packed / variable-length layout (run_ppo.py "
+    'module docstring), so the critic would read a flattened row as one sequence.',
+    'rm':
+    'RewardLoss reads the seq_cls head\'s pooled [B, 1] score, and pooling a flattened packed row does not '
+    'split back into one score per packed sub-sequence.',
+    'opsd':
+    "OPSD's teacher->student per-token logps alignment across two independently-unpacked forwards is not "
+    'verified under variable-length packing.',
+    'mopd':
+    "MOPD fuses K teacher logps channels onto the student frame; that K-way alignment across two "
+    'independently-unpacked forwards is not verified under variable-length packing.',
+}
+
+
 def _check_rlhf_padding_free(template_config: 'TemplateConfig', dataset_config: 'DatasetConfig',
                             rlhf_config: Optional['RLHFConfig']) -> None:
     """Only some RLHF algorithms have a padding-free/packing training path.
 
-    Mirrors legacy rlhf_args.py::_check_padding_free. padding_free (and packing, which implies it)
-    flattens a micro batch into one variable-length sequence; only GRPO/DPO/KTO/GKD implement the
-    loss over that layout. For the others the flag would be accepted and then read by a code path that
-    assumes padded batches, so it is refused here rather than mis-computed later.
+    padding_free (and packing, which implies it) flattens a micro batch into one variable-length sequence;
+    the forward unpacks it back to per-sequence rows before calculate_loss, so any loss over that unpacked
+    per-token frame is correct (``_RL_PADDING_FREE_WIRED_TYPES``). The refused types are named explicitly
+    with the component that is not packed-safe rather than silently mis-computed later. Widened from
+    legacy rlhf_args.py::_check_padding_free (grpo/dpo/kto/gkd) after verifying cpo/orpo/simpo share DPO's
+    PreferenceLossBase and rft shares GRPO's rollout with the SFT cross_entropy loss.
     """
     if rlhf_config is None:
         return
     if not (template_config.padding_free or dataset_config.packing):
         return
     rlhf_type = getattr(rlhf_config, 'rlhf_type', None)
-    if rlhf_type not in ('grpo', 'dpo', 'kto', 'gkd'):
-        feature = 'packing' if dataset_config.packing else 'padding_free'
-        raise ValueError(f'rlhf_type={rlhf_type!r} does not support {feature}: only grpo/dpo/kto/gkd implement the '
-                         'variable-length training path it produces. Set the corresponding flag to False.')
-
-
-def _check_rlhf_sequence_parallel(template_config: 'TemplateConfig', rlhf_config: Optional['RLHFConfig']) -> None:
-    """Sequence parallelism is not wired for ANY RLHF algorithm on the dev path.
-
-    Divergence from legacy, deliberate: legacy rlhf_args.py::_check_sequence_parallel allows grpo/dpo
-    because legacy's trainers implement the sequence-parallel loss for them. dev wires NO mesh for the
-    RLHF recipes at all, so allowing grpo/dpo here would silently train with SP=1 while the config says
-    otherwise -- the exact failure mode validate.py exists to kill. Re-enable per algorithm when the
-    RLHF SP path is wired.
-    """
-    if rlhf_config is None or template_config.sequence_parallel_size <= 1:
+    if rlhf_type in _RL_PADDING_FREE_WIRED_TYPES:
         return
-    rlhf_type = getattr(rlhf_config, 'rlhf_type', None)
-    raise ValueError(f'rlhf_type={rlhf_type!r} does not support sequence_parallel_size='
-                     f'{template_config.sequence_parallel_size} on the dev path: no device mesh is wired for the '
-                     'RLHF recipes, so the run would silently train WITHOUT sequence parallelism. '
-                     'Set sequence_parallel_size=1. (legacy allows grpo/dpo here; dev diverges until RLHF SP '
-                     'is wired -- see _check_hf_sequence_parallel for the SFT path.)')
+    feature = 'packing' if dataset_config.packing else 'padding_free'
+    reason = _RL_PADDING_FREE_REFUSED_REASONS.get(rlhf_type)
+    if reason is not None:
+        raise ValueError(f'rlhf_type={rlhf_type!r} does not support {feature}: {reason} '
+                         'Set the corresponding flag to False.')
+    raise ValueError(f'rlhf_type={rlhf_type!r} does not support {feature}: only '
+                     f'{"/".join(_RL_PADDING_FREE_WIRED_TYPES)} implement the variable-length training path it '
+                     'produces. Set the corresponding flag to False.')
 
 
 #: attn_impl values whose attention kernel handles the variable-length (THD) layout that
@@ -1487,21 +1791,27 @@ def _check_rlhf_sequence_parallel(template_config: 'TemplateConfig', rlhf_config
 #: SP strategy enforces the same requirement at first forward (flash_attention_2/3 only).
 _SP_PADDING_FREE_ATTN_IMPLS = ('flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4')
 
+#: Online-RL rlhf_types whose Ulysses SP consumer wiring is in place: run_grpo/run_rft call
+#: ``assembly.plan_sp_mesh()`` before build_model (installing the dp x ulysses ray mesh the trainable
+#: policy, its colocated sampler and the ``data_world_size`` batch-width formula all share). PPO is
+#: deliberately absent -- its per-token value-head critic runs WITHOUT SP/packed layouts (run_ppo.py
+#: module docstring), so a SP policy paired with an SP=1 critic would slice_dp each forward_backward at a
+#: different data_world_size and starve the critic's ranks. Offline preference types (dpo/kto/...) are
+#: absent too: they are not an "under ray" recipe, so W38 does not wire them.
+_RL_SP_WIRED_TYPES = ('grpo', 'rft')
 
-def _check_hf_sequence_parallel(model_config: 'ModelConfig', template_config: 'TemplateConfig',
-                                dataset_config: 'DatasetConfig', distributed_config: 'DistributedConfig',
-                                is_megatron: bool) -> None:
-    """Guards for Ulysses sequence parallelism (TemplateConfig.sequence_parallel_size) on the HF backend.
 
-    Every check raises: SP that cannot do what the config says would otherwise SILENTLY train with
-    SP=1 (nothing on the HF path used to read this knob) or crash deep in the first forward.
-    ``process_configs`` has already resolved packing-derived padding_free, so guard 3 sees the effective
-    value. Streaming is allowed: twinkle's IterableFetcher slices by data_world_size the same way.
+def _check_sp_hf_feasibility(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+                            dataset_config: 'DatasetConfig', distributed_config: 'DistributedConfig',
+                            is_megatron: bool, sp: int) -> None:
+    """Backend/layout feasibility guards shared by the SFT (local) and online-RL (ray) Ulysses SP paths.
+
+    These are facts about the transformers backend and the batch layout, independent of HOW the ranks are
+    launched, so both SP callers reuse them and only the world-size source differs (SFT reads
+    ``Platform.get_world_size()``; online RL reads ``DistributedConfig.nproc_per_node``). Every branch
+    raises: SP that cannot do what the config says would otherwise SILENTLY train with SP=1 or crash deep
+    in the first forward.
     """
-    sp = template_config.sequence_parallel_size
-    if sp <= 1:
-        return
-
     if is_megatron:
         # TemplateConfig.sequence_parallel_size is the HF Ulysses knob; Megatron's sequence
         # parallelism is DistributedConfig.sequence_parallel (TP-SP), a different feature.
@@ -1509,11 +1819,6 @@ def _check_hf_sequence_parallel(model_config: 'ModelConfig', template_config: 'T
                          'but the active backend is megatron. Megatron sequence parallelism is '
                          'DistributedConfig.sequence_parallel (TP-SP over the tensor-parallel ranks) -- set that '
                          'instead, or switch DistributedConfig.backend.')
-
-    if distributed_config.mode != 'local':
-        raise NotImplementedError(f'sequence_parallel_size={sp} is only wired for mode="local" (torchrun): under '
-                                  "mode='ray' the model gets a pure data-parallel mesh (_apply_ray_placement), so "
-                                  'SP would silently not apply. Run with torchrun, or set sequence_parallel_size=1.')
 
     if distributed_config.fsdp:
         raise NotImplementedError(f'sequence_parallel_size={sp} with DistributedConfig.fsdp is not supported yet: '
@@ -1533,6 +1838,72 @@ def _check_hf_sequence_parallel(model_config: 'ModelConfig', template_config: 'T
                              f'attn_impl={model_config.attn_impl!r}. Use one of '
                              f'{", ".join(repr(i) for i in _SP_PADDING_FREE_ATTN_IMPLS)}, or set padding_free=False '
                              '(packing implies padding_free, so drop packing too).')
+
+
+def _check_rlhf_sequence_parallel(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+                                 dataset_config: 'DatasetConfig', distributed_config: 'DistributedConfig',
+                                 rlhf_config: Optional['RLHFConfig'], is_megatron: bool) -> None:
+    """Ulysses SP (TemplateConfig.sequence_parallel_size) for the online-RL recipes under ray.
+
+    Only ``grpo``/``rft`` are wired (``_RL_SP_WIRED_TYPES``): their recipes plan the dp x ulysses ray mesh
+    via ``assembly.plan_sp_mesh()`` and read ``data_world_size`` off it for the batch width, so the config
+    and the run agree. Every other rlhf_type raises rather than silently training with SP=1 -- PPO because
+    its critic cannot follow the policy onto the SP mesh, the offline preference family because W38 wires
+    only the "under ray" path. Feasibility reuses the SFT guards; the world here is ``nproc_per_node`` (the
+    ray 'model' group size), NOT ``Platform.get_world_size()`` -- the driver orchestrates and has no
+    torchrun WORLD_SIZE.
+    """
+    if rlhf_config is None or template_config.sequence_parallel_size <= 1:
+        return
+    sp = template_config.sequence_parallel_size
+    rlhf_type = getattr(rlhf_config, 'rlhf_type', None)
+    if rlhf_type == 'ppo':
+        raise ValueError(f'rlhf_type="ppo" does not support sequence_parallel_size={sp}: PPO\'s per-token '
+                         'value-head critic runs without sequence-parallel / packed layouts, so a SP policy '
+                         'and an SP=1 critic would slice_dp each forward_backward at a different '
+                         'data_world_size and starve the critic\'s ranks. Set sequence_parallel_size=1 for PPO.')
+    if rlhf_type not in _RL_SP_WIRED_TYPES:
+        raise ValueError(f'rlhf_type={rlhf_type!r} does not support sequence_parallel_size={sp} on the dev path: '
+                         f'only the online-RL recipes {"/".join(_RL_SP_WIRED_TYPES)} wire the Ulysses SP mesh '
+                         '(plan_sp_mesh + a ray dp x ulysses device mesh). Set sequence_parallel_size=1.')
+
+    _check_sp_hf_feasibility(model_config, template_config, dataset_config, distributed_config, is_megatron, sp)
+    nproc = distributed_config.nproc_per_node
+    if nproc is None or nproc < 2:
+        raise ValueError(f'sequence_parallel_size={sp} requires DistributedConfig.nproc_per_node>=2 (got '
+                         f'{nproc!r}): the ray \'model\' DeviceGroup needs at least two ranks to split a sequence '
+                         'across. Set sequence_parallel_size=1 for a single-rank run.')
+    if nproc % sp != 0:
+        raise ValueError(f'nproc_per_node={nproc} is not divisible by sequence_parallel_size={sp}: the SP groups '
+                         'must tile the ray ranks exactly. Adjust nproc_per_node or sequence_parallel_size.')
+
+
+def _check_hf_sequence_parallel(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+                                dataset_config: 'DatasetConfig', distributed_config: 'DistributedConfig',
+                                is_megatron: bool, rlhf_config: Optional['RLHFConfig'] = None) -> None:
+    """Guards for Ulysses sequence parallelism (TemplateConfig.sequence_parallel_size) on the HF SFT path.
+
+    Every check raises: SP that cannot do what the config says would otherwise SILENTLY train with
+    SP=1 (nothing on the HF path used to read this knob) or crash deep in the first forward.
+    ``process_configs`` has already resolved packing-derived padding_free, so the flash-attn guard sees the
+    effective value. Streaming is allowed: twinkle's IterableFetcher slices by data_world_size the same way.
+
+    RLHF runs are delegated to :func:`_check_rlhf_sequence_parallel` (the online grpo/rft ray path uses
+    ``nproc_per_node`` as its world, and PPO / offline types are rejected there), so this returns early for
+    them -- otherwise the ``mode != 'local'`` guard below would double-reject the ray RL path.
+    """
+    sp = template_config.sequence_parallel_size
+    if sp <= 1:
+        return
+    if rlhf_config is not None:
+        return
+
+    _check_sp_hf_feasibility(model_config, template_config, dataset_config, distributed_config, is_megatron, sp)
+
+    if distributed_config.mode != 'local':
+        raise NotImplementedError(f'sequence_parallel_size={sp} is only wired for mode="local" (torchrun): under '
+                                  "mode='ray' the model gets a pure data-parallel mesh (_apply_ray_placement), so "
+                                  'SP would silently not apply. Run with torchrun, or set sequence_parallel_size=1.')
 
     # twinkle.initialize(mode='local') never calls dist.init_process_group -- world size comes from
     # Platform.get_world_size() (the WORLD_SIZE env torchrun sets), the same source initialize uses

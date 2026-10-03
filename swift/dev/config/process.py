@@ -128,7 +128,8 @@ def process_and_validate_configs(
         from .validate import validate_rollout_config
         # max_turns lives on the RLHFConfig for GRPO and on the multi-turn/reward config for sampling.
         multi_turn_carrier = multi_turn_config if multi_turn_config is not None else configs.get('rlhf_config')
-        validate_rollout_config(rollout_config, multi_turn_carrier)
+        # rlhf_config is the training surface _check_async_generate cross-references (None for sampling).
+        validate_rollout_config(rollout_config, multi_turn_carrier, configs.get('rlhf_config'))
     infer_config = configs.get('infer_config')
     if infer_config is not None:
         from .validate import validate_infer_config
@@ -622,8 +623,12 @@ def _derive_rlhf_task_type(model_config: 'ModelConfig', rlhf_config: Optional['R
 
 
 #: rlhf_type -> its default `beta` (KL / deviation-from-reference weight). Absent types (dpo, cpo, kto,
-#: ...) share the 0.1 fallback below; the three here are the ones legacy singles out.
-_RLHF_BETA_DEFAULTS = {'grpo': 0.04, 'gkd': 0.5, 'simpo': 2.0}
+#: ...) share the 0.1 fallback below; the ones listed here are singled out because 0.1 would be wrong.
+#: ``opsd``/``mopd`` are self-distillation -- the pull is toward the (self/multi) teacher, with no
+#: reference-KL term by default, so beta is 0 (an explicit ``--beta`` still adds one). ``rft`` is plain
+#: rejection-sampling SFT and has no reference-deviation concept at all; 0 keeps it inert rather than
+#: inheriting the 0.1 fallback.
+_RLHF_BETA_DEFAULTS = {'grpo': 0.04, 'gkd': 0.5, 'simpo': 2.0, 'opsd': 0.0, 'mopd': 0.0, 'rft': 0.0}
 
 
 def _derive_rlhf_beta(rlhf_config: Optional['RLHFConfig']) -> None:
@@ -676,12 +681,13 @@ def _derive_rlhf_teacher(model_config: 'ModelConfig', tuner_config: Optional['Tu
         return
     if isinstance(rlhf_config.teacher_adapters, str):
         rlhf_config.teacher_adapters = [rlhf_config.teacher_adapters]
-    for field in ('reward_model', 'reward_adapters', 'reward_model_type', 'reward_model_revision',
-                  'reward_template'):
+    for field in ('teacher_model', 'reward_model', 'reward_adapters', 'reward_model_type',
+                  'reward_model_revision', 'reward_template'):
         value = getattr(rlhf_config, field)
         if isinstance(value, str):
             setattr(rlhf_config, field, [value])
-    if (rlhf_config.teacher_model == model_config.model and tuner_config is not None
+    # teacher_model is a list (shared with MOPD); self-distillation is when the one teacher IS the student.
+    if (rlhf_config.teacher_model == [model_config.model] and tuner_config is not None
             and not rlhf_config.teacher_adapters):
         rlhf_config._teacher_use_disable_adapter = True
         rlhf_config.teacher_model = None
