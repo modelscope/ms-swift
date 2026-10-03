@@ -8,7 +8,7 @@
 <p align="center">
 <a href="https://modelscope.cn/home">ModelScope Community Website</a>
 <br>
-        <a href="README_CN.md">中文</a> &nbsp ｜ &nbsp English &nbsp
+        <a href="README_CN.md">中文</a> &nbsp ｜ &nbsp English &nbsp ｜ &nbsp <a href="README_JA.md">日本語</a> &nbsp
 </p>
 
 <p align="center">
