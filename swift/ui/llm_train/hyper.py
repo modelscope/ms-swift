@@ -102,6 +102,16 @@ class Hyper(BaseUI):
                 'en': 'Set the save steps',
             }
         },
+        'save_epochs': {
+            'label': {
+                'zh': '存储轮次',
+                'en': 'Save epochs',
+            },
+            'info': {
+                'zh': '设置每隔多少轮进行一次存储',
+                'en': 'Set the epoch interval to save',
+            }
+        },
         'output_dir': {
             'label': {
                 'zh': '存储目录',
@@ -133,6 +143,7 @@ class Hyper(BaseUI):
                 with gr.Row():
                     gr.Textbox(elem_id='eval_steps', lines=1, value='500', scale=20)
                     gr.Textbox(elem_id='save_steps', value='500', lines=1, scale=20)
+                    gr.Textbox(elem_id='save_epochs', lines=1, scale=20)
                     gr.Textbox(elem_id='output_dir', scale=20)
                     gr.Dropdown(
                         elem_id='attn_impl',
