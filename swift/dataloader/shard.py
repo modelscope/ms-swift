@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import math
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader
@@ -21,7 +22,7 @@ class BatchSamplerShard:
         lengths=None,
     ):
         self.tp_size = tp_size
-        self.total_samples = total_samples // self.world_size
+        self.total_samples = total_samples
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.drop_last = drop_last
@@ -33,6 +34,12 @@ class BatchSamplerShard:
         self.lengths = lengths
         if self.lengths is not None:
             self.lengths = [max(length) if isinstance(length, list) else length for length in self.lengths]
+        # Match DistributedSampler semantics: each DP rank must receive the same number of samples.
+        if self.drop_last:
+            self.num_samples = self.total_samples // self.world_size
+        else:
+            self.num_samples = (self.total_samples + self.world_size - 1) // self.world_size
+        self.total_size = self.num_samples * self.world_size
 
     @property
     def rank(self):
@@ -51,10 +58,21 @@ class BatchSamplerShard:
                 total_idx = get_length_grouped_indices(
                     self.lengths, self.batch_size * self.world_size, generator=generator)
             else:
-                total_idx = torch.randperm(self.total_samples * self.world_size, generator=generator).tolist()
-            total_idx = total_idx[self.rank::self.world_size]
+                total_idx = torch.randperm(self.total_samples, generator=generator).tolist()
         else:
-            total_idx = range(self.rank, self.total_samples * self.world_size, self.world_size)
+            total_idx = list(range(self.total_samples))
+
+        if self.drop_last:
+            total_idx = total_idx[:self.total_size]
+        else:
+            # Repeat from the global order so every original sample is retained, including when N < world_size.
+            padding_size = self.total_size - len(total_idx)
+            if padding_size > 0:
+                repeats = math.ceil(padding_size / len(total_idx))
+                total_idx += (total_idx * repeats)[:padding_size]
+        assert len(total_idx) == self.total_size
+        total_idx = total_idx[self.rank:self.total_size:self.world_size]
+        assert len(total_idx) == self.num_samples
 
         batch = []
         # Last batch if not complete will be dropped.
@@ -72,9 +90,9 @@ class BatchSamplerShard:
 
     def __len__(self) -> int:
         if self.drop_last:
-            return self.total_samples // self.batch_size
+            return self.num_samples // self.batch_size
         else:
-            return (self.total_samples + self.batch_size - 1) // self.batch_size
+            return (self.num_samples + self.batch_size - 1) // self.batch_size
 
 
 class DataLoaderShard(DataLoader):
