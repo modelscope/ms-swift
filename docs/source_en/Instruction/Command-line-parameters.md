@@ -159,6 +159,7 @@ Refer to the [generation_config](https://huggingface.co/docs/transformers/main_c
   - Note: The `eos_token` is removed from the output response, while additional stop words are preserved in the output.
 - logprobs: Whether to return log probabilities. Default is `False`.
 - top_logprobs: Number of top log probabilities to return. Default is `None`.
+- detokenize: vLLM only. Whether to decode tokens into text. Defaults to `None` (backend default). Set `--detokenize false` when deploying; individual requests may override it. Disabling decoding leaves text output empty while preserving token IDs and logprobs. Automatic string stops are omitted, token-level stopping is retained, and explicit string stops are not supported.
 - structured_outputs_regex: A regular expression pattern for structured outputs (guided decoding). When set, the model's generation is constrained to match the specified regex pattern. Only effective when `infer_backend` is `vllm`. Default is `None`.
 
 ### Quantization Arguments
