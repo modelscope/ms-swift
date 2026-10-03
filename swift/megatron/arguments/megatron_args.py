@@ -58,6 +58,7 @@ class RLHFMegatronArgumentsMixin:
     teacher_tag_key: str = field(
         default='dataset', metadata={'help': 'Column name for multi-teacher routing. Default "dataset".'})
     gkd_logits_topk: Optional[int] = None
+    gkd_loss_chunk_size: Optional[int] = None  # Local full-vocab GKD, plain output heads, sft_alpha=0
     lmbda: float = 0.5  # On-policy probability: with prob lmbda, use student-generated responses
     seq_kd: bool = False  # Deprecated
     offload_teacher_model: bool = False  # Offload teacher model to CPU to save GPU memory
