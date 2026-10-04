@@ -20,9 +20,9 @@ from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from types import MethodType
 from typing import Any, Dict, List, Optional, Union
 
-from swift.utils import (HfConfigFactory, deep_getattr, get_device_count, get_dist_setting, get_last_valid_indices,
-                         get_logger, get_position_ids_from_cu_seqlens, is_mp, is_mp_ddp, safe_ddp_context, to_device,
-                         to_float_dtype)
+from swift.utils import (HfConfigFactory, deep_getattr, get_device, get_device_count, get_dist_setting,
+                         get_last_valid_indices, get_logger, get_position_ids_from_cu_seqlens, get_torch_device, is_mp,
+                         is_mp_ddp, safe_ddp_context, to_device, to_float_dtype)
 
 logger = get_logger()
 
@@ -506,16 +506,17 @@ def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
     """add feat in accelerate to support MP + DDP"""
     import psutil
 
-    # Make sure CUDA is initialized on each GPU to have the right memory info.
+    torch_device = get_torch_device()
+    # Make sure the accelerator is initialized on each device to have the right memory info.
     for i in device_ids:
-        _ = torch.tensor([0], device=i)
+        _ = torch.tensor([0], device=get_device(i))
 
     device_ids_set = set(device_ids)
     max_memory = {}
     for i in range(get_device_count()):
         max_memory[i] = 0
         if i in device_ids_set:
-            max_memory[i] = torch.cuda.mem_get_info(i)[0]
+            max_memory[i] = torch_device.mem_get_info(i)[0]
     max_memory['cpu'] = psutil.virtual_memory().available
     return max_memory
 
