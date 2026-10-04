@@ -29,12 +29,20 @@ class ColocateHandover:
     ``manager.sync_weights`` (merged base weights every step, correct for both full and LoRA training).
     """
 
-    def __init__(self, model: Any, sampler: Any, manager: Any, *, colocate: bool, merge_and_sync: bool = True):
+    def __init__(self,
+                 model: Any,
+                 sampler: Any,
+                 manager: Any,
+                 *,
+                 colocate: bool,
+                 merge_and_sync: bool = True,
+                 sleep_level: int = 0):
         self.model = model
         self.sampler = sampler
         self.manager = manager
         self.colocate = colocate
         self.merge_and_sync = merge_and_sync
+        self.sleep_level = sleep_level
 
     def enter(self) -> None:
         """Give the sampler the device and the trained weights, ready to generate.
@@ -56,7 +64,13 @@ class ColocateHandover:
             self.sampler.wake_up(tags=['kv_cache'])  # weights already awake; ready to generate
 
     def exit(self) -> None:
-        """Take the device back for the trainer: sleep the sampler, then reload the trainer's weights."""
+        """Take the device back for the trainer: sleep the sampler, then reload the trainer's weights.
+
+        ``sleep_level`` selects how much the sampler releases: level 1 offloads only the KV cache (weights
+        stay resident, so the next ``enter`` re-syncs in place), level 2 also drops the weights. The
+        default ``0`` maps to twinkle's own default depth (level 1), keeping the previous behaviour
+        byte-for-byte; 1/2 are passed through unchanged.
+        """
         if self.colocate:
-            self.sampler.sleep()
+            self.sampler.sleep(level=self.sleep_level or 1)
             self.model.reload_to_gpu()

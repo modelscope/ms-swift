@@ -176,7 +176,8 @@ def run_gkd(
         engine_args=sampler_engine_args,
         template=assembly.template,
         remote_group=sampler_remote_group)
-    rollout = SyncableRollout(assembly.model, sampler, assembly.template, colocate=colocate)
+    rollout = SyncableRollout(
+        assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
 
     assembly.loop = GKDLoop(
         assembly.model,
@@ -199,6 +200,7 @@ def run_gkd(
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=distill_sampling_params(rlhf_config, generation_config),
+        async_generate=rollout_config.async_generate,
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
@@ -286,6 +288,7 @@ class GKDLoop(GRPOLoop):
         gradient_accumulation_steps: int = 1,
         max_grad_norm: float = 1.0,
         sampling_params: Optional[dict] = None,
+        async_generate: bool = False,
         logging_config: Optional['LoggingConfig'] = None,
         output_dir: str = 'output',
         save_steps: Optional[int] = None,
@@ -321,6 +324,7 @@ class GKDLoop(GRPOLoop):
             seed=seed,
             max_grad_norm=max_grad_norm,
             sampling_params=sampling_params,
+            async_generate=async_generate,
             logging_config=logging_config,
             output_dir=output_dir,
             save_steps=save_steps,
@@ -341,6 +345,18 @@ class GKDLoop(GRPOLoop):
         """Per-round on/off-policy coin flip: with probability ``lmbda`` this round rolls out on-policy."""
         return random.Random(self.seed + round_index).random() <= self.lmbda
 
+    def _distill_rows(self, samples: List[Any]) -> List[DistillRow]:
+        """Lift on-policy rollout samples into :class:`DistillRow` (the student-generation source).
+
+        Shared by the synchronous round and the async consume half, so both build the distillation rows
+        identically from a weight-synced rollout.
+        """
+        return [
+            DistillRow(sample.input_feature,
+                       sample.messages if sample.messages is not None else self.prompts[int(sample.prompt_id)],
+                       sample.extra or {}) for sample in samples
+        ]
+
     def _round_rows(self, round_index: int, use_student: bool, prompt_indices: Sequence[int]) -> List[DistillRow]:
         """This round's training rows, uniform across the on-policy and off-policy sources.
 
@@ -348,12 +364,7 @@ class GKDLoop(GRPOLoop):
         round ignores it and takes the dataset's own completions window instead (GKD's on/off mixing).
         """
         if use_student:
-            samples = self._generate(prompt_indices)
-            return [
-                DistillRow(sample.input_feature,
-                           sample.messages if sample.messages is not None else self.prompts[int(sample.prompt_id)],
-                           sample.extra or {}) for sample in samples
-            ]
+            return self._distill_rows(self._generate(prompt_indices))
         return self._dataset_round_rows(round_index)
 
     def _dataset_round_rows(self, round_index: int) -> List[DistillRow]:
@@ -399,6 +410,61 @@ class GKDLoop(GRPOLoop):
             'apply_sft_loss': bool(self.sft_alpha > 0 and not use_student),
         }
 
+    def _train_distill_rows(self, rows: List[DistillRow], use_student: bool) -> None:
+        """Score one round's rows with the teacher and run their optimizer steps (mini-batch split).
+
+        Shared by the synchronous round and the async consume half. ``use_student`` selects the teacher
+        view and the SFT-on-dataset-rows knob (off-policy rounds only), so the async path -- always
+        on-policy -- passes ``True``.
+        """
+        for mini_batch in self._plan_mini_batches(rows):
+            if self._reached_max():
+                break
+            teacher_kwargs = self._teacher_kwargs(mini_batch, use_student)
+            self._run_micro_step({
+                'inputs': [copy.deepcopy(row.feature) for row in mini_batch],
+                'gradient_accumulation_steps': self.gradient_accumulation_steps,
+                **self._forward_kwargs(teacher_kwargs, use_student),
+            })
+
+    def _consume_async_samples(self, samples: List[Any]) -> None:
+        """Async consume half: an on-policy rollout batch is always student-generated (lmbda==1.0)."""
+        self._train_distill_rows(self._distill_rows(samples), use_student=True)
+
+    def _run_sync(self) -> None:
+        """Synchronous driver: one round at a time, on-policy (rollout) or off-policy (dataset) per lmbda.
+
+        ``round_index`` is the scheduler's emitted-batch position, NOT ``global_step``: it seeds the per-round
+        lmbda coin flip and offsets the off-policy dataset window, so it must stay aligned with the prompt
+        batch actually being processed. Deriving it from ``enumerate`` keeps the two in lockstep within a run
+        and across a resume (the scheduler restarts from batch 0, so the pairing restarts with it); seeding it
+        from ``global_step`` misaligns them whenever GA>1 or a round spans several mini-batches, because
+        ``global_step`` counts optimizer steps, not rounds (W27).
+        """
+        for round_index, prompt_indices in enumerate(self._prompt_batches):
+            if self._reached_max():
+                break
+            use_student = self._uses_student_generation(round_index)
+            self._train_distill_rows(self._round_rows(round_index, use_student, prompt_indices), use_student)
+
+    def _run_async(self) -> None:
+        """Overlapped driver: the shared 1-batch-lookahead double buffer over the on-policy rollout.
+
+        Async distillation is only defined for purely on-policy GKD (``lmbda==1.0``, enforced by
+        ``validate._check_async_generate``): an off-policy dataset round generates nothing, so there is no
+        batch to admit a step ahead and no round_index/coin-flip/dataset-window to drive. Every async round
+        is therefore a student rollout, distilled toward the teacher's signal on it.
+        """
+        from swift.dev.recipe.train_loop import overlap_rollout_batches
+
+        overlap_rollout_batches(
+            prompt_batches=self._prompt_batches,
+            submit=self._submit_generation,
+            collect=self._collect_generation,
+            cancel=self.rollout.cancel_generate,
+            consume=self._consume_async_samples,
+            reached_max=self._reached_max)
+
     def fit(self) -> list:
         """Train over the prompt set for ``num_train_epochs`` passes of teacher-scored distillation.
 
@@ -407,32 +473,17 @@ class GKDLoop(GRPOLoop):
         optimizer-step count early. Each round's rows are split into ``train_batch_size``-row mini-batches,
         one ``forward_backward`` runs per mini-batch and ``gradient_accumulation_steps`` mini-batches make
         one optimizer step. A round is on-policy (a weight-synced rollout of the batch) or off-policy
-        (dataset completions) per ``lmbda``.
+        (dataset completions) per ``lmbda``. ``async_generate`` selects the overlapped driver
+        (:meth:`_run_async`, on-policy only), otherwise the synchronous one (:meth:`_run_sync`).
         """
         from swift.dev.recipe.train_loop import finish_manual_gc, start_manual_gc
 
         gc_was_enabled = start_manual_gc(self.manual_gc)
         try:
-            # round_index is the scheduler's emitted-batch position, NOT global_step: it seeds the per-round
-            # lmbda coin flip and offsets the off-policy dataset window, so it must stay aligned with the
-            # prompt batch actually being processed. Deriving it from enumerate keeps the two in lockstep
-            # within a run and across a resume (the scheduler restarts from batch 0, so the pairing restarts
-            # with it); seeding it from global_step misaligns them whenever GA>1 or a round spans several
-            # mini-batches, because global_step counts optimizer steps, not rounds (W27).
-            for round_index, prompt_indices in enumerate(self._prompt_batches):
-                if self._reached_max():
-                    break
-                use_student = self._uses_student_generation(round_index)
-                rows = self._round_rows(round_index, use_student, prompt_indices)
-                for mini_batch in self._plan_mini_batches(rows):
-                    if self._reached_max():
-                        break
-                    teacher_kwargs = self._teacher_kwargs(mini_batch, use_student)
-                    self._run_micro_step({
-                        'inputs': [copy.deepcopy(row.feature) for row in mini_batch],
-                        'gradient_accumulation_steps': self.gradient_accumulation_steps,
-                        **self._forward_kwargs(teacher_kwargs, use_student),
-                    })
+            if self.async_generate:
+                self._run_async()
+            else:
+                self._run_sync()
             return self.history
         finally:
             finish_manual_gc(gc_was_enabled)

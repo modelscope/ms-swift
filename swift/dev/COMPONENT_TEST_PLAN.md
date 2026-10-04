@@ -330,3 +330,78 @@ A → B → C → D → E → F → G（先 dev 数据集与新特性，再 mode
         重门控后 test_sampler_e2e.py 与新增 test_vllm_sampler_e2e.py 在 CPU 下按 accel(1) 正确跳过，既有全绿不受影响。
         （真 GPU 下已单独验证：vllm engine 2 passed + 完整 vllm sampler 4 passed。）
 
+---
+
+## SFT 全流程端到端测试套件（A–G 之后的延续，12 维度）
+
+> 目标：给 swift/dev SFT 全流程建完整端到端测试（不 mock、UT 通过=代码可用），跑通后补齐
+> examples 并真跑冒烟；有问题反思 UT 为何不完整。覆盖维度：重要模型 / 模型类型（纯文本、
+> 多模态、asr、embedding、多模态 emb、reranker、generative-reranker、seq_cls）/ 框架
+> （unsloth、transformers、megatron、liger、sentence_transformers）/ 训练方式 / 切分方式
+> （sp、cp、dp、tp、pp、单卡）/ 评测（generate-with-predict true/false）/ sampler（vllm、
+> transformers）/ 启动方式（ray、torchrun、单卡）/ optimizer×tuner / legacy 其他特性 /
+> 与 legacy 的 loss 完全还原 + grid 还原。
+
+### 进度日志
+
+- [x] 测试文件全绿：`swift/dev/tests/feature/sft/` 下 test_task_types / test_multimodal /
+      test_frameworks / test_distributed / test_eval_sampler / test_optim_tuner /
+      test_legacy_features / test_parity_grid 逐模块门禁通过。
+      * test_optim_tuner：adamw×full/lora + adafactor + galore + muon + qgalore（fail-loudly）6/6。
+      * test_legacy_features：12 passed / 3 skipped；修 packing 产品 bug（twinkle `_not_encoded`
+        需下探嵌套 list，transformers + megatron 两侧）+ FA 后端 / save_strategy 测试 bug。
+      * test_parity_grid（与 legacy 的 loss 还原）：5 passed / 3 skipped。可比：causal
+        （full/lora/adafactor 低 lr）+ embedding InfoNCE（rel=0.0）；不可比且诚实 skip：
+        seq_cls/reranker（随机分类头 init，两侧 RNG 流不同）、emb contrastive（数据格式不匹配）。
+- [x] examples/v5/train 补齐 + 真跑冒烟：12 脚本（sft/seq_cls/embedding/reranker/liger/galore/
+      muon/multimodal/eval_generate/torchrun_dp_sp/ray/megatron_tp_pp）+ 本地样本数据，
+      **12/12 真跑真存盘全绿**（GPU 重映射到空闲卡 + 步数上限）。
+      * 冒烟驱动 bug（改 .scratch_offload/smoke_one.sh，非产品）：dev CLI 拒绝重复冲突 flag →
+        改就地 sed 替换已存在的 --save_steps/--output_dir/--eval_steps、只追加不预存在的
+        --max_steps/--train_iters；conda base 的 `swift` 指向 stale checkout → 强制
+        `PATH=/usr/local/bin`；`HF_HUB_OFFLINE=1` 阻断未缓存 hub 数据集 → 移除。
+      * multimodal 的 coco-en-mini 是脚本式数据集（新 datasets 不再支持）→ 改用本地
+        examples/v5/train/data/vl.jsonl（ms-swift 官方稳定图 URL + `<image>` 行格式）。
+      * 后台作业 SIGHUP 陷阱：直接 `nohup &`（无 wait 保活）会让 torchrun 收到 SIGHUP teardown →
+        用含 wait 的批量驱动或前台跑；两个 torchrun 抢默认端口 → 按首个 GPU id 派生 MASTER_PORT。
+- [x] 冒烟暴露并修复 3 个 dev megatron **local 路径**产品 bug（megatron.core 已升到 0.19.0）：
+      1. `swift/dev/model/megatron/model.py`：原用 `functools.partial` patch twinkle MegatronStrategy
+         注入 backend，但 twinkle megatron.py 在 CUDA 上下文建立前**无条件**调
+         `MegatronStrategy.apply_process_env`（classmethod），partial 不代理类属性 → AttributeError。
+         改为真正的子类 `_BackendBoundStrategy(DevMegatronStrategy)`，保留继承的 classmethod。
+      2. `swift/dev/model/megatron/bridge/mcore.py`：`MegatronConfig.use_cpu_initialization`（默认 False）
+         被 `_megatron_model_kwargs` 转发进 config_kwargs，与本后端硬编码的 `use_cpu_initialization=True`
+         冲突 → `ModelConfig() got multiple values`。构造前 `config_kwargs.pop('use_cpu_initialization')`。
+      3. `twinkle/src/twinkle/model/megatron/megatron.py`：megatron 0.19 移除了
+         `get_default_save_sharded_strategy` → 存盘 ImportError。改用 `TorchDistSaveShardedStrategy()`
+         （0.19 的 save 内部默认策略），带版本兼容注释。
+- [x] 全 feature 门禁（进行中）：local 模式 megatron e2e `test_run_sft_megatron_local_save_resume`
+      **1 passed（199s）**，断言 bit-exact（resume 权重 max|diff|=0.0 / 290 参数、loss 轨迹精确续训、
+      mcore 优化器 distcp 齐全）→ 上面 3 个修复在 UT 路径同样验证成立。
+      **反思**：这些 megatron e2e UT 本应先抓到那 3 个 bug，但 twinkle/megatron 版本 bump（seam drift）
+      后没被重跑，是 example 真跑冒烟把它们逼出来的 —— 印证「UT 全绿≠功能可用，重 e2e 须定期真跑」。
+
+### 门禁发现的既有产品缺口（ray 模式 dev megatron）
+
+- **bug#4（既有，非本会话回归；megatron 0.19 引爆）**：ray 模式下 dev megatron 的定制全部失效。
+  根因：twinkle `infra/__init__.py` 的 `RayHelper.create_workers(cls, ...)` 里 `cls` 是 `@remote_class`
+  装饰器**闭包捕获的 twinkle base MegatronModel**，不是 `type(self)`（dev 子类）。dev MegatronModel
+  靠 driver 端 `mock.patch` 掉包 strategy 类注入 backend，但 patch 是进程内的、跨不过 ray actor 边界，
+  worker 里建的仍是 twinkle base MegatronStrategy。后果：(a) `bridge_backend` 选择、`align_grad_reduce`/
+  `nccl_comm_warmup`/`attn_impl` 消费在 ray 模式全部落空（align_grad_reduce 本就是静默死参数）；
+  (b) 这些 dev-only kwarg 泄漏进 base `get_model_config` → `ModelConfig`，megatron 0.19 收紧校验后
+  `TypeError: unexpected keyword 'align_grad_reduce'`。影响 5 个 ray 模式 megatron e2e 实例
+  （end_to_end×2 / two_bridges_bit_identical / ga_equivalence / evaluate_returns_metrics）。
+  为何 example 没抓到：12 个 example 的 megatron 全走 local/torchrun（dev __init__ 进程内跑、patch 生效）。
+  **用户定调（本轮）**：大重构不应使用 patch 方法 → 按 dev 已成熟的 SentenceTransformerModel 模式
+  （完全重写 __init__、不靠 base 的 remote 包装 + mock.patch，在 worker 内直接建 DevMegatronStrategy）
+  重写 dev megatron 构造，去掉 mock.patch。
+
+### 其他既有缺口 —— 用户处置决定（本轮）
+
+- **m6gap 修复**：dev LoRA + seq_cls/reranker 时分类头未入 `modules_to_save`（存 checkpoint 可能漏存头）。
+- **asrgap 修复**：twinkle 音频 collate 与 Qwen2.5-Omni 不兼容（音频输入喂不进）。
+- **m7gap1 暂不修**：`neftune_noise_alpha` 全仓无消费者（静默失效）→ 先标注「不起作用」，本轮不动。
+- **m7gap2 修复**：`full_determinism` + `seed` 未透传 `twinkle.initialize`（设了不一定真复现）。
+- **m7gap3 修复**：`freeze_parameters`/`trainable_parameters`（+ratio/regex）无消费者（设了不生效）。
+

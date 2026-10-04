@@ -29,7 +29,7 @@ Placement (colocate vs heterogeneous) and weight-sync are identical to run_grpo.
 from __future__ import annotations
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -195,7 +195,8 @@ def run_ppo(
         engine_args=_sampler_engine_args(rollout_config, engine_args, colocate, backend),
         template=template,
         remote_group=sampler_remote_group)
-    rollout = SyncableRollout(model, sampler, template, colocate=colocate)
+    rollout = SyncableRollout(
+        model, sampler, template, colocate=colocate, sleep_level=rollout_config.sleep_level)
     reference = _build_reference(
         model_config, tuner_config, template, rlhf_config, distributed_config, remote_group=ref_remote_group)
     reward_models = _build_reward_models(rlhf_config, template, distributed_config)
@@ -216,6 +217,7 @@ def run_ppo(
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=_grpo_sampling_params(rlhf_config, generation_config),
+        async_generate=rollout_config.async_generate,
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
@@ -364,6 +366,7 @@ class PPOLoop:
         gradient_accumulation_steps: int = 1,
         max_grad_norm: float = 1.0,
         sampling_params: Optional[dict] = None,
+        async_generate: bool = False,
         logging_config: Optional['LoggingConfig'] = None,
         output_dir: str = 'output',
         save_steps: Optional[int] = None,
@@ -390,6 +393,10 @@ class PPOLoop:
         self.train_batch_size = max(1, train_batch_size)
         self.max_grad_norm = max_grad_norm
         self.sampling_params = sampling_params
+        #: Overlap generation of batch ``N+1`` with training of batch ``N`` (1-batch lookahead). Only
+        #: reachable under the disaggregated placement with off-policy correction; ``validate.
+        #: _check_async_generate`` enforces that. PPO's clipped surrogate already tolerates the staleness.
+        self.async_generate = bool(async_generate)
         self.logging_config = logging_config
         from swift.dev.recipe.tracking import RunTracker
         self.tracker = RunTracker(logging_config, output_dir)
@@ -540,6 +547,86 @@ class PPOLoop:
                            dropped, len(plans), self.train_batch_size)
         return mini_batches
 
+    def _reached_max(self) -> bool:
+        """Whether the rollout budget is exhausted (PPO counts one rollout as one recorded step)."""
+        return self.max_steps > 0 and self.global_step >= self.max_steps
+
+    def _submit_generation(self, prompt_indices: Sequence[int]) -> Any:
+        """Async admit half: sync the current policy into the idle sampler and schedule this batch."""
+        self.rollout.sync_weights()
+        return self.rollout.submit_generate(
+            [self.prompts[i] for i in prompt_indices],
+            num_samples=self.num_generations,
+            sampling_params=self.sampling_params)
+
+    def _collect_generation(self, handle: Any, prompt_indices: Sequence[int]) -> List[Any]:
+        """Async collect half: block until the admitted generation finishes, then reverse the hand-over."""
+        try:
+            return self.rollout.collect_generate(handle)
+        finally:
+            self.rollout.finish_generate()
+
+    def _consume_samples(self, samples: List[Any]) -> None:
+        """Plan one rollout once (GAE anchors), replay it ``num_ppo_epochs`` times, then record the step.
+
+        Shared by the synchronous and async drivers: everything the epochs re-use (advantages, returns,
+        old_values) is computed here ONCE before any optimizer step, so the passes see the SAME anchors --
+        the definition of PPO's batch re-use.
+        """
+        ga = self.gradient_accumulation_steps
+        plans, mean_reward = self._plan_rollout(samples)
+        mini_batches = self._plan_mini_batches(plans)
+        for _ in range(self.num_ppo_epochs):
+            for mini_batch in mini_batches:
+                # Parallel lists over the mini-batch's rows: one entry per rollout sample, so
+                # slice_dp splits inputs and every advantage/return/logp/value column consistently.
+                inputs = [plan[0].input_feature for plan in mini_batch]
+                self.model.forward_backward(
+                    inputs=inputs,
+                    gradient_accumulation_steps=ga,
+                    advantages=[plan[1] for plan in mini_batch],
+                    old_logps=[plan[0].old_logps for plan in mini_batch])
+                self.model.clip_grad_and_step(max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
+                self.value_model.forward_backward(
+                    inputs=inputs,
+                    gradient_accumulation_steps=ga,
+                    task='value',
+                    returns=[plan[2] for plan in mini_batch],
+                    old_values=[plan[3] for plan in mini_batch])
+                self.value_model.clip_grad_and_step(
+                    max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
+        self._record_step(mean_reward)
+
+    def _run_sync(self) -> None:
+        """Synchronous driver: generate, then train, one rollout batch at a time (no overlap)."""
+        for prompt_indices in self._prompt_batches:
+            if self._reached_max():
+                break
+            self.rollout.sync_weights()
+            samples = self.rollout.generate(
+                [self.prompts[i] for i in prompt_indices],
+                num_samples=self.num_generations,
+                sampling_params=self.sampling_params)
+            self.rollout.finish_generate()
+            self._consume_samples(samples)
+
+    def _run_async(self) -> None:
+        """Overlapped driver: the shared 1-batch-lookahead double buffer over PPO's rollout callbacks.
+
+        PPO's clipped surrogate already bounds how far the trained policy may move from the behaviour
+        policy that produced the batch, so it absorbs the staleness<=1 look-ahead without the token-level
+        rollout importance sampling GRPO needs (see ``validate._check_async_generate``).
+        """
+        from swift.dev.recipe.train_loop import overlap_rollout_batches
+
+        overlap_rollout_batches(
+            prompt_batches=self._prompt_batches,
+            submit=self._submit_generation,
+            collect=self._collect_generation,
+            cancel=self.rollout.cancel_generate,
+            consume=self._consume_samples,
+            reached_max=self._reached_max)
+
     def fit(self) -> list:
         """Run PPO over the prompt set for ``num_train_epochs`` passes (rollout -> GAE -> num_ppo_epochs).
 
@@ -551,44 +638,17 @@ class PPOLoop:
         mini-batch, ``gradient_accumulation_steps`` mini-batches making one optimizer step. Feeding whole
         mini-batches (not one sample per step) is what makes DP>1 work: slice_dp needs >= dp_size rows per
         forward_backward or a rank gets no data. PPO still counts one rollout as one recorded step.
+        ``async_generate`` selects the overlapped driver (:meth:`_run_async`), otherwise the synchronous
+        one (:meth:`_run_sync`); both drive the same per-rollout training (:meth:`_consume_samples`).
         """
         from swift.dev.recipe.train_loop import finish_manual_gc, start_manual_gc
 
-        ga = self.gradient_accumulation_steps
         gc_was_enabled = start_manual_gc(self.manual_gc)
         try:
-            for prompt_indices in self._prompt_batches:
-                if self.max_steps > 0 and self.global_step >= self.max_steps:
-                    break
-                self.rollout.sync_weights()
-                samples = self.rollout.generate(
-                    [self.prompts[i] for i in prompt_indices],
-                    num_samples=self.num_generations,
-                    sampling_params=self.sampling_params)
-                self.rollout.finish_generate()
-
-                plans, mean_reward = self._plan_rollout(samples)
-                mini_batches = self._plan_mini_batches(plans)
-                for _ in range(self.num_ppo_epochs):
-                    for mini_batch in mini_batches:
-                        # Parallel lists over the mini-batch's rows: one entry per rollout sample, so
-                        # slice_dp splits inputs and every advantage/return/logp/value column consistently.
-                        inputs = [plan[0].input_feature for plan in mini_batch]
-                        self.model.forward_backward(
-                            inputs=inputs,
-                            gradient_accumulation_steps=ga,
-                            advantages=[plan[1] for plan in mini_batch],
-                            old_logps=[plan[0].old_logps for plan in mini_batch])
-                        self.model.clip_grad_and_step(max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
-                        self.value_model.forward_backward(
-                            inputs=inputs,
-                            gradient_accumulation_steps=ga,
-                            task='value',
-                            returns=[plan[2] for plan in mini_batch],
-                            old_values=[plan[3] for plan in mini_batch])
-                        self.value_model.clip_grad_and_step(
-                            max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
-                self._record_step(mean_reward)
+            if self.async_generate:
+                self._run_async()
+            else:
+                self._run_sync()
             return self.history
         finally:
             finish_manual_gc(gc_was_enabled)

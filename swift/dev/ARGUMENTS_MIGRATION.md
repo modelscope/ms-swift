@@ -532,7 +532,7 @@ eval 功能暂时不迁移。dev 侧目前连 eval recipe 都没有。
 ### 6.2 colocate / 异构判定（`plan_rl_device_groups`，纯函数）
 
 由 `RolloutConfig.vllm_mode` 决定，`DistributedConfig.nproc_per_node` 语义为**训练器** GPU 数：
-- `'colocate'`：训练器与采样器共用同一 `model` DeviceGroup（两个 remote_class 角色落在同批 GPU、rank 空间独立，无需改 placement）→ `CheckpointEngineManager(colocate=True)`（IPC）。recipe 执行显存调度：`sampler.wake_up(['weights'])→sync→model.offload_to_cpu→sampler.wake_up()→generate→sampler.sleep()→model.reload_to_gpu`。
+- `'colocate'`：训练器与采样器共用同一 `model` DeviceGroup（两个 remote_class 角色落在同批 GPU、rank 空间独立，无需改 placement）→ `CheckpointEngineManager(colocate=True)`（IPC）。recipe 执行显存调度：`sampler.wake_up(['weights'])→sync→model.offload_to_cpu→sampler.wake_up(['kv_cache'])→generate→sampler.sleep()→model.reload_to_gpu`。两次 wake_up 的 tag 必须互斥：vLLM 的 `wake_up` 遇到第一个「不在 sleeping_tags 里」的 tag 会直接 return 中止整次唤醒；`weights` 已在上一步唤醒，故第二次只能传 `['kv_cache']`，若传 `wake_up()`（展开成 weights+kv_cache）会命中已醒的 `weights` 提前返回、KV cache 仍被丢弃，下一次 generate 在已释放显存上构建 attention metadata 而 CUDA 非法访问崩溃（首轮因采样器刚建好未 sleep 而掩盖此 bug）。
 - `'server'`/默认：`model` 组 `[0,M)` + 不相交 `sampler` 组 `[M,M+S)` → `CheckpointEngineManager(colocate=False)`（NCCL/HCCL）。镜像 `twinkle/tests/sampler/test_weight_sync.py`。
 
 ### 6.3 build_model transformers 缺口补齐（Subsystem D）

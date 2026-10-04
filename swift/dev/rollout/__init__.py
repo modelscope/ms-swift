@@ -58,7 +58,6 @@ logger = logging.getLogger(__name__)
 SHIFTED_KEY = '_labels_shifted'
 
 
-# TODO: not implemented yet
 @dataclass
 class RolloutSample:
     """One on-policy rollout trajectory, pre-collation (dev's RL-sample layer).

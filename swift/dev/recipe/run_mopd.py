@@ -173,7 +173,8 @@ def run_mopd(
         engine_args=sampler_engine_args,
         template=assembly.template,
         remote_group=sampler_remote_group)
-    rollout = SyncableRollout(assembly.model, sampler, assembly.template, colocate=colocate)
+    rollout = SyncableRollout(
+        assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
 
     teacher = _build_mopd_teachers(assembly.model, rlhf_config, teacher_world_size, distributed_config)
     assembly.loop = MOPDLoop(
@@ -195,6 +196,7 @@ def run_mopd(
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=distill_sampling_params(rlhf_config, generation_config),
+        async_generate=rollout_config.async_generate,
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,

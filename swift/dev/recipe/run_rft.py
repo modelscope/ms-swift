@@ -157,7 +157,8 @@ def run_rft(
         engine_args=sampler_engine_args,
         template=assembly.template,
         remote_group=sampler_remote_group)
-    rollout = SyncableRollout(assembly.model, sampler, assembly.template, colocate=colocate)
+    rollout = SyncableRollout(
+        assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
 
     prompts, prompt_extras = _prompt_rows_from_dataset(dataset_config)
     reward_model_plugins, reward_model_names = _build_reward_model_scorers(

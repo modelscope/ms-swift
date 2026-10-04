@@ -24,6 +24,9 @@ REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
     'agent_template': 'express the agent format through --template and the template registry',
     'merge_lora': 'this command merges the adapter implicitly; drop --merge_lora',
     'exist_ok': 'use --replace_if_exists to overwrite an existing output directory',
+    'steps_per_generation': 'use --num_iterations to replay one rollout across several optimizer steps',
+    'num_mini_batches': 'set --per_device_train_batch_size to control the mini-batch width',
+    'num_generations_eval': 'set the per-prompt generation count inside --eval_generation_config instead',
 }
 # eval scores a local sampler through the Native runner only, so its former remote-service URL, its
 # backend choice (OpenCompass/VLMEvalKit are gone) and the OpenCompass-only local-data toggle are obsolete.
@@ -36,6 +39,18 @@ GENERATION_OPTION_FIELDS: Tuple[str, ...] = (
 # Rollout knobs retired together with the gym environments and the pluggable multi-turn scheduler.
 RLHF_REMOVED_ROLLOUT_FIELDS: Tuple[str, ...] = (
     'gym_env', 'use_gym_env', 'multi_turn_scheduler', 'completion_length_limit_scope')
+# RL rollout/training knobs that were parsed but never consumed by the current pipeline: the round-based
+# sample-reuse knobs (num_sample_generations / steps_per_generation / num_mini_batches /
+# local_rollout_forward_batch_size / missing_eos_penalty), the batched weight-move and flattened
+# weight-sync buffers (move_model_batches / enable_flattened_weight_sync), and the weight-bridge offload
+# between syncs (offload_bridge). Refused with guidance rather than silently dropped.
+RLHF_REMOVED_RL_KNOBS: Tuple[str, ...] = (
+    'move_model_batches', 'enable_flattened_weight_sync', 'steps_per_generation', 'num_mini_batches',
+    'local_rollout_forward_batch_size', 'num_sample_generations', 'missing_eos_penalty', 'offload_bridge')
+# The per-prompt eval generation count. Evaluation here scores a sampler through the benchmark runner
+# rather than an in-training generate-and-score loop, so there is no per-prompt eval generation to size;
+# the eval generation budget is expressed through the structured --eval_generation_config instead.
+RLHF_REMOVED_EVAL_FIELDS: Tuple[str, ...] = ('num_generations_eval',)
 # eval scores an in-process sampler and starts no HTTP deployment, so the server knobs it once accepted
 # through DeployConfig belong to `swift deploy`, not here.
 EVAL_SERVING_FIELDS: Tuple[str, ...] = (
@@ -190,7 +205,8 @@ CLI_LEGACY_ONLY: Dict[str, Mapping[str, Tuple[str, ...]]] = {
         'unsupported_training': TRAIN_UNSUPPORTED_FIELDS + TUNER_UNSUPPORTED_FIELDS,
         'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + CHECKPOINT_TRANSFORMERS_STATE_FIELDS
         + MCORE_REFERENCE_CHECKPOINT_FIELDS,
-        'removed_option': REMOVED_OPTION_FIELDS + ('seq_kd',) + RLHF_REMOVED_ROLLOUT_FIELDS,
+        'removed_option': REMOVED_OPTION_FIELDS + ('seq_kd',) + RLHF_REMOVED_ROLLOUT_FIELDS
+        + RLHF_REMOVED_RL_KNOBS + RLHF_REMOVED_EVAL_FIELDS,
     },
     'megatron_pt': {
         'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
@@ -206,7 +222,8 @@ CLI_LEGACY_ONLY: Dict[str, Mapping[str, Tuple[str, ...]]] = {
         'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
         'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + MCORE_TRAINING_CHECKPOINT_FIELDS
         + MCORE_REFERENCE_CHECKPOINT_FIELDS,
-        'removed_option': REMOVED_OPTION_FIELDS + ('seq_kd',),
+        'removed_option': REMOVED_OPTION_FIELDS + ('seq_kd',) + RLHF_REMOVED_ROLLOUT_FIELDS
+        + RLHF_REMOVED_RL_KNOBS + RLHF_REMOVED_EVAL_FIELDS,
     },
     'infer': {
         'unsupported_sampler': UNSUPPORTED_SAMPLER_FIELDS,

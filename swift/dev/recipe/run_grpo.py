@@ -265,7 +265,14 @@ class SyncableRollout(RolloutEngine):
     model, rather than building a sampler from a model id.
     """
 
-    def __init__(self, model: Any, sampler: Any, template: Any, *, colocate: bool, platform: str = 'GPU'):
+    def __init__(self,
+                 model: Any,
+                 sampler: Any,
+                 template: Any,
+                 *,
+                 colocate: bool,
+                 platform: str = 'GPU',
+                 sleep_level: int = 0):
         from twinkle.checkpoint_engine import CheckpointEngineManager
 
         from swift.dev.recipe._colocate import ColocateHandover
@@ -285,8 +292,10 @@ class SyncableRollout(RolloutEngine):
         # The colocate memory schedule (or, when disaggregated, the plain weight sync) is ColocateHandover's
         # job, shared with generative eval so the two sequences cannot drift. merge_and_sync=True sends
         # merged base weights every step (works for both full and LoRA); the incremental LoRA-only path
-        # (merge_and_sync=False) is left to a later optimisation.
-        self._handover = ColocateHandover(model, sampler, self.manager, colocate=colocate, merge_and_sync=True)
+        # (merge_and_sync=False) is left to a later optimisation. sleep_level only bites under colocate
+        # (a disaggregated sampler owns its GPUs and is never slept); validate warns when it is set there.
+        self._handover = ColocateHandover(
+            model, sampler, self.manager, colocate=colocate, merge_and_sync=True, sleep_level=sleep_level)
 
     def sync_weights(self) -> None:
         """Push the trained policy into the sampler. Called once per step, BEFORE the rollout.
@@ -461,7 +470,8 @@ def run_grpo(
         engine_args=sampler_engine_args,
         template=assembly.template,
         remote_group=sampler_remote_group)
-    rollout = SyncableRollout(assembly.model, sampler, assembly.template, colocate=colocate)
+    rollout = SyncableRollout(
+        assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
     # Multi-turn is requested by setting max_turns; the engine is twinkle-native (no scheduler, no
     # gym). Per-round length is sampling_params.max_tokens, whole-trajectory length is
     # max_trajectory_tokens. Tools are opt-in via RolloutConfig.tools: when set, a sandbox env pool is

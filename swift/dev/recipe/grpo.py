@@ -929,34 +929,30 @@ class GRPOLoop(TrainLoop):
                 break
             self._train_rollout_batch(self._rollout_step(prompt_indices))
 
+    def _consume_async_samples(self, samples: List[Any]) -> None:
+        """Score an already-collected async batch and run its optimizer steps (the driver's consume half)."""
+        rewards = self._score(samples)
+        self._train_rollout_batch(self._assemble_rollout_batch(samples, rewards))
+
     def _run_async(self) -> None:
         """Overlapped driver (1-batch lookahead): generate batch ``N+1`` on the sampler while training ``N``.
 
-        A driver-side double buffer over the same loop, not a second runtime. Each step: collect the batch
-        admitted last step (blocking; the sampler is then idle), immediately admit the NEXT batch -- the
-        weight sync inside :meth:`_submit_generation` is safe only at this idle point, so weights are never
-        pushed under an in-flight generation -- then score and train the collected batch while that
-        generation runs on the sampler. The lookahead batch is thus produced by the policy one version
-        behind the one that trains it (staleness 1), which the mandatory rollout importance sampling
-        corrects. Reaching ``max_steps`` cancels whatever is in flight rather than waiting on a batch that
-        will never be trained.
+        A thin wiring of this loop's rollout callbacks into the shared :func:`overlap_rollout_batches`
+        double buffer (see ``train_loop`` for the control flow and the staleness<=1 argument). ``submit``
+        syncs weights at the sampler's idle point and admits a batch; ``collect`` blocks on it; ``consume``
+        scores and trains it; ``cancel`` drops an in-flight batch when ``max_steps`` is reached. The
+        lookahead batch is produced by the policy one version behind the one that trains it (staleness 1),
+        which the mandatory rollout importance sampling corrects.
         """
-        batches = iter(self._prompt_batches)
-        current = next(batches, None)
-        if current is None:
-            return
-        # Admit batch_0 under the initial policy so the first collect already has work in flight.
-        handle = self._submit_generation(current)
-        while current is not None:
-            if self._reached_max():
-                self.rollout.cancel_generate(handle)
-                break
-            samples = self._collect_generation(handle, current)
-            nxt = next(batches, None)
-            handle = self._submit_generation(nxt) if (nxt is not None and not self._reached_max()) else None
-            rewards = self._score(samples)
-            self._train_rollout_batch(self._assemble_rollout_batch(samples, rewards))
-            current = nxt
+        from swift.dev.recipe.train_loop import overlap_rollout_batches
+
+        overlap_rollout_batches(
+            prompt_batches=self._prompt_batches,
+            submit=self._submit_generation,
+            collect=self._collect_generation,
+            cancel=self.rollout.cancel_generate,
+            consume=self._consume_async_samples,
+            reached_max=self._reached_max)
 
     def fit(self) -> list:
         """Train over the prompt set for ``num_train_epochs`` passes, reusing each rollout ``num_iterations``.

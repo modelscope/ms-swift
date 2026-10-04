@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from typing import Any, List, Literal, Optional
 
 
-# TODO: integrate it
 @dataclass
 class RLHFConfig:
     """RLHF algorithm hyperparameters for all supported rlhf_type variants."""
@@ -47,10 +46,6 @@ class RLHFConfig:
     cliprange_value: float = 0.2
     gamma: float = 1.0
     lam: float = 0.95
-    num_mini_batches: int = 1
-    local_rollout_forward_batch_size: int = 64
-    num_sample_generations: int = 10
-    missing_eos_penalty: Optional[float] = None
 
     # === Reward channels (one selector shared by GRPO and best-of-n synthesis) ===
     #: Outcome-reward channel. Each item is a registered rule name (an ``orms`` key), a reward plugin
@@ -257,13 +252,13 @@ class RLHFConfig:
     calculate_KL: Optional[bool] = None
     #: Which f-divergence stands in for the KL, e.g. 'reverse_kl', 'forward_kl', 'js_divergence'.
     f_divergence_type: str = 'reverse_kl'
+    #: Coefficient of the 'alpha_divergence' f-divergence; only read when ``f_divergence_type='alpha_divergence'``.
+    f_alpha_divergence_coef: float = 0.5
     #: Drop the reference model entirely and score against a constant instead. Removes a whole model
     #: from memory, and with it the anchor that keeps the policy near where it started.
     reference_free: bool = False
     #: Temperature on the REAL objective's soft constraint.
     real_tau: float = 0.5
-    #: Generations per prompt during evaluation. None reuses ``num_generations``.
-    num_generations_eval: Optional[int] = None
     #: Replay the router's expert choices from the generating pass during the training pass, so an MoE
     #: policy's log-probabilities are computed under the routing that actually produced the tokens.
     #: 'disabled' recomputes routing, which can silently make the importance ratio wrong.
@@ -276,9 +271,6 @@ class RLHFConfig:
     #: bonus, and the forward forbids it under sequence/context parallelism; GRPO-only. Distinct from
     #: ``rollout_importance_sampling_mode`` (a truncated-IS correction on the recomputed ratio).
     enable_sampling_replay: bool = False
-    #: Move the HF<->mcore bridge off the device between syncs. Frees its buffers for rollout at the
-    #: cost of rebuilding them each time.
-    offload_bridge: bool = False
     #: Obtain the teacher's outputs by disabling the policy's adapter instead of loading a second model.
     #: Only valid when the teacher is exactly the base model of a LoRA policy. Private: it is set from
     #: the teacher configuration above rather than passed directly.

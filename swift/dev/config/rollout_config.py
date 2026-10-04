@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 
-# TODO: integrate it
 @dataclass
 class RolloutConfig:
     """Rollout/inference engine configuration, scheduling, and weight synchronization."""
@@ -91,14 +90,11 @@ class RolloutConfig:
     #: of this; only the GRPO loop implements it.
     async_generate: bool = False
     sleep_level: int = 0
-    move_model_batches: Optional[int] = None
     offload_optimizer: bool = False
     offload_model: bool = False
-    enable_flattened_weight_sync: bool = True
 
     # === Batch Control ===
     generation_batch_size: Optional[int] = None
-    steps_per_generation: Optional[int] = None
 
     # === Tools & sandbox (multi-turn rollout) ===
     # A multi-turn rollout lets the model call tools inside a sandbox env. Tools are opt-in and come

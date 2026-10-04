@@ -542,6 +542,16 @@ def configure_rlhf_loss(model: TrainableModel, rlhf_config: 'RLHFConfig') -> Non
                                   or rlhf_config.rollout_importance_sampling_mode
                                   or rlhf_config.log_rollout_offpolicy_metrics
                                   or rlhf_config.off_policy_sequence_mask_delta is not None))
+    if configured_grpo and grpo_loss_type == 'real':
+        # _ConfiguredGRPOLoss recomputes the per-token surrogate and aggregation itself and never calls the
+        # base loss's group-level reduction, so wrapping REAL would silently downgrade it to plain GRPO.
+        # Refuse the combination rather than drop the objective (the wrapper predicate lives here, so this
+        # is the single drift-free place to catch it).
+        raise ValueError(
+            'loss_type=real is a group-level objective that the advanced GRPO ratio/entropy/rollout controls '
+            'would bypass. Drop the conflicting control (--importance_sampling_level, --delta, '
+            '--top_entropy_quantile, --log_entropy, --overlong_filter, --rollout_importance_sampling_mode, '
+            '--log_rollout_offpolicy_metrics, --off_policy_sequence_mask_delta) to use real.')
     if configured_grpo:
         loss = _ConfiguredGRPOLoss(
             loss,
@@ -635,6 +645,11 @@ def _online_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig', grpo_loss_typ
         kwargs['tau_neg'] = rlhf_config.tau_neg
     elif grpo_loss_type == 'dr_grpo':
         kwargs['max_completion_length'] = rlhf_config.max_completion_length
+    elif grpo_loss_type == 'real':
+        # REAL reduces each sequence to a scalar score and splits generation groups, so it needs the group
+        # size to reshape the batch; its soft-constraint temperature is real_tau.
+        kwargs['real_tau'] = rlhf_config.real_tau
+        kwargs['num_generations'] = rlhf_config.num_generations
     if rlhf_config.enable_sampling_replay:
         # The base GRPOLoss validates beta==0 / entropy_coef==0 and switches its __call__ to require the
         # forward-replayed logps. The model forward reads the flag off the OUTERMOST loss instance, so
@@ -658,10 +673,22 @@ def _preference_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig') -> Dict[s
         kwargs['desirable_weight'] = rlhf_config.desirable_weight
         kwargs['undesirable_weight'] = rlhf_config.undesirable_weight
     elif rlhf_type == 'dpo':
-        # dev stores loss_type as a list (legacy CLI accepts several); the twinkle DPO family takes a
-        # single variant.
-        kwargs['loss_type'] = rlhf_config.loss_type[0] if rlhf_config.loss_type else 'sigmoid'
+        # DPOLoss takes a single variant OR a list combined as a weighted sum (MPO), so forward the whole
+        # list rather than just its head; twinkle validates every item and the loss_weights alignment.
+        kwargs['loss_type'] = rlhf_config.loss_type or ['sigmoid']
         kwargs['label_smoothing'] = rlhf_config.label_smoothing
+        # DPO-family knobs the twinkle DPOLoss reads: the DiscoPOP gate temperature, the f-divergence that
+        # reshapes the preference margin plus its alpha coefficient. Their dev defaults equal twinkle's, so
+        # forwarding them unconditionally is a no-op for a plain sigmoid run.
+        kwargs['discopop_tau'] = rlhf_config.discopop_tau
+        kwargs['f_divergence_type'] = rlhf_config.f_divergence_type
+        kwargs['f_alpha_divergence_coef'] = rlhf_config.f_alpha_divergence_coef
+        # ld_alpha (length-desensitization) and loss_weights (MPO) default to None; forward only when set so
+        # twinkle's own defaults stand rather than being overwritten with None.
+        if rlhf_config.ld_alpha is not None:
+            kwargs['ld_alpha'] = rlhf_config.ld_alpha
+        if rlhf_config.loss_weights is not None:
+            kwargs['loss_weights'] = rlhf_config.loss_weights
         # DPOLoss also honors ``reference_free`` (drop the reference log-ratio) and an NLL term on the
         # chosen response to curb likelihood displacement; dev carries the latter as ``rpo_alpha`` (RPO's
         # NLL weight), which maps onto twinkle's ``sft_weight``. Both were declared-but-unforwarded dead
