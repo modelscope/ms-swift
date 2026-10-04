@@ -26,3 +26,28 @@ Data preparation is deterministic and splits by original case; related questions
 `decision_plugin.py` registers the decision template and labels only answer positions. The framework performs the causal label shift. `checkpoint_fence.py` wraps `Trainer.save_model` with a Gloo CPU fence to keep other ranks from entering HCCL barriers during rank-zero CPU checkpoint offload. It changes runtime behavior without modifying trainer package source.
 
 The launch recipe enables the fence from the initial run. Short training and full-state recovery must pass in the selected environment before the full run. Existing outputs must not be overwritten. Framework tests and complete upstream CI remain separate from the example's NPU validation.
+
+
+## Independent evaluation scripts
+
+`evaluate_decision.py` is the fixed single-question evaluator used for the trained 4B checkpoints. It uses the common MS-SWIFT HF/NPU backend, including when loading a checkpoint trained with Twinkle. Run it in the SWIFT environment; no Twinkle import is needed. It requires the prepared case-level JSONL (`prepared/test.jsonl`), not the compiled training-message JSONL. Use a fresh output path:
+
+```bash
+ASCEND_RT_VISIBLE_DEVICES=0 python evaluate_decision.py \
+  --checkpoint /path/to/final-hf-checkpoint \
+  --data /workspace/prepared/test.jsonl --batch-size 4 \
+  --output /path/to/new-results/test.json
+```
+
+`evaluate_laya_suite.py` reuses the audited typed-decision predictions and evaluates the other compatible suites with batch size 8. Supply your local frozen Laya suite bundle; the bundle, model weights and measured results are not distributed here:
+
+```bash
+ASCEND_RT_VISIBLE_DEVICES=0 python evaluate_laya_suite.py \
+  --checkpoint /path/to/final-hf-checkpoint \
+  --dataset /path/to/laya_suites_multi.json \
+  --typed-data /workspace/prepared/test.jsonl \
+  --typed-result /path/to/new-results/test.json --batch-size 8 \
+  --output /path/to/new-results/laya49
+```
+
+These are the previously used 4B evaluation implementations, now included with the training recipe. They are not a new performance run, an official seven-suite joint-input evaluator, or a validated 35B evaluator. Accuracy, predictions and timing outputs must remain outside the repository. This publication was syntax-checked; it did not trigger NPU reruns.
