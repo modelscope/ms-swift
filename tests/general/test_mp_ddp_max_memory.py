@@ -2,6 +2,8 @@
 import unittest
 from unittest.mock import Mock, patch
 
+import torch
+
 from swift.model import patcher
 
 GIB = 1024**3
@@ -15,7 +17,8 @@ class TestMpDdpMaxMemory(unittest.TestCase):
         device_api = Mock()
         device_api.mem_get_info.return_value = (8 * GIB, 16 * GIB)
 
-        with patch.object(patcher, 'get_torch_device', return_value=device_api):
+        with patch.object(patcher, 'get_device', return_value=torch.device('cpu')), \
+                patch.object(patcher, 'get_torch_device', return_value=device_api):
             max_memory = patcher._get_max_memory([0])
 
         self.assertEqual(max_memory[0], 8 * GIB)
@@ -26,7 +29,8 @@ class TestMpDdpMaxMemory(unittest.TestCase):
         device_api = Mock()
         device_api.mem_get_info.return_value = (4 * GIB, 8 * GIB)
 
-        with patch.object(patcher, 'get_torch_device', return_value=device_api):
+        with patch.object(patcher, 'get_device', return_value=torch.device('cpu')), \
+                patch.object(patcher, 'get_torch_device', return_value=device_api):
             max_memory = patcher._get_max_memory([1])
 
         self.assertEqual(max_memory[0], 0)
@@ -38,7 +42,8 @@ class TestMpDdpMaxMemory(unittest.TestCase):
         device_api = Mock()
         device_api.mem_get_info.return_value = (1 * GIB, 2 * GIB)
 
-        with patch.object(patcher, 'get_torch_device', return_value=device_api):
+        with patch.object(patcher, 'get_device', return_value=torch.device('cpu')), \
+                patch.object(patcher, 'get_torch_device', return_value=device_api):
             max_memory = patcher._get_max_memory([0])
 
         self.assertGreater(max_memory['cpu'], 0)
