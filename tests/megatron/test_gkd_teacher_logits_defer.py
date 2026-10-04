@@ -59,6 +59,7 @@ def test_compute_teacher_output_local_used_by_forward_step_when_missing():
 
     try:
         import torch
+
         from swift.rlhf_trainers.gkd_loss import TeacherOutput
     except Exception as e:
         print(f'SKIP forward_step defer test: {e}')
