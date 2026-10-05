@@ -278,11 +278,14 @@ class SyncableRollout(RolloutEngine):
         from swift.dev.recipe._colocate import ColocateHandover
 
         # NB: deliberately does NOT call RolloutEngine.__init__ (which would build a fresh sampler);
-        # the sampler is built and placed by run_grpo and injected here.
+        # the sampler is built and placed by run_grpo and injected here. It MUST still initialise the
+        # sampler-independent streaming state (_episode_futures and friends), which poll/collect/cancel
+        # read unconditionally -- _init_streaming_state is the shared initializer RolloutEngine.__init__
+        # also calls, so the two cannot drift on which attributes a streaming rollout needs.
         self.model = model
         self.sampler = sampler
         self.template = template
-        self._multi_turn = None
+        self._init_streaming_state()
         # mode= (not a colocate= flag) is the manager's contract: 'colocate' wires the shared-GPU CUDA
         # IPC hand-over, 'standalone' wires disaggregated Ray actors over NCCL. 'auto' is NOT used here
         # because it resolves Ray actor handles to 'standalone' and deliberately never infers 'colocate'
@@ -492,24 +495,31 @@ def run_grpo(
     # reward above (a frozen PRM model gets its OWN prm_0 group, planned in the auxiliary_groups step).
     prm_scorer, prm_funcs, prm_model_plugins = _build_prm_channel(
         model_config, template_config, rlhf_config, distributed_config)
-    # async_mode selects the driver. 'none' uses GRPOLoop's synchronous fixed-batch driver;
-    # 'one_step_off'/'fully_async' both use the per-sample StreamingGRPOLoop -- the SAME streaming
-    # driver, differing only in the staleness knob (one_step_off is pinned to 1; fully_async uses the
-    # configured max_staleness) -- which lets the disaggregated sampler keep generating per-trajectory
-    # while the trainer advances (validate._check_async_mode gated both to GRPO + disaggregated + an
-    # off-policy correction).
+    # async_mode selects the driver, and -- since the per-sample stream now serves EVERY regime -- almost
+    # every GRPO run rides it: 'none' runs StreamingGRPOLoop at max_staleness=0 (admit one window, DRAIN it,
+    # train, publish -- the same per-sample control flow, no overlap), 'one_step_off' pins staleness to 1,
+    # and 'fully_async' uses the configured max_staleness. The ONE exception is a feature that needs the
+    # WHOLE fixed batch up front, which a per-sample stream cannot serve: dynamic_sample (regenerate
+    # zero-variance groups after seeing rewards) and remax (a synchronous greedy-baseline pass over the
+    # assembled batch). Those stay on GRPOLoop's synchronous fixed-batch _run_sync (validate._check_async_mode
+    # refuses them under an overlapping mode, so they only ever reach _run_sync under 'none'). A colocated
+    # sampler (sharing one device with the trainer) additionally sets serialize_generation for the
+    # exclusive-device hand-over; a disaggregated one has its own GPUs and never hands over.
     loop_cls = GRPOLoop
     streaming_kwargs: Dict[str, Any] = {}
-    if rollout_config.async_mode in ('one_step_off', 'fully_async'):
+    sync_only = bool(rlhf_config.dynamic_sample or rlhf_config.advantage_estimator == 'remax')
+    if rollout_config.async_mode != 'none' or not sync_only:
         from swift.dev.recipe.grpo_async import StreamingGRPOLoop
         loop_cls = StreamingGRPOLoop
         streaming_kwargs = {
-            'max_staleness': 1 if rollout_config.async_mode == 'one_step_off' else rollout_config.max_staleness,
+            'max_staleness': (0 if rollout_config.async_mode == 'none' else 1
+                              if rollout_config.async_mode == 'one_step_off' else rollout_config.max_staleness),
             'weight_sync_strategy': rollout_config.weight_sync_strategy,
             # in_place publishes by aborting every in-flight generation and resuming it on the freshly
-            # overwritten weights, so it needs the sampler's partial-rollout loop; adapter_snapshot pins each
-            # version by its own adapter path and never overwrites a live copy, so the flag is inert there
-            # (validate enforces exactly this pairing for every overlapping regime).
+            # overwritten weights, so an OVERLAPPING regime needs the sampler's partial-rollout loop; at
+            # staleness 0 the drain empties the in-flight set first, so the abort is a no-op and the flag is
+            # not required. adapter_snapshot pins each version by its own adapter path and never overwrites a
+            # live copy, so the flag is inert there (validate enforces exactly this pairing per regime).
             'allow_partial_rollout': rollout_config.allow_partial_rollout,
             # The publish cadence: one weight publication per K optimizer steps (default 1).
             'parameter_sync_step': rollout_config.parameter_sync_step,
@@ -518,6 +528,10 @@ def run_grpo(
             # uses to save/load it). A full-parameter run has none -- refused under adapter_snapshot, and
             # served as merged base weights under in_place (which ignores adapter_name), so None is correct there.
             'adapter_name': ('default' if tuner_config is not None else None),
+            # Exclusive-device serialization: only a colocated sampler (async_mode='none' on a shared device)
+            # hands the one DeviceGroup between generation and training. A disaggregated sampler never does,
+            # and an overlapping mode is disaggregated by validation, so this is False everywhere but colocate.
+            'serialize_generation': colocate,
         }
     loop = loop_cls(
         assembly.model,
@@ -569,9 +583,6 @@ def run_grpo(
         seed=train_config.seed,
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=_grpo_sampling_params(rlhf_config, generation_config),
-        # The overlapping regimes run through StreamingGRPOLoop (which forces this off itself); the
-        # base GRPOLoop is only reached under async_mode='none', i.e. the synchronous driver.
-        async_generate=False,
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,

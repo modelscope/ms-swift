@@ -55,47 +55,6 @@ def is_grad_sync_boundary(micro_step: int, gradient_accumulation_steps: int) -> 
     return ga == 1 or ((micro_step - 1) % ga == 0 and micro_step > 1)
 
 
-def overlap_rollout_batches(*, prompt_batches, submit, collect, cancel, consume, reached_max) -> None:
-    """Drive a 1-batch-lookahead double buffer over an online rollout (shared async driver).
-
-    Generation of batch ``N+1`` overlaps training of batch ``N`` on the sampler. Each step: collect the
-    batch admitted last step (blocking; the sampler is then idle), immediately admit the NEXT batch -- the
-    weight sync inside ``submit`` rewrites live sampler tensors and is safe only at that idle point, so
-    weights are never pushed under an in-flight generation -- then ``consume`` (score + train) the collected
-    batch while the next generation runs. The lookahead batch is therefore produced by the policy one
-    version behind the one that trains it (staleness <= 1, a physical bound: weight sync needs the sampler
-    quiescent, so look-ahead can never exceed one batch).
-
-    This lives in ``train_loop`` because it is the one async control-flow shape shared by every online loop
-    that can overlap (GRPO / PPO / the distillation family), not a per-loop copy. The callbacks keep it
-    business-agnostic:
-
-    - ``submit(prompt_indices) -> handle``: sync weights and admit one batch without blocking.
-    - ``collect(handle, prompt_indices) -> samples``: block until that generation finishes.
-    - ``consume(samples)``: score and train the collected batch.
-    - ``cancel(handle)``: drop an in-flight generation (used when ``max_steps`` is hit).
-    - ``reached_max() -> bool``: whether the optimizer-step budget is exhausted.
-
-    ``handle`` is ``None`` only when there is no next batch to admit, in which case the loop exits before
-    ``cancel`` could be reached, so ``cancel`` is always handed a live handle.
-    """
-    batches = iter(prompt_batches)
-    current = next(batches, None)
-    if current is None:
-        return
-    # Admit batch_0 under the initial policy so the first collect already has work in flight.
-    handle = submit(current)
-    while current is not None:
-        if reached_max():
-            cancel(handle)
-            break
-        samples = collect(handle, current)
-        nxt = next(batches, None)
-        handle = submit(nxt) if (nxt is not None and not reached_max()) else None
-        consume(samples)
-        current = nxt
-
-
 def flatten_evalscope_report(summary: Any) -> Dict[str, float]:
     """Flatten EvalScope report rows into a ``{metric_name: score}`` dict.
 

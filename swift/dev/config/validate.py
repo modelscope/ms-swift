@@ -239,20 +239,28 @@ def validate_rollout_config(rollout_config: Optional['RolloutConfig'],
 
 
 #: The online loops that roll out per prompt batch and train on the collected samples, so they can overlap
-#: generation of batch ``N+1`` with training of batch ``N`` (:func:`overlap_rollout_batches`). RFT is
+#: generation with training on the per-sample streaming driver
+#: (:class:`swift.dev.recipe._streaming_loop.StreamingLoopMixin`). RFT is
 #: excluded (it bootstraps a fixed sample set with a plain cross-entropy objective and no off-policy
 #: correction, and its ``fit`` iterates bootstrap rounds rather than prompt batches); the offline preference
 #: family (dpo/kto/cpo/orpo/simpo/rm) never rolls out, so it is excluded too.
 _ASYNC_RLHF_TYPES = frozenset({'grpo', 'ppo', 'gkd', 'opsd', 'mopd'})
 
 
-#: Knobs read ONLY by the per-sample streaming driver (GRPO/PPO under ``one_step_off``/``fully_async``),
-#: with the value that is inert (ignored) everywhere else -- the synchronous driver (any recipe) and the
-#: distillation loops' single-batch overlap (``overlap_rollout_batches``). An explicit non-default value
-#: there would be a silent dead knob, so it is rejected rather than ignored. ``allow_partial_rollout``
-#: joins them: interrupting and resuming an in-flight generation is only meaningful when a streaming
-#: publish overwrites the sampler's live weights under it (``in_place``); the synchronous driver syncs at
-#: the sampler idle point, so there is nothing to resume.
+#: Knobs read ONLY by the per-sample streaming driver. Under an OVERLAPPING ``async_mode``
+#: (``one_step_off``/``fully_async``) all four are read. Under ``async_mode='none'`` the online loops now
+#: ride the SAME driver at staleness 0, so ``weight_sync_strategy`` / ``parameter_sync_step`` are read there
+#: too -- but ``max_staleness`` (the dispatch pins it to 0) and ``allow_partial_rollout`` (inert at staleness
+#: 0: the drain empties the in-flight set before every publish, so a publish never meets a generation to
+#: interrupt) are NOT. So the inert set depends on whether ``'none'`` streams or falls back:
+#:
+#: * a ``'none'`` run that STREAMS (an online loop with no sync-only feature) reads weight_sync_strategy /
+#:   parameter_sync_step, so only ``_INERT_UNDER_NONE_STREAMING`` is refused there;
+#: * a ``'none'`` run that FALLS BACK to the synchronous ``_run_sync`` (a sync-only feature, or a non-online
+#:   recipe) reads none of them, so the whole ``_FULLY_ASYNC_ONLY_DEFAULTS`` is refused.
+#:
+#: An explicit non-default value of an inert knob would be a silent dead knob, so it is rejected rather than
+#: ignored (``_changed_fields`` limits this to values the user actually set).
 _FULLY_ASYNC_ONLY_DEFAULTS = {
     'max_staleness': 1,
     'weight_sync_strategy': 'adapter_snapshot',
@@ -260,25 +268,78 @@ _FULLY_ASYNC_ONLY_DEFAULTS = {
     'parameter_sync_step': 1
 }
 
+#: The subset of ``_FULLY_ASYNC_ONLY_DEFAULTS`` that stays inert even when ``async_mode='none'`` rides the
+#: streaming driver (see above): the dispatch pins ``max_staleness`` to 0 and the staleness-0 drain makes
+#: ``allow_partial_rollout`` a no-op, so neither is read on that path.
+_INERT_UNDER_NONE_STREAMING = {
+    'max_staleness': _FULLY_ASYNC_ONLY_DEFAULTS['max_staleness'],
+    'allow_partial_rollout': _FULLY_ASYNC_ONLY_DEFAULTS['allow_partial_rollout'],
+}
+
+
+def _sync_only_feature(rlhf_config: Optional['RLHFConfig']) -> bool:
+    """Whether this config needs the WHOLE fixed batch up front, so it cannot ride the per-sample stream.
+
+    Mirrors the ``run_*`` dispatch predicate exactly (the two must never drift, or a config would validate as
+    streaming but be routed to ``_run_sync`` or vice-versa). A per-sample stream admits ONE trajectory at a
+    time and pulls whatever the assembly rule says is ready, so it cannot serve a feature that must see an
+    entire generated batch before deciding what to train:
+
+    * GRPO ``dynamic_sample`` regenerates zero-variance groups AFTER seeing the batch's rewards, and
+      ``advantage_estimator='remax'`` runs a synchronous greedy-baseline generation pass over the assembled
+      batch -- neither can be pre-submitted per-sample.
+    * The distillation family (gkd/opsd/mopd) with ``lmbda != 1.0`` mixes in off-policy dataset rounds that
+      generate nothing, so there is no trajectory to admit.
+    * PPO has no such feature (per-token GAE has no group contract and no whole-batch prepass), so it never
+      falls back.
+
+    A ``None`` rlhf_config (a sampling-only surface) has no online loop to stream, so it is treated as
+    sync-only (the caller gates on ``rlhf_type in _ASYNC_RLHF_TYPES`` first anyway).
+    """
+    if rlhf_config is None:
+        return True
+    rlhf_type = rlhf_config.rlhf_type
+    if rlhf_type == 'grpo':
+        return bool(rlhf_config.dynamic_sample or rlhf_config.advantage_estimator == 'remax')
+    if rlhf_type in {'gkd', 'opsd', 'mopd'}:
+        return rlhf_config.lmbda != 1.0
+    return False
+
+
+def _streams_under_none(rlhf_config: Optional['RLHFConfig']) -> bool:
+    """Whether ``async_mode='none'`` routes this config to the per-sample StreamingDriver (staleness 0).
+
+    True for an online loop (grpo/ppo/gkd/opsd/mopd) with no sync-only feature; those ride the SAME driver as
+    the overlapping regimes, just at staleness 0 (drain-before-publish, no overlap, colocate allowed). False
+    for a sync-only feature (which falls back to the base loop's ``_run_sync``) and for a non-online recipe
+    (which overrides ``fit`` or never rolls out per prompt batch, so it has no streaming loop at all).
+    """
+    if rlhf_config is None or rlhf_config.rlhf_type not in _ASYNC_RLHF_TYPES:
+        return False
+    return not _sync_only_feature(rlhf_config)
+
 
 def _check_async_mode(rollout_config: Optional['RolloutConfig'], rlhf_config: Optional['RLHFConfig'],
                       tuner_config: Optional['TunerConfig'] = None) -> None:
     """Reject ``async_mode`` combinations the online loops cannot honour (fail-loudly).
 
     ``async_mode`` picks how far the rollout may run ahead of training, i.e. how off-policy the trained
-    batch is. ``'none'`` is synchronous; ``'one_step_off'`` overlaps ONE batch (driver-side double buffer,
-    staleness pinned to 1 because the shared-GPU weight sync needs the sampler idle every step);
-    ``'fully_async'`` lets a disaggregated sampler run several versions ahead (staleness up to
-    ``max_staleness``). Every overlapping regime is a real off-policy gap and a real deployment
-    constraint, so each of the following is refused here rather than silently degrading:
+    batch is. EVERY online regime now rides the SAME per-sample streaming driver, differing only in the
+    staleness knob: ``'none'`` is synchronous (``max_staleness=0`` -- admit one window, drain it, train,
+    publish, no overlap; a colocated sampler is allowed and serialized); ``'one_step_off'`` pins
+    ``max_staleness`` to 1 (train version ``v`` while admitting ``v+1``); ``'fully_async'`` lets the
+    disaggregated sampler run several versions ahead (staleness up to ``max_staleness``). The two OVERLAPPING
+    regimes are disaggregated (below) and a real off-policy gap, so each of the following is refused there
+    rather than silently degrading (under ``'none'`` a sync-only feature instead falls back to the base
+    loop's ``_run_sync``, and the staleness-0 publication is validated by ``_check_streaming_publication``):
 
     - Only the loops in :data:`_ASYNC_RLHF_TYPES` implement the overlapped dispatch; RFT and the offline
-      family override ``fit`` (or never roll out) and would ignore the flag. GRPO and PPO run BOTH
-      overlapping regimes through the per-sample streaming driver (``grpo_async.StreamingGRPOLoop`` /
-      ``ppo_async.StreamingPPOLoop``, both composed from ``recipe._streaming_loop.StreamingLoopMixin``),
-      differing only in the staleness knob; ``'fully_async'`` narrows to GRPO and PPO because the
-      distillation loops still overlap a single batch (``overlap_rollout_batches``) and have no
-      deep-buffer driver.
+      family override ``fit`` (or never roll out) and would ignore the flag. EVERY overlapping loop runs the
+      SAME per-sample streaming driver (``recipe._streaming_loop.StreamingLoopMixin`` composed into
+      ``grpo_async.StreamingGRPOLoop`` / ``ppo_async.StreamingPPOLoop`` / ``gkd_async.StreamingGKDLoop`` and
+      its OPSD/MOPD recompositions), differing only in the staleness knob. GRPO/PPO expose both
+      ``'one_step_off'`` (staleness 1) and ``'fully_async'`` (staleness up to ``max_staleness``);
+      ``'fully_async'`` narrows to them because the distillation family overlaps only a single step.
     - GRPO trains on raw sampled tokens, so any staleness needs the token-level
       ``rollout_importance_sampling_mode`` correction. PPO's clipped surrogate and the distillation
       family's teacher target already bound the update, so they do not require it.
@@ -286,10 +347,12 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rlhf_config: Op
       generation with training, so ``vllm_mode='disaggregated'`` is mandatory; ``'colocate'`` time-shares
       one DeviceGroup and cannot overlap.
     - ``dynamic_sample`` regenerates zero-variance groups adaptively after seeing rewards, so it cannot be
-      pre-submitted ahead of training. Multi-turn CAN now overlap: GRPO/PPO admit each episode on the
-      per-sample streaming driver (a whole episode runs turn-by-turn on its own thread), but the
-      distillation family still overlaps a single batch through ``submit_generate`` -- which drives only the
-      single-turn sampler -- so ``max_turns`` is refused there until their streaming migration.
+      pre-submitted ahead of training. Multi-turn needs NO refusal here: ``_check_rlhf_advanced`` already
+      gates ``max_turns`` to GRPO-only (it runs before this in ``validate_configs``), and GRPO wires
+      ``rollout.configure_multi_turn`` before the loop dispatch, so its streaming loop admits each
+      multi-turn episode per-sample on the driver (a whole episode runs turn-by-turn on its own thread)
+      and overlaps it correctly. The distillation family can never carry ``max_turns``, so there is no
+      silent single-turn degradation to guard against on this path.
     - Async distillation must be purely on-policy (``lmbda==1.0``): an off-policy dataset round generates
       nothing, so there is no batch to admit ahead.
     """
@@ -297,15 +360,31 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rlhf_config: Op
         return
     # allow_partial_rollout is a real sampler capability now (twinkle's PartialRolloutMixin: the dev vLLM/SGLang
     # sampler can interrupt an in-flight generation and resume it on freshly-synced weights), but it is only
-    # MEANINGFUL under the streaming driver's in_place publication, where a publish overwrites the sampler's
-    # single live weight copy under an in-flight generation. Under 'none' (and the distillation loops'
-    # one_step_off) it is inert (the sync happens at the sampler idle point, nothing is in flight to resume)
-    # and _reject_fully_async_only_knobs refuses an explicit True; for GRPO/PPO one_step_off/fully_async,
-    # _check_streaming_publication validates it per weight_sync_strategy (required for in_place, inert for
-    # adapter_snapshot). So there is no blanket rejection here -- only the per-regime checks below.
+    # MEANINGFUL under an OVERLAPPING streaming publish (in_place overwrites the sampler's single live weight
+    # copy under an in-flight generation). At staleness 0 -- the synchronous regime, which now also rides the
+    # streaming driver -- the drain empties the in-flight set before every publish, so there is nothing to
+    # resume and the flag is inert (refused below if set explicitly); for EVERY overlapping regime
+    # (GRPO/PPO/distillation), _check_streaming_publication validates it per weight_sync_strategy (required
+    # for in_place, inert for adapter_snapshot). So there is no blanket rejection here -- only the per-regime
+    # checks below.
     mode = rollout_config.async_mode
     if mode == 'none':
-        _reject_fully_async_only_knobs(rollout_config, mode)
+        # Since the per-sample stream serves EVERY regime, an online loop (grpo/ppo/gkd/opsd/mopd) with no
+        # sync-only feature now rides the StreamingDriver at staleness 0 (admit one window, DRAIN it, train,
+        # publish -- no overlap; a colocated sampler is allowed and serialized via the drain barrier + device
+        # hand-over). Only a sync-only feature (which needs the WHOLE fixed batch up front) falls back to the
+        # base loop's synchronous _run_sync, and a non-online recipe never rolls out per prompt batch at all.
+        if _streams_under_none(rlhf_config):
+            # max_staleness (the dispatch pins it to 0) and allow_partial_rollout (inert at staleness 0) are
+            # never read on this path, so an explicit non-default value is still refused; weight_sync_strategy
+            # and parameter_sync_step ARE read, so they are validated by _check_streaming_publication instead
+            # of rejected (a colocated run must publish in_place, an overlapping-style in_place needs no
+            # partial rollout at staleness 0, etc.).
+            _reject_inert_streaming_knobs(rollout_config, mode, _INERT_UNDER_NONE_STREAMING)
+            _check_streaming_publication(rollout_config, rlhf_config, tuner_config, mode)
+        else:
+            # The synchronous _run_sync fallback (or a non-online recipe) reads none of the streaming knobs.
+            _reject_inert_streaming_knobs(rollout_config, mode, _FULLY_ASYNC_ONLY_DEFAULTS)
         return
     # The legacy bool is the old spelling of 'one_step_off'; process._derive_async_mode folds it in when
     # async_mode is unset, so reaching here with async_generate True AND a different explicit mode is an
@@ -343,81 +422,84 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rlhf_config: Op
             '(argmax) baseline completion per prompt AFTER the sampled rollout, and that extra synchronous '
             'generation pass cannot be pre-submitted ahead. Remove the async setting or pick another '
             'advantage_estimator.')
-    if rlhf_config.max_turns is not None and rlhf_type in {'gkd', 'opsd', 'mopd'}:
-        raise ValueError(
-            f'{flag} cannot be combined with a multi-turn rollout (max_turns is set) for '
-            f'rlhf_type={rlhf_type!r}: the distillation loops still overlap a single batch through '
-            'submit_generate, which drives only the single-turn sampler and has no per-episode multi-turn '
-            'admission. GRPO/PPO run multi-turn through the per-sample streaming driver (each episode is '
-            'admitted on its own thread). Remove the async setting or unset --max_turns.')
     if rlhf_type in {'gkd', 'opsd', 'mopd'} and rlhf_config.lmbda != 1.0:
         raise ValueError(
             f'{flag} overlaps generation with training by pre-submitting the next prompt batch, '
             f'which only purely on-policy distillation can do; rlhf_type={rlhf_type!r} with '
             f'--lmbda={rlhf_config.lmbda} mixes in off-policy dataset rounds that generate nothing and '
             'cannot be pre-submitted. Set --lmbda 1 for on-policy distillation, or remove the async setting.')
-    if rlhf_type in ('grpo', 'ppo'):
-        # GRPO/PPO run BOTH overlapping regimes through the per-sample StreamingDriver, so the
-        # publication knobs are live under one_step_off as well as fully_async.
-        _check_streaming_publication(rollout_config, rlhf_config, tuner_config, mode)
-    elif mode == 'one_step_off':
-        # The distillation loops still overlap a single batch (overlap_rollout_batches); their streaming
-        # migration is a later phase, so the deep-buffer publication knobs stay inert here and an
-        # explicit non-default value would silently do nothing.
-        _reject_fully_async_only_knobs(rollout_config, mode)
-    else:
+    if mode == 'fully_async' and rlhf_type not in ('grpo', 'ppo'):
+        # The distillation family overlaps a SINGLE step (staleness 1) on the same per-sample streaming
+        # driver and has no deep-buffer regime, so fully_async (staleness > 1) stays GRPO/PPO-only.
         raise ValueError(
-            f'{flag} with --async_mode fully_async is only implemented for GRPO and PPO (the loops with '
-            f'the per-sample streaming, sparsely-published driver); got rlhf_type={rlhf_type!r}. The '
-            'distillation loops overlap a single batch -- use --async_mode one_step_off for them.')
+            f'{flag} is only implemented for GRPO and PPO; got rlhf_type={rlhf_type!r}. The '
+            'distillation loops overlap a single step -- use --async_mode one_step_off for them.')
+    # Every surviving overlapping regime -- GRPO/PPO under one_step_off|fully_async and the distillation
+    # family under one_step_off -- runs the SAME per-sample StreamingDriver (differing only in the staleness
+    # knob), so all validate their publication identically: the publish cadence, the staleness bound, and
+    # the adapter_snapshot/in_place pairing.
+    _check_streaming_publication(rollout_config, rlhf_config, tuner_config, mode)
 
 
-def _reject_fully_async_only_knobs(rollout_config: 'RolloutConfig', mode: str) -> None:
-    """Refuse a streaming-only knob explicitly set to a non-inert value where no streaming driver runs.
+def _reject_inert_streaming_knobs(rollout_config: 'RolloutConfig', mode: str, inert_defaults: dict) -> None:
+    """Refuse a streaming knob explicitly set to a non-inert value the selected driver never reads.
 
-    ``max_staleness``/``weight_sync_strategy``/``allow_partial_rollout``/``parameter_sync_step`` steer only
-    the per-sample streaming driver (GRPO/PPO under ``one_step_off``/``fully_async``); the synchronous
-    driver and the distillation loops' single-batch overlap never read them, so an explicit non-default
-    value would silently do nothing. Fail loudly instead (``_changed_fields`` limits this to values the
-    user actually set).
+    ``inert_defaults`` maps each knob that is INERT on the path this config selects to the value it is
+    forced to there. Two callers: ``async_mode='none'`` on the synchronous ``_run_sync`` fallback (a sync-only
+    feature, or a non-online recipe) reads NONE of the streaming knobs, so it passes the full
+    ``_FULLY_ASYNC_ONLY_DEFAULTS``; ``async_mode='none'`` on an online loop that rides the streaming driver
+    at staleness 0 still ignores ``max_staleness`` (pinned to 0) and ``allow_partial_rollout`` (the drain
+    leaves nothing in flight to resume), so it passes the narrower ``_INERT_UNDER_NONE_STREAMING``. An
+    explicit non-default value of an inert knob would silently do nothing, so fail loudly instead
+    (``_changed_fields`` limits this to values the user actually set).
     """
     changed = _changed_fields(rollout_config)
-    for name, inert in _FULLY_ASYNC_ONLY_DEFAULTS.items():
+    for name, inert in inert_defaults.items():
         if name in changed and getattr(rollout_config, name) != inert:
             raise ValueError(
-                f'--{name}={getattr(rollout_config, name)!r} only governs the per-sample streaming driver '
-                f'(grpo/ppo under --async_mode one_step_off/fully_async); the driver selected here '
-                f'(--async_mode {mode}) never reads it (its inert value is {inert!r}), so it would silently '
-                'do nothing. Use a streaming regime, or drop it.')
+                f'--{name}={getattr(rollout_config, name)!r} is inert on the driver this config selects '
+                f'(--async_mode {mode}): its value there is always {inert!r}, so setting it would silently do '
+                'nothing. Drop it, or use a regime that reads it.')
 
 
 def _check_streaming_publication(rollout_config: 'RolloutConfig', rlhf_config: 'RLHFConfig',
                                  tuner_config: Optional['TunerConfig'], mode: str) -> None:
-    """Guards for the per-sample streaming driver (GRPO/PPO under ``one_step_off`` and ``fully_async``).
+    """Guards for the per-sample streaming driver's publication (EVERY online regime that rides it).
 
-    Both overlapping regimes run the SAME per-sample ``StreamingDriver``, differing only in the staleness
-    knob, so a publication always happens while the sampler has generations in flight and must not corrupt
-    them. Three things are checked (the strategy pairing mirrored at construction by
-    ``recipe._streaming_loop.StreamingLoopMixin._check_streaming_config``, so a loop built directly is
-    guarded too):
+    Each regime runs the SAME per-sample ``StreamingDriver``, differing only in the staleness knob:
+    ``'none'`` at staleness 0 (drain-before-publish, no overlap, colocate allowed), ``'one_step_off'`` at
+    staleness 1, ``'fully_async'`` at staleness up to ``max_staleness``. An OVERLAPPING publish always
+    happens while the sampler has generations in flight and must not corrupt them; a staleness-0 publish
+    happens only after the drain, so nothing is in flight. Four things are checked (the strategy pairing
+    mirrored at construction by ``recipe._streaming_loop.StreamingLoopMixin._check_streaming_config``, so a
+    loop built directly is guarded too):
 
     * ``parameter_sync_step`` is the publish cadence -- one weight publication every K recorded steps; it
       must be >= 1 (0 would never publish a trained policy).
     * staleness: ``one_step_off`` pins the driver to a single lookahead window (staleness 1), so an
       explicit non-1 ``max_staleness`` there is ambiguous and refused (use ``fully_async`` for a deeper
-      buffer); ``fully_async`` allows any ``max_staleness >= 1``.
+      buffer); ``fully_async`` allows any ``max_staleness >= 1``; ``'none'`` pins it to 0 (refused upstream
+      if set explicitly), so there is nothing to bound here.
+    * placement: a COLOCATED sampler (``vllm_mode='colocate'``, only reachable at staleness 0 since an
+      overlapping regime must be disaggregated) MUST publish ``in_place`` -- the per-cycle device hand-back
+      (wake+sync the sampler before each generation window) rides in_place's publish ``sync_fn``, whereas
+      ``adapter_snapshot`` publishes by writing a new adapter path with no weight sync, so nothing would
+      re-hand the shared device to the sampler after the first consume's exit.
     * the publish mechanism, per ``weight_sync_strategy``:
 
       - ``adapter_snapshot`` pins each trained version as its own LoRA adapter path, so publishing writes a
         NEW path and never disturbs a running generation. It needs an adapter run (a full-parameter policy
         has no adapter to pin) and must NOT set ``allow_partial_rollout`` -- nothing is overwritten in
         place, so there is no generation to interrupt and resume and the flag would be inert.
-      - ``in_place`` overwrites the sampler's single live weight copy, so it is sound ONLY with partial
-        rollout: the publish aborts every in-flight generation and each resumes from its own tokens on the
-        fresh weights (twinkle ``PartialRolloutMixin`` + ``InPlaceWeightSync`` abort-on-publish), so no
-        generation decodes across the update and its logprobs stay correctable. It supports a
+      - ``in_place`` overwrites the sampler's single live weight copy. Under an OVERLAPPING regime a stream
+        always has trajectories in flight at a publish, so it is sound ONLY with partial rollout: the publish
+        aborts every in-flight generation and each resumes from its own tokens on the fresh weights (twinkle
+        ``PartialRolloutMixin`` + ``InPlaceWeightSync`` abort-on-publish), so no generation decodes across the
+        update and its logprobs stay correctable -- hence ``allow_partial_rollout`` is REQUIRED there. Under
+        the SYNCHRONOUS regime (``'none'``, staleness 0) the drain empties the in-flight set before every
+        publish, so the abort is a no-op and ``allow_partial_rollout`` is NOT required. It supports a
         full-parameter policy (merged base weights over NCCL when disaggregated, CUDA IPC when colocated)
-        as well as LoRA, and therefore REQUIRES ``allow_partial_rollout``.
+        as well as LoRA.
     """
     if rollout_config.parameter_sync_step < 1:
         raise ValueError(
@@ -431,22 +513,30 @@ def _check_streaming_publication(rollout_config: 'RolloutConfig', rlhf_config: '
                 'one_step_off: that regime pins the streaming driver to a single lookahead window '
                 '(staleness 1). Use --async_mode fully_async with --max_staleness N for a deeper buffer, '
                 'or drop --max_staleness.')
-    elif rollout_config.max_staleness < 1:
+    elif mode == 'fully_async' and rollout_config.max_staleness < 1:
         raise ValueError(
             f'--max_staleness must be >= 1 under --async_mode fully_async (0 would admit nothing ahead of '
             f'the oldest untrained window, i.e. the synchronous loop); got {rollout_config.max_staleness}.')
     strategy = rollout_config.weight_sync_strategy
     tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
+    if rollout_config.vllm_mode == 'colocate' and strategy != 'in_place':
+        raise ValueError(
+            f"--vllm_mode colocate with --weight_sync_strategy {strategy!r} cannot hand the shared device "
+            "back to the sampler each cycle: a colocated sampler time-shares ONE DeviceGroup with the trainer, "
+            "and the per-cycle wake+sync that returns it to generation rides in_place's publish, whereas "
+            "adapter_snapshot publishes by writing a new adapter path with no weight sync. Use "
+            "--weight_sync_strategy in_place (what dev derives for a colocated run); a colocated run is "
+            "synchronous (--async_mode none), so in_place needs no --allow_partial_rollout there.")
     if strategy == 'adapter_snapshot':
         # Per-version LoRA pinning needs an adapter to pin; a full-parameter policy has none. The sound
-        # full-parameter deep buffer is in_place + partial rollout (below), so point the user there.
+        # full-parameter stream is in_place (below), so point the user there.
         if tuner == 'full':
             raise ValueError(
                 f"--async_mode {mode} with --weight_sync_strategy adapter_snapshot pins each trained "
                 "version as a LoRA adapter path, but this is a full-parameter run (tuner='full') with no "
                 'adapter to pin. Configure an adapter-based tuner (e.g. LoRA), or use --weight_sync_strategy '
-                'in_place with --allow_partial_rollout, which overwrites the sampler\'s live weights and '
-                'resumes each in-flight generation on them (the full-parameter deep buffer).')
+                'in_place, which overwrites the sampler\'s live merged base weights (add '
+                '--allow_partial_rollout for an overlapping regime, which resumes each in-flight generation).')
         if rollout_config.allow_partial_rollout:
             raise ValueError(
                 '--allow_partial_rollout is inert under --weight_sync_strategy adapter_snapshot: each version '
@@ -455,8 +545,10 @@ def _check_streaming_publication(rollout_config: 'RolloutConfig', rlhf_config: '
                 'or use --weight_sync_strategy in_place (which overwrites one live copy and so needs it).')
     elif strategy == 'in_place':
         # Overwriting the single live copy under an in-flight generation is unsound unless each generation is
-        # aborted and resumed on the fresh weights, which is exactly what allow_partial_rollout enables.
-        if not rollout_config.allow_partial_rollout:
+        # aborted and resumed on the fresh weights, which is exactly what allow_partial_rollout enables. At
+        # staleness 0 ('none') the drain empties the in-flight set before every publish, so the abort is a
+        # no-op and the flag is not required (and is refused upstream if set, being inert there).
+        if mode != 'none' and not rollout_config.allow_partial_rollout:
             raise ValueError(
                 f"--async_mode {mode} with --weight_sync_strategy in_place overwrites the sampler's single "
                 'live weight copy while the streaming buffer still has generations in flight, so it needs '

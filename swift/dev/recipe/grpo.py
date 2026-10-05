@@ -12,7 +12,9 @@ Scope (T1 wired):
   - only forward_backward / forward_only are used (backend-agnostic).
 
 Weight-sync is delegated to the rollout object, not owned by the loop: every rollout exposes
-``sync_weights`` / ``finish_generate``, so the loop calls them unconditionally around each rollout.
+``sync_weights`` / ``generate`` / ``finish_generate``, and the loop brackets each blocking rollout with
+:func:`swift.dev.rollout.blocking_generate` (the hand-over in one shared place, ``finish_generate`` in a
+``finally``) rather than hand-writing the pair.
 ``run_grpo``'s ``SyncableRollout`` implements them over twinkle's ``CheckpointEngineManager``, pushing
 the trained policy into the sampler BEFORE each rollout so the behaviour policy tracks the trained one
 (correct GRPO). The base ``RolloutEngine`` (the smoke path) implements them as a warn-once no-op, so a
@@ -39,6 +41,7 @@ from swift.dev.reward import (
     compute_rewards_per_func,
     get_reward_funcs,
 )
+from swift.dev.rollout import blocking_generate
 from swift.dev.utils import get_logger
 
 if TYPE_CHECKING:
@@ -167,7 +170,6 @@ class GRPOLoop(TrainLoop):
                  seed: int = 42,
                  max_grad_norm: float = 1.0,
                  sampling_params: Optional[dict] = None,
-                 async_generate: bool = False,
                  logging_config: Optional['LoggingConfig'] = None,
                  output_dir: str = 'output',
                  save_steps: Optional[int] = None,
@@ -241,14 +243,6 @@ class GRPOLoop(TrainLoop):
         #: than dp_size rows is what raised "Batch too small" under the old one-sample-per-call loop.
         self.train_batch_size = max(1, train_batch_size)
         self.sampling_params = sampling_params
-        #: Overlap the sampler generation of the next rollout batch with this step's scoring + training
-        #: (1-batch lookahead, staleness <= 1). Driver-side double buffer over the SAME GRPOLoop -- NOT a
-        #: separate async runtime -- so every feature wired here (PRM / routing replay / sampling replay /
-        #: CHORD / teacher / IS correction) applies to the async path unchanged. validate gates it to
-        #: disaggregated + a rollout importance-sampling mode (staleness is always > 0, so the off-policy
-        #: correction is mandatory) and rejects it with dynamic_sample / multi-turn (both need synchronous,
-        #: adaptive re-generation of the just-collected batch).
-        self.async_generate = bool(async_generate)
         #: Prompt-set iterator: one batch per rollout, exhausted after ``num_train_epochs`` passes. Built
         #: here (not in the recipe) so every on-policy subclass shares one epoch/shard/seed policy; the
         #: recipe only derives the matching ``max_steps`` LR horizon via ``rollout_step_budget``.
@@ -271,9 +265,11 @@ class GRPOLoop(TrainLoop):
     def _finalize_samples(self, samples: List[Any], prompt_indices: Sequence[int]) -> List[Any]:
         """Check the rollout count and stamp each sample with its group's global prompt id.
 
-        Shared by the blocking :meth:`_generate` and the async :meth:`_collect_generation` so both paths
-        enforce the same ``num_generations``-per-prompt contract and group id (which drives the
-        group-relative advantage).
+        The synchronous :meth:`_generate` batch path enforces the ``num_generations``-per-prompt contract
+        and group id (which drives the group-relative advantage) here. The per-sample streaming path does
+        NOT call this: ``rollout.collect_sample`` stamps each trajectory's group id / version individually
+        (see ``_streaming_loop._collect_per_sample``), and this hook's whole-batch count invariant cannot
+        hold for a single trajectory.
         """
         expected = len(prompt_indices) * self.num_generations
         if len(samples) != expected:
@@ -287,41 +283,12 @@ class GRPOLoop(TrainLoop):
     def _generate(self, prompt_indices: Sequence[int]) -> List[Any]:
         """Blocking rollout: push the policy, sample to completion, hand the device back (sync path)."""
         prompts, extras = self._prompt_payload(prompt_indices)
-        self.rollout.sync_weights()
-        try:
-            samples = self.rollout.generate(
-                prompts,
-                num_samples=self.num_generations,
-                sampling_params=self.sampling_params,
-                prompt_extras=extras)
-        finally:
-            self.rollout.finish_generate()
-        return self._finalize_samples(samples, prompt_indices)
-
-    def _submit_generation(self, prompt_indices: Sequence[int]) -> Any:
-        """Async admit half: push the current policy into the idle sampler and schedule this batch WITHOUT
-        blocking, returning a handle for :meth:`_collect_generation`.
-
-        ``sync_weights`` runs here, not in collect: pushing weights rewrites the sampler's live tensors and
-        needs it quiescent, and the caller only submits right after a collect (no generation in flight). The
-        batch is thus generated by the policy as of THIS call -- one version behind the policy that will
-        train it under a 1-batch lookahead (staleness 1), which the rollout importance sampling validate
-        forces on for async corrects.
-        """
-        prompts, extras = self._prompt_payload(prompt_indices)
-        self.rollout.sync_weights()
-        return self.rollout.submit_generate(
+        samples = blocking_generate(
+            self.rollout,
             prompts,
             num_samples=self.num_generations,
             sampling_params=self.sampling_params,
             prompt_extras=extras)
-
-    def _collect_generation(self, handle: Any, prompt_indices: Sequence[int]) -> List[Any]:
-        """Async collect half: block until the admitted generation finishes, then finalize its samples."""
-        try:
-            samples = self.rollout.collect_generate(handle)
-        finally:
-            self.rollout.finish_generate()
         return self._finalize_samples(samples, prompt_indices)
 
     def _reward_rows(self, samples: List[Any]) -> List[Dict[str, Any]]:
@@ -710,7 +677,7 @@ class GRPOLoop(TrainLoop):
         (a lower-variance baseline than the group mean, at the cost of one extra generation pass). This runs
         that pass -- ``temperature=0``, one sample per distinct prompt -- scores it with the SAME reward
         functions / RM plugins as the rollout, and broadcasts each prompt's greedy reward to all of its
-        ``num_generations`` samples. Gated against ``async_generate`` (validate.py): the pass is synchronous
+        ``num_generations`` samples. Gated against ``--async_mode`` (validate.py): the pass is synchronous
         and cannot be pre-submitted a batch ahead.
         """
         import torch
@@ -732,12 +699,8 @@ class GRPOLoop(TrainLoop):
         greedy_params.pop('top_p', None)
         greedy_params.pop('top_k', None)
 
-        self.rollout.sync_weights()
-        try:
-            greedy_samples = self.rollout.generate(
-                prompts, num_samples=1, sampling_params=greedy_params, prompt_extras=extras)
-        finally:
-            self.rollout.finish_generate()
+        greedy_samples = blocking_generate(
+            self.rollout, prompts, num_samples=1, sampling_params=greedy_params, prompt_extras=extras)
         if len(greedy_samples) != len(order):
             raise RuntimeError(f'greedy baseline rollout returned {len(greedy_samples)} samples, expected '
                                f'{len(order)} (one per distinct prompt).')
@@ -1009,26 +972,6 @@ class GRPOLoop(TrainLoop):
         rewards = self._score(samples)
         self._train_rollout_batch(self._assemble_rollout_batch(samples, rewards))
 
-    def _run_async(self) -> None:
-        """Overlapped driver (1-batch lookahead): generate batch ``N+1`` on the sampler while training ``N``.
-
-        A thin wiring of this loop's rollout callbacks into the shared :func:`overlap_rollout_batches`
-        double buffer (see ``train_loop`` for the control flow and the staleness<=1 argument). ``submit``
-        syncs weights at the sampler's idle point and admits a batch; ``collect`` blocks on it; ``consume``
-        scores and trains it; ``cancel`` drops an in-flight batch when ``max_steps`` is reached. The
-        lookahead batch is produced by the policy one version behind the one that trains it (staleness 1),
-        which the mandatory rollout importance sampling corrects.
-        """
-        from swift.dev.recipe.train_loop import overlap_rollout_batches
-
-        overlap_rollout_batches(
-            prompt_batches=self._prompt_batches,
-            submit=self._submit_generation,
-            collect=self._collect_generation,
-            cancel=self.rollout.cancel_generate,
-            consume=self._consume_async_samples,
-            reached_max=self._reached_max)
-
     def fit(self) -> list:
         """Train over the prompt set for ``num_train_epochs`` passes, reusing each rollout ``num_iterations``.
 
@@ -1049,16 +992,15 @@ class GRPOLoop(TrainLoop):
             self.tracker.close()
 
     def _drive(self) -> None:
-        """Run this loop's rollout driver: the overlapped 1-batch lookahead (:meth:`_run_async`) when
-        ``async_generate``, otherwise the synchronous one (:meth:`_run_sync`). Both drive the same
-        per-rollout training (:meth:`_train_rollout_batch`).
+        """Run this loop's rollout driver: the synchronous fixed-batch one (:meth:`_run_sync`).
 
         A template hook split out of :meth:`fit` so :class:`~swift.dev.recipe.grpo_async.StreamingGRPOLoop`
-        overrides ONLY the driver (its per-sample streaming buffer) and inherits the identical manual-GC /
-        tracker scaffolding above -- the async control flow lives in one place per regime, not copied into
-        ``fit``.
+        overrides ONLY the driver (its per-sample streaming buffer, composed via
+        :class:`~swift.dev.recipe._streaming_loop.StreamingLoopMixin`) and inherits the identical manual-GC /
+        tracker scaffolding above. Since the per-sample stream now serves EVERY regime, a GRPO run rides it
+        under ``async_mode='none'`` (staleness 0) as well as the overlapping modes; this base driver is reached
+        only for a sync-only feature that needs the WHOLE fixed batch up front (``dynamic_sample`` or
+        ``advantage_estimator='remax'``), which the router keeps on ``_run_sync`` under ``async_mode='none'``.
+        So it is synchronous-only and carries no async branch.
         """
-        if self.async_generate:
-            self._run_async()
-        else:
-            self._run_sync()
+        self._run_sync()

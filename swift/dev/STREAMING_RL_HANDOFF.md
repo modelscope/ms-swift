@@ -175,6 +175,7 @@ Plan 原本把「per-episode version-span 跨轮上浮」列为 Phase 2 的 seam
 - **真实 import**：`swift.dev.rollout`、`swift.dev.rollout.multi_turn`、`swift.dev.config.validate`、`twinkle_agentic.rollout.multi_turn` 全 OK。
 - **ruff（项目 select B,C,E,F,W,I）**：`rollout/__init__.py` **All checks passed**；dev `multi_turn.py` 仅剩**预存 I001**（base HEAD 同样有，非本次引入）；`validate.py` 仅剩**预存 C901**（`_check_async_mode` 经「还原 M12 改动后仍是 13」证明是 Phase 1 的）；twinkle `multi_turn.py` 错误在 L2/167/397（非我改的 `_resolve_call`）。**零新增违规。**
 - **ephemeral harness（已删）**：用 **Fake multi_turn engine + MagicMock sampler** 驱动真实 `RolloutEngine` 的 per-episode 机制，验证：非阻塞准入（submit 立即返回、generate 仍 sleep）、arg 透传（adapter_path + allow_partial_rollout 逐字到达 generate、num_samples=1、prompt 包成 [prompt]）、poll before/after done、collect stamping（prompt_id=str(prompt_idx) / policy_version）、collect/poll fail-loudly、collect len!=1（2 与 0 都 raise）、cancel abandon（done 与 in-flight 两种）、close 清理、单轮路径不受影响。
+  - ⚠️ **验证缺口（务必补，见 §8.3）**：上述完整套件（14 例）是在**移除死代码之前**的代码上跑的（24/25，那 1 个 fail 是暴露 §7.2 发现1 的 control）。移除 `add_done_callback` 死代码后，**只重跑了尾部 3 例**（cancel in-flight / close in-flight / Future 静默 control，7/7 绿）。**头部用例（尤其 case 10「cancel 一个已 done 且失败的 episode 不 raise」直接触及被改的 `cancel_sample`）从未对着最终代码重跑过**。即：从未有过一次「完整套件 × 最终代码」的全绿运行。
 
 ### 7.2 冷审（review-mode）两个真实发现（已修）
 
@@ -203,15 +204,42 @@ Plan 原本把「per-episode version-span 跨轮上浮」列为 Phase 2 的 seam
 - 应覆盖（plan L149 的 Phase 2 验证目标）：**多轮 async GRPO 端到端**——episode 粒度 admit/collect、partial rollout 跨轮 abort+resume（in_place 下）、version 锚点（policy_version）正确。
 - corner case 从**失败面**推导（逐轮 sample 的 abort/resume 边界、episode 中途失败、group 组装跨 episode、staleness 丢弃整 group、drain 时 in-flight episode 的 cancel、num_generations 条 episode 并发准入的 backpressure 封顶等），每条配 control 防空跑假绿。
 
+### 8.3 【最优先补】完整 harness × 最终代码的全绿运行（§7.1 缺口的收口）
+
+**背景**：移除死代码（§7.2 发现1）后只重跑了尾部 3 例，头部用例（尤其触及被改 `cancel_sample` 的 case 10）从未对着最终代码验证。逻辑上头部用例不受该改动影响（改动只在 `cancel_sample`/`close()`），但**纪律要求一次「完整套件 × 最终代码」的全绿运行**才算收口。这是接手后**第一件该做的验证**（在向用户汇报 Phase 2 签收之前）。
+
+**做法**：重建一个 ephemeral harness（Fake multi_turn engine + `MagicMock()` sampler 驱动真实 `RolloutEngine`），跑完下面 14 例，**全绿后删除脚本**。Fake engine 的 `generate(prompts, num_samples, sampling_params, prompt_extras, force_logprobs, adapter_path, allow_partial_rollout)` 把收到的参数记进 `self.calls` 再按脚本化 behavior 返回 `[RolloutSample(...)]`；用 `e = RolloutEngine(sampler=MagicMock()); e._multi_turn = FakeMultiTurn(behavior)` 注入。
+
+| # | 用例 | 断言（expected） | 杀掉的失败模式 |
+|---|------|------------------|----------------|
+| 1 | 非阻塞准入 | `submit_sample` 在 generate 仍 sleep(0.3) 时 **<0.15s 返回**；返回 `SampleHandle`；`submission_id` 已在 `_episode_futures`（返回前注册，无竞态） | 准入阻塞到 episode 结束（失去 per-episode 并发的全部意义） |
+| 2 | arg 透传（seam 3） | submit 带 `adapter_path='/lora/v1'`+`allow_partial_rollout=True` → generate 收到**逐字相同**的值，且 `num_samples==1`、`prompts==[prompt]` | 多轮引擎收不到 partial_rollout/adapter → in_place 逐轮 abort+resume 失效 |
+| 3 | poll 未完成 | episode 未 done 时 `poll_completions([h]) == []` | poll 误报完成 → collect 阻塞或取到半成品 |
+| 4 | poll 完成 | done 后 `poll_completions([h]) == [h]` | 完成检测不工作 → driver 永远 poll 不到 |
+| 5 | collect stamping | `collect_sample` 后 `sample.prompt_id == str(prompt_idx)`、`sample.policy_version == 准入版本`；future 已 pop | GRPO group 归并 / TIS 版本锚点错 |
+| 6 | prompt_extras 透传 | submit 带 `prompt_extras={'tools': [...]}` → generate 收到 `[{'tools': [...]}]` | 多轮工具定义丢失 |
+| 7 | 单轮不受影响 | `adapter_path=None`+`allow_partial_rollout=False` → generate 收到 `None`/`False` | 回归：单轮 async 被多轮改动波及 |
+| 8 | episode 失败 fail-loudly | generate 抛错的 episode：`poll_completions` **raise**、`collect_sample` **raise**（线程不得静默死亡） | 失败被吞 → 训练用到坏 sample |
+| 9 | collect 数量异常 | generate 返回 2 条 / 0 条 → `collect_sample` **raise RuntimeError** | 一条 episode 应恰好 1 个 sample 的契约被破坏 |
+| 10 | **cancel 已 done 且失败的 episode** | `cancel_sample(h)` **不 raise**（future 已 done 带异常，cancel 只 pop+return，绝不取用异常） | **直接触及被改的 `cancel_sample`——本缺口的核心** |
+| 11 | cancel in-flight 失败 episode | sleep 后抛错的 episode 立即 cancel → **不 raise**、future 已从 map 移除、等线程结束仍无异常传播 | cancel 传播被放弃 episode 的异常 |
+| 12 | close() 带 in-flight 失败 episode | `close()` → **不 raise**、`_episode_futures` 清空、等线程结束无异常传播 | close 传播异常 / 清理不彻底 |
+| 13 | 多 episode 并发（num_generations=8） | 8 条 submit 全部注册（len==8）、全部 done、逐一 collect 成功 | backpressure 下批量准入的记账错乱 |
+| 14 | **control：concurrent.futures.Future 静默** | 一个 bare `Future().set_exception(...)` 后 `gc.collect()` + 捕获 `concurrent.futures` logger → **无 "never retrieved" 警告**（证明 §7.2 发现1：该警告是 asyncio 专属，故**不要**重新加回 GC-drain 死代码） | 后人误以为需要 drain 而重新引入死代码 |
+
+**通过判据**：14/14 全绿。**纪律**：①脚本 ephemeral，跑完即删（`/tmp/` 下）；②若用 spawn 方式跑须加 `if __name__ == '__main__':` 守卫 + `importlib.util.spec_from_file_location` 加载；③用 `/usr/local/bin/python`（**非** conda base 的 3.14）；④banner 噪声用 `grep -E 'FAIL\||passed='` 过滤，**不要**用管道末端 `grep -v`（全滤光时 exit 1 会被误读为失败）；⑤case 14 是 control，**必须存在**——没有它，case 10/11/12 的「不 raise」可能是空跑假绿。
+
+**若发现红**：先判断是 harness 自身 bug（空跑/上游门控先拦截/Python 误用，见记忆教训）还是产品缺陷；产品缺陷则按 review-mode 冷审 + 剃刀修复，修完重跑至全绿。
+
 ---
 
 ## 9. Phase 3 详细待办（下一步，签收 Phase 2 后开始）
 
 Plan L151-155「Async 指标」+ 从 Phase 2 延来的 version-span：
 
-1. **StreamingDriver 内部计时器 + 计数器**（twinkle `streaming_driver.py`）：`gen_active_time` / `train_active_time` / `idle_time`；staleness / drop 计数器。通过 seam 或返回值暴露给 dev 侧。
+1. **StreamingDriver 内部计时器 + 计数器**（twinkle `streaming_driver.py`）：`train_active_time` / `idle_time`（`DriverStats`）；计数器 `off_policy_consumed` / `dropped_stale` / `publishes`。通过 `driver.stats` 暴露给 dev 侧。**无 `gen_active_time`**：driver 是分离式 sampler 上的单线程控制环，看不到 sampler 的 GPU 生成时间，故不设该计时器（原名是 Phase 3 前的设想，实现时刻意去掉）。
 2. **RolloutSample version-span 字段**（dev `rollout/__init__.py`）：新增字段（如 `version_span: int = 0`），由 **driver 端 strategy-aware 标量**填充（§4）：`adapter_snapshot → 0`；`in_place → collect 时 current_version − admit_version`。**引擎（twinkle MultiTurnRollout / sampler）保持版本无关，绝不要把 version 塞进引擎。**
-3. **tracking.py metrics 发射**（dev `recipe/tracking.py`）：新增 async metrics 字段 `partial_ratio` / `max_partial_span` / `stale_samples_processed` / `dropped_stale_samples` / `trainer_idle_ratio` / `rollouter_idle_ratio` / version-span 分布，经 `RunTracker.log(metrics, step)` 发射。
+3. **metrics 发射**（dev `recipe/_streaming_loop.py` 的 `StreamingLoopMixin._extra_step_metrics`，经 `super()` 与算法 loop 自己的 hook 合成，再由 `RunTracker.log` 泛化发射每个标量——**tracking.py 无需 async 专用代码**）。实际发射字段：`trainer_idle_ratio`（per-pull 窗口，在 `_consume_streaming` 折叠一次、报在本 batch 每个 step 上）/ `partial_ratio` / `max_partial_span` / `version_span_mean` / `off_policy_consumed` / `dropped_stale` / `stream_publishes`。**刻意不发射** `rollouter_idle_ratio` 与生成 GPU 时间（单线程控制环看不到 sampler GPU idle，测量它需要给数据面插桩）。原待办里的 `stale_samples_processed` / `dropped_stale_samples` 是设想名，实现分别叫 `off_policy_consumed` / `dropped_stale`。
 4. **验证**：指标非零、与 driver 状态一致。
 
 **Phase 3 注意**：version-span 的填充点在 driver/collect 侧（driver 已知 admit_version 与 collect 时 current_version），不要试图从引擎 trajectory 里捞 version（引擎没有，见 §4）。

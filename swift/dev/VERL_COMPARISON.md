@@ -120,21 +120,38 @@ Reward 生态（代码沙箱/搜索/远程 reward server）、可观测性（rol
 
 ## 7. 异步 / 离策略训练
 
+> **本节已按 per-sample 流式重构更新**：旧的「1-batch 前瞻双缓冲 / twinkle 原生 TQ 未消费 / staleness 钉死 ≤1」口径已作废（详见 `RL_PROGRESS.md` 文末「per-sample 流式 RL driver」条目）。
+
 | 能力 | verl | swift/twinkle | 备注 |
 |---|---|---|---|
-| 同步训练 | ✅ `trainer_sync` | ✅ | |
-| 1-batch 前瞻双缓冲（gen∥train，staleness≤1） | ✅ | ✅ `async_generate`（GRPO/PPO/GKD/OPSD/MOPD） | 本仓已接到命令面 |
-| Colocate 异步 | ✅ `trainer_colocate_async` | ⚠️（ColocateHandover 分时，非真重叠） | |
-| Separate 异步（训推分离 actor） | ✅ `trainer_separate_async` | ⚠️（disaggregated 模式） | |
-| Fully-async / one-step-off | ✅（docs `fully_async`/`one_step_off`） | ⚠️ **twinkle 有原生 TQ 管线但 dev 未消费** | 关键差距 |
-| Replay buffer | ✅ `ppo/v1/replay_buffer` | ⚠️（同上，在 twinkle_agentic） | |
-| Transfer Queue 数据面 | ✅ `transferqueue_utils` | ✅ `twinkle_agentic/async_rl`（native_tq/data_plane） | 内核已有，未上 dev 命令面 |
-| Agent loop（异步 agent 编排） | ✅ `agent_loop_tq` | ⚠️（twinkle_agentic rollout/multi_turn） | |
-| Staleness > 1（多版本权重 pinning） | ✅ | ❌（物理约束钉死 ≤1） | 设计取舍 |
+| 同步训练 | ✅ `trainer_sync` | ✅ `_run_sync`（固定批锁步，唯一支持 colocate 的路径） | |
+| per-sample 流式 driver（gen∥train，staleness 旋钮） | ✅（fully_async/one_step_off） | ✅ twinkle 算法无关 `StreamingDriver` + dev `StreamingLoopMixin`；五个在线算法（GRPO/PPO/GKD/OPSD/MOPD）统一接命令面 | 本仓自研控制面，非消费原生 TQ 管线 |
+| One-step-off（staleness=1） | ✅ | ✅ `async_mode='one_step_off'` | |
+| Fully-async（staleness>1，深缓冲） | ✅ | ✅ `async_mode='fully_async'` + `max_staleness>=1`（仅 GRPO/PPO；disaggregated） | **差距已关闭** |
+| Staleness > 1 多版本权重 pinning | ✅ | ✅ `adapter_snapshot`（每版本独立 LoRA path 常驻）/ `in_place`+partial rollout | **差距已关闭** |
+| Partial rollout（在飞生成 abort/resume） | ✅ | ✅ twinkle `PartialRolloutMixin` + `InPlaceWeightSync` abort-on-publish | |
+| Colocate（同卡分时交接，**非**并发） | ✅ `trainer_colocate_async`（"async" 指 partial-rollout/离策略 staleness，**仍分时独占**） | ✅ `ColocateHandover` 两阶段独占交接（分时） | **平价**：双方均无同卡 SM 级并发；verl 交接工程打磨更多（见下方补注） |
+| Separate / disaggregated 异步（训推分离设备组） | ✅ `trainer_separate_async` | ✅ `vllm_mode='disaggregated'`（NCCL 权重同步） | **真重叠只在此模式**：两边都靠分离设备组实现 gen∥train |
+| Replay buffer | ✅ `ppo/v1/replay_buffer` | ⚠️ 深缓冲经 staleness>1 的 ready buffer 近似，无独立持久 replay buffer | |
+| Transfer Queue 数据面 | ✅ `transferqueue_utils` | ✅ `twinkle_agentic/async_rl`（native_tq/data_plane） | 内核已有；dev 流式走自研 driver，未消费 TQ |
+| Agent loop（异步 agent 编排） | ✅ `agent_loop_tq` | ✅ twinkle `rollout/multi_turn` + dev `_submit_episode`（每 episode 一线程准入） | |
 
-> **重点**：fully-async / one-step-off / replay-buffer 的底座（transfer-queue 原生异步管线、
-> prefix/partial rollout）在 `twinkle_agentic/async_rl` 里**已经存在**，但 dev 的 `GRPOLoop`
-> 走的是自研 1-batch 前瞻，没有把原生 TQ 管线接到命令面。这是"内核有、产品面没接"的典型差距。
+> **重点（已更新）**：fully-async / one-step-off / staleness>1 多版本 pinning 的差距**已关闭**——dev 现在有自己的 per-sample `StreamingDriver`（twinkle 层算法无关）接到命令面，覆盖全部五个在线算法，算法差异只剩 3 个 hook + 2 条 assembly 规则。
+>
+> **关于 colocate「真重叠」的澄清（已核实 verl 源码）**：先前把 colocate 标为「真差距」是**口径错误**。核实 verl 源码后确认：**verl 的 colocate 与本仓 `ColocateHandover` 是同一类分时独占交接，没有同卡 SM 级 gen∥train 并发**——verl 每步严格串行「generate → sleep rollout（释放显存）→ train（trainer 参数/优化器上卡、结束回落 CPU）→ wake + CUDA-IPC 权重同步 → trainer 回落 → 重建 KV cache」，rollout 睡眠期间才同步权重，生成与训练在时间上互斥。verl `trainer_colocate_async` 名字里的 "async" 指的是 **partial-rollout / 离策略 staleness**，不是同卡并发。**真正的 gen∥train 重叠在两边都只存在于训推分离（disaggregated / `separate_async`）模式**，本仓已用 `vllm_mode='disaggregated'` 覆盖。因此 colocate 侧是**平价**，不是差距；verl 仅在交接的工程细节上更精细（见补注），非重叠优势。这也是本仓「不把同步路径迁上流式 driver、colocate 只走同步 `_run_sync`」决策与 verl 一致的根因。
+
+**补注 · verl colocate 相对本仓两阶段交接的工程打磨点（均为分时，非重叠优势）**
+
+| 打磨点 | verl 做法（file:line，相对 verl 根） | 性质 |
+|---|---|---|
+| 权重传输 | CUDA-IPC / POSIX-shm 分桶直传，免 NCCL group、免 CPU 中转：`verl/workers/rollout/engine_workers.py:807`、`verl/workers/rollout/vllm_rollout/vllm_rollout.py:229-241`、`bucketed_weight_transfer.py:102-166` | 工程打磨，仍分时 |
+| 睡眠级别 | `vLLM sleep(level=2)` **丢弃** rollout 权重而非拷回 CPU，省一次 D2H：`verl/workers/rollout/vllm_async_server.py:1414-1441` | 工程打磨，仍分时 |
+| 细粒度释放 | `weights` 与 `kv_cache` 分 tag 释放/重建（SGLang 走 `release/resume_memory_occupation`）：`verl/checkpoint_engine/base.py:491-507`、`async_sglang_server.py:448-511` | 工程打磨，仍分时 |
+| 惰性权重生成 | 逐 tensor 生成、FSDP 在 yield 前先 offload，不物化整模型：`verl/workers/engine/fsdp/transformer_impl.py:977-1034` | 工程打磨，仍分时 |
+| 分阶段 offload | `BaseEngineCtx` 进/出按阶段上下卡（非逐步）：`verl/workers/engine/base.py:300-336`；`disable_auto_offload` 保持整步上下文：`engine_workers.py:282-311` | 工程打磨，仍分时 |
+| LoRA 同步峰值 | `layered_summon` 分层聚合以降同步峰值显存：`engine_workers.py:677,790` | 工程打磨，仍分时 |
+
+> **未找到（已检索）**：per-microbatch offload；权重同步与生成尾部重叠（同步时 rollout 已睡）；H2D 参数重载与 compute 的 prefetch/双缓冲。**verl colocate 侧不存在真重叠优势。** 真重叠路径：`verl/trainer/ppo/v1/trainer_separate_async.py:45-83,162-178`（`hybrid_engine=False`、专用 GPU 常醒）、`verl/experimental/one_step_off_policy/ray_trainer.py:87-88,317-408`（`assert not hybrid_engine`、`asyncio.create_task` 下批生成与训练并发）、`verl/experimental/fully_async_policy/fully_async_trainer.py:75-76`——**全部 `assert not hybrid_engine`，即分离设备组，与 colocate 是不同模式**。
 
 ---
 

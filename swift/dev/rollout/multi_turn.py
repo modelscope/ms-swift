@@ -23,8 +23,8 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict, List, Optional
 
-from . import (SHIFTED_KEY, RolloutSample, _MULTIMODAL_PROMPT_KEYS, _merge_multimodal_keys,
-               _sampled_token_logprobs)
+from . import (SHIFTED_KEY, RolloutSample, _MULTIMODAL_PROMPT_KEYS, _build_sampling_params,
+               _merge_multimodal_keys, _sampled_token_logprobs)
 
 
 def _input_order_labels(labels: List[int]) -> List[int]:
@@ -232,7 +232,6 @@ class MultiTurnRollout:
                  force_logprobs: bool = True,
                  adapter_path: Optional[str] = None,
                  allow_partial_rollout: bool = False) -> List[RolloutSample]:
-        from twinkle.data_format import SamplingParams
         if num_samples < 1:
             raise ValueError('num_samples must be >= 1.')
         if prompt_extras is not None and len(prompt_extras) != len(prompts):
@@ -251,14 +250,11 @@ class MultiTurnRollout:
                 trajectories.append(trajectory)
                 metadata.append((str(prompt_index), extra))
 
-        params = dict(sampling_params or {})
-        params.setdefault('temperature', 1.0)
-        if force_logprobs:
-            # Contract 15: the token-level path's logprobs ARE old_logps, so requesting
-            # them is forced. A message-only backend ignores this (it returns none).
-            params['logprobs'] = max(int(params.get('logprobs') or 0), 1)
-        params['num_samples'] = 1
-        sp = SamplingParams(**params)
+        # One SamplingParams contract shared with the single-turn blocking/admitted paths (temperature
+        # default, forced old_logps = Contract 15, per-submission num_samples), so the multi-turn engine
+        # cannot silently drift from them. The engine drives one trajectory per turn, hence num_samples=1;
+        # a message-only backend ignores the logprobs request (it returns none).
+        sp = _build_sampling_params(1, sampling_params, force_logprobs)
         # twinkle's MultiTurnRollout.__call__ reads adapter_path out of its kwargs and threads it into
         # every per-turn sampler.sample, so a LoRA reserved at engine build is selected here too --
         # without this a multi-turn run silently samples from the base model. allow_partial_rollout rides

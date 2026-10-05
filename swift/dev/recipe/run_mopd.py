@@ -177,7 +177,27 @@ def run_mopd(
         assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
 
     teacher = _build_mopd_teachers(assembly.model, rlhf_config, teacher_world_size, distributed_config)
-    assembly.loop = MOPDLoop(
+    # async_mode selects the driver (see run_gkd for the full rationale): the per-sample stream now serves
+    # EVERY regime, so MOPD rides it whenever the round is purely on-policy -- 'none' runs StreamingMOPDLoop
+    # at max_staleness=0 (drain-before-publish, no overlap) and 'one_step_off' (the only overlapping regime
+    # distillation supports) pins staleness to 1. An off-policy round (lmbda != 1.0, enforced by validate)
+    # generates nothing to admit ahead, so it stays on MOPDLoop's synchronous _run_sync. A colocated sampler
+    # sets serialize_generation for the exclusive-device hand-over.
+    loop_cls = MOPDLoop
+    streaming_kwargs: Dict[str, Any] = {}
+    sync_only = rlhf_config.lmbda != 1.0
+    if rollout_config.async_mode != 'none' or not sync_only:
+        from swift.dev.recipe.mopd_async import StreamingMOPDLoop
+        loop_cls = StreamingMOPDLoop
+        streaming_kwargs = {
+            'max_staleness': 0 if rollout_config.async_mode == 'none' else 1,
+            'weight_sync_strategy': rollout_config.weight_sync_strategy,
+            'allow_partial_rollout': rollout_config.allow_partial_rollout,
+            'parameter_sync_step': rollout_config.parameter_sync_step,
+            'adapter_name': ('default' if tuner_config is not None else None),
+            'serialize_generation': colocate,
+        }
+    assembly.loop = loop_cls(
         assembly.model,
         rollout,
         prompts,
@@ -196,7 +216,6 @@ def run_mopd(
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=distill_sampling_params(rlhf_config, generation_config),
-        async_generate=(rollout_config.async_mode == 'one_step_off'),
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
@@ -206,7 +225,8 @@ def run_mopd(
         max_shard_size=checkpoint_config.max_shard_size,
         save_total_limit=checkpoint_config.save_total_limit,
         manual_gc=bool(megatron_config and megatron_config.manual_gc),
-        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0)
+        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
+        **streaming_kwargs)
     if assembly.resume_dir:
         assembly.loop.resume(assembly.resume_model())
     try:

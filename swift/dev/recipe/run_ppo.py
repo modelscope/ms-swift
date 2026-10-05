@@ -201,33 +201,39 @@ def run_ppo(
         model_config, tuner_config, template, rlhf_config, distributed_config, remote_group=ref_remote_group)
     reward_models = _build_reward_models(rlhf_config, template, distributed_config)
 
-    # async_mode selects the driver. 'none' uses PPOLoop's synchronous fixed-batch driver;
-    # 'one_step_off'/'fully_async' both use the per-sample StreamingPPOLoop -- the SAME streaming
-    # driver, differing only in the staleness knob (one_step_off is pinned to 1; fully_async uses the
-    # configured max_staleness). The critic is never published to the sampler, so neither regime
-    # touches the value_model.
-    loop_cls = PPOLoop
-    streaming_kwargs: Dict[str, Any] = {}
-    if rollout_config.async_mode in ('one_step_off', 'fully_async'):
-        from swift.dev.recipe.ppo_async import StreamingPPOLoop
-        loop_cls = StreamingPPOLoop
-        streaming_kwargs = {
-            'max_staleness': 1 if rollout_config.async_mode == 'one_step_off' else rollout_config.max_staleness,
-            'weight_sync_strategy': rollout_config.weight_sync_strategy,
-            # in_place publishes by aborting every in-flight generation and resuming it on the freshly
-            # overwritten policy weights, so it needs the sampler's partial-rollout loop; adapter_snapshot
-            # pins each version by its own adapter path and never overwrites a live copy, so the flag is
-            # inert there (validate enforces exactly this pairing for every overlapping regime).
-            'allow_partial_rollout': rollout_config.allow_partial_rollout,
-            # The publish cadence: one weight publication per K recorded steps (default 1).
-            'parameter_sync_step': rollout_config.parameter_sync_step,
-            # adapter_snapshot pins each trained policy version by its LoRA adapter path, so it needs the
-            # trained adapter's name: dev applies a single trainable adapter named 'default' (the same name
-            # assembly uses to save/load it). A full-parameter run has none -- refused under adapter_snapshot,
-            # and served as merged base weights under in_place (which ignores adapter_name), so None is
-            # correct there.
-            'adapter_name': ('default' if tuner_config is not None else None),
-        }
+    # async_mode selects the driver, and -- since the per-sample stream now serves EVERY regime -- every PPO
+    # run rides it: 'none' runs StreamingPPOLoop at max_staleness=0 (admit one window, DRAIN it, train,
+    # publish -- the same per-sample control flow, no overlap), 'one_step_off' pins staleness to 1, and
+    # 'fully_async' uses the configured max_staleness. PPO has no sync-only feature (dynamic_sample/remax are
+    # GRPO advantage estimators; PPO's per-token GAE has no group contract and no whole-batch prepass), so it
+    # never falls back to PPOLoop's synchronous _run_sync. The critic is never published to the sampler, so
+    # no regime touches the value_model. A colocated sampler (sharing one device with the trainer) sets
+    # serialize_generation for the exclusive-device hand-over; a disaggregated one has its own GPUs.
+    from swift.dev.recipe.ppo_async import StreamingPPOLoop
+    loop_cls = StreamingPPOLoop
+    streaming_kwargs: Dict[str, Any] = {
+        'max_staleness': (0 if rollout_config.async_mode == 'none' else 1
+                          if rollout_config.async_mode == 'one_step_off' else rollout_config.max_staleness),
+        'weight_sync_strategy': rollout_config.weight_sync_strategy,
+        # in_place publishes by aborting every in-flight generation and resuming it on the freshly
+        # overwritten policy weights, so an OVERLAPPING regime needs the sampler's partial-rollout loop; at
+        # staleness 0 the drain empties the in-flight set first, so the abort is a no-op and the flag is not
+        # required. adapter_snapshot pins each version by its own adapter path and never overwrites a live
+        # copy, so the flag is inert there (validate enforces exactly this pairing per regime).
+        'allow_partial_rollout': rollout_config.allow_partial_rollout,
+        # The publish cadence: one weight publication per K recorded steps (default 1).
+        'parameter_sync_step': rollout_config.parameter_sync_step,
+        # adapter_snapshot pins each trained policy version by its LoRA adapter path, so it needs the
+        # trained adapter's name: dev applies a single trainable adapter named 'default' (the same name
+        # assembly uses to save/load it). A full-parameter run has none -- refused under adapter_snapshot,
+        # and served as merged base weights under in_place (which ignores adapter_name), so None is
+        # correct there.
+        'adapter_name': ('default' if tuner_config is not None else None),
+        # Exclusive-device serialization: only a colocated sampler (async_mode='none' on a shared device)
+        # hands the one DeviceGroup between generation and training. A disaggregated sampler never does, and
+        # an overlapping mode is disaggregated by validation, so this is False everywhere but colocate.
+        'serialize_generation': colocate,
+    }
     loop = loop_cls(
         model,
         value_model,
@@ -244,9 +250,6 @@ def run_ppo(
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=_grpo_sampling_params(rlhf_config, generation_config),
-        # The overlapping regimes run through StreamingPPOLoop (which forces this off itself); the
-        # base PPOLoop is only reached under async_mode='none', i.e. the synchronous driver.
-        async_generate=False,
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
@@ -396,7 +399,6 @@ class PPOLoop:
         gradient_accumulation_steps: int = 1,
         max_grad_norm: float = 1.0,
         sampling_params: Optional[dict] = None,
-        async_generate: bool = False,
         logging_config: Optional['LoggingConfig'] = None,
         output_dir: str = 'output',
         save_steps: Optional[int] = None,
@@ -423,10 +425,6 @@ class PPOLoop:
         self.train_batch_size = max(1, train_batch_size)
         self.max_grad_norm = max_grad_norm
         self.sampling_params = sampling_params
-        #: Overlap generation of batch ``N+1`` with training of batch ``N`` (1-batch lookahead). Only
-        #: reachable under the disaggregated placement with off-policy correction; ``validate.
-        #: _check_async_mode`` enforces that. PPO's clipped surrogate already tolerates the staleness.
-        self.async_generate = bool(async_generate)
         self.logging_config = logging_config
         from swift.dev.recipe.tracking import RunTracker
         self.tracker = RunTracker(logging_config, output_dir)
@@ -606,23 +604,6 @@ class PPOLoop:
         """
         return samples
 
-    def _submit_generation(self, prompt_indices: Sequence[int]) -> Any:
-        """Async admit half: sync the current policy into the idle sampler and schedule this batch."""
-        prompts, extras = self._prompt_payload(prompt_indices)
-        self.rollout.sync_weights()
-        return self.rollout.submit_generate(
-            prompts,
-            num_samples=self.num_generations,
-            sampling_params=self.sampling_params,
-            prompt_extras=extras)
-
-    def _collect_generation(self, handle: Any, prompt_indices: Sequence[int]) -> List[Any]:
-        """Async collect half: block until the admitted generation finishes, then reverse the hand-over."""
-        try:
-            return self._finalize_samples(self.rollout.collect_generate(handle), prompt_indices)
-        finally:
-            self.rollout.finish_generate()
-
     def _consume_samples(self, samples: List[Any]) -> None:
         """Plan one rollout once (GAE anchors), replay it ``num_ppo_epochs`` times, then record the step.
 
@@ -656,35 +637,18 @@ class PPOLoop:
 
     def _run_sync(self) -> None:
         """Synchronous driver: generate, then train, one rollout batch at a time (no overlap)."""
+        from swift.dev.rollout import blocking_generate
         for prompt_indices in self._prompt_batches:
             if self._reached_max():
                 break
             prompts, extras = self._prompt_payload(prompt_indices)
-            self.rollout.sync_weights()
-            samples = self.rollout.generate(
+            samples = blocking_generate(
+                self.rollout,
                 prompts,
                 num_samples=self.num_generations,
                 sampling_params=self.sampling_params,
                 prompt_extras=extras)
-            self.rollout.finish_generate()
             self._consume_samples(self._finalize_samples(samples, prompt_indices))
-
-    def _run_async(self) -> None:
-        """Overlapped driver: the shared 1-batch-lookahead double buffer over PPO's rollout callbacks.
-
-        PPO's clipped surrogate already bounds how far the trained policy may move from the behaviour
-        policy that produced the batch, so it absorbs the staleness<=1 look-ahead without the token-level
-        rollout importance sampling GRPO needs (see ``validate._check_async_mode``).
-        """
-        from swift.dev.recipe.train_loop import overlap_rollout_batches
-
-        overlap_rollout_batches(
-            prompt_batches=self._prompt_batches,
-            submit=self._submit_generation,
-            collect=self._collect_generation,
-            cancel=self.rollout.cancel_generate,
-            consume=self._consume_samples,
-            reached_max=self._reached_max)
 
     def fit(self) -> list:
         """Run PPO over the prompt set for ``num_train_epochs`` passes (rollout -> GAE -> num_ppo_epochs).
@@ -711,20 +675,26 @@ class PPOLoop:
             self.tracker.close()
 
     def _drive(self) -> None:
-        """Run this loop's rollout driver: the overlapped 1-batch lookahead (:meth:`_run_async`) when
-        ``async_generate``, otherwise the synchronous one (:meth:`_run_sync`). Both drive the same
-        per-rollout training (:meth:`_consume_samples`).
+        """Run this loop's rollout driver: the synchronous fixed-batch one (:meth:`_run_sync`).
 
         A template hook split out of :meth:`fit` (mirroring :meth:`~swift.dev.recipe.grpo.GRPOLoop._drive`)
         so :class:`~swift.dev.recipe.ppo_async.StreamingPPOLoop` overrides ONLY the driver -- its per-sample
         streaming buffer, composed from :class:`~swift.dev.recipe._streaming_loop.StreamingLoopMixin` -- and
-        inherits the identical manual-GC / tracker scaffolding above. The async control flow lives in one
-        place per regime, not copied into ``fit``.
+        inherits the identical manual-GC / tracker scaffolding above. The overlapping regimes are selected
+        at routing time by ``async_mode`` (which builds the Streaming loop); this base driver is reached
+        only under ``async_mode='none'``, so it is synchronous-only and carries no async branch.
         """
-        if self.async_generate:
-            self._run_async()
-        else:
-            self._run_sync()
+        self._run_sync()
+
+    def _extra_step_metrics(self, metrics: dict) -> dict:
+        """Extra fields folded into this step's logged record (none by default).
+
+        Mirrors :meth:`~swift.dev.recipe.train_loop.TrainLoop._extra_step_metrics`: PPOLoop is a standalone
+        loop (not a TrainLoop subclass), so it carries its own copy of the seam. The streaming PPO loop's
+        ``StreamingLoopMixin`` overrides it to fold async telemetry in and reaches this default via
+        ``super()``.
+        """
+        return {}
 
     def _record_step(self, mean_reward: float) -> None:
         from swift.dev.recipe.train_loop import collect_manual_gc
@@ -739,6 +709,7 @@ class PPOLoop:
             'value_loss': float(value_metrics['loss']) if value_metrics.get('loss') is not None else float('nan'),
             'reward': mean_reward,
         }
+        record.update(self._extra_step_metrics(metrics))
         record = self.tracker.log(record, self.global_step)
         self.history.append(record)
         if self.tracker.should_log(self.global_step):

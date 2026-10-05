@@ -179,7 +179,32 @@ def run_gkd(
     rollout = SyncableRollout(
         assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
 
-    assembly.loop = GKDLoop(
+    # async_mode selects the driver, and -- since the per-sample stream now serves EVERY regime -- GKD rides
+    # it whenever the round is purely on-policy: 'none' runs StreamingGKDLoop at max_staleness=0 (admit one
+    # window, DRAIN it, train, publish -- no overlap) and 'one_step_off' (the only overlapping regime
+    # distillation supports; 'fully_async' is rejected by validate._check_async_mode) pins staleness to 1.
+    # The ONE exception is an off-policy round (lmbda != 1.0, also enforced by validate for the overlapping
+    # mode): a dataset round generates nothing to admit ahead, so it stays on GKDLoop's synchronous
+    # _run_sync. A colocated sampler sets serialize_generation for the exclusive-device hand-over. The
+    # publication knobs mirror run_grpo (validate._check_streaming_publication enforces the same pairing).
+    loop_cls = GKDLoop
+    streaming_kwargs: Dict[str, Any] = {}
+    sync_only = rlhf_config.lmbda != 1.0
+    if rollout_config.async_mode != 'none' or not sync_only:
+        from swift.dev.recipe.gkd_async import StreamingGKDLoop
+        loop_cls = StreamingGKDLoop
+        streaming_kwargs = {
+            'max_staleness': 0 if rollout_config.async_mode == 'none' else 1,
+            'weight_sync_strategy': rollout_config.weight_sync_strategy,
+            'allow_partial_rollout': rollout_config.allow_partial_rollout,
+            'parameter_sync_step': rollout_config.parameter_sync_step,
+            'adapter_name': ('default' if tuner_config is not None else None),
+            # Exclusive-device serialization: only a colocated sampler (async_mode='none' on a shared device)
+            # hands the one DeviceGroup between generation and training; one_step_off is disaggregated by
+            # validation, so this is False everywhere but colocate.
+            'serialize_generation': colocate,
+        }
+    assembly.loop = loop_cls(
         assembly.model,
         rollout,
         prompts,
@@ -200,7 +225,6 @@ def run_gkd(
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=distill_sampling_params(rlhf_config, generation_config),
-        async_generate=(rollout_config.async_mode == 'one_step_off'),
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
@@ -210,7 +234,8 @@ def run_gkd(
         max_shard_size=checkpoint_config.max_shard_size,
         save_total_limit=checkpoint_config.save_total_limit,
         manual_gc=bool(megatron_config and megatron_config.manual_gc),
-        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0)
+        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
+        **streaming_kwargs)
     if assembly.resume_dir:
         assembly.loop.resume(assembly.resume_model())
     try:
@@ -288,7 +313,6 @@ class GKDLoop(GRPOLoop):
         gradient_accumulation_steps: int = 1,
         max_grad_norm: float = 1.0,
         sampling_params: Optional[dict] = None,
-        async_generate: bool = False,
         logging_config: Optional['LoggingConfig'] = None,
         output_dir: str = 'output',
         save_steps: Optional[int] = None,
@@ -324,7 +348,6 @@ class GKDLoop(GRPOLoop):
             seed=seed,
             max_grad_norm=max_grad_norm,
             sampling_params=sampling_params,
-            async_generate=async_generate,
             logging_config=logging_config,
             output_dir=output_dir,
             save_steps=save_steps,
@@ -447,24 +470,6 @@ class GKDLoop(GRPOLoop):
             use_student = self._uses_student_generation(round_index)
             self._train_distill_rows(self._round_rows(round_index, use_student, prompt_indices), use_student)
 
-    def _run_async(self) -> None:
-        """Overlapped driver: the shared 1-batch-lookahead double buffer over the on-policy rollout.
-
-        Async distillation is only defined for purely on-policy GKD (``lmbda==1.0``, enforced by
-        ``validate._check_async_mode``): an off-policy dataset round generates nothing, so there is no
-        batch to admit a step ahead and no round_index/coin-flip/dataset-window to drive. Every async round
-        is therefore a student rollout, distilled toward the teacher's signal on it.
-        """
-        from swift.dev.recipe.train_loop import overlap_rollout_batches
-
-        overlap_rollout_batches(
-            prompt_batches=self._prompt_batches,
-            submit=self._submit_generation,
-            collect=self._collect_generation,
-            cancel=self.rollout.cancel_generate,
-            consume=self._consume_async_samples,
-            reached_max=self._reached_max)
-
     def fit(self) -> list:
         """Train over the prompt set for ``num_train_epochs`` passes of teacher-scored distillation.
 
@@ -473,21 +478,33 @@ class GKDLoop(GRPOLoop):
         optimizer-step count early. Each round's rows are split into ``train_batch_size``-row mini-batches,
         one ``forward_backward`` runs per mini-batch and ``gradient_accumulation_steps`` mini-batches make
         one optimizer step. A round is on-policy (a weight-synced rollout of the batch) or off-policy
-        (dataset completions) per ``lmbda``. ``async_generate`` selects the overlapped driver
-        (:meth:`_run_async`, on-policy only), otherwise the synchronous one (:meth:`_run_sync`).
+        (dataset completions) per ``lmbda``. The rollout driver itself is :meth:`_drive` (a template hook),
+        so a subclass can swap the control flow without reimplementing this manual-GC / tracker scaffolding.
         """
         from swift.dev.recipe.train_loop import finish_manual_gc, start_manual_gc
 
         gc_was_enabled = start_manual_gc(self.manual_gc)
         try:
-            if self.async_generate:
-                self._run_async()
-            else:
-                self._run_sync()
+            self._drive()
             return self.history
         finally:
             finish_manual_gc(gc_was_enabled)
             self.tracker.close()
+
+    def _drive(self) -> None:
+        """Run this loop's rollout driver: the synchronous one (:meth:`_run_sync`).
+
+        A template hook split out of :meth:`fit` (mirroring :meth:`GRPOLoop._drive`) so
+        :class:`~swift.dev.recipe.gkd_async.StreamingGKDLoop` overrides ONLY the driver -- its per-sample
+        streaming buffer -- and inherits the identical manual-GC / tracker scaffolding above. The OPSD/MOPD
+        streaming loops recompose that subclass, so they reach the same override through their MRO. Since the
+        per-sample stream now serves EVERY regime, a purely on-policy GKD run rides it under BOTH
+        ``async_mode='none'`` (staleness 0) and ``'one_step_off'`` (staleness 1); this base driver is reached
+        only for an off-policy round (``lmbda != 1.0``), which the router keeps on ``_run_sync`` because a
+        dataset round generates nothing to admit per-sample (and ``validate`` refuses it under the overlapping
+        mode). So it is synchronous-only and carries no async branch.
+        """
+        self._run_sync()
 
     # GKD has no reference model and no RL-loss channels, so it resets the two GRPOLoop hooks that would
     # otherwise inject a reference sync and policy-gradient metrics. The rest of the per-step cadence

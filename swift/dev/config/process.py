@@ -130,6 +130,11 @@ def process_and_validate_configs(
         # Fold the legacy ``async_generate`` bool into ``async_mode`` BEFORE validation reads it, so
         # ``async_mode`` is the one source of truth downstream (process modifies, validate only reads).
         _derive_async_mode(rollout_config)
+        # A full-parameter or colocated run has no adapter to pin (or no per-cycle weight sync to hand the
+        # shared device back), so its only sound publication is in_place; derive it from the defaults BEFORE
+        # validation reads them, so a legacy ``--async_generate`` / colocated synchronous script still runs
+        # with no extra flags. rlhf_config tells it whether ``async_mode='none'`` actually rides the driver.
+        _derive_weight_sync_strategy(rollout_config, configs.get('rlhf_config'), configs.get('tuner_config'))
         # max_turns lives on the RLHFConfig for GRPO and on the multi-turn/reward config for sampling.
         multi_turn_carrier = multi_turn_config if multi_turn_config is not None else configs.get('rlhf_config')
         # rlhf_config is the training surface _check_async_mode cross-references (None for sampling);
@@ -613,8 +618,10 @@ def _derive_bnb_compute_dtype(model_config: 'ModelConfig', quantize_config: Opti
 def _derive_async_mode(rollout_config: 'RolloutConfig') -> None:
     """Fold the legacy ``async_generate`` bool into ``async_mode`` (the one source of truth).
 
-    ``async_generate=True`` predates ``async_mode`` and meant exactly the one-batch-lookahead overlap, so
-    an unset ``async_mode`` inherits ``'one_step_off'`` from it and every downstream consumer (the GRPO /
+    ``async_generate=True`` predates ``async_mode`` and meant a one-batch-lookahead overlap -- a single
+    version of staleness, whose semantic successor is ``'one_step_off'`` (now served by the per-sample
+    streaming driver, not the retired batch double-buffer). So an unset ``async_mode`` inherits
+    ``'one_step_off'`` from it and every downstream consumer (the GRPO /
     PPO dispatch, ``validate._check_async_mode``) reads only ``async_mode``. When ``async_mode`` is set
     explicitly it wins and ``async_generate`` is ignored here -- a genuine conflict between the two is
     rejected by ``validate._check_async_mode`` rather than silently resolved. Idempotent: once
@@ -622,6 +629,55 @@ def _derive_async_mode(rollout_config: 'RolloutConfig') -> None:
     """
     if rollout_config.async_generate and rollout_config.async_mode == 'none':
         rollout_config.async_mode = 'one_step_off'
+
+
+def _derive_weight_sync_strategy(rollout_config: 'RolloutConfig', rlhf_config: Optional['RLHFConfig'],
+                                 tuner_config: Optional['TunerConfig']) -> None:
+    """Default a run that rides the streaming driver to the only publication its placement/tuner allow.
+
+    ``weight_sync_strategy`` defaults to ``adapter_snapshot``, which pins each trained version as its own
+    LoRA adapter path -- sound and interrupt-free, but it needs an adapter to pin AND a weight sync the
+    device hand-over can ride. Two constraints force ``in_place`` (overwrite the sampler's merged base
+    weights) instead:
+
+    * a FULL-PARAMETER policy (``tuner='full'``) has no adapter to pin, so ``in_place`` is its only sound
+      publication;
+    * a COLOCATED sampler (``vllm_mode='colocate'``, one DeviceGroup time-shared with the trainer) hands the
+      device back to generation each cycle via the publish's weight sync, which only ``in_place`` performs
+      (``adapter_snapshot`` publishes by writing a new path with no sync), so ``in_place`` is forced there
+      regardless of tuner.
+
+    ``allow_partial_rollout`` is then derived True ONLY for an OVERLAPPING regime (``one_step_off`` /
+    ``fully_async``): a publish there overwrites the live copy while generations are in flight, so each must
+    be aborted and resumed on the fresh weights (twinkle ``PartialRolloutMixin`` + ``InPlaceWeightSync``). At
+    staleness 0 (``async_mode='none'``) the drain empties the in-flight set before every publish, so the abort
+    is a no-op and the flag stays at its inert default. Deriving these keeps the legacy promise that a bare
+    ``--async_generate`` (or a colocated synchronous) script runs with no extra publication flags.
+
+    Only the DEFAULTS are derived: a run that explicitly set ``weight_sync_strategy`` is left alone, so an
+    explicit ``adapter_snapshot`` on a full-parameter or colocated run still reaches
+    ``validate._check_streaming_publication`` and is rejected there -- silently overriding an explicit choice
+    would hide the user's mistake. And nothing is derived when no streaming driver reads the knob: under
+    ``async_mode='none'`` only an online loop with no sync-only feature rides the driver (a sync-only feature
+    falls back to ``_run_sync``, which reads no publication knob, so deriving there would only risk tripping
+    the inert-knob rejection). Idempotent: once the strategy is ``in_place`` a re-run leaves it.
+    """
+    from .validate import _changed_fields, _streams_under_none
+    mode = rollout_config.async_mode
+    # Under 'none' the publication knob is read only if the config actually rides the streaming driver; an
+    # overlapping mode always does (validate gates rlhf_type there). Skip the sync-only / non-online fallback.
+    if mode == 'none' and not _streams_under_none(rlhf_config):
+        return
+    changed = _changed_fields(rollout_config)
+    if 'weight_sync_strategy' in changed:
+        return
+    tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
+    colocate = rollout_config.vllm_mode == 'colocate'
+    if not (colocate or tuner == 'full'):
+        return  # a disaggregated LoRA run pins each version by adapter path (the default) -- sound as-is.
+    rollout_config.weight_sync_strategy = 'in_place'
+    if mode != 'none' and 'allow_partial_rollout' not in changed:
+        rollout_config.allow_partial_rollout = True
 
 
 def _derive_rlhf_task_type(model_config: 'ModelConfig', rlhf_config: Optional['RLHFConfig']) -> None:

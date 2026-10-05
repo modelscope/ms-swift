@@ -338,7 +338,8 @@ gym/env-scheduler（多轮工具环境的调度器/沙盒编排）。
   （+3 wrapper）、`_build_reference`/`_build_reward_models`/`_build_frozen_model`/`_build_reward_model_scorers`、
   `plan_rl_device_groups(auxiliary_groups/teacher_world_size)`、`initialize_twinkle(auxiliary_groups)`、`PPOLoop(train_batch_size)`
   的签名与调用点逐一交叉核对一致。
-- **异步生成完成（六项能力·其六，风险最高）**：用户拍板决策落地——统一 `GRPOLoop` 上做 driver 侧双缓冲（**不**路由到 twinkle
+- **异步生成完成（六项能力·其六，风险最高）**：〔⚠️ 已被取代——本条描述的「driver 侧双缓冲 / `async_generate` 布尔 / 仅 GRPO / staleness 钉死 ≤1 / 拒多轮」是**早期批粒度方案**，后经 per-sample 流式重构（见文末「per-sample 流式 RL driver」条目）整体替换：`async_generate` 降为 `async_mode='one_step_off'` 的 legacy alias，五个在线算法（GRPO/PPO/GKD/OPSD/MOPD）统一走 twinkle 算法无关的 `StreamingDriver` + dev `StreamingLoopMixin`，staleness 成为 `async_mode`(one_step_off=1 / fully_async>1) + `max_staleness` 旋钮，多轮已放开。本条仅作历史留存，勿据此判断现状。〕
+      用户拍板决策落地——统一 `GRPOLoop` 上做 driver 侧双缓冲（**不**路由到 twinkle
   原生 `AsyncMultiLoraGRPOPipeline`：那是多 LoRA/TQ/YAML/仅分离式的独立 worker 编排，不含 dev 已接特性），`async_generate`
   布尔开关语义＝**1-batch 前瞻**（staleness 固定 ≤1 个 rollout batch、不设 `max_staleness` 旋钮、与批内重放的 `num_iterations`
   正交）。staleness≤1 是物理约束：权重同步就地改写采样器 live 权重且要求其静止，无法与在飞生成重叠（>1 需 LoRA adapter 版本
@@ -378,4 +379,41 @@ gym/env-scheduler（多轮工具环境的调度器/沙盒编排）。
   齐备）与两个 TQ 子类（MRO 冲突已消、`_generate_inputs` 覆盖生效）；`_check_async_generate` 7 例守卫矩阵实跑全对（关/非 grpo/
   缺 IS/colocate/dynamic_sample/multi_turn 各自 fail-loudly，干净组合放行）；dev `rollout`/`grpo` import + 方法存在性 + `GRPOLoop.__init__`
   收 `async_generate` + `run_grpo` 线程逐一核实；grep 确认无测试引用 `async_generate` 死参（移除不破既有用例）。**六项能力全部落地。**
+- **per-sample 流式 RL driver（取代上一条批粒度双缓冲，当前 async 现状以此为准）**：大任务＝把 dev RL driver 从 **batch 粒度锁步**改为
+  **per-sample 流式**——每条 trajectory 单独准入 / rollout / 工具调用，各组件自限并发、互不阻塞；sync/async 不再是两条代码路径，而是
+  `async_mode` + `max_staleness` 旋钮上的取值。**控制面在 twinkle**（算法无关 `StreamingDriver`：per-sample 准入 → staleness gate + backpressure
+  → as-completed poll → ready buffer → assembly-gated consume → 每 `parameter_sync_step` 步 publish → stale 扫描 → prune → drain，含 per-trajectory
+  version pin/release）；**数据面在 dev**（`RolloutEngine.submit_sample/poll_completions/collect_sample`，多轮走 `_submit_episode` 每 episode 一线程）。
+  dev 侧算法差异被压到 `StreamingLoopMixin` 的 3 个 hook（`_consume_async_samples`/`_streaming_unit_size`/`_streaming_step_delta`）+ 2 条 assembly
+  规则（GRPO 拉完整 group、PPO/GKD 拉单 sample），driver/mixin 内**无任何按算法/模型/sample 类型的分支**。
+  **算法覆盖**：五个在线算法全部接流式——`StreamingGRPOLoop`(grpo_async.py)/`StreamingPPOLoop`(ppo_async.py)/`StreamingGKDLoop`(gkd_async.py)/
+  `StreamingOPSDLoop`(opsd_async.py)/`StreamingMOPDLoop`(mopd_async.py)；路由在各 `run_*.py` 按 `async_mode` 选 loop（`none`→同步 `_run_sync`；
+  `one_step_off`/`fully_async`→ Streaming*Loop）。**RFT 有意只做同步**（有 `rft_iterations` 引导轮 + 独立 `fit`，配 `async_mode` 会 fail-loudly）。
+  **staleness 语义**：`one_step_off` 钉 staleness=1；`fully_async` 允许 `max_staleness>=1`（仅 GRPO/PPO）；两者都要求 `vllm_mode='disaggregated'`
+  （colocate 单卡分时无法重叠）+ 强制 IS 校正。**publish 机制**：`adapter_snapshot`（每版本存独立 LoRA path、多版本常驻、不打断在飞生成）或
+  `in_place`（覆写采样器单一 live 权重，必须配 `allow_partial_rollout`：publish 时 abort 全部在飞、各自 resume 到新权重）。
+  **旧批粒度 async 机制已整体删除**：`overlap_rollout_batches`/`submit_generate`/`collect_generate`/`cancel_generate`/`GenerationHandle`/
+  `_run_async`/`_submit_generation`/`_collect_generation` 全仓 grep 零命中；base `_drive` 收敛为 sync-only。
+  **同步路径未迁上 driver（有意决策）**：`async_mode='none'` 仍走固定批 `_run_sync`——那是唯一支持 colocate 两阶段独占设备交接的路径，
+  driver 的单线程后台生成控制流无接缝容纳它；且 staleness=0 下 driver 每次 publish 丢弃全部在飞 v0 样本、无 drain，反不如干净锁步。
+  **收尾（本轮）**：① 阻塞生成 bracket（`sync_weights → try: generate finally: finish_generate`）下沉为 rollout 层唯一模块级 `blocking_generate`，
+  GRPO `_generate`/GRPO ReMax greedy/PPO `_run_sync` 三处共用（补上 PPO 原内联无 try/finally 的稳固性缺口）；② sampling-params 契约去重——
+  `_build_sampling_params` 提为 rollout 模块级函数，单轮阻塞 / 单轮准入 / 多轮 `MultiTurnRollout.generate` 三处共用一份（消除 temperature/old_logps/
+  num_samples 的第二份副本漂移风险）；③ 清理全部残留的「1-batch 前瞻 / staleness=0 迁移」过时注释（grpo_async/ppo_async/rollout_config/process/
+  _streaming_loop），twinkle 侧 `weight_sync.py` 的 colocate in_place staleness≤1 描述是**框架通用契约、非过时**，保留不动。
+  **验证**：改动文件 AST + 真实 import 全过；控制面 ephemeral harness（GRPO/PPO/GKD × adapter_snapshot/in_place + 反向验证）全绿后删除。
+  **状态**：代码完成，**正式 e2e/pytest 测试仍按纪律延后到用户明确要求**（届时走 testcase-planning）；性能对标 verl 的实测（Phase 5 性能项）未做。
+- **colocate 对标核实（纯读 verl 源码，纠正口径，无代码改动）**：应「verl colocate 复用机制为何比我们好」之问，核实 verl 源码后**推翻先前
+  「colocate 真重叠是我们唯一实质差距」的口径**——**verl 的 colocate 与本仓 `ColocateHandover` 是同一类分时独占交接，没有同卡 SM 级
+  gen∥train 并发**。verl 每步严格串行 `generate → sleep rollout(释放显存) → train(参数/优化器上卡、结束回落 CPU) → wake + CUDA-IPC
+  同步权重 → trainer 回落 → 重建 KV cache`，同步权重时 rollout 处于 sleep，生成与训练时间互斥（`verl/workers/rollout/engine_workers.py:730-830`、
+  `trainer_sync.py:35-42`）；`trainer_colocate_async` 名里的 "async" 指 **partial-rollout / 离策略 staleness**，非同卡并发（训练前仍 `abort_replicas()`
+  + `sleep_replicas()`）。**真 gen∥train 重叠在两边都只存在于训推分离模式**（verl `separate_async`/`one_step_off_policy`/`fully_async` 全部
+  `assert not hybrid_engine`，即独立设备组；本仓 `vllm_mode='disaggregated'` 已覆盖）。故 colocate 侧是**平价而非差距**，正好印证本仓「同步路径
+  不迁上流式 driver、colocate 只走 `_run_sync`」与 verl 一致。verl 相对本仓**仅交接工程打磨更细、非重叠优势**：`sleep(level=2)` 直接丢弃 rollout
+  权重省一次 D2H（`vllm_async_server.py:1414-1441`）、权重走 CUDA-IPC/POSIX-shm 分桶直传免 NCCL group/CPU 中转（`engine_workers.py:807`、
+  `bucketed_weight_transfer.py:102-166`）、`weights`/`kv_cache` 分 tag 释放（`checkpoint_engine/base.py:491-507`）、逐 tensor 惰性权重生成
+  （`fsdp/transformer_impl.py:977-1034`）、`BaseEngineCtx` 分阶段 offload（`engine/base.py:300-336`）。**检索未发现** per-microbatch offload /
+  权重同步与生成尾部重叠 / H2D 重载与 compute 的 prefetch 双缓冲——即 verl colocate 侧不存在真重叠。**可借鉴项**：若日后要压缩 colocate 交接开销，
+  方向是上述工程打磨（尤其 CUDA-IPC 直传 + `sleep(level=2)`），而非追求同卡并发。结论已同步写入 `VERL_COMPARISON.md` §7（表格 + 补注）。
 

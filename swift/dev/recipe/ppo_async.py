@@ -2,12 +2,14 @@
 """Per-sample streaming PPO driver.
 
 :class:`StreamingPPOLoop` extends :class:`~swift.dev.recipe.run_ppo.PPOLoop` with the unified streaming
-regime: trajectories are admitted ONE AT A TIME on a DISAGGREGATED sampler that keeps generating while
-the trainer advances, completions are polled as-completed into the driver's ready buffer, and training
-pulls individual samples whenever a whole optimizer step's rows are ready -- no fixed batch, no
-head-of-line blocking on the slowest episode of a batch. ``async_mode='one_step_off'``
-(``max_staleness=1``) and ``'fully_async'`` (``max_staleness`` up to the configured bound) are the SAME
-loop; the regime is just the staleness knob.
+regime: trajectories are admitted ONE AT A TIME on a sampler that (when disaggregated) keeps generating
+while the trainer advances, completions are polled as-completed into the driver's ready buffer, and
+training pulls individual samples whenever a whole optimizer step's rows are ready -- no fixed batch, no
+head-of-line blocking on the slowest episode of a batch. Every regime is the SAME loop, differing only in
+the staleness knob: ``async_mode='none'`` (``max_staleness=0``) drains before it publishes (synchronous),
+``'one_step_off'`` (``max_staleness=1``) overlaps one step, and ``'fully_async'`` runs ``max_staleness`` up
+to the configured bound. A colocated sampler (``async_mode='none'`` on a shared device) additionally sets
+``serialize_generation`` for the exclusive-device hand-over.
 
 It is a DRIVER swap, not a parallel runtime. The loop overrides only :meth:`~PPOLoop._drive`, which
 delegates the control flow to twinkle's algorithm-agnostic
@@ -36,7 +38,7 @@ The CRITIC under a stream: only the POLICY is published to the sampler (it is wh
 ``value_model`` is never weight-synced and never versioned; it is trained alongside the policy inside
 :meth:`PPOLoop._consume_samples`. A sample's ``old_values`` are captured by the critic version current
 at that sample's admission, and the clipped value loss bounds how far the critic may then move --
-exactly the anchor-and-clip that makes the 1-batch lookahead sound, widened to ``max_staleness``. No
+exactly the anchor-and-clip that keeps an off-policy critic sound, at any ``max_staleness``. No
 critic-specific publication or pinning is needed, which is why the mixin (policy-only) drives PPO
 unchanged.
 
@@ -70,7 +72,12 @@ from swift.dev.recipe.run_ppo import PPOLoop
 
 
 class StreamingPPOLoop(StreamingLoopMixin, PPOLoop):
-    """PPO loop streaming per-sample over a disaggregated sampler up to ``max_staleness`` versions ahead.
+    """PPO loop streaming per-sample up to ``max_staleness`` versions ahead.
+
+    Serves EVERY regime: ``max_staleness=0`` is the synchronous one (drain before publish, no overlap --
+    reached under ``async_mode='none'`` for a colocated or disaggregated sampler), ``1`` the one-step
+    overlap, ``> 1`` the deep buffer. A colocated sampler (sharing one device with the trainer) additionally
+    sets ``serialize_generation`` for the exclusive-device hand-over.
 
     Extra constructor args (all keyword-only, on top of :class:`PPOLoop`'s):
 
@@ -80,18 +87,25 @@ class StreamingPPOLoop(StreamingLoopMixin, PPOLoop):
       published, so it is never named here.
     * ``max_staleness``: how many versions a trajectory may lag the policy that trains it (the per-sample
       integer version lag; sizes the stream -- at most ``max_staleness + 1`` admission windows live).
-      ``1`` is the one-step overlap, ``> 1`` the deep buffer. Must be ``>= 1``.
+      ``0`` is the synchronous regime (drain before publish, no overlap), ``1`` the one-step overlap,
+      ``> 1`` the deep buffer. Must be ``>= 0``.
     * ``weight_sync_strategy``: how a trained policy version is published -- ``'adapter_snapshot'``
-      (per-version LoRA pinning) or ``'in_place'`` (overwrite one live copy, needs partial rollout).
+      (per-version LoRA pinning) or ``'in_place'`` (overwrite one live copy, needs partial rollout at
+      ``max_staleness >= 1``; at ``0`` the drain leaves nothing in flight so the abort is a no-op).
       See the mixin.
     * ``allow_partial_rollout``: whether an in-flight generation may be interrupted at a publish and
-      resumed on the fresh weights. Mandatory under ``'in_place'``; inert (rejected) under
-      ``'adapter_snapshot'``.
+      resumed on the fresh weights. Mandatory under ``'in_place'`` at ``max_staleness >= 1``; inert
+      (rejected) under ``'adapter_snapshot'``.
     * ``parameter_sync_step``: the publish cadence -- one weight publication per K recorded steps
       (default 1: publish every step, the densest sound cadence).
+    * ``serialize_generation``: exclusive-device serialization for a COLOCATED sampler (one DeviceGroup
+      shared with the trainer). Turns on the drain barrier in the assembly rules plus the enter/exit
+      hand-over bracketing generation and training, so the two never contend for the device. Only legal at
+      ``max_staleness=0`` (a colocated sampler cannot overlap). False for a disaggregated sampler (its own
+      GPUs, no hand-over) -- the default.
 
     The base order ``(StreamingLoopMixin, PPOLoop)`` is load-bearing: the mixin's :meth:`_drive` must
-    win over :meth:`PPOLoop._drive` (the sync/1-batch-lookahead pick), and ``PPOLoop`` does not inherit
+    win over :meth:`PPOLoop._drive` (the synchronous fixed-batch pick), and ``PPOLoop`` does not inherit
     the mixin, so there is no duplicate-base C3 conflict. Do not reorder.
     """
 
@@ -102,6 +116,7 @@ class StreamingPPOLoop(StreamingLoopMixin, PPOLoop):
                  weight_sync_strategy: str = 'adapter_snapshot',
                  allow_partial_rollout: bool = False,
                  parameter_sync_step: int = 1,
+                 serialize_generation: bool = False,
                  **kwargs):
         # Config guards run BEFORE super().__init__: PPOLoop builds the RunTracker (which initialises
         # wandb/swanlab/tensorboard reporters) as a construction side effect, so a misconfigured stream
@@ -111,11 +126,8 @@ class StreamingPPOLoop(StreamingLoopMixin, PPOLoop):
             max_staleness=max_staleness,
             weight_sync_strategy=weight_sync_strategy,
             allow_partial_rollout=allow_partial_rollout,
-            parameter_sync_step=parameter_sync_step)
-        # The inherited sync/1-batch-lookahead driver is replaced by the mixin's _drive, so
-        # async_generate (which selects it in PPOLoop._drive) is forced off to keep the stored flag
-        # from misleading a reader.
-        kwargs['async_generate'] = False
+            parameter_sync_step=parameter_sync_step,
+            serialize_generation=serialize_generation)
         super().__init__(*args, **kwargs)
         # Control-plane / publication construction runs AFTER super().__init__ (it reads self.rollout /
         # self.output_dir / self.model). The gate lives on ``self._ctx_mgr.max_staleness`` and the
@@ -127,7 +139,8 @@ class StreamingPPOLoop(StreamingLoopMixin, PPOLoop):
             weight_sync_strategy=weight_sync_strategy,
             allow_partial_rollout=allow_partial_rollout,
             parameter_sync_step=parameter_sync_step,
-            run_id='run_ppo')
+            run_id='run_ppo',
+            serialize_generation=serialize_generation)
 
     # --- the PPO answers to the mixin's hooks ---------------------------------------------------------------
 
