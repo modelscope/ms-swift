@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 import unittest
 from unittest.mock import Mock, patch
-
-import torch
 
 from swift.model import patcher
 
