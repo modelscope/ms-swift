@@ -569,6 +569,10 @@ class GRPOLoop(TrainLoop):
                 raise RuntimeError(f'R2 recorded routing covers {routed.shape[0]} tokens for a {length}-token '
                                    'sequence; the RECORD forward must route the whole sequence.')
             sample.encoded['routed_experts'] = routed[:length]
+            # Replay only the causal rows that produce response logprobs (labels != -100) -- the same set
+            # completion_mask encodes -- so the mask reuses it, mirroring the R3 path in rollout. R2's RECORD
+            # covers the whole sequence, so (unlike R3) there is no short-by-one tail to clamp.
+            sample.encoded['replay_mask'] = sample.encoded['completion_mask']
 
     def _teacher_messages(self, sample: Any, prompt_idx: int, teacher_prompt: str) -> tuple[List[dict], List[int]]:
         is_multi_turn = getattr(sample, 'messages', None) is not None

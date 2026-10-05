@@ -297,6 +297,12 @@ def samples_from_responses(responses: List[Any],
             routed_experts = _seq_routed_experts(seq)
             if routed_experts is not None:
                 encoded['routed_experts'] = routed_experts
+                # Routing replay rewrites only the causal rows that produce response logprobs (labels != -100);
+                # every other row keeps its native routing. That row set is exactly what completion_mask already
+                # encodes, so the replay mask reuses it verbatim -- no separate derivation to drift out of sync.
+                # (labels[-1] is the -100 sentinel, so the sampler's short-by-one last routing row is always a
+                # native row; twinkle's align_routed_experts clamps that tail defensively.)
+                encoded['replay_mask'] = completion_mask
             # Multimodal: lift the sampler's vision/audio tensors (pixel_values / image_grid_thw /
             # mm_token_type_ids / ...) into the hand-built feature. They are prompt-anchored and cannot be
             # rebuilt from token ids, so the training / reference / teacher forwards need them verbatim to
