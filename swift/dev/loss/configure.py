@@ -189,6 +189,14 @@ _RLHF_LOSS_NAME = {
     'mopd': 'mopd',
 }
 
+# GRPO-family loss_types whose objective lives in an overridden ``_reduce_loss`` (group-level / sequence-level
+# reduction) rather than the per-token ``_compute_per_token_loss`` + ``_aggregate_loss`` hooks. The advanced
+# ``_ConfiguredGRPOLoss`` wrapper recomputes the surrogate and aggregation itself and never calls
+# ``_reduce_loss``, so wrapping any of these would silently downgrade it to plain GRPO -- refuse the combo.
+# NOTE: 'gpg' is NOT here: it overrides ``_compute_per_token_loss`` (which the wrapper DOES call), so it
+# composes correctly with the advanced controls.
+_REDUCE_LOSS_OVERRIDING_GRPO = frozenset({'real', 'dro', 'dppo_tv', 'dppo_kl', 'geo_mean', 'clip_cov', 'kl_cov'})
+
 
 class _AdvancedGKDLoss(Loss):
     """GKD with the optional supervised CE term used for dataset-sourced batches."""
@@ -542,16 +550,18 @@ def configure_rlhf_loss(model: TrainableModel, rlhf_config: 'RLHFConfig') -> Non
                                   or rlhf_config.rollout_importance_sampling_mode
                                   or rlhf_config.log_rollout_offpolicy_metrics
                                   or rlhf_config.off_policy_sequence_mask_delta is not None))
-    if configured_grpo and grpo_loss_type == 'real':
+    if configured_grpo and grpo_loss_type in _REDUCE_LOSS_OVERRIDING_GRPO:
         # _ConfiguredGRPOLoss recomputes the per-token surrogate and aggregation itself and never calls the
-        # base loss's group-level reduction, so wrapping REAL would silently downgrade it to plain GRPO.
+        # base loss's group-level reduction, so wrapping any _reduce_loss-overriding variant (real / dro /
+        # dppo_tv / dppo_kl / geo_mean / clip_cov / kl_cov) would silently downgrade it to plain GRPO.
         # Refuse the combination rather than drop the objective (the wrapper predicate lives here, so this
         # is the single drift-free place to catch it).
         raise ValueError(
-            'loss_type=real is a group-level objective that the advanced GRPO ratio/entropy/rollout controls '
-            'would bypass. Drop the conflicting control (--importance_sampling_level, --delta, '
-            '--top_entropy_quantile, --log_entropy, --overlong_filter, --rollout_importance_sampling_mode, '
-            '--log_rollout_offpolicy_metrics, --off_policy_sequence_mask_delta) to use real.')
+            f'loss_type={grpo_loss_type} is a group-/sequence-level objective that the advanced GRPO '
+            'ratio/entropy/rollout controls would bypass. Drop the conflicting control '
+            '(--importance_sampling_level, --delta, --top_entropy_quantile, --log_entropy, --overlong_filter, '
+            f'--rollout_importance_sampling_mode, --log_rollout_offpolicy_metrics, '
+            f'--off_policy_sequence_mask_delta) to use {grpo_loss_type}.')
     if configured_grpo:
         loss = _ConfiguredGRPOLoss(
             loss,
@@ -650,6 +660,25 @@ def _online_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig', grpo_loss_typ
         # size to reshape the batch; its soft-constraint temperature is real_tau.
         kwargs['real_tau'] = rlhf_config.real_tau
         kwargs['num_generations'] = rlhf_config.num_generations
+    elif grpo_loss_type == 'dro':
+        # DRO's quadratic log-ratio penalty strength; read only by DROLoss (it validates >0).
+        kwargs['dro_beta'] = rlhf_config.dro_beta
+    elif grpo_loss_type in ('dppo_tv', 'dppo_kl'):
+        # DPPO's divergence threshold IS the shared epsilon/epsilon_high (verl reuses clip_ratio_low/high
+        # as clip_divergence_low/high), already forwarded above; the only DPPO-specific knob is the
+        # truncated-IS stability bound, read solely by the DPPO losses.
+        kwargs['clip_ratio_c'] = rlhf_config.clip_ratio_c
+    elif grpo_loss_type == 'clip_cov':
+        # Clip-Cov's covariance-window bounds and the fraction of tokens to zero; read only by ClipCovLoss.
+        kwargs['clip_cov_ratio'] = rlhf_config.clip_cov_ratio
+        kwargs['clip_cov_lb'] = rlhf_config.clip_cov_lb
+        kwargs['clip_cov_ub'] = rlhf_config.clip_cov_ub
+    elif grpo_loss_type == 'kl_cov':
+        # KL-Cov's selected-token fraction and the extra KL coefficient; read only by KLCovLoss.
+        kwargs['kl_cov_ratio'] = rlhf_config.kl_cov_ratio
+        kwargs['ppo_kl_coef'] = rlhf_config.ppo_kl_coef
+    # 'gpg' (pure REINFORCE, -logp*adv) and 'geo_mean' (sequence geometric mean) read no extra knobs beyond
+    # the shared epsilon/epsilon_high/beta forwarded above, so they need no variant branch here.
     if rlhf_config.enable_sampling_replay:
         # The base GRPOLoss validates beta==0 / entropy_coef==0 and switches its __call__ to require the
         # forward-replayed logps. The model forward reads the flag off the OUTERMOST loss instance, so

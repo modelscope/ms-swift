@@ -492,7 +492,34 @@ def run_grpo(
     # reward above (a frozen PRM model gets its OWN prm_0 group, planned in the auxiliary_groups step).
     prm_scorer, prm_funcs, prm_model_plugins = _build_prm_channel(
         model_config, template_config, rlhf_config, distributed_config)
-    loop = GRPOLoop(
+    # async_mode selects the driver. 'none' uses GRPOLoop's synchronous fixed-batch driver;
+    # 'one_step_off'/'fully_async' both use the per-sample StreamingGRPOLoop -- the SAME streaming
+    # driver, differing only in the staleness knob (one_step_off is pinned to 1; fully_async uses the
+    # configured max_staleness) -- which lets the disaggregated sampler keep generating per-trajectory
+    # while the trainer advances (validate._check_async_mode gated both to GRPO + disaggregated + an
+    # off-policy correction).
+    loop_cls = GRPOLoop
+    streaming_kwargs: Dict[str, Any] = {}
+    if rollout_config.async_mode in ('one_step_off', 'fully_async'):
+        from swift.dev.recipe.grpo_async import StreamingGRPOLoop
+        loop_cls = StreamingGRPOLoop
+        streaming_kwargs = {
+            'max_staleness': 1 if rollout_config.async_mode == 'one_step_off' else rollout_config.max_staleness,
+            'weight_sync_strategy': rollout_config.weight_sync_strategy,
+            # in_place publishes by aborting every in-flight generation and resuming it on the freshly
+            # overwritten weights, so it needs the sampler's partial-rollout loop; adapter_snapshot pins each
+            # version by its own adapter path and never overwrites a live copy, so the flag is inert there
+            # (validate enforces exactly this pairing for every overlapping regime).
+            'allow_partial_rollout': rollout_config.allow_partial_rollout,
+            # The publish cadence: one weight publication per K optimizer steps (default 1).
+            'parameter_sync_step': rollout_config.parameter_sync_step,
+            # adapter_snapshot pins each trained version by its LoRA adapter path, so it needs the trained
+            # adapter's name: dev applies a single trainable adapter named 'default' (the same name assembly
+            # uses to save/load it). A full-parameter run has none -- refused under adapter_snapshot, and
+            # served as merged base weights under in_place (which ignores adapter_name), so None is correct there.
+            'adapter_name': ('default' if tuner_config is not None else None),
+        }
+    loop = loop_cls(
         assembly.model,
         rollout,
         prompts,
@@ -542,7 +569,9 @@ def run_grpo(
         seed=train_config.seed,
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=_grpo_sampling_params(rlhf_config, generation_config),
-        async_generate=rollout_config.async_generate,
+        # The overlapping regimes run through StreamingGRPOLoop (which forces this off itself); the
+        # base GRPOLoop is only reached under async_mode='none', i.e. the synchronous driver.
+        async_generate=False,
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
@@ -552,7 +581,8 @@ def run_grpo(
         max_shard_size=checkpoint_config.max_shard_size,
         save_total_limit=checkpoint_config.save_total_limit,
         manual_gc=bool(megatron_config and megatron_config.manual_gc),
-        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0)
+        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
+        **streaming_kwargs)
     assembly.loop = loop
     if assembly.resume_dir:
         loop.resume(assembly.resume_model())

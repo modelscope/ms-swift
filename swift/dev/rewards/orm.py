@@ -12,6 +12,7 @@ import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from swift.dev.plugin import PluginRegistry, RewardPlugin
+from swift.dev.rewards.code_reward import CodeExecutionReward
 
 if TYPE_CHECKING:
     from swift.infer_engine import InferRequest
@@ -419,6 +420,7 @@ orms = {
     'cosine': CosineReward,
     'repetition': RepetitionPenalty,
     'soft_overlong': SoftOverlong,
+    'code_execution': CodeExecutionReward,
 }
 
 #: The 'reward' extension point adopts ``orms`` *itself* as its registry, so

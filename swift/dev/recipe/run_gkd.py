@@ -200,7 +200,7 @@ def run_gkd(
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=distill_sampling_params(rlhf_config, generation_config),
-        async_generate=rollout_config.async_generate,
+        async_generate=(rollout_config.async_mode == 'one_step_off'),
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
@@ -451,7 +451,7 @@ class GKDLoop(GRPOLoop):
         """Overlapped driver: the shared 1-batch-lookahead double buffer over the on-policy rollout.
 
         Async distillation is only defined for purely on-policy GKD (``lmbda==1.0``, enforced by
-        ``validate._check_async_generate``): an off-policy dataset round generates nothing, so there is no
+        ``validate._check_async_mode``): an off-policy dataset round generates nothing, so there is no
         batch to admit a step ahead and no round_index/coin-flip/dataset-window to drive. Every async round
         is therefore a student rollout, distilled toward the teacher's signal on it.
         """

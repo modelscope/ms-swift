@@ -44,8 +44,10 @@ to actually push the trained policy in.
 from __future__ import annotations
 import copy
 import logging
+import threading
 import time
 import uuid
+from concurrent.futures import Future
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -98,6 +100,12 @@ class RolloutSample:
     #: ran with sampling replay on. Assembled into the top-level ``sampling_masks`` forward_backward kwarg
     #: (a list parallel to the rows), NOT into ``encoded`` -- the loss reads it separately from the labels.
     sampling_mask: Optional[Any] = None
+    #: The policy version this trajectory was generated under, stamped by the streaming rollout layer
+    #: (:meth:`RolloutEngine.collect_sample`) from the admission pin. 0 for paths that do not track
+    #: versions (blocking ``generate`` / the batch ``submit_generate``). The streaming driver's ready
+    #: buffer carries the authoritative version on its own records; this field floats it up to the
+    #: sample so consumers (metrics, staleness audits) can read it without the buffer.
+    policy_version: int = 0
 
     @property
     def input_feature(self) -> dict:
@@ -128,6 +136,25 @@ class GenerationHandle:
     submission_id: str
     prompt_extras: Optional[List[Dict[str, Any]]] = None
     require_logprobs: bool = True
+
+
+@dataclass
+class SampleHandle:
+    """One in-flight trajectory admitted by :meth:`RolloutEngine.submit_sample` (streaming path).
+
+    The per-sample counterpart of :class:`GenerationHandle`: one trajectory per submission, so one
+    handle per trajectory. It carries the submit-time facts collect needs -- the prompt's media/reward
+    columns (``prompt_extras``), whether per-token logprobs were forced (``require_logprobs``), which
+    prompt / which of its ``num_generations`` trajectories this is (so the streaming layer can stamp
+    the group id), and the policy version the trajectory was admitted under (``policy_version``, from
+    the driver's pin; stamped onto the collected :class:`RolloutSample`).
+    """
+    submission_id: str
+    prompt_idx: Any
+    trajectory_idx: int
+    prompt_extras: Optional[Dict[str, Any]] = None
+    require_logprobs: bool = True
+    policy_version: int = 0
 
 
 def _sampled_token_logprobs(tokens: List[int], logprobs) -> List[float]:
@@ -353,6 +380,12 @@ class RolloutEngine:
         self.model_id = model_id
         self.template = template
         self._multi_turn = None
+        # In-flight multi-turn episodes admitted by the streaming path: submission_id -> the Future its
+        # background thread resolves with the episode's single RolloutSample. Only the driver thread mutates
+        # this dict (submit adds, collect/cancel pop); the episode threads touch only their own Future. See
+        # :meth:`_submit_episode` for why a multi-turn admit runs on a thread rather than the sampler's
+        # non-blocking submit_generation.
+        self._episode_futures: Dict[str, Future] = {}
         # One-shot latch for the base engine's "no weight sync" warning (see sync_weights), so a loop that
         # syncs every step does not spam the log.
         self._warned_no_sync = False
@@ -480,7 +513,8 @@ class RolloutEngine:
                         prompt_extras: Optional[List[Dict[str, Any]]] = None,
                         force_logprobs: bool = True,
                         adapter_name: str = '',
-                        adapter_path: Optional[str] = None) -> GenerationHandle:
+                        adapter_path: Optional[str] = None,
+                        allow_partial_rollout: bool = False) -> GenerationHandle:
         """Admit a rollout generation on the sampler WITHOUT blocking; collect it with :meth:`collect_generate`.
 
         The async (1-batch-lookahead) counterpart of :meth:`generate`: it builds the exact same
@@ -488,8 +522,13 @@ class RolloutEngine:
         the non-blocking ``submit_generation`` (twinkle's ``GenerationSubmissionMixin``, mixed into the core
         vLLM/SGLang samplers) and returns a handle immediately, so the driver can train the previous batch
         while this one generates. Only the single-turn path is supported -- the multi-turn engine drives its
-        own per-turn sampling loop with no admit-without-blocking form -- so async GRPO rejects multi-turn
-        (see ``validate._check_async_generate``).
+        own per-turn sampling loop with no admit-without-blocking form -- so the async loops reject multi-turn
+        (see ``validate._check_async_mode``).
+
+        ``allow_partial_rollout`` makes the admitted generation resumable across an in-place weight
+        republish: paired with :meth:`abort_all_inflight` (which a deep-buffered ``in_place`` publish calls
+        before overwriting the sampler's weights), the generation continues from its own tokens on the fresh
+        weights instead of returning truncated -- what makes ``in_place`` sound at ``max_staleness > 1``.
         """
         if self._multi_turn is not None:
             raise RuntimeError('async_generate does not support the multi-turn rollout: the multi-turn engine '
@@ -503,7 +542,12 @@ class RolloutEngine:
         trajectories = self._build_trajectories(prompts, prompt_extras)
         submission_id = uuid.uuid4().hex
         self.sampler.submit_generation(
-            submission_id, trajectories, params, adapter_name=adapter_name, adapter_path=adapter_path)
+            submission_id,
+            trajectories,
+            params,
+            adapter_name=adapter_name,
+            adapter_path=adapter_path,
+            allow_partial_rollout=allow_partial_rollout)
         return GenerationHandle(
             submission_id=submission_id, prompt_extras=prompt_extras, require_logprobs=force_logprobs)
 
@@ -528,6 +572,239 @@ class RolloutEngine:
         if handle is None:
             return
         self.sampler.cancel_generation(handle.submission_id)
+
+    # --- per-sample streaming path (submit_sample / poll_completions / collect_sample) --------------------
+    # The streaming driver's data plane: ONE trajectory per sampler submission, so completions arrive
+    # as-completed instead of in fixed batches. The sampler layer needs no change -- its
+    # ``submit_generation`` already tracks each ``submission_id`` as an independent future, so a
+    # one-trajectory submission is just the smallest case of the batch ``submit_generate`` above, and
+    # the training-sample assembly (``samples_from_responses``) is shared verbatim.
+
+    def submit_sample(self,
+                      prompt: List[dict],
+                      trajectory_idx: int = 0,
+                      *,
+                      prompt_idx: Any = 0,
+                      sampling_params: Optional[dict] = None,
+                      prompt_extras: Optional[Dict[str, Any]] = None,
+                      force_logprobs: bool = True,
+                      adapter_name: str = '',
+                      adapter_path: Optional[str] = None,
+                      allow_partial_rollout: bool = False,
+                      policy_version: int = 0) -> SampleHandle:
+        """Admit ONE trajectory on the sampler WITHOUT blocking (the streaming per-sample admit).
+
+        Builds the same ``SamplingParams`` (``num_samples=1``) and media-threaded ``Trajectory`` the
+        batch :meth:`submit_generate` would, pins the same version fields (``adapter_name`` /
+        ``adapter_path`` / ``allow_partial_rollout``), and returns a :class:`SampleHandle` for
+        :meth:`poll_completions` / :meth:`collect_sample`. ``prompt_idx`` / ``trajectory_idx`` are
+        carried for the collect-side group stamping; ``policy_version`` is the admission pin's version,
+        stamped onto the collected sample. A single-turn prompt goes straight onto the sampler's
+        non-blocking ``submit_generation``; a multi-turn prompt is admitted per-episode on a background
+        thread instead (see :meth:`_submit_episode`), because the multi-turn engine drives a whole
+        episode of blocking per-turn ``sample()`` calls with no sampler-level admit form.
+        """
+        if self._multi_turn is not None:
+            return self._submit_episode(
+                prompt,
+                trajectory_idx,
+                prompt_idx=prompt_idx,
+                sampling_params=sampling_params,
+                prompt_extras=prompt_extras,
+                force_logprobs=force_logprobs,
+                adapter_path=adapter_path,
+                allow_partial_rollout=allow_partial_rollout,
+                policy_version=policy_version)
+        if not callable(getattr(self.sampler, 'submit_generation', None)):
+            raise RuntimeError('streaming submit_sample needs a sampler with the non-blocking submit_generation '
+                               '(twinkle GenerationSubmissionMixin): the core vLLM/SGLang samplers provide it, '
+                               'a transformers/torch or mock sampler does not. Use --sampler vllm or sglang.')
+        params = self._build_sampling_params(1, sampling_params, force_logprobs)
+        trajectory = _prompt_trajectory(prompt, prompt_extras)
+        submission_id = uuid.uuid4().hex
+        self.sampler.submit_generation(
+            submission_id, [trajectory], params,
+            adapter_name=adapter_name,
+            adapter_path=adapter_path,
+            allow_partial_rollout=allow_partial_rollout)
+        return SampleHandle(
+            submission_id=submission_id,
+            prompt_idx=prompt_idx,
+            trajectory_idx=trajectory_idx,
+            prompt_extras=dict(prompt_extras) if prompt_extras else None,
+            require_logprobs=force_logprobs,
+            policy_version=policy_version)
+
+    def _submit_episode(self,
+                        prompt: List[dict],
+                        trajectory_idx: int,
+                        *,
+                        prompt_idx: Any,
+                        sampling_params: Optional[dict],
+                        prompt_extras: Optional[Dict[str, Any]],
+                        force_logprobs: bool,
+                        adapter_path: Optional[str],
+                        allow_partial_rollout: bool,
+                        policy_version: int) -> SampleHandle:
+        """Admit ONE multi-turn episode on a background daemon thread (the per-episode streaming admit).
+
+        A multi-turn episode is a whole conversation -- a sequence of blocking per-turn ``sample()`` calls
+        interleaved with tool execution -- so it has no sampler-level non-blocking form the way a
+        single-turn ``submit_generation`` does: the engine's own pool only parallelizes a BATCH handed to
+        one ``generate`` call, and the streaming driver admits one trajectory at a time. Per-episode
+        admission therefore runs the ONE-episode blocking :meth:`MultiTurnRollout.generate` on its own
+        daemon thread and returns a handle immediately; :meth:`poll_completions` reports it done when the
+        thread's Future resolves and :meth:`collect_sample` takes the result.
+
+        Concurrency is bounded by the streaming driver's backpressure -- it admits at most its in-flight
+        budget of handles -- which is the single source of admission control, so this layer adds no pool of
+        its own and an episode is never queued behind another here. The threads are parked on GPU/tool I/O
+        almost all the time, so one per in-flight episode is cheap; the sampler's continuous batching and
+        concurrency cap (and a sandbox env pool's lease) are the real throughput limits.
+
+        ``allow_partial_rollout`` (set only under ``in_place``) is threaded into every per-turn ``sample()``
+        so a publish's abort-and-resume continues a turn mid-episode on the fresh weights; ``adapter_path``
+        (set only under ``adapter_snapshot``) pins the whole episode to one frozen LoRA snapshot. The
+        admission ``policy_version`` is stamped onto the collected sample -- the conservative staleness
+        anchor (the oldest version any of its turns was generated under).
+        """
+        submission_id = uuid.uuid4().hex
+        future: Future = Future()
+        self._episode_futures[submission_id] = future
+
+        def _work() -> None:
+            try:
+                samples = self._multi_turn.generate(
+                    [prompt],
+                    num_samples=1,
+                    sampling_params=sampling_params,
+                    prompt_extras=[prompt_extras] if prompt_extras else None,
+                    force_logprobs=force_logprobs,
+                    adapter_path=adapter_path,
+                    allow_partial_rollout=allow_partial_rollout)
+                future.set_result(samples)
+            except Exception as exc:  # surfaced at poll/collect; the thread must not die without resolving
+                future.set_exception(exc)
+
+        threading.Thread(target=_work, name=f'episode-{submission_id[:8]}', daemon=True).start()
+        return SampleHandle(
+            submission_id=submission_id,
+            prompt_idx=prompt_idx,
+            trajectory_idx=trajectory_idx,
+            prompt_extras=dict(prompt_extras) if prompt_extras else None,
+            require_logprobs=force_logprobs,
+            policy_version=policy_version)
+
+    def poll_completions(self, handles: List[SampleHandle]) -> List[SampleHandle]:
+        """Non-blocking as-completed query: the subset of ``handles`` whose generation has completed.
+
+        One status probe per handle (no sleeping, no waiting), so the streaming driver can poll between
+        admission and training passes. A submission that FAILED raises immediately -- the same
+        fail-loudly contract :meth:`_await_generation` enforces on the blocking path. Handles with no
+        recorded status (a probe race) are treated as still running.
+        """
+        if not callable(getattr(self.sampler, 'get_generation_status', None)):
+            raise RuntimeError('streaming poll_completions needs a sampler with get_generation_status '
+                               '(twinkle GenerationSubmissionMixin): the core vLLM/SGLang samplers provide '
+                               'it, a transformers/torch or mock sampler does not.')
+        completed: List[SampleHandle] = []
+        for handle in handles:
+            future = self._episode_futures.get(handle.submission_id)
+            if future is not None:
+                # Multi-turn episode: its completion lives on the background thread's Future, not the
+                # sampler's submission tracker (the episode drives blocking per-turn ``sample()`` calls,
+                # never ``submit_generation``). Fail loudly if the thread raised, mirroring the sampler
+                # contract below.
+                if not future.done():
+                    continue
+                error = future.exception()
+                if error is not None:
+                    raise RuntimeError(
+                        f'streaming multi-turn episode {handle.submission_id} failed: {error}') from error
+                completed.append(handle)
+                continue
+            states = self.sampler.get_generation_status(handle.submission_id)
+            states = states if isinstance(states, list) else [states]
+            failed = next((state for state in states if state.get('status') not in ('running', 'completed')), None)
+            if failed is not None:
+                error = failed.get('error') or failed.get('status', 'unknown failure')
+                raise RuntimeError(f'streaming generation {handle.submission_id} failed: {error}')
+            if states and all(state.get('status') == 'completed' for state in states):
+                completed.append(handle)
+        return completed
+
+    def collect_sample(self, handle: SampleHandle) -> RolloutSample:
+        """Collect ONE completed trajectory as a single :class:`RolloutSample` (stamped with its version).
+
+        The per-sample counterpart of :meth:`collect_generate`. A single-turn submission blocks until the
+        sampler reports it completed (via the shared :meth:`_await_generation` poll), then lifts the
+        responses with the same training-feature assembly; a multi-turn episode takes the background
+        thread's already-assembled :class:`RolloutSample` off its Future instead. Either way the submission
+        held exactly one trajectory, so exactly one sample must come back -- anything else is a contract
+        violation and fails loudly. The sample's group id is stamped to the GLOBAL prompt index (the same
+        stamping ``GRPOLoop._finalize_samples`` does on the batch path, so group-relative advantage keys
+        match), and ``policy_version`` records the admission pin's version.
+        """
+        future = self._episode_futures.pop(handle.submission_id, None)
+        if future is not None:
+            # Multi-turn episode: the background thread already assembled the single RolloutSample (the
+            # multi-turn engine owns per-turn encoding/logprobs), so collect just takes the Future's result
+            # -- which re-raises the episode's exception here if it failed (fail-loudly at collect) -- and
+            # stamps the same group id / admission version as the single-turn path below.
+            samples = future.result()
+            if len(samples) != 1:
+                raise RuntimeError(f'streaming collect_sample expected exactly 1 sample for one multi-turn '
+                                   f'episode (submission {handle.submission_id}), got {len(samples)}.')
+            sample = samples[0]
+            sample.prompt_id = str(handle.prompt_idx)
+            sample.policy_version = handle.policy_version
+            return sample
+        responses = self._await_generation(handle.submission_id)
+        samples = self._samples_from_responses(
+            responses,
+            prompt_extras=[handle.prompt_extras] if handle.prompt_extras else None,
+            allow_message_only=self.template is None,
+            require_logprobs=handle.require_logprobs)
+        if len(samples) != 1:
+            raise RuntimeError(f'streaming collect_sample expected exactly 1 sample for one trajectory '
+                               f'(submission {handle.submission_id}), got {len(samples)}.')
+        sample = samples[0]
+        sample.prompt_id = str(handle.prompt_idx)
+        sample.policy_version = handle.policy_version
+        return sample
+
+    def cancel_sample(self, handle: Optional[SampleHandle]) -> None:
+        """Drop an admitted-but-uncollected per-sample generation (budget hit, drain, or stale cancel).
+
+        A single-turn submission is cancelled on the sampler. A multi-turn episode has no sampler
+        submission to cancel (it runs blocking per-turn ``sample()`` on its own daemon thread), so it is
+        ABANDONED: its Future is dropped and the thread finishes on its own with its result discarded. A
+        ``concurrent.futures.Future`` silently drops an unretrieved exception (unlike ``asyncio.Future``,
+        which logs "never retrieved" at GC), so an abandoned episode that later fails needs no drain here.
+        """
+        if handle is None:
+            return
+        if self._episode_futures.pop(handle.submission_id, None) is not None:
+            return
+        self.sampler.cancel_generation(handle.submission_id)
+
+    def abort_all_inflight(self) -> Any:
+        """Abort every in-flight generation on the sampler so an in-place weight republish can resume them.
+
+        The abort-on-publish trigger for a deep-buffered ``in_place`` sync: ``InPlaceWeightSync`` calls this
+        BEFORE overwriting the sampler's single live weight copy, so no generation decodes across the update
+        -- each returns the tokens it produced so far with ``stop_reason='abort'`` and, when its submission
+        had ``allow_partial_rollout``, resumes from that point on the fresh weights (see
+        :class:`~twinkle.sampler.partial_rollout.PartialRolloutMixin`). Distinct from :meth:`cancel_generate`,
+        which DROPS a submission: abort keeps it alive and resumable. Delegates to the sampler's
+        ``abort_all_inflight`` (mixed into the core vLLM/SGLang samplers).
+        """
+        abort = getattr(self.sampler, 'abort_all_inflight', None)
+        if not callable(abort):
+            raise RuntimeError('abort-on-publish needs a sampler with abort_all_inflight (twinkle '
+                               'PartialRolloutMixin): the core vLLM/SGLang samplers provide it, a '
+                               'transformers/torch or mock sampler does not. Use --sampler vllm or sglang.')
+        return abort()
 
     def _await_generation(self, submission_id: str) -> List[Any]:
         """Poll an admitted generation to completion, then consume its responses from every DP worker."""
@@ -593,6 +870,10 @@ class RolloutEngine:
             close = getattr(self._multi_turn, 'close', None)
             if close is not None:
                 close()
+        # Drop references to any in-flight multi-turn episodes; their daemon threads exit with the process.
+        # A ``concurrent.futures.Future`` silently discards an unretrieved exception (unlike asyncio.Future),
+        # so clearing the map needs no per-future exception drain.
+        self._episode_futures.clear()
 
     def shutdown(self) -> None:
         """Release the env pool AND the sampler's GPU memory (twinkle's sampler owns its own teardown).

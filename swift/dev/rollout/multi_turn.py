@@ -230,7 +230,8 @@ class MultiTurnRollout:
                  sampling_params: Optional[dict] = None,
                  prompt_extras: Optional[List[Dict[str, Any]]] = None,
                  force_logprobs: bool = True,
-                 adapter_path: Optional[str] = None) -> List[RolloutSample]:
+                 adapter_path: Optional[str] = None,
+                 allow_partial_rollout: bool = False) -> List[RolloutSample]:
         from twinkle.data_format import SamplingParams
         if num_samples < 1:
             raise ValueError('num_samples must be >= 1.')
@@ -260,8 +261,14 @@ class MultiTurnRollout:
         sp = SamplingParams(**params)
         # twinkle's MultiTurnRollout.__call__ reads adapter_path out of its kwargs and threads it into
         # every per-turn sampler.sample, so a LoRA reserved at engine build is selected here too --
-        # without this a multi-turn run silently samples from the base model.
-        rollout_kwargs = {'adapter_path': adapter_path} if adapter_path else {}
+        # without this a multi-turn run silently samples from the base model. allow_partial_rollout rides
+        # the same kwargs channel and, in the engine's _resolve_call, is folded into the per-turn sample()
+        # so a streaming in_place publish can abort-and-resume a turn mid-episode (see _submit_episode).
+        # adapter_path is left out entirely when unset (a sampler without LoRA must see the same call it
+        # always did); allow_partial_rollout is always passed -- False reads identically to omitted in
+        # _resolve_call (it gates on a truthy value), so the per-turn sample() call is unchanged when off.
+        rollout_kwargs = {'allow_partial_rollout': allow_partial_rollout,
+                          **({'adapter_path': adapter_path} if adapter_path else {})}
         if self._per_episode_tools:
             outputs = self._generate_with_envs(trajectories, sp, **rollout_kwargs)
         else:
@@ -275,7 +282,7 @@ class MultiTurnRollout:
 
     def _generate_with_envs(self, trajectories: List[Dict[str, Any]],
                             sampling_params: Any,
-                            adapter_path: Optional[str] = None) -> List[Dict[str, Any]]:
+                            **rollout_kwargs: Any) -> List[Dict[str, Any]]:
         """Roll out each trajectory alone in its own leased env, concurrently up to the pool size.
 
         A sandbox env holds one workspace, so a trajectory must be driven by itself with the tools bound
@@ -283,7 +290,9 @@ class MultiTurnRollout:
         which cannot express a per-episode lease (and a per-prompt list longer than the batch would be
         misrouted episode-to-workspace). This is the challenger's per-episode pattern -- every worker
         takes an env, builds its ``ToolManager``, and runs a single-trajectory rollout on the one shared
-        engine, which is safe to call concurrently.
+        engine, which is safe to call concurrently. ``rollout_kwargs`` (``adapter_path`` /
+        ``allow_partial_rollout``) are forwarded verbatim to each per-episode engine call, so the sandbox
+        path pins the same weights and enables the same abort-and-resume as the shared-engine path.
         """
         from concurrent.futures import ThreadPoolExecutor
 
@@ -295,7 +304,7 @@ class MultiTurnRollout:
                     [trajectories[index]],
                     sampling_params=sampling_params,
                     tool_manager=tool_manager_for(env, self.tool_plugins),
-                    **({'adapter_path': adapter_path} if adapter_path else {}))
+                    **rollout_kwargs)
                 if not outputs:
                     raise RuntimeError('multi-turn rollout returned no trajectory for a leased-env episode.')
                 return outputs[0]

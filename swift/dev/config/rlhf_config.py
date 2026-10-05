@@ -94,13 +94,32 @@ class RLHFConfig:
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
     delta: Optional[float] = None
-    advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
+    advantage_estimator: Literal[
+        'grpo', 'rloo', 'reinforce_plus_plus', 'reinforce_plus_plus_baseline', 'remax', 'opo', 'gpg', 'grpo_passk'
+    ] = 'grpo'
+    #: GPG advantage normalization divisor (``alpha * (r_i - mean) / f_norm``); 1.0 disables.
+    f_norm: float = 1.0
     kl_in_reward: Optional[bool] = None
     scale_rewards: Optional[Literal['group', 'batch', 'none', 'gdpo']] = None
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
     dynamic_sample: bool = False
     max_resample_times: int = 3
     overlong_filter: bool = False
+
+    # === Additional policy-loss knobs (clip_cov / kl_cov / dppo / dro) ===
+    #: DRO quadratic log-ratio penalty strength (``loss_type='dro'``); must be positive.
+    dro_beta: float = 0.1
+    #: DPPO truncated IS weight upper bound for stability (Section 5.4 of the DPPO paper). The DPPO
+    #: divergence threshold is NOT a separate knob -- verl reuses clip_ratio_low/high, so it is the
+    #: shared ``epsilon``/``epsilon_high`` above.
+    clip_ratio_c: float = 20.0
+    #: Clip-Cov fraction of valid tokens to zero out (``loss_type='clip_cov'``).
+    clip_cov_ratio: float = 0.0002
+    clip_cov_lb: float = 1.0
+    clip_cov_ub: float = 5.0
+    #: KL-Cov fraction of valid tokens to apply the extra KL penalty (``loss_type='kl_cov'``).
+    kl_cov_ratio: float = 0.0002
+    ppo_kl_coef: float = 1.0
 
     # === CHORD auxiliary SFT ===
     chord_sft_dataset: List[str] = field(default_factory=list)
@@ -151,6 +170,25 @@ class RLHFConfig:
     repetition_max_penalty: float = -1.0
     soft_max_length: Optional[int] = None
     soft_cache_length: Optional[int] = None
+
+    # === Code Execution Reward (``--orm code_execution``) ===
+    # Read by ``swift.dev.rewards.code_reward.CodeExecutionReward`` off this config, the way the cosine /
+    # repetition rewards read theirs. It scores a generated program by running it against a dataset
+    # ``test_cases`` column (JSON ``{"inputs": [...], "outputs": [...]}``: stdin -> expected stdout per
+    # case) and returns the fraction of cases it passes.
+    #: Default language when a row carries no ``language`` column. Supported: python/python3/py, c,
+    #: cpp/c++, javascript/js. An unsupported language is rejected before any code runs.
+    code_language: str = 'python'
+    #: Per-test-case execution timeout in seconds. A program that exceeds it is killed and scores 0.
+    code_timeout: int = 10
+    #: Width of the thread pool that overlaps a batch's executions. Each run is a subprocess (``LocalEnv``)
+    #: or a microVM command (``AgentEnv``), so this bounds concurrent child processes, not CPU threads.
+    code_max_concurrency: int = 8
+    #: Address-space cap per run for the local ``LocalEnv``; None does not cap. Ignored by ``AgentEnv``.
+    code_memory_limit_gb: Optional[float] = 2.0
+    #: None runs code in a throwaway local subprocess (``LocalEnv``). A template name upgrades execution to
+    #: an ``AgentEnv`` microVM, for untrusted code that must not touch the training host.
+    code_sandbox_template: Optional[str] = None
 
     # === GRPO Multi-turn ===
     # Multi-turn is enabled by setting max_turns. Per-turn length is sampling_params.max_tokens;

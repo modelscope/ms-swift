@@ -257,6 +257,10 @@ class GRPOLoop(TrainLoop):
             generation_batch_size=generation_batch_size,
             num_train_epochs=num_train_epochs,
             seed=seed)
+        #: Stored so the streaming driver (``_streaming_loop.StreamingLoopMixin``) builds its per-prompt
+        #: ``PromptStream`` over the SAME epoch/seed policy as this scheduler, not a silent default.
+        self.num_train_epochs = num_train_epochs
+        self.seed = seed
 
     def _prompt_payload(self, prompt_indices: Sequence[int]):
         """The ``(prompts, prompt_extras)`` rows for one rollout batch, by global prompt position."""
@@ -676,6 +680,76 @@ class GRPOLoop(TrainLoop):
         samples, rewards_per_func = self._dynamic_rollout(prompt_indices)
         return self._assemble_rollout_batch(samples, rewards_per_func)
 
+    def _estimator_inputs(self, samples: List[Any], cfg: Optional['RLHFConfig']) -> Dict[str, Any]:
+        """Extra ``compute_advantages`` kwargs the active ``advantage_estimator`` needs.
+
+        Returns an empty dict for the estimators that read only the rewards and the group size
+        (grpo / rloo / reinforce_plus_plus / reinforce_plus_plus_baseline / grpo_passk). The three that need
+        a per-sample side input are wired here so the recipe -- not the atomic API -- owns how each input is
+        produced from the rollout:
+
+        - ``opo``: per-sample response token counts (its group baseline is length-weighted).
+        - ``gpg``: the ``f_norm`` divisor from the config.
+        - ``remax``: per-sample greedy-decoding baseline rewards (an extra argmax generation pass).
+        """
+        estimator = self.advantage_estimator
+        if estimator == 'opo':
+            return {
+                'response_lengths': [len(self._response_positions(sample.input_feature)) for sample in samples]
+            }
+        if estimator == 'gpg':
+            return {'f_norm': float(cfg.f_norm) if cfg is not None else 1.0}
+        if estimator == 'remax':
+            return {'reward_baselines': self._remax_greedy_baselines(samples)}
+        return {}
+
+    def _remax_greedy_baselines(self, samples: List[Any]):
+        """ReMax baseline: the greedy (argmax) completion's reward per prompt, broadcast to its group.
+
+        ReMax centers each sampled completion's reward on the reward of a GREEDY decoding of the same prompt
+        (a lower-variance baseline than the group mean, at the cost of one extra generation pass). This runs
+        that pass -- ``temperature=0``, one sample per distinct prompt -- scores it with the SAME reward
+        functions / RM plugins as the rollout, and broadcasts each prompt's greedy reward to all of its
+        ``num_generations`` samples. Gated against ``async_generate`` (validate.py): the pass is synchronous
+        and cannot be pre-submitted a batch ahead.
+        """
+        import torch
+
+        # Distinct prompts in first-seen order; the rollout groups samples as consecutive num_generations
+        # blocks per prompt, so prompt_id is constant within a block.
+        order: List[str] = []
+        pid_to_pos: Dict[str, int] = {}
+        for sample in samples:
+            pid = str(sample.prompt_id)
+            if pid not in pid_to_pos:
+                pid_to_pos[pid] = len(order)
+                order.append(pid)
+        prompts = [self.prompts[int(pid)] for pid in order]
+        extras = [self.prompt_extras[int(pid)] for pid in order]
+
+        greedy_params = dict(self.sampling_params or {})
+        greedy_params['temperature'] = 0.0  # argmax decoding
+        greedy_params.pop('top_p', None)
+        greedy_params.pop('top_k', None)
+
+        self.rollout.sync_weights()
+        try:
+            greedy_samples = self.rollout.generate(
+                prompts, num_samples=1, sampling_params=greedy_params, prompt_extras=extras)
+        finally:
+            self.rollout.finish_generate()
+        if len(greedy_samples) != len(order):
+            raise RuntimeError(f'greedy baseline rollout returned {len(greedy_samples)} samples, expected '
+                               f'{len(order)} (one per distinct prompt).')
+        # num_samples=1, so greedy_samples[i] belongs to order[i]; stamp prompt_id for RM-plugin scoring
+        # (_reward_rows reads it) -- _finalize_samples assumes num_generations per prompt and does not apply.
+        for pid, greedy_sample in zip(order, greedy_samples):
+            greedy_sample.prompt_id = pid
+
+        greedy_rewards = self._weighted_rewards(self._score(greedy_samples))  # [num_prompts]
+        baselines = [float(greedy_rewards[pid_to_pos[str(sample.prompt_id)]]) for sample in samples]
+        return torch.tensor(baselines, dtype=torch.float32)
+
     def _assemble_rollout_batch(self, samples: List[Any], rewards_per_func) -> 'RolloutBatch':
         """Score an already-generated rollout into a trainable ``RolloutBatch`` (generation excluded).
 
@@ -705,7 +779,8 @@ class GRPOLoop(TrainLoop):
             scale_rewards=self.scale_rewards,
             kl_in_reward=kl_in_reward,
             beta=float(cfg.beta or 0.0) if cfg else 0.0,
-            kl_values=kl_values)
+            kl_values=kl_values,
+            **self._estimator_inputs(samples, cfg))
         # PRM process reward: fold the per-step scores into a per-token advantage (segmented placement -- the
         # group-relative ORM advantage above lands on the last response token, the process reward on the rest).
         # Replaces the scalar advantages with per-token lists, which _training_advantage passes through.
@@ -960,19 +1035,30 @@ class GRPOLoop(TrainLoop):
         The prompt-set scheduler yields one generation batch per rollout and is exhausted after
         ``num_train_epochs`` full passes (B1: an epoch is now a real dataset pass, not an unbounded
         whole-set regeneration bounded only by ``max_steps``); an explicit ``max_steps`` still caps the
-        optimizer-step count early. ``async_generate`` selects the overlapped driver (:meth:`_run_async`),
-        otherwise the synchronous one (:meth:`_run_sync`); both drive the same per-rollout training
-        (:meth:`_train_rollout_batch`).
+        optimizer-step count early. The rollout driver itself is :meth:`_drive` (a template hook), so a
+        subclass can swap the control flow without reimplementing this manual-GC / tracker scaffolding.
         """
         from swift.dev.recipe.train_loop import finish_manual_gc, start_manual_gc
 
         gc_was_enabled = start_manual_gc(self.manual_gc)
         try:
-            if self.async_generate:
-                self._run_async()
-            else:
-                self._run_sync()
+            self._drive()
             return self.history
         finally:
             finish_manual_gc(gc_was_enabled)
             self.tracker.close()
+
+    def _drive(self) -> None:
+        """Run this loop's rollout driver: the overlapped 1-batch lookahead (:meth:`_run_async`) when
+        ``async_generate``, otherwise the synchronous one (:meth:`_run_sync`). Both drive the same
+        per-rollout training (:meth:`_train_rollout_batch`).
+
+        A template hook split out of :meth:`fit` so :class:`~swift.dev.recipe.grpo_async.StreamingGRPOLoop`
+        overrides ONLY the driver (its per-sample streaming buffer) and inherits the identical manual-GC /
+        tracker scaffolding above -- the async control flow lives in one place per regime, not copied into
+        ``fit``.
+        """
+        if self.async_generate:
+            self._run_async()
+        else:
+            self._run_sync()

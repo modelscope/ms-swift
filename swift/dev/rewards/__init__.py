@@ -13,9 +13,11 @@ tokens, :class:`DelimiterPRMScorer` is the default (one step per delimiter-separ
 is the registry it adopts, and :data:`PRM_STEP_SCORER` is that point. Consumed by the GRPO loop to build a
 per-token process reward.
 """
+from .code_reward import CodeExecutionReward
 from .orm import ORM, REWARD, orms
 from .prm import PRM_STEP_SCORER, DelimiterPRMScorer, PRMScorer, prm_scorers
 
 __all__ = [
-    'ORM', 'REWARD', 'orms', 'PRMScorer', 'DelimiterPRMScorer', 'prm_scorers', 'PRM_STEP_SCORER'
+    'ORM', 'REWARD', 'orms', 'CodeExecutionReward', 'PRMScorer', 'DelimiterPRMScorer', 'prm_scorers',
+    'PRM_STEP_SCORER'
 ]

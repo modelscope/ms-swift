@@ -76,19 +76,95 @@ class RolloutConfig:
     rollout_sampler: Literal['vllm', 'sglang'] = 'vllm'
 
     # === Async & Scheduling ===
-    #: Overlap rollout generation with training on the GRPO loop (driver-side double buffering, one
-    #: rollout batch of look-ahead). Each step collects the batch generated from policy ``v_b``, then
-    #: -- with the sampler idle -- syncs ``v_b`` and submits the NEXT batch's generation, which runs
-    #: concurrently with scoring/training that batch (``v_b -> v_{b+1}``). The next batch is therefore
-    #: always one step stale (``staleness <= 1``, measured in rollout batches, orthogonal to
-    #: ``num_iterations`` which replays one batch in-place). Weight sync rewrites live sampler weights
-    #: and requires the sampler quiescent, so it only ever runs at that idle point -- bounding staleness
-    #: to one batch is a physical constraint, not a tunable. Because staleness is always > 0, this is
-    #: off-policy and MUST be paired with ``rollout_importance_sampling_mode``; it also requires
-    #: ``vllm_mode='disaggregated'`` (colocate time-shares one GPU and cannot overlap) and is
-    #: incompatible with ``dynamic_sample`` / multi-turn. ``validate._check_async_generate`` enforces all
-    #: of this; only the GRPO loop implements it.
+    #: How much the rollout generation may overlap training, i.e. how off-policy the trained batch is.
+    #: This is the single source of truth for the async regime; ``async_generate`` below is a legacy
+    #: bool alias folded into it by ``process._derive_async_mode``.
+    #:
+    #: - ``'none'``: synchronous. Generate a batch, then train it, one batch at a time. Strictly
+    #:   on-policy (the behaviour policy equals the trained policy every step).
+    #: - ``'one_step_off'``: overlap generation with training by ONE step of look-ahead. For GRPO/PPO this
+    #:   runs the per-sample streaming driver with ``max_staleness`` pinned to 1 (a single admission window
+    #:   of look-ahead: train version ``v`` while admitting ``v+1``). For the distillation loops
+    #:   (GKD/OPSD/MOPD) it is the batch-level double buffer
+    #:   (:func:`swift.dev.recipe.train_loop.overlap_rollout_batches`), whose weight sync runs at the
+    #:   sampler idle point so look-ahead can never exceed one batch. Either way the trained batch is one
+    #:   step stale (``staleness <= 1``).
+    #: - ``'fully_async'``: GRPO/PPO only. The disaggregated sampler keeps generating on its OWN GPUs while
+    #:   the trainer advances several steps through the SAME per-sample streaming driver, new policy versions
+    #:   are published SPARSELY (each as a pinned adapter snapshot, or by an in-place overwrite that aborts
+    #:   and resumes the in-flight generations -- see ``weight_sync_strategy``), and a ready buffer of
+    #:   in-flight trajectories absorbs the version skew -- so ``staleness`` may exceed 1, bounded by
+    #:   ``max_staleness`` (verl's fully-async regime). Staleness > 1 is a property of the DEPLOYMENT
+    #:   (resource isolation + sparse publish + a queue buffer), not of keeping several weight copies: the
+    #:   sampler is never asked to sit idle, so queued samples age several versions. The GRPO and PPO loops
+    #:   implement both overlapping regimes
+    #:   (:class:`swift.dev.recipe.grpo_async.StreamingGRPOLoop` /
+    #:   :class:`swift.dev.recipe.ppo_async.StreamingPPOLoop`, both composed from
+    #:   :class:`swift.dev.recipe._streaming_loop.StreamingLoopMixin`), reusing twinkle's
+    #:   ``RLContextManager`` for the staleness gate and version tracking.
+    #:
+    #: Any staleness > 0 is off-policy: GRPO trains on raw sampled tokens, so it MUST be paired with
+    #: ``rollout_importance_sampling_mode``; PPO's clipped surrogate (like the distillation family's teacher
+    #: target) already bounds the update, so it needs no extra correction. ``'one_step_off'``/
+    #: ``'fully_async'`` both require ``vllm_mode='disaggregated'`` (colocate time-shares one DeviceGroup and
+    #: cannot overlap) and are incompatible with ``dynamic_sample`` / multi-turn. ``validate._check_async_mode``
+    #: enforces all of this.
+    async_mode: Literal['none', 'one_step_off', 'fully_async'] = 'none'
+    #: LEGACY alias of ``async_mode='one_step_off'``, kept so existing ``--async_generate`` scripts run
+    #: unchanged. ``process._derive_async_mode`` folds it into ``async_mode`` (True and ``async_mode``
+    #: unset -> ``'one_step_off'``); ``validate._check_async_mode`` rejects setting both inconsistently.
+    #: Prefer ``async_mode``.
     async_generate: bool = False
+    #: How many policy versions a rollout batch may lag the policy that trains it before
+    #: ``RLContextManager`` refuses to admit more work (``'fully_async'`` only; ``'one_step_off'`` is
+    #: physically pinned to 1 and ``'none'`` to 0). ``1`` admits one batch ahead of the oldest untrained
+    #: one; larger values deepen the buffer and let the disaggregated sampler run further ahead. Must be
+    #: >= 1 under ``'fully_async'``.
+    max_staleness: int = 1
+    #: Whether ``'fully_async'`` may interrupt an in-flight generation at a publish and resume it on the
+    #: freshly-synced weights (partial rollout -- twinkle's ``PartialRolloutMixin``, which the dev vLLM/SGLang
+    #: samplers expose), instead of letting it finish on the pre-publish policy. REQUIRED under
+    #: ``weight_sync_strategy='in_place'`` (a publish overwrites the sampler's single live weight copy under
+    #: the in-flight generations, so each must abort and resume on the fresh weights to stay correctable);
+    #: inert under ``'adapter_snapshot'`` (each version is pinned by its own path, nothing is overwritten) and
+    #: where no streaming driver runs -- ``'none'`` and the distillation loops' ``'one_step_off'`` (the sync
+    #: happens at the sampler idle point, nothing is in flight). It IS live under GRPO/PPO ``'one_step_off'``
+    #: (the streaming driver admits a lookahead window, so a publish meets an in-flight generation).
+    #: ``validate._check_streaming_publication`` enforces the in_place pairing and
+    #: ``_reject_fully_async_only_knobs`` refuses an explicit True where no streaming driver runs.
+    allow_partial_rollout: bool = False
+    #: How a just-trained policy is published to the sampler.
+    #:
+    #: - ``'adapter_snapshot'`` (a streaming-driver path): save each trained version as a LoRA adapter
+    #:   on disk and pin it by path, so several versions stay resident and the streaming sampler keeps
+    #:   generating each in-flight batch from the version it was admitted under -- publishing a new version
+    #:   never disturbs a generation already running. Needs a LoRA run (a full-parameter policy has no
+    #:   adapter to snapshot) and must NOT set ``allow_partial_rollout`` (nothing is overwritten in place, so
+    #:   there is nothing to interrupt and resume -- the flag would be inert).
+    #: - ``'in_place'``: overwrite the sampler's single live weight copy through twinkle's
+    #:   ``CheckpointEngineManager`` -- CUDA IPC when colocated, NCCL when disaggregated (the transport
+    #:   follows ``vllm_mode``, it is NOT a separate strategy). Where no streaming driver runs
+    #:   (``'none'``, the distillation loops' ``'one_step_off'``) this runs at the sampler's idle point
+    #:   (nothing in flight). Under the GRPO/PPO streaming driver (``'one_step_off'``/``'fully_async'``) a
+    #:   buffer always has a generation in flight when a version is published, so overwriting the one live
+    #:   copy underneath it is sound ONLY with ``allow_partial_rollout``: each publish then aborts every
+    #:   in-flight generation and resumes it from its own tokens on the fresh weights (twinkle
+    #:   ``PartialRolloutMixin`` + ``InPlaceWeightSync`` abort-on-publish), so no generation decodes across
+    #:   the update and its logprobs stay correctable. It supports a full-parameter policy (merged base
+    #:   weights over NCCL when disaggregated) as well as LoRA -- this is the full-parameter deep buffer.
+    #:   ``validate._check_streaming_publication`` enforces the ``allow_partial_rollout`` pairing.
+    weight_sync_strategy: Literal['in_place', 'adapter_snapshot'] = 'adapter_snapshot'
+    #: How often a just-trained policy is published to the sampler, in consume-reported steps: one weight
+    #: publication every ``parameter_sync_step`` optimizer steps (GRPO) / recorded steps (PPO). ``1`` (the
+    #: default) publishes every step -- the densest sound cadence, matching the historical per-step sync;
+    #: ``K > 1`` publishes sparsely (verl's ``trigger_parameter_sync_step``), letting the sampler run K
+    #: steps' worth of generations against one published version before the next overwrite, which trades a
+    #: little extra staleness for fewer weight transfers. Read only by the streaming driver
+    #: (``'one_step_off'``/``'fully_async'`` for GRPO/PPO); inert under ``'none'`` and for the recipes still
+    #: on the fixed-batch driver, so ``validate._reject_fully_async_only_knobs`` refuses an explicit
+    #: non-default value there. The staleness bound (``max_staleness``) is measured in these publication
+    #: cycles: the tracked policy version bumps once per publish, never per optimizer step.
+    parameter_sync_step: int = 1
     sleep_level: int = 0
     offload_optimizer: bool = False
     offload_model: bool = False

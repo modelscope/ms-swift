@@ -190,6 +190,48 @@ class PromptBatchScheduler:
         return batch
 
 
+class PromptStream:
+    """Iterate the prompt dataset ONE PROMPT INDEX at a time for the streaming driver.
+
+    The per-sample counterpart of :class:`PromptBatchScheduler`: the streaming driver admits each
+    prompt's ``num_generations`` trajectories individually and backfills as completions free buffer
+    slots, so it needs a stream of single prompt indices rather than fixed batches -- a batch iterator
+    would rebuild exactly the head-of-line blocking the streaming driver exists to remove.
+
+    Reproducibility mirrors the scheduler: each pass is a seeded reshuffled permutation of every global
+    prompt index, and ``num_train_epochs`` passes are yielded before the stream is exhausted (a
+    fractional epoch still runs one truncated-to-whole-prompts pass, ceil like the scheduler). Yielded
+    values are GLOBAL prompt indices, so ``prompt_id`` stamping and dataset-column lookups stay correct.
+    """
+
+    def __init__(self, num_prompts: int, *, num_train_epochs: float = 1.0, seed: int = 42):
+        if num_prompts <= 0:
+            raise ValueError(f'PromptStream needs at least one prompt, got {num_prompts}.')
+        if num_train_epochs <= 0:
+            raise ValueError(f'num_train_epochs must be > 0, got {num_train_epochs}.')
+        self.num_prompts = num_prompts
+        #: Total prompts to yield across all passes (one epoch = one full permutation).
+        self.total_prompts = max(1, math.ceil(num_train_epochs)) * num_prompts
+        self._rng = random.Random(seed)
+        self._pending: List[int] = []
+        self._emitted = 0
+
+    def __len__(self) -> int:
+        return self.total_prompts
+
+    def __iter__(self) -> Iterator[int]:
+        return self
+
+    def __next__(self) -> int:
+        if self._emitted >= self.total_prompts:
+            raise StopIteration
+        if not self._pending:
+            self._pending = list(range(self.num_prompts))
+            self._rng.shuffle(self._pending)
+        self._emitted += 1
+        return self._pending.pop()
+
+
 def prompt_batch_count(num_prompts: int,
                        num_train_epochs: float,
                        generation_batch_size: Optional[int] = None) -> int:

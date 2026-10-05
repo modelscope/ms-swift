@@ -11,12 +11,13 @@ list) plus the group size; nothing here knows about rollout sample classes or tr
 from __future__ import annotations
 
 import torch
-from typing import List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 __all__ = ['compute_advantages']
 
 # Estimators / scalings supported by twinkle.advantage (kept as literals for discoverability).
-ESTIMATORS = ('grpo', 'rloo', 'reinforce_plus_plus')
+ESTIMATORS = ('grpo', 'rloo', 'reinforce_plus_plus', 'reinforce_plus_plus_baseline', 'remax', 'opo', 'gpg',
+              'grpo_passk')
 SCALINGS = ('group', 'batch', 'none', 'gdpo')
 
 
@@ -28,7 +29,10 @@ def compute_advantages(rewards: Union[torch.Tensor, Sequence[float]],
                        scale_rewards: str = 'group',
                        kl_in_reward: bool = False,
                        beta: float = 0.0,
-                       kl_values: Optional[torch.Tensor] = None) -> List[float]:
+                       kl_values: Optional[torch.Tensor] = None,
+                       reward_baselines: Optional[Union[torch.Tensor, Sequence[float]]] = None,
+                       response_lengths: Optional[Union[torch.Tensor, Sequence[int]]] = None,
+                       f_norm: float = 1.0) -> List[float]:
     """Per-sequence advantages from rewards (delegates to ``twinkle.advantage``).
 
     Args:
@@ -44,16 +48,24 @@ def compute_advantages(rewards: Union[torch.Tensor, Sequence[float]],
             GRPO/PPO ref-model regularization). Requires ``kl_values``.
         beta: ref-KL penalty coefficient (used only when ``kl_in_reward``).
         kl_values: ``[N]`` per-sample ref-model KL (required when ``kl_in_reward``).
+        reward_baselines: ``[N]`` per-sample greedy-decoding baselines (required by ``'remax'``; the
+            greedy completion's reward for the same prompt). Ignored by other estimators.
+        response_lengths: ``[N]`` valid response token counts (required by ``'opo'``, which weights the
+            group baseline by length). Ignored by other estimators.
+        f_norm: GPG normalization divisor (``'gpg'`` only); ``alpha * (r_i - mean) / f_norm``. 1.0 disables.
 
     Returns:
         ``[N]`` advantages as a plain list, aligned with ``rewards``.
 
     Raises:
         ValueError: unknown estimator/scaling, N not divisible by ``num_generations``, weight-length
-            mismatch, or ``kl_in_reward`` without ``kl_values``.
+            mismatch, ``kl_in_reward`` without ``kl_values``, or a missing estimator-specific input
+            (``reward_baselines`` for remax, ``response_lengths`` for opo).
     """
     from swift.dev.reward import build_reward_weights
-    from twinkle.advantage import GRPOAdvantage, ReinforcePlusPlusAdvantage, RLOOAdvantage
+    from twinkle.advantage import (GPGAdvantage, GRPOAdvantage, GRPOPassKAdvantage, OPOAdvantage,
+                                   ReinforcePlusPlusAdvantage, ReinforcePPBaselineAdvantage, ReMaxAdvantage,
+                                   RLOOAdvantage)
 
     if advantage_estimator not in ESTIMATORS:
         raise ValueError(f'advantage_estimator {advantage_estimator!r} not in {ESTIMATORS}.')
@@ -78,7 +90,21 @@ def compute_advantages(rewards: Union[torch.Tensor, Sequence[float]],
         'grpo': GRPOAdvantage,
         'rloo': RLOOAdvantage,
         'reinforce_plus_plus': ReinforcePlusPlusAdvantage,
+        'reinforce_plus_plus_baseline': ReinforcePPBaselineAdvantage,
+        'remax': ReMaxAdvantage,
+        'opo': OPOAdvantage,
+        'gpg': GPGAdvantage,
+        'grpo_passk': GRPOPassKAdvantage,
     }[advantage_estimator]
+    # Estimator-specific inputs are forwarded as extra kwargs; the twinkle estimators read only what they
+    # need (remax -> reward_baselines, opo -> response_lengths, gpg -> f_norm) and ignore the rest.
+    extra_kwargs: Dict[str, Any] = {}
+    if reward_baselines is not None:
+        extra_kwargs['reward_baselines'] = reward_baselines
+    if response_lengths is not None:
+        extra_kwargs['response_lengths'] = response_lengths
+    if advantage_estimator == 'gpg':
+        extra_kwargs['f_norm'] = f_norm
     advantages = estimator_cls()(
         rewards_per_func,
         num_generations,
@@ -87,5 +113,6 @@ def compute_advantages(rewards: Union[torch.Tensor, Sequence[float]],
         kl_in_reward=kl_in_reward,
         beta=beta,
         kl_values=kl_values,
+        **extra_kwargs,
     )
     return advantages.tolist()

@@ -20,6 +20,7 @@ if TYPE_CHECKING:
         PluginConfig,
         QuantizeConfig,
         RLHFConfig,
+        RolloutConfig,
         TemplateConfig,
         TrainConfig,
         TunerConfig,
@@ -126,10 +127,15 @@ def process_and_validate_configs(
     rollout_config = configs.get('rollout_config')
     if rollout_config is not None:
         from .validate import validate_rollout_config
+        # Fold the legacy ``async_generate`` bool into ``async_mode`` BEFORE validation reads it, so
+        # ``async_mode`` is the one source of truth downstream (process modifies, validate only reads).
+        _derive_async_mode(rollout_config)
         # max_turns lives on the RLHFConfig for GRPO and on the multi-turn/reward config for sampling.
         multi_turn_carrier = multi_turn_config if multi_turn_config is not None else configs.get('rlhf_config')
-        # rlhf_config is the training surface _check_async_generate cross-references (None for sampling).
-        validate_rollout_config(rollout_config, multi_turn_carrier, configs.get('rlhf_config'))
+        # rlhf_config is the training surface _check_async_mode cross-references (None for sampling);
+        # tuner_config tells it a full-parameter run from an adapter run (adapter_snapshot needs a LoRA).
+        validate_rollout_config(rollout_config, multi_turn_carrier, configs.get('rlhf_config'),
+                                configs.get('tuner_config'))
     infer_config = configs.get('infer_config')
     if infer_config is not None:
         from .validate import validate_infer_config
@@ -604,6 +610,20 @@ def _derive_bnb_compute_dtype(model_config: 'ModelConfig', quantize_config: Opti
         quantize_config.bnb_4bit_compute_dtype = derived
 
 
+def _derive_async_mode(rollout_config: 'RolloutConfig') -> None:
+    """Fold the legacy ``async_generate`` bool into ``async_mode`` (the one source of truth).
+
+    ``async_generate=True`` predates ``async_mode`` and meant exactly the one-batch-lookahead overlap, so
+    an unset ``async_mode`` inherits ``'one_step_off'`` from it and every downstream consumer (the GRPO /
+    PPO dispatch, ``validate._check_async_mode``) reads only ``async_mode``. When ``async_mode`` is set
+    explicitly it wins and ``async_generate`` is ignored here -- a genuine conflict between the two is
+    rejected by ``validate._check_async_mode`` rather than silently resolved. Idempotent: once
+    ``async_mode`` is no longer ``'none'`` a re-run leaves it unchanged.
+    """
+    if rollout_config.async_generate and rollout_config.async_mode == 'none':
+        rollout_config.async_mode = 'one_step_off'
+
+
 def _derive_rlhf_task_type(model_config: 'ModelConfig', rlhf_config: Optional['RLHFConfig']) -> None:
     """A reward model is a single-logit sequence classifier.
 
@@ -702,15 +722,30 @@ def _derive_grpo_reward_defaults(rlhf_config: Optional['RLHFConfig']) -> None:
     the reward. Deriving both from `advantage_estimator` keeps a user from pairing an estimator with a
     scaling that contradicts it.
 
+    The added estimators follow their twinkle defaults (the ``scale`` each ``Advantage.__call__`` ships
+    with) and verl's KL placement: 'reinforce_plus_plus_baseline' is the Reinforce++ family (batch
+    whitening + KL-in-reward); 'remax'/'opo'/'gpg' center on their own baseline (greedy / length-weighted
+    group / group mean) so they take no extra reward scaling and keep KL as a loss term; 'grpo_passk' is a
+    GRPO variant (group-std normalisation, KL as a loss term).
+
     Only fills in None. The estimator is a closed Literal, so the value always resolves.
     """
     if rlhf_config is None or getattr(rlhf_config, 'rlhf_type', None) != 'grpo':
         return
     estimator = rlhf_config.advantage_estimator
     if rlhf_config.kl_in_reward is None:
-        rlhf_config.kl_in_reward = estimator in ('rloo', 'reinforce_plus_plus')
+        rlhf_config.kl_in_reward = estimator in ('rloo', 'reinforce_plus_plus', 'reinforce_plus_plus_baseline')
     if rlhf_config.scale_rewards is None:
-        rlhf_config.scale_rewards = {'grpo': 'group', 'rloo': 'none', 'reinforce_plus_plus': 'batch'}.get(estimator)
+        rlhf_config.scale_rewards = {
+            'grpo': 'group',
+            'rloo': 'none',
+            'reinforce_plus_plus': 'batch',
+            'reinforce_plus_plus_baseline': 'batch',
+            'remax': 'none',
+            'opo': 'none',
+            'gpg': 'none',
+            'grpo_passk': 'group',
+        }.get(estimator)
 
 
 def _derive_best_model_metric(train_config: 'TrainConfig', rlhf_config: Optional['RLHFConfig']) -> None:

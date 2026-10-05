@@ -196,7 +196,7 @@ def run_mopd(
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
         sampling_params=distill_sampling_params(rlhf_config, generation_config),
-        async_generate=rollout_config.async_generate,
+        async_generate=(rollout_config.async_mode == 'one_step_off'),
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
