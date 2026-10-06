@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import asyncio
 import concurrent.futures
+import inspect
 import os
 from queue import Queue
 from threading import Lock, Thread
@@ -194,9 +195,12 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
-    def _get_toolcall(self, response: str) -> Optional[List[ChatCompletionMessageToolCall]]:
+    def _get_toolcall(self, response: str, tools=None) -> Optional[List[ChatCompletionMessageToolCall]]:
         try:
-            functions = self.template.agent_template.get_toolcall(response)
+            get_toolcall = self.template.agent_template.get_toolcall
+            # Keep compatibility with agent templates that only accept response.
+            kwargs = {'tools': tools} if 'tools' in inspect.signature(get_toolcall).parameters else {}
+            functions = get_toolcall(response, **kwargs)
         except Exception:
             functions = None
         if functions:
