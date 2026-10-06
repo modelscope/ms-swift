@@ -18,8 +18,10 @@ class Xing4_0AgentTemplate(BaseAgentTemplate):
     Observations live in an `<_observation>` turn opened by `<tool_response>`.
     """
 
+    supports_tool_schema = True
+
     @staticmethod
-    def _find_function_call(single_content: str) -> Optional[Function]:
+    def _find_function_call(single_content: str, tool_schemas: Optional[dict] = None) -> Optional[Function]:
         single_content = single_content.strip()
         func_name_match = re.match(r'^([^<]+)', single_content)
         if not func_name_match:
@@ -29,22 +31,33 @@ class Xing4_0AgentTemplate(BaseAgentTemplate):
         values = re.findall(r'<param_value>(.*?)</param_value>', single_content, re.DOTALL)
         if len(keys) != len(values):
             return None
+        properties = (tool_schemas or {}).get(func_name, {}).get('properties', {})
+        if not isinstance(properties, dict):
+            properties = {}
         args = {}
         for key, value in zip(keys, values):
-            value = value.strip()
-            try:
-                # `_format_tool_calls` renders non-string values with `tojson`, so decode them back.
-                value = json.loads(value)
-            except (json.JSONDecodeError, ValueError):
-                pass
-            args[key.strip()] = value
+            key = key.strip()
+            param_schema = properties.get(key, {})
+            param_type = param_schema.get('type') if isinstance(param_schema, dict) else None
+            # The wire format leaves strings unquoted, including JSON-looking strings and whitespace.
+            is_string = param_type == 'string' or param_type == ['string']
+            if param_type in (['string', 'null'], ['null', 'string']):
+                # Bare null is ambiguous; keep decoding it as JSON null.
+                is_string = value.strip() != 'null'
+            if not is_string:
+                try:
+                    value = json.loads(value)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+            args[key] = value
         return Function(name=func_name, arguments=json.dumps(args, ensure_ascii=False))
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
+        tool_schemas = self._get_tool_schemas(tools)
         toolcall_list = re.findall(r'<tool_call>(.*?)</tool_call>', response, re.DOTALL)
         functions = []
         for toolcall in toolcall_list:
-            function = self._find_function_call(toolcall)
+            function = self._find_function_call(toolcall, tool_schemas)
             if function:
                 functions.append(function)
         if len(functions) == 0:

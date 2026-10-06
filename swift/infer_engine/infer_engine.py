@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import asyncio
 import concurrent.futures
+import inspect
 import os
 from queue import Queue
 from threading import Lock, Thread
@@ -9,7 +10,7 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
 from swift.model import get_ckpt_dir
-from swift.template import Template, get_template
+from swift.template import StdTemplateInputs, Template, get_template
 from swift.utils import Processor, ProcessorMixin, get_logger, start_event_loop_in_daemon
 from .base import BaseInferEngine
 from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse,
@@ -194,9 +195,22 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
-    def _get_toolcall(self, response: str) -> Optional[List[ChatCompletionMessageToolCall]]:
+    def _get_toolcall(
+            self,
+            response: str,
+            template_inputs: Optional[StdTemplateInputs] = None) -> Optional[List[ChatCompletionMessageToolCall]]:
         try:
-            functions = self.template.agent_template.get_toolcall(response)
+            agent_template = self.template.agent_template
+            kwargs = {}
+            # Other agent templates and plugins may only accept the response argument.
+            if getattr(agent_template, 'supports_tool_schema', False):
+                try:
+                    inspect.signature(agent_template.get_toolcall).bind(response, tools=None)
+                except (TypeError, ValueError):
+                    pass
+                else:
+                    kwargs['tools'] = getattr(template_inputs, 'tools', None)
+            functions = agent_template.get_toolcall(response, **kwargs)
         except Exception:
             functions = None
         if functions:
