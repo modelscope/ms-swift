@@ -568,6 +568,22 @@ class MessagesPreprocessor(RowPreprocessor):
                 raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
         return ''.join(parts)
 
+    @staticmethod
+    def _align_anthropic_tool_results(tool_uses: List[Dict[str, Any]],
+                                      content: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        # Canonical tool responses are positional, so align a complete result batch
+        # before the tool_use IDs are discarded. Keep incomplete or ID-less batches as-is.
+        call_order = {block.get('id'): i for i, block in enumerate(tool_uses)}
+        end = 0
+        while end < len(content) and content[end].get('type') == 'tool_result':
+            end += 1
+        results = content[:end]
+        if (None not in call_order and len(call_order) == len(tool_uses) == len(results)
+                and set(call_order) == {result.get('tool_use_id')
+                                        for result in results}):
+            content = sorted(results, key=lambda result: call_order[result['tool_use_id']]) + content[end:]
+        return content
+
     @classmethod
     def anthropic_to_messages(cls,
                               messages: List[Dict[str, Any]],
@@ -575,11 +591,16 @@ class MessagesPreprocessor(RowPreprocessor):
         """Convert Anthropic content blocks to the SWIFT canonical roles."""
         media = media if media is not None else {'images': []}
         new_messages = []
+        tool_uses = []
         for message in messages:
             content = message.get('content')
             if not isinstance(content, list):
                 new_messages.append(message)
+                tool_uses = []
                 continue
+            if tool_uses:
+                content = cls._align_anthropic_tool_results(tool_uses, content)
+            tool_uses = [block for block in content if block.get('type') == 'tool_use']
 
             pending_content = []
             message_metadata = {key: message[key] for key in ['loss', 'loss_scale'] if key in message}
