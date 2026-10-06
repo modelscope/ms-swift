@@ -60,6 +60,67 @@ class TestRejectedResponse(unittest.TestCase):
             },
         ])
 
+    def test_direct_openai_tool_preferences(self):
+
+        def call(name, content=False):
+            message = {
+                'role': 'assistant',
+                'tool_calls': [{
+                    'type': 'function',
+                    'function': {
+                        'name': name,
+                        'arguments': '{}'
+                    }
+                }]
+            }
+            if content:
+                message['content'] = None
+            return message
+
+        user = {'role': 'user', 'content': 'What is the weather?'}
+        for chosen in (call('weather'), call('weather', content=True), {'role': 'assistant', 'content': 'Chosen'}):
+            for rejected in ('Unknown', [call('wrong_city')], [call('wrong_city', content=True)]):
+                with self.subTest(chosen=chosen, rejected=rejected):
+                    row = {'messages': [user, chosen], 'rejected_response': rejected}
+                    original = deepcopy(row)
+                    result = TemplateInputs.from_dict(row)
+                    replacement = [{
+                        'role': 'assistant',
+                        'content': rejected
+                    }] if isinstance(rejected, str) else rejected
+                    self.assertEqual(result.chosen.messages,
+                                     TemplateInputs.from_dict({
+                                         'messages': [user, chosen]
+                                     }).chosen.messages)
+                    self.assertEqual(result.rejected.messages,
+                                     TemplateInputs.from_dict({
+                                         'messages': [user] + replacement
+                                     }).chosen.messages)
+                    self.assertEqual(row, original)
+
+    def test_identical_single_response_preferences(self):
+        user = {'role': 'user', 'content': 'Question'}
+        responses = [
+            {
+                'role': 'assistant',
+                'content': 'Answer'
+            },
+            {
+                'role': 'assistant',
+                'tool_calls': [{
+                    'type': 'function',
+                    'function': {
+                        'name': 'weather',
+                        'arguments': '{}'
+                    }
+                }]
+            },
+        ]
+        for response in responses:
+            with self.subTest(response=response):
+                with self.assertRaises(AssertionError):
+                    TemplateInputs.from_dict({'messages': [user, response], 'rejected_response': [deepcopy(response)]})
+
     def test_user_only_boundary(self):
         messages = [
             {
