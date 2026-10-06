@@ -82,7 +82,7 @@ class ClsGenerationPreprocessor(ResponsePreprocessor):
         self.task = task
         self.is_pair_seq = is_pair_seq
 
-        category = ', '.join(labels)
+        self.category = ', '.join(labels)
         self.sentence2_key = 'sentence2'
         self.label_key = 'label'
         if is_pair_seq:
@@ -91,9 +91,9 @@ class ClsGenerationPreprocessor(ResponsePreprocessor):
         else:
             self.sentence_key = 'sentence'
             inputs = 'Sentence: {sentence}'
-        self.prompt = f"""Task: {task}
+        self.prompt = f"""Task: {{task}}
 {inputs}
-Category: {category}
+Category: {{category}}
 Output:"""
         super().__init__(columns=columns, **kwargs)
 
@@ -103,9 +103,13 @@ Output:"""
             return
 
         if self.is_pair_seq:
-            query = self.prompt.format(sentence1=row.pop(self.sentence_key), sentence2=row.pop(self.sentence2_key))
+            query = self.prompt.format(
+                task=self.task,
+                category=self.category,
+                sentence1=row.pop(self.sentence_key),
+                sentence2=row.pop(self.sentence2_key))
         else:
-            query = self.prompt.format(sentence=row.pop(self.sentence_key))
+            query = self.prompt.format(task=self.task, category=self.category, sentence=row.pop(self.sentence_key))
         row['query'] = query
         row['response'] = self.labels[int(label)]
         return super().preprocess(row)
