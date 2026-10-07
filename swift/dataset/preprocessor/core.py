@@ -39,6 +39,13 @@ class RowPreprocessor:
                                 'ref_audios',
                                 'audio_codes',
                             ]
+    # Bump whenever the preprocessed-cache schema or semantics change (e.g. #9214 changed
+    # messages[].loss from float64 to bool and added loss_scale). map_cache files are named
+    # after the *input* fingerprint only, and datasets reuses an existing cache file without
+    # validating it when `cache_file_name` is passed explicitly, so without this tag a newer
+    # ms-swift silently loads caches written by an older, schema-incompatible release.
+    # Same cache-busting approach as Template._version.
+    cache_format_version = 'v2'
 
     def __init__(self,
                  *,
@@ -250,6 +257,10 @@ class RowPreprocessor:
             dataset = dataset._resolve_features()
         return dataset
 
+    def _map_cache_file(self, fingerprint: str) -> str:
+        return os.path.join(get_cache_dir(), 'datasets', 'map_cache',
+                            f'{fingerprint}_{self.cache_format_version}.arrow')
+
     @staticmethod
     def safe_rename_columns(dataset, columns):
         dataset = RowPreprocessor.get_features_dataset(dataset)
@@ -351,8 +362,7 @@ class RowPreprocessor:
         if 'solution' in dataset.features:
             with safe_ddp_context(None, True):
                 if isinstance(dataset, HfDataset) and not dataset.cache_files:
-                    map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
-                                                                 f'{dataset._fingerprint}.arrow')
+                    map_kwargs['cache_file_name'] = self._map_cache_file(dataset._fingerprint)
                 dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
                 map_kwargs.pop('cache_file_name', None)
         dataset = self.safe_rename_columns(dataset, self.origin_columns)
@@ -369,8 +379,7 @@ class RowPreprocessor:
         ignore_max_length_error = True
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             if isinstance(dataset, HfDataset) and not dataset.cache_files:
-                map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
-                                                             f'{dataset._fingerprint}.arrow')
+                map_kwargs['cache_file_name'] = self._map_cache_file(dataset._fingerprint)
             dataset_mapped = dataset.map(
                 self.batched_preprocess,
                 fn_kwargs={
