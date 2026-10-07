@@ -44,9 +44,9 @@ class MiniCPM5AgentTemplate(BaseAgentTemplate):
                 param_value = param_match.group(2) if param_match.group(2) is not None else param_match.group(3)
                 param_schema = properties.get(param_name, {})
                 param_type = param_schema.get('type') if isinstance(param_schema, dict) else None
-                # Both plain and CDATA values leave strings unquoted.
-                is_string = param_type == 'string' or param_type == ['string']
-                if param_type in (['string', 'null'], ['null', 'string']):
+                type_list = param_type if isinstance(param_type, list) else [param_type]
+                is_string = 'string' in type_list
+                if is_string and 'null' in type_list:
                     # Bare null is ambiguous; keep decoding it as JSON null.
                     is_string = param_value.strip() != 'null'
                 if not is_string:
