@@ -166,6 +166,8 @@ print(inputs['loss_scale'])
 
 `rejected_response` 会替换 `messages` 中最后一条 `user` 消息之后的全部消息，组成 `rejected_messages`。请按顺序提供最后一条 `user` 消息之后的完整负例消息序列，包括其中的工具调用和工具返回；这些消息不会自动从正例中保留。如果负例只有一条普通助手回复，可以直接使用字符串，也可以使用只包含该回复的消息列表。消息列表中不能包含 `user` 消息。
 
+每条样本只包含一个正例和一个负例。`rejected_response` 的消息列表描述的是一条完整的负例轨迹（可以包含多条消息，例如工具调用和工具返回），而不是多个备选负例；如果同一个 prompt 需要多个负例，请为每个负例各添加一条样本，并重复 prompt 侧的消息。
+
 ```jsonl
 {"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"天气预报。获取实时空气质量。当前空气质量，PM2.5，PM10信息\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"城市名，例如：上海\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "北京和上海今天的天气情况"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"北京\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"上海\"}}"}, {"role": "tool_response", "content": "{\"city\": \"北京\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"上海\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。"}], "rejected_response": [{"role": "assistant", "content": "我不知道。"}]}
 ```
