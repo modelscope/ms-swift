@@ -16,12 +16,21 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Union
 from swift.template import history_to_messages
 from swift.template.template_inputs import normalize_openai_tool_calls
 from swift.utils import TOOL_KEYS, get_logger, is_dist, is_master, remove_arrow_padding, safe_ddp_context
+from swift.version import __version__
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 logger = get_logger()
 
 _pair_keys = ['messages', 'images', 'videos', 'audios', 'tools', 'objects']
+
+
+def _get_map_cache_file_name(dataset: HfDataset) -> str:
+    # `datasets` trusts an explicit `cache_file_name` as long as it exists, without checking the
+    # arguments that produced it. The preprocessed schema changes between ms-swift versions
+    # (e.g. `loss`, `loss_scale`, the routing `dataset` column), so the version has to be part
+    # of the name; otherwise a cache written by an older version is silently replayed.
+    return os.path.join(get_cache_dir(), 'datasets', 'map_cache', f'{dataset._fingerprint}-{__version__}.arrow')
 
 
 class RowPreprocessor:
@@ -351,8 +360,7 @@ class RowPreprocessor:
         if 'solution' in dataset.features:
             with safe_ddp_context(None, True):
                 if isinstance(dataset, HfDataset) and not dataset.cache_files:
-                    map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
-                                                                 f'{dataset._fingerprint}.arrow')
+                    map_kwargs['cache_file_name'] = _get_map_cache_file_name(dataset)
                 dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
                 map_kwargs.pop('cache_file_name', None)
         dataset = self.safe_rename_columns(dataset, self.origin_columns)
@@ -369,8 +377,7 @@ class RowPreprocessor:
         ignore_max_length_error = True
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             if isinstance(dataset, HfDataset) and not dataset.cache_files:
-                map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
-                                                             f'{dataset._fingerprint}.arrow')
+                map_kwargs['cache_file_name'] = _get_map_cache_file_name(dataset)
             dataset_mapped = dataset.map(
                 self.batched_preprocess,
                 fn_kwargs={
