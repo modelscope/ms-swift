@@ -1,3 +1,5 @@
+> 联合字段训练复现使用 [JOINT_REPRODUCTION.md](JOINT_REPRODUCTION.md) 和 `run_joint.sh`。下文保留历史单字段实验说明，不能混用其训练预算或评测口径。
+
 # Qwen3.5-4B text decision training on Ascend
 
 This example updates all language parameters while freezing vision and its projector. It uses hard-label, full-vocabulary CE at decision positions; this is not LoRA and not a reconstruction of an unpublished training mixture. Use one question per example and preserve option order. Gold labels and teacher probabilities never enter the prompt.
