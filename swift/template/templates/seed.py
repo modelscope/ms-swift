@@ -24,8 +24,12 @@ class SeedTemplate(Template):
             max_length = 0
             for m in inputs.messages:
                 if m['role'] == 'assistant' and m['content']:
-                    if '<think>' in m['content'] and '</think>' in m['content']:
-                        _, think = m['content'].split('<think>', maxsplit=1)
+                    content = m['content']
+                    if isinstance(content, list):
+                        # Merged assistant turn (e.g. narration + tool calls): scan the joined text.
+                        content = ''.join(c for c in content if isinstance(c, str))
+                    if '<think>' in content and '</think>' in content:
+                        _, think = content.split('<think>', maxsplit=1)
                         think, _ = think.split('</think>', maxsplit=1)
                         if think.strip():
                             thinking_token_len = len(self.tokenizer(think)['input_ids'])
@@ -130,8 +134,16 @@ class SeedTemplate(Template):
                         content = message['content']
                         if isinstance(content, list):
                             # Merged assistant segments (e.g. text followed by tool calls) keep their
-                            # loss/loss_scale alignment; the thinking block opens the first segment.
-                            message['content'] = [self._convert_think(content[0], budget, interval)] + content[1:]
+                            # loss/loss_scale alignment. Re-tag think markers in whichever segment
+                            # carries them; only inject the turn-opening block when no segment has any.
+                            if any('<think>' in seg and '</think>' in seg for seg in content if isinstance(seg, str)):
+                                message['content'] = [
+                                    self._convert_think(seg, budget, interval)
+                                    if isinstance(seg, str) and '<think>' in seg and '</think>' in seg else seg
+                                    for seg in content
+                                ]
+                            else:
+                                message['content'] = [self._convert_think(content[0], budget, interval)] + content[1:]
                         else:
                             message['content'] = self._convert_think(content, budget, interval)
 
