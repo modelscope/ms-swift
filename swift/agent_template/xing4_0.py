@@ -40,8 +40,9 @@ class Xing4_0AgentTemplate(BaseAgentTemplate):
             param_schema = properties.get(key, {})
             param_type = param_schema.get('type') if isinstance(param_schema, dict) else None
             # The wire format leaves strings unquoted, including JSON-looking strings and whitespace.
-            is_string = param_type == 'string' or param_type == ['string']
-            if param_type in (['string', 'null'], ['null', 'string']):
+            type_list = param_type if isinstance(param_type, list) else [param_type]
+            is_string = 'string' in type_list
+            if is_string and 'null' in type_list:
                 # Bare null is ambiguous; keep decoding it as JSON null.
                 is_string = value.strip() != 'null'
             if not is_string:
