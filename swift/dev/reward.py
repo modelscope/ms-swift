@@ -99,7 +99,11 @@ class _ScalarRewardModelPlugin:
     def __call__(self, inputs: Sequence[Dict[str, Any]], **kwargs):
         del kwargs
         features = [self.template.encode(copy.deepcopy(row)) for row in inputs]
-        outputs = self.model.forward_only(inputs=features, return_logits=True)
+        # task='seq_cls': this plugin always wraps a num_labels=1 classification head whose forward pools to a
+        # [B, 1] score, NOT vocab logits. Forwarding it as the default 'causal_lm' would make twinkle gather
+        # label logps out of that [B, 1] score (a shape error on transformers, and on megatron it would miss the
+        # seq_cls pooling branch entirely). Passing task='seq_cls' routes both backends through the score head.
+        outputs = self.model.forward_only(inputs=features, return_logits=True, task='seq_cls')
         logits = outputs.get('logits') if isinstance(outputs, dict) else None
         if logits is None:
             raise RuntimeError('reward model forward returned no logits.')

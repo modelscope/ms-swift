@@ -130,7 +130,7 @@ class RolloutSample:
         return self.prompt_id
 
 
-@dataclass
+@dataclass(eq=False)
 class SampleHandle:
     """One in-flight trajectory admitted by :meth:`RolloutEngine.submit_sample` (streaming path).
 
@@ -139,6 +139,13 @@ class SampleHandle:
     (``require_logprobs``), which prompt / which of its ``num_generations`` trajectories this is (so the
     streaming layer can stamp the group id), and the policy version the trajectory was admitted under
     (``policy_version``, from the driver's pin; stamped onto the collected :class:`RolloutSample`).
+
+    Identity is ``submission_id`` (a per-submission uuid4): the streaming driver keys its in-flight map on
+    the handle and ``poll_completions``/``collect_sample``/``cancel_sample`` all look up by
+    ``submission_id``, so ``__hash__``/``__eq__`` are defined on it (``eq=False`` suppresses the dataclass's
+    all-field ``__eq__``, which would also set ``__hash__=None`` and make the handle unhashable -- and a
+    field-wise hash is impossible anyway since ``prompt_extras`` is a dict). Two handles for the same
+    submission are the same trajectory regardless of which process reconstructed them.
     """
     submission_id: str
     prompt_idx: Any
@@ -146,6 +153,12 @@ class SampleHandle:
     prompt_extras: Optional[Dict[str, Any]] = None
     require_logprobs: bool = True
     policy_version: int = 0
+
+    def __hash__(self) -> int:
+        return hash(self.submission_id)
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, SampleHandle) and self.submission_id == other.submission_id
 
 
 def _sampled_token_logprobs(tokens: List[int], logprobs) -> List[float]:

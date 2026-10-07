@@ -273,10 +273,14 @@ def _build_mopd_teachers(model: TrainableModel, rlhf_config: RLHFConfig, teacher
         raise ValueError('MOPD needs at least one teacher: set RLHFConfig.teacher_model to a list of model ids '
                          '(one per domain expert).')
     template = model.template if hasattr(model, 'template') else None
+    # Each of the K teachers is a distinct frozen actor sharing the ONE 'teacher' DeviceGroup, so each needs
+    # a distinct instance_id or their Ray actor names collide: twinkle names an actor by group+class+caller
+    # +rank, and all K builds come from this same call site into the same group at the same rank.
     teachers = [
         build_frozen_teacher(
             rlhf_config, template, model_id, distributed_config=distributed_config, remote_group=_TEACHER_GROUP,
-            teacher_world_size=teacher_world_size, role='teacher') for model_id in teacher_models
+            teacher_world_size=teacher_world_size, role='teacher',
+            instance_id=f'teacher{i}') for i, model_id in enumerate(teacher_models)
     ]
     return MultiTeacher(teachers, _resolve_teacher_weights(rlhf_config.teacher_weights, len(teachers)))
 

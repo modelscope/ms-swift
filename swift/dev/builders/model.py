@@ -109,12 +109,20 @@ def build_model(model_config: ModelConfig,
                 megatron_config: Optional[MegatronConfig] = None,
                 moe_config: Optional[MoEConfig] = None,
                 remote_group: Optional[str] = None,
+                instance_id: Optional[str] = None,
                 enable_router_replay: bool = False) -> TrainableModel:
     """ModelConfig + DistributedConfig -> twinkle-native Model (no loss/optim yet).
 
     ``remote_group`` overrides the Ray DeviceGroup the model is placed in (mode='ray' only);
     it defaults to 'model' so the training path is unchanged, and a frozen reward model can
     target its own dedicated group instead of colliding with the trainable one.
+
+    ``instance_id`` disambiguates two models that share ONE ``remote_group`` (mode='ray' only). twinkle
+    names a Ray actor ``{group}-{class}-{instance_id}{caller_file}_{caller_line}-{rank}``, and every model
+    built here shares the same caller line, so two same-group builds collide on ``ActorAlreadyExistsError``
+    unless they carry distinct ``instance_id``\\ s. PPO's trainable critic (shares the policy's 'model'
+    group) and MOPD's K frozen teachers (share the 'teacher' group) each pass one; a lone model in its group
+    leaves it None and is unaffected.
 
     Thin mapping (no Registry/Factory): model_config fields -> twinkle __init__ kwargs.
     DistributedConfig.backend=='megatron' builds a MegatronModel (via the selected bridge
@@ -152,6 +160,7 @@ def build_model(model_config: ModelConfig,
             megatron_config=megatron_config,
             moe_config=moe_config,
             remote_group=remote_group,
+            instance_id=instance_id,
             enable_router_replay=enable_router_replay)
     return _build_transformers_model(
         model_config,
@@ -161,6 +170,7 @@ def build_model(model_config: ModelConfig,
         device_mesh,
         quantize_config=quantize_config,
         remote_group=remote_group,
+        instance_id=instance_id,
         enable_router_replay=enable_router_replay)
 
 
@@ -389,7 +399,8 @@ def build_ray_dp_mesh(distributed_config: DistributedConfig, sequence_parallel_s
 
 def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig,
                          remote_group: str = 'model',
-                         device_mesh: Optional['DeviceMesh'] = None) -> None:
+                         device_mesh: Optional['DeviceMesh'] = None,
+                         instance_id: Optional[str] = None) -> None:
     """Place the transformers model in a remote DeviceGroup under mode='ray'.
 
     ``device_mesh`` is the caller's mesh when it has one (a frozen reward model built from a
@@ -407,6 +418,12 @@ def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig,
         device_mesh = build_ray_dp_mesh(distributed_config)
     kwargs['device_mesh'] = device_mesh
     kwargs['remote_group'] = remote_group
+    # A per-actor disambiguator for two models that share ONE remote_group (PPO's policy+critic, MOPD's K
+    # teachers): twinkle folds it into the Ray actor name so they do not collide on ActorAlreadyExistsError.
+    # Ray-only by construction -- the local branch returned above, so a torchrun build never carries an
+    # instance_id kwarg its in-process model cannot consume.
+    if instance_id is not None:
+        kwargs['instance_id'] = instance_id
 
 
 def _resolve_model_loader(model_config: ModelConfig):
@@ -570,6 +587,7 @@ def _build_transformers_model(model_config: ModelConfig,
                               megatron_config: Optional[MegatronConfig] = None,
                               moe_config: Optional[MoEConfig] = None,
                               remote_group: Optional[str] = None,
+                              instance_id: Optional[str] = None,
                               enable_router_replay: bool = False) -> TrainableModel:
     import torch
 
@@ -656,7 +674,7 @@ def _build_transformers_model(model_config: ModelConfig,
     # CheckpointEngineManager can weight-sync between (it asserts both have `_actors`+`device_mesh`).
     # A caller-supplied device_mesh (a frozen reward model's parallel_spec) is threaded through and
     # honored; only when there is none does placement synthesize the default pure-DP mesh.
-    _apply_ray_placement(kwargs, distributed_config, remote_group or 'model', device_mesh)
+    _apply_ray_placement(kwargs, distributed_config, remote_group or 'model', device_mesh, instance_id=instance_id)
 
     # MoE routing replay (RLHFConfig.router_replay_mode != 'disabled'): a construction-time flag twinkle's
     # TransformersModel.__init__ pops (enable_router_replay). Set it in the common kwargs so all three
@@ -1132,6 +1150,7 @@ def _build_megatron_model(model_config: ModelConfig,
                            megatron_config: Optional[MegatronConfig] = None,
                            moe_config: Optional[MoEConfig] = None,
                            remote_group: Optional[str] = None,
+                           instance_id: Optional[str] = None,
                            enable_router_replay: bool = False) -> TrainableModel:
     """Build a MegatronModel via the selected bridge backend.
 
@@ -1280,4 +1299,8 @@ def _build_megatron_model(model_config: ModelConfig,
         **extra_kwargs)
     if distributed_config.mode != 'local':
         model_kwargs['remote_group'] = remote_group or 'model'
+        # Same-group actor disambiguator, mirroring the transformers path's _apply_ray_placement (backend
+        # equivalence: a megatron PPO critic / MOPD teacher needs it exactly as a transformers one does).
+        if instance_id is not None:
+            model_kwargs['instance_id'] = instance_id
     return MegatronModel(**model_kwargs)

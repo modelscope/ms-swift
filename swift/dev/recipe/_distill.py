@@ -57,7 +57,8 @@ def build_frozen_teacher(rlhf_config: Any,
                          teacher_world_size: int,
                          adapters: Optional[List[str]] = None,
                          role: str = 'teacher',
-                         offload: bool = False) -> FrozenModelTeacher:
+                         offload: bool = False,
+                         instance_id: Optional[str] = None) -> FrozenModelTeacher:
     """Build one frozen twinkle teacher as a Ray actor on its own DeviceGroup (a ``forward_only`` scorer).
 
     A distillation teacher is always a frozen model actor -- never an HTTP server (no-server / all-Ray
@@ -72,7 +73,9 @@ def build_frozen_teacher(rlhf_config: Any,
     / ``teacher_model_revision`` / ``teacher_deepspeed`` are read off ``rlhf_config`` so a teacher may differ
     in architecture from the student. The template is bound so the teacher encodes a batch identically to
     the student (response tokens align one-to-one). Returned wrapped in a ``FrozenModelTeacher``; ``offload``
-    (GKD's full-vocab memory hook) keeps the teacher on CPU between forwards.
+    (GKD's full-vocab memory hook) keeps the teacher on CPU between forwards. ``instance_id`` disambiguates
+    the K teachers MOPD builds into the ONE shared ``'teacher'`` group -- without it their Ray actor names
+    (group+class+caller+rank) collide; a single-teacher GKD/OPSD build leaves it None.
     """
     from swift.dev.builders import build_model, frozen_auxiliary_distributed_config
     from swift.dev.config import ModelConfig
@@ -90,7 +93,8 @@ def build_frozen_teacher(rlhf_config: Any,
     if rlhf_config.teacher_parallel_spec:
         from twinkle import DeviceMesh
         device_mesh = DeviceMesh.from_spec(rlhf_config.teacher_parallel_spec)
-    teacher = build_model(teacher_cfg, teacher_dist, device_mesh=device_mesh, remote_group=remote_group)
+    teacher = build_model(
+        teacher_cfg, teacher_dist, device_mesh=device_mesh, remote_group=remote_group, instance_id=instance_id)
     configured = configure_frozen_adapter(teacher, template, list(adapters or []), role=role)
     return FrozenModelTeacher(configured, offload=offload)
 

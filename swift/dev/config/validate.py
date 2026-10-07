@@ -54,7 +54,7 @@ def validate_configs(
     _check_streaming(dataset_config, checkpoint_config)
     _check_backend_specific(model_config, dataset_config, train_config, distributed_config, is_megatron, tuner_config)
     _check_galore(train_config, tuner_config)
-    _check_unsloth_strategy(tuner_config, distributed_config, template_config)
+    _check_unsloth_strategy(tuner_config, distributed_config, template_config, is_megatron)
     _check_deepspeed_autotp(distributed_config)
     _check_eval_generation(train_config, template_config, distributed_config)
     _check_megatron_runtime_configs(megatron_config, moe_config, is_megatron)
@@ -682,12 +682,19 @@ _GRPO_LOSS_TYPES = frozenset({
 
 
 def _check_grpo_controls(cfg: 'RLHFConfig') -> None:
+    # cfg.loss_type is Optional[List[str]]; a GRPO run names at most one variant (enforced in
+    # _check_grpo_loss_type) and 'grpo' is the resolver's fallback when it is unset (loss/configure.py).
+    loss_type = cfg.loss_type[0] if cfg.loss_type else 'grpo'
     grpo_only = bool(
         cfg.log_completions or cfg.num_iterations != 1 or cfg.delta is not None
         or cfg.importance_sampling_level != 'token' or cfg.overlong_filter or cfg.log_entropy
         or cfg.top_entropy_quantile != 1.0 or cfg.rollout_importance_sampling_mode
         or cfg.log_rollout_offpolicy_metrics or cfg.off_policy_sequence_mask_delta is not None
-        or loss_type in _GRPO_LOSS_TYPES)
+        # A GRPO-SPECIFIC variant named on a non-GRPO run. The plain 'grpo' default is excluded on purpose:
+        # it is the fallback for an UNSET loss_type, so counting it would flag every dpo/kto/cpo/... run
+        # (whose loss_type is None -> 'grpo') as carrying a GRPO-only control. _check_grpo_loss_type, by
+        # contrast, DOES accept 'grpo' -- the two gates key off the same constant with different intents.
+        or (loss_type in _GRPO_LOSS_TYPES and loss_type != 'grpo'))
     if cfg.rlhf_type != 'grpo':
         if grpo_only:
             raise ValueError('GRPO clipping, replay, entropy, FIPO, and completion logging controls are GRPO-only.')
@@ -1128,7 +1135,7 @@ def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedCon
 
 
 def _check_unsloth_strategy(tuner_config: Optional['TunerConfig'], distributed_config: 'DistributedConfig',
-                            template_config: 'TemplateConfig') -> None:
+                            template_config: 'TemplateConfig', is_megatron: bool = False) -> None:
     """Refuse the strategies unsloth cannot co-exist with.
 
     unsloth rebuilds the module graph around a causal-LM checkpoint and compiles its own Triton
@@ -1136,9 +1143,26 @@ def _check_unsloth_strategy(tuner_config: Optional['TunerConfig'], distributed_c
     sequence across ranks (Ulysses SP) either wraps a graph unsloth has already rewritten or feeds its
     fused kernels a sequence shard they do not expect. Each combination is refused here rather than left
     to crash inside unsloth's patcher or silently train an unsharded replica.
+
+    The megatron backend is refused for the same reason, and because the silence there is total: unsloth
+    is wired ONLY into the transformers build (``builders/model.py`` swaps in ``UnslothModel`` on the
+    ``_build_transformers_model`` path), while ``_build_megatron_model`` never reads ``tuner_backend`` and
+    ``adapter._build_adapter_config`` keys off ``tuner`` alone -- so a megatron run with
+    ``tuner_backend='unsloth'`` would build a plain ``MegatronModel`` and a stock peft LoRA, silently
+    dropping the unsloth kernels the user asked for. Megatron shards weights across TP/PP under its own
+    parameter names, a layout unsloth's module-graph rebuild cannot wrap, so the pairing is infeasible
+    rather than merely unwired; fail loudly and point at the megatron-native LoRA (``tuner_backend='peft'``).
     """
     if tuner_config is None or getattr(tuner_config, 'tuner_backend', None) != 'unsloth':
         return
+    if is_megatron:
+        raise NotImplementedError(
+            'tuner_backend="unsloth" cannot run on the megatron backend: unsloth rebuilds a transformers '
+            'causal-LM module graph and compiles Triton kernels for whole, unsharded weights, while megatron '
+            'shards weights across TP/PP ranks under its own parameter names. The megatron build never reads '
+            'tuner_backend, so this would silently fall back to a stock peft LoRA and drop the unsloth '
+            'kernels. Use tuner_backend="peft" for megatron LoRA, or switch DistributedConfig.backend to '
+            'transformers to use unsloth.')
     if distributed_config.deepspeed:
         raise NotImplementedError(
             'tuner_backend="unsloth" cannot run under DeepSpeed: unsloth installs its own kernels and module '

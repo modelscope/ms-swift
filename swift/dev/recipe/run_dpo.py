@@ -527,6 +527,15 @@ class PreferenceLoop:
                 for rows in self.dataloader:
                     self.micro_step += 1
                     kwargs: Dict[str, Any] = {'gradient_accumulation_steps': ga}
+                    if self._is_reward:
+                        # RM trains a num_labels=1 seq_cls score head, not a vocab LM head. The forward must
+                        # be told task='seq_cls' so the backend pools the head's per-token output to one
+                        # [B, 1] score per sequence (megatron does this in forward_step's seq_cls branch;
+                        # transformers' *ForSequenceClassification pools internally). Without it the megatron
+                        # forward defaults to task='causal_lm' and RewardLoss reads raw [B, T, 1] per-token
+                        # scores -> garbage. Same explicit task the RM inference paths pass (reward.py /
+                        # run_ppo.py), so both backends are driven identically (basic principle 1).
+                        kwargs['task'] = 'seq_cls'
                     if self.rlhf_type == 'kto':
                         features = self._kto_step_kwargs(list(rows), kwargs)
                     else:

@@ -98,8 +98,43 @@ class DevMixin:
         return encoded
 
     def get_vllm_input_ids(self, input_ids):
-        """Return the token ids consumed by vLLM for text-only dev rollout."""
-        return input_ids
+        """Return the token ids consumed by vLLM for dev rollout.
+
+        A text-only template has no media pads, so this is the identity. A Qwen-VL-family template's
+        ``_encode`` is the opposite of what vLLM wants: it EXPANDS each ``<image>`` placeholder to
+        ``image_grid_thw.prod() // merge_size**2`` ``<|image_pad|>`` tokens -- the training
+        representation, whose pad count is frozen against the ``pixel_values`` / ``image_grid_thw`` it
+        ships with. vLLM instead expects a SINGLE placeholder per image plus the image itself in
+        ``multi_modal_data``, and re-expands that placeholder from its own grid. Handing it the
+        already-expanded run makes it expand one pad and leave the other ``N-1`` in place (``2N-1``
+        pads), so ``response.prompt_token_ids`` no longer matches ``input_ids`` and the sampler's
+        length guard raises (``Input ids length 33 does not match prompt_token_ids length 36`` for a
+        4-pad image). Collapse each run of media pads back to a single pad -- the exact inverse of the
+        encode expansion, mirroring twinkle's ``Qwen3_5Template.get_vllm_input_ids`` -- so vLLM
+        re-expands to precisely the encoded count: the grid the template froze and the one vLLM
+        recomputes from the same image are identical, so ``prompt_token_ids == input_ids`` token-for-
+        token and the vision tensors lifted off ``new_input_feature`` still align with the rebuilt
+        ``input_ids``. ``image_token_id`` / ``video_token_id`` are the legacy Qwen-VL class attrs; a
+        template without them is text-only and returns its ids untouched.
+        """
+        image_token_id = getattr(self, 'image_token_id', None)
+        if image_token_id is None:
+            return input_ids
+        media_pad_ids = {image_token_id}
+        video_token_id = getattr(self, 'video_token_id', None)
+        if video_token_id is not None:
+            media_pad_ids.add(video_token_id)
+        result: List[int] = []
+        prev_pad = None
+        for token in input_ids:
+            if token in media_pad_ids:
+                if token == prev_pad:
+                    continue  # collapse a consecutive same-media pad run to its first token
+                prev_pad = token
+            else:
+                prev_pad = None
+            result.append(token)
+        return result
 
     def concat_input_feature(self,
                              prompt_input_feature,

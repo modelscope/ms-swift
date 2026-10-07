@@ -303,7 +303,12 @@ def _build_value_model(model_config: ModelConfig, rlhf_config: RLHFConfig, distr
         distributed_config,
         train_config,
         megatron_config=megatron_config,
-        moe_config=moe_config)
+        moe_config=moe_config,
+        # The critic shares the policy's 'model' DeviceGroup (it MUST: policy+critic slice_dp each
+        # forward_backward at the same data_world_size), so it needs a distinct instance_id or its Ray
+        # actor name collides with the policy's -- both are built from the same builders/model.py line
+        # into the same group, and twinkle names the actor by group+class+caller+rank.
+        instance_id='value')
     value_model.set_processor(InputProcessor, cp_partition_mode=distributed_config.cp_partition_mode)
     value_model.set_template(template)
     return value_model
@@ -468,7 +473,12 @@ class PPOLoop:
         features = [s.input_feature for s in samples]
         totals = [0.0] * len(samples)
         for rm in self.reward_models:
-            scores = rm.forward_only(inputs=features, return_logits=True)['logits'].reshape(-1).tolist()
+            # task='seq_cls': the reward model is a num_labels=1 classification head whose forward pools to a
+            # [B, 1] score, NOT vocab logits. Forwarding it as the default 'causal_lm' would make twinkle
+            # gather label logps out of that [B, 1] score (a shape error) -- the samples carry the policy's
+            # labeled features, so labels is not None and the logps path would otherwise fire.
+            scores = rm.forward_only(inputs=features, return_logits=True,
+                                     task='seq_cls')['logits'].reshape(-1).tolist()
             totals = [t + float(s) for t, s in zip(totals, scores)]
         return [t / len(self.reward_models) for t in totals]
 
