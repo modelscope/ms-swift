@@ -180,5 +180,192 @@ class TestGetLastUserRoundIncludeTool(unittest.TestCase):
             )
 
 
+class TestQwen3_5ToolCallMergesPreAssistant(unittest.TestCase):
+    """`_preprocess_tool_call` must fold the preceding assistant message into
+    the merged tool_call turn when the prefix re-emits its content (#10259).
+
+    Leaving both in place renders the assistant content — reasoning
+    included — twice, which is what the upstream reviewer measured against
+    the official jinja (9 of 13 samples mismatched, all with the reasoning
+    duplicated). Templates whose prefix emits only a separator or a channel
+    token must keep the preceding message as its own turn.
+    """
+
+    def setUp(self):
+        self.tpl = agent_template_map['qwen3_5']()
+
+    def _run(self, messages, template_name='qwen3_5', pre=None):
+        import swift.template.base as base
+        agent = agent_template_map[template_name]()
+
+        class _Inputs:
+            pass
+
+        inputs = _Inputs()
+        inputs.tools = None
+        inputs.messages = [dict(m) for m in messages]
+        shim = Template.__new__(Template)
+        shim._agent_template = template_name
+        shim._agent_template_cache = {template_name: agent}
+        shim.template_meta = None
+        agent.template_meta = None
+        shim._preprocess_tool_call(inputs)
+        return inputs.messages
+
+    def _tool_call_msg(self):
+        return {
+            'role': 'tool_call',
+            'content': json.dumps({
+                'name': 'search',
+                'arguments': {
+                    'query': 'stock'
+                },
+            }),
+        }
+
+    def test_think_and_tool_call_render_assistant_content_once(self):
+        reasoning = '<think>\nCheck the stock quote first.\n</think>\n\nLet me look it up.'
+        messages = [{
+            'role': 'user',
+            'content': 'How is NVDA?'
+        }, {
+            'role': 'assistant',
+            'content': reasoning
+        },
+                    self._tool_call_msg(), {
+                        'role': 'tool',
+                        'content': 'NVDA +2%'
+                    }, {
+                        'role': 'assistant',
+                        'content': 'NVDA is up 2 percent.'
+                    }]
+
+        out = self._run(messages)
+
+        roles = [m['role'] for m in out]
+        self.assertEqual(len(out), 4, msg=f'expected user + merged assistant + tool + answer, got {roles}')
+        merged = out[1]
+        self.assertEqual(merged['role'], 'assistant')
+        count = merged['content'].count(reasoning)
+        self.assertEqual(
+            count,
+            1,
+            msg=(f'assistant content (with reasoning) must render exactly once; got '
+                 f'{count} occurrences: {merged["content"]!r}'),
+        )
+        self.assertIn('<tool_call>', merged['content'])
+        # The separator stays when effective post-think text exists.
+        self.assertIn('\n\n<tool_call>', merged['content'])
+        # The reasoning lands before the tool call, matching the jinja.
+        self.assertLess(merged['content'].index(reasoning), merged['content'].index('<tool_call>'))
+
+    def test_pure_reasoning_turn_keeps_reasoning_without_separator(self):
+        reasoning = '<think>\nThe input is complete; call the tool directly.\n</think>'
+        messages = [{
+            'role': 'user',
+            'content': 'Search the stock'
+        }, {
+            'role': 'assistant',
+            'content': reasoning
+        },
+                    self._tool_call_msg()]
+
+        out = self._run(messages)
+
+        self.assertEqual([m['role'] for m in out], ['user', 'assistant'])
+        self.assertEqual(out[1]['content'].count(reasoning), 1)
+        self.assertIn('<tool_call>', out[1]['content'])
+        self.assertNotIn(
+            '\n\n<tool_call>',
+            out[1]['content'],
+            msg='a pure-reasoning turn emits the tool_call directly after, without \\n\\n',
+        )
+
+    def test_absorbed_pre_message_loss_fields_carry_over(self):
+        messages = [{
+            'role': 'user',
+            'content': 'Search'
+        }, {
+            'role': 'assistant',
+            'content': 'Let me search.',
+            'loss': 1,
+            'loss_scale': 'default'
+        },
+                    self._tool_call_msg(), {
+                        'role': 'tool',
+                        'content': 'NVDA +2%'
+                    }]
+
+        out = self._run(messages)
+
+        merged = out[1]
+        self.assertEqual(len(out), 3)
+        self.assertEqual(merged.get('loss'), 1, msg='the folded assistant turn keeps its own loss field')
+        self.assertEqual(merged.get('loss_scale'), 'default')
+
+    def test_prefix_only_templates_keep_pre_message_as_own_turn(self):
+        for name in ('deepseek_v4', 'kimi_k3'):
+            messages = [{
+                'role': 'user',
+                'content': 'Search'
+            }, {
+                'role': 'assistant',
+                'content': 'Let me search.'
+            },
+                        self._tool_call_msg(), {
+                            'role': 'tool',
+                            'content': 'NVDA +2%'
+                        }]
+
+            out = self._run(messages, template_name=name)
+
+            self.assertEqual(
+                [m['role'] for m in out],
+                ['user', 'assistant', 'assistant', 'tool'],
+                msg=(f'{name} uses a prefix-only hook: the preceding assistant message must '
+                     'survive as its own turn'),
+            )
+            self.assertNotEqual(
+                out[1]['content'],
+                out[2]['content'],
+                msg=f'{name} must not duplicate the assistant content into the tool turn',
+            )
+
+    def test_absorbs_flag_matches_prefix_consumption(self):
+        template = agent_template_map['qwen3_5']()
+        cases = [
+            (None, False),
+            ({
+                'role': 'user',
+                'content': 'hi'
+            }, False),
+            ({
+                'role': 'assistant',
+                'content': ''
+            }, False),
+            ({
+                'role': 'assistant',
+                'content': 'text'
+            }, True),
+            ({
+                'role': 'assistant',
+                'content': ['not', 'a', 'string']
+            }, False),
+        ]
+        for pre_message, expected in cases:
+            with self.subTest(pre_message=pre_message):
+                self.assertEqual(template._tool_call_prefix_absorbs_content(pre_message), expected)
+        # The graft is generic; only qwen3_5 opts in on these templates.
+        for name in ('deepseek_v4', 'kimi_k3', 'qwen3_coder'):
+            agent = agent_template_map[name]()
+            self.assertFalse(
+                agent._tool_call_prefix_absorbs_content({
+                    'role': 'assistant',
+                    'content': 'text'
+                }),
+                msg=f'{name} must keep the default (no absorption)',
+            )
+
+
 if __name__ == '__main__':
     unittest.main()

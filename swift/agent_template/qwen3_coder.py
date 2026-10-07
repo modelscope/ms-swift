@@ -194,6 +194,18 @@ class Qwen3_5AgentTemplate(Qwen3CoderAgentTemplate):
         # reasoning and emit the tool_call directly after, matching jinja.
         return content + tool_content
 
+    def _tool_call_prefix_absorbs_content(self, pre_message) -> bool:
+        """Qwen3.5/3.6 re-emits the preceding assistant content verbatim
+        (reasoning included), so the encoder must fold the preceding message
+        into the merged tool_call turn — otherwise every tool-call turn
+        renders its assistant content twice (measured on #10259: 9 of 13
+        samples mismatch the official jinja with the reasoning duplicated).
+        """
+        if not pre_message or pre_message.get('role') != 'assistant':
+            return False
+        content = pre_message.get('content', '')
+        return isinstance(content, str) and bool(content)
+
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]
         tools_prompt = """# Tools

@@ -365,8 +365,19 @@ class Template(ProcessorMixin):
                     for key in ['loss', 'loss_scale']:
                         if key in msg and key not in merged_message:
                             merged_message[key] = msg[key]
-                messages[i_start:i + 1] = [merged_message]
-                i = i_start + 1
+                # A prefix that re-emits the preceding assistant content must not leave the
+                # original message in place, or that content renders twice: the merged turn
+                # replaces both the preceding assistant message and the tool_call block.
+                if (pre_message is not None and pre_message['role'] == 'assistant'
+                        and agent_template._tool_call_prefix_absorbs_content(pre_message)):
+                    for key in ['loss', 'loss_scale']:
+                        if key in pre_message and key not in merged_message:
+                            merged_message[key] = pre_message[key]
+                    messages[i_start - 1:i + 1] = [merged_message]
+                    i = i_start
+                else:
+                    messages[i_start:i + 1] = [merged_message]
+                    i = i_start + 1
             else:
                 i += 1
 
