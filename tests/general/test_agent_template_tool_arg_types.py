@@ -11,7 +11,6 @@ below use adversarial values (``'false'``, ``'123'``, ``'{"a":1}'``, ``'  spaced
 xing4_0 and minicpm5 share the same discrimination logic, so both are exercised over every case.
 """
 import json
-
 import pytest
 
 from swift.agent_template import agent_template_map
@@ -25,12 +24,12 @@ CASES = [
     (['string', 'null'], 'false', 'false'),
     (['string', 'null'], 'null', None),
     (['null', 'string'], 'null', None),
-    (['string', 'integer'], 'false', 'false'),         # union, not the old hard-coded pair
-    (['integer', 'string'], '123', '123'),             # union in the other order
+    (['string', 'integer'], 'false', 'false'),  # union, not the old hard-coded pair
+    (['integer', 'string'], '123', '123'),  # union in the other order
     (['null', 'string', 'number'], 'false', 'false'),  # three-element union
     (['null', 'string', 'number'], 'null', None),
     (['string', 'boolean'], 'true', 'true'),
-    ('MISSING', 'false', False),                       # no type -> best-effort json.loads
+    ('MISSING', 'false', False),  # no type -> best-effort json.loads
     ('MISSING', 'beijing', 'beijing'),
     ('integer', '123', 123),
 ]
@@ -44,7 +43,9 @@ def _make_tools(type_decl):
             'name': 'get_weather',
             'parameters': {
                 'type': 'object',
-                'properties': {'city': prop}
+                'properties': {
+                    'city': prop
+                }
             }
         }
     }]
