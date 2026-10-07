@@ -241,10 +241,9 @@ class TemplateInputs:
             # OpenAI tool calls can omit content; compare their canonical responses.
             responses = normalize_openai_tool_calls(messages[idx:])
             rejected = normalize_openai_tool_calls(rejected_responses)
-            if len(responses) == 1 and len(rejected) == 1:
-                response = responses[0]['content']
-                rejected_response = rejected[0]['content']
-                assert rejected_response != response, f'rejected_response: {rejected_response}, response: {response}'
+            response = [message['content'] for message in responses]
+            rejected_response = [message['content'] for message in rejected]
+            assert rejected_response != response, f'rejected_response: {rejected_response}, response: {response}'
         inputs['rejected_messages'] = deepcopy(messages[:idx]) + rejected_responses
 
     @classmethod

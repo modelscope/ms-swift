@@ -121,6 +121,43 @@ class TestRejectedResponse(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     TemplateInputs.from_dict({'messages': [user, response], 'rejected_response': [deepcopy(response)]})
 
+    def test_text_and_tool_call_preferences(self):
+        user = {'role': 'user', 'content': 'Question'}
+        for count in (1, 2):
+            chosen = {
+                'role':
+                'assistant',
+                'content':
+                'Checking weather',
+                'tool_calls': [{
+                    'type': 'function',
+                    'function': {
+                        'name': f'weather_{index}',
+                        'arguments': '{}'
+                    }
+                } for index in range(count)]
+            }
+            for change in ('identical', 'metadata', 'text', 'first_call', 'last_call'):
+                with self.subTest(count=count, change=change):
+                    rejected = deepcopy(chosen)
+                    if change == 'metadata':
+                        rejected.update(loss=False, loss_scale=0.)
+                    elif change == 'text':
+                        rejected['content'] = 'Checking another city'
+                    elif change in ('first_call', 'last_call'):
+                        index = 0 if change == 'first_call' else -1
+                        rejected['tool_calls'][index]['function']['name'] = 'wrong_city'
+                    row = {'messages': [user, chosen], 'rejected_response': [rejected]}
+                    original = deepcopy(row)
+                    if change in ('identical', 'metadata'):
+                        with self.assertRaises(AssertionError):
+                            TemplateInputs.from_dict(row)
+                    else:
+                        result = TemplateInputs.from_dict(row)
+                        expected = TemplateInputs.from_dict({'messages': [user, rejected]})
+                        self.assertEqual(result.rejected.messages, expected.chosen.messages)
+                    self.assertEqual(row, original)
+
     def test_user_only_boundary(self):
         messages = [
             {
