@@ -379,7 +379,17 @@ class TrainLoop:
         self._pre_metric_step()
         metrics = self.model.calculate_metric(is_training=True)
         loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
-        record = {'step': self.global_step, 'loss': loss}
+        # twinkle.metric is the single source of every algorithm metric: merge the WHOLE component output
+        # (loss / grad_norm / lr / iters / accuracy, plus whatever algorithm metric the recipe registered via
+        # model.add_metric -- DPOMetric, GRPOMetric, PPOValueMetric, DistillMetric, ...) into this step's
+        # record, coerced to numeric scalars so both the tracker and the console step line can consume it.
+        # ``loss`` is then re-pinned as the normalized float (authoritative for nan-filtering + the console),
+        # and _extra_step_metrics only adds driver-side channels the model cannot see (GRPO/RFT's reward,
+        # megatron's drained MTP, the streaming loop's async version-spans).
+        from swift.dev.recipe.tracking import coerce_metric_scalars
+        record = {'step': self.global_step}
+        record.update(coerce_metric_scalars(metrics))
+        record['loss'] = loss
         record.update(self._extra_step_metrics(metrics))
         record = self.tracker.log(record, self.global_step)
         self.history.append(record)
@@ -857,15 +867,13 @@ class SFTLoop(TrainLoop):
             'would loop empty epochs forever.')
 
     def _extra_step_metrics(self, metrics: dict) -> dict:
-        """grad_norm + every per-channel ``loss_*`` term + this step's drained MTP metrics."""
-        extra: dict = {}
-        if metrics.get('grad_norm') is not None:
-            extra['grad_norm'] = float(metrics['grad_norm'])
-        for key, value in metrics.items():
-            if key.startswith('loss_'):
-                extra[key] = float(value)
-        extra.update(self._mtp_metrics())
-        return extra
+        """This step's drained MTP metrics.
+
+        ``grad_norm`` and every per-channel ``loss_*`` term already reach the record through the base
+        full-merge of ``calculate_metric`` (LossMetric emits both), so only the MTP channel -- which megatron
+        tracks outside twinkle's Metric objects and must be drained per step -- is folded in here.
+        """
+        return self._mtp_metrics()
 
     def _post_record(self, record: dict, loss: float) -> None:
         """Publish this step's loss/record onto the shared CallbackState before any event fires."""

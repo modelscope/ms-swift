@@ -711,13 +711,23 @@ class TrainAssembly:
     def resume_only_model(self) -> bool:
         return bool(self.checkpoint_config and self.checkpoint_config.resume_only_model)
 
-    def fit(self, configure_loss: Callable[[Any], None], *, save_final: bool = True) -> List[dict]:
+    def fit(self,
+            configure_loss: Callable[[Any], None],
+            *,
+            configure_metric: Optional[Callable[[Any], None]] = None,
+            save_final: bool = True) -> List[dict]:
         """Run every stage in the locked order and train. Returns the loss/grad_norm history.
 
         ``configure_loss`` is the one thing a training recipe genuinely owns -- which objective this
         run optimises -- so it arrives as a callable taking the built model. It is invoked between
         the model and the optimizer because the optimizer must see the loss's parameters (a loss may
         add its own), and after the tuner for the optimizer-group reason above.
+
+        ``configure_metric`` is the optional peer for a recipe's algorithm-specific twinkle.metric component
+        (embedding's ``EmbeddingMetric``; the RL recipes register theirs directly because they drive the staged
+        build themselves). It runs AFTER ``configure_optimizer`` because twinkle's ``add_metric`` appends onto
+        the active optimizer group's metric list, which does not exist until the group is built. ``None`` (the
+        SFT / seq_cls / reranker default) registers nothing beyond twinkle's built-in LossMetric + Accuracy.
 
         ``save_final`` writes a final checkpoint after training (periodic saves are governed by
         ``save_steps``). Passing False is test-oriented: it yields the loss trajectory without a
@@ -739,6 +749,8 @@ class TrainAssembly:
             self.train_config,
             num_training_steps=self.total_opt_steps,
             distributed_config=self.distributed_config)
+        if configure_metric is not None:
+            configure_metric(self.model)
         self.build_loop()
 
         history = self.loop.fit()

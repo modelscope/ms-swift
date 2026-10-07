@@ -6,8 +6,12 @@
 # / negative_messages layout as embedding. `--task_type generative_reranker` is the alternative that
 # scores off the vocab head instead of a dedicated cross-encoder head.
 #
-# The scoring head is freshly initialized, so this trains FULL parameters (`--tuner full`). The dataset
-# is the tiny bundled sample; for a real run use a reranking set such as `MTEB/scidocs-reranking`.
+# The scoring head is freshly initialized, so this trains FULL parameters (`--tuner full`). Dataset:
+# `scidocs-reranking#2000` is a REAL hub set -- the MTEB SciDocs reranking benchmark, whose rows the loader
+# turns into a query `messages` plus `positive_messages` (relevant docs) and `negative_messages` (irrelevant
+# ones), exactly the pointwise_reranker layout. Reference it by the REGISTERED name (`scidocs-reranking`), NOT
+# the raw `MTEB/scidocs-reranking` id, so the reranking preprocessor emits those two columns. OFFLINE fallback
+# (no hub): the bundled `examples/v5/train/data/reranker.jsonl`.
 CUDA_VISIBLE_DEVICES=0 \
 USE_SWIFT_V5=1 \
 swift sft \
@@ -15,7 +19,7 @@ swift sft \
     --task_type reranker \
     --loss pointwise_reranker \
     --torch_dtype bfloat16 \
-    --dataset examples/v5/train/data/reranker.jsonl \
+    --dataset 'scidocs-reranking#2000' \
     --tuner full \
     --num_train_epochs 3 \
     --per_device_train_batch_size 2 \
@@ -26,5 +30,6 @@ swift sft \
     --max_length 512 \
     --logging_steps 1 \
     --save_steps 100 \
+    --save_total_limit 2 \
     --output_dir output \
     --report_to tensorboard

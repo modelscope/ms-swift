@@ -605,6 +605,94 @@ def configure_ppo_value_loss(value_model: TrainableModel, rlhf_config: 'RLHFConf
     value_model.set_loss(loss_cls(cliprange_value=rlhf_config.cliprange_value, vf_coef=rlhf_config.vf_coef))
 
 
+def configure_rlhf_metrics(model: TrainableModel, rlhf_config: 'RLHFConfig') -> None:
+    """Register the algorithm-specific twinkle.metric component on ``model`` for this rlhf_type.
+
+    Peer of :func:`configure_rlhf_loss`, for the metric side. Every recipe's per-step loss already flows
+    through twinkle's default ``LossMetric`` (loss / grad_norm / loss_<channel>), which the loop's unified
+    record merge surfaces; this adds ONLY the algorithm-specific component the loss cannot express -- the
+    GRPO family's ratio/clip/entropy stats, the DPO family's rewards/margins/accuracies, PPO's policy
+    stats. Registered on the model (not held by the loop) so twinkle accumulates it automatically inside
+    ``forward_backward`` from the same forward kwargs the loss sees (``old_logps``/``advantages`` for GRPO,
+    ``ref_logps`` for DPO), and ``model.calculate_metric`` returns it.
+
+    MUST be called AFTER ``configure_optimizer``: twinkle's ``add_metric`` appends onto the active
+    optimizer group's metric list, which does not exist until the group is built.
+
+    Metric classes are passed as CLASS objects, never name strings -- a str reaching twinkle's
+    ``construct_class`` is routed to ``Plugin.load_plugin`` (hub download), which is exactly what
+    ``test_no_name_string_is_handed_to_twinkles_loader`` forbids.
+
+    rlhf_types with no algorithm component (deliberate no-ops):
+      - ``gkd`` / ``opsd`` / ``mopd``: the training loss IS the teacher-student divergence (JSD / k3), so
+        ``LossMetric`` already surfaces it; a separate distill component would recompute the same quantity.
+      - ``kto``: unpaired (one completion + a binary label), so it does not fit DPOMetric's interleaved
+        chosen/rejected contract.
+      - ``rm``: a num_labels=1 seq_cls score head, not a paired LM objective.
+    """
+    from twinkle.metric import CISPOMetric, DPOMetric, GRPOMetric, GSPOMetric, PPOMetric
+
+    rlhf_type = rlhf_config.rlhf_type
+    if rlhf_type == 'grpo':
+        # Mirror configure_rlhf_loss's variant resolution: the metric's clip statistic must match the
+        # loss's (GSPO clips a per-sequence geometric-mean ratio; CISPO clips unconditionally).
+        grpo_loss_type = rlhf_config.loss_type[0] if rlhf_config.loss_type else 'grpo'
+        metric_cls = {'gspo': GSPOMetric, 'cispo': CISPOMetric}.get(grpo_loss_type, GRPOMetric)
+        kwargs: Dict[str, Any] = {'epsilon': rlhf_config.epsilon, 'temperature': rlhf_config.temperature}
+        if rlhf_config.epsilon_high is not None:
+            kwargs['epsilon_high'] = rlhf_config.epsilon_high
+        model.add_metric(metric_cls, is_training=True, **kwargs)
+    elif rlhf_type == 'ppo':
+        # PPO's policy loss is the shared clipped surrogate with clip range ``cliprange`` (see
+        # configure_rlhf_loss); PPOMetric reports the same token-level ratio/clip stats.
+        model.add_metric(
+            PPOMetric, is_training=True, epsilon=rlhf_config.cliprange, temperature=rlhf_config.temperature)
+    elif rlhf_type in ('dpo', 'cpo', 'orpo', 'simpo'):
+        # Paired preference objectives: DPOMetric surfaces logps/chosen|rejected and (with a reference)
+        # rewards/margins|accuracies. Forward beta only when set so twinkle's default stands otherwise.
+        kwargs = {'beta': rlhf_config.beta} if rlhf_config.beta is not None else {}
+        model.add_metric(DPOMetric, is_training=True, **kwargs)
+    # gkd / opsd / mopd / kto / rm: no algorithm-specific component (see the docstring).
+
+
+def configure_ppo_value_metric(value_model: TrainableModel, rlhf_config: 'RLHFConfig') -> None:
+    """Register ``PPOValueMetric`` on PPO's critic (peer of :func:`configure_ppo_value_loss`).
+
+    Surfaces value_mean / return_mean / value_clip_ratio / explained_variance from the same
+    ``returns``/``old_values`` the value loss reads. MUST be called after the critic's
+    ``configure_optimizer`` (see :func:`configure_rlhf_metrics`).
+    """
+    from twinkle.metric import PPOValueMetric
+
+    value_model.add_metric(PPOValueMetric, is_training=True, epsilon=rlhf_config.cliprange_value)
+
+
+def configure_embedding_metric(model: TrainableModel) -> None:
+    """Register twinkle's ``EmbeddingMetric`` on an embedding (InfoNCE/contrastive) model.
+
+    The embedding counterpart of :func:`configure_rlhf_metrics`: the contrastive loss alone is an opaque
+    scalar, so this surfaces the geometry that actually shows an embedding model converging -- ``pos_sim``
+    (anchor-positive cosine, should RISE) and ``neg_sim`` (anchor vs in-batch negatives, should stay flat or
+    FALL), the head signal twinkle's own embedding cookbook reads. twinkle auto-registers ``LossMetric`` +
+    ``Accuracy`` + ``TrainMetric`` on every model, but ``Accuracy`` is a no-op here (embeddings carry no class
+    label), so without this the record would hold only ``loss``.
+
+    MUST be called AFTER ``configure_optimizer`` (twinkle's ``add_metric`` appends onto the active optimizer
+    group's metric list, which does not exist until the group is built) -- the same contract as
+    :func:`configure_rlhf_metrics`, which is why the recipe threads it through ``TrainAssembly.fit``'s
+    ``configure_metric`` hook rather than the (pre-optimizer) ``configure_loss`` callable.
+
+    Passed as a CLASS object, never a name string (a str reaching twinkle's ``construct_class`` is routed to
+    ``Plugin.load_plugin`` -- the hub download ``test_no_name_string_is_handed_to_twinkles_loader`` forbids).
+    ``EmbeddingMetric`` also reports ``loss``/``grad_norm``; for embeddings those coincide with ``LossMetric``'s
+    (per-sequence losses report ``num_tokens=0``, so ``LossMetric`` falls back to the same ``total/count`` mean),
+    and ``_record_step`` re-pins the authoritative ``loss`` after the merge.
+    """
+    from twinkle.metric import EmbeddingMetric
+
+    model.add_metric(EmbeddingMetric, is_training=True)
+
+
 def _rlhf_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig', grpo_loss_type: str = 'grpo') -> Dict[str, Any]:
     """The constructor kwargs for one rlhf_type's loss, forwarding only the fields it reads.
 

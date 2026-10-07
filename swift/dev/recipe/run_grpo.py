@@ -341,7 +341,7 @@ def run_grpo(
     (:func:`_sampler_world_size`, per backend) are placed alongside (disaggregated) or shared (colocate).
     """
     from swift.dev.builders import build_sampler
-    from swift.dev.loss import configure_rlhf_loss
+    from swift.dev.loss import configure_rlhf_loss, configure_rlhf_metrics
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly
     from swift.dev.recipe.grpo import GRPOLoop
@@ -456,6 +456,10 @@ def run_grpo(
     assembly.resolve_step_intervals(max_steps)
     configure_optimizer(
         assembly.model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
+    # Register the GRPO-family policy metric (GRPOMetric/GSPOMetric/CISPOMetric by loss_type) AFTER the
+    # optimizer group exists (add_metric appends onto it). twinkle then accumulates it inside forward_backward
+    # from old_logps/advantages, so its ratio/clip/entropy stats ride calculate_metric into every step record.
+    configure_rlhf_metrics(assembly.model, rlhf_config)
 
     # Sampler: a vLLM/SGLang sampler placed in its group (shared 'model' for colocate, separate 'sampler'
     # otherwise). The backend's memory-saver flag (forced on for colocate) is required for the device

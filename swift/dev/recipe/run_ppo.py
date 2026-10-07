@@ -81,7 +81,8 @@ def run_ppo(
     critic (clipped value loss) over each rollout for ``num_ppo_epochs``. Returns the loss history.
     """
     from swift.dev.builders import build_sampler
-    from swift.dev.loss import configure_ppo_value_loss, configure_rlhf_loss
+    from swift.dev.loss import (configure_ppo_value_loss, configure_ppo_value_metric, configure_rlhf_loss,
+                                configure_rlhf_metrics)
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly
     from swift.dev.recipe.run_grpo import (
@@ -173,6 +174,9 @@ def run_ppo(
     configure_rlhf_loss(model, rlhf_config)
     configure_optimizer(
         model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
+    # Register PPOMetric on the policy AFTER its optimizer group exists: twinkle accumulates it inside
+    # forward_backward from advantages/old_logps, so its ratio/clip stats ride calculate_metric per step.
+    configure_rlhf_metrics(model, rlhf_config)
 
     # Critic: a trainable seq_cls (num_labels=1) value model, trained by the clipped value loss.
     value_model = _build_value_model(
@@ -187,6 +191,9 @@ def run_ppo(
     configure_ppo_value_loss(value_model, rlhf_config)
     configure_optimizer(
         value_model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
+    # Register PPOValueMetric on the critic AFTER its optimizer group exists: twinkle accumulates it from
+    # returns/old_values, so value_mean / explained_variance ride the critic's calculate_metric per step.
+    configure_ppo_value_metric(value_model, rlhf_config)
 
     # Rollout (weight-syncable, exactly as run_grpo), reward model(s) and reference for the KL penalty.
     sampler = build_sampler(
@@ -450,6 +457,12 @@ class PPOLoop:
         # gamma/lam are GAE *construction* hyperparameters (its __call__ is keyword-only for masks/
         # normalize), so they are bound here rather than passed per call.
         self._gae = GAEAdvantage(gamma=rlhf_config.gamma, gae_lambda=rlhf_config.lam)
+        # Driver-held reward component (twinkle CompletionRewardMetric), fed once per rollout by
+        # _plan_rollout and read back in _record_step. Driver-side because PPO's reward (RM score +
+        # per-token KL penalty) is computed here on the driver, never inside the model forward -- the
+        # model-side PPOMetric / PPOValueMetric cover the policy and critic statistics.
+        from twinkle.metric import CompletionRewardMetric
+        self._reward_metric = CompletionRewardMetric()
         from swift.dev.recipe.train_loop import PromptBatchScheduler
         #: Prompt-set iterator (B1): one generation batch per rollout, exhausted after ``num_train_epochs``
         #: passes. PPO counts one rollout as one step (``_record_step`` per rollout), so the recipe sizes
@@ -536,17 +549,21 @@ class PPOLoop:
         for plan in plans:
             plan[1] = [(a - mean) / (std + 1e-8) for a in plan[1]]
 
-    def _plan_rollout(self, samples: List[Any]) -> tuple:
-        """Turn one rollout into per-sample ``[sample, advantages, returns, old_values]`` + mean reward.
+    def _plan_rollout(self, samples: List[Any]) -> list:
+        """Turn one rollout into per-sample ``[sample, advantages, returns, old_values]`` plans.
 
         Everything the epochs re-use (advantages, returns, old_values) is computed here ONCE, before any
         optimizer step, so the ``num_ppo_epochs`` passes see the SAME anchors -- the definition of PPO's
-        batch re-use. Samples with no response tokens are dropped.
+        batch re-use. Samples with no response tokens are dropped. As a side effect this feeds the kept
+        samples' scalar rewards (RM score + KL penalty summed over the response) and completion lengths into
+        the driver-held CompletionRewardMetric, so the step record surfaces ``train/total_reward`` -- the RL
+        head signal -- instead of a hand-passed mean.
         """
         cfg = self.rlhf_config
         rm_scores = self._score_rewards(samples)
         plans: List[list] = []
-        total_reward = 0.0
+        sample_rewards: List[float] = []
+        completion_lengths: List[int] = []
         for sample, rm in zip(samples, rm_scores):
             positions = self._response_positions(sample.input_feature)
             if not positions:
@@ -560,10 +577,14 @@ class PPOLoop:
             advantages = advantages.squeeze(0).tolist()
             returns = returns.squeeze(0).tolist()
             plans.append([sample, advantages, returns, values])
-            total_reward += sum(rewards)
+            sample_rewards.append(float(sum(rewards)))
+            completion_lengths.append(len(positions))
         if cfg.whiten_rewards:
             self._whiten_advantages(plans)
-        return plans, (total_reward / max(1, len(plans)))
+        # Reset per rollout so the metric reflects exactly this batch (one recorded step per rollout).
+        self._reward_metric.reset()
+        self._reward_metric.accumulate(rewards={'total': sample_rewards}, completion_lengths=completion_lengths)
+        return plans
 
     def _plan_mini_batches(self, plans: List[list]) -> List[List[list]]:
         """Split one rollout's plans into full ``train_batch_size`` chunks, warning on a dropped tail.
@@ -622,7 +643,7 @@ class PPOLoop:
         the definition of PPO's batch re-use.
         """
         ga = self.gradient_accumulation_steps
-        plans, mean_reward = self._plan_rollout(samples)
+        plans = self._plan_rollout(samples)
         mini_batches = self._plan_mini_batches(plans)
         for _ in range(self.num_ppo_epochs):
             for mini_batch in mini_batches:
@@ -643,7 +664,7 @@ class PPOLoop:
                     old_values=[plan[3] for plan in mini_batch])
                 self.value_model.clip_grad_and_step(
                     max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
-        self._record_step(mean_reward)
+        self._record_step()
 
     def _run_sync(self) -> None:
         """Synchronous driver: generate, then train, one rollout batch at a time (no overlap)."""
@@ -706,27 +727,61 @@ class PPOLoop:
         """
         return {}
 
-    def _record_step(self, mean_reward: float) -> None:
+    def _record_step(self) -> None:
+        """Count one rollout (= one PPO step) + log / periodic save via the unified metric merge.
+
+        PPOLoop is a standalone loop, so it carries its own copy of TrainLoop._record_step's shape, extended
+        for PPO's TWO models: merge the policy's whole twinkle.metric output (LossMetric loss/grad_norm +
+        PPOMetric ratio/clip stats) and the critic's (LossMetric + PPOValueMetric value_mean /
+        explained_variance / ...), coerce both to numeric scalars, then fold in the driver-side
+        CompletionRewardMetric (train/total_reward + completion_length). The critic's loss/grad_norm are
+        namespaced value_loss / value_grad_norm so they cannot clobber the policy's authoritative ``loss``.
+        """
         from swift.dev.recipe.train_loop import collect_manual_gc
+        from swift.dev.recipe.tracking import coerce_metric_scalars
 
         self.global_step += 1
         collect_manual_gc(self.manual_gc, self.manual_gc_steps, self.global_step)
         metrics = self.model.calculate_metric(is_training=True)
         value_metrics = self.value_model.calculate_metric(is_training=True)
-        record = {
-            'step': self.global_step,
-            'loss': float(metrics['loss']) if metrics.get('loss') is not None else float('nan'),
-            'value_loss': float(value_metrics['loss']) if value_metrics.get('loss') is not None else float('nan'),
-            'reward': mean_reward,
-        }
+        loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
+        record = {'step': self.global_step}
+        record.update(coerce_metric_scalars(metrics))
+        record['loss'] = loss
+        for key, value in coerce_metric_scalars(value_metrics).items():
+            if key == 'loss':
+                record['value_loss'] = value
+            elif key == 'grad_norm':
+                record['value_grad_norm'] = value
+            else:
+                record[key] = value
+        record.update(self._reward_metric.calculate())
         record.update(self._extra_step_metrics(metrics))
         record = self.tracker.log(record, self.global_step)
         self.history.append(record)
         if self.tracker.should_log(self.global_step):
-            logger.info(f"step {self.global_step}  loss={record['loss']:.4f}  value_loss={record['value_loss']:.4f}  "
-                        f"reward={record['reward']:.4f}")
+            self._log_step(record, loss)
         if self.save_steps and self.global_step % self.save_steps == 0:
             self.save(f'checkpoint-{self.global_step}')
+
+    def _log_step(self, record: dict, loss: float) -> None:
+        """Console head signal for PPO: reward plus the critic's explained_variance.
+
+        The reward shows the policy improving; explained_variance (how well the critic predicts returns)
+        shows the value function keeping up -- together the two quantities that reveal PPO converging, which
+        the clipped-surrogate loss alone hides. Both are optional so a degenerate rollout still logs loss.
+        """
+        parts = [f'step {self.global_step}', f'loss={loss:.4f}']
+        value_loss = record.get('value_loss')
+        if value_loss is not None:
+            parts.append(f'value_loss={value_loss:.4f}')
+        reward = record.get('train/total_reward')
+        if reward is not None:
+            parts.append(f'reward={reward:.4f}')
+        ev = record.get('train/explained_variance')
+        if ev is not None:
+            parts.append(f'explained_variance={ev:.4f}')
+        logger.info('  '.join(parts))
 
     def save(self, name: str = 'checkpoint-final', *, is_final: bool = False) -> str:
         """Persist policy and critic checkpoints under one RL checkpoint directory.

@@ -9,13 +9,17 @@ between teacher and student.
 
 A dataset that already ships a ``teacher_prompt`` column needs no plugin (see examples/v5/rl/data/
 opsd.jsonl). This plugin is the pattern for a REAL dataset that only has a ``solution`` / ``answer``
-column: it registers a self-contained dataset whose loader builds ``teacher_prompt`` in code, so the
-derivation lives next to the data rather than being hand-written into every row.
+column: it registers self-contained datasets whose loaders build ``teacher_prompt`` in code, so the
+derivation lives next to the data rather than being hand-written into every row. Two are registered:
 
-Loaded with ``--external_plugins examples/v5/rl/opsd/opsd_plugin.py`` and selected with
-``--dataset opsd_synthetic`` (the ``dataset_type`` registered below). Swap the in-code ``_ROWS`` for a
-hub dataset's rows -- e.g. map each row of ``open-r1/OpenThoughts-114k-math`` or ``AI-MO/NuminaMath-TIR``
-through ``_build_row`` -- to distil on real data.
+  * ``opsd_numina`` -- the REAL path: streams ``AI-MO/NuminaMath-TIR`` from the hub and derives
+    ``teacher_prompt`` from each row's ``problem`` / ``solution`` columns (``OPSDNuminaLoader``);
+  * ``opsd_synthetic`` -- a 4-row in-code corpus that needs NO hub access, for an offline smoke run.
+
+Loaded with ``--external_plugins examples/v5/rl/opsd/opsd_plugin.py`` and selected with ``--dataset
+opsd_numina`` (or ``opsd_synthetic``) -- the ``dataset_type`` each loader registers below. Point
+``OPSDNuminaLoader`` at another hub dataset by changing its ``datasets`` id and the two column names
+``_numina_row`` reads, to distil from any problem/solution corpus.
 """
 from __future__ import annotations
 
@@ -91,3 +95,34 @@ class OPSDSyntheticLoader(DatasetLoader):
     def build_dataset(self, subset, split, **kwargs):
         rows = [_build_row(raw['problem'], raw.get('solution')) for raw in _ROWS]
         return HfDataset.from_list(rows)
+
+
+def _numina_row(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """One NuminaMath-TIR row -> the standard OPSD row, deriving ``teacher_prompt`` from ``solution``.
+
+    A module-level function (not a closure) so ``datasets.map`` can pickle it under ``num_proc>1``. The
+    returned ``messages`` (system + the problem as the only user turn, no assistant turn) REPLACES the
+    dataset's own ``messages`` column, so the student rolls out on-policy from the bare question while the
+    teacher's privileged view is rebuilt from ``teacher_prompt``.
+    """
+    return _build_row(raw['problem'], raw.get('solution'))
+
+
+@register_dataset
+class OPSDNuminaLoader(DatasetLoader):
+    """``--dataset opsd_numina``: the REAL hub-backed OPSD corpus (``AI-MO/NuminaMath-TIR``).
+
+    Declares the hub id so the base :meth:`DatasetLoader.build_dataset` fetches it (through dev's hub
+    layer, ModelScope or HuggingFace per ``USE_HF``); this override only maps each raw row through
+    :func:`_numina_row` to derive ``teacher_prompt`` and drop the raw ``problem`` / ``solution`` columns.
+    The ``#N`` row budget (e.g. ``opsd_numina#2000``) is applied downstream by ``post_process``, so the
+    same slice syntax the other RL examples use works here unchanged.
+    """
+
+    dataset_type = 'opsd_numina'
+    datasets = [('AI-MO/NuminaMath-TIR', 'AI-MO/NuminaMath-TIR')]
+    tags = ('grpo', 'math', 'distill')
+
+    def build_dataset(self, subset, split, **kwargs):
+        raw = super().build_dataset(subset, split, **kwargs)
+        return raw.map(_numina_row, remove_columns=['problem', 'solution'])

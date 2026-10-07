@@ -506,15 +506,10 @@ class GKDLoop(GRPOLoop):
         """
         self._run_sync()
 
-    # GKD has no reference model and no RL-loss channels, so it resets the two GRPOLoop hooks that would
-    # otherwise inject a reference sync and policy-gradient metrics. The rest of the per-step cadence
-    # (counter, GC tick, log-on-tracker, periodic save) is TrainLoop's.
+    # GKD has no reference model, so it resets the one GRPOLoop hook that would inject a reference sync. It
+    # inherits GRPOLoop's _extra_step_metrics (the driver-side reward merge) unchanged: GKD never accumulates
+    # a reward, so calculate() yields {} and the distillation loss + grad_norm reach the record purely through
+    # the unified merge of twinkle's LossMetric (the loss IS the teacher-student divergence). The rest of the
+    # per-step cadence (counter, GC tick, log-on-tracker, periodic save) is TrainLoop's.
     def _pre_metric_step(self) -> None:
         """No reference model to sync on a distillation step (overrides GRPOLoop's reference sync)."""
-
-    def _extra_step_metrics(self, metrics: dict) -> dict:
-        """GKD logs grad_norm beside the distillation loss; it has no entropy/rollout-ratio channels."""
-        extra: dict = {}
-        if metrics.get('grad_norm') is not None:
-            extra['grad_norm'] = float(metrics['grad_norm'])
-        return extra

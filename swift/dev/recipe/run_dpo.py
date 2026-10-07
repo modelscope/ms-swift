@@ -110,7 +110,7 @@ def run_dpo(
     optional reference-logps forward that dpo/kto add, and :class:`PreferenceLoop` in place of SFTLoop.
     Because the loop differs, the stages are driven one by one instead of through ``fit``.
     """
-    from swift.dev.loss import configure_rlhf_loss
+    from swift.dev.loss import configure_rlhf_loss, configure_rlhf_metrics
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly
 
@@ -166,6 +166,10 @@ def run_dpo(
         train_config,
         num_training_steps=assembly.total_opt_steps,
         distributed_config=distributed_config)
+    # Register the preference metric (DPOMetric for dpo/cpo/orpo/simpo; a no-op for the unpaired kto and the
+    # seq_cls rm) AFTER the optimizer group exists. twinkle accumulates it inside forward_backward from the
+    # ref_logps the loop forwards, so rewards/margins + accuracies ride calculate_metric into every record.
+    configure_rlhf_metrics(assembly.model, rlhf_config)
 
     # W24: periodic evaluation is not wired for the offline preference loop -- PreferenceLoop stores
     # eval_dataloader/eval_steps but fit() never evaluates, so a configured eval split would be silently
@@ -559,26 +563,51 @@ class PreferenceLoop:
             self.tracker.close()
 
     def _record_step(self) -> None:
-        """Count one optimizer step + log / periodic save (mirrors SFTLoop._record_step)."""
+        """Count one optimizer step + log / periodic save (mirrors TrainLoop._record_step's unified merge).
+
+        PreferenceLoop is a standalone loop (not a TrainLoop subclass), so it carries its own copy of the
+        record assembly -- but the SAME shape: merge the whole twinkle.metric output (LossMetric's
+        loss/grad_norm plus the registered DPOMetric's logps/chosen|rejected and rewards/margins|accuracies),
+        coerced to numeric scalars, then re-pin ``loss`` as the authoritative normalized float.
+        """
         from swift.dev.recipe.train_loop import collect_manual_gc
+        from swift.dev.recipe.tracking import coerce_metric_scalars
 
         self.global_step += 1
         collect_manual_gc(self.manual_gc, self.manual_gc_steps, self.global_step)
         metrics = self.model.calculate_metric(is_training=True)
         loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
-        record = {'step': self.global_step, 'loss': loss}
-        if metrics.get('grad_norm') is not None:
-            record['grad_norm'] = float(metrics['grad_norm'])
+        record = {'step': self.global_step}
+        record.update(coerce_metric_scalars(metrics))
+        record['loss'] = loss
         record = self.tracker.log(record, self.global_step)
         self.history.append(record)
         should_log = (self.tracker.should_log(self.global_step) if self.logging_config is not None else
                       bool(self.logging_steps and self.global_step % self.logging_steps == 0))
         if should_log:
-            gn = record.get('grad_norm')
-            gn_str = f'  grad_norm={gn:.4f}' if gn is not None else ''
-            logger.info(f'step {self.global_step}  loss={loss:.4f}{gn_str}')
+            self._log_step(record, loss)
         if self.save_steps and self.global_step % self.save_steps == 0:
             self.save(f'checkpoint-{self.global_step}')
+
+    def _log_step(self, record: dict, loss: float) -> None:
+        """Console head signal for the preference loops: loss plus the DPO reward margin and accuracy.
+
+        The margin (chosen-reward minus rejected-reward) and the accuracy (fraction of pairs where chosen
+        wins) are what show preference learning converging -- a rising margin and an accuracy climbing
+        toward 100% -- which the loss alone hides. Both come from the registered DPOMetric; they are absent
+        for the unpaired kto and the seq_cls rm, so those fall back to loss + grad_norm.
+        """
+        parts = [f'step {self.global_step}', f'loss={loss:.4f}']
+        margins = record.get('rewards/margins')
+        if margins is not None:
+            parts.append(f'rewards/margins={margins:.4f}')
+        accuracies = record.get('rewards/accuracies')
+        if accuracies is not None:
+            parts.append(f'rewards/accuracies={accuracies:.1f}%')
+        gn = record.get('grad_norm')
+        if gn is not None:
+            parts.append(f'grad_norm={gn:.4f}')
+        logger.info('  '.join(parts))
 
     def save(self, name: str = 'checkpoint-final', *, is_final: bool = False) -> str:
         """Persist the policy + training state via twinkle's native save (the reference is not saved).

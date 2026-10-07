@@ -4,19 +4,25 @@
 # into the dev Config dataclasses -- there is no legacy SftArguments bridge. `--tuner lora` selects the
 # LoRA adapter path (TunerConfig); drop it (or set `--tuner full`) for full-parameter training.
 # The 0.5B model keeps the example light; swap in Qwen/Qwen2.5-7B-Instruct for a real run.
+#
+# DATASET CHOICE = VISIBLE CONVERGENCE. This uses `swift/self-cognition`, not alpaca-gpt4: an
+# already-instruct Qwen2.5-0.5B has almost no headroom on alpaca, so its loss plateaus at ~1.6 (measured
+# 1.78 -> 1.58 over 3 epochs) and the run looks like it is not learning. self-cognition is new knowledge
+# the model must actually fit, so the loss falls clearly (measured 2.6 -> 0.28) -- a real SFT curve. Keep
+# --num_train_epochs 3 so the descent completes; swap the dataset back to alpaca for a general-SFT run
+# whose curve is genuinely flatter.
 CUDA_VISIBLE_DEVICES=0 \
 USE_SWIFT_V5=1 \
 swift sft \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --task_type causal_lm \
     --torch_dtype bfloat16 \
-    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
-              'AI-ModelScope/alpaca-gpt4-data-en#500' \
+    --dataset 'swift/self-cognition#600' \
     --tuner lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
-    --num_train_epochs 1 \
+    --num_train_epochs 3 \
     --per_device_train_batch_size 1 \
     --gradient_accumulation_steps 8 \
     --learning_rate 1e-4 \

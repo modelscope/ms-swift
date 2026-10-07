@@ -143,8 +143,10 @@ def _muon_config(cfg: TrainConfig) -> dict:
     the groups it does not orthogonalise, and the three dual-backend ``muon_*`` fields feed the Muon
     update itself. The Megatron-specific muon fields (split_qkv / scale_mode / tp_mode / ...) have no
     MuonConfig counterpart and stay rejected on this backend by ``validate._check_backend_specific``.
-    The remaining MuonConfig knobs (qk_clip_*, rms_scale_factor, exclude/qk keys) keep twinkle's
-    defaults, which dev has no field for.
+    ``qk_clip_enabled`` / ``qk_clip_tau`` are mapped too: dev defaults QK-Clip OFF (plain Muon) because
+    MuonConfig's own defaults (enabled, tau=100) clip a pretrained model's ~1e3 attention logits every
+    step and collapse Q/K -- see the TrainConfig field comment. The remaining MuonConfig knobs
+    (rms_scale_factor, exclude/qk keys) keep twinkle's defaults, which dev has no field for.
     """
     return {
         'momentum': cfg.muon_momentum,
@@ -152,6 +154,8 @@ def _muon_config(cfg: TrainConfig) -> dict:
         'newton_schulz_steps': cfg.muon_num_ns_steps,
         'adamw_betas': (cfg.adam_beta1, cfg.adam_beta2),
         'adamw_eps': cfg.adam_epsilon,
+        'qk_clip_enabled': cfg.qk_clip_enabled,
+        'qk_clip_tau': cfg.qk_clip_tau,
     }
 
 

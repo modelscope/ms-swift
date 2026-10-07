@@ -32,6 +32,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence
 
 import json
 
+from twinkle.metric import CompletionRewardMetric
+
 from swift.dev.advantage import compute_advantages
 from swift.dev.recipe._teacher import DisableAdapterTeacher, encode_privileged_view, response_positions
 from swift.dev.recipe.train_loop import PromptBatchScheduler, TrainLoop
@@ -227,6 +229,12 @@ class GRPOLoop(TrainLoop):
         self.reward_func_names = resolved_reward_func_names
         self.reward_model_plugins = resolved_reward_plugins
         self.reward_fn = reward_fn
+        #: Driver-held reward component: twinkle's ``CompletionRewardMetric``, fed once per rollout by
+        #: :meth:`_accumulate_reward_metric` and read back in :meth:`_extra_step_metrics`. Driver-side (not
+        #: ``model.add_metric``) because rewards are computed on the driver from the reward funcs/models,
+        #: never inside the model forward -- the model-side component (GRPOMetric, registered by
+        #: swift.dev.loss.configure_rlhf_metrics) covers the policy-gradient ratio/clip/entropy stats.
+        self._reward_metric = CompletionRewardMetric()
         #: Process-reward (PRM) channel: ``prm_scorer`` segments a response into reasoning steps and
         #: broadcasts each step's score onto its tokens (see :mod:`swift.dev.rewards.prm`); ``prm_funcs``
         #: (rule PRMs) and ``prm_model_plugins`` (frozen PRM models) score each step, weighted by
@@ -333,6 +341,27 @@ class GRPOLoop(TrainLoop):
         weight_tensor = build_reward_weights(self.reward_weights, rewards_per_func.shape[1]).to(
             device=rewards_per_func.device, dtype=rewards_per_func.dtype)
         return (rewards_per_func * weight_tensor.unsqueeze(0)).nansum(dim=1)
+
+    def _accumulate_reward_metric(self, samples: List[Any], rewards_per_func) -> None:
+        """Feed one rollout's rewards + completion lengths into the driver-held CompletionRewardMetric.
+
+        Reset first, so the metric reflects exactly the batch the upcoming optimizer step(s) train on: a
+        rollout can span several optimizer steps (mini-batches x num_iterations), and each of their records
+        reports this same rollout's reward via :meth:`_extra_step_metrics` (``calculate`` is a non-resetting
+        read). Shared by GRPO (:meth:`_assemble_rollout_batch`) and RFT (its own ``fit``) -- the two reward
+        chokepoints -- so both surface ``train/<func>_reward`` + ``train/total_reward`` + completion length
+        without hand-folding. Per-function columns keep their resolved names; the toy single-callable path
+        resolves no names, so only the weighted ``total`` is reported there.
+        """
+        self._reward_metric.reset()
+        names = self.reward_func_names
+        rewards: Dict[str, List[float]] = {}
+        for col in range(rewards_per_func.shape[1]):
+            if col < len(names):
+                rewards[names[col]] = [float(v) for v in rewards_per_func[:, col].tolist()]
+        rewards['total'] = [float(v) for v in self._weighted_rewards(rewards_per_func).tolist()]
+        completion_lengths = [len(getattr(sample, 'response_token_ids', None) or []) for sample in samples]
+        self._reward_metric.accumulate(rewards=rewards, completion_lengths=completion_lengths)
 
     def _score_steps(self, rows: List[Dict[str, Any]]) -> List[float]:
         """Score a batch of PRM step rows -> one weighted process score per row.
@@ -727,6 +756,7 @@ class GRPOLoop(TrainLoop):
         """
         self.tracker.log_prompts(self.prompts, samples, self.global_step + 1, self.num_generations)
         self._log_completions(samples, rewards_per_func)
+        self._accumulate_reward_metric(samples, rewards_per_func)
         ref_logps = self._reference_logps(samples)
         teacher_logps = self._teacher_logps(samples)
         cfg = self.rlhf_config
@@ -935,17 +965,30 @@ class GRPOLoop(TrainLoop):
         self._sync_reference()
 
     def _extra_step_metrics(self, metrics: dict) -> dict:
-        """Policy entropy + rollout/policy log-prob ratio, when the GRPO loss exposes them."""
-        extra: dict = {}
-        if metrics.get('loss_entropy') is not None:
-            extra['entropy'] = float(metrics['loss_entropy'])
-        if metrics.get('loss_rollout_log_ratio') is not None:
-            extra['rollout_log_ratio'] = float(metrics['loss_rollout_log_ratio'])
-        return extra
+        """Fold this rollout's driver-side reward component into the record.
+
+        Entropy / clip-ratio / approx-KL are NOT re-derived here: they come from the model-registered
+        GRPOMetric (``train/entropy``, ``train/clip_ratio``, ...) through the unified record merge, so the
+        policy-gradient stats keep a single source. The reward is the one channel computed on the driver
+        (from the reward funcs/models, never inside the forward), so it is what this hook adds.
+        """
+        return dict(self._reward_metric.calculate())
 
     def _should_log(self) -> bool:
         """GRPO logs on the tracker's own cadence, with no logging_steps fallback."""
         return self.tracker.should_log(self.global_step)
+
+    def _log_step(self, record: dict, loss: float) -> None:
+        """Console head signal for the on-policy RL loops: loss plus this rollout's mean total reward.
+
+        The reward is what actually shows RL converging -- the policy-gradient loss oscillates around zero
+        by construction and hides the trend, which is why the step line leads with ``reward`` when the
+        driver-side CompletionRewardMetric produced one (GRPO/RFT). Distillation subclasses (GKD/OPSD/
+        MOPD) compute no reward, so ``train/total_reward`` is absent and the line falls back to loss only.
+        """
+        reward = record.get('train/total_reward')
+        reward_str = f'  reward={reward:.4f}' if reward is not None else ''
+        logger.info(f'step {self.global_step}  loss={record["loss"]:.4f}{reward_str}')
 
     def _train_rollout_batch(self, batch: 'RolloutBatch') -> None:
         """Run this rollout's optimizer steps: split into mini-batches, replay ``num_iterations`` times.

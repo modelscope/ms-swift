@@ -62,6 +62,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _rft_kept_per_prompt(rlhf_config: 'RLHFConfig', num_samples: int) -> int:
+    """Upper bound on completions RFT keeps PER PROMPT -- the step budget's effective ``num_generations``.
+
+    Mirrors :meth:`RFTLoop._select_keep`'s per-mode count from config alone (no rewards exist yet, since the
+    budget is sized before any rollout): ``best_of_n`` keeps exactly 1, ``top_k`` keeps ``min(rft_top_k, N)``,
+    and ``threshold`` can keep all N (the only reward-dependent mode, so its budget is the all-clear upper
+    bound). ``rft_max_samples_per_prompt`` caps every mode. MUST stay in sync with ``_select_keep``.
+    """
+    select = rlhf_config.rft_select
+    if select == 'best_of_n':
+        kept = 1
+    elif select == 'top_k':
+        kept = min(max(1, rlhf_config.rft_top_k), num_samples)
+    else:  # threshold
+        kept = num_samples
+    cap = rlhf_config.rft_max_samples_per_prompt
+    if cap is not None:
+        kept = min(kept, cap)
+    return max(1, kept)
+
+
 def run_rft(
     model_config: ModelConfig,
     template_config: TemplateConfig,
@@ -144,8 +165,31 @@ def run_rft(
     assembly.build_model()
     # RFT trains with plain cross-entropy SFT on the filtered completions -- NOT an RL loss.
     configure_loss(assembly.model, loss_type='cross_entropy', reduction='sum')
-    # No dataloader to derive a step budget from -- prompts are rolled out, not iterated.
-    max_steps = train_config.max_steps or 1
+    # Prompts are rolled out, not iterated by a dataloader, so the step budget -- the LR-scheduler horizon AND
+    # RFTLoop.fit's cap -- is DERIVED from the prompt set exactly as run_grpo/run_gkd derive it (an explicit
+    # --max_steps still overrides). RFT runs rft_iterations rejection-sampling rounds, each one full generation
+    # pass over the prompt set plus one SFT pass over the KEPT completions, so the budget sizes those rounds
+    # with the per-prompt kept count as the effective num_generations and no replay (num_iterations=1). The old
+    # `train_config.max_steps or 1` let the -1 "unset" sentinel through (-1 is truthy), so RFTLoop.fit's
+    # `global_step >= max_steps` guard tripped at step 0 and the run trained nothing while misreporting it as
+    # "kept too few completions".
+    prompts, prompt_extras = _prompt_rows_from_dataset(dataset_config)
+    from swift.dev.builders import build_ray_dp_mesh
+    from swift.dev.recipe.train_loop import resolve_rollout_max_steps, rollout_step_budget
+    # Design-B mini-batch width (per_device_train_batch_size * dp_size); see run_grpo for why dp_size comes
+    # off build_ray_dp_mesh (online RL is Ray-only, pure data-parallel over nproc_per_node).
+    train_batch_size = train_config.per_device_train_batch_size * build_ray_dp_mesh(
+        distributed_config, template_config.sequence_parallel_size).data_world_size
+    max_steps = resolve_rollout_max_steps(
+        train_config.max_steps,
+        rollout_step_budget(
+            num_prompts=len(prompts),
+            num_generations=_rft_kept_per_prompt(rlhf_config, num_samples),
+            train_batch_size=train_batch_size,
+            gradient_accumulation_steps=assembly.ga,
+            num_train_epochs=rlhf_config.rft_iterations,
+            num_iterations=1),
+        recipe='run_rft')
     assembly.resolve_step_intervals(max_steps)
     configure_optimizer(
         assembly.model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
@@ -160,14 +204,8 @@ def run_rft(
     rollout = SyncableRollout(
         assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
 
-    prompts, prompt_extras = _prompt_rows_from_dataset(dataset_config)
     reward_model_plugins, reward_model_names = _build_reward_model_scorers(
         model_config, template_config, rlhf_config, distributed_config)
-    # Design-B mini-batch width (per_device_train_batch_size * dp_size); see run_grpo for why dp_size comes
-    # off build_ray_dp_mesh (online RL is Ray-only, pure data-parallel over nproc_per_node).
-    from swift.dev.builders import build_ray_dp_mesh
-    train_batch_size = train_config.per_device_train_batch_size * build_ray_dp_mesh(
-        distributed_config, template_config.sequence_parallel_size).data_world_size
     loop = RFTLoop(
         assembly.model,
         rollout,
@@ -295,6 +333,10 @@ class RFTLoop(GRPOLoop):
                 # the policy the previous round produced (the rejection-sampling bootstrap).
                 samples = self._generate(prompt_indices)
                 rewards_per_func = self._score(samples)
+                # Feed the whole generated rollout (before rejection) into the driver-side reward component,
+                # so the logged train/total_reward tracks the policy's improving sample quality -- the signal
+                # that shows RFT working, since the SFT loss on the kept subset alone hides it.
+                self._accumulate_reward_metric(samples, rewards_per_func)
                 rewards = self._weighted_rewards(rewards_per_func).detach().float().cpu().tolist()
                 selected = self._select_samples(samples, rewards)
                 if len(selected) == 0:
@@ -327,12 +369,10 @@ class RFTLoop(GRPOLoop):
             self.tracker.close()
 
 
-    # RFT trains the kept completions with plain cross-entropy SFT: no reference model and no RL loss, so
-    # it resets the two GRPOLoop hooks that would otherwise inject a reference sync and RL-only metrics.
-    # The rest of the per-step cadence (counter, GC tick, log-on-tracker, periodic save) is TrainLoop's.
+    # RFT trains the kept completions with plain cross-entropy SFT: no reference model, so it resets the one
+    # GRPOLoop hook that would inject a reference sync. It KEEPS GRPOLoop's _extra_step_metrics (the
+    # driver-side reward merge) and _log_step (loss + reward head signal), which its fit feeds via
+    # _accumulate_reward_metric. The rest of the per-step cadence (counter, GC tick, log-on-tracker,
+    # periodic save) is TrainLoop's.
     def _pre_metric_step(self) -> None:
         """No reference model to sync on the SFT-style RFT step (overrides GRPOLoop's reference sync)."""
-
-    def _extra_step_metrics(self, metrics: dict) -> dict:
-        """RFT logs only step + loss; it has no entropy/rollout-ratio channels (overrides GRPOLoop)."""
-        return {}

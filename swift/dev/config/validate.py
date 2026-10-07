@@ -1095,12 +1095,14 @@ def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedCon
                 'backend is transformers. Use TrainConfig.optim for the transformers path, or switch '
                 'DistributedConfig.backend.')
         # muon_momentum / muon_use_nesterov / muon_num_ns_steps are dual-backend (MegatronOptimizer on
-        # Megatron, MuonClip's MuonConfig here), but on transformers they are read ONLY when
-        # optim='muon'. The Megatron-specific muon_* fields stay in _MEGATRON_ONLY, so
-        # _check_backend_specific already refuses those here; this guards the three dual ones against
-        # being silently ignored by a non-muon optim.
+        # Megatron, MuonClip's MuonConfig here), and qk_clip_enabled / qk_clip_tau are transformers-only
+        # MuonClip knobs (in _HF_ONLY, so _check_backend_specific already refuses them on Megatron). All
+        # of them are read on this backend ONLY when optim='muon', so this guards them against being
+        # silently ignored by a non-muon optim. The Megatron-specific muon_* fields stay in
+        # _MEGATRON_ONLY and are refused here by _check_backend_specific.
         if train_config.optim.lower() != 'muon':
-            stray = [n for n in ('muon_momentum', 'muon_use_nesterov', 'muon_num_ns_steps')
+            stray = [n for n in ('muon_momentum', 'muon_use_nesterov', 'muon_num_ns_steps',
+                                 'qk_clip_enabled', 'qk_clip_tau')
                      if n in _changed_fields(train_config)]
             if stray:
                 raise ValueError(
@@ -1826,6 +1828,10 @@ _HF_ONLY = (
     ('train_config', 'predict_with_generate', False),
     ('train_config', 'eval_use_evalscope', False),
     ('train_config', 'full_determinism', False),
+    # QK-Clip feeds twinkle MuonClip's MuonConfig on the transformers path only; Megatron's muon has no
+    # QK-Clip counterpart. off_value = the TrainConfig default, so an untouched field is not rejected.
+    ('train_config', 'qk_clip_enabled', False),
+    ('train_config', 'qk_clip_tau', 10000.0),
 )
 
 _MEGATRON_PARALLEL_SIZES = (

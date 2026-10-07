@@ -121,6 +121,22 @@ class TrainConfig:
     #: Optimizer used for the parameters muon does not handle -- scalars, biases, norms, which have no
     #: matrix structure to orthogonalise. Megatron-only.
     muon_scalar_optimizer: str = 'adam'
+    #: QK-Clip -- MuonClip's brake on attention-logit blow-up. Transformers-only: these feed twinkle
+    #: MuonClip's MuonConfig when ``optim='muon'``; Megatron's muon has no QK-Clip counterpart, so
+    #: _check_backend_specific rejects them there (they are in _HF_ONLY).
+    #:
+    #: DEFAULT OFF, so ``optim='muon'`` is plain Muon. QK-Clip rescales the Q/K WEIGHTS (not the gradient)
+    #: by ``sqrt(qk_clip_tau / peak_attention_logit)`` on every step whose peak exceeds the tau ceiling --
+    #: it is a from-scratch-pretraining stabiliser (Kimi K2). A pretrained model already runs its attention
+    #: logits far above a low tau (Qwen2.5-0.5B peaks ~1e3), so turning it on with a small tau clips EVERY
+    #: step and geometrically collapses Q/K: verified weight-norm 60 -> 0.001 in 6 steps and loss 1.8 -> 8,
+    #: independent of lr (the rescale never multiplies by lr) and of attention backend. Opt in only for
+    #: from-scratch runs, and set qk_clip_tau above the model's natural logit scale.
+    qk_clip_enabled: bool = False
+    #: The attention-logit ceiling QK-Clip holds the model under; read only when qk_clip_enabled. Defaults
+    #: to 10000 (legacy swift/optimizers/muonclip.py and MuonClip.__init__), NOT twinkle MuonConfig's far
+    #: more aggressive 100 -- dev overrides that default with this value.
+    qk_clip_tau: float = 10000.0
     #: Megatron's SGD momentum, read only when ``optimizer='sgd'``.
     sgd_momentum: float = 0.9
     #: Megatron spells adam's epsilon differently from HF's ``adam_epsilon`` above; both are kept

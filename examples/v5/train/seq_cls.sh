@@ -6,8 +6,12 @@
 # `multi_label_classification` for BCE). The head is freshly initialized, so this trains FULL
 # parameters (`--tuner full`): a LoRA run would need the head listed in modules_to_save to move it.
 #
-# The dataset is the tiny bundled sample in the documented {messages, label} row format; swap in a real
-# classification set (e.g. `--dataset hc3-zh:finance_cls#2000`) for a production run.
+# Dataset: `hc3-zh:finance_cls#2000` is a REAL hub set -- the HC3-Chinese finance subset posed as a 2-way
+# Human-vs-ChatGPT classification (the `_cls` view emits an int `label` beside `messages`, matching
+# `--num_labels 2`); `#2000` takes a 2000-row slice. Reference it by the REGISTERED name (`hc3-zh:...`), not
+# the raw hub id, so the loader's classification preprocessor runs and the `label` column is produced. For an
+# OFFLINE run with no hub access, fall back to the bundled `examples/v5/train/data/seq_cls.jsonl` (the same
+# {messages, label} shape).
 CUDA_VISIBLE_DEVICES=0 \
 USE_SWIFT_V5=1 \
 swift sft \
@@ -16,7 +20,7 @@ swift sft \
     --num_labels 2 \
     --problem_type single_label_classification \
     --torch_dtype bfloat16 \
-    --dataset examples/v5/train/data/seq_cls.jsonl \
+    --dataset 'hc3-zh:finance_cls#2000' \
     --tuner full \
     --num_train_epochs 3 \
     --per_device_train_batch_size 2 \
@@ -27,5 +31,6 @@ swift sft \
     --max_length 512 \
     --logging_steps 1 \
     --save_steps 100 \
+    --save_total_limit 2 \
     --output_dir output \
     --report_to tensorboard

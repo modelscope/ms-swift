@@ -14,6 +14,39 @@ _SUPPORTED_REPORTERS = frozenset({'tensorboard', 'wandb', 'swanlab'})
 _SECRET_FIELDS = {'swanlab_token', 'swanlab_secret', 'swanlab_webhook_url'}
 
 
+def _coerce_scalar(value: Any) -> Optional[float]:
+    """Coerce one metric value to a finite number for scalar logging, or None when it is not numeric.
+
+    twinkle.metric components format many of their outputs as fixed-precision strings -- LossMetric's
+    ``loss``/``grad_norm``, DPOMetric's ``rewards/*`` and ``logps/*``, EmbeddingMetric's ``pos_sim`` -- so a
+    plain ``isinstance(value, (int, float))`` filter would drop every one of them from the scalar backends.
+    This reuses twinkle's own numeric parser (it already handles int/float/numeric-string/``tensor(...)``)
+    and strips a trailing ``%`` so DPOMetric's ``rewards/accuracies`` (``'85.0%'``) logs as ``85.0``.
+    """
+    from twinkle.metric.reporting import _finite_number
+    if isinstance(value, str):
+        text = value.strip()
+        if text.endswith('%'):
+            text = text[:-1]
+        return _finite_number(text)
+    return _finite_number(value)
+
+
+def coerce_metric_scalars(metrics: Dict[str, Any]) -> Dict[str, float]:
+    """Reduce a raw component-metric dict to its finite numeric scalars, dropping non-numeric entries.
+
+    Applied when a loop assembles its per-step record so every value the human-readable step line formats
+    (``f'{value:.4f}'``) and every scalar the tracker writes is already a number, regardless of whether the
+    twinkle.metric component that produced it returned a float or a display string.
+    """
+    result: Dict[str, float] = {}
+    for key, value in metrics.items():
+        number = _coerce_scalar(value)
+        if number is not None:
+            result[key] = number
+    return result
+
+
 class RunTracker:
     """Own tracker setup, metric writes, and teardown for one training loop."""
 
@@ -48,7 +81,13 @@ class RunTracker:
         filtered = self._filter_metrics(metrics)
         if not self.should_log(step, epoch_end=epoch_end):
             return filtered
-        scalars = {key: value for key, value in filtered.items() if key != 'step' and isinstance(value, (int, float))}
+        scalars = {}
+        for key, value in filtered.items():
+            if key == 'step':
+                continue
+            number = _coerce_scalar(value)
+            if number is not None:
+                scalars[key] = number
         writer = self._writers.get('tensorboard')
         if writer is not None:
             for key, value in scalars.items():

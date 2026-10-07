@@ -11,43 +11,52 @@
 # rejection-sampling bootstrap: no advantage estimator, no reference model, no importance ratio. RFT sets
 # the SFT cross_entropy loss, NOT an RL loss.
 #
+# HOW TO READ THIS RUN: the SFT loss on the kept subset does fall, but the signal that shows the BOOTSTRAP
+# working is the REWARD of the freshly generated rollouts climbing round over round -- the policy is sampling
+# better answers, so more of them clear the filter. Watch:
+#   - console head signal:  `step N  loss=...  reward=<mean total reward of the round's rollouts>`;
+#   - tensorboard scalars:  `train/total_reward` (+ per-channel `train/<orm>_reward`), `train/completion_length`.
+# The reward is fed from the WHOLE generated rollout BEFORE rejection (the driver-side CompletionRewardMetric
+# shared with GRPO), so it tracks sample quality, not just the kept subset the loss trains on.
+# NOTE: no --log_completions here -- completion logging is GRPO-only (it lives in GRPOLoop's rollout assembly,
+# which RFT's rejection-sampling fit bypasses), so on RFT it is a dead flag the config validator rejects.
+#
 # Selection (--rft_select):
 #   best_of_n (default) -- keep the single highest-reward completion per prompt (always keeps one, so a
 #                          round never comes up empty; used here);
 #   threshold           -- keep every completion scoring >= --rft_threshold;
 #   top_k               -- keep the --rft_top_k best per prompt.
 # --rft_max_samples_per_prompt caps how many a single prompt contributes. An empty kept set (possible with
-# threshold) skips that round's SFT pass with a warning rather than failing.
+# threshold) skips that round's SFT pass with a warning rather than failing. A round whose kept set is
+# smaller than train_batch_size (per_device_train_batch_size * dp_size) also skips with a warning, so keep
+# --rft_num_samples comfortably above that width.
 #
-# Reward: --orm accuracy is MathAccuracy (backed by math_verify); it reads the dataset's `solution` column
-# as ground truth and the completion's \boxed{} answer, so examples/v5/rl/data/rft_math.jsonl ships both.
-# Add more channels (e.g. `--orm accuracy format`) and weight them with `--orm_weights`.
+# Reward: --orm accuracy is MathAccuracy (backed by math_verify); it reads the dataset's `solution` column as
+# ground truth and the completion's \boxed{} answer. This example uses the real hub dataset
+# AI-MO/NuminaMath-TIR (the same one GRPO trains on); the `#2000` suffix takes a 2000-row slice.
 #
 # Placement: RFT is Ray-only with a vLLM sampler -- the SAME requirement as GRPO/PPO. The dev CLI forces
-# use_vllm=true, vllm_mode (colocate by default) and mode=ray for --rlhf_type rft, so those need not be
-# passed; --nproc_per_node IS required because in Ray mode the driver orchestrates and holds no GPU.
-# vllm_mode=colocate shares the 2 GPUs between the sampler and training (CUDA-IPC weight sync); use
-# vllm_mode=server for disaggregated device groups.
+# use_vllm=true, vllm_mode (colocate by default) and mode=ray for --rlhf_type rft; --nproc_per_node IS
+# required because in Ray mode the driver orchestrates and holds no GPU. vllm_mode=colocate shares the GPUs
+# between sampler and training (CUDA-IPC weight sync); use vllm_mode=disaggregated for separate device groups.
 #
-# Step budget (design-B mini-batching -- read this before changing the numbers below):
-#   Each round rolls out (prompts * --rft_num_samples) = 4 * 4 = 16 completions; best_of_n keeps exactly
-#   one per prompt, so 4 selected completions per round (deterministic for best_of_n). A training
-#   mini-batch is per_device_train_batch_size * dp_size = 1 * 2 = 2 rows, so each round yields 4 / 2 = 2
-#   mini-batches, and --rft_iterations 3 rounds yield 6 mini-batches in total.
-#   --gradient_accumulation_steps 1 makes every mini-batch its own optimizer step, so the run takes exactly
-#   6 optimizer steps -- hence --max_steps 6 (= --save_steps 6), which binds precisely on the last
-#   mini-batch. ga=1 is chosen deliberately: the optimizer-step boundary follows twinkle's "one micro-step
-#   late" rule ((micro_step-1) % ga == 0 and micro_step > 1, i.e. syncs at micro_step = ga+1, 2ga+1, ...),
-#   so with ga>1 the trailing partial accumulation window is never flushed. E.g. ga=2 over these same 6
-#   mini-batches would step only at micro_step 3 and 5 (2 optimizer steps) and silently drop micro-batches
-#   5-6, making --max_steps a dead knob. If you raise ga, size the total mini-batch count as a multiple of
-#   ga AND expect the last window to drop, or just keep ga=1 for a short illustrative run.
-CUDA_VISIBLE_DEVICES=0,1 \
+# Step budget: RFT is bounded by --rft_iterations rounds over the prompt set (each round = one generation
+# pass + one SFT pass over the kept completions), NOT by a toy --max_steps. --gradient_accumulation_steps 1
+# keeps every mini-batch its own optimizer step; raise it for a larger effective batch (over a full round the
+# trailing partial accumulation window is dropped, which is negligible at this scale).
+#
+# DEVICES: pick FREE cards -- this box keeps GPU 0/2 busy, so the default below uses 1,3. Adjust
+# CUDA_VISIBLE_DEVICES and --vllm_gpu_memory_utilization to the cards/memory you actually have.
+#
+# This is a real training scaffold, not a 2-step demo. For a fast smoke run, shrink everything at once: a
+# smaller policy (Qwen/Qwen2.5-1.5B-Instruct), a tiny slice (`#64`), --rft_iterations 1, and cap --max_steps 4.
+CUDA_VISIBLE_DEVICES=1,3 \
 USE_SWIFT_V5=1 \
 swift rl \
     --rlhf_type rft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
-    --dataset examples/v5/rl/data/rft_math.jsonl \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --dataset 'AI-MO/NuminaMath-TIR#2000' \
+    --system "You are a helpful math assistant. Solve the problem step by step and put your final answer within \boxed{}." \
     --tuner lora \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -57,17 +66,19 @@ swift rl \
     --nproc_per_node 2 \
     --vllm_mode colocate \
     --vllm_gpu_memory_utilization 0.5 \
-    --rft_num_samples 4 \
+    --rft_num_samples 8 \
     --rft_select best_of_n \
     --rft_iterations 3 \
-    --max_completion_length 256 \
-    --max_length 1024 \
-    --max_steps 6 \
-    --per_device_train_batch_size 1 \
+    --temperature 1.0 \
+    --max_completion_length 2048 \
+    --max_length 3072 \
+    --per_device_train_batch_size 2 \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
+    --warmup_ratio 0.05 \
     --logging_steps 1 \
-    --save_steps 6 \
+    --save_steps 100 \
     --save_total_limit 2 \
+    --gradient_checkpointing true \
     --output_dir output \
     --report_to tensorboard

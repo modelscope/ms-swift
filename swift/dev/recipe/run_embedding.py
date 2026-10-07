@@ -89,7 +89,7 @@ def _run_embedding_body(
     _save_final: bool = True,
 ) -> List[dict]:
     """The backend-agnostic embedding orchestration body (see run_embedding for the contract)."""
-    from swift.dev.loss import configure_embedding_loss
+    from swift.dev.loss import configure_embedding_loss, configure_embedding_metric
     from swift.dev.recipe.assembly import TrainAssembly
 
     def embedding_loss(model) -> None:
@@ -112,4 +112,4 @@ def _run_embedding_body(
         output_dir=output_dir,
         logging_config=logging_config,
         quantize_config=quantize_config,
-    ).fit(embedding_loss, save_final=_save_final)
+    ).fit(embedding_loss, configure_metric=configure_embedding_metric, save_final=_save_final)

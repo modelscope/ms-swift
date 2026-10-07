@@ -270,7 +270,7 @@ class StreamingLoopMixin:
     def _extra_step_metrics(self, metrics: dict) -> dict:
         """Fold the streaming driver's async telemetry into this step's logged record.
 
-        Composes with the algorithm loop's own ``_extra_step_metrics`` (GRPO's entropy / rollout-log-ratio;
+        Composes with the algorithm loop's own ``_extra_step_metrics`` (GRPO's driver-side reward merge;
         PPO's base is empty) via ``super()`` -- the mixin sits BEFORE the loop in the MRO
         (``StreamingGRPOLoop(StreamingLoopMixin, GRPOLoop)``), so ``super()`` reaches the loop's version and
         no field is dropped. ``RunTracker.log`` then emits every int/float scalar in the record generically,
