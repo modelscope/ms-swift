@@ -199,6 +199,20 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
             tool = {'type': 'function', 'function': tool}
         return tool
 
+    def _get_tool_schemas(self, tools: Optional[List[Union[str, dict]]]) -> Dict[str, dict]:
+        tool_schemas = {}
+        for tool in tools or []:
+            tool = self._parse_json(tool)
+            if not isinstance(tool, dict):
+                continue
+            function = self.unwrap_tool(tool)
+            if not isinstance(function, dict):
+                continue
+            parameters = self._parse_json(function.get('parameters'))
+            if isinstance(parameters, dict):
+                tool_schemas[self._get_tool_name(function)] = parameters
+        return tool_schemas
+
     @staticmethod
     def _parse_tool(tool, lang: Literal['zh', 'en']) -> ToolDesc:
         tool = BaseAgentTemplate.unwrap_tool(tool)

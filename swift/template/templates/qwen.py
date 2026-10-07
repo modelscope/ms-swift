@@ -7,6 +7,7 @@ import shutil
 import torch
 import torch.nn.functional as F
 import transformers
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import partial
 from packaging import version
@@ -360,6 +361,22 @@ class Qwen2VLTemplate(Template):
                     video, video_metadata = video
                     inputs.mm_processor_kwargs.setdefault('video_metadata', []).append(video_metadata)
                     tokens = ['<|video_pad|>']
+                elif isinstance(video, tuple):
+                    # When video_start/video_end clip a window from the source video, the
+                    # frames_indices returned by qwen_vl_utils are absolute indices of the
+                    # source video. vLLM computes per-frame timestamps as frames_indices / fps
+                    # and injects them into the prompt, which would produce absolute timestamps
+                    # (e.g. <161.4 seconds>) instead of window-relative ones. Rebase the
+                    # indices so the injected timestamps start from the clipped window.
+                    video_tensor, video_metadata = video
+                    frames_indices = video_metadata.get('frames_indices') if isinstance(video_metadata,
+                                                                                        Mapping) else None
+                    if frames_indices is not None and len(frames_indices) > 0:
+                        frames_indices = [int(i) for i in frames_indices]
+                        base = frames_indices[0]
+                        if base > 0:
+                            video_metadata = {**video_metadata, 'frames_indices': [i - base for i in frames_indices]}
+                            video = (video_tensor, video_metadata)
                 inputs.mm_processor_kwargs['do_sample_frames'] = False
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
@@ -760,6 +777,30 @@ class Qwen3_5EmbTemplate(Qwen3_5Template):
             if last_msg['role'] != 'assistant':
                 inputs.messages.append({'role': 'assistant', 'content': ''})
 
+    def prepare_engine_kwargs(self) -> Dict[str, Any]:
+        if self.mode == 'vllm' and self.template_meta.template_type == MLLMTemplateType.qwen3_5_emb:
+            from vllm.config import PoolerConfig
+            return {
+                'hf_overrides': {
+                    'architectures': ['UEmbedForConditionalGeneration'],
+                },
+                'pooler_config': PoolerConfig(task='token_embed', pooling_type='ALL'),
+            }
+        return {}
+
+    def prepare_pooling_params(self, pooling_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        if self.mode == 'vllm' and self.template_meta.template_type == MLLMTemplateType.qwen3_5_emb:
+            pooling_kwargs.update(task='token_embed', use_activation=False)
+        return pooling_kwargs
+
+    def extract_embedding(self, result) -> Any:
+        if self.template_meta.template_type == MLLMTemplateType.qwen3_5_emb:
+            data = result.outputs.data
+            num_eos = self.num_eos_tokens
+            embedding = torch.nn.functional.normalize(data[-(num_eos + 1)].float(), p=2, dim=-1)
+            return embedding.cpu().tolist()
+        return super().extract_embedding(result)
+
 
 register_template(
     QwenTemplateMeta(
@@ -1133,6 +1174,10 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         else:
             audio_feature_lengths = None
         video_second_per_grid = inputs.pop('video_second_per_grid', None)
+        if video_second_per_grid is not None and not isinstance(video_second_per_grid, torch.Tensor):
+            # `get_rope_index` indexes `second_per_grids` per video and calls `.cpu()` on each item,
+            # so the fps override in `_encode` (a python list) must be converted back to a tensor.
+            video_second_per_grid = torch.tensor(video_second_per_grid, dtype=torch.float32)
         input_ids = inputs['input_ids']
         attention_mask = inputs.get('attention_mask_2d')
         if attention_mask is None:
@@ -1724,7 +1769,7 @@ class MarcoO1TemplateMeta(QwenTemplateMeta):
 你是一个经过良好训练的AI助手，你的名字是Marco-o1.由阿里国际数字商业集团的AI Business创造.
         \n## 重要！！！！！
 当你回答问题时，你的思考应该在<Thought>内完成，<Output>内输出你的结果。
-<Thought>应该尽可能是英文，但是有2个特例，一个是对原文中的引用，另一个是是数学应该使用markdown格式，<Output>内的输出需要遵循用户输入的语言。
+<Thought>应该尽可能是英文，但是有2个特例，一个是对原文中的引用，另一个是数学应该使用markdown格式，<Output>内的输出需要遵循用户输入的语言。
         """
 
 

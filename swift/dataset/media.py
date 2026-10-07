@@ -2,6 +2,7 @@
 import aiohttp
 import os
 import shutil
+import tempfile
 from modelscope.hub.utils.utils import get_cache_dir
 from typing import List, Literal, Optional, Union
 
@@ -100,7 +101,7 @@ class MediaResource:
         logger.info('If the downloading fails or lasts a long time, '
                     'you can manually download the resources and extracting to the local dir.')
         logger.info('Now begin.')
-        download_config = DownloadConfig(cache_dir=MediaResource.cache_dir)
+        download_config = DownloadConfig(cache_dir=MediaResource.cache_dir, force_extract=file_type == 'sharded')
         download_config.storage_options = {'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=86400)}}
         if file_type == 'file':
             filename = media_type.split('/')[-1]
@@ -111,9 +112,20 @@ class MediaResource:
             local_dirs = DownloadManager(download_config=download_config).download_and_extract(media_type)
             shutil.move(str(local_dirs), final_folder)
         else:
-            for media_url in media_type:
-                local_dirs = DownloadManager(download_config=download_config).download_and_extract(media_url)
-                MediaResource.move_directory_contents(str(local_dirs), final_folder)
+            # Fetch every shard before consuming its extracted cache. Re-extract
+            # on retry because an interrupted move may have consumed that cache.
+            local_dirs = [
+                DownloadManager(download_config=download_config).download_and_extract(media_url)
+                for media_url in media_type
+            ]
+            parent_dir = os.path.dirname(final_folder)
+            os.makedirs(parent_dir, exist_ok=True)
+            with tempfile.TemporaryDirectory(dir=parent_dir) as temp_dir:
+                staging_folder = os.path.join(temp_dir, 'media')
+                os.makedirs(staging_folder)
+                for local_dir in local_dirs:
+                    MediaResource.move_directory_contents(str(local_dir), staging_folder)
+                os.rename(staging_folder, final_folder)
         logger.info('# #################Resource downloading finished#################')
         return final_folder
 

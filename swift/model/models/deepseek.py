@@ -1,9 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import sys
 import torch
-from transformers import AutoModel, PretrainedConfig, PreTrainedModel
+from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, PretrainedConfig, PreTrainedModel
 from types import MethodType
-from typing import Any, Dict
+from typing import List, Optional
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger, git_clone_github
@@ -187,6 +187,179 @@ register_model(
         ],
         template=TemplateType.deepseek_v4,
         architectures=['DeepseekV4ForCausalLM'],
+    ))
+
+
+class DeepseekV41Loader(ModelLoader):
+    # DeepSeek-V4.1 ships a composite `deepseek_v41` config (text + vision) whose
+    # `model_type`s are unknown to transformers. Register lightweight config classes
+    # so AutoConfig can load the on-disk config; the text config subclasses the
+    # native DeepseekV4Config and only adds the CSA2 source-layer routing fields.
+    def get_config(self, model_dir: str):
+        from huggingface_hub.dataclasses import strict
+        from transformers.models.deepseek_v4.configuration_deepseek_v4 import DeepseekV4Config
+
+        # CSA2 widens the per-layer ratio vocabulary beyond V4's {0, 4, 128}.
+        _csa2_ratio_to_layer_type = {
+            0: 'sliding_attention',
+            1: 'compressed_sparse_attention',
+            2: 'heavily_compressed_attention',
+            4: 'compressed_sparse_attention',
+            128: 'heavily_compressed_attention',
+        }
+
+        @strict
+        class DeepseekV41TextConfig(DeepseekV4Config):
+            model_type = 'deepseek_v41_text'
+            default_num_hash_layers = 0  # V4.1 drops the Hash-MoE bootstrap
+            # CSA2 source-layer routing
+            kv_source_layer_ids: Optional[List[int]] = None
+            index_source_layer_ids: Optional[List[int]] = None
+            candidate_source_layer_id: Optional[int] = None
+            candidate_topk_blocks: Optional[int] = None
+            candidate_block_size: Optional[int] = None
+
+            def __post_init__(self, **kwargs):
+                # DeepseekV4Config consumes the legacy `compress_ratios` and resolves it through a
+                # module-level V4-only mapping. Resolve V4.1's wider ratio vocabulary on this
+                # instance before delegating, avoiding process-global mutation and config-load races.
+                compress_ratios = kwargs.pop('compress_ratios', None)
+                if self.layer_types is None and compress_ratios is not None:
+                    self.layer_types = [_csa2_ratio_to_layer_type[ratio] for ratio in compress_ratios]
+                super().__post_init__(**kwargs)
+                # Keep the raw ratios for mcore-bridge, which needs to distinguish ratios 1/2 even
+                # though both map to V4's public attention layer-type vocabulary.
+                self.compress_ratios = compress_ratios
+                # Store for vLLM compat (V4 config.json carries `num_hash_layers`
+                # but V4.1 derives it from `default_num_hash_layers=0`).
+                if not hasattr(self, 'num_hash_layers'):
+                    self.num_hash_layers = sum(1 for t in (self.mlp_layer_types or []) if t == 'hash_moe')
+
+        class DeepseekV41VisionConfig(PretrainedConfig):
+            model_type = 'deepseek_v41_vision'
+
+        class DeepseekV41Config(PretrainedConfig):
+            model_type = 'deepseek_v41'
+            sub_configs = {'text_config': DeepseekV41TextConfig, 'vision_config': DeepseekV41VisionConfig}
+
+            # mcore-bridge's _set_inv_freq reads config.rope_scaling and expects
+            # the nested dict {'main': {…}, 'compress': {…}}.  The base class
+            # property ``rope_scaling`` returns ``self.rope_parameters`` which,
+            # via __getattr__ below, is intentionally flattened to the 'compress'
+            # sub-dict for vLLM compat.  Override the property so mcore gets the
+            # full nested dict while vLLM still gets the flat one via
+            # ``config.rope_parameters``.
+            @property
+            def rope_scaling(self):
+                return self.text_config.rope_parameters
+
+            @rope_scaling.setter
+            def rope_scaling(self, value):
+                # Allow assignment (PretrainedConfig.__init__ may set it from
+                # kwargs); silently ignore – the authoritative source is always
+                # text_config.rope_parameters.
+                pass
+
+            def __init__(self, text_config=None, vision_config=None, image_token_id=None, **kwargs):
+                if isinstance(text_config, dict):
+                    text_config = DeepseekV41TextConfig(**text_config)
+                elif text_config is None:
+                    text_config = DeepseekV41TextConfig()
+                if isinstance(vision_config, dict):
+                    vision_config = DeepseekV41VisionConfig(**vision_config)
+                self.text_config = text_config
+                self.vision_config = vision_config
+                self.image_token_id = image_token_id
+                # The mcore backbone reads `hf_config.layer_types` off the composite config
+                # (see mcore_bridge DSv4HybridSelfAttention); surface the text config's
+                # CSA2-derived layer_types so the shared DSv4 attention can index it.
+                self.layer_types = getattr(text_config, 'layer_types', None)
+                # Version-compat shim. transformers >= 5.12 turns PreTrainedConfig into a
+                # strict dataclass that runs the *generic* validate_layer_type, which only
+                # accepts the global ('sparse', 'dense') MLP labels. DeepSeek-V4 overrides
+                # that validator on its *text* config to accept its own 'moe'/'hash_moe'
+                # vocabulary, but this composite subclasses PreTrainedConfig directly and
+                # would otherwise fail validation against the legacy 'moe' labels it
+                # delegates from text_config (via __getattr__). Surface an allowed-vocabulary
+                # copy on the composite so the generic validator passes; text_config keeps
+                # its own 'moe' labels for the native DeepSeek-V4 modeling path. Setting the
+                # attribute explicitly (before super().__init__ runs the strict validation)
+                # also stops __getattr__ from delegating the legacy labels. Overriding the
+                # validator method is not enough: huggingface_hub's @strict captures the
+                # validator functions at decoration time, so a subclass method override is
+                # never invoked. Harmless on older transformers without the strict validator.
+                _mlp_layer_types = getattr(text_config, 'mlp_layer_types', None)
+                if _mlp_layer_types is not None:
+                    _mlp_remap = {'moe': 'sparse', 'hash_moe': 'sparse'}
+                    self.mlp_layer_types = [_mlp_remap.get(t, t) for t in _mlp_layer_types]
+                super().__init__(**kwargs)
+
+            def __getattr__(self, name):
+                # Delegate unknown attribute lookups to text_config so that vLLM
+                # and other consumers can read text-model attrs (vocab_size,
+                # hidden_size, num_attention_heads, …) directly from the
+                # composite config without needing explicit surfacing.
+                try:
+                    return super().__getattribute__(name)
+                except AttributeError:
+                    text_config = super().__getattribute__('text_config')
+                    if hasattr(text_config, name):
+                        value = getattr(text_config, name)
+                        # vLLM's V4 rope builder expects a flat rope_parameters
+                        # dict (keys like rope_type, rope_theta, …); the HF text
+                        # config structures it as {'main': {…}, 'compress': {…}}.
+                        # Return the 'compress' sub-dict which carries the full
+                        # parameter set (incl. yarn scaling info);  the builder
+                        # selects the right theta via per-layer compress_ratio.
+                        if name == 'rope_parameters' and isinstance(value, dict):
+                            compress = value.get('compress')
+                            if isinstance(compress, dict):
+                                return compress
+                        return value
+                    raise
+
+        AutoConfig.register('deepseek_v41_text', DeepseekV41TextConfig, exist_ok=True)
+        AutoConfig.register('deepseek_v41_vision', DeepseekV41VisionConfig, exist_ok=True)
+        AutoConfig.register('deepseek_v41', DeepseekV41Config, exist_ok=True)
+
+        # The megatron adapter save flow instantiates a dummy HF model via
+        # ``AutoModelForCausalLM(config)`` to extract LoRA target modules.
+        # Without an explicit model-class registration for the composite
+        # ``DeepseekV41Config`` this lookup fails. We register a thin wrapper
+        # that delegates to the native ``DeepseekV4ForCausalLM`` (text-only),
+        # which is sufficient for enumerating named parameters on ``meta``.
+        from transformers.models.deepseek_v4.modeling_deepseek_v4 import DeepseekV4ForCausalLM
+
+        class DeepseekV41ForCausalLM(DeepseekV4ForCausalLM):
+            config_class = DeepseekV41Config
+
+            def __init__(self, config):
+                # The parent expects a flat DeepseekV4Config; unwrap the composite.
+                text_config = getattr(config, 'text_config', config)
+                super().__init__(text_config)
+                self.config = config
+
+        AutoModelForCausalLM.register(DeepseekV41Config, DeepseekV41ForCausalLM, exist_ok=True)
+
+        # Rollout requires vLLM's native DeepSeek-V4.1 implementation. Reusing the V4 model is
+        # numerically incorrect because it omits Engram/CSA2 and has different output projection
+        # semantics; registration and capability checks therefore belong to the vLLM runtime.
+        return super().get_config(model_dir)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.deepseek_v41,
+        [
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V4.1-Flash', 'deepseek-ai/DeepSeek-V4.1-Flash'),
+            ]),
+        ],
+        DeepseekV41Loader,
+        template=TemplateType.deepseek_v41,
+        architectures=['DeepseekV41ForCausalLM'],
+        model_arch=ModelArch.deepseek_v41,
+        tags=['vision'],
     ))
 
 

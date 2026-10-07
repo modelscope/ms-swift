@@ -236,6 +236,13 @@ register_model(
                        TemplateType.minicpm5,
                        requires=['transformers>=5.6']),
             ModelGroup([
+                Model('OpenBMB/MiniCPM5-2B', 'openbmb/MiniCPM5-2B'),
+                Model('OpenBMB/MiniCPM5-2B-Base', 'openbmb/MiniCPM5-2B-Base'),
+                Model('OpenBMB/MiniCPM5-2B-SFT', 'openbmb/MiniCPM5-2B-SFT'),
+            ],
+                       TemplateType.minicpm5_2b,
+                       requires=['transformers>=5.6']),
+            ModelGroup([
                 Model('LLM-Research/Reflection-Llama-3.1-70B', 'mattshumer/Reflection-Llama-3.1-70B'),
             ],
                        TemplateType.reflection,

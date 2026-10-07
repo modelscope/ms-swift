@@ -37,8 +37,7 @@ def encode_teacher_view(
     if teacher_row.get('response_token_ids'):
         loss_mask = teacher_row.get('response_loss_mask') or None
         ctk = sample.extra.get('chat_template_kwargs') or {}
-        sample_et = ctk.get('enable_thinking')
-        prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=sample_et)
+        prefix_ids = get_response_prefix_ids(template, chat_template_kwargs=ctk)
         teacher_row['messages'] = replace_assistant_response_with_ids(
             teacher_row['messages'],
             teacher_row['response_token_ids'],
@@ -112,12 +111,14 @@ def build_teacher_requests(samples: List[OnPolicySample], template: Optional[Tem
             # and the OPSD teacher prompt (which shares the same response tokens).
             loss_mask = s.response_loss_mask or None
             ctk = s.extra.get('chat_template_kwargs') or {}
-            prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=ctk.get('enable_thinking'))
+            prefix_ids = get_response_prefix_ids(template, chat_template_kwargs=ctk)
             messages = replace_assistant_response_with_ids([m.copy() for m in messages],
                                                            s.response_token_ids,
                                                            loss_mask,
                                                            non_thinking_prefix_ids=prefix_ids)
         req.messages = messages
+        if isinstance(s, GKDSample):
+            req.add_eos = 'auto' if s.add_eos is None else s.add_eos
         requests.append(req)
     return requests
 
@@ -128,6 +129,7 @@ def assemble_teacher_output(
     topk: Optional[int],
     template_padding_free: bool,
     device: torch.device,
+    cp_size: int = 1,
 ) -> TeacherOutput:
     """Build a full-sequence ``TeacherOutput`` (GKD) from parsed teacher prompt logprobs.
 
@@ -143,9 +145,6 @@ def assemble_teacher_output(
     cu_seqlens = None
     offsets = None
     if template_padding_free:
-        cu_seqlens = [0]
-        for lps, ixs in parsed:
-            cu_seqlens.append(cu_seqlens[-1] + len(lps) + 1)
         trainer_seq_lens = teacher_model_inputs.get('cu_seq_lens_q')
         if trainer_seq_lens is None:
             position_ids = teacher_model_inputs.get('text_position_ids')
@@ -153,7 +152,21 @@ def assemble_teacher_output(
                 position_ids = teacher_model_inputs.get('position_ids')
             if position_ids is not None:
                 trainer_seq_lens = get_cu_seqlens_from_position_ids(position_ids)
-        if trainer_seq_lens is not None and cu_seqlens[-1] != int(trainer_seq_lens[-1]):
+        cu_seqlens = [0]
+        for lps, ixs in parsed:
+            cu_seqlens.append(cu_seqlens[-1] + len(lps) + 1)
+        if trainer_seq_lens is not None and len(trainer_seq_lens) == len(cu_seqlens):
+            trainer_cu = [int(x) for x in trainer_seq_lens]
+            # Under CP > 1 the trainer frame is padded to a context-parallel multiple while the
+            # teacher scores the unpadded tokens, so a total-token difference is expected padding
+            if cu_seqlens[-1] != trainer_cu[-1] and cp_size <= 1:
+                logger.warning('The number of tokens returned by the teacher server differs from that of the '
+                               'trainer. This may be caused by non-aligned processing; aligning teacher logprobs '
+                               'to the trainer-side sequence boundaries.')
+            cu_seqlens = trainer_cu
+        # TP + SP: trailing pad tokens carry position_ids == 0 and each opens its own
+        # segment, so len(trainer_seq_lens) = len(cu_seqlens) + num_pad_tokens; only the totals are comparable.
+        elif trainer_seq_lens is not None and cu_seqlens[-1] != int(trainer_seq_lens[-1]):
             logger.warning('The number of tokens returned by the teacher server differs from that of the trainer. '
                            'This may be caused by non-aligned processing.')
     else:

@@ -38,6 +38,7 @@ try:
     from transformers.trainer_utils import sort_checkpoints
 except ImportError:
     sort_checkpoints = None
+from transformers.utils import is_torch_musa_available
 from types import MethodType
 from typing import Callable, Dict, List, Optional
 
@@ -47,15 +48,16 @@ from swift.hub import get_hub
 from swift.loss import loss_map
 from swift.metrics import MeanMetric, compute_acc, eval_metrics_map
 from swift.model import get_llm_model, get_lm_head_model, save_checkpoint
-from swift.model.patcher import gather_sequence_parallel_outputs, revert_padding_free, transformers_seq_cls_forward
+from swift.model.patcher import (gather_sequence_parallel_outputs, patch_frozen_module, revert_padding_free,
+                                 transformers_seq_cls_forward)
 from swift.optimizers import OptimizerCallback, optimizers_map
 from swift.sequence_parallel import SequenceParallelDispatcher, SequenceParallelSampler, sequence_parallel
 from swift.template import Template, update_generation_config_eos_token
 from swift.tuner_plugin import tuners_map
 from swift.tuners import SwiftModel
-from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device, get_logger,
-                         get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker,
-                         update_last_checkpoint_symlink)
+from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_cu_seqlens_from_position_ids,
+                         get_current_device, get_logger, get_packed_seq_params, is_dist, is_mp, is_mp_ddp,
+                         ms_logger_context, seed_worker, update_last_checkpoint_symlink)
 from .arguments import TrainingArguments
 from .utils import (accepts_parameter, can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function,
                     get_resume_dir, is_instance_of_ms_model, patch_modelscope_hub_timeout, replace_index_file)
@@ -701,6 +703,12 @@ class SwiftMixin:
                 rng_states['cuda'] = torch.cuda.random.get_rng_state_all()
             else:
                 rng_states['cuda'] = torch.cuda.random.get_rng_state()
+        if is_torch_musa_available():
+            # Restored by `Trainer._load_rng_state` from the 'musa' key.
+            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
+                rng_states['musa'] = torch.musa.get_rng_state_all()
+            else:
+                rng_states['musa'] = torch.musa.get_rng_state()
 
         # A process can arrive here before the process 0 has a chance to
         # save the model, in which case output_dir may not yet exist.
@@ -987,6 +995,8 @@ class SwiftMixin:
                             vision_tower.disable_input_require_grads()
                     except (NotImplementedError, AttributeError, ValueError) as e:
                         logger.warning(f'prepare gradient_checkpointing failed: {e}')
+                if isinstance(vision_tower, nn.Module):
+                    patch_frozen_module(vision_tower)
         # Avoid vit_gradient_checkpointing being overwritten by transformers.Trainer.gradient_checkpointing_enable.
         self.args.gradient_checkpointing = False
 
@@ -1191,6 +1201,8 @@ class SwiftMixin:
                 if sequence_parallel.rp_world_size > 1:
                     position_ids = sequence_parallel.real_position_ids
                     position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
+                    if cu_seqlens is not None:
+                        cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
                 else:
                     position_ids = None
                 preds_output = sequence_parallel.gather(preds, dim=1, position_ids=position_ids)
@@ -1261,7 +1273,8 @@ class SwiftMixin:
         loss_scale = inputs.get('loss_scale')
         if self.template.sequence_parallel_size > 1:
             raise NotImplementedError()
-        if labels.shape[0] == 1 and not is_mp():
+        # Unsloth only supports an integer suffix length, so keep masked gaps in labels and loss_scale.
+        if labels.shape[0] == 1 and not is_mp() and self.args.tuner_backend != 'unsloth':
             # device_map may encounter device mismatch issues.
             loss_mask = (labels != -100)[0]
             labels = labels[:, loss_mask]
@@ -1299,7 +1312,9 @@ class SwiftMixin:
         def skip_first_batches(dataloader, num_batches=0):
             if isinstance(dataloader, (DataLoaderShard, DataLoaderDispatcher)):
                 # DataLoaderMixin
-                return self.get_train_dataloader(skip_batches=num_batches)
+                new_dataloader = self.get_train_dataloader(skip_batches=num_batches)
+                self._restore_dataloader_epoch(dataloader, new_dataloader)
+                return new_dataloader
             else:
                 return origin_skip_first_batches(dataloader, num_batches)
 
@@ -1308,6 +1323,30 @@ class SwiftMixin:
             yield
         finally:
             trainer.skip_first_batches = origin_skip_first_batches
+
+    @staticmethod
+    def _restore_dataloader_epoch(dataloader, new_dataloader) -> None:
+        """Keep the in-progress epoch's permutation when rebuilding a dataloader.
+
+        HF Trainer applies ``set_epoch`` to the original dataloader before
+        ``skip_first_batches`` (transformers <= 4.x). The rebuilt dataloader would
+        otherwise replay the epoch-0 permutation and re-train already-seen samples
+        (https://github.com/modelscope/ms-swift/issues/10050).
+        """
+        sampler = getattr(dataloader, 'batch_sampler', None)
+        while sampler is not None and not hasattr(sampler, 'set_epoch'):
+            # Unwrap e.g. accelerate's SkipBatchSampler.
+            sampler = getattr(sampler, 'batch_sampler', None)
+        epoch = None
+        if sampler is not None:
+            curr_seed = getattr(sampler, 'curr_seed', None)
+            base_seed = getattr(sampler, 'base_seed', None)
+            if curr_seed is not None and base_seed is not None:
+                epoch = curr_seed - base_seed
+            else:
+                epoch = getattr(sampler, 'epoch', None)
+        if epoch is not None and hasattr(new_dataloader, 'set_epoch'):
+            new_dataloader.set_epoch(epoch)
 
 
 class DataLoaderMixin:
@@ -1321,7 +1360,7 @@ class DataLoaderMixin:
             return {'multiprocessing_context': mp_context}
         return {}
 
-    def get_sp_dataloader(self, dataset, batch_size, skip_batches=0):
+    def get_sp_dataloader(self, dataset, batch_size, skip_batches=0, *, shuffle=True, seed=42):
 
         data_collator = self.data_collator
         if isinstance(dataset, datasets.Dataset):
@@ -1329,7 +1368,7 @@ class DataLoaderMixin:
         else:
             data_collator = self._get_collator_with_removed_columns(data_collator, description='training')
         if hasattr(dataset, '__len__'):
-            sampler = SequenceParallelSampler(sequence_parallel, dataset, seed=42)
+            sampler = SequenceParallelSampler(sequence_parallel, dataset, shuffle=shuffle, seed=seed)
             dataloader_params = {
                 'batch_size': batch_size,
                 'collate_fn': data_collator,
@@ -1368,7 +1407,12 @@ class DataLoaderMixin:
     def get_train_dataloader(self, skip_batches=0):
         dataloader = None
         if self.template.sequence_parallel_size > 1:
-            dataloader = self.get_sp_dataloader(self.train_dataset, self._train_batch_size, skip_batches=skip_batches)
+            dataloader = self.get_sp_dataloader(
+                self.train_dataset,
+                self._train_batch_size,
+                skip_batches=skip_batches,
+                shuffle=self.args.train_dataloader_shuffle,
+                seed=self.args.data_seed or 0)
         if dataloader is None:
             # Higher efficiency
             if self.train_dataset is None:

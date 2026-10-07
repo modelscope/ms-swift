@@ -6,7 +6,7 @@ binpacking
 charset_normalizer
 cpm_kernels
 dacite
-datasets>=3.0,<4.8.5
+datasets>=4.0,<4.8.5
 einops
 fastapi
 importlib_metadata

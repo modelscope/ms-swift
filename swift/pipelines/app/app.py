@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import gradio
+import sys
 from contextlib import nullcontext
 from packaging import version
 from typing import List, Optional, Union
@@ -12,6 +13,17 @@ from .build_ui import build_ui
 
 logger = get_logger()
 
+# Addresses that expose the Web UI to the network, making it accessible to
+# anyone who can reach the server. Binding to these addresses without
+# authentication is dangerous — see GHSA-9g2v-fgfh-65rx.
+_UNSAFE_BIND_ADDRESSES = {'0.0.0.0', '::', '[::]'}
+
+_SECURITY_WARNING = ('⚠️ SECURITY WARNING: The Web UI is bound to {addr!r} and will be accessible to '
+                     'anyone on the network. The ms-swift Web UI has no built-in authentication and allows '
+                     'executing arbitrary commands on the server. This can lead to Remote Code Execution (RCE). '
+                     'If you do not need external access, use --server_name 127.0.0.1 (the default). '
+                     'If you must expose the Web UI, protect it with a reverse proxy, VPN, or firewall rules.')
+
 
 class SwiftApp(SwiftPipeline):
     args_class = AppArguments
@@ -19,6 +31,9 @@ class SwiftApp(SwiftPipeline):
 
     def run(self):
         args = self.args
+        if args.server_name in _UNSAFE_BIND_ADDRESSES:
+            logger.warning(_SECURITY_WARNING.format(addr=args.server_name))
+            print(_SECURITY_WARNING.format(addr=args.server_name), file=sys.stderr)
         deploy_context = nullcontext() if args.base_url else run_deploy(args, return_url=True)
         with deploy_context as base_url:
             base_url = base_url or args.base_url

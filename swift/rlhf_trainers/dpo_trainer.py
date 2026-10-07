@@ -54,6 +54,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                  *_args,
                  **kwargs):
         args = kwargs['args']
+        if args.precompute_ref_log_probs:
+            raise ValueError(
+                'precompute_ref_log_probs=True is not supported by Swift DPOTrainer. '
+                'Set precompute_ref_log_probs=False to compute reference log probabilities during training.')
         self.label_smoothing = args.label_smoothing
         if 'loss_weights' in DPOConfig.__dict__:
             # trl >= 0.20
@@ -96,6 +100,20 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         if self.template.packing:
             self.accelerator.gather_for_metrics = new_gather_function
 
+    def get_batch_samples(self, *args, **kwargs):
+        batch_samples, num_items_in_batch = super().get_batch_samples(*args, **kwargs)
+        if self.template.packing and batch_samples:
+            num_pairs = 0
+            for batch in batch_samples:
+                position_ids = batch.get('text_position_ids')
+                if position_ids is None:
+                    position_ids = batch['position_ids']
+                # Packed chosen/rejected sequences each start at position zero.
+                num_pairs += (position_ids == 0).sum() // 2
+            # DDP averages gradients, so use the mean window count per rank.
+            num_items_in_batch = self.accelerator.gather(num_pairs.to(self.accelerator.device)).float().mean()
+        return batch_samples, num_items_in_batch
+
     def concatenated_forward(
         self,
         model: nn.Module,
@@ -130,24 +148,20 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             all_logits, labels, label_pad_token_id=self.label_pad_token_id)
         origin_per_token_logps = per_token_logps
 
-        loss_types = self.loss_type if isinstance(self.loss_type, list) else [self.loss_type]
-        if 'ipo' in loss_types:
-            size_completion = loss_mask.sum(dim=-1)
-            per_token_logps = per_token_logps / size_completion
-
         output = {}
         if self.template.padding_free:
             cu_seqlens = self.get_cu_seqlens(text_position_ids, batch.get('logits_to_keep'))
             num_examples = (cu_seqlens.shape[0] - 1) // 2
             completion_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
+            completion_token_counts = self._packed_sequence_sum(loss_mask.flatten().long(), completion_lengths)
             if self.args.ld_alpha is not None and not is_ref_model:
-                chosen_lengths = completion_lengths[:num_examples]
-                rejected_lengths = completion_lengths[num_examples:]
+                chosen_lengths = completion_token_counts[:num_examples]
+                rejected_lengths = completion_token_counts[num_examples:]
                 public_lengths = torch.min(chosen_lengths, rejected_lengths)  # l_p in the paper
                 public_lengths = torch.cat((public_lengths, public_lengths))
-                front_lengths = torch.min(completion_lengths, public_lengths)
-                split_lengths = torch.stack((front_lengths, completion_lengths - front_lengths), dim=-1).flatten()
-                split_logps = self._packed_sequence_sum(per_token_logps.flatten(), split_lengths).view(-1, 2)
+                split_lengths = torch.stack((public_lengths, completion_token_counts - public_lengths),
+                                            dim=-1).flatten()
+                split_logps = self._packed_sequence_sum(per_token_logps[loss_mask], split_lengths).view(-1, 2)
                 all_logps = split_logps[:, 0] + self.args.ld_alpha * split_logps[:, 1]
             else:
                 all_logps = self._packed_sequence_sum(per_token_logps.flatten(), completion_lengths)
@@ -160,6 +174,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['mean_rejected_logits'] = mean_all_logits[:, num_tokens:][loss_mask[:, num_tokens:]].mean()
         else:
             num_examples = labels.shape[0] // 2
+            completion_token_counts = loss_mask.sum(dim=1)
             if not is_ref_model:
                 output['nll_loss'] = -origin_per_token_logps[:num_examples][loss_mask[:num_examples]].mean()
             if self.args.ld_alpha is not None and not is_ref_model:
@@ -189,6 +204,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['rejected_logps'] = all_logps[num_examples:]
             output['mean_chosen_logits'] = mean_all_logits[:num_examples][loss_mask[:num_examples]].mean()
             output['mean_rejected_logits'] = mean_all_logits[num_examples:][loss_mask[num_examples:]].mean()
+        output['chosen_completion_token_counts'] = completion_token_counts[:num_examples]
+        output['rejected_completion_token_counts'] = completion_token_counts[num_examples:]
         if self.aux_loss_enabled:
             output['aux_loss'] = outputs.aux_loss
         return output
@@ -203,6 +220,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             else:
                 ref_model_output = self.concatenated_forward(self.ref_model, batch, is_ref_model=True)
         return ref_model_output['chosen_logps'], ref_model_output['rejected_logps']
+
+    @staticmethod
+    def _get_ipo_sequence_logps(sequence_logps, completion_token_counts):
+        return sequence_logps / completion_token_counts.to(sequence_logps).clamp_min(1)
 
     def dpo_loss(
         self,
@@ -343,6 +364,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         model: Union[PreTrainedModel, nn.Module],
         batch: Dict[str, Union[List, torch.LongTensor]],
         train_eval: Literal['train', 'eval'] = 'train',
+        pair_loss_scale: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         metrics = {}
 
@@ -361,14 +383,28 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         loss_types = self.loss_type if isinstance(self.loss_type, list) else [self.loss_type]
         loss_weights = self.loss_weights if hasattr(self, 'loss_weights') and self.loss_weights else None
         for idx, loss_type in enumerate(loss_types):
+            chosen_logps = model_output['chosen_logps']
+            rejected_logps = model_output['rejected_logps']
+            current_ref_chosen_logps = ref_chosen_logps
+            current_ref_rejected_logps = ref_rejected_logps
+            if loss_type == 'ipo':
+                chosen_token_counts = model_output['chosen_completion_token_counts']
+                rejected_token_counts = model_output['rejected_completion_token_counts']
+                chosen_logps = self._get_ipo_sequence_logps(chosen_logps, chosen_token_counts)
+                rejected_logps = self._get_ipo_sequence_logps(rejected_logps, rejected_token_counts)
+                current_ref_chosen_logps = self._get_ipo_sequence_logps(ref_chosen_logps, chosen_token_counts)
+                current_ref_rejected_logps = self._get_ipo_sequence_logps(ref_rejected_logps, rejected_token_counts)
             _losses, _chosen_rewards, _rejected_rewards = self.dpo_loss(
-                model_output['chosen_logps'],
-                model_output['rejected_logps'],
-                ref_chosen_logps,
-                ref_rejected_logps,
+                chosen_logps,
+                rejected_logps,
+                current_ref_chosen_logps,
+                current_ref_rejected_logps,
                 loss_type,
                 model_output,
             )
+            if pair_loss_scale is not None and loss_type != 'sft':
+                # Preserve the existing reduction of SFT/RPO and router losses.
+                _losses = _losses * (_losses.numel() * pair_loss_scale)
             weight = loss_weights[idx] if loss_weights else 1.0
             losses = losses + _losses * weight
             chosen_rewards = chosen_rewards + _chosen_rewards * weight
@@ -395,6 +431,12 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             self.accelerator.gather_for_metrics(model_output['chosen_logps']).detach().mean().item())
         metrics[f'{prefix}logps/rejected'] = (
             self.accelerator.gather_for_metrics(model_output['rejected_logps']).detach().mean().item())
+        if 'ipo' in loss_types:
+            for key in ['chosen', 'rejected']:
+                mean_logps = self._get_ipo_sequence_logps(model_output[f'{key}_logps'],
+                                                          model_output[f'{key}_completion_token_counts'])
+                metrics[f'{prefix}logps_mean/{key}'] = (
+                    self.accelerator.gather_for_metrics(mean_logps).detach().mean().item())
         metrics[f'{prefix}logits/chosen'] = (
             self.accelerator.gather_for_metrics(model_output['mean_chosen_logits']).detach().mean().item())
         metrics[f'{prefix}logits/rejected'] = (
@@ -425,10 +467,17 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         return Trainer.log(self, logs, start_time)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        pair_loss_scale = None
+        if self.template.packing and num_items_in_batch is not None:
+            accumulation_steps = self.args.gradient_accumulation_steps
+            if not self.model_accepts_loss_kwargs:
+                accumulation_steps = getattr(self, 'current_gradient_accumulation_steps', accumulation_steps)
+            pair_loss_scale = accumulation_steps / num_items_in_batch
         compute_loss_context_manager = (
             torch.autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext())
         with compute_loss_context_manager:
-            loss, metrics = self.get_batch_loss_metrics(model, inputs, train_eval='train')
+            loss, metrics = self.get_batch_loss_metrics(
+                model, inputs, train_eval='train', pair_loss_scale=pair_loss_scale)
 
         loss = loss.to(self.args.device)
         self.store_metrics(metrics, train_eval='train')

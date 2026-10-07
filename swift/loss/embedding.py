@@ -104,7 +104,7 @@ def _parse_multi_negative_sentences(sentences, labels, hard_negatives=None):
                 split_part = split_part[:hard_negatives + 2]
             elif negatives < hard_negatives:
                 selected = np.random.choice(list(range(negatives)), size=hard_negatives - negatives, replace=True)
-                selected += 1  # skip positive
+                selected += 2  # skip anchor and positive
                 split_part = torch.cat((split_part, split_part[selected]), dim=0)
         split_tensors.append(split_part)
     return split_tensors
@@ -133,6 +133,7 @@ class InfonceLoss(BaseLoss):
             rank, _, world_size, _ = get_dist_setting()
         # repeat of anchor(1)+positive(1)+negatives(n)
         sentences = outputs['last_hidden_state']
+        gradient_scale = 1
 
         if world_size > 1 and use_batch:
             if getattr(sequence_parallel, 'dp_group', None) is not None:
@@ -142,24 +143,33 @@ class InfonceLoss(BaseLoss):
             elif self.is_megatron:
                 from megatron.core import mpu
                 dp_group = mpu.get_data_parallel_group()
-                shapes = [sentences.new_empty((2, ), dtype=torch.long) for _ in range(world_size)]
+                shapes = [sentences.new_empty((3, ), dtype=torch.long) for _ in range(world_size)]
                 dist.all_gather(
                     shapes,
-                    sentences.new_tensor(sentences.shape, dtype=torch.long),
+                    sentences.new_tensor((*sentences.shape, labels.numel()), dtype=torch.long),
                     group=dp_group,
                 )
-                all_sentences = [sentences.new_empty(shape.tolist()) for shape in shapes]
+                all_sentences = [sentences.new_empty(shape[:2].tolist()) for shape in shapes]
                 dist.all_gather(
                     all_sentences,
                     sentences,
                     group=dp_group,
                 )
+                all_labels = [labels.new_empty((shape[2].item(), )) for shape in shapes]
+                dist.all_gather(all_labels, labels, group=dp_group)
+                labels = torch.cat(all_labels)
             else:
                 # gather all the sentences and labels across the gpus when calculate loss across all batches of all gpus
                 all_sentences = gather_object(sentences.unsqueeze(0))
                 labels = gather_object(labels)
             # override the gathered one
             all_sentences[rank] = sentences
+            # Both torch DDP and Megatron (calculate_per_token_loss=False) average the local
+            # gradient contributions by the DP world size, so premultiply to recover the summed
+            # gradient. Megatron with calculate_per_token_loss=True sums grads without the 1/dp
+            # scaling (see Megatron-LM DistributedDataParallel), so no compensation is needed.
+            if not (self.is_megatron and getattr(self.args, 'calculate_per_token_loss', False)):
+                gradient_scale = len(all_sentences)
             for idx in range(len(all_sentences)):
                 if idx == rank:
                     continue
@@ -318,4 +328,7 @@ class InfonceLoss(BaseLoss):
                     # next positive is neg+1
                     length += tensor.size(0) - 1
                 loss /= len(split_tensors)
+        if gradient_scale > 1:
+            # DDP averages the local contributions to the global loss graph; preserve the reported loss.
+            loss = loss.detach() + gradient_scale * (loss - loss.detach())
         return loss

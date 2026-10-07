@@ -2,6 +2,8 @@
 import torch.nn
 from collections import namedtuple
 from functools import partial
+from megatron.core import mpu
+from megatron.core.utils import get_attr_wrapped_model
 
 from swift.loss import loss_map
 from swift.metrics import eval_metrics_map
@@ -17,7 +19,7 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
     def __init__(self, args, template):
         super().__init__(args, template)
         self._loss_func = loss_map[args.loss_type](args, self)
-        self.eval_metrics = eval_metrics_map['reranker'](args, self)
+        self.eval_metrics = eval_metrics_map['reranker'](args, self, group=mpu.get_data_parallel_group())
 
     @staticmethod
     def _get_listwise_reranker_preds(logits, labels):
@@ -60,7 +62,7 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
             lm_model.tokenizer = self.template.tokenizer
 
     def forward_step(self, data_iterator, model):
-        vp_stage = model.module.module.vp_stage
+        vp_stage = get_attr_wrapped_model(model, 'vp_stage')
         data = self.get_batch(data_iterator, vp_stage)
         labels = data.pop('labels', None)
         output_tensor = model(**data)

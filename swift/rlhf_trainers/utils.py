@@ -20,13 +20,14 @@ from peft.tuners.lora import LoraLayer
 from PIL import Image
 from pydantic import BaseModel, field_validator
 from torch import nn
+from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, RandomSampler
 from transformers.utils import is_torch_npu_available
 from types import MethodType
 from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 from swift.rl_core.data import GRPOBatch, OnPolicySample
-from swift.template import Messages, Template
+from swift.template import Messages, StdTemplateInputs, Template
 from swift.tuners.lora import LoraConfig
 from swift.utils import (gc_collect, get_cu_seqlens_from_position_ids, get_logger, get_packed_seq_params,
                          get_torch_device, is_swanlab_available, is_vllm_available, is_wandb_available, swanlab_get_run,
@@ -688,14 +689,16 @@ def load_pil_img(img) -> Image:
         raise ValueError("Image dictionary must contain either 'bytes' or 'path' key.")
 
 
-def get_response_prefix_ids(template: Template, sample_enable_thinking: Optional[bool] = None) -> Optional[List[int]]:
-    effective = sample_enable_thinking if sample_enable_thinking is not None else template.enable_thinking
-    if effective is True:
-        prefix_str = template.template_meta.thinking_prefix
-    elif effective is False:
-        prefix_str = template.template_meta.non_thinking_prefix
-    else:
-        return None
+def get_response_prefix_ids(template: Template,
+                            sample_enable_thinking: Optional[bool] = None,
+                            *,
+                            chat_template_kwargs: Optional[Dict[str, Any]] = None) -> Optional[List[int]]:
+    # Use the same precedence and model-specific overrides as rollout encoding.
+    kwargs = dict(chat_template_kwargs or {})
+    if sample_enable_thinking is not None:
+        kwargs['enable_thinking'] = sample_enable_thinking
+    inputs = StdTemplateInputs(messages=[], chat_template_kwargs=kwargs)
+    prefix_str = template._get_response_prefix(inputs)
     if prefix_str:
         return template.tokenizer.encode(prefix_str, add_special_tokens=False)
     return None
@@ -708,12 +711,8 @@ def encode_sample(sample: OnPolicySample, template: Template, *, encode_prompt_o
     ``to_template_dict()`` so the sample's original messages are preserved
     for logging / reward computation / reuse across steps_per_generation.
 
-    Per-sample ``enable_thinking``: the response prefix (thinking or
-    non-thinking) is computed per-sample from
-    ``sample.extra['chat_template_kwargs']['enable_thinking']``, falling back
-    to the template's global setting.  This keeps the trainer sequence
-    aligned with the rollout sequence for both thinking and non-thinking
-    prefixes.
+    Resolve the response prefix with the same per-sample chat template
+    settings as rollout, and exclude the injected prefix from the loss.
     """
     data = sample.to_template_dict()
     if sample.response_token_ids:
@@ -722,8 +721,7 @@ def encode_sample(sample: OnPolicySample, template: Template, *, encode_prompt_o
         if msgs is not None:
             msgs = [m.copy() for m in msgs]
         ctk = sample.extra.get('chat_template_kwargs') or {}
-        sample_et = ctk.get('enable_thinking')
-        prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=sample_et)
+        prefix_ids = get_response_prefix_ids(template, chat_template_kwargs=ctk)
         data['messages'] = replace_assistant_response_with_ids(
             msgs, sample.response_token_ids, loss_mask, non_thinking_prefix_ids=prefix_ids)
 
@@ -793,16 +791,18 @@ def replace_assistant_response_with_ids(messages: 'Messages',
     if loss_mask and isinstance(loss_mask[0], int):
         loss_mask = [loss_mask]
 
-    # Inject the non-thinking prefix (e.g. '<think>\n\n</think>\n\n') into the LAST assistant turn.
-    # When enable_thinking false, the engine prepends non_thinking_prefix before generation
-    # so completion_ids here are generated with the non-thinking prefix, inject here
+    # The prefix was prompt context during rollout, not part of the sampled IDs.
+    # Copy the outer lists so repeated encoding does not mutate the stored rollout.
     if non_thinking_prefix_ids:
+        completion_ids = list(completion_ids)
+        loss_mask = list(loss_mask) if loss_mask is not None else [[1] * len(ids) for ids in completion_ids]
         n_prefix = len(non_thinking_prefix_ids)
         last_ids = list(completion_ids[-1])
-        # Skip if the response already starts with the prefix (avoid double injection).
-        if last_ids[:n_prefix] != list(non_thinking_prefix_ids):
-            if loss_mask is None:
-                loss_mask = [[1] * len(ids) for ids in completion_ids]
+        # Multi-turn schedulers may already have inserted and masked the prefix.
+        # Matching token values alone cannot distinguish that from a sampled repetition.
+        prefix_is_masked = (
+            last_ids[:n_prefix] == list(non_thinking_prefix_ids) and loss_mask[-1][:n_prefix] == [0] * n_prefix)
+        if not prefix_is_masked:
             completion_ids[-1] = list(non_thinking_prefix_ids) + last_ids
             loss_mask[-1] = [0] * n_prefix + list(loss_mask[-1])
 
@@ -1101,14 +1101,21 @@ def patch_vllm_moe_model_weight_loader(model, *, load_preprocessed_weight: bool 
     original_model._swift_moe_weight_loader_patched = True
 
 
-def finish_vllm_weight_reload(vllm_model, model_config, target_device):
+def finish_vllm_weight_reload(vllm_model, model_config, target_device, *, strict: bool = False):
     if vllm_model is None or model_config is None or target_device is None:
         return
     try:
-        from vllm.model_executor.model_loader.utils import process_weights_after_loading
+        from vllm.model_executor.model_loader import utils as model_loader_utils
+
+        # Older vLLM releases do not expose the post-load helper.
+        process_weights_after_loading = getattr(model_loader_utils, 'process_weights_after_loading', None)
+        if process_weights_after_loading is None:
+            return
+        target_device = torch.device(target_device)
         process_weights_after_loading(vllm_model, model_config, target_device)
     except Exception:
-        return
+        if strict:
+            raise
 
 
 _cached_reverse_renamings = None
@@ -1878,45 +1885,44 @@ def pad_logps_back_to_batch(logps_rmpad: Optional[torch.Tensor],
         # Compute actual sequence lengths
         seq_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
 
-    # Compute cumulative sequence lengths
-    cu_seqlens = torch.cumsum(torch.cat([torch.tensor([0], device=device), seq_lengths]), dim=0)
     max_seq_len = logits_to_keep  # All sequences will be padded to this length
-
-    # Initialize output tensors with padding value
-    logps_padded = torch.full((batch_size, max_seq_len), pad_value, dtype=dtype, device=device)
-    valid_mask = torch.zeros(batch_size, max_seq_len, dtype=torch.float32, device=device)
-
-    # Unflatten: assign each sequence's logps to the corresponding row
-    # Use LEFT PADDING (right-align the data) to match the standard padding convention
     logps_flat = logps_rmpad.squeeze(0)  # [total_nnz]
 
-    for i in range(batch_size):
-        start_idx = cu_seqlens[i].item()
-        end_idx = cu_seqlens[i + 1].item()
-        seq_len = int(seq_lengths[i].item())
-
-        actual_end_idx = min(end_idx, len(logps_flat))
-        actual_len = actual_end_idx - start_idx
-
-        if actual_len <= 0:
-            continue
-
-        # Left padding: place data at the RIGHT side of the row
-        # pad_len is the number of padding tokens at the beginning
-        pad_len = max_seq_len - seq_len
-
-        if actual_len < seq_len:
-            # Input data is shorter than expected seq_len
-            # This happens when logps_flat doesn't have enough data
-            # Place actual data at the rightmost positions
-            data_pad_len = max_seq_len - actual_len
-            logps_padded[i, data_pad_len:] = logps_flat[start_idx:actual_end_idx]
-            valid_mask[i, data_pad_len:] = 1.0
-        else:
-            # Normal case: seq_len tokens of data
-            logps_padded[i, pad_len:] = logps_flat[start_idx:end_idx]
+    if batch_size <= 2:
+        cu_seqlens = torch.cat((seq_lengths.new_zeros(1), seq_lengths.cumsum(0)))
+        logps_padded = torch.full((batch_size, max_seq_len), pad_value, dtype=dtype, device=device)
+        valid_mask = torch.zeros(batch_size, max_seq_len, dtype=torch.float32, device=device)
+        for i in range(batch_size):
+            start_idx = cu_seqlens[i].item()
+            end_idx = cu_seqlens[i + 1].item()
+            seq_len = int(seq_lengths[i].item())
+            actual_end_idx = min(end_idx, len(logps_flat))
+            actual_len = actual_end_idx - start_idx
+            if actual_len <= 0:
+                continue
+            pad_len = max_seq_len - actual_len if actual_len < seq_len else max_seq_len - seq_len
+            logps_padded[i, pad_len:] = logps_flat[start_idx:actual_end_idx]
             valid_mask[i, pad_len:] = 1.0
+        return logps_padded, valid_mask
 
+    lengths = seq_lengths.detach().tolist()
+    actual_lengths = []
+    remaining = logps_flat.numel()
+    for seq_len in lengths:
+        actual_lengths.append(min(max(remaining, 0), seq_len))
+        remaining -= seq_len
+
+    logps_flat = logps_flat.to(dtype=dtype)
+    sequences = torch.split(logps_flat[:sum(actual_lengths)], actual_lengths)
+    # Reverse before and after right-padding to support left-padding on older PyTorch versions.
+    logps_padded = pad_sequence([sequence.flip(0) for sequence in sequences], batch_first=True,
+                                padding_value=pad_value).flip(1)
+    if logps_padded.shape[1] < max_seq_len:
+        logps_padded = F.pad(logps_padded, (max_seq_len - logps_padded.shape[1], 0), value=pad_value)
+
+    actual_lengths = torch.tensor(actual_lengths, dtype=torch.long, device=device)
+    positions = torch.arange(max_seq_len, device=device)
+    valid_mask = (positions.unsqueeze(0) >= (max_seq_len - actual_lengths).unsqueeze(1)).to(torch.float32)
     return logps_padded, valid_mask
 
 
@@ -1937,8 +1943,8 @@ def build_completion_mask_and_seq_lengths(
       ``completion_mask = roll(labels,-1) != -100``, shape ``[B, T_full]``.
     - ``logits_to_keep is int`` -> completion-region frame, no roll (HF):
       ``completion_mask = labels[:, -ltk:] != -100``, shape ``[B, ltk]``; the per-sample
-      ``seq_lengths`` (padding_free) carries the first-sentence prompt adjustment so it
-      matches HF's ``num_logits_to_keep`` logps frame.
+      ``seq_lengths`` (padding_free) contains each sequence's retained suffix length
+      to match HF's ``num_logits_to_keep`` logps frame.
 
     Args:
         labels: Label tensor from data collator.
@@ -1997,12 +2003,11 @@ def build_completion_mask_and_seq_lengths(
         if position_ids is None:
             position_ids = encoded_batch.get('position_ids')
         position_ids = position_ids.squeeze()
-        lengths = torch.diff(
-            torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
-                       torch.tensor([len(position_ids)]).to(position_ids.device)]))
-        total_lengths = lengths.sum()
-        # The first sentence has its prompt portion removed due to logits_to_keep
-        lengths[0] = lengths[0] - (total_lengths - logits_to_keep)
+        cu_seqlens = torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
+                                torch.tensor([len(position_ids)]).to(position_ids.device)])
+        cut = cu_seqlens[-1] - logits_to_keep
+        # Intersect each sequence with the retained suffix, preserving empty rows.
+        lengths = (cu_seqlens[1:] - torch.maximum(cu_seqlens[:-1], cut)).clamp(min=0)
         seq_lengths = lengths
         completion_mask, _ = pad_logps_back_to_batch(
             logps_rmpad=completion_mask_raw.float(),

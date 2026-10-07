@@ -3,6 +3,8 @@ import math
 import multiprocessing as mp
 import torch.distributed as dist
 from itertools import chain
+from multiprocessing.connection import wait
+from queue import Empty
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
 from typing import Optional
@@ -250,7 +252,16 @@ class IterablePackingDataset(IterableDataset):
     def _fetch_data_out_queue(self, last_res, num_samples):
         res = [None] * num_samples
         for _ in range(num_samples):
-            i, data = self._out_queue.get()
+            while True:
+                try:
+                    i, data = self._out_queue.get(timeout=1)
+                    break
+                except Empty:
+                    # Sentinels also work when a DataLoader process inherits the workers.
+                    if wait([worker.sentinel for worker in self.workers], timeout=0):
+                        raise RuntimeError(
+                            'A packing worker exited unexpectedly. Check the worker logs for the original error.'
+                        ) from None
             if not data:
                 continue
             res[i] = data if isinstance(data, list) else [data]
