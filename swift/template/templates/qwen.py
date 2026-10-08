@@ -714,6 +714,7 @@ register_template(
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think>\n\n</think>\n\n',
         agent_template='qwen3_5',
+        preserve_thinking=False,
         is_thinking=True))
 
 register_template(
