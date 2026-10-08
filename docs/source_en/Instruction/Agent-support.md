@@ -135,17 +135,17 @@ Begin!
 What is the weather like in Beijing and Shanghai today?<|im_end|>
 <|im_start|>assistant
 Action: realtime_aqi
-Action Input: {'city': 'Beijing'}
+Action Input: {"city": "Beijing"}
 Action: realtime_aqi
-Action Input: {'city': 'Shanghai'}
+Action Input: {"city": "Shanghai"}
 Observation:{"city": "Beijing", "aqi": "10", "unit": "celsius"}
 Observation:{"city": "Shanghai", "aqi": "72", "unit": "fahrenheit"}
 According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution.<|im_end|>
 
 [LABELS] [-100 * 233]Action: realtime_aqi
-Action Input: {'city': 'Beijing'}
+Action Input: {"city": "Beijing"}
 Action: realtime_aqi
-Action Input: {'city': 'Shanghai'}
+Action Input: {"city": "Shanghai"}
 Observation:[-100 * 45]According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution.<|im_end|>
 ```
 
