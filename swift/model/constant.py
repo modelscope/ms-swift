@@ -159,6 +159,11 @@ class MLLMModelType:
     wemm_embedding = 'wemm_embedding'
     qwen4_exp = 'qwen4_exp'
 
+    # typed-decision (System-1 scoring) task_type models
+    jev = 'jev'
+    clef = 'clef'
+    omnijev = 'omnijev'
+
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
     ovis2 = 'ovis2'

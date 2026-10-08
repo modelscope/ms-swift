@@ -196,6 +196,10 @@ class TransformersEngine(InferEngine):
 
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
+        # `decision` task_type: overlay a trained scoring_head shipped beside the adapter (guarded
+        # no-op for every other model / a plain adapter; plan decision F; Option A).
+        from swift.model.decision_head import maybe_load_trained_scoring_head
+        maybe_load_trained_scoring_head(self.model, adapter_path)
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> _GenerationConfig:
         generation_config = prepare_generation_config(self.generation_config, request_config, self.tokenizer)
@@ -414,6 +418,9 @@ class TransformersEngine(InferEngine):
                 preds = F.sigmoid(preds)
             preds = preds.tolist()
             logprobs = [None] * len(preds)
+        elif task_type == 'decision':
+            # `output` is a ScoringOutput; `_decode_decision` needs `option_mask`/`counts`, not just logits.
+            preds, logprobs = self.template._decode_decision(output, top_logprobs)
         else:
             raise ValueError(f'Unsupported task_type: {task_type}')
 

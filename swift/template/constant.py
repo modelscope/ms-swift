@@ -160,6 +160,11 @@ class MLLMTemplateType:
     qwen3_5_emb = 'qwen3_5_emb'
     wemm_embedding = 'wemm_embedding'
 
+    # typed-decision (System-1 scoring) task_type templates
+    jev = 'jev'
+    clef = 'clef'
+    omnijev = 'omnijev'
+
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
