@@ -4,9 +4,9 @@ External, task-local workaround for the observed FSDP2 checkpoint-300 stall:
 rank zero in Tensor.to(cpu), other ranks in Trainer's post-save HCCL barrier.
 No package source files are changed. Enabled only for this recovery run.
 """
+import torch.distributed as dist
 from datetime import timedelta
 from functools import wraps
-import torch.distributed as dist
 from transformers import Trainer
 
 _original_save_model = Trainer.save_model

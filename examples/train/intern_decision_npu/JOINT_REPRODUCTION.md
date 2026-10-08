@@ -8,11 +8,11 @@
 
 数值、权重和原始预测只本地保存。训练数据为公开 Typed Decisions 的固定切分：960训练案例、120验证、120校准，官方400测试案例保持独立。每案例5个字段，训练4800个监督目标。原始官方训练集未公开，因此这是方法与框架迁移复现，不保证重训达到官方七项精度。
 
-当前状态：联合字段输入与固定官方 schema 逐案例一致，两框架真实 tokenizer/processor 的输入和 CE 梯度检查通过；SWIFT 四卡短训已完成两步并进入保存，恢复与 Twinkle 四卡验证正在执行，完整训练和最终精度尚未验收。不能用历史单字段训练成绩代替本轮。
+Historical validation on the pinned reproduction revisions completed: four-NPU smoke and full-state resume, 120 optimizer steps, final model export/reload, joint-field evaluation and all seven accuracy suites. Aggregate accuracy remained below the official target. This PR does not claim reproduction of the unpublished training corpus or official model quality. Final metrics and raw predictions remain local. The rebased PR revision requires its own device validation; historical evidence is not a new-head training run.
 
 ## 章节三 复现分支和指导
 
-本框架个人分支为 `intern_decision_4b_repro`，继承此前 `intern_decision_4b_npu` 的已验证 NPU 接入，新增联合字段数据检查与训练入口。SWIFT 基线为 e815cb65efcb27c00c3cc5524603d6916ab5a112，Twinkle 基线为513041163495cdfef71f8b4f90edeee9e1694201；两个框架分别训练，不加载另一框架训练后的权重。
+本框架个人分支为 `intern_decision_4b_npu_pr` (PR); `intern_decision_4b_repro` (validated historical source)，继承此前 `intern_decision_4b_npu` 的已验证 NPU 接入，新增联合字段数据检查与训练入口。SWIFT 基线为 e815cb65efcb27c00c3cc5524603d6916ab5a112，Twinkle 基线为513041163495cdfef71f8b4f90edeee9e1694201；两个框架分别训练，不加载另一框架训练后的权重。
 
 基础镜像：`quay.nju.edu.cn/ascend/ms-swift@sha256:d1b56f2d77882edb92615c45641556c8d5adaf8ed360be73f4f0978f70fa01c1`，不导出镜像。独立容器、四张分配的910B卡，模型只读挂载到 `/models/Qwen3.5-4B`，源码挂载到 `/workspace/framework`，数据到 `/data/joint`。Python3.12、Torch2.10.0+cpu、torch_npu2.10.0.post2、Transformers5.15.1；Twinkle独立虚拟环境固定peft0.19.0。纯Python修改，无新增C++编译。
 

@@ -7,7 +7,7 @@ from unittest.mock import patch
 from swift.trainers.mixin import SwiftMixin
 
 torch.manual_seed(42)
-stub = SimpleNamespace(template=SimpleNamespace(sequence_parallel_size=1))
+stub = SimpleNamespace(template=SimpleNamespace(sequence_parallel_size=1), args=SimpleNamespace(tuner_backend='peft'))
 for distributed_single_batch in (False, True):
     with patch.dict(SwiftMixin.prepare_logits_to_keep.__globals__, {'is_mp': lambda: not distributed_single_batch}):
         for positions in ([4], [3, 7]):

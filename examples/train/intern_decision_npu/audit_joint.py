@@ -1,3 +1,4 @@
+import argparse
 import copy
 import decision_plugin  # noqa: F401
 import json
@@ -8,6 +9,9 @@ from pathlib import Path
 from swift.model import get_processor
 from swift.template import get_template
 
+parser = argparse.ArgumentParser(description='Audit joint-field tokenizer inputs and masked labels.')
+parser.add_argument('--output', type=Path, default=Path('/workspace/template-audit.json'))
+args = parser.parse_args()
 processor = get_processor('/models/Qwen3.5-4B', new_special_tokens=['<decision>'])
 tokenizer = processor.tokenizer
 template = get_template(
@@ -57,4 +61,5 @@ for split in ('train', 'validation', 'calibration', 'test'):
 report['marker_id'] = tokenizer.convert_tokens_to_ids('<decision>')
 report['tokenizer_length'] = len(tokenizer)
 report['prompt_matches_hf_checked_per_split'] = 10
-Path('/workspace/template-audit.json').write_text(json.dumps(report, indent=2))
+args.output.parent.mkdir(parents=True, exist_ok=True)
+args.output.write_text(json.dumps(report, indent=2))

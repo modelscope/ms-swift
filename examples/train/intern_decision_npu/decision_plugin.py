@@ -1,7 +1,7 @@
 """Intern-Decision hard-label supervision for MS-SWIFT; no framework edits."""
-from copy import deepcopy
-from collections.abc import Mapping
 import os
+from collections.abc import Mapping
+from copy import deepcopy
 
 from swift.template import register_template
 from swift.template.register import TEMPLATE_MAPPING
@@ -9,6 +9,7 @@ from swift.template.templates.qwen import Qwen3_5Template
 
 
 class DecisionTemplate(Qwen3_5Template):
+
     def _data_collator(self, batch, *, padding_to=None):
         # Limit NPU compilation shapes without truncating any evidence or labels.
         multiple = int(os.environ.get('DECISION_PAD_MULTIPLE', '0'))
@@ -22,8 +23,8 @@ class DecisionTemplate(Qwen3_5Template):
             messages.insert(0, {'role': 'system', 'content': inputs.system})
         # Render with the checkpoint tokenizer, exactly as the reference inference
         # path does. Equivalent decoded text can still have different BPE boundaries.
-        ids = self.tokenizer.apply_chat_template(messages, tokenize=True,
-                    add_generation_prompt=False, enable_thinking=False)
+        ids = self.tokenizer.apply_chat_template(
+            messages, tokenize=True, add_generation_prompt=False, enable_thinking=False)
         if isinstance(ids, Mapping):
             ids = ids['input_ids']
         encoded = {'input_ids': ids, 'labels': None}
