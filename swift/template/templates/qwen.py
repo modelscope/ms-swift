@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 import transformers
 from collections.abc import Mapping
+from copy import copy
 from dataclasses import dataclass, field
 from functools import partial
 from packaging import version
@@ -617,6 +618,27 @@ register_template(
 class Qwen3_5Template(Qwen3VLTemplate):
     image_token_id = 248056
     video_token_id = 248057
+
+    def _remove_history_thinking(self, inputs: StdTemplateInputs) -> None:
+        if self.template_meta.template_type != MLLMTemplateType.qwen3_5:
+            return super()._remove_history_thinking(inputs)
+        # The official jinja keeps reasoning after the last real user query. Tool
+        # results, including user messages wrapped in <tool_response>, do not end it.
+        for i in range(len(inputs.messages) - 1, -1, -1):
+            message = inputs.messages[i]
+            if message['role'] != 'user':
+                continue
+            content = message['content']
+            if isinstance(content, str):
+                content = content.strip()
+                if content.startswith('<tool_response>') and content.endswith('</tool_response>'):
+                    continue
+            history = copy(inputs)
+            # Share the message objects so the base implementation updates history,
+            # while excluding all assistant/tool turns in the current agent round.
+            history.messages = inputs.messages[:i + 1]
+            super()._remove_history_thinking(history)
+            return
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if self.padding_free and self.sequence_parallel_size <= 1 and not self.transformers_5_9:
