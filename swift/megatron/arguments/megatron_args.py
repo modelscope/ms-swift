@@ -149,11 +149,11 @@ class RLHFMegatronArgumentsMixin:
 
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
     # GDPO: normalize each reward function separately
-    scale_rewards: Literal['none', 'group', 'batch', 'gdpo'] = 'group'
+    scale_rewards: Optional[Literal['none', 'group', 'batch', 'gdpo']] = None
 
     # RLOO / REINFORCE++
     advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
-    kl_in_reward: bool = False
+    kl_in_reward: Optional[bool] = None
 
     wandb_log_unique_prompts: Optional[bool] = None
     log_completions: bool = False
@@ -422,6 +422,26 @@ class RLHFMegatronArgumentsMixin:
             logger.warning(
                 f"[REAL] scale_rewards='{self.scale_rewards}' is ignored. "
                 "It will be forced to 'none' because 'loss_type = real' does not support reward normalization.")
+
+        # `kl_in_reward` / `scale_rewards` default to the value tied to `advantage_estimator`.
+        # Mirrors `RLHFArguments._init_grpo` and the Megatron command-line documentation.
+        if self.kl_in_reward is None:
+            if self.advantage_estimator == 'grpo':
+                self.kl_in_reward = False
+            elif self.advantage_estimator in ['rloo', 'reinforce_plus_plus']:
+                self.kl_in_reward = True
+            else:
+                raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
+
+        if self.scale_rewards is None:
+            if self.advantage_estimator == 'grpo':
+                self.scale_rewards = 'group'
+            elif self.advantage_estimator == 'rloo':
+                self.scale_rewards = 'none'
+            elif self.advantage_estimator == 'reinforce_plus_plus':
+                self.scale_rewards = 'batch'
+            else:
+                raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
 
         if self.beta is None:
             self.beta = 0.04  # https://arxiv.org/abs/2402.03300
