@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
-python_bin=${PYTHON_BIN:-/workspace/.venv/bin/python}
+python_bin=${PYTHON_BIN:-python}
+model=${MODEL_PATH:?Set MODEL_PATH to the local Qwen3.5-4B base checkpoint}
+data=${DATA_ROOT:?Set DATA_ROOT to the prepared joint JSONL directory}
 export PATH="$(dirname "$python_bin"):$PATH"
-export PYTHONPATH="$PWD:/workspace/framework:${PYTHONPATH:-}"
-export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4
-export MASTER_ADDR=127.0.0.1 MASTER_PORT=29651 OMP_NUM_THREADS=4
+source_root=$(cd ../../.. && pwd)
+export PYTHONPATH="$PWD:$source_root:${PYTHONPATH:-}"
+export ASCEND_RT_VISIBLE_DEVICES=${ASCEND_RT_VISIBLE_DEVICES:?Assign four NPU devices}
+export NPROC_PER_NODE=4
+export MASTER_ADDR=${MASTER_ADDR:-127.0.0.1} MASTER_PORT=${MASTER_PORT:-29651}
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export TOKENIZERS_PARALLELISM=false HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1
 export HCCL_CONNECT_TIMEOUT=300 HCCL_EXEC_TIMEOUT=600
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True DECISION_PAD_MULTIPLE=128
 stage=${1:-smoke}
-output=${OUTPUT_ROOT:-/workspace/outputs}
+output=${OUTPUT_ROOT:?Set OUTPUT_ROOT to a new experiment directory}
 case "$stage" in
   smoke) output="$output/smoke"; extra=(--max_steps 2 --save_steps 2 --save_only_model false) ;;
   resume) checkpoint="$output/smoke/checkpoint-2"; output="$output/resume"; extra=(--max_steps 3 --save_steps 3 --save_only_model false --resume_from_checkpoint "$checkpoint") ;;
@@ -20,11 +25,11 @@ esac
 test ! -e "$output"
 "$python_bin" -m torch.distributed.run --nproc-per-node 4 \
   --master-addr "$MASTER_ADDR" --master-port "$MASTER_PORT" -m swift.cli.sft \
-  --model /models/Qwen3.5-4B --model_type qwen3_5 \
+  --model "$model" --model_type qwen3_5 \
   --external_plugins "$PWD/decision_plugin.py" "$PWD/checkpoint_fence.py" \
   --template intern_decision_training --new_special_tokens '<decision>' \
   --tuner_type full --freeze_vit true --freeze_aligner true --freeze_llm false \
-  --dataset /data/joint/train.jsonl --val_dataset /data/joint/validation.jsonl \
+  --dataset "$data/train.jsonl" --val_dataset "$data/validation.jsonl" \
   --remove_unused_columns false --strict true --split_dataset_ratio 0 \
   --enable_thinking false --max_length 8192 --truncation_strategy delete \
   --packing false --padding_free false --attn_impl sdpa \
