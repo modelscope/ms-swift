@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import datasets
 import functools
+import inspect
 import ipaddress
 import math
 import os
@@ -1275,8 +1276,16 @@ def patch_vllm_load_adapter():
             # LoRA manager to pack, matching vllm's own worker_manager._load_adapter.
             model = self._adapter_manager.model
             hf_to_vllm_mapper = getattr(model, 'hf_to_vllm_mapper', None)
-            if hf_to_vllm_mapper is not None and hasattr(hf_to_vllm_mapper, 'get_unstacked_mapper'):
-                hf_to_vllm_mapper = hf_to_vllm_mapper.get_unstacked_mapper()
+            if hf_to_vllm_mapper is not None:
+                if hasattr(hf_to_vllm_mapper, 'get_unstacked_mapper'):
+                    # vLLM <= 0.27.x
+                    hf_to_vllm_mapper = hf_to_vllm_mapper.get_unstacked_mapper()
+                elif hasattr(hf_to_vllm_mapper, 'get_rename_mapper'):
+                    # vLLM >= 0.28 renamed get_unstacked_mapper (upstream PR #53106). Without this the
+                    # q_proj/k_proj/v_proj LoRA names are rewritten to the stacked qkv_proj name, and
+                    # set_lora then receives a single tensor where a list of slices is required
+                    # (IndexError in ColumnParallelLinearWithLoRA.set_lora).
+                    hf_to_vllm_mapper = hf_to_vllm_mapper.get_rename_mapper()
 
             lora_request_kwargs = {
                 'peft_helper': peft_helper,
@@ -1353,9 +1362,32 @@ def expand_vllm_param_name_aliases(param_names: set[str]) -> set[str]:
     return expanded
 
 
+def vllm_lora_uses_raw_param_names() -> bool:
+    """Whether vLLM expects sync names without the ``*.base_layer`` suffix for LoRA-wrapped modules.
+
+    vLLM <= 0.27.x loads weights by recursing into the LoRA wrapper's ``base_layer`` submodule, so sync
+    names must use the ``*.base_layer.weight / .bias`` form. Upstream PR #39935 (first released in
+    v0.28.0) added ``BaseLayerWithLoRA.load_weights``, which forwards the weights straight to the wrapped
+    base layer; ``AutoWeightsLoader`` then stops recursing and raw names are required instead.
+    """
+    if not is_vllm_available():
+        return False
+    try:
+        from vllm.lora.layers.base import BaseLayerWithLoRA
+    except ImportError:
+        return check_vllm_version_ge('0.28.0')
+    return 'load_weights' in BaseLayerWithLoRA.__dict__
+
+
 def add_base_layer_suffix_by_param_names(weight_iterator: Iterable[Tuple[str, Any]],
                                          vllm_param_names: set[str]) -> Iterable[Tuple[str, Any]]:
-    """Map HF dense param names to vLLM LoRA-wrapped modules (*.base_layer.weight / .bias)."""
+    """Map HF dense param names to the load names vLLM's LoRA-wrapped modules expect."""
+    if vllm_lora_uses_raw_param_names():
+        # See vllm_lora_uses_raw_param_names: the wrapper forwards load_weights itself, so the
+        # *.base_layer.* suffix must be dropped instead of added.
+        for name, tensor in weight_iterator:
+            yield name.replace('.base_layer.', '.'), tensor
+        return
     for name, tensor in weight_iterator:
         if '.base_layer.' in name or '.' not in name:
             yield name, tensor
@@ -1681,12 +1713,43 @@ def set_expandable_segments(enable: bool) -> None:
         os.environ['PYTORCH_CUDA_ALLOC_CONF'] = f'expandable_segments:{enable}'
 
 
+def _vllm_sleep_accepts_mode(engine) -> bool:
+    """Whether the engine's ``sleep`` API accepts the pause ``mode`` argument (vLLM >= 0.20)."""
+    try:
+        return 'mode' in inspect.signature(engine.sleep).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def vllm_sleep(engine, sleep_level: int) -> None:
+    """Put a colocated vLLM engine to sleep, pausing with ``mode='keep'`` when supported.
+
+    ``sleep(level>=1)`` resets the prefix cache; vLLM v0.29-v0.31 (guard added by upstream PR
+    vllm-project/vllm#45635, removed on main after v0.31.0 by #59060) rejects that reset while the
+    AuxOutput connector (``enable_return_routed_experts``) is active unless the scheduler was paused
+    with ``mode='keep'``. ``keep`` pauses with PAUSED_ALL and waits for scheduled outputs to drain,
+    matching the rollout-then-train handover this is called from.
+    """
+    if _vllm_sleep_accepts_mode(engine):
+        engine.sleep(sleep_level, mode='keep')
+    else:
+        engine.sleep(sleep_level)
+
+
+async def vllm_sleep_async(engine, sleep_level: int) -> None:
+    """Async variant of :func:`vllm_sleep` for the Ray rollout engine (``AsyncLLM``)."""
+    if _vllm_sleep_accepts_mode(engine):
+        await engine.sleep(sleep_level, mode='keep')
+    else:
+        await engine.sleep(sleep_level)
+
+
 def sleep_vllm_engine(engine, sleep_level: int, suppress_errors: bool = False) -> None:
     """Release colocated vLLM memory while attempting every cleanup operation."""
     cleanup_error = None
     operations = [
         ('reset the prefix cache', engine.reset_prefix_cache),
-        ('put the engine to sleep', lambda: engine.sleep(level=sleep_level)),
+        ('put the engine to sleep', lambda: vllm_sleep(engine, sleep_level)),
         ('empty the device cache', aggressive_empty_cache),
         ('restore expandable segments', lambda: set_expandable_segments(True)),
     ]
