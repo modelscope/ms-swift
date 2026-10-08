@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import ast
+import hashlib
 import json
 import numpy as np
 import os
@@ -69,6 +70,24 @@ class RowPreprocessor:
         if not isinstance(random_state, np.random.RandomState):
             random_state = np.random.RandomState(random_state)
         self.random_state = random_state
+
+    def _get_map_cache_file_name(self, dataset: HfDataset, strict: bool, enable_auto_mapping: bool) -> str:
+        """Build the cache file name of the ``map`` that does the actual preprocessing.
+
+        ``datasets`` reuses ``cache_file_name`` as long as it exists and ``load_from_cache_file``
+        is set, without ever checking the arguments that changed the map output, so every input
+        that is not already part of the dataset fingerprint has to be part of the name. The
+        ``cache_format_version`` tag is kept so a schema change still busts every cache.
+        """
+        key = '|'.join([
+            dataset._fingerprint,
+            type(self).__name__,
+            str(sorted(self.columns.items())),
+            str(strict),
+            str(enable_auto_mapping),
+        ])
+        cache_file_name = hashlib.sha256(key.encode('utf-8')).hexdigest()
+        return self._map_cache_file(cache_file_name)
 
     @staticmethod
     def _check_messages(row: Dict[str, Any]) -> None:
@@ -362,7 +381,7 @@ class RowPreprocessor:
         if 'solution' in dataset.features:
             with safe_ddp_context(None, True):
                 if isinstance(dataset, HfDataset) and not dataset.cache_files:
-                    map_kwargs['cache_file_name'] = self._map_cache_file(dataset._fingerprint)
+                    map_kwargs['cache_file_name'] = self._get_map_cache_file_name(dataset, strict, enable_auto_mapping)
                 dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
                 map_kwargs.pop('cache_file_name', None)
         dataset = self.safe_rename_columns(dataset, self.origin_columns)
@@ -379,7 +398,7 @@ class RowPreprocessor:
         ignore_max_length_error = True
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             if isinstance(dataset, HfDataset) and not dataset.cache_files:
-                map_kwargs['cache_file_name'] = self._map_cache_file(dataset._fingerprint)
+                map_kwargs['cache_file_name'] = self._get_map_cache_file_name(dataset, strict, enable_auto_mapping)
             dataset_mapped = dataset.map(
                 self.batched_preprocess,
                 fn_kwargs={
