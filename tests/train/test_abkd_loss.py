@@ -162,3 +162,37 @@ def test_abkd_partial_teacher_api_coverage(device, alpha, beta):
     assert count.item() == 2
     torch.testing.assert_close(total.double(), expected, rtol=2e-5, atol=1e-6)
     torch.testing.assert_close(actual_gradient.double(), expected_gradient, rtol=1e-4, atol=2e-6)
+
+
+@pytest.mark.parametrize('teacher_vocab,alpha,beta', [(11, 0.2, 0.7), (11, 0., 0.7), (11, 0.8, 0.), (11, 0.4, -0.4),
+                                                      (11, 0., 0.), (29, 0.2, 0.7)])
+def test_abkd_vocab_alignment_preserves_both_gradient_paths(device, teacher_vocab, alpha, beta):
+    torch.manual_seed(19)
+    student = torch.randn(1, 4, 19, device=device, requires_grad=True)
+    teacher = torch.randn(1, 4, teacher_vocab, device=device)
+    labels = torch.tensor([[-100, 1, 2, 3]], device=device)
+    actual, count = gkd_loss(
+        student,
+        TeacherOutput(full_logits=teacher),
+        labels,
+        0.5,
+        0.8,
+        loss_type='abkd',
+        abkd_alpha=alpha,
+        abkd_beta=beta)
+
+    reference_student = student.detach().double().requires_grad_()
+    active_student = reference_student[labels != -100]
+    active_teacher = teacher[labels != -100].double()
+    if teacher_vocab < 19:
+        # Vocabulary alignment copies the student's extra logits into the teacher.
+        # Those logits contribute through both distributions, including normalization.
+        active_teacher = torch.cat([active_teacher, active_student[:, teacher_vocab:]], dim=-1)
+    else:
+        active_student = torch.cat([active_student, active_teacher[:, 19:]], dim=-1)
+    expected = reference_abkd(active_student, active_teacher, alpha, beta, 0.8)
+    actual_gradient, = torch.autograd.grad(actual, student)
+    expected_gradient, = torch.autograd.grad(expected, reference_student)
+    assert count.item() == 3
+    torch.testing.assert_close(actual.double(), expected, rtol=3e-5, atol=3e-6)
+    torch.testing.assert_close(actual_gradient.double(), expected_gradient, rtol=1e-4, atol=2e-6)

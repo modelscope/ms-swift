@@ -158,32 +158,16 @@ def _scaled_expm1(log_scale: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     return (log_scale + positive).exp() * (torch.expm1(x - positive) - torch.expm1(-positive))
 
 
-def abkd_loss(
-    s_logits: torch.Tensor,
-    t_logits: torch.Tensor,
-    alpha: float = 0.2,
-    beta: float = 0.7,
-    log_softmax_fn: Callable = default_log_softmax,
-    sum_fn: Callable = default_vocab_sum,
-    chunk_size: int = 512,
-    temperature: float = 1.0,
-) -> torch.Tensor:
-    """Chunked alpha-beta divergence D_AB(teacher || student).
+class _ABKDDivergence(torch.autograd.Function):
+    """Keep only log probabilities for backward, rather than the elementwise loss graph."""
 
-    Computation uses at least FP32, including temperature scaling and normalization.
-    ``sum_fn`` reduces the vocabulary dimension (across TP ranks when sharded).
-    The zero-parameter branches are the continuous limits of the same divergence.
-    """
-    total = s_logits.new_zeros((), dtype=torch.promote_types(s_logits.dtype, torch.float32))
-    if s_logits.size(0) == 0:
-        return s_logits.sum().to(total.dtype)
+    @staticmethod
+    def forward(ctx, log_p, log_q, alpha, beta):
+        ctx.save_for_backward(log_p, log_q)
+        ctx.alpha, ctx.beta = alpha, beta
 
-    for start in range(0, s_logits.size(0), chunk_size):
-        s = s_logits[start:start + chunk_size].to(total.dtype) / temperature
-        t = t_logits[start:start + chunk_size].to(total.dtype) / temperature
-        log_q = log_softmax_fn(s)
-        log_p = log_softmax_fn(t)
-        gap = log_p - log_q
+        if alpha == 0 or beta == 0 or alpha + beta == 0:
+            gap = log_p - log_q
 
         if alpha == 0 and beta == 0:
             divergence = 0.5 * gap.square()
@@ -212,6 +196,62 @@ def abkd_loss(
                 alpha * torch.expm1(power_p - scale) + beta * torch.expm1(power_q - scale) -
                 (alpha + beta) * torch.expm1(cross - scale))
             divergence = scale.exp() * numerator / (alpha * beta * (alpha + beta))
+        return divergence
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        log_p, log_q = ctx.saved_tensors
+        alpha, beta = ctx.alpha, ctx.beta
+        gap = log_p - log_q
+        grad_p = grad_q = None
+        if ctx.needs_input_grad[0]:
+            # dD/d(log p) = (p**(alpha + beta) - p**alpha * q**beta) / beta.
+            # The log-probability derivative tends to zero at p = 0 when the
+            # divergence is finite. Teacher gradients also cover vocabulary padding.
+            teacher_gap = gap
+            if alpha > 0 and alpha + beta > 0:
+                teacher_gap = gap.masked_fill(torch.isneginf(log_p), 0)
+            if beta == 0:
+                grad_p = teacher_gap * (alpha * log_p).exp()
+            else:
+                grad_p = -_scaled_expm1((alpha + beta) * log_p, -beta * teacher_gap) / beta
+            grad_p = grad_p * grad_output
+        if ctx.needs_input_grad[1]:
+            # dD/d(log q) = (q**(alpha + beta) - p**alpha * q**beta) / alpha.
+            if alpha == 0:
+                grad_q = -gap * (beta * log_q).exp()
+            else:
+                grad_q = -_scaled_expm1((alpha + beta) * log_q, alpha * gap) / alpha
+            grad_q = grad_q * grad_output
+        return grad_p, grad_q, None, None
+
+
+def abkd_loss(
+    s_logits: torch.Tensor,
+    t_logits: torch.Tensor,
+    alpha: float = 0.2,
+    beta: float = 0.7,
+    log_softmax_fn: Callable = default_log_softmax,
+    sum_fn: Callable = default_vocab_sum,
+    chunk_size: int = 512,
+    temperature: float = 1.0,
+) -> torch.Tensor:
+    """Chunked alpha-beta divergence D_AB(teacher || student).
+
+    Computation uses at least FP32, including temperature scaling and normalization.
+    ``sum_fn`` reduces the vocabulary dimension (across TP ranks when sharded).
+    The zero-parameter branches are the continuous limits of the same divergence.
+    """
+    total = s_logits.new_zeros((), dtype=torch.promote_types(s_logits.dtype, torch.float32))
+    if s_logits.size(0) == 0:
+        return s_logits.sum().to(total.dtype)
+
+    for start in range(0, s_logits.size(0), chunk_size):
+        s = s_logits[start:start + chunk_size].to(total.dtype) / temperature
+        t = t_logits[start:start + chunk_size].to(total.dtype) / temperature
+        log_q = log_softmax_fn(s)
+        log_p = log_softmax_fn(t)
+        divergence = _ABKDDivergence.apply(log_p, log_q, alpha, beta)
         total = total + sum_fn(divergence).sum()
 
     return total
