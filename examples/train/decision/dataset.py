@@ -47,7 +47,7 @@ register_dataset(
 if __name__ == '__main__':
     # Quick self-check: load each dataset and print the normalized decision row contract.
     from swift.dataset import load_dataset
-    for name in ('clef_decision', 'jev_decision', 'omnijev_decision'):
+    for name in ('clef_decision', 'jev_decision', 'omnijev_decision', 'generic_decision'):
         ds = load_dataset([name], num_proc=1)[0]
         print(f'==== {name}: {len(ds)} rows ====')
         row = ds[0]

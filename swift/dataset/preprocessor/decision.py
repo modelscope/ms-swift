@@ -48,7 +48,7 @@ class ScoringPreprocessor(RowPreprocessor):
         kinds = [q['kind'] for q in questions]
         options = [self._resolve_options(q) for q in questions]
         out: Dict[str, Any] = {
-            'messages': [{'role': 'user', 'content': state if state is not None else ''}],
+            'messages': [{'role': 'user', 'content': self._state_to_text(state)}],
             'questions': [q['question'] for q in questions],
             'kinds': kinds,
             'options': options,
@@ -59,6 +59,24 @@ class ScoringPreprocessor(RowPreprocessor):
         if self._has_gold(questions):
             out['target_probs'] = [self.to_target_dist(q['gold'], len(opt)) for q, opt in zip(questions, options)]
         return out
+
+    @staticmethod
+    def _state_to_text(state: Any) -> str:
+        """Coerce the ``state`` value to a plain string for the message ``content``.
+
+        Subclasses that need byte-exact rendering (Clef, OmniJev) override ``_build_row`` entirely,
+        so this base method only needs to handle the JEV case: a string passes through; a dict (e.g.
+        from ``OpenJevPreprocessor._decode_state`` JSON-parsing ``state_json``) is flattened by
+        joining its text-valued fields; ``None`` becomes the empty string.
+        """
+        if isinstance(state, str):
+            return state
+        if state is None:
+            return ''
+        if isinstance(state, dict):
+            parts = [v for v in state.values() if isinstance(v, str) and v.strip()]
+            return '\n'.join(parts)
+        return str(state)
 
     def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
         """Return `(state, questions)`; each question is `{'kind','question','options','gold'}`.
@@ -558,9 +576,18 @@ class OmniJevPreprocessor(ScoringPreprocessor):
     def _content_text(state: Any, instruction: str) -> str:
         """The message text. Official OmniJev has NO free-text state (the state is the image/video and
         the instruction is the only text), so this is just the instruction; a str `state` (rare, e.g.
-        an extra context field) is prepended verbatim so nothing is silently dropped."""
+        an extra context field) is prepended verbatim so nothing is silently dropped. When state is a
+        dict (e.g. from remote OpenJev ``state_json``), its text-valued fields are joined as context."""
         if isinstance(state, str) and state.strip():
             return f'{state}\n{instruction}'
+        if isinstance(state, dict):
+            parts = []
+            for v in state.values():
+                if isinstance(v, str) and v.strip():
+                    parts.append(v.strip())
+            if parts:
+                state_str = '\n'.join(parts)
+                return f'{state_str}\n{instruction}'
         return instruction
 
     def _resolve_media(self, row: Dict[str, Any], state: Any) -> Tuple[Optional[Any], Optional[Any]]:
@@ -638,4 +665,15 @@ class OmniJevPreprocessor(ScoringPreprocessor):
             raise ValueError(
                 f'unknown OmniJev question kind {kind!r}; expected one of noul/choice/score (or an alias).')
         return cls.KIND_ALIASES[key]
+
+
+class GenericDecisionPreprocessor(JevPreprocessor):
+    """Generic decision preprocessor: same layout as ``JevPreprocessor``, for any CausalLM.
+
+    Reuses ``JevPreprocessor``'s fan-out (one row per question), canonical option enforcement for
+    noul/score (the verbalizer head always reads the fixed tokens), and permissive field lookup.
+    The only difference is the template that consumes the output (``GenericDecisionTemplate`` vs
+    ``JevTemplate``), which renders the same bare prompt layout for any text CausalLM.
+    """
+    pass
 

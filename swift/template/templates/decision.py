@@ -14,6 +14,7 @@ from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
+from ..template_meta import TemplateMeta
 from ..utils import Context
 from .qwen import Qwen3_5Template, QwenTemplateMeta
 
@@ -91,7 +92,7 @@ class JevTemplate(Qwen3_5Template):
             'kinds': [QUESTION_TYPES[fields['kind']]],
             # The readout is the last real token; the head resolves its absolute column from the
             # collator's padding side / seq_lens, so this span is informational (kept for parity with
-            # the span-pooling Clef/OmniJev heads and for debugging).
+            # the span-pooling Clef/OmniJev heads).
             'question_spans': [(seq_len - 1, seq_len)],
             'option_spans': [[]],
         }
@@ -454,15 +455,15 @@ class OmniJevTemplate(Qwen3_5Template):
         opt_texts = [str(t) for t in options[0]]
         video = extra.get('omnijev_video')
         images = list(inputs.images or [])
-        if not images:
-            raise ValueError(
-                'OmniJev encodes exactly one image per record (a still, a numbered panel of stills, or a '
-                'video mosaic); this record carried no `images`.')
-        img = OM.compose_state(images, video)
-        frames, content = OM.video_content(img, video, instruction)
-        content_text = OM.content_to_text(content)
         body = OM.option_body(opt_texts)
-        inputs.images = frames
+        if images:
+            img = OM.compose_state(images, video)
+            frames, content = OM.video_content(img, video, instruction)
+            content_text = OM.content_to_text(content)
+            inputs.images = frames
+        else:
+            content_text = instruction
+            inputs.images = None
         inputs.messages = [
             {'role': 'user', 'content': content_text},
             {'role': 'assistant', 'content': _OMNIJEV_THINK_PREFIX + body},
@@ -525,3 +526,122 @@ class OmniJevTemplate(Qwen3_5Template):
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.omnijev, template_cls=OmniJevTemplate, default_system=None))
+
+
+class GenericDecisionTemplate(Template):
+    """Generic decision template for training any CausalLM into a JEV-style decision model.
+
+    Unlike ``JevTemplate`` (which subclasses ``Qwen3_5Template`` for Qwen3-VL media-token expansion
+    and chat-template normalization), this subclasses the base ``Template`` directly, so it works
+    with any text CausalLM (Llama, Qwen2.5, Mistral, etc.) without Qwen3.5-specific assumptions.
+
+    Renders the same bare completion prompt as ``JevTemplate``::
+
+        [kind] {kind}
+        [state] {state}
+        [question] {question}
+        [options]
+        {option lines}
+        [decision]:
+
+    where an option line is ``f"{LETTER}) {opt}"`` for ``choice`` (letters A..P, matching the
+    verbalizer head) and the bare option text for ``noul`` / ``score``. The readout token is the last
+    real token (the ':' of '[decision]:'), which ``JevVerbalizerHead`` reads via the "last real token"
+    rule. After ``JevPreprocessor``'s fan-out every record holds exactly one question, so
+    ``decision_meta`` carries single-element lists.
+
+    This template is text-only (no media handling). For multimodal decision training use ``JevTemplate``
+    with a Qwen3.5-VL base.
+    """
+
+    def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
+        # Bypass any chat-template content normalization; the bare prompt is built in _swift_encode.
+        Template._swift_prepare_inputs(self, inputs)
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        fields = self._decision_fields(inputs)
+        content = self._render_s1_prompt(fields)
+        # One OTHER context, all-zero loss scale: decision has no token-level labels (scored per
+        # option), so nothing is a training target at the token level.
+        return [content], [0.], 0
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        # Force the swift backend (the bare prompt is built in _swift_encode; never let a
+        # user --template_backend jinja swap in a chat template).
+        prev_backend = self.template_backend
+        self.template_backend = 'swift'
+        try:
+            encoded = super()._encode(inputs)
+        finally:
+            self.template_backend = prev_backend
+
+        fields = self._decision_fields(inputs)
+        n_options = len(fields['options'])
+        seq_len = len(encoded['input_ids'])
+        from swift.model.decision_head import QUESTION_TYPES
+        encoded['decision_meta'] = {
+            'n_options': [n_options],
+            'kinds': [QUESTION_TYPES[fields['kind']]],
+            'question_spans': [(seq_len - 1, seq_len)],
+            'option_spans': [[]],
+        }
+        return encoded
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        res = super()._post_encode(model, inputs)
+        meta = inputs.get('decision_meta') if isinstance(inputs, dict) else None
+        if meta is not None and isinstance(res, dict):
+            res['decision_meta'] = meta
+        return res
+
+    def _decision_fields(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        """Pull this record's single question (kind / question / options) from `extra_kwargs` and its
+        state from the user message. `JevPreprocessor` emits exactly one question per record."""
+        extra = inputs.extra_kwargs
+        kinds = extra.get('kinds')
+        questions = extra.get('questions')
+        options = extra.get('options')
+        if not kinds or not questions or not options:
+            raise ValueError(
+                'GenericDecisionTemplate requires `kinds` / `questions` / `options` in extra_kwargs '
+                '(produced by JevPreprocessor); got '
+                f'kinds={kinds!r}, questions={questions!r}, options={options!r}.')
+        kind = self._normalize_kind(kinds[0])
+        return {
+            'kind': kind,
+            'question': questions[0],
+            'options': list(options[0]),
+            'state': self._get_state(inputs),
+        }
+
+    @staticmethod
+    def _get_state(inputs: StdTemplateInputs) -> str:
+        for message in inputs.messages:
+            if message.get('role') == 'user':
+                return message.get('content') or ''
+        return ''
+
+    @staticmethod
+    def _normalize_kind(kind: Any) -> str:
+        from swift.model.decision_head import QUESTION_TYPES
+        kind = str(kind).strip().lower()
+        if kind not in QUESTION_TYPES:
+            raise ValueError(f'Decision question kind must be one of {list(QUESTION_TYPES)}, got {kind!r}.')
+        return kind
+
+    def _render_s1_prompt(self, fields: Dict[str, Any]) -> str:
+        kind = fields['kind']
+        options: List[str] = fields['options']
+        if kind == 'choice':
+            if len(options) > len(_OPTION_LETTERS):
+                raise ValueError(f'Decision choice supports at most {len(_OPTION_LETTERS)} options, got {len(options)}.')
+            lines = [f'{_OPTION_LETTERS[i]}) {opt}' for i, opt in enumerate(options)]
+        else:
+            lines = [str(opt) for opt in options]
+        return (f'[kind] {kind}\n[state] {fields["state"]}\n[question] {fields["question"]}\n'
+                '[options]\n' + '\n'.join(lines) + '\n[decision]:')
+
+
+register_template(TemplateMeta(MLLMTemplateType.generic_decision,
+                               prefix=[], prompt=['{{QUERY}}'], chat_sep=None,
+                               template_cls=GenericDecisionTemplate, default_system=None))

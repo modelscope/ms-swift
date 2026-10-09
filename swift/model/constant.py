@@ -163,6 +163,7 @@ class MLLMModelType:
     jev = 'jev'
     clef = 'clef'
     omnijev = 'omnijev'
+    generic_decision = 'generic_decision'
 
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'

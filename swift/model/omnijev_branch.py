@@ -209,22 +209,46 @@ def branch_forward(backbone, penc: Dict[str, Any], rows: List[List[int]], dev, o
         pos = torch.arange(p0, p0 + n, device=dev)[None, None, :].expand(mrope_axes, Rc, n).contiguous()
         cache_pos = torch.arange(L, L + n, device=dev)
 
-        def _chunk_h(ids_, att_, pos_, cpos_):
-            o_ = backbone(
-                input_ids=ids_,
-                attention_mask=att_,
-                past_key_values=expand_cache(cache0, ids_.shape[0]),
-                use_cache=True,
-                output_hidden_states=True,
-                cache_position=cpos_,
-                position_ids=pos_,
-                logits_to_keep=1)
-            return o_.hidden_states[-1]
-
         if torch.is_grad_enabled() and os.environ.get('MSO_BRANCH_CKPT', '0') == '1':
-            # recompute this chunk in backward instead of keeping its activations (memory ~ one chunk)
-            h = torch.utils.checkpoint.checkpoint(_chunk_h, ids, full_att, pos, cache_pos, use_reentrant=False)
+            # recompute prefix + chunk in backward instead of keeping activations (memory ~ one chunk).
+            # The prefix pass MUST be inside the checkpoint so the recomputation rebuilds cache0 from
+            # the same input tensors, keeping the gradient chain to LoRA params intact. If the prefix
+            # pass were outside (as a closure-captured cache0), checkpoint's recomputation would use
+            # the stale outer cache0 whose autograd graph is already freed, breaking gradient flow.
+            def _chunk_h_ckpt(ids_, att_, pos_, cpos_, pids_, patt_, ppos_):
+                pkw = {k: v for k, v in kw.items() if k != 'input_ids' and k != 'attention_mask' and k != 'position_ids'}
+                pkw['input_ids'] = pids_
+                pkw['attention_mask'] = patt_
+                if prefix_pos is not None:
+                    pkw['position_ids'] = ppos_
+                pout = backbone(**pkw, logits_to_keep=1)
+                c0 = pout.past_key_values
+                o_ = backbone(
+                    input_ids=ids_,
+                    attention_mask=att_,
+                    past_key_values=expand_cache(c0, ids_.shape[0]),
+                    use_cache=True,
+                    output_hidden_states=True,
+                    cache_position=cpos_,
+                    position_ids=pos_,
+                    logits_to_keep=1)
+                return o_.hidden_states[-1]
+            h = torch.utils.checkpoint.checkpoint(
+                _chunk_h_ckpt, ids, full_att, pos, cache_pos, prefix_ids, torch.ones_like(prefix_ids),
+                prefix_pos if prefix_pos is not None else torch.zeros(3, 1, 1, device=dev, dtype=torch.long),
+                use_reentrant=False)
         else:
+            def _chunk_h(ids_, att_, pos_, cpos_):
+                o_ = backbone(
+                    input_ids=ids_,
+                    attention_mask=att_,
+                    past_key_values=expand_cache(cache0, ids_.shape[0]),
+                    use_cache=True,
+                    output_hidden_states=True,
+                    cache_position=cpos_,
+                    position_ids=pos_,
+                    logits_to_keep=1)
+                return o_.hidden_states[-1]
             h = _chunk_h(ids, full_att, pos, cache_pos)  # [Rc, n, D]
         marks = [_marks(r, open_ids, close_ids) for r in sub]
         ar = torch.arange(Rc, device=dev)

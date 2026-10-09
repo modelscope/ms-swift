@@ -76,7 +76,13 @@ class ScoringTrainer(Trainer):
             else:
                 loss = outputs.loss
 
-            if num_items_in_batch is not None and self.model_accepts_loss_kwargs:
+            # When num_items_in_batch is provided, ScoringLoss._reduce already normalises by the
+            # total question count across the full accumulation window, so the loss is correctly
+            # scaled for gradient accumulation — do NOT divide by accumulation_steps again (that
+            # double-normalises and vanishes the gradients when ga>1).
+            # When num_items_in_batch is None, _reduce normalises by the per-micro-batch question
+            # count only, so we DO need to divide by accumulation_steps for correct averaging.
+            if num_items_in_batch is None:
                 accumulation_steps = getattr(self, 'current_gradient_accumulation_steps',
                                              self.args.gradient_accumulation_steps)
                 loss = loss / accumulation_steps

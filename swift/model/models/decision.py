@@ -22,7 +22,7 @@ from swift.model.omnijev_branch import (OPT_CLOSE, OPT_OPEN, add_option_tokens, 
 from swift.model.patcher import patch_module_forward
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger
-from ..constant import MLLMModelType
+from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model
@@ -389,3 +389,56 @@ register_model(
         architectures=[],
         requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'decision']))
+
+
+class GenericDecisionLoader(ScoringModelLoader):
+    """Train any CausalLM into a JEV-style decision model from scratch.
+
+    Unlike ``JevModelLoader`` / ``ClefModelLoader`` / ``OmniJevModelLoader`` (which bind to
+    ``Qwen3_5Loader`` via multiple inheritance and strict-load factory head weights from the model
+    dir), this loader does NOT inherit from any model-specific loader. It uses the base
+    ``ModelLoader.get_model`` which resolves ``AutoModelForCausalLM``, then builds a
+    ``JevVerbalizerHead`` via ``from_tokenizer`` (random init, no factory weights) and attaches it.
+
+    The user picks this loader with ``--task_type decision --template_type generic_decision``
+    (or ``--model_type generic_decision``). The base CausalLM is any model that
+    ``AutoModelForCausalLM.from_pretrained`` can load -- Qwen2.5, Llama, Mistral, etc.
+
+    The LoRA adapter (with ``lm_head`` in ``target_modules``) and the head's 24 fp32 bias scalars
+    are jointly trained (plan decision C). After training, the checkpoint carries:
+    ``adapter_model.safetensors`` (LoRA) + ``scoring_head.safetensors`` (head bias) +
+    ``scoring_head.json`` (verbalizer_ids / ranges / temperatures meta), and can be deployed with
+    the standard swift inference path.
+    """
+    head_cls = JevVerbalizerHead
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        # Load the base via the standard ModelLoader path (AutoModelForCausalLM, not a
+        # model-specific *ForConditionalGeneration). This is the key difference from
+        # JevModelLoader which resolves to Qwen3_5Loader.get_model.
+        model = ModelLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        # Build a randomly-initialized JevVerbalizerHead from the tokenizer.
+        tokenizer = self._get_tokenizer(processor)
+        head = self.head_cls.from_tokenizer(tokenizer, config=config)
+        self.attach_scoring_head(model, head)
+        return model
+
+    @staticmethod
+    def _get_tokenizer(processor: Processor):
+        """Extract the tokenizer from a Processor (tokenizer, AutoProcessor, etc.)."""
+        from transformers import PreTrainedTokenizerBase
+        if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
+            return processor.tokenizer
+        return processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.generic_decision,
+        [],  # Matched by --model_type or --task_type + --template_type, not by model id.
+        GenericDecisionLoader,
+        template=TemplateType.generic_decision,
+        task_type='decision',
+        architectures=[],  # Resolved from the base model's config; not declared here.
+        tags=['decision']))

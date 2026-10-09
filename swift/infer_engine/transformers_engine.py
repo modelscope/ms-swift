@@ -607,7 +607,7 @@ class TransformersEngine(InferEngine):
         else:
             if len(kwargs) > 0:
                 infer_func = self._infer_forward if self.template.task_type in {
-                    'seq_cls', 'prm', 'embedding', 'reranker', 'generative_reranker'
+                    'seq_cls', 'prm', 'embedding', 'reranker', 'generative_reranker', 'decision'
                 } else self._infer_full
                 res = infer_func(**kwargs)
             else:

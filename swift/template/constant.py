@@ -164,6 +164,7 @@ class MLLMTemplateType:
     jev = 'jev'
     clef = 'clef'
     omnijev = 'omnijev'
+    generic_decision = 'generic_decision'
 
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'

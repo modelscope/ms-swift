@@ -35,6 +35,7 @@ ragged and are stored padded:
 import json
 import math
 import os
+import string
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -442,6 +443,60 @@ class JevVerbalizerHead(ScoringHead):
             if os.path.exists(candidate):
                 return candidate
         return None
+
+    @staticmethod
+    def _resolve_verbalizer_token_id(tokenizer, text: str) -> int:
+        """Resolve the single-token id for a verbalizer label (e.g. 'true', '0', 'A').
+
+        Tokens the prompt directly with `add_special_tokens=False` (matching serve_decide.py's
+        bare completion semantics). Falls back to the tokenizer's unk_token_id when the text does
+        not encode to a single token, which is acceptable at random-init time -- the LoRA on lm_head
+        will learn to produce the right distribution on the 24 verbalizer rows.
+        """
+        ids = tokenizer.encode(text, add_special_tokens=False)
+        if ids:
+            return ids[0]
+        unk = getattr(tokenizer, 'unk_token_id', None)
+        if unk is None:
+            raise ValueError(f'Tokenizer cannot resolve verbalizer token for {text!r} and has no unk_token_id.')
+        return unk
+
+    @classmethod
+    def from_tokenizer(cls, tokenizer, config=None) -> 'JevVerbalizerHead':
+        """Random-init path for training a decision model from scratch on any CausalLM.
+
+        Unlike `from_pretrained` (which strict-loads factory bias / verbalizer_ids / temperatures from
+        `decision_head.json` + `calibration.json`), this resolves the 24 verbalizer token ids directly
+        from the tokenizer, initializes the bias to zeros and the per-kind temperatures to 1.0. The
+        trainable bias (24 fp32 scalars) is jointly trained with the LoRA adapter (plan decision C),
+        and the LoRA on `lm_head` (via `--target_modules ... lm_head`) provides the actual adaptation
+        of the verbalizer rows.
+
+        This makes it possible to train a JEV-style decision model from ANY CausalLM (Llama, Qwen2.5,
+        Mistral, ...) without factory head weights -- the only prerequisite is that the tokenizer can
+        encode the verbalizer labels ('false'/'true', '0'..'5', 'A'..'P') to token ids.
+
+        Args:
+            tokenizer: the base model's tokenizer (any `PreTrainedTokenizerBase`).
+            config: unused (accepted for signature parity with `from_pretrained`).
+
+        Returns:
+            A `JevVerbalizerHead` with zero-initialized bias and unit temperatures, ready for
+            joint training with a LoRA adapter on the base CausalLM.
+        """
+        # Build the 24-slot verbalizer table from the tokenizer.
+        # noul [0:2]   = 'false', 'true'
+        # score [2:8]  = '0', '1', '2', '3', '4', '5'
+        # choice [8:24] = 'A', 'B', ..., 'P'
+        noul_words = ['false', 'true']
+        score_words = ['0', '1', '2', '3', '4', '5']
+        choice_words = list(string.ascii_uppercase[:16])  # A..P
+
+        verbalizer_ids = [cls._resolve_verbalizer_token_id(tokenizer, w) for w in noul_words + score_words + choice_words]
+        bias = [0.0] * len(verbalizer_ids)
+        ranges = dict(cls.DEFAULT_RANGES)
+        temperatures = dict(cls.DEFAULT_TEMPERATURES)
+        return cls(bias, verbalizer_ids, ranges, temperatures)
 
 
 class EvidenceRoutingLayer(nn.Module):
