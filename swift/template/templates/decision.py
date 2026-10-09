@@ -11,7 +11,7 @@ import string
 from typing import Any, Dict, List, Tuple
 
 from ..base import Template
-from ..constant import MLLMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
@@ -642,6 +642,6 @@ class GenericDecisionTemplate(Template):
                 '[options]\n' + '\n'.join(lines) + '\n[decision]:')
 
 
-register_template(TemplateMeta(MLLMTemplateType.generic_decision,
+register_template(TemplateMeta(LLMTemplateType.generic_decision,
                                prefix=[], prompt=['{{QUERY}}'], chat_sep=None,
                                template_cls=GenericDecisionTemplate, default_system=None))

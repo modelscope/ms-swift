@@ -20,23 +20,188 @@ Subclasses override `parse_record` to turn a model-specific raw row into `(state
 where each question is a dict `{'kind', 'question', 'options', 'gold'}` and `gold` is either an
 option index (int) or a full distribution (sequence of floats, for distillation targets).
 """
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import json
+import random as _random
+import re
 
 from .core import RowPreprocessor
 
 
+@dataclass
+class DecisionAugmentConfig:
+    """Training-time schema augmentation for decision datasets.
+
+    Inspired by Unsloth's ``decision_datasets.AugmentConfig``; only the operations safe for all
+    three swift decision models (JEV / Clef / OmniJev) are included. All probabilities are
+    per-question; state_as_text is per-record. Disabled by default (all zeros / False) so
+    augmentation must be explicitly opted into.
+    """
+
+    drop_instructions: float = 0.0
+    subsample_options: int = 0
+    state_as_text: float = 0.0
+    shuffle_fields: bool = False
+
+
+def _humanize(label: str) -> str:
+    return re.sub(r'[_\-/]+', ' ', str(label)).strip()
+
+
+def _state_to_text(state: Any) -> str:
+    """Flatten a dict / JSON state into a human-readable text block.
+
+    A single-key dict yields its value; a multi-key dict yields ``"Key: value\\n..."`` lines
+    with humanized keys. Strings and other JSON scalars pass through.
+    """
+    if not isinstance(state, dict):
+        if isinstance(state, str):
+            return state
+        return json.dumps(state, ensure_ascii=False)
+    if len(state) == 0:
+        return ''
+    if len(state) == 1:
+        return str(next(iter(state.values())))
+    return '\n'.join(f'{_humanize(key).capitalize()}: {value}' for key, value in state.items())
+
+
+def _subsample_options(question: Dict[str, Any], gold: Any, rng: _random.Random,
+                        max_options: int) -> Tuple[Dict[str, Any], Any]:
+    """Subsample choice options to ``max_options``, always keeping the highest-probability option.
+
+    Only applies to ``choice`` questions whose options exceed ``max_options``. For an int gold
+    (one-hot), the gold index is always kept and ``max_options - 1`` distractors are sampled.
+    For a distribution gold (soft labels), the argmax option is always kept and the distribution
+    is truncated and renormalized over the kept options. ``noul`` / ``score`` questions have
+    fixed option sets and are never subsampled.
+    """
+    options = question.get('options')
+    if not options or len(options) <= max_options:
+        return question, gold
+    kind = question.get('kind')
+    if kind in ('noul', 'score'):
+        return question, gold
+
+    # One-hot gold: keep gold + N-1 random distractors.
+    if isinstance(gold, int) and 0 <= gold < len(options):
+        peak = gold
+    elif isinstance(gold, (list, tuple)) and len(gold) == len(options):
+        peak = max(range(len(gold)), key=lambda i: gold[i])
+    else:
+        return question, gold
+
+    others = [i for i in range(len(options)) if i != peak]
+    kept = set(rng.sample(others, min(max_options - 1, len(others)))) | {peak}
+    kept = sorted(kept)
+    new_options = [options[i] for i in kept]
+
+    if isinstance(gold, int):
+        new_gold: Any = kept.index(gold)
+    else:
+        new_gold = [float(gold[i]) for i in kept]
+        total = sum(new_gold)
+        if total > 0:
+            new_gold = [p / total for p in new_gold]
+
+    new_q = {**question, 'options': new_options}
+    return new_q, new_gold
+
+
+def augment_decision_row(
+    state: Any,
+    questions: List[Dict[str, Any]],
+    config: Optional[DecisionAugmentConfig],
+    rng: Optional[_random.Random] = None,
+) -> Tuple[Any, List[Dict[str, Any]]]:
+    """Apply schema augmentation to a decision record's ``(state, questions)``.
+
+    Works on the pre-``_build_row`` representation -- after ``parse_record`` and before
+    ``_build_row`` -- so it is agnostic to the downstream template/head. Returns a (possibly
+    modified) ``(state, questions)`` tuple.
+
+    When *config* is None or all-disabled, returns the inputs unchanged (zero-cost passthrough).
+    """
+    if config is None:
+        return state, questions
+    if (config.drop_instructions == 0.0
+            and config.subsample_options <= 0
+            and config.state_as_text == 0.0
+            and not config.shuffle_fields):
+        return state, questions
+    rng = rng or _random.Random(42)
+
+    # drop_instructions: set the question text to empty (template will still render the layout,
+    # model must infer intent from options only). 10% default in unsloth.
+    if config.drop_instructions > 0:
+        for q in questions:
+            if rng.random() < config.drop_instructions:
+                q['question'] = ''
+
+    # subsample_options: keep gold + N distractors for choice questions.
+    if config.subsample_options > 0:
+        new_questions = []
+        for q in questions:
+            q, q['gold'] = _subsample_options(q, q.get('gold'), rng, config.subsample_options)
+            new_questions.append(q)
+        questions = new_questions
+
+    # state_as_text: randomly flatten dict state to plain text so the model sees different
+    # renderings (JSON vs human-readable lines). Per-record probability.
+    if config.state_as_text > 0 and isinstance(state, dict) and state:
+        if rng.random() < config.state_as_text:
+            state = _state_to_text(state)
+
+    # shuffle_fields: randomize field order in dict state AND question order. The state-side
+    # shuffle makes the model robust to permutation of schema fields (important for Clef which
+    # renders SCHEMA FIELDS in the state's key order); the question-side shuffle only matters
+    # for multi-question records (also Clef).
+    if config.shuffle_fields:
+        if isinstance(state, dict) and len(state) > 1:
+            keys = list(state.keys())
+            rng.shuffle(keys)
+            state = {k: state[k] for k in keys}
+        if len(questions) > 1:
+            rng.shuffle(questions)
+
+    return state, questions
+
+
 class ScoringPreprocessor(RowPreprocessor):
-    """Base: assemble the decision row contract; subclasses supply `parse_record`."""
+    """Base: assemble the decision row contract; subclasses supply `parse_record`.
+
+    Supports optional training-time schema augmentation (``augment_config``) applied between
+    ``parse_record`` and ``_build_row`` — after the raw row is parsed into ``(state, questions)``
+    and before the decision row is built. This keeps augmentation model-agnostic: subclasses
+    only override ``parse_record`` and ``_build_row``, and the base hooks augmentation in
+    between automatically.
+    """
 
     NOUL_OPTIONS = ['false', 'true']
     SCORE_OPTIONS = ['0', '1', '2', '3', '4', '5']
+
+    def __init__(self, *,
+                 augment_config: Optional[DecisionAugmentConfig] = None,
+                 augment_seed: int = 42,
+                 **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.augment_config = augment_config
+        self._augment_rng = _random.Random(augment_seed)
+
+    def _augment(self, state: Any, questions: List[Dict[str, Any]]) -> Tuple[Any, List[Dict[str, Any]]]:
+        """Apply schema augmentation between ``parse_record`` and ``_build_row``.
+
+        Delegates to :func:`augment_decision_row`; returns inputs unchanged when
+        ``self.augment_config`` is None or all-disabled.
+        """
+        return augment_decision_row(state, questions, self.augment_config, self._augment_rng)
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         state, questions = self.parse_record(row)
         if not questions:
             return None
+        state, questions = self._augment(state, questions)
         return self._build_row(row, state, questions)
 
     def _build_row(self, row: Dict[str, Any], state: Any, questions: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -211,6 +376,7 @@ class JevPreprocessor(ScoringPreprocessor):
         state, questions = self.parse_record(row)
         if not questions:
             return None
+        state, questions = self._augment(state, questions)
         # One row per question (JEV renders a single question per prompt).
         return [self._build_row(row, state, [q]) for q in questions]
 
@@ -515,6 +681,7 @@ class OmniJevPreprocessor(ScoringPreprocessor):
         state, questions = self.parse_record(row)
         if not questions:
             return None
+        state, questions = self._augment(state, questions)
         return [self._build_row(row, state, [q]) for q in questions]
 
     def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:

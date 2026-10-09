@@ -454,11 +454,21 @@ class JevVerbalizerHead(ScoringHead):
         will learn to produce the right distribution on the 24 verbalizer rows.
         """
         ids = tokenizer.encode(text, add_special_tokens=False)
-        if ids:
+        if len(ids) == 1:
             return ids[0]
         unk = getattr(tokenizer, 'unk_token_id', None)
         if unk is None:
-            raise ValueError(f'Tokenizer cannot resolve verbalizer token for {text!r} and has no unk_token_id.')
+            raise ValueError(
+                f'Tokenizer cannot resolve verbalizer token for {text!r} '
+                f'(encodes to {len(ids)} tokens: {ids}) and has no unk_token_id.')
+        from swift.utils import get_logger
+        get_logger().warning(
+            f'decision: verbalizer label {text!r} encodes to {len(ids)} tokens ({ids}); '
+            f'falling back to unk_token_id={unk}. The head slot will read this unk column '
+            f'instead of the intended token; a LoRA on lm_head can still learn the correct '
+            f'distribution on that column, but multiple labels collapsing to the same unk '
+            f'id makes them indistinguishable (degenerate). Consider using a tokenizer that '
+            f'encodes the verbalizer labels as single tokens.')
         return unk
 
     @classmethod

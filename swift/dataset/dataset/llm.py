@@ -9,7 +9,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from swift.template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                             ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
-from ..preprocessor.decision import ClefPreprocessor, JevPreprocessor, OmniJevPreprocessor, ScoringPreprocessor
+from ..preprocessor.decision import (ClefPreprocessor, JevPreprocessor, OmniJevPreprocessor, ScoringPreprocessor,
+                                     DecisionAugmentConfig)
 from ..preprocessor.decision import _clef_option_ids
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
@@ -964,12 +965,14 @@ register_dataset(
 class OpenJevPreprocessor(ScoringPreprocessor):
 
     _JEV_SYNONYMS = {
-        'true': 'true', 'yes': 'yes', 'y': 'yes', '1': 'yes',
-        'false': 'false', 'no': 'no', 'n': 'no', '0': 'no',
+        'true': 'true', 'yes': 'true', 'y': 'true', '1': 'true',
+        'false': 'false', 'no': 'false', 'n': 'false', '0': 'false',
     }
 
-    def __init__(self, delegate: ScoringPreprocessor):
-        super().__init__()
+    def __init__(self, delegate: ScoringPreprocessor,
+                 augment_config: Optional[DecisionAugmentConfig] = None,
+                 augment_seed: int = 42):
+        super().__init__(augment_config=augment_config, augment_seed=augment_seed)
         self.delegate = delegate
 
     def preprocess(self, row: Dict[str, Any]):
@@ -1005,6 +1008,8 @@ class OpenJevPreprocessor(ScoringPreprocessor):
         state_out, questions_out = self.delegate.parse_record(synthetic)
         if not questions_out:
             return None
+        # Apply schema augmentation between parse_record and _build_row (uses base class _augment).
+        state_out, questions_out = self._augment(state_out, questions_out)
         return self.delegate._build_row(synthetic, state_out, questions_out)
 
     @staticmethod

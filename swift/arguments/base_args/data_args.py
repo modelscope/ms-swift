@@ -70,6 +70,19 @@ class DataArguments:
             `swift/self-cognition` dataset. Pass author's Chinese and English names.
             Example: `--model_author '魔搭' 'ModelScope'`. Defaults to None.
         custom_dataset_info (List[str]): Path to a custom dataset registration JSON file. Defaults to [].
+        decision_drop_instructions (float): Probability of dropping the question instruction text for
+            ``decision`` task_type datasets. The question text is set to empty (the layout is still
+            rendered), forcing the model to infer intent from options only. 0.0 disables. Defaults to 0.0.
+        decision_subsample_options (int): Subsample choice question options to at most this many (keeping
+            the gold option + N-1 distractors). Only applies to ``choice`` questions; ``noul`` and ``score``
+            have fixed option sets. 0 disables. Defaults to 0.
+        decision_state_as_text (float): Probability of rendering a dict ``state`` as human-readable text
+            (``"Key: value\\n..."``) instead of JSON, so the model sees different renderings of the same
+            record. 0.0 disables. Defaults to 0.0.
+        decision_shuffle_fields (bool): Shuffle the field order in dict ``state`` AND the question order in
+            multi-question records (e.g. Clef). Makes the model robust to permutation of schema fields.
+            Defaults to False.
+        decision_augment_seed (int): The random seed for decision augmentation. Defaults to 42.
     """
     # dataset_id or dataset_dir or dataset_path
     dataset: List[str] = field(default_factory=list)
@@ -99,6 +112,14 @@ class DataArguments:
 
     custom_dataset_info: List[str] = field(default_factory=list)  # .json
 
+    # Decision task_type schema augmentation (all disabled by default; zero-cost passthrough when
+    # all zero/False). See `DecisionAugmentConfig` in `swift/dataset/preprocessor/decision.py`.
+    decision_drop_instructions: float = 0.0
+    decision_subsample_options: int = 0
+    decision_state_as_text: float = 0.0
+    decision_shuffle_fields: bool = False
+    decision_augment_seed: int = 42
+
     def _init_custom_dataset_info(self):
         """register custom dataset_info.json to datasets"""
         if isinstance(self.custom_dataset_info, str):
@@ -124,8 +145,31 @@ class DataArguments:
         self._val_dataset_exists = bool(self.dataset and self.split_dataset_ratio > 0 or self.val_dataset
                                         or self.cached_val_dataset)
 
+    @property
+    def _decision_augment_enabled(self) -> bool:
+        return (self.decision_drop_instructions > 0
+                or self.decision_subsample_options > 0
+                or self.decision_state_as_text > 0
+                or self.decision_shuffle_fields)
+
+    def get_decision_augment_config(self):
+        """Build a ``DecisionAugmentConfig`` from the CLI args, or ``None`` when all disabled.
+
+        Returns ``None`` (zero-cost passthrough) when every field is at its default, so non-decision
+        datasets are completely unaffected.
+        """
+        if not self._decision_augment_enabled:
+            return None
+        from swift.dataset.preprocessor.decision import DecisionAugmentConfig
+        return DecisionAugmentConfig(
+            drop_instructions=self.decision_drop_instructions,
+            subsample_options=self.decision_subsample_options,
+            state_as_text=self.decision_state_as_text,
+            shuffle_fields=self.decision_shuffle_fields,
+        )
+
     def get_dataset_kwargs(self):
-        return {
+        kwargs = {
             'seed': self.data_seed,
             'num_proc': self.dataset_num_proc,
             'load_from_cache_file': self.load_from_cache_file,
@@ -143,3 +187,7 @@ class DataArguments:
             'remove_unused_columns': self.remove_unused_columns,
             'disable_auto_column_mapping': self.disable_auto_column_mapping,
         }
+        if self._decision_augment_enabled:
+            kwargs['decision_augment_config'] = self.get_decision_augment_config()
+            kwargs['decision_augment_seed'] = self.decision_augment_seed
+        return kwargs

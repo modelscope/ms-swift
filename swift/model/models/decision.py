@@ -435,7 +435,7 @@ class GenericDecisionLoader(ScoringModelLoader):
 
 register_model(
     ModelMeta(
-        MLLMModelType.generic_decision,
+        LLMModelType.generic_decision,
         [],  # Matched by --model_type or --task_type + --template_type, not by model id.
         GenericDecisionLoader,
         template=TemplateType.generic_decision,
