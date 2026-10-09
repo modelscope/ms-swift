@@ -171,11 +171,31 @@ def _prepare_full_vit(args, model):
             module.requires_grad_(True)
 
 
+def _freeze_engram_parameters(model) -> None:
+    """Freeze DeepSeek-V4.1 Engram parameters for on-policy RL.
+
+    Engram tables reach hundreds of GiB on the real checkpoint, so they cannot be resynced to the
+    rollout engine every step. Freezing the whole Engram subsystem keeps training on-policy: the
+    rest of the model is updated and vLLM keeps the base Engram (the RL weight-sync path skips
+    exporting them; see MegatronRolloutMixin._export_and_load_weights).
+    """
+    frozen = []
+    for name, param in model.named_parameters():
+        if ('.engram.' in name or getattr(param, 'is_engram_embedding', False)) and param.requires_grad:
+            param.requires_grad = False
+            frozen.append(name)
+    if frozen:
+        logger.info(f'Froze {len(frozen)} DeepSeek-V4.1 Engram parameters for on-policy RL, '
+                    f'e.g. {frozen[:2]}.')
+
+
 def prepare_mcore_model(args, model):
     if args.tuner_type == 'full':
         freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
         if args.trainable_parameters or args.trainable_parameters_regex:
             activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
+        if args.rlhf_type == 'grpo' and args.model_type == 'deepseek_v41':
+            _freeze_engram_parameters(model)
     elif args.tuner_type in {'lora', 'lora_llm'}:
         model = prepare_adapter(args, model)
         if args.tuner_type == 'lora_llm':

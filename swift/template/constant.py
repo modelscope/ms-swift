@@ -58,6 +58,7 @@ class LLMTemplateType:
     glm4_7 = 'glm4_7'
     glm5_1 = 'glm5_1'
     glm5_2 = 'glm5_2'
+    glm5_3 = 'glm5_3'
     codegeex4 = 'codegeex4'
     longwriter_llama = 'longwriter_llama'
 
@@ -82,6 +83,7 @@ class LLMTemplateType:
     minicpm5_2b = 'minicpm5_2b'
     telechat = 'telechat'
     telechat2 = 'telechat2'
+    xing4_0 = 'xing4_0'
 
     codefuse = 'codefuse'
     codefuse_codellama = 'codefuse_codellama'
@@ -233,6 +235,7 @@ class MLLMTemplateType:
     minicpmo = 'minicpmo'
     minicpmo4_5 = 'minicpmo4_5'
 
+    deepseek_v41 = 'deepseek_v41'
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
@@ -286,6 +289,7 @@ class MLLMTemplateType:
     step3_vl = 'step3_vl'
     minimax_m3_vl = 'minimax_m3_vl'
     muse_glimmer = 'muse_glimmer'
+    monkeyocrv2 = 'monkeyocrv2'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

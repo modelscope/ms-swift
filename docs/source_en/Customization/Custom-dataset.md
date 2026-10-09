@@ -84,11 +84,11 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 ```
 
 - You can add a `"loss"` field to control whether the loss is computed for the corresponding model response ("role" is "assistant"). This field defaults to `None`. If `"loss"` is set to `true`, the loss will be computed for the corresponding content (the specific `loss_scale` is still determined by `--loss_scale`); if `"loss"` is set to `false`, the loss will not be computed for the corresponding content. Note that this field only takes effect for parts where `"role"` is `"assistant"`. This field takes priority over the basic strategies of the `--loss_scale` command-line argument (i.e., `'default'`, `'last_round'`, `'all'`). For example, when `loss_scale` is set to `'default+ignore_empty_think'`, the `"loss"` field takes priority over `'default'`, but `'ignore_empty_think'` still takes effect.
-- You can add a `"loss_scale"` field to control the `loss_scale` for the corresponding model response ("role" is "assistant"). (ms-swift >= 4.2.0) Defaults to `None`. This field takes priority over other strategy components of the `--loss_scale` command-line argument, such as `'ignore_empty_think'`, `'hermes'`, etc. If any value greater than `1` appears in `loss_scale`, you need to additionally set `--is_binary_loss_scale false`.
+- You can add a `"loss_scale"` field to control the `loss_scale` for the corresponding model response ("role" is "assistant"). (ms-swift >= 4.2.0) Defaults to `None`. This field takes priority over other strategy components of the `--loss_scale` command-line argument, such as `'ignore_empty_think'`, `'hermes'`, etc. For non-binary positive weights, such as `0.5` or `2.0`, set `--is_binary_loss_scale false` to preserve their values. Binary mode only controls whether tokens contribute to the loss; it cannot represent lower or higher weights.
 
 ```jsonl
 {"messages": [{"role": "user", "content": "Hello!"}, {"role": "assistant", "content": "Hi, how can I help you?", "loss": false}, {"role": "user", "content": "What is 1+1?"}, {"role": "assistant", "content": "It equals 2", "loss": true}]}
-{"messages": [{"role": "user", "content": "hello!"}, {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 1.0}, {"role": "assistant", "content": "hi!", "loss_scale": 2.0}, {"role": "user", "content": "1+1=?"}, {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": false}]}
+{"messages": [{"role": "user", "content": "hello!"}, {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 0.5}, {"role": "assistant", "content": "hi!", "loss_scale": 2.0}, {"role": "user", "content": "1+1=?"}, {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": false}]}
 ```
 
 Use the following script to test:
@@ -98,7 +98,7 @@ from swift import get_processor, get_template
 
 data = {"messages": [
     {"role": "user", "content": "hello!"},
-    {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 1.},
+    {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 0.5},
     {"role": "assistant", "content": "hi!", "loss_scale": 2.},
     {"role": "user", "content": "1+1=?"},
     {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": False},
@@ -167,9 +167,16 @@ The above format is equivalent to:
 
 You can also organize the Agent dataset in the following format:
 
+`rejected_response` replaces all messages after the last `user` message in `messages` to form `rejected_messages`. Provide the complete rejected message sequence after the last `user` message, including any tool calls and tool results, in order. These messages are not automatically retained from the chosen conversation. If the rejected response consists of a single plain-text assistant reply, you can use either a string or a message list containing only that reply. The message list must not contain `user` messages.
+
 ```jsonl
-# It will find the position of the last user in `messages`, and replace the subsequent content with `rejected_response` to form `rejected_messages`
 {"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"Weather forecast. Get real-time air quality, including current air quality, PM2.5, and PM10 information.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g., Shanghai\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "What is the weather like in Beijing and Shanghai today?"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Beijing\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Shanghai\"}}"}, {"role": "tool_response", "content": "{\"city\": \"Beijing\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"Shanghai\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution."}], "rejected_response": [{"role": "assistant", "content": "I don't know."}]}
+```
+
+The rejected response above answers "I don't know." without calling a tool. In the following example, the rejected response uses the same tool call and result as the chosen response but reports an incorrect AQI value in its final answer. These tool messages must therefore also be explicitly included in `rejected_response`:
+
+```jsonl
+{"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"get_aqi\", \"description\": \"Get the air quality index for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "What is the current air quality index in Beijing?"}, {"role": "tool_call", "content": "{\"name\": \"get_aqi\", \"arguments\": {\"city\": \"Beijing\"}}"}, {"role": "tool_response", "content": "{\"aqi\": 50}"}, {"role": "assistant", "content": "The current air quality index in Beijing is 50."}], "rejected_response": [{"role": "tool_call", "content": "{\"name\": \"get_aqi\", \"arguments\": {\"city\": \"Beijing\"}}"}, {"role": "tool_response", "content": "{\"aqi\": 50}"}, {"role": "assistant", "content": "The current air quality index in Beijing is 100."}]}
 ```
 
 How to debug:

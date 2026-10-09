@@ -15,7 +15,7 @@ import threading
 import torch
 from typing import Any, Dict, List, Optional
 
-from swift.rlhf_trainers.utils import set_expandable_segments
+from swift.rlhf_trainers.utils import set_expandable_segments, vllm_sleep_async
 from swift.utils import gc_collect
 from swift.utils.logger import get_logger
 
@@ -140,7 +140,7 @@ class RayVllmEngine:
     def sleep(self, level: int = 2):
         if not self.enable_sleep_mode:
             return
-        self._run_in_loop(self.engine.sleep(level=level))
+        self._run_in_loop(vllm_sleep_async(self.engine, level))
         gc_collect()
         set_expandable_segments(True)
         logger.debug('RayVllmEngine: sleeping at level %d', level)

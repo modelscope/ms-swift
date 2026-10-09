@@ -149,11 +149,11 @@ class RLHFMegatronArgumentsMixin:
 
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
     # GDPO: normalize each reward function separately
-    scale_rewards: Literal['none', 'group', 'batch', 'gdpo'] = 'group'
+    scale_rewards: Optional[Literal['none', 'group', 'batch', 'gdpo']] = None
 
     # RLOO / REINFORCE++
     advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
-    kl_in_reward: bool = False
+    kl_in_reward: Optional[bool] = None
 
     wandb_log_unique_prompts: Optional[bool] = None
     log_completions: bool = False
@@ -423,6 +423,26 @@ class RLHFMegatronArgumentsMixin:
                 f"[REAL] scale_rewards='{self.scale_rewards}' is ignored. "
                 "It will be forced to 'none' because 'loss_type = real' does not support reward normalization.")
 
+        # `kl_in_reward` / `scale_rewards` default to the value tied to `advantage_estimator`.
+        # Mirrors `RLHFArguments._init_grpo` and the Megatron command-line documentation.
+        if self.kl_in_reward is None:
+            if self.advantage_estimator == 'grpo':
+                self.kl_in_reward = False
+            elif self.advantage_estimator in ['rloo', 'reinforce_plus_plus']:
+                self.kl_in_reward = True
+            else:
+                raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
+
+        if self.scale_rewards is None:
+            if self.advantage_estimator == 'grpo':
+                self.scale_rewards = 'group'
+            elif self.advantage_estimator == 'rloo':
+                self.scale_rewards = 'none'
+            elif self.advantage_estimator == 'reinforce_plus_plus':
+                self.scale_rewards = 'batch'
+            else:
+                raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
+
         if self.beta is None:
             self.beta = 0.04  # https://arxiv.org/abs/2402.03300
         if self.async_generate:
@@ -672,6 +692,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     moe_pad_expert_input_to_capacity: bool = False
     moe_token_drop_policy: Literal['probs', 'position'] = 'probs'
 
+    # engram
+    engram_tokenizer_map: Optional[str] = None
+
     # mtp
     mtp_num_layers: Optional[int] = None
     mtp_loss_scaling_factor: float = 0.1
@@ -798,6 +821,22 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             _patch_mcore_bridge()
             self._check_mcore_bridge()
 
+    def _check_recompute(self):
+        """Reject the LoRA + selective-recomputation combination for deepseek_v41."""
+        # For deepseek_v41 selective recomputation drives the per-module
+        # CheckpointWithoutOutput path, which discards a submodule output and registers a
+        # recompute backward hook on a downstream tensor (e.g. the attention output). LoRA
+        # inserts adapter autograd nodes that reorder the backward pass so the checkpoint's
+        # own backward frees its saved inputs before that hook fires; recomputation then
+        # crashes reading the freed ctx.saved_tensors. Full-parameter tuning keeps the
+        # expected ordering, so selective is only safe there.
+        if (self.model_type == 'deepseek_v41' and self.tuner_type in ('lora', 'lora_llm')
+                and self.recompute_granularity == 'selective'):
+            raise ValueError('recompute_granularity="selective" is not supported with LoRA for deepseek_v41: '
+                             'the recompute backward hook crashes on the freed activation graph. Use '
+                             '--recompute_granularity full (recommended, largest memory saving) or none, or '
+                             'switch to tuner_type="full" to keep selective recomputation.')
+
     def __post_init__(self):
         if self.tuner_type != 'full':
             require_version('peft>=0.15', 'Please install peft>=0.15 to use LoRA in Megatron-SWIFT.')
@@ -825,6 +864,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.model_type = self.model_info.model_type
         self.model_dir = self.model_info.model_dir
         self.is_multimodal = self.model_meta.is_multimodal
+        self._check_recompute()
         if self.bridge_backend == 'megatron-bridge':
             self.megatron_model_meta = None
             if self.is_multimodal:

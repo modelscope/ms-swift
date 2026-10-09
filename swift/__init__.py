@@ -1,7 +1,18 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from typing import TYPE_CHECKING
 
-from .utils.import_utils import _LazyModule
+from .cli.utils import (is_torch_musa_installed, is_torchada_available, sync_musa_visible_devices,
+                        try_use_single_device_mode)
+
+if is_torch_musa_installed() and is_torchada_available():
+    # The visible devices must be final before torch is imported: torch autoloads torch_musa, which reads
+    # MUSA_VISIBLE_DEVICES only once. So this runs before swift.utils, whose trl patch already imports torch.
+    sync_musa_visible_devices()
+    try_use_single_device_mode()
+    # torchada redirects the torch.cuda.* APIs to torch.musa, so it must be imported before anything uses them.
+    import torchada  # noqa: F401
+
+from .utils.import_utils import _LazyModule  # noqa: E402
 
 if TYPE_CHECKING:
     from .agent_template import BaseAgentTemplate, agent_template_map

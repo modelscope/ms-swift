@@ -125,7 +125,7 @@ class OnPolicySample:
             d['chat_template_kwargs'] = chat_template_kwargs
         if self.response_token_ids:
             d['response_token_ids'] = self.response_token_ids
-        d['add_eos'] = False
+        d['add_eos'] = self.add_eos
         return d
 
     def _standard_fields(self) -> Dict[str, Any]:
@@ -344,7 +344,8 @@ class GRPOBatch:
 
 @dataclass
 class GKDSample(OnPolicySample):
-    pass
+    # Dataset responses use the template's EOS policy; rollout outputs set this to False.
+    add_eos: Optional[bool] = None
 
 
 @dataclass

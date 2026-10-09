@@ -4,6 +4,7 @@ import os
 
 from swift.utils import get_logger
 from ..llm_train import Runtime
+from ..llm_train.utils import validate_cmd
 
 logger = get_logger()
 
@@ -158,6 +159,10 @@ class GRPORuntime(Runtime):
     @classmethod
     def save_cmd(cls, cmd):
         if len(cmd) > 0:
+            try:
+                validate_cmd(cmd)
+            except ValueError as e:
+                raise gr.Error(str(e))
             cmd_sh, output_dir = cls.cmd_to_sh_format(cmd)
             os.makedirs(output_dir, exist_ok=True)
             sh_file_path = os.path.join(output_dir, 'grpo.sh')
