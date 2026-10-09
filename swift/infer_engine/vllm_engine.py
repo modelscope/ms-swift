@@ -604,15 +604,17 @@ class VllmEngine(InferEngine):
             InferStreamer(self.template, template_inputs=inputs['template_inputs']) for _ in range(generation_config.n)
         ]
         token_idxs = [0 for _ in range(generation_config.n)]
+        # Keep reasoning parser text history request-local and aligned with each choice.
+        previous_texts = ['' for _ in range(generation_config.n)]
         async for result in result_generator:
             res = self._create_chat_completion_stream_response(result, request_config, request_id, infer_streamers,
-                                                               token_idxs)
+                                                               token_idxs, previous_texts)
             if res is None:
                 continue
             yield res
 
-    def _create_chat_completion_stream_response(self, result, request_config, request_id, infer_streamers,
-                                                token_idxs) -> Optional[ChatCompletionStreamResponse]:
+    def _create_chat_completion_stream_response(self, result, request_config, request_id, infer_streamers, token_idxs,
+                                                previous_texts) -> Optional[ChatCompletionStreamResponse]:
         is_diff = False
         is_finished = False
         for output in result.outputs:
@@ -627,7 +629,6 @@ class VllmEngine(InferEngine):
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
         choices = []
-        previous_texts = [''] * len(result.outputs)
         for output in result.outputs:
             i = output.index
             logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[i]:],
@@ -658,6 +659,9 @@ class VllmEngine(InferEngine):
                             delta_content = delta_message.content
                         else:
                             delta_content = None
+                    else:
+                        # The parser is buffering a possible reasoning delimiter.
+                        delta_content = None
 
                 except Exception as e:
                     logger.warning(f'Failed to extract reasoning content in streaming: {e}')
@@ -883,13 +887,15 @@ class VllmEngine(InferEngine):
                         for _ in range(generation_config.n)
                     ]
                     token_idxs = [0 for _ in range(generation_config.n)]
+                    # Keep reasoning parser text history request-local and aligned with each choice.
+                    previous_texts = ['' for _ in range(generation_config.n)]
                     while self.engine.has_unfinished_requests():
                         result = self.engine.step()
                         if not result:
                             continue
                         result = result[0]
                         res = self._create_chat_completion_stream_response(result, request_config, request_id,
-                                                                           infer_streamers, token_idxs)
+                                                                           infer_streamers, token_idxs, previous_texts)
                         if res is None:
                             continue
                         yield res
