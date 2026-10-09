@@ -8,24 +8,56 @@ from swift.rlhf_trainers.gkd_loss import TeacherOutput, gkd_loss
 
 class TestGKDLoss(unittest.TestCase):
 
-    def test_empty_loss_dtype_and_vocab_alignment(self):
+    def test_empty_loss_dtype(self):
         for dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
-            for teacher_vocab in (5, 8, 11):
-                with self.subTest(dtype=dtype, teacher_vocab=teacher_vocab):
-                    student = torch.randn(1, 4, 8, dtype=dtype, requires_grad=True)
-                    teacher = TeacherOutput(full_logits=torch.randn(1, 4, teacher_vocab, dtype=dtype))
-                    labels = torch.full((1, 4), -100)
-                    total, count = gkd_loss(student, teacher, labels, 0.5, 1.)
-                    self.assertEqual(total.dtype, dtype)
-                    self.assertEqual(total.device, student.device)
-                    self.assertEqual(total.item(), 0.)
-                    self.assertEqual(count.item(), 0)
-                    total.backward()
-                    torch.testing.assert_close(student.grad, torch.zeros_like(student))
-                    with torch.no_grad():
-                        evaluation_loss, _ = gkd_loss(student, teacher, labels, 0.5, 1.)
-                    self.assertFalse(evaluation_loss.requires_grad)
-                    self.assertEqual(evaluation_loss.item(), 0.)
+            with self.subTest(dtype=dtype):
+                student = torch.randn(1, 4, 8, dtype=dtype, requires_grad=True)
+                teacher = TeacherOutput(full_logits=torch.randn(1, 4, 8, dtype=dtype))
+                labels = torch.full((1, 4), -100)
+                total, count = gkd_loss(student, teacher, labels, 0.5, 1.)
+                self.assertEqual(total.dtype, dtype)
+                self.assertEqual(total.device, student.device)
+                self.assertEqual(total.item(), 0.)
+                self.assertEqual(count.item(), 0)
+                total.backward()
+                torch.testing.assert_close(student.grad, torch.zeros_like(student))
+                with torch.no_grad():
+                    evaluation_loss, _ = gkd_loss(student, teacher, labels, 0.5, 1.)
+                self.assertFalse(evaluation_loss.requires_grad)
+                self.assertEqual(evaluation_loss.item(), 0.)
+
+    def test_full_vocab_mismatch_raises(self):
+        for student_vocab, teacher_vocab in ((2, 3), (3, 2)):
+            for beta in (0., 0.5, 1.):
+                for label in (0, -100):
+                    with self.subTest(student_vocab=student_vocab, teacher_vocab=teacher_vocab, beta=beta, label=label):
+                        student = torch.zeros(1, 1, student_vocab, dtype=torch.float64, requires_grad=True)
+                        teacher = TeacherOutput(full_logits=torch.zeros(1, 1, teacher_vocab, dtype=torch.float64))
+                        message = f'student={student_vocab}, teacher={teacher_vocab}'
+                        with self.assertRaisesRegex(ValueError, message):
+                            gkd_loss(student, teacher, torch.tensor([[label]]), beta, 1.)
+
+    def test_loss_and_gradients_are_shift_invariant(self):
+        for dtype in (torch.float32, torch.float64):
+            for beta in (0., 0.5, 1.):
+                for mode in ('full', 'topk'):
+                    with self.subTest(dtype=dtype, beta=beta, mode=mode):
+                        reference = None
+                        for student_shift, teacher_shift in ((0., 0.), (-2., 0.), (0., 2.)):
+                            student = torch.tensor([[[1., 0., -0.5]]], dtype=dtype)
+                            student = (student + student_shift).requires_grad_()
+                            values = [0.5, 0., 1.] if mode == 'full' else [0.5, 0., 1., -2.]
+                            teacher = TeacherOutput(full_logits=torch.tensor([[values]], dtype=dtype) + teacher_shift)
+                            if mode == 'topk':
+                                teacher = teacher.to_topk(2)
+                            total, count = gkd_loss(student, teacher, torch.tensor([[0]]), beta, 1.)
+                            gradient, = torch.autograd.grad(total, student)
+                            self.assertEqual(count.item(), 1)
+                            if reference is None:
+                                reference = total.detach(), gradient
+                            else:
+                                torch.testing.assert_close(total, reference[0])
+                                torch.testing.assert_close(gradient, reference[1])
 
     def test_empty_microbatch_preserves_accumulated_update(self):
         torch.manual_seed(42)

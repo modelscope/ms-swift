@@ -156,14 +156,12 @@ def jsd_loss(
 def _align_vocab(student_logits: torch.Tensor, teacher_logits: torch.Tensor):
     stu_vocab = student_logits.shape[-1]
     tea_vocab = teacher_logits.shape[-1]
-    if stu_vocab == tea_vocab:
-        return student_logits, teacher_logits
-    if stu_vocab < tea_vocab:
-        student_logits = F.pad(student_logits, (0, tea_vocab - stu_vocab), 'constant', 0)
-        student_logits[..., stu_vocab:] = teacher_logits[..., stu_vocab:]
-    else:
-        teacher_logits = F.pad(teacher_logits, (0, stu_vocab - tea_vocab), 'constant', 0)
-        teacher_logits[..., tea_vocab:] = student_logits[..., tea_vocab:]
+    if stu_vocab != tea_vocab:
+        # Shapes alone cannot distinguish vocabulary padding from valid token IDs.
+        raise ValueError(
+            'Full-vocabulary GKD requires matching vocabulary dimensions '
+            f'(student={stu_vocab}, teacher={tea_vocab}). Align token IDs and remove any known vocabulary padding '
+            'before computing the loss; logits from different models cannot be used as padding.')
     return student_logits, teacher_logits
 
 
@@ -236,6 +234,8 @@ def gkd_loss(
 
     Caller is responsible for normalization (e.g. simple division for HF,
     CP all-reduce + division for Megatron).
+    Full-vocab inputs must already be aligned to the same token IDs,
+    including matching vocabulary shards when using TP.
 
     Args:
         student_logits: [B, S, V] student model logits
