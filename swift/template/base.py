@@ -517,9 +517,7 @@ class Template(ProcessorMixin):
                 return input_ids, labels, loss_scale, mm_mask
             return input_ids, labels, loss_scale
         new_input_ids = []
-        new_labels = []
-        new_loss_scale = []
-        new_mm_mask = []
+        replacements = []
         start = 0
         for i, idx in enumerate(replace_idx_list):
             try:
@@ -530,28 +528,28 @@ class Template(ProcessorMixin):
             token_len = len(new_tokens)
             new_input_ids.extend(input_ids[start:idx])
             new_input_ids.extend(new_tokens)
-            if labels:
-                new_labels.extend(labels[start:idx])
-                new_labels.extend([-100] * token_len)
-            if loss_scale:
-                new_loss_scale.extend(loss_scale[start:idx])
-                new_loss_scale.extend([loss_scale[idx]] * token_len)
-            if mm_mask:
-                new_mm_mask.extend(mm_mask[start:idx])
-                new_mm_mask.extend([True] * token_len)
+            replacements.append((idx, token_len))
             start = idx + 1
         if start:
             new_input_ids.extend(input_ids[start:])
             input_ids = new_input_ids
-            if labels:
-                new_labels.extend(labels[start:])
-                labels = new_labels
-            if loss_scale:
-                new_loss_scale.extend(loss_scale[start:])
-                loss_scale = new_loss_scale
-            if mm_mask:
-                new_mm_mask.extend(mm_mask[start:])
-                mm_mask = new_mm_mask
+
+        def expand(tokens, fill_value=None):
+            if not tokens or not replacements:
+                return tokens
+            result = []
+            start = 0
+            for idx, token_len in replacements:
+                result.extend(tokens[start:idx])
+                value = tokens[idx] if fill_value is None else fill_value
+                result.extend([value] * token_len)
+                start = idx + 1
+            result.extend(tokens[start:])
+            return result
+
+        labels = expand(labels, -100)
+        loss_scale = expand(loss_scale)
+        mm_mask = expand(mm_mask, True)
         if mm_mask is not None:
             return input_ids, labels, loss_scale, mm_mask
         return input_ids, labels, loss_scale
