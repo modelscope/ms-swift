@@ -668,7 +668,8 @@ class VllmEngine(InferEngine):
             toolcall = None
             if output.is_finished:
                 toolcall = self._get_toolcall(
-                    self.template.decode_generate_ids(output.token_ids, **infer_streamers[i].decode_kwargs))
+                    self.template.decode_generate_ids(output.token_ids, **infer_streamers[i].decode_kwargs),
+                    template_inputs=infer_streamers[i].decode_kwargs.get('template_inputs'))
 
             choice = ChatCompletionResponseStreamChoice(
                 index=i,
@@ -740,7 +741,7 @@ class VllmEngine(InferEngine):
                     content = response
 
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
-            toolcall = self._get_toolcall(content)  # Use content instead of response for tool calls
+            toolcall = self._get_toolcall(content, template_inputs=inputs['template_inputs'])
             token_ids = output.token_ids if request_config.return_details else None
             choice = ChatCompletionResponseChoice(
                 index=output.index,

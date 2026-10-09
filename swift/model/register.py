@@ -245,6 +245,10 @@ class ModelLoader(BaseModelLoader):
         return config
 
     def get_config(self, model_dir: str) -> PretrainedConfig:
+        if self.default_trust_remote_code:
+            logger.warning(f'Loading config from {model_dir!r} with trust_remote_code=True. '
+                           'Custom Python code from the model repository will be executed. '
+                           'Only use models from sources you trust.')
         auto_config_cls = self.auto_config_cls or AutoConfig
         return auto_config_cls.from_pretrained(model_dir, trust_remote_code=self.default_trust_remote_code)
 
@@ -257,6 +261,10 @@ class ModelLoader(BaseModelLoader):
         return tokenizer
 
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        if self.default_trust_remote_code:
+            logger.warning(f'Loading tokenizer/processor from {model_dir!r} with trust_remote_code=True. '
+                           'Custom Python code from the model repository will be executed. '
+                           'Only use models from sources you trust.')
         auto_tokenizer_cls = self.auto_tokenizer_cls
         if auto_tokenizer_cls is None:
             if os.path.exists(os.path.join(model_dir, 'preprocessor_config.json')) or os.path.exists(
@@ -453,6 +461,12 @@ class ModelLoader(BaseModelLoader):
             elif hf_model_type == 'bailing_hybrid':
                 for module in model.modules():
                     if type(module).__name__ == 'BailingMoeV3SparseMoeBlock':
+                        z3_leaf_modules = [type(module)]
+                        break
+            elif hf_model_type == 'xing4_0':
+                # trust_remote_code model: Xing4_0MoE is not in transformers.models.*
+                for module in model.modules():
+                    if type(module).__name__ == 'Xing4_0MoE':
                         z3_leaf_modules = [type(module)]
                         break
 

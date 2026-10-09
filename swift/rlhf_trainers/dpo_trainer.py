@@ -54,6 +54,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                  *_args,
                  **kwargs):
         args = kwargs['args']
+        if args.precompute_ref_log_probs:
+            raise ValueError(
+                'precompute_ref_log_probs=True is not supported by Swift DPOTrainer. '
+                'Set precompute_ref_log_probs=False to compute reference log probabilities during training.')
         self.label_smoothing = args.label_smoothing
         if 'loss_weights' in DPOConfig.__dict__:
             # trl >= 0.20

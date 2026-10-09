@@ -15,12 +15,11 @@ Run from the repository root with at least two GPUs::
     PYTHONPATH=. torchrun --standalone --nproc_per_node=4 -m pytest tests/megatron/test_infonce_ddp_e2e.py -q
 """
 import os
-from types import SimpleNamespace
-
 import pytest
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+from types import SimpleNamespace
 
 from swift.loss.embedding import InfonceLoss
 
@@ -68,10 +67,7 @@ def test_infonce_megatron_ddp_matches_single_process(distributed, monkeypatch, c
         model = torch.nn.Linear(dim, dim, bias=False).cuda()
 
         config = TransformerConfig(
-            num_attention_heads=1,
-            num_layers=1,
-            hidden_size=dim,
-            calculate_per_token_loss=calculate_per_token_loss)
+            num_attention_heads=1, num_layers=1, hidden_size=dim, calculate_per_token_loss=calculate_per_token_loss)
         ddp_config = DistributedDataParallelConfig(overlap_grad_reduce=False, use_distributed_optimizer=False)
         ddp_model = DistributedDataParallel(config, ddp_config=ddp_config, module=model)
         ddp_model.zero_grad_buffer()
