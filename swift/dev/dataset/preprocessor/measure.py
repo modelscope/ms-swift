@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""An encoding pass kept only for the token count it measures."""
 from __future__ import annotations
 from typing import Any, Dict, Optional
 
@@ -34,7 +33,7 @@ class MeasurePreprocessor(EncodePreprocessor):
     row here is what lets a consumer know to leave it out of a plan; dropping it here would only move the
     same decision earlier and take the row count with it.
     """
-
+    ## 这个preprocessor有什么用
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         try:
             row['lengths'] = super().preprocess(row)['lengths']

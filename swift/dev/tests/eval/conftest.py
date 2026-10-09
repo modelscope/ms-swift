@@ -10,7 +10,7 @@ Two tiers, mirroring ``swift/dev/tests/deploy``:
   ``build_template``) are replaced; nothing stubs the Evaluator or EvalScope itself. ``test_config_build``
   and ``test_cli_parse`` cover the pure helpers and every CLI flag.
 - **slow** (``@pytest.mark.slow`` + ``@pytest.mark.accel(1)``): spawn the real ``swift eval`` command with
-  exactly the arguments ``examples/v5/eval/{eval,eval_lora}.sh`` use -- a real vLLM engine on
+  exactly the arguments ``examples/eval/{eval,eval_lora}.sh`` use -- a real vLLM engine on
   ``Qwen/Qwen2.5-0.5B-Instruct`` scoring a real EvalScope benchmark (and a live-loaded LoRA adapter) -- so a
   green suite means the examples run as written.
 
@@ -188,7 +188,7 @@ def read_jsonl(path: str) -> List[Dict[str, Any]]:
 
 def run_eval_cli(args: Sequence[str], *, timeout: float = EVAL_TIMEOUT,
                  env: Optional[Dict[str, str]] = None) -> subprocess.CompletedProcess:
-    """Run the real ``swift eval`` command in a subprocess, exactly as ``examples/v5/eval`` does.
+    """Run the real ``swift eval`` command in a subprocess, exactly as ``examples/eval`` does.
 
     ``swift eval`` with ``USE_SWIFT_V5=1`` routes to ``python -m swift.dev.cli.eval``; prefer the installed
     ``swift`` console script (the true example entry point) and fall back to the module form when it is not on

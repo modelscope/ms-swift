@@ -1,23 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Fetch a remote media resource into a stable local cache directory, exactly once.
-
-Many multimodal datasets ship only text and image *ids*; the pixels live in a separate archive that
-has to be pulled and unpacked on first use. This module owns that fetch.
-
-Design, following the ``base.py`` pattern used elsewhere in ``dev`` (a base class + a small registry +
-a factory ``classmethod``): the three fetch modes are three :class:`MediaDownloader` subclasses rather
-than legacy ``MediaResource``'s single ``_safe_download`` branching on a ``file_type`` string. Each
-subclass only implements how it puts bytes on disk (:meth:`MediaDownloader.fetch`); the base owns the
-parts that must be identical for all of them -- id/url resolution, DDP-safe locking, the cache check,
-and completion.
-
-Bug fixed versus legacy: **downloads are now atomic.** Legacy checked ``os.path.exists(final_folder)``
-and then extracted straight into ``final_folder``; a crash midway through extraction left a partial
-folder that every later run treated as a finished download, so the dataset was silently truncated and
-the only recovery was to delete the cache by hand. Here every fetch lands in a sibling ``.tmp``
-directory and is promoted to its final name with a single atomic ``os.rename`` only after it fully
-succeeds, so an interrupted download leaves no folder to be mistaken for a complete one.
-"""
 from __future__ import annotations
 import os
 import shutil
@@ -39,6 +20,7 @@ class MediaDownloader:
 
     cache_dir = os.path.join(get_cache_dir(), 'media_resources')
 
+    ## 这个有必要还写死吗
     # Bare media-type ids that resolve to an archive on the shared sharegpt4v mirror; anything else
     # passed to `download` is treated as a literal URL.
     MEDIA_TYPES = {

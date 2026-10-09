@@ -1,0 +1,11 @@
+[
+    {
+        "dataset_type": "my_qa",
+        "dataset_path": "data.jsonl",
+        "columns": {
+            "prompt": "query",
+            "completion": "response"
+        },
+        "help": "A local JSONL whose columns are named prompt/completion; the `columns` map renames them to swift's standard query/response so no Python preprocessor is needed."
+    }
+]

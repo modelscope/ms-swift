@@ -1,24 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Datasets that ship a dialogue in a ``messages`` (or ``conversations``) column.
-
-This is the canonical chat shape -- a list of ``{'role', 'content'}`` turns -- so it is also the base
-for the two provider *dialects* that only differ in how a single turn is encoded:
-
-- **swift** (the plain form): ``{'role': 'user', 'content': 'q'}``, plus the shorthands the wild
-  uses -- ``{'from', 'value'}`` key names, and one-element-per-turn ``{'user': q, 'assistant': a}``.
-- **openai**: an assistant turn carries a ``tool_calls`` list; each call becomes its own ``tool_call``
-  message. See :meth:`openai_to_messages`.
-- **anthropic**: ``content`` is a list of typed blocks (text / image / tool_use / tool_result); the
-  block parsing lives in ``anthropic.py`` and is delegated to lazily, keeping that provider's bulk
-  out of this file while still letting the auto path reach it.
-
-``message_format`` selects the dialect; ``'auto'`` (the default) detects it per row, exactly as
-legacy main's ``MessagesPreprocessor`` does. The two dialects are *not* separate top-level formats
-picked by column name -- all three arrive in the same ``messages`` column and are only distinguishable
-per row -- which is why the factory routes every messages dataset here and the dialect is resolved
-inside :meth:`normalize_provider_messages`. ``anthropic.py`` exposes a thin pin subclass for a dataset
-that is known to be Anthropic and wants to skip auto-detection.
-"""
 from __future__ import annotations
 from typing import Any, Collection, Dict, List, Optional, Tuple
 
@@ -34,8 +14,6 @@ class OpenAIConverter(FormatConverter):
     """The messages/dialogue format, covering the swift / openai / anthropic dialects."""
 
     format_name = 'openai'
-    # Asked first: a dataset with both a dialogue column and an `instruction` column is a dialogue
-    # dataset that happens to carry an instruction, not an Alpaca dataset.
     priority = 10
     aliases = {
         'conversation': 'messages',
@@ -43,11 +21,8 @@ class OpenAIConverter(FormatConverter):
         'system_prompt': 'system',
     }
 
-    # Keys a single message may use for its role and its text.
     ROLE_KEYS = ('role', 'from')
     CONTENT_KEYS = ('content', 'value')
-    # Role values seen in the wild, mapped to the standard set. `-` is normalised to `_` before
-    # lookup, so `function-call` and `function_call` both land on `tool_call`.
     ROLE_ALIASES = {
         'user': 'user',
         'human': 'user',
@@ -149,6 +124,7 @@ class OpenAIConverter(FormatConverter):
         if not all(isinstance(turn, dict) for turn in raw):
             return None
 
+        ## 这里也有audio和video的疑问
         media: Dict[str, List] = {'images': []}
         raw = self.normalize_provider_messages(list(raw), media)
         if not raw:
@@ -183,7 +159,7 @@ class OpenAIConverter(FormatConverter):
                 message_format = 'anthropic'
             else:
                 message_format = 'swift'
-
+        ## 这里就写的非常不好了。anthropic的converter写到了这里。应该有一个autoconverter来做这个事情吧？
         if message_format == 'openai':
             return self.openai_to_messages(messages)
         if message_format == 'anthropic':
@@ -235,7 +211,7 @@ class OpenAIConverter(FormatConverter):
     def is_turn_pairs(self, raw: List[Dict[str, Any]]) -> bool:
         """Whether each element holds a whole turn (``{'user': q, 'assistant': a}``) rather than one
         message.
-
+        ## 里面涉及到legacy的描述去掉。这是正式的注释。搜一下dev，所有的都要去掉
         Recognised by the keys present -- a ``user``/``assistant`` pair and no role key -- instead of
         legacy's "has neither ``role`` nor ``content``, so it must be the other shape", which would
         also claim a malformed row that simply lost its keys.
@@ -269,10 +245,9 @@ class OpenAIConverter(FormatConverter):
             content = self.first_present(turn, self.content_keys)
             if role is None:
                 continue
+            ## 这个replace含义是什么
             role = self.role_map.get(str(role).replace('-', '_'), role)
             message = {'role': role, 'content': content}
-            # Carry through the two per-message fields the standard shape allows, so a dataset that
-            # ships token-level loss weights does not lose them here.
             for key in ('loss', 'loss_scale'):
                 if key in turn:
                     message[key] = turn[key]

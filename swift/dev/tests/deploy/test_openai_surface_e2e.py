@@ -3,7 +3,7 @@
 
 One server is brought up for the whole module (``run_deploy_process`` really spawns ``run_deploy``: a
 local Ray head, Ray Serve, and a vLLM engine on the real checkpoint), then every request goes over HTTP
-through twinkle's gateway -- the exact path an OpenAI SDK client and ``examples/v5/deploy`` use. A green
+through twinkle's gateway -- the exact path an OpenAI SDK client and ``examples/deploy/vllm`` use. A green
 module therefore means the served surface works as documented, not that a stub returned a canned shape.
 
 The weights are the real checkpoint but the assertions are about *shape and contract*, not what the model

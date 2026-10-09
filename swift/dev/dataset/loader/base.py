@@ -25,14 +25,7 @@ __all__ = [
 logger = get_logger()
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
-
-# dataset_type -> the loader class that owns it.
 DATASET_MAPPING: Dict[str, Type['DatasetLoader']] = {}
-# (hub, id) -> dataset_type, where hub is 'ms' | 'hf' | 'path'. Lazily built and invalidated on every
-# registration. Legacy kept the same reverse index in `dataset_syntax._dataset_meta_mapping` but built
-# it exactly once with no invalidation hook, so anything registered afterwards -- every entry from a
-# user's `--custom_dataset_info` file, since those are registered after the built-in ones -- was
-# missing from it and only ever found by the looser basename fallback.
 _ID_MAPPING: Dict[Tuple[str, str], str] = {}
 
 
@@ -106,6 +99,7 @@ class DatasetInfo:
         dataset: The dataset as the user wrote it: a hub id, a local file, or a local directory.
         dataset_type: Family id, once the registry has matched one. ``None`` for an unregistered
             dataset, which is the common case and not an error -- see :func:`get_dataset_loader`.
+        ## 现在命令行应该是这个格式吧：--dataset ms://xxx/xxxxx#10000
         source: Where rows come from. ``'ms'`` / ``'hf'`` for a hub id, ``'path'`` for a local file,
             ``'repo'`` for a local directory holding a downloaded snapshot. Resolved once here so
             downstream code branches on an enum instead of re-running ``os.path`` probes.
@@ -139,7 +133,7 @@ def register_dataset(loader_cls: Type['DatasetLoader'] = None, *, exist_ok: bool
             raise ValueError(f'dataset_type `{dataset_type}` is already registered '
                              f'by {DATASET_MAPPING[dataset_type].__name__}.')
         DATASET_MAPPING[dataset_type] = cls
-        _ID_MAPPING.clear()  # invalidate the reverse-lookup cache
+        _ID_MAPPING.clear()
         return cls
 
     return _register if loader_cls is None else _register(loader_cls)
@@ -178,8 +172,6 @@ def register_dataset_info(dataset_info: Union[str, List[Dict[str, Any]], None] =
     if isinstance(dataset_info, str):
         path = os.path.abspath(os.path.expanduser(dataset_info))
         if os.path.isfile(path):
-            # Relative `dataset_path` entries are resolved against the file that declared them, so a
-            # custom dataset_info file can sit next to the data it points at and stay portable.
             base_dir = os.path.dirname(path)
             with open(path, 'r', encoding='utf-8') as f:
                 dataset_info = json.load(f)
@@ -222,11 +214,6 @@ def match_dataset_type(dataset: str, *, use_hf: bool = False) -> Optional[str]:
     but two hubs can host different datasets whose ids end in the same word, so it must never
     override an exact hit.
     """
-    # A family may be named directly (``--dataset <dataset_type>``), which is also how an external
-    # loader registered with ``@register_dataset`` (via ``--external_plugins``) is selected. Checked
-    # first so an explicit registered name wins over a coincidental id/basename hit; the loader then
-    # resolves the real data location from its own declared ids (see :meth:`DatasetLoader.resolve_id`),
-    # so the name is never mistaken for a hub id.
     if dataset in DATASET_MAPPING:
         return dataset
     if not _ID_MAPPING:
@@ -263,7 +250,7 @@ class DatasetLoader:
     fallback used anyway, so the abstract layer bought nothing and made "no registration" look like
     an error case.
     """
-
+    ## 你的doc需要更标准化。这部分写的太随意了。简练、清晰、全面
     # -- registration ---------------------------------------------------------------------------
     dataset_type: Optional[str] = None
     # Hub ids this family covers: a bare id when both hubs agree, or a (ms_id, hf_id) pair when they
@@ -290,6 +277,7 @@ class DatasetLoader:
     tags: Sequence[str] = ()
     # One-line note shown when listing datasets, e.g. a licence restriction or a manual-download step.
     help: Optional[str] = None
+    ## 这个有在使用吗
     # Too large to materialise: consumers should default to streaming rather than a full local copy.
     huge_dataset: bool = False
 
@@ -332,6 +320,7 @@ class DatasetLoader:
         # The trailing component of the id is the name worth typing, and is what legacy's basename
         # fallback already resolved to -- so it is the natural registry key. An entry may pin one
         # explicitly when two hubs host same-named datasets.
+        ## cls.dataset_name 转为dataset_type 不会有bug吗
         dataset_type = entry.pop('dataset_type', None) or cls.dataset_name(ms_id or hf_id or dataset_path)
 
         attrs: Dict[str, Any] = {'dataset_type': dataset_type}
@@ -356,8 +345,6 @@ class DatasetLoader:
             class_name = f'Dataset_{class_name}'
         loader_cls = type(class_name, (cls, ), attrs)
         return register_dataset(loader_cls, exist_ok=exist_ok)
-
-    # -- declaration accessors -------------------------------------------------------------------
 
     @classmethod
     def iter_ids(cls) -> Iterator[Tuple[Optional[str], Optional[str]]]:
@@ -423,7 +410,6 @@ class DatasetLoader:
             preprocessor = self.import_cls(preprocessor)
         if isinstance(preprocessor, type):
             return preprocessor(columns=columns)
-        # An instance was declared: it already carries its own configuration, so it is used as-is.
         return preprocessor
 
     def build_dataset(self, subset: SubsetMeta, split: str, **kwargs) -> DATASET_TYPE:
@@ -442,12 +428,9 @@ class DatasetLoader:
         """
         info = self._dataset_info
         with self.serialised(f'{info.dataset}/{subset.subset}/{split}', sticky=True):
+            ## 需要增加一个测试用例。下载完成后的hub数据集，本地断网情况依然可以加载。即，本地完全加载远端缓存
             if info.source == 'path':
-                # A local path may hold a columnar data-lake format that the ordinary dispatch below
-                # cannot load: `datasets` ships no orc builder at all, and its lance builder is only
-                # reached by name, which the folder scanner never selects for a `.lance` directory.
-                # Those two are handled explicitly; parquet, arrow and the rest keep the extension /
-                # folder path, which already resolves them.
+                ## data lake的设计太散了，不好扩展
                 lake_format = self.resolve_lake_format(info.dataset)
                 if lake_format == 'orc':
                     return self.load_orc(info.dataset, split=split, streaming=kwargs.get('streaming', False))
@@ -463,6 +446,7 @@ class DatasetLoader:
                     return hf_load_dataset(extension, data_files=info.dataset, split=split, **kwargs)
                 # A downloaded snapshot directory. `datasets` reads a folder as a dataset by itself, so
                 # this goes through the HF loader whichever hub the copy came from.
+                ## 这个是为什么
                 self.hide_dataset_infos(info.dataset)
                 return self.load_from_hub(info.dataset, subset.subset, split, use_hf=True, **kwargs)
             use_hf = info.source == 'hf'
@@ -473,6 +457,7 @@ class DatasetLoader:
     # Columnar data-lake formats :meth:`build_dataset` has to load itself. ``orc`` has no packaged
     # `datasets` builder; ``lance`` has one but it is only reached by name, so a ``.lance`` directory
     # never gets picked up by the folder scanner.
+    ## 这里对lake的支持能否加plugins，支持更多合适的解析？
     _LAKE_FORMATS = ('orc', 'lance')
 
     @staticmethod
@@ -489,6 +474,7 @@ class DatasetLoader:
             extensions = {os.path.splitext(path)[1].lstrip('.').lower()}
         else:
             extensions = {os.path.splitext(name)[1].lstrip('.').lower() for name in os.listdir(path)}
+            ## 这里写的太死了吧
             if path.rstrip(os.sep).lower().endswith('.lance'):
                 extensions.add('lance')
         for lake_format in DatasetLoader._LAKE_FORMATS:
@@ -565,11 +551,7 @@ class DatasetLoader:
         """
         from swift.dev.utils import get_hub
         hub = get_hub(use_hf)
-        # Both hubs accept the union of these and ignore what they have no use for (`token` on the HF
-        # side, `num_proc` on the ModelScope side), so one call site serves both.
         dataset = hub.load_dataset(dataset_id, subset, split, **kwargs)
-        # `MsDataset` returns a wrapper around the real thing; a streaming request answered with a
-        # materialised dataset is converted rather than silently changing kind under the caller.
         if hasattr(dataset, '_hf_ds'):
             dataset = dataset._hf_ds
             if kwargs.get('streaming') and isinstance(dataset, HfDataset):
@@ -589,7 +571,6 @@ class DatasetLoader:
         try:
             os.rename(path, f'{path}_bak')
         except OSError:
-            # Another process renamed it first, which is the outcome wanted either way.
             pass
 
     # -- orchestration ---------------------------------------------------------------------------
@@ -623,6 +604,7 @@ class DatasetLoader:
                     load_from_cache_file=kwargs.get('load_from_cache_file', True),
                     strict=kwargs.get('strict', False))
                 parts.append(processed)
+        ## 这里为什么恒为concat，不interleave
         return self.concat_datasets(parts)
 
     def post_process(self,
@@ -665,6 +647,7 @@ class DatasetLoader:
         Deferred so a declaration costs nothing at import time, and so a preprocessor may live in a
         module that is expensive or optional to import.
         """
+        ## 这里几个地方使用，会不会有安全问题
         module_name, _, attr = spec.partition(':')
         return getattr(importlib.import_module(module_name), attr)
 
@@ -676,6 +659,7 @@ class DatasetLoader:
         ``rsplit('/')`` on a cached snapshot path would return a commit sha.
         """
         dataset = dataset.rstrip('/')
+        ## 这个对modelscope和hf都适用吗
         match = re.search('/datasets--(?:.+?--)?(.+?)/snapshots/', dataset)
         if match is not None:
             return match.group(1)
@@ -732,6 +716,7 @@ class DatasetLoader:
             else:
                 drawn = np.arange(remainder)
             indices = np.concatenate([indices, drawn])
+        ## 这一票数据集处理和前处理流程，包括preprocessor等，有无效率问题
         return dataset.select(indices)
 
     @staticmethod
@@ -862,7 +847,7 @@ class DatasetLoader:
         import datasets.config
         import datasets.fingerprint
         from modelscope.hub.utils.utils import get_cache_dir
-
+        ## 这个函数使用的原因是什么，为什么不能使用datasets自己的
         def temporary_cache_files_directory(prefix: Optional[str] = None) -> str:
             prefix = prefix or datasets.config.TEMP_CACHE_DIR_PREFIX
             if prefix not in cls._temp_dirs:
@@ -938,10 +923,20 @@ def load_dataset(
             entry_use_hf = use_hf
         dataset_type = match_dataset_type(dataset, use_hf=bool(entry_use_hf))
         loader_cls = get_dataset_loader(dataset_type)
+        # A dataset declared with only a local `dataset_path` (a user's --custom_dataset_info file, or
+        # one that ships with swift) is selected on the command line by its registered NAME, but its
+        # rows live at that path. detect_source() on the typed name would classify it as a hub id and
+        # fetch it, so resolve the name to the declared path first; dataset_type still carries the name
+        # for preprocessor/column lookup. Path-only guards the substitution -- a loader that also
+        # declares hub ids keeps the hub path -- and a hand-typed real path/hub id is left untouched.
+        ## 这里的load_id = loader_cls.dataset_paths[0] 原因是什么
+        load_id = dataset
+        if loader_cls.dataset_paths and not loader_cls.datasets and not os.path.exists(dataset):
+            load_id = loader_cls.dataset_paths[0]
         info = DatasetInfo(
-            dataset=dataset,
+            dataset=load_id,
             dataset_type=dataset_type,
-            source=DatasetLoader.detect_source(dataset, entry_use_hf),
+            source=DatasetLoader.detect_source(load_id, entry_use_hf),
             subsets=entry_subsets or list(subsets or []),
             sample_count=sample_count,
             # The two hubs number their revisions separately, so a family declares one for each and

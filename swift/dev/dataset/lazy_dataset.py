@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Encoding rows at access time instead of up front."""
 from __future__ import annotations
 from typing import Any, Callable, Dict, Optional, Union
 

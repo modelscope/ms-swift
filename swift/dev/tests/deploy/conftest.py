@@ -9,7 +9,7 @@ Two tiers, mirroring ``swift/dev/tests/infer``:
   ``run_deploy`` in a subprocess -- a local Ray head + Ray Serve + a vLLM engine on the real
   ``Qwen/Qwen3.5-4B`` -- and yields the gateway base URL once ``{route_prefix}/models`` answers 200. The
   tests then drive it over HTTP (OpenAI surface) or through ``twinkle_client`` (token-in-token-out), which
-  is the same path ``examples/v5/deploy`` uses, so a green suite means the examples work as written.
+  is the same path ``examples/deploy/vllm`` uses, so a green suite means the examples work as written.
 
 ``Qwen3.5-4B`` is a unified vision-language model, so one checkpoint covers both the text and the
 multimodal serving tests.

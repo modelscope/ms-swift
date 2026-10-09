@@ -37,7 +37,7 @@ CUDA_VISIBLE_DEVICES=1 PYTHONPATH=twinkle/src:. python -m pytest swift/dev/tests
 
 ### 依赖前提（examples / slow 测试能直接跑的关键）
 
-slow 层与 `examples/v5/deploy` 走真实 twinkle-server，除 `swift`/`ray`/`vllm` 外还需两个 extra：
+slow 层与 `examples/deploy/vllm` 走真实 twinkle-server，除 `swift`/`ray`/`vllm` 外还需两个 extra：
 
 - `twinkle[server]` + `twinkle[client]`（拉入 `tinker`）：gateway 的 `tinker_handlers` 顶层硬导入 `tinker`，
   起 gateway 必须装。
@@ -62,7 +62,7 @@ slow 层与 `examples/v5/deploy` 走真实 twinkle-server，除 `swift`/`ray`/`v
 | `test_restart_e2e.py` | slow | 1 passed |
 | `test_token_in_token_out_e2e.py` | slow | 3 passed |
 
-全量一次跑通（fast + slow 同进程顺序）：**84 passed in ~15min**。`examples/v5/deploy` 已用真实
+全量一次跑通（fast + slow 同进程顺序）：**84 passed in ~15min**。`examples/deploy/vllm` 已用真实
 `swift deploy --route_prefix /api/v1 --enable_data_plane true` + `token_in_token_out_client.py` 冒烟验证：
 轻量路径 `new_tokens=64 / trainable_len=70`（prompt 6 + completion 64，偏移正确），data-plane 路径生成 4
 条并成功 `arelease`，`/models` 返回带 `created` 且 `owned_by=swift`。

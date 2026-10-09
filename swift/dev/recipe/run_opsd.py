@@ -259,7 +259,7 @@ def _require_teacher_prompt(prompt_extras: List[dict]) -> None:
     if not any((extra or {}).get('teacher_prompt') for extra in prompt_extras):
         raise ValueError('OPSD requires a per-sample `teacher_prompt` dataset column carrying the privileged '
                          'context (reference/rubric). None of the rows provide it. Add it via a dataset plugin '
-                         '(see examples/v5/rl/opsd), or use --rlhf_type gkd for plain distillation.')
+                         '(see examples/rl/opsd), or use --rlhf_type gkd for plain distillation.')
 
 
 def _build_opsd_teacher(model: TrainableModel, rlhf_config: RLHFConfig, tuner_config: Optional[TunerConfig],

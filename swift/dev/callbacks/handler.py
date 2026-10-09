@@ -1,11 +1,3 @@
-"""Fan-out of loop events to the registered callbacks.
-
-The loop holds ONE handler and calls its event methods; the handler forwards each to every callback
-in registration order, sharing a single :class:`CallbackState` / :class:`CallbackControl` pair. The
-control is merged by construction: callbacks only ever flip a flag False -> True, and they all mutate
-the same object, so ``should_training_stop`` set by any callback is seen by the loop (an OR without an
-explicit reduce).
-"""
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional

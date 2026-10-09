@@ -67,6 +67,7 @@ def parse_rlhf_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         'orm': RLHFConfig,
         'orm_weights': RLHFConfig,
     }
+    ## --rlhf_type 改为--rl_type，去掉hf
     configs = parse_configs_strict(classes, effective_argv, command='swift rl', field_owners=owners)
     common = configs[:15]
     (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,

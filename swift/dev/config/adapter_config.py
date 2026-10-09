@@ -4,7 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
-
+## 所有的参数和legacy进行二次比对，确认没有遗漏参数，所有的参数都有对应，或者是显式要求丢弃的
+## 设计文档在.temp/v5_design
 @dataclass
 class TunerConfig:
     """LoRA (+QLoRA/DoRA/rsLoRA/LoRA+/LoRA-GA), AdaLoRA, TrainableTokens, and LISA settings.

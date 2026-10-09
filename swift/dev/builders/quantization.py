@@ -1,4 +1,7 @@
-"""Shared load-time quantization mapping for model builders and export."""
+## 文件的license都需要加，文件上不要加注释，只有license和from
+## 此外，代码注释需要调整，逻辑复杂不好理解的地方，尤其是for循环、算法处理的地方需要加，但注释不要过长，一句话两句话最多，你的复杂注释都需要处理
+## 如果不是你加的而是原本的注释则不要动
+## 如果该处非常复杂，注释可以更长
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 

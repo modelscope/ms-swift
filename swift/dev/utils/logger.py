@@ -71,9 +71,11 @@ def get_logger(log_file: Optional[str] = None, log_level: Optional[int] = None, 
         log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
         log_level = getattr(logging, log_level, logging.INFO)
     # Distinct from legacy's ``swift`` logger on purpose -- see the module docstring.
-    logger_name = 'swift.dev'
+    logger_name = 'swift'
     logger = logging.getLogger(logger_name)
     logger.propagate = False
+    ## 这里之前经常有一个bug：想要调节默认显示的日志等级，但是调节很费劲。先要调节是否是rank0展示日志，也不好做。
+    ## 考虑有两个环境变量给出控制
     if logger_name in init_loggers:
         add_file_handler_if_needed(logger, log_file, file_mode, log_level)
         return logger

@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""An eager preprocessing pass that runs ``template.encode`` on every row via HF ``map``."""
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional
 

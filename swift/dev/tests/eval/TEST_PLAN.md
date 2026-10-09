@@ -16,7 +16,7 @@ LoRA adapter **在线加载**（引擎建好 LoRA 槽位、每个请求选中 `a
   `general_qa`（`dataset_args` 的 `local_path` 指向本地 jsonl，EvalScope 离线 load_from_disk），行内容为中文，
   使 BLEU/Rouge 走 jieba 路径、不触发 NLTK `punkt_tab` 下载；脚本化 sampler 精确返回参考答案，得分确定性 1.0。
 - **slow 层**（`@pytest.mark.slow` + `@pytest.mark.accel(1)`，真实 Qwen2.5-0.5B-Instruct + vLLM + EvalScope）：
-  子进程真跑 `swift eval`，参数与 `examples/v5/eval/{eval,eval_lora}.sh` 一致，证明 example 按原样可运行。
+  子进程真跑 `swift eval`，参数与 `examples/eval/{eval,eval_lora}.sh` 一致，证明 example 按原样可运行。
 
 ## 用例矩阵
 

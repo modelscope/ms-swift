@@ -1,3 +1,4 @@
+## 像这种，上面都要加license
 from __future__ import annotations
 
 from .parser import parse_configs

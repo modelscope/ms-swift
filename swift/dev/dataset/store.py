@@ -1,31 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""One storage flow for precomputed dataset rows, shared by ``swift export --to_cached_dataset`` and ``swift infer``.
-
-Two commands materialise dataset rows to disk: the cached-dataset exporter (preprocessing done once so
-later training runs skip it) and the infer rollout dump (an offline RL corpus). They used to serialise
-independently -- the exporter to an Arrow table, infer to jsonl rows plus a per-candidate NPZ sidecar --
-so the same token payload had two schemas and no shared reader. This module is the single place that
-defines what a stored dataset looks like and how it is written and read back:
-
-- one field vocabulary (:data:`CORE_STORE_FIELDS` / :data:`KNOWN_STORE_FIELDS`) both commands validate
-  against, so a misspelt ``store_fields`` entry fails loudly instead of silently dropping a column;
-- one writer (:func:`write_dataset_store`) with a pluggable backend -- ``arrow`` (a single
-  ``save_to_disk`` table, directly trainable) and ``jsonl`` (line-delimited rows, portable and
-  append-friendly). ``bin`` (the flat mmap layout a pretraining corpus wants) is a named later phase and
-  raises until it exists rather than silently falling back;
-- one reader (:func:`load_dataset_store`) that reads either backend back into an HF dataset, applying the
-  ``length``->``lengths`` rename, the ``truncation_strategy='delete'`` length filter and the ``#N`` row
-  budget the cached-dataset loader has always applied.
-
-Why an Arrow store trains with zero re-encoding: the model forward's ``_not_encoded`` guard
-(twinkle ``TransformersModel``) keys on ``input_ids`` and only calls ``template.batch_encode`` when it is
-absent, so a materialised row is consumed as-is.
-
-What is deliberately NOT stored here: the vision tensors of a multimodal row (large, and recomputable
-from the ``images`` column the row keeps), the group-relative advantage of an offline RL corpus (cheap,
-and the training step recomputes it from the stored rewards + logprobs), and any packing layout (a
-training-time choice that reads ``lengths``). The store holds tokenisation, not layout.
-"""
 from __future__ import annotations
 
 import json
@@ -73,6 +46,9 @@ KNOWN_STORE_FIELDS = frozenset(CORE_STORE_FIELDS) | frozenset({
 
 #: A stored dataset is either an HF table (the exporter's output) or the plain row dicts infer accumulates.
 DataType = Union['HfDataset', Sequence[dict]]
+
+## 这个和数据湖有对偶关系。考虑数据湖在dataset文件夹中单独开一个base.py和继承类序列，每个数据类型的读和写都标准化
+## 这个的面向过程让人很难懂，考虑面向对象
 
 
 def validate_store_fields(requested: Sequence[str], available: Iterable[str]) -> List[str]:
@@ -218,6 +194,7 @@ def _filter_over_length(dataset: Any, max_length: int) -> Any:
     the longest so the filter is on the real sequence length. A row that could not be encoded carries an
     empty list and is treated as length 0 (kept, then substituted at access time).
     """
+    ## 这里一定存在这个key吗
     lengths = dataset['lengths']
     if lengths and isinstance(lengths[0], list):
         arr = np.fromiter((max(x) if x else 0 for x in lengths), dtype=np.int64, count=len(lengths))

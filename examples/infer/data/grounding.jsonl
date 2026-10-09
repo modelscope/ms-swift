@@ -1,0 +1,2 @@
+{"messages": [{"role": "user", "content": "<image>Locate every animal in the image and output each bounding box as JSON with keys bbox_2d and label."}], "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png"]}
+{"messages": [{"role": "user", "content": "<image>Locate every object in the image and output each bounding box as JSON with keys bbox_2d and label."}], "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png"]}

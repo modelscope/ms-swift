@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """token-in-token-out sampler surface of ``swift deploy`` (requirement 6).
 
-Drives the *same* ``twinkle_client`` path ``examples/v5/deploy/token_in_token_out_client.py`` uses, so a
+Drives the *same* ``twinkle_client`` path ``examples/deploy/vllm/token_in_token_out_client.py`` uses, so a
 green suite means the example runs as written. Raw token ids go in; each sequence comes back with a
 ``new_input_feature`` -- the full prompt+completion as trainable features -- and the assertions here are
 about **field correctness** (``input_ids`` / ``labels`` / ``completion_mask`` all present and the same

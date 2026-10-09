@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""The base dataset the DataLoader consumes: encodes on access, measures on demand."""
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
@@ -158,7 +157,7 @@ class SwiftDataset(Dataset):
         if self._idx_list is None:
             self._idx_list = self.random_state.permutation(len(self.dataset)).tolist()
         idx = self._idx_list[self._idx]
-        self._idx = (self._idx + 1) % len(self.dataset)
+        self._idx = (self._idx + 1) % len(self.dataset) ## 这句什么意思
         return idx
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
@@ -188,6 +187,7 @@ class SwiftDataset(Dataset):
                 # Too long is an expected property of public data, not a defect worth a traceback.
                 if isinstance(e, MaxLengthError):
                     continue
+                ## 这段差不多的逻辑我在多个类中看到过，能合并吗？
                 if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
                     import traceback
                     logger.info(traceback.format_exc())

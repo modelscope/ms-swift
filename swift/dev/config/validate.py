@@ -1,5 +1,4 @@
-# Cross-config validation: the one place where rules spanning several Configs are enforced.
-
+## 这里的代码对抗式review一下，确保legacy的逻辑没丢，这里的逻辑没有问题
 from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Optional
@@ -118,13 +117,17 @@ def _changed_fields(config) -> list:
 
 def _check_megatron_runtime_configs(megatron_config: Optional['MegatronConfig'], moe_config: Optional['MoEConfig'],
                                      is_megatron: bool) -> None:
+    ## 每个函数都加一个清晰的描述，最低一两句即可，给出函数作用
     if not is_megatron:
         changed = _changed_fields(megatron_config) + _changed_fields(moe_config)
         if changed:
+            ## 这个是什么意思raise
             raise ValueError(f'Megatron-only options {changed} cannot be used with the transformers backend.')
         return
     if megatron_config is None:
         return
+    ## 这几个参数不支持吗？确定吗
+    ## 为什么不支持
     unsupported = {
         'apply_dsa_kernel_fusion',
         'csa_dense_mode',

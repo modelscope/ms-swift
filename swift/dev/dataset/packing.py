@@ -1,19 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Sequence packing: concatenate several short samples into one fixed-length training sequence.
-
-Padding a batch of short samples to the longest one wastes compute on the padding. Packing removes
-that waste by filling each sequence up to ``packing_length`` with as many whole samples as fit, so
-almost every position carries real tokens. The attention mask keeps the samples from seeing each
-other, which the template arranges -- this layer only decides *which samples go together*.
-
-Two variants, because the two dataset kinds allow different information:
-
-- :class:`PackingDataset` for a map-style dataset. Every length is known up front, so packing can be
-  planned globally before training starts, and the result is indexable.
-- :class:`IterablePackingDataset` for a streaming dataset. Lengths only become known as rows arrive,
-  so packing runs on a sliding window of ``packing_interval`` samples, and encoding happens here (in
-  worker processes) rather than in a preprocessing pass that a stream does not allow.
-"""
 from __future__ import annotations
 import math
 import multiprocessing as mp
@@ -25,6 +10,7 @@ from torch.utils.data import IterableDataset
 from tqdm import tqdm
 
 from swift.dev.utils import get_logger, is_dist, is_master, split_list
+## swift_dataset.py命名为base.py吧
 from .swift_dataset import SwiftDataset
 
 __all__ = ['IterablePackingDataset', 'PackingDataset']
@@ -34,7 +20,7 @@ logger = get_logger()
 # One sample as packing sees it: its index (or the encoded row itself, when streaming) and its length.
 Weighted = Tuple[Any, int]
 
-
+## 这两个类的代码我没仔细看，和legacy比对下算法是正确的
 class PackingDataset(SwiftDataset):
     """A map-style dataset whose items are *groups* of samples that together fill ``packing_length``.
 

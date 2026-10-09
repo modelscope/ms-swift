@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """End-to-end coverage of EVERY hand-writable plugin kind, through ``run_infer``'s real consumption points.
 
-``examples/v5/infer/custom_plugins.py`` carries all five name-selected kinds (reward sync + reward async,
+``examples/infer/code/custom_plugins.py`` carries all five name-selected kinds (reward sync + reward async,
 tool, model loader, dataset loader, template) in one file, and ``custom_sampler.py`` carries the sixth (a
 custom sampler, selected by source). This file proves each of them actually WORKS -- not that it imports,
 but that the run consumes it at the seam it is meant for -- driving the real production code on CPU:
@@ -47,8 +47,8 @@ from swift.dev.tests.infer.conftest import write_cache_file
 
 MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
 _REPO = Path(__file__).resolve().parents[4]
-CUSTOM_PLUGINS = _REPO / 'examples' / 'v5' / 'infer' / 'custom_plugins.py'
-CUSTOM_SAMPLER = _REPO / 'examples' / 'v5' / 'infer' / 'custom_sampler.py'
+CUSTOM_PLUGINS = _REPO / 'examples' / 'infer' / 'code' / 'custom_plugins.py'
+CUSTOM_SAMPLER = _REPO / 'examples' / 'infer' / 'code' / 'custom_sampler.py'
 
 # The three prompts ``demo_synthetic``'s DatasetLoader synthesises (custom_plugins.py). The loader's rows
 # come back shuffled, so tests compare them as a set and key caches by prompt, never by position.
@@ -165,7 +165,7 @@ def test_reward_name_is_unresolvable_without_the_plugin_file():
     import subprocess
     import sys
 
-    custom_tools = _REPO / 'examples' / 'v5' / 'infer' / 'custom_tools.py'
+    custom_tools = _REPO / 'examples' / 'infer' / 'code' / 'custom_tools.py'
     script = (
         'from swift.dev.plugin import PluginRegistry;'
         'from swift.dev.config import PluginConfig;'

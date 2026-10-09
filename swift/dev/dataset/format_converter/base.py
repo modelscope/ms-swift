@@ -1,28 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Turning whatever shape a dataset ships in into one standard row shape.
-
-Every dataset in the wild names its fields differently -- ``query``/``prompt``/``question``,
-``response``/``output``/``answer``, ``conversations``/``messages`` -- and some nest a whole dialogue
-in a single column. A :class:`FormatConverter` knows one such shape and rewrites it into the standard
-one: a ``messages`` list of ``{'role', 'content'}``.
-
-How this differs from legacy's ``preprocessor/core.py``, which did the same job:
-
-- **Field aliases are data, not constructor code.** Legacy's ``ResponsePreprocessor.__init__`` wrote
-  23 aliases into ``self.columns`` imperatively, mixed in the same dict as the caller's own column
-  overrides, so neither could be read without running the other. Here :attr:`FormatConverter.aliases`
-  is a plain class attribute.
-- **Each format states how to recognise itself.** Legacy centralised detection in
-  ``AutoPreprocessor._get_preprocessor``, an if-chain that every new format had to be threaded into.
-  Here :meth:`FormatConverter.detect` lives on the format, and the factory only sorts candidates.
-- **Detection order is declared, not implied.** Legacy's order was whatever its if-chain happened to
-  be. Here it is :attr:`FormatConverter.priority`, so it survives someone reordering the code.
-- **One base class.** Legacy's ``AutoPreprocessor`` was *not* a ``RowPreprocessor`` subclass, so the
-  auto path and the explicit path had different interfaces.
-- **Conversion returns a new row.** Legacy mixed in-place mutation (``to_std_messages``, whose
-  docstring literally says ``# inplace``) with returning fresh objects (``sharegpt_to_messages``) in
-  the same class.
-"""
 from __future__ import annotations
 import ast
 from typing import Any, Collection, Dict, List, Optional, Sequence, Type
@@ -109,7 +85,7 @@ class FormatConverter:
     Subclasses declare :attr:`format_name`, :attr:`aliases` and :attr:`priority`, then implement
     :meth:`detect` and :meth:`convert`.
     """
-
+    ## 给每个类、方法、field都写doc。这些注释可以被识别并转为doc，最终形成api文档，类似transformers的apidoc的做法
     format_name: Optional[str] = None
     # Detection order, lowest first. Explicit because the formats are not mutually exclusive: a
     # dataset carrying both `conversations` and `instruction` is a conversation dataset that happens
@@ -176,6 +152,7 @@ class FormatConverter:
         ``safe_rename_columns`` resolved a contest by silently dropping *both* renames.
         """
         keys = set(keys)
+        ## 这里的rank有什么意义？aliases是一个无序dict
         ranks = {alias: rank for rank, alias in enumerate(self.aliases)}
         winners: Dict[str, str] = {}
         for key in keys:
@@ -183,6 +160,7 @@ class FormatConverter:
             if standard == key or standard in keys:
                 continue
             incumbent = winners.get(standard)
+            ## 这里的含义是什么？为什么涉及到了优先级和多个key的互相比较？
             if incumbent is None or ranks[key] < ranks[incumbent]:
                 winners[standard] = key
         return {key: standard for standard, key in winners.items()}
@@ -196,6 +174,7 @@ class FormatConverter:
         """
         if isinstance(value, str):
             try:
+                ## 这里有安全风险吧？会被人提出问题
                 return ast.literal_eval(value)
             except (ValueError, SyntaxError):
                 return None

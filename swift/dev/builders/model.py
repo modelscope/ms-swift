@@ -1,4 +1,3 @@
-"""build_model: ModelConfig + DistributedConfig -> twinkle-native TransformersModel / MegatronModel."""
 from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any, Optional
@@ -26,7 +25,7 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
     those call sites from each forwarding a different subset of the same model-loading contract.
     """
     import torch
-
+    ## 这里为什么还在用legacy的代码？
     from swift.model import get_model_processor
 
     kwargs = dict(model_config.model_kwargs or {})
@@ -37,6 +36,7 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
         'new_special_tokens': model_config.new_special_tokens,
         'rope_scaling': model_config.rope_scaling,
         'max_model_len': model_config.max_model_len,
+        ## device_map 模式不再支持
         'device_map': model_config.device_map,
         'max_memory': model_config.max_memory,
         'local_repo_path': model_config.local_repo_path,
@@ -84,7 +84,7 @@ def build_hf_device_mesh(distributed_config: DistributedConfig,
         from twinkle import DeviceMesh
         from twinkle.utils import Platform
         return DeviceMesh.from_spec(spec, world_size=Platform.get_world_size())
-
+    ## 为什么ray模式没有device_mesh
     if sequence_parallel_size <= 1 or distributed_config.mode != 'local':
         return None
 
@@ -265,7 +265,7 @@ def frozen_auxiliary_distributed_config(distributed_config: DistributedConfig,
         bridge_backend=distributed_config.bridge_backend,
         nproc_per_node=world_size,
         parallel_spec=parallel_spec,
-        deepspeed=deepspeed)
+        deepspeed=deepspeed) ## 这里为什么有一个deepspeed单独列出来，fsdp和其他的呢？
 
 
 def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig, config, model_loader=None) -> None:
@@ -308,7 +308,7 @@ def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig, config, model_l
                 model_config.model, revision=model_config.model_revision, trust_remote_code=True)
         tokenizer = processor if not hasattr(processor, 'tokenizer') else processor.tokenizer
         config.pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
-
+    ## 这里也有那个问题：swift和twinkle model对不同task的处理如何配合的
     kwargs['model_cls'] = 'AutoModelForSequenceClassification'
     kwargs['config'] = config
 
@@ -342,6 +342,7 @@ def _apply_unsloth_kwargs(kwargs: dict, model_config: ModelConfig, tuner_config:
     # place when the config says nothing.
     if model_config.max_model_len:
         kwargs['max_seq_length'] = model_config.max_model_len
+    ## 不再支持device_map
     if model_config.device_map:
         kwargs['device_map'] = model_config.device_map
     # unsloth installs its offloaded checkpointing inside get_peft_model, which would silently undo
@@ -390,6 +391,7 @@ def build_ray_dp_mesh(distributed_config: DistributedConfig, sequence_parallel_s
     if nproc is None:
         raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the 'model' "
                          'DeviceGroup and its data-parallel mesh). Pass it explicitly -- there is no default.')
+    ## transformers5.x有pp，而且你也不应该写死不支持，后面如果有其他方式怎么办？
     if sequence_parallel_size > 1:
         if nproc % sequence_parallel_size != 0:
             raise ValueError(f'nproc_per_node={nproc} is not divisible by sequence_parallel_size='
@@ -418,10 +420,6 @@ def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig,
         device_mesh = build_ray_dp_mesh(distributed_config)
     kwargs['device_mesh'] = device_mesh
     kwargs['remote_group'] = remote_group
-    # A per-actor disambiguator for two models that share ONE remote_group (PPO's policy+critic, MOPD's K
-    # teachers): twinkle folds it into the Ray actor name so they do not collide on ActorAlreadyExistsError.
-    # Ray-only by construction -- the local branch returned above, so a torchrun build never carries an
-    # instance_id kwarg its in-process model cannot consume.
     if instance_id is not None:
         kwargs['instance_id'] = instance_id
 
@@ -457,6 +455,7 @@ def _build_hf_config(model_config: ModelConfig, model_loader=None):
     """Build the one HF config shared by Transformers and Megatron model construction."""
     import copy
     import math
+    ## 这两个import也应该在函数外
 
     if model_loader is not None:
         config = model_loader.build_config(model_config.model, revision=model_config.model_revision)
@@ -477,7 +476,9 @@ def _build_hf_config(model_config: ModelConfig, model_loader=None):
         if not isinstance(rope_scaling, dict):
             raise TypeError('ModelConfig.rope_scaling must resolve to a dict or a supported strategy name.')
         rope_scaling = copy.deepcopy(rope_scaling)
-
+    ## rope_scaling要仔细校验下。这个参数和模型config中的rope配置有关系，和max_length有关系
+    ## 因此factor的设置需要考虑各种case
+    ## 可以参考legacy的设计
     current_rope = HfConfigFactory.get_config_attr(config, 'rope_scaling')
     if rope_scaling is None and current_rope and model_config.max_model_len is not None:
         rope_scaling = copy.deepcopy(current_rope)
@@ -521,6 +522,7 @@ def _set_load_kwarg(kwargs: dict, name: str, value) -> None:
 def _apply_model_post_load(model, model_config: ModelConfig) -> None:
     """Apply ModelConfig operations that require the live Transformers module."""
     if model_config.new_special_tokens:
+        ## 这个也挪出去
         import os
 
         special_tokens = []
@@ -543,6 +545,8 @@ def _apply_model_post_load(model, model_config: ModelConfig) -> None:
         added = tokenizer.add_special_tokens({'additional_special_tokens': special_tokens})
         if added:
             vocab_size = ((len(tokenizer) + 127) // 128) * 128
+            ## 这里也有model.model的问题
+            ## 这些不支持的是否可以考虑基类增加一个接口，子类标记remote_function？
             model.model.resize_token_embeddings(vocab_size)
 
     if model_config.init_strategy is not None:
@@ -569,6 +573,7 @@ def _apply_model_post_load(model, model_config: ModelConfig) -> None:
         }
         initialize = initializers[model_config.init_strategy]
         with torch.no_grad():
+            ## 这里为什么有一个初始化过程
             for param in model.model.parameters():
                 if param.numel() == 0:
                     continue
@@ -620,6 +625,8 @@ def _build_transformers_model(model_config: ModelConfig,
     # PPO's value critic also rides this head (task_type='seq_cls', num_labels=1) and is forwarded with
     # task='value' to keep the per-token output.
     if model_config.task_type in ('seq_cls', 'reranker'):
+        ## twinklemodel对不同的task有支持。你需要确认
+        ## swift这里的不同任务的model_loader和twinkle的设计是否融合或者冲突
         _apply_seq_cls_head(kwargs, model_config, hf_config, model_loader)
 
     # strategy: deepspeed/fsdp config selects the twinkle strategy (default: accelerate).
@@ -627,10 +634,12 @@ def _build_transformers_model(model_config: ModelConfig,
     strategy = 'accelerate'
     if distributed_config.deepspeed:
         strategy = 'deepspeed'
+        ## accelerate应该也支持deepspeed，这个strategy是否可以直接融合进accelerate
         # twinkle's DeepSpeedStrategy wants a config dict; the dev field is the same string the legacy
         # CLI accepts (preset name / JSON file / inline JSON), so resolve it here.
         kwargs['deepspeed_config'] = _resolve_deepspeed_config(distributed_config)
     elif distributed_config.fsdp:
+        ## 同上
         strategy = 'native_fsdp'
     kwargs['strategy'] = resolve_strategy(strategy)
     # twinkle's transformers strategies (accelerate / deepspeed) take the process-group timeout from
@@ -656,6 +665,7 @@ def _build_transformers_model(model_config: ModelConfig,
             find_unused = not gc_on
     kwargs['ddp_config'] = {'find_unused_parameters': bool(find_unused)}
 
+    ## 注释太多了。项目的注释整体进行精简，表达清晰即可，不要写这么复杂
     # No device_mesh passed by default: twinkle's local mode assigns its default one (pure data
     # parallel over WORLD_SIZE, infra/__init__.py:538-541), which is exactly the transformers layout --
     # this backend has no TP/PP/CP (validate_configs rejects those sizes here). It is NOT optional
@@ -752,6 +762,7 @@ def _resolve_model_framework(model_config: ModelConfig, model_loader) -> Optiona
     sentence-transformers directory still routes correctly.
     """
     if model_config.task_type != 'embedding':
+        ## 这个if判断没有必要吧
         return None
     if model_loader is not None:
         return getattr(model_loader, 'model_framework', None)
@@ -837,6 +848,7 @@ def _disable_gradient_checkpointing(model: TrainableModel) -> None:
     if callable(disable):
         disable()
     else:
+        # 调用不了field，ray模式只能使用remote_function标记的method
         model.model.gradient_checkpointing_disable()
 
 
@@ -848,6 +860,7 @@ def _apply_liger_kernel(model: TrainableModel, train_config: TrainConfig) -> Non
     replacement), which is why it belongs at the end of model construction.
     """
     from twinkle.kernel import kernelize
+    ## 调用不了field
     kernelize(model.model, _liger_kernel_mapping(train_config.liger_kernel_config))
 
 
@@ -993,7 +1006,7 @@ def build_device_mesh(distributed_config: DistributedConfig):
     Megatron's mpu, so it can be called before anything is initialized.
     """
     from twinkle import DeviceMesh
-
+    ## 有好多类似的function，这些代码不能合并吗？感觉啰嗦
     spec = distributed_config.parallel_spec
     if spec:
         # A parallel_spec string is a lossless alternative to the integer size fields. Parse it and hand
@@ -1055,8 +1068,9 @@ def build_device_mesh_if_dp(distributed_config: Optional[DistributedConfig]) -> 
         return None
     mesh = build_device_mesh(distributed_config)
     return mesh if mesh is not None and getattr(mesh, 'data_world_size', 1) > 1 else None
+## PluginRegistry 没找到，model不支持？我记得之前让你写了外部model和modelloader的支持
 
-
+## 这三个是干什么用的
 _NON_MODEL_MEGATRON_FIELDS = {
     'attention_backend',
     'data_parallel_random_init',
@@ -1255,6 +1269,7 @@ def _build_megatron_model(model_config: ModelConfig,
     # it to seq_cls with num_labels=1 (the reranker loss, set later, makes it a reranker); this is
     # the same head legacy Megatron uses. embedding/causal_lm pass through untouched.
     task_type = model_config.task_type
+    ## 这里也需要考虑和twinkle model task的兼容性
     if task_type == 'reranker':
         extra_kwargs['task_type'] = 'seq_cls'
         extra_kwargs['num_labels'] = model_config.num_labels or 1

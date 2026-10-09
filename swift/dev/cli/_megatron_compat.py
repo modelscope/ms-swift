@@ -1,11 +1,3 @@
-"""Shared Megatron shim for the unified dev CLI.
-
-twinkle merges the Megatron and Transformers stacks, so the backend is chosen by a single parameter
-(``DistributedConfig.backend``) rather than by a separate ``megatron`` command. Every training and
-export entry point therefore parses the same Config surface and, when ``--backend megatron`` is set,
-applies the small amount of Megatron-only fix-up collected here. Keeping it in one module means sft,
-pt, rlhf and export all trigger Megatron identically instead of each carrying its own copy.
-"""
 from __future__ import annotations
 import os
 from dataclasses import dataclass

@@ -41,7 +41,9 @@ def build_dataset(dataset_config: DatasetConfig,
     ``SwiftSft._prepare_dataset``, which appends get_cached_dataset()'s splits alongside the freshly
     encoded ones.
     """
-    from swift.dev.dataset import load_dataset
+    from swift.dev.dataset import load_dataset, register_dataset_info
+    for info_path in dataset_config.custom_dataset_info:
+        register_dataset_info(info_path, exist_ok=True)
 
     load_kwargs = _load_kwargs(dataset_config)
 
@@ -246,6 +248,7 @@ def _build_split_loader(raw: Any,
     # raises if group_by_length=True without them. (streaming is rejected up front by
     # validate_configs, so the map-style path is the only one that reaches here with it on.)
     group_by_length = dataset_config.group_by_length and (not is_val)
+    ## 这里的计算合适吗？如果数据集很大，内存和时间是否允许？
     lengths = _extract_lengths(enc) if group_by_length else None
     # data_sharding only affects the shuffled TRAIN order (eval uses a sequential sampler), and it
     # is mutually exclusive with group_by_length -- legacy downgrades it with a warning rather than
@@ -323,6 +326,7 @@ def _twinkle_loader_layout(distributed_config: DistributedConfig,
     from swift.dev.builders.model import build_device_mesh
     mesh = build_device_mesh(distributed_config)
     global_batch_size = per_device_batch_size * mesh.data_world_size
+    ## 为什么ray的时候返回None
     device_mesh = None if distributed_config.mode == 'ray' else mesh
     return global_batch_size, device_mesh
 
@@ -421,6 +425,7 @@ def _drop_last(distributed_config: DistributedConfig, *, is_val: bool) -> bool:
     hf keeps the remainder: legacy defers to TrainingArguments.dataloader_drop_last (default False),
     so dropping here would discard real samples and diverge from legacy on that path.
     """
+    ## 为什么megatron和transformers这里处理不一样
     from swift.dev.builders.model import is_megatron_backend
     if not is_megatron_backend(distributed_config):
         return False
@@ -460,6 +465,7 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
 
     # eager / stream: 'split' needs a full encode (emits multiple samples per input), and so does an
     # explicit materialize request; otherwise MeasurePreprocessor only writes `lengths`, leaving rows raw.
+    ## 这里的if else逻辑是什么？MeasurePreprocessor生效场景是什么
     if truncation_strategy == 'split' or materialize:
         preprocessor = EncodePreprocessor(template)
     else:
@@ -478,6 +484,8 @@ def _pack(dataset: Any, template: Any, *, streaming: bool, packing_length: Optio
         template, dataset, num_proc=num_proc, packing_length=length, packing_strategy=packing_strategy, strict=strict)
 
 
+## 这个干什么用的，函数名看不出来
+## 为什么sft不使用这个
 def load_prompt_rows(dataset_config: DatasetConfig, max_rows: Optional[int],
                      split_dataset_ratio: float = 0.01) -> List[Dict[str, Any]]:
     """Load the raw rows to infer/sample over, restoring legacy's split semantics.

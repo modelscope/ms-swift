@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""A dataset whose rows were encoded by an earlier pass, not on access."""
 from __future__ import annotations
 from typing import Any, Dict, List
 

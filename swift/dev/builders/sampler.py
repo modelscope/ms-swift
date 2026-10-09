@@ -1,22 +1,3 @@
-"""Builders for twinkle's Sampler: config -> sampler, GenerationConfig -> SamplingParams.
-
-Peer of ``build_model`` / ``build_template``, and the single place dev maps its Configs onto
-twinkle's sampling surface. ``run_infer`` / ``run_deploy`` all come through here,
-so a backend quirk is fixed once.
-
-Backends are vLLM, SGLang and transformers. The first two are the throughput engines; transformers is
-the reach engine -- it loads whatever ``AutoModelForCausalLM`` loads, needs no extra install, and is
-the only one that degrades per input instead of failing a batch. vLLM and SGLang also serve the
-pooling tasks (embedding/seq_cls/reranker) through ``sampler.encode``; transformers has no pooling
-head, so anything needing a HF *forward* on that backend still goes through the model side
-(``build_model`` + ``task=``). A generative reranker is not pooling -- it is a decoder-only model
-scored off generation, so it builds here as a generation sampler (see ``_GENERATIVE_TASK_TYPES``).
-
-The template contract is twinkle's: ``sample()`` calls ``encode`` / ``decode`` /
-``get_vllm_input_ids`` / ``concat_input_feature`` on whatever ``set_template`` stored, and
-twinkle's ``construct_class`` passes a ``twinkle.template.Template`` instance straight through. So
-the template dev builds is handed over as an instance rather than re-resolved by name.
-"""
 from __future__ import annotations
 
 import json
@@ -53,12 +34,11 @@ _MODEL_KNOB_NAMES = {
         'torch_dtype': 'dtype',
         'max_model_len': 'max_model_len',
         'attn_impl': 'attn_implementation',
-        'device_map': 'device_map'
+        'device_map': 'device_map' ## 这是什么
     },
 }
 
-#: The 'sampler' plugin registry: name -> twinkle ``Sampler`` subclass. Seeded lazily with the built-in
-#: engines by :func:`_sampler_kind`; an external plugin adds to it with ``@register('sampler', name)``.
+# The 'sampler' plugin registry
 _SAMPLERS: Dict[str, type] = {}
 
 

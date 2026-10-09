@@ -100,7 +100,7 @@
 ### 8. local 沙箱与 tools mock
 - `test_tools_multiturn_e2e.py`（fast，覆盖 example `tui_tools_multiturn.sh` + `dataset_tools_grpo.sh`）：
   **真多轮工具端到端**，两条接线各驱动一次真实 twinkle 引擎——
-  - `run_infer(dataset)` 路径：`external_plugins` 加载 `examples/v5/infer/custom_tools.py` 的 calculator
+  - `run_infer(dataset)` 路径：`external_plugins` 加载 `examples/infer/code/custom_tools.py` 的 calculator
     （断言注册进 `TOOL.entries`），多轮轨迹 roles==[user,assistant(tool_call),tool,assistant]、
     tool_calls 结构、**工具观察消息含 name 字段**（`{'role':'tool','content':'14','name':'calculator'}`，
     calculator 真执行返回 int `'14'`）、completions/num_generations。
@@ -194,7 +194,7 @@
 
 ## examples 覆盖矩阵（验收标准：测试能过 ⟹ examples 能过）
 
-`examples/v5/infer/` 四个脚本的定义性能力，各由哪些测试端到端驱动：
+`examples/infer/code/` 四个脚本的定义性能力，各由哪些测试端到端驱动：
 
 | example | 定义性能力 | 驱动测试 | 说明 |
 |---|---|---|---|

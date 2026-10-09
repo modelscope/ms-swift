@@ -1,12 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Training callbacks: the ``callback`` extension point and its built-ins.
-
-Importing this package declares the ``callback`` plugin kind (so a user's ``--external_plugins`` file
-may ``@PluginRegistry.register('callback', ...)`` against it) and registers the three built-ins. The
-kind's ``config_field`` is ``TrainConfig.callbacks``: a run names custom callbacks there, and
-:func:`build_callbacks` resolves those names to instances and appends the built-ins their own config
-knobs warrant.
-"""
 from swift.dev.callbacks.base import CALLBACK, CallbackControl, CallbackState, TrainCallback
 from swift.dev.callbacks.builtins import EarlyStopCallback, GracefulExitCallback, PerfLogCallback
 from swift.dev.callbacks.handler import CallbackHandler

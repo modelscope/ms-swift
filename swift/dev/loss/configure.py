@@ -1,17 +1,3 @@
-"""Loss configuration for the SFT path.
-
-Explicit loss assembly so the GA-correctness contract is visible in the dev layer,
-not inherited implicitly from twinkle's default.
-
-Why reduction='sum':
-  legacy swift computes ``loss = outputs.loss.sum() / num_items_in_batch`` (SUM with a
-  single token denominator across the whole gradient-accumulation window). twinkle's SUM
-  path matches this: calculate_loss accumulates loss.sum() + num_tokens across micro-batches
-  and clip_grad_norm divides the grad by the total token count. This makes GA=k/bs=1
-  gradient-equivalent to GA=1/bs=k. reduction='mean' would instead weight each micro-batch
-  equally (denominator = gradient_accumulation_steps), which is only correct when every
-  micro-batch has the same token count. So SFT must use SUM.
-"""
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -68,8 +54,8 @@ def configure_loss(model: TrainableModel,
             :func:`liger_fused_ce_enabled`). The caller must also run the forward under
             task='fused_lm_ce'; the recipe wires both from that one predicate.
     """
+    ## 这里所有的文件都直接在dev下面，要按照模块区分到不同文件夹中。如果是通用的文件，考虑放入utils中
     from swift.dev.naming import resolve_loss
-
     if loss_type != 'cross_entropy':
         raise NotImplementedError(f"SFT configure_loss only supports 'cross_entropy', got {loss_type!r}")
     if fused_linear_cross_entropy:
@@ -117,9 +103,6 @@ def configure_embedding_loss(model: TrainableModel,
     loss_cls = resolve_loss(loss_type)
     if mrl_dims is not None:
         kwargs['mrl_dims'] = mrl_dims
-    # Pass an INSTANCE: twinkle's construct_class returns an instance unchanged, so constructing here
-    # keeps the mrl_dims validation (EmbeddingLoss.__init__ raises for cosine_similarity) at the dev
-    # call site rather than deep inside twinkle.
     model.set_loss(loss_cls(**kwargs))
 
 
@@ -168,11 +151,6 @@ def configure_seq_cls_loss(model: TrainableModel, *, problem_type: str, num_labe
     model.set_loss(loss_cls(problem_type=problem_type, num_labels=num_labels, **kwargs))
 
 
-# rlhf_type -> the twinkle loss name it maps onto. Most are same-named in twinkle's torch_loss_mapping;
-# the exception is 'ppo' (whose POLICY loss is the same clipped surrogate as GRPO -> 'grpo'; its critic
-# is a separate value loss set by configure_ppo_value_loss, not here). 'kto' maps to its own KTOLoss --
-# the UNPAIRED objective (single completion + binary label, anchored on a detached z_KL), not the DPO
-# family's paired 'kto_pair' approximation.
 _RLHF_LOSS_NAME = {
     'grpo': 'grpo',
     'dpo': 'dpo',
@@ -198,6 +176,7 @@ _RLHF_LOSS_NAME = {
 _REDUCE_LOSS_OVERRIDING_GRPO = frozenset({'real', 'dro', 'dppo_tv', 'dppo_kl', 'geo_mean', 'clip_cov', 'kl_cov'})
 
 
+## 这里为什么不能沉淀到twinkle中？有什么特有的设计吗？
 class _AdvancedGKDLoss(Loss):
     """GKD with the optional supervised CE term used for dataset-sourced batches."""
 
@@ -225,7 +204,8 @@ class _AdvancedGKDLoss(Loss):
             loss = loss + self.sft_alpha * sft_loss
         return LossOutput(loss=loss, num_tokens=result['num_tokens'])
 
-
+## 这里为什么不能沉淀到twinkle中？有什么特有的设计吗？
+## 如果是swift特有的可以在这里继承，如果是整体都有用的，需要下沉到twinkle中
 class _ConfiguredGRPOLoss(Loss):
     """Apply dev-only GRPO controls around a twinkle policy loss."""
 
@@ -433,6 +413,8 @@ class _ConfiguredGRPOLoss(Loss):
         return result
 
 
+## 这里为什么不能沉淀到twinkle中？有什么特有的设计吗？
+## 如果是swift特有的可以在这里继承，如果是整体都有用的，需要下沉到twinkle中
 class _AdvancedGRPOLoss(Loss):
     """GRPO plus optional SDAR distillation and CHORD's auxiliary SFT objective."""
 
@@ -706,6 +688,7 @@ def _rlhf_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig', grpo_loss_type:
     return _preference_loss_kwargs(rlhf_type, rlhf_config)
 
 
+## 这里的kwargs二次检查下，确认和swift legacy原本设计，以及原论文一致
 def _online_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig', grpo_loss_type: str = 'grpo') -> Dict[str, Any]:
     """kwargs for the on-policy losses (GRPO/PPO clip params, GKD's temperature); grpo/gkd read beta."""
     kwargs: Dict[str, Any] = {}

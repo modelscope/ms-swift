@@ -1,17 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Datasets with one example per row spread across flat columns.
-
-``system`` / ``query`` / ``response`` (and their many aliases), optionally with a ``history`` column
-holding earlier turns, and optionally a ``rejected_response`` for flat preference data. This is
-old-ms-swift's own format and the shape most single-turn datasets take once you look past the column
-names.
-
-:class:`ResponseConverter` is the registered fallback: when a dataset carries no dialogue column and
-matches no more specific format, treating some column as the response is the last reasonable guess.
-Legacy made the same choice -- ``AutoPreprocessor`` ended its if-chain with ``ResponsePreprocessor``.
-The Alpaca variant, which only differs by joining two columns into the user turn, lives in
-``alpaca.py`` next to this class rather than inside it.
-"""
 from __future__ import annotations
 
 import os
@@ -27,9 +14,6 @@ class ResponseConverter(FormatConverter):
     """Flat ``query``/``response`` rows, with optional multi-turn ``history`` and preference pair."""
 
     format_name = 'response'
-    # Last: this is the fallback, so every more specific format must be asked before it. Its own
-    # `detect` is never the deciding call (the fallback pass in the factory is), but the high number
-    # keeps it last should someone make its detect return True.
     priority = 1000
     is_fallback = True
     aliases = {
@@ -53,9 +37,9 @@ class ResponseConverter(FormatConverter):
 
     @classmethod
     def detect(cls, columns: Collection[str]) -> bool:
-        # A positive detect is offered for the common explicit case, but correctness does not rely on
-        # it: even if this returns False, the factory's fallback pass routes here.
         standardised = {cls.aliases.get(column, column) for column in columns}
+        ## 这里的detect发生在aliases前还是后？ 会不会有alias所以检测不到
+        # 另外一个response够吗
         return 'response' in standardised
 
     def convert(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -71,12 +55,6 @@ class ResponseConverter(FormatConverter):
         if not messages:
             return None
         row['messages'] = messages
-
-        # Flat preference data: the rejected answer is kept flat, as a `rejected_response` string,
-        # and is deliberately *not* expanded into `rejected_messages` here. The template owns that
-        # expansion, and it does more than reshape -- it rejects a `user` role in the rejected turn
-        # and asserts the rejected answer differs from the chosen one. Expanding early would satisfy
-        # its "already expanded" branch and silently skip both checks.
         rejected = self.pick_response(row.pop('rejected_response', None))
         if rejected is not None:
             row['rejected_response'] = rejected
@@ -93,8 +71,12 @@ class ResponseConverter(FormatConverter):
             return response
         if not response:
             return None
+        ## 这个直接源代码拷贝过来吧，没必要依赖transformers
         from transformers.utils import strtobool
+        ## 新建一个env的py，管理所有的环境变量
+        ## 使用的时候env_utils.pick_random_response()就行。扫描一下，所有的类似的地方都这么处理
         if strtobool(os.environ.get('RANDOM_DATASET_RESPONSE', 'False')):
+            ## 放置在文件头。所有的重依赖放在局部，轻依赖放在文件头
             import random
             return random.choice(response)
         return response[0]

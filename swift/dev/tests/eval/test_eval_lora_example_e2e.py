@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Slow tier: the real ``swift eval --adapters`` command, mirroring ``examples/v5/eval/eval_lora.sh``.
+"""Slow tier: the real ``swift eval --adapters`` command, mirroring ``examples/eval/eval_lora.sh``.
 
 ``eval_lora.sh`` scores a LoRA adapter *loaded live* into the engine: the base model comes from ``--model``,
 ``--adapters`` points at a trained checkpoint, the engine is built with LoRA enabled and the adapter is

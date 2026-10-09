@@ -191,7 +191,7 @@ def test_infer_main_dispatches_to_repl_without_dataset(fake_model, monkeypatch):
 
 
 # --- example-script flags land on the right Config ------------------------------------
-# Each examples/v5/infer/*.sh script is replayed here flag-for-flag (minus the model id / dataset /
+# Each examples/infer/code/*.sh script is replayed here flag-for-flag (minus the model id / dataset /
 # CUDA env, which need the hub or a GPU). The point is the argv -> Config mapping: a flag that lands on
 # the wrong Config silently does nothing at runtime, so every knob each example sets is asserted on the
 # exact field its recipe reads. If these pass, the example's command line is wired correctly.
@@ -246,13 +246,13 @@ def test_dataset_tools_grpo_flags(fake_model):
     InferConfig, max_turns -> reward_config, mode/nproc -> DistributedConfig."""
     r = parse_infer_configs([
         '--model', fake_model, '--infer_backend', 'vllm', '--dataset', '/tmp/x.jsonl',
-        '--external_plugins', 'examples/v5/infer/custom_tools.py', '--tools', 'calculator',
+        '--external_plugins', 'examples/infer/code/custom_tools.py', '--tools', 'calculator',
         '--max_turns', '8', '--max_trajectory_tokens', '8192', '--sandbox_num_envs', '4',
         '--num_samples', '8', '--output_format', 'grpo', '--save_rollout_tokens', 'true',
         '--mode', 'ray', '--nproc_per_node', '4', '--vllm_gpu_memory_utilization', '0.85',
         '--max_new_tokens', '2048', '--temperature', '1.0', '--result_path', './output/tools_rollout_grpo.jsonl',
     ])
-    assert r['plugin_config'].external_plugins == ['examples/v5/infer/custom_tools.py']
+    assert r['plugin_config'].external_plugins == ['examples/infer/code/custom_tools.py']
     assert r['rollout_config'].tools == ['calculator']
     assert r['rollout_config'].sandbox_num_envs == 4
     assert r['reward_config'].max_turns == 8

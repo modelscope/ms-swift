@@ -6,7 +6,7 @@ workers stubbed; this file drives the REAL thing so the seams a stub cannot see 
 that only exist when ``swift.megatron`` + mcore-bridge actually migrate tensors:
 
 * the dev ``swift export --backend megatron`` CLI is launched as a real single-rank ``torch.distributed.run``
-  subprocess (the exact launch ``examples/v5/export/mcore_convert.sh`` uses), so parsing, the Megatron
+  subprocess (the exact launch ``examples/export/convert/mcore_convert.sh`` uses), so parsing, the Megatron
   backend shim, ``run_convert`` and the legacy converters all run for real;
 * HF safetensors --``--to_mcore``--> mcore ``torch_dist`` --``--to_hf``--> HF safetensors on a tiny model
   at TP=PP=1, asserting each step writes its artifact (``iter_0000001`` + ``args.json``, then

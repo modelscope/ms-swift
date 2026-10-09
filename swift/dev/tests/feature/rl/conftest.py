@@ -106,7 +106,7 @@ def rl_configs(
 
     Each ``*_over`` dict is merged onto that Config's defaults, so a test states only what its dimension
     varies. Defaults are chosen for a 1-2 optimizer-step run on one card: batch 1 / ga 1 (every
-    mini-batch is its own step -- see the design-B note in ``examples/v5/rl/rft/rft.sh``), a short
+    mini-batch is its own step -- see the design-B note in ``examples/rl/rft/rft.sh``), a short
     completion budget, an eager vLLM at low memory utilisation so a colocated sampler shares the card
     with the trainer, greedy generation (deterministic), and ``logging_steps=1`` so every step lands in
     the returned history. ``dataset_shuffle`` is off so parity/resume runs are reproducible.
@@ -368,7 +368,7 @@ def assert_rl_trained():
 # --- RL datasets ------------------------------------------------------------------------------
 # Preference / prompt-only reuse swift.dev.tests.tiny.TinyData; the RL-specific shapes (KTO's binary
 # label, RFT's ground-truth solution, OPSD's privileged teacher prompt, multimodal image packs) are
-# written here. Formats match examples/v5/rl/data/*.jsonl and the registered loaders.
+# written here. Formats match examples/rl/data/*.jsonl and the registered loaders.
 
 _PROMPTS = ('What is 2+2?', 'Name a colour.', 'Say hello.', 'Count to three.')
 
@@ -400,7 +400,7 @@ def rft_math_rows(n: int = 4) -> List[dict]:
     """RFT best-of-n rows: a prompt plus a ``solution`` ground truth for the ``accuracy`` ORM.
 
     ``--orm accuracy`` (MathAccuracy) reads the dataset's ``solution`` column and the completion's
-    ``\\boxed{}`` answer, so each row ships a boxed target (mirrors examples/v5/rl/data/rft_math.jsonl).
+    ``\\boxed{}`` answer, so each row ships a boxed target (mirrors examples/rl/data/rft_math.jsonl).
     """
     rows = []
     for i in range(n):
@@ -416,7 +416,7 @@ def rft_math_rows(n: int = 4) -> List[dict]:
 
 
 def opsd_rows(n: int = 4) -> List[dict]:
-    """OPSD rows: a prompt plus a privileged ``teacher_prompt`` (mirrors examples/v5/rl/data/opsd.jsonl)."""
+    """OPSD rows: a prompt plus a privileged ``teacher_prompt`` (mirrors examples/rl/data/opsd.jsonl)."""
     rows = []
     for i in range(n):
         rows.append({

@@ -1,9 +1,4 @@
-"""Config processing and run initialization.
-
-Everything that changes Config or runtime state lives here. ``validate.py`` only reads the resolved
-state and rejects invalid combinations. Programmatic callers use :func:`process_configs`; CLI entry
-points use :func:`process_and_validate_configs` for the complete run lifecycle.
-"""
+## 这里的代码对抗式review一下，确保legacy的逻辑没丢，这里的逻辑没有问题
 from __future__ import annotations
 import dataclasses
 import logging
@@ -223,6 +218,20 @@ def _resolve_model(model_config: 'ModelConfig', dataset_config: Optional['Datase
         model_config.model, revision=model_config.model_revision, use_hf=use_hf, hub_token=hub_token)
 
 
+def _split_served_name(adapter: str) -> tuple:
+    """``name=path`` -> ``(name, path)``; a bare path/hub id -> ``(None, adapter)``.
+
+    ``swift deploy`` spells a served adapter as ``name=path`` (see ``cli/deploy.py``) so one server can route
+    to several adapters by name. The name is a deploy-only routing label, never a hub id, so it is split off
+    here -- but only when the segment before the first ``=`` is a bare name (no path separator), so a local
+    path that legitimately contains ``=`` is downloaded verbatim instead of being mis-split.
+    """
+    head, sep, tail = adapter.partition('=')
+    if sep and head and '/' not in head and '\\' not in head:
+        return head, tail
+    return None, adapter
+
+
 def _resolve_adapters(tuner_config: Optional['TunerConfig'], dataset_config: Optional['DatasetConfig']) -> None:
     if tuner_config is None or not tuner_config.adapters:
         return
@@ -230,9 +239,13 @@ def _resolve_adapters(tuner_config: Optional['TunerConfig'], dataset_config: Opt
 
     use_hf = dataset_config.use_hf if dataset_config is not None else None
     hub_token = dataset_config.hub_token if dataset_config is not None else None
-    tuner_config.adapters = [
-        safe_snapshot_download(adapter, use_hf=use_hf, hub_token=hub_token) for adapter in tuner_config.adapters
-    ]
+    resolved = []
+    for adapter in tuner_config.adapters:
+        # Resolve the path portion, then re-attach the served name so deploy's routing label survives.
+        name, path = _split_served_name(adapter)
+        local = safe_snapshot_download(path, use_hf=use_hf, hub_token=hub_token)
+        resolved.append(f'{name}={local}' if name else local)
+    tuner_config.adapters = resolved
 
 
 def _login_hub(dataset_config: Optional['DatasetConfig']) -> None:
@@ -339,6 +352,7 @@ def _derive_finetune_resume(train_config: 'TrainConfig', checkpoint_config: Opti
         return
     if checkpoint_config is None or not checkpoint_config.resume_from_checkpoint:
         if not train_config.finetune:
+            ## 这里是什么意思
             raise ValueError(
                 'Megatron --finetune false requires --resume_from_checkpoint pointing to a checkpoint written by '
                 'the dev runtime. Native mcore checkpoints must first be converted with `swift export '
@@ -347,6 +361,7 @@ def _derive_finetune_resume(train_config: 'TrainConfig', checkpoint_config: Opti
 
     derived = bool(train_config.finetune)
     resume_explicit = 'resume_only_model' in getattr(checkpoint_config, '_explicit_fields', set())
+    ## 这个什么意思checkpoint_config.resume_only_model != derived
     if resume_explicit and checkpoint_config.resume_only_model != derived:
         raise ValueError(
             f'finetune={train_config.finetune!r} conflicts with resume_only_model='

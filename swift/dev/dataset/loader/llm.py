@@ -1,25 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Pure-text dataset registrations, mirroring the model side's ``loader/llm.py``.
-
-The families here are grouped by *how much they have to declare*, which is also the order to read
-them in and the order to add a new dataset in:
-
-1. Declaration only -- ids, subsets, splits. No preprocessor at all: the format layer detects the
-   row shape and the base :class:`Preprocessor` runs it.
-2. Declaration plus :attr:`Preprocessor.columns` -- the row shape is standard but the fields are
-   named oddly, so a rename is all that is needed.
-3. A :class:`Preprocessor` subclass -- the row needs real work: fields merged into one turn, rows
-   filtered out, text cleaned.
-
-A preprocessor is always declared as a *class*, never an instance: the loader's ``preprocessor``
-attribute is shared by every load, and a preprocessor carries per-load state.
-"""
 from __future__ import annotations
 
 import json
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+## 这里引用了legacy的代码
+## 对这个文件增加一些ut，保证一些复杂数据集加载格式正确
 from swift.template.utils import split_str_parts_by
 
 from .base import DatasetLoader, SubsetMeta, register_dataset

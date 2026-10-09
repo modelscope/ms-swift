@@ -1,22 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Turn a raw dataset into standard rows: run a per-row transform over the whole dataset via HF
-``map``, validate what comes out, and drop rows that cannot be salvaged.
-
-This is the execution layer. It is deliberately split from ``format_converter/``: a
-:class:`FormatConverter`
-knows how to rewrite *one* row of *one* input shape into standard ``messages``; this layer owns
-everything that is the same regardless of that shape -- the batched ``map`` call, per-row error
-isolation, and the standard-row checks. The default :meth:`Preprocessor.preprocess` just delegates to
-an auto-detected converter, so a plain dataset needs no subclass at all; a dataset with a quirk
-subclasses this and overrides :meth:`preprocess` (tweak the row, then call ``super()``), and a dataset
-whose rows are built from scratch overrides it and never touches a converter.
-
-Versus legacy ``RowPreprocessor``: the column-name normalisation that legacy did up front with
-``safe_rename_columns`` now lives inside the converter (its ``aliases``), and the multi-field
-``_patch_arrow_writer`` is gone -- an earlier audit showed only ``images``/``rejected_images`` ever
-needed a forced Arrow schema, so it will return, scoped to those columns, when multimodal datasets are
-migrated. Text datasets need none of it.
-"""
 from __future__ import annotations
 import os
 from contextlib import contextmanager
@@ -72,8 +54,13 @@ class Preprocessor:
     # `messages` with `loss_scale` in one part and without in the other; `images` whose `bytes` is
     # all-None in one part and real bytes in the other; `objects` with an integer `bbox` in one part
     # and float in the other. The failure surfaces at concatenation, i.e. far from its cause.
+    ## rejected_messages和negative_messages是否可以合并为negative_messages
     MESSAGE_COLUMNS = ('messages', 'rejected_messages', 'positive_messages', 'negative_messages')
+    ## 是否标准格式使用openai messages更好
+    ## 当然，v4的数据格式也要支持
+    ## 为什么只有images？audios和videos呢？
     MEDIA_COLUMNS = ('images', 'rejected_images')
+    ## grounding我记得除了objects还有对应的box 的key？
     FREEFORM_COLUMNS = ('objects', 'chat_template_kwargs')
 
     def __init__(self,

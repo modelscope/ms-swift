@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Slow tier: the real ``swift eval`` command, mirroring ``examples/v5/eval/eval.sh``.
+"""Slow tier: the real ``swift eval`` command, mirroring ``examples/eval/eval.sh``.
 
 This spawns ``swift eval`` as a subprocess with the arguments ``eval.sh`` uses -- a real vLLM engine on
 ``Qwen/Qwen2.5-0.5B-Instruct`` scoring a real EvalScope Native benchmark (``gsm8k``) -- and asserts the

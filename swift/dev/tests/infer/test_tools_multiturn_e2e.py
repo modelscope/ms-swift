@@ -37,7 +37,7 @@ from twinkle.template.tools import HermesQwenParser
 
 MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
 _REPO = Path(__file__).resolve().parents[4]
-_CUSTOM_TOOLS = _REPO / 'examples' / 'v5' / 'infer' / 'custom_tools.py'
+_CUSTOM_TOOLS = _REPO / 'examples' / 'infer' / 'code' / 'custom_tools.py'
 
 _PARSER = HermesQwenParser()
 _OM, _CM = _PARSER.open_marker, _PARSER.close_marker
@@ -250,7 +250,7 @@ def test_npz_sidecar_schema(grpo_run):
 
 
 def test_external_plugins_registers_the_calculator(grpo_run):
-    """``--external_plugins`` really imported ``examples/v5/infer/custom_tools.py``: its ``@register``
+    """``--external_plugins`` really imported ``examples/infer/code/custom_tools.py``: its ``@register``
     ran, so ``calculator`` resolves under the ``tool`` extension point. (That it also EXECUTED is proven
     by the ``'14'`` observation in ``test_multiturn_trajectory_runs_the_real_tool_loop``.)"""
     from swift.dev.rollout.sandbox import TOOL

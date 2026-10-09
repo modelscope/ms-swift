@@ -118,6 +118,28 @@ def _coerce_mapping(value, annotation) -> dict:
     }
 
 
+def _restore_scalar_or_list(config, name, annotation) -> None:
+    """Collapse a lone CLI value back to a scalar for a ``Union[scalar, List[scalar]]`` field.
+
+    ``_patch_type_hints`` hands ``HfArgumentParser`` such a field as ``List[scalar]`` (``nargs='+'``)
+    so a repeated flag stays expressible, which turns even one value into a 1-element list. The
+    runtime annotation still permits the bare scalar, and consumers branch on scalar-vs-list: a
+    Megatron router expects a scalar ``moe_aux_loss_coeff`` when its load-balancing type is a single
+    string, and only indexes it as a list when that type is itself a list. Unwrap a lone value so
+    ``--flag x`` yields ``x`` while ``--flag x y`` keeps ``[x, y]``.
+    """
+    if get_origin(annotation) is not Union:
+        return
+    union_args = get_args(annotation)
+    list_args = [arg for arg in union_args if get_origin(arg) is list]
+    scalar_args = [arg for arg in union_args if arg is not type(None) and get_origin(arg) is not list]
+    if len(list_args) != 1 or len(scalar_args) != 1:
+        return
+    value = getattr(config, name)
+    if isinstance(value, list) and len(value) == 1:
+        setattr(config, name, value[0])
+
+
 def _restore_config_types(config) -> None:
     """Restore CLI strings to the runtime types declared by one Config dataclass."""
     from swift.dev.utils import json_parse_to_dict
@@ -127,6 +149,7 @@ def _restore_config_types(config) -> None:
         annotation = hints.get(config_field.name, config_field.type)
         mapping, allow_string = _mapping_hint(annotation)
         if mapping is None:
+            _restore_scalar_or_list(config, config_field.name, annotation)
             continue
         value = getattr(config, config_field.name)
         if value is None:
@@ -222,6 +245,7 @@ def normalize_argv(argv: Sequence[str],
         # would silently retarget the flag, so leave it direct. Same-owner pairs (`--lr` ->
         # `--learning_rate`, both TrainConfig) are genuine renames and still fold.
         source_owner = owner_of.get(alias)
+        ## 如果字段名字不重复，是否在merge config的时候如果发现重复字段直接raise比较好
         if source_owner is not None and owner_of.get(target) is not source_owner:
             continue
         aliases[alias] = target
@@ -258,6 +282,8 @@ def normalize_argv(argv: Sequence[str],
             value = _PRECISION_ALIASES[source]
             has_value = True
         elif source == 'use_ray' and target == 'mode':
+            ## 现在使用ray需要特殊配置吗
+            ## 比如RL
             enabled = True if value is None else _boolean_value(value)
             if enabled is None:
                 raise ValueError(f'--{option} expects a boolean value, got {value!r}.')
@@ -285,6 +311,7 @@ def normalize_argv(argv: Sequence[str],
 
 def _merged_parse_class(config_classes: Sequence[Type], field_owners: Optional[Dict[str, Type]] = None):
     """Build one argparse dataclass from several Configs, resolving duplicate field names explicitly."""
+    ## 检查一遍各个config没有重复字段
     owners = dict(field_owners or {})
     specs = []
     seen = {}
@@ -305,6 +332,7 @@ def _merged_parse_class(config_classes: Sequence[Type], field_owners: Optional[D
                 kwargs['default_factory'] = config_field.default_factory
             spec = (name, hints.get(name, config_field.type), field(**kwargs))
             if name in seen:
+                ## 这是什么意思
                 specs.append(spec)
                 seen[name] = len(specs) - 1
             else:
@@ -389,7 +417,7 @@ def _resolve_checkpoint_args_source(configs: Dict[str, Any]) -> Optional[str]:
             return args_path
     return None
 
-
+## 确定下这里的逻辑和4.x一样
 def _restore_checkpoint_args(configs: Sequence[Any], *, default_load_args: bool) -> None:
     """Apply legacy ``load_args_from_ckpt`` semantics to atomic dev Configs."""
     mapped = _config_mapping(configs)
@@ -503,5 +531,6 @@ def parse_configs_strict(
     configs, remaining = parse_configs(
         config_classes, argv, field_owners=field_owners, load_args_default=load_args_default)
     if remaining:
+        ## 给一个allow unknown args的选项？
         raise ValueError(f'Unrecognized arguments for {command}: {remaining}.')
     return configs

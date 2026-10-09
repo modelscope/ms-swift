@@ -1,21 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Multimodal dataset registrations, the counterpart of ``llm.py`` for datasets that carry media.
-
-The three tiers of ``llm.py`` still apply (declaration only / plus ``columns`` / a
-:class:`Preprocessor` subclass), but a multimodal dataset has one more thing to say: **where its media
-actually is**. That is what groups the sections here, in order of what it costs:
-
-1. The row already holds a usable reference -- a URL, an absolute path, or the bytes themselves. The
-   only work is naming the column ``images`` / ``videos`` / ``audios``.
-2. The row holds a path *relative* to an archive published alongside the dataset. The archive is
-   fetched once in :meth:`Preprocessor.prepare_dataset`, each row's path is joined onto it, and rows
-   whose file is absent are dropped -- a caption prompt with no image teaches nothing.
-
-One recurring legacy defect to know about when reading these: a preprocessor that builds its output
-row from scratch (``return {'messages': ...}``) silently drops the media column, because nothing
-re-attaches it afterwards. Legacy shipped four such datasets, all tagged multi-modal while producing
-text-only rows. Where this file departs from legacy to keep the media, the site says so.
-"""
 from __future__ import annotations
 
 import os
