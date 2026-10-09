@@ -39,6 +39,13 @@ class RowPreprocessor:
                                 'ref_audios',
                                 'audio_codes',
                             ]
+    # Bump whenever the preprocessed-cache schema or semantics change (e.g. #9214 changed
+    # messages[].loss from float64 to bool and added loss_scale). map_cache files are named
+    # after the *input* fingerprint only, and datasets reuses an existing cache file without
+    # validating it when `cache_file_name` is passed explicitly, so without this tag a newer
+    # ms-swift silently loads caches written by an older, schema-incompatible release.
+    # Same cache-busting approach as Template._version.
+    cache_format_version = 'v2'
 
     def __init__(self,
                  *,
@@ -72,6 +79,9 @@ class RowPreprocessor:
         # fix swift/SlimOrca (concat)
         for message in messages:
             keys = set(message.keys()) - {'role', 'content', 'loss', 'loss_scale'}
+            if message.get('role') in {'tool', 'tool_response'}:
+                # Native agent templates (e.g. Gemma4) use the tool response name.
+                keys.discard('name')
             for key in keys:
                 message.pop(key)
 
@@ -247,6 +257,10 @@ class RowPreprocessor:
             dataset = dataset._resolve_features()
         return dataset
 
+    def _map_cache_file(self, fingerprint: str) -> str:
+        return os.path.join(get_cache_dir(), 'datasets', 'map_cache',
+                            f'{fingerprint}_{self.cache_format_version}.arrow')
+
     @staticmethod
     def safe_rename_columns(dataset, columns):
         dataset = RowPreprocessor.get_features_dataset(dataset)
@@ -348,8 +362,7 @@ class RowPreprocessor:
         if 'solution' in dataset.features:
             with safe_ddp_context(None, True):
                 if isinstance(dataset, HfDataset) and not dataset.cache_files:
-                    map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
-                                                                 f'{dataset._fingerprint}.arrow')
+                    map_kwargs['cache_file_name'] = self._map_cache_file(dataset._fingerprint)
                 dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
                 map_kwargs.pop('cache_file_name', None)
         dataset = self.safe_rename_columns(dataset, self.origin_columns)
@@ -366,8 +379,7 @@ class RowPreprocessor:
         ignore_max_length_error = True
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             if isinstance(dataset, HfDataset) and not dataset.cache_files:
-                map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
-                                                             f'{dataset._fingerprint}.arrow')
+                map_kwargs['cache_file_name'] = self._map_cache_file(dataset._fingerprint)
             dataset_mapped = dataset.map(
                 self.batched_preprocess,
                 fn_kwargs={
@@ -565,6 +577,22 @@ class MessagesPreprocessor(RowPreprocessor):
                 raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
         return ''.join(parts)
 
+    @staticmethod
+    def _align_anthropic_tool_results(tool_uses: List[Dict[str, Any]],
+                                      content: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        # Canonical tool responses are positional, so align a complete result batch
+        # before the tool_use IDs are discarded. Keep incomplete or ID-less batches as-is.
+        call_order = {block.get('id'): i for i, block in enumerate(tool_uses)}
+        end = 0
+        while end < len(content) and content[end].get('type') == 'tool_result':
+            end += 1
+        results = content[:end]
+        if (None not in call_order and len(call_order) == len(tool_uses) == len(results)
+                and set(call_order) == {result.get('tool_use_id')
+                                        for result in results}):
+            content = sorted(results, key=lambda result: call_order[result['tool_use_id']]) + content[end:]
+        return content
+
     @classmethod
     def anthropic_to_messages(cls,
                               messages: List[Dict[str, Any]],
@@ -572,11 +600,16 @@ class MessagesPreprocessor(RowPreprocessor):
         """Convert Anthropic content blocks to the SWIFT canonical roles."""
         media = media if media is not None else {'images': []}
         new_messages = []
+        tool_uses = []
         for message in messages:
             content = message.get('content')
             if not isinstance(content, list):
                 new_messages.append(message)
+                tool_uses = []
                 continue
+            if tool_uses:
+                content = cls._align_anthropic_tool_results(tool_uses, content)
+            tool_uses = [block for block in content if block.get('type') == 'tool_use']
 
             pending_content = []
             message_metadata = {key: message[key] for key in ['loss', 'loss_scale'] if key in message}

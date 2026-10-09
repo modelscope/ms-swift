@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import datasets
 import functools
+import inspect
 import ipaddress
 import math
 import os
@@ -27,7 +28,7 @@ from types import MethodType
 from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 from swift.rl_core.data import GRPOBatch, OnPolicySample
-from swift.template import Messages, Template
+from swift.template import Messages, StdTemplateInputs, Template
 from swift.tuners.lora import LoraConfig
 from swift.utils import (gc_collect, get_cu_seqlens_from_position_ids, get_logger, get_packed_seq_params,
                          get_torch_device, is_swanlab_available, is_vllm_available, is_wandb_available, swanlab_get_run,
@@ -689,14 +690,16 @@ def load_pil_img(img) -> Image:
         raise ValueError("Image dictionary must contain either 'bytes' or 'path' key.")
 
 
-def get_response_prefix_ids(template: Template, sample_enable_thinking: Optional[bool] = None) -> Optional[List[int]]:
-    effective = sample_enable_thinking if sample_enable_thinking is not None else template.enable_thinking
-    if effective is True:
-        prefix_str = template.template_meta.thinking_prefix
-    elif effective is False:
-        prefix_str = template.template_meta.non_thinking_prefix
-    else:
-        return None
+def get_response_prefix_ids(template: Template,
+                            sample_enable_thinking: Optional[bool] = None,
+                            *,
+                            chat_template_kwargs: Optional[Dict[str, Any]] = None) -> Optional[List[int]]:
+    # Use the same precedence and model-specific overrides as rollout encoding.
+    kwargs = dict(chat_template_kwargs or {})
+    if sample_enable_thinking is not None:
+        kwargs['enable_thinking'] = sample_enable_thinking
+    inputs = StdTemplateInputs(messages=[], chat_template_kwargs=kwargs)
+    prefix_str = template._get_response_prefix(inputs)
     if prefix_str:
         return template.tokenizer.encode(prefix_str, add_special_tokens=False)
     return None
@@ -709,12 +712,8 @@ def encode_sample(sample: OnPolicySample, template: Template, *, encode_prompt_o
     ``to_template_dict()`` so the sample's original messages are preserved
     for logging / reward computation / reuse across steps_per_generation.
 
-    Per-sample ``enable_thinking``: the response prefix (thinking or
-    non-thinking) is computed per-sample from
-    ``sample.extra['chat_template_kwargs']['enable_thinking']``, falling back
-    to the template's global setting.  This keeps the trainer sequence
-    aligned with the rollout sequence for both thinking and non-thinking
-    prefixes.
+    Resolve the response prefix with the same per-sample chat template
+    settings as rollout, and exclude the injected prefix from the loss.
     """
     data = sample.to_template_dict()
     if sample.response_token_ids:
@@ -723,8 +722,7 @@ def encode_sample(sample: OnPolicySample, template: Template, *, encode_prompt_o
         if msgs is not None:
             msgs = [m.copy() for m in msgs]
         ctk = sample.extra.get('chat_template_kwargs') or {}
-        sample_et = ctk.get('enable_thinking')
-        prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=sample_et)
+        prefix_ids = get_response_prefix_ids(template, chat_template_kwargs=ctk)
         data['messages'] = replace_assistant_response_with_ids(
             msgs, sample.response_token_ids, loss_mask, non_thinking_prefix_ids=prefix_ids)
 
@@ -794,16 +792,18 @@ def replace_assistant_response_with_ids(messages: 'Messages',
     if loss_mask and isinstance(loss_mask[0], int):
         loss_mask = [loss_mask]
 
-    # Inject the non-thinking prefix (e.g. '<think>\n\n</think>\n\n') into the LAST assistant turn.
-    # When enable_thinking false, the engine prepends non_thinking_prefix before generation
-    # so completion_ids here are generated with the non-thinking prefix, inject here
+    # The prefix was prompt context during rollout, not part of the sampled IDs.
+    # Copy the outer lists so repeated encoding does not mutate the stored rollout.
     if non_thinking_prefix_ids:
+        completion_ids = list(completion_ids)
+        loss_mask = list(loss_mask) if loss_mask is not None else [[1] * len(ids) for ids in completion_ids]
         n_prefix = len(non_thinking_prefix_ids)
         last_ids = list(completion_ids[-1])
-        # Skip if the response already starts with the prefix (avoid double injection).
-        if last_ids[:n_prefix] != list(non_thinking_prefix_ids):
-            if loss_mask is None:
-                loss_mask = [[1] * len(ids) for ids in completion_ids]
+        # Multi-turn schedulers may already have inserted and masked the prefix.
+        # Matching token values alone cannot distinguish that from a sampled repetition.
+        prefix_is_masked = (
+            last_ids[:n_prefix] == list(non_thinking_prefix_ids) and loss_mask[-1][:n_prefix] == [0] * n_prefix)
+        if not prefix_is_masked:
             completion_ids[-1] = list(non_thinking_prefix_ids) + last_ids
             loss_mask[-1] = [0] * n_prefix + list(loss_mask[-1])
 
@@ -1276,8 +1276,16 @@ def patch_vllm_load_adapter():
             # LoRA manager to pack, matching vllm's own worker_manager._load_adapter.
             model = self._adapter_manager.model
             hf_to_vllm_mapper = getattr(model, 'hf_to_vllm_mapper', None)
-            if hf_to_vllm_mapper is not None and hasattr(hf_to_vllm_mapper, 'get_unstacked_mapper'):
-                hf_to_vllm_mapper = hf_to_vllm_mapper.get_unstacked_mapper()
+            if hf_to_vllm_mapper is not None:
+                if hasattr(hf_to_vllm_mapper, 'get_unstacked_mapper'):
+                    # vLLM <= 0.27.x
+                    hf_to_vllm_mapper = hf_to_vllm_mapper.get_unstacked_mapper()
+                elif hasattr(hf_to_vllm_mapper, 'get_rename_mapper'):
+                    # vLLM >= 0.28 renamed get_unstacked_mapper (upstream PR #53106). Without this the
+                    # q_proj/k_proj/v_proj LoRA names are rewritten to the stacked qkv_proj name, and
+                    # set_lora then receives a single tensor where a list of slices is required
+                    # (IndexError in ColumnParallelLinearWithLoRA.set_lora).
+                    hf_to_vllm_mapper = hf_to_vllm_mapper.get_rename_mapper()
 
             lora_request_kwargs = {
                 'peft_helper': peft_helper,
@@ -1354,9 +1362,32 @@ def expand_vllm_param_name_aliases(param_names: set[str]) -> set[str]:
     return expanded
 
 
+def vllm_lora_uses_raw_param_names() -> bool:
+    """Whether vLLM expects sync names without the ``*.base_layer`` suffix for LoRA-wrapped modules.
+
+    vLLM <= 0.27.x loads weights by recursing into the LoRA wrapper's ``base_layer`` submodule, so sync
+    names must use the ``*.base_layer.weight / .bias`` form. Upstream PR #39935 (first released in
+    v0.28.0) added ``BaseLayerWithLoRA.load_weights``, which forwards the weights straight to the wrapped
+    base layer; ``AutoWeightsLoader`` then stops recursing and raw names are required instead.
+    """
+    if not is_vllm_available():
+        return False
+    try:
+        from vllm.lora.layers.base import BaseLayerWithLoRA
+    except ImportError:
+        return check_vllm_version_ge('0.28.0')
+    return 'load_weights' in BaseLayerWithLoRA.__dict__
+
+
 def add_base_layer_suffix_by_param_names(weight_iterator: Iterable[Tuple[str, Any]],
                                          vllm_param_names: set[str]) -> Iterable[Tuple[str, Any]]:
-    """Map HF dense param names to vLLM LoRA-wrapped modules (*.base_layer.weight / .bias)."""
+    """Map HF dense param names to the load names vLLM's LoRA-wrapped modules expect."""
+    if vllm_lora_uses_raw_param_names():
+        # See vllm_lora_uses_raw_param_names: the wrapper forwards load_weights itself, so the
+        # *.base_layer.* suffix must be dropped instead of added.
+        for name, tensor in weight_iterator:
+            yield name.replace('.base_layer.', '.'), tensor
+        return
     for name, tensor in weight_iterator:
         if '.base_layer.' in name or '.' not in name:
             yield name, tensor
@@ -1682,12 +1713,43 @@ def set_expandable_segments(enable: bool) -> None:
         os.environ['PYTORCH_CUDA_ALLOC_CONF'] = f'expandable_segments:{enable}'
 
 
+def _vllm_sleep_accepts_mode(engine) -> bool:
+    """Whether the engine's ``sleep`` API accepts the pause ``mode`` argument (vLLM >= 0.20)."""
+    try:
+        return 'mode' in inspect.signature(engine.sleep).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def vllm_sleep(engine, sleep_level: int) -> None:
+    """Put a colocated vLLM engine to sleep, pausing with ``mode='keep'`` when supported.
+
+    ``sleep(level>=1)`` resets the prefix cache; vLLM v0.29-v0.31 (guard added by upstream PR
+    vllm-project/vllm#45635, removed on main after v0.31.0 by #59060) rejects that reset while the
+    AuxOutput connector (``enable_return_routed_experts``) is active unless the scheduler was paused
+    with ``mode='keep'``. ``keep`` pauses with PAUSED_ALL and waits for scheduled outputs to drain,
+    matching the rollout-then-train handover this is called from.
+    """
+    if _vllm_sleep_accepts_mode(engine):
+        engine.sleep(sleep_level, mode='keep')
+    else:
+        engine.sleep(sleep_level)
+
+
+async def vllm_sleep_async(engine, sleep_level: int) -> None:
+    """Async variant of :func:`vllm_sleep` for the Ray rollout engine (``AsyncLLM``)."""
+    if _vllm_sleep_accepts_mode(engine):
+        await engine.sleep(sleep_level, mode='keep')
+    else:
+        await engine.sleep(sleep_level)
+
+
 def sleep_vllm_engine(engine, sleep_level: int, suppress_errors: bool = False) -> None:
     """Release colocated vLLM memory while attempting every cleanup operation."""
     cleanup_error = None
     operations = [
         ('reset the prefix cache', engine.reset_prefix_cache),
-        ('put the engine to sleep', lambda: engine.sleep(level=sleep_level)),
+        ('put the engine to sleep', lambda: vllm_sleep(engine, sleep_level)),
         ('empty the device cache', aggressive_empty_cache),
         ('restore expandable segments', lambda: set_expandable_segments(True)),
     ]

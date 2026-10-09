@@ -45,8 +45,9 @@ class TeacherModelArguments:
         teacher_model (Optional[str]): The model ID or a local path to the teacher model. Analogous to the main
             `model` argument. For GKD, there are three modes:
             - Not set (None): Self-distillation with dynamic teacher (teacher = current student weights).
-            - Same as `model` with LoRA training: Self-distillation with fixed teacher. Automatically optimized
-              to use `disable_adapter()` to get base model logits without loading an extra model.
+            - Same as `model` with LoRA training and no `teacher_adapters`: Self-distillation with fixed teacher.
+              Automatically optimized to use `disable_adapter()` to get base model logits without an extra model.
+              When `teacher_adapters` is set, a separate frozen teacher is loaded with those adapters instead.
             - Different from `model`: Standard GKD with an independent frozen teacher model.
             Defaults to None.
         teacher_adapters (List[str]): A list of paths to LoRA weights. These weights, often produced by SFT, are loaded
@@ -424,12 +425,12 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
         # Self-distillation: teacher_model == student model
         if self.teacher_model is not None and self.teacher_model == self.model:
-            if self.tuner_type == 'lora':
+            if self.tuner_type == 'lora' and not self.teacher_adapters:
                 logger.info('LoRA + same teacher_model: using disable_adapter() for fixed teacher (no extra model).')
                 self._teacher_use_disable_adapter = True
                 self.teacher_model = None
             else:
-                # Full training + same teacher_model: a separate frozen copy will be loaded as fixed teacher.
+                # Full training or explicit teacher adapters: load a separate frozen teacher.
                 pass
 
     def _init_rollout(self):

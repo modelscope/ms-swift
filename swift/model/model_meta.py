@@ -205,6 +205,10 @@ def _read_args_json_model_type(model_dir):
 
 
 def _get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
+    logger.warning(f'Loading model from {model_dir!r} with trust_remote_code=True. '
+                   'This will execute custom Python code shipped in the model repository '
+                   '(e.g. configuration_*.py, modeling_*.py, tokenization_*.py). '
+                   'Only proceed if you trust the source of this model.')
     try:
         config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     except Exception:

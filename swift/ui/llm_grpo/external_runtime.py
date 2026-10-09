@@ -115,6 +115,9 @@ class RolloutRuntime(Runtime):
     @classmethod
     def kill_task(cls, task):
         if task:
+            if not cls._is_known_task(task):
+                logger.warning(f'Rejected unknown task in kill_task: {task[:80]}')
+                return [cls.refresh_tasks()] + [gr.update(value=None)]
             pid, all_args = cls.parse_info_from_cmdline(task)
             log_file = all_args['log_file']
             parent_process = psutil.Process(int(pid))

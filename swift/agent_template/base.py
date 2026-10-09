@@ -75,20 +75,25 @@ class ReactCompatMixin:
 
     def _format_tool_responses(
         self,
-        assistant_content: str,
+        assistant_content: Union[str, List[str]],
         tool_messages,
-    ) -> Tuple[str, 'Prompt']:
+    ) -> Tuple[Union[str, List[str]], 'Prompt']:
         """
         Format tool execution results into the conversation.
 
         Args:
-            assistant_content: The assistant's message containing tool calls.
+            assistant_content: The assistant's message containing tool calls. A list when consecutive
+                assistant messages (e.g. text followed by tool calls) were merged into segments.
             tool_messages: List of tool execution result messages.
 
         Returns:
             Tuple of (formatted assistant content, formatted tool responses).
         """
         assert len(tool_messages) > 0
+        if isinstance(assistant_content, list):
+            # Keep merged assistant segments aligned with their loss/loss_scale entries.
+            last_content, res = self._format_tool_responses(assistant_content[-1], tool_messages)
+            return assistant_content[:-1] + [last_content], res
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             if not assistant_content.endswith(self.keyword.observation):
@@ -198,6 +203,20 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
         if 'type' not in tool and 'function' not in tool:
             tool = {'type': 'function', 'function': tool}
         return tool
+
+    def _get_tool_schemas(self, tools: Optional[List[Union[str, dict]]]) -> Dict[str, dict]:
+        tool_schemas = {}
+        for tool in tools or []:
+            tool = self._parse_json(tool)
+            if not isinstance(tool, dict):
+                continue
+            function = self.unwrap_tool(tool)
+            if not isinstance(function, dict):
+                continue
+            parameters = self._parse_json(function.get('parameters'))
+            if isinstance(parameters, dict):
+                tool_schemas[self._get_tool_name(function)] = parameters
+        return tool_schemas
 
     @staticmethod
     def _parse_tool(tool, lang: Literal['zh', 'en']) -> ToolDesc:
