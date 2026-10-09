@@ -28,7 +28,7 @@ def _build_transform(input_size):
         T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
         T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC),
         T.ToTensor(),
-        T.Normalize(mean=MEAN, std=STD)
+        T.Normalize(mean=MEAN, std=STD, inplace=True)
     ])
     return transform
 
@@ -260,20 +260,20 @@ def load_video_cogvlm2(video: Union[str, bytes]) -> np.ndarray:
 def load_video_llava(video: Union[str, bytes]) -> np.ndarray:
     import av
     video_io = load_file(video)
-    container = av.open(video_io)
-    total_frames = container.streams.video[0].frames
-    num_frames = get_env_args('num_frames', int, 16)
-    indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
-    frames = []
-    container.seek(0)
-    start_index = indices[0]
-    end_index = indices[-1]
-    for i, frame in enumerate(container.decode(video=0)):
-        if i > end_index:
-            break
-        if i >= start_index and i in indices:
-            frames.append(frame)
-    return np.stack([x.to_ndarray(format='rgb24') for x in frames])
+    with av.open(video_io) as container:
+        total_frames = container.streams.video[0].frames
+        num_frames = get_env_args('num_frames', int, 16)
+        indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
+        frames = []
+        container.seek(0)
+        start_index = indices[0]
+        end_index = indices[-1]
+        for i, frame in enumerate(container.decode(video=0)):
+            if i > end_index:
+                break
+            if i >= start_index and i in indices:
+                frames.append(frame.to_ndarray(format='rgb24'))
+    return np.stack(frames)
 
 
 def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
@@ -293,7 +293,7 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
     if len(frame_idx) > max_num_frames:
         frame_idx = uniform_sample(frame_idx, max_num_frames)
     frames = vr.get_batch(frame_idx).asnumpy()
-    frames = [Image.fromarray(v.astype('uint8')) for v in frames]
+    frames = [Image.fromarray(v.astype('uint8', copy=False)) for v in frames]
     return frames
 
 
