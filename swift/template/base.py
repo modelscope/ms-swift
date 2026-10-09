@@ -511,7 +511,16 @@ class Template(ProcessorMixin):
                        replace_idx_list: List[int],
                        get_new_tokens: Callable[[int], List[int]],
                        mm_mask: Optional[List[bool]] = None):
-        added_tokens_len = 0
+        """Expand placeholders at increasing indices without modifying the inputs."""
+        if not replace_idx_list:
+            if mm_mask is not None:
+                return input_ids, labels, loss_scale, mm_mask
+            return input_ids, labels, loss_scale
+        new_input_ids = []
+        new_labels = []
+        new_loss_scale = []
+        new_mm_mask = []
+        start = 0
         for i, idx in enumerate(replace_idx_list):
             try:
                 new_tokens = get_new_tokens(i)
@@ -519,16 +528,30 @@ class Template(ProcessorMixin):
                 logger.warning(f'IndexError occurs in the _extend_tokens function: {e}.')
                 continue
             token_len = len(new_tokens)
-            input_ids = input_ids[:idx + added_tokens_len] + new_tokens + input_ids[added_tokens_len + idx + 1:]
+            new_input_ids.extend(input_ids[start:idx])
+            new_input_ids.extend(new_tokens)
             if labels:
-                labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx + 1:]
+                new_labels.extend(labels[start:idx])
+                new_labels.extend([-100] * token_len)
             if loss_scale:
-                scale_idx = loss_scale[idx + added_tokens_len]
-                loss_scale = loss_scale[:idx + added_tokens_len] + [scale_idx] * token_len + loss_scale[added_tokens_len
-                                                                                                        + idx + 1:]
+                new_loss_scale.extend(loss_scale[start:idx])
+                new_loss_scale.extend([loss_scale[idx]] * token_len)
             if mm_mask:
-                mm_mask = mm_mask[:idx + added_tokens_len] + [True] * token_len + mm_mask[added_tokens_len + idx + 1:]
-            added_tokens_len += token_len - 1
+                new_mm_mask.extend(mm_mask[start:idx])
+                new_mm_mask.extend([True] * token_len)
+            start = idx + 1
+        if start:
+            new_input_ids.extend(input_ids[start:])
+            input_ids = new_input_ids
+            if labels:
+                new_labels.extend(labels[start:])
+                labels = new_labels
+            if loss_scale:
+                new_loss_scale.extend(loss_scale[start:])
+                loss_scale = new_loss_scale
+            if mm_mask:
+                new_mm_mask.extend(mm_mask[start:])
+                mm_mask = new_mm_mask
         if mm_mask is not None:
             return input_ids, labels, loss_scale, mm_mask
         return input_ids, labels, loss_scale
