@@ -123,6 +123,8 @@ def jsd_loss(
     if N == 0:
         return s_logits.sum()  # Keep the empty partition connected to the student graph.
 
+    if s_logits.shape[-1] == t_logits.shape[-1]:
+        align_vocab_fn = None
     total = s_logits.new_zeros(())
 
     if beta != 0 and beta != 1:
@@ -160,11 +162,7 @@ def jsd_loss(
 
 def _align_vocab(student_logits: torch.Tensor, teacher_logits: torch.Tensor):
     """Compare the shared token-ID prefix; each side is normalized independently."""
-    stu_vocab = student_logits.shape[-1]
-    tea_vocab = teacher_logits.shape[-1]
-    if stu_vocab == tea_vocab:
-        return student_logits, teacher_logits
-    shared_vocab = min(stu_vocab, tea_vocab)
+    shared_vocab = min(student_logits.shape[-1], teacher_logits.shape[-1])
     return student_logits[..., :shared_vocab], teacher_logits[..., :shared_vocab]
 
 

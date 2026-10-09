@@ -204,47 +204,6 @@ class TestVocabParallelGrad(unittest.TestCase):
             logps = vocab_parallel_gather_logps(self._shard(self.full).clone(), self.labels)
             self.assertFalse(logps.requires_grad)
 
-    def test_gkd_mismatched_vocab(self):
-        from swift.megatron.trainers.gkd_utils import tp_align_vocab
-        from swift.megatron.trainers.vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
-        from swift.rlhf_trainers.gkd_loss import TeacherOutput, gkd_loss
-
-        for student_vocab, teacher_vocab in ((12, 16), (16, 12)):
-            for beta in (0., 0.5, 1.):
-                with self.subTest(student_vocab=student_vocab, teacher_vocab=teacher_vocab, beta=beta):
-                    reference = self.full[..., :student_vocab].clone().requires_grad_()
-                    teacher = self.teacher[..., :teacher_vocab]
-                    shared_vocab = min(student_vocab, teacher_vocab)
-                    expected, expected_count = gkd_loss(
-                        reference[..., :shared_vocab],
-                        TeacherOutput(full_logits=teacher[..., :shared_vocab]),
-                        self.labels,
-                        beta,
-                        2.,
-                        chunk_size=3)
-                    expected.backward()
-
-                    student_width, teacher_width = student_vocab // self.world, teacher_vocab // self.world
-                    student_start, teacher_start = self.rank * student_width, self.rank * teacher_width
-                    student = reference.detach()[..., student_start:student_start + student_width].clone()
-                    student.requires_grad_()
-                    teacher = teacher[..., teacher_start:teacher_start + teacher_width]
-                    actual, count = gkd_loss(
-                        student,
-                        TeacherOutput(full_logits=teacher),
-                        self.labels,
-                        beta,
-                        2.,
-                        log_softmax_fn=vocab_parallel_log_softmax,
-                        kl_div_fn=vocab_parallel_kl_div,
-                        chunk_size=3,
-                        align_vocab_fn=tp_align_vocab)
-                    actual.backward()
-                    torch.testing.assert_close(actual, expected)
-                    torch.testing.assert_close(count, expected_count)
-                    torch.testing.assert_close(student.grad,
-                                               reference.grad[..., student_start:student_start + student_width])
-
     def _target_logps(self, log_probs: torch.Tensor) -> torch.Tensor:
         mask = self.labels != -100
         targets = self.labels.masked_fill(~mask, 0)

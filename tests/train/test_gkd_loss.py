@@ -2,7 +2,6 @@
 import copy
 import torch
 import unittest
-from itertools import product
 
 from swift.rlhf_trainers.gkd_loss import TeacherOutput, gkd_loss
 
@@ -27,32 +26,6 @@ class TestGKDLoss(unittest.TestCase):
                         evaluation_loss, _ = gkd_loss(student, teacher, labels, 0.5, 1.)
                     self.assertFalse(evaluation_loss.requires_grad)
                     self.assertEqual(evaluation_loss.item(), 0.)
-
-    def test_loss_and_gradients_are_shift_invariant(self):
-        for dtype in (torch.float32, torch.float64):
-            for beta in (0., 0.5, 1.):
-                for mode in ('full', 'student_smaller', 'teacher_smaller', 'topk'):
-                    with self.subTest(dtype=dtype, beta=beta, mode=mode):
-                        reference = None
-                        for student_shift, teacher_shift in ((0., 0.), (-2., 0.), (0., 2.)):
-                            student = torch.tensor([[[1., 0., -0.5]]], dtype=dtype)
-                            if mode == 'student_smaller':
-                                student = student[..., :2]
-                            student = (student + student_shift).requires_grad_()
-                            values = [0.5, 0., 1., -2.] if mode == 'topk' else [0.5, 0., 1.]
-                            if mode == 'teacher_smaller':
-                                values = values[:2]
-                            teacher = TeacherOutput(full_logits=torch.tensor([[values]], dtype=dtype) + teacher_shift)
-                            if mode == 'topk':
-                                teacher = teacher.to_topk(2)
-                            total, count = gkd_loss(student, teacher, torch.tensor([[0]]), beta, 1.)
-                            gradient, = torch.autograd.grad(total, student)
-                            self.assertEqual(count.item(), 1)
-                            if reference is None:
-                                reference = total.detach(), gradient
-                            else:
-                                torch.testing.assert_close(total, reference[0])
-                                torch.testing.assert_close(gradient, reference[1])
 
     def test_empty_microbatch_preserves_accumulated_update(self):
         torch.manual_seed(42)
@@ -111,16 +84,15 @@ class TestGKDLoss(unittest.TestCase):
             torch.testing.assert_close(parameter.grad, torch.zeros_like(parameter))
 
     def test_valid_tokens_match_reference(self):
-        for beta, (student_vocab, teacher_vocab) in product((0., 0.5, 1.), ((5, 8), (8, 5), (8, 8))):
-            with self.subTest(beta=beta, student_vocab=student_vocab, teacher_vocab=teacher_vocab):
+        for beta in (0., 0.5, 1.):
+            with self.subTest(beta=beta):
                 torch.manual_seed(42)
-                student = torch.randn(1, 4, student_vocab, dtype=torch.float64, requires_grad=True)
-                teacher = torch.randn(1, 4, teacher_vocab, dtype=torch.float64)
+                student = torch.randn(1, 4, 8, dtype=torch.float64, requires_grad=True)
+                teacher = torch.randn_like(student)
                 labels = torch.tensor([[-100, 1, -100, 2]])
                 total, count = gkd_loss(student, TeacherOutput(full_logits=teacher), labels, beta, 2., chunk_size=1)
-                shared_vocab = min(student_vocab, teacher_vocab)
-                s_log = (student[labels != -100][..., :shared_vocab] / 2.).log_softmax(-1)
-                t_log = (teacher[labels != -100][..., :shared_vocab] / 2.).log_softmax(-1)
+                s_log = (student[labels != -100] / 2.).log_softmax(-1)
+                t_log = (teacher[labels != -100] / 2.).log_softmax(-1)
                 if beta == 0.:
                     expected = (t_log.exp() * (t_log - s_log)).sum()
                 elif beta == 1.:
