@@ -575,6 +575,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - loss_type: Type of loss function. Default is None, with different defaults depending on the RLHF algorithm used.
   - DPO: Available options can be found in the [documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions). Multiple values can be provided to enable mixed training ([MPO](https://arxiv.org/abs/2411.10442)); when multiple values are given, the loss_weights parameter must also be set. Default is `sigmoid`.
   - GRPO: See [GRPO parameters](#grpo-arguments) for reference.
+  - GKD: `jsd` (default) or `abkd`. See [distillation documentation](./Distillation.md#31-gkd-divergence-as-direct-loss).
 - loss_weights: When setting multiple loss_type values in DPO training, this parameter specifies the weight for each loss component.
 - cpo_alpha: Coefficient for nll loss in CPO/SimPO loss, default is `1.`.
 - simpo_gamma: Reward margin term in the SimPO algorithm, with a paper-suggested setting of 0.5-1.5, default is `1.`.
@@ -588,6 +589,8 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - min_p: Min-p parameter for rollout sampling. Tokens whose probability is below `min_p` times the probability of the most likely token are filtered out. 0.0 means no min-p filtering is applied. Default is 0.0. Only effective with the vLLM backend.
 
 #### GKD Arguments
+- abkd_alpha: Alpha parameter for `loss_type=abkd`. Defaults to 0.2.
+- abkd_beta: Beta parameter for `loss_type=abkd`. Defaults to 0.7; independent of the JSD interpolation parameter `beta`.
 - lmbda: Default is 0.5. This parameter is used in GKD. It controls the lambda parameter for the proportion of student data (i.e., the proportion of student-generated outputs within the strategy). If lmbda is 0, student-generated data is not used.
 - sft_alpha: The default value is 0. It controls the weight of sft_loss added in GKD. The final loss is `gkd_loss + sft_alpha * sft_loss`.
 - gkd_logits_topk: Use Top-K logits to compute KL divergence. Defaults to None, which means the full vocabulary is used. Setting this parameter can effectively reduce peak GPU memory usage during training. This parameter is required when teacher_model_server is configured. See [distillation documentation](./Distillation.md#top-k-kl-computation) for more details.
