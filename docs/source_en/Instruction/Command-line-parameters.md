@@ -281,6 +281,8 @@ Other important parameters:
 - 🔥num_train_epochs: Number of training epochs. Default is 3.
 - 🔥save_strategy: Strategy for saving checkpoints. Options: `'no'`, `'steps'`, `'epoch'`. Default is `'steps'`.
 - 🔥save_steps: Default is 500.
+- save_epochs: Save a checkpoint every N epochs and automatically use `save_strategy='epoch'`. When epoch-based
+  evaluation is enabled, evaluation follows the same interval. Defaults to None.
 - 🔥eval_strategy: Evaluation strategy. Default is `None`, following `save_strategy`.
   - If neither `val_dataset` nor `eval_dataset` is used and `split_dataset_ratio=0`, defaults to `'no'`.
 - 🔥eval_steps: Default is `None`. If evaluation dataset exists, follows `save_steps`.
