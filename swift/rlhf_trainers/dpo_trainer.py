@@ -338,8 +338,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             logits = logits * self.beta
             log_ratio_modulation = torch.sigmoid(logits / self.args.discopop_tau)
             logistic_component = -F.logsigmoid(logits)
-            exp_component = torch.exp(-logits)
-            losses = logistic_component * (1 - log_ratio_modulation) + exp_component * log_ratio_modulation
+            # Combine the exponential and its modulation in log space to avoid inf * 0.
+            modulated_exp_component = torch.exp(F.logsigmoid(logits / self.args.discopop_tau) - logits)
+            losses = logistic_component * (1 - log_ratio_modulation) + modulated_exp_component
 
         elif loss_type == 'sft':
             sft_loss = model_output['nll_loss']
