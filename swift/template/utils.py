@@ -161,6 +161,8 @@ def split_str_parts_by(text: str, delimiters: List[str], regex_mode: bool = Fals
     delimiters_origin = delimiters
     if not regex_mode:
         delimiters = [re.escape(delimiter) for delimiter in delimiters]
+        if len(delimiters) > 1:
+            delimiters = ['|'.join(delimiters)]
     parts = _split_str_by_regex(text, delimiters) if delimiters else ['', text]
     res = []
     if regex_mode:
