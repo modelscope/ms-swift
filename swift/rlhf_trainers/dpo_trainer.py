@@ -233,6 +233,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         ref_rejected_logps: torch.FloatTensor,
         loss_type: str = 'sigmoid',
         model_output: Optional[Dict[str, torch.FloatTensor]] = None,
+        train_eval: Literal['train', 'eval'] = 'train',
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         device = self.accelerator.device
 
@@ -286,8 +287,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             rejected_logratios = rejected_logps - ref_rejected_logps
             chosen_rewards = self.beta * chosen_logratios
             rejected_rewards = self.beta * rejected_logratios
-            rewards = torch.cat((chosen_rewards, rejected_rewards), 0).mean().detach()
-            self.running.update(rewards)
+            if train_eval == 'train':
+                rewards = torch.cat((chosen_rewards, rejected_rewards), 0).mean().detach()
+                self.running.update(rewards)
             delta = self.running.mean
             losses = -F.logsigmoid(
                 (self.beta * chosen_logratios) - delta) - F.logsigmoid(-(self.beta * rejected_logratios - delta))
@@ -401,6 +403,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                 current_ref_rejected_logps,
                 loss_type,
                 model_output,
+                train_eval=train_eval,
             )
             if pair_loss_scale is not None and loss_type != 'sft':
                 # Preserve the existing reduction of SFT/RPO and router losses.
