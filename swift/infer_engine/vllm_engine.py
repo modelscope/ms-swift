@@ -428,7 +428,9 @@ class VllmEngine(InferEngine):
     def _add_stop_words(self, generation_config: SamplingParams, request_config: RequestConfig) -> None:
         template_meta = self.template.template_meta
         stop_words = (request_config.stop or []) + (self.generation_config.stop or []) + template_meta.stop_words
-        generation_config.stop = self._get_stop_words(stop_words)
+        if not generation_config.detokenize and request_config.stop:
+            raise ValueError('String stop words require detokenize=True.')
+        generation_config.stop = self._get_stop_words(stop_words) if generation_config.detokenize else []
         # stop parameter is not effective in v1 engine (test version: vllm 0.8.5.post)
         generation_config.stop_token_ids = self._get_stop_token_ids(stop_words)
 
@@ -534,6 +536,8 @@ class VllmEngine(InferEngine):
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> SamplingParams:
         kwargs = {'max_tokens': request_config.max_tokens}
+        if request_config.detokenize is not None:
+            kwargs['detokenize'] = request_config.detokenize
         for key in ['temperature', 'top_k', 'top_p', 'min_p', 'repetition_penalty']:
             new_value = getattr(request_config, key)
             if new_value is None:
