@@ -3,6 +3,33 @@
 import torch
 
 
+class GaLoreOptimizerState:
+    """Keep projector objects out of checkpoints loaded with weights_only=True."""
+
+    def state_dict(self):
+        state_dict = super().state_dict()
+        state_dict['state'] = {
+            key:
+            dict(value, projector=vars(value['projector']).copy()) if isinstance(
+                value.get('projector'), GaLoreProjector) else value
+            for key, value in state_dict['state'].items()
+        }
+        return state_dict
+
+    def load_state_dict(self, state_dict):
+        state_dict = state_dict.copy()
+        states = {}
+        for key, value in state_dict['state'].items():
+            projector_state = value.get('projector')
+            if isinstance(projector_state, dict):
+                projector = GaLoreProjector(projector_state['rank'])
+                vars(projector).update(projector_state)
+                value = dict(value, projector=projector)
+            states[key] = value
+        state_dict['state'] = states
+        return super().load_state_dict(state_dict)
+
+
 class GaLoreProjector:
 
     def __init__(self, rank, verbose=False, update_proj_gap=200, scale=1.0, proj_type='std'):
@@ -14,6 +41,11 @@ class GaLoreProjector:
         self.proj_type = proj_type
 
     def project(self, full_rank_grad, iter):
+        # Optimizer.load_state_dict cannot move tensors inside a custom projector object.
+        if isinstance(self.ortho_matrix, list):
+            self.ortho_matrix = [matrix.to(full_rank_grad) for matrix in self.ortho_matrix]
+        elif self.ortho_matrix is not None:
+            self.ortho_matrix = self.ortho_matrix.to(full_rank_grad)
 
         if self.proj_type == 'std':
             if full_rank_grad.shape[0] >= full_rank_grad.shape[1]:
