@@ -20,7 +20,7 @@ from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
 from swift.template import Template
 from swift.utils import get_logger, to_device
 from ..utils import forward_step_helper, get_padding_to
-from .gkd_utils import cp_slice_teacher_output, tp_gather_topk, vocab_parallel_topk
+from .gkd_utils import cp_slice_teacher_output, tp_align_vocab, tp_gather_topk, vocab_parallel_topk
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather_object
@@ -361,7 +361,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             self.temperature,
             gather_fn=tp_gather_topk,
             log_softmax_fn=vocab_parallel_log_softmax,
-            kl_div_fn=vocab_parallel_kl_div)
+            kl_div_fn=vocab_parallel_kl_div,
+            align_vocab_fn=tp_align_vocab)
 
         loss = jsd_total
 
