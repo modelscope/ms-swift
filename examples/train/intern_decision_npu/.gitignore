@@ -1,0 +1,9 @@
+/raw/
+/prepared/
+/decision_data/
+/sources/
+/results/
+/outputs/
+/data-audit.json
+__pycache__/
+*.log
