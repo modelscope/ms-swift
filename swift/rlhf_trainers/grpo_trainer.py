@@ -42,7 +42,7 @@ from swift.dataset import RowPreprocessor
 from swift.rewards import orms, rm_plugins
 from swift.rl_core.advantage import (apply_rlsd_reweight, compute_advantages, compute_advantages_dynamic,
                                      compute_reward_metrics, compute_sdar_loss, compute_teacher_kl_per_token,
-                                     expand_advantage_to_per_token)
+                                     expand_advantage_to_per_token, get_local_rollout_values)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
 from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_completion_logprobs, build_opsd_samples,
@@ -237,25 +237,23 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self._assemble_teacher_api_logps(samples, batch_encoded_inputs)
         total_advantages = self._compute_advantages(samples, self._rewards_per_func, batch_encoded_inputs)
 
-        local_advantages = get_even_process_data(self, total_advantages)
+        sample_counts = batch_encoded_inputs[0].pop('_sample_counts')
+        if sample_counts is None:
+            local_advantages = get_even_process_data(self, total_advantages)
+        else:
+            local_advantages = get_local_rollout_values(total_advantages, sample_counts, self.accelerator.process_index)
         assert len(local_advantages) == len(samples)
         for i, advantage in enumerate(local_advantages):
             samples[i].advantages = advantage
         # log metrics in samples
         self._logs['advantages'].extend(total_advantages.tolist())
 
-        # Add advantages to each batch in batch_encoded_inputs
-        gas_chunks = self.split_by_mini_batches(samples)
-        assert len(gas_chunks) == len(batch_encoded_inputs), \
-            f'Mismatch: {len(gas_chunks)} chunks vs {len(batch_encoded_inputs)} batches'
-
-        for batch, batch_encoded in zip(gas_chunks, batch_encoded_inputs):
-            # Under sequence parallel, split_by_mini_batches gathers samples across the SP group via
-            # all_gather_object, so per-sample advantages may carry tensors from different ranks/devices;
-            # move them onto the current device before stacking.
+        batch_advantages = total_advantages if sample_counts is not None else local_advantages
+        for batch_encoded in batch_encoded_inputs:
             device = self.accelerator.device
             grpo_batch: GRPOBatch = batch_encoded['grpo_batch']
-            base_advantages = torch.stack([data.advantages.to(device) for data in batch])
+            # Reuse the original grouping without gathering the full rollout samples again under SP.
+            base_advantages = batch_advantages[batch_encoded.pop('_sample_indices')].to(device)
             use_rlsd = (self.advantage_reweight == 'rlsd' and grpo_batch.teacher_per_token_logps is not None)
             use_sdar = (self.sdar_loss_coef > 0 and grpo_batch.teacher_per_token_logps is not None)
             if use_rlsd:
@@ -729,9 +727,17 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             organized as [steps_per_generation][batch_size]
         """
         template = self.template
-        gas_chunks = self.split_by_mini_batches(samples)
+        sample_counts = None
+        sample_offset = 0
+        if template.sequence_parallel_size > 1:
+            # Carry global positions through the first split, including repeated request IDs and uneven ranks.
+            sample_counts = gather(torch.tensor([len(samples)], device=self.accelerator.device)).tolist()
+            sample_offset = sum(sample_counts[:self.accelerator.process_index])
+        gas_chunks = self.split_by_mini_batches(list(enumerate(samples, start=sample_offset)))
         ga_batch_encoded_inputs: List[Dict[str, Any]] = []
-        for batch in gas_chunks:
+        for indexed_batch in gas_chunks:
+            sample_indices = [index for index, _ in indexed_batch]
+            batch = [sample for _, sample in indexed_batch]
             teacher_model_inputs = teacher_grpo_batch = None
             with self._template_context(template):
                 for s in batch:
@@ -748,7 +754,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     teacher_model_inputs, teacher_grpo_batch = self._collate_teacher_opsd_batch(batch, template)
 
             model_inputs.pop('labels', None)
-            batch_encoded_inputs = {'model_inputs': model_inputs, 'grpo_batch': grpo_batch}
+            batch_encoded_inputs = {
+                'model_inputs': model_inputs,
+                'grpo_batch': grpo_batch,
+                '_sample_indices': sample_indices,
+            }
             if self.dynamic_num_samples and self.is_multimodal:
                 batch_encoded_inputs['_origin_data'] = batch
             if self._has_teacher and self.use_teacher_api:
@@ -788,6 +798,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         teacher_model_inputs=teacher_model_inputs,
                         teacher_grpo_batch=teacher_grpo_batch)
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
+
+        ga_batch_encoded_inputs[0]['_sample_counts'] = sample_counts
 
         # --- log completion lengths ---
         mode = 'train' if self.model.training else 'eval'
