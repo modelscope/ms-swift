@@ -954,9 +954,19 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             # Record the fps actually used when sampling frames (mirrors the VL v2_5 path). Without
             # it the HF processor falls back to fps=1.0, so `video_second_per_grid` (temporal spacing
             # driving TMRoPE + the audio/video token interleaving under `use_audio_in_video`) ignores
-            # the real fps. Needed in every mode: the transformers/train path recomputes it from this
-            # value in `_encode`, and vllm re-runs the HF processor on the forwarded mm_processor_kwargs.
-            inputs.mm_processor_kwargs.setdefault('fps', []).append(sample_fps)
+            # the real fps: `_encode` recomputes `video_second_per_grid` from it in the
+            # transformers/train path, and vllm re-runs the HF processor on the forwarded
+            # mm_processor_kwargs.
+            if self.mode == 'vllm':
+                fps = inputs.mm_processor_kwargs.get('fps')
+                if fps is None:
+                    inputs.mm_processor_kwargs['fps'] = sample_fps
+                elif fps != sample_fps:
+                    logger.warning_once(f'The HF processor shares a single `fps` for all videos, but '
+                                        f'videos were sampled with different fps ({fps} vs {sample_fps}); '
+                                        f'keeping fps={fps}.')
+            else:
+                inputs.mm_processor_kwargs.setdefault('fps', []).append(sample_fps)
             if isinstance(_video, torch.Tensor):
                 _video = _video.to(torch.uint8)
             inputs.videos[index] = _video
@@ -1060,7 +1070,8 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         fps = inputs.mm_processor_kwargs.get('fps')
         if inputs.videos and fps and 'video_second_per_grid' in media_inputs:
             video_processor = getattr(processor, 'video_processor', None) or processor.image_processor
-            media_inputs['video_second_per_grid'] = [video_processor.temporal_patch_size / tmp for tmp in fps]
+            media_inputs['video_second_per_grid'] = torch.tensor(
+                [video_processor.temporal_patch_size / tmp for tmp in fps], dtype=torch.float32)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
