@@ -1534,8 +1534,14 @@ class Template(ProcessorMixin):
         length = self._get_length(input_ids, labels)
         if self.max_length is not None and length > self.max_length:
             if self.truncation_strategy in {'right', 'left'}:
+                had_supervision = (
+                    self.mode == 'train' and self.task_type == 'causal_lm' and labels is not None
+                    and any(label != -100 for label in labels))
                 input_ids, labels = self._truncate(
                     input_ids, labels, encoded, truncation_strategy=self.truncation_strategy)
+                if had_supervision and not any(label != -100 for label in labels):
+                    raise MaxLengthError('Truncation removed all supervised tokens. Increase `max_length` or change '
+                                         '`truncation_strategy`.')
                 length = self._get_length(input_ids, labels)
             elif self.truncation_strategy == 'raise':
                 raise MaxLengthError(f'Current length of row({length}) is larger'
