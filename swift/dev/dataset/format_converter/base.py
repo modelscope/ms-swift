@@ -85,7 +85,6 @@ class FormatConverter:
     Subclasses declare :attr:`format_name`, :attr:`aliases` and :attr:`priority`, then implement
     :meth:`detect` and :meth:`convert`.
     """
-    ## 给每个类、方法、field都写doc。这些注释可以被识别并转为doc，最终形成api文档，类似transformers的apidoc的做法
     format_name: Optional[str] = None
     # Detection order, lowest first. Explicit because the formats are not mutually exclusive: a
     # dataset carrying both `conversations` and `instruction` is a conversation dataset that happens
@@ -152,7 +151,6 @@ class FormatConverter:
         ``safe_rename_columns`` resolved a contest by silently dropping *both* renames.
         """
         keys = set(keys)
-        ## 这里的rank有什么意义？aliases是一个无序dict
         ranks = {alias: rank for rank, alias in enumerate(self.aliases)}
         winners: Dict[str, str] = {}
         for key in keys:
@@ -160,7 +158,6 @@ class FormatConverter:
             if standard == key or standard in keys:
                 continue
             incumbent = winners.get(standard)
-            ## 这里的含义是什么？为什么涉及到了优先级和多个key的互相比较？
             if incumbent is None or ranks[key] < ranks[incumbent]:
                 winners[standard] = key
         return {key: standard for standard, key in winners.items()}
@@ -174,7 +171,6 @@ class FormatConverter:
         """
         if isinstance(value, str):
             try:
-                ## 这里有安全风险吧？会被人提出问题
                 return ast.literal_eval(value)
             except (ValueError, SyntaxError):
                 return None

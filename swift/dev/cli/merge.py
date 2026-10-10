@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Dedicated merge CLI (``swift merge``) using the dev merge recipe.
 
 The command folds a LoRA adapter into its base weights and saves one plain model. It shares the

@@ -1,35 +1,3 @@
-"""UnslothModel: load and LoRA-wrap a model through unsloth, then train it on twinkle's loop.
-
-unsloth owns exactly two things a plain ``TransformersModel`` does differently:
-
-  - **construction** -- ``Fast*Model.from_pretrained`` returns a model whose attention / RMSNorm /
-    RoPE / MLP are swapped for unsloth's Triton kernels, and (with ``load_in_4bit``) a bnb-quantized
-    base, i.e. QLoRA;
-  - **LoRA installation** -- ``<Variant>.get_peft_model`` attaches unsloth's own LoRA layers plus its
-    offloaded gradient checkpointing (``use_gradient_checkpointing='unsloth'``). Feeding the same
-    model through peft's ``get_peft_model`` would attach vanilla LoRA and throw away those kernels,
-    which is the whole reason for installing unsloth.
-
-Everything else -- optimizer / scheduler / loss / metrics / step / grad-clip / save -- is inherited
-unchanged, so a recipe only swaps the model class. Mirrors what legacy swift does across
-``swift/model/register.py::load_by_unsloth`` and ``swift/pipelines/train/tuner.py::prepare_adapter``,
-but as one model class instead of two branches in two layers.
-
-Both hand-offs to unsloth are filtered by ``inspect.signature`` of the entry point actually being
-called rather than by a hand-maintained key list: unsloth's surface differs per variant (only the
-vision/generic path takes ``target_parameters``, only ``FastVisionModel`` takes ``whisper_language``,
-...) and grows every release. A static list silently drops new features and -- worse -- invites the
-wrong assumption that a missing name means "unsupported".
-
-Scope: single process or DDP. unsloth patches modules in-process and its OSS build is not written
-for sharded parameters, so tensor parallelism and FSDP's rank0-broadcast init are rejected rather
-than silently yielding a non-unsloth model on some ranks.
-
-Caveat worth knowing: unsloth's ``for_inference`` / ``for_training`` helpers overwrite
-``UNSLOTH_RETURN_LOGITS`` (0 / 1 respectively). This class sets it to 1 once at construction, so a
-recipe that routes the model through ``for_inference`` mid-run leaves unsloth returning
-``logits=None``, which twinkle's Loss objects need.
-"""
 from __future__ import annotations
 
 import dataclasses
@@ -74,6 +42,7 @@ _SHARDED_LOAD_KEYS = ('tp_plan', 'tp_size', 'distributed_config', 'device_mesh')
 # peft_* / revision / base_model_name_or_path / auto_mapping are save-time bookkeeping, runtime_config
 # is a live object peft rebuilds, inference_mode would disable training, and task_type has a
 # variant-specific default inside unsloth (the vision path defaults to CAUSAL_LM).
+## 这个是干什么的，确定逻辑正确吗
 _LORA_BOOKKEEPING_FIELDS = frozenset({
     'peft_type',
     'peft_version',
@@ -143,6 +112,7 @@ def _unsloth_lora_kwargs(config,
     # called the HF gradient_checkpointing_enable() during construction; this replaces it with
     # unsloth's implementation on the LoRA-wrapped model. False keeps checkpointing off, so a caller
     # asking for no gradient checkpointing is not overridden here.
+    ## unsloth有一些特殊初始化，比如使用unsloth自己的gc什么的，你看看
     kwargs['use_gradient_checkpointing'] = use_gradient_checkpointing
     kwargs['max_seq_length'] = max_seq_length
     # unsloth-only LoRA knobs (finetune_vision_layers, finetune_last_n_layers, qat_scheme, ...) have
@@ -286,6 +256,7 @@ class UnslothModel(TwinkleTransformersModel):
 
         # The import is inside the context too: unsloth runs its compiled-kernel setup through
         # distributed_function at import time, not just during from_pretrained.
+        ## 得写一个ddp的example实际测试下
         with apply_context(None, UnslothDistributedFunctionPatch()):
             unsloth_cls = self._unsloth_cls()
             accepted = _accepted_params(unsloth_cls.from_pretrained)

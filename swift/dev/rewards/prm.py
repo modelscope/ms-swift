@@ -11,7 +11,7 @@ that "segment + score" process behind one extension point (:data:`PRM_STEP_SCORE
     process reward. A subclass owns only *how a response is split into steps*; building the scoring rows,
     calling the PRM and the per-step broadcast (the mapping the training loop consumes) are shared.
   - :class:`DelimiterPRMScorer` is the default: it splits the decoded response on a text delimiter
-    (``RLHFConfig.prm_step_delimiter``, one step per line by default) and scores each step by its response
+    (``RLConfig.prm_step_delimiter``, one step per line by default) and scores each step by its response
     prefix through the scalar PRM channel (``compute_reward_model_scores``).
 
 A scorer never owns a model. The training loop injects ``score_steps`` (a batch of step rows -> one PRM
@@ -139,7 +139,7 @@ class DelimiterPRMScorer(PRMScorer):
     """The default PRM scorer: one reasoning step per delimiter-separated segment of the response.
 
     Steps are located in TOKEN space by walking the response one token at a time and cutting a step where
-    the accumulated per-token text contains the delimiter (``RLHFConfig.prm_step_delimiter``, a newline by
+    the accumulated per-token text contains the delimiter (``RLConfig.prm_step_delimiter``, a newline by
     default, i.e. one step per line -- the shape most chain-of-thought answers emit). Cutting on a token
     boundary keeps the spans exact; the trailing segment after the last delimiter is its own step, and a
     response with no delimiter is a single step covering all its tokens.
@@ -158,7 +158,7 @@ class DelimiterPRMScorer(PRMScorer):
 
     def __init__(self, args: Optional[Any] = None, **kwargs):
         super().__init__(args, **kwargs)
-        #: Step boundary in the decoded text. Read off the run's RLHFConfig (``args``) so it is a plain
+        #: Step boundary in the decoded text. Read off the run's RLConfig (``args``) so it is a plain
         #: ``--prm_step_delimiter`` knob; a newline is the default one-step-per-line segmentation.
         self.delimiter = getattr(args, 'prm_step_delimiter', None) or '\n'
 
@@ -185,7 +185,7 @@ prm_scorers = {
     'delimiter': DelimiterPRMScorer,
 }
 
-#: The 'prm_scorer' extension point: a run picks a scorer with ``RLHFConfig.prm_scorer`` (a registered name,
+#: The 'prm_scorer' extension point: a run picks a scorer with ``RLConfig.prm_scorer`` (a registered name,
 #: a class, or a callable), resolved through :meth:`PluginRegistry.resolve` and defaulted to ``'delimiter'``.
 PRM_STEP_SCORER = PluginRegistry.register_kind(
     'prm_scorer', PRMScorer, config_field='prm_scorer', entries=prm_scorers)

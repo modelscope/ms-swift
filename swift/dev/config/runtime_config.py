@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Process-wide runtime options shared by non-training CLI commands."""
 from dataclasses import dataclass
 

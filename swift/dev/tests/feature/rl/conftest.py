@@ -5,7 +5,7 @@ Conventions this suite is built on (RL_PLAN basic principles, which override eve
 
 * **RL is always ``mode='ray'``.** There is no ``mode='local'`` RL implementation -- the trainer and the
   rollout sampler are separate Ray actors the driver talks to. :func:`run_rl` therefore drives the real
-  CLI lifecycle (``parse`` -> force Ray/vLLM placement -> ``process_and_validate_configs`` -> ``run_rlhf``)
+  CLI lifecycle (``parse`` -> force Ray/vLLM placement -> ``process_and_validate_configs`` -> ``run_rl``)
   rather than the torchrun runner the SFT suite uses. Every derivation and validation the production
   ``swift rl`` command runs, runs here too -- so a config the CLI would reject is rejected here as well
   (which is exactly what the infeasible-combination tests assert against).
@@ -33,7 +33,7 @@ import pytest
 MODEL_TEXT = 'Qwen/Qwen2.5-0.5B-Instruct'
 
 #: The online family rolls out on an independent vLLM/SGLang sampler and weight-syncs into it; the
-#: offline preference family only forwards a fixed chosen/rejected dataset. Mirrors run_rlhf's dispatch.
+#: offline preference family only forwards a fixed chosen/rejected dataset. Mirrors run_rl's dispatch.
 ONLINE_TYPES = frozenset({'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'})
 OFFLINE_TYPES = frozenset({'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'})
 
@@ -42,21 +42,21 @@ OFFLINE_TYPES = frozenset({'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'})
 
 
 def _force_rl_placement(configs: Dict[str, Any]) -> None:
-    """Replicate the CLI's Ray/vLLM placement forcing (``cli/rlhf.py`` ``parse_rlhf_configs``).
+    """Replicate the CLI's Ray/vLLM placement forcing (``cli/rl.py`` ``parse_rl_configs``).
 
-    ``run_rlhf_configs`` runs process+validate+dispatch but NOT this forcing -- it lives in the argv
+    ``run_rl_configs`` runs process+validate+dispatch but NOT this forcing -- it lives in the argv
     parser, which a programmatic caller bypasses. Applying it here keeps ``run_rl`` on the exact
     production placement: every online type gets a vLLM sampler (colocate by default) and Ray mode; the
     offline family is Ray too (its policy is a Ray actor) but rolls out nothing, so it sets no sampler.
     """
-    rlhf_config = configs['rlhf_config']
+    rl_config = configs['rl_config']
     rollout_config = configs['rollout_config']
     distributed_config = configs['distributed_config']
-    if rlhf_config.rlhf_type in ONLINE_TYPES:
+    if rl_config.rl_type in ONLINE_TYPES:
         rollout_config.use_vllm = True
         rollout_config.vllm_mode = rollout_config.vllm_mode or 'colocate'
         distributed_config.mode = 'ray'
-    elif rlhf_config.rlhf_type in OFFLINE_TYPES:
+    elif rl_config.rl_type in OFFLINE_TYPES:
         distributed_config.mode = 'ray'
 
 
@@ -69,17 +69,17 @@ def run_rl(configs: Dict[str, Any]) -> List[dict]:
     live, and dropping it is safe because a loop materializes its history into plain dicts before
     returning (see ``_twinkle_runtime.reset_twinkle_runtime``).
     """
-    from swift.dev.cli.rlhf import run_rlhf_configs
+    from swift.dev.cli.rl import run_rl_configs
     from swift.dev.tests._twinkle_runtime import reset_twinkle_runtime
 
     reset_twinkle_runtime()
     _force_rl_placement(configs)
-    return run_rlhf_configs(configs)
+    return run_rl_configs(configs)
 
 
 def rl_configs(
     *,
-    rlhf_type: str,
+    rl_type: str,
     model: str,
     dataset: Any,
     out_dir: str,
@@ -102,7 +102,7 @@ def rl_configs(
     megatron_over: Optional[Dict[str, Any]] = None,
     moe_over: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Build the ``run_rlhf_configs`` config mapping with sane tiny-run defaults.
+    """Build the ``run_rl_configs`` config mapping with sane tiny-run defaults.
 
     Each ``*_over`` dict is merged onto that Config's defaults, so a test states only what its dimension
     varies. Defaults are chosen for a 1-2 optimizer-step run on one card: batch 1 / ga 1 (every
@@ -122,7 +122,7 @@ def rl_configs(
         MoEConfig,
         PluginConfig,
         QuantizeConfig,
-        RLHFConfig,
+        RLConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -166,7 +166,7 @@ def rl_configs(
         vllm_enforce_eager=True,
         vllm_max_model_len=512,
     )
-    rlhf_config = _merge(RLHFConfig, rlhf_over, rlhf_type=rlhf_type, max_completion_length=64)
+    rl_config = _merge(RLConfig, rlhf_over, rl_type=rl_type, max_completion_length=64)
     generation_config = _merge(GenerationConfig, generation_over, max_new_tokens=32, temperature=0.0)
     logging_config = LoggingConfig(report_to=['none'], logging_steps=1)
     megatron_config = _merge(MegatronConfig, megatron_over) if megatron_over else None
@@ -184,7 +184,7 @@ def rl_configs(
         'tuner_config': tuner_config,
         'generation_config': generation_config,
         'rollout_config': rollout_config,
-        'rlhf_config': rlhf_config,
+        'rl_config': rl_config,
         'quantize_config': QuantizeConfig(),
         'megatron_config': megatron_config,
         'moe_config': moe_config,
@@ -323,22 +323,22 @@ def assert_rl_trained():
 
     def _assert(history,
                 configs,
-                rlhf_type,
+                rl_type,
                 *,
                 max_loss,
                 require_keys=(),
                 lora=True,
                 expect_task_type=None,
                 expect_tuner_type='lora'):
-        assert history, f'{rlhf_type}: recipe produced no optimizer steps'
+        assert history, f'{rl_type}: recipe produced no optimizer steps'
         losses = [r['loss'] for r in history]
         # loss == loss is the NaN test (NaN != itself); not a typo.
         assert all(loss == loss and abs(loss) != float('inf') for loss in losses), \
-            f'{rlhf_type}: non-finite loss: {losses}'
+            f'{rl_type}: non-finite loss: {losses}'
         assert abs(losses[-1]) < max_loss, \
-            f'{rlhf_type}: converged loss out of sane range (<{max_loss}) -- raw sum or diverged: {losses}'
+            f'{rl_type}: converged loss out of sane range (<{max_loss}) -- raw sum or diverged: {losses}'
         for key in require_keys:
-            assert all(key in r for r in history), f'{rlhf_type}: {key!r} missing from history {history}'
+            assert all(key in r for r in history), f'{rl_type}: {key!r} missing from history {history}'
 
         # The checkpoint lives under the RESOLVED output_dir: process_and_validate_configs mutates
         # checkpoint_config.output_dir in place to the add_version subdir (v0-<ts>), so reading the
@@ -346,20 +346,20 @@ def assert_rl_trained():
         # assertion easier -- that would test a layout production never writes).
         out_dir = configs['checkpoint_config'].output_dir
         ckpt = os.path.join(out_dir, 'checkpoint-final')
-        assert os.path.isdir(ckpt), f'{rlhf_type}: no final checkpoint at {ckpt}'
+        assert os.path.isdir(ckpt), f'{rl_type}: no final checkpoint at {ckpt}'
         files = set(os.listdir(ckpt))
-        assert any(f.endswith('.safetensors') for f in files), f'{rlhf_type}: no weights in {sorted(files)}'
-        assert 'args.json' in files, f'{rlhf_type}: checkpoint not self-describing: {sorted(files)}'
+        assert any(f.endswith('.safetensors') for f in files), f'{rl_type}: no weights in {sorted(files)}'
+        assert 'args.json' in files, f'{rl_type}: checkpoint not self-describing: {sorted(files)}'
         args = read_args_json(ckpt)
         if expect_task_type is not None:
             assert args.get('task_type') == expect_task_type, \
-                f'{rlhf_type}: args.json task_type={args.get("task_type")!r}, expected {expect_task_type!r}'
+                f'{rl_type}: args.json task_type={args.get("task_type")!r}, expected {expect_task_type!r}'
         if expect_tuner_type is not None:
             assert args.get('tuner_type') == expect_tuner_type, \
-                f'{rlhf_type}: args.json tuner_type={args.get("tuner_type")!r}, expected {expect_tuner_type!r}'
+                f'{rl_type}: args.json tuner_type={args.get("tuner_type")!r}, expected {expect_tuner_type!r}'
         if lora:
             assert lora_b_nonzero(ckpt), \
-                f'{rlhf_type}: every lora_B is still zero on disk -- the optimizer never updated the adapter'
+                f'{rl_type}: every lora_B is still zero on disk -- the optimizer never updated the adapter'
         return losses
 
     return _assert

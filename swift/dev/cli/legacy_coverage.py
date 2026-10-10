@@ -13,7 +13,13 @@ UNSUPPORTED_SAMPLER_FIELDS: Tuple[str, ...] = (
 # registration collapsed onto `--external_plugins`, and `agent_template` was never consumed.
 REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
     'ignore_args_error', 'use_swift_lora', 'write_batch_size', 'to_ollama', 'orm_model', 'prm_model',
-    'reward_model_plugin', 'custom_register_path', 'agent_template')
+    'reward_model_plugin', 'custom_register_path', 'agent_template',
+    # device_map (HF load-time sharding) is retired: the runtime places the model through its own
+    # parallel/accelerate strategy on every backend, so a user-supplied device_map has no effect.
+    'device_map',
+    # Template knobs likewise not consumed: the loss scale is expressed through --loss_scale and
+    # thinking-block handling through --enable_thinking.
+    'is_binary_loss_scale', 'template_backend', 'preserve_thinking', 'disable_ignore_empty_think')
 #: Per-field replacement text overriding the generic 'removed_option' guidance where the migration path
 #: is specific enough to name, so the failure points at the exact flag that replaced it.
 REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
@@ -22,11 +28,27 @@ REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
     'reward_model_plugin': 'reward-model scoring is built in now; configure --orm/--prm directly',
     'custom_register_path': 'use --external_plugins (local file | local folder | hub id)',
     'agent_template': 'express the agent format through --template and the template registry',
+    'device_map': 'the runtime places the model across devices on its own; drop --device_map',
     'merge_lora': 'this command merges the adapter implicitly; drop --merge_lora',
     'exist_ok': 'use --replace_if_exists to overwrite an existing output directory',
     'steps_per_generation': 'use --num_iterations to replay one rollout across several optimizer steps',
     'num_mini_batches': 'set --per_device_train_batch_size to control the mini-batch width',
     'num_generations_eval': 'set the per-prompt generation count inside --eval_generation_config instead',
+    'prediction_loss_only': 'evaluation already computes the loss only; drop --prediction_loss_only',
+    'do_eval': 'use --eval_strategy to enable evaluation',
+    'eval_use_evalscope': 'in-training evaluation is configured through --eval_strategy and --eval_dataset',
+    'label_names': 'the data pipeline always produces labels; drop --label_names',
+    'max_epochs': 'use --num_train_epochs instead',
+    'disable_tqdm': 'training progress is written to the log rather than a progress bar; drop --disable_tqdm',
+    'check_model': 'the model is always checked on load; drop --check_model',
+    'lora_dtype': 'the adapter dtype follows the base model; drop --lora_dtype',
+    'eval_metric': 'metrics are configured on the optimizer status; drop --eval_metric',
+    'average_tokens_across_devices': 'the loss is already averaged over real tokens across the whole global batch',
+    'use_logits_to_keep': 'memory-efficient loss computation is always enabled',
+    'is_binary_loss_scale': 'the loss scale is configured through --loss_scale; drop --is_binary_loss_scale',
+    'template_backend': 'only the built-in template backend is used; drop --template_backend',
+    'preserve_thinking': 'thinking-block handling is configured through --enable_thinking; drop --preserve_thinking',
+    'disable_ignore_empty_think': 'empty-think handling is not configurable; drop --disable_ignore_empty_think',
 }
 # eval scores a local sampler through the Native runner only, so its former remote-service URL, its
 # backend choice (OpenCompass/VLMEvalKit are gone) and the OpenCompass-only local-data toggle are obsolete.
@@ -51,6 +73,13 @@ RLHF_REMOVED_RL_KNOBS: Tuple[str, ...] = (
 # rather than an in-training generate-and-score loop, so there is no per-prompt eval generation to size;
 # the eval generation budget is expressed through the structured --eval_generation_config instead.
 RLHF_REMOVED_EVAL_FIELDS: Tuple[str, ...] = ('num_generations_eval',)
+# The externally-managed HTTP serving knobs. An RL training run starts its rollout sampler and (for
+# distillation) its teacher inside the training job according to its own parallel spec, so there is no
+# user-facing server address/port to point at; these were retired together with the HTTP-server rollout
+# path and are refused rather than silently ignored.
+RLHF_REMOVED_SERVER_FIELDS: Tuple[str, ...] = (
+    'teacher_model_server', 'teacher_tag_key', 'vllm_server_base_url', 'vllm_server_group_port',
+    'vllm_server_host', 'vllm_server_pass_dataset', 'vllm_server_port', 'vllm_server_timeout')
 # eval scores an in-process sampler and starts no HTTP deployment, so the server knobs it once accepted
 # through DeployConfig belong to `swift deploy`, not here.
 EVAL_SERVING_FIELDS: Tuple[str, ...] = (
@@ -68,7 +97,21 @@ TRAIN_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
     'project', 'trackio_space_id', 'trackio_bucket_id', 'trackio_static_space_id', 'eval_do_concat_batches',
     'eval_use_gather_object', 'include_for_metrics', 'batch_eval_metrics', 'enable_jit_checkpoint',
     'restore_callback_states_from_checkpoint', 'use_cpu', 'parallelism_config', 'train_sampling_strategy',
-    'length_column_name', 'debug', 'skip_memory_metrics', 'do_train', 'do_predict', 'sortish_sampler')
+    'length_column_name', 'debug', 'skip_memory_metrics', 'do_train', 'do_predict', 'sortish_sampler',
+    # HF-Trainer / accelerate / DeepSpeed internals with no counterpart in the current training path:
+    # graph compilation, the accelerate integration config, OOM batch halving, the ZeRO-3 generation
+    # gather, eval-prediction CPU offloading and full-eval precision overrides. The last two are knobs
+    # whose behaviour is now built in -- the loss is already averaged over real tokens across the whole
+    # global batch, and memory-efficient loss computation is always on -- so there is nothing to select.
+    'torch_compile', 'torch_compile_backend', 'torch_compile_mode', 'accelerator_config', 'auto_find_batch_size',
+    'ds3_gather_for_generation', 'eval_accumulation_steps', 'bf16_full_eval', 'fp16_full_eval',
+    'average_tokens_across_devices', 'use_logits_to_keep')
+# Training-surface options retired because the current path already behaves that way or folds them into
+# another flag, so each is refused with the migration note in REMOVED_OPTION_REPLACEMENTS rather than
+# silently dropped.
+TRAIN_REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
+    'prediction_loss_only', 'do_eval', 'eval_use_evalscope', 'label_names', 'max_epochs', 'disable_tqdm',
+    'check_model', 'lora_dtype', 'eval_metric')
 TUNER_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
     'lisa_activated_layers', 'lisa_step_interval', 'lora_ga_batch_size', 'lora_ga_iters', 'lora_ga_max_length',
     'lora_ga_direction', 'lora_ga_scale', 'lora_ga_stable_gamma', 'fourier_n_frequency', 'fourier_scaling',
@@ -78,7 +121,10 @@ TUNER_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
     'reft_intervention_type', 'reft_args')
 TRAINING_GENERATION_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
     'top_k', 'top_p', 'repetition_penalty', 'num_beams', 'stream', 'stop_words', 'logprobs', 'top_logprobs',
-    'structured_outputs_regex', 'generation_config', 'generation_max_length', 'generation_num_beams')
+    'structured_outputs_regex', 'generation_config', 'generation_max_length', 'generation_num_beams',
+    # temperature / max_new_tokens join the other per-flag decoding knobs now that their dead TrainConfig
+    # home is gone: a training run that generates during eval sets these inside --eval_generation_config.
+    'temperature', 'max_new_tokens')
 MCORE_TRAINING_CHECKPOINT_FIELDS: Tuple[str, ...] = ('mcore_model', 'mcore_adapter')
 MCORE_REFERENCE_CHECKPOINT_FIELDS: Tuple[str, ...] = ('mcore_ref_model', 'mcore_ref_adapter')
 CHECKPOINT_FIELDS: Tuple[str, ...] = (
@@ -170,7 +216,10 @@ LEGACY_ALIASES: Dict[str, str] = {
     'reward_weights': 'orm_weights',
     'prm_funcs': 'prm',
     'lr_scheduler_type': 'lr_scheduler',
-    # Only TrainConfig's supervised-loss field was renamed to `loss`; RLHFConfig.loss_type (the GRPO
+    # `swift rl` dropped the "hf" from the v4 flag: the RLConfig field is now `rl_type`, so the v4
+    # spelling `--rlhf_type` folds onto it here (same pattern as `lr` -> `learning_rate`).
+    'rlhf_type': 'rl_type',
+    # Only TrainConfig's supervised-loss field was renamed to `loss`; RLConfig.loss_type (the GRPO
     # objective) keeps its name. normalize_argv/build_legacy_contract suppress this alias on commands
     # where `loss_type` is itself a live field (rlhf), so the two never collide.
     'loss_type': 'loss',
@@ -191,39 +240,41 @@ CLI_LEGACY_ONLY: Dict[str, Mapping[str, Tuple[str, ...]]] = {
         'unsupported_training': TRAIN_UNSUPPORTED_FIELDS + TUNER_UNSUPPORTED_FIELDS
         + TRAINING_GENERATION_UNSUPPORTED_FIELDS,
         'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + CHECKPOINT_TRANSFORMERS_STATE_FIELDS,
-        'removed_option': REMOVED_OPTION_FIELDS,
+        'removed_option': REMOVED_OPTION_FIELDS + TRAIN_REMOVED_OPTION_FIELDS,
     },
     'sft': {
         'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
         'unsupported_training': TRAIN_UNSUPPORTED_FIELDS + TUNER_UNSUPPORTED_FIELDS
         + TRAINING_GENERATION_UNSUPPORTED_FIELDS,
         'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + CHECKPOINT_TRANSFORMERS_STATE_FIELDS,
-        'removed_option': REMOVED_OPTION_FIELDS,
+        'removed_option': REMOVED_OPTION_FIELDS + TRAIN_REMOVED_OPTION_FIELDS,
     },
-    'rlhf': {
+    'rl': {
         'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
         'unsupported_training': TRAIN_UNSUPPORTED_FIELDS + TUNER_UNSUPPORTED_FIELDS,
         'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + CHECKPOINT_TRANSFORMERS_STATE_FIELDS
         + MCORE_REFERENCE_CHECKPOINT_FIELDS,
-        'removed_option': REMOVED_OPTION_FIELDS + ('seq_kd',) + RLHF_REMOVED_ROLLOUT_FIELDS
-        + RLHF_REMOVED_RL_KNOBS + RLHF_REMOVED_EVAL_FIELDS,
+        'removed_option': REMOVED_OPTION_FIELDS + TRAIN_REMOVED_OPTION_FIELDS + ('seq_kd',)
+        + RLHF_REMOVED_ROLLOUT_FIELDS + RLHF_REMOVED_RL_KNOBS + RLHF_REMOVED_EVAL_FIELDS
+        + RLHF_REMOVED_SERVER_FIELDS,
     },
     'megatron_pt': {
         'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
         'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + MCORE_TRAINING_CHECKPOINT_FIELDS,
-        'removed_option': REMOVED_OPTION_FIELDS,
+        'removed_option': REMOVED_OPTION_FIELDS + TRAIN_REMOVED_OPTION_FIELDS,
     },
     'megatron_sft': {
         'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
         'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + MCORE_TRAINING_CHECKPOINT_FIELDS,
-        'removed_option': REMOVED_OPTION_FIELDS,
+        'removed_option': REMOVED_OPTION_FIELDS + TRAIN_REMOVED_OPTION_FIELDS,
     },
-    'megatron_rlhf': {
+    'megatron_rl': {
         'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
         'unsupported_checkpoint': CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS + MCORE_TRAINING_CHECKPOINT_FIELDS
         + MCORE_REFERENCE_CHECKPOINT_FIELDS,
-        'removed_option': REMOVED_OPTION_FIELDS + ('seq_kd',) + RLHF_REMOVED_ROLLOUT_FIELDS
-        + RLHF_REMOVED_RL_KNOBS + RLHF_REMOVED_EVAL_FIELDS,
+        'removed_option': REMOVED_OPTION_FIELDS + TRAIN_REMOVED_OPTION_FIELDS + ('seq_kd',)
+        + RLHF_REMOVED_ROLLOUT_FIELDS + RLHF_REMOVED_RL_KNOBS + RLHF_REMOVED_EVAL_FIELDS
+        + RLHF_REMOVED_SERVER_FIELDS,
     },
     'infer': {
         'unsupported_sampler': UNSUPPORTED_SAMPLER_FIELDS,
@@ -304,7 +355,7 @@ def build_legacy_contract(command: str,
             continue
         target = LEGACY_ALIASES.get(name)
         # A legacy spelling that is itself a live field of a DIFFERENT Config than the alias target is
-        # that Config's own current flag, not a rename -- `loss_type` on RLHFConfig (the GRPO objective)
+        # that Config's own current flag, not a rename -- `loss_type` on RLConfig (the GRPO objective)
         # vs `loss` on TrainConfig (the supervised loss). Classify it as direct so the audit matches
         # what normalize_argv does at runtime; same-owner pairs (`lr`/`learning_rate`, both TrainConfig)
         # are genuine renames and stay aliases.

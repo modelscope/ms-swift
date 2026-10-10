@@ -18,7 +18,7 @@ from .run_ppo import PPOLoop, run_ppo
 from .run_pt import run_pt
 from .run_reranker import run_reranker
 from .run_rft import RFTLoop, run_rft
-from .run_rlhf import run_rlhf
+from .run_rl import run_rl
 from .run_seq_cls import run_seq_cls
 from .run_sft import run_sft
 from .train_loop import SFTLoop, num_optimizer_steps
@@ -45,7 +45,7 @@ __all__ = [
     'RFTLoop',
     'run_ppo',
     'PPOLoop',
-    'run_rlhf',
+    'run_rl',
     'num_optimizer_steps',
     'export_cached_dataset',
     'run_quantize',

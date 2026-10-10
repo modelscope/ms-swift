@@ -1,20 +1,10 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 import os
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, Sequence
 
 if TYPE_CHECKING:
     from swift.dev.config import DistributedConfig, ModelConfig, TrainConfig, TunerConfig
-
-
-@dataclass
-class MegatronCliCompatConfig:
-    """Legacy control flags that have no Config value because dev makes them unconditional."""
-
-    # dev never initializes Megatron during parsing, so the safe behavior requested by this legacy
-    # switch is already unconditional. Semantic aliases such as attention_backend/bf16/fp16 are not
-    # duplicated here: parser.normalize_argv writes them directly to ModelConfig.
-    skip_megatron_init: bool = True
 
 
 def peek_backend(argv: Sequence[str]) -> Optional[str]:

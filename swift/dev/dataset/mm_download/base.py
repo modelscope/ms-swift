@@ -20,7 +20,6 @@ class MediaDownloader:
 
     cache_dir = os.path.join(get_cache_dir(), 'media_resources')
 
-    ## 这个有必要还写死吗
     # Bare media-type ids that resolve to an archive on the shared sharegpt4v mirror; anything else
     # passed to `download` is treated as a literal URL.
     MEDIA_TYPES = {

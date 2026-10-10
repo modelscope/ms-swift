@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Logging and experiment tracking configuration."""
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -57,7 +58,6 @@ class LoggingConfig:
     #: divergence is visible rather than smoothed away.
     logging_nan_inf_filter: bool = False
     logging_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
-    disable_tqdm: Optional[bool] = None
 
     # Not migrated: HF's `log_level`, which sets the trainer's own logger verbosity. DeployConfig
     # already has a `log_level` meaning the server's, and the two would collide the moment a CLI

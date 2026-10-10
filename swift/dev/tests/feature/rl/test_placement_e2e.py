@@ -79,7 +79,7 @@ def test_disaggregated_grpo_nccl_sync_disjoint_gpus(tiny_qwen2_5, rl_data, tmp_p
       is therefore a stale-behaviour-policy bug, not a benign no-op.
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',

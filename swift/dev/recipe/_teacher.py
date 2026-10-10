@@ -1,23 +1,3 @@
-"""Shared teacher / reference scoring abstractions for the on-policy RL loops.
-
-GRPO (reference + RLSD/SDAR teacher) and the distillation family (GKD / OPSD / MOPD) all score with a
-frozen owner via ``forward_only``. That owner used to be a union -- ``None`` | the ``'disable_lora'``
-sentinel string | a frozen model | a list of frozen models -- with sentinel and ``isinstance`` checks
-scattered across every loop (RL_PLAN W29). This module replaces that union with a few objects that all
-expose ONE structural contract, ``forward_only(inputs, **kwargs)``, so a loop calls its scorer uniformly
-and never branches on what KIND of teacher it is. The raw student model satisfies the same contract, so
-"score on the student" needs no wrapper either.
-
-What is deliberately NOT unified here is the teacher SIGNAL. GKD scores full-vocab ``teacher_logits``;
-OPSD/MOPD score response-only ``teacher_logps`` (MOPD: K channels fused by weighted mixture); GRPO's
-RLSD/SDAR scores response-only ``teacher_logps``. Those are three genuinely different contracts, and
-folding them into one ``score()`` would change at least one loop's behaviour -- so each loop keeps its own
-signal extraction and only the "who forwards, with the adapter disabled, with offload" resolution is
-converged here.
-
-The offline preference (``run_dpo``) and PPO loops still carry their own ``'disable_lora'`` sentinel; they
-are independent loop classes whose convergence is a later stage (RL_PLAN §9 阶段三/四), not this module's.
-"""
 from __future__ import annotations
 import copy
 from typing import Any, Dict, List, Optional, Protocol
@@ -79,6 +59,7 @@ class FrozenModelTeacher:
     """
 
     def __init__(self, model: Any, *, offload: bool = False):
+        ## 这里的offload是在什么场景使用？和DynamicSelfTeacher有何区别？
         self.model = model
         self.offload = offload
         if offload:
@@ -116,6 +97,7 @@ def response_positions(feature: Dict[str, Any]) -> List[int]:
     labels = feature.get('labels')
     if labels is None:
         return []
+    ## 这个和completion_mask关系是什么？该用什么字段？
     return [idx for idx, label in enumerate(labels) if int(label) != -100]
 
 
@@ -138,7 +120,7 @@ def encode_privileged_view(
     if template is None:
         raise ValueError('teacher_prompt requires a template to build the privileged teacher view.')
     extra = extra or {}
-    row: Dict[str, Any] = {'messages': messages, 'add_eos': False}
+    row: Dict[str, Any] = {'messages': messages, 'add_eos': False} ## add_eos代表什么
     for key in _MULTIMODAL_KEYS:
         if extra.get(key) is not None:
             row[key] = extra[key]

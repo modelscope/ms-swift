@@ -1,25 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""The shared spine of every training recipe -- and the one place plugins are inserted.
-
-Eight recipes ran the same sequence -- validate -> processor/template -> dataloaders -> step budget
--> model -> tuner -> loss/optimizer -> loop.fit -> final checkpoint -- and differed only in which
-``configure_*_loss`` they called, which ``task`` they trained, and (for the RL ones) what extra models
-they build. That sequence is also *order-locked* by twinkle in several places, so eight copies meant
-eight chances to get the order wrong: the notes on why ``apply_tuner`` precedes ``set_processor``, and
-why a class is passed there but an instance to ``set_template``, were duplicated four times over.
-Worse, the parts already recognised as shared were reached as
-``from swift.dev.recipe.run_sft import _initialize_twinkle`` -- seven recipes importing a private name
-out of an eighth recipe.
-
-Plugin loading is a stage of :meth:`TrainAssembly.prepare`, which gives an extension point exactly one
-insertion site: no recipe can forget it and none can do it differently. It runs before the run's first
-name lookup (a reward / loss name means nothing until the user's file has been imported) and before
-cross-validation, so a plugin may register the very thing validation then checks.
-
-A recipe whose shape genuinely differs (DPO's reference model, GRPO's sampler) still calls
-``prepare()`` and may use individual stages; the stages are separate methods, and each keeps its result
-on the assembly, precisely so a recipe can take the ones it needs and hand-roll the rest.
-"""
 from __future__ import annotations
 import math
 import os
@@ -39,7 +18,7 @@ if TYPE_CHECKING:
         MoEConfig,
         PluginConfig,
         QuantizeConfig,
-        RLHFConfig,
+        RLConfig,
         TemplateConfig,
         TrainConfig,
         TunerConfig,
@@ -51,7 +30,7 @@ logger = get_logger()
 def single_teacher_id(teacher_model: Optional[List[str]], *, algo: str) -> Optional[str]:
     """Resolve the one teacher id a single-teacher algorithm distils from, or ``None`` for no teacher.
 
-    ``RLHFConfig.teacher_model`` is a list (shared with MOPD, which distils from K teachers); GKD/OPSD and
+    ``RLConfig.teacher_model`` is a list (shared with MOPD, which distils from K teachers); GKD/OPSD and
     GRPO's RLSD/SDAR take exactly one. ``None``/empty passes through so the caller applies its own
     no-teacher semantics (self-distillation, or its own error); more than one is rejected here rather than
     silently training on the first and ignoring the rest.
@@ -59,9 +38,9 @@ def single_teacher_id(teacher_model: Optional[List[str]], *, algo: str) -> Optio
     if not teacher_model:
         return None
     if len(teacher_model) != 1:
-        raise ValueError(f'{algo} distils from a single teacher but RLHFConfig.teacher_model has '
+        raise ValueError(f'{algo} distils from a single teacher but RLConfig.teacher_model has '
                          f'{len(teacher_model)} entries ({list(teacher_model)}); pass exactly one, or use '
-                         '--rlhf_type mopd to distil from multiple teachers.')
+                         '--rl_type mopd to distil from multiple teachers.')
     return teacher_model[0]
 
 
@@ -115,7 +94,7 @@ class TrainAssembly:
     distributed_config: 'DistributedConfig'
     checkpoint_config: Optional['CheckpointConfig'] = None
     tuner_config: Optional['TunerConfig'] = None
-    rlhf_config: Optional['RLHFConfig'] = None
+    rl_config: Optional['RLConfig'] = None
     #: The twinkle task the loop runs (``None`` -> the loop's own default, ``'causal_lm'``).
     task: Optional[str] = None
     #: Override for the LOOP's forward task only, leaving ``task`` (and so task_type / template
@@ -166,6 +145,7 @@ class TrainAssembly:
                            *,
                            seed: int = 42,
                            full_determinism: bool = False,
+                           tf32: Optional[bool] = None,
                            auxiliary_groups: Sequence[Tuple[str, int]] = ()) -> None:
         """Initialize twinkle for EVERY backend -- required for a DeviceMesh to reach the model.
 
@@ -183,10 +163,12 @@ class TrainAssembly:
         its OWN DistributedConfig (``frozen_auxiliary_distributed_config``, sized to world_size), so no
         global mesh is installed here (unlike the online-RL path's sampler, which needs one).
 
-        ``seed`` / ``full_determinism`` are forwarded to ``twinkle.initialize`` so the user's
-        TrainConfig.seed actually steers the run: twinkle seeds the driver here and re-seeds each ray
-        worker from the same values (infra/__init__.py), so without this twinkle would fall back to
-        its own default (seed=42) and silently overwrite the configured seed.
+        ``seed`` / ``full_determinism`` / ``tf32`` are bundled into ``extra_torch_kwargs`` and forwarded
+        to ``twinkle.initialize`` so the user's TrainConfig.seed actually steers the run: twinkle seeds
+        the driver here and re-seeds each ray worker from the same values, so without this twinkle would
+        fall back to its own default (seed=42) and silently overwrite the configured seed. Each is a
+        per-process global, re-applied on every worker from the EXTRA_TORCH_KWARGS env var; ``tf32``=None
+        leaves torch's own default alone.
 
         See doc.md 'run_sft twinkle 初始化' for why this is load-bearing on the transformers backend
         and why there is no teardown counterpart.
@@ -194,6 +176,9 @@ class TrainAssembly:
         import twinkle
         from twinkle import DeviceGroup
 
+        # The per-process torch knobs travel to twinkle as ONE bundle (see twinkle.infra._torch_setup),
+        # so a future knob is a dict key here rather than a new twinkle.initialize() argument.
+        extra_torch_kwargs = {'seed': seed, 'full_determinism': full_determinism, 'tf32': tf32}
         if distributed_config.mode == 'ray':
             # The DeviceGroup named 'model' is what build_model targets with remote_group='model'
             # (Megatron and transformers alike); the driver orchestrates and is not part of the group.
@@ -216,6 +201,7 @@ class TrainAssembly:
                                      f'group ({planned}); each frozen model needs a unique name.')
                 groups.append(
                     DeviceGroup(
+                        # 不需要具体指定ranks，指定数量即可生效
                         name=name, ranks=list(range(next_rank, next_rank + world_size)), device_type='GPU',
                         gpus_per_worker=1))
                 planned.append(name)
@@ -223,14 +209,13 @@ class TrainAssembly:
             twinkle.initialize(
                 mode='ray',
                 nproc_per_node=next_rank,
-                seed=seed,
-                full_determinism=full_determinism,
+                extra_torch_kwargs=extra_torch_kwargs,
                 # --ray_exp_name names this Ray run (the cluster/worker-name prefix); a local run has
                 # no Ray experiment to name, so it is read only here. None keeps twinkle's default.
                 name=distributed_config.ray_exp_name,
                 groups=groups)
         else:
-            twinkle.initialize(mode='local', seed=seed, full_determinism=full_determinism)
+            twinkle.initialize(mode='local', extra_torch_kwargs=extra_torch_kwargs)
 
     def prepare(self) -> 'TrainAssembly':
         """Process and validate Configs before building anything heavy.
@@ -249,7 +234,7 @@ class TrainAssembly:
             self.distributed_config,
             self.checkpoint_config,
             self.tuner_config,
-            self.rlhf_config,
+            self.rl_config,
             megatron_config=self.megatron_config,
             quantize_config=self.quantize_config,
             plugin_config=self.plugin_config,
@@ -262,7 +247,7 @@ class TrainAssembly:
             self.distributed_config,
             self.checkpoint_config,
             self.tuner_config,
-            self.rlhf_config,
+            self.rl_config,
             self.logging_config,
             quantize_config=self.quantize_config,
             megatron_config=self.megatron_config,
@@ -286,13 +271,14 @@ class TrainAssembly:
 
         Runs AFTER :meth:`prepare`: the sequence-parallel validate guards have already rejected the
         combinations where this mesh would be meaningless or harmful (megatron backend, fsdp, a non-flash
-        attn under padding_free/packing, non-divisible world, and -- for ray -- any rlhf_type whose SP
+        attn under padding_free/packing, non-divisible world, and -- for ray -- any rl_type whose SP
         consumer wiring is not in place).
         """
         sp = self.template_config.sequence_parallel_size
         if sp <= 1:
             self.sp_mesh = None
             return self.sp_mesh
+        ## 这俩有啥区别吗？感觉你写了一大堆的build_xxx_mesh，看来看去内容都差不多
         if self.distributed_config.mode == 'ray':
             from swift.dev.builders import build_ray_dp_mesh
             self.sp_mesh = build_ray_dp_mesh(self.distributed_config, sp)
@@ -442,6 +428,7 @@ class TrainAssembly:
         # Full-parameter checkpoints always provide the model weights, including resume_only_model;
         # that flag only suppresses optimizer/scheduler/RNG restoration. LoRA keeps the original base
         # and reloads the adapter through resume_from_checkpoint after apply_tuner.
+        ## 如果tuner_config不是空，还有resume_dir为什么不支持？
         redirect_to_ckpt = bool(resume_dir) and self.tuner_config is None
         model_config = self.model_config
         if redirect_to_ckpt:
@@ -457,10 +444,10 @@ class TrainAssembly:
             quantize_config=self.quantize_config,
             megatron_config=self.megatron_config,
             moe_config=self.moe_config,
-            # MoE routing replay is a trainable-policy concern (RLHFConfig.router_replay_mode); the frozen
+            # MoE routing replay is a trainable-policy concern (RLConfig.router_replay_mode); the frozen
             # auxiliaries built elsewhere never RECORD/REPLAY routing, so only this build enables it.
-            enable_router_replay=bool(self.rlhf_config
-                                      and self.rlhf_config.router_replay_mode != 'disabled'))
+            enable_router_replay=bool(self.rl_config
+                                      and self.rl_config.router_replay_mode != 'disabled'))
         if self.tuner_config is not None:
             # task_type is threaded so a seq_cls/reranker LoRA run adds the freshly-built
             # classification head to modules_to_save -- LoRA trains/saves target_modules only, so
@@ -526,6 +513,7 @@ class TrainAssembly:
             manual_gc=bool(self.megatron_config and self.megatron_config.manual_gc),
             manual_gc_eval=bool(self.megatron_config and self.megatron_config.manual_gc_eval),
             manual_gc_steps=self.megatron_config.manual_gc_steps if self.megatron_config else 0,
+            torch_empty_cache_steps=self.train_config.torch_empty_cache_steps,
             callbacks=build_callbacks(self.train_config),
             eval_delay=int(self.train_config.eval_delay or 0),
             eval_on_start=self.train_config.eval_on_start,
@@ -683,6 +671,8 @@ class TrainAssembly:
             return {}
         resume_kwargs = {'resume_only_model': self.resume_only_model}
         if self.checkpoint_config is not None and is_megatron_backend(self.distributed_config):
+            ## resume的时候，如果数据集也一并恢复状态，做得到吗
+            ## 也就是完全继续训练
             resume_kwargs.update(
                 no_load_optim=self.checkpoint_config.no_load_optim,
                 no_load_rng=self.checkpoint_config.no_load_rng,
@@ -756,7 +746,9 @@ class TrainAssembly:
             self.model,
             self.train_config,
             num_training_steps=self.total_opt_steps,
-            distributed_config=self.distributed_config)
+            distributed_config=self.distributed_config,
+            tuner_config=self.tuner_config,
+            plugin_config=self.plugin_config)
         if configure_metric is not None:
             configure_metric(self.model)
         self.build_loop()

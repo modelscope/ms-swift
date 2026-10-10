@@ -28,8 +28,12 @@ literal: ``orms`` stays the very dict it has always been, so the legacy idiom
 ``orms['my'] = MyReward`` and the decorator above write to the same place, and no caller has to learn
 which one a plugin came from.
 
-Deliberately NOT extension points: the optimizer (dev refuses ``--optimizer`` outright, see
-``cli/sft.py``) and the tuner (a capability, not a hook).
+Deliberately NOT a swift extension point: the optimizer *class* -- ``TrainConfig.optim`` is a name that
+``naming.py`` resolves inside twinkle's kernel optimizer namespace, so swift declares no kind for it.
+Customizing how parameters are *grouped* (per-tower / LoRA+ learning rates, per-group weight decay) IS a
+swift extension point: the ``param_groups`` kind in ``swift/dev/optimizer_plugins.py``, whose plugins
+return serializable grouping rules that twinkle applies worker-side on both backends. The tuner stays a
+capability, not a hook.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -129,7 +133,7 @@ class PluginKind:
 #: config lifecycle imports them that early (``process_configs`` calls ``load_configured`` before any recipe
 #: runs), so a plugin registering a built-in kind would otherwise hit an empty ``KINDS``.
 _BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.rewards.prm', 'swift.dev.rollout.sandbox',
-                         'swift.dev.callbacks')
+                         'swift.dev.callbacks', 'swift.dev.optimizer_plugins')
 
 
 def _declare_builtin_kinds() -> None:

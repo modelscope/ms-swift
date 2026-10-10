@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Inference CLI backed only by dev Configs and recipes."""
 from __future__ import annotations
 import datetime as dt
@@ -30,7 +31,7 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         ModelConfig,
         PluginConfig,
         QuantizeConfig,
-        RLHFConfig,
+        RLConfig,
         RolloutConfig,
         RuntimeConfig,
         TemplateConfig,
@@ -40,17 +41,13 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     effective_argv = resolve_argv(argv)
     reject_legacy_only_flags('infer', effective_argv)
     # infer absorbs the whole synthesis surface: InferConfig now carries the best-of-n / reward / token-dump
-    # knobs, and RLHFConfig is the reward-channel and multi-turn carrier (orm, prm, max_turns, tools). The
-    # duplicate spellings these add are each pinned to one owner so a flag never lands on the wrong Config.
+    # knobs, and RLConfig is the reward-channel and multi-turn carrier (orm, prm, max_turns, tools). Every
+    # field name is unique across these Configs, so no per-flag owner disambiguation is needed.
     classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig,
-               TunerConfig, GenerationConfig, RolloutConfig, InferConfig, RLHFConfig,
+               TunerConfig, GenerationConfig, RolloutConfig, InferConfig, RLConfig,
                QuantizeConfig, InferCliConfig, RuntimeConfig]
-    owners = {
-        'strict': InferConfig,
-        'temperature': GenerationConfig,
-    }
     configs = parse_configs_strict(
-        classes, effective_argv, command='swift infer', field_owners=owners, load_args_default=True)
+        classes, effective_argv, command='swift infer', load_args_default=True)
     names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'distributed_config',
              'checkpoint_config', 'tuner_config', 'generation_config', 'rollout_config', 'infer_config',
              'reward_config', 'quantize_config', 'cli_config', 'runtime_config')
@@ -69,7 +66,7 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         infer_config.reward_threshold = infer_config.prm_threshold
     if 'padding_side' not in passed:
         result['template_config'].padding_side = 'left'
-    # The RLHFConfig doubles as the reward-channel carrier (orm / prm and their weights) and the
+    # The RLConfig doubles as the reward-channel carrier (orm / prm and their weights) and the
     # multi-turn config; synthesis reads it directly rather than through an InferConfig field.
     result['multi_turn_config'] = result['reward_config']
     # num_samples (the CLI spelling) and num_return_sequences (the InferConfig field) are one knob under
@@ -160,7 +157,7 @@ def infer_main(argv: Optional[List[str]] = None):
 
     configs = parse_infer_configs(argv)
     infer_config = configs['infer_config']
-    rlhf_config = configs['reward_config']
+    rl_config = configs['reward_config']
     cli_config = configs['cli_config']
     has_dataset = bool(configs['dataset_config'].dataset or configs['dataset_config'].val_dataset)
     interactive = cli_config.eval_human or not has_dataset
@@ -204,7 +201,7 @@ def infer_main(argv: Optional[List[str]] = None):
         configs['dataset_config'],
         infer_config,
         configs['generation_config'],
-        rlhf_config=rlhf_config,
+        rl_config=rl_config,
         rollout_config=configs['rollout_config'],
         backend=backend,
         engine_args=engine_args,

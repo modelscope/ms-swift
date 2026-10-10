@@ -83,14 +83,12 @@ def test_infer_backend(fake_model, spelling, expected):
     assert r['infer_config'].sampler == expected
 
 
-def test_sampler_type_pins_to_deploy_config(fake_model):
-    """``--sampler_type`` is spelled by both InferConfig (sample/distill) and DeployConfig
-    (vllm/vllm_async/sglang_async/...); deploy pins it to DeployConfig, the field that actually drives
-    the deployment. Without the pin, argparse rejects 'vllm_async' against InferConfig's choices."""
+def test_sampler_type_lands_on_deploy_config(fake_model):
+    """``--sampler_type`` selects the deployment engine (vllm/vllm_async/sglang_async/...). It is
+    declared only on DeployConfig, so the flag has a single unambiguous owner and 'vllm_async'
+    parses against DeployConfig's choices."""
     r = parse_deploy_configs(['--model', fake_model, '--sampler_type', 'vllm_async'])
     assert r['deploy_config'].sampler_type == 'vllm_async'
-    # InferConfig keeps its own default; the two same-named fields do not cross-contaminate.
-    assert r['infer_config'].sampler_type == 'sample'
 
 
 def test_sampler_type_defaults_to_none_so_backend_derives_it(fake_model):
@@ -145,10 +143,10 @@ def test_deploy_persistence(fake_model):
 def test_deploy_merge_lora_and_logging(fake_model):
     d = parse_deploy_configs([
         '--model', fake_model, '--merge_lora', 'true', '--verbose', 'false', '--log_interval', '5', '--log_level',
-        'debug', '--request_log_path', '/tmp/req.log'
+        'debug'
     ])['deploy_config']
     assert d.merge_lora is True and d.verbose is False and d.log_interval == 5
-    assert d.log_level == 'debug' and d.request_log_path == '/tmp/req.log'
+    assert d.log_level == 'debug'
 
 
 # --- distributed / engine args --------------------------------------------------------

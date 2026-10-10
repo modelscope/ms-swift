@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """The built-in training callbacks: early stop, throughput logging, graceful exit.
 
 Each needs only the loop's timing -- none rewrites the model's trainable-parameter set -- which is why

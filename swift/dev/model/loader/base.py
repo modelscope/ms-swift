@@ -54,13 +54,16 @@ class ModelArch:
     ``get_output_embeddings()``, module-type scans) rather than re-adding path strings.
 
     Args:
-        language_model: The LLM, including its output head. Drives freeze_llm, the LLM learning-rate
-            group, gradient checkpointing, rollout weight splitting, and scoping a quantizer's block
-            walk (use :attr:`decoder` for the latter -- it strips the head).
-        vision_tower: The encoder (vision, audio, ...). Drives freeze_vit / vit_lr, and is excluded
-            from quantization and from mcore conversion.
-        aligner: The connector between encoder and LLM -- projector / merger / resampler. Drives
-            freeze_aligner / aligner_lr, excluded from quantization.
+        language_model: The LLM, including its output head. Drives gradient checkpointing, rollout
+            weight splitting, and scoping a quantizer's block walk (use :attr:`decoder` for the
+            latter -- it strips the head). In a multimodal LoRA run ``freeze_llm`` keeps it in or out
+            of the expanded 'all-linear' target; it trains at the base lr (no per-tower rule).
+        vision_tower: The encoder (vision, audio, ...). ``freeze_vit`` keeps it out of the expanded
+            multimodal LoRA target and defaults ``vit_gradient_checkpointing``; ``vit_lr`` gives it a
+            separate learning-rate group. Excluded from quantization and from mcore conversion.
+        aligner: The connector between encoder and LLM -- projector / merger / resampler.
+            ``freeze_aligner`` keeps it out of the expanded multimodal LoRA target and ``aligner_lr``
+            gives it a separate learning-rate group. Excluded from quantization.
         generator: An output generator that is not the LM head (e.g. a speech or image decoder).
             Frozen by default: it is trained by its own recipe, not by text SFT.
         lm_head: Output projection name, needed only when it is not literally ``lm_head`` (internlm2
@@ -106,6 +109,7 @@ class ModelArch:
         instead of an ``endswith('lm_head')`` check copy-pasted into each consumer.
         """
         head = self.lm_head_name
+        ## self.language_model 类型可能是个str？下面的for name in没bug？
         return [name for name in self.language_model if not name.endswith(head)]
 
 
@@ -365,7 +369,7 @@ class ModelLoader:
     absent class costs nothing; anything beyond that overrides a ``build_*`` / ``process_*`` hook.
     ``model_cls`` is the one declaration with no safe default -- see :meth:`build_model`.
     """
-
+    ## 如何判断一个模型是否支持megatron
     # -- registration ---------------------------------------------------------------------------
     model_type: Optional[str] = None
     # Checkpoint ids this family covers: a bare id, or a (ms_id, hf_id) pair when the two hubs
@@ -441,6 +445,7 @@ class ModelLoader:
 
     def build_config(self, model_dir: str, **kwargs) -> PretrainedConfig:
         if self.trust_remote_code:
+            ## trust_remote_code不对称，不少地方直接穿了true，你搜下看看
             kwargs.setdefault('trust_remote_code', True)
         config_cls = _import_cls(self.config_cls) if self.config_cls else AutoConfig
         return config_cls.from_pretrained(model_dir, **kwargs)

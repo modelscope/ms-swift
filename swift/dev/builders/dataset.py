@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
 import numpy as np
@@ -28,7 +29,7 @@ def build_dataset(dataset_config: DatasetConfig,
 
     encode: whether to pre-tokenize now (SFT: True) or keep the raw messages and defer tokenization
       to the training/rollout phase (RL such as GRPO/GKD: False). Mirrors legacy
-      ``SwiftSft._get_dataset``'s ``pre_process = not (rlhf_type in {grpo, gkd})``.
+      ``SwiftSft._get_dataset``'s ``pre_process = not (rl_type in {grpo, gkd})``.
 
     ``device_mesh``: the HF-local Ulysses SP mesh from ``build_hf_device_mesh`` (None when SP is
     off). When set, the loader slices by ``mesh.data_world_size`` (world/ulysses), so SP peers get
@@ -248,7 +249,6 @@ def _build_split_loader(raw: Any,
     # raises if group_by_length=True without them. (streaming is rejected up front by
     # validate_configs, so the map-style path is the only one that reaches here with it on.)
     group_by_length = dataset_config.group_by_length and (not is_val)
-    ## 这里的计算合适吗？如果数据集很大，内存和时间是否允许？
     lengths = _extract_lengths(enc) if group_by_length else None
     # data_sharding only affects the shuffled TRAIN order (eval uses a sequential sampler), and it
     # is mutually exclusive with group_by_length -- legacy downgrades it with a warning rather than
@@ -267,6 +267,12 @@ def _build_split_loader(raw: Any,
     from twinkle.dataloader import DataLoader
     # twinkle's DataLoader is inherently resumable (skip_consumed_samples / get_state); the training
     # loop decides whether to skip, so there is no separate resumable flag. Eval simply never resumes.
+    num_workers = dataset_config.dataloader_num_workers or 0
+    worker_kwargs = {}
+    if num_workers > 0:
+        worker_kwargs['persistent_workers'] = dataset_config.dataloader_persistent_workers
+        if dataset_config.dataloader_prefetch_factor is not None:
+            worker_kwargs['prefetch_factor'] = dataset_config.dataloader_prefetch_factor
     return DataLoader(
         enc,
         batch_size=global_batch_size,
@@ -278,8 +284,9 @@ def _build_split_loader(raw: Any,
         collate_fn=_identity_collate,
         shuffle=dl_shuffle and not dataset_config.streaming,
         drop_last=_drop_last(distributed_config, is_val=is_val),
-        num_workers=(dataset_config.dataloader_num_workers or 0),
+        num_workers=num_workers,
         pin_memory=dataset_config.dataloader_pin_memory,
+        **worker_kwargs,
     )
 
 
@@ -326,7 +333,6 @@ def _twinkle_loader_layout(distributed_config: DistributedConfig,
     from swift.dev.builders.model import build_device_mesh
     mesh = build_device_mesh(distributed_config)
     global_batch_size = per_device_batch_size * mesh.data_world_size
-    ## 为什么ray的时候返回None
     device_mesh = None if distributed_config.mode == 'ray' else mesh
     return global_batch_size, device_mesh
 
@@ -425,7 +431,6 @@ def _drop_last(distributed_config: DistributedConfig, *, is_val: bool) -> bool:
     hf keeps the remainder: legacy defers to TrainingArguments.dataloader_drop_last (default False),
     so dropping here would discard real samples and diverge from legacy on that path.
     """
-    ## 为什么megatron和transformers这里处理不一样
     from swift.dev.builders.model import is_megatron_backend
     if not is_megatron_backend(distributed_config):
         return False
@@ -465,7 +470,6 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
 
     # eager / stream: 'split' needs a full encode (emits multiple samples per input), and so does an
     # explicit materialize request; otherwise MeasurePreprocessor only writes `lengths`, leaving rows raw.
-    ## 这里的if else逻辑是什么？MeasurePreprocessor生效场景是什么
     if truncation_strategy == 'split' or materialize:
         preprocessor = EncodePreprocessor(template)
     else:
@@ -484,16 +488,15 @@ def _pack(dataset: Any, template: Any, *, streaming: bool, packing_length: Optio
         template, dataset, num_proc=num_proc, packing_length=length, packing_strategy=packing_strategy, strict=strict)
 
 
-## 这个干什么用的，函数名看不出来
-## 为什么sft不使用这个
-def load_prompt_rows(dataset_config: DatasetConfig, max_rows: Optional[int],
-                     split_dataset_ratio: float = 0.01) -> List[Dict[str, Any]]:
-    """Load the raw rows to infer/sample over, restoring legacy's split semantics.
+def load_prompt_only_rows(dataset_config: DatasetConfig, max_rows: Optional[int],
+                          split_dataset_ratio: float = 0.01) -> List[Dict[str, Any]]:
+    """Load the prompt-only rows to infer/sample over, restoring legacy's split semantics.
 
-    Shared by the inference-style recipes (infer / sampling / gkd / grpo) so "which rows does a prompt
-    run consume" has one answer. ``val_dataset`` wins outright. Otherwise ``dataset`` is split and only
-    the eval slice is used -- which is what a single ``--dataset`` meant in legacy. Set
-    ``split_dataset_ratio=0`` to run over the whole thing.
+    "Prompt-only" is the point of the name: the rollout/sampling recipes (infer / sampling / gkd / grpo)
+    drive generation from prompts, so this returns exactly the rows those runs consume -- unlike sft,
+    which needs full (prompt, response) pairs and therefore does not use this helper. ``val_dataset``
+    wins outright. Otherwise ``dataset`` is split and only the eval slice is used -- which is what a
+    single ``--dataset`` meant in legacy. Set ``split_dataset_ratio=0`` to run over the whole thing.
     """
     from swift.dev.dataset import load_dataset
 
@@ -512,7 +515,7 @@ def load_prompt_rows(dataset_config: DatasetConfig, max_rows: Optional[int],
             datasets=list(dataset_config.dataset), split_dataset_ratio=split_dataset_ratio,
             shuffle=dataset_config.val_dataset_shuffle, **kwargs)
         rows = rows if rows is not None else []
-        logger.info(f'load_prompt_rows: using the eval split of --dataset (split_dataset_ratio='
+        logger.info(f'load_prompt_only_rows: using the eval split of --dataset (split_dataset_ratio='
                     f'{split_dataset_ratio}); pass split_dataset_ratio=0 to run over all of it.')
     else:
         rows, _ = load_dataset(

@@ -16,10 +16,10 @@ sides are fed matched deterministic hyperparameters (constant LR / no warmup / f
 ``logging_steps=1``) so the trajectories are directly comparable.
 
 Usage:
-    python rl_parity.py --backend {legacy|dev} --rlhf_type {cpo|orpo|...} --data DATA.jsonl \
+    python rl_parity.py --backend {legacy|dev} --rl_type {cpo|orpo|...} --data DATA.jsonl \
         --out RESULT.json --out_dir DIR [--steps 4] [--lr 1e-4] [--tuner lora]
 
-Writes {"backend", "rlhf_type", "tuner", "losses": [per-step train loss ...]} to --out.
+Writes {"backend", "rl_type", "tuner", "losses": [per-step train loss ...]} to --out.
 """
 import argparse
 import json
@@ -39,11 +39,11 @@ def _model_path():
     return snapshot_download(MODEL)
 
 
-def _run_legacy(data, out_dir, tuner, rlhf_type, steps, lr):
+def _run_legacy(data, out_dir, tuner, rl_type, steps, lr):
     """legacy ``swift.rlhf_main`` (HF/RLHFArguments -> TRL trainer); per-step loss from ``log_history``."""
     from swift import rlhf_main
     argv = [
-        '--rlhf_type', rlhf_type,
+        '--rlhf_type', rl_type,
         '--model', _model_path(),
         '--template', 'qwen2_5',
         '--dataset', data,
@@ -76,7 +76,7 @@ def _run_legacy(data, out_dir, tuner, rlhf_type, steps, lr):
     return [rec['loss'] for rec in msg['log_history'] if 'loss' in rec]
 
 
-def _run_dev(data, out_dir, tuner, rlhf_type, steps, lr):
+def _run_dev(data, out_dir, tuner, rl_type, steps, lr):
     """dev ``run_rl`` (Ray PreferenceLoop); per-step loss from the returned history.
 
     Hyperparameters mirror ``_run_legacy`` exactly (that is the point). ``tuner='full'`` is NOT supported by
@@ -86,7 +86,7 @@ def _run_dev(data, out_dir, tuner, rlhf_type, steps, lr):
     from swift.dev.tests.feature.rl.conftest import rl_configs, run_rl
     tuner_over = {'lora_rank': 8, 'lora_alpha': 32, 'target_modules': ['all-linear']} if tuner == 'lora' else {}
     configs = rl_configs(
-        rlhf_type=rlhf_type,
+        rl_type=rl_type,
         model=_model_path(),
         model_type='qwen2',
         template='qwen2_5',
@@ -118,7 +118,7 @@ def _cleanup_output_dir(out_dir):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--backend', choices=['legacy', 'dev'], required=True)
-    parser.add_argument('--rlhf_type', default='cpo')
+    parser.add_argument('--rl_type', default='cpo')
     parser.add_argument('--tuner', default='lora')
     parser.add_argument('--data', required=True)
     parser.add_argument('--out', required=True)
@@ -128,19 +128,19 @@ def main():
     args = parser.parse_args()
 
     if args.backend == 'legacy':
-        losses = _run_legacy(args.data, args.out_dir, args.tuner, args.rlhf_type, args.steps, args.lr)
+        losses = _run_legacy(args.data, args.out_dir, args.tuner, args.rl_type, args.steps, args.lr)
     else:
-        losses = _run_dev(args.data, args.out_dir, args.tuner, args.rlhf_type, args.steps, args.lr)
+        losses = _run_dev(args.data, args.out_dir, args.tuner, args.rl_type, args.steps, args.lr)
 
     with open(args.out, 'w') as f:
         json.dump(
             {
                 'backend': args.backend,
-                'rlhf_type': args.rlhf_type,
+                'rl_type': args.rl_type,
                 'tuner': args.tuner,
                 'losses': losses
             }, f)
-    print(f'RUNNER_DONE backend={args.backend} rlhf_type={args.rlhf_type} losses={losses}', flush=True)
+    print(f'RUNNER_DONE backend={args.backend} rl_type={args.rl_type} losses={losses}', flush=True)
     _cleanup_output_dir(args.out_dir)
 
 

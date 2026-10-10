@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Checkpoint saving and resumption configuration."""
 from __future__ import annotations
 from dataclasses import dataclass

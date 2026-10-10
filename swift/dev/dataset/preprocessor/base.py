@@ -9,6 +9,7 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
 from swift.dev.utils import get_logger
+from .._diagnostics import note_row_error
 
 __all__ = ['MessagesRepairPreprocessor', 'Preprocessor']
 
@@ -54,13 +55,15 @@ class Preprocessor:
     # `messages` with `loss_scale` in one part and without in the other; `images` whose `bytes` is
     # all-None in one part and real bytes in the other; `objects` with an integer `bbox` in one part
     # and float in the other. The failure surfaces at concatenation, i.e. far from its cause.
-    ## rejected_messages和negative_messages是否可以合并为negative_messages
     MESSAGE_COLUMNS = ('messages', 'rejected_messages', 'positive_messages', 'negative_messages')
-    ## 是否标准格式使用openai messages更好
-    ## 当然，v4的数据格式也要支持
-    ## 为什么只有images？audios和videos呢？
+    # Media stored as {bytes, path} structs -- cast_mm_data normalises images to this shape, and a shard
+    # whose `bytes` is all-None infers a different type than one with real bytes, so the type is pinned.
     MEDIA_COLUMNS = ('images', 'rejected_images')
-    ## grounding我记得除了objects还有对应的box 的key？
+    # Media stored as plain path-string lists -- cast_mm_data leaves videos/audios as [str]. Pinned too so
+    # an all-None shard cannot infer a null element type and misalign at concatenation. No rejected_*
+    # variant: the preference schema carries rejected_images only (cast_mm_data handles exactly these four
+    # keys), so there is no rejected_videos/rejected_audios column to pin.
+    MEDIA_PATH_COLUMNS = ('videos', 'audios')
     FREEFORM_COLUMNS = ('objects', 'chat_template_kwargs')
 
     def __init__(self,
@@ -212,6 +215,7 @@ class Preprocessor:
                 'path': Value('string')
             })
                for name in self.MEDIA_COLUMNS},
+            **{name: ListFeature(Value('string')) for name in self.MEDIA_PATH_COLUMNS},
             **{name: Json() for name in self.FREEFORM_COLUMNS},
         }
         original_init = ArrowWriter.__init__
@@ -251,11 +255,7 @@ class Preprocessor:
                     # intended outcome, so it neither warrants a traceback nor should it spend the
                     # traceback budget that real data errors need.
                     continue
-                if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
-                    import traceback
-                    logger.info(traceback.format_exc())
-                    logger.warning('👆 There are errors in the dataset. This row will be dropped.')
-                    self._traceback_counter += 1
+                note_row_error(self, '👆 There are errors in the dataset. This row will be dropped.')
         return self.rows_to_batched(new_rows)
 
     # -- helpers ---------------------------------------------------------------------------------

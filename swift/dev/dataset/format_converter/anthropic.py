@@ -22,7 +22,6 @@ class AnthropicConverter(OpenAIConverter):
 
     @classmethod
     def detect(cls, columns) -> bool:
-        ## 这里为什么是False？什么时候anthropic的converter才能生效？
         return False
 
     @staticmethod
@@ -45,8 +44,6 @@ class AnthropicConverter(OpenAIConverter):
             metadata = {key: message[key] for key in ('loss', 'loss_scale') if key in message}
             pending: List[str] = []
             flush = AnthropicConverter._flush_text
-            ## swift的标准dataset格式，改为content是list是否合适？这样converter的逻辑
-            ## 就不是合并为一条再拆解，而是在这里把特殊字符的string拆开为list
             for block in content:
                 block_type = block.get('type')
                 if block_type == 'text':
@@ -123,7 +120,6 @@ class AnthropicConverter(OpenAIConverter):
             block_type = block.get('type')
             if block_type == 'text':
                 parts.append(block.get('text', ''))
-            ## video和audio块如何处理？
             elif block_type == 'image':
                 parts.append('<image>')
                 media['images'].append(cls._image_source(block))

@@ -21,6 +21,7 @@ logger = get_logger()
 _ST_FEATURE_KEYS = ('input_ids', 'attention_mask', 'token_type_ids', 'position_ids')
 
 
+## 这个有办法支持twinkle的server 多lora吗？
 class SentenceTransformerModel(TwinkleTransformersModel):
     """Train a ``sentence-transformers`` model on twinkle's embedding pipeline.
 
@@ -88,6 +89,7 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         self.model = self._build_sentence_transformer(model_id, sentence_transformer_kwargs or {})
         # hf_config is read by the processor/loss for e.g. pad-token / dtype; expose the backbone's.
         self.hf_config = getattr(config, 'name_or_path', None) and config or self._backbone_config()
+        ## gc_kwargs好像没传到这里？应该是个bug
         self._enable_gradient_checkpointing()
 
         self.sp_strategy = None
@@ -146,6 +148,7 @@ class SentenceTransformerModel(TwinkleTransformersModel):
                                       'a whole-sentence pooling head cannot see a sequence shard.')
         position_ids = inputs.get('position_ids')
         if position_ids is not None and self._is_packed_position_ids(position_ids):
+            ## 这个不支持packing吗？legacy支持吗？
             raise NotImplementedError('SentenceTransformerModel does not support padding-free packing: '
                                       'the pooling head expects one sequence per batch row.')
         features = {k: inputs[k] for k in _ST_FEATURE_KEYS if k in inputs}
@@ -158,6 +161,7 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         # ids restart at 0 per sequence, so only a single-row layout can be a packed one -- detect it by
         # an internal restart. A normal [B, T] batch (B > 1) is never packed: each row is one sequence
         # that legitimately starts at position 0, so scanning across rows would false-positive on that.
+        ## 这个逻辑是不是可以复用twinkle的processor的function
         if position_ids.dim() == 2:
             if position_ids.shape[0] != 1:
                 return False

@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """OpenAI-compatible server configuration."""
 from __future__ import annotations
 from dataclasses import dataclass
@@ -44,7 +45,6 @@ class DeployConfig:
     #: Requests between throughput summaries. Only consulted when ``verbose`` is off, where it is the
     #: sole indication the server is alive.
     log_interval: int = 20
-    request_log_path: Optional[str] = None
     log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
 
     # === Ray Serve runtime ===

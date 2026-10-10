@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Plugin / extension-file configuration."""
 from __future__ import annotations
 

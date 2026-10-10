@@ -179,7 +179,7 @@ def test_scalar_reward_needs_ray(monkeypatch):
     """The guard ``math_prm_orm_ray.sh`` satisfies with ``--mode ray``: a scalar PRM keeps its own model
     resident on GPU, which only a ray DeviceGroup can place, so a non-ray run is rejected up front --
     before any dataset load, sampler build or model download."""
-    from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, RLHFConfig,
+    from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, RLConfig,
                                   TemplateConfig)
     from swift.dev.recipe.run_infer import run_infer
 
@@ -188,7 +188,7 @@ def test_scalar_reward_needs_ray(monkeypatch):
         run_infer(
             ModelConfig(task_type='causal_lm'), TemplateConfig(), DatasetConfig(),
             InferConfig(num_return_sequences=1, output_format='all'), GenerationConfig(),
-            rlhf_config=RLHFConfig(prm=['Qwen/Qwen2.5-Math-PRM-7B']),
+            rl_config=RLConfig(prm=['Qwen/Qwen2.5-Math-PRM-7B']),
             backend='transformers', distributed_config=None)
 
 
@@ -262,14 +262,14 @@ def test_generative_judge_scores_candidates_through_run_infer(template, monkeypa
     emitted per candidate. Asserts the exact scores, proving resolve -> build -> judge -> channels -> emit
     are wired, not merely that a ``scores`` key appeared."""
     import swift.dev.builders as builders
-    from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, RLHFConfig,
+    from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, RLConfig,
                                   TemplateConfig)
     from swift.dev.recipe.run_infer import run_infer
 
     _patch_task_type(monkeypatch, 'causal_lm')  # the ORM model is a causal_lm -> a generative judge
     answers = ['good answer', 'bad answer']
     verdicts = {'good answer': 0.9, 'bad answer': 0.2}
-    monkeypatch.setattr(builders, 'load_prompt_rows',
+    monkeypatch.setattr(builders, 'load_prompt_only_rows',
                         lambda *a, **k: [{'messages': [{
                             'role': 'user',
                             'content': 'Say something.'
@@ -285,7 +285,7 @@ def test_generative_judge_scores_candidates_through_run_infer(template, monkeypa
         InferConfig(num_return_sequences=2, batch_size=1, output_format='all'),
         GenerationConfig(max_new_tokens=16, temperature=0.8),
         # --orm naming the sampler's own model -> generative_reuse (no ray, no second engine).
-        rlhf_config=RLHFConfig(orm=[MODEL]),
+        rl_config=RLConfig(orm=[MODEL]),
         backend='transformers',
         distributed_config=None,
         split_dataset_ratio=0.0,

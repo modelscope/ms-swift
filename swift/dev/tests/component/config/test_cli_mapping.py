@@ -14,7 +14,7 @@ from swift.dev.config import (
     LoggingConfig,
     ModelConfig,
     QuantizeConfig,
-    RLHFConfig,
+    RLConfig,
     TemplateConfig,
     TrainConfig,
     TunerConfig,
@@ -258,27 +258,27 @@ def test_gym_config_derives_scheduler_and_validates_multi_turn():
     from swift.dev.config import validate_configs
 
     common = (ModelConfig(), TemplateConfig(), DatasetConfig(), TrainConfig(), DistributedConfig())
-    rlhf = RLHFConfig(rlhf_type='grpo', gym_env='math_env')
-    process_configs(*common, rlhf_config=rlhf)
+    rlhf = RLConfig(rl_type='grpo', gym_env='math_env')
+    process_configs(*common, rl_config=rlhf)
     assert rlhf.use_gym_env is True
     assert rlhf.multi_turn_scheduler == 'gym_scheduler'
-    validate_configs(*common, rlhf_config=rlhf)
+    validate_configs(*common, rl_config=rlhf)
 
     rlhf.teacher_model_server = 'http://teacher'
     with pytest.raises(ValueError, match='not supported with multi-turn'):
-        validate_configs(*common, rlhf_config=rlhf)
+        validate_configs(*common, rl_config=rlhf)
 
 
 def test_multi_turn_config_rejects_unknown_or_mismatched_scheduler():
     from swift.dev.config.validate import _check_multi_turn
 
     with pytest.raises(ValueError, match='Unknown multi_turn_scheduler'):
-        _check_multi_turn(RLHFConfig(rlhf_type='grpo', multi_turn_scheduler='missing'))
+        _check_multi_turn(RLConfig(rl_type='grpo', multi_turn_scheduler='missing'))
     with pytest.raises(ValueError, match='GYMScheduler-compatible'):
         _check_multi_turn(
-            RLHFConfig(rlhf_type='grpo', multi_turn_scheduler='math_tip_trick', use_gym_env=True))
+            RLConfig(rl_type='grpo', multi_turn_scheduler='math_tip_trick', use_gym_env=True))
     with pytest.raises(ValueError, match='requires use_gym_env=True'):
-        _check_multi_turn(RLHFConfig(rlhf_type='grpo', multi_turn_scheduler='gym_scheduler', gym_env='math_env'))
+        _check_multi_turn(RLConfig(rl_type='grpo', multi_turn_scheduler='gym_scheduler', gym_env='math_env'))
 
 
 def test_bootstrap_versions_output_and_abspaths_resume(tmp_path):
@@ -366,7 +366,7 @@ def test_all_cli_parsers_accept_minimal_argv(tmp_path):
     from swift.dev.cli.eval import parse_eval_configs
     from swift.dev.cli.infer import parse_infer_configs
     from swift.dev.cli.merge import parse_merge_configs
-    from swift.dev.cli.rlhf import parse_rlhf_configs
+    from swift.dev.cli.rl import parse_rl_configs
     from swift.dev.cli.rollout import parse_rollout_configs
     from swift.dev.cli.sample import parse_sample_configs
 
@@ -377,16 +377,16 @@ def test_all_cli_parsers_accept_minimal_argv(tmp_path):
     assert parse_eval_configs(['--model', 'm', '--eval_dataset', 'bench'])['eval_config'].eval_dataset == ['bench']
     assert parse_app_configs(['--model', 'm', '--base_url', 'http://localhost:8000'])['app_config'].base_url
     assert parse_merge_configs(['--model', 'm', '--adapters', 'a'])['tuner_config'].adapters == ['a']
-    for rlhf_type in ('dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm', 'grpo', 'ppo', 'gkd'):
-        configs = parse_rlhf_configs(['--model', 'm', '--dataset', 'd', '--rlhf_type', rlhf_type])
-        assert configs['rlhf_config'].rlhf_type == rlhf_type
+    for rl_type in ('dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm', 'grpo', 'ppo', 'gkd'):
+        configs = parse_rl_configs(['--model', 'm', '--dataset', 'd', '--rlhf_type', rl_type])
+        assert configs['rl_config'].rl_type == rl_type
 
 
 def test_megatron_rlhf_parser_applies_megatron_surface(monkeypatch):
-    from swift.dev.cli.rlhf import parse_rlhf_configs
+    from swift.dev.cli.rl import parse_rl_configs
 
     monkeypatch.setenv('WORLD_SIZE', '4')
-    configs = parse_rlhf_configs([
+    configs = parse_rl_configs([
         '--model', 'm', '--dataset', 'd', '--rlhf_type', 'dpo', '--lr', '0.0002', '--micro_batch_size', '2',
         '--global_batch_size', '8', '--bf16', 'true', '--attention_backend', 'fused', '--backend', 'megatron',
     ])

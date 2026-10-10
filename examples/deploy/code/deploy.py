@@ -1,23 +1,12 @@
-# Programmatic Python entry for v5 deploy -- the code equivalent of ../vllm/deploy.sh.
-#
-# A .sh script spells the deployment as CLI flags; this file builds the SAME deployment as typed Config
-# OBJECTS and drives it through swift's public serving recipe (``run_deploy``), so you can compute the knobs
-# in Python (a model chosen from a registry, a port from a service discovery call, engine args derived from
-# the box's free memory) instead of hand-editing a shell string. ``swift deploy`` on the CLI is exactly
-# ``parse_deploy_configs`` -> ``process_and_validate_configs`` -> ``run_deploy``; here we skip the argv
-# parser and hand ``run_deploy`` the Configs directly.
-#
-# ``run_deploy`` blocks serving until SIGINT/SIGTERM (it launches twinkle-server on Ray Serve), just like the
-# shell command. If you need a live endpoint INSIDE a Python block -- e.g. an eval harness that serves, then
-# drives it over HTTP, then tears it down -- use ``run_deploy_process(...)`` instead: same arguments, but it
-# spawns the server in a subprocess and is used as a context manager that yields the base URL once ready.
-#
-# Run: python examples/deploy/code/deploy.py   (set CUDA_VISIBLE_DEVICES to your free cards first).
-# Then, from another shell:  python examples/deploy/vllm/client.py
 import os
 
-from swift.dev.config import DeployConfig, ModelConfig, TemplateConfig
-from swift.dev.recipe import run_deploy
+os.environ.setdefault('USE_SWIFT_V5', '1')
+
+import ray  # noqa: E402
+from twinkle.server import launch_server  # noqa: E402
+
+from swift.dev.config import DeployConfig, DistributedConfig, ModelConfig, TemplateConfig  # noqa: E402
+from swift.dev.recipe.run_deploy import build_server_config  # noqa: E402
 
 
 def build_configs():
@@ -43,24 +32,43 @@ def build_configs():
 
 
 def main() -> None:
-    os.environ.setdefault('USE_SWIFT_V5', '1')
+    """Deploy in three steps -- the orchestration ``run_deploy`` wraps, spelled out.
+
+    ``run_deploy`` is validate + warn + ``_ensure_ray`` + ``build_server_config`` + ``launch_server``. This
+    scaffold keeps only the load-bearing three so the assembly is visible: bring up Ray, translate dev's
+    Configs into a twinkle-server ``ServerConfig``, then hand that config to the launcher. Use
+    ``swift.dev.recipe.run_deploy`` directly when you want the validation and generation-default warnings
+    too; drop down to these building blocks when you need to inspect or customise the ``ServerConfig``.
+    """
     model_config, template_config, deploy_config = build_configs()
-    # engine_args are the raw vLLM engine kwargs (unprefixed, unlike the CLI's --vllm_* flags). Generation
-    # knobs (temperature / top_p / max_new_tokens) are NOT here: the gateway applies each request's own
-    # sampling params, so a server-side default would be silently ignored.
-    engine_args = {
-        'gpu_memory_utilization': 0.9,
-        'max_model_len': 4096,
-        'enforce_eager': True,
-    }
-    # Blocks until interrupted; backend='vllm' picks the sampler engine ('sglang' / 'transformers' also work).
-    run_deploy(
+    distributed_config = DistributedConfig()
+
+    # 1. Ray bring-up. With no cluster running, start a local head so this one process serves; set
+    #    ``distributed_config.mode='ray'`` (or ``deploy_config.ray_address='auto'``) to attach to one that
+    #    already exists, and skip this step.
+    if not ray.is_initialized():
+        ray.init(namespace=deploy_config.ray_namespace, ignore_reinit_error=True)
+
+    # 2. dev Configs -> a twinkle-server ServerConfig (a gateway app + a sampler app). engine_args are the
+    #    raw vLLM engine kwargs (unprefixed, unlike the CLI's --vllm_* flags). Generation knobs
+    #    (temperature / top_p / max_new_tokens) are NOT here: the gateway applies each request's own
+    #    sampling params, so a server-side default would be silently ignored.
+    config = build_server_config(
         model_config,
         template_config,
         backend='vllm',
-        engine_args=engine_args,
+        engine_args={
+            'gpu_memory_utilization': 0.9,
+            'max_model_len': 4096,
+            'enforce_eager': True,
+        },
+        distributed_config=distributed_config,
         deploy_config=deploy_config,
     )
+
+    # 3. Launch on Ray Serve. Blocks until interrupted; the launcher installs the signal handlers and calls
+    #    serve.shutdown(). backend='vllm' picks the sampler engine ('sglang' / 'transformers' also work).
+    launch_server(config=config, ray_namespace=deploy_config.ray_namespace)
 
 
 if __name__ == '__main__':

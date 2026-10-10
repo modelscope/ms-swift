@@ -1,7 +1,7 @@
 # v5 On-Policy Self-Distillation (OPSD) with LoRA, on 3 GPUs through Ray + vLLM.
 # Paper: https://arxiv.org/abs/2601.18734
 #
-# USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI (swift.dev.cli.rlhf). `--rlhf_type opsd` dispatches
+# USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI (swift.dev.cli.rl). `--rlhf_type opsd` dispatches
 # to swift.dev.recipe.run_opsd.
 #
 # What OPSD does: the student conditions on the question ALONE; a teacher conditions on a PRIVILEGED view

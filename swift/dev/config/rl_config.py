@@ -6,22 +6,23 @@ from typing import Any, List, Literal, Optional
 
 
 @dataclass
-class RLHFConfig:
-    """RLHF algorithm hyperparameters for all supported rlhf_type variants."""
+class RLConfig:
+    """RLHF algorithm hyperparameters for all supported rl_type variants."""
 
     # === Core ===
     #: Which algorithm the RL command runs. ``opsd``/``mopd``/``rft`` are the three first-class methods
     #: added this refactor (self-distillation, multi-teacher distillation, rejection-sampling FT); each
-    #: dispatches to its own recipe in ``run_rlhf`` and reuses the fields grouped below.
-    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo', 'gkd', 'opsd', 'mopd',
-                       'rft'] = 'dpo'
+    #: dispatches to its own recipe in ``run_rl`` and reuses the fields grouped below.
+    #: CLI flag ``--rl_type`` (matches the ``swift rl`` command); the v4 spelling ``--rlhf_type`` still
+    #: resolves onto it through ``LEGACY_ALIASES``.
+    rl_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo', 'gkd', 'opsd', 'mopd',
+                     'rft'] = 'dpo'
     ref_model: Optional[str] = None
     ref_adapters: List[str] = field(default_factory=list)
     ref_model_type: Optional[str] = None
     ref_model_revision: Optional[str] = None
     beta: Optional[float] = None
     max_completion_length: int = 512
-    loss_scale: Optional[str] = None
 
     # === DPO ===
     label_smoothing: float = 0
@@ -200,15 +201,16 @@ class RLHFConfig:
     sft_alpha: float = 0
     lmbda: float = 0.5
     gkd_logits_topk: Optional[int] = None
-    #: DISTILLATION (logit-scoring) temperature -- softens the teacher/student distributions inside the
+    #: DISTILLATION / logit-scoring temperature -- softens the teacher/student distributions inside the
     #: divergence (GKD's β-JSD; for OPSD/MOPD it scales the logits before the sampled-token log-probs are
-    #: taken). This is the model-forward / loss knob, NOT how hot the student rollout is sampled. They were
-    #: one field before (W16), which forced the generation temperature to equal the scoring temperature; see
-    #: ``sampling_temperature`` for the now-separate rollout knob.
-    temperature: float = 0.9
+    #: taken), and is the temperature the GRPO/PPO policy metric divides logits by to line its log-probs up
+    #: with the sampled distribution. This is the model-forward / loss knob, NOT how hot the student rollout
+    #: is sampled. Named apart from ``GenerationConfig.temperature`` (the CLI ``--temperature`` sampling
+    #: knob) so that flag has a single unambiguous owner; see ``sampling_temperature`` for the rollout knob.
+    distill_temperature: float = 0.9
     #: SAMPLING temperature for the student's on-policy generation (GKD/OPSD/MOPD in-process rollouts).
-    #: Kept apart from the distillation ``temperature`` so a run can, e.g., sample greedily-ish (low) while
-    #: scoring softly (high). ``None`` preserves the pre-split behavior by falling back to ``temperature``,
+    #: Kept apart from ``distill_temperature`` so a run can, e.g., sample greedily-ish (low) while scoring
+    #: softly (high). ``None`` preserves the pre-split behavior by falling back to ``distill_temperature``,
     #: so existing runs are unchanged; set it to decouple the two.
     sampling_temperature: Optional[float] = None
 
@@ -230,7 +232,7 @@ class RLHFConfig:
     teacher_model_revision: Optional[str] = None
     teacher_deepspeed: Optional[str] = None
     offload_teacher_model: bool = False
-    #: Per-teacher fusion weights for MOPD (``rlhf_type='mopd'``), positional with a list-valued
+    #: Per-teacher fusion weights for MOPD (``rl_type='mopd'``), positional with a list-valued
     #: ``teacher_model``. Non-negative; normalized to sum 1 inside ``MOPDLoss``. ``None`` weights every
     #: teacher equally (``1/K``). Length must equal the teacher count -- enforced at loss time, so a
     #: mismatch fails loudly rather than silently dropping or padding a channel. Ignored by single-teacher

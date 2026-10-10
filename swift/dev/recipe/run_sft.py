@@ -71,7 +71,10 @@ def run_sft(
     from swift.dev.recipe.assembly import TrainAssembly
 
     TrainAssembly.initialize_twinkle(
-        distributed_config, seed=train_config.seed, full_determinism=train_config.full_determinism)
+        distributed_config,
+        seed=train_config.seed,
+        full_determinism=train_config.full_determinism,
+        tf32=train_config.tf32)
     return _run_sft_body(
         model_config,
         template_config,
@@ -125,6 +128,7 @@ def _run_sft_body(
             enable_channel_loss=train_config.enable_channel_loss,
             dft=train_config.enable_dft_loss,
             fused_linear_cross_entropy=fused_ce,
+            label_smoothing=train_config.label_smoothing_factor,
         )
 
     return TrainAssembly(

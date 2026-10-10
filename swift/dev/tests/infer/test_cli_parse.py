@@ -173,7 +173,7 @@ def test_infer_main_dispatches_to_dataset_pipeline(fake_model, monkeypatch):
     assert out == ['row']
     _, kwargs = captured['args']
     assert kwargs['backend'] == 'transformers'
-    assert kwargs['rlhf_config'] is not None  # the reward/multi-turn carrier is always threaded
+    assert kwargs['rl_config'] is not None  # the reward/multi-turn carrier is always threaded
 
 
 def test_infer_main_dispatches_to_repl_without_dataset(fake_model, monkeypatch):
@@ -231,7 +231,7 @@ def test_tui_tools_multiturn_flags(fake_model):
     assert r['rollout_config'].sandbox_command_timeout == 60
     # an unset --sandbox_template keeps the local LocalEnv (a value would switch to an AgentEnv microVM)
     assert r['rollout_config'].sandbox_template is None
-    # max_turns / max_trajectory_tokens live on the RLHFConfig, which doubles as the multi-turn carrier
+    # max_turns / max_trajectory_tokens live on the RLConfig, which doubles as the multi-turn carrier
     assert r['reward_config'].max_turns == 8
     assert r['reward_config'].max_trajectory_tokens == 8192
     assert r['multi_turn_config'] is r['reward_config']
@@ -272,7 +272,7 @@ def test_dataset_tools_grpo_flags(fake_model):
 
 def test_math_prm_orm_ray_flags(fake_model):
     """math_prm_orm_ray.sh: a model PRM channel + a rule ORM channel over ray. Both ``--orm`` and ``--prm``
-    land on the RLHFConfig reward surface (``reward_config``) -- rules and model ids share one merged list
+    land on the RLConfig reward surface (``reward_config``) -- rules and model ids share one merged list
     per channel; num_samples/output_format -> InferConfig, mode/nproc -> DistributedConfig."""
     r = parse_infer_configs([
         '--model', fake_model, '--infer_backend', 'vllm', '--dataset', '/tmp/x.jsonl',
@@ -280,7 +280,7 @@ def test_math_prm_orm_ray_flags(fake_model):
         '--prm', 'Qwen/Qwen2.5-Math-PRM-7B', '--mode', 'ray', '--nproc_per_node', '2',
         '--vllm_gpu_memory_utilization', '0.85', '--max_new_tokens', '2048', '--temperature', '1.0',
     ])
-    # both reward channels are the RLHFConfig registry surface (shared with GRPO): the ORM rule and the
+    # both reward channels are the RLConfig registry surface (shared with GRPO): the ORM rule and the
     # PRM model id each land on their own channel, in the order typed.
     assert r['reward_config'].orm == ['accuracy']
     assert r['reward_config'].prm == ['Qwen/Qwen2.5-Math-PRM-7B']
@@ -290,12 +290,13 @@ def test_math_prm_orm_ray_flags(fake_model):
     assert r['distributed_config'].nproc_per_node == 2
 
 
-def test_temperature_owner_is_generation_config_not_rlhf(fake_model):
-    """``temperature`` exists on both GenerationConfig and RLHFConfig (the GKD knob); field_owners pins it
-    to GenerationConfig, so --temperature moves the decoding value and leaves the RLHF default alone."""
+def test_temperature_owner_is_generation_config(fake_model):
+    """``--temperature`` binds GenerationConfig's sampling knob, its only declarer. The RL distillation
+    temperature is a separate field (``RLConfig.distill_temperature``), so --temperature leaves it at
+    its own default."""
     r = parse_infer_configs(['--model', fake_model, '--temperature', '0.7'])
     assert r['generation_config'].temperature == 0.7
-    assert r['reward_config'].temperature == 0.9  # RLHFConfig's own default, untouched
+    assert r['reward_config'].distill_temperature == 0.9  # RLConfig's own default, untouched
 
 
 # --- build_engine_args: Config fields -> engine kwargs --------------------------------
@@ -324,12 +325,12 @@ def test_build_engine_args_transformers_uses_max_batch_size():
 
 def test_validate_tools_require_max_turns():
     """Naming a tool without max_turns is a single-turn rollout with no turn to call it in: rejected."""
-    from swift.dev.config import RLHFConfig
+    from swift.dev.config import RLConfig
     from swift.dev.config.validate import validate_rollout_config
     with pytest.raises(ValueError, match='requires a multi-turn rollout'):
-        validate_rollout_config(RolloutConfig(tools=['sandbox']), RLHFConfig(max_turns=None))
+        validate_rollout_config(RolloutConfig(tools=['sandbox']), RLConfig(max_turns=None))
     # with max_turns set the same tools pass
-    validate_rollout_config(RolloutConfig(tools=['sandbox']), RLHFConfig(max_turns=4))
+    validate_rollout_config(RolloutConfig(tools=['sandbox']), RLConfig(max_turns=4))
 
 
 def test_validate_sandbox_num_envs_positive():
@@ -362,19 +363,19 @@ def test_validate_arrow_store_format_rejects_resume():
 
 
 def test_validate_multi_turn_bounds():
-    from swift.dev.config import RLHFConfig
+    from swift.dev.config import RLConfig
     from swift.dev.config.validate import validate_multi_turn_config
     with pytest.raises(ValueError, match='max_turns must be >= 1'):
-        validate_multi_turn_config(RLHFConfig(max_turns=0))
+        validate_multi_turn_config(RLConfig(max_turns=0))
     with pytest.raises(ValueError, match='max_trajectory_tokens must be >= 1'):
-        validate_multi_turn_config(RLHFConfig(max_turns=4, max_trajectory_tokens=0))
+        validate_multi_turn_config(RLConfig(max_turns=4, max_trajectory_tokens=0))
 
 
 # --- runtime guards inside _run_generative (fire before any model/dataset load) ---------
 
 
 def _generative_guard_call(infer_config, **kwargs):
-    """Drive ``run_infer`` far enough to hit the _run_generative guards. They raise before load_prompt_rows
+    """Drive ``run_infer`` far enough to hit the _run_generative guards. They raise before load_prompt_only_rows
     / sampler build, so no dataset, cache, model or GPU is needed."""
     from swift.dev.config import DatasetConfig, GenerationConfig, ModelConfig, TemplateConfig
     from swift.dev.recipe.run_infer import run_infer

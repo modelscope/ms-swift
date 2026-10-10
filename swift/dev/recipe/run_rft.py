@@ -52,7 +52,7 @@ if TYPE_CHECKING:
         ModelConfig,
         MoEConfig,
         QuantizeConfig,
-        RLHFConfig,
+        RLConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -62,7 +62,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _rft_kept_per_prompt(rlhf_config: 'RLHFConfig', num_samples: int) -> int:
+def _rft_kept_per_prompt(rl_config: 'RLConfig', num_samples: int) -> int:
     """Upper bound on completions RFT keeps PER PROMPT -- the step budget's effective ``num_generations``.
 
     Mirrors :meth:`RFTLoop._select_keep`'s per-mode count from config alone (no rewards exist yet, since the
@@ -70,14 +70,14 @@ def _rft_kept_per_prompt(rlhf_config: 'RLHFConfig', num_samples: int) -> int:
     and ``threshold`` can keep all N (the only reward-dependent mode, so its budget is the all-clear upper
     bound). ``rft_max_samples_per_prompt`` caps every mode. MUST stay in sync with ``_select_keep``.
     """
-    select = rlhf_config.rft_select
+    select = rl_config.rft_select
     if select == 'best_of_n':
         kept = 1
     elif select == 'top_k':
-        kept = min(max(1, rlhf_config.rft_top_k), num_samples)
+        kept = min(max(1, rl_config.rft_top_k), num_samples)
     else:  # threshold
         kept = num_samples
-    cap = rlhf_config.rft_max_samples_per_prompt
+    cap = rl_config.rft_max_samples_per_prompt
     if cap is not None:
         kept = min(kept, cap)
     return max(1, kept)
@@ -91,7 +91,7 @@ def run_rft(
     distributed_config: DistributedConfig,
     checkpoint_config: CheckpointConfig,
     rollout_config: RolloutConfig,
-    rlhf_config: RLHFConfig,
+    rl_config: RLConfig,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
@@ -114,8 +114,8 @@ def run_rft(
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly
 
-    if rlhf_config.rlhf_type != 'rft':
-        raise ValueError(f'run_rft requires rlhf_type="rft", got {rlhf_config.rlhf_type!r}.')
+    if rl_config.rl_type != 'rft':
+        raise ValueError(f'run_rft requires rl_type="rft", got {rl_config.rl_type!r}.')
     assembly = TrainAssembly(
         'run_rft',
         model_config,
@@ -125,7 +125,7 @@ def run_rft(
         distributed_config,
         checkpoint_config,
         tuner_config,
-        rlhf_config=rlhf_config,
+        rl_config=rl_config,
         output_dir=output_dir,
         logging_config=logging_config,
         quantize_config=quantize_config,
@@ -133,7 +133,7 @@ def run_rft(
         moe_config=moe_config)
     assembly.prepare()
 
-    num_samples = rlhf_config.rft_num_samples or rlhf_config.num_generations
+    num_samples = rl_config.rft_num_samples or rl_config.num_generations
     if num_samples < 1:
         raise ValueError(f'RFT needs at least one sampled completion per prompt, got {num_samples}.')
 
@@ -142,7 +142,7 @@ def run_rft(
     # Each frozen reward model is a full-parameter seq_cls scorer on its own DeviceGroup (RL_PLAN §3.5); the
     # names/world sizes must match what _build_reward_model_scorers builds below. RFT has no reference or
     # teacher (it is cross-entropy SFT on filtered completions), so reward models are its only auxiliary.
-    reward_models = list(rlhf_config.reward_model or [])
+    reward_models = list(rl_config.reward_model or [])
     auxiliary_groups: List[Tuple[str, int]] = [(_reward_group(i), 1) for i in range(len(reward_models))]
     groups, sampler_remote_group, colocate = plan_rl_device_groups(
         distributed_config.nproc_per_node,
@@ -154,6 +154,7 @@ def run_rft(
         groups,
         seed=train_config.seed,
         full_determinism=train_config.full_determinism,
+        tf32=train_config.tf32,
         sequence_parallel_size=template_config.sequence_parallel_size)
 
     assembly.build_template()
@@ -184,15 +185,20 @@ def run_rft(
         train_config.max_steps,
         rollout_step_budget(
             num_prompts=len(prompts),
-            num_generations=_rft_kept_per_prompt(rlhf_config, num_samples),
+            num_generations=_rft_kept_per_prompt(rl_config, num_samples),
             train_batch_size=train_batch_size,
             gradient_accumulation_steps=assembly.ga,
-            num_train_epochs=rlhf_config.rft_iterations,
+            num_train_epochs=rl_config.rft_iterations,
             num_iterations=1),
         recipe='run_rft')
     assembly.resolve_step_intervals(max_steps)
     configure_optimizer(
-        assembly.model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
+        assembly.model,
+        train_config,
+        num_training_steps=max_steps,
+        distributed_config=distributed_config,
+        tuner_config=assembly.tuner_config,
+        plugin_config=assembly.plugin_config)
 
     sampler_engine_args = _sampler_engine_args(rollout_config, engine_args, colocate, backend)
     sampler = build_sampler(
@@ -205,7 +211,7 @@ def run_rft(
         assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
 
     reward_model_plugins, reward_model_names = _build_reward_model_scorers(
-        model_config, template_config, rlhf_config, distributed_config)
+        model_config, template_config, rl_config, distributed_config)
     loop = RFTLoop(
         assembly.model,
         rollout,
@@ -213,21 +219,21 @@ def run_rft(
         prompt_extras=prompt_extras,
         template=assembly.template,
         num_generations=num_samples,
-        reward_funcs=list(rlhf_config.orm) or None,
+        reward_funcs=list(rl_config.orm) or None,
         reward_model_plugins=reward_model_plugins,
         reward_model_names=reward_model_names,
-        reward_weights=rlhf_config.orm_weights,
-        rlhf_config=rlhf_config,
-        rft_select=rlhf_config.rft_select,
-        rft_threshold=rlhf_config.rft_threshold,
-        rft_top_k=rlhf_config.rft_top_k,
-        rft_iterations=rlhf_config.rft_iterations,
-        rft_max_samples_per_prompt=rlhf_config.rft_max_samples_per_prompt,
+        reward_weights=rl_config.orm_weights,
+        rl_config=rl_config,
+        rft_select=rl_config.rft_select,
+        rft_threshold=rl_config.rft_threshold,
+        rft_top_k=rl_config.rft_top_k,
+        rft_iterations=rl_config.rft_iterations,
+        rft_max_samples_per_prompt=rl_config.rft_max_samples_per_prompt,
         max_steps=max_steps,
         gradient_accumulation_steps=assembly.ga,
         train_batch_size=train_batch_size,
         max_grad_norm=resolve_max_grad_norm(train_config),
-        sampling_params=_grpo_sampling_params(rlhf_config, generation_config),
+        sampling_params=_grpo_sampling_params(rl_config, generation_config),
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,

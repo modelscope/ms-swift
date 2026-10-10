@@ -125,7 +125,7 @@ def grpo_run(template, tmp_path_factory):
     requested only to inherit its skip; ``run_infer`` builds its own."""
     import swift.dev.builders as builders
     from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, PluginConfig,
-                                  RLHFConfig, RolloutConfig, TemplateConfig)
+                                  RLConfig, RolloutConfig, TemplateConfig)
     from swift.dev.recipe.run_infer import run_infer
 
     work = tmp_path_factory.mktemp('grpo')
@@ -133,7 +133,7 @@ def grpo_run(template, tmp_path_factory):
     prompt = {'messages': [{'role': 'user', 'content': 'What is 2*(3+4)? Use the calculator.'}]}
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(builders, 'load_prompt_rows', lambda *a, **k: [prompt])
+        patch.setattr(builders, 'load_prompt_only_rows', lambda *a, **k: [prompt])
         patch.setattr(
             builders, 'build_sampler',
             _fake_build_sampler(_hermes_call('calculator', 'expression', '2*(3+4)'), 'The answer is 14.'))
@@ -143,7 +143,7 @@ def grpo_run(template, tmp_path_factory):
             DatasetConfig(),
             InferConfig(num_return_sequences=2, batch_size=1, output_format='grpo', save_rollout_tokens=True),
             GenerationConfig(max_new_tokens=64, temperature=1.0),
-            rlhf_config=RLHFConfig(max_turns=4),
+            rl_config=RLConfig(max_turns=4),
             rollout_config=RolloutConfig(
                 tools=['calculator'], sandbox_num_envs=1, sandbox_workspace_root=str(work / 'sandbox')),
             plugin_config=PluginConfig(external_plugins=[str(_CUSTOM_TOOLS)]),
@@ -297,7 +297,7 @@ def test_infer_cli_multiturn_sandbox_executes_a_real_command(template, monkeypat
     import builtins
 
     import swift.dev.builders as builders
-    from swift.dev.config import GenerationConfig, ModelConfig, RLHFConfig, RolloutConfig, TemplateConfig
+    from swift.dev.config import GenerationConfig, ModelConfig, RLConfig, RolloutConfig, TemplateConfig
     from swift.dev.recipe.infer_tui import infer_cli
 
     proof = tmp_path / 'proof.txt'
@@ -323,7 +323,7 @@ def test_infer_cli_multiturn_sandbox_executes_a_real_command(template, monkeypat
         backend='transformers',
         rollout_config=RolloutConfig(
             tools=['sandbox'], sandbox_num_envs=1, sandbox_workspace_root=str(tmp_path / 'sandbox')),
-        multi_turn_config=RLHFConfig(max_turns=4))
+        multi_turn_config=RLConfig(max_turns=4))
 
     out = capsys.readouterr().out
     assert 'called tools: run_command' in out, out

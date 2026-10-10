@@ -41,8 +41,8 @@ def lora_adapter(tmp_path_factory):
     from swift.dev.config import ModelConfig
 
     dest = str(tmp_path_factory.mktemp('lora') / 'adapter')
-    model_config = ModelConfig(model=MODEL, model_type=MODEL_TYPE, torch_dtype='bfloat16', device_map='cpu')
-    model, _ = load_model_processor(model_config, load_model=True)
+    model_config = ModelConfig(model=MODEL, model_type=MODEL_TYPE, torch_dtype='bfloat16')
+    model, _ = load_model_processor(model_config, load_model=True, device_map='cpu')
     lora_config = LoraConfig(
         r=8,
         lora_alpha=16,

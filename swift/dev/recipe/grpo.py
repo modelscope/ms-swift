@@ -8,7 +8,7 @@ Scope (T1 wired):
   - reward: `swift.dev.reward` (L1 API over swift `orms`); a single toy callable is also accepted
     for smoke tests. Multiple reward funcs + reward_weights supported.
   - advantage: `swift.dev.advantage` (L1 API over rl_core: grpo/rloo/reinforce++,
-    group/batch/none/gdpo); estimator/scale read from RLHFConfig.
+    group/batch/none/gdpo); estimator/scale read from RLConfig.
   - only forward_backward / forward_only are used (backend-agnostic).
 
 Weight-sync is delegated to the rollout object, not owned by the loop: every rollout exposes
@@ -47,7 +47,7 @@ from swift.dev.rollout import blocking_generate
 from swift.dev.utils import get_logger
 
 if TYPE_CHECKING:
-    from swift.dev.config import LoggingConfig, RLHFConfig
+    from swift.dev.config import LoggingConfig, RLConfig
     from swift.dev.model import TrainableModel
 
 logger = get_logger()
@@ -162,7 +162,7 @@ class GRPOLoop(TrainLoop):
                  prm_weights: Optional[List[float]] = None,
                  advantage_estimator: str = 'grpo',
                  scale_rewards: str = 'group',
-                 rlhf_config: Optional['RLHFConfig'] = None,
+                 rl_config: Optional['RLConfig'] = None,
                  reward_fn: Callable[[Any], float] = toy_length_reward,
                  max_steps: int = 3,
                  gradient_accumulation_steps: int = 1,
@@ -189,7 +189,7 @@ class GRPOLoop(TrainLoop):
         if len(resolved_prompt_extras) != len(prompts):
             raise ValueError('prompt_extras must contain exactly one mapping per prompt.')
         resolved_reward_funcs, resolved_reward_func_names = (
-            get_reward_funcs(reward_funcs, rlhf_config) if reward_funcs else ([], []))
+            get_reward_funcs(reward_funcs, rl_config) if reward_funcs else ([], []))
         resolved_reward_plugins = list(reward_model_plugins or [])
         model_names = list(reward_model_names or [])
         if model_names and len(model_names) != len(resolved_reward_plugins):
@@ -224,7 +224,7 @@ class GRPOLoop(TrainLoop):
         self.advantage_estimator = advantage_estimator
         self.scale_rewards = scale_rewards
         self.reward_weights = reward_weights
-        self.rlhf_config = rlhf_config
+        self.rl_config = rl_config
         self.reward_funcs = resolved_reward_funcs
         self.reward_func_names = resolved_reward_func_names
         self.reward_model_plugins = resolved_reward_plugins
@@ -429,14 +429,14 @@ class GRPOLoop(TrainLoop):
         prompt_indices = list(prompt_indices)
         original_samples = self._generate(prompt_indices)
         original_rewards = self._score(original_samples)
-        if not (self.rlhf_config and self.rlhf_config.dynamic_sample):
+        if not (self.rl_config and self.rl_config.dynamic_sample):
             return original_samples, original_rewards
 
         accepted: Dict[int, tuple] = {}
         pending = prompt_indices
         samples = original_samples
         rewards = original_rewards
-        max_retries = self.rlhf_config.max_resample_times
+        max_retries = self.rl_config.max_resample_times
         for attempt in range(max_retries + 1):
             weighted = self._weighted_rewards(rewards)
             next_pending = []
@@ -524,7 +524,7 @@ class GRPOLoop(TrainLoop):
         return row[positions].tolist()
 
     def _prepare_routing_replay(self, samples: List[Any]) -> None:
-        """Establish each sample's MoE expert routing per ``RLHFConfig.router_replay_mode``, in place.
+        """Establish each sample's MoE expert routing per ``RLConfig.router_replay_mode``, in place.
 
         Routing replay keeps an MoE policy's importance ratio honest: the training forward must REPLAY the
         expert choices that actually produced each token rather than recompute them (recomputed routing under
@@ -538,7 +538,7 @@ class GRPOLoop(TrainLoop):
         - ``'R2'``: RECORD the training model's own routing for these tokens (under the just-synced
           generating weights, so it is a faithful proxy for the generating pass vLLM did not export).
         """
-        mode = self.rlhf_config.router_replay_mode if self.rlhf_config else 'disabled'
+        mode = self.rl_config.router_replay_mode if self.rl_config else 'disabled'
         if mode == 'disabled':
             return
         if mode == 'R3':
@@ -637,8 +637,8 @@ class GRPOLoop(TrainLoop):
     def _teacher_logps(self, samples: List[Any]) -> Optional[List[List[float]]]:
         has_privileged_prompt = any((sample.extra or {}).get('teacher_prompt') for sample in samples)
         needs_teacher = bool(self.teacher is not None or has_privileged_prompt)
-        advanced = bool(self.rlhf_config and
-                        (self.rlhf_config.advantage_reweight == 'rlsd' or self.rlhf_config.sdar_loss_coef > 0))
+        advanced = bool(self.rl_config and
+                        (self.rl_config.advantage_reweight == 'rlsd' or self.rl_config.sdar_loss_coef > 0))
         if not needs_teacher:
             if advanced:
                 raise ValueError('RLSD/SDAR requires teacher_model or a teacher_prompt dataset column.')
@@ -659,7 +659,7 @@ class GRPOLoop(TrainLoop):
         return torch.stack(values)
 
     def _log_completions(self, samples: List[Any], rewards_per_func) -> None:
-        cfg = self.rlhf_config
+        cfg = self.rl_config
         if not cfg or not cfg.log_completions:
             return
         os.makedirs(self.output_dir, exist_ok=True)
@@ -680,7 +680,7 @@ class GRPOLoop(TrainLoop):
         samples, rewards_per_func = self._dynamic_rollout(prompt_indices)
         return self._assemble_rollout_batch(samples, rewards_per_func)
 
-    def _estimator_inputs(self, samples: List[Any], cfg: Optional['RLHFConfig']) -> Dict[str, Any]:
+    def _estimator_inputs(self, samples: List[Any], cfg: Optional['RLConfig']) -> Dict[str, Any]:
         """Extra ``compute_advantages`` kwargs the active ``advantage_estimator`` needs.
 
         Returns an empty dict for the estimators that read only the rewards and the group size
@@ -759,7 +759,7 @@ class GRPOLoop(TrainLoop):
         self._accumulate_reward_metric(samples, rewards_per_func)
         ref_logps = self._reference_logps(samples)
         teacher_logps = self._teacher_logps(samples)
-        cfg = self.rlhf_config
+        cfg = self.rl_config
         preserve_policy_logps = bool(cfg and (
             cfg.rollout_importance_sampling_mode or cfg.log_rollout_offpolicy_metrics))
         old_logps = (self._response_logps(self.model, [sample.input_feature for sample in samples])
@@ -799,7 +799,7 @@ class GRPOLoop(TrainLoop):
                             if cfg and cfg.enable_sampling_replay else None))
 
     def _rlsd_lambda(self) -> float:
-        cfg = self.rlhf_config
+        cfg = self.rl_config
         if cfg is None:
             return 0.0
         step = self.global_step
@@ -817,7 +817,7 @@ class GRPOLoop(TrainLoop):
             # and the teacher-signal reweighting below are mutually exclusive (both produce per-token
             # advantages from different sources); validate rejects enabling them together.
             return list(advantage)
-        cfg = self.rlhf_config
+        cfg = self.rl_config
         if teacher_logps is None or cfg is None:
             return advantage
         import torch
@@ -843,7 +843,7 @@ class GRPOLoop(TrainLoop):
             base, mask, teacher, old, teacher_kl_coef=cfg.teacher_kl_coef)[0].tolist()
 
     def _chord_mu(self) -> float:
-        cfg = self.rlhf_config
+        cfg = self.rl_config
         if cfg is None or not self.chord_features:
             return 0.0
         warmup = int(cfg.chord_mu_warmup_steps or 0)
@@ -860,7 +860,7 @@ class GRPOLoop(TrainLoop):
     def _next_chord_features(self, mu: float) -> List[dict]:
         if mu <= 0 or not self.chord_features:
             return []
-        count = int(self.rlhf_config.chord_sft_per_device_train_batch_size or 1)
+        count = int(self.rl_config.chord_sft_per_device_train_batch_size or 1)
         result = []
         for _ in range(count):
             result.append(copy.deepcopy(self.chord_features[self._chord_offset % len(self.chord_features)]))
@@ -868,7 +868,7 @@ class GRPOLoop(TrainLoop):
         return result
 
     def _sync_reference(self) -> None:
-        cfg = self.rlhf_config
+        cfg = self.rl_config
         if not cfg or not cfg.sync_ref_model or self.global_step % cfg.ref_model_sync_steps:
             return
         if self.reference is None or isinstance(self.reference, DisableAdapterTeacher):
@@ -902,7 +902,7 @@ class GRPOLoop(TrainLoop):
         ``ref_logps`` / ``teacher_logps`` are uniform across a rollout (both scoring helpers return None or
         a full list), so the column being None decides whether the key is passed at all.
         """
-        cfg = self.rlhf_config
+        cfg = self.rl_config
         chord_mu = self._chord_mu()
         chord = self._next_chord_features(chord_mu)
         teacher_logps = mini_batch.teacher_logps
@@ -1000,7 +1000,7 @@ class GRPOLoop(TrainLoop):
         gives every rank data. Shared by the synchronous and the async (overlapped) drivers.
         """
         mini_batches = self._plan_mini_batches(batch)
-        iterations = max(1, self.rlhf_config.num_iterations if self.rlhf_config else 1)
+        iterations = max(1, self.rl_config.num_iterations if self.rl_config else 1)
         for _ in range(iterations):
             for mini_batch in mini_batches:
                 if self._reached_max():

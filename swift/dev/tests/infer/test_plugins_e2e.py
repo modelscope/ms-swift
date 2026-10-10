@@ -39,7 +39,7 @@ import pytest
 from twinkle.data_format.sampling import SampledSequence, SampleResponse
 from twinkle.template.tools import HermesQwenParser
 
-from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, PluginConfig, RLHFConfig,
+from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, PluginConfig, RLConfig,
                               RolloutConfig, TemplateConfig)
 from swift.dev.plugin import PluginRegistry
 from swift.dev.recipe.run_infer import run_infer
@@ -139,7 +139,7 @@ def test_reward_and_dataset_plugins_drive_the_scoring_pipeline(example_plugins, 
         DatasetConfig(dataset=['demo_synthetic']),  # the registered dataset-loader plugin, loaded for real
         infer_config,
         GenerationConfig(),
-        rlhf_config=RLHFConfig(orm=['length_bonus', 'async_length_bonus']),  # one sync + one async rule
+        rl_config=RLConfig(orm=['length_bonus', 'async_length_bonus']),  # one sync + one async rule
         plugin_config=PluginConfig(external_plugins=[str(CUSTOM_PLUGINS)]),
         backend='no',
         split_dataset_ratio=0.0)  # run over the whole 3-row dataset, not its (empty) eval split
@@ -299,7 +299,7 @@ def test_tool_plugin_runs_the_real_multiturn_loop(example_plugins, tokenizer_pro
         return _ScriptedToolSampler(template, call, 'There are 3 words.')
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(builders, 'load_prompt_rows', lambda *a, **k: [prompt])
+        patch.setattr(builders, 'load_prompt_only_rows', lambda *a, **k: [prompt])
         patch.setattr(builders, 'build_sampler', _fake_build_sampler)
         results = run_infer(
             ModelConfig(model=MODEL, task_type='causal_lm'),
@@ -307,7 +307,7 @@ def test_tool_plugin_runs_the_real_multiturn_loop(example_plugins, tokenizer_pro
             DatasetConfig(),
             InferConfig(num_return_sequences=1, batch_size=1, output_format='all'),
             GenerationConfig(max_new_tokens=64, temperature=1.0),
-            rlhf_config=RLHFConfig(max_turns=4),
+            rl_config=RLConfig(max_turns=4),
             rollout_config=RolloutConfig(
                 tools=['word_count'], sandbox_num_envs=1, sandbox_workspace_root=str(tmp_path / 'sandbox')),
             plugin_config=PluginConfig(external_plugins=[str(CUSTOM_PLUGINS)]),

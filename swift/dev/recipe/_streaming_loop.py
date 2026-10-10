@@ -1,70 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Shared per-sample streaming wiring for dev's online RL loops.
-
-:class:`StreamingLoopMixin` holds everything an online loop needs to drive twinkle's algorithm-agnostic
-:class:`~twinkle_agentic.async_rl.streaming_driver.StreamingDriver` over the dev sampler, replacing the
-retired batch-granular deep-buffer mixin. Trajectories are
-admitted ONE AT A TIME (:meth:`swift.dev.rollout.RolloutEngine.submit_sample`), completions are polled
-as-completed into the driver's ready buffer, and the consumer trains whatever the algorithm's assembly
-rule says is ready -- GRPO pulls COMPLETE GROUPS (group-relative advantage needs a prompt's whole
-``num_generations``), PPO pulls individual samples (per-token GAE has no group contract). Either way a
-pull is an exact multiple of ``train_batch_size * gradient_accumulation_steps`` rows, so every consume
-runs whole optimizer steps and the exact-global-batch invariant Megatron enforces is preserved; the
-remainder stays buffered for the next pull instead of being dropped.
-
-In dev this driver serves EVERY online regime, synchronous included: ``max_staleness`` is the single
-regime knob (0 = synchronous ``async_mode='none'``, 1 = one-step overlap ``'one_step_off'``, >1 = deep
-buffer ``'fully_async'``). The synchronous regime is the same per-sample control flow at staleness 0 --
-admit one window at the current version, drain it, train it, publish, repeat -- with NO overlap. A
-colocated sampler (which time-shares one DeviceGroup between generation and training) is supported here
-through an exclusive-device serialization the mixin adds on top of the driver: ``serialize_generation``
-gates every pull behind a DRAIN BARRIER (no trajectory still generating when training starts) and brackets
-the phases with the ``ColocateHandover`` enter/exit (wake+sync+offload before generation, sleep+reload
-before training), so generation and training never contend for the GPU. The one thing the per-sample
-stream cannot serve is a feature that needs the WHOLE fixed batch up front -- GRPO's ``dynamic_sample``
-(regenerate zero-variance groups after seeing rewards) and ``remax`` (a synchronous greedy-baseline pass),
-and the distillation family's off-policy dataset rounds (``lmbda < 1``); those configs fall back to the
-base loop's ``_run_sync`` at routing time (see the ``run_*`` dispatch), which is why ``_run_sync`` is kept.
-
-It is a MIXIN (composed into a loop that already extends its own ``TrainLoop``/``PPOLoop``), never a
-base the loop extends instead -- mirroring how the driver itself is composed, not inherited. The mixin
-owns the parts identical across algorithms:
-
-* the config guard matrix (:meth:`_check_streaming_config`), run BEFORE ``super().__init__`` because a
-  loop builds its ``RunTracker`` (which opens wandb/swanlab/tensorboard reporters) as a construction
-  side effect, so a misconfigured stream must fail before any reporter is opened;
-* the control-plane / publication construction (:meth:`_init_streaming`), run AFTER ``super().__init__``
-  once ``self.rollout`` / ``self.output_dir`` exist;
-* :meth:`_drive`, which composes a :class:`StreamingDriver` and injects the loop's seams;
-* the per-sample :meth:`_submit_per_sample` / :meth:`_poll` / :meth:`_collect_per_sample` data-plane
-  wiring (NO sync-at-submit and NO ``finish_generate``: a disaggregated sampler publishes at the
-  driver's publish step and never performed a colocate device hand-over to reverse);
-* both assembly rules (:meth:`_assembly_ready_grpo` / :meth:`_assembly_ready_ppo`) -- each consumes
-  only loop attributes both loop families carry (``num_generations`` / ``train_batch_size`` /
-  ``gradient_accumulation_steps``), so the mixin never branches on the algorithm; the loop picks its
-  rule via :meth:`_assembly_ready`;
-* the adapter-snapshot save/prune trio, meaningful only under ``adapter_snapshot``.
-
-Each consuming loop supplies the algorithm-specific half the mixin cannot know:
-
-* ``_consume_async_samples(samples)`` -- the score-and-train the driver hands each pulled batch to.
-  GRPO inherits it from :class:`~swift.dev.recipe.grpo.GRPOLoop`; PPO maps its own critic+GAE
-  ``_consume_samples`` onto that name.
-* ``_streaming_unit_size()`` -- the rows one optimizer step consumes (GRPO: ``num_generations``, one
-  group; PPO: ``train_batch_size * ga``), which sizes both the pull quantum and the window/backpressure.
-* ``_streaming_step_delta()`` -- how many of the loop's recorded steps one consume advanced (GRPO: the
-  ``global_step`` delta, i.e. real optimizer steps; PPO: 1, since PPO records one step per consume).
-* ``_prompt_payload(indices)`` -- the prompt-row assembly, inherited from the loop. The batch-path
-  ``_finalize_samples(samples, indices)`` hook is NOT a streaming seam: ``rollout.collect_sample`` already
-  stamps each per-sample collect's group id / version, and that hook's ``num_prompts * num_generations``
-  count invariant cannot hold for a single trajectory, so ``_collect_per_sample`` returns it directly.
-
-Two publication mechanisms are supported, selected by ``weight_sync_strategy`` (the same split the deep
-buffer used -- see twinkle ``weight_sync``): ``'adapter_snapshot'`` pins each trained version as its own
-LoRA adapter path (needs an ``adapter_name``; ``allow_partial_rollout`` is inert and rejected), and
-``'in_place'`` overwrites the sampler's single live copy each publish, which -- because a stream always
-has trajectories in flight at a publish -- REQUIRES ``allow_partial_rollout`` (abort-and-resume).
-"""
 from __future__ import annotations
 
 import math
@@ -79,6 +13,7 @@ from twinkle_agentic.async_rl.weight_sync import (AdapterSnapshotSync, WeightSyn
                                                   build_weight_sync_strategy)
 
 
+## 这个类干啥用的
 class StreamingLoopMixin:
     """The algorithm-agnostic per-sample streaming half of an online dev loop (composed, not inherited).
 

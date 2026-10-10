@@ -63,7 +63,7 @@ if TYPE_CHECKING:
         ModelConfig,
         MoEConfig,
         QuantizeConfig,
-        RLHFConfig,
+        RLConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -82,7 +82,7 @@ def run_opsd(
     distributed_config: DistributedConfig,
     checkpoint_config: CheckpointConfig,
     rollout_config: RolloutConfig,
-    rlhf_config: RLHFConfig,
+    rl_config: RLConfig,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
@@ -107,9 +107,9 @@ def run_opsd(
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly, single_teacher_id
 
-    if rlhf_config.rlhf_type != 'opsd':
-        raise ValueError(f'run_opsd requires rlhf_type="opsd", got {rlhf_config.rlhf_type!r}.')
-    if rlhf_config.offload_teacher_model:
+    if rl_config.rl_type != 'opsd':
+        raise ValueError(f'run_opsd requires rl_type="opsd", got {rl_config.rl_type!r}.')
+    if rl_config.offload_teacher_model:
         raise ValueError('offload_teacher_model is GKD-only: its full-vocab teacher forward wraps reload/offload, '
                          'while OPSD scores response-only teacher_logps via a chunked forward_only with no offload '
                          'hook. A separate OPSD teacher already gets its own DeviceGroup, so offload is pointless. '
@@ -123,7 +123,7 @@ def run_opsd(
         distributed_config,
         checkpoint_config,
         tuner_config,
-        rlhf_config=rlhf_config,
+        rl_config=rl_config,
         output_dir=output_dir,
         logging_config=logging_config,
         quantize_config=quantize_config,
@@ -134,9 +134,9 @@ def run_opsd(
     # A separate frozen teacher is a Ray actor on its own DeviceGroup (plan §3.3), which
     # plan_rl_device_groups must allocate BEFORE twinkle.initialize; the adapter-disabled teacher and
     # dynamic-self (teacher_model unset) both reuse the student's own actor and plan no group.
-    separate_teacher = (not rlhf_config._teacher_use_disable_adapter
-                        and single_teacher_id(rlhf_config.teacher_model, algo='OPSD') is not None)
-    teacher_world_size = teacher_group_world_size(rlhf_config) if separate_teacher else 0
+    separate_teacher = (not rl_config._teacher_use_disable_adapter
+                        and single_teacher_id(rl_config.teacher_model, algo='OPSD') is not None)
+    teacher_world_size = teacher_group_world_size(rl_config) if separate_teacher else 0
 
     backend = _sampler_backend(rollout_config)
     sampler_world_size = _sampler_world_size(rollout_config, backend)
@@ -144,17 +144,21 @@ def run_opsd(
                                                                    rollout_config.vllm_mode, sampler_world_size,
                                                                    teacher_world_size)
     _initialize_twinkle_rl(
-        distributed_config, groups, seed=train_config.seed, full_determinism=train_config.full_determinism)
+        distributed_config,
+        groups,
+        seed=train_config.seed,
+        full_determinism=train_config.full_determinism,
+        tf32=train_config.tf32)
 
     assembly.build_template()
     assembly.build_model()
-    configure_rlhf_loss(assembly.model, rlhf_config)
+    configure_rlhf_loss(assembly.model, rl_config)
     # Prompts are rolled out, not iterated by a dataloader, so the step budget is derived from the prompt
     # set (B1): one generation batch per round, exhausted after num_train_epochs passes. OPSD replays each
     # round once (no num_iterations), so the budget uses num_iterations=1; --max_steps still overrides.
     prompts, prompt_extras, dataset_rows = distill_rows_from_dataset(dataset_config, assembly.template)
     _require_teacher_prompt(prompt_extras)
-    if rlhf_config.lmbda < 1.0 and not dataset_rows:
+    if rl_config.lmbda < 1.0 and not dataset_rows:
         raise ValueError('OPSD with lmbda < 1 distils some rounds on the dataset\'s own completions, but no dataset '
                          'row carries an assistant completion. Add completions, or set lmbda=1 for purely on-policy '
                          'OPSD.')
@@ -167,7 +171,7 @@ def run_opsd(
         train_config.max_steps,
         rollout_step_budget(
             num_prompts=len(prompts),
-            num_generations=rlhf_config.num_generations,
+            num_generations=rl_config.num_generations,
             train_batch_size=train_batch_size,
             gradient_accumulation_steps=assembly.ga,
             num_train_epochs=train_config.num_train_epochs,
@@ -175,7 +179,12 @@ def run_opsd(
         recipe='run_opsd')
     assembly.resolve_step_intervals(max_steps)
     configure_optimizer(
-        assembly.model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
+        assembly.model,
+        train_config,
+        num_training_steps=max_steps,
+        distributed_config=distributed_config,
+        tuner_config=assembly.tuner_config,
+        plugin_config=assembly.plugin_config)
 
     sampler_engine_args = _sampler_engine_args(rollout_config, engine_args, colocate, backend)
     sampler = build_sampler(
@@ -195,7 +204,7 @@ def run_opsd(
     # sets serialize_generation for the exclusive-device hand-over.
     loop_cls = OPSDLoop
     streaming_kwargs: Dict[str, Any] = {}
-    sync_only = rlhf_config.lmbda != 1.0
+    sync_only = rl_config.lmbda != 1.0
     if rollout_config.async_mode != 'none' or not sync_only:
         from swift.dev.recipe.opsd_async import StreamingOPSDLoop
         loop_cls = StreamingOPSDLoop
@@ -211,21 +220,21 @@ def run_opsd(
         assembly.model,
         rollout,
         prompts,
-        teacher=_build_opsd_teacher(assembly.model, rlhf_config, tuner_config, teacher_world_size, distributed_config),
+        teacher=_build_opsd_teacher(assembly.model, rl_config, tuner_config, teacher_world_size, distributed_config),
         template=assembly.template,
         prompt_extras=prompt_extras,
         dataset_rows=dataset_rows,
-        lmbda=rlhf_config.lmbda,
-        num_generations=rlhf_config.num_generations,
+        lmbda=rl_config.lmbda,
+        num_generations=rl_config.num_generations,
         seed=train_config.seed,
-        rlhf_config=rlhf_config,
+        rl_config=rl_config,
         max_steps=max_steps,
         train_batch_size=train_batch_size,
         generation_batch_size=rollout_config.generation_batch_size,
         num_train_epochs=train_config.num_train_epochs,
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
-        sampling_params=distill_sampling_params(rlhf_config, generation_config),
+        sampling_params=distill_sampling_params(rl_config, generation_config),
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
@@ -259,10 +268,10 @@ def _require_teacher_prompt(prompt_extras: List[dict]) -> None:
     if not any((extra or {}).get('teacher_prompt') for extra in prompt_extras):
         raise ValueError('OPSD requires a per-sample `teacher_prompt` dataset column carrying the privileged '
                          'context (reference/rubric). None of the rows provide it. Add it via a dataset plugin '
-                         '(see examples/rl/opsd), or use --rlhf_type gkd for plain distillation.')
+                         '(see examples/rl/opsd), or use --rl_type gkd for plain distillation.')
 
 
-def _build_opsd_teacher(model: TrainableModel, rlhf_config: RLHFConfig, tuner_config: Optional[TunerConfig],
+def _build_opsd_teacher(model: TrainableModel, rl_config: RLConfig, tuner_config: Optional[TunerConfig],
                         teacher_world_size: int, distributed_config: DistributedConfig) -> Any:
     """Resolve the OPSD teacher: the student's adapter-disabled base, a frozen Ray-actor model, or dynamic-self.
 
@@ -271,19 +280,19 @@ def _build_opsd_teacher(model: TrainableModel, rlhf_config: RLHFConfig, tuner_co
     weights on the privileged view. There is no HTTP teacher server (removed, RL_PLAN §2.H): the
     ``teacher_model_server`` field is gone entirely, so there is nothing to re-check here.
     """
-    if rlhf_config._teacher_use_disable_adapter:
+    if rl_config._teacher_use_disable_adapter:
         if tuner_config is None:
-            raise ValueError('rlhf_config._teacher_use_disable_adapter=True requires a LoRA student (tuner_config), '
+            raise ValueError('rl_config._teacher_use_disable_adapter=True requires a LoRA student (tuner_config), '
                              'since it distils from the adapter-disabled base of that same model.')
         return DisableAdapterTeacher(model)
     from swift.dev.recipe.assembly import single_teacher_id
-    teacher_model = single_teacher_id(rlhf_config.teacher_model, algo='OPSD')
+    teacher_model = single_teacher_id(rl_config.teacher_model, algo='OPSD')
     if teacher_model is None:
         return DynamicSelfTeacher(model)
     template = model.template if hasattr(model, 'template') else None
     return build_frozen_teacher(
-        rlhf_config, template, teacher_model, distributed_config=distributed_config, remote_group=_TEACHER_GROUP,
-        teacher_world_size=teacher_world_size, adapters=rlhf_config.teacher_adapters, role='teacher')
+        rl_config, template, teacher_model, distributed_config=distributed_config, remote_group=_TEACHER_GROUP,
+        teacher_world_size=teacher_world_size, adapters=rl_config.teacher_adapters, role='teacher')
 
 
 class OPSDLoop(GKDLoop):

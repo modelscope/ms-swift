@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from swift.dev.utils import get_logger
-from .swift_dataset import SwiftDataset
+from .base import SwiftDataset
 
 __all__ = ['EncodedDataset']
 

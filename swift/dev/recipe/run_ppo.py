@@ -42,7 +42,7 @@ if TYPE_CHECKING:
         ModelConfig,
         MoEConfig,
         QuantizeConfig,
-        RLHFConfig,
+        RLConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -63,7 +63,7 @@ def run_ppo(
     distributed_config: DistributedConfig,
     checkpoint_config: CheckpointConfig,
     rollout_config: RolloutConfig,
-    rlhf_config: RLHFConfig,
+    rl_config: RLConfig,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
@@ -98,8 +98,8 @@ def run_ppo(
         plan_rl_device_groups,
     )
 
-    if rlhf_config.rlhf_type != 'ppo':
-        raise ValueError(f'run_ppo requires rlhf_type="ppo", got {rlhf_config.rlhf_type!r}.')
+    if rl_config.rl_type != 'ppo':
+        raise ValueError(f'run_ppo requires rl_type="ppo", got {rl_config.rl_type!r}.')
     assembly = TrainAssembly(
         'run_ppo',
         model_config,
@@ -109,7 +109,7 @@ def run_ppo(
         distributed_config,
         checkpoint_config,
         tuner_config,
-        rlhf_config=rlhf_config,
+        rl_config=rl_config,
         output_dir=output_dir,
         logging_config=logging_config,
         quantize_config=quantize_config,
@@ -123,10 +123,10 @@ def run_ppo(
     # frozen policy-init copy under full fine-tuning) and each reward model. A LoRA reference is the
     # adapter-disabled policy base ('disable_lora'), which reuses the policy actor and plans no group. The
     # names/world sizes here match what _build_reference / _build_reward_models build below.
-    ref_disable_lora = tuner_config is not None and not rlhf_config.ref_adapters
+    ref_disable_lora = tuner_config is not None and not rl_config.ref_adapters
     ref_remote_group: Optional[str] = None if ref_disable_lora else _REF_GROUP
     auxiliary_groups: List[Tuple[str, int]] = [] if ref_disable_lora else [(_REF_GROUP, 1)]
-    auxiliary_groups += [(_reward_group(i), 1) for i in range(len(rlhf_config.reward_model or []))]
+    auxiliary_groups += [(_reward_group(i), 1) for i in range(len(rl_config.reward_model or []))]
     groups, sampler_remote_group, colocate = plan_rl_device_groups(
         distributed_config.nproc_per_node,
         rollout_config.vllm_mode,
@@ -140,7 +140,8 @@ def run_ppo(
         distributed_config,
         groups,
         seed=train_config.seed,
-        full_determinism=train_config.full_determinism)
+        full_determinism=train_config.full_determinism,
+        tf32=train_config.tf32)
 
     # The critic, the reference and the reward models all encode with the SAME template as the policy,
     # so a batch lines up token-for-token across the four forwards.
@@ -171,29 +172,42 @@ def run_ppo(
     # mesh of data_world_size = nproc_per_node.
     assembly.build_model()
     model = assembly.model
-    configure_rlhf_loss(model, rlhf_config)
+    configure_rlhf_loss(model, rl_config)
     configure_optimizer(
-        model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
+        model,
+        train_config,
+        num_training_steps=max_steps,
+        distributed_config=distributed_config,
+        tuner_config=assembly.tuner_config,
+        plugin_config=assembly.plugin_config)
     # Register PPOMetric on the policy AFTER its optimizer group exists: twinkle accumulates it inside
     # forward_backward from advantages/old_logps, so its ratio/clip stats ride calculate_metric per step.
-    configure_rlhf_metrics(model, rlhf_config)
+    configure_rlhf_metrics(model, rl_config)
 
     # Critic: a trainable seq_cls (num_labels=1) value model, trained by the clipped value loss.
     value_model = _build_value_model(
         model_config,
-        rlhf_config,
+        rl_config,
         distributed_config,
         train_config,
         template,
         model_path=(os.path.join(assembly.resume_dir, 'value_model') if assembly.resume_dir else None),
         megatron_config=megatron_config,
         moe_config=moe_config)
-    configure_ppo_value_loss(value_model, rlhf_config)
+    configure_ppo_value_loss(value_model, rl_config)
+    # The critic is full-parameter (_build_value_model applies no tuner), so tuner_config is None: passing
+    # the policy's LoRA+ tuner_config would let its ``ndim == 1`` rule scale the critic's bias / norm lr by
+    # lorap_lr_ratio. plugin_config is still threaded so a user param_groups plugin can group critic params.
     configure_optimizer(
-        value_model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
+        value_model,
+        train_config,
+        num_training_steps=max_steps,
+        distributed_config=distributed_config,
+        tuner_config=None,
+        plugin_config=assembly.plugin_config)
     # Register PPOValueMetric on the critic AFTER its optimizer group exists: twinkle accumulates it from
     # returns/old_values, so value_mean / explained_variance ride the critic's calculate_metric per step.
-    configure_ppo_value_metric(value_model, rlhf_config)
+    configure_ppo_value_metric(value_model, rl_config)
 
     # Rollout (weight-syncable, exactly as run_grpo), reward model(s) and reference for the KL penalty.
     sampler = build_sampler(
@@ -205,8 +219,8 @@ def run_ppo(
     rollout = SyncableRollout(
         model, sampler, template, colocate=colocate, sleep_level=rollout_config.sleep_level)
     reference = _build_reference(
-        model_config, tuner_config, template, rlhf_config, distributed_config, remote_group=ref_remote_group)
-    reward_models = _build_reward_models(rlhf_config, template, distributed_config)
+        model_config, tuner_config, template, rl_config, distributed_config, remote_group=ref_remote_group)
+    reward_models = _build_reward_models(rl_config, template, distributed_config)
 
     # async_mode selects the driver, and -- since the per-sample stream now serves EVERY regime -- every PPO
     # run rides it: 'none' runs StreamingPPOLoop at max_staleness=0 (admit one window, DRAIN it, train,
@@ -248,7 +262,7 @@ def run_ppo(
         reference,
         reward_models,
         prompts,
-        rlhf_config=rlhf_config,
+        rl_config=rl_config,
         max_steps=max_steps,
         generation_batch_size=rollout_config.generation_batch_size,
         train_batch_size=train_batch_size,
@@ -256,7 +270,7 @@ def run_ppo(
         seed=train_config.seed,
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
-        sampling_params=_grpo_sampling_params(rlhf_config, generation_config),
+        sampling_params=_grpo_sampling_params(rl_config, generation_config),
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
@@ -283,7 +297,7 @@ def run_ppo(
         rollout.shutdown()
 
 
-def _build_value_model(model_config: ModelConfig, rlhf_config: RLHFConfig, distributed_config: DistributedConfig,
+def _build_value_model(model_config: ModelConfig, rl_config: RLConfig, distributed_config: DistributedConfig,
                        train_config: TrainConfig, template: Any, *, model_path: Optional[str] = None,
                        megatron_config: Optional[MegatronConfig] = None,
                        moe_config: Optional[MoEConfig] = None) -> Any:
@@ -300,7 +314,7 @@ def _build_value_model(model_config: ModelConfig, rlhf_config: RLHFConfig, distr
     from swift.dev.builders import build_model
     from swift.dev.processor import InputProcessor
 
-    init_from = rlhf_config.reward_model[0] if rlhf_config.reward_model else model_config.model
+    init_from = rl_config.reward_model[0] if rl_config.reward_model else model_config.model
     value_cfg = copy(model_config)
     value_cfg.model = model_path or init_from
     value_cfg.task_type = 'seq_cls'  # the per-token value rides the seq_cls score head
@@ -322,7 +336,7 @@ def _build_value_model(model_config: ModelConfig, rlhf_config: RLHFConfig, distr
 
 
 def _build_reference(model_config: ModelConfig, tuner_config: Optional[TunerConfig], template: Any,
-                     rlhf_config: RLHFConfig, distributed_config: DistributedConfig, *,
+                     rl_config: RLConfig, distributed_config: DistributedConfig, *,
                      remote_group: Optional[str]) -> Any:
     """PPO's frozen reference for the KL penalty: 'disable_lora' (LoRA) or a frozen policy-init model.
 
@@ -332,7 +346,7 @@ def _build_reference(model_config: ModelConfig, tuner_config: Optional[TunerConf
     :func:`frozen_auxiliary_distributed_config` (RL_PLAN §3.5, basic principles 1/2). ``remote_group`` is
     the 'ref' group the run body planned (None on the LoRA path, which returns before using it).
     """
-    if tuner_config is not None and not rlhf_config.ref_adapters:
+    if tuner_config is not None and not rl_config.ref_adapters:
         return 'disable_lora'
     from copy import copy
 
@@ -340,15 +354,15 @@ def _build_reference(model_config: ModelConfig, tuner_config: Optional[TunerConf
     from swift.dev.recipe.assembly import configure_frozen_adapter
 
     ref_config = copy(model_config)
-    ref_config.model = rlhf_config.ref_model or model_config.model
-    ref_config.model_type = rlhf_config.ref_model_type or model_config.model_type
-    ref_config.model_revision = rlhf_config.ref_model_revision or model_config.model_revision
+    ref_config.model = rl_config.ref_model or model_config.model
+    ref_config.model_type = rl_config.ref_model_type or model_config.model_type
+    ref_config.model_revision = rl_config.ref_model_revision or model_config.model_revision
     ref = build_model(
         ref_config, frozen_auxiliary_distributed_config(distributed_config, 1), remote_group=remote_group)
-    return configure_frozen_adapter(ref, template, rlhf_config.ref_adapters, role='ref')
+    return configure_frozen_adapter(ref, template, rl_config.ref_adapters, role='ref')
 
 
-def _build_reward_models(rlhf_config: RLHFConfig, template: Any,
+def _build_reward_models(rl_config: RLConfig, template: Any,
                          distributed_config: DistributedConfig) -> List[Any]:
     """Build the frozen reward model(s) that score each completion (seq_cls, num_labels=1 scalar).
 
@@ -357,7 +371,7 @@ def _build_reward_models(rlhf_config: RLHFConfig, template: Any,
     actor on its own ``reward_<i>`` DeviceGroup, built with the run's backend (RL_PLAN §3.5); the group
     names/world sizes (1 each) match what the run body planned through ``plan_rl_device_groups``.
     """
-    if not rlhf_config.reward_model:
+    if not rl_config.reward_model:
         return []
     from swift.dev.builders import build_model, frozen_auxiliary_distributed_config
     from swift.dev.config import ModelConfig
@@ -365,17 +379,17 @@ def _build_reward_models(rlhf_config: RLHFConfig, template: Any,
     from swift.dev.recipe.run_grpo import _reward_group
 
     models: List[Any] = []
-    for idx, rm_id in enumerate(rlhf_config.reward_model):
+    for idx, rm_id in enumerate(rl_config.reward_model):
         rm_cfg = ModelConfig(model=rm_id, task_type='seq_cls')
         rm_cfg.num_labels = 1
-        if rlhf_config.reward_model_type:
-            rm_cfg.model_type = rlhf_config.reward_model_type[idx] if idx < len(rlhf_config.reward_model_type) else None
-        if rlhf_config.reward_model_revision:
-            rm_cfg.model_revision = (rlhf_config.reward_model_revision[idx]
-                                     if idx < len(rlhf_config.reward_model_revision) else None)
+        if rl_config.reward_model_type:
+            rm_cfg.model_type = rl_config.reward_model_type[idx] if idx < len(rl_config.reward_model_type) else None
+        if rl_config.reward_model_revision:
+            rm_cfg.model_revision = (rl_config.reward_model_revision[idx]
+                                     if idx < len(rl_config.reward_model_revision) else None)
         rm = build_model(
             rm_cfg, frozen_auxiliary_distributed_config(distributed_config, 1), remote_group=_reward_group(idx))
-        adapters = [rlhf_config.reward_adapters[idx]] if rlhf_config.reward_adapters else []
+        adapters = [rl_config.reward_adapters[idx]] if rl_config.reward_adapters else []
         models.append(configure_frozen_adapter(rm, template, adapters, role='reward'))
     return models
 
@@ -402,7 +416,7 @@ class PPOLoop:
         reward_models: List[Any],
         prompts: List[List[dict]],
         *,
-        rlhf_config: RLHFConfig,
+        rl_config: RLConfig,
         max_steps: int = 1,
         generation_batch_size: Optional[int] = None,
         train_batch_size: int = 1,
@@ -428,7 +442,7 @@ class PPOLoop:
         self.reference = reference
         self.reward_models = reward_models
         self.prompts = prompts
-        self.rlhf_config = rlhf_config
+        self.rl_config = rl_config
         self.max_steps = max_steps
         self.gradient_accumulation_steps = max(1, gradient_accumulation_steps)
         #: Design-B mini-batch width (per_device_train_batch_size * dp_size). Each ``forward_backward``
@@ -451,12 +465,12 @@ class PPOLoop:
         self.manual_gc_steps = manual_gc_steps
         if self.manual_gc_steps < 0:
             raise ValueError('manual_gc_steps must be >= 0.')
-        self.num_generations = rlhf_config.num_generations
-        self.num_ppo_epochs = max(1, rlhf_config.num_ppo_epochs)
+        self.num_generations = rl_config.num_generations
+        self.num_ppo_epochs = max(1, rl_config.num_ppo_epochs)
         from twinkle.advantage import GAEAdvantage
         # gamma/lam are GAE *construction* hyperparameters (its __call__ is keyword-only for masks/
         # normalize), so they are bound here rather than passed per call.
-        self._gae = GAEAdvantage(gamma=rlhf_config.gamma, gae_lambda=rlhf_config.lam)
+        self._gae = GAEAdvantage(gamma=rl_config.gamma, gae_lambda=rl_config.lam)
         # Driver-held reward component (twinkle CompletionRewardMetric), fed once per rollout by
         # _plan_rollout and read back in _record_step. Driver-side because PPO's reward (RM score +
         # per-token KL penalty) is computed here on the driver, never inside the model forward -- the
@@ -533,7 +547,7 @@ class PPOLoop:
         if ref_tokens is None:
             rewards = [0.0] * n
         else:
-            rewards = [-self.rlhf_config.kl_coef * (old[t] - ref_tokens[t]) for t in range(n)]
+            rewards = [-self.rl_config.kl_coef * (old[t] - ref_tokens[t]) for t in range(n)]
         rewards[-1] += rm_score
         return rewards
 
@@ -559,7 +573,7 @@ class PPOLoop:
         the driver-held CompletionRewardMetric, so the step record surfaces ``train/total_reward`` -- the RL
         head signal -- instead of a hand-passed mean.
         """
-        cfg = self.rlhf_config
+        cfg = self.rl_config
         rm_scores = self._score_rewards(samples)
         plans: List[list] = []
         sample_rewards: List[float] = []

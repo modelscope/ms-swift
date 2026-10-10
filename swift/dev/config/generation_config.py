@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Generation parameters for inference and deployment."""
 from __future__ import annotations
 

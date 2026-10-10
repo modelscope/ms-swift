@@ -1,4 +1,4 @@
-"""Unified RLHF dispatcher for the public CLI and programmatic callers."""
+"""Unified RL dispatcher for the public CLI and programmatic callers."""
 from __future__ import annotations
 from typing import TYPE_CHECKING, List, Optional
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
         ModelConfig,
         MoEConfig,
         QuantizeConfig,
-        RLHFConfig,
+        RLConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 _OFFLINE_TYPES = frozenset({'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'})
 
 
-def run_rlhf(
+def run_rl(
     model_config: ModelConfig,
     template_config: TemplateConfig,
     dataset_config: DatasetConfig,
@@ -31,7 +31,7 @@ def run_rlhf(
     distributed_config: DistributedConfig,
     checkpoint_config: CheckpointConfig,
     rollout_config: RolloutConfig,
-    rlhf_config: RLHFConfig,
+    rl_config: RLConfig,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
@@ -60,7 +60,7 @@ def run_rlhf(
         'output_dir': output_dir,
         '_save_final': _save_final,
     }
-    if rlhf_config.rlhf_type in _OFFLINE_TYPES:
+    if rl_config.rl_type in _OFFLINE_TYPES:
         return run_dpo(
             model_config,
             template_config,
@@ -68,10 +68,10 @@ def run_rlhf(
             train_config,
             distributed_config,
             checkpoint_config,
-            rlhf_config,
+            rl_config,
             **common,
         )
-    if rlhf_config.rlhf_type == 'grpo':
+    if rl_config.rl_type == 'grpo':
         return run_grpo(
             model_config,
             template_config,
@@ -80,11 +80,11 @@ def run_rlhf(
             distributed_config,
             checkpoint_config,
             rollout_config,
-            rlhf_config,
+            rl_config,
             generation_config=generation_config,
             **common,
         )
-    if rlhf_config.rlhf_type == 'rft':
+    if rl_config.rl_type == 'rft':
         return run_rft(
             model_config,
             template_config,
@@ -93,11 +93,11 @@ def run_rlhf(
             distributed_config,
             checkpoint_config,
             rollout_config,
-            rlhf_config,
+            rl_config,
             generation_config=generation_config,
             **common,
         )
-    if rlhf_config.rlhf_type == 'ppo':
+    if rl_config.rl_type == 'ppo':
         return run_ppo(
             model_config,
             template_config,
@@ -106,11 +106,11 @@ def run_rlhf(
             distributed_config,
             checkpoint_config,
             rollout_config,
-            rlhf_config,
+            rl_config,
             generation_config=generation_config,
             **common,
         )
-    if rlhf_config.rlhf_type == 'gkd':
+    if rl_config.rl_type == 'gkd':
         return run_gkd(
             model_config,
             template_config,
@@ -119,11 +119,11 @@ def run_rlhf(
             distributed_config,
             checkpoint_config,
             rollout_config,
-            rlhf_config,
+            rl_config,
             generation_config=generation_config,
             **common,
         )
-    if rlhf_config.rlhf_type == 'opsd':
+    if rl_config.rl_type == 'opsd':
         return run_opsd(
             model_config,
             template_config,
@@ -132,11 +132,11 @@ def run_rlhf(
             distributed_config,
             checkpoint_config,
             rollout_config,
-            rlhf_config,
+            rl_config,
             generation_config=generation_config,
             **common,
         )
-    if rlhf_config.rlhf_type == 'mopd':
+    if rl_config.rl_type == 'mopd':
         return run_mopd(
             model_config,
             template_config,
@@ -145,8 +145,8 @@ def run_rlhf(
             distributed_config,
             checkpoint_config,
             rollout_config,
-            rlhf_config,
+            rl_config,
             generation_config=generation_config,
             **common,
         )
-    raise ValueError(f'Unsupported rlhf_type: {rlhf_config.rlhf_type!r}.')
+    raise ValueError(f'Unsupported rl_type: {rl_config.rl_type!r}.')

@@ -41,11 +41,12 @@ Consumed features (real end-to-end, each pinned to its consumption point):
 Cross-referenced rather than duplicated: ``split_dataset_ratio`` (carving a val split + the eval cadence it
 feeds) is exercised end to end in test_eval_sampler.py::test_val_loss_eval_single_card.
 
-Documented GAP (skipped with a precise reason, NOT stubbed with a vacuous pass -- see the test):
-``neftune_noise_alpha`` parses and validates but has no consumer in the dev training path, so it cannot be
-asserted honestly. Wiring (or explicitly refusing) it is product work tracked separately. (``seed`` /
-``full_determinism`` and ``freeze_parameters`` / ``trainable_parameters`` were once listed here; both are
-now wired -- the former covered in test_e2e.py, the latter in tests/component/optimizer/test_freeze_parameters.py.)
+Documented GAPS: none outstanding. (``neftune_noise_alpha``, ``seed`` / ``full_determinism`` and
+``freeze_parameters`` / ``trainable_parameters`` were once listed here; all are now wired -- neftune injects
+embedding noise in twinkle's ``TransformersModel._activate_neftune`` (forwarded by builders/model.py from
+``TrainConfig.neftune_noise_alpha``, transformers-only; megatron refuses it in validate._HF_ONLY);
+seed/full_determinism are covered in test_e2e.py; freeze/trainable in
+tests/component/optimizer/test_freeze_parameters.py.)
 
 No mocks: every run loads real weights and drives the real recipe. All tests are ``@pytest.mark.slow``
 (+ ``@pytest.mark.accel(1)``); run with
@@ -497,20 +498,3 @@ def test_resume_from_checkpoint_continues_trajectory(tmp_path, text_model_path, 
                               f'>= {limit} -- the resumed trajectory left the continuous one (weights or '
                               f'optimizer momentum not restored to their saved values)')
 
-
-# --- documented GAPS: parse + validate but no consumer, so they cannot be asserted honestly. -----------
-# Each skips with the precise missing-consumer evidence rather than passing vacuously (a test that sets the
-# knob and asserts "it trained" would go green whether or not the knob does anything). Wiring or explicitly
-# refusing these is product work tracked separately; see the plan's gap list.
-
-
-def test_neftune_noise_alpha_is_an_unwired_gap():
-    """GAP: neftune_noise_alpha parses and validates but nothing in dev/twinkle consumes it."""
-    pytest.skip(
-        'GAP: TrainConfig.neftune_noise_alpha has no consumer -- grep finds only the field definition, the '
-        'validate._HF_ONLY ledger entry and docs; no code injects NEFTune noise into the embedding (dev drives '
-        'training through twinkle, not the HF Trainer that owns activate_neftune). It parses but silently does '
-        'nothing on the transformers backend. NOTE the _HF_ONLY entry is itself misleading: under megatron it '
-        'raises "only implemented by the transformers backend", but transformers does not implement it either -- '
-        'so the honest fix is to WIRE it or fail-loudly refuse it on BOTH backends. Wiring is product work, '
-        'tracked separately; not stubbed with a vacuous "it trained" test.')

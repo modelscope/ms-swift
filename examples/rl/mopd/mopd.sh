@@ -1,7 +1,7 @@
 # v5 Multi-teacher On-Policy Distillation (MOPD) with LoRA, on 3 GPUs through Ray + vLLM.
 # Paper: https://arxiv.org/abs/2606.30406 (Open-MOPD)
 #
-# USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI (swift.dev.cli.rlhf). `--rlhf_type mopd` dispatches to
+# USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI (swift.dev.cli.rl). `--rlhf_type mopd` dispatches to
 # swift.dev.recipe.run_mopd.
 #
 # What MOPD does: the student generates ONE on-policy trajectory; K frozen DOMAIN teachers each re-score that

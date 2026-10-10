@@ -7,6 +7,7 @@ from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset
 
 from swift.dev.utils import get_logger
+from ._diagnostics import note_row_error
 
 __all__ = ['LazyLLMDataset']
 
@@ -79,12 +80,8 @@ class LazyLLMDataset(Dataset):
                 # Too long is an expected property of public data, not a defect worth a traceback.
                 if isinstance(e, MaxLengthError):
                     continue
-                if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
-                    import traceback
-                    logger.info(traceback.format_exc())
-                    logger.warning('👆👆👆There are errors in the template.encode, '
-                                   'and another piece of data will be randomly selected.')
-                    self._traceback_counter += 1
+                note_row_error(self, '👆👆👆There are errors in the template.encode, '
+                               'and another piece of data will be randomly selected.')
 
         raise ValueError('Failed to retrieve the dataset. You can avoid this issue by increasing `max_length` or '
                          'modifying the `truncation_strategy`.')

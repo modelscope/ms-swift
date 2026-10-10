@@ -5,8 +5,6 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-## 这里引用了legacy的代码
-## 对这个文件增加一些ut，保证一些复杂数据集加载格式正确
 from swift.template.utils import split_str_parts_by
 
 from .base import DatasetLoader, SubsetMeta, register_dataset

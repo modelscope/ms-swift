@@ -1,5 +1,6 @@
 from __future__ import annotations
-
+import os
+import numpy as np
 import torch
 from twinkle.processor import InputProcessor as TwinkleInputProcessor
 from typing import Callable, List, Optional
@@ -7,6 +8,7 @@ from typing import Callable, List, Optional
 from swift.dev.data_format import InputFeature
 
 
+## 这个为什么不放在twinkle中？看起来是embedding和reranker相关的，twinkle有这个任务支持
 class InputProcessor(TwinkleInputProcessor):
     """Swift extension of twinkle InputProcessor.
 
@@ -129,6 +131,7 @@ class InputProcessor(TwinkleInputProcessor):
         are documents). Each flat row gets a scalar mask label: 1.0 on the anchor (group start), 0.0 on
         the positive and negatives.
         """
+        ## 这函数干什么用的
         flat: List[InputFeature] = []
         for row in rows:
             row = dict(row)
@@ -161,9 +164,6 @@ class InputProcessor(TwinkleInputProcessor):
         ``RandomState(42)``; dev reproduces that exactly so both train on the same subset. Each selected
         candidate becomes a flat row carrying its scalar relevance label (1 relevant / 0 not).
         """
-        import os
-
-        import numpy as np
         if self._reranker_rng is None:
             self._reranker_rng = np.random.RandomState(42)
         max_positive = int(os.environ.get('MAX_POSITIVE_SAMPLES', 1))

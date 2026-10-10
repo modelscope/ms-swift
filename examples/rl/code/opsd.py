@@ -11,7 +11,7 @@
 # Run: python examples/rl/code/opsd.py   (set CUDA_VISIBLE_DEVICES to your free cards first).
 import os
 
-from swift.dev.cli.rlhf import run_rlhf_configs
+from swift.dev.cli.rl import run_rl_configs
 from swift.dev.config import (
     CheckpointConfig,
     DatasetConfig,
@@ -21,14 +21,14 @@ from swift.dev.config import (
     ModelConfig,
     PluginConfig,
     QuantizeConfig,
-    RLHFConfig,
+    RLConfig,
     RolloutConfig,
     TemplateConfig,
     TrainConfig,
     TunerConfig,
 )
 
-#: Online rlhf_types roll out on a separate vLLM sampler over Ray (mirrors parse_rlhf_configs).
+#: Online rl_types roll out on a separate vLLM sampler over Ray (mirrors parse_rl_configs).
 _ONLINE_TYPES = {'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'}
 
 #: The OPSD dataset plugin, resolved from THIS file's location so the example runs from any CWD.
@@ -36,14 +36,14 @@ _OPSD_PLUGIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'o
 
 
 def _force_online_placement(configs: dict) -> None:
-    """Replicate the CLI's Ray+vLLM placement forcing, which run_rlhf_configs does NOT do.
+    """Replicate the CLI's Ray+vLLM placement forcing, which run_rl_configs does NOT do.
 
-    parse_rlhf_configs applies this after parsing argv; a programmatic caller bypasses that parser, so it
+    parse_rl_configs applies this after parsing argv; a programmatic caller bypasses that parser, so it
     must force the placement itself or the online loop would build with no sampler. Keep in sync with
-    swift/dev/cli/rlhf.py::parse_rlhf_configs (the source of truth).
+    swift/dev/cli/rl.py::parse_rl_configs (the source of truth).
     """
-    rlhf_config = configs['rlhf_config']
-    if rlhf_config.rlhf_type in _ONLINE_TYPES:
+    rl_config = configs['rl_config']
+    if rl_config.rl_type in _ONLINE_TYPES:
         rollout_config = configs['rollout_config']
         rollout_config.use_vllm = True
         rollout_config.vllm_mode = rollout_config.vllm_mode or 'colocate'
@@ -79,8 +79,8 @@ def build_configs() -> dict:
         # teacher_model is the frozen scorer; lmbda=1.0 is purely on-policy (required for the async/streaming
         # distillation loop); opsd_reverse selects the reverse-KL OPSD objective; num_generations=1 (a single
         # student rollout per prompt, teacher-scored).
-        'rlhf_config': RLHFConfig(
-            rlhf_type='opsd',
+        'rl_config': RLConfig(
+            rl_type='opsd',
             teacher_model=['Qwen/Qwen2.5-7B-Instruct'],
             lmbda=1.0,
             opsd_reverse=True,
@@ -98,7 +98,7 @@ def main() -> None:
     os.environ.setdefault('USE_SWIFT_V5', '1')
     configs = build_configs()
     _force_online_placement(configs)
-    history = run_rlhf_configs(configs)
+    history = run_rl_configs(configs)
     # OPSD's loss IS the teacher>student divergence: a FALLING loss is the convergence signal (no reward channel).
     print(f'OPSD finished: {len(history)} optimizer steps; last loss={history[-1].get("loss") if history else None}')
 

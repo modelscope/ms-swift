@@ -43,7 +43,7 @@ def _length_reward(completions, **kwargs):
 def _run_generative(model_dir, data_path, infer_config, *, backend='transformers', reward=None, out_path=None,
                     gen_kwargs=None, engine_args=None):
     """Drive ``run_infer``'s generative path on a real backend and return the rows."""
-    from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, RLHFConfig,
+    from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, RLConfig,
                                   TemplateConfig)
     from swift.dev.recipe.run_infer import run_infer
 
@@ -55,7 +55,7 @@ def _run_generative(model_dir, data_path, infer_config, *, backend='transformers
         DatasetConfig(dataset=[data_path]),
         infer_config,
         gen,
-        rlhf_config=RLHFConfig(reward_funcs=[reward]) if reward else None,
+        rl_config=RLConfig(reward_funcs=[reward]) if reward else None,
         backend=backend,
         engine_args=engine_args,
         distributed_config=None,

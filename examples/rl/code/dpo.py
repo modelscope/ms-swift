@@ -11,7 +11,7 @@
 # Run: python examples/rl/code/dpo.py   (set CUDA_VISIBLE_DEVICES to your free cards first).
 import os
 
-from swift.dev.cli.rlhf import run_rlhf_configs
+from swift.dev.cli.rl import run_rl_configs
 from swift.dev.config import (
     CheckpointConfig,
     DatasetConfig,
@@ -21,25 +21,25 @@ from swift.dev.config import (
     ModelConfig,
     PluginConfig,
     QuantizeConfig,
-    RLHFConfig,
+    RLConfig,
     RolloutConfig,
     TemplateConfig,
     TrainConfig,
     TunerConfig,
 )
 
-#: Offline preference rlhf_types run mode='ray' but roll out nothing (mirrors parse_rlhf_configs).
+#: Offline preference rl_types run mode='ray' but roll out nothing (mirrors parse_rl_configs).
 _OFFLINE_TYPES = {'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'}
 
 
 def _force_offline_placement(configs: dict) -> None:
-    """Replicate the CLI's Ray forcing for the offline family, which run_rlhf_configs does NOT do.
+    """Replicate the CLI's Ray forcing for the offline family, which run_rl_configs does NOT do.
 
-    parse_rlhf_configs sets mode='ray' (and NO vLLM sampler) for dpo/kto/cpo/orpo/simpo/rm; a programmatic
+    parse_rl_configs sets mode='ray' (and NO vLLM sampler) for dpo/kto/cpo/orpo/simpo/rm; a programmatic
     caller bypasses that parser, so it must force the mode itself. Keep in sync with
-    swift/dev/cli/rlhf.py::parse_rlhf_configs (the source of truth).
+    swift/dev/cli/rl.py::parse_rl_configs (the source of truth).
     """
-    if configs['rlhf_config'].rlhf_type in _OFFLINE_TYPES:
+    if configs['rl_config'].rl_type in _OFFLINE_TYPES:
         configs['distributed_config'].mode = 'ray'
 
 
@@ -72,7 +72,7 @@ def build_configs() -> dict:
         'rollout_config': RolloutConfig(),
         # beta is the KL-to-reference strength; under LoRA the reference is the policy's own base with the
         # adapter disabled (no second model, no extra GPUs).
-        'rlhf_config': RLHFConfig(rlhf_type='dpo', beta=0.1),
+        'rl_config': RLConfig(rl_type='dpo', beta=0.1),
         'quantize_config': QuantizeConfig(),
         'megatron_config': None,
         'moe_config': None,
@@ -83,7 +83,7 @@ def main() -> None:
     os.environ.setdefault('USE_SWIFT_V5', '1')
     configs = build_configs()
     _force_offline_placement(configs)
-    history = run_rlhf_configs(configs)
+    history = run_rl_configs(configs)
     # DPO convergence: rewards/margins rising and rewards/accuracies -> 1 (a reference-gated DPOMetric tag).
     print(f'DPO finished: {len(history)} optimizer steps; last loss={history[-1].get("loss") if history else None}')
 

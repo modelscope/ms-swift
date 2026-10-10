@@ -9,8 +9,8 @@ capability). A silent degradation is the failure every case here kills: it would
 doing something other than what was asked.
 
 These drive the REAL production validation entry -- ``process_and_validate_configs``, the first thing
-``cli.rlhf.run_rlhf_configs`` calls -- and stop there. An infeasible combo is rejected during validation,
-BEFORE ``run_rlhf`` builds any model/sampler, so this exercises the exact guard path the ``swift rlhf``
+``cli.rlhf.run_rl_configs`` calls -- and stop there. An infeasible combo is rejected during validation,
+BEFORE ``run_rl`` builds any model/sampler, so this exercises the exact guard path the ``swift rlhf``
 command hits without needing a GPU or a Ray session. Each case is reverse-verifiable: delete the guard and
 the config validates cleanly (the ``pytest.raises`` goes red), restore it and it is refused again.
 
@@ -40,8 +40,8 @@ from swift.dev.tests.feature.rl.conftest import _force_rl_placement, rl_configs
 def _validate_only(configs):
     """Run the production RL config validation and stop before anything is built.
 
-    ``process_and_validate_configs`` is exactly what ``run_rlhf_configs`` calls first; an infeasible combo
-    raises inside it, so the heavy ``run_rlhf`` build that follows is never reached. ``_force_rl_placement``
+    ``process_and_validate_configs`` is exactly what ``run_rl_configs`` calls first; an infeasible combo
+    raises inside it, so the heavy ``run_rl`` build that follows is never reached. ``_force_rl_placement``
     replicates the CLI argv parser's Ray/vLLM placement forcing (which a programmatic caller bypasses) so
     the config validated here is the one ``swift rlhf`` would validate.
     """
@@ -77,7 +77,7 @@ def test_transformers_sampler_cannot_back_weight_synced_rollout(tiny_qwen2_5, rl
     receives the updated weights (which would train against a stale behaviour policy with no correction).
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -104,7 +104,7 @@ def test_unsloth_rejected_on_megatron_backend(tiny_qwen2_5, rl_data, tmp_path):
     tuner on the transformers backend is not refused by this guard (unsloth is a transformers construct).
     """
     common = dict(
-        rlhf_type='dpo',
+        rl_type='dpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -137,7 +137,7 @@ def test_colocate_async_overlap_rejected(tiny_qwen2_5, rl_data, tmp_path):
     GRPO off-policy guard (case 5) passes first and this case isolates the colocate rejection.
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -161,7 +161,7 @@ def test_async_grpo_requires_importance_sampling(tiny_qwen2_5, rl_data, tmp_path
     this requirement is GRPO-specific.)
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',

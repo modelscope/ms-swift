@@ -12,8 +12,9 @@ which TunerConfig fields feed it:
                    Note LoRA can also carry trainable tokens via its own trainable_token_indices,
                    so this type is only for the "no LoRA at all" case.
 
-LoRA+ is NOT a tuner: it changes the optimizer's param groups, not the module graph. It is
-requested through lorap_lr_ratio/lorap_emb_lr plus the 'lorap' optimizer, and so has no config here.
+LoRA+ is NOT a tuner: it changes the optimizer's param groups, not the module graph, so it has no peft
+config here. It is wired through the optimizer instead -- ``lorap_lr_ratio`` / ``lorap_emb_lr`` on
+TunerConfig feed :func:`swift.dev.optimizer.build_param_groups_spec`.
 """
 from __future__ import annotations
 
@@ -181,4 +182,10 @@ def apply_tuner(model: TrainableModel,
                 num_training_steps: Optional[int] = None,
                 task_type: Optional[str] = None) -> None:
     adapter_config = _build_adapter_config(tuner_cfg, num_training_steps=num_training_steps, task_type=task_type)
-    model.add_adapter_to_model(adapter_name, adapter_config, gradient_accumulation_steps=gradient_accumulation_steps)
+    model.add_adapter_to_model(
+        adapter_name,
+        adapter_config,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        freeze_llm=tuner_cfg.freeze_llm,
+        freeze_vit=tuner_cfg.freeze_vit,
+        freeze_aligner=tuner_cfg.freeze_aligner)

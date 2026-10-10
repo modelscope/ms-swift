@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """OpenAI-compatible deployment CLI backed by the dev serving recipe."""
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
@@ -84,14 +85,12 @@ def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig,
                TunerConfig, GenerationConfig, RolloutConfig, InferConfig, DeployConfig, QuantizeConfig,
                RuntimeConfig]
-    # ``sampler_type`` is spelled by two Configs: InferConfig's is a synthesis label ('sample'/'distill')
-    # that means nothing when serving, while DeployConfig's is the twinkle-server sampler kind
-    # ('vllm'/'vllm_async'/'sglang_async'/...) that ``_validate`` guards and ``build_server_config`` pins.
-    # Pin the CLI spelling to DeployConfig so ``swift deploy --sampler_type vllm_async`` reaches the field
-    # that actually drives the deployment instead of being rejected by InferConfig's narrower choices.
-    owners = {'sampler_type': DeployConfig}
+    # ``sampler_type`` (DeployConfig's twinkle-server sampler kind, which ``_validate`` guards and
+    # ``build_server_config`` pins) and ``strict`` (DatasetConfig's column-mapping gate) are each unique
+    # across these Configs now that InferConfig's vestigial ``sampler_type`` label is gone and its
+    # generation-row tolerance is spelled ``generation_strict`` -- so no owner disambiguation is needed.
     configs = parse_configs_strict(
-        classes, effective_argv, command='swift deploy', field_owners=owners, load_args_default=True)
+        classes, effective_argv, command='swift deploy', load_args_default=True)
     names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'distributed_config',
              'checkpoint_config', 'tuner_config', 'generation_config', 'rollout_config', 'infer_config',
              'deploy_config', 'quantize_config', 'runtime_config')

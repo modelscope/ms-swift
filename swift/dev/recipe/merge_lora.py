@@ -91,16 +91,16 @@ def _load_base_model(model_config: ModelConfig, *, device_map: Optional[Any]):
     no transformers load-time quantization off ``ModelConfig`` -- the only quant fields there are
     Megatron fp8 knobs, unused on this path -- and the `swift merge` CLI does not parse ``QuantizeConfig``,
     so the base is loaded full-precision by construction.
-    """
-    from copy import copy
 
+    ``device_map`` is the caller's placement for this merge load (infer/deploy pass ``'cpu'`` to fold the
+    adapter without touching the GPU). It rides in as a load override because ``ModelConfig`` no longer
+    carries a device_map field -- the runtime, not the config, owns model placement.
+    """
     from swift.dev.builders import load_model_processor
 
-    resolved_device_map = device_map or model_config.device_map
-    logger.info(f'merge_device_map: {resolved_device_map}')
-    load_config = copy(model_config)
-    load_config.device_map = resolved_device_map
-    return load_model_processor(load_config, load_model=True)
+    logger.info(f'merge_device_map: {device_map}')
+    overrides = {} if device_map is None else {'device_map': device_map}
+    return load_model_processor(model_config, load_model=True, **overrides)
 
 
 def _build_template(template_config: Optional[TemplateConfig], processor, model):

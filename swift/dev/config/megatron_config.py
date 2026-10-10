@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Megatron engine knobs: kernel fusions, attention implementation, and process initialisation."""
 from __future__ import annotations
 

@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Shared EvalScope Native-runner adaptation.
 
 ``swift eval`` (standalone) and the in-training generative eval (``predict_with_generate``) both score a

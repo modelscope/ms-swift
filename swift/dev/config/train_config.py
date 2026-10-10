@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Cross-backend training hyperparameters (lr/batch/optimizer/scheduler/gradient/eval)."""
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -25,7 +26,6 @@ class TrainConfig:
     gradient_accumulation_steps: int = 1
     max_steps: int = -1
     num_train_epochs: float = 3.0
-    max_epochs: Optional[int] = None
 
     # === Gradient ===
     # Gradient-clipping threshold for BOTH backends. legacy split this in two (HF `max_grad_norm`,
@@ -209,7 +209,6 @@ class TrainConfig:
     full_determinism: bool = False
     use_liger_kernel: bool = False
     neftune_noise_alpha: Optional[float] = None
-    average_tokens_across_devices: bool = True
 
     # === Training Strategy ===
     router_aux_loss_coef: float = 0.0
@@ -217,14 +216,25 @@ class TrainConfig:
     enable_channel_loss: bool = False
     #: Supervised-loss name for SFT/embedding/reranker. Renamed from ``loss_type`` to the kind name
     #: ``loss`` (``--loss_type`` still resolves through LEGACY_ALIASES). Distinct from
-    #: ``RLHFConfig.loss_type``, which names the GRPO objective and keeps that name.
+    #: ``RLConfig.loss_type``, which names the GRPO objective and keeps that name.
     loss: Optional[str] = None
     mrl_dims: Optional[Dict[int, float]] = None
     acc_strategy: Literal['token', 'seq'] = 'token'
-    aligner_lr: Optional[float] = None
+
+    # === Per-group learning rates ===
+    # Consumed by swift.dev.optimizer.build_param_groups_spec, which turns them into a backend-neutral
+    # param-group spec that twinkle applies worker-side on both backends (transformers: split the
+    # decay/no-decay groups by tower; megatron: translate to config_overrides). vit_lr/aligner_lr give
+    # a multimodal run's vision tower / aligner their own learning rate; each falls back to
+    # learning_rate when None, and both are inert on a plain LLM (empty ModelArch). The towers are named
+    # by role, not by literal prefix, so twinkle expands them from the model's own ModelArch.
+    #: Learning rate for the vision tower; None uses ``learning_rate``.
     vit_lr: Optional[float] = None
-    use_logits_to_keep: Optional[bool] = None
-    ds3_gather_for_generation: bool = True
+    #: Learning rate for the aligner (vision-language connector); None uses ``learning_rate``.
+    aligner_lr: Optional[float] = None
+    #: Names of extra ``param_groups`` plugins (registered via --external_plugins) whose rules are
+    #: appended after the built-in per-tower / LoRA+ grouping. Empty by default.
+    param_groups_plugins: List[str] = field(default_factory=list)
 
     # === Full-parameter freeze ===
     # Consumed ONLY on the full-parameter path (tuner_config is None), where legacy runs
@@ -249,29 +259,17 @@ class TrainConfig:
 
     # === Precision & Performance ===
     # torch_dtype in ModelConfig is what the weights are; these are about the run around them.
-    #: Run evaluation in bf16 / fp16 regardless of the training dtype. Saves memory at eval time, and
-    #: can move the metric slightly, so a comparison across runs should keep it fixed.
-    bf16_full_eval: bool = False
-    fp16_full_eval: bool = False
     #: Allow tf32 on matmuls and convolutions. Large speedup on Ampere and later at reduced mantissa;
     #: None leaves torch's own default alone.
     tf32: Optional[bool] = None
-    torch_compile: bool = False
-    torch_compile_backend: Optional[str] = None
-    torch_compile_mode: Optional[str] = None
     #: Empty the CUDA cache every N steps. Buys headroom against fragmentation and costs a
     #: synchronisation each time, so it is for runs that OOM late rather than a default.
     torch_empty_cache_steps: Optional[int] = None
-    #: Halve the batch size and retry after an OOM, until it fits. Changes the effective batch size
-    #: without saying so, which makes a run's loss curve incomparable to others.
-    auto_find_batch_size: bool = False
     #: The model's KV cache. Off during training, where it wastes memory and conflicts with gradient
     #: checkpointing; only useful when the run generates.
     use_cache: bool = False
 
     # === Loss ===
-    #: Which batch keys hold labels. Needed only when a model's signature does not make it obvious.
-    label_names: Optional[List[str]] = None
     #: Spread this much probability mass off the target token. 0.0 disables it.
     label_smoothing_factor: float = 0.0
     #: Average the loss over real tokens across the whole global batch rather than per micro-batch.
@@ -283,10 +281,8 @@ class TrainConfig:
     apply_wd_to_qk_layernorm: bool = False
 
     # === Nested third-party configs ===
-    # Kept as opaque dicts on purpose: the keys belong to those libraries and change with their
-    # versions, so enumerating them here would go stale on the next upgrade.
-    #: Accelerate integration settings. The CLI accepts a JSON object or JSON file.
-    accelerator_config: Optional[Dict[str, Any]] = None
+    # Kept as an opaque dict on purpose: the keys belong to that library and change with its
+    # version, so enumerating them here would go stale on the next upgrade.
     #: Which Liger ops to patch in, passed through to ``_apply_liger_kernel_to_instance``. Read only
     #: when ``use_liger_kernel`` is on; None patches Liger's own default set.
     liger_kernel_config: Optional[Dict[str, bool]] = None
@@ -296,29 +292,16 @@ class TrainConfig:
     #: Integer interval, or a ratio in (0, 1) resolved against total optimizer steps in TrainAssembly.plan_steps.
     eval_steps: Optional[float] = None
     eval_on_start: bool = False
-    #: Run evaluation at all. Off by default; naming an eval strategy or dataset is the usual way to
-    #: turn it on.
-    do_eval: bool = False
-    #: Batches accumulated on device before their predictions move to CPU. None accumulates the whole
-    #: eval set, which is what runs out of memory on a large one.
-    eval_accumulation_steps: Optional[int] = None
     #: Skip evaluation until this many steps (or epochs, following ``eval_strategy``) have passed.
     eval_delay: float = 0
     #: Reload the best checkpoint when training ends, as ranked by ``metric_for_best_model``. Requires
     #: that checkpoint to still exist, so it does not combine with an aggressive ``save_total_limit``.
     load_best_model_at_end: bool = False
-    #: Only compute the loss during evaluation, returning no logits. Much cheaper, and incompatible
-    #: with any metric that needs the predictions themselves.
-    prediction_loss_only: bool = False
-    eval_metric: Optional[str] = None
     metric_for_best_model: Optional[str] = None
     greater_is_better: Optional[bool] = None
     predict_with_generate: bool = False
-    max_new_tokens: int = 64
-    temperature: float = 0.0
 
     # === EvalScope Integration ===
-    eval_use_evalscope: bool = False
     eval_dataset: List[str] = field(default_factory=list)
     eval_dataset_args: Optional[Dict[str, Any]] = None
     eval_limit: Optional[int] = None
@@ -340,6 +323,3 @@ class TrainConfig:
     #: here by name; the built-in early-stop / perf-log / graceful-exit callbacks are appended from
     #: their own config knobs rather than named in this list.
     callbacks: List[str] = field(default_factory=list)
-
-    # === Other ===
-    check_model: bool = True

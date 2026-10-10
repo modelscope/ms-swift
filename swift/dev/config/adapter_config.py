@@ -1,14 +1,13 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Parameter-efficient fine-tuning configuration."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
-## 所有的参数和legacy进行二次比对，确认没有遗漏参数，所有的参数都有对应，或者是显式要求丢弃的
-## 设计文档在.temp/v5_design
 @dataclass
 class TunerConfig:
-    """LoRA (+QLoRA/DoRA/rsLoRA/LoRA+/LoRA-GA), AdaLoRA, TrainableTokens, and LISA settings.
+    """LoRA (+QLoRA/DoRA/rsLoRA/LoRA-GA), AdaLoRA, TrainableTokens, and LISA settings.
 
     Scope note: only the tuners that see real-world use on text/multimodal LLMs are covered here.
     The image-generation-oriented methods (LoHa/LoKr/OFT/BOFT ...) are intentionally left out --
@@ -27,14 +26,19 @@ class TunerConfig:
     adapters: List[str] = field(default_factory=list)
 
     # === Freeze Parameters (multimodal targeting) ===
-    # These three stay on TunerConfig: they select WHICH tower of a multimodal model an adapter's
-    # target_modules may reach (see get_multimodal_target_regex / _derive_vit_gradient_checkpointing),
-    # so they are PEFT-targeting knobs. The full-parameter freeze knobs (freeze_parameters /
-    # freeze_parameters_regex / freeze_parameters_ratio / trainable_parameters /
+    # These three select which towers a multimodal LoRA run trains when target_modules is the default
+    # 'all-linear': twinkle expands 'all-linear' worker-side (against the real modules) into a target
+    # regex over the unfrozen towers, so the flags ride to add_adapter_to_model as plain bools -- they
+    # cannot be resolved on the driver, where the model under Ray is a PROXY with no modules. Defaults
+    # match legacy: train the language model, leave the vision tower and the aligner frozen. A plain
+    # LLM has an empty ModelArch, so there is nothing to expand and the flags are inert. freeze_vit is
+    # additionally read by _derive_vit_gradient_checkpointing to default vit_gradient_checkpointing
+    # (recompute the vision tower only when it is trained). The full-parameter freeze knobs
+    # (freeze_parameters / freeze_parameters_regex / freeze_parameters_ratio / trainable_parameters /
     # trainable_parameters_regex) deliberately do NOT live here: a full run carries no TunerConfig at
-    # all (cli/parser.select_tuner and _megatron_compat._select_megatron_tuner both map tuner='full'
-    # to None), so those five moved to TrainConfig -- the same reason the full-parameter GaLore knobs
-    # live there rather than here.
+    # all (cli/parser.select_tuner and _megatron_compat._select_megatron_tuner both map tuner='full' to
+    # None), so those five moved to TrainConfig -- the same reason the full-parameter GaLore knobs live
+    # there rather than here.
     freeze_llm: bool = False
     freeze_vit: bool = True
     freeze_aligner: bool = True
@@ -50,7 +54,6 @@ class TunerConfig:
     lora_alpha: int = 32
     lora_dropout: float = 0.05
     lora_bias: Literal['none', 'all'] = 'none'
-    lora_dtype: Literal['float16', 'bfloat16', 'float32', None] = None
     use_rslora: bool = False
     use_dora: bool = False
     # Lora: 'true'/'false'/'gaussian'/'pissa'/'pissa_niter_[number of iters]'/'olora'/'lora-ga'
@@ -58,8 +61,12 @@ class TunerConfig:
     init_weights: str = 'true'
 
     # === LoRA+ ===
-    # Scales lora_B's lr to lr * lorap_lr_ratio. None disables LoRA+ (plain LoRA lr for every group).
-    # Requires --optimizer lorap to take effect; see swift/optimizers/lorap.py.
+    # LoRA+ (https://arxiv.org/abs/2402.12354) gives lora_B a higher learning rate than lora_A and the
+    # embedding its own rate. Both are learning-rate knobs, consumed by
+    # ``swift.dev.optimizer.build_param_groups_spec``, which emits param-group rules matched worker-side
+    # (by name / parent-module type) rather than touching the peft config -- the same reason they ride
+    # here next to the LoRA settings they qualify instead of on TrainConfig. ``lorap_lr_ratio=None``
+    # leaves LoRA+ off (a plain single-rate LoRA run); ``lorap_emb_lr`` only takes effect once it is on.
     lorap_lr_ratio: Optional[float] = None
     lorap_emb_lr: float = 1e-6
 

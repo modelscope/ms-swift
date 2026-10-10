@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Evaluation harness configuration."""
 from __future__ import annotations
 from dataclasses import dataclass, field

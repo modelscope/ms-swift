@@ -1,26 +1,3 @@
-"""Shared primitives for the on-policy distillation recipes (GKD / OPSD / MOPD).
-
-The three distillation recipes share one loop shape -- a student rollout (or a dataset completion, per
-``lmbda``) is scored by a frozen teacher and the student is pulled toward that signal -- and differ only
-in the teacher's CONTEXT, COUNT and SIGNAL:
-
-  * GKD: one teacher scored on the SAME prompt+response as the student; the signal is full-vocab
-    ``teacher_logits`` (a β-JSD target).
-  * OPSD: one teacher scored on a PRIVILEGED prompt (``teacher_prompt`` replaces the user turn) while
-    sharing the student's response tokens; the signal is response-only ``teacher_logps``.
-  * MOPD: K domain teachers, each scoring the student's own on-policy prompt+response directly; the
-    signal is a list of per-teacher ``teacher_logps`` channels fused by weighted mixture.
-
-This module holds what all three reuse and nothing else: the uniform per-row payload the loop splits
-into mini-batches (:class:`DistillRow`), the frozen-teacher construction (:func:`build_frozen_teacher`),
-and the privileged-view builders OPSD needs. The teacher FORWARD itself (chunked ``forward_only``, so it
-is correct at dp_size>1) is :meth:`GRPOLoop._response_logps`, which the distillation loops inherit -- so
-there is no distillation-local scoring helper to drift out of sync with GRPO's.
-
-There is deliberately NO HTTP teacher server here (no-server / all-Ray premise, RL_PLAN §2.H): a teacher
-is always a :class:`~swift.dev.recipe._teacher.Teacher` -- a frozen twinkle model actor scored with
-``forward_only``, or the student's own adapter-disabled base -- never a server.
-"""
 from __future__ import annotations
 import copy
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
@@ -48,7 +25,7 @@ class DistillRow(NamedTuple):
     extra: Dict[str, Any]
 
 
-def build_frozen_teacher(rlhf_config: Any,
+def build_frozen_teacher(rl_config: Any,
                          template: Any,
                          model_id: str,
                          *,
@@ -69,8 +46,8 @@ def build_frozen_teacher(rlhf_config: Any,
     planned teacher DeviceGroup -- a ``mode='local'`` build would be a driver-process model that is not a
     Ray actor at all, and the driver holds no GPU under Ray. ``teacher_world_size`` sizes that group's mesh
     (== the ranks ``plan_rl_device_groups`` allocated); ``teacher_parallel_spec`` overrides the mesh layout
-    for a sharded teacher. ``model_id`` is one entry of ``rlhf_config.teacher_model``; ``teacher_model_type``
-    / ``teacher_model_revision`` / ``teacher_deepspeed`` are read off ``rlhf_config`` so a teacher may differ
+    for a sharded teacher. ``model_id`` is one entry of ``rl_config.teacher_model``; ``teacher_model_type``
+    / ``teacher_model_revision`` / ``teacher_deepspeed`` are read off ``rl_config`` so a teacher may differ
     in architecture from the student. The template is bound so the teacher encodes a batch identically to
     the student (response tokens align one-to-one). Returned wrapped in a ``FrozenModelTeacher``; ``offload``
     (GKD's full-vocab memory hook) keeps the teacher on CPU between forwards. ``instance_id`` disambiguates
@@ -82,17 +59,17 @@ def build_frozen_teacher(rlhf_config: Any,
     from swift.dev.recipe.assembly import configure_frozen_adapter
 
     teacher_cfg = ModelConfig(model=model_id)
-    teacher_cfg.model_type = rlhf_config.teacher_model_type
-    teacher_cfg.model_revision = rlhf_config.teacher_model_revision
+    teacher_cfg.model_type = rl_config.teacher_model_type
+    teacher_cfg.model_revision = rl_config.teacher_model_revision
     teacher_dist = frozen_auxiliary_distributed_config(
         distributed_config,
         teacher_world_size,
-        parallel_spec=rlhf_config.teacher_parallel_spec,
-        deepspeed=rlhf_config.teacher_deepspeed)
+        parallel_spec=rl_config.teacher_parallel_spec,
+        deepspeed=rl_config.teacher_deepspeed)
     device_mesh = None
-    if rlhf_config.teacher_parallel_spec:
+    if rl_config.teacher_parallel_spec:
         from twinkle import DeviceMesh
-        device_mesh = DeviceMesh.from_spec(rlhf_config.teacher_parallel_spec)
+        device_mesh = DeviceMesh.from_spec(rl_config.teacher_parallel_spec)
     teacher = build_model(
         teacher_cfg, teacher_dist, device_mesh=device_mesh, remote_group=remote_group, instance_id=instance_id)
     configured = configure_frozen_adapter(teacher, template, list(adapters or []), role=role)
@@ -151,18 +128,19 @@ def build_privileged_teacher_feature(
     return encode_privileged_view(template, messages, response_ids, extra)
 
 
-def distill_sampling_params(rlhf_config: Any, generation_config: Any) -> Dict[str, Any]:
+def distill_sampling_params(rl_config: Any, generation_config: Any) -> Dict[str, Any]:
     """SamplingParams dict for the on-policy distillation rollout (shared by GKD/OPSD/MOPD).
 
-    The rollout uses ``sampling_temperature``, NOT the distillation ``temperature``: those are separate
-    roles (W16). ``sampling_temperature=None`` falls back to ``temperature`` so pre-split runs are
-    byte-identical; setting it decouples how hot the student samples from how softly the divergence scores.
+    The rollout uses ``sampling_temperature``, NOT the distillation ``distill_temperature``: those are
+    separate roles. ``sampling_temperature=None`` falls back to ``distill_temperature`` so pre-split runs
+    are byte-identical; setting it decouples how hot the student samples from how softly the divergence
+    scores.
     """
-    sampling_temperature = rlhf_config.sampling_temperature
+    sampling_temperature = rl_config.sampling_temperature
     if sampling_temperature is None:
-        sampling_temperature = rlhf_config.temperature
+        sampling_temperature = rl_config.distill_temperature
     params: Dict[str, Any] = {
-        'max_tokens': rlhf_config.max_completion_length,
+        'max_tokens': rl_config.max_completion_length,
         'temperature': sampling_temperature,
     }
     if generation_config is not None:
@@ -183,9 +161,9 @@ def distill_rows_from_dataset(
     drive the on-policy rollout; ``dataset_rows`` holds only the rows that carry an assistant completion,
     encoded as training features, for the off-policy rounds ``lmbda < 1`` selects.
     """
-    from swift.dev.builders import load_prompt_rows
+    from swift.dev.builders import load_prompt_only_rows
 
-    rows = load_prompt_rows(dataset_config, None, split_dataset_ratio=0.0)
+    rows = load_prompt_only_rows(dataset_config, None, split_dataset_ratio=0.0)
     prompts: List[List[dict]] = []
     prompt_extras: List[dict] = []
     dataset_rows: List[DistillRow] = []

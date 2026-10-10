@@ -22,7 +22,7 @@ from ..._runners import Runners
 from ...feature.sft.test_e2e import _master_port, _run_torchrun
 
 
-def _configs(*, rlhf_type=None, **overrides):
+def _configs(*, rl_type=None, **overrides):
     """HF-backend config dict for validate_configs; overrides key on 'field=value' via setattrs."""
     from swift.dev.config import (
         CheckpointConfig,
@@ -41,10 +41,10 @@ def _configs(*, rlhf_type=None, **overrides):
         "distributed_config": DistributedConfig(),
         "checkpoint_config": CheckpointConfig(),
     }
-    if rlhf_type is not None:
-        from swift.dev.config import RLHFConfig
+    if rl_type is not None:
+        from swift.dev.config import RLConfig
 
-        configs["rlhf_config"] = RLHFConfig(rlhf_type=rlhf_type)
+        configs["rl_config"] = RLConfig(rl_type=rl_type)
     for dotted, value in overrides.items():
         holder_name, _, attr = dotted.partition(".")
         setattr(configs[holder_name], attr, value)
@@ -74,11 +74,11 @@ def test_sp_on_megatron_backend_is_rejected():
         )
 
 
-@pytest.mark.parametrize("rlhf_type", ["dpo", "grpo", "kto"])
-def test_sp_with_any_rlhf_type_is_rejected(rlhf_type):
+@pytest.mark.parametrize("rl_type", ["dpo", "grpo", "kto"])
+def test_sp_with_any_rl_type_is_rejected(rl_type):
     """dev wires no RLHF SP mesh; legacy's grpo/dpo allowance would silently train without SP."""
     with pytest.raises(ValueError, match="does not support sequence_parallel_size"):
-        _validate(rlhf_type=rlhf_type, **{"template_config.sequence_parallel_size": 2})
+        _validate(rl_type=rl_type, **{"template_config.sequence_parallel_size": 2})
 
 
 def test_sp_in_ray_mode_is_rejected():

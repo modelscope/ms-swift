@@ -72,7 +72,7 @@ def test_dpo_loss_starts_at_ln2_identity_adapter(tiny_qwen2_5, rl_data, tmp_path
     """
     out_dir = str(tmp_path / 'out_dpo_ln2')
     configs = rl_configs(
-        rlhf_type='dpo',
+        rl_type='dpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -90,8 +90,8 @@ def test_dpo_loss_starts_at_ln2_identity_adapter(tiny_qwen2_5, rl_data, tmp_path
 
 @pytest.mark.slow
 @pytest.mark.accel(1)
-@pytest.mark.parametrize('rlhf_type', sorted(_OFFLINE_MAX_LOSS))
-def test_offline_preference_family_e2e(rlhf_type, tiny_qwen2_5, rl_data, tmp_path, assert_rl_trained):
+@pytest.mark.parametrize('rl_type', sorted(_OFFLINE_MAX_LOSS))
+def test_offline_preference_family_e2e(rl_type, tiny_qwen2_5, rl_data, tmp_path, assert_rl_trained):
     """Each offline preference algorithm (dpo/kto/cpo/orpo/simpo/rm) trains + persists end to end.
 
     All six ride the SAME ``run_dpo``/``PreferenceLoop`` path on the transformers backend under
@@ -104,11 +104,11 @@ def test_offline_preference_family_e2e(rlhf_type, tiny_qwen2_5, rl_data, tmp_pat
     is a no-op (``rejected_response == response``, which the template rejects). Batch >= 2 is intrinsic to
     the unpaired objective, not a test shortcut -- a size-1 KTO batch cannot form a KL point.
     """
-    out_dir = str(tmp_path / f'out_{rlhf_type}')
-    data = rl_data.kto(n=8) if rlhf_type == 'kto' else rl_data.preference(n=8)
-    train_over = {'per_device_train_batch_size': 2} if rlhf_type == 'kto' else None
+    out_dir = str(tmp_path / f'out_{rl_type}')
+    data = rl_data.kto(n=8) if rl_type == 'kto' else rl_data.preference(n=8)
+    train_over = {'per_device_train_batch_size': 2} if rl_type == 'kto' else None
     configs = rl_configs(
-        rlhf_type=rlhf_type,
+        rl_type=rl_type,
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -121,9 +121,9 @@ def test_offline_preference_family_e2e(rlhf_type, tiny_qwen2_5, rl_data, tmp_pat
     assert_rl_trained(
         history,
         configs,
-        rlhf_type,
-        max_loss=_OFFLINE_MAX_LOSS[rlhf_type],
-        expect_task_type='seq_cls' if rlhf_type == 'rm' else None,
+        rl_type,
+        max_loss=_OFFLINE_MAX_LOSS[rl_type],
+        expect_task_type='seq_cls' if rl_type == 'rm' else None,
     )
 
 
@@ -133,7 +133,7 @@ def test_grpo_e2e_colocate_vllm(tiny_qwen2_5, rl_data, tmp_path, assert_rl_train
     """GRPO end to end: a real vLLM rollout (colocate) feeds a real policy-gradient step.
 
     This is the on-policy anchor -- the whole online family rides this rollout + weight-sync + group-
-    normalized-advantage path. It drives ``run_rlhf`` under ``mode='ray'`` with a colocated vLLM sampler
+    normalized-advantage path. It drives ``run_rl`` under ``mode='ray'`` with a colocated vLLM sampler
     that GENERATES ``num_generations`` completions per prompt (temperature>0 so they differ), scores them
     with a content-varied ORM, and takes real optimizer steps. Post-conditions beyond the universal ones:
     the history carries the streaming rollout driver's fingerprint (``stream_publishes`` /
@@ -146,7 +146,7 @@ def test_grpo_e2e_colocate_vllm(tiny_qwen2_5, rl_data, tmp_path, assert_rl_train
     """
     out_dir = str(tmp_path / 'out_grpo')
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -177,7 +177,7 @@ def test_rft_best_of_n_e2e(tiny_qwen2_5, rl_data, tmp_path, assert_rl_trained):
     """
     out_dir = str(tmp_path / 'out_rft')
     configs = rl_configs(
-        rlhf_type='rft',
+        rl_type='rft',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -207,7 +207,7 @@ def test_gkd_e2e_separate_teacher(tiny_qwen2_5, tiny_qwen2_5_teacher, rl_data, t
     """
     out_dir = str(tmp_path / 'out_gkd')
     configs = rl_configs(
-        rlhf_type='gkd',
+        rl_type='gkd',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -235,7 +235,7 @@ def test_opsd_e2e_privileged_self_teacher(tiny_qwen2_5, rl_data, tmp_path, asser
     """
     out_dir = str(tmp_path / 'out_opsd')
     configs = rl_configs(
-        rlhf_type='opsd',
+        rl_type='opsd',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -268,7 +268,7 @@ def test_mopd_e2e_multi_teacher(tiny_qwen2_5, tiny_qwen2_5_teacher, tiny_qwen2_5
     """
     out_dir = str(tmp_path / 'out_mopd')
     configs = rl_configs(
-        rlhf_type='mopd',
+        rl_type='mopd',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -306,7 +306,7 @@ def test_ppo_e2e_policy_and_value_atomic(tiny_qwen2_5, rl_data, tmp_path, assert
     """
     out_dir = str(tmp_path / 'out_ppo')
     configs = rl_configs(
-        rlhf_type='ppo',
+        rl_type='ppo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',

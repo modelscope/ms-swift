@@ -68,7 +68,7 @@ _STEP1_BAND = 1e-3
 _LATER_BAND = {'cpo': 0.05, 'orpo': 0.10}
 
 
-def _run_parity_side(backend, rlhf_type, data_path, tmp_path, *, steps=_STEPS, lr=_LR, timeout=900):
+def _run_parity_side(backend, rl_type, data_path, tmp_path, *, steps=_STEPS, lr=_LR, timeout=900):
     """Run ONE side (legacy|dev) of the parity pair in its own plain-python subprocess; return its losses.
 
     Plain python, not torchrun: offline preference training is single-card with no rollout, so each side is
@@ -78,14 +78,14 @@ def _run_parity_side(backend, rlhf_type, data_path, tmp_path, *, steps=_STEPS, l
     the subprocess stdout/stderr tail (the loss itself is read back from disk, never trusted in-memory).
     """
     runner = Runners.path('rl_parity')
-    result_path = str(tmp_path / f'{backend}_{rlhf_type}.json')
+    result_path = str(tmp_path / f'{backend}_{rl_type}.json')
     cmd = [
         sys.executable, runner,
         '--backend', backend,
-        '--rlhf_type', rlhf_type,
+        '--rl_type', rl_type,
         '--data', data_path,
         '--out', result_path,
-        '--out_dir', str(tmp_path / f'{backend}_{rlhf_type}_out'),
+        '--out_dir', str(tmp_path / f'{backend}_{rl_type}_out'),
         '--steps', str(steps),
         '--lr', str(lr),
         '--tuner', 'lora',
@@ -93,14 +93,14 @@ def _run_parity_side(backend, rlhf_type, data_path, tmp_path, *, steps=_STEPS, l
     proc = Runners.launch(cmd, timeout=timeout)
     if not os.path.exists(result_path):
         raise AssertionError(
-            f'{backend}/{rlhf_type} parity runner produced no result (exit={proc.returncode}). '
+            f'{backend}/{rl_type} parity runner produced no result (exit={proc.returncode}). '
             f'stdout tail:\n{proc.stdout[-2000:]}\nstderr tail:\n{proc.stderr[-3000:]}')
     with open(result_path) as f:
         return json.load(f)['losses']
 
 
-@pytest.mark.parametrize('rlhf_type', sorted(_LATER_BAND))
-def test_reference_free_loss_parity_vs_legacy(rlhf_type, rl_data, tmp_path):
+@pytest.mark.parametrize('rl_type', sorted(_LATER_BAND))
+def test_reference_free_loss_parity_vs_legacy(rl_type, rl_data, tmp_path):
     """Row 1: dev's ``<cpo|orpo>`` per-step loss restores legacy ``swift.rlhf_main``'s (same model/data/hparams).
 
     Both sides ride the SAME cached Qwen2.5-0.5B + the SAME 8 preference rows + matched deterministic
@@ -115,40 +115,40 @@ def test_reference_free_loss_parity_vs_legacy(rlhf_type, rl_data, tmp_path):
     silent degradation to a policy==ref cancel (both sides -> ln2) pass as a vacuous "parity".
     """
     data_path = rl_data.preference(n=8)
-    dev = _run_parity_side('dev', rlhf_type, data_path, tmp_path)
-    legacy = _run_parity_side('legacy', rlhf_type, data_path, tmp_path)
-    print(f'\n{rlhf_type} dev-vs-legacy parity: dev={dev} legacy={legacy}')
+    dev = _run_parity_side('dev', rl_type, data_path, tmp_path)
+    legacy = _run_parity_side('legacy', rl_type, data_path, tmp_path)
+    print(f'\n{rl_type} dev-vs-legacy parity: dev={dev} legacy={legacy}')
 
     assert len(dev) == len(legacy) == _STEPS, \
-        f'{rlhf_type}: expected {_STEPS} per-step losses, dev={dev} legacy={legacy}'
+        f'{rl_type}: expected {_STEPS} per-step losses, dev={dev} legacy={legacy}'
     # loss == loss is the NaN test (NaN != itself); not a typo.
     assert all(x == x and abs(x) != float('inf') for x in dev + legacy), \
-        f'{rlhf_type}: non-finite loss dev={dev} legacy={legacy}'
+        f'{rl_type}: non-finite loss dev={dev} legacy={legacy}'
 
     # Non-degeneracy guard FIRST: the legacy reference step-1 must be data-dependent, not the ln2 cancel.
     # If it sat at ln2 this cell would carry no more signal than DPO's step-1 (both sides self-cancel), and
     # the rel check below could pass vacuously -- so prove the reference-free objective is really computed.
     assert abs(legacy[0] - _LN2) > 1.0, (
-        f'{rlhf_type}: legacy step-1 loss {legacy[0]:.5f} ~= ln2 {_LN2:.5f} -- the reference-free objective '
+        f'{rl_type}: legacy step-1 loss {legacy[0]:.5f} ~= ln2 {_LN2:.5f} -- the reference-free objective '
         'degenerated to a policy==ref cancel (data-dependent NLL/odds term missing), so this is not a real '
         'parity signal')
 
     # step-1: the load-bearing, RNG-independent anchor (identity adapter -> pure base-model forward).
     rel1 = abs(dev[0] - legacy[0]) / max(abs(legacy[0]), 1e-8)
     assert rel1 < _STEP1_BAND, (
-        f'{rlhf_type} step-1 dev-vs-legacy mismatch: dev={dev[0]:.6f} legacy={legacy[0]:.6f} rel={rel1:.2e} '
+        f'{rl_type} step-1 dev-vs-legacy mismatch: dev={dev[0]:.6f} legacy={legacy[0]:.6f} rel={rel1:.2e} '
         f'(band {_STEP1_BAND}) -- the reference-free objective (logp-diff sign / completion mask / label '
         'shift / encode) diverges from legacy')
 
     # later steps: bounded trajectory agreement (the LoRA-A init RNG stream differs between pipelines, so
     # these are two valid-but-distinct runs, not an exact contract) + monotone decrease (a sign error climbs).
-    later_band = _LATER_BAND[rlhf_type]
+    later_band = _LATER_BAND[rl_type]
     for i in range(1, _STEPS):
         assert dev[i] < dev[i - 1] and legacy[i] < legacy[i - 1], (
-            f'{rlhf_type}: loss not strictly decreasing (a sign error would climb): dev={dev} legacy={legacy}')
+            f'{rl_type}: loss not strictly decreasing (a sign error would climb): dev={dev} legacy={legacy}')
         rel = abs(dev[i] - legacy[i]) / max(abs(legacy[i]), 1e-8)
         assert rel < later_band, (
-            f'{rlhf_type} step {i + 1} dev-vs-legacy divergence: dev={dev[i]:.6f} legacy={legacy[i]:.6f} '
+            f'{rl_type} step {i + 1} dev-vs-legacy divergence: dev={dev[i]:.6f} legacy={legacy[i]:.6f} '
             f'rel={rel:.2e} (band {later_band})')
 
 

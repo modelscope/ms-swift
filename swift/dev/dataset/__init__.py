@@ -22,7 +22,7 @@ from .store import (
     validate_store_fields,
     write_dataset_store,
 )
-from .swift_dataset import SwiftDataset
+from .base import SwiftDataset
 
 __all__ = [
     'DATASET_MAPPING', 'DATASET_TYPE', 'DatasetInfo', 'DatasetLoader', 'SubsetMeta', 'Preprocessor',

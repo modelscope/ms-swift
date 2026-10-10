@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Self-parse of argv straight into dev's atomic Configs.
 
 The dev CLI used to lean on legacy ``SftArguments``/``ExportArguments``: parse the legacy surface,
@@ -20,7 +21,11 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union, get_
 import json
 from transformers import HfArgumentParser
 
+from swift.dev.utils.logger import get_logger
+
 from .legacy_coverage import LEGACY_ALIASES
+
+logger = get_logger()
 
 
 def _mapping_hint(annotation):
@@ -241,11 +246,10 @@ def normalize_argv(argv: Sequence[str],
             continue
         # A legacy spelling that is itself a live field of a DIFFERENT Config than its alias target is
         # that Config's own current flag, not a rename -- `--loss_type` under `rlhf` selects the GRPO
-        # objective on RLHFConfig, while `--loss` names the supervised loss on TrainConfig. Aliasing it
+        # objective on RLConfig, while `--loss` names the supervised loss on TrainConfig. Aliasing it
         # would silently retarget the flag, so leave it direct. Same-owner pairs (`--lr` ->
         # `--learning_rate`, both TrainConfig) are genuine renames and still fold.
         source_owner = owner_of.get(alias)
-        ## 如果字段名字不重复，是否在merge config的时候如果发现重复字段直接raise比较好
         if source_owner is not None and owner_of.get(target) is not source_owner:
             continue
         aliases[alias] = target
@@ -282,8 +286,6 @@ def normalize_argv(argv: Sequence[str],
             value = _PRECISION_ALIASES[source]
             has_value = True
         elif source == 'use_ray' and target == 'mode':
-            ## 现在使用ray需要特殊配置吗
-            ## 比如RL
             enabled = True if value is None else _boolean_value(value)
             if enabled is None:
                 raise ValueError(f'--{option} expects a boolean value, got {value!r}.')
@@ -310,21 +312,44 @@ def normalize_argv(argv: Sequence[str],
 
 
 def _merged_parse_class(config_classes: Sequence[Type], field_owners: Optional[Dict[str, Type]] = None):
-    """Build one argparse dataclass from several Configs, resolving duplicate field names explicitly."""
-    ## 检查一遍各个config没有重复字段
+    """Build one argparse dataclass from several Configs, resolving duplicate field names explicitly.
+
+    A field name declared by more than one Config is ambiguous in the merged CLI namespace: one flag
+    spelling must resolve to exactly one owner. Every duplicate therefore has to be pinned through
+    ``field_owners`` to a Config that is actually present here. An unpinned duplicate -- or one pinned
+    to an absent Config -- raises instead of silently letting the first-declaring Config win, which
+    would make the parsed value's destination depend on the order ``config_classes`` is listed in.
+    """
     owners = dict(field_owners or {})
+    present = set(config_classes)
     specs = []
     seen = {}
+    declared_by: Dict[str, List[Type]] = {}
     for config_class in config_classes:
         hints = get_type_hints(config_class)
         for config_field in fields(config_class):
             name = config_field.name
             if name in seen:
+                declared_by[name].append(config_class)
                 preferred = owners.get(name)
-                if preferred is not None and preferred is config_class:
+                if preferred is None:
+                    raise ValueError(
+                        f'CLI field {name!r} is declared by more than one Config '
+                        f'({", ".join(cls.__name__ for cls in declared_by[name])}) with no owner pinned. A '
+                        f'duplicate flag spelling must resolve to exactly one Config: pin it in this '
+                        f"command's field_owners, or rename the field so it is unique across Configs.")
+                if preferred not in present:
+                    raise ValueError(
+                        f'CLI field {name!r} is declared by more than one Config '
+                        f'({", ".join(cls.__name__ for cls in declared_by[name])}) and pinned to owner '
+                        f'{preferred.__name__}, which is not among this command\'s Configs. Fix the stale '
+                        f'field_owners pin (or add {preferred.__name__} to the parsed Configs).')
+                if preferred is config_class:
                     specs[seen[name]] = None
                 else:
                     continue
+            else:
+                declared_by[name] = [config_class]
             kwargs = {'metadata': dict(config_field.metadata)}
             if config_field.default is not MISSING:
                 kwargs['default'] = config_field.default
@@ -332,7 +357,6 @@ def _merged_parse_class(config_classes: Sequence[Type], field_owners: Optional[D
                 kwargs['default_factory'] = config_field.default_factory
             spec = (name, hints.get(name, config_field.type), field(**kwargs))
             if name in seen:
-                ## 这是什么意思
                 specs.append(spec)
                 seen[name] = len(specs) - 1
             else:
@@ -417,7 +441,6 @@ def _resolve_checkpoint_args_source(configs: Dict[str, Any]) -> Optional[str]:
             return args_path
     return None
 
-## 确定下这里的逻辑和4.x一样
 def _restore_checkpoint_args(configs: Sequence[Any], *, default_load_args: bool) -> None:
     """Apply legacy ``load_args_from_ckpt`` semantics to atomic dev Configs."""
     mapped = _config_mapping(configs)
@@ -519,6 +542,43 @@ def parse_configs(
     return configs, remaining
 
 
+#: Parser-level meta-flag (not backed by any Config field) that relaxes strict rejection of unknown args.
+_ALLOW_UNKNOWN_ARGS_FLAG = 'allow_unknown_args'
+
+
+def _strip_allow_unknown_args(argv: Sequence[str]) -> Tuple[List[str], bool]:
+    """Pull the ``--allow_unknown_args`` meta-flag out of argv, returning ``(cleaned_argv, enabled)``.
+
+    It carries no Config field -- it toggles parser behavior rather than a value -- so it must be
+    consumed here; otherwise HfArgumentParser would drop it into the unrecognized remainder and it
+    would trip the very check it exists to relax. Accepts the same spellings as a Config boolean flag:
+    bare presence, ``--allow_unknown_args=true/false``, and ``--allow_unknown_args true/false``.
+    """
+    flag = f'--{_ALLOW_UNKNOWN_ARGS_FLAG}'
+    cleaned: List[str] = []
+    enabled = False
+    i, n = 0, len(argv)
+    while i < n:
+        token = argv[i]
+        if token == flag:
+            # Bare presence enables it; a following boolean literal is its explicit value.
+            if i + 1 < n and _boolean_value(argv[i + 1]) is not None:
+                enabled = _boolean_value(argv[i + 1])
+                i += 2
+            else:
+                enabled = True
+                i += 1
+            continue
+        if token.startswith(f'{flag}='):
+            value = _boolean_value(token.split('=', 1)[1])
+            enabled = True if value is None else value
+            i += 1
+            continue
+        cleaned.append(token)
+        i += 1
+    return cleaned, enabled
+
+
 def parse_configs_strict(
     config_classes: Sequence[Type],
     argv: Optional[List[str]] = None,
@@ -526,11 +586,23 @@ def parse_configs_strict(
     command: str,
     field_owners: Optional[Dict[str, Type]] = None,
     load_args_default: bool = False,
+    allow_unknown_args: bool = False,
 ) -> list:
-    """Parse Configs and reject every unrecognized argument."""
+    """Parse Configs and reject every unrecognized argument.
+
+    ``--allow_unknown_args`` on the command line (or ``allow_unknown_args=True`` from a caller)
+    downgrades that rejection to a warning naming the flags no Config claimed, so a run can tolerate
+    arguments meant for a downstream launcher or a forward-compatible spelling. Unknown arguments are
+    dropped, not forwarded -- the warning is the only signal that they had no effect here.
+    """
+    effective_argv, flag_enabled = _strip_allow_unknown_args(resolve_argv(argv))
     configs, remaining = parse_configs(
-        config_classes, argv, field_owners=field_owners, load_args_default=load_args_default)
+        config_classes, effective_argv, field_owners=field_owners, load_args_default=load_args_default)
     if remaining:
-        ## 给一个allow unknown args的选项？
-        raise ValueError(f'Unrecognized arguments for {command}: {remaining}.')
+        if allow_unknown_args or flag_enabled:
+            logger.warning(f'Ignoring unrecognized arguments for {command} (no Config claims them, so they '
+                           f'are dropped rather than applied): {remaining}.')
+        else:
+            raise ValueError(f'Unrecognized arguments for {command}: {remaining}. '
+                             f'Pass --allow_unknown_args to tolerate them with a warning instead of failing.')
     return configs

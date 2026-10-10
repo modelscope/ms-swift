@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Dataset loading, splitting, streaming, packing, and dataloader configuration."""
 from __future__ import annotations
 

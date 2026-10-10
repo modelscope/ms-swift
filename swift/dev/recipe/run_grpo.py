@@ -1,6 +1,6 @@
 """Online GRPO assembly: run_grpo orchestration with real weight synchronization.
 
-Peer of ``run_sft``, for the on-policy RL family (GRPO and, via ``RLHFConfig``, its GSPO/estimator
+Peer of ``run_sft``, for the on-policy RL family (GRPO and, via ``RLConfig``, its GSPO/estimator
 variants). Unlike the ``grpo.py`` smoke loop -- which keeps the rollout engine on its INITIAL weights
 and is therefore not algorithmically-correct GRPO -- this recipe closes the loop: after every
 optimizer step the trained policy is pushed into the rollout sampler via twinkle's
@@ -50,7 +50,7 @@ if TYPE_CHECKING:
         ModelConfig,
         MoEConfig,
         QuantizeConfig,
-        RLHFConfig,
+        RLConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -111,7 +111,7 @@ def _split_prm_channel(prm_items: Optional[Sequence[Any]]) -> Tuple[List[Any], O
     return rule_specs, (model_ids[0] if model_ids else None)
 
 
-def teacher_group_world_size(rlhf_config: RLHFConfig) -> int:
+def teacher_group_world_size(rl_config: RLConfig) -> int:
     """GPU count for a separate frozen teacher's OWN DeviceGroup: ``teacher_parallel_spec``'s world size, else 1.
 
     A separate teacher (a GKD/OPSD/MOPD distillation teacher, or a GRPO RLSD/SDAR teacher) is a Ray actor on
@@ -120,7 +120,7 @@ def teacher_group_world_size(rlhf_config: RLHFConfig) -> int:
     ``fsdp2``/...) sizes the group for a big or concurrency-friendly teacher. ``disable_lora``/dynamic-self
     teachers build no separate actor and need no group (caller passes 0).
     """
-    spec = getattr(rlhf_config, 'teacher_parallel_spec', None)
+    spec = getattr(rl_config, 'teacher_parallel_spec', None)
     if not spec:
         return 1
     from twinkle import DeviceMesh
@@ -209,6 +209,7 @@ def _initialize_twinkle_rl(distributed_config: DistributedConfig,
                            *,
                            seed: int = 42,
                            full_determinism: bool = False,
+                           tf32: Optional[bool] = None,
                            sequence_parallel_size: int = 1) -> None:
     """Initialize twinkle in Ray mode with the planned RL DeviceGroups.
 
@@ -218,7 +219,7 @@ def _initialize_twinkle_rl(distributed_config: DistributedConfig,
     ``seed`` / ``full_determinism`` are forwarded to ``twinkle.initialize`` (see
     ``TrainAssembly.initialize_twinkle``): twinkle seeds the driver and re-seeds each Ray worker from
     the same values, so the configured TrainConfig.seed steers rollout + training reproducibly
-    instead of being overwritten by twinkle's default.
+    instead of being overwritten by twinkle's default. ``tf32`` rides the same per-process-global path.
     """
     import twinkle
     from twinkle import DeviceGroup
@@ -233,8 +234,7 @@ def _initialize_twinkle_rl(distributed_config: DistributedConfig,
     twinkle.initialize(
         mode='ray',
         nproc_per_node=total,
-        seed=seed,
-        full_determinism=full_determinism,
+        extra_torch_kwargs={'seed': seed, 'full_determinism': full_determinism, 'tf32': tf32},
         # Ray mode -- unlike local -- does NOT auto-install a global default DeviceMesh (twinkle.initialize
         # builds one only for mode='local'). A Ray object placed with device_mesh=None then falls back to
         # that missing global and is rejected ("Set device_mesh=DeviceMesh(...) to enable ray"). The trainer
@@ -322,7 +322,7 @@ def run_grpo(
     distributed_config: DistributedConfig,
     checkpoint_config: CheckpointConfig,
     rollout_config: RolloutConfig,
-    rlhf_config: RLHFConfig,
+    rl_config: RLConfig,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
@@ -355,7 +355,7 @@ def run_grpo(
         distributed_config,
         checkpoint_config,
         tuner_config,
-        rlhf_config=rlhf_config,
+        rl_config=rl_config,
         output_dir=output_dir,
         logging_config=logging_config,
         quantize_config=quantize_config,
@@ -373,25 +373,25 @@ def run_grpo(
     # predicate _build_frozen_model branches on -- decides each, keeping the plan and the build in lockstep.
     # The names/world sizes planned here are the ones the build calls below pass as remote_group/world_size.
     from swift.dev.recipe.assembly import single_teacher_id
-    teacher_model_id = single_teacher_id(rlhf_config.teacher_model, algo='RLSD/SDAR')
-    ref_active = bool(rlhf_config.beta and rlhf_config.calculate_KL is not False)
-    ref_disable_adapter = tuner_config is not None and not rlhf_config.ref_adapters
+    teacher_model_id = single_teacher_id(rl_config.teacher_model, algo='RLSD/SDAR')
+    ref_active = bool(rl_config.beta and rl_config.calculate_KL is not False)
+    ref_disable_adapter = tuner_config is not None and not rl_config.ref_adapters
     ref_remote_group: Optional[str] = None
     auxiliary_groups: List[Tuple[str, int]] = []
-    if ref_active and _frozen_model_needs_group(model_id=rlhf_config.ref_model, disable_adapter=ref_disable_adapter):
+    if ref_active and _frozen_model_needs_group(model_id=rl_config.ref_model, disable_adapter=ref_disable_adapter):
         ref_remote_group = _REF_GROUP
         auxiliary_groups.append((_REF_GROUP, 1))
     teacher_needs_group = _frozen_model_needs_group(
-        model_id=teacher_model_id, disable_adapter=rlhf_config._teacher_use_disable_adapter)
-    teacher_world_size = teacher_group_world_size(rlhf_config) if teacher_needs_group else 0
+        model_id=teacher_model_id, disable_adapter=rl_config._teacher_use_disable_adapter)
+    teacher_world_size = teacher_group_world_size(rl_config) if teacher_needs_group else 0
     teacher_remote_group = _TEACHER_GROUP if teacher_needs_group else None
-    teacher_parallel_spec = rlhf_config.teacher_parallel_spec if teacher_needs_group else None
-    for reward_index in range(len(rlhf_config.reward_model or [])):
+    teacher_parallel_spec = rl_config.teacher_parallel_spec if teacher_needs_group else None
+    for reward_index in range(len(rl_config.reward_model or [])):
         auxiliary_groups.append((_reward_group(reward_index), 1))
     # A frozen PRM model (a non-rule --prm item) is a full-parameter auxiliary too, so it gets its OWN
     # single-GPU group exactly like a reward model; _split_prm_channel is the one splitter both this
     # planning and _build_prm_channel use, so the planned name/world size and the build cannot drift.
-    if _split_prm_channel(rlhf_config.prm)[1] is not None:
+    if _split_prm_channel(rl_config.prm)[1] is not None:
         auxiliary_groups.append((_prm_group(0), 1))
     groups, sampler_remote_group, colocate = plan_rl_device_groups(
         distributed_config.nproc_per_node,
@@ -406,6 +406,7 @@ def run_grpo(
         groups,
         seed=train_config.seed,
         full_determinism=train_config.full_determinism,
+        tf32=train_config.tf32,
         sequence_parallel_size=template_config.sequence_parallel_size)
 
     assembly.build_template()
@@ -416,7 +417,7 @@ def run_grpo(
     # Trainer: a Ray-actor model in the 'model' group (build_model sets remote_group='model' under
     # mode='ray'), with the tuner applied before loss/optimizer so those target its group.
     assembly.build_model()
-    configure_rlhf_loss(assembly.model, rlhf_config)
+    configure_rlhf_loss(assembly.model, rl_config)
     # Prompts are rolled out, not iterated by a dataloader, so the step budget is derived from the prompt
     # set the way assembly derives it from a dataloader: one generation batch per rollout, exhausted after
     # num_train_epochs passes (B1). Load the prompts + design-B mini-batch width first, then size max_steps
@@ -432,7 +433,7 @@ def run_grpo(
     # train_batch_size) counts SP peers as ONE data rank -- they share a sample and split its sequence.
     dp_size = build_ray_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
-    chord_features = _load_chord_features(rlhf_config, dataset_config, assembly.template)
+    chord_features = _load_chord_features(rl_config, dataset_config, assembly.template)
     if chord_features and dp_size > 1:
         # CHORD rows are appended to the mini-batch tail and chord_count is one broadcast scalar, so only a
         # single DP rank can split RL vs SFT rows correctly; with dp>1 the tail lands on the last rank alone
@@ -446,26 +447,31 @@ def run_grpo(
         train_config.max_steps,
         rollout_step_budget(
             num_prompts=len(prompts),
-            num_generations=rlhf_config.num_generations,
+            num_generations=rl_config.num_generations,
             train_batch_size=train_batch_size,
             gradient_accumulation_steps=assembly.ga,
             num_train_epochs=train_config.num_train_epochs,
             generation_batch_size=rollout_config.generation_batch_size,
-            num_iterations=rlhf_config.num_iterations),
+            num_iterations=rl_config.num_iterations),
         recipe='run_grpo')
     assembly.resolve_step_intervals(max_steps)
     configure_optimizer(
-        assembly.model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
+        assembly.model,
+        train_config,
+        num_training_steps=max_steps,
+        distributed_config=distributed_config,
+        tuner_config=assembly.tuner_config,
+        plugin_config=assembly.plugin_config)
     # Register the GRPO-family policy metric (GRPOMetric/GSPOMetric/CISPOMetric by loss_type) AFTER the
     # optimizer group exists (add_metric appends onto it). twinkle then accumulates it inside forward_backward
     # from old_logps/advantages, so its ratio/clip/entropy stats ride calculate_metric into every step record.
-    configure_rlhf_metrics(assembly.model, rlhf_config)
+    configure_rlhf_metrics(assembly.model, rl_config)
 
     # Sampler: a vLLM/SGLang sampler placed in its group (shared 'model' for colocate, separate 'sampler'
     # otherwise). The backend's memory-saver flag (forced on for colocate) is required for the device
     # hand-over.
     sampler_engine_args = _sampler_engine_args(rollout_config, engine_args, colocate, backend)
-    if rlhf_config.enable_sampling_replay:
+    if rl_config.enable_sampling_replay:
         # Sampling replay trains against the sampler's per-token support set, so the engine must export each
         # token's sampling mask. This is VLLMEngine's own construction flag (it derives vLLM's
         # enable_return_sampling_mask + processed_logprobs); set it here rather than in the shared
@@ -484,21 +490,21 @@ def run_grpo(
     # max_trajectory_tokens. Tools are opt-in via RolloutConfig.tools: when set, a sandbox env pool is
     # built and each episode leases its own env (see swift.dev.rollout.sandbox); harness / followup_fn
     # remain caller-supplied extension points. The env pool is closed by rollout.shutdown().
-    if rlhf_config.max_turns is not None:
+    if rl_config.max_turns is not None:
         from swift.dev.rollout.sandbox import build_tool_sandbox
         env_pool, tool_plugins = build_tool_sandbox(rollout_config)
         rollout.configure_multi_turn(
-            max_turns=rlhf_config.max_turns,
-            max_trajectory_tokens=rlhf_config.max_trajectory_tokens,
+            max_turns=rl_config.max_turns,
+            max_trajectory_tokens=rl_config.max_trajectory_tokens,
             env_pool=env_pool,
             tool_plugins=tool_plugins)
 
     reward_model_plugins, reward_model_names = _build_reward_model_scorers(
-        model_config, template_config, rlhf_config, distributed_config)
+        model_config, template_config, rl_config, distributed_config)
     # Process-reward (PRM) channel: the scorer plugin + its rule/model scorers, built like the outcome
     # reward above (a frozen PRM model gets its OWN prm_0 group, planned in the auxiliary_groups step).
     prm_scorer, prm_funcs, prm_model_plugins = _build_prm_channel(
-        model_config, template_config, rlhf_config, distributed_config)
+        model_config, template_config, rl_config, distributed_config)
     # async_mode selects the driver, and -- since the per-sample stream now serves EVERY regime -- almost
     # every GRPO run rides it: 'none' runs StreamingGRPOLoop at max_staleness=0 (admit one window, DRAIN it,
     # train, publish -- the same per-sample control flow, no overlap), 'one_step_off' pins staleness to 1,
@@ -511,7 +517,7 @@ def run_grpo(
     # exclusive-device hand-over; a disaggregated one has its own GPUs and never hands over.
     loop_cls = GRPOLoop
     streaming_kwargs: Dict[str, Any] = {}
-    sync_only = bool(rlhf_config.dynamic_sample or rlhf_config.advantage_estimator == 'remax')
+    sync_only = bool(rl_config.dynamic_sample or rl_config.advantage_estimator == 'remax')
     if rollout_config.async_mode != 'none' or not sync_only:
         from swift.dev.recipe.grpo_async import StreamingGRPOLoop
         loop_cls = StreamingGRPOLoop
@@ -547,9 +553,9 @@ def run_grpo(
             assembly.template,
             assembly.model,
             distributed_config=distributed_config,
-            model_id=rlhf_config.ref_model,
+            model_id=rl_config.ref_model,
             remote_group=ref_remote_group,
-            adapters=rlhf_config.ref_adapters,
+            adapters=rl_config.ref_adapters,
             adapter_role='ref',
             disable_adapter=ref_disable_adapter)
         if ref_active else None,
@@ -560,25 +566,25 @@ def run_grpo(
             distributed_config=distributed_config,
             model_id=teacher_model_id,
             remote_group=teacher_remote_group,
-            adapters=rlhf_config.teacher_adapters,
+            adapters=rl_config.teacher_adapters,
             adapter_role='teacher',
-            disable_adapter=rlhf_config._teacher_use_disable_adapter,
+            disable_adapter=rl_config._teacher_use_disable_adapter,
             world_size=teacher_world_size or 1,
             parallel_spec=teacher_parallel_spec),
         template=assembly.template,
         chord_features=chord_features,
-        num_generations=rlhf_config.num_generations,
-        reward_funcs=list(rlhf_config.orm) or None,
+        num_generations=rl_config.num_generations,
+        reward_funcs=list(rl_config.orm) or None,
         reward_model_plugins=reward_model_plugins,
         reward_model_names=reward_model_names,
-        reward_weights=rlhf_config.orm_weights,
+        reward_weights=rl_config.orm_weights,
         prm_scorer=prm_scorer,
         prm_funcs=prm_funcs,
         prm_model_plugins=prm_model_plugins,
-        prm_weights=rlhf_config.prm_weights,
-        advantage_estimator=rlhf_config.advantage_estimator,
-        scale_rewards=rlhf_config.scale_rewards or 'group',
-        rlhf_config=rlhf_config,
+        prm_weights=rl_config.prm_weights,
+        advantage_estimator=rl_config.advantage_estimator,
+        scale_rewards=rl_config.scale_rewards or 'group',
+        rl_config=rl_config,
         max_steps=max_steps,
         gradient_accumulation_steps=assembly.ga,
         train_batch_size=train_batch_size,
@@ -586,7 +592,7 @@ def run_grpo(
         num_train_epochs=train_config.num_train_epochs,
         seed=train_config.seed,
         max_grad_norm=resolve_max_grad_norm(train_config),
-        sampling_params=_grpo_sampling_params(rlhf_config, generation_config),
+        sampling_params=_grpo_sampling_params(rl_config, generation_config),
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
@@ -669,9 +675,9 @@ def _sampler_engine_args(rollout_config: RolloutConfig, engine_args: Optional[Di
     return kwargs
 
 
-def _grpo_sampling_params(rlhf_config: RLHFConfig, generation_config: Optional[GenerationConfig]) -> Dict[str, Any]:
+def _grpo_sampling_params(rl_config: RLConfig, generation_config: Optional[GenerationConfig]) -> Dict[str, Any]:
     """The per-rollout SamplingParams dict (max_completion_length + optional generation knobs)."""
-    params: Dict[str, Any] = {'max_tokens': rlhf_config.max_completion_length}
+    params: Dict[str, Any] = {'max_tokens': rl_config.max_completion_length}
     if generation_config is not None:
         if generation_config.temperature is not None:
             params['temperature'] = generation_config.temperature
@@ -740,7 +746,7 @@ def _build_frozen_model(model_config: ModelConfig,
     return FrozenModelTeacher(configured)
 
 
-def _build_reward_model_scorers(model_config: ModelConfig, template_config: TemplateConfig, rlhf_config: RLHFConfig,
+def _build_reward_model_scorers(model_config: ModelConfig, template_config: TemplateConfig, rl_config: RLConfig,
                                 distributed_config: DistributedConfig) -> Tuple[List[Any], List[str]]:
     """Build each frozen reward model with its own tokenizer/template and adapt it to a batch scorer.
 
@@ -749,7 +755,7 @@ def _build_reward_model_scorers(model_config: ModelConfig, template_config: Temp
     :func:`frozen_auxiliary_distributed_config`. The group names and world sizes (1 each) here MUST match
     what the run body planned through ``plan_rl_device_groups(auxiliary_groups=...)``.
     """
-    reward_models = list(rlhf_config.reward_model or [])
+    reward_models = list(rl_config.reward_model or [])
     if not reward_models:
         return [], []
 
@@ -764,10 +770,10 @@ def _build_reward_model_scorers(model_config: ModelConfig, template_config: Temp
             raise ValueError(f'{field} must contain exactly one value per reward_model.')
         return resolved
 
-    model_types = _aligned(rlhf_config.reward_model_type, None, 'reward_model_type')
-    revisions = _aligned(rlhf_config.reward_model_revision, None, 'reward_model_revision')
-    template_names = _aligned(rlhf_config.reward_template, None, 'reward_template')
-    adapters = _aligned(rlhf_config.reward_adapters or None, None, 'reward_adapters')
+    model_types = _aligned(rl_config.reward_model_type, None, 'reward_model_type')
+    revisions = _aligned(rl_config.reward_model_revision, None, 'reward_model_revision')
+    template_names = _aligned(rl_config.reward_template, None, 'reward_template')
+    adapters = _aligned(rl_config.reward_adapters or None, None, 'reward_adapters')
 
     models = []
     templates = []
@@ -789,7 +795,7 @@ def _build_reward_model_scorers(model_config: ModelConfig, template_config: Temp
     return build_reward_model_plugins(models, templates)
 
 
-def _build_prm_channel(model_config: ModelConfig, template_config: TemplateConfig, rlhf_config: RLHFConfig,
+def _build_prm_channel(model_config: ModelConfig, template_config: TemplateConfig, rl_config: RLConfig,
                        distributed_config: DistributedConfig) -> Tuple[Any, List[Any], List[Any]]:
     """Build GRPO's process-reward (PRM) channel -> ``(prm_scorer, prm_funcs, prm_model_plugins)``.
 
@@ -803,13 +809,13 @@ def _build_prm_channel(model_config: ModelConfig, template_config: TemplateConfi
       ``plan_rl_device_groups(auxiliary_groups=...)``. ``prm_parallel_spec`` is synthesis-only (like
       ``orm_parallel_spec``); GRPO reward/PRM models are always a single-GPU group.
     - ``prm_scorer``: the :class:`~swift.dev.rewards.prm.PRMScorer` plugin that segments a response into
-      steps and broadcasts each step's score, resolved from ``rlhf_config.prm_scorer`` (``None`` -> the
+      steps and broadcasts each step's score, resolved from ``rl_config.prm_scorer`` (``None`` -> the
       default ``'delimiter'`` scorer). It is returned only when a PRM channel is actually wired, so a
       scorer with no rule/model -- which would score nothing -- is left ``None`` for validate to reject.
 
     Returns ``(None, [], [])`` when ``--prm`` is empty, so the loop's ``_prm_active`` stays False.
     """
-    rule_specs, prm_model_id = _split_prm_channel(rlhf_config.prm)
+    rule_specs, prm_model_id = _split_prm_channel(rl_config.prm)
     if not rule_specs and prm_model_id is None:
         return None, [], []
 
@@ -817,7 +823,7 @@ def _build_prm_channel(model_config: ModelConfig, template_config: TemplateConfi
     from swift.dev.reward import build_frozen_reward_model, build_reward_model_plugins, get_reward_funcs
     from swift.dev.rewards import PRM_STEP_SCORER
 
-    prm_funcs, _prm_rule_names = get_reward_funcs(rule_specs, rlhf_config) if rule_specs else ([], [])
+    prm_funcs, _prm_rule_names = get_reward_funcs(rule_specs, rl_config) if rule_specs else ([], [])
     prm_model_plugins: List[Any] = []
     if prm_model_id is not None:
         from swift.dev.builders import frozen_auxiliary_distributed_config
@@ -829,22 +835,22 @@ def _build_prm_channel(model_config: ModelConfig, template_config: TemplateConfi
             remote_group=_prm_group(0))
         prm_model_plugins, _prm_model_names = build_reward_model_plugins([prm_model], [prm_template])
 
-    prm_scorer = PluginRegistry.resolve(PRM_STEP_SCORER, rlhf_config.prm_scorer or 'delimiter', config=rlhf_config)
+    prm_scorer = PluginRegistry.resolve(PRM_STEP_SCORER, rl_config.prm_scorer or 'delimiter', config=rl_config)
     return prm_scorer, prm_funcs, prm_model_plugins
 
 
-def _load_chord_features(rlhf_config: RLHFConfig, dataset_config: DatasetConfig, template: Any) -> List[dict]:
+def _load_chord_features(rl_config: RLConfig, dataset_config: DatasetConfig, template: Any) -> List[dict]:
     """Encode CHORD's expert SFT rows once; the loop cycles over these features."""
-    if not rlhf_config.chord_sft_dataset:
+    if not rl_config.chord_sft_dataset:
         return []
     from copy import copy
 
-    from swift.dev.builders import load_prompt_rows
+    from swift.dev.builders import load_prompt_only_rows
 
     chord_config = copy(dataset_config)
-    chord_config.dataset = list(rlhf_config.chord_sft_dataset)
+    chord_config.dataset = list(rl_config.chord_sft_dataset)
     chord_config.val_dataset = []
-    rows = load_prompt_rows(chord_config, None, split_dataset_ratio=0.0)
+    rows = load_prompt_only_rows(chord_config, None, split_dataset_ratio=0.0)
     features = [template.encode(row) for row in rows]
     if not features:
         raise ValueError('chord_sft_dataset produced no encodable rows.')
@@ -853,9 +859,9 @@ def _load_chord_features(rlhf_config: RLHFConfig, dataset_config: DatasetConfig,
 
 def _prompt_rows_from_dataset(dataset_config: DatasetConfig) -> Tuple[List[List[dict]], List[Dict[str, Any]]]:
     """Load prompt messages and preserve all non-message columns for rewards and teacher views."""
-    from swift.dev.builders import load_prompt_rows
+    from swift.dev.builders import load_prompt_only_rows
 
-    rows = load_prompt_rows(dataset_config, None, split_dataset_ratio=0.0)
+    rows = load_prompt_only_rows(dataset_config, None, split_dataset_ratio=0.0)
     if not rows:
         raise ValueError('run_grpo got an empty dataset. Set DatasetConfig.dataset with prompts to roll out on.')
     prompts: List[List[dict]] = []

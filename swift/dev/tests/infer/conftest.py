@@ -8,7 +8,7 @@ to end while staying offline. The slow tier (``@pytest.mark.slow``) builds a rea
 runs an actual backend.
 
 Nothing here imports a model at module scope: the helpers build plain ``_Candidate`` / dict objects so
-the emit / writer / cache tests stay pure, and the pipeline fixture monkeypatches ``load_prompt_rows``
+the emit / writer / cache tests stay pure, and the pipeline fixture monkeypatches ``load_prompt_only_rows``
 so no dataset loader (and thus no hub access) is touched.
 """
 from typing import Any, Dict, List, Optional
@@ -84,16 +84,16 @@ class ScriptedSampler:
 
 @pytest.fixture
 def patch_prompt_rows(monkeypatch):
-    """Monkeypatch ``swift.dev.builders.load_prompt_rows`` to return a caller-supplied batch.
+    """Monkeypatch ``swift.dev.builders.load_prompt_only_rows`` to return a caller-supplied batch.
 
-    ``_run_generative`` / ``run_infer`` import ``load_prompt_rows`` from ``swift.dev.builders`` at call
+    ``_run_generative`` / ``run_infer`` import ``load_prompt_only_rows`` from ``swift.dev.builders`` at call
     time, so patching the attribute there is picked up. This keeps the fast pipeline test off the real
     dataset loader (and thus off the hub) while still driving the production code path.
     """
 
     def _patch(rows: List[Dict[str, Any]]):
         import swift.dev.builders as builders
-        monkeypatch.setattr(builders, 'load_prompt_rows', lambda *a, **k: list(rows))
+        monkeypatch.setattr(builders, 'load_prompt_only_rows', lambda *a, **k: list(rows))
         return rows
 
     return _patch

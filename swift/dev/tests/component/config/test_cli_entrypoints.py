@@ -13,7 +13,7 @@ from swift.dev.config import (
     ModelConfig,
     MoEConfig,
     QuantizeConfig,
-    RLHFConfig,
+    RLConfig,
     TemplateConfig,
     TrainConfig,
 )
@@ -133,7 +133,7 @@ def test_sft_dispatches_every_supported_task(monkeypatch, task_type, recipe_name
     assert sft_cli.sft_main([]) is expected
 
 
-@pytest.mark.parametrize('rlhf_type,recipe_module,recipe_name', [
+@pytest.mark.parametrize('rl_type,recipe_module,recipe_name', [
     ('dpo', 'run_dpo', 'run_dpo'),
     ('kto', 'run_dpo', 'run_dpo'),
     ('cpo', 'run_dpo', 'run_dpo'),
@@ -144,13 +144,13 @@ def test_sft_dispatches_every_supported_task(monkeypatch, task_type, recipe_name
     ('ppo', 'run_ppo', 'run_ppo'),
     ('gkd', 'run_gkd', 'run_gkd'),
 ])
-def test_rlhf_dispatches_every_supported_algorithm(monkeypatch, rlhf_type, recipe_module, recipe_name):
-    from swift.dev.recipe.run_rlhf import run_rlhf
+def test_rlhf_dispatches_every_supported_algorithm(monkeypatch, rl_type, recipe_module, recipe_name):
+    from swift.dev.recipe.run_rl import run_rl
 
     expected = object()
     recipe = importlib.import_module(f'swift.dev.recipe.{recipe_module}')
     monkeypatch.setattr(recipe, recipe_name, lambda *_args, **_kwargs: expected)
-    result = run_rlhf(
+    result = run_rl(
         ModelConfig(),
         TemplateConfig(),
         DatasetConfig(),
@@ -158,7 +158,7 @@ def test_rlhf_dispatches_every_supported_algorithm(monkeypatch, rlhf_type, recip
         DistributedConfig(),
         CheckpointConfig(),
         object(),
-        RLHFConfig(rlhf_type=rlhf_type),
+        RLConfig(rl_type=rl_type),
     )
     assert result is expected
 

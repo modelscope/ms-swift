@@ -2,7 +2,7 @@
 # Paper: "On-Policy Distillation of Language Models: Learning from Self-Generated Mistakes"
 #        https://arxiv.org/abs/2306.13649
 #
-# USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI (swift.dev.cli.rlhf). `--rlhf_type gkd` dispatches to
+# USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI (swift.dev.cli.rl). `--rlhf_type gkd` dispatches to
 # swift.dev.recipe.run_gkd.
 #
 # What GKD does: the student is trained to match a frozen teacher ON SEQUENCES THE STUDENT ITSELF GENERATES,

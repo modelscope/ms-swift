@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Model loading, architecture, and precision configuration."""
 from __future__ import annotations
 
@@ -21,7 +22,6 @@ class ModelConfig:
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification', None] = None
     rope_scaling: Optional[Union[Dict[str, Any], str]] = None
     max_model_len: Optional[int] = None
-    device_map: Optional[Union[Dict[str, Any], str]] = None
     max_memory: Optional[Dict[str, Any]] = None
     local_repo_path: Optional[str] = None
     #: Extra kwargs forwarded to ``from_pretrained``. The CLI accepts a JSON object or JSON file.

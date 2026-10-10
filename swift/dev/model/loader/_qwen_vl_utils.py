@@ -1,18 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Qwen-VL ``vision_process`` setup, internalized from legacy ``swift.model.models.qwen``.
-
-This is a dev-loader-time tweak of the ``qwen_vl_utils.vision_process`` module (env-driven pixel/frame
-budgets + a base64/url-tolerant video reader), NOT a reusable model monkey-patch -- so it lives in dev
-rather than ``twinkle.patch``. The base64 materialization still routes through ``swift.template.load_file``
-because dev's Qwen-VL path is still on the legacy template (that coupling is retired with #3, not here);
-what this module DOES remove is the dependency on ``swift.model.models.qwen``.
-"""
 import os
 
 from swift.dev.utils import get_env_args
 
 
 def _get_new_read_video_func(read_video_func, read_backend):
+    ## 这个干什么用的
     if read_backend == 'torchvision':
 
         def _new_read_video(ele: dict):
@@ -33,6 +26,7 @@ def _get_new_read_video_func(read_video_func, read_backend):
 
 
 def patch_qwen_vl_utils(vision_process):
+    ## 这个patch干什么用的
     if hasattr(vision_process, '_patch'):
         return
     if os.getenv('VIDEO_MAX_PIXELS') and not os.getenv('VIDEO_TOTAL_PIXELS'):

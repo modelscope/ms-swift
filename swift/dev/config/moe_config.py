@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Mixture-of-experts routing, dispatch, and capacity configuration."""
 from __future__ import annotations
 

@@ -1,10 +1,11 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from twinkle.loss import Loss
 
 if TYPE_CHECKING:
-    from swift.dev.config import RLHFConfig, TrainConfig
+    from swift.dev.config import RLConfig, TrainConfig
     from swift.dev.model import TrainableModel
 
 # Losses that read ``outputs['embeddings']`` (the pooled, L2-normalized sentence vector) rather
@@ -54,7 +55,6 @@ def configure_loss(model: TrainableModel,
             :func:`liger_fused_ce_enabled`). The caller must also run the forward under
             task='fused_lm_ce'; the recipe wires both from that one predicate.
     """
-    ## 这里所有的文件都直接在dev下面，要按照模块区分到不同文件夹中。如果是通用的文件，考虑放入utils中
     from swift.dev.naming import resolve_loss
     if loss_type != 'cross_entropy':
         raise NotImplementedError(f"SFT configure_loss only supports 'cross_entropy', got {loss_type!r}")
@@ -176,7 +176,6 @@ _RLHF_LOSS_NAME = {
 _REDUCE_LOSS_OVERRIDING_GRPO = frozenset({'real', 'dro', 'dppo_tv', 'dppo_kl', 'geo_mean', 'clip_cov', 'kl_cov'})
 
 
-## 这里为什么不能沉淀到twinkle中？有什么特有的设计吗？
 class _AdvancedGKDLoss(Loss):
     """GKD with the optional supervised CE term used for dataset-sourced batches."""
 
@@ -204,8 +203,6 @@ class _AdvancedGKDLoss(Loss):
             loss = loss + self.sft_alpha * sft_loss
         return LossOutput(loss=loss, num_tokens=result['num_tokens'])
 
-## 这里为什么不能沉淀到twinkle中？有什么特有的设计吗？
-## 如果是swift特有的可以在这里继承，如果是整体都有用的，需要下沉到twinkle中
 class _ConfiguredGRPOLoss(Loss):
     """Apply dev-only GRPO controls around a twinkle policy loss."""
 
@@ -413,8 +410,6 @@ class _ConfiguredGRPOLoss(Loss):
         return result
 
 
-## 这里为什么不能沉淀到twinkle中？有什么特有的设计吗？
-## 如果是swift特有的可以在这里继承，如果是整体都有用的，需要下沉到twinkle中
 class _AdvancedGRPOLoss(Loss):
     """GRPO plus optional SDAR distillation and CHORD's auxiliary SFT objective."""
 
@@ -488,8 +483,8 @@ class _AdvancedGRPOLoss(Loss):
         return output
 
 
-def configure_rlhf_loss(model: TrainableModel, rlhf_config: 'RLHFConfig') -> None:
-    """Set the RLHF/RL loss on ``model`` from ``rlhf_config.rlhf_type`` and its hyperparameters.
+def configure_rlhf_loss(model: TrainableModel, rl_config: 'RLConfig') -> None:
+    """Set the RLHF/RL loss on ``model`` from ``rl_config.rl_type`` and its hyperparameters.
 
     Peer of :func:`configure_loss`, for the RLHF recipes (run_grpo / run_dpo / run_gkd / run_ppo). The
     heavy losses themselves already live in twinkle (GRPO family, the DPO family, GKD) plus RewardLoss
@@ -500,38 +495,38 @@ def configure_rlhf_loss(model: TrainableModel, rlhf_config: 'RLHFConfig') -> Non
     the rest (e.g. an unset ``beta`` leaves the loss default rather than being overwritten with None).
     ``beta`` in particular is normally pre-filled per-algorithm by process.py::_derive_rlhf_beta.
 
-    rlhf_type='ppo' sets only the POLICY loss (the shared clipped surrogate, GRPOLoss, with
+    rl_type='ppo' sets only the POLICY loss (the shared clipped surrogate, GRPOLoss, with
     epsilon=cliprange and KL applied in the loop's reward shaping rather than the loss). Its critic is
     a separate value model whose loss is set by :func:`configure_ppo_value_loss`.
     """
     from swift.dev.naming import resolve_loss
 
-    rlhf_type = rlhf_config.rlhf_type
-    if rlhf_type not in _RLHF_LOSS_NAME:
-        raise ValueError(f'Unknown rlhf_type={rlhf_type!r}; expected one of {sorted(_RLHF_LOSS_NAME)}.')
+    rl_type = rl_config.rl_type
+    if rl_type not in _RLHF_LOSS_NAME:
+        raise ValueError(f'Unknown rl_type={rl_type!r}; expected one of {sorted(_RLHF_LOSS_NAME)}.')
 
-    loss_name = _RLHF_LOSS_NAME[rlhf_type]
+    loss_name = _RLHF_LOSS_NAME[rl_type]
     grpo_loss_type = 'grpo'
-    if rlhf_type == 'grpo' and rlhf_config.loss_type:
-        grpo_loss_type = rlhf_config.loss_type[0]
+    if rl_type == 'grpo' and rl_config.loss_type:
+        grpo_loss_type = rl_config.loss_type[0]
         loss_name = {'dapo': 'bnpo', 'fipo': 'grpo'}.get(grpo_loss_type, grpo_loss_type)
     loss_cls = resolve_loss(loss_name)
-    loss = loss_cls(**_rlhf_loss_kwargs(rlhf_type, rlhf_config, grpo_loss_type))
+    loss = loss_cls(**_rlhf_loss_kwargs(rl_type, rl_config, grpo_loss_type))
     # GSPO IS sequence-level importance sampling by definition. When another advanced knob wraps it in
     # _ConfiguredGRPOLoss, that wrapper computes the ratio itself (via importance_sampling_level) and calls
     # base_loss._compute_per_token_loss directly, so it would bypass GSPOLoss._compute_log_importance_weights
     # at the default 'token' level and silently downgrade GSPO to token-level GRPO (W13). Promote the default
     # so the wrapper stays sequence-level; an explicit 'sequence'/'sequence_token' (GSPO-token) is honored.
-    importance_sampling_level = rlhf_config.importance_sampling_level
+    importance_sampling_level = rl_config.importance_sampling_level
     if grpo_loss_type == 'gspo' and importance_sampling_level == 'token':
         importance_sampling_level = 'sequence'
     configured_grpo = bool(
-        rlhf_type == 'grpo' and (grpo_loss_type == 'fipo' or rlhf_config.importance_sampling_level != 'token'
-                                  or rlhf_config.delta is not None or rlhf_config.top_entropy_quantile < 1.0
-                                  or rlhf_config.log_entropy or rlhf_config.overlong_filter
-                                  or rlhf_config.rollout_importance_sampling_mode
-                                  or rlhf_config.log_rollout_offpolicy_metrics
-                                  or rlhf_config.off_policy_sequence_mask_delta is not None))
+        rl_type == 'grpo' and (grpo_loss_type == 'fipo' or rl_config.importance_sampling_level != 'token'
+                                  or rl_config.delta is not None or rl_config.top_entropy_quantile < 1.0
+                                  or rl_config.log_entropy or rl_config.overlong_filter
+                                  or rl_config.rollout_importance_sampling_mode
+                                  or rl_config.log_rollout_offpolicy_metrics
+                                  or rl_config.off_policy_sequence_mask_delta is not None))
     if configured_grpo and grpo_loss_type in _REDUCE_LOSS_OVERRIDING_GRPO:
         # _ConfiguredGRPOLoss recomputes the per-token surrogate and aggregation itself and never calls the
         # base loss's group-level reduction, so wrapping any _reduce_loss-overriding variant (real / dro /
@@ -548,24 +543,24 @@ def configure_rlhf_loss(model: TrainableModel, rlhf_config: 'RLHFConfig') -> Non
         loss = _ConfiguredGRPOLoss(
             loss,
             importance_sampling_level=importance_sampling_level,
-            delta=rlhf_config.delta,
-            top_entropy_quantile=rlhf_config.top_entropy_quantile,
-            log_entropy=rlhf_config.log_entropy,
-            rollout_importance_sampling_mode=rlhf_config.rollout_importance_sampling_mode,
-            rollout_importance_sampling_threshold=rlhf_config.rollout_importance_sampling_threshold,
-            log_rollout_offpolicy_metrics=rlhf_config.log_rollout_offpolicy_metrics,
-            off_policy_sequence_mask_delta=rlhf_config.off_policy_sequence_mask_delta,
+            delta=rl_config.delta,
+            top_entropy_quantile=rl_config.top_entropy_quantile,
+            log_entropy=rl_config.log_entropy,
+            rollout_importance_sampling_mode=rl_config.rollout_importance_sampling_mode,
+            rollout_importance_sampling_threshold=rl_config.rollout_importance_sampling_threshold,
+            log_rollout_offpolicy_metrics=rl_config.log_rollout_offpolicy_metrics,
+            off_policy_sequence_mask_delta=rl_config.off_policy_sequence_mask_delta,
             loss_type=grpo_loss_type,
-            fipo_decay_rate=rlhf_config.fipo_decay_rate,
-            fipo_clip_range=rlhf_config.fipo_clip_range,
-            fipo_clip_high_only=rlhf_config.fipo_clip_high_only,
-            fipo_safety_threshold=rlhf_config.fipo_safety_threshold)
-    if rlhf_type == 'grpo' and (rlhf_config.chord_sft_dataset or rlhf_config.sdar_loss_coef > 0):
+            fipo_decay_rate=rl_config.fipo_decay_rate,
+            fipo_clip_range=rl_config.fipo_clip_range,
+            fipo_clip_high_only=rl_config.fipo_clip_high_only,
+            fipo_safety_threshold=rl_config.fipo_safety_threshold)
+    if rl_type == 'grpo' and (rl_config.chord_sft_dataset or rl_config.sdar_loss_coef > 0):
         loss = _AdvancedGRPOLoss(
-            loss, sdar_loss_coef=rlhf_config.sdar_loss_coef, sdar_gate_beta=rlhf_config.sdar_gate_beta)
-    elif rlhf_type == 'gkd' and rlhf_config.sft_alpha > 0:
-        loss = _AdvancedGKDLoss(loss, sft_alpha=rlhf_config.sft_alpha)
-    if rlhf_config.enable_sampling_replay:
+            loss, sdar_loss_coef=rl_config.sdar_loss_coef, sdar_gate_beta=rl_config.sdar_gate_beta)
+    elif rl_type == 'gkd' and rl_config.sft_alpha > 0:
+        loss = _AdvancedGKDLoss(loss, sft_alpha=rl_config.sft_alpha)
+    if rl_config.enable_sampling_replay:
         # The model forward reads ``enable_sampling_replay`` off whatever loss is finally set (getattr on the
         # outermost instance) to route its logps through replayed_selective_log_softmax. A _ConfiguredGRPOLoss
         # / _AdvancedGRPOLoss wrapper does not proxy the attribute, so mirror it onto the final object -- else
@@ -574,7 +569,7 @@ def configure_rlhf_loss(model: TrainableModel, rlhf_config: 'RLHFConfig') -> Non
     model.set_loss(loss)
 
 
-def configure_ppo_value_loss(value_model: TrainableModel, rlhf_config: 'RLHFConfig') -> None:
+def configure_ppo_value_loss(value_model: TrainableModel, rl_config: 'RLConfig') -> None:
     """Set PPO's clipped value-regression loss on the critic (a seq_cls num_labels=1 value model).
 
     Separate from :func:`configure_rlhf_loss` because PPO trains two models with two objectives: the
@@ -584,11 +579,11 @@ def configure_ppo_value_loss(value_model: TrainableModel, rlhf_config: 'RLHFConf
     from swift.dev.naming import resolve_loss
 
     loss_cls = resolve_loss('ppo_value')
-    value_model.set_loss(loss_cls(cliprange_value=rlhf_config.cliprange_value, vf_coef=rlhf_config.vf_coef))
+    value_model.set_loss(loss_cls(cliprange_value=rl_config.cliprange_value, vf_coef=rl_config.vf_coef))
 
 
-def configure_rlhf_metrics(model: TrainableModel, rlhf_config: 'RLHFConfig') -> None:
-    """Register the algorithm-specific twinkle.metric component on ``model`` for this rlhf_type.
+def configure_rlhf_metrics(model: TrainableModel, rl_config: 'RLConfig') -> None:
+    """Register the algorithm-specific twinkle.metric component on ``model`` for this rl_type.
 
     Peer of :func:`configure_rlhf_loss`, for the metric side. Every recipe's per-step loss already flows
     through twinkle's default ``LossMetric`` (loss / grad_norm / loss_<channel>), which the loop's unified
@@ -605,7 +600,7 @@ def configure_rlhf_metrics(model: TrainableModel, rlhf_config: 'RLHFConfig') -> 
     ``construct_class`` is routed to ``Plugin.load_plugin`` (hub download), which is exactly what
     ``test_no_name_string_is_handed_to_twinkles_loader`` forbids.
 
-    rlhf_types with no algorithm component (deliberate no-ops):
+    rl_types with no algorithm component (deliberate no-ops):
       - ``gkd`` / ``opsd`` / ``mopd``: the training loss IS the teacher-student divergence (JSD / k3), so
         ``LossMetric`` already surfaces it; a separate distill component would recompute the same quantity.
       - ``kto``: unpaired (one completion + a binary label), so it does not fit DPOMetric's interleaved
@@ -614,30 +609,30 @@ def configure_rlhf_metrics(model: TrainableModel, rlhf_config: 'RLHFConfig') -> 
     """
     from twinkle.metric import CISPOMetric, DPOMetric, GRPOMetric, GSPOMetric, PPOMetric
 
-    rlhf_type = rlhf_config.rlhf_type
-    if rlhf_type == 'grpo':
+    rl_type = rl_config.rl_type
+    if rl_type == 'grpo':
         # Mirror configure_rlhf_loss's variant resolution: the metric's clip statistic must match the
         # loss's (GSPO clips a per-sequence geometric-mean ratio; CISPO clips unconditionally).
-        grpo_loss_type = rlhf_config.loss_type[0] if rlhf_config.loss_type else 'grpo'
+        grpo_loss_type = rl_config.loss_type[0] if rl_config.loss_type else 'grpo'
         metric_cls = {'gspo': GSPOMetric, 'cispo': CISPOMetric}.get(grpo_loss_type, GRPOMetric)
-        kwargs: Dict[str, Any] = {'epsilon': rlhf_config.epsilon, 'temperature': rlhf_config.temperature}
-        if rlhf_config.epsilon_high is not None:
-            kwargs['epsilon_high'] = rlhf_config.epsilon_high
+        kwargs: Dict[str, Any] = {'epsilon': rl_config.epsilon, 'temperature': rl_config.distill_temperature}
+        if rl_config.epsilon_high is not None:
+            kwargs['epsilon_high'] = rl_config.epsilon_high
         model.add_metric(metric_cls, is_training=True, **kwargs)
-    elif rlhf_type == 'ppo':
+    elif rl_type == 'ppo':
         # PPO's policy loss is the shared clipped surrogate with clip range ``cliprange`` (see
         # configure_rlhf_loss); PPOMetric reports the same token-level ratio/clip stats.
         model.add_metric(
-            PPOMetric, is_training=True, epsilon=rlhf_config.cliprange, temperature=rlhf_config.temperature)
-    elif rlhf_type in ('dpo', 'cpo', 'orpo', 'simpo'):
+            PPOMetric, is_training=True, epsilon=rl_config.cliprange, temperature=rl_config.distill_temperature)
+    elif rl_type in ('dpo', 'cpo', 'orpo', 'simpo'):
         # Paired preference objectives: DPOMetric surfaces logps/chosen|rejected and (with a reference)
         # rewards/margins|accuracies. Forward beta only when set so twinkle's default stands otherwise.
-        kwargs = {'beta': rlhf_config.beta} if rlhf_config.beta is not None else {}
+        kwargs = {'beta': rl_config.beta} if rl_config.beta is not None else {}
         model.add_metric(DPOMetric, is_training=True, **kwargs)
     # gkd / opsd / mopd / kto / rm: no algorithm-specific component (see the docstring).
 
 
-def configure_ppo_value_metric(value_model: TrainableModel, rlhf_config: 'RLHFConfig') -> None:
+def configure_ppo_value_metric(value_model: TrainableModel, rl_config: 'RLConfig') -> None:
     """Register ``PPOValueMetric`` on PPO's critic (peer of :func:`configure_ppo_value_loss`).
 
     Surfaces value_mean / return_mean / value_clip_ratio / explained_variance from the same
@@ -646,7 +641,7 @@ def configure_ppo_value_metric(value_model: TrainableModel, rlhf_config: 'RLHFCo
     """
     from twinkle.metric import PPOValueMetric
 
-    value_model.add_metric(PPOValueMetric, is_training=True, epsilon=rlhf_config.cliprange_value)
+    value_model.add_metric(PPOValueMetric, is_training=True, epsilon=rl_config.cliprange_value)
 
 
 def configure_embedding_metric(model: TrainableModel) -> None:
@@ -675,82 +670,81 @@ def configure_embedding_metric(model: TrainableModel) -> None:
     model.add_metric(EmbeddingMetric, is_training=True)
 
 
-def _rlhf_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig', grpo_loss_type: str = 'grpo') -> Dict[str, Any]:
-    """The constructor kwargs for one rlhf_type's loss, forwarding only the fields it reads.
+def _rlhf_loss_kwargs(rl_type: str, rl_config: 'RLConfig', grpo_loss_type: str = 'grpo') -> Dict[str, Any]:
+    """The constructor kwargs for one rl_type's loss, forwarding only the fields it reads.
 
     Split into an online (policy-gradient / distillation) and a preference/pairwise half so each stays
     a short, single-purpose mapping rather than one long branch. ``grpo_loss_type`` is the resolved GRPO
     variant (grpo/sapo/dr_grpo/...), needed because a variant's own hyperparameters are read only by its
     loss subclass.
     """
-    if rlhf_type in ('grpo', 'gkd', 'ppo', 'opsd', 'mopd'):
-        return _online_loss_kwargs(rlhf_type, rlhf_config, grpo_loss_type)
-    return _preference_loss_kwargs(rlhf_type, rlhf_config)
+    if rl_type in ('grpo', 'gkd', 'ppo', 'opsd', 'mopd'):
+        return _online_loss_kwargs(rl_type, rl_config, grpo_loss_type)
+    return _preference_loss_kwargs(rl_type, rl_config)
 
 
-## 这里的kwargs二次检查下，确认和swift legacy原本设计，以及原论文一致
-def _online_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig', grpo_loss_type: str = 'grpo') -> Dict[str, Any]:
+def _online_loss_kwargs(rl_type: str, rl_config: 'RLConfig', grpo_loss_type: str = 'grpo') -> Dict[str, Any]:
     """kwargs for the on-policy losses (GRPO/PPO clip params, GKD's temperature); grpo/gkd read beta."""
     kwargs: Dict[str, Any] = {}
-    if rlhf_type in ('opsd', 'mopd'):
+    if rl_type in ('opsd', 'mopd'):
         # The sampled-token k3 surrogate reads ONLY the divergence direction. v1 deliberately applies no
         # distillation temperature (it distils on the model's native log-probs) and carries no
         # reference-KL term, so neither ``temperature`` nor ``beta`` is forwarded -- passing them would be
         # a silently-ignored knob (OPSDLoss.__call__ reads neither). Both are rejected at validate time
         # for opsd/mopd rather than dropped here in silence.
-        kwargs['reverse'] = rlhf_config.opsd_reverse
+        kwargs['reverse'] = rl_config.opsd_reverse
         return kwargs
-    if rlhf_type == 'gkd':
-        if rlhf_config.beta is not None:
-            kwargs['beta'] = rlhf_config.beta
-        kwargs['temperature'] = rlhf_config.temperature
+    if rl_type == 'gkd':
+        if rl_config.beta is not None:
+            kwargs['beta'] = rl_config.beta
+        kwargs['temperature'] = rl_config.distill_temperature
         return kwargs
-    if rlhf_type == 'ppo':
+    if rl_type == 'ppo':
         # PPO's policy loss is the shared clipped surrogate; the clip range is `cliprange`, and its KL
         # is applied as a reward penalty in the loop (beta=0 here, GRPOLoss's default) to avoid
         # double-counting.
-        kwargs['epsilon'] = rlhf_config.cliprange
+        kwargs['epsilon'] = rl_config.cliprange
         return kwargs
     # grpo: KL is either folded into the reward or added by GRPOLoss, never both.
-    calculate_kl = rlhf_config.calculate_KL is not False
-    if rlhf_config.beta is not None and not rlhf_config.kl_in_reward and calculate_kl:
-        kwargs['beta'] = rlhf_config.beta
-    kwargs['epsilon'] = rlhf_config.epsilon
-    if rlhf_config.epsilon_high is not None:
-        kwargs['epsilon_high'] = rlhf_config.epsilon_high
+    calculate_kl = rl_config.calculate_KL is not False
+    if rl_config.beta is not None and not rl_config.kl_in_reward and calculate_kl:
+        kwargs['beta'] = rl_config.beta
+    kwargs['epsilon'] = rl_config.epsilon
+    if rl_config.epsilon_high is not None:
+        kwargs['epsilon_high'] = rl_config.epsilon_high
     # Variant-only hyperparameters: SAPO's soft-gate temperatures and DR-GRPO's length normaliser are read
     # solely by their own loss subclass, so forward them only for the matching variant -- passing them to
     # the base GRPOLoss would land in ``**kwargs`` and be dropped silently (the W20/W23 dead-param trap).
     if grpo_loss_type == 'sapo':
-        kwargs['tau_pos'] = rlhf_config.tau_pos
-        kwargs['tau_neg'] = rlhf_config.tau_neg
+        kwargs['tau_pos'] = rl_config.tau_pos
+        kwargs['tau_neg'] = rl_config.tau_neg
     elif grpo_loss_type == 'dr_grpo':
-        kwargs['max_completion_length'] = rlhf_config.max_completion_length
+        kwargs['max_completion_length'] = rl_config.max_completion_length
     elif grpo_loss_type == 'real':
         # REAL reduces each sequence to a scalar score and splits generation groups, so it needs the group
         # size to reshape the batch; its soft-constraint temperature is real_tau.
-        kwargs['real_tau'] = rlhf_config.real_tau
-        kwargs['num_generations'] = rlhf_config.num_generations
+        kwargs['real_tau'] = rl_config.real_tau
+        kwargs['num_generations'] = rl_config.num_generations
     elif grpo_loss_type == 'dro':
         # DRO's quadratic log-ratio penalty strength; read only by DROLoss (it validates >0).
-        kwargs['dro_beta'] = rlhf_config.dro_beta
+        kwargs['dro_beta'] = rl_config.dro_beta
     elif grpo_loss_type in ('dppo_tv', 'dppo_kl'):
         # DPPO's divergence threshold IS the shared epsilon/epsilon_high (verl reuses clip_ratio_low/high
         # as clip_divergence_low/high), already forwarded above; the only DPPO-specific knob is the
         # truncated-IS stability bound, read solely by the DPPO losses.
-        kwargs['clip_ratio_c'] = rlhf_config.clip_ratio_c
+        kwargs['clip_ratio_c'] = rl_config.clip_ratio_c
     elif grpo_loss_type == 'clip_cov':
         # Clip-Cov's covariance-window bounds and the fraction of tokens to zero; read only by ClipCovLoss.
-        kwargs['clip_cov_ratio'] = rlhf_config.clip_cov_ratio
-        kwargs['clip_cov_lb'] = rlhf_config.clip_cov_lb
-        kwargs['clip_cov_ub'] = rlhf_config.clip_cov_ub
+        kwargs['clip_cov_ratio'] = rl_config.clip_cov_ratio
+        kwargs['clip_cov_lb'] = rl_config.clip_cov_lb
+        kwargs['clip_cov_ub'] = rl_config.clip_cov_ub
     elif grpo_loss_type == 'kl_cov':
         # KL-Cov's selected-token fraction and the extra KL coefficient; read only by KLCovLoss.
-        kwargs['kl_cov_ratio'] = rlhf_config.kl_cov_ratio
-        kwargs['ppo_kl_coef'] = rlhf_config.ppo_kl_coef
+        kwargs['kl_cov_ratio'] = rl_config.kl_cov_ratio
+        kwargs['ppo_kl_coef'] = rl_config.ppo_kl_coef
     # 'gpg' (pure REINFORCE, -logp*adv) and 'geo_mean' (sequence geometric mean) read no extra knobs beyond
     # the shared epsilon/epsilon_high/beta forwarded above, so they need no variant branch here.
-    if rlhf_config.enable_sampling_replay:
+    if rl_config.enable_sampling_replay:
         # The base GRPOLoss validates beta==0 / entropy_coef==0 and switches its __call__ to require the
         # forward-replayed logps. The model forward reads the flag off the OUTERMOST loss instance, so
         # configure_rlhf_loss also mirrors it onto any wrapper -- this base kwarg drives the plain path.
@@ -758,54 +752,54 @@ def _online_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig', grpo_loss_typ
     return kwargs
 
 
-def _preference_loss_kwargs(rlhf_type: str, rlhf_config: 'RLHFConfig') -> Dict[str, Any]:
+def _preference_loss_kwargs(rl_type: str, rl_config: 'RLConfig') -> Dict[str, Any]:
     """kwargs for the preference / pairwise losses (dpo/kto/simpo/cpo/orpo/rm)."""
-    beta = rlhf_config.beta
+    beta = rl_config.beta
     kwargs: Dict[str, Any] = {}
     # dpo/kto/simpo/cpo take beta straight through; orpo folds it into lambda_orpo and rm has none.
-    if beta is not None and rlhf_type in ('dpo', 'kto', 'simpo', 'cpo'):
+    if beta is not None and rl_type in ('dpo', 'kto', 'simpo', 'cpo'):
         kwargs['beta'] = beta
-    if rlhf_type == 'kto':
+    if rl_type == 'kto':
         # KTO is the UNPAIRED objective (KTOLoss): a single completion per row + a binary label, anchored
         # on the detached z_KL the loop estimates from a mismatched KL batch. It reads beta and the two
         # imbalance-correcting weights only -- no loss_type/label_smoothing/sft_weight (DPO-family paired
         # knobs) and no reference_free form (both the log-ratio and z_KL need a reference).
-        kwargs['desirable_weight'] = rlhf_config.desirable_weight
-        kwargs['undesirable_weight'] = rlhf_config.undesirable_weight
-    elif rlhf_type == 'dpo':
+        kwargs['desirable_weight'] = rl_config.desirable_weight
+        kwargs['undesirable_weight'] = rl_config.undesirable_weight
+    elif rl_type == 'dpo':
         # DPOLoss takes a single variant OR a list combined as a weighted sum (MPO), so forward the whole
         # list rather than just its head; twinkle validates every item and the loss_weights alignment.
-        kwargs['loss_type'] = rlhf_config.loss_type or ['sigmoid']
-        kwargs['label_smoothing'] = rlhf_config.label_smoothing
+        kwargs['loss_type'] = rl_config.loss_type or ['sigmoid']
+        kwargs['label_smoothing'] = rl_config.label_smoothing
         # DPO-family knobs the twinkle DPOLoss reads: the DiscoPOP gate temperature, the f-divergence that
         # reshapes the preference margin plus its alpha coefficient. Their dev defaults equal twinkle's, so
         # forwarding them unconditionally is a no-op for a plain sigmoid run.
-        kwargs['discopop_tau'] = rlhf_config.discopop_tau
-        kwargs['f_divergence_type'] = rlhf_config.f_divergence_type
-        kwargs['f_alpha_divergence_coef'] = rlhf_config.f_alpha_divergence_coef
+        kwargs['discopop_tau'] = rl_config.discopop_tau
+        kwargs['f_divergence_type'] = rl_config.f_divergence_type
+        kwargs['f_alpha_divergence_coef'] = rl_config.f_alpha_divergence_coef
         # ld_alpha (length-desensitization) and loss_weights (MPO) default to None; forward only when set so
         # twinkle's own defaults stand rather than being overwritten with None.
-        if rlhf_config.ld_alpha is not None:
-            kwargs['ld_alpha'] = rlhf_config.ld_alpha
-        if rlhf_config.loss_weights is not None:
-            kwargs['loss_weights'] = rlhf_config.loss_weights
+        if rl_config.ld_alpha is not None:
+            kwargs['ld_alpha'] = rl_config.ld_alpha
+        if rl_config.loss_weights is not None:
+            kwargs['loss_weights'] = rl_config.loss_weights
         # DPOLoss also honors ``reference_free`` (drop the reference log-ratio) and an NLL term on the
         # chosen response to curb likelihood displacement; dev carries the latter as ``rpo_alpha`` (RPO's
         # NLL weight), which maps onto twinkle's ``sft_weight``. Both were declared-but-unforwarded dead
         # params (W21). ``reference_free`` is wired together with run_dpo._build_reference returning None
         # so the loss takes its reference-free branch instead of the zero-loss fallthrough.
-        kwargs['reference_free'] = rlhf_config.reference_free
-        if rlhf_config.rpo_alpha:
-            kwargs['sft_weight'] = rlhf_config.rpo_alpha
-    elif rlhf_type == 'simpo':
-        kwargs['gamma'] = rlhf_config.simpo_gamma
-    elif rlhf_type == 'cpo':
+        kwargs['reference_free'] = rl_config.reference_free
+        if rl_config.rpo_alpha:
+            kwargs['sft_weight'] = rl_config.rpo_alpha
+    elif rl_type == 'simpo':
+        kwargs['gamma'] = rl_config.simpo_gamma
+    elif rl_type == 'cpo':
         # twinkle CPOLoss names the behaviour-cloning weight bc_coef; dev keeps legacy's cpo_alpha.
-        kwargs['bc_coef'] = rlhf_config.cpo_alpha
-    elif rlhf_type == 'orpo' and beta is not None:
+        kwargs['bc_coef'] = rl_config.cpo_alpha
+    elif rl_type == 'orpo' and beta is not None:
         # ORPO has no reference model and no beta: its single weight is lambda_orpo, which legacy/TRL
         # carry in the beta slot -- so the derived beta maps onto lambda_orpo here.
         kwargs['lambda_orpo'] = beta
-    elif rlhf_type == 'rm' and rlhf_config.center_rewards_coefficient is not None:
-        kwargs['center_rewards_coefficient'] = rlhf_config.center_rewards_coefficient
+    elif rl_type == 'rm' and rl_config.center_rewards_coefficient is not None:
+        kwargs['center_rewards_coefficient'] = rl_config.center_rewards_coefficient
     return kwargs

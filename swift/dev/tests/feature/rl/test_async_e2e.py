@@ -76,7 +76,7 @@ def test_sync_staleness_zero_hard_invariant(tiny_qwen2_5, rl_data, tmp_path, ass
     ``span <= max_staleness`` bound its meaning -- the ladder is 0 here, <=1 and <=2 there.
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -123,7 +123,7 @@ def test_one_step_off_disaggregated_staleness_bounded(tiny_qwen2_5, rl_data, tmp
     and ``stream_publishes >= 1`` proves the trained policy really reached the separate-GPU sampler.
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -174,7 +174,7 @@ def test_fully_async_disaggregated_staleness_bounded(tiny_qwen2_5, rl_data, tmp_
     red here, which row 2's single-lookahead window can never produce.
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',

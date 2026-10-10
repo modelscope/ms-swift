@@ -134,7 +134,8 @@ def test_initialize_twinkle_forwards_seed_and_full_determinism(monkeypatch):
     Ray worker from these values (infra/__init__.py), so dropping them silently reverts the run to
     twinkle's own default (seed=42) and overwrites the user's seed -- and seed also drives the Megatron
     modelling RNG, so it is a reproducibility load-bearer, not a transformers-only knob. The ray branch
-    matters most (workers re-seed from _seed) yet the guard above skips it to avoid booting a cluster.
+    matters most (workers re-seed from the EXTRA_TORCH_KWARGS env) yet the guard above skips it to avoid
+    booting a cluster.
 
     twinkle.initialize is captured rather than executed: the contract under test is *what dev passes*,
     and executing it with full_determinism=True would flip process-global torch state
@@ -156,14 +157,14 @@ def test_initialize_twinkle_forwards_seed_and_full_determinism(monkeypatch):
 
     TrainAssembly.initialize_twinkle(DistributedConfig(mode='local'), seed=1234, full_determinism=True)
     assert captured['mode'] == 'local'
-    assert captured['seed'] == 1234, 'local branch dropped the user seed'
-    assert captured['full_determinism'] is True, 'local branch dropped full_determinism'
+    assert captured['extra_torch_kwargs']['seed'] == 1234, 'local branch dropped the user seed'
+    assert captured['extra_torch_kwargs']['full_determinism'] is True, 'local branch dropped full_determinism'
 
     TrainAssembly.initialize_twinkle(
         DistributedConfig(mode='ray', nproc_per_node=2), seed=7, full_determinism=False)
     assert captured['mode'] == 'ray'
-    assert captured['seed'] == 7, 'ray branch dropped the user seed'
-    assert captured['full_determinism'] is False, 'ray branch dropped full_determinism'
+    assert captured['extra_torch_kwargs']['seed'] == 7, 'ray branch dropped the user seed'
+    assert captured['extra_torch_kwargs']['full_determinism'] is False, 'ray branch dropped full_determinism'
 
 
 def _write_toy_dataset(path):

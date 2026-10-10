@@ -4,16 +4,16 @@
 # it through swift's public programmatic API, so you can compute flags in Python (sweeps, conditional knobs,
 # values from another pipeline) instead of hand-editing a shell string.
 #
-# The entry point is swift.dev.cli.rlhf.run_rlhf_configs(configs): it runs process_and_validate_configs then
-# run_rlhf -- exactly what `swift rl` does after parsing argv. The ONE thing a programmatic caller must do
-# itself is the PLACEMENT FORCING that normally lives in the argv parser (parse_rlhf_configs): every ONLINE
-# rlhf_type (grpo/ppo/rft/gkd/opsd/mopd) rolls out on a separate vLLM sampler over Ray, so use_vllm/vllm_mode/
-# mode='ray' are forced. _force_online_placement below mirrors it (parse_rlhf_configs is the source of truth).
+# The entry point is swift.dev.cli.rl.run_rl_configs(configs): it runs process_and_validate_configs then
+# run_rl -- exactly what `swift rl` does after parsing argv. The ONE thing a programmatic caller must do
+# itself is the PLACEMENT FORCING that normally lives in the argv parser (parse_rl_configs): every ONLINE
+# rl_type (grpo/ppo/rft/gkd/opsd/mopd) rolls out on a separate vLLM sampler over Ray, so use_vllm/vllm_mode/
+# mode='ray' are forced. _force_online_placement below mirrors it (parse_rl_configs is the source of truth).
 #
 # Run: python examples/rl/code/grpo.py   (set CUDA_VISIBLE_DEVICES to your free cards first).
 import os
 
-from swift.dev.cli.rlhf import run_rlhf_configs
+from swift.dev.cli.rl import run_rl_configs
 from swift.dev.config import (
     CheckpointConfig,
     DatasetConfig,
@@ -23,26 +23,26 @@ from swift.dev.config import (
     ModelConfig,
     PluginConfig,
     QuantizeConfig,
-    RLHFConfig,
+    RLConfig,
     RolloutConfig,
     TemplateConfig,
     TrainConfig,
     TunerConfig,
 )
 
-#: Online rlhf_types roll out on a separate vLLM sampler over Ray (mirrors parse_rlhf_configs).
+#: Online rl_types roll out on a separate vLLM sampler over Ray (mirrors parse_rl_configs).
 _ONLINE_TYPES = {'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'}
 
 
 def _force_online_placement(configs: dict) -> None:
-    """Replicate the CLI's Ray+vLLM placement forcing, which run_rlhf_configs does NOT do.
+    """Replicate the CLI's Ray+vLLM placement forcing, which run_rl_configs does NOT do.
 
-    parse_rlhf_configs applies this after parsing argv; a programmatic caller bypasses that parser, so it
+    parse_rl_configs applies this after parsing argv; a programmatic caller bypasses that parser, so it
     must force the placement itself or the online loop would build with no sampler. Keep in sync with
-    swift/dev/cli/rlhf.py::parse_rlhf_configs (the source of truth).
+    swift/dev/cli/rl.py::parse_rl_configs (the source of truth).
     """
-    rlhf_config = configs['rlhf_config']
-    if rlhf_config.rlhf_type in _ONLINE_TYPES:
+    rl_config = configs['rl_config']
+    if rl_config.rl_type in _ONLINE_TYPES:
         rollout_config = configs['rollout_config']
         rollout_config.use_vllm = True
         rollout_config.vllm_mode = rollout_config.vllm_mode or 'colocate'
@@ -74,8 +74,8 @@ def build_configs() -> dict:
         'generation_config': GenerationConfig(temperature=1.0, max_new_tokens=2048),
         # GRPO is Ray-only with a weight-syncable vLLM sampler; colocate shares the trainer GPUs.
         'rollout_config': RolloutConfig(vllm_mode='colocate', vllm_gpu_memory_utilization=0.5),
-        'rlhf_config': RLHFConfig(
-            rlhf_type='grpo',
+        'rl_config': RLConfig(
+            rl_type='grpo',
             orm=['accuracy'],
             num_generations=8,
             advantage_estimator='grpo',
@@ -95,7 +95,7 @@ def main() -> None:
     os.environ.setdefault('USE_SWIFT_V5', '1')
     configs = build_configs()
     _force_online_placement(configs)
-    history = run_rlhf_configs(configs)
+    history = run_rl_configs(configs)
     # Judge convergence by the REWARD curve (train/total_reward climbing), not the loss -- see ../grpo/grpo.sh.
     print(f'GRPO finished: {len(history)} optimizer steps; '
           f'last reward={history[-1].get("reward") if history else None}')

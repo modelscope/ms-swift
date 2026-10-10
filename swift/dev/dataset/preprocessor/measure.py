@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from swift.dev.utils import get_logger
+from .._diagnostics import note_row_error
 from .encode import EncodePreprocessor
 
 __all__ = ['MeasurePreprocessor']
@@ -33,7 +34,6 @@ class MeasurePreprocessor(EncodePreprocessor):
     row here is what lets a consumer know to leave it out of a plan; dropping it here would only move the
     same decision earlier and take the row count with it.
     """
-    ## 这个preprocessor有什么用
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         try:
             row['lengths'] = super().preprocess(row)['lengths']
@@ -54,9 +54,5 @@ class MeasurePreprocessor(EncodePreprocessor):
         # budget that real data errors need.
         if isinstance(e, MaxLengthError):
             return
-        if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
-            import traceback
-            logger.info(traceback.format_exc())
-            logger.warning('👆👆👆There are errors in the template.encode; this row is marked '
-                           'unmeasurable and will be substituted when indexed.')
-            self._traceback_counter += 1
+        note_row_error(self, '👆👆👆There are errors in the template.encode; this row is marked '
+                       'unmeasurable and will be substituted when indexed.')

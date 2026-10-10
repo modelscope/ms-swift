@@ -49,7 +49,7 @@ if TYPE_CHECKING:
         ModelConfig,
         PluginConfig,
         QuantizeConfig,
-        RLHFConfig,
+        RLConfig,
         RolloutConfig,
         TemplateConfig,
         TunerConfig,
@@ -71,7 +71,7 @@ def run_infer(
     infer_config: InferConfig,
     generation_config: Optional[GenerationConfig] = None,
     *,
-    rlhf_config: Optional[RLHFConfig] = None,
+    rl_config: Optional[RLConfig] = None,
     rollout_config: Optional[RolloutConfig] = None,
     backend: str = 'vllm',
     engine_args: Optional[Dict[str, Any]] = None,
@@ -101,11 +101,11 @@ def run_infer(
         template_config: chat template, and the ``system`` that overrides the dataset's.
         dataset_config: what to infer over. See ``split_dataset_ratio`` for how the split is chosen.
         infer_config: engine choice plus every generation/output/scoring knob (``sampler``,
-            ``num_return_sequences``, ``output_format``, ``batch_size``, ``metric``, ``strict``, the
+            ``num_return_sequences``, ``output_format``, ``batch_size``, ``metric``, ``generation_strict``, the
             reward channels, resume / cache / rollout-token dumping).
         generation_config: decoding knobs. ``stream`` only affects the interactive REPL
             (:mod:`swift.dev.recipe.infer_tui`); this dataset pipeline always samples in batch.
-        rlhf_config: the reward-channel registry surface (``orm`` / ``prm`` and their ``*_weights``) and
+        rl_config: the reward-channel registry surface (``orm`` / ``prm`` and their ``*_weights``) and
             the multi-turn config (``max_turns`` / ``max_trajectory_tokens``), shared with GRPO.
         rollout_config: tool/sandbox config for a multi-turn rollout.
         backend: generation engine -- 'vllm' / 'sglang' / 'transformers' to sample locally, or
@@ -145,14 +145,14 @@ def run_infer(
 
     task_type = model_config.task_type or 'causal_lm'
     if is_pooling_task(task_type) or task_type == 'generative_reranker':
-        from swift.dev.builders import load_prompt_rows
+        from swift.dev.builders import load_prompt_only_rows
         from swift.dev.recipe.assembly import TrainAssembly
 
         # The forward-pass paths build a twinkle model/engine on the 'model' DeviceGroup, so they
         # initialize through the training assembly; the generative path initializes for sampling
         # (its own 'sampler' group plus any GPU-resident reward models) inside _run_generative.
         TrainAssembly.initialize_twinkle(distributed_config)
-        rows = load_prompt_rows(dataset_config, max_rows, split_dataset_ratio)
+        rows = load_prompt_only_rows(dataset_config, max_rows, split_dataset_ratio)
         if not rows:
             raise ValueError('run_infer got an empty dataset. Set DatasetConfig.dataset or .val_dataset.')
         if is_pooling_task(task_type):
@@ -167,7 +167,7 @@ def run_infer(
 
     return _run_generative(
         model_config, template_config, dataset_config, infer_config, generation_config,
-        rlhf_config=rlhf_config, rollout_config=rollout_config, backend=backend, engine_args=engine_args,
+        rl_config=rl_config, rollout_config=rollout_config, backend=backend, engine_args=engine_args,
         distributed_config=distributed_config, adapters=adapters, quantize_config=quantize_config,
         max_rows=max_rows, split_dataset_ratio=split_dataset_ratio, output_path=output_path,
         shutdown=_shutdown)
@@ -180,7 +180,7 @@ def _run_generative(
     infer_config: InferConfig,
     generation_config: Optional[GenerationConfig],
     *,
-    rlhf_config: Optional[RLHFConfig],
+    rl_config: Optional[RLConfig],
     rollout_config: Optional[RolloutConfig],
     backend: str,
     engine_args: Optional[Dict[str, Any]],
@@ -200,7 +200,7 @@ def _run_generative(
     emit function, not a new recipe.
     """
     from swift.dev.builders import (build_device_mesh_if_dp, build_sampler, build_template,
-                                    load_model_processor, load_prompt_rows, to_sampling_params)
+                                    load_model_processor, load_prompt_only_rows, to_sampling_params)
 
     num_return = infer_config.num_return_sequences
     output_format = infer_config.output_format
@@ -226,7 +226,7 @@ def _run_generative(
             raise ValueError("output_format='grpo' stores each candidate's rollout logprobs (old_logps), "
                              'which are only produced when save_rollout_tokens forces logprob computation. '
                              'Re-run with --save_rollout_tokens true.')
-    multi_turn_enabled = bool(rlhf_config and rlhf_config.max_turns is not None)
+    multi_turn_enabled = bool(rl_config and rl_config.max_turns is not None)
     if infer_config.score_ground_truth and multi_turn_enabled:
         # The reference answer is a single assistant turn with no tool trajectory, while a multi-turn
         # candidate's reward reads its full messages / rollout_infos. Scoring both on one axis compares
@@ -244,11 +244,11 @@ def _run_generative(
     # slots up front). The channel callables are built after the sampler, since a judge scores through it.
     sampler_model = model_config.model
     orm_slots = _resolve_reward_channel(
-        rlhf_config.orm if rlhf_config is not None else [], infer_config.orm_adapter, sampler_model, backend,
-        parallel_spec=rlhf_config.orm_parallel_spec if rlhf_config is not None else None, channel='orm')
+        rl_config.orm if rl_config is not None else [], infer_config.orm_adapter, sampler_model, backend,
+        parallel_spec=rl_config.orm_parallel_spec if rl_config is not None else None, channel='orm')
     prm_slots = _resolve_reward_channel(
-        rlhf_config.prm if rlhf_config is not None else [], infer_config.prm_adapter, sampler_model, backend,
-        parallel_spec=rlhf_config.prm_parallel_spec if rlhf_config is not None else None, channel='prm')
+        rl_config.prm if rl_config is not None else [], infer_config.prm_adapter, sampler_model, backend,
+        parallel_spec=rl_config.prm_parallel_spec if rl_config is not None else None, channel='prm')
     reuse_adapters = [slot.spec.adapter for slots in (orm_slots, prm_slots) for slot in slots
                       if slot.is_model and slot.spec.kind == 'generative_reuse' and slot.spec.adapter]
     reward_groups = _exclusive_reward_groups(orm_slots, prm_slots, distributed_config)
@@ -261,7 +261,7 @@ def _run_generative(
     if distributed_config is not None:
         _initialize_for_sampling(distributed_config, reward_groups)
 
-    rows = load_prompt_rows(dataset_config, max_rows, split_dataset_ratio)
+    rows = load_prompt_only_rows(dataset_config, max_rows, split_dataset_ratio)
     if not rows:
         raise ValueError('run_infer got an empty dataset. Set DatasetConfig.dataset or .val_dataset.')
     logger.info(f'run_infer: {len(rows)} prompts, backend={backend}, num_return_sequences={num_return}, '
@@ -316,7 +316,7 @@ def _run_generative(
             quantize_config=quantize_config)
 
     channels = _build_channels(
-        infer_config, rlhf_config, orm_slots=orm_slots, prm_slots=prm_slots, sampler=sampler,
+        infer_config, rl_config, orm_slots=orm_slots, prm_slots=prm_slots, sampler=sampler,
         model_config=model_config, template_config=template_config, backend=backend,
         engine_args=engine_args, distributed_config=distributed_config, quantize_config=quantize_config)
 
@@ -334,7 +334,7 @@ def _run_generative(
             from swift.dev.rollout.sandbox import build_tool_sandbox
             env_pool, tool_plugins = build_tool_sandbox(rollout_config)
             rollout.configure_multi_turn(
-                max_turns=rlhf_config.max_turns, max_trajectory_tokens=rlhf_config.max_trajectory_tokens,
+                max_turns=rl_config.max_turns, max_trajectory_tokens=rl_config.max_trajectory_tokens,
                 env_pool=env_pool, tool_plugins=tool_plugins)
 
     batches = _plan_batches(len(rows), infer_config.batch_size, infer_config.max_batches)
@@ -467,7 +467,7 @@ def _sample_candidates(
         # and is honoured by both paths -- the multi-turn engine threads it into every per-turn sample.
         sample_kwargs: Dict[str, Any] = {}
         if backend == 'transformers':
-            sample_kwargs['strict'] = infer_config.strict
+            sample_kwargs['strict'] = infer_config.generation_strict
         if adapter_path is not None:
             sample_kwargs['adapter_path'] = adapter_path
         samples = rollout.generate(
@@ -1387,7 +1387,7 @@ class _RolloutRecorder:
 
 
 def _build_channels(infer_config: InferConfig,
-                    rlhf_config: Optional[RLHFConfig] = None,
+                    rl_config: Optional[RLConfig] = None,
                     *,
                     orm_slots: Optional[List['_RewardSlot']] = None,
                     prm_slots: Optional[List['_RewardSlot']] = None,
@@ -1409,16 +1409,16 @@ def _build_channels(infer_config: InferConfig,
     """
     ray = distributed_config is not None and distributed_config.mode == 'ray'
     orm_funcs, orm_names = _build_slot_funcs(
-        orm_slots or [], 'orm', rlhf_config, infer_config, sampler, model_config, template_config, backend,
+        orm_slots or [], 'orm', rl_config, infer_config, sampler, model_config, template_config, backend,
         engine_args, distributed_config, quantize_config, ray)
     prm_funcs, prm_names = _build_slot_funcs(
-        prm_slots or [], 'prm', rlhf_config, infer_config, sampler, model_config, template_config, backend,
+        prm_slots or [], 'prm', rl_config, infer_config, sampler, model_config, template_config, backend,
         engine_args, distributed_config, quantize_config, ray)
-    # The channel selectors and their weights live on RLHFConfig (the shared surface GRPO also uses); the
-    # rest of the synthesis knobs are on InferConfig. RLHFConfig doubles as the reward hyperparameter
+    # The channel selectors and their weights live on RLConfig (the shared surface GRPO also uses); the
+    # rest of the synthesis knobs are on InferConfig. RLConfig doubles as the reward hyperparameter
     # carrier, so a rule plugin reads its own knobs (cosine_* / repetition_*) off it.
-    orm_weights = rlhf_config.orm_weights if rlhf_config is not None else None
-    prm_weights = rlhf_config.prm_weights if rlhf_config is not None else None
+    orm_weights = rl_config.orm_weights if rl_config is not None else None
+    prm_weights = rl_config.prm_weights if rl_config is not None else None
     channels = _RewardChannels(
         orm_funcs, orm_names, prm_funcs, prm_names, orm_weights=orm_weights, prm_weights=prm_weights)
     if channels.empty:
@@ -1429,14 +1429,14 @@ def _build_channels(infer_config: InferConfig,
     return channels
 
 
-def _build_slot_funcs(slots: List['_RewardSlot'], group: str, rlhf_config: Optional[RLHFConfig],
+def _build_slot_funcs(slots: List['_RewardSlot'], group: str, rl_config: Optional[RLConfig],
                       infer_config: InferConfig, sampler: Any, model_config: Optional[ModelConfig],
                       template_config: Optional[TemplateConfig], backend: str,
                       engine_args: Optional[Dict[str, Any]], distributed_config: Optional[DistributedConfig],
                       quantize_config: Optional[QuantizeConfig], ray: bool) -> Tuple[List[Any], List[str]]:
     """Turn one channel's ordered slots into ``(funcs, names)``, preserving slot order.
 
-    A rule slot resolves through the ``reward`` extension point (``cls(args=rlhf_config)``, so a plugin
+    A rule slot resolves through the ``reward`` extension point (``cls(args=rl_config)``, so a plugin
     reads its own hyperparameters off the config); a model slot builds its scorer, targeting the channel's
     DeviceGroup only under ray and only for a GPU-resident kind (local mode has no groups; a sampler-reusing
     or API judge stays group-less).
@@ -1464,7 +1464,7 @@ def _build_slot_funcs(slots: List['_RewardSlot'], group: str, rlhf_config: Optio
                     remote_group=remote_group))
             names.append(spec.display_name)
         else:
-            func = PluginRegistry.resolve(REWARD, slot.rule, config=rlhf_config)
+            func = PluginRegistry.resolve(REWARD, slot.rule, config=rl_config)
             funcs.append(func)
             names.append(PluginRegistry.display_name(func))
     return funcs, names
@@ -1673,8 +1673,8 @@ class _RewardChannels:
         self.orm_names = orm_names
         self.prm_funcs = prm_funcs
         self.prm_names = prm_names
-        # Channel weights come from RLHFConfig.orm_weights / prm_weights (captured in _build_channels);
-        # keeping them here avoids threading rlhf_config through every score call.
+        # Channel weights come from RLConfig.orm_weights / prm_weights (captured in _build_channels);
+        # keeping them here avoids threading rl_config through every score call.
         self.orm_weights = orm_weights
         self.prm_weights = prm_weights
 

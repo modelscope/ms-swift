@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Eval CLI: parse/validate dev Configs and drive the in-process sampler evaluation recipe."""
 from __future__ import annotations
 import os
@@ -25,7 +26,10 @@ def parse_eval_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     reject_legacy_only_flags('eval', effective_argv)
     classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, CheckpointConfig, TunerConfig,
                RolloutConfig, InferConfig, EvalConfig, QuantizeConfig, RuntimeConfig]
-    configs = parse_configs_strict(classes, effective_argv, command='swift eval', load_args_default=True)
+    # ``strict`` is unique to DatasetConfig (the column-mapping gate) now that InferConfig's per-row
+    # generation tolerance is spelled ``generation_strict``, so no owner disambiguation is needed.
+    configs = parse_configs_strict(
+        classes, effective_argv, command='swift eval', load_args_default=True)
     names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'checkpoint_config',
              'tuner_config', 'rollout_config', 'infer_config', 'eval_config', 'quantize_config', 'runtime_config')
     result = dict(zip(names, configs))

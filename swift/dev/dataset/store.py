@@ -47,8 +47,6 @@ KNOWN_STORE_FIELDS = frozenset(CORE_STORE_FIELDS) | frozenset({
 #: A stored dataset is either an HF table (the exporter's output) or the plain row dicts infer accumulates.
 DataType = Union['HfDataset', Sequence[dict]]
 
-## 这个和数据湖有对偶关系。考虑数据湖在dataset文件夹中单独开一个base.py和继承类序列，每个数据类型的读和写都标准化
-## 这个的面向过程让人很难懂，考虑面向对象
 
 
 def validate_store_fields(requested: Sequence[str], available: Iterable[str]) -> List[str]:
@@ -194,7 +192,10 @@ def _filter_over_length(dataset: Any, max_length: int) -> Any:
     the longest so the filter is on the real sequence length. A row that could not be encoded carries an
     empty list and is treated as length 0 (kept, then substituted at access time).
     """
-    ## 这里一定存在这个key吗
+    if 'lengths' not in dataset.column_names:
+        raise ValueError("truncation_strategy='delete' filters on a 'lengths' column, which only EAGER encoding "
+                         'produces (Measure/EncodePreprocessor). Load with lazy_tokenize=False on a map-style '
+                         "dataset, or drop truncation_strategy='delete'.")
     lengths = dataset['lengths']
     if lengths and isinstance(lengths[0], list):
         arr = np.fromiter((max(x) if x else 0 for x in lengths), dtype=np.int64, count=len(lengths))

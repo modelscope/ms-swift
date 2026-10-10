@@ -33,8 +33,8 @@ DEV_ROUTE_MAPPING: Dict[str, str] = {
     'pt': 'swift.dev.cli.pt',
     'sft': 'swift.dev.cli.sft',
     # `rl` is the canonical name; `rlhf` is kept as a compatible alias for the same entry point.
-    'rl': 'swift.dev.cli.rlhf',
-    'rlhf': 'swift.dev.cli.rlhf',
+    'rl': 'swift.dev.cli.rl',
+    'rlhf': 'swift.dev.cli.rl',
     'infer': 'swift.dev.cli.infer',
     'merge': 'swift.dev.cli.merge',
     'deploy': 'swift.dev.cli.deploy',

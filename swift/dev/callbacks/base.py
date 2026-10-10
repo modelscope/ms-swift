@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """The dev training callback contract and its state/control records.
 
 A callback observes -- and may veto -- the training loop at the same points the transformers

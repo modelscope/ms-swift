@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """export CLI: argv -> dev Configs -> export recipes.
 
 The Config dataclasses are the argument surface; no legacy ``ExportArguments`` object is constructed.

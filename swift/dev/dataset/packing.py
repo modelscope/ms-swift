@@ -10,8 +10,7 @@ from torch.utils.data import IterableDataset
 from tqdm import tqdm
 
 from swift.dev.utils import get_logger, is_dist, is_master, split_list
-## swift_dataset.py命名为base.py吧
-from .swift_dataset import SwiftDataset
+from .base import SwiftDataset
 
 __all__ = ['IterablePackingDataset', 'PackingDataset']
 
@@ -20,7 +19,6 @@ logger = get_logger()
 # One sample as packing sees it: its index (or the encoded row itself, when streaming) and its length.
 Weighted = Tuple[Any, int]
 
-## 这两个类的代码我没仔细看，和legacy比对下算法是正确的
 class PackingDataset(SwiftDataset):
     """A map-style dataset whose items are *groups* of samples that together fill ``packing_length``.
 

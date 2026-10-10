@@ -1,18 +1,3 @@
-"""The colocate device hand-over around a generate phase (RL rollout or generative eval).
-
-twinkle's ``CheckpointEngineManager`` deliberately leaves the memory schedule to the caller: only the
-caller knows where in the loop the shared device is free, and (its docstring warns) waking a sampler
-that is already awake is not a no-op in vLLM, so the manager refuses to guess the current state. Two dev
-call sites therefore ran the SAME hand-over sequence by hand -- the on-policy rollout
-(:class:`~swift.dev.recipe.run_grpo.SyncableRollout`) and generative eval
-(:meth:`~swift.dev.recipe.assembly.TrainAssembly._build_eval_sampler`) -- which is exactly the duplication
-RL_PLAN 1b-E / Bug#8 targets: the schedule (and its subtle wake-tag ordering) must be fixed in one place,
-not two that can drift.
-
-The sequence this factors is the manager's documented colocate order, with one refinement both dev sites
-already make: the second wake asks ONLY for ``kv_cache`` (see :meth:`enter`), not the manager docstring's
-``wake_up()`` (both tags), because ``weights`` is already awake by then.
-"""
 from __future__ import annotations
 from typing import Any
 

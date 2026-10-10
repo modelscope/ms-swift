@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """HF <-> Megatron(mcore) weight-conversion configuration."""
 from __future__ import annotations
 

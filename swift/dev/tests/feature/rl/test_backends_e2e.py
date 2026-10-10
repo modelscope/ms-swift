@@ -85,7 +85,7 @@ def test_backend_equivalence_dpo_identity_ln2(tiny_qwen2_5, rl_data, tmp_path, a
         name = backend or 'transformers'
         is_meg = backend == 'megatron'
         configs = rl_configs(
-            rlhf_type='dpo',
+            rl_type='dpo',
             model=tiny_qwen2_5,
             model_type='qwen2',
             template='qwen2_5',
@@ -132,7 +132,7 @@ def test_reward_model_seq_cls_backend_equivalent(tiny_qwen2_5, rl_data, tmp_path
         name = backend or 'transformers'
         is_meg = backend == 'megatron'
         configs = rl_configs(
-            rlhf_type='rm',
+            rl_type='rm',
             model=tiny_qwen2_5,
             model_type='qwen2',
             template='qwen2_5',
@@ -164,7 +164,7 @@ def test_megatron_moe_dpo_trains(tiny_qwen3_moe, rl_data, tmp_path, assert_rl_tr
     complexity; the router-replay (R2/R3) dimensions are exercised separately in test_router_replay_e2e.
     """
     configs = rl_configs(
-        rlhf_type='dpo',
+        rl_type='dpo',
         model=tiny_qwen3_moe,
         model_type='qwen3_moe',
         template='qwen3',
@@ -203,7 +203,7 @@ def test_megatron_grpo_online_rollout_and_weight_sync(tiny_qwen2_5, rl_data, tmp
     quietly restricted to transformers (a G4 special case).
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',

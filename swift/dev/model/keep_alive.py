@@ -1,37 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Keep a multimodal model's vision path *used* on text-only batches, without forking ``forward``.
-
-Under DeepSpeed ZeRO-3 every partitioned parameter must take part in each forward pass, or the
-all-gather / reduce-scatter collectives across ranks fall out of step and training hangs. On a
-text-only micro-batch the stock ``forward`` skips the vision tower entirely, so its parameters --
-and, for models like Qwen3-VL, the deepstack mergers wired into intermediate layers -- go dark on
-that rank while other ranks still gather them.
-
-Legacy swift solved this by *copying the whole ``forward``* into ``swift/model/models`` and
-splicing an ``image_features.mean() * 0`` term in the middle. That fork pins a dozen transformers
-internals (``get_rope_index`` signature, ``Qwen3VLModelOutputWithPast`` fields, the
-``_deepstack_process`` method name, ...) and rots on every transformers release.
-
-This module keeps the same *maths* -- "run the vision path, contribute exactly zero" -- but moves
-it entirely outside transformers internals:
-
-  * the **data side** feeds a tiny dummy image plus matching placeholder tokens (masked out of the
-    loss), so the *stock* forward runs the whole vision path exactly as it would for a real image,
-    and every vision parameter is therefore used;
-  * this module zeroes the **output of the aligner family** -- the single chokepoint every vision
-    feature passes through on its way into the LLM (image embeds *and* deepstack embeds). The dummy
-    then contributes nothing to the hidden states, so the loss is uncontaminated.
-
-Because the aligner sits downstream of the vision tower and upstream of the LLM, zeroing it keeps
-the tower alive (it still ran) while blocking all contamination. The only model-specific knowledge
-required is the aligner module names -- and those are already declared on :class:`ModelArch`, so
-one mechanism covers every multimodal family instead of a per-model forward fork.
-
-The zeroing must be *conditional*: the aligner is shared, so a blanket ``* 0`` would also wipe the
-features of real images in a mixed micro-batch. The hang only occurs when an entire micro-batch is
-text-only (``pixel_values is None``), which is also the only case the collator injects a dummy, so
-the collator flips :attr:`VisionKeepAlive.active` for exactly those forwards.
-"""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -92,6 +59,7 @@ class VisionKeepAlive:
     ``active = True`` for a text-only-plus-dummy forward and restores it afterwards, e.g. via the
     :meth:`activated` context manager.
     """
+    ## 这个逻辑我没看懂，干什么用的，这个self.active
 
     def __init__(self) -> None:
         self.active: bool = False
@@ -206,6 +174,7 @@ def inject_dummy_media(batch: Dict,
         batch[key] = torch.cat([tensor, pad], dim=1)
 
     # First row gets real placeholders (attended, loss-masked); other rows get inert padding.
+    ## 这里的第一行使用placeholder，其他的使用padding是什么逻辑
     _extend('input_ids', first_row_fill=image_token_id, other_rows_fill=0)
     _extend('attention_mask', first_row_fill=1, other_rows_fill=0)
     _extend('labels', first_row_fill=-100, other_rows_fill=-100)

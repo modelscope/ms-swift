@@ -1,9 +1,9 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """PT CLI: the SFT Config surface with non-chat causal-LM defaults."""
 from __future__ import annotations
 from typing import List, Optional
 
 
-## 为什么pt这里比sft短了那么多，sft.py的代码多很多，比对下这个文件夹下所有的入口，通用性对不对
 def pt_main(argv: Optional[List[str]] = None) -> List[dict]:
     from swift.dev.cli.sft import parse_sft_configs
     from swift.dev.config import process_and_validate_configs

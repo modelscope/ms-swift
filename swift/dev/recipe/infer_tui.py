@@ -24,7 +24,7 @@ if TYPE_CHECKING:
         GenerationConfig,
         ModelConfig,
         QuantizeConfig,
-        RLHFConfig,
+        RLConfig,
         RolloutConfig,
         TemplateConfig,
     )
@@ -55,7 +55,7 @@ def infer_cli(
     quantize_config: Optional[QuantizeConfig] = None,
     multi_round: bool = True,
     rollout_config: Optional[RolloutConfig] = None,
-    multi_turn_config: Optional[RLHFConfig] = None,
+    multi_turn_config: Optional[RLConfig] = None,
 ) -> None:
     """Interactive REPL. Commands: ``clear`` / ``reset-system`` / ``multi-line`` / ``single-line`` / ``quit``.
 

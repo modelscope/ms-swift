@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Batch-inference configuration: which engine runs, and what the run writes out.
 
 This single config drives both offline infer shapes: plain batch inference over a dataset (one
@@ -19,7 +20,7 @@ class InferConfig:
     whose ``vllm_*`` / ``sglang_*`` fields tune a chosen engine: this is which engine to choose, what
     to do with its output, and (for synthesis) how many candidates to keep and how to score them. A
     run switches backends by changing ``sampler`` alone. Reward-channel selection is NOT here --
-    it reuses ``RLHFConfig.orm`` / ``prm`` (+ their ``*_weights``), the same registry surface GRPO uses.
+    it reuses ``RLConfig.orm`` / ``prm`` (+ their ``*_weights``), the same registry surface GRPO uses.
     """
 
     # === Engine ===
@@ -72,12 +73,7 @@ class InferConfig:
     #: Only consulted by reranker models.
     reranker_use_activation: bool = True
 
-    # === Synthesis: mode and engine ===
-    #: 'sample' scores locally-generated candidates; 'distill' draws them from a remote teacher
-    #: (``sampler='client'``). This is a label only -- it does not change the sampling call (driven
-    #: by ``sampler``) and no longer derives any other field. Kept for the legacy ``--sampler_type``
-    #: spelling.
-    sampler_type: Literal['sample', 'distill'] = 'sample'
+    # === Synthesis: engine ===
     #: Extra keyword arguments merged into the engine args, for any backend -- a plain inference run tunes
     #: its engine the same way a synthesis run does.
     engine_kwargs: Optional[Dict[str, Any]] = None
@@ -91,7 +87,7 @@ class InferConfig:
     n_best_to_keep: int = 5
 
     # === Synthesis: reward models and judge ===
-    #: A frozen LoRA on the channel's reward model, paired with the model id named in ``RLHFConfig.orm``
+    #: A frozen LoRA on the channel's reward model, paired with the model id named in ``RLConfig.orm``
     #: / ``.prm`` (the merged selector -- the model ids themselves no longer live here). With no model id
     #: in the channel it means "reuse the sampler's own model as a generative judge wearing this LoRA".
     #: How a model id is served (http(s) URL -> API judge; scalar seq_cls RM built locally; generative
@@ -120,7 +116,7 @@ class InferConfig:
     score_ground_truth: bool = False
     #: Multiplier on the ORM channel when both channels are in play (legacy's hard-coded 10), so an
     #: existing recipe can reproduce legacy ranking exactly. The ORM/PRM channel selectors and their
-    #: per-item weights live on RLHFConfig (``orm`` / ``prm`` / ``orm_weights`` / ``prm_weights``).
+    #: per-item weights live on RLConfig (``orm`` / ``prm`` / ``orm_weights`` / ``prm_weights``).
     orm_channel_weight: float = 1.0
 
     # === Batching ===
@@ -147,6 +143,8 @@ class InferConfig:
     #: Distinct from ``resume``: these are OTHER runs' outputs -- the way to add candidates to a corpus,
     #: or to re-score without paying for generation.
     cache_files: List[str] = field(default_factory=list)
-    #: Tolerate per-row failures during generation (transformers backend only). Off by default so a
-    #: systematic problem surfaces on row one instead of quietly thinning the whole output.
-    strict: bool = True
+    #: Raise on a per-row generation failure (transformers backend only) rather than tolerating it. True by
+    #: default so a systematic problem surfaces on row one instead of quietly thinning the whole output;
+    #: set False to skip failed rows. Named apart from ``DatasetConfig.strict`` (the column-mapping
+    #: tolerance) so ``--strict`` keeps a single unambiguous owner across commands.
+    generation_strict: bool = True

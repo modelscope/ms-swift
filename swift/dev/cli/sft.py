@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """SFT CLI: argv -> dev Configs -> run_sft.
 
 dev counterpart of legacy ``swift sft``. The Config dataclasses ARE the argument surface: argv is
@@ -38,7 +39,7 @@ def parse_sft_configs(
     ``tuner_config`` is None for full-parameter training (tuner='full') and a filled TunerConfig
     for 'lora'. Any other tuner is refused rather than silently building LoRA.
     """
-    from swift.dev.cli._megatron_compat import MegatronCliCompatConfig, configure_megatron, is_megatron_argv
+    from swift.dev.cli._megatron_compat import configure_megatron, is_megatron_argv
     from swift.dev.cli.parser import parse_configs, resolve_argv, select_tuner
     from swift.dev.config import (
         CheckpointConfig,
@@ -64,8 +65,6 @@ def parse_sft_configs(
         ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig,
         LoggingConfig, TunerConfig, QuantizeConfig, MegatronConfig, MoEConfig
     ]
-    if is_megatron:
-        classes.append(MegatronCliCompatConfig)
     configs, remaining = parse_configs(classes, effective_argv)
     if remaining:
         raise ValueError(f'Unrecognized arguments: {remaining}. The dev SFT CLI parses the Config surface '
@@ -117,7 +116,7 @@ def sft_main(argv: Optional[List[str]] = None) -> List[dict]:
     if is_megatron and task_type != 'causal_lm':
         raise ValueError(f'--backend megatron supports only causal_lm SFT, got task_type={task_type!r}. '
                          'Drop --backend to train seq_cls/embedding/reranker on the transformers backend.')
-    # Only run_sft/run_pt/run_rlhf accept the Megatron Configs; the other task types are HF-only.
+    # Only run_sft/run_pt/run_rl accept the Megatron Configs; the other task types are HF-only.
     megatron_kwargs = ({
         'megatron_config': configs['megatron_config'],
         'moe_config': configs['moe_config']

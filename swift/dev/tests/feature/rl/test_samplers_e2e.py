@@ -157,7 +157,7 @@ def test_colocate_grpo_publishes_weights_every_step(tiny_qwen2_5, rl_data, tmp_p
     steps trained.
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',

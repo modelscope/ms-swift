@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from .adapter_config import TunerConfig
 from .checkpoint_config import CheckpointConfig
 from .convert_config import ConvertConfig
@@ -14,7 +15,7 @@ from .moe_config import MoEConfig
 from .plugin_config import PluginConfig
 from .process import bootstrap_run, process_and_validate_configs, process_configs
 from .quantize_config import QuantizeConfig
-from .rlhf_config import RLHFConfig
+from .rl_config import RLConfig
 from .rollout_config import RolloutConfig
 from .runtime_config import RuntimeConfig
 from .template_config import TemplateConfig
@@ -36,7 +37,7 @@ __all__ = [
     'MoEConfig',
     'PluginConfig',
     'QuantizeConfig',
-    'RLHFConfig',
+    'RLConfig',
     'RolloutConfig',
     'RuntimeConfig',
     'TemplateConfig',

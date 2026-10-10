@@ -113,7 +113,7 @@ def test_r2_record_transformers_moe_grpo(tiny_qwen3_moe, rl_data, tmp_path, asse
     training model, so it needs no routing export).
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen3_moe,
         model_type='qwen3_moe',
         template='qwen3',
@@ -152,7 +152,7 @@ def test_r2_record_megatron_moe_grpo(tiny_qwen3_moe, rl_data, tmp_path, assert_r
     MoE-megatron config); fp32 keeps the multi-microbatch loss reporting on the path that suite anchors.
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen3_moe,
         model_type='qwen3_moe',
         template='qwen3',
@@ -183,7 +183,7 @@ def test_r3_requires_exporting_sampler(tiny_qwen3_moe, rl_data, tmp_path):
     only after a real rollout produced samples, so this drives the genuine R3 consumer seam.
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen3_moe,
         model_type='qwen3_moe',
         template='qwen3',
@@ -213,7 +213,7 @@ def test_r2_requires_moe_policy(tiny_qwen2_5, rl_data, tmp_path):
     model to inspect), so it is only observable end to end.
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -265,7 +265,7 @@ def test_r3_replays_sampler_routing(tiny_qwen3_moe, rl_data, tmp_path, assert_rl
     single zero-variance group cannot leave ``lora_B`` untouched for a reason unrelated to routing replay.
     """
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen3_moe,
         model_type='qwen3_moe',
         template='qwen3',

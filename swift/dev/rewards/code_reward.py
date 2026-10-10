@@ -260,10 +260,10 @@ class CodeExecutionReward(RewardPlugin):
     """Score generated code by executing it against per-sample test cases.
 
     Registered as ``code_execution`` in the ``reward`` extension point. Its hyperparameters are read off
-    the run's ``RLHFConfig`` (``self.args``), the same way ``CosineReward`` reads ``cosine_*``; each has
+    the run's ``RLConfig`` (``self.args``), the same way ``CosineReward`` reads ``cosine_*``; each has
     a default so the plugin also works when constructed with ``args=None`` (a cookbook or a test).
 
-    Config knobs (see ``rlhf_config.py``): ``code_language`` (default when a row carries no ``language``
+    Config knobs (see ``rl_config.py``): ``code_language`` (default when a row carries no ``language``
     column), ``code_timeout`` (seconds per test case), ``code_max_concurrency`` (executor width),
     ``code_memory_limit_gb`` (``LocalEnv`` address-space cap), ``code_sandbox_template`` (None -> the
     local subprocess env; a template name -> an ``AgentEnv`` microVM).

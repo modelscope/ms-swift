@@ -30,7 +30,7 @@ from swift.dev.cli.legacy_coverage import (
     unsupported_contracts,
 )
 from swift.dev.cli.merge import MergeCliConfig, parse_merge_configs
-from swift.dev.cli.rlhf import RlhfCliCompatConfig, parse_rlhf_configs
+from swift.dev.cli.rl import RlCliCompatConfig, parse_rl_configs
 from swift.dev.config import (
     CheckpointConfig,
     ConvertConfig,
@@ -46,7 +46,7 @@ from swift.dev.config import (
     MoEConfig,
     PluginConfig,
     QuantizeConfig,
-    RLHFConfig,
+    RLConfig,
     RolloutConfig,
     RuntimeConfig,
     TemplateConfig,
@@ -62,10 +62,10 @@ _TRAIN = [
 CLI_SURFACES = {
     'pt': (PretrainArguments, _TRAIN),
     'sft': (SftArguments, _TRAIN),
-    'rlhf': (RLHFArguments, _TRAIN + [GenerationConfig, RolloutConfig, RLHFConfig, RlhfCliCompatConfig]),
+    'rl': (RLHFArguments, _TRAIN + [GenerationConfig, RolloutConfig, RLConfig, RlCliCompatConfig]),
     'infer': (InferArguments, [
         ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig, TunerConfig,
-        GenerationConfig, RolloutConfig, InferConfig, RLHFConfig, QuantizeConfig, InferCliConfig, RuntimeConfig
+        GenerationConfig, RolloutConfig, InferConfig, RLConfig, QuantizeConfig, InferCliConfig, RuntimeConfig
     ]),
     'deploy': (DeployArguments, [
         ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig, TunerConfig,
@@ -133,12 +133,12 @@ def test_classified_legacy_fields_fail_with_explicit_reason(parser, argv, error)
 
 
 def test_rlhf_response_length_alias_and_removed_seq_kd():
-    configs = parse_rlhf_configs(['--model', 'm', '--dataset', 'd', '--response_length', '128'])
-    assert configs['rlhf_config'].max_completion_length == 128
+    configs = parse_rl_configs(['--model', 'm', '--dataset', 'd', '--response_length', '128'])
+    assert configs['rl_config'].max_completion_length == 128
     # seq_kd is a removed option, refused by reject_legacy_only_flags before parsing reaches the
-    # (now unreachable) RlhfCliCompatConfig.seq_kd branch.
+    # (now unreachable) RlCliCompatConfig.seq_kd branch.
     with pytest.raises(ValueError, match='unsupported'):
-        parse_rlhf_configs(['--model', 'm', '--dataset', 'd', '--seq_kd', 'true'])
+        parse_rl_configs(['--model', 'm', '--dataset', 'd', '--seq_kd', 'true'])
 
 
 def test_runtime_seed_lands_on_runtime_config():

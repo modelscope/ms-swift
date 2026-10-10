@@ -14,7 +14,7 @@ from swift.dev.naming import parse_optim_args, resolve_galore_target, resolve_op
 from swift.dev.utils import get_logger
 
 if TYPE_CHECKING:
-    from swift.dev.config import DistributedConfig, TrainConfig
+    from swift.dev.config import DistributedConfig, PluginConfig, TrainConfig, TunerConfig
     from swift.dev.model import TrainableModel
 
 logger = get_logger()
@@ -159,11 +159,70 @@ def _muon_config(cfg: TrainConfig) -> dict:
     }
 
 
+def build_param_groups_spec(cfg: TrainConfig,
+                            tuner_config: Optional[TunerConfig] = None,
+                            plugin_config: Optional[PluginConfig] = None) -> Optional[list]:
+    """Compose the backend-neutral optimizer param-group spec for a run.
+
+    Returns an ordered list of rules -- first match wins, most specific first -- that twinkle's
+    ``set_optimizer`` applies worker-side on both backends (see ``twinkle.module.optimizer.param_groups``
+    for the grammar), or ``None`` when nothing is configured so the default decay / no-decay grouping is
+    left untouched. Three sources, appended in this order:
+
+      1. LoRA+ (``tuner_config.lorap_lr_ratio``): the embedding / lora_B / ``ndim == 1`` split legacy
+         swift's ``create_optimizer_param_groups`` builds. Most specific first, so first-match-wins
+         reproduces its ``if isinstance(Embedding) / elif 'lora_B' or ndim == 1 / else`` chain; lora_A
+         matches no rule and keeps the base lr.
+      2. Per-tower learning rates (``cfg.vit_lr`` / ``cfg.aligner_lr``). The aligner rule precedes the
+         vision_tower rule because the aligner's name prefix nests under the vision tower's
+         (``model.visual.merger`` under ``model.visual``); legacy keeps aligner params out of the vit
+         group the same way (``get_param_startswith(vision_tower, rejected=aligner)``).
+      3. User ``param_groups`` plugins, last, so a plugin only claims what no built-in rule matched.
+
+    The spec is pure data: the matching (by tower role, name glob, ``ndim``, or parent-module type) runs
+    on the worker against the real parameters, which is what lets it cross the Ray boundary -- the driver
+    only holds a PROXY model with no parameters to inspect.
+    """
+    from swift.dev.optimizer_plugins import PARAM_GROUPS
+    from swift.dev.plugin import PluginRegistry
+
+    spec: list = []
+
+    # 1. LoRA+ -- on only when lorap_lr_ratio is set (validate.py rejects it under a non-LoRA tuner, so
+    #    reaching here with a ratio implies a LoRA run whose trainable params are lora_A / lora_B).
+    if tuner_config is not None and tuner_config.lorap_lr_ratio is not None:
+        ratio = tuner_config.lorap_lr_ratio
+        spec.append({'match': {'module_type': 'Embedding'}, 'lr': tuner_config.lorap_emb_lr})
+        spec.append({'match': {'name': '*lora_B*'}, 'lr_mult': ratio})
+        spec.append({'match': {'ndim': 1}, 'lr_mult': ratio})
+
+    # 2. Per-tower learning rates. The aligner rule is emitted whenever any tower lr is set -- at
+    #    aligner_lr, or at the base lr purely to claim aligner params -- so the broader vision_tower
+    #    rule (whose prefix also covers the aligner) cannot swallow them under first-match-wins.
+    if cfg.vit_lr is not None or cfg.aligner_lr is not None:
+        base_lr = cfg.learning_rate
+        spec.append({'match': {'tower': 'aligner'}, 'lr': base_lr if cfg.aligner_lr is None else cfg.aligner_lr})
+        if cfg.vit_lr is not None:
+            spec.append({'match': {'tower': 'vision_tower'}, 'lr': cfg.vit_lr})
+
+    # 3. User plugins (resolved by name; load_configured is idempotent and a no-op when plugin_config is
+    #    None, i.e. the sources were already imported during the run's config lifecycle).
+    if cfg.param_groups_plugins:
+        PluginRegistry.load_configured(plugin_config)
+        for name in cfg.param_groups_plugins:
+            plugin = PluginRegistry.resolve(PARAM_GROUPS, name, config=cfg)
+            spec.extend(plugin(train_config=cfg, tuner_config=tuner_config))
+
+    return spec or None
+
+
 def configure_optimizer(model: TrainableModel,
                         cfg: TrainConfig,
                         *,
                         num_training_steps: int,
-                        distributed_config: Optional[DistributedConfig] = None) -> None:
+                        distributed_config: Optional[DistributedConfig] = None,
+                        tuner_config: Optional[TunerConfig] = None,
+                        plugin_config: Optional[PluginConfig] = None) -> None:
     """Set optimizer + lr_scheduler on ``model`` from a ``TrainConfig``.
 
     Args:
@@ -173,9 +232,15 @@ def configure_optimizer(model: TrainableModel,
              as-is: the default lives on TrainConfig, so no hidden fallback here can disagree with
              what the Config reports.
         num_training_steps: total optimizer steps (for warmup + decay schedule).
+        tuner_config: the run's TunerConfig (``None`` for full-parameter training). Feeds the LoRA+
+             rules in :func:`build_param_groups_spec`; the per-tower lr rules come off ``cfg``.
+        plugin_config: the run's PluginConfig, used to load any ``--external_plugins`` source that
+             registers a ``param_groups`` plugin named in ``cfg.param_groups_plugins``.
     """
     lr = cfg.learning_rate
     is_megatron = _is_megatron_model(model)
+    # One backend-neutral spec feeds both branches below; None leaves the default grouping untouched.
+    param_groups_spec = build_param_groups_spec(cfg, tuner_config, plugin_config)
     # Fractional warmup budget. Kept fractional for Megatron and rounded for the transformers path --
     # see each branch below; the two schedulers disagree on what a fractional step count means.
     warmup_steps_exact = warmup_budget(cfg, num_training_steps, is_megatron=is_megatron)
@@ -241,7 +306,8 @@ def configure_optimizer(model: TrainableModel,
             optimizer_cuda_graph=cfg.optimizer_cuda_graph,
             overlap_param_gather_with_optimizer_step=bool(
                 distributed_config and distributed_config.overlap_param_gather_with_optimizer_step),
-            apply_wd_to_qk_layernorm=cfg.apply_wd_to_qk_layernorm)
+            apply_wd_to_qk_layernorm=cfg.apply_wd_to_qk_layernorm,
+            param_groups_spec=param_groups_spec)
         # lr_warmup_steps stays FRACTIONAL here: OptimizerParamScheduler interpolates the warmup ramp
         # linearly on this value, and legacy megatron also keeps it fractional (lr_warmup_steps =
         # lr_warmup_fraction * lr_decay_steps in SAMPLES, megatron_lm_utils.py:579-581, never rounded).
@@ -299,6 +365,10 @@ def configure_optimizer(model: TrainableModel,
         opt_kwargs['galore_config'] = galore_config
     if muon_config is not None:
         opt_kwargs['muon_config'] = muon_config
+    if param_groups_spec is not None:
+        # Applied before galore_config / muon_config reshape the groups, so a per-tower lr or LoRA+ rule
+        # owns its parameters first (see TransformersModel.set_optimizer).
+        opt_kwargs['param_groups_spec'] = param_groups_spec
     # NOTE: `params` is deliberately NOT passed. twinkle's set_optimizer builds the two
     # weight-decay param groups itself (_create_param_group), reusing transformers'
     # get_decay_parameter_names rules (bias / *norm excluded from decay) AND filtering by

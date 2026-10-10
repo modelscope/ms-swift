@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
-import os
+import random
 from typing import Any, Collection, Dict, Optional
 
 from .base import FormatConverter, register_format
@@ -37,9 +37,9 @@ class ResponseConverter(FormatConverter):
 
     @classmethod
     def detect(cls, columns: Collection[str]) -> bool:
+        # Detection runs on alias-normalised names, so a column spelled `output`/`answer`/`text` is
+        # recognised as `response` -- an alias never hides the format.
         standardised = {cls.aliases.get(column, column) for column in columns}
-        ## 这里的detect发生在aliases前还是后？ 会不会有alias所以检测不到
-        # 另外一个response够吗
         return 'response' in standardised
 
     def convert(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -64,19 +64,15 @@ class ResponseConverter(FormatConverter):
         """Collapse a multi-answer response column to a single answer.
 
         Some datasets store several reference answers in a list. Default to the first for
-        reproducibility; ``RANDOM_DATASET_RESPONSE=1`` picks one at random, matching legacy's env
-        switch (used when the extra answers are meant as augmentation, not alternatives).
+        reproducibility; ``RANDOM_DATASET_RESPONSE`` picks one at random, for when the extra answers are
+        augmentation rather than alternatives. The flag is read through :mod:`swift.dev.utils.env`, which
+        owns env-var access; the import is local because ``swift.dev.utils`` pulls in torch on init.
         """
         if not isinstance(response, (list, tuple)):
             return response
         if not response:
             return None
-        ## 这个直接源代码拷贝过来吧，没必要依赖transformers
-        from transformers.utils import strtobool
-        ## 新建一个env的py，管理所有的环境变量
-        ## 使用的时候env_utils.pick_random_response()就行。扫描一下，所有的类似的地方都这么处理
-        if strtobool(os.environ.get('RANDOM_DATASET_RESPONSE', 'False')):
-            ## 放置在文件头。所有的重依赖放在局部，轻依赖放在文件头
-            import random
+        from swift.dev.utils.env import random_dataset_response
+        if random_dataset_response():
             return random.choice(response)
         return response[0]

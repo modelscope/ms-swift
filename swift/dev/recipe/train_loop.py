@@ -269,6 +269,17 @@ def collect_manual_gc(enabled: bool, interval: int, step: int) -> None:
         gc.collect()
 
 
+def collect_empty_cache(model: 'TrainableModel', interval: Optional[int], step: int) -> None:
+    """Release the device caching allocator every ``interval`` optimizer steps (torch_empty_cache_steps).
+
+    A remote model call, not a driver-local ``torch.cuda.empty_cache()``: under Ray the loop runs on the
+    driver while the tensors live on the workers, so the release has to be dispatched to them (the model
+    method is ``dispatch='all'``). None/0 disables it.
+    """
+    if interval and step % interval == 0:
+        model.empty_cache()
+
+
 def finish_manual_gc(was_enabled: Optional[bool]) -> None:
     """Restore the interpreter's automatic-GC state after a loop exits."""
     if was_enabled:
@@ -332,7 +343,8 @@ class TrainLoop:
                  max_shard_size: str = '5GB',
                  save_total_limit: Optional[int] = None,
                  manual_gc: bool = False,
-                 manual_gc_steps: int = 0):
+                 manual_gc_steps: int = 0,
+                 torch_empty_cache_steps: Optional[int] = None):
         self.model = model
         self.gradient_accumulation_steps = max(1, gradient_accumulation_steps)
         self.max_grad_norm = max_grad_norm
@@ -352,6 +364,9 @@ class TrainLoop:
         self.manual_gc_steps = manual_gc_steps
         if self.manual_gc_steps < 0:
             raise ValueError('manual_gc_steps must be >= 0.')
+        self.torch_empty_cache_steps = torch_empty_cache_steps
+        if torch_empty_cache_steps is not None and torch_empty_cache_steps <= 0:
+            raise ValueError('torch_empty_cache_steps must be > 0, or None to disable.')
         # optimizer-step counter (increments once per GA window) and the micro-step counter the loops
         # advance once per forward_backward; resume() keeps both aligned with twinkle's cur_step.
         self.global_step = 0
@@ -376,6 +391,7 @@ class TrainLoop:
         """
         self.global_step += 1
         collect_manual_gc(self.manual_gc, self.manual_gc_steps, self.global_step)
+        collect_empty_cache(self.model, self.torch_empty_cache_steps, self.global_step)
         self._pre_metric_step()
         metrics = self.model.calculate_metric(is_training=True)
         loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
@@ -509,6 +525,7 @@ class SFTLoop(TrainLoop):
         manual_gc: bool = False,
         manual_gc_eval: bool = True,
         manual_gc_steps: int = 0,
+        torch_empty_cache_steps: Optional[int] = None,
         callbacks: Optional[List[Any]] = None,
         predict_with_generate: bool = False,
         eval_sampler: Any = None,
@@ -544,7 +561,8 @@ class SFTLoop(TrainLoop):
             max_shard_size=max_shard_size,
             save_total_limit=save_total_limit,
             manual_gc=manual_gc,
-            manual_gc_steps=manual_gc_steps)
+            manual_gc_steps=manual_gc_steps,
+            torch_empty_cache_steps=torch_empty_cache_steps)
         self.dataloader = dataloader
         self.num_train_epochs = num_train_epochs
         self.eval_dataloader = eval_dataloader

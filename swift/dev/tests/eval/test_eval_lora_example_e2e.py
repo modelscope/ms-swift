@@ -35,8 +35,8 @@ def lora_adapter(tmp_path_factory):
 
     dest = str(tmp_path_factory.mktemp('lora') / 'checkpoint-100')
     # No model_type: swift resolves it from --model (Qwen2.5 text -> qwen2), exactly as the eval CLI does.
-    model_config = ModelConfig(model=MODEL, torch_dtype='bfloat16', device_map='cpu')
-    model, _ = load_model_processor(model_config, load_model=True)
+    model_config = ModelConfig(model=MODEL, torch_dtype='bfloat16')
+    model, _ = load_model_processor(model_config, load_model=True, device_map='cpu')
     lora_config = LoraConfig(r=8, lora_alpha=16, lora_dropout=0.0, target_modules=['q_proj', 'v_proj'], bias='none')
     peft_model = get_peft_model(model, lora_config)
     peft_model.save_pretrained(dest)

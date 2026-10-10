@@ -95,7 +95,7 @@ def test_vl_grpo_rollout_consumes_image(tiny_vl, rl_data, tmp_path, assert_rl_tr
     """
     out_dir = str(tmp_path / 'out_vl_grpo')
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_vl,
         model_type='qwen2_5_vl',
         template='qwen2_5_vl',
@@ -128,7 +128,7 @@ def test_vl_rft_rollout_consumes_image(tiny_vl, rl_data, tmp_path, assert_rl_tra
     """
     out_dir = str(tmp_path / 'out_vl_rft')
     configs = rl_configs(
-        rlhf_type='rft',
+        rl_type='rft',
         model=tiny_vl,
         model_type='qwen2_5_vl',
         template='qwen2_5_vl',
@@ -161,7 +161,7 @@ def test_text_grpo_control_no_media(tiny_qwen2_5, rl_data, tmp_path, assert_rl_t
     """
     out_dir = str(tmp_path / 'out_text_control')
     configs = rl_configs(
-        rlhf_type='grpo',
+        rl_type='grpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',

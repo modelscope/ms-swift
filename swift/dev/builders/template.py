@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """build_template: TemplateConfig + processor -> dev Template (VL subclass via mapping)."""
 from __future__ import annotations
 

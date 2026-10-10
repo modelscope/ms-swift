@@ -57,7 +57,7 @@ if TYPE_CHECKING:
         ModelConfig,
         MoEConfig,
         QuantizeConfig,
-        RLHFConfig,
+        RLConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -76,7 +76,7 @@ def run_gkd(
     distributed_config: DistributedConfig,
     checkpoint_config: CheckpointConfig,
     rollout_config: RolloutConfig,
-    rlhf_config: RLHFConfig,
+    rl_config: RLConfig,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
@@ -93,17 +93,17 @@ def run_gkd(
     Mirrors :func:`run_rft`'s assembly (train/sampler device groups, weight-syncable ``SyncableRollout``,
     design-B mini-batch width) but sets the GKD loss (``configure_rlhf_loss``) and drives
     :class:`GKDLoop` (teacher-scored distillation) instead of a policy-gradient or SFT step. The student
-    is the trained model; the teacher is a frozen separate model (``rlhf_config.teacher_model``) or, for a
+    is the trained model; the teacher is a frozen separate model (``rl_config.teacher_model``) or, for a
     LoRA student whose teacher is its own base, the adapter-disabled student
-    (``rlhf_config._teacher_use_disable_adapter``).
+    (``rl_config._teacher_use_disable_adapter``).
     """
     from swift.dev.builders import build_ray_dp_mesh, build_sampler
     from swift.dev.loss import configure_rlhf_loss
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly, single_teacher_id
 
-    if rlhf_config.rlhf_type != 'gkd':
-        raise ValueError(f'run_gkd requires rlhf_type="gkd", got {rlhf_config.rlhf_type!r}.')
+    if rl_config.rl_type != 'gkd':
+        raise ValueError(f'run_gkd requires rl_type="gkd", got {rl_config.rl_type!r}.')
     assembly = TrainAssembly(
         'run_gkd',
         model_config,
@@ -113,7 +113,7 @@ def run_gkd(
         distributed_config,
         checkpoint_config,
         tuner_config,
-        rlhf_config=rlhf_config,
+        rl_config=rl_config,
         output_dir=output_dir,
         logging_config=logging_config,
         quantize_config=quantize_config,
@@ -124,9 +124,9 @@ def run_gkd(
     # A separate frozen teacher is a Ray actor on its own DeviceGroup (plan §3.3), which
     # plan_rl_device_groups must allocate BEFORE twinkle.initialize; the adapter-disabled teacher
     # (DisableAdapterTeacher) reuses the student's own actor and needs no group (teacher_world_size=0).
-    separate_teacher = (not rlhf_config._teacher_use_disable_adapter
-                        and single_teacher_id(rlhf_config.teacher_model, algo='GKD') is not None)
-    teacher_world_size = teacher_group_world_size(rlhf_config) if separate_teacher else 0
+    separate_teacher = (not rl_config._teacher_use_disable_adapter
+                        and single_teacher_id(rl_config.teacher_model, algo='GKD') is not None)
+    teacher_world_size = teacher_group_world_size(rl_config) if separate_teacher else 0
 
     backend = _sampler_backend(rollout_config)
     sampler_world_size = _sampler_world_size(rollout_config, backend)
@@ -134,16 +134,20 @@ def run_gkd(
                                                                    rollout_config.vllm_mode, sampler_world_size,
                                                                    teacher_world_size)
     _initialize_twinkle_rl(
-        distributed_config, groups, seed=train_config.seed, full_determinism=train_config.full_determinism)
+        distributed_config,
+        groups,
+        seed=train_config.seed,
+        full_determinism=train_config.full_determinism,
+        tf32=train_config.tf32)
 
     assembly.build_template()
     assembly.build_model()
-    configure_rlhf_loss(assembly.model, rlhf_config)
+    configure_rlhf_loss(assembly.model, rl_config)
     # Prompts are rolled out, not iterated by a dataloader, so the step budget is derived from the prompt
     # set (B1): one generation batch per round, exhausted after num_train_epochs passes. Load the prompts +
     # design-B mini-batch width first, then size max_steps (the LR horizon); --max_steps still overrides.
     prompts, prompt_extras, dataset_rows = distill_rows_from_dataset(dataset_config, assembly.template)
-    if rlhf_config.lmbda < 1.0 and not dataset_rows:
+    if rl_config.lmbda < 1.0 and not dataset_rows:
         raise ValueError('GKD with lmbda < 1 distils some rounds on the dataset\'s own completions, but no dataset '
                          'row carries an assistant completion. Add completions, or set lmbda=1 for purely on-policy '
                          'GKD.')
@@ -159,7 +163,7 @@ def run_gkd(
         train_config.max_steps,
         rollout_step_budget(
             num_prompts=len(prompts),
-            num_generations=rlhf_config.num_generations,
+            num_generations=rl_config.num_generations,
             train_batch_size=train_batch_size,
             gradient_accumulation_steps=assembly.ga,
             num_train_epochs=train_config.num_train_epochs,
@@ -167,7 +171,12 @@ def run_gkd(
         recipe='run_gkd')
     assembly.resolve_step_intervals(max_steps)
     configure_optimizer(
-        assembly.model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
+        assembly.model,
+        train_config,
+        num_training_steps=max_steps,
+        distributed_config=distributed_config,
+        tuner_config=assembly.tuner_config,
+        plugin_config=assembly.plugin_config)
 
     sampler_engine_args = _sampler_engine_args(rollout_config, engine_args, colocate, backend)
     sampler = build_sampler(
@@ -189,7 +198,7 @@ def run_gkd(
     # publication knobs mirror run_grpo (validate._check_streaming_publication enforces the same pairing).
     loop_cls = GKDLoop
     streaming_kwargs: Dict[str, Any] = {}
-    sync_only = rlhf_config.lmbda != 1.0
+    sync_only = rl_config.lmbda != 1.0
     if rollout_config.async_mode != 'none' or not sync_only:
         from swift.dev.recipe.gkd_async import StreamingGKDLoop
         loop_cls = StreamingGKDLoop
@@ -208,23 +217,23 @@ def run_gkd(
         assembly.model,
         rollout,
         prompts,
-        teacher=_build_teacher(assembly.model, rlhf_config, tuner_config, teacher_world_size, distributed_config),
+        teacher=_build_teacher(assembly.model, rl_config, tuner_config, teacher_world_size, distributed_config),
         template=assembly.template,
         prompt_extras=prompt_extras,
         dataset_rows=dataset_rows,
-        lmbda=rlhf_config.lmbda,
-        sft_alpha=rlhf_config.sft_alpha,
-        gkd_logits_topk=rlhf_config.gkd_logits_topk,
-        num_generations=rlhf_config.num_generations,
+        lmbda=rl_config.lmbda,
+        sft_alpha=rl_config.sft_alpha,
+        gkd_logits_topk=rl_config.gkd_logits_topk,
+        num_generations=rl_config.num_generations,
         seed=train_config.seed,
-        rlhf_config=rlhf_config,
+        rl_config=rl_config,
         max_steps=max_steps,
         train_batch_size=train_batch_size,
         generation_batch_size=rollout_config.generation_batch_size,
         num_train_epochs=train_config.num_train_epochs,
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
-        sampling_params=distill_sampling_params(rlhf_config, generation_config),
+        sampling_params=distill_sampling_params(rl_config, generation_config),
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
@@ -247,7 +256,7 @@ def run_gkd(
         rollout.shutdown()
 
 
-def _build_teacher(model: TrainableModel, rlhf_config: RLHFConfig, tuner_config: Optional[TunerConfig],
+def _build_teacher(model: TrainableModel, rl_config: RLConfig, tuner_config: Optional[TunerConfig],
                    teacher_world_size: int, distributed_config: DistributedConfig) -> Any:
     """Resolve the GKD teacher: the LoRA student's own adapter-disabled base, or a frozen Ray-actor model.
 
@@ -259,24 +268,24 @@ def _build_teacher(model: TrainableModel, rlhf_config: RLHFConfig, tuner_config:
     ``offload_teacher_model`` is applied inside the frozen teacher (its full-vocab logits are the memory
     hook), so it is rejected for the adapter-disabled base, which has no separate weights to offload.
     """
-    if rlhf_config._teacher_use_disable_adapter:
+    if rl_config._teacher_use_disable_adapter:
         if tuner_config is None:
-            raise ValueError('rlhf_config._teacher_use_disable_adapter=True requires a LoRA student (tuner_config), '
+            raise ValueError('rl_config._teacher_use_disable_adapter=True requires a LoRA student (tuner_config), '
                              'since it distils from the adapter-disabled base of that same model.')
-        if rlhf_config.offload_teacher_model:
+        if rl_config.offload_teacher_model:
             raise ValueError('offload_teacher_model requires a distinct frozen teacher model, not the '
                              'adapter-disabled base of the student (which has no separate weights to offload).')
         return DisableAdapterTeacher(model)
     from swift.dev.recipe.assembly import single_teacher_id
-    teacher_model = single_teacher_id(rlhf_config.teacher_model, algo='GKD')
+    teacher_model = single_teacher_id(rl_config.teacher_model, algo='GKD')
     if teacher_model is None:
-        raise ValueError('GKD needs a teacher: set RLHFConfig.teacher_model, or use a LoRA student with '
+        raise ValueError('GKD needs a teacher: set RLConfig.teacher_model, or use a LoRA student with '
                          '_teacher_use_disable_adapter=True to distil from its own frozen base.')
     template = model.template if hasattr(model, 'template') else None
     return build_frozen_teacher(
-        rlhf_config, template, teacher_model, distributed_config=distributed_config, remote_group=_TEACHER_GROUP,
-        teacher_world_size=teacher_world_size, adapters=rlhf_config.teacher_adapters, role='teacher',
-        offload=rlhf_config.offload_teacher_model)
+        rl_config, template, teacher_model, distributed_config=distributed_config, remote_group=_TEACHER_GROUP,
+        teacher_world_size=teacher_world_size, adapters=rl_config.teacher_adapters, role='teacher',
+        offload=rl_config.offload_teacher_model)
 
 
 class GKDLoop(GRPOLoop):
@@ -305,7 +314,7 @@ class GKDLoop(GRPOLoop):
         gkd_logits_topk: Optional[int] = None,
         num_generations: int = 1,
         seed: int = 42,
-        rlhf_config: Optional['RLHFConfig'] = None,
+        rl_config: Optional['RLConfig'] = None,
         max_steps: int = 1,
         train_batch_size: int = 1,
         generation_batch_size: Optional[int] = None,
@@ -339,7 +348,7 @@ class GKDLoop(GRPOLoop):
             teacher=teacher,
             template=template,
             num_generations=num_generations,
-            rlhf_config=rlhf_config,
+            rl_config=rl_config,
             max_steps=max_steps,
             gradient_accumulation_steps=gradient_accumulation_steps,
             train_batch_size=train_batch_size,

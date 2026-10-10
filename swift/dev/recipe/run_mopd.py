@@ -60,7 +60,7 @@ if TYPE_CHECKING:
         ModelConfig,
         MoEConfig,
         QuantizeConfig,
-        RLHFConfig,
+        RLConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -79,7 +79,7 @@ def run_mopd(
     distributed_config: DistributedConfig,
     checkpoint_config: CheckpointConfig,
     rollout_config: RolloutConfig,
-    rlhf_config: RLHFConfig,
+    rl_config: RLConfig,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
@@ -101,9 +101,9 @@ def run_mopd(
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly
 
-    if rlhf_config.rlhf_type != 'mopd':
-        raise ValueError(f'run_mopd requires rlhf_type="mopd", got {rlhf_config.rlhf_type!r}.')
-    if rlhf_config.offload_teacher_model:
+    if rl_config.rl_type != 'mopd':
+        raise ValueError(f'run_mopd requires rl_type="mopd", got {rl_config.rl_type!r}.')
+    if rl_config.offload_teacher_model:
         raise ValueError('offload_teacher_model is not supported for MOPD: it keeps K teachers resident on their own '
                          'DeviceGroup to score every trajectory, and offload is a GKD-only full-vocab hook. Leave it '
                          'off (multi-teacher offload is not a thing here).')
@@ -116,7 +116,7 @@ def run_mopd(
         distributed_config,
         checkpoint_config,
         tuner_config,
-        rlhf_config=rlhf_config,
+        rl_config=rl_config,
         output_dir=output_dir,
         logging_config=logging_config,
         quantize_config=quantize_config,
@@ -126,7 +126,7 @@ def run_mopd(
 
     # MOPD always builds K separate frozen teachers, so it always plans the shared 'teacher' DeviceGroup
     # (plan §3.3); teacher_parallel_spec sizes it, else one card-frugal rank.
-    teacher_world_size = teacher_group_world_size(rlhf_config)
+    teacher_world_size = teacher_group_world_size(rl_config)
 
     backend = _sampler_backend(rollout_config)
     sampler_world_size = _sampler_world_size(rollout_config, backend)
@@ -134,16 +134,20 @@ def run_mopd(
                                                                    rollout_config.vllm_mode, sampler_world_size,
                                                                    teacher_world_size)
     _initialize_twinkle_rl(
-        distributed_config, groups, seed=train_config.seed, full_determinism=train_config.full_determinism)
+        distributed_config,
+        groups,
+        seed=train_config.seed,
+        full_determinism=train_config.full_determinism,
+        tf32=train_config.tf32)
 
     assembly.build_template()
     assembly.build_model()
-    configure_rlhf_loss(assembly.model, rlhf_config)
+    configure_rlhf_loss(assembly.model, rl_config)
     # Prompts are rolled out, not iterated by a dataloader, so the step budget is derived from the prompt
     # set (B1): one generation batch per round, exhausted after num_train_epochs passes. MOPD replays each
     # round once (no num_iterations), so the budget uses num_iterations=1; --max_steps still overrides.
     prompts, prompt_extras, dataset_rows = distill_rows_from_dataset(dataset_config, assembly.template)
-    if rlhf_config.lmbda < 1.0 and not dataset_rows:
+    if rl_config.lmbda < 1.0 and not dataset_rows:
         raise ValueError('MOPD with lmbda < 1 distils some rounds on the dataset\'s own completions, but no dataset '
                          'row carries an assistant completion. Add completions, or set lmbda=1 for purely on-policy '
                          'MOPD.')
@@ -156,7 +160,7 @@ def run_mopd(
         train_config.max_steps,
         rollout_step_budget(
             num_prompts=len(prompts),
-            num_generations=rlhf_config.num_generations,
+            num_generations=rl_config.num_generations,
             train_batch_size=train_batch_size,
             gradient_accumulation_steps=assembly.ga,
             num_train_epochs=train_config.num_train_epochs,
@@ -164,7 +168,12 @@ def run_mopd(
         recipe='run_mopd')
     assembly.resolve_step_intervals(max_steps)
     configure_optimizer(
-        assembly.model, train_config, num_training_steps=max_steps, distributed_config=distributed_config)
+        assembly.model,
+        train_config,
+        num_training_steps=max_steps,
+        distributed_config=distributed_config,
+        tuner_config=assembly.tuner_config,
+        plugin_config=assembly.plugin_config)
 
     sampler_engine_args = _sampler_engine_args(rollout_config, engine_args, colocate, backend)
     sampler = build_sampler(
@@ -176,7 +185,7 @@ def run_mopd(
     rollout = SyncableRollout(
         assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
 
-    teacher = _build_mopd_teachers(assembly.model, rlhf_config, teacher_world_size, distributed_config)
+    teacher = _build_mopd_teachers(assembly.model, rl_config, teacher_world_size, distributed_config)
     # async_mode selects the driver (see run_gkd for the full rationale): the per-sample stream now serves
     # EVERY regime, so MOPD rides it whenever the round is purely on-policy -- 'none' runs StreamingMOPDLoop
     # at max_staleness=0 (drain-before-publish, no overlap) and 'one_step_off' (the only overlapping regime
@@ -185,7 +194,7 @@ def run_mopd(
     # sets serialize_generation for the exclusive-device hand-over.
     loop_cls = MOPDLoop
     streaming_kwargs: Dict[str, Any] = {}
-    sync_only = rlhf_config.lmbda != 1.0
+    sync_only = rl_config.lmbda != 1.0
     if rollout_config.async_mode != 'none' or not sync_only:
         from swift.dev.recipe.mopd_async import StreamingMOPDLoop
         loop_cls = StreamingMOPDLoop
@@ -205,17 +214,17 @@ def run_mopd(
         template=assembly.template,
         prompt_extras=prompt_extras,
         dataset_rows=dataset_rows,
-        lmbda=rlhf_config.lmbda,
-        num_generations=rlhf_config.num_generations,
+        lmbda=rl_config.lmbda,
+        num_generations=rl_config.num_generations,
         seed=train_config.seed,
-        rlhf_config=rlhf_config,
+        rl_config=rl_config,
         max_steps=max_steps,
         train_batch_size=train_batch_size,
         generation_batch_size=rollout_config.generation_batch_size,
         num_train_epochs=train_config.num_train_epochs,
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
-        sampling_params=distill_sampling_params(rlhf_config, generation_config),
+        sampling_params=distill_sampling_params(rl_config, generation_config),
         logging_config=logging_config,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
@@ -248,7 +257,7 @@ def _resolve_teacher_weights(weights: Optional[List[float]], num_teachers: int) 
     return list(weights)
 
 
-def _build_mopd_teachers(model: TrainableModel, rlhf_config: RLHFConfig, teacher_world_size: int,
+def _build_mopd_teachers(model: TrainableModel, rl_config: RLConfig, teacher_world_size: int,
                          distributed_config: DistributedConfig) -> MultiTeacher:
     """Build the K frozen domain teachers as Ray actors sharing the ``'teacher'`` DeviceGroup.
 
@@ -261,16 +270,16 @@ def _build_mopd_teachers(model: TrainableModel, rlhf_config: RLHFConfig, teacher
     there is nothing to re-check here. The K teachers plus their mixture weights are returned as one
     :class:`~swift.dev.recipe._teacher.MultiTeacher`.
     """
-    if rlhf_config._teacher_use_disable_adapter:
+    if rl_config._teacher_use_disable_adapter:
         raise ValueError('MOPD distils from K separate domain teachers; _teacher_use_disable_adapter (a single '
                          'adapter-disabled base) is an OPSD/GKD self-distillation mode and does not apply here.')
-    if rlhf_config.teacher_adapters:
+    if rl_config.teacher_adapters:
         raise ValueError('MOPD builds each teacher as a distinct full model and does not apply per-teacher adapters; '
                          'teacher_adapters would be ambiguous (which teacher?) and is ignored. Remove it, or use OPSD '
                          'for a single adapter-based teacher.')
-    teacher_models = rlhf_config.teacher_model
+    teacher_models = rl_config.teacher_model
     if not teacher_models:
-        raise ValueError('MOPD needs at least one teacher: set RLHFConfig.teacher_model to a list of model ids '
+        raise ValueError('MOPD needs at least one teacher: set RLConfig.teacher_model to a list of model ids '
                          '(one per domain expert).')
     template = model.template if hasattr(model, 'template') else None
     # Each of the K teachers is a distinct frozen actor sharing the ONE 'teacher' DeviceGroup, so each needs
@@ -278,11 +287,11 @@ def _build_mopd_teachers(model: TrainableModel, rlhf_config: RLHFConfig, teacher
     # +rank, and all K builds come from this same call site into the same group at the same rank.
     teachers = [
         build_frozen_teacher(
-            rlhf_config, template, model_id, distributed_config=distributed_config, remote_group=_TEACHER_GROUP,
+            rl_config, template, model_id, distributed_config=distributed_config, remote_group=_TEACHER_GROUP,
             teacher_world_size=teacher_world_size, role='teacher',
             instance_id=f'teacher{i}') for i, model_id in enumerate(teacher_models)
     ]
-    return MultiTeacher(teachers, _resolve_teacher_weights(rlhf_config.teacher_weights, len(teachers)))
+    return MultiTeacher(teachers, _resolve_teacher_weights(rl_config.teacher_weights, len(teachers)))
 
 
 class MOPDLoop(OPSDLoop):

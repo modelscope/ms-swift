@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """vLLM inference engine configuration, rollout mode, and weight sync."""
 from __future__ import annotations
 

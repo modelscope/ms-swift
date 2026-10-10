@@ -1,4 +1,4 @@
-## 这里的代码对抗式review一下，确保legacy的逻辑没丢，这里的逻辑没有问题
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 import dataclasses
 import logging
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
         ModelConfig,
         PluginConfig,
         QuantizeConfig,
-        RLHFConfig,
+        RLConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -32,7 +32,7 @@ def process_configs(
     distributed_config: 'DistributedConfig',
     checkpoint_config: Optional['CheckpointConfig'] = None,
     tuner_config: Optional['TunerConfig'] = None,
-    rlhf_config: Optional['RLHFConfig'] = None,
+    rl_config: Optional['RLConfig'] = None,
     megatron_config: Optional['MegatronConfig'] = None,
     quantize_config: Optional['QuantizeConfig'] = None,
     plugin_config: Optional['PluginConfig'] = None,
@@ -41,6 +41,13 @@ def process_configs(
 
     Idempotent: running it twice leaves the same result, so callers may safely repeat the lifecycle.
     """
+    # Bridge ModelConfig.enable_npu_model_patch to the Ascend patch switch BEFORE the first swift.model
+    # import below. swift.model applies its NPU model patches once, at import, and reads this env var
+    # (npu_patch._is_model_patch_enabled); create_workers later copies os.environ, so the same value also
+    # drives every Ray worker -- which argv cannot, a worker's sys.argv being the raylet's. On non-NPU
+    # platforms the patch code never runs, so the field is ignored there exactly as legacy does.
+    os.environ['SWIFT_ENABLE_NPU_MODEL_PATCH'] = str(bool(model_config.enable_npu_model_patch))
+
     from swift.dev.builders.model import is_megatron_backend
     from swift.dev.plugin import PluginRegistry
 
@@ -54,23 +61,23 @@ def process_configs(
     # Order matters below: the eval schedule reads split_dataset_ratio after the val-dataset rule has
     # zeroed it, and task_type must be settled (rm -> seq_cls) before the per-token-loss default and
     # the best-model metric read it.
-    _derive_vit_gradient_checkpointing(train_config, tuner_config)
+    _derive_vit_gradient_checkpointing(train_config, tuner_config, is_megatron)
     _derive_packing(dataset_config, template_config)
     _derive_split_dataset_ratio(dataset_config)
     _derive_eval_schedule(train_config, dataset_config, checkpoint_config)
     _derive_streaming_dataloader_workers(dataset_config)
     _derive_bnb_compute_dtype(model_config, quantize_config)
-    _derive_rlhf_task_type(model_config, rlhf_config)
-    _derive_rlhf_beta(rlhf_config)
-    _derive_rlhf_ref_model(model_config, tuner_config, rlhf_config)
-    _derive_rlhf_teacher(model_config, tuner_config, rlhf_config)
-    _derive_grpo_reward_defaults(rlhf_config)
-    _derive_best_model_metric(train_config, rlhf_config)
+    _derive_rlhf_task_type(model_config, rl_config)
+    _derive_rlhf_beta(rl_config)
+    _derive_rlhf_ref_model(model_config, tuner_config, rl_config)
+    _derive_rlhf_teacher(model_config, tuner_config, rl_config)
+    _derive_grpo_reward_defaults(rl_config)
+    _derive_best_model_metric(train_config, rl_config)
     _normalize_recompute_granularity(distributed_config)
     _derive_lr_decay_style(train_config, is_megatron)
     _derive_virtual_pipeline(distributed_config, is_megatron)
     _derive_grad_accum_dtype(model_config, train_config, is_megatron)
-    _derive_per_token_loss(model_config, train_config, rlhf_config, is_megatron)
+    _derive_per_token_loss(model_config, train_config, rl_config, is_megatron)
 
 
 def process_and_validate_configs(
@@ -95,7 +102,7 @@ def process_and_validate_configs(
         distributed_config,
         configs.get('checkpoint_config'),
         configs.get('tuner_config'),
-        rlhf_config=configs.get('rlhf_config'),
+        rl_config=configs.get('rl_config'),
         megatron_config=configs.get('megatron_config'),
         quantize_config=configs.get('quantize_config'),
         plugin_config=configs.get('plugin_config'),
@@ -109,14 +116,14 @@ def process_and_validate_configs(
         distributed_config,
         configs.get('checkpoint_config'),
         configs.get('tuner_config'),
-        configs.get('rlhf_config'),
+        configs.get('rl_config'),
         configs.get('logging_config'),
         quantize_config=configs.get('quantize_config'),
         megatron_config=configs.get('megatron_config'),
         moe_config=configs.get('moe_config'),
         training='train_config' in configs,
     )
-    if multi_turn_config is not None and multi_turn_config is not configs.get('rlhf_config'):
+    if multi_turn_config is not None and multi_turn_config is not configs.get('rl_config'):
         from .validate import validate_multi_turn_config
         validate_multi_turn_config(multi_turn_config)
     rollout_config = configs.get('rollout_config')
@@ -128,13 +135,13 @@ def process_and_validate_configs(
         # A full-parameter or colocated run has no adapter to pin (or no per-cycle weight sync to hand the
         # shared device back), so its only sound publication is in_place; derive it from the defaults BEFORE
         # validation reads them, so a legacy ``--async_generate`` / colocated synchronous script still runs
-        # with no extra flags. rlhf_config tells it whether ``async_mode='none'`` actually rides the driver.
-        _derive_weight_sync_strategy(rollout_config, configs.get('rlhf_config'), configs.get('tuner_config'))
-        # max_turns lives on the RLHFConfig for GRPO and on the multi-turn/reward config for sampling.
-        multi_turn_carrier = multi_turn_config if multi_turn_config is not None else configs.get('rlhf_config')
-        # rlhf_config is the training surface _check_async_mode cross-references (None for sampling);
+        # with no extra flags. rl_config tells it whether ``async_mode='none'`` actually rides the driver.
+        _derive_weight_sync_strategy(rollout_config, configs.get('rl_config'), configs.get('tuner_config'))
+        # max_turns lives on the RLConfig for GRPO and on the multi-turn/reward config for sampling.
+        multi_turn_carrier = multi_turn_config if multi_turn_config is not None else configs.get('rl_config')
+        # rl_config is the training surface _check_async_mode cross-references (None for sampling);
         # tuner_config tells it a full-parameter run from an adapter run (adapter_snapshot needs a LoRA).
-        validate_rollout_config(rollout_config, multi_turn_carrier, configs.get('rlhf_config'),
+        validate_rollout_config(rollout_config, multi_turn_carrier, configs.get('rl_config'),
                                 configs.get('tuner_config'))
     infer_config = configs.get('infer_config')
     if infer_config is not None:
@@ -352,7 +359,6 @@ def _derive_finetune_resume(train_config: 'TrainConfig', checkpoint_config: Opti
         return
     if checkpoint_config is None or not checkpoint_config.resume_from_checkpoint:
         if not train_config.finetune:
-            ## 这里是什么意思
             raise ValueError(
                 'Megatron --finetune false requires --resume_from_checkpoint pointing to a checkpoint written by '
                 'the dev runtime. Native mcore checkpoints must first be converted with `swift export '
@@ -361,7 +367,6 @@ def _derive_finetune_resume(train_config: 'TrainConfig', checkpoint_config: Opti
 
     derived = bool(train_config.finetune)
     resume_explicit = 'resume_only_model' in getattr(checkpoint_config, '_explicit_fields', set())
-    ## 这个什么意思checkpoint_config.resume_only_model != derived
     if resume_explicit and checkpoint_config.resume_only_model != derived:
         raise ValueError(
             f'finetune={train_config.finetune!r} conflicts with resume_only_model='
@@ -489,7 +494,7 @@ def _derive_grad_accum_dtype(model_config: 'ModelConfig', train_config: 'TrainCo
 
 
 def _derive_per_token_loss(model_config: 'ModelConfig', train_config: 'TrainConfig',
-                           rlhf_config: Optional['RLHFConfig'], is_megatron: bool) -> None:
+                           rl_config: Optional['RLConfig'], is_megatron: bool) -> None:
     """Average the loss per token for plain causal-LM training, per batch otherwise.
 
     Mirrors legacy megatron_args.py::_set_default. Per-token is the right average for causal LM, where
@@ -502,23 +507,30 @@ def _derive_per_token_loss(model_config: 'ModelConfig', train_config: 'TrainConf
     if not is_megatron or train_config.calculate_per_token_loss is not None:
         return
     is_causal_lm = model_config.task_type in (None, 'causal_lm')
-    is_rlhf = rlhf_config is not None and getattr(rlhf_config, 'rlhf_type', None) is not None
+    is_rlhf = rl_config is not None and getattr(rl_config, 'rl_type', None) is not None
     train_config.calculate_per_token_loss = is_causal_lm and not is_rlhf
 
 
-def _derive_vit_gradient_checkpointing(train_config: 'TrainConfig', tuner_config: Optional['TunerConfig']) -> None:
+def _derive_vit_gradient_checkpointing(train_config: 'TrainConfig', tuner_config: Optional['TunerConfig'],
+                                       is_megatron: bool) -> None:
     """Checkpoint the vision tower unless it is frozen, matching whichever way the LLM tower is trained.
 
-    Mirrors legacy sft_args.py:211-212 and megatron_args.py:806-807 (`vit_gradient_checkpointing =
-    not freeze_vit`). Recomputing a tower whose parameters are frozen saves the activation memory it
-    would cost but buys nothing back -- there is no gradient to recompute for -- so the default follows
-    freeze_vit: recompute when training the tower, skip it when frozen.
+    Mirrors legacy sft_args.py:211-212 (`vit_gradient_checkpointing = not freeze_vit`). Recomputing a
+    tower whose parameters are frozen saves the activation memory it would cost but buys nothing back --
+    there is no gradient to recompute for -- so the default follows freeze_vit: recompute when training
+    the tower, skip it when frozen.
 
     Only fills in None, so an explicit choice is kept. When there is no TunerConfig (full-parameter
     training) freeze_vit is not available and nothing is trained frozen, so the field is left for the
     builder's own default.
+
+    Skipped on megatron: that backend checkpoints activations globally through recompute_granularity /
+    recompute_method and has no per-tower vision switch to drive, so a derived value would be a silent
+    no-op. Leaving it None lets validate._HF_ONLY reject only a user-set value (fail loudly) rather than
+    a value this derivation invented.
     """
-    if train_config.vit_gradient_checkpointing is not None or tuner_config is None:
+    if is_megatron or train_config.vit_gradient_checkpointing is not None or tuner_config is None:
+        ## megatron为什么不能用vit-gc
         return
     freeze_vit = getattr(tuner_config, 'freeze_vit', None)
     if freeze_vit is None:
@@ -646,7 +658,7 @@ def _derive_async_mode(rollout_config: 'RolloutConfig') -> None:
         rollout_config.async_mode = 'one_step_off'
 
 
-def _derive_weight_sync_strategy(rollout_config: 'RolloutConfig', rlhf_config: Optional['RLHFConfig'],
+def _derive_weight_sync_strategy(rollout_config: 'RolloutConfig', rl_config: Optional['RLConfig'],
                                  tuner_config: Optional['TunerConfig']) -> None:
     """Default a run that rides the streaming driver to the only publication its placement/tuner allow.
 
@@ -680,8 +692,8 @@ def _derive_weight_sync_strategy(rollout_config: 'RolloutConfig', rlhf_config: O
     from .validate import _changed_fields, _streams_under_none
     mode = rollout_config.async_mode
     # Under 'none' the publication knob is read only if the config actually rides the streaming driver; an
-    # overlapping mode always does (validate gates rlhf_type there). Skip the sync-only / non-online fallback.
-    if mode == 'none' and not _streams_under_none(rlhf_config):
+    # overlapping mode always does (validate gates rl_type there). Skip the sync-only / non-online fallback.
+    if mode == 'none' and not _streams_under_none(rl_config):
         return
     changed = _changed_fields(rollout_config)
     if 'weight_sync_strategy' in changed:
@@ -695,17 +707,17 @@ def _derive_weight_sync_strategy(rollout_config: 'RolloutConfig', rlhf_config: O
         rollout_config.allow_partial_rollout = True
 
 
-def _derive_rlhf_task_type(model_config: 'ModelConfig', rlhf_config: Optional['RLHFConfig']) -> None:
+def _derive_rlhf_task_type(model_config: 'ModelConfig', rl_config: Optional['RLConfig']) -> None:
     """A reward model is a single-logit sequence classifier.
 
-    Mirrors legacy rlhf_args.py::_init_rm (and the same block in megatron rlhf_args.py). `rlhf_type=rm`
+    Mirrors legacy rlhf_args.py::_init_rm (and the same block in megatron rlhf_args.py). `rl_type=rm`
     trains a scalar reward head, which is a `seq_cls` task with `num_labels=1`; deriving the two here
     means the user picks the algorithm and the model shape follows, instead of having to state both and
     keep them consistent.
 
     Only fills in defaults: an explicit task_type/num_labels is left alone.
     """
-    if rlhf_config is None or getattr(rlhf_config, 'rlhf_type', None) != 'rm':
+    if rl_config is None or getattr(rl_config, 'rl_type', None) != 'rm':
         return
     if model_config.task_type is None:
         model_config.task_type = 'seq_cls'
@@ -713,7 +725,7 @@ def _derive_rlhf_task_type(model_config: 'ModelConfig', rlhf_config: Optional['R
         model_config.num_labels = 1
 
 
-#: rlhf_type -> its default `beta` (KL / deviation-from-reference weight). Absent types (dpo, cpo, kto,
+#: rl_type -> its default `beta` (KL / deviation-from-reference weight). Absent types (dpo, cpo, kto,
 #: ...) share the 0.1 fallback below; the ones listed here are singled out because 0.1 would be wrong.
 #: ``opsd``/``mopd`` are self-distillation -- the pull is toward the (self/multi) teacher, with no
 #: reference-KL term by default, so beta is 0 (an explicit ``--beta`` still adds one). ``rft`` is plain
@@ -722,7 +734,7 @@ def _derive_rlhf_task_type(model_config: 'ModelConfig', rlhf_config: Optional['R
 _RLHF_BETA_DEFAULTS = {'grpo': 0.04, 'gkd': 0.5, 'simpo': 2.0, 'opsd': 0.0, 'mopd': 0.0, 'rft': 0.0}
 
 
-def _derive_rlhf_beta(rlhf_config: Optional['RLHFConfig']) -> None:
+def _derive_rlhf_beta(rl_config: Optional['RLConfig']) -> None:
     """Fill the reference-deviation weight with the chosen algorithm's default.
 
     Mirrors the scattered legacy defaults (rlhf_args.py::_set_default 0.1/0.5, _init_grpo 0.04,
@@ -733,13 +745,13 @@ def _derive_rlhf_beta(rlhf_config: Optional['RLHFConfig']) -> None:
     Only fills in None, so an explicit `--beta` -- including `--beta 0` to disable the reference model
     entirely -- is preserved.
     """
-    if rlhf_config is None or rlhf_config.beta is not None:
+    if rl_config is None or rl_config.beta is not None:
         return
-    rlhf_config.beta = _RLHF_BETA_DEFAULTS.get(getattr(rlhf_config, 'rlhf_type', None), 0.1)
+    rl_config.beta = _RLHF_BETA_DEFAULTS.get(getattr(rl_config, 'rl_type', None), 0.1)
 
 
 def _derive_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
-                           rlhf_config: Optional['RLHFConfig']) -> None:
+                           rl_config: Optional['RLConfig']) -> None:
     """Point the reference model at the policy model when the algorithm needs one and none was given.
 
     Mirrors legacy rlhf_args.py:289-297. DPO/KTO/PPO/GRPO under full-parameter training compare the
@@ -751,40 +763,40 @@ def _derive_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['
     The mirror is the derivation only; the rejection of a ref_model passed to CPO/ORPO/LoRA (legacy's
     trailing `elif ... raise`) lives in validate.py, so this module still never refuses.
     """
-    if rlhf_config is None:
+    if rl_config is None:
         return
-    if isinstance(rlhf_config.ref_adapters, str):
-        rlhf_config.ref_adapters = [rlhf_config.ref_adapters]
-    rlhf_type = getattr(rlhf_config, 'rlhf_type', None)
+    if isinstance(rl_config.ref_adapters, str):
+        rl_config.ref_adapters = [rl_config.ref_adapters]
+    rl_type = getattr(rl_config, 'rl_type', None)
     tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
-    if rlhf_type == 'grpo' and rlhf_config.beta == 0.0:
-        rlhf_config.ref_model = None
-    elif rlhf_type in ('dpo', 'kto', 'ppo', 'grpo') and (tuner == 'full' or rlhf_config.ref_adapters):
-        rlhf_config.ref_model = rlhf_config.ref_model or model_config.model
-        rlhf_config.ref_model_type = rlhf_config.ref_model_type or model_config.model_type
-        rlhf_config.ref_model_revision = rlhf_config.ref_model_revision or model_config.model_revision
+    if rl_type == 'grpo' and rl_config.beta == 0.0:
+        rl_config.ref_model = None
+    elif rl_type in ('dpo', 'kto', 'ppo', 'grpo') and (tuner == 'full' or rl_config.ref_adapters):
+        rl_config.ref_model = rl_config.ref_model or model_config.model
+        rl_config.ref_model_type = rl_config.ref_model_type or model_config.model_type
+        rl_config.ref_model_revision = rl_config.ref_model_revision or model_config.model_revision
 
 
 def _derive_rlhf_teacher(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
-                         rlhf_config: Optional['RLHFConfig']) -> None:
+                         rl_config: Optional['RLConfig']) -> None:
     """Resolve self-distillation defaults without loading a teacher."""
-    if rlhf_config is None:
+    if rl_config is None:
         return
-    if isinstance(rlhf_config.teacher_adapters, str):
-        rlhf_config.teacher_adapters = [rlhf_config.teacher_adapters]
+    if isinstance(rl_config.teacher_adapters, str):
+        rl_config.teacher_adapters = [rl_config.teacher_adapters]
     for field in ('teacher_model', 'reward_model', 'reward_adapters', 'reward_model_type',
                   'reward_model_revision', 'reward_template'):
-        value = getattr(rlhf_config, field)
+        value = getattr(rl_config, field)
         if isinstance(value, str):
-            setattr(rlhf_config, field, [value])
+            setattr(rl_config, field, [value])
     # teacher_model is a list (shared with MOPD); self-distillation is when the one teacher IS the student.
-    if (rlhf_config.teacher_model == [model_config.model] and tuner_config is not None
-            and not rlhf_config.teacher_adapters):
-        rlhf_config._teacher_use_disable_adapter = True
-        rlhf_config.teacher_model = None
+    if (rl_config.teacher_model == [model_config.model] and tuner_config is not None
+            and not rl_config.teacher_adapters):
+        rl_config._teacher_use_disable_adapter = True
+        rl_config.teacher_model = None
 
 
-def _derive_grpo_reward_defaults(rlhf_config: Optional['RLHFConfig']) -> None:
+def _derive_grpo_reward_defaults(rl_config: Optional['RLConfig']) -> None:
     """Choose the reward-normalisation defaults that match the GRPO advantage estimator.
 
     Mirrors legacy rlhf_args.py::_init_grpo. Each estimator implies how its rewards should be scaled
@@ -801,13 +813,13 @@ def _derive_grpo_reward_defaults(rlhf_config: Optional['RLHFConfig']) -> None:
 
     Only fills in None. The estimator is a closed Literal, so the value always resolves.
     """
-    if rlhf_config is None or getattr(rlhf_config, 'rlhf_type', None) != 'grpo':
+    if rl_config is None or getattr(rl_config, 'rl_type', None) != 'grpo':
         return
-    estimator = rlhf_config.advantage_estimator
-    if rlhf_config.kl_in_reward is None:
-        rlhf_config.kl_in_reward = estimator in ('rloo', 'reinforce_plus_plus', 'reinforce_plus_plus_baseline')
-    if rlhf_config.scale_rewards is None:
-        rlhf_config.scale_rewards = {
+    estimator = rl_config.advantage_estimator
+    if rl_config.kl_in_reward is None:
+        rl_config.kl_in_reward = estimator in ('rloo', 'reinforce_plus_plus', 'reinforce_plus_plus_baseline')
+    if rl_config.scale_rewards is None:
+        rl_config.scale_rewards = {
             'grpo': 'group',
             'rloo': 'none',
             'reinforce_plus_plus': 'batch',
@@ -819,7 +831,7 @@ def _derive_grpo_reward_defaults(rlhf_config: Optional['RLHFConfig']) -> None:
         }.get(estimator)
 
 
-def _derive_best_model_metric(train_config: 'TrainConfig', rlhf_config: Optional['RLHFConfig']) -> None:
+def _derive_best_model_metric(train_config: 'TrainConfig', rl_config: Optional['RLConfig']) -> None:
     """Pick the metric that selects the best checkpoint, and which direction counts as better.
 
     Mirrors legacy sft_args.py::_init_metric_for_best_model, its GRPO override in rlhf_args.py, and the
@@ -830,7 +842,7 @@ def _derive_best_model_metric(train_config: 'TrainConfig', rlhf_config: Optional
 
     Only fills in unset fields.
     """
-    is_grpo = rlhf_config is not None and getattr(rlhf_config, 'rlhf_type', None) == 'grpo'
+    is_grpo = rl_config is not None and getattr(rl_config, 'rl_type', None) == 'grpo'
     if train_config.metric_for_best_model is None:
         if is_grpo:
             train_config.metric_for_best_model = 'reward'

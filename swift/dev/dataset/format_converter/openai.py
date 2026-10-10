@@ -124,7 +124,6 @@ class OpenAIConverter(FormatConverter):
         if not all(isinstance(turn, dict) for turn in raw):
             return None
 
-        ## 这里也有audio和video的疑问
         media: Dict[str, List] = {'images': []}
         raw = self.normalize_provider_messages(list(raw), media)
         if not raw:
@@ -159,7 +158,6 @@ class OpenAIConverter(FormatConverter):
                 message_format = 'anthropic'
             else:
                 message_format = 'swift'
-        ## 这里就写的非常不好了。anthropic的converter写到了这里。应该有一个autoconverter来做这个事情吧？
         if message_format == 'openai':
             return self.openai_to_messages(messages)
         if message_format == 'anthropic':
@@ -211,7 +209,6 @@ class OpenAIConverter(FormatConverter):
     def is_turn_pairs(self, raw: List[Dict[str, Any]]) -> bool:
         """Whether each element holds a whole turn (``{'user': q, 'assistant': a}``) rather than one
         message.
-        ## 里面涉及到legacy的描述去掉。这是正式的注释。搜一下dev，所有的都要去掉
         Recognised by the keys present -- a ``user``/``assistant`` pair and no role key -- instead of
         legacy's "has neither ``role`` nor ``content``, so it must be the other shape", which would
         also claim a malformed row that simply lost its keys.
@@ -245,7 +242,6 @@ class OpenAIConverter(FormatConverter):
             content = self.first_present(turn, self.content_keys)
             if role is None:
                 continue
-            ## 这个replace含义是什么
             role = self.role_map.get(str(role).replace('-', '_'), role)
             message = {'role': role, 'content': content}
             for key in ('loss', 'loss_scale'):

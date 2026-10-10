@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Chat template, formatting, truncation, and loss configuration."""
 from __future__ import annotations
 
@@ -20,10 +21,6 @@ class TemplateConfig:
     padding_free: bool = False
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
-    is_binary_loss_scale: Optional[bool] = None
-    template_backend: Literal['swift', 'jinja'] = 'swift'
     response_prefix: Optional[str] = None
     enable_thinking: Optional[bool] = None
-    preserve_thinking: Optional[bool] = None
     add_non_thinking_prefix: bool = True
-    disable_ignore_empty_think: bool = False

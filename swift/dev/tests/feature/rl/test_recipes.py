@@ -4,7 +4,7 @@ Pure-function / pure-Python coverage that runs in the normal suite without Ray, 
   - :func:`plan_rl_device_groups` colocate vs heterogeneous placement + its validation;
   - :class:`PreferenceLoop` chosen/rejected interleaving (the layout the DPO family's split relies on);
   - :class:`GKDLoop` prompt-window wrap-around;
-  - :func:`configure_rlhf_loss` rlhf_type -> loss mapping (skipped when twinkle is unavailable).
+  - :func:`configure_rlhf_loss` rl_type -> loss mapping (skipped when twinkle is unavailable).
 
 The heavy weight-sync / colocate / e2e paths need Ray + multi-GPU + vLLM and live behind
 ``@pytest.mark.slow`` mirroring ``twinkle/tests/sampler/test_weight_sync.py``; they are not here.
@@ -63,10 +63,10 @@ class _StubTemplate:
         return dict(self._encoded)
 
 
-def _preference_loop(rlhf_type, encoded):
+def _preference_loop(rl_type, encoded):
     from swift.dev.recipe.run_dpo import PreferenceLoop
 
-    return PreferenceLoop(model=None, dataloader=None, template=_StubTemplate(encoded), rlhf_type=rlhf_type)
+    return PreferenceLoop(model=None, dataloader=None, template=_StubTemplate(encoded), rl_type=rl_type)
 
 
 def test_preference_interleave_order_and_prefix_strip():
@@ -153,7 +153,7 @@ class _StubModel:
         self.loss = loss
 
 
-@pytest.mark.parametrize('rlhf_type, cls_name', [
+@pytest.mark.parametrize('rl_type, cls_name', [
     ('dpo', 'DPOLoss'),
     ('kto', 'KTOLoss'),
     ('cpo', 'CPOLoss'),
@@ -164,25 +164,25 @@ class _StubModel:
     ('rm', 'RewardLoss'),
     ('ppo', 'GRPOLoss'),
 ])
-def test_configure_rlhf_loss_maps_type_to_loss(rlhf_type, cls_name):
-    """Each rlhf_type resolves to its twinkle loss class (ppo's POLICY loss is the shared GRPO clip)."""
+def test_configure_rlhf_loss_maps_type_to_loss(rl_type, cls_name):
+    """Each rl_type resolves to its twinkle loss class (ppo's POLICY loss is the shared GRPO clip)."""
     pytest.importorskip('twinkle.loss')
-    from swift.dev.config import RLHFConfig
+    from swift.dev.config import RLConfig
     from swift.dev.loss import configure_rlhf_loss
 
     model = _StubModel()
-    configure_rlhf_loss(model, RLHFConfig(rlhf_type=rlhf_type))
+    configure_rlhf_loss(model, RLConfig(rl_type=rl_type))
     assert type(model.loss).__name__ == cls_name
 
 
 def test_configure_ppo_value_loss_sets_value_loss():
     """PPO's critic gets the clipped value loss, carrying cliprange_value / vf_coef."""
     pytest.importorskip('twinkle.loss')
-    from swift.dev.config import RLHFConfig
+    from swift.dev.config import RLConfig
     from swift.dev.loss import configure_ppo_value_loss
 
     value_model = _StubModel()
-    configure_ppo_value_loss(value_model, RLHFConfig(rlhf_type='ppo', cliprange_value=0.3, vf_coef=0.5))
+    configure_ppo_value_loss(value_model, RLConfig(rl_type='ppo', cliprange_value=0.3, vf_coef=0.5))
     assert type(value_model.loss).__name__ == 'PPOValueLoss'
     assert value_model.loss.cliprange_value == 0.3
     assert value_model.loss.vf_coef == 0.5
@@ -195,13 +195,13 @@ def test_configure_ppo_value_loss_sets_value_loss():
 
 
 def test_configure_rlhf_loss_refuses_unknown():
-    """An unknown rlhf_type is a ValueError (ppo is now supported, so it is no longer refused)."""
+    """An unknown rl_type is a ValueError (ppo is now supported, so it is no longer refused)."""
     pytest.importorskip('twinkle.loss')
-    from swift.dev.config import RLHFConfig
+    from swift.dev.config import RLConfig
     from swift.dev.loss import configure_rlhf_loss
 
-    cfg = RLHFConfig(rlhf_type='dpo')
-    cfg.rlhf_type = 'no_such_type'
+    cfg = RLConfig(rl_type='dpo')
+    cfg.rl_type = 'no_such_type'
     with pytest.raises(ValueError):
         configure_rlhf_loss(_StubModel(), cfg)
 
@@ -211,11 +211,11 @@ def test_gkd_sft_alpha_only_applies_to_dataset_batches():
     torch = pytest.importorskip('torch')
     pytest.importorskip('twinkle.loss')
 
-    from swift.dev.config import RLHFConfig
+    from swift.dev.config import RLConfig
     from swift.dev.loss import configure_rlhf_loss
 
     model = _StubModel()
-    configure_rlhf_loss(model, RLHFConfig(rlhf_type='gkd', beta=0.5, sft_alpha=0.75))
+    configure_rlhf_loss(model, RLConfig(rl_type='gkd', beta=0.5, sft_alpha=0.75))
     labels = torch.tensor([[-100, 1, 2]])
     student_logits = torch.randn(1, 3, 4, requires_grad=True)
     teacher_logits = torch.randn(1, 3, 4)
@@ -236,13 +236,13 @@ def test_advanced_grpo_loss_is_serializable_and_combines_objectives():
     pytest.importorskip('twinkle.loss')
     from twinkle.loss import Loss
 
-    from swift.dev.config import RLHFConfig
+    from swift.dev.config import RLConfig
     from swift.dev.loss import configure_rlhf_loss
 
     model = _StubModel()
     configure_rlhf_loss(
         model,
-        RLHFConfig(rlhf_type='grpo', chord_sft_dataset=['dummy'], sdar_loss_coef=0.25, sdar_gate_beta=2.0))
+        RLConfig(rl_type='grpo', chord_sft_dataset=['dummy'], sdar_loss_coef=0.25, sdar_gate_beta=2.0))
     assert isinstance(model.loss, Loss)
     restored = pickle.loads(pickle.dumps(model.loss))
     assert type(restored) is type(model.loss)
@@ -356,7 +356,7 @@ def test_grpo_combines_rule_and_reward_model_columns():
 # dev consumer -> N/A per the RL UT plan), test_grpo_builds_independent_reward_template, and
 # test_grpo_dynamic_sampling_preserves_extras_and_group_order (plus their _DynamicSample/_DynamicRollout
 # stubs): all hand-drove GRPOLoop with model=None / monkeypatched builders / a stub rollout, and broke on
-# removed RLHFConfig kwargs (reward_model_plugin, reward_funcs) and the dropped gym column -- stale, not a
+# removed RLConfig kwargs (reward_model_plugin, reward_funcs) and the dropped gym column -- stale, not a
 # regression. Reward-template assembly, DAPO dynamic sampling and reward-model/rule column weighting are
 # covered end-to-end in test_algorithms_e2e.py / test_samplers_e2e.py.
 
@@ -365,10 +365,10 @@ def test_grpo_combines_rule_and_reward_model_columns():
 # Advanced GRPO controls (pure tensor tests)
 # ----------------------------------------------------------------------
 def _advanced_grpo_loss(**overrides):
-    from swift.dev.config import RLHFConfig
+    from swift.dev.config import RLConfig
     from swift.dev.loss import configure_rlhf_loss
 
-    config = RLHFConfig(rlhf_type='grpo', **overrides)
+    config = RLConfig(rl_type='grpo', **overrides)
     model = _StubModel()
     configure_rlhf_loss(model, config)
     return model.loss

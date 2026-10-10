@@ -52,7 +52,7 @@ class RecipeHarness:
     @staticmethod
     def pool(case: Case, model_dir: str, data_path: str, out_dir: str) -> dict:
         from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig,
-                                      ModelConfig, RLHFConfig, RolloutConfig, TemplateConfig, TrainConfig)
+                                      ModelConfig, RLConfig, RolloutConfig, TemplateConfig, TrainConfig)
         pool = {
             'model_config':
             ModelConfig(model=model_dir, model_type=TinyModel.MODEL_TYPE, torch_dtype='bfloat16', **case.model),
@@ -77,7 +77,7 @@ class RecipeHarness:
             out_dir,
         }
         if case.rlhf is not None:
-            pool['rlhf_config'] = RLHFConfig(**case.rlhf)
+            pool['rl_config'] = RLConfig(**case.rlhf)
         RecipeHarness.derive(pool)
         return pool
 
@@ -86,7 +86,7 @@ class RecipeHarness:
         """Run the same cross-Config derivation the CLI runs, in place.
 
         Without it a row only fails on whatever the recipe happens to check first -- dpo and kto stop
-        at ``RLHFConfig.ref_model is None``, which ``_derive_rlhf_ref_model`` fills from the policy
+        at ``RLConfig.ref_model is None``, which ``_derive_rlhf_ref_model`` fills from the policy
         model. Constructing Configs by hand and skipping this step tests a path no user takes.
         """
         from swift.dev.config.process import process_configs
@@ -132,18 +132,18 @@ class RecipeHarness:
             assert key in args, f'{case.name}: args.json missing {key!r}: {sorted(args)}'
 
 
-#: The training recipes. The rlhf rows all land in ``run_dpo``, which dispatches on ``rlhf_type``.
+#: The training recipes. The rlhf rows all land in ``run_dpo``, which dispatches on ``rl_type``.
 TRAINING = [
     Case('sft', 'run_sft', initial_loss=True),
     Case('pt', 'run_sft', data='pretrain', template={'use_chat_template': False}, initial_loss=True),
-    Case('dpo', 'run_dpo', data='preference', rlhf={'rlhf_type': 'dpo'}),
-    # kto takes paired data too: run_dpo rejects a label-only row with "rlhf_type=kto needs paired
+    Case('dpo', 'run_dpo', data='preference', rlhf={'rl_type': 'dpo'}),
+    # kto takes paired data too: run_dpo rejects a label-only row with "rl_type=kto needs paired
     # chosen/rejected data", so the KTO desirable/undesirable format is not what this path reads.
-    Case('kto', 'run_dpo', data='preference', rlhf={'rlhf_type': 'kto'}),
-    Case('cpo', 'run_dpo', data='preference', rlhf={'rlhf_type': 'cpo'}),
-    Case('orpo', 'run_dpo', data='preference', rlhf={'rlhf_type': 'orpo'}),
-    Case('simpo', 'run_dpo', data='preference', rlhf={'rlhf_type': 'simpo'}),
-    Case('rm', 'run_dpo', data='preference', rlhf={'rlhf_type': 'rm'}),
+    Case('kto', 'run_dpo', data='preference', rlhf={'rl_type': 'kto'}),
+    Case('cpo', 'run_dpo', data='preference', rlhf={'rl_type': 'cpo'}),
+    Case('orpo', 'run_dpo', data='preference', rlhf={'rl_type': 'orpo'}),
+    Case('simpo', 'run_dpo', data='preference', rlhf={'rl_type': 'simpo'}),
+    Case('rm', 'run_dpo', data='preference', rlhf={'rl_type': 'rm'}),
     Case('seq_cls', 'run_seq_cls', data='seq_cls',
          model={'task_type': 'seq_cls', 'num_labels': 2, 'problem_type': 'single_label_classification'}),
     Case('embedding', 'run_embedding', data='embedding', model={'task_type': 'embedding'}),

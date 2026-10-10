@@ -56,7 +56,7 @@ def test_offline_preference_rejects_periodic_eval(tiny_qwen2_5, rl_data, tmp_pat
     and returns a history instead of raising, so ``pytest.raises`` goes red; restore it -> refused again.
     """
     configs = rl_configs(
-        rlhf_type='dpo',
+        rl_type='dpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -100,7 +100,7 @@ def test_offline_preference_resume_continues_trajectory(tiny_qwen2_5, rl_data, t
     data = rl_data.preference(n=8)
 
     configs_a = rl_configs(
-        rlhf_type='dpo',
+        rl_type='dpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -114,7 +114,7 @@ def test_offline_preference_resume_continues_trajectory(tiny_qwen2_5, rl_data, t
     assert os.path.isdir(ckpt2), f'Phase A did not persist the resume checkpoint at {ckpt2}'
 
     configs_c = rl_configs(
-        rlhf_type='dpo',
+        rl_type='dpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -126,7 +126,7 @@ def test_offline_preference_resume_continues_trajectory(tiny_qwen2_5, rl_data, t
     control = run_rl(configs_c)
 
     configs_b = rl_configs(
-        rlhf_type='dpo',
+        rl_type='dpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',
@@ -213,7 +213,7 @@ def test_save_total_limit_rotates_and_protects_current(limit, expected, tiny_qwe
     deletes ``checkpoint-final`` -> red. Restore either -> green.
     """
     configs = rl_configs(
-        rlhf_type='dpo',
+        rl_type='dpo',
         model=tiny_qwen2_5,
         model_type='qwen2',
         template='qwen2_5',

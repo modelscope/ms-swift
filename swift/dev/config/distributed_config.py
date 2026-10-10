@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 """Distributed training and parallelism configuration."""
 from __future__ import annotations
 

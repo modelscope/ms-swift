@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
 import json
@@ -33,8 +34,7 @@ _MODEL_KNOB_NAMES = {
     'transformers': {
         'torch_dtype': 'dtype',
         'max_model_len': 'max_model_len',
-        'attn_impl': 'attn_implementation',
-        'device_map': 'device_map' ## 这是什么
+        'attn_impl': 'attn_implementation'
     },
 }
 
