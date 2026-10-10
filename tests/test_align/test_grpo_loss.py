@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from swift.rlhf_trainers.grpo_trainer import GRPOTrainer
 
-WINDOW_NORMALIZED_LOSS_TYPES = ['dapo', 'cispo', 'fipo']
+WINDOW_NORMALIZED_LOSS_TYPES = ['dapo', 'cispo', 'fipo', 'm2po']
 MICRO_BATCH_LOSS_TYPES = ['grpo', 'sapo', 'bnpo', 'dr_grpo']
 
 
