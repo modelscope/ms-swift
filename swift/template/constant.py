@@ -136,6 +136,9 @@ class LLMTemplateType:
     olmoe_0924 = 'olmoe_0924'
     spark2_5 = 'spark2_5'
 
+    # typed-decision generic text-LLM template (for AutoModelForCausalLM, not multimodal)
+    generic_decision = 'generic_decision'
+
 
 class RMTemplateType:
     internlm2_reward = 'internlm2_reward'
@@ -159,6 +162,11 @@ class MLLMTemplateType:
     qwen3_8 = 'qwen3_8'
     qwen3_5_emb = 'qwen3_5_emb'
     wemm_embedding = 'wemm_embedding'
+
+    # typed-decision (System-1 scoring) task_type templates
+    jev = 'jev'
+    clef = 'clef'
+    omnijev = 'omnijev'
 
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'

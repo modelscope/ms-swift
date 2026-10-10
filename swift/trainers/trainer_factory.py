@@ -16,6 +16,7 @@ class TrainerFactory:
         'embedding': 'swift.trainers.EmbeddingTrainer',
         'reranker': 'swift.trainers.RerankerTrainer',
         'generative_reranker': 'swift.trainers.RerankerTrainer',
+        'decision': 'swift.trainers.ScoringTrainer',
         # rlhf
         'dpo': 'swift.rlhf_trainers.DPOTrainer',
         'orpo': 'swift.rlhf_trainers.ORPOTrainer',
@@ -33,6 +34,7 @@ class TrainerFactory:
         'embedding': 'swift.trainers.TrainingArguments',
         'reranker': 'swift.trainers.TrainingArguments',
         'generative_reranker': 'swift.trainers.TrainingArguments',
+        'decision': 'swift.trainers.TrainingArguments',
         # rlhf
         'dpo': 'swift.rlhf_trainers.DPOConfig',
         'orpo': 'swift.rlhf_trainers.ORPOConfig',

@@ -201,6 +201,12 @@ def prepare_adapter(args: SftArguments, model, *, template=None, train_dataset=N
                 task_type = 'SEQ_CLS'
             elif task_type == 'GENERATIVE_RERANKER':
                 task_type = 'CAUSAL_LM'
+            elif task_type == 'DECISION':
+                # typed-decision (System-1 scoring): the base is a CausalLM/ConditionalGeneration whose
+                # forward is patched to emit per-option scores and whose loss is computed externally by
+                # ScoringTrainer, so PEFT only needs a valid wrapper task type -- CAUSAL_LM, exactly as
+                # the shipped JEV adapter (an lm_head + backbone LoRA over Qwen3_5ForCausalLM) is built.
+                task_type = 'CAUSAL_LM'
             if args.target_parameters is not None:
                 lora_kwargs['target_parameters'] = args.target_parameters
             lora_config = LoraConfig(task_type=task_type, lora_dtype=args.lora_dtype, **lora_kwargs)
@@ -387,6 +393,10 @@ class TunerMixin:
                     tuner = Swift
                 assert not args.adapters or len(args.adapters) == 1, f'args.adapters: {args.adapters}'
                 model = tuner.from_pretrained(model, args.resume_from_checkpoint or args.adapters[0], is_trainable=True)
+                # `decision` task_type: overlay a trained scoring_head if this checkpoint carries one.
+                # Guarded no-op for every other model / a plain adapter (plan decision F; Option A).
+                from swift.model.decision_head import maybe_load_trained_scoring_head
+                maybe_load_trained_scoring_head(model, args.resume_from_checkpoint or args.adapters[0])
             else:
                 if args.tuner_type in tuners_map:
                     tuner: Tuner = tuners_map[args.tuner_type]
