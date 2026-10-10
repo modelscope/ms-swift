@@ -303,11 +303,10 @@ def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> int:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             try:
                 sock.bind(('', port))
-                port = sock.getsockname()[1]
-                break
+                return sock.getsockname()[1]
             except OSError:
                 pass
-    return port
+    raise OSError(f'No free port in the range [{start_port}, {start_port + retry}).')
 
 
 def copy_files_by_pattern(source_dir, dest_dir, patterns, exclude_patterns=None):
