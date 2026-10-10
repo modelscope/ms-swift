@@ -6,6 +6,7 @@ from . import patcher
 
 if TYPE_CHECKING:
     from .arguments import Seq2SeqTrainingArguments, TrainArgumentsMixin, TrainingArguments
+    from .decision_trainer import ScoringTrainer
     from .embedding_trainer import EmbeddingTrainer
     from .mixin import DataLoaderMixin, SwiftMixin
     from .reranker_trainer import RerankerTrainer
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 else:
     _import_structure = {
         'arguments': ['TrainArgumentsMixin', 'Seq2SeqTrainingArguments', 'TrainingArguments'],
+        'decision_trainer': ['ScoringTrainer'],
         'embedding_trainer': ['EmbeddingTrainer'],
         'mixin': ['DataLoaderMixin', 'SwiftMixin'],
         'reranker_trainer': ['RerankerTrainer'],

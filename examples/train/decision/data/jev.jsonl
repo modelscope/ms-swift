@@ -1,0 +1,4 @@
+{"state": "The sky is blue.", "questions": [{"kind": "noul", "question": "Is the sky blue?", "gold": 1}]}
+{"state": "A review: the product arrived late and was damaged.", "questions": [{"kind": "choice", "question": "Classify the sentiment.", "options": ["positive", "negative", "neutral"], "gold": 1}]}
+{"state": "some text to rate", "questions": [{"kind": "score", "question": "Rate quality.", "gold": [0.05, 0.1, 0.15, 0.4, 0.2, 0.1]}]}
+{"state": "A joint record rendered one question per forward.", "questions": [{"kind": "noul", "question": "Is this spam?", "gold": 0}, {"kind": "choice", "question": "Pick a topic.", "options": ["Technology", "Sports", "Food"], "gold": 1}, {"kind": "score", "question": "Politeness level.", "gold": 4}]}

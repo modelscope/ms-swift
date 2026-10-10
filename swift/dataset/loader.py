@@ -214,6 +214,43 @@ def init_self_cognition_preprocessor(
                      f"author: {kwargs['author']}.")
 
 
+def init_decision_augment(
+    dataset_meta: Optional['DatasetMeta'],
+    augment_config=None,
+    augment_seed: int = 42,
+) -> None:
+    """Inject a ``DecisionAugmentConfig`` into every ``ScoringPreprocessor`` carried by *dataset_meta*.
+
+    Follows the same pattern as ``init_self_cognition_preprocessor``: the preprocessor is already
+    instantiated at dataset-registration time (a shared singleton), so we set its ``augment_config``
+    and ``_augment_rng`` in-place just before the loader calls it. Non-decision preprocessors are
+    unaffected (they lack ``augment_config``); ``augment_config=None`` is a no-op.
+
+    Must run **before** ``loader.load()`` (same as ``init_self_cognition_preprocessor``) so the
+    augmentation is active when the preprocessor runs in the ``dataset.map()`` call.
+    """
+    if dataset_meta is None or augment_config is None:
+        return
+    from .preprocessor.decision import ScoringPreprocessor
+
+    preprocess_funcs = [dataset_meta.preprocess_func]
+    preprocess_funcs += [subset.preprocess_func for subset in dataset_meta.subsets
+                         if isinstance(subset, SubsetDataset)]
+    count = 0
+    for preprocess_func in preprocess_funcs:
+        if isinstance(preprocess_func, ScoringPreprocessor):
+            preprocess_func.augment_config = augment_config
+            import random as _random
+            preprocess_func._augment_rng = _random.Random(augment_seed)
+            count += 1
+    if count:
+        logger.info_once(
+            f'Decision augmentation enabled on {count} preprocessor(s): '
+            f'drop_instructions={augment_config.drop_instructions}, '
+            f'subsample_options={augment_config.subsample_options}, '
+            f'state_as_text={augment_config.state_as_text}, '
+            f'shuffle_fields={augment_config.shuffle_fields}, seed={augment_seed}.')
+
 def _inject_dataset_routing_tag(dataset: DATASET_TYPE, ds_name: str) -> DATASET_TYPE:
     """Inject ``dataset`` column for multi-teacher routing (constant per source dataset)."""
     if isinstance(dataset, HfIterableDataset):
@@ -245,6 +282,9 @@ def load_dataset(
     # self-cognition
     model_name: Optional[Union[Tuple[str, str], List[str]]] = None,  # zh, en
     model_author: Optional[Union[Tuple[str, str], List[str]]] = None,
+    # decision augmentation
+    decision_augment_config=None,
+    decision_augment_seed: int = 42,
 ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     """Load and preprocess datasets.
 
@@ -295,6 +335,11 @@ def load_dataset(
             (Chinese_name, English_name) or list of names. Default: None.
         model_author: Model author for self-cognition task preprocessing. Can be a tuple of
             (Chinese_author, English_author) or list of authors. Default: None.
+        decision_augment_config: A ``DecisionAugmentConfig`` for ``decision`` task_type schema
+            augmentation (drop instructions, subsample options, state-as-text, shuffle fields).
+            When None, augmentation is disabled (zero-cost passthrough). Default: None.
+        decision_augment_seed: The random seed for decision augmentation. Only effective when
+            ``decision_augment_config`` is not None. Default: 42.
 
     Returns:
         A tuple of (train_dataset, val_dataset):
@@ -349,6 +394,7 @@ def load_dataset(
             remove_unused_columns=remove_unused_columns,
             disable_auto_column_mapping=disable_auto_column_mapping,
         )
+        init_decision_augment(dataset_meta, decision_augment_config, decision_augment_seed)
         train_dataset = loader.load(dataset_syntax, dataset_meta, use_hf=use_hf)
         # Inject dataset_syntax.dataset as routing tag for multi-teacher.
         # Tag before post_process: sampling/splitting go through select(), and add_column() on a

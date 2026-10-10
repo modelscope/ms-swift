@@ -213,8 +213,23 @@ class SwiftInfer(SwiftPipeline):
             labels.append(data['labels'])
         if args.metric == 'acc':
             mean_metric = MeanMetric()
-            for pred, label in zip(preds, labels):
-                mean_metric.update(pred == label)
+            if args.task_type == 'decision':
+                # Decision output is a list of per-question dicts: [{'index': N, 'probs': [...]}].
+                # Gold is in `target_probs`; `labels` is None (no `label` field on decision rows).
+                for data in data_list:
+                    response = data.get('response') or []
+                    target_probs = data.get('target_probs') or []
+                    for resp, tp in zip(response, target_probs):
+                        if not isinstance(resp, dict) or 'index' not in resp:
+                            continue
+                        if sum(tp) == 0:
+                            continue  # no gold answer
+                        pred = resp['index']
+                        gold = max(range(len(tp)), key=lambda i: tp[i])
+                        mean_metric.update(pred == gold)
+            else:
+                for pred, label in zip(preds, labels):
+                    mean_metric.update(pred == label)
             res = {'acc': mean_metric.compute()['value']}
         elif args.metric == 'rouge':
             res = compute_rouge_bleu(preds, labels)

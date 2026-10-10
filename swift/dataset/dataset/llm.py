@@ -9,6 +9,9 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from swift.template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                             ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
+from ..preprocessor.decision import (ClefPreprocessor, JevPreprocessor, OmniJevPreprocessor, ScoringPreprocessor,
+                                     DecisionAugmentConfig)
+from ..preprocessor.decision import _clef_option_ids
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 
@@ -957,3 +960,191 @@ register_dataset(
         hf_dataset_id='sapientinc/sudoku-extreme-1k',
         preprocess_func=SudokuPreprocessor(),
     ))
+
+
+class OpenJevPreprocessor(ScoringPreprocessor):
+
+    _JEV_SYNONYMS = {
+        'true': 'true', 'yes': 'true', 'y': 'true', '1': 'true',
+        'false': 'false', 'no': 'false', 'n': 'false', '0': 'false',
+    }
+
+    def __init__(self, delegate: ScoringPreprocessor,
+                 augment_config: Optional[DecisionAugmentConfig] = None,
+                 augment_seed: int = 42):
+        super().__init__(augment_config=augment_config, augment_seed=augment_seed)
+        self.delegate = delegate
+
+    def preprocess(self, row: Dict[str, Any]):
+        kind = row.get('kind')
+        question = row.get('question')
+        if kind is None or question is None:
+            return None
+
+        state = self._decode_state(row.get('state') or row.get('state_json') or row.get('record_json'))
+        options = row.get('options')
+        target = row.get('target')
+
+        q: Dict[str, Any] = {'kind': kind, 'question': question}
+        if options is not None:
+            if isinstance(self.delegate, OmniJevPreprocessor) and options:
+                opts: list = []
+                for o in options:
+                    if isinstance(o, str) and o.strip().lower() in ('abstain', 'none', 'none of the above'):
+                        opts.append({'abstain': True, 'key': o, 'text': o})
+                    else:
+                        opts.append(o)
+                q['options'] = opts
+            else:
+                q['options'] = list(options)
+        if target is not None:
+            q['gold'] = self._remap_target(kind, options, target)
+
+        synthetic = {'state': state, 'questions': [q], 'answers': {}}
+        if target is not None:
+            # answers keyed by integer index (matching list enumerate in _question_items)
+            synthetic['answers'] = {0: q['gold']}
+
+        state_out, questions_out = self.delegate.parse_record(synthetic)
+        if not questions_out:
+            return None
+        # Apply schema augmentation between parse_record and _build_row (uses base class _augment).
+        state_out, questions_out = self._augment(state_out, questions_out)
+        return self.delegate._build_row(synthetic, state_out, questions_out)
+
+    @staticmethod
+    def _decode_state(state: Any) -> Any:
+        if isinstance(state, str):
+            try:
+                return json.loads(state)
+            except (json.JSONDecodeError, TypeError):
+                return state
+        return state
+
+    def _remap_target(self, kind: str, options: Optional[List[str]],
+                      target: List[float]) -> List[float]:
+        if not isinstance(target, (list, tuple)):
+            return target
+        target = [float(x) for x in target]
+        if options is None:
+            return target
+
+        if isinstance(self.delegate, JevPreprocessor):
+            canonical = self.delegate.default_options(kind)
+            if canonical is not None:
+                return self._reorder_target(options, target, canonical)
+            return target
+
+        if isinstance(self.delegate, ClefPreprocessor):
+            if kind == 'noul':
+                return self._reorder_target(options, target, ['true', 'false'])
+            if kind == 'choice':
+                criteria = {opt: '' for opt in options}
+                return self._reorder_target(options, target, _clef_option_ids('choice', criteria))
+            return target
+
+        if isinstance(self.delegate, OmniJevPreprocessor):
+            if kind == 'noul':
+                return self._reorder_target(options, target, ['yes', 'no'])
+            if kind == 'choice':
+                has_abstain = any(
+                    str(o).strip().lower() in ('abstain', 'none', 'none of the above')
+                    for o in options)
+                if has_abstain:
+                    canonical = [str(o) for o in options
+                                if str(o).strip().lower() not in ('abstain', 'none', 'none of the above')]
+                    canonical.append('abstain')
+                    return self._reorder_target(options, target, canonical)
+                return list(target) + [0.0]
+            return target
+
+        return target
+
+    @classmethod
+    def _reorder_target(cls, src_options: List[str], src_target: List[float],
+                        dst_options: List[str]) -> List[float]:
+
+        def _norm(opt: str) -> str:
+            key = str(opt).strip().lower()
+            return cls._JEV_SYNONYMS.get(key, key)
+
+        src_norm = {_norm(opt): prob for opt, prob in zip(src_options, src_target)}
+
+        result = [src_norm.get(_norm(dst), 0.0) for dst in dst_options]
+
+        total = sum(result)
+        if total > 0 and abs(total - 1.0) > 1e-6:
+            result = [p / total for p in result]
+        return result
+
+
+_open_jev_subsets = [
+    'release-v2-redistributable',
+    'browser-drone-expansion-v1-redistributable',
+    'citation-control-v1',
+    'entity-alignment-control-v1',
+    'amount-extraction-control-v1',
+    'email-selection-control-v1',
+    'phone-extraction-control-v1',
+    'context-retention-control-v1',
+    'sponsor-segment-control-v1',
+    'silent-failure-control-v1',
+    'ir-control-v1',
+    'mailroom-control-v1',
+]
+
+# Open-Jev (v1)
+register_dataset(
+    DatasetMeta(
+        dataset_name='open_jev_jev',
+        ms_dataset_id='ZefanCai/Open-Jev',
+        subsets=_open_jev_subsets,
+        split=['train'],
+        preprocess_func=OpenJevPreprocessor(JevPreprocessor()),
+        tags=['decision', 'jev', '🔥']))
+
+register_dataset(
+    DatasetMeta(
+        dataset_name='open_jev_clef',
+        ms_dataset_id='ZefanCai/Open-Jev',
+        subsets=_open_jev_subsets,
+        split=['train'],
+        preprocess_func=OpenJevPreprocessor(ClefPreprocessor()),
+        tags=['decision', 'clef', '🔥']))
+
+register_dataset(
+    DatasetMeta(
+        dataset_name='open_jev_omnijev',
+        ms_dataset_id='ZefanCai/Open-Jev',
+        subsets=_open_jev_subsets,
+        split=['train'],
+        preprocess_func=OpenJevPreprocessor(OmniJevPreprocessor()),
+        tags=['decision', 'omnijev']))
+
+# Open-Jev-v1.1
+register_dataset(
+    DatasetMeta(
+        dataset_name='open_jev_jev_v11',
+        ms_dataset_id='ZefanCai/Open-Jev-v1.1',
+        subsets=['community-hard-mix-v2-redistributable'],
+        split=['train'],
+        preprocess_func=OpenJevPreprocessor(JevPreprocessor()),
+        tags=['decision', 'jev', '🔥']))
+
+register_dataset(
+    DatasetMeta(
+        dataset_name='open_jev_clef_v11',
+        ms_dataset_id='ZefanCai/Open-Jev-v1.1',
+        subsets=['community-hard-mix-v2-redistributable'],
+        split=['train'],
+        preprocess_func=OpenJevPreprocessor(ClefPreprocessor()),
+        tags=['decision', 'clef', '🔥']))
+
+register_dataset(
+    DatasetMeta(
+        dataset_name='open_jev_omnijev_v11',
+        ms_dataset_id='ZefanCai/Open-Jev-v1.1',
+        subsets=['community-hard-mix-v2-redistributable'],
+        split=['train'],
+        preprocess_func=OpenJevPreprocessor(OmniJevPreprocessor()),
+        tags=['decision', 'omnijev']))
