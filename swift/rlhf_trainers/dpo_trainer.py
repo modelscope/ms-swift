@@ -269,11 +269,12 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
         elif loss_type == 'exo_pair':
             import math
-            if self.label_smoothing == 0:
-                self.label_smoothing = 1e-3
-            losses = (self.beta * logits).sigmoid() * (F.logsigmoid(
-                self.beta * logits) - math.log(1 - self.label_smoothing)) + (-self.beta * logits).sigmoid() * (
-                    F.logsigmoid(-self.beta * logits) - math.log(self.label_smoothing))
+
+            # EXO needs positive smoothing without changing the other losses in a mixture.
+            label_smoothing = self.label_smoothing if self.label_smoothing != 0 else 1e-3
+            losses = (self.beta * logits).sigmoid() * (
+                F.logsigmoid(self.beta * logits) - math.log(1 - label_smoothing)) + (-self.beta * logits).sigmoid() * (
+                    F.logsigmoid(-self.beta * logits) - math.log(label_smoothing))
 
         elif loss_type == 'hinge':
             losses = torch.relu(1 - self.beta * logits)
