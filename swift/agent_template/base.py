@@ -186,6 +186,17 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
         """
         return tool_content
 
+    def _tool_call_prefix_absorbs_content(self, pre_message) -> bool:
+        """Whether the prefix hook re-emits the preceding assistant content.
+
+        Return True only when `_add_tool_call_prefix` returns the preceding
+        assistant content as part of its output (Qwen3.5/3.6). The encoder then
+        replaces that message together with the tool_call block, so the content
+        renders once instead of twice. Prefix-only overrides (separator or
+        channel-close tokens, e.g. DeepSeek v4, Kimi K3) keep the default False.
+        """
+        return False
+
     @staticmethod
     def _get_tool_name(tool):
         return tool.get('name_for_model') or tool.get('name')

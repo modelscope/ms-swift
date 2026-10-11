@@ -365,8 +365,19 @@ class Template(ProcessorMixin):
                     for key in ['loss', 'loss_scale']:
                         if key in msg and key not in merged_message:
                             merged_message[key] = msg[key]
-                messages[i_start:i + 1] = [merged_message]
-                i = i_start + 1
+                # A prefix that re-emits the preceding assistant content must not leave the
+                # original message in place, or that content renders twice: the merged turn
+                # replaces both the preceding assistant message and the tool_call block.
+                if (pre_message is not None and pre_message['role'] == 'assistant'
+                        and agent_template._tool_call_prefix_absorbs_content(pre_message)):
+                    for key in ['loss', 'loss_scale']:
+                        if key in pre_message and key not in merged_message:
+                            merged_message[key] = pre_message[key]
+                    messages[i_start - 1:i + 1] = [merged_message]
+                    i = i_start
+                else:
+                    messages[i_start:i + 1] = [merged_message]
+                    i = i_start + 1
             else:
                 i += 1
 
@@ -1272,7 +1283,7 @@ class Template(ProcessorMixin):
             # Otherwise, process all messages (start_idx = -1 means start from the beginning)
             if ((not self.is_training or self.loss_scale.base_strategy == 'last_round')
                     and not self.template_meta.preserve_thinking):
-                start_idx = get_last_user_round(messages)
+                start_idx = get_last_user_round(messages, include_tool=False)
             else:
                 start_idx = -1
             for i, message in enumerate(messages):
@@ -1296,7 +1307,11 @@ class Template(ProcessorMixin):
     def _remove_history_thinking(self, inputs) -> None:
         messages = inputs.messages
         # Delete the previous 'think' entries from the messages.
-        last_user_round = get_last_user_round(messages)
+        # Use the last *user* message as the boundary (not tool), to match the
+        # official Qwen3.5/3.6 chat_template.jinja and avoid stripping reasoning
+        # from the current agent round (which has tool messages between the
+        # user prompt and the assistant turn). See #10255.
+        last_user_round = get_last_user_round(messages, include_tool=False)
         for i, message in enumerate(messages):
             # Delete the content before '</think>' in all assistant turns except the last round.
             if message['role'] == 'assistant' and i < last_user_round:
