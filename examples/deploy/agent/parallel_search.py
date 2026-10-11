@@ -14,6 +14,7 @@ from openai import AsyncOpenAI
 MCP_URL = 'https://search.parallel.ai/mcp'
 USER_AGENT = 'ms-swift/parallel-search-example'
 TOOL_NAMES = {'web_search', 'web_fetch'}
+MAX_TOOL_CHARS = 8000
 
 
 @asynccontextmanager
@@ -82,12 +83,16 @@ async def run_agent(client, session, model, question, max_steps=6):
         response = await client.chat.completions.create(
             model=model, messages=messages, tools=tools, max_tokens=1024, temperature=0)
         message = response.choices[0].message
-        messages.append(message.model_dump(include={'role', 'content', 'tool_calls'}, exclude_none=True))
         if not message.tool_calls:
             return message.content or ''
+        # SWIFT also returns template-formatted calls in content. Structured calls
+        # alone let the server reconstruct them without duplicating that content.
+        messages.append(message.model_dump(include={'role', 'tool_calls'}, exclude_none=True))
         for call in message.tool_calls:
             result = await call_tool(session, call.function.name, json.loads(call.function.arguments), session_id,
                                      model)
+            if len(result) > MAX_TOOL_CHARS:
+                result = result[:MAX_TOOL_CHARS] + '\n[Tool output truncated.]'
             messages.append({'role': 'tool', 'tool_call_id': call.id, 'content': result})
     raise RuntimeError(f'Agent did not finish within {max_steps} model calls.')
 

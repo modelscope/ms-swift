@@ -49,6 +49,8 @@ Use `--base-url` for another SWIFT server and `--model` for its served model ID.
 The model must support tool calling, with an appropriate `--agent_template` on
 the server. Whether it searches, fetches, or answers directly depends on the model.
 Tool errors and timeouts stop the example; it does not retry rate-limited calls.
+Agent tool results are capped at 8,000 characters per call, with a truncation
+marker. Direct `--search` and `--fetch` commands print the full tool response.
 Only `web_search` and `web_fetch` are dispatched. Web content is sent to the model
 as tool results, so do not include private information in search questions.
 

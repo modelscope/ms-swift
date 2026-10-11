@@ -59,6 +59,8 @@ class ParallelSearchTest(unittest.IsolatedAsyncioTestCase):
             elif method == 'tools/call':
                 name = body['params']['name']
                 result = {'content': [{'type': 'text', 'text': f'{name}: https://example.com/swift Deployment guide'}]}
+                if name == 'web_fetch':
+                    result['content'][0]['text'] += 'x' * 9000
             else:
                 self.fail(f'Unexpected MCP method: {method}')
             return httpx.Response(200, json={'jsonrpc': '2.0', 'id': body['id'], 'result': result})
@@ -80,7 +82,7 @@ class ParallelSearchTest(unittest.IsolatedAsyncioTestCase):
                     'role':
                     'assistant',
                     'content':
-                    None,
+                    '<tool_call>raw SWIFT template call</tool_call>',
                     'tool_calls': [{
                         'id': tool_ids[step - 1],
                         'type': 'function',
@@ -129,6 +131,9 @@ class ParallelSearchTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(
             all('Deployment guide' in message['content'] for message in history if message['role'] == 'tool'))
         self.assertEqual(history[2]['tool_calls'][0]['id'], 'search-call')
+        self.assertNotIn('content', history[2])
+        self.assertTrue(history[-1]['content'].endswith('[Tool output truncated.]'))
+        self.assertLess(len(history[-1]['content']), parallel_search.MAX_TOOL_CHARS + 30)
 
     async def test_tool_errors_empty_results_and_unknown_tools(self):
 
