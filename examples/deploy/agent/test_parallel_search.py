@@ -131,7 +131,7 @@ class ParallelSearchTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(
             all('Deployment guide' in message['content'] for message in history if message['role'] == 'tool'))
         self.assertEqual(history[2]['tool_calls'][0]['id'], 'search-call')
-        self.assertNotIn('content', history[2])
+        self.assertIsNone(history[2]['content'])
         self.assertTrue(history[-1]['content'].endswith('[Tool output truncated.]'))
         self.assertLess(len(history[-1]['content']), parallel_search.MAX_TOOL_CHARS + 30)
 

@@ -87,7 +87,9 @@ async def run_agent(client, session, model, question, max_steps=6):
             return message.content or ''
         # SWIFT also returns template-formatted calls in content. Structured calls
         # alone let the server reconstruct them without duplicating that content.
-        messages.append(message.model_dump(include={'role', 'tool_calls'}, exclude_none=True))
+        action = message.model_dump(include={'role', 'tool_calls'}, exclude_none=True)
+        action['content'] = None
+        messages.append(action)
         for call in message.tool_calls:
             result = await call_tool(session, call.function.name, json.loads(call.function.arguments), session_id,
                                      model)
