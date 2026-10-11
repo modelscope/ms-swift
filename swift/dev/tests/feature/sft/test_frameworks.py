@@ -5,7 +5,8 @@ The other files in this suite hold the backend fixed (the plain twinkle ``Transf
 the task_type / inputs. This one varies the framework that builds and drives the model:
 
   - **liger** -- ``TrainConfig.use_liger_kernel`` patches the HF decoder's per-layer ops (rms_norm /
-    rotary / swiglu / ...) in place via ``twinkle.kernel.kernelize`` (builders/model.py::_apply_liger_kernel),
+    rotary / swiglu / ...) in place via ``twinkle.kernel.kernelize`` (gated worker-side in
+    ``TransformersModel._apply_liger_kernel``, reached through the constructor kwarg),
     and the op-level ``liger_kernel_config['fused_linear_cross_entropy']`` additionally swaps the loss to
     Liger's fused lm_head+CE kernel, which the recipe pairs with ``loop_task='fused_lm_ce'`` so the
     forward skips the lm_head GEMM (recipe/run_sft.py::liger_fused_ce_enabled). Both paths are driven
@@ -78,7 +79,8 @@ def _run_causal_lm(model_path, data_path, out_dir, train_config):
 def test_run_sft_liger_kernel_end_to_end(tmp_path, text_model_path, assert_trained, write_jsonl):
     """use_liger_kernel: the per-layer Liger op kernels replace the eager HF ops and still train.
 
-    ``_apply_liger_kernel`` kernelizes ``model.model`` in place (rms_norm / rotary / swiglu / ...), so a
+    ``TransformersModel._apply_liger_kernel`` kernelizes the HF module in place worker-side (rms_norm /
+    rotary / swiglu / ...), so a
     finite, normalized loss over a few steps means the patched forward/backward is numerically sound --
     a broken kernel substitution would NaN or diverge rather than silently pass.
     """

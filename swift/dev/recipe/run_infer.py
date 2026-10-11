@@ -271,13 +271,16 @@ def _run_generative(
     # atomic finalize); a plain 'all' run uses the incremental writer, which also gathers across DP
     # ranks. An existing complete checkpoint output short-circuits the run unless override_exist_file,
     # so re-running a finished job is a no-op.
-    # store_format='arrow' serialises once at finish (no incremental checkpoint), so it never uses the
-    # resumable writer; validate_infer_config has already rejected arrow+resume. A 'dpo' run that picks
-    # arrow forfeits its crash-safe checkpointing -- say so rather than let the choice pass silently.
-    if infer_config.store_format == 'arrow' and output_format == 'dpo':
-        logger.warning("output_format='dpo' with store_format='arrow' writes one Arrow table at the end, so it "
-                       'cannot checkpoint/resume a long best-of-n run; use --store_format jsonl for that.')
-    use_checkpoint = (bool(output_path) and infer_config.store_format != 'arrow'
+    # Only jsonl has those incremental/resumable line writers; any other writable store_format serialises
+    # once at finish (no checkpoint), so it never uses the resumable writer -- validate_infer_config has
+    # already rejected a non-jsonl format together with resume. A 'dpo' run that picks one forfeits its
+    # crash-safe checkpointing -- say so rather than let the choice pass silently.
+    is_line_format = infer_config.store_format == 'jsonl'
+    if not is_line_format and output_format == 'dpo':
+        logger.warning(f"output_format='dpo' with store_format={infer_config.store_format!r} writes one store "
+                       'at the end, so it cannot checkpoint/resume a long best-of-n run; use --store_format '
+                       'jsonl for that.')
+    use_checkpoint = (bool(output_path) and is_line_format
                       and (output_format == 'dpo' or infer_config.resume))
     if use_checkpoint:
         probe = _CheckpointPaths(os.path.dirname(output_path) or 'output', os.path.basename(output_path))
@@ -339,8 +342,8 @@ def _run_generative(
 
     batches = _plan_batches(len(rows), infer_config.batch_size, infer_config.max_batches)
     params = to_sampling_params(generation_config, num_samples=num_return)
-    if infer_config.store_format == 'arrow' and output_path:
-        writer = _ArrowWriter(output_path, infer_config.store_fields)
+    if output_path and not is_line_format:
+        writer = _BatchWriter(output_path, infer_config.store_format, infer_config.store_fields)
     elif use_checkpoint:
         writer = _CheckpointWriter(output_path, infer_config.resume)
     else:
@@ -1127,25 +1130,32 @@ class _CheckpointWriter:
         logger.info(f'run_infer: wrote {self.paths.final}')
 
 
-class _ArrowWriter:
-    """Write the run's rows as one Arrow ``save_to_disk`` table at the end, via the shared store writer.
+class _BatchWriter:
+    """Write the run's rows as one store at the end, via the shared registry, for any non-jsonl format.
 
-    The ``store_format='arrow'`` counterpart of :class:`_IncrementalWriter`: same emit surface, but the
-    rows are serialised once at :meth:`finish` into the directly-trainable container ``swift export
-    --to_cached_dataset`` also produces (:mod:`swift.dev.dataset.store`). There is no incremental flush, so
-    a crash loses the run -- which is why ``store_format='arrow'`` is rejected together with ``resume``
-    (:func:`swift.dev.config.validate.validate_infer_config`).
+    The batch counterpart of :class:`_IncrementalWriter`: same emit surface, but the rows are serialised
+    once at :meth:`finish` through :func:`~swift.dev.dataset.write_dataset_store` into whichever container
+    ``store_format`` names -- ``arrow`` by default, or any writable format a ``@register_storage`` plugin
+    added -- the same store ``swift export --to_cached_dataset`` produces
+    (:mod:`swift.dev.dataset.storage`). There is no incremental flush, so a crash loses the run -- which is
+    why any non-jsonl ``store_format`` is rejected together with ``resume``
+    (:func:`swift.dev.config.validate.validate_infer_config`). jsonl keeps its own resumable line writers
+    (:class:`_IncrementalWriter` / :class:`_CheckpointWriter`) instead of coming through here.
 
     The token payload stays in the NPZ sidecar the rows reference via ``rollout_tokens``; inlining those
-    arrays as Arrow list columns belongs to the offline-RL reader (a later phase), so this phase unifies
-    the container, not the token layout.
+    arrays as native columns belongs to the offline-RL reader (a later phase), so this unifies the
+    container, not the token layout.
     """
 
-    def __init__(self, output_path: str, store_fields: Optional[List[str]] = None):
-        # The Arrow store is a directory; derive it from the jsonl path so the pair sits together and the
-        # sidecar-relative ``rollout_tokens`` paths embedded in the rows stay valid.
+    def __init__(self, output_path: str, store_format: str, store_fields: Optional[List[str]] = None):
+        # The store sits beside the jsonl name the user gave: strip a trailing ``.jsonl`` and append the
+        # format's own suffix, so the sidecar-relative ``rollout_tokens`` paths embedded in the rows stay
+        # valid. A directory format has no ``store_suffix`` (arrow is detected by shape, not name), so it
+        # takes the format name as its marker -- ``arrow`` -> ``X.arrow`` -- preserving the existing path.
+        from swift.dev.dataset.storage import STORAGE_MAPPING
         base = output_path[:-len('.jsonl')] if output_path.endswith('.jsonl') else output_path
-        self.arrow_path = base + '.arrow'
+        self.store_path = base + (STORAGE_MAPPING[store_format]().store_suffix or f'.{store_format}')
+        self.store_format = store_format
         self.store_fields = store_fields
 
     def skip(self, index: int) -> bool:
@@ -1162,7 +1172,7 @@ class _ArrowWriter:
         if rows is None:
             return  # not the writing rank under DP
         from swift.dev.dataset import write_dataset_store
-        write_dataset_store(rows, self.arrow_path, backend='arrow', fields=self.store_fields)
+        write_dataset_store(rows, self.store_path, backend=self.store_format, fields=self.store_fields)
 
 
 def _gather_rows(rows: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:

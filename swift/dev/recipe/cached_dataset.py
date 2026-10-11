@@ -123,12 +123,15 @@ def _encode_and_save(raw, template, dataset_config: DatasetConfig, encode_mode: 
                      store_fields: Optional[List[str]] = None) -> Optional[str]:
     """Encode one split and save it to ``output_dir/name``; returns the path (None if no split).
 
-    The write goes through :func:`~swift.dev.dataset.store.write_dataset_store`, the one serialiser shared
-    with ``swift infer``. ``arrow`` (the default) writes a ``save_to_disk`` directory; ``jsonl`` writes a
-    single ``.jsonl`` file, so the returned path carries the extension a reader detects the backend from.
+    The write goes through :func:`~swift.dev.dataset.storage.write_dataset_store`, the one serialiser shared
+    with ``swift infer``. The store path is derived by :func:`~swift.dev.dataset.storage.store_path` from the
+    format's ``store_suffix``: ``arrow`` (the default) writes a ``save_to_disk`` directory with no suffix, so a
+    cache produced here stays interchangeable with legacy's exporter; ``jsonl`` appends ``.jsonl``, giving a
+    single file a reader detects the backend from. A custom writable format contributes its own suffix.
     """
     from swift.dev.builders.dataset import _encode
     from swift.dev.dataset import write_dataset_store
+    from swift.dev.dataset.storage import store_path
 
     if raw is None:
         return None
@@ -140,9 +143,7 @@ def _encode_and_save(raw, template, dataset_config: DatasetConfig, encode_mode: 
         strict=dataset_config.strict,
         data_seed=dataset_config.data_seed,
         materialize=store_encoded)
-    path = os.path.join(output_dir, name)
-    if store_format == 'jsonl':
-        path += '.jsonl'
+    path = store_path(os.path.join(output_dir, name), store_format)
     write_dataset_store(enc, path, backend=store_format, fields=store_fields)
     logger.info(f'cached_dataset: `{path}` ({len(enc)} rows)')
     return path

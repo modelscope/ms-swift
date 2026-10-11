@@ -17,7 +17,7 @@ import os
 from contextlib import contextmanager
 from typing import List, Literal, Optional
 
-from .env import use_hf_hub
+from .env import dataset_offline, use_hf_hub
 from .logger import get_logger
 
 logger = get_logger()
@@ -34,6 +34,169 @@ def _ms_logger_context(level):
         yield
     finally:
         ms_logger.setLevel(origin_level)
+
+
+@contextmanager
+def _forced_offline():
+    """Force every hub access layer into offline mode for the duration of the block.
+
+    Two kinds of switch are set together, because the readers differ:
+
+    * env vars ``HF_DATASETS_OFFLINE`` / ``HF_HUB_OFFLINE`` -- picked up by late imports, subprocesses
+      and modelscope's env-based checks;
+    * the in-process module flags that ``datasets`` and ``huggingface_hub`` read *dynamically at call
+      time*: ``datasets.config.HF_HUB_OFFLINE`` (consulted by ``_raise_if_offline_mode_is_enabled`` and
+      the ``CachedDatasetModuleFactory`` fallback) and ``huggingface_hub.constants.HF_HUB_OFFLINE``
+      (consulted by ``is_offline_mode()``). ``datasets.config.HF_DATASETS_OFFLINE`` is deliberately not
+      touched: it is an import-time alias no runtime path reads.
+
+    All imports are lazy so importing this module never pulls in the heavy hub stacks. Previous values
+    are restored in ``finally`` -- including deleting env keys that did not exist before -- so a failed
+    offline load leaves no residue that could poison a later online load.
+    """
+    import datasets.config as ds_config
+    import huggingface_hub.constants as hf_constants
+
+    env_keys = ('HF_DATASETS_OFFLINE', 'HF_HUB_OFFLINE')
+    saved_env = {key: os.environ.get(key) for key in env_keys}
+    saved_ds_offline = ds_config.HF_HUB_OFFLINE
+    saved_hf_offline = hf_constants.HF_HUB_OFFLINE
+    try:
+        for key in env_keys:
+            os.environ[key] = '1'
+        ds_config.HF_HUB_OFFLINE = True
+        hf_constants.HF_HUB_OFFLINE = True
+        yield
+    finally:
+        for key in env_keys:
+            saved = saved_env[key]
+            if saved is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = saved
+        ds_config.HF_HUB_OFFLINE = saved_ds_offline
+        hf_constants.HF_HUB_OFFLINE = saved_hf_offline
+
+
+def _is_network_error(exc: BaseException) -> bool:
+    """Whether ``exc`` from a hub load is a *connectivity* failure (eligible for offline cache fallback)
+    rather than a *real* error (missing repo / auth / gated) that must propagate untouched.
+
+    Precedence is deliberate and each step exists to kill a specific misclassification:
+
+    1. connectivity types first -- ``LocalEntryNotFoundError`` subclasses ``EntryNotFoundError`` (a real
+       error), so the specific offline/connectivity type must be matched before its parent, otherwise a
+       cold-cache offline failure would be read as "genuinely absent" and never retried;
+    2. real-error types next -- a true 404 / auth / gated failure is never retried as offline;
+    3. message keywords, only for hub-specific errors whose type we do not know (e.g. modelscope-native
+       resolution failures), scanning real-error keywords before connectivity keywords so a 404 message
+       is never swept into the network bucket;
+    4. anything unrecognized counts as a real error -- fail loudly, never silently mask it as offline.
+    """
+    import socket
+
+    import requests.exceptions as req_exc
+    from datasets import exceptions as ds_exceptions
+    from huggingface_hub import errors as hf_errors
+
+    network_types = (
+        ConnectionError,  # builtin; also catches hf OfflineModeIsEnabled and modelscope's wrapped error
+        socket.gaierror,
+        socket.timeout,
+        req_exc.ConnectionError,
+        req_exc.ConnectTimeout,
+        req_exc.ReadTimeout,
+        req_exc.Timeout,
+        hf_errors.LocalEntryNotFoundError,
+        hf_errors.OfflineModeIsEnabled,
+    )
+    if isinstance(exc, network_types):
+        return True
+
+    real_types = (
+        ds_exceptions.DatasetNotFoundError,
+        hf_errors.RepositoryNotFoundError,
+        hf_errors.EntryNotFoundError,
+        hf_errors.GatedRepoError,
+    )
+    if isinstance(exc, real_types):
+        return False
+
+    msg = str(exc).lower()
+    real_keywords = ('401', '403', '404', 'gated', 'private', 'unauthorized', 'forbidden', 'auth')
+    if any(keyword in msg for keyword in real_keywords):
+        return False
+    network_keywords = ('connection', 'timed out', 'timeout', 'name or service not known',
+                        'name resolution', 'failed to resolve', 'unreachable', 'getaddrinfo',
+                        'max retries', "couldn't reach", 'offline', 'temporary failure', 'network')
+    if any(keyword in msg for keyword in network_keywords):
+        return True
+    return False
+
+
+def _offline_cache_error(describe: str, exc: BaseException) -> Exception:
+    """The fail-loudly error for "offline and this dataset is not in the local cache".
+
+    Names the dataset and the two ways out (download once while online, or point ``--dataset`` at the
+    local copy), and chains the underlying exception so the low-level cause is still inspectable.
+    """
+    return ConnectionError(
+        f'Cannot load dataset {describe} offline: it is not present in the local cache '
+        f'({type(exc).__name__}: {exc}). Either connect once and load it so it gets cached, '
+        f'or point --dataset at the local directory/file that already holds it.')
+
+
+def _load_with_cache_fallback(online_fn, offline_fn, *, describe: str):
+    """Run a hub dataset load, transparently falling back to the local cache when the network is down.
+
+    Two callables rather than one, because on ModelScope the online and the offline load are different
+    operations:
+
+    * ``online_fn`` -- the normal hub load (``MsDataset.load`` on ModelScope, ``datasets.load_dataset``
+      on HuggingFace);
+    * ``offline_fn`` -- loads straight from the local cache through ``datasets.load_dataset(...,
+      cache_dir=<hub cache>)`` under the forced-offline mode this wrapper sets, which routes to
+      datasets' ``CachedDatasetModuleFactory``. On ModelScope it deliberately does *not* re-invoke
+      ``MsDataset.load``: that loader resolves the repo over the network first (``get_repo_info``) and
+      so never reaches modelscope's own cache fallback when offline. Going through ``datasets`` against
+      ``MS_DATASETS_CACHE`` reproduces exactly the ``CachedDatasetModuleFactory(path,
+      cache_dir=MS_DATASETS_CACHE)`` modelscope would have fallen back to, minus the unreachable
+      network prelude.
+
+    Policy:
+
+    * explicit offline env -> take the fast path: force offline and load straight from cache, never
+      opening a socket;
+    * otherwise try the normal (online) load; if -- and only if -- it fails with a *connectivity* error,
+      retry once against the local cache with offline mode forced;
+    * a real error (missing repo / auth / gated) propagates untouched and is never retried as offline;
+    * if the offline attempt also fails (cache miss), raise a clear, actionable error rather than
+      letting a cryptic low-level exception escape.
+
+    Args:
+        online_fn: zero-arg callable performing the normal (online) hub load.
+        offline_fn: zero-arg callable loading from the local cache under forced-offline mode.
+        describe: human-readable dataset identity used in log/error messages.
+    """
+    if dataset_offline():
+        with _forced_offline():
+            try:
+                return offline_fn()
+            except Exception as exc:
+                raise _offline_cache_error(describe, exc) from exc
+
+    try:
+        return online_fn()
+    except Exception as exc:
+        if not _is_network_error(exc):
+            raise
+        logger.warning(f'Failed to reach the hub for {describe} ({type(exc).__name__}: {exc}); '
+                       f'falling back to the local dataset cache.')
+        with _forced_offline():
+            try:
+                return offline_fn()
+            except Exception as retry_exc:
+                raise _offline_cache_error(describe, retry_exc) from retry_exc
 
 
 class MSHub:
@@ -70,16 +233,39 @@ class MSHub:
         load_kwargs = {}
         if version.parse(modelscope.__version__) >= version.parse('1.29.1'):
             load_kwargs['trust_remote_code'] = True
-        with _ms_logger_context(logging.ERROR):
-            return MsDataset.load(
+
+        def online_fn():
+            with _ms_logger_context(logging.ERROR):
+                return MsDataset.load(
+                    dataset_id,
+                    subset_name=subset_name,
+                    split=split,
+                    version=revision,
+                    download_mode=download_mode,
+                    use_streaming=streaming,
+                    **load_kwargs,
+                )
+
+        def offline_fn():
+            # MsDataset.load cannot be reused offline: it resolves the repo over the network first and
+            # never reaches modelscope's cache fallback. Load through datasets against the ModelScope
+            # dataset cache instead -- the same CachedDatasetModuleFactory(path, MS_DATASETS_CACHE) that
+            # modelscope's loader falls back to, just without the unreachable network prelude. revision
+            # and download_mode are dropped: the cache scan ignores them, and only an already-cached
+            # build can be served offline.
+            from datasets import load_dataset
+            from modelscope.utils.config_ds import MS_DATASETS_CACHE
+            return load_dataset(
                 dataset_id,
-                subset_name=subset_name,
+                name=subset_name,
                 split=split,
-                version=revision,
-                download_mode=download_mode,
-                use_streaming=streaming,
+                streaming=streaming,
+                cache_dir=MS_DATASETS_CACHE,
                 **load_kwargs,
             )
+
+        return _load_with_cache_fallback(
+            online_fn, offline_fn, describe=f'ms://{dataset_id}:{subset_name}#{split}')
 
     @classmethod
     def download_model(cls,
@@ -115,15 +301,33 @@ class HFHub:
         from datasets import load_dataset
         if revision is None or revision == 'master':
             revision = 'main'
-        return load_dataset(
-            dataset_id,
-            name=subset_name,
-            split=split,
-            streaming=streaming,
-            revision=revision,
-            download_mode=download_mode,
-            num_proc=num_proc,
-            trust_remote_code=True)
+
+        def online_fn():
+            return load_dataset(
+                dataset_id,
+                name=subset_name,
+                split=split,
+                streaming=streaming,
+                revision=revision,
+                download_mode=download_mode,
+                num_proc=num_proc,
+                trust_remote_code=True)
+
+        def offline_fn():
+            # Same loader as online, but the forced-offline mode set by the fallback wrapper makes
+            # datasets resolve the id through CachedDatasetModuleFactory against the default
+            # HF_DATASETS_CACHE instead of reaching the Hub. revision/download_mode are dropped: the
+            # cache scan ignores them, and only the already-cached build can be served offline.
+            return load_dataset(
+                dataset_id,
+                name=subset_name,
+                split=split,
+                streaming=streaming,
+                num_proc=num_proc,
+                trust_remote_code=True)
+
+        return _load_with_cache_fallback(
+            online_fn, offline_fn, describe=f'hf://{dataset_id}:{subset_name}#{split}')
 
     @classmethod
     def download_model(cls,

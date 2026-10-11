@@ -158,7 +158,7 @@ class StreamingPPOLoop(StreamingLoopMixin, PPOLoop):
 
     def _assembly_ready(self, buffer) -> Optional[List]:
         """PPO pulls INDIVIDUAL SAMPLES (per-token GAE against the critic has no group contract)."""
-        return self._assembly_ready_ppo(buffer)
+        return self._assembly_ready_no_group(buffer)
 
     def _streaming_unit_size(self) -> int:
         """One PPO recorded step consumes ``train_batch_size * ga`` rows (its mini-batch geometry)."""

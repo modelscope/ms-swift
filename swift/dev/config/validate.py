@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from swift.dev.config import (
         CheckpointConfig,
+        ConvertConfig,
         DatasetConfig,
         DistributedConfig,
         InferConfig,
@@ -656,6 +657,10 @@ def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
     """
     if infer_config is None:
         return
+    from swift.dev.dataset.storage import validate_store_format
+    # A store format is an open registry key, so check the name resolves (and is writable) here -- after
+    # --external_plugins has been imported -- rather than after the run has generated rows it cannot write.
+    validate_store_format(infer_config.store_format, writable=True)
     # save_rollout_tokens persists the per-token feature the rollout produced; the message-only ``client``
     # teacher exposes no token IDs or logprobs, so there would be nothing to write. Reject the pairing up
     # front instead of silently emitting rows that carry no token path.
@@ -664,12 +669,28 @@ def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
             "save_rollout_tokens requires a token-capable local backend, but sampler='client' is "
             'message-only (no token IDs or logprobs). Use a local backend (transformers/vllm/sglang) or '
             'drop --save_rollout_tokens.')
-    # store_format='arrow' serialises the whole run once at the end and writes no checkpoint files, so it
-    # cannot continue a previous run -- resume needs the jsonl checkpoint writer's .tmp/.resume/state.
-    if infer_config.store_format == 'arrow' and infer_config.resume:
-        raise ValueError("store_format='arrow' writes one Arrow table at the end of the run and cannot "
-                         'checkpoint, so it cannot be combined with resume=True. Use --store_format jsonl '
-                         'for a resumable run.')
+    # Only jsonl has an incremental checkpoint writer (.tmp/.resume/state); every other writable format
+    # serialises the whole run once at the end and writes no checkpoint, so it cannot continue a previous
+    # run. Reject resume with any non-jsonl store rather than silently discarding the resume request.
+    if infer_config.store_format != 'jsonl' and infer_config.resume:
+        raise ValueError(f"store_format={infer_config.store_format!r} writes the whole run once at the end "
+                         'and cannot checkpoint, so it cannot be combined with resume=True. Use '
+                         '--store_format jsonl for a resumable run.')
+
+
+def validate_convert_config(convert_config: Optional['ConvertConfig']) -> None:
+    """Validate the export-side store choice, but only where a store is actually written.
+
+    ``store_format`` is consumed solely by ``--to_cached_dataset``; the other export directions (merge /
+    quantize / to_hf / to_mcore) never touch it, so validating it there would reject an unrelated run that
+    merely carries the field's default. Like :func:`validate_infer_config`, this runs after
+    ``--external_plugins`` is imported, so a user-registered writable format passes and a bad or read-only
+    one fails before the encode.
+    """
+    if convert_config is None or not convert_config.to_cached_dataset:
+        return
+    from swift.dev.dataset.storage import validate_store_format
+    validate_store_format(convert_config.store_format, writable=True)
 
 
 #: The GRPO-family ``loss_type`` values dev accepts (each maps onto a twinkle ``GRPOLoss`` subclass via
@@ -1887,7 +1908,6 @@ _MEGATRON_ONLY = (
 
 _HF_ONLY = (
     ('model_config', 'experts_impl', None),
-    ('model_config', 'new_special_tokens', []),
     ('model_config', 'max_memory', None),
     ('model_config', 'local_repo_path', None),
     ('model_config', 'model_kwargs', None),

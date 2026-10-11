@@ -13,7 +13,6 @@ from twinkle_agentic.async_rl.weight_sync import (AdapterSnapshotSync, WeightSyn
                                                   build_weight_sync_strategy)
 
 
-## 这个类干啥用的
 class StreamingLoopMixin:
     """The algorithm-agnostic per-sample streaming half of an online dev loop (composed, not inherited).
 
@@ -432,7 +431,7 @@ class StreamingLoopMixin:
         """The loop's pull rule (GRPO: complete groups; PPO: individual samples)."""
         raise NotImplementedError
 
-    def _assembly_ready_grpo(self, buffer: List[BufferRecord]) -> Optional[List[BufferRecord]]:
+    def _assembly_ready_group(self, buffer: List[BufferRecord]) -> Optional[List[BufferRecord]]:
         """GRPO/RFT pull rule: whole groups, an exact multiple of ``train_batch_size * ga`` rows.
 
         A group is pullable only when ALL ``num_generations`` trajectories of one prompt are buffered
@@ -480,7 +479,7 @@ class StreamingLoopMixin:
             pulled.extend(by_group[key])
         return pulled
 
-    def _assembly_ready_ppo(self, buffer: List[BufferRecord]) -> Optional[List[BufferRecord]]:
+    def _assembly_ready_no_group(self, buffer: List[BufferRecord]) -> Optional[List[BufferRecord]]:
         """PPO/GKD pull rule: individual samples, an exact multiple of ``train_batch_size * ga`` rows.
 
         PPO scores each sample independently (per-token GAE against the critic), so there is no group

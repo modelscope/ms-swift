@@ -55,13 +55,16 @@ class InferConfig:
     #: knob: a reward func set on an 'all' run still scores every candidate and stores its score.
     output_format: Literal['all', 'dpo', 'grpo'] = 'all'
     #: Container the result is written in, orthogonal to ``output_format`` above (that is the row shape,
-    #: this is the serialisation). Shared vocabulary with ``export --to_cached_dataset`` (see
-    #: swift.dev.dataset.store). ``jsonl`` (default) keeps the current line-delimited dump with its
-    #: resumable checkpoint writers and, under ``save_rollout_tokens``, the per-candidate NPZ sidecar.
-    #: ``arrow`` writes one ``save_to_disk`` table at the end of the run through the shared store writer;
-    #: it is not incrementally resumable, so it is rejected together with ``resume``. ``bin`` is a named
-    #: later phase and raises until it exists.
-    store_format: Literal['arrow', 'jsonl', 'bin'] = 'jsonl'
+    #: this is the serialisation). An OPEN registry key, not a closed vocabulary: any format registered in
+    #: ``swift.dev.dataset.storage.STORAGE_MAPPING`` is accepted -- the built-in ``arrow``/``jsonl``/``bin``
+    #: plus anything a ``@register_storage`` subclass adds (loaded via ``--external_plugins``). Shared with
+    #: ``export --to_cached_dataset``. ``jsonl`` (default) keeps the line-delimited dump with its resumable
+    #: checkpoint writers and, under ``save_rollout_tokens``, the per-candidate NPZ sidecar; it is the only
+    #: incrementally-resumable format. Every other writable format (``arrow``, a custom one) serialises the
+    #: whole run once at the end through the shared store writer, so it is rejected together with ``resume``.
+    #: An unregistered or read-only name is refused at config validation (``validate_store_format``), before
+    #: any generation, rather than after the run has produced rows it cannot write.
+    store_format: str = 'jsonl'
     #: Restrict the persisted columns to this allow-list; None keeps every column the emit produced. A
     #: name that matches no column is rejected rather than silently dropped.
     store_fields: Optional[List[str]] = None

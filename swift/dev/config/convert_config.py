@@ -62,11 +62,13 @@ class ConvertConfig:
     #: now: this materialises tokens but not the vision tensors, and a multimodal row needs both stored
     #: together (the guard is all-or-nothing), so the recipe refuses that combo until vision lands too.
     store_encoded: bool = False
-    #: Container the store is written in, shared with ``swift infer`` (see swift.dev.dataset.store).
-    #: ``arrow`` (default) is a single ``save_to_disk`` table, the directly-trainable form; ``jsonl`` is a
-    #: portable line-delimited dump. ``bin`` (the flat mmap pretraining layout) is a named later phase and
-    #: raises until it exists rather than silently falling back.
-    store_format: Literal['arrow', 'jsonl', 'bin'] = 'arrow'
+    #: Container the store is written in, shared with ``swift infer``. An OPEN registry key, not a closed
+    #: vocabulary: any writable format registered in ``swift.dev.dataset.storage.STORAGE_MAPPING`` is
+    #: accepted -- the built-in ``arrow``/``jsonl`` plus anything a ``@register_storage`` subclass adds
+    #: (loaded via ``--external_plugins``). ``arrow`` (default) is a single ``save_to_disk`` table, the
+    #: directly-trainable form; ``jsonl`` is a portable line-delimited dump. An unregistered or read-only
+    #: name (``bin`` is a reserved later phase) is refused at config validation, before any encoding.
+    store_format: str = 'arrow'
     #: Restrict the persisted columns to this allow-list; None keeps every column the encoding produced.
     #: A name that matches no column is rejected rather than silently dropped.
     store_fields: Optional[List[str]] = None

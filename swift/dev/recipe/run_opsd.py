@@ -220,7 +220,8 @@ def run_opsd(
         assembly.model,
         rollout,
         prompts,
-        teacher=_build_opsd_teacher(assembly.model, rl_config, tuner_config, teacher_world_size, distributed_config),
+        teacher=_build_opsd_teacher(assembly.model, assembly.template, rl_config, tuner_config, teacher_world_size,
+                                    distributed_config),
         template=assembly.template,
         prompt_extras=prompt_extras,
         dataset_rows=dataset_rows,
@@ -271,7 +272,7 @@ def _require_teacher_prompt(prompt_extras: List[dict]) -> None:
                          '(see examples/rl/opsd), or use --rl_type gkd for plain distillation.')
 
 
-def _build_opsd_teacher(model: TrainableModel, rl_config: RLConfig, tuner_config: Optional[TunerConfig],
+def _build_opsd_teacher(model: TrainableModel, template: Any, rl_config: RLConfig, tuner_config: Optional[TunerConfig],
                         teacher_world_size: int, distributed_config: DistributedConfig) -> Any:
     """Resolve the OPSD teacher: the student's adapter-disabled base, a frozen Ray-actor model, or dynamic-self.
 
@@ -289,7 +290,6 @@ def _build_opsd_teacher(model: TrainableModel, rl_config: RLConfig, tuner_config
     teacher_model = single_teacher_id(rl_config.teacher_model, algo='OPSD')
     if teacher_model is None:
         return DynamicSelfTeacher(model)
-    template = model.template if hasattr(model, 'template') else None
     return build_frozen_teacher(
         rl_config, template, teacher_model, distributed_config=distributed_config, remote_group=_TEACHER_GROUP,
         teacher_world_size=teacher_world_size, adapters=rl_config.teacher_adapters, role='teacher')

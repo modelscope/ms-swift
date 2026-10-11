@@ -66,7 +66,6 @@ if TYPE_CHECKING:
         TrainConfig,
         TunerConfig,
     )
-    from swift.dev.model import TrainableModel
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +184,7 @@ def run_mopd(
     rollout = SyncableRollout(
         assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
 
-    teacher = _build_mopd_teachers(assembly.model, rl_config, teacher_world_size, distributed_config)
+    teacher = _build_mopd_teachers(assembly.template, rl_config, teacher_world_size, distributed_config)
     # async_mode selects the driver (see run_gkd for the full rationale): the per-sample stream now serves
     # EVERY regime, so MOPD rides it whenever the round is purely on-policy -- 'none' runs StreamingMOPDLoop
     # at max_staleness=0 (drain-before-publish, no overlap) and 'one_step_off' (the only overlapping regime
@@ -257,7 +256,7 @@ def _resolve_teacher_weights(weights: Optional[List[float]], num_teachers: int) 
     return list(weights)
 
 
-def _build_mopd_teachers(model: TrainableModel, rl_config: RLConfig, teacher_world_size: int,
+def _build_mopd_teachers(template: Any, rl_config: RLConfig, teacher_world_size: int,
                          distributed_config: DistributedConfig) -> MultiTeacher:
     """Build the K frozen domain teachers as Ray actors sharing the ``'teacher'`` DeviceGroup.
 
@@ -281,7 +280,6 @@ def _build_mopd_teachers(model: TrainableModel, rl_config: RLConfig, teacher_wor
     if not teacher_models:
         raise ValueError('MOPD needs at least one teacher: set RLConfig.teacher_model to a list of model ids '
                          '(one per domain expert).')
-    template = model.template if hasattr(model, 'template') else None
     # Each of the K teachers is a distinct frozen actor sharing the ONE 'teacher' DeviceGroup, so each needs
     # a distinct instance_id or their Ray actor names collide: twinkle names an actor by group+class+caller
     # +rank, and all K builds come from this same call site into the same group at the same rank.

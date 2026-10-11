@@ -188,7 +188,7 @@ def run_dpo(
         assembly.template,
         rl_type=rl_type,
         reference=_build_reference(
-            assembly.model, rl_config, tuner_config, distributed_config, remote_group=ref_remote_group),
+            assembly.template, rl_config, tuner_config, distributed_config, remote_group=ref_remote_group),
         calculate_kl=bool(rl_config.calculate_KL is not False),
         max_steps=assembly.total_opt_steps,
         num_train_epochs=train_config.num_train_epochs,
@@ -216,7 +216,7 @@ def run_dpo(
     return history
 
 
-def _build_reference(model: TrainableModel,
+def _build_reference(template: Any,
                      rl_config: RLConfig,
                      tuner_config: Optional[TunerConfig],
                      distributed_config: DistributedConfig,
@@ -246,10 +246,10 @@ def _build_reference(model: TrainableModel,
         # policy's already-loaded base (no second copy), so it needs no group and no remote_group.
         return 'disable_lora'
     # Full fine-tuning, or an explicit reference adapter: load a separate frozen reference.
-    return _load_frozen_reference(model, rl_config, distributed_config, remote_group=remote_group)
+    return _load_frozen_reference(template, rl_config, distributed_config, remote_group=remote_group)
 
 
-def _load_frozen_reference(model: TrainableModel,
+def _load_frozen_reference(template: Any,
                            rl_config: RLConfig,
                            distributed_config: DistributedConfig,
                            *,
@@ -283,11 +283,7 @@ def _load_frozen_reference(model: TrainableModel,
     ref_cfg.model_revision = rl_config.ref_model_revision
     ref = build_model(
         ref_cfg, frozen_auxiliary_distributed_config(distributed_config, 1), remote_group=remote_group)
-    return configure_frozen_adapter(
-        ref,
-        model.template if hasattr(model, 'template') else None,
-        rl_config.ref_adapters,
-        role='ref')
+    return configure_frozen_adapter(ref, template, rl_config.ref_adapters, role='ref')
 
 
 class PreferenceLoop:

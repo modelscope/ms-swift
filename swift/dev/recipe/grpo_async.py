@@ -1,55 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Per-sample streaming GRPO driver.
-
-:class:`StreamingGRPOLoop` extends :class:`~swift.dev.recipe.grpo.GRPOLoop` with the unified streaming
-regime: trajectories are admitted ONE AT A TIME on a sampler that (when disaggregated) keeps generating
-while the trainer advances, completions are polled as-completed into the driver's ready buffer, and
-training pulls COMPLETE GROUPS whenever enough are ready -- no fixed batch, no head-of-line blocking on
-the slowest episode of a batch. Every regime is the SAME loop, differing only in the staleness knob:
-``async_mode='none'`` (``max_staleness=0``) drains before it publishes (synchronous), ``'one_step_off'``
-(``max_staleness=1``) overlaps one step, and ``'fully_async'`` runs ``max_staleness`` up to the configured
-bound. A colocated sampler (``async_mode='none'`` on a shared device) additionally sets
-``serialize_generation`` for the exclusive-device hand-over.
-
-It is a DRIVER swap, not a parallel runtime. The loop overrides only :meth:`~GRPOLoop._drive`, which
-delegates the control flow to twinkle's algorithm-agnostic
-:class:`~twinkle_agentic.async_rl.streaming_driver.StreamingDriver`; every scored feature -- ORM/PRM
-rewards, group-relative advantage, MoE routing replay, sampling replay, CHORD, teacher/RLSD
-reweighting, rollout importance sampling -- is inherited unchanged because each pulled batch goes to
-:meth:`GRPOLoop._consume_async_samples`, the same score-and-train half the other drivers use. So the
-streaming regime never forks the feature stack (RL_PLAN's "one loop, every feature" invariant).
-
-The streaming wiring itself -- the config guard matrix, the control-plane / publication construction,
-the :meth:`_drive` that composes the driver, the per-sample submit/poll/collect, both assembly rules
-and the adapter-snapshot save/prune -- is shared with the PPO streaming loop through
-:class:`~swift.dev.recipe._streaming_loop.StreamingLoopMixin` (composed into this loop, not inherited
-instead of :class:`GRPOLoop`). This file therefore keeps only what is GRPO-specific: the constructor
-(which runs the guard before ``super().__init__`` and the control-plane build after it) and the three
-GRPO answers to the mixin's hooks -- the group assembly rule, the unit size (one group =
-``num_generations`` rows per optimizer step) and the step accounting (the ``global_step`` delta, i.e.
-real optimizer steps, which is what the publish cadence counts).
-
-Publication is selected by ``weight_sync_strategy`` (see the mixin for the full mechanism split):
-
-* ``'adapter_snapshot'`` (single LoRA): each trained version is saved as its own LoRA adapter path and
-  every in-flight trajectory is submitted pinned to the version it was admitted under
-  (``submit_sample(adapter_path=...)``), so publishing a new version writes a NEW path and never
-  disturbs a running generation.
-* ``'in_place'`` (full-parameter OR LoRA): the sampler's single live weight copy is overwritten each
-  publish. Because a stream always has trajectories in flight at a publish, this is sound ONLY with
-  partial rollout (``allow_partial_rollout``): ``InPlaceWeightSync`` aborts every in-flight generation
-  BEFORE the overwrite and each resumes from its own tokens on the fresh weights (twinkle's
-  ``PartialRolloutMixin``), so no generation decodes across the update and its recorded logprobs match
-  a single consistent policy version that importance sampling can correct. The guard matrix (here and
-  in ``config.validate``) refuses it without partial rollout.
-
-Runtime note: this delivers the control plane (staleness gate, per-sample version pinning, FIFO window
-publication, as-completed collection, group assembly, drain) over the sampler's per-trajectory
-``submit_sample``/``poll_completions``/``collect_sample`` API. The sampler-side per-version LoRA
-serving, the in-place abort-and-resume, and the real multi-GPU generation/training overlap are
-exercised by the sampler runtime; the authoring-time bar here is AST + real import + the ``validate``
-guard matrix + a control-plane harness.
-"""
 from __future__ import annotations
 
 from typing import List, Optional
@@ -131,7 +80,7 @@ class StreamingGRPOLoop(StreamingLoopMixin, GRPOLoop):
 
     def _assembly_ready(self, buffer) -> Optional[List]:
         """GRPO pulls COMPLETE GROUPS (group-relative advantage needs a prompt's whole generation set)."""
-        return self._assembly_ready_grpo(buffer)
+        return self._assembly_ready_group(buffer)
 
     def _streaming_unit_size(self) -> int:
         """One GRPO optimizer step consumes exactly one group (``num_generations`` rows).

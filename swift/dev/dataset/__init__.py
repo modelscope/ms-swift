@@ -15,7 +15,7 @@ from .loader import (
 )
 from .packing import IterablePackingDataset, PackingDataset
 from .preprocessor import EncodePreprocessor, MeasurePreprocessor, Preprocessor
-from .store import (
+from .storage import (
     CORE_STORE_FIELDS,
     KNOWN_STORE_FIELDS,
     load_dataset_store,

@@ -148,6 +148,10 @@ def process_and_validate_configs(
     if infer_config is not None:
         from .validate import validate_infer_config
         validate_infer_config(infer_config)
+    convert_config = configs.get('convert_config')
+    if convert_config is not None:
+        from .validate import validate_convert_config
+        validate_convert_config(convert_config)
     seed_config = configs.get('train_config') or configs.get('runtime_config')
     bootstrap_run(
         configs['model_config'],

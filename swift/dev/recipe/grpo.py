@@ -1,28 +1,3 @@
-"""Minimal end-to-end GRPO training loop, peer of SFTLoop.
-
-Data flow per step:
-    rollout (RolloutEngine.generate) -> reward -> group-relative advantages
-    -> GRPOLoss forward_backward (GA) -> clip_grad_and_step.
-
-Scope (T1 wired):
-  - reward: `swift.dev.rewards.reward` (L1 API over swift `orms`); a single toy callable is also accepted
-    for smoke tests. Multiple reward funcs + reward_weights supported.
-  - advantage: `swift.dev.rewards.advantage` (L1 API over rl_core: grpo/rloo/reinforce++,
-    group/batch/none/gdpo); estimator/scale read from RLConfig.
-  - only forward_backward / forward_only are used (backend-agnostic).
-
-Weight-sync is delegated to the rollout object, not owned by the loop: every rollout exposes
-``sync_weights`` / ``generate`` / ``finish_generate``, and the loop brackets each blocking rollout with
-:func:`swift.dev.rollout.blocking_generate` (the hand-over in one shared place, ``finish_generate`` in a
-``finally``) rather than hand-writing the pair.
-``run_grpo``'s ``SyncableRollout`` implements them over twinkle's ``CheckpointEngineManager``, pushing
-the trained policy into the sampler BEFORE each rollout so the behaviour policy tracks the trained one
-(correct GRPO). The base ``RolloutEngine`` (the smoke path) implements them as a warn-once no-op, so a
-loop wired to it says out loud that it stays on the INITIAL weights instead of skipping silently (W14).
-
-Advanced paths are explicit in this loop: frozen-reference KL, DAPO dynamic sampling,
-RLSD/SDAR teacher scoring, CHORD auxiliary SFT, and periodic reference synchronization.
-"""
 from __future__ import annotations
 import copy
 import math

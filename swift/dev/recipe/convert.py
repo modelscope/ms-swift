@@ -348,6 +348,7 @@ def _load_hf_model_template(
     override_model = model is not None and model != model_config.model
     override_type = model_type is not None and model_config.model_type is None
     if override_model or override_type:
+        ## 这个是什么意思
         load_config = copy(model_config)
         if override_model:
             load_config.model = model
@@ -362,6 +363,10 @@ def _load_hf_model_template(
         # Keeps the HF weights on CPU/meta where possible so both models can coexist while the
         # precision test runs.
         kwargs['patch_offload'] = True
+    ## 是不是更好的merge-lora和convert的显存方案？
+    ## 要求：1. 更快 2.显存占用低
+    ## 其实merge-lora、转换、quantize的显存利用是一样的，是否可以考虑抽象为一个基础转换方案？
+    ## 在外侧执行不同的转换逻辑
     hf_model, processor = load_model_processor(load_config, load_model=load_model, **kwargs)
     template = build_template(build_config, processor)
     if hf_model is not None and getattr(template, 'use_model', False):

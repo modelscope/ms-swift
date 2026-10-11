@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import math
 import os
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from swift.dev.utils.logger import get_logger
 
@@ -348,6 +348,24 @@ def _apply_unsloth_kwargs(kwargs: dict, model_config: ModelConfig, tuner_config:
     # never sees twinkle's gradient_checkpointing kwarg -- use_gradient_checkpointing is the only lever.
     if train_config is not None and not train_config.gradient_checkpointing:
         kwargs['use_gradient_checkpointing'] = False
+    # unsloth owns construction and its own Triton kernels and rebuilds the module graph around the
+    # checkpoint, so the plain transformers post-load surgery has no valid seam here. Reject rather than
+    # let it silently no-op (these are constructor kwargs the base would otherwise apply worker-side).
+    if model_config.new_special_tokens:
+        raise NotImplementedError(
+            'new_special_tokens is not supported with tuner_backend="unsloth": unsloth owns construction and '
+            'may load a quantized base whose embeddings cannot be resized after the fact. Add the tokens to '
+            'the checkpoint upstream, or use tuner_backend="peft".')
+    if model_config.init_strategy is not None:
+        raise NotImplementedError(
+            'init_strategy is not supported with tuner_backend="unsloth": unsloth always loads a real '
+            'checkpoint (no from-config blank init), so there are no uninitialized weights to re-init, and '
+            're-initializing a quantized base would corrupt it. Drop init_strategy for this backend.')
+    if train_config is not None and train_config.use_liger_kernel:
+        raise NotImplementedError(
+            'use_liger_kernel is not composed with tuner_backend="unsloth": unsloth already patches the module '
+            'graph with its own Triton kernels, so Liger kernelize would double-patch the same ops. Disable '
+            'use_liger_kernel for this backend.')
 
 
 def _apply_hf_sp_mesh(kwargs: dict, device_mesh: Optional['DeviceMesh'],
@@ -538,62 +556,24 @@ def _set_load_kwarg(kwargs: dict, name: str, value) -> None:
     kwargs[name] = value
 
 
-def _apply_model_post_load(model, model_config: ModelConfig) -> None:
-    """Apply ModelConfig operations that require the live Transformers module."""
-    if model_config.new_special_tokens:
-        special_tokens = []
-        for token in model_config.new_special_tokens:
-            if token.endswith('.txt'):
-                if not os.path.isfile(token):
-                    raise FileNotFoundError(f'new_special_tokens file does not exist: {token}')
-                with open(token, 'r', encoding='utf-8') as file:
-                    special_tokens.extend(file.read().split())
-            else:
-                special_tokens.append(token)
+def _resolve_new_special_tokens(model_config: ModelConfig) -> List[str]:
+    """Expand ``ModelConfig.new_special_tokens`` into a flat token list on the driver.
 
-        processor = getattr(model, '_default_tokenizer', None)
-        if processor is None:
-            from transformers import AutoTokenizer
-            processor = AutoTokenizer.from_pretrained(
-                model_config.model, revision=model_config.model_revision, trust_remote_code=True)
-            model._default_tokenizer = processor
-        tokenizer = getattr(processor, 'tokenizer', processor)
-        added = tokenizer.add_special_tokens({'additional_special_tokens': special_tokens})
-        if added:
-            vocab_size = ((len(tokenizer) + 127) // 128) * 128
-            model.model.resize_token_embeddings(vocab_size)
-
-    if model_config.init_strategy is not None:
-        import torch
-        from torch import nn
-
-        def high_dim(param, init):
-            if param.dim() > 1:
-                init(param)
-            elif param.dim() == 1 and param.numel() > 0:
-                nn.init.zeros_(param)
-
-        initializers = {
-            'zero': nn.init.zeros_,
-            'uniform': lambda param: nn.init.uniform_(param, -0.1, 0.1),
-            'normal': lambda param: nn.init.normal_(param, 0.0, 0.01),
-            'xavier_uniform': lambda param: high_dim(param, nn.init.xavier_uniform_),
-            'xavier_normal': lambda param: high_dim(param, nn.init.xavier_normal_),
-            'kaiming_uniform': lambda param: high_dim(
-                param, lambda value: nn.init.kaiming_uniform_(value, mode='fan_out', nonlinearity='leaky_relu', a=0.1)),
-            'kaiming_normal': lambda param: high_dim(
-                param, lambda value: nn.init.kaiming_normal_(value, mode='fan_in', nonlinearity='relu')),
-            'orthogonal': lambda param: high_dim(param, nn.init.orthogonal_),
-        }
-        initialize = initializers[model_config.init_strategy]
-        with torch.no_grad():
-            for param in model.model.parameters():
-                if param.numel() == 0:
-                    continue
-                mean_abs = param.abs().mean()
-                std = param.std()
-                if not torch.isfinite(mean_abs) or not torch.isfinite(std) or mean_abs > 1e7 or std > 1e7:
-                    initialize(param)
+    An entry ending in ``.txt`` is a file of whitespace-separated tokens; any other entry is a literal
+    token. Resolved here rather than worker-side so only serializable strings cross the Ray boundary --
+    the token file is a driver-local path a remote actor may not be able to read. The vocab growth and
+    embedding resize that consume this list run inside ``TransformersModel._apply_new_special_tokens``.
+    """
+    special_tokens: List[str] = []
+    for token in model_config.new_special_tokens or []:
+        if token.endswith('.txt'):
+            if not os.path.isfile(token):
+                raise FileNotFoundError(f'new_special_tokens file does not exist: {token}')
+            with open(token, 'r', encoding='utf-8') as file:
+                special_tokens.extend(file.read().split())
+        else:
+            special_tokens.append(token)
+    return special_tokens
 
 
 def _build_transformers_model(model_config: ModelConfig,
@@ -777,16 +757,19 @@ def _build_transformers_model(model_config: ModelConfig,
         # and rejects a non-default acc_strategy in validate._HF_ONLY.
         if train_config is not None:
             kwargs['acc_strategy'] = train_config.acc_strategy
+        # Post-load module surgery rides the constructor too, so it is applied worker-side (a driver-side
+        # reach into ``model.model`` only touches the Ray proxy stub and silently no-ops). new_special_tokens
+        # is resolved to a plain token list here so only serializable strings cross the boundary; the
+        # fused-linear-CE Liger op is a loss-path selection (swift.dev.loss.configure_loss), not a ctor kwarg.
+        if model_config.new_special_tokens:
+            kwargs['new_special_tokens'] = _resolve_new_special_tokens(model_config)
+        if model_config.init_strategy is not None:
+            kwargs['init_strategy'] = model_config.init_strategy
+        if train_config is not None and train_config.use_liger_kernel:
+            kwargs['use_liger_kernel'] = True
+            kwargs['liger_kernel_config'] = train_config.liger_kernel_config
         model = TransformersModel(**kwargs)
 
-    # Liger op-level kernels (rms_norm / rotary / swiglu / ...) replace layers on the unwrapped HF
-    # module, so this runs after construction and before the loss/optimizer are set. The
-    # fused-linear-CE op is deliberately NOT here -- it skips the lm_head GEMM rather than swapping a
-    # layer, so it is a loss-path selection (see swift.dev.loss.configure_loss), not a kernelize target.
-    if train_config is not None and train_config.use_liger_kernel:
-        _apply_liger_kernel(model, train_config)
-
-    _apply_model_post_load(model, model_config)
     return model
 
 
@@ -860,6 +843,12 @@ def _build_sentence_transformer_model(kwargs: dict, model_config: ModelConfig,
             'use_liger_kernel is not composed with a sentence-transformers embedding model: Liger replaces '
             'causal-LM decoder ops / the fused-linear-CE loss path, while this checkpoint trains an ST pooling '
             'pipeline with an embedding loss. Disable use_liger_kernel for this model.')
+    if model_config.new_special_tokens:
+        raise NotImplementedError(
+            'new_special_tokens is not composed with a sentence-transformers embedding model: ST builds its '
+            'backbone via SentenceTransformer(model_id), which exposes no resize_token_embeddings seam, so a '
+            'grown vocabulary could not be matched by resized embeddings. Add the tokens to the checkpoint '
+            'upstream, or train this model on the plain transformers path.')
     from swift.dev.model import SentenceTransformerModel
     st_kwargs = {
         'model_id': kwargs['model_id'],
@@ -873,6 +862,11 @@ def _build_sentence_transformer_model(kwargs: dict, model_config: ModelConfig,
         st_kwargs['gradient_checkpointing'] = train_config.gradient_checkpointing
         if train_config.gradient_checkpointing_kwargs:
             st_kwargs['gradient_checkpointing_kwargs'] = train_config.gradient_checkpointing_kwargs
+    # init_strategy re-initializes uninitialized weights worker-side via the inherited
+    # TransformersModel._apply_init_strategy; ST's pipeline is an nn.Module, so self.model.parameters()
+    # reaches the backbone. new_special_tokens has no resize seam here and is rejected above.
+    if model_config.init_strategy is not None:
+        st_kwargs['init_strategy'] = model_config.init_strategy
     # SP mesh (local) / DeviceGroup placement (ray) were installed on the shared kwargs by
     # _apply_hf_sp_mesh / _apply_ray_placement; forward them so ST lands on the right ranks. ST's own
     # forward guard rejects an SP mesh (a whole-sentence pooling head cannot see a sequence shard).
@@ -880,36 +874,6 @@ def _build_sentence_transformer_model(kwargs: dict, model_config: ModelConfig,
         if key in kwargs:
             st_kwargs[key] = kwargs[key]
     return SentenceTransformerModel(**st_kwargs)
-
-
-def _apply_liger_kernel(model: TrainableModel, train_config: TrainConfig) -> None:
-    """Patch the HF module's per-layer ops with Liger kernels via twinkle's mapping-driven kernelize.
-
-    ``liger_kernel_config`` (an ``{op: bool}`` dict) switches individual ops off on top of Liger's
-    default set; None keeps the default. kernelize mutates the module in place (class / forward
-    replacement), which is why it belongs at the end of model construction.
-    """
-    from twinkle.kernel import kernelize
-    kernelize(model.model, _liger_kernel_mapping(train_config.liger_kernel_config))
-
-
-def _liger_kernel_mapping(liger_kernel_config: Optional[dict]) -> Optional[dict]:
-    """DEFAULT_KERNEL_CONFIG minus any op the config switches off; None keeps the built-in default.
-
-    Returning None rather than a copy of the default matters: kernelize logs family-skips at DEBUG on
-    the default path but raises them to WARNING for any explicit mapping. 'fused_linear_cross_entropy'
-    is not a kernelize op, so it matches no DEFAULT_KERNEL_CONFIG entry and is ignored here (it is
-    consumed on the loss side instead).
-    """
-    if not liger_kernel_config:
-        return None
-    from twinkle.kernel.config import DEFAULT_KERNEL_CONFIG
-    disabled = {op for op, enabled in liger_kernel_config.items() if not enabled}
-    return {
-        target: choice
-        for target, choice in DEFAULT_KERNEL_CONFIG.items()
-        if getattr(choice, 'op', None) not in disabled
-    }
 
 
 def _resolve_deepspeed_config(distributed_config: DistributedConfig) -> Optional[dict]:
@@ -1323,6 +1287,13 @@ def _build_megatron_model(model_config: ModelConfig,
     _apply_mtp_kwargs(extra_kwargs, model_config, strict_model_kwargs)
     _apply_fp4_kwargs(extra_kwargs, model_config, strict_model_kwargs)
     _apply_fp8_kwargs(extra_kwargs, model_config, strict_model_kwargs)
+    # new_special_tokens: resolved to a plain token list on the driver (only serializable strings cross the
+    # Ray boundary), then consumed worker-side by MegatronModel -- extend the tokenizer, raise
+    # hf_config.vocab_size before the strategy builds the mcore config, and re-initialize the new zero-filled
+    # sharded embedding rows after the model is built. Mirrors _build_transformers_model; NOT an mcore
+    # TransformerConfig field, so it needs no strict check (same as vit_gradient_checkpointing).
+    if model_config.new_special_tokens:
+        extra_kwargs['new_special_tokens'] = _resolve_new_special_tokens(model_config)
     # MoE routing replay (RLConfig.router_replay_mode != 'disabled'): MegatronModel.__init__ pops
     # enable_router_replay and translates it to the mcore ``moe_enable_routing_replay`` TransformerConfig
     # field -- the Megatron counterpart of TransformersModel's flag (basic principle 1). Only the trainable

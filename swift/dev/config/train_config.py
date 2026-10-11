@@ -283,8 +283,8 @@ class TrainConfig:
     # === Nested third-party configs ===
     # Kept as an opaque dict on purpose: the keys belong to that library and change with its
     # version, so enumerating them here would go stale on the next upgrade.
-    #: Which Liger ops to patch in, passed through to ``_apply_liger_kernel_to_instance``. Read only
-    #: when ``use_liger_kernel`` is on; None patches Liger's own default set.
+    #: Which Liger ops to patch in, applied worker-side by twinkle's ``TransformersModel._apply_liger_kernel``.
+    #: Read only when ``use_liger_kernel`` is on; None patches Liger's own default set.
     liger_kernel_config: Optional[Dict[str, bool]] = None
 
     # === Evaluation ===

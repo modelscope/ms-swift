@@ -217,7 +217,8 @@ def run_gkd(
         assembly.model,
         rollout,
         prompts,
-        teacher=_build_teacher(assembly.model, rl_config, tuner_config, teacher_world_size, distributed_config),
+        teacher=_build_teacher(assembly.model, assembly.template, rl_config, tuner_config, teacher_world_size,
+                               distributed_config),
         template=assembly.template,
         prompt_extras=prompt_extras,
         dataset_rows=dataset_rows,
@@ -256,7 +257,7 @@ def run_gkd(
         rollout.shutdown()
 
 
-def _build_teacher(model: TrainableModel, rl_config: RLConfig, tuner_config: Optional[TunerConfig],
+def _build_teacher(model: TrainableModel, template: Any, rl_config: RLConfig, tuner_config: Optional[TunerConfig],
                    teacher_world_size: int, distributed_config: DistributedConfig) -> Any:
     """Resolve the GKD teacher: the LoRA student's own adapter-disabled base, or a frozen Ray-actor model.
 
@@ -281,7 +282,6 @@ def _build_teacher(model: TrainableModel, rl_config: RLConfig, tuner_config: Opt
     if teacher_model is None:
         raise ValueError('GKD needs a teacher: set RLConfig.teacher_model, or use a LoRA student with '
                          '_teacher_use_disable_adapter=True to distil from its own frozen base.')
-    template = model.template if hasattr(model, 'template') else None
     return build_frozen_teacher(
         rl_config, template, teacher_model, distributed_config=distributed_config, remote_group=_TEACHER_GROUP,
         teacher_world_size=teacher_world_size, adapters=rl_config.teacher_adapters, role='teacher',

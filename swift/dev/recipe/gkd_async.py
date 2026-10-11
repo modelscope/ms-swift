@@ -1,42 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Per-sample streaming GKD driver.
-
-:class:`StreamingGKDLoop` extends :class:`~swift.dev.recipe.run_gkd.GKDLoop` with the same per-sample
-streaming regime GRPO/PPO use: trajectories are admitted ONE AT A TIME on a sampler that (when
-disaggregated) keeps generating while the trainer advances, completions are polled as-completed into the
-driver's ready buffer, and training pulls individual samples whenever a whole optimizer step's rows are
-ready. It is the streaming replacement for GKD's retired batch-granular 1-batch-lookahead overlap, and it
-serves the purely on-policy regime (``lmbda==1.0``) at either ``async_mode='none'`` (``max_staleness=0``,
-synchronous drain-before-publish) or ``'one_step_off'`` (``max_staleness=1``). An off-policy round
-(``lmbda != 1.0``) generates nothing, so there is no trajectory to admit ahead and the router keeps it on
-the synchronous :class:`GKDLoop` driver.
-
-It is a DRIVER swap, not a parallel runtime. The loop overrides only :meth:`~GKDLoop._drive`, which
-delegates the control flow to twinkle's algorithm-agnostic
-:class:`~twinkle_agentic.async_rl.streaming_driver.StreamingDriver`; the distillation itself is inherited
-unchanged because each pulled batch goes to :meth:`GKDLoop._consume_async_samples` -> ``_train_distill_rows``
--> the SAME teacher ``forward_only`` scoring and student ``forward_backward`` the synchronous driver runs.
-So the streaming regime never forks GKD's teacher signal, and the OPSD/MOPD subclasses -- which reuse this
-skeleton and only swap ``_teacher_kwargs``/``_forward_kwargs`` -- stream through it unchanged (see
-``opsd_async``/``mopd_async``).
-
-The streaming wiring -- the config guard matrix, the control-plane / publication construction, the
-:meth:`_drive` that composes the driver, the per-sample submit/poll/collect, both assembly rules and the
-adapter-snapshot save/prune -- is shared with the GRPO/PPO streaming loops through
-:class:`~swift.dev.recipe._streaming_loop.StreamingLoopMixin` (composed into this loop, not inherited
-instead of :class:`GKDLoop`). This file therefore keeps only what distillation-specific streaming needs:
-the constructor (guard before ``super().__init__``, control-plane build after it) and the three distill
-answers to the mixin's hooks -- the per-sample assembly rule (GKD scores each sample independently against
-the teacher, so it has NO group contract, unlike GRPO), the unit size, and the real-optimizer-step
-accounting. The per-sample collect stamps each trajectory's group id and policy version in ``collect_sample``
-at the rollout layer, so the batch-path ``_finalize_samples`` seam is never touched here.
-
-Publication is selected by ``weight_sync_strategy`` (see the mixin for the full mechanism split):
-``'adapter_snapshot'`` pins each trained version as its own LoRA adapter path, ``'in_place'`` overwrites the
-sampler's single live copy each publish and so requires ``allow_partial_rollout`` (abort-and-resume). A
-frozen separate teacher (or the adapter-disabled base) is never published -- only the student policy
-generates -- so it is version-agnostic to the stream, exactly as PPO's critic is.
-"""
 from __future__ import annotations
 
 from typing import List, Optional
@@ -90,6 +52,8 @@ class StreamingGKDLoop(StreamingLoopMixin, GKDLoop):
                  *args,
                  adapter_name: Optional[str] = None,
                  max_staleness: int = 1,
+                 ## literal？有几种选项
+                 ## 类似的地方都要修改为literal
                  weight_sync_strategy: str = 'adapter_snapshot',
                  allow_partial_rollout: bool = False,
                  parameter_sync_step: int = 1,
@@ -125,7 +89,7 @@ class StreamingGKDLoop(StreamingLoopMixin, GKDLoop):
         for. The prefix of the buffer up to the largest whole ``train_batch_size * ga`` multiple is pulled;
         the remainder stays buffered for the next pull.
         """
-        return self._assembly_ready_ppo(buffer)
+        return self._assembly_ready_no_group(buffer)
 
     def _streaming_unit_size(self) -> int:
         """One GKD optimizer step consumes ``train_batch_size * ga`` rows (its mini-batch geometry)."""

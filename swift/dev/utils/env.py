@@ -33,6 +33,28 @@ def random_dataset_response() -> bool:
     return bool(_strtobool(os.environ.get('RANDOM_DATASET_RESPONSE', 'False')))
 
 
+def dataset_offline() -> bool:
+    """``HF_DATASETS_OFFLINE`` (falling back to ``HF_HUB_OFFLINE``): load datasets from the local cache
+    only, never opening a socket to the hub.
+
+    dev reads the ecosystem-standard offline flags here so the hub layer can branch on them uniformly;
+    ``datasets`` / ``huggingface_hub`` / ``modelscope`` each read the same env vars on their own, so this
+    accessor is a *decision input* for dev's fast path, not the only reader. ``HF_DATASETS_OFFLINE`` takes
+    precedence and, once set to a parseable value, ``HF_HUB_OFFLINE`` is not consulted (matching
+    ``datasets.config``). Parsing is lenient on purpose: unset/empty -> False, and a malformed value is
+    treated as False rather than raising, so a stray typo in the shell never aborts a run.
+    """
+    for key in ('HF_DATASETS_OFFLINE', 'HF_HUB_OFFLINE'):
+        val = os.environ.get(key)
+        if val is None or val == '':
+            continue
+        try:
+            return bool(_strtobool(val))
+        except ValueError:
+            return False
+    return False
+
+
 def get_hf_endpoint():
     hf_endpoint = os.environ.get('HF_ENDPOINT', 'https://huggingface.co/')
     if hf_endpoint.endswith('/'):

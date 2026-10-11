@@ -62,6 +62,7 @@ class SentenceTransformerModel(TwinkleTransformersModel):
                  sentence_transformer_kwargs: Optional[Dict[str, Any]] = None,
                  gradient_checkpointing: bool = True,
                  gradient_checkpointing_kwargs: Optional[Dict[str, Any]] = None,
+                 init_strategy: Optional[str] = None,
                  **kwargs):
         # Mirror TwinkleTransformersModel.__init__ plumbing, but build a SentenceTransformer instead of
         # an AutoModelFor* backbone. super(PreTrainedModel, self) intentionally skips PreTrainedModel's
@@ -95,6 +96,12 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         # driver-side post-construction disable would only touch the proxy stub and silently no-op.
         if gradient_checkpointing:
             self._enable_gradient_checkpointing(gradient_checkpointing_kwargs)
+        # Same worker-side gate as the base: re-initialize any weights the checkpoint left uninitialized
+        # (inherited TransformersModel._apply_init_strategy). ST's pipeline is an nn.Module, so
+        # self.model.parameters() reaches the backbone. new_special_tokens has no resize seam on the ST
+        # pipeline and is rejected in the builder rather than silently dropped here.
+        if init_strategy is not None:
+            self._apply_init_strategy(init_strategy)
 
         self.sp_strategy = None
         self._model_wrapped = False
