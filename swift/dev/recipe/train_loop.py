@@ -9,10 +9,12 @@ Cookbook users may copy this loop or write their own; CLI uses it as the default
 SFT orchestration.
 """
 from __future__ import annotations
+import json
 import logging
 import math
 import os
 import random
+from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 if TYPE_CHECKING:
@@ -20,6 +22,36 @@ if TYPE_CHECKING:
     from swift.dev.model import TrainableModel
 
 logger = logging.getLogger(__name__)
+
+#: Cached TWINKLE_PERF gate; None until first read. Profiling is opt-in, so the
+#: default path stays a single boolean check with no instrumentation.
+_PERF_ENABLED: Optional[bool] = None
+
+
+def _perf_gate() -> bool:
+    """Whether perf profiling is turned on via the TWINKLE_PERF env flag (read once)."""
+    global _PERF_ENABLED
+    if _PERF_ENABLED is None:
+        _PERF_ENABLED = os.environ.get('TWINKLE_PERF', '').strip().lower() in ('1', 'true', 'yes', 'on')
+    return _PERF_ENABLED
+
+
+def _perf_spec_from_env() -> Dict[str, Any]:
+    """Build the module-profiler spec from env: full JSON, or just the collection cadence.
+
+    ``TWINKLE_PERF_SPEC`` (a JSON object) wins and is forwarded verbatim to
+    ``build_module_profiler`` -- ``select``/``profiler`` must be strings there, since the spec crosses
+    the Ray boundary. Without it, ``TWINKLE_PERF_EVERY_N`` sets ``every_n_steps`` (default 50) and the
+    profiler defaults to hooking every module with the built-in activation stats.
+    """
+    raw = os.environ.get('TWINKLE_PERF_SPEC', '').strip()
+    if raw:
+        spec = json.loads(raw)
+        if not isinstance(spec, dict):
+            raise ValueError('TWINKLE_PERF_SPEC must be a JSON object, e.g. \'{"every_n_steps": 20}\'.')
+        return spec
+    every_n = int(os.environ.get('TWINKLE_PERF_EVERY_N', '50'))
+    return {'every_n_steps': every_n}
 
 
 def _backend_owns_gradient_accumulation(model) -> bool:
@@ -372,6 +404,9 @@ class TrainLoop:
         self.global_step = 0
         self.micro_step = 0
         self.history: list = []
+        # Set True by _perf_setup once profiling is live; gates _perf_span/_perf_step so an un-setup
+        # loop (or perf disabled) takes a single-attribute no-op path with zero instrumentation.
+        self._perf_ready = False
 
     def _reached_max(self) -> bool:
         return self.max_steps > 0 and self.global_step >= self.max_steps
@@ -379,6 +414,66 @@ class TrainLoop:
     def _is_grad_sync_boundary(self) -> bool:
         """Whether the current micro_step is an optimizer-update boundary (see is_grad_sync_boundary)."""
         return is_grad_sync_boundary(self.micro_step, self.gradient_accumulation_steps)
+
+    # --- perf profiling (opt-in via TWINKLE_PERF; a single attribute read when off) ---------------
+    def _perf_setup(self) -> None:
+        """Attach the worker-side module profiler and enable driver-side stage timing (once).
+
+        Called at the top of a fit loop so the FIRST step is profiled rather than lost to a lazy
+        attach. No-op unless ``TWINKLE_PERF`` is on. The profiler spec crosses to the workers as a
+        serializable dict (strings for ``select``/``profiler``, resolved worker-side), never a live
+        object, so it survives the Ray boundary; under local/torchrun ``attach_profiler`` runs in-process.
+        """
+        if not _perf_gate() or self._perf_ready:
+            return
+        from twinkle.perf import enable_perf
+        spec = _perf_spec_from_env()
+        self.model.attach_profiler(spec=spec)
+        enable_perf()
+        self._perf_ready = True
+        logger.info('[perf] profiling enabled; module profiler spec=%s', spec)
+
+    def _perf_span(self, name: str):
+        """Time a fit-loop segment as ``name``; a plain ``nullcontext`` when profiling is not live.
+
+        Returning a context manager (rather than decorating) keeps the segment boundaries visible at
+        the call site and the off-path a single attribute read. The driver-side span brackets the
+        REMOTE call, so its duration includes Ray RPC + serialization -- it measures the driver's wall
+        clock, not pure worker GPU time.
+        """
+        if not self._perf_ready:
+            return nullcontext()
+        from twinkle.perf import span
+        return span(name)
+
+    def _perf_step(self) -> dict:
+        """This optimizer step's perf metrics, or ``{}`` when profiling is not live.
+
+        Folds two disjoint namespaces into the step record: ``perf/stage/*`` (driver wall clock around
+        the remote forward_backward / clip_grad_and_step, reset each step so it reflects THIS window)
+        and ``perf/module/*`` (worker-side activation/cost stats, a running mean over the steps the
+        profiler actually collected per its ``every_n_steps`` gate). With more than one rank the module
+        keys are tagged ``rank<k>`` so parallel imbalance stays visible instead of being flattened.
+        """
+        if not self._perf_ready:
+            return {}
+        from twinkle.perf import default_recorder
+        # advance before collect: Ray's per-actor FIFO lands the increment ahead of the summary read on
+        # the same worker, so no extra blocking sync is needed for the step counter.
+        self.model.advance_profiler_step()
+        metrics = default_recorder.flat_summary(prefix='perf/stage/')
+        default_recorder.reset()
+        summaries = self.model.collect_perf_summary()
+        # local/torchrun and single-rank Ray return one dict; multi-rank Ray (collect='none') a list.
+        if not isinstance(summaries, list):
+            summaries = [summaries]
+        multi_rank = len(summaries) > 1
+        for rank, summary in enumerate(summaries):
+            for key, value in (summary or {}).items():
+                if multi_rank and key.startswith('perf/module/'):
+                    key = 'perf/module/rank%d/%s' % (rank, key[len('perf/module/'):])
+                metrics[key] = value
+        return metrics
 
     def _record_step(self) -> None:
         """Count one completed optimizer step, then log / periodic-save through the recipe hooks.
@@ -407,6 +502,7 @@ class TrainLoop:
         record.update(coerce_metric_scalars(metrics))
         record['loss'] = loss
         record.update(self._extra_step_metrics(metrics))
+        record.update(self._perf_step())
         record = self.tracker.log(record, self.global_step)
         self.history.append(record)
         self._post_record(record, loss)
@@ -947,6 +1043,7 @@ class SFTLoop(TrainLoop):
 
     def _fit_transformers(self) -> list:
         """transformers GA: one micro-batch per forward_backward, twinkle grad-sync gate steps."""
+        self._perf_setup()
         ga = self.gradient_accumulation_steps
         handler = self.handler
         # twinkle's grad-sync gate lags one micro-step, so an optimizer window here spans ga+1
@@ -971,7 +1068,8 @@ class SFTLoop(TrainLoop):
                     handler.on_step_begin()
                     at_window_start = False
                 self.micro_step += 1
-                self.model.forward_backward(inputs=batch, gradient_accumulation_steps=ga, task=self.task)
+                with self._perf_span('forward_backward'):
+                    self.model.forward_backward(inputs=batch, gradient_accumulation_steps=ga, task=self.task)
                 self._sync_state()
                 handler.on_substep_end()
                 # Boundary computed loop-side (backend-agnostic); clip_grad_and_step self-guards via
@@ -979,7 +1077,8 @@ class SFTLoop(TrainLoop):
                 is_boundary = self._is_grad_sync_boundary()
                 if is_boundary:
                     handler.on_pre_optimizer_step()
-                self.model.clip_grad_and_step(max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
+                with self._perf_span('optimizer'):
+                    self.model.clip_grad_and_step(max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
                 if is_boundary:
                     handler.on_optimizer_step()
                     self._record_step()
