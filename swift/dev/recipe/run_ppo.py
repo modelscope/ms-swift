@@ -83,7 +83,7 @@ def run_ppo(
     from swift.dev.builders import build_sampler
     from swift.dev.loss import (configure_ppo_value_loss, configure_ppo_value_metric, configure_rlhf_loss,
                                 configure_rlhf_metrics)
-    from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
+    from swift.dev.builders.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly
     from swift.dev.recipe.run_grpo import (
         SyncableRollout,

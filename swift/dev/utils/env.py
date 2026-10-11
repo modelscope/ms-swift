@@ -59,3 +59,17 @@ def is_dist():
     """Determine if the training is distributed"""
     rank, local_rank, _, _ = get_dist_setting()
     return rank >= 0 and local_rank >= 0
+
+
+def log_level() -> str:
+    """``LOG_LEVEL``: the level name dev's logger emits at (default ``INFO``)."""
+    return os.environ.get('LOG_LEVEL', 'INFO').upper()
+
+
+def log_only_master() -> bool:
+    """``LOG_ONLY_MASTER``: quiet non-master ranks to ERROR (default true).
+
+    Set false to let every rank emit at ``LOG_LEVEL`` -- useful when a failure only reproduces on a
+    non-zero rank whose logs are otherwise suppressed.
+    """
+    return bool(_strtobool(os.environ.get('LOG_ONLY_MASTER', 'True')))

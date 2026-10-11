@@ -34,7 +34,7 @@ from typing import Any, Callable, Mapping, Optional, Type
 # FlashAttention version pinning is implemented in twinkle: it flips transformer_engine module
 # globals, so it must run in the process that builds the model (the Ray worker, not the driver).
 # Re-exported here so resolve_megatron_attn_backend below and the component tests keep importing
-# these names from swift.dev.naming.
+# these names from swift.dev.utils.naming.
 from twinkle.model.megatron._flash_attn import (
     FLASH_PIN_SUPPORTED_VERSIONS,
     apply_flash_version_pin,
@@ -318,8 +318,26 @@ def resolve_scheduler(swift_name: str):
     if name is None:
         return None
     # Imported lazily so this module stays cheap for callers that only need name lookups.
-    from swift.dev import scheduler as dev_scheduler
+    from swift.dev.builders import scheduler as dev_scheduler
     return getattr(dev_scheduler, name, name)
+
+
+def mcore_version_at_least(min_version: str) -> bool:
+    """Whether the installed megatron-core belongs to the ``min_version`` release line or newer.
+
+    ``min_version`` is a release line such as ``'0.16'``; the floor is that line's first release
+    candidate (``0.16.0rc0``), so a pre-release of the target line already satisfies it. megatron-core
+    lands a feature in ``<line>.0rc0`` before the final release -- muon arrives in 0.16.0rc0 -- and
+    legacy swift gates on that same rc (``megatron_args.py: mcore_016``), so an install built against
+    the rc must not be rejected by a final-version floor.
+
+    ``megatron.core`` is imported lazily: this is reached only on the megatron backend, where it is
+    present, and keeping the import local lets naming.py load on a transformers-only install.
+    """
+    import megatron.core
+    from packaging import version
+    floor = min_version if 'rc' in min_version else f'{min_version}.0rc0'
+    return version.parse(megatron.core.__version__) >= version.parse(floor)
 
 
 def resolve_megatron_decay_style(swift_name: str) -> str:

@@ -420,7 +420,7 @@ class TrainAssembly:
         """
         import copy
 
-        from swift.dev.adapter import apply_tuner
+        from swift.dev.builders.adapter import apply_tuner
         from swift.dev.builders import apply_full_param_freeze, build_model
         from swift.dev.processor import InputProcessor
 
@@ -484,7 +484,7 @@ class TrainAssembly:
         while ``apply_tuner`` created 'default'.
         """
         from swift.dev.callbacks import build_callbacks
-        from swift.dev.optimizer import resolve_max_grad_norm
+        from swift.dev.builders.optimizer import resolve_max_grad_norm
         from swift.dev.recipe.train_loop import SFTLoop
 
         loop_task = self.loop_task or self.task
@@ -731,7 +731,7 @@ class TrainAssembly:
         ``save_steps``). Passing False is test-oriented: it yields the loss trajectory without a
         checkpoint, which also sidesteps the Megatron mode='local' distributed-save gap.
         """
-        from swift.dev.optimizer import configure_optimizer
+        from swift.dev.builders.optimizer import configure_optimizer
 
         self.prepare()
         self.plan_sp_mesh()
@@ -812,7 +812,7 @@ class TrainAssembly:
             return
         os.makedirs(ckpt_dir, exist_ok=True)
 
-        from swift.dev.version import __version__ as swift_version
+        from swift.dev.utils.version import __version__ as swift_version
         model_meta = getattr(processor, 'model_meta', None)
         args = {
             # swift_version gates model_type loading in BaseArguments.load_args_from_ckpt

@@ -182,7 +182,7 @@ def test_fractional_intervals_resolve_after_total_steps_are_known():
 
 def test_prepare_processes_before_validation(monkeypatch):
     events = []
-    monkeypatch.setattr('swift.dev.plugin.PluginRegistry.load_configured', lambda *_: events.append('plugins'))
+    monkeypatch.setattr('swift.dev.utils.plugin.PluginRegistry.load_configured', lambda *_: events.append('plugins'))
     monkeypatch.setattr('swift.dev.config.process_configs', lambda *_args, **_kwargs: events.append('process'))
     monkeypatch.setattr('swift.dev.config.validate_configs', lambda *_args, **_kwargs: events.append('validate'))
     assembly = TrainAssembly(
@@ -201,7 +201,7 @@ def test_logging_steps_reaches_training_loop(monkeypatch):
             captured.update(kwargs)
 
     monkeypatch.setattr('swift.dev.recipe.train_loop.SFTLoop', FakeLoop)
-    monkeypatch.setattr('swift.dev.optimizer.resolve_max_grad_norm', lambda _: 1.0)
+    monkeypatch.setattr('swift.dev.builders.optimizer.resolve_max_grad_norm', lambda _: 1.0)
     assembly = TrainAssembly(
         'test', ModelConfig(model='m'), TemplateConfig(), DatasetConfig(), TrainConfig(), DistributedConfig(),
         CheckpointConfig(save_only_model=True), logging_config=LoggingConfig(logging_steps=7))

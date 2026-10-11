@@ -275,7 +275,7 @@ def test_cli_loads_external_tool_plugin_in_a_fresh_interpreter():
     import sys
 
     script = (
-        'from swift.dev.plugin import PluginRegistry;'
+        'from swift.dev.utils.plugin import PluginRegistry;'
         'from swift.dev.config import PluginConfig;'
         f'PluginRegistry.load_configured(PluginConfig(external_plugins=[{str(_CUSTOM_TOOLS)!r}]));'
         "print('REGISTERED' if PluginRegistry.get('tool', 'calculator') else 'MISSING')")

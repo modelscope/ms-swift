@@ -20,9 +20,9 @@ from pathlib import Path
 import swift.dev
 import swift.dev.callbacks  # noqa: F401 -- registers the `callback` kind, whose config_field is TrainConfig.callbacks
 import swift.dev.config as configs
-import swift.dev.optimizer_plugins  # noqa: F401 -- registers the `param_groups` kind (TrainConfig.param_groups_plugins)
+import swift.dev.builders.optimizer_plugins  # noqa: F401 -- registers the `param_groups` kind (TrainConfig.param_groups_plugins)
 import swift.dev.rewards  # noqa: F401 -- importing the declaring module is what registers its kind
-from swift.dev.plugin import PluginRegistry
+from swift.dev.utils.plugin import PluginRegistry
 
 DEV = Path(swift.dev.__file__).parent
 

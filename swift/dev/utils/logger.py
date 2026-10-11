@@ -67,15 +67,17 @@ def get_logger(log_file: Optional[str] = None, log_level: Optional[int] = None, 
         file_mode: Specifies the mode to open the file, if filename is
             specified (if filemode is unspecified, it defaults to 'w').
     """
+    # Read the env flags lazily: importing ``swift.dev.utils.env`` at module scope would execute the
+    # heavy ``swift.dev.utils`` package ``__init__`` (torch / hub) and break this leaf module's
+    # stdlib-only load contract.
+    from swift.dev.utils.env import log_level as _env_log_level, log_only_master
+
     if log_level is None:
-        log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
-        log_level = getattr(logging, log_level, logging.INFO)
+        log_level = getattr(logging, _env_log_level(), logging.INFO)
     # Distinct from legacy's ``swift`` logger on purpose -- see the module docstring.
-    logger_name = 'swift'
+    logger_name = 'swift.dev'
     logger = logging.getLogger(logger_name)
     logger.propagate = False
-    ## 这里之前经常有一个bug：想要调节默认显示的日志等级，但是调节很费劲。先要调节是否是rank0展示日志，也不好做。
-    ## 考虑有两个环境变量给出控制
     if logger_name in init_loggers:
         add_file_handler_if_needed(logger, log_file, file_mode, log_level)
         return logger
@@ -105,7 +107,9 @@ def get_logger(log_file: Optional[str] = None, log_level: Optional[int] = None, 
         handler.setLevel(log_level)
         logger.addHandler(handler)
 
-    if is_worker0:
+    # ``LOG_ONLY_MASTER`` (default true) quiets non-master ranks to ERROR; set it false to let every
+    # rank emit at ``log_level`` when debugging a failure that only reproduces off rank 0.
+    if is_worker0 or not log_only_master():
         logger.setLevel(log_level)
     else:
         logger.setLevel(logging.ERROR)

@@ -12,6 +12,8 @@ from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple
 import torch
 from transformers import AutoConfig, AutoProcessor, AutoTokenizer, PretrainedConfig, PreTrainedModel
 
+from swift.dev.utils.tags import validate_tags
+
 __all__ = [
     'ModelArch', 'ModelInfo', 'ModelLoader', 'MODEL_ALIASES', 'MODEL_MAPPING', 'get_model_loader', 'match_model_type',
     'match_model_types_by_architectures', 'register_model', 'resolve_template'
@@ -245,6 +247,7 @@ def register_model(loader_cls: Type['ModelLoader'] = None, *, exist_ok: bool = F
     def _register(cls: Type['ModelLoader']) -> Type['ModelLoader']:
         model_type = cls.model_type
         assert model_type, f'{cls.__name__} must set `model_type`.'
+        validate_tags(cls.tags, context=f'model_type `{model_type}`')
         if not exist_ok and model_type in MODEL_MAPPING:
             raise ValueError(f'model_type `{model_type}` is already registered '
                              f'by {MODEL_MAPPING[model_type].__name__}.')
@@ -319,7 +322,7 @@ def resolve_loader_cls(model_type: Optional[str], model_id: str) -> Optional[Typ
     matches, so the caller falls back to the generic transformers load path instead of guessing a
     different family from the checkpoint name.
     """
-    from swift.dev.naming import resolve_plugin_class
+    from swift.dev.utils.naming import resolve_plugin_class
     if model_type:
         if model_type in MODEL_MAPPING or model_type in MODEL_ALIASES:
             return get_model_loader(model_type)

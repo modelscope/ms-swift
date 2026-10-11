@@ -85,6 +85,7 @@ def validate_configs(
     _check_logging(logging_config)
     _check_rlhf_ref_model(model_config, tuner_config, rl_config)
     _check_rlhf_advanced(train_config, rl_config)
+    _check_grpo_cached_dataset(dataset_config, rl_config)
     _check_rlhf_padding_free(template_config, dataset_config, rl_config)
     _check_rlhf_sequence_parallel(
         model_config, template_config, dataset_config, distributed_config, rl_config, is_megatron)
@@ -700,6 +701,17 @@ def _check_grpo_controls(cfg: 'RLConfig') -> None:
             raise ValueError('GRPO clipping, replay, entropy, FIPO, and completion logging controls are GRPO-only.')
         return
     _check_grpo_loss_type(cfg, loss_type)
+    # GRPO's advantage is group-relative: each prompt's completions are centered on their group mean, so a
+    # single generation per prompt has no baseline to center on and GRPOAdvantage falls back to the raw
+    # reward (twinkle advantage/grpo.py, the num_generations==1 branch) -- baseline-free REINFORCE, not
+    # GRPO. legacy rejects it (rlhf_args.py:408-409). A teacher (OPD-RL / self-distillation) is exempt: it
+    # distills on a single generation rather than contrasting a group.
+    has_teacher = bool(cfg.teacher_model or cfg.teacher_adapters or cfg._teacher_use_disable_adapter)
+    if cfg.num_generations < 2 and not has_teacher:
+        raise ValueError(f'GRPO requires num_generations >= 2 (got {cfg.num_generations}): its advantage is '
+                         'group-relative, so one completion per prompt has no group baseline and degenerates '
+                         'to raw-reward REINFORCE. Raise --num_generations, or use a teacher (OPD-RL) / '
+                         '--rl_type rft for a single-sample objective.')
     positive = {
         'num_iterations': cfg.num_iterations,
         'rollout_importance_sampling_threshold': cfg.rollout_importance_sampling_threshold,
@@ -757,6 +769,26 @@ def _check_grpo_loss_knobs(cfg: 'RLConfig', loss_type: str) -> None:
                          f'{cfg.clip_cov_lb} >= {cfg.clip_cov_ub}.')
     if loss_type == 'kl_cov' and cfg.kl_cov_ratio <= 0:
         raise ValueError(f'loss_type=kl_cov requires kl_cov_ratio > 0, got {cfg.kl_cov_ratio}.')
+
+
+def _check_grpo_cached_dataset(dataset_config: 'DatasetConfig', rl_config: Optional['RLConfig']) -> None:
+    """Reject a pre-encoded cached_dataset for GRPO, which rolls out from raw prompt messages.
+
+    Mirrors legacy rlhf_args.py:342-343. ``cached_dataset`` is the map-style, already-encoded cache written
+    by ``swift export --to_cached_dataset`` (input_ids/labels, no ``messages``). GRPO drives generation from
+    each row's raw ``messages`` -- its prompt loader (``run_grpo._prompt_rows_from_dataset`` ->
+    ``builders.dataset.load_prompt_only_rows``) reads ``DatasetConfig.dataset`` only and never
+    ``cached_dataset`` -- so a cached_dataset passed to GRPO is silently ignored. Refuse up front rather
+    than leave the knob inert.
+    """
+    if rl_config is None or getattr(rl_config, 'rl_type', None) != 'grpo':
+        return
+    if dataset_config.cached_dataset or dataset_config.cached_val_dataset:
+        raise ValueError('cached_dataset is not supported for GRPO: GRPO rolls out completions from each '
+                         "prompt's raw `messages`, and its prompt loader reads DatasetConfig.dataset only, "
+                         'so a cached_dataset (pre-encoded input_ids/labels, no messages) would be silently '
+                         'ignored. Pass the original prompts via --dataset, or pre-generate completions '
+                         'offline and train with an offline objective (dpo/rm/...).')
 
 
 def _check_dynamic_sampling(cfg: 'RLConfig') -> None:
@@ -949,7 +981,7 @@ def _check_distillation(cfg: 'RLConfig') -> None:
 
     ``lmbda`` and the "offload / teacher_deepspeed need a distinct local teacher_model" guards are shared
     by all three (each may generate on-policy and may distil from a separate frozen teacher). The
-    full-vocab JSD knobs (``temperature`` / ``gkd_logits_topk`` / ``sft_alpha``) are GKD-only: OPSD/MOPD
+    full-vocab JSD knobs (``distill_temperature`` / ``gkd_logits_topk`` / ``sft_alpha``) are GKD-only: OPSD/MOPD
     use the logits-free sampled-token k3 surrogate, which reads none of them.
     """
     if cfg.rl_type not in ('gkd', 'opsd', 'mopd'):
@@ -963,7 +995,7 @@ def _check_distillation(cfg: 'RLConfig') -> None:
     if cfg.rl_type in ('opsd', 'mopd'):
         # OPSD/MOPD v1 distils with the sampled-token k3 surrogate only: it applies no reference-KL term,
         # so a non-zero beta would be a silently-ignored knob. Reject rather than drop. (The GKD-only
-        # full-vocab knobs temperature/gkd_logits_topk/sft_alpha are simply never read here.)
+        # full-vocab knobs distill_temperature/gkd_logits_topk/sft_alpha are simply never read here.)
         if cfg.beta not in (None, 0, 0.0):
             raise ValueError(f'{cfg.rl_type} v1 has no reference-KL term; beta={cfg.beta!r} would be ignored. '
                              'Leave beta unset/0 -- self-distillation pulls the student toward the teacher directly.')
@@ -972,8 +1004,8 @@ def _check_distillation(cfg: 'RLConfig') -> None:
         return
     if cfg.sft_alpha < 0:
         raise ValueError('GKD sft_alpha must be >= 0.')
-    if cfg.temperature <= 0:
-        raise ValueError('GKD temperature must be > 0.')
+    if cfg.distill_temperature <= 0:
+        raise ValueError('GKD distill_temperature must be > 0.')
     if cfg.gkd_logits_topk is not None and cfg.gkd_logits_topk < 1:
         raise ValueError('GKD gkd_logits_topk must be >= 1 when set.')
 
@@ -1064,7 +1096,7 @@ def _check_galore(train_config: 'TrainConfig', tuner_config: Optional['TunerConf
             '(it projects the full-precision gradient with the rank / target_modules / update_proj_gap / '
             'scale / proj_type knobs, plus QGaLore quantized projection via galore_quantization). Remove '
             'them, or keep use_galore to the supported fields.')
-    from swift.dev.naming import resolve_galore_target, resolve_optim_target
+    from swift.dev.utils.naming import resolve_galore_target, resolve_optim_target
     try:
         resolve_galore_target(resolve_optim_target(train_config.optim)[0], quantize=train_config.galore_quantization)
     except NotImplementedError as exc:
@@ -1085,7 +1117,7 @@ def _check_param_groups(tuner_config: Optional['TunerConfig']) -> None:
     """Fail loudly on param_groups knobs that cannot apply the way the user asked.
 
     These knobs are consumed worker-side -- LoRA+ and the per-tower lr by
-    ``swift.dev.optimizer.build_param_groups_spec``, the freeze_* flags by twinkle's multimodal
+    ``swift.dev.builders.optimizer.build_param_groups_spec``, the freeze_* flags by twinkle's multimodal
     'all-linear' expansion -- so two combinations that are knowable on the driver must not silently
     do nothing:
 
@@ -1162,7 +1194,7 @@ def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedCon
     if 'muon' not in train_config.optimizer:
         return
 
-    from swift.dev.naming import mcore_version_at_least
+    from swift.dev.utils.naming import mcore_version_at_least
     if not mcore_version_at_least('0.16'):
         raise ValueError(f'TrainConfig.optimizer={train_config.optimizer!r} requires megatron-core>=0.16, which is '
                          'where the muon implementation lands.')
@@ -1532,7 +1564,7 @@ def _check_megatron_attn_backend(model_config: 'ModelConfig', template_config: '
     # reports those at build time with a better message.
     from megatron.core.transformer.enums import AttnBackend
 
-    from swift.dev.naming import resolve_megatron_attn_backend
+    from swift.dev.utils.naming import resolve_megatron_attn_backend
     try:
         backend = resolve_megatron_attn_backend(model_config.attn_impl)
     except NotImplementedError:
@@ -1680,7 +1712,7 @@ def _check_megatron_optimizer(train_config: 'TrainConfig', is_megatron: bool) ->
     """Reject an inconsistent Megatron optimizer/scheduler config before the weights are loaded."""
     if not is_megatron:
         return
-    from swift.dev.optimizer import megatron_weight_decay_bounds, warmup_budget
+    from swift.dev.builders.optimizer import megatron_weight_decay_bounds, warmup_budget
 
     # Delegates so the weight-decay rule has one definition (configure_optimizer uses the same).
     start_wd, end_wd = megatron_weight_decay_bounds(train_config)
@@ -1873,8 +1905,6 @@ _HF_ONLY = (
     ('train_config', 'optim', 'adamw_torch_fused'),
     ('train_config', 'optim_args', None),
     ('train_config', 'gradient_checkpointing_kwargs', None),
-    ('train_config', 'vit_gradient_checkpointing', None),
-    ('train_config', 'vit_gradient_checkpointing_kwargs', None),
     ('train_config', 'router_aux_loss_coef', 0.0),
     ('train_config', 'label_smoothing_factor', 0.0),
     ('train_config', 'acc_strategy', 'token'),

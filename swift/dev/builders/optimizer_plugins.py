@@ -3,7 +3,7 @@
 
 A param_groups plugin neither builds the optimizer nor touches the model -- it returns a list of
 declarative, serializable grouping *rules* (grammar documented on
-:func:`swift.dev.optimizer.build_param_groups_spec`). dev composes the built-in rules (multimodal
+:func:`swift.dev.builders.optimizer.build_param_groups_spec`). dev composes the built-in rules (multimodal
 per-tower learning rates, LoRA+) with whatever the user selects through
 ``TrainConfig.param_groups_plugins``, and hands the whole spec to twinkle's ``set_optimizer``, which
 applies it worker-side on both backends (transformers: split the decay/no-decay groups by rule;
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from swift.dev.plugin import PluginRegistry, SwiftPlugin
+from swift.dev.utils.plugin import PluginRegistry, SwiftPlugin
 
 __all__ = ['ParamGroupsPlugin', 'PARAM_GROUPS']
 
@@ -27,7 +27,7 @@ class ParamGroupsPlugin(SwiftPlugin):
     """Return extra optimizer param-group rules for a run.
 
     ``__call__`` receives the run's ``TrainConfig`` and ``TunerConfig`` (``None`` on a full-parameter
-    run) and returns rules in the :func:`~swift.dev.optimizer.build_param_groups_spec` grammar. The
+    run) and returns rules in the :func:`~swift.dev.builders.optimizer.build_param_groups_spec` grammar. The
     built-in per-tower / LoRA+ rules come first and the first rule matching a parameter wins, so a
     plugin appended here only claims parameters no built-in rule already matched.
 
@@ -45,6 +45,6 @@ class ParamGroupsPlugin(SwiftPlugin):
 
 #: Declared at the bottom of the base's own module (never in an ``__init__.py``) so the kind exists
 #: before any ``@PluginRegistry.register('param_groups', ...)`` decorator runs -- see the ordering note
-#: in :mod:`swift.dev.plugin`. This module is listed in ``PluginRegistry._BUILTIN_KIND_MODULES`` so a
+#: in :mod:`swift.dev.utils.plugin`. This module is listed in ``PluginRegistry._BUILTIN_KIND_MODULES`` so a
 #: user's ``--external_plugins`` file can register against the kind under a clean interpreter.
 PARAM_GROUPS = PluginRegistry.register_kind('param_groups', ParamGroupsPlugin, config_field='param_groups_plugins')

@@ -44,7 +44,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, List, Optional, Sequence, Tuple
 
-from swift.dev.plugin import RewardPlugin
+from swift.dev.utils.plugin import RewardPlugin
 from swift.dev.utils import get_logger
 
 logger = get_logger()

@@ -1,8 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Every hand-writable swift plugin kind in ONE file, loaded by ``--external_plugins``.
 
-swift's extension points all resolve the same way (``swift.dev.naming.resolve_plugin_class`` /
-``swift.dev.plugin.PluginRegistry``): a name registered by an imported file, a class, or an external
+swift's extension points all resolve the same way (``swift.dev.utils.naming.resolve_plugin_class`` /
+``swift.dev.utils.plugin.PluginRegistry``): a name registered by an imported file, a class, or an external
 source. ``--external_plugins THIS_FILE`` imports this module before anything is built
 (``PluginRegistry.load_configured``), so every ``@register`` below has run by the time a run selects an
 implementation by name. One file therefore carries all six kinds; a real project usually splits them.
@@ -28,7 +28,7 @@ Two things are deliberately NOT here:
     import time -- and putting the heavy base import in THIS file would tax every ``--external_plugins``
     run, including training runs that build no sampler.
   * ``loss`` / ``lr_scheduler`` / ``metric`` are NOT external plugin kinds. ``--loss`` / ``--lr_scheduler``
-    name a member of a fixed built-in roster (``swift.dev.naming.resolve_loss`` / ``resolve_scheduler``);
+    name a member of a fixed built-in roster (``swift.dev.utils.naming.resolve_loss`` / ``resolve_scheduler``);
     an unknown name raises rather than importing a file. There is no metric selector dev reads at all.
     So there is nothing to register for them, and no honest example to write.
 """
@@ -41,7 +41,7 @@ from datasets import Dataset as HfDataset
 
 from swift.dev.dataset.loader import DatasetLoader, register_dataset
 from swift.dev.model.loader import ModelLoader, register_model
-from swift.dev.plugin import PluginRegistry, RewardPlugin, ToolPlugin
+from swift.dev.utils.plugin import PluginRegistry, RewardPlugin, ToolPlugin
 from swift.template import TemplateMeta, register_template
 from twinkle.data_format.message import Tool as ToolInfo
 
@@ -64,7 +64,7 @@ class LengthBonus(RewardPlugin):
 class AsyncLengthBonus(RewardPlugin):
     """The SAME contract written ``async`` -- there is no separate async base to choose.
 
-    ``swift.dev.reward.compute_rewards_per_func`` detects the returned coroutines and resolves a batch
+    ``swift.dev.rewards.reward.compute_rewards_per_func`` detects the returned coroutines and resolves a batch
     with one ``asyncio.gather``, so the I/O of many completions overlaps instead of running one after
     another. Use it when scoring does real I/O (an API call, a database lookup); the ``await`` here stands
     in for that. A run may mix sync and async rewards freely in one ``--orm`` list.

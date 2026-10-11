@@ -111,7 +111,7 @@ def run_dpo(
     Because the loop differs, the stages are driven one by one instead of through ``fit``.
     """
     from swift.dev.loss import configure_rlhf_loss, configure_rlhf_metrics
-    from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
+    from swift.dev.builders.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly
 
     rl_type = rl_config.rl_type

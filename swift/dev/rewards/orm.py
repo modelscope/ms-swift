@@ -11,7 +11,7 @@ import os
 import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from swift.dev.plugin import PluginRegistry, RewardPlugin
+from swift.dev.utils.plugin import PluginRegistry, RewardPlugin
 from swift.dev.rewards.code_reward import CodeExecutionReward
 
 if TYPE_CHECKING:

@@ -49,7 +49,7 @@ def process_configs(
     os.environ['SWIFT_ENABLE_NPU_MODEL_PATCH'] = str(bool(model_config.enable_npu_model_patch))
 
     from swift.dev.builders.model import is_megatron_backend
-    from swift.dev.plugin import PluginRegistry
+    from swift.dev.utils.plugin import PluginRegistry
 
     # Plugins must be registered before validation resolves their configured names.
     PluginRegistry.load_configured(plugin_config)
@@ -61,7 +61,7 @@ def process_configs(
     # Order matters below: the eval schedule reads split_dataset_ratio after the val-dataset rule has
     # zeroed it, and task_type must be settled (rm -> seq_cls) before the per-token-loss default and
     # the best-model metric read it.
-    _derive_vit_gradient_checkpointing(train_config, tuner_config, is_megatron)
+    _derive_vit_gradient_checkpointing(train_config, tuner_config)
     _derive_packing(dataset_config, template_config)
     _derive_split_dataset_ratio(dataset_config)
     _derive_eval_schedule(train_config, dataset_config, checkpoint_config)
@@ -69,6 +69,7 @@ def process_configs(
     _derive_bnb_compute_dtype(model_config, quantize_config)
     _derive_rlhf_task_type(model_config, rl_config)
     _derive_rlhf_beta(rl_config)
+    _derive_rlhf_loss_scale(template_config, rl_config)
     _derive_rlhf_ref_model(model_config, tuner_config, rl_config)
     _derive_rlhf_teacher(model_config, tuner_config, rl_config)
     _derive_grpo_reward_defaults(rl_config)
@@ -416,7 +417,7 @@ def _try_megatron_decay_style(lr_scheduler: str) -> Optional[str]:
     where it names the supported values. Raising it from a derivation pass would report the same problem
     twice, from a place that was not asked about schedules.
     """
-    from swift.dev.naming import resolve_megatron_decay_style
+    from swift.dev.utils.naming import resolve_megatron_decay_style
     try:
         return resolve_megatron_decay_style(lr_scheduler)
     except Exception:
@@ -511,8 +512,8 @@ def _derive_per_token_loss(model_config: 'ModelConfig', train_config: 'TrainConf
     train_config.calculate_per_token_loss = is_causal_lm and not is_rlhf
 
 
-def _derive_vit_gradient_checkpointing(train_config: 'TrainConfig', tuner_config: Optional['TunerConfig'],
-                                       is_megatron: bool) -> None:
+def _derive_vit_gradient_checkpointing(train_config: 'TrainConfig',
+                                       tuner_config: Optional['TunerConfig']) -> None:
     """Checkpoint the vision tower unless it is frozen, matching whichever way the LLM tower is trained.
 
     Mirrors legacy sft_args.py:211-212 (`vit_gradient_checkpointing = not freeze_vit`). Recomputing a
@@ -524,13 +525,11 @@ def _derive_vit_gradient_checkpointing(train_config: 'TrainConfig', tuner_config
     training) freeze_vit is not available and nothing is trained frozen, so the field is left for the
     builder's own default.
 
-    Skipped on megatron: that backend checkpoints activations globally through recompute_granularity /
-    recompute_method and has no per-tower vision switch to drive, so a derived value would be a silent
-    no-op. Leaving it None lets validate._HF_ONLY reject only a user-set value (fail loudly) rather than
-    a value this derivation invented.
+    Both backends consume it: the transformers path checkpoints each tower in TransformersModel.__init__,
+    and the megatron path does the same in MegatronModel.__init__ -- mcore's global recompute_* knobs cover
+    the LLM decoder but not the external HF vision tower, so megatron needs this per-tower switch too.
     """
-    if is_megatron or train_config.vit_gradient_checkpointing is not None or tuner_config is None:
-        ## megatron为什么不能用vit-gc
+    if train_config.vit_gradient_checkpointing is not None or tuner_config is None:
         return
     freeze_vit = getattr(tuner_config, 'freeze_vit', None)
     if freeze_vit is None:
@@ -573,7 +572,7 @@ def _derive_eval_schedule(train_config: 'TrainConfig', dataset_config: 'DatasetC
                           checkpoint_config: Optional['CheckpointConfig']) -> None:
     """Make the evaluation cadence follow the save cadence, and turn it off when nothing validates it.
 
-    Mirrors legacy sft_args.py::_init_eval_strategy plus the guard at sft_args.py:231-232. Three
+    Mirrors legacy sft_args.py::_init_eval_strategy plus the guard at sft_args.py:231-232. Four
     couplings, each removing a knob the user would otherwise have to keep in sync by hand:
 
     - No data to evaluate means there is nothing to score, so the strategy is forced to 'no'; leaving it
@@ -584,8 +583,11 @@ def _derive_eval_schedule(train_config: 'TrainConfig', dataset_config: 'DatasetC
       every N steps without being told twice.
     - When evaluating by steps without an explicit `eval_steps`, it inherits `save_steps` for the same
       reason.
+    - A final `eval_strategy` of 'no' -- forced here, set by the user, or inherited from `save_strategy`
+      -- also zeroes `split_dataset_ratio`: nothing scores the split, so carving one off the train set
+      would only waste training data (legacy sft_args.py:400-404).
 
-    Only fills in unset fields.
+    Only fills in unset fields, and only ever lowers `split_dataset_ratio` to 0 (never raises it).
     """
     if train_config.predict_with_generate:
         has_eval_data = bool(train_config.eval_dataset)
@@ -594,12 +596,16 @@ def _derive_eval_schedule(train_config: 'TrainConfig', dataset_config: 'DatasetC
                          or (bool(dataset_config.dataset) and dataset_config.split_dataset_ratio > 0))
     if not has_eval_data:
         train_config.eval_strategy = 'no'
+    elif checkpoint_config is not None and train_config.eval_strategy is None:
+        train_config.eval_strategy = checkpoint_config.save_strategy
+    if train_config.eval_strategy == 'no':
         train_config.eval_steps = None
+        if dataset_config.split_dataset_ratio > 0:
+            logger.info('Setting split_dataset_ratio=0.0 because eval_strategy is "no".')
+            dataset_config.split_dataset_ratio = 0.0
         return
     if checkpoint_config is None:
         return
-    if train_config.eval_strategy is None:
-        train_config.eval_strategy = checkpoint_config.save_strategy
     if train_config.eval_strategy == 'steps' and train_config.eval_steps is None:
         train_config.eval_steps = checkpoint_config.save_steps
 
@@ -750,6 +756,39 @@ def _derive_rlhf_beta(rl_config: Optional['RLConfig']) -> None:
     rl_config.beta = _RLHF_BETA_DEFAULTS.get(getattr(rl_config, 'rl_type', None), 0.1)
 
 
+def _derive_rlhf_loss_scale(template_config: 'TemplateConfig', rl_config: Optional['RLConfig']) -> None:
+    """Default the loss-mask strategy to the algorithm's sensible one when the user did not set it.
+
+    Mirrors legacy rlhf_args.py::_set_loss_scale. ``loss_scale`` decides which assistant turns the loss is
+    computed on: 'last_round' masks every turn but the final assistant response, 'default' trains them all.
+    The two coincide on single-turn data (the lone assistant turn IS the last round) and differ only on
+    multi-turn conversations, so this derivation matters for multi-turn preference / RLHF data.
+
+    Every rl_type defaults to 'last_round' -- a preference / RL objective contrasts whole responses, and
+    reproducing earlier turns the model was merely conditioned on is not the point -- with one exception: a
+    GRPO multi-turn rollout generates several assistant turns per trajectory and scores the whole
+    trajectory, so it trains every turn ('default').
+
+    legacy also splits orpo by ``is_multimodal`` (non-multimodal -> 'default'); that flag is only known
+    after the model is resolved, which happens AFTER config processing, and orpo is a single-turn
+    preference objective where 'default' and 'last_round' coincide, so orpo takes 'last_round' here (also
+    the safer choice legacy makes for its multimodal case).
+
+    Only fills in when the user did not pass --loss_scale. TemplateConfig.loss_scale defaults to the
+    literal 'default' (not None), so "unset" is detected through _explicit_fields, not a None check.
+    """
+    if rl_config is None or getattr(rl_config, 'rl_type', None) is None:
+        return
+    if 'loss_scale' in getattr(template_config, '_explicit_fields', set()):
+        return
+    # legacy extends the multi-turn exception to gkd as well, but dev's multi-turn rollout is GRPO-only
+    # (validate rejects max_turns on any other rl_type), so gkd always takes 'last_round' here.
+    if rl_config.rl_type == 'grpo' and rl_config.max_turns is not None:
+        template_config.loss_scale = 'default'
+    else:
+        template_config.loss_scale = 'last_round'
+
+
 def _derive_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
                            rl_config: Optional['RLConfig']) -> None:
     """Point the reference model at the policy model when the algorithm needs one and none was given.
@@ -834,19 +873,24 @@ def _derive_grpo_reward_defaults(rl_config: Optional['RLConfig']) -> None:
 def _derive_best_model_metric(train_config: 'TrainConfig', rl_config: Optional['RLConfig']) -> None:
     """Pick the metric that selects the best checkpoint, and which direction counts as better.
 
-    Mirrors legacy sft_args.py::_init_metric_for_best_model, its GRPO override in rlhf_args.py, and the
-    megatron block at megatron_args.py:862-865. The best-checkpoint metric depends on what the run
+    Mirrors legacy sft_args.py::_init_metric_for_best_model, its GRPO/PPO overrides in rlhf_args.py, and
+    the megatron block at megatron_args.py:862-865. The best-checkpoint metric depends on what the run
     produces: a generation run is judged by ROUGE, a GRPO run by its reward, everything else by the
     loss. `greater_is_better` then follows the metric -- loss is minimised, a reward or ROUGE score is
     maximised -- so the two cannot be set to disagree.
 
+    PPO is the one exception: its policy/value loss is not monotone in policy quality (it swings with the
+    clip fraction and the value fit), so "best by loss" would pick a checkpoint essentially at random.
+    legacy forces the metric off for PPO (rlhf_args.py:478-480); dev leaves it unset so no best-checkpoint
+    selection runs, while still honouring an explicit --metric_for_best_model if the user wants one.
+
     Only fills in unset fields.
     """
-    is_grpo = rl_config is not None and getattr(rl_config, 'rl_type', None) == 'grpo'
+    rl_type = getattr(rl_config, 'rl_type', None) if rl_config is not None else None
     if train_config.metric_for_best_model is None:
-        if is_grpo:
+        if rl_type == 'grpo':
             train_config.metric_for_best_model = 'reward'
-        else:
+        elif rl_type != 'ppo':
             train_config.metric_for_best_model = 'rouge-l' if train_config.predict_with_generate else 'loss'
     if train_config.greater_is_better is None and train_config.metric_for_best_model is not None:
         train_config.greater_is_better = 'loss' not in train_config.metric_for_best_model

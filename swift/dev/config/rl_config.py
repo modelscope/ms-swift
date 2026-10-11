@@ -80,7 +80,7 @@ class RLConfig:
     prm_parallel_spec: Optional[str] = None
     #: Which ``prm_scorer`` plugin segments a response into reasoning steps and broadcasts each step's PRM
     #: score onto its tokens (GRPO process reward only). A registered name, a class, or a callable resolved
-    #: through :meth:`swift.dev.plugin.PluginRegistry.resolve`; ``None`` uses the default ``'delimiter'``
+    #: through :meth:`swift.dev.utils.plugin.PluginRegistry.resolve`; ``None`` uses the default ``'delimiter'``
     #: scorer (:class:`swift.dev.rewards.prm.DelimiterPRMScorer`).
     prm_scorer: Optional[Any] = None
     #: Step boundary the default ``'delimiter'`` PRM scorer splits the decoded response on -- one reasoning

@@ -5,7 +5,7 @@ import torch
 from twinkle.processor import InputProcessor as TwinkleInputProcessor
 from typing import Callable, List, Optional
 
-from swift.dev.data_format import InputFeature
+from twinkle.data_format import InputFeature
 
 
 ## 这个为什么不放在twinkle中？看起来是embedding和reranker相关的，twinkle有这个任务支持

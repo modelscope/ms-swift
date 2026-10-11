@@ -99,7 +99,7 @@ def run_gkd(
     """
     from swift.dev.builders import build_ray_dp_mesh, build_sampler
     from swift.dev.loss import configure_rlhf_loss
-    from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
+    from swift.dev.builders.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly, single_teacher_id
 
     if rl_config.rl_type != 'gkd':

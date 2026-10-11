@@ -233,7 +233,7 @@ def test_resolve_loss_returns_twinkle_type():
     from twinkle.loss import CrossEntropyLoss as TwinkleCE
 
     from swift.dev.loss import CrossEntropyLoss
-    from swift.dev.naming import resolve_loss
+    from swift.dev.utils.naming import resolve_loss
 
     cls = resolve_loss('cross_entropy')
     assert cls is TwinkleCE
@@ -241,7 +241,7 @@ def test_resolve_loss_returns_twinkle_type():
 
 
 def test_resolve_optim_aliases_and_case():
-    from swift.dev.naming import resolve_optim
+    from swift.dev.utils.naming import resolve_optim
     assert resolve_optim('adamw_torch_fused') == 'AdamW'
     assert resolve_optim('AdamW') == 'AdamW'  # case-insensitive
     assert resolve_optim('sgd') == 'SGD'
@@ -262,7 +262,7 @@ def test_resolve_optim_target_matches_transformers_trainer():
     import torch
     from transformers.trainer import Trainer
 
-    from swift.dev.naming import resolve_optim_target
+    from swift.dev.utils.naming import resolve_optim_target
     from transformers import TrainingArguments
 
     for name in ('adamw_torch', 'adamw_torch_fused', 'adafactor', 'sgd'):
@@ -287,7 +287,7 @@ def test_resolve_optim_target_matches_transformers_trainer():
 def test_parse_optim_args_coerces_types():
     """optim_args was an accepted TrainConfig field that configure_optimizer never read (silently
     ignored). CLI values arrive as strings, so they must be coerced before hitting a constructor."""
-    from swift.dev.naming import parse_optim_args
+    from swift.dev.utils.naming import parse_optim_args
     assert parse_optim_args(None) == {}
     assert parse_optim_args('') == {}
     assert parse_optim_args('fused=True,eps=1e-6,rank=8,proj=std,x=none') == {
@@ -307,7 +307,7 @@ def test_configure_optimizer_applies_extra_and_optim_args():
     from unittest.mock import MagicMock
 
     from swift.dev.config import TrainConfig
-    from swift.dev.optimizer import configure_optimizer
+    from swift.dev.builders.optimizer import configure_optimizer
 
     def _kwargs(**cfg_kw):
         m = MagicMock()
@@ -332,7 +332,7 @@ def test_configure_optimizer_does_not_pass_params():
     from unittest.mock import MagicMock
 
     from swift.dev.config import TrainConfig
-    from swift.dev.optimizer import configure_optimizer
+    from swift.dev.builders.optimizer import configure_optimizer
 
     m = MagicMock()
     configure_optimizer(m, TrainConfig(learning_rate=1e-4), num_training_steps=10)
@@ -340,19 +340,19 @@ def test_configure_optimizer_does_not_pass_params():
 
 
 def test_resolve_scheduler_constant_is_none():
-    from swift.dev.naming import resolve_scheduler
+    from swift.dev.utils.naming import resolve_scheduler
     assert resolve_scheduler('cosine') == 'CosineWarmupScheduler'
     assert resolve_scheduler('constant') is None  # constant => no scheduler
 
 
 def test_resolve_strategy_aliases():
-    from swift.dev.naming import resolve_strategy
+    from swift.dev.utils.naming import resolve_strategy
     assert resolve_strategy('fsdp') == 'native_fsdp'
     assert resolve_strategy('ddp') == 'accelerate'
 
 
 def test_resolve_rejects_unknown_names():
-    from swift.dev.naming import resolve_loss, resolve_optim, resolve_scheduler, resolve_strategy
+    from swift.dev.utils.naming import resolve_loss, resolve_optim, resolve_scheduler, resolve_strategy
     for fn, bad in [(resolve_loss, 'no_such_loss'), (resolve_optim, 'no_such_optim'),
                     (resolve_scheduler, 'no_such_sched'), (resolve_strategy, 'no_such_strategy')]:
         with pytest.raises(NotImplementedError):
@@ -362,7 +362,7 @@ def test_resolve_rejects_unknown_names():
 def test_resolve_unified_entry_dispatch():
     from twinkle.loss import CrossEntropyLoss as TwinkleCE
 
-    from swift.dev.naming import resolve
+    from swift.dev.utils.naming import resolve
     assert resolve('loss', 'cross_entropy') is TwinkleCE
     assert resolve('optim', 'adamw') == 'AdamW'
     assert resolve('scheduler', 'cosine') == 'CosineWarmupScheduler'
@@ -455,7 +455,7 @@ def test_resume_param_trajectory_bit_identical_oddphase(tmp_path):
     # Self-contained: drive SFTLoop's contract directly on an in-memory dataset so the
     # test doesn't depend on a registered dataset id.
     from swift.dev.loss import configure_loss
-    from swift.dev.optimizer import configure_optimizer
+    from swift.dev.builders.optimizer import configure_optimizer
     from swift.dev.processor import InputProcessor
     from swift.dev.recipe import num_optimizer_steps
     from swift.dev.template import DevMixin
@@ -584,11 +584,11 @@ def test_lora_resume_param_trajectory_bit_identical_seed_independent(tmp_path):
     from datasets import Dataset as HfDataset
     from twinkle.dataloader import DataLoader as TwinkleDataLoader
 
-    from swift.dev.adapter import apply_tuner
+    from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders.dataset import _encode, _identity_collate
     from swift.dev.loss import configure_loss
     from swift.dev.model import TransformersModel
-    from swift.dev.optimizer import configure_optimizer
+    from swift.dev.builders.optimizer import configure_optimizer
     from swift.dev.processor import InputProcessor
     from swift.dev.recipe import num_optimizer_steps
     from swift.dev.template import DevMixin
@@ -680,7 +680,7 @@ def test_grpo_ga_equivalence_equal_seq_strong_signal():
     if not torch.cuda.is_available():
         pytest.skip('CUDA not available')
 
-    from swift.dev.data_format import InputFeature, ModelOutput
+    from twinkle.data_format import InputFeature, ModelOutput
     from swift.dev.loss import GRPOLoss
     from transformers import AutoModelForCausalLM
 

@@ -14,7 +14,7 @@ which TunerConfig fields feed it:
 
 LoRA+ is NOT a tuner: it changes the optimizer's param groups, not the module graph, so it has no peft
 config here. It is wired through the optimizer instead -- ``lorap_lr_ratio`` / ``lorap_emb_lr`` on
-TunerConfig feed :func:`swift.dev.optimizer.build_param_groups_spec`.
+TunerConfig feed :func:`swift.dev.builders.optimizer.build_param_groups_spec`.
 """
 from __future__ import annotations
 
@@ -66,6 +66,15 @@ def _resolve_init_weights(cfg: TunerConfig):
     init_weights = cfg.init_weights
     if isinstance(init_weights, str) and init_weights.lower() in {'true', 'false'}:
         return init_weights.lower() == 'true'
+    # LoRA-GA initialises the adapter through a separate weight-init pass (legacy's get_lora_ga_model)
+    # driven by the lora_ga_* parameters -- all rejected as unsupported, and dev runs no such pass. peft
+    # would only raise a confusing 'unknown initialization' (hyphen spelling) or demand a lora_ga_config
+    # dev does not model (underscore spelling), so reject here with the actual reason instead.
+    if isinstance(init_weights, str) and init_weights.lower().replace('-', '_') == 'lora_ga':
+        raise ValueError(
+            "init_weights='lora-ga' (LoRA-GA) is not supported by dev: it needs the lora_ga_* parameters "
+            '(rejected as unsupported) and a separate weight-initialization pass dev does not run. Use a '
+            "supported init_weights ('true'/'false'/'gaussian'/'pissa'/'pissa_niter_[N]'/'olora').")
     return init_weights
 
 
@@ -77,6 +86,12 @@ def _lora_common_kwargs(cfg: TunerConfig, task_type: Optional[str] = None) -> di
     # (peft ignores the one this model family does not have). cfg.modules_to_save is copied, not
     # mutated, so a reused TunerConfig keeps whatever the user set.
     modules_to_save = list(cfg.modules_to_save or [])
+    # The 'all-norm'/'all-embedding' shorthands ride through verbatim and are expanded worker-side against
+    # the real modules (twinkle's _patch_adapter -> _expand_modules_to_save / get_modules_to_save), because
+    # the driver's model under Ray is a PROXY with no modules to walk. transformers expands both; megatron
+    # expands 'all-embedding' and rejects 'all-norm' (mcore fuses norm into its linear layers, so there is
+    # no standalone norm module to save). peft would silently ignore an unexpanded shorthand, so leaving
+    # the resolution to the one place that can see the model is what keeps it from vanishing.
     if task_type in _HEAD_SAVING_TASK_TYPES:
         modules_to_save += [name for name in _SEQ_CLS_HEAD_MODULES if name not in modules_to_save]
     kwargs = dict(

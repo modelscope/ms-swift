@@ -5,9 +5,9 @@ Data flow per step:
     -> GRPOLoss forward_backward (GA) -> clip_grad_and_step.
 
 Scope (T1 wired):
-  - reward: `swift.dev.reward` (L1 API over swift `orms`); a single toy callable is also accepted
+  - reward: `swift.dev.rewards.reward` (L1 API over swift `orms`); a single toy callable is also accepted
     for smoke tests. Multiple reward funcs + reward_weights supported.
-  - advantage: `swift.dev.advantage` (L1 API over rl_core: grpo/rloo/reinforce++,
+  - advantage: `swift.dev.rewards.advantage` (L1 API over rl_core: grpo/rloo/reinforce++,
     group/batch/none/gdpo); estimator/scale read from RLConfig.
   - only forward_backward / forward_only are used (backend-agnostic).
 
@@ -34,10 +34,10 @@ import json
 
 from twinkle.metric import CompletionRewardMetric
 
-from swift.dev.advantage import compute_advantages
+from swift.dev.rewards.advantage import compute_advantages
 from swift.dev.recipe._teacher import DisableAdapterTeacher, encode_privileged_view, response_positions
 from swift.dev.recipe.train_loop import PromptBatchScheduler, TrainLoop
-from swift.dev.reward import (
+from swift.dev.rewards.reward import (
     build_reward_weights,
     compute_reward_model_scores,
     compute_rewards_per_func,
@@ -54,7 +54,7 @@ logger = get_logger()
 
 
 def compute_group_advantages(rewards: List[float], num_generations: int, scale: str = 'group') -> List[float]:
-    """Group-relative advantages for a flat reward list (thin alias over `swift.dev.advantage`).
+    """Group-relative advantages for a flat reward list (thin alias over `swift.dev.rewards.advantage`).
 
     Kept for the single-scalar-reward smoke path + existing tests. rewards are ordered so that each
     consecutive block of `num_generations` belongs to one prompt group; returns a flat list aligned

@@ -62,7 +62,7 @@ def compute_advantages(rewards: Union[torch.Tensor, Sequence[float]],
             mismatch, ``kl_in_reward`` without ``kl_values``, or a missing estimator-specific input
             (``reward_baselines`` for remax, ``response_lengths`` for opo).
     """
-    from swift.dev.reward import build_reward_weights
+    from swift.dev.rewards.reward import build_reward_weights
     from twinkle.advantage import (GPGAdvantage, GRPOAdvantage, GRPOPassKAdvantage, OPOAdvantage,
                                    ReinforcePlusPlusAdvantage, ReinforcePPBaselineAdvantage, ReMaxAdvantage,
                                    RLOOAdvantage)

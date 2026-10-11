@@ -1,26 +1,3 @@
-"""export_cached_dataset: precompute the dataset once and write it to disk.
-
-The write half of ``DatasetConfig.cached_dataset``. Preprocessing (dataset load, column mapping,
-filtering and the `lengths` pass) is pure CPU work, so doing it inside every training job wastes GPU
-time and repeats itself on every rank and every rerun. This recipe runs that chain ONCE, saves the
-result with ``save_to_disk``, and later runs point ``DatasetConfig.cached_dataset`` at the output --
-``build_dataset`` then loads it and skips encoding (see builders/dataset.py::_load_cached_datasets).
-
-Peer of legacy ``swift export --to_cached_dataset``
-(swift/pipelines/export/cached_dataset.py::ExportCachedDataset), with one deliberate difference:
-legacy subclasses SwiftSft (the training entry) and neutralizes the model with a meta device, whereas
-this recipe reuses the dev builders directly, so NO model is constructed at all -- only a processor is
-loaded, for the tokenizer the template needs.
-
-What lands on disk is written through the shared store writer (``swift.dev.dataset.store``), the same
-flow ``swift infer`` uses, so the container is configurable (``store_format``: arrow / jsonl) and the
-persisted columns are an allow-list (``store_fields``). The encoding mirrors the eager training path,
-because it calls the SAME ``swift.dev.builders.dataset._encode``: by default that is
-``MeasurePreprocessor``, which keeps the raw row and adds only a ``lengths`` column (tokenization itself
-still happens per-batch at train time); ``store_encoded=True`` materializes the tokens instead (a full
-``EncodePreprocessor``, so rows carry ``input_ids``/``labels`` and train with no re-encoding), as does
-``truncation_strategy='split'``, since splitting changes sample boundaries and must be materialized.
-"""
 from __future__ import annotations
 
 import logging
@@ -85,6 +62,7 @@ def export_cached_dataset(
     # would reach the model as image placeholders with no pixel_values. Caching multimodal therefore means
     # storing tokens AND vision tensors together -- a later phase. Refuse the combo and point at the default
     # (raw row + lengths, re-encoded at train time) rather than write a row that trains broken.
+    ## 多模态应该也允许吧。无非就是image不encode，训练的时候重新做？
     if store_encoded and template.model_meta.is_multimodal:
         raise ValueError('store_encoded=True materialises text tokens but not the vision tensors, and a multimodal '
                          'row needs both stored together: the forward\'s _not_encoded guard skips re-encoding once '
@@ -99,6 +77,7 @@ def export_cached_dataset(
     # cheap given `lengths`), and baking it in would freeze that choice into the cache.
     encode_mode = _encode_mode(dataset_config, template)
     if encode_mode == 'lazy':
+        ## lazy为什么不行？
         # lazy would return a LazyLLMDataset wrapper (no save_to_disk) and defeat the purpose:
         # nothing would be precomputed. Force the caller to opt into eager encoding explicitly.
         raise ValueError('export_cached_dataset requires eager encoding, but the resolved mode is lazy '

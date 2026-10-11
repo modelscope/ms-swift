@@ -7,7 +7,7 @@ from typing import List, Literal, Optional
 
 @dataclass
 class TunerConfig:
-    """LoRA (+QLoRA/DoRA/rsLoRA/LoRA-GA), AdaLoRA, TrainableTokens, and LISA settings.
+    """LoRA (+QLoRA/DoRA/rsLoRA), AdaLoRA, and TrainableTokens settings.
 
     Scope note: only the tuners that see real-world use on text/multimodal LLMs are covered here.
     The image-generation-oriented methods (LoHa/LoKr/OFT/BOFT ...) are intentionally left out --
@@ -19,7 +19,7 @@ class TunerConfig:
     # === Base ===
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
     #: Which PEFT-backed tuner to build -- 'lora' / 'adalora' / 'trainable_tokens', or 'full' for no
-    #: adapter. ``swift.dev.adapter.apply_tuner`` maps it onto the peft config; 'full' is carried as a
+    #: adapter. ``swift.dev.builders.adapter.apply_tuner`` maps it onto the peft config; 'full' is carried as a
     #: None TunerConfig (see ``cli/parser.select_tuner``). DoRA / rsLoRA / QLoRA are LoRA *flags*, not
     #: separate tuners, so there is deliberately no 'dora' / 'rslora' / 'qlora' value here.
     tuner: str = 'lora'
@@ -56,14 +56,15 @@ class TunerConfig:
     lora_bias: Literal['none', 'all'] = 'none'
     use_rslora: bool = False
     use_dora: bool = False
-    # Lora: 'true'/'false'/'gaussian'/'pissa'/'pissa_niter_[number of iters]'/'olora'/'lora-ga'
-    # ('loftq' also exists upstream but needs a loftq_config, which is not modelled here.)
+    # peft ``init_lora_weights``: 'true'/'false' (a bool) or a strategy name peft recognises
+    # ('gaussian'/'pissa'/'pissa_niter_[N]'/'olora'/...). 'loftq' needs a loftq_config that is not
+    # modelled here (peft raises); LoRA-GA ('lora-ga') is unsupported and rejected at build time.
     init_weights: str = 'true'
 
     # === LoRA+ ===
     # LoRA+ (https://arxiv.org/abs/2402.12354) gives lora_B a higher learning rate than lora_A and the
     # embedding its own rate. Both are learning-rate knobs, consumed by
-    # ``swift.dev.optimizer.build_param_groups_spec``, which emits param-group rules matched worker-side
+    # ``swift.dev.builders.optimizer.build_param_groups_spec``, which emits param-group rules matched worker-side
     # (by name / parent-module type) rather than touching the peft config -- the same reason they ride
     # here next to the LoRA settings they qualify instead of on TrainConfig. ``lorap_lr_ratio=None``
     # leaves LoRA+ off (a plain single-rate LoRA run); ``lorap_emb_lr`` only takes effect once it is on.

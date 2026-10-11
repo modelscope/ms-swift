@@ -66,7 +66,7 @@ class RewardPlugin(SwiftPlugin):
     """Score model completions against dataset columns.
 
     ``__call__`` may be written ``async def`` when its scoring does I/O (an API call, a database
-    query): the scoring loop (:func:`swift.dev.reward.compute_rewards_per_func`) detects the returned
+    query): the scoring loop (:func:`swift.dev.rewards.reward.compute_rewards_per_func`) detects the returned
     coroutines and resolves them with one ``asyncio.gather``, so a batch's round trips overlap instead
     of running one after another. There is no separate async base to choose -- the same class covers
     both, and a run may mix sync and async rewards freely.
@@ -133,7 +133,7 @@ class PluginKind:
 #: config lifecycle imports them that early (``process_configs`` calls ``load_configured`` before any recipe
 #: runs), so a plugin registering a built-in kind would otherwise hit an empty ``KINDS``.
 _BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.rewards.prm', 'swift.dev.rollout.sandbox',
-                         'swift.dev.callbacks', 'swift.dev.optimizer_plugins')
+                         'swift.dev.callbacks', 'swift.dev.builders.optimizer_plugins')
 
 
 def _declare_builtin_kinds() -> None:

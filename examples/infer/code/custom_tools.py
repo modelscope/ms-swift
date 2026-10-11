@@ -13,7 +13,7 @@ hub id (``hf://``/``ms://``, downloaded if absent), and imports it before anythi
 ``--tools calculator`` is resolved. Tools are a multi-turn feature, so a run that names any tool also
 needs ``--max_turns``.
 
-Contract (see ``swift.dev.plugin.ToolPlugin`` and ``twinkle_agentic.tools.base.Tool``):
+Contract (see ``swift.dev.utils.plugin.ToolPlugin`` and ``twinkle_agentic.tools.base.Tool``):
   * ``ToolPlugin.build(env)`` is called once per episode with the sandbox ``Env`` this episode leased,
     and returns the twinkle ``Tool`` objects the model may call. A tool that needs no sandbox can ignore
     ``env`` (the calculator does); one that acts in the workspace wraps ``env`` (see ``EnvTool.from_env``,
@@ -27,7 +27,7 @@ import ast
 import operator
 from typing import Any, Dict, List
 
-from swift.dev.plugin import PluginRegistry, ToolPlugin
+from swift.dev.utils.plugin import PluginRegistry, ToolPlugin
 from twinkle.data_format.message import Tool as ToolInfo
 
 # Only numbers and arithmetic operators are evaluated -- never names, calls or attributes -- so a

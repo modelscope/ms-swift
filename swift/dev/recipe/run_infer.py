@@ -129,7 +129,7 @@ def run_infer(
         yields chosen/rejected pairs; the forward paths yield one value per row.
     """
     from swift.dev.builders import is_pooling_task
-    from swift.dev.plugin import PluginRegistry
+    from swift.dev.utils.plugin import PluginRegistry
 
     # A custom model / dataset / reward / tool lives in a plugin file, so its registration must precede
     # the first name lookup. ``load_configured`` declares swift's built-in kinds before importing the
@@ -1441,7 +1441,7 @@ def _build_slot_funcs(slots: List['_RewardSlot'], group: str, rl_config: Optiona
     DeviceGroup only under ray and only for a GPU-resident kind (local mode has no groups; a sampler-reusing
     or API judge stays group-less).
     """
-    from swift.dev.plugin import PluginRegistry
+    from swift.dev.utils.plugin import PluginRegistry
     from swift.dev.rewards import REWARD
 
     funcs: List[Any] = []
@@ -1703,7 +1703,7 @@ class _RewardChannels:
     @staticmethod
     def _channel(candidates: List[_Candidate], row: Dict[str, Any], trajectory: Dict[str, Any], funcs: List[Any],
                  weights: Optional[List[float]], infer_config: InferConfig) -> List[float]:
-        from swift.dev.reward import compute_rewards_per_func, weight_rewards
+        from swift.dev.rewards.reward import compute_rewards_per_func, weight_rewards
 
         columns = {key: [value] * len(candidates) for key, value in row.items() if key != 'messages'}
         columns['messages'] = [_candidate_messages(candidate, trajectory) for candidate in candidates]
@@ -1894,7 +1894,7 @@ def _resolve_reward_channel(items: List[Any], adapter: Optional[str], sampler_mo
     and an independent judge's engine TP all derive from one place. A rule slot holds no model and ignores
     it; a sampler-reusing / API judge needs no device group, so the spec is inert there.
     """
-    from swift.dev.reward import is_registered_reward
+    from swift.dev.rewards.reward import is_registered_reward
 
     is_rule = [is_registered_reward(item) for item in items]
     model_ids = [item for item, rule in zip(items, is_rule) if not rule]
@@ -2182,7 +2182,7 @@ class _ApiJudgeReward:
 class _ModelReward:
     """Score candidates with a frozen scalar (seq_cls/reranker) reward model, dev-native.
 
-    Built through the SAME shared builder GRPO uses (:func:`swift.dev.reward.build_frozen_reward_model`),
+    Built through the SAME shared builder GRPO uses (:func:`swift.dev.rewards.reward.build_frozen_reward_model`),
     so a scalar RM here and in RL are identical: its real ``task_type`` / ``num_labels`` come from the
     checkpoint's metadata rather than a hard-coded head, it is built with ``build_model`` (the run's
     ``distributed_config``, a dedicated ``remote_group`` and its own ``parallel_spec`` threaded through),
@@ -2202,7 +2202,7 @@ class _ModelReward:
                  distributed_config: Optional[DistributedConfig] = None,
                  remote_group: Optional[str] = None,
                  parallel_spec: Optional[str] = None):
-        from swift.dev.reward import build_frozen_reward_model, build_reward_model_plugins
+        from swift.dev.rewards.reward import build_frozen_reward_model, build_reward_model_plugins
 
         model, template = build_frozen_reward_model(
             model_id,

@@ -111,7 +111,7 @@ def run_rft(
     """
     from swift.dev.builders import build_sampler
     from swift.dev.loss import configure_loss
-    from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
+    from swift.dev.builders.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly
 
     if rl_config.rl_type != 'rft':

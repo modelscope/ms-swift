@@ -13,7 +13,7 @@
 from typing import Any, Dict, Optional
 
 from swift.dev.callbacks import CallbackControl, CallbackState, TrainCallback
-from swift.dev.plugin import PluginRegistry
+from swift.dev.utils.plugin import PluginRegistry
 from swift.dev.utils import get_logger
 
 logger = get_logger()

@@ -25,7 +25,7 @@ pytest.importorskip('megatron.core', reason='needs megatron-core for AttnBackend
 
 from megatron.core.transformer.enums import AttnBackend  # noqa: E402
 
-from swift.dev.naming import flash_version_pin, resolve_megatron_attn_backend  # noqa: E402
+from swift.dev.utils.naming import flash_version_pin, resolve_megatron_attn_backend  # noqa: E402
 
 
 @pytest.mark.parametrize('value, expected', [
@@ -139,7 +139,7 @@ def test_apply_flash_version_pin_is_a_noop_without_a_pin():
     """No pin -> TE's own flags are left exactly as they were, so its dispatcher keeps its choice."""
     from transformer_engine.pytorch.attention.dot_product_attention.utils import FlashAttentionUtils
 
-    from swift.dev.naming import apply_flash_version_pin
+    from swift.dev.utils.naming import apply_flash_version_pin
 
     flags = ('is_installed', 'v3_is_installed', 'v4_is_installed')
     before = {f: getattr(FlashAttentionUtils, f, None) for f in flags}
@@ -155,7 +155,7 @@ def test_apply_flash_version_pin_disables_the_other_versions():
     real one would leak into every later test in the process (legacy has the same hazard, which is why
     the pin is applied once at strategy construction).
     """
-    from swift.dev import naming
+    from swift.dev.utils import naming
 
     class _Stub:
         is_installed = True
@@ -173,7 +173,7 @@ def test_apply_flash_version_pin_disables_the_other_versions():
 
 def test_apply_flash_version_pin_rejects_a_version_that_is_not_installed():
     """Asking for a build that is not installed must fail loudly, not fall back to another version."""
-    from swift.dev import naming
+    from swift.dev.utils import naming
 
     class _Stub:
         is_installed = True

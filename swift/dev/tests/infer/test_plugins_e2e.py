@@ -41,7 +41,7 @@ from twinkle.template.tools import HermesQwenParser
 
 from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, PluginConfig, RLConfig,
                               RolloutConfig, TemplateConfig)
-from swift.dev.plugin import PluginRegistry
+from swift.dev.utils.plugin import PluginRegistry
 from swift.dev.recipe.run_infer import run_infer
 from swift.dev.tests.infer.conftest import write_cache_file
 
@@ -167,7 +167,7 @@ def test_reward_name_is_unresolvable_without_the_plugin_file():
 
     custom_tools = _REPO / 'examples' / 'infer' / 'code' / 'custom_tools.py'
     script = (
-        'from swift.dev.plugin import PluginRegistry;'
+        'from swift.dev.utils.plugin import PluginRegistry;'
         'from swift.dev.config import PluginConfig;'
         f'PluginRegistry.load_configured(PluginConfig(external_plugins=[{str(custom_tools)!r}]));'
         "print('PRE:' + ('RESOLVED' if PluginRegistry.kind('reward').entries.get('length_bonus') else 'MISSING'));"

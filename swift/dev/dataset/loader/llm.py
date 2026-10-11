@@ -5,7 +5,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from swift.template.utils import split_str_parts_by
+from swift.dev.utils import split_str_parts_by
 
 from .base import DatasetLoader, SubsetMeta, register_dataset
 from ..preprocessor import MessagesRepairPreprocessor, Preprocessor
@@ -169,7 +169,7 @@ class LongAlpacaLoader(DatasetLoader):
     dataset_type = 'long-alpaca-12k'
     datasets = [('AI-ModelScope/LongAlpaca-12k', 'Yukang/LongAlpaca-12k')]
     preprocessor = LongAlpacaPreprocessor
-    tags = ['long-sequence', 'QA']
+    tags = ['long-sequence', 'qa']
 
 
 class RuozhibaPreprocessor(Preprocessor):
@@ -321,7 +321,7 @@ class TigerBotLawLoader(DatasetLoader):
     dataset_type = 'tigerbot-law-zh'
     datasets = [('AI-ModelScope/tigerbot-law-plugin', 'TigerResearch/tigerbot-law-plugin')]
     preprocessor = TigerBotLawPreprocessor
-    tags = ['text-generation', 'law', 'pretrained']
+    tags = ['text-generation', 'law', 'pretrain']
 
 
 class Dolly15kPreprocessor(Preprocessor):

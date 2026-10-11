@@ -94,13 +94,13 @@ def _split_prm_channel(prm_items: Optional[Sequence[Any]]) -> Tuple[List[Any], O
     """Split ``--prm`` into ``(rule_specs, model_id)``: the rules scored on completions and the one frozen PRM.
 
     ``prm`` is a merged heterogeneous selector (rule names + at most one reward-model id), the same grammar
-    ``orm`` uses, so it is split by :func:`swift.dev.reward.is_registered_reward` -- registered name / class /
+    ``orm`` uses, so it is split by :func:`swift.dev.rewards.reward.is_registered_reward` -- registered name / class /
     callable is a rule, anything else is a model id. At most one model id is allowed because a PRM channel has
     a single ``prm_parallel_spec`` and a single dedicated DeviceGroup; two model ids would have nowhere
     distinct to live. Both the group PLANNING (run body) and the BUILD (:func:`_build_prm_channel`) call this
     one splitter, so they cannot drift on which item is the model.
     """
-    from swift.dev.reward import is_registered_reward
+    from swift.dev.rewards.reward import is_registered_reward
     items = list(prm_items or [])
     rule_specs = [item for item in items if is_registered_reward(item)]
     model_ids = [item for item in items if not is_registered_reward(item)]
@@ -342,7 +342,7 @@ def run_grpo(
     """
     from swift.dev.builders import build_sampler
     from swift.dev.loss import configure_rlhf_loss, configure_rlhf_metrics
-    from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
+    from swift.dev.builders.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly
     from swift.dev.recipe.grpo import GRPOLoop
 
@@ -760,7 +760,7 @@ def _build_reward_model_scorers(model_config: ModelConfig, template_config: Temp
         return [], []
 
     from swift.dev.builders import frozen_auxiliary_distributed_config
-    from swift.dev.reward import build_frozen_reward_model, build_reward_model_plugins
+    from swift.dev.rewards.reward import build_frozen_reward_model, build_reward_model_plugins
 
     count = len(reward_models)
 
@@ -819,8 +819,8 @@ def _build_prm_channel(model_config: ModelConfig, template_config: TemplateConfi
     if not rule_specs and prm_model_id is None:
         return None, [], []
 
-    from swift.dev.plugin import PluginRegistry
-    from swift.dev.reward import build_frozen_reward_model, build_reward_model_plugins, get_reward_funcs
+    from swift.dev.utils.plugin import PluginRegistry
+    from swift.dev.rewards.reward import build_frozen_reward_model, build_reward_model_plugins, get_reward_funcs
     from swift.dev.rewards import PRM_STEP_SCORER
 
     prm_funcs, _prm_rule_names = get_reward_funcs(rule_specs, rl_config) if rule_specs else ([], [])

@@ -20,7 +20,7 @@ import os
 import tempfile
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
-from swift.dev.plugin import PluginRegistry, ToolPlugin
+from swift.dev.utils.plugin import PluginRegistry, ToolPlugin
 
 if TYPE_CHECKING:
     from swift.dev.config import RolloutConfig

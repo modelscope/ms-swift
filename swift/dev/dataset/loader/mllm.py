@@ -65,7 +65,7 @@ class Garbage265Loader(DatasetLoader):
     dataset_type = 'garbage265'
     datasets = ['tany0699/garbage265']
     preprocessor = GarbagePreprocessor
-    tags = ['cls', '🔥', 'multi-modal']
+    tags = ['classification', '🔥', 'multi-modal']
 
 
 class COCO2014CaptionPreprocessor(FixedQueryPreprocessor):

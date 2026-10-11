@@ -222,7 +222,7 @@ class TrainConfig:
     acc_strategy: Literal['token', 'seq'] = 'token'
 
     # === Per-group learning rates ===
-    # Consumed by swift.dev.optimizer.build_param_groups_spec, which turns them into a backend-neutral
+    # Consumed by swift.dev.builders.optimizer.build_param_groups_spec, which turns them into a backend-neutral
     # param-group spec that twinkle applies worker-side on both backends (transformers: split the
     # decay/no-decay groups by tower; megatron: translate to config_overrides). vit_lr/aligner_lr give
     # a multimodal run's vision tower / aligner their own learning rate; each falls back to

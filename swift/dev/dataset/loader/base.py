@@ -15,6 +15,7 @@ from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Type, U
 
 import numpy as np
 
+from swift.dev.utils.tags import validate_tags
 from swift.dev.utils import get_logger
 
 __all__ = [
@@ -92,8 +93,9 @@ class DatasetInfo:
     bag, and every consumer would have to know which half it was looking at.
 
     It merges what legacy split across ``DatasetSyntax`` (the parse of the command-line string) and
-    the loose arguments passed alongside it. The parse itself does not live here -- the loader turns
-    ``'hf://id:sub1/sub2#5000'`` into one of these.
+    the loose arguments passed alongside it. The parse itself does not live here -- the loader turns a
+    string like ``'ms://id:sub1/sub2#5000'`` (or its ``hf://`` spelling) into one of these: the scheme
+    picks the hub, ``:sub1/sub2`` the subsets, ``#5000`` the row budget.
 
     Args:
         dataset: The dataset as the user wrote it: a hub id, a local file, or a local directory.
@@ -128,6 +130,7 @@ def register_dataset(loader_cls: Type['DatasetLoader'] = None, *, exist_ok: bool
     def _register(cls: Type['DatasetLoader']) -> Type['DatasetLoader']:
         dataset_type = cls.dataset_type
         assert dataset_type, f'{cls.__name__} must set `dataset_type`.'
+        validate_tags(cls.tags, context=f'dataset_type `{dataset_type}`')
         if not exist_ok and dataset_type in DATASET_MAPPING:
             raise ValueError(f'dataset_type `{dataset_type}` is already registered '
                              f'by {DATASET_MAPPING[dataset_type].__name__}.')

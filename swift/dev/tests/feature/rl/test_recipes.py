@@ -284,7 +284,7 @@ def test_grpo_tensor_alignment_and_reward_weights_keep_device():
 def test_reward_model_plugin_encodes_rows_and_scores_batch():
     """The scalar RM scorer uses its own template and the twinkle forward-only contract."""
     torch = pytest.importorskip('torch')
-    from swift.dev.reward import build_reward_model_plugins, compute_reward_model_scores
+    from swift.dev.rewards.reward import build_reward_model_plugins, compute_reward_model_scores
 
     class Template:
 

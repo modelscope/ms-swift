@@ -17,7 +17,7 @@ import time
 from typing import Optional
 
 from swift.dev.callbacks.base import CallbackControl, CallbackState, TrainCallback
-from swift.dev.plugin import PluginRegistry
+from swift.dev.utils.plugin import PluginRegistry
 from swift.dev.utils import get_logger
 
 logger = get_logger()

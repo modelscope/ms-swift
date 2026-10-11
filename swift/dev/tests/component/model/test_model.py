@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 from twinkle.utils import selective_log_softmax
 
-from swift.dev.data_format import InputFeature, LossOutput, ModelOutput
+from twinkle.data_format import InputFeature, LossOutput, ModelOutput
 from swift.dev.loss import CrossEntropyLoss, GRPOLoss, Loss
 from swift.dev.model.base import TrainableModel
 from swift.dev.model.strategy import AccelerateStrategy, NativeFSDPStrategy

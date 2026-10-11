@@ -22,7 +22,7 @@ from __future__ import annotations
 import copy
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple
 
-from swift.dev.plugin import PluginRegistry, SwiftPlugin
+from swift.dev.utils.plugin import PluginRegistry, SwiftPlugin
 
 __all__ = ['PRMScorer', 'DelimiterPRMScorer', 'prm_scorers', 'PRM_STEP_SCORER']
 

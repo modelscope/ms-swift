@@ -9,7 +9,7 @@ import textwrap
 
 import pytest
 
-from swift.dev.plugin import PluginKind, PluginRegistry, RewardPlugin, SwiftPlugin
+from swift.dev.utils.plugin import PluginKind, PluginRegistry, RewardPlugin, SwiftPlugin
 
 
 @pytest.fixture
@@ -91,7 +91,7 @@ def test_one_base_covers_sync_and_async_rewards(kind):
     """Sync and async rewards are ONE extension point on ONE base.
 
     An ``async def __call__`` is just a ``RewardPlugin`` whose scoring does I/O; the scoring loop
-    (:func:`swift.dev.reward.compute_rewards_per_func`) resolves the returned coroutines with one
+    (:func:`swift.dev.rewards.reward.compute_rewards_per_func`) resolves the returned coroutines with one
     ``asyncio.gather``. There is no separate async base to choose, so the ``reward`` kind's base is a
     single class, and both a sync and an async reward register against it.
     """
@@ -162,7 +162,7 @@ def test_display_name_labels_both_classes_and_functions(kind):
 
 
 _PLUGIN_FILE = textwrap.dedent("""
-    from swift.dev.plugin import PluginRegistry, RewardPlugin
+    from swift.dev.utils.plugin import PluginRegistry, RewardPlugin
 
     @PluginRegistry.register('test_kind', {name!r})
     class {cls}(RewardPlugin):

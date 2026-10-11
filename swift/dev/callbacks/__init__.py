@@ -2,7 +2,7 @@
 from swift.dev.callbacks.base import CALLBACK, CallbackControl, CallbackState, TrainCallback
 from swift.dev.callbacks.builtins import EarlyStopCallback, GracefulExitCallback, PerfLogCallback
 from swift.dev.callbacks.handler import CallbackHandler
-from swift.dev.plugin import PluginRegistry
+from swift.dev.utils.plugin import PluginRegistry
 
 __all__ = [
     'CALLBACK', 'TrainCallback', 'CallbackState', 'CallbackControl', 'CallbackHandler', 'EarlyStopCallback',

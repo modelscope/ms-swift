@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING, Optional
 
-from swift.dev.naming import parse_optim_args, resolve_galore_target, resolve_optim_target, resolve_scheduler
+from swift.dev.utils.naming import parse_optim_args, resolve_galore_target, resolve_optim_target, resolve_scheduler
 from swift.dev.utils import get_logger
 
 if TYPE_CHECKING:
@@ -183,8 +183,8 @@ def build_param_groups_spec(cfg: TrainConfig,
     on the worker against the real parameters, which is what lets it cross the Ray boundary -- the driver
     only holds a PROXY model with no parameters to inspect.
     """
-    from swift.dev.optimizer_plugins import PARAM_GROUPS
-    from swift.dev.plugin import PluginRegistry
+    from swift.dev.builders.optimizer_plugins import PARAM_GROUPS
+    from swift.dev.utils.plugin import PluginRegistry
 
     spec: list = []
 
@@ -319,7 +319,7 @@ def configure_optimizer(model: TrainableModel,
         warmup_steps_exact = warmup_budget(cfg, lr_decay_steps, is_megatron=True)
         lr_decay_style = cfg.lr_decay_style
         if lr_decay_style == 'cosine' and cfg.lr_scheduler != 'cosine':
-            from swift.dev.naming import resolve_megatron_decay_style
+            from swift.dev.utils.naming import resolve_megatron_decay_style
             lr_decay_style = resolve_megatron_decay_style(cfg.lr_scheduler)
         model.set_lr_scheduler(
             'default',

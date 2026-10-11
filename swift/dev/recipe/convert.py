@@ -1,24 +1,3 @@
-"""run_convert: HF <-> Megatron(mcore) weight conversion as a dev recipe.
-
-dev counterpart of legacy ``swift export --to_mcore / --to_hf`` (swift/megatron/convert.py::
-convert_hf2mcore / convert_mcore2hf).
-
-Split of responsibility, and why it is drawn here:
-
-  - the WEIGHT work stays in legacy ``swift.megatron`` (``get_mcore_model``, the bridge's
-    load_weights/save_weights, ``save_mcore_checkpoint``/``load_mcore_checkpoint``,
-    ``test_convert_precision``). That code is the format contract -- it decides the on-disk sharding,
-    the tensor-name mapping and the dist-checkpoint layout. Reimplementing it against dev's
-    MegatronModel would produce a SECOND writer that has to stay bit-compatible with the first one
-    forever, so this recipe deliberately calls the existing one.
-  - the CONFIG work happens here: dev's atomic Configs are translated into the single
-    ``MegatronArguments`` object those functions expect.
-
-Note this recipe does NOT go through ``swift.dev.builders.build_model``. dev's MegatronModel is a
-TRAINING surface (device mesh, optimizer, mixed precision) and has no mcore-checkpoint read/write
-entry point; conversion needs a plain cpu-initialized mcore model instead, which is what
-``get_mcore_model`` returns.
-"""
 from __future__ import annotations
 import dataclasses
 import logging
@@ -38,6 +17,7 @@ if TYPE_CHECKING:
         TemplateConfig,
     )
 
+## 为什么不用swift的logger？有多少这种问题，一起修改
 logger = logging.getLogger(__name__)
 
 # Forced onto MegatronArguments for every conversion. These are not user knobs: conversion is a
@@ -132,7 +112,8 @@ def _convert_hf2mcore(
     """HF -> mcore: load the HF weights, hand them to the bridge, write a dist checkpoint."""
     from swift.megatron.model import get_mcore_model
     from swift.megatron.utils import patch_torch_dist_shard, save_mcore_checkpoint, test_convert_precision
-
+    ## 考虑下显存问题。超大模型如何在已有的卡显存上逐步加载转换，包括merge_lora也一样
+    ## 看看legacy怎么做的，如果legacy没做，分析下风险和方案
     hf_model, template, processor = _load_hf_model_template(
         model_config, template_config, load_model=True, patch_offload=not convert_config.test_convert_precision)
     _set_thread_count(convert_config, hf_model, model_config)

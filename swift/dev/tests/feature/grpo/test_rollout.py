@@ -89,7 +89,7 @@ def test_rollout_sample_shape_and_shift_marker():
 def test_get_reward_funcs_resolves_orms_and_callables():
     """L1 reward API: registered `orms` names resolve to ORM instances (args=config), callables pass
     through; an unknown name fails fast."""
-    from swift.dev.reward import get_reward_funcs
+    from swift.dev.rewards.reward import get_reward_funcs
 
     def my_reward(completions, **kw):
         return [1.0] * len(completions)
@@ -107,7 +107,7 @@ def test_compute_rewards_per_func_takes_completions_and_columns():
     fails fast on misaligned columns / wrong-length reward output."""
     import torch
 
-    from swift.dev.reward import compute_rewards_per_func, get_reward_funcs, weight_rewards
+    from swift.dev.rewards.reward import compute_rewards_per_func, get_reward_funcs, weight_rewards
 
     def solved_reward(completions, solution=None, **kw):
         return [1.0 if c.strip() == s else 0.0 for c, s in zip(completions, solution)]
@@ -131,7 +131,7 @@ def test_advantage_api_delegates_to_rl_core():
     matrix; validates estimator/scaling/group divisibility/weights."""
     import torch
 
-    from swift.dev.advantage import compute_advantages
+    from swift.dev.rewards.advantage import compute_advantages
 
     # flat list input (single reward)
     adv = compute_advantages([1.0, 2.0, 3.0, 4.0], num_generations=4, scale_rewards='group')
@@ -429,7 +429,7 @@ def test_grpo_rollout_e2e_updates_params_intermediate_state():
     if not torch.cuda.is_available():
         pytest.skip('CUDA not available')
 
-    from swift.dev.adapter import apply_tuner
+    from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders import build_template
     from swift.dev.config import TemplateConfig, TunerConfig
     from swift.dev.model import TransformersModel

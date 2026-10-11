@@ -7,8 +7,8 @@ import os
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
 
-from swift.dev.naming import resolve_plugin_class
-from swift.dev.plugin import PluginKind, PluginRegistry
+from swift.dev.utils.naming import resolve_plugin_class
+from swift.dev.utils.plugin import PluginKind, PluginRegistry
 
 if TYPE_CHECKING:
     from swift.dev.config import (GenerationConfig, InferConfig, ModelConfig, QuantizeConfig, RolloutConfig,

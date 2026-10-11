@@ -2,6 +2,7 @@
 """General-purpose helpers, copied from ``swift.utils.utils`` so the dev stack is self-contained."""
 import json
 import os
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
@@ -82,6 +83,54 @@ def split_list(ori_list: List[_T], num_shards: int, contiguous=True) -> List[Lis
         for i in range(num_shards):
             shard.append(ori_list[np.arange(i, len(ori_list), num_shards)].tolist())
     return shard
+
+
+# Copied verbatim from swift.template.utils (the not-yet-migrated legacy template module) so dev's
+# dataset loaders stay off it; reconcile with the legacy original once that layer is migrated.
+def _split_str_by_regex(text: str, regex_delimiters: List[str]) -> List[str]:
+    """Split ``text`` on any ``regex_delimiters``, returning an even-length alternating list.
+
+    The result is ``[prefix, delim1, body1, delim2, body2, ...]`` (``prefix`` is '' when the text
+    opens with a delimiter), so a caller can zip ``[::2]`` against ``[1::2]`` to pair each body with
+    the delimiter preceding it.
+    """
+    combined_pattern = '|'.join(f'({pattern})' for pattern in regex_delimiters)
+    parts = re.split(combined_pattern, text, flags=re.DOTALL)
+    parts = [part for part in parts if part is not None]
+    if parts[0] == '':
+        parts.pop(0)
+    else:
+        parts.insert(0, '')
+    assert len(parts) % 2 == 0, f'result: {parts}'
+    assert ''.join(parts) == text, f'split_result: {parts}, text: {text}'
+    return parts
+
+
+def split_str_parts_by(text: str, delimiters: List[str], regex_mode: bool = False) -> List[Dict[str, str]]:
+    """Split ``text`` into ``{'key': delimiter, 'content': body}`` parts on ``delimiters``.
+
+    ``delimiters`` are literal prefixes unless ``regex_mode``, in which case each is a pattern matched
+    against the part following it.
+    """
+    assert isinstance(text, str), f'text: {text}'
+    delimiters_origin = delimiters
+    if not regex_mode:
+        delimiters = [re.escape(delimiter) for delimiter in delimiters]
+    parts = _split_str_by_regex(text, delimiters) if delimiters else ['', text]
+    res = []
+    if regex_mode:
+        parts = [part for part in parts if part]
+        for part in parts:
+            for delimiter, delimiter_origin in zip(delimiters, delimiters_origin):
+                if re.match(delimiter, part, re.DOTALL):
+                    break
+            else:
+                delimiter_origin = ''
+            res.append({'key': delimiter_origin, 'content': part})
+    else:
+        for key, content in zip(parts[::2], parts[1::2]):
+            res.append({'key': key, 'content': content})
+    return res
 
 
 def json_parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:

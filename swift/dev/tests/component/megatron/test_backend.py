@@ -557,7 +557,7 @@ def test_megatron_lora_resume_restores_adapter_bit_identical(tmp_path):
     from modelscope import snapshot_download
 
     import twinkle
-    from swift.dev.adapter import apply_tuner
+    from swift.dev.builders.adapter import apply_tuner
     from twinkle.model.megatron import MegatronModel
     from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
@@ -671,7 +671,7 @@ def test_megatron_bridge_lora_save_produces_loadable_peft_adapter(tmp_path):
     from modelscope import snapshot_download
 
     import twinkle
-    from swift.dev.adapter import apply_tuner
+    from swift.dev.builders.adapter import apply_tuner
     from twinkle.model.megatron import MegatronModel
     from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
@@ -750,7 +750,7 @@ def test_megatron_bridge_lora_resume_restores_adapter_bit_identical(tmp_path):
     from modelscope import snapshot_download
 
     import twinkle
-    from swift.dev.adapter import apply_tuner
+    from swift.dev.builders.adapter import apply_tuner
     from twinkle.model.megatron import MegatronModel
     from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
@@ -856,7 +856,7 @@ def test_megatron_bridge_lora_non_default_adapter_save_isolated(tmp_path):
     from modelscope import snapshot_download
 
     import twinkle
-    from swift.dev.adapter import _build_adapter_config
+    from swift.dev.builders.adapter import _build_adapter_config
     from twinkle.model.megatron import MegatronModel
     from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)

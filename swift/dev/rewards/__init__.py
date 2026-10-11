@@ -3,9 +3,10 @@
 
 Internalized from ``swift.rewards`` so swift.dev carries no runtime dependency on legacy swift packages.
 
-``ORM`` is the historical name of swift's reward plugin base (see :mod:`swift.dev.plugin`); ``orms`` is the
-registry the ``reward`` extension point adopts, and :data:`REWARD` is that point. Consumed by
-:mod:`swift.dev.reward`.
+``ORM`` is the historical name of swift's reward plugin base (see :mod:`swift.dev.utils.plugin`); ``orms`` is the
+registry the ``reward`` extension point adopts, and :data:`REWARD` is that point. The scoring API over these
+registries lives in :mod:`swift.dev.rewards.reward`, and reward-to-advantage estimation in
+:mod:`swift.dev.rewards.advantage`, so the whole reward pipeline is self-contained in this package.
 
 :mod:`swift.dev.rewards.prm` declares the sibling ``prm_scorer`` extension point: :class:`PRMScorer` is the
 general base that segments a response into reasoning steps and broadcasts each step's PRM score onto its

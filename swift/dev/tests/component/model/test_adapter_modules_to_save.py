@@ -12,7 +12,7 @@ Pure config building -- no weights, no GPU, no Ray.
 """
 import pytest
 
-from swift.dev.adapter import (_HEAD_SAVING_TASK_TYPES, _SEQ_CLS_HEAD_MODULES, _build_adapter_config,
+from swift.dev.builders.adapter import (_HEAD_SAVING_TASK_TYPES, _SEQ_CLS_HEAD_MODULES, _build_adapter_config,
                                _lora_common_kwargs, apply_tuner)
 from swift.dev.config import TunerConfig
 

@@ -49,7 +49,7 @@ def is_registered_reward(spec: Any) -> bool:
     on completions; anything else is a reward-model id, resolved through the model path. Registered-name-
     first is the rule, so an id that happens to equal a rule name is taken as the rule.
     """
-    from swift.dev.plugin import PluginRegistry
+    from swift.dev.utils.plugin import PluginRegistry
     from swift.dev.rewards import REWARD
 
     if isinstance(spec, str):
@@ -63,7 +63,7 @@ def get_reward_funcs(reward_funcs: Sequence[Any], config: Optional[Any] = None) 
     A spec is either a name registered at the ``reward`` extension point (instantiated as
     ``cls(args=config)``, so the plugin reads its own hyperparameters -- ``cosine_*`` /
     ``repetition_*`` -- off the Config), a plugin class, or an already-callable reward function,
-    which is passed through unchanged. Registration itself lives in :mod:`swift.dev.plugin`; this
+    which is passed through unchanged. Registration itself lives in :mod:`swift.dev.utils.plugin`; this
     function is the reward-shaped door onto it and adds nothing of its own but the naming.
 
     Args:
@@ -77,7 +77,7 @@ def get_reward_funcs(reward_funcs: Sequence[Any], config: Optional[Any] = None) 
     Raises:
         ValueError: unknown name, or a spec that is neither a name, a class nor a callable.
     """
-    from swift.dev.plugin import PluginRegistry
+    from swift.dev.utils.plugin import PluginRegistry
     from swift.dev.rewards import REWARD
 
     funcs: List[RewardFunc] = []

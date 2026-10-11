@@ -1,7 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
+import copy
+import math
 import os
 from typing import TYPE_CHECKING, Any, Optional
+
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from twinkle import DeviceMesh
@@ -16,6 +20,8 @@ if TYPE_CHECKING:
         TunerConfig,
     )
     from swift.dev.model import TrainableModel
+
+logger = get_logger()
 
 
 def load_model_processor(model_config: ModelConfig, *, load_model: bool = False, **overrides):
@@ -338,8 +344,8 @@ def _apply_unsloth_kwargs(kwargs: dict, model_config: ModelConfig, tuner_config:
     # place when the config says nothing.
     if model_config.max_model_len:
         kwargs['max_seq_length'] = model_config.max_model_len
-    # unsloth installs its offloaded checkpointing inside get_peft_model, which would silently undo
-    # the gradient_checkpointing_disable() below.
+    # unsloth installs its offloaded checkpointing inside get_peft_model and owns construction, so it
+    # never sees twinkle's gradient_checkpointing kwarg -- use_gradient_checkpointing is the only lever.
     if train_config is not None and not train_config.gradient_checkpointing:
         kwargs['use_gradient_checkpointing'] = False
 
@@ -445,9 +451,6 @@ def _resolve_model_loader(model_config: ModelConfig):
 
 def _build_hf_config(model_config: ModelConfig, model_loader=None):
     """Build the one HF config shared by Transformers and Megatron model construction."""
-    import copy
-    import math
-
     if model_loader is not None:
         config = model_loader.build_config(model_config.model, revision=model_config.model_revision)
         config = model_loader.process_config(config)
@@ -468,30 +471,58 @@ def _build_hf_config(model_config: ModelConfig, model_loader=None):
             raise TypeError('ModelConfig.rope_scaling must resolve to a dict or a supported strategy name.')
         rope_scaling = copy.deepcopy(rope_scaling)
     current_rope = HfConfigFactory.get_config_attr(config, 'rope_scaling')
+    # Adopt the checkpoint's own rope only when a max_model_len is given to re-derive its factor against.
+    # Legacy `_init_rope_scaling` adopts + pops the factor unconditionally, but with no max_model_len it then
+    # has nothing to rebuild the factor from (and asserts). Leaving the checkpoint rope untouched here keeps
+    # its declared factor intact instead -- an intentional divergence, not an omission.
     if rope_scaling is None and current_rope and model_config.max_model_len is not None:
         rope_scaling = copy.deepcopy(current_rope)
         rope_scaling.pop('factor', None)
 
     if rope_scaling is not None:
         rope_type = rope_scaling.get('rope_type', rope_scaling.get('type', 'default'))
-        origin_max_len = rope_scaling.get('original_max_position_embeddings')
-        if origin_max_len is None and current_rope:
-            origin_max_len = current_rope.get('original_max_position_embeddings')
-            if origin_max_len is None and current_rope.get('factor'):
-                current_max_len = HfConfigFactory.get_max_model_len(config)
-                if current_max_len is not None:
-                    origin_max_len = int(current_max_len / current_rope['factor'])
-        if origin_max_len is None:
-            origin_max_len = HfConfigFactory.get_max_model_len(config)
-        if 'factor' not in rope_scaling and not (model_config.max_model_len is None and rope_type == 'default'):
-            if model_config.max_model_len is None:
-                raise ValueError('ModelConfig.max_model_len is required when rope_scaling has no factor.')
+        if 'factor' not in rope_scaling and model_config.max_model_len is None and rope_type == 'default':
+            # Legacy `_init_rope_scaling` short-circuits here ("fix megatron qwen2_5_vl"): a factor-less,
+            # default-type rope with no requested max_model_len is written through verbatim. Deriving a factor
+            # or injecting ``original_max_position_embeddings`` would add fields the checkpoint's own (possibly
+            # multimodal / mrope) config never carried, which mcore's rope setup would then read.
+            HfConfigFactory.set_config_attr(config, 'rope_scaling', rope_scaling)
+        else:
+            origin_max_len = rope_scaling.get('original_max_position_embeddings')
+            if origin_max_len is None and current_rope:
+                origin_max_len = current_rope.get('original_max_position_embeddings')
+                if origin_max_len is None and current_rope.get('factor'):
+                    current_max_len = HfConfigFactory.get_max_model_len(config)
+                    if current_max_len is not None:
+                        origin_max_len = int(current_max_len / current_rope['factor'])
             if origin_max_len is None:
-                raise ValueError('The checkpoint does not declare a maximum length needed to derive rope_scaling.')
-            rope_scaling['factor'] = max(float(math.ceil(model_config.max_model_len / origin_max_len)), 1.0)
-        if origin_max_len is not None:
-            rope_scaling.setdefault('original_max_position_embeddings', origin_max_len)
-        HfConfigFactory.set_config_attr(config, 'rope_scaling', rope_scaling)
+                origin_max_len = HfConfigFactory.get_max_model_len(config)
+            # The early-return above already handled the factor-less default case, so reaching here with no
+            # factor means a max_model_len to derive it from is mandatory (legacy asserts the same).
+            if 'factor' not in rope_scaling:
+                if model_config.max_model_len is None:
+                    raise ValueError('ModelConfig.max_model_len is required when rope_scaling has no factor.')
+                if origin_max_len is None:
+                    raise ValueError(
+                        'The checkpoint does not declare a maximum length needed to derive rope_scaling.')
+                rope_scaling['factor'] = max(float(math.ceil(model_config.max_model_len / origin_max_len)), 1.0)
+            if origin_max_len is not None:
+                rope_scaling.setdefault('original_max_position_embeddings', origin_max_len)
+            HfConfigFactory.set_config_attr(config, 'rope_scaling', rope_scaling)
+
+            # Mirror legacy `_init_rope_scaling`: the rope budget is origin * factor. Adopt it as the served
+            # context when the caller set no max_model_len; warn when the requested max_model_len exceeds the
+            # budget, since positions beyond it fall outside the scaling's trained range.
+            factor = rope_scaling.get('factor')
+            if factor is not None and origin_max_len is not None:
+                rope_model_len = int(origin_max_len * factor)
+                if model_config.max_model_len is None:
+                    HfConfigFactory.set_max_model_len(config, rope_model_len)
+                elif model_config.max_model_len > rope_model_len:
+                    logger.warning(
+                        f'rope_scaling budget ({rope_model_len} = {factor} * {origin_max_len}) is smaller than '
+                        f'max_model_len ({model_config.max_model_len}); positions beyond the budget are not '
+                        'covered by the scaling.')
 
     if model_config.max_model_len is not None:
         HfConfigFactory.set_max_model_len(config, model_config.max_model_len)
@@ -510,8 +541,6 @@ def _set_load_kwarg(kwargs: dict, name: str, value) -> None:
 def _apply_model_post_load(model, model_config: ModelConfig) -> None:
     """Apply ModelConfig operations that require the live Transformers module."""
     if model_config.new_special_tokens:
-        import os
-
         special_tokens = []
         for token in model_config.new_special_tokens:
             if token.endswith('.txt'):
@@ -618,7 +647,7 @@ def _build_transformers_model(model_config: ModelConfig,
         _apply_seq_cls_head(kwargs, model_config, hf_config, model_loader)
 
     # strategy: deepspeed/fsdp config selects the twinkle strategy (default: accelerate).
-    from swift.dev.naming import resolve_strategy
+    from swift.dev.utils.naming import resolve_strategy
     strategy = 'accelerate'
     if distributed_config.deepspeed:
         strategy = 'deepspeed'
@@ -717,12 +746,15 @@ def _build_transformers_model(model_config: ModelConfig,
         # AutoModelForSequenceClassification path applied above.
         if model_loader is not None and model_config.task_type not in ('seq_cls', 'reranker'):
             kwargs['model_loader'] = model_loader
-        # Forward the gradient-checkpointing kwargs (e.g. use_reentrant) to twinkle's constructor, which
-        # passes them to HF's gradient_checkpointing_enable. Only the plain TransformersModel path takes
-        # it: unsloth manages its own checkpointing and the sentence-transformers builder drives the
-        # backbone directly. megatron rejects this field earlier (validate._HF_ONLY).
-        if train_config is not None and train_config.gradient_checkpointing_kwargs:
-            kwargs['gradient_checkpointing_kwargs'] = train_config.gradient_checkpointing_kwargs
+        # Forward the gradient-checkpointing flag and its kwargs (e.g. use_reentrant) to twinkle's
+        # constructor, which gates gradient_checkpointing_enable worker-side so --gradient_checkpointing
+        # false is honored under Ray too. Only the plain TransformersModel path takes it here: unsloth
+        # manages its own checkpointing and the sentence-transformers builder drives the backbone
+        # directly. megatron rejects the kwargs field earlier (validate._HF_ONLY).
+        if train_config is not None:
+            kwargs['gradient_checkpointing'] = train_config.gradient_checkpointing
+            if train_config.gradient_checkpointing_kwargs:
+                kwargs['gradient_checkpointing_kwargs'] = train_config.gradient_checkpointing_kwargs
         if model_loader is not None:
             arch = model_loader.model_arch
             model_arch = {part: list(getattr(arch, part, None) or [])
@@ -746,16 +778,6 @@ def _build_transformers_model(model_config: ModelConfig,
         if train_config is not None:
             kwargs['acc_strategy'] = train_config.acc_strategy
         model = TransformersModel(**kwargs)
-
-    # twinkle's TransformersModel.__init__ calls gradient_checkpointing_enable() unconditionally
-    # (model/transformers/transformers.py), so the user's --gradient_checkpointing false was silently
-    # ignored -- and the find_unused_parameters derivation above already assumes the flag is honored,
-    # so the two disagreed. Turn it back off here when the config says so.
-    # NOTE: this is a post-hoc undo, not the right shape. The fix belongs upstream as a twinkle
-    # constructor argument (gradient_checkpointing=...); switch to passing it once that lands, so the
-    # model is never built in a state the caller did not ask for.
-    if train_config is not None and not train_config.gradient_checkpointing:
-        _disable_gradient_checkpointing(model)
 
     # Liger op-level kernels (rms_norm / rotary / swiglu / ...) replace layers on the unwrapped HF
     # module, so this runs after construction and before the loss/optimizer are set. The
@@ -793,7 +815,6 @@ def _has_sentence_transformer_layout(model_dir) -> bool:
     A hub id (not yet downloaded) is not a directory, so this is False there -- the loader marker is the
     signal for registered families; this only catches an unregistered *local* ST checkpoint.
     """
-    import os
     if not model_dir or not os.path.isdir(model_dir):
         return False
     return any(
@@ -846,6 +867,12 @@ def _build_sentence_transformer_model(kwargs: dict, model_config: ModelConfig,
         'mixed_precision': kwargs['mixed_precision'],
         'ddp_config': kwargs.get('ddp_config'),
     }
+    # Same worker-side gate as the TransformersModel path: ST builds its own pipeline and never sees the
+    # shared kwargs, so thread the gradient-checkpointing flag (and its kwargs) straight from train_config.
+    if train_config is not None:
+        st_kwargs['gradient_checkpointing'] = train_config.gradient_checkpointing
+        if train_config.gradient_checkpointing_kwargs:
+            st_kwargs['gradient_checkpointing_kwargs'] = train_config.gradient_checkpointing_kwargs
     # SP mesh (local) / DeviceGroup placement (ray) were installed on the shared kwargs by
     # _apply_hf_sp_mesh / _apply_ray_placement; forward them so ST lands on the right ranks. ST's own
     # forward guard rejects an SP mesh (a whole-sentence pooling head cannot see a sequence shard).
@@ -853,21 +880,6 @@ def _build_sentence_transformer_model(kwargs: dict, model_config: ModelConfig,
         if key in kwargs:
             st_kwargs[key] = kwargs[key]
     return SentenceTransformerModel(**st_kwargs)
-
-
-def _disable_gradient_checkpointing(model: TrainableModel) -> None:
-    """Undo twinkle's unconditional gradient_checkpointing_enable() when the config turned it off.
-
-    A plain transformers build holds an HF backbone at ``model.model``; a SentenceTransformerModel holds a
-    ``SentenceTransformer`` pipeline there instead, so it exposes its own disable that drives the leading
-    Transformer module's backbone.
-    """
-    disable = getattr(model, 'gradient_checkpointing_disable', None)
-    if callable(disable):
-        disable()
-    else:
-        # 调用不了field，ray模式只能使用remote_function标记的method
-        model.model.gradient_checkpointing_disable()
 
 
 def _apply_liger_kernel(model: TrainableModel, train_config: TrainConfig) -> None:
@@ -1245,6 +1257,14 @@ def _build_megatron_model(model_config: ModelConfig,
         if train_config.microbatch_group_size_per_vp_stage is not None:
             extra_kwargs['microbatch_group_size_per_vp_stage'] = train_config.microbatch_group_size_per_vp_stage
             strict_model_kwargs.add('microbatch_group_size_per_vp_stage')
+        # Per-tower vision checkpointing, the megatron counterpart of the transformers path's kwarg of the
+        # same name (see _build_transformers_model). MegatronModel consumes it worker-side against the live
+        # vision tower, so it is NOT an mcore TransformerConfig field and needs no strict check; the tower
+        # names come from the live model (model_meta.visual_cls), so no model_arch is threaded here.
+        if train_config.vit_gradient_checkpointing is not None:
+            extra_kwargs['vit_gradient_checkpointing'] = train_config.vit_gradient_checkpointing
+            if train_config.vit_gradient_checkpointing_kwargs:
+                extra_kwargs['vit_gradient_checkpointing_kwargs'] = train_config.vit_gradient_checkpointing_kwargs
 
     if extra_kwargs.get('recompute_granularity') == 'selective':
         extra_kwargs['recompute_num_layers'] = None
@@ -1267,7 +1287,7 @@ def _build_megatron_model(model_config: ModelConfig,
     # dev and legacy run different attention kernels on identical config. resolve_* returns the enum
     # (mcore compares by identity), and both bridge backends now read this one value instead of the
     # megatron-bridge path hardcoding its own.
-    from swift.dev.naming import resolve_megatron_attn_backend
+    from swift.dev.utils.naming import resolve_megatron_attn_backend
     extra_kwargs['attention_backend'] = resolve_megatron_attn_backend(model_config.attn_impl)
     if _field_was_requested(model_config, 'attn_impl'):
         strict_model_kwargs.add('attention_backend')
