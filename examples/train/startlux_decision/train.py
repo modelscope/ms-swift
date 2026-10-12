@@ -5,8 +5,8 @@ import json
 import os
 import torch
 from datasets import Dataset
-from decision_training import (audit_splits, audit_trainable, candidate_loss, collate, copy_metadata, encode_records,
-                               install_head, lora_targets)
+from decision_training import (FSDP_STATE_DICT_TYPE, audit_splits, audit_trainable, candidate_loss, collate,
+                               copy_metadata, encode_records, install_head, lora_targets)
 from pathlib import Path
 from peft import LoraConfig, get_peft_model
 from transformers import AutoConfig
@@ -61,6 +61,10 @@ def main():
     args = parser.parse_args()
     if Path(args.output).exists() and not args.resume:
         raise FileExistsError('Use a fresh output directory')
+    if args.fsdp and args.resume:
+        for name in ('pytorch_model_fsdp_0', 'optimizer_0'):
+            if not (Path(args.resume) / name / '.metadata').is_file():
+                raise ValueError("FSDP resume requires this recipe's sharded model and optimizer checkpoint")
     torch.manual_seed(42)
     config = AutoConfig.from_pretrained(args.model)
     model_type = 'qwen3_5_moe' if 'Moe' in config.architectures[0] else 'qwen3_5'
@@ -85,6 +89,8 @@ def main():
         extra = {
             'fsdp': 'full_shard auto_wrap',
             'fsdp_config': {
+                'state_dict_type':
+                FSDP_STATE_DICT_TYPE,
                 'fsdp_version':
                 2,
                 'transformer_layer_cls_to_wrap':
@@ -130,6 +136,12 @@ def main():
     trainer.add_callback(baseline)
     trainer.train(resume_from_checkpoint=args.resume)
     after = trainer.evaluate()
+    if args.fsdp:
+        # Full adapter export is for inference; resumable training states remain sharded.
+        plugin = trainer.accelerator.state.fsdp_plugin
+        plugin.state_dict_config = None
+        plugin.optim_state_dict_config = None
+        plugin.set_state_dict_type('FULL_STATE_DICT')
     trainer.save_model(str(Path(args.output) / 'adapter'))
     if trainer.is_world_process_zero():
         copy_metadata(args.model, Path(args.output) / 'adapter')

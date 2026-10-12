@@ -94,7 +94,7 @@ OMP_NUM_THREADS=16 python -m torch.distributed.run --nproc-per-node 4 \
 ```
 
 For SWIFT, effective global batch is batch size × accumulation × data-parallel world size; FSDP shards parameters across the four ranks. The current NPU FSDP preparation uses FP32 master weights, so two 64-GB devices are insufficient for 35B; start with four devices and adequate host RAM for CPU loading.
-Resume using the **full checkpoint**, not the adapter-only export. Keep model, data, batch/accumulation and process layout unchanged; resume from an intermediate checkpoint with the original total-step and scheduler configuration:
+Resume using the **complete training checkpoint**, not the adapter-only export. FSDP2 uses distributed `SHARDED_STATE_DICT` model and optimizer checkpoints. The final `adapter/` directory is exported separately as full PEFT weights for inference. Older full-state FSDP2 adapter checkpoints are rejected: the pinned dependency path only restored rank-zero adapter shards. Do not resume those old checkpoints as if they preserved every rank. Keep model, data, batch/accumulation and process layout unchanged; resume from an intermediate checkpoint with the original total-step and scheduler configuration:
 
 ```bash
 python train.py --model /models/StartLux-Decision-4B \
@@ -119,13 +119,13 @@ python evaluate.py --model /models/StartLux-Decision-4B \
   --output /workspace/results/4b-test-paired
 
 cd /workspace/framework
-python -m unittest discover -s tests/trainers -p test_startlux_decision.py -v
+python -m unittest discover -s tests/trainers -p 'test_startlux*.py' -v
 ```
 
 Outputs contain per-question predictions, checkpoint/data hashes, correct/total and mean soft CE. This domain score is **not** the unweighted average of the official seven suites. Evaluate those suites separately using their official prompts, score aggregation and fixed checkpoint. Do not claim a general benchmark gain based on training loss or a small domain test. Before probability-based routing, fit a new temperature on a disjoint calibration split and verify it on held-out data.
 
 ## Validation status
 
-Both real 4B and 35B checkpoints have completed forward/backward, finite optimizer updates and checkpoint save on Ascend. SWIFT 35B was checked on four devices; Twinkle 35B on two. SWIFT full-state resume completed for both sizes, but its distributed 35B run is not bitwise identical to uninterrupted training. Twinkle 4B full-state resume after a completed accumulation group reproduced all adapter tensors exactly; its distributed 35B restore is still under validation.
+Both real 4B and 35B checkpoints have completed forward/backward, finite optimizer updates and checkpoint save on Ascend. The 35B run used four devices. The original SWIFT 35B full-state resume completed execution but failed numerical restoration. A two-process reproducer confirmed that nonzero-rank adapter state was not restored. The recipe now uses sharded training checkpoints; CPU collective save/reload restores the adapter exactly. NPU validation of the corrected path is in progress.
 
 The included CPU tests cover candidate-only FP32 projection, causal readout, target masking, structured text input, train/evaluation overlap, original hard labels and LoRA exclusion of vision/output weights. These tests and short hardware runs establish execution contracts; independent accuracy gains and seven-suite acceptance remain experimental. No seven-suite improvement is claimed.

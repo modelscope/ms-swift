@@ -8,6 +8,8 @@ from pathlib import Path
 from torch import nn
 from torch.nn import functional as F
 
+FSDP_STATE_DICT_TYPE = 'SHARDED_STATE_DICT'
+
 
 class CandidateHead(nn.Module):
     """Keep the original checkpoint weight/name; project legal letters in FP32."""
