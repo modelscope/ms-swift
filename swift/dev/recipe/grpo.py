@@ -376,6 +376,7 @@ class GRPOLoop(TrainLoop):
         decode = self.template.decode
         per_token: List[List[float]] = []
         for sample, orm_advantage in zip(samples, orm_advantages):
+            ## 这里为什么不支持多轮？多轮是grpo主要场景
             if getattr(sample, 'messages', None) is not None:
                 raise ValueError('PRM process reward does not support multi-turn rollouts: a step prefix '
                                  'would span several assistant turns, so per-step scoring is undefined. Drop '
@@ -392,6 +393,8 @@ class GRPOLoop(TrainLoop):
                 decode,
                 columns=getattr(sample, 'extra', None))
             advantage = list(process)
+            ## 这里的打分写的太死了，把算法层面直接融合到了工程层面。token如何打分应该是可配置的
+            ## 应该是step如何定义外部可定制（插件化），prm、orm也可以插件化，打分后，每个step的prm和orm如何融合和权重也是外部可定制的
             if advantage:
                 advantage[-1] = float(orm_advantage)  # segmented placement: terminal ORM on the last token
             per_token.append(advantage)
@@ -525,6 +528,7 @@ class GRPOLoop(TrainLoop):
                     'routed_experts (that needs a vLLM build + MoE checkpoint that report routing). Use '
                     'router_replay_mode="R2" to RECORD the routing on the training model instead, or '
                     '"disabled" to recompute it.')
+            ## 这里的意思是不支持R3吗
             return
         if mode == 'R2':
             # R2 records the training model's routing regardless of what the sampler returned (legacy R2

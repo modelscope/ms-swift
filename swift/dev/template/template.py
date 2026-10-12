@@ -73,6 +73,15 @@ class DevMixin:
 
         Task guard: only `causal_lm` labels are per-token. See ``_NO_SHIFT_TASK_TYPES``.
         """
+        # v5 schema gate: check a raw standard row against its task's contract BEFORE the legacy
+        # encoder, where a missing key surfaces either as a cryptic crash (`inputs.rejected is None`)
+        # or as silently wrong data (a seq_cls row with no label encodes to no targets). Skipped for an
+        # already-encoded feature and for a non-dict (TemplateInputs/InferRequest), both of which
+        # entered as a dict and passed this gate on the way in. The import is local: swift.dev.dataset
+        # pulls in the loader stack, which this development-only mixin must not depend on at load time.
+        if isinstance(inputs, dict) and 'input_ids' not in inputs:
+            from swift.dev.dataset.schema import validate_standard_row
+            validate_standard_row(inputs, getattr(self, 'task_type', None), getattr(self, 'mode', None))
         del add_generation_prompt
         encoded = super().encode(inputs, return_template_inputs=return_template_inputs, return_length=return_length)
         if (self.is_training and getattr(self, 'task_type', 'causal_lm') not in self._NO_SHIFT_TASK_TYPES

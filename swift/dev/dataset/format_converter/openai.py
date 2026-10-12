@@ -11,7 +11,14 @@ __all__ = ['OpenAIConverter']
 
 @register_format
 class OpenAIConverter(FormatConverter):
-    """The messages/dialogue format, covering the swift / openai / anthropic dialects."""
+    """The messages/dialogue row format (a ``messages`` / ``conversations`` column).
+
+    The column holds plain role/content messages, OpenAI ``tool_calls``, OpenAI/v5 inline multimodal
+    ``content`` parts, or Anthropic content blocks -- all sharing this one row shape, so there is a
+    single messages format rather than one per content dialect. :meth:`normalize_content` rewrites
+    each message per its own content: Anthropic blocks and OpenAI ``tool_calls`` expand into standard
+    role/content messages, everything else passes through to the template.
+    """
 
     format_name = 'openai'
     priority = 10
@@ -48,7 +55,6 @@ class OpenAIConverter(FormatConverter):
                  assistant_role: Optional[str] = None,
                  system_role: str = 'system',
                  inner_key: Optional[str] = None,
-                 message_format: str = 'auto',
                  **kwargs):
         """
         Args:
@@ -60,15 +66,12 @@ class OpenAIConverter(FormatConverter):
                 not literally ``'system'``.
             inner_key: Key to reach through when the dialogue is nested one level deeper, i.e. the
                 column holds ``{'inner': [...]}`` rather than ``[...]``.
-            message_format: Which dialect to apply -- ``'auto'`` / ``'swift'`` / ``'openai'`` /
-                ``'anthropic'``. ``'auto'`` detects per row.
         """
         super().__init__(**kwargs)
         self.role_keys = (role_key, ) if role_key else self.ROLE_KEYS
         self.content_keys = (content_key, ) if content_key else self.CONTENT_KEYS
         self.system_role = system_role
         self.inner_key = inner_key
-        self.message_format = message_format
 
         role_map = dict(self.ROLE_ALIASES)
         # A pinned role replaces the whole family rather than joining it: a dataset that says its
@@ -113,8 +116,8 @@ class OpenAIConverter(FormatConverter):
     def build_messages(self, raw: Any, system: Optional[str] = None) -> Optional[Tuple[Messages, Dict[str, List]]]:
         """Normalise one dialogue value into ``(messages, media)``, or ``None`` if unusable.
 
-        ``media`` collects anything the provider layer pulls out of the dialogue (Anthropic images);
-        it is empty for the swift and openai dialects.
+        ``media`` collects anything :meth:`normalize_content` lifts out of the dialogue (Anthropic
+        images); it stays empty for plain and OpenAI content.
         """
         if self.inner_key is not None and isinstance(raw, dict):
             raw = raw.get(self.inner_key)
@@ -125,7 +128,7 @@ class OpenAIConverter(FormatConverter):
             return None
 
         media: Dict[str, List] = {'images': []}
-        raw = self.normalize_provider_messages(list(raw), media)
+        raw = self.normalize_content(list(raw), media)
         if not raw:
             return None
 
@@ -137,52 +140,38 @@ class OpenAIConverter(FormatConverter):
             return None
         return self.prepend_system(messages, system), media
 
-    # -- provider dialects -----------------------------------------------------------------------
+    def normalize_content(self, messages: Messages, media: Dict[str, List]) -> Messages:
+        """Rewrite each message's provider-specific content into plain role/content messages.
 
-    def normalize_provider_messages(self, messages: List[Dict[str, Any]], media: Dict[str, List]) -> Messages:
-        """Resolve the dialect and expand provider-specific turns into plain role/content messages.
+        The decision is per message, not per dataset: a dialogue's turns are not uniformly shaped --
+        an Anthropic conversation can open with a plain-text turn and only later carry an ``image`` or
+        ``tool_use`` block -- so classifying once from a sample row would miss the multimodal turns
+        and silently drop their media. Each message is classified on its own content:
 
-        Auto-detection matches legacy main: an assistant ``tool_calls`` list means OpenAI; a
-        ``content`` that is a list of typed blocks (tool_use / tool_result / sourced image) means
-        Anthropic; otherwise the messages are already plain and pass through untouched.
-        """
-        message_format = self.message_format
-        if message_format == 'auto':
-            if any(message.get('tool_calls') for message in messages):
-                message_format = 'openai'
-            elif any(
-                    isinstance(message.get('content'), list) and any(
-                        block.get('type') in {'tool_use', 'tool_result'}
-                        or (block.get('type') == 'image' and 'source' in block)
-                        for block in message['content'] if isinstance(block, dict)) for message in messages):
-                message_format = 'anthropic'
-            else:
-                message_format = 'swift'
-        if message_format == 'openai':
-            return self.openai_to_messages(messages)
-        if message_format == 'anthropic':
-            # Lazy import breaks the import cycle: anthropic.py subclasses this class, so it cannot be
-            # imported at module load, but its parser is only needed here at call time.
-            from .anthropic import AnthropicConverter
-            return AnthropicConverter.anthropic_to_messages(messages, media)
-        return messages
+        - Anthropic content blocks (a list carrying ``tool_use`` / ``tool_result`` / an ``image`` with
+          a ``source``) are expanded here, images lifted into ``media``;
+        - an OpenAI assistant ``tool_calls`` list (a sibling key of ``content``) is expanded into
+          standalone ``tool_call`` messages;
+        - anything else -- plain swift text, or OpenAI/v5 inline ``content`` parts (``text`` /
+          ``image_url``) -- passes through untouched, since the template, not this layer, normalises
+          inline parts.
 
-    @staticmethod
-    def openai_to_messages(messages: List[Dict[str, Any]]) -> Messages:
-        """Expand OpenAI assistant ``tool_calls`` into standalone ``tool_call`` messages.
-
-        A ``tool_calls`` entry may wrap its payload under a ``function`` key (the OpenAI shape) or
-        carry ``name``/``arguments`` directly; ``arguments`` is a JSON string in OpenAI's schema and
-        is parsed to a dict, but left as-is if it does not parse. A tool-calling assistant turn may
-        also carry ordinary content, which is preserved as its own message before the calls.
+        A ``tool_calls`` entry may wrap its payload under ``function`` (the OpenAI shape) or carry
+        ``name``/``arguments`` directly; ``arguments`` is a JSON string in OpenAI's schema and is
+        parsed to a dict, but left as-is if it does not parse. A tool-calling assistant turn may also
+        carry ordinary content, preserved as its own message before the calls.
         """
         normalized: Messages = []
         for message in messages:
+            content = message.get('content')
+            if isinstance(content, list) and self._has_anthropic_blocks(content):
+                self._expand_anthropic_message(message, normalized, media)
+                continue
             tool_calls = message.get('tool_calls') if message.get('role') == 'assistant' else None
             if not tool_calls:
                 normalized.append(message)
                 continue
-            if message.get('content'):
+            if content:
                 normalized.append(
                     {key: value
                      for key, value in message.items() if key in {'role', 'content', 'loss', 'loss_scale'}})
@@ -204,7 +193,7 @@ class OpenAIConverter(FormatConverter):
                 normalized.append(tool_message)
         return normalized
 
-    # -- swift dialect (plain role/content, from/value, turn-pairs) -------------------------------
+    # -- swift content (plain role/content, from/value, turn-pairs) -------------------------------
 
     def is_turn_pairs(self, raw: List[Dict[str, Any]]) -> bool:
         """Whether each element holds a whole turn (``{'user': q, 'assistant': a}``) rather than one
@@ -261,3 +250,117 @@ class OpenAIConverter(FormatConverter):
             if key in turn:
                 return turn[key]
         return None
+
+    # -- Anthropic content blocks ----------------------------------------------------------------
+    # Anthropic spells a turn's content as a list of typed blocks whose shape the template layer does
+    # not read: an image carries its bytes under ``source``, and tools are ``tool_use`` /
+    # ``tool_result`` blocks rather than a sibling ``tool_calls`` key. These translate such a message
+    # into standard role/content messages plus a lifted ``images`` column. They read no converter
+    # state, so they are static methods, called per message from :meth:`normalize_content`.
+
+    @staticmethod
+    def _has_anthropic_blocks(content: Any) -> bool:
+        """Whether a content list carries Anthropic-only blocks.
+
+        The v5 canonical inline parts (``text`` / ``image_url`` / a ``source``-less ``image``) are NOT
+        Anthropic and must fall through to the template, so only ``tool_use`` / ``tool_result`` / an
+        ``image`` carrying a ``source`` count.
+        """
+        return any(
+            isinstance(block, dict) and (block.get('type') in {'tool_use', 'tool_result'}
+                                         or (block.get('type') == 'image' and 'source' in block))
+            for block in content)
+
+    @staticmethod
+    def _expand_anthropic_message(message: Dict[str, Any], new_messages: Messages, media: Dict[str, List]) -> None:
+        """Expand one message's Anthropic content blocks into ``new_messages``.
+
+        Consecutive text/image blocks accumulate into one message; a tool_use or tool_result block
+        first flushes that accumulated text, then emits its own message -- so the relative order of
+        text and tool calls within a turn is preserved. Images are lifted into ``media``, for
+        :meth:`OpenAIConverter.convert` to place in the standard top-level media columns.
+        """
+        metadata = {key: message[key] for key in ('loss', 'loss_scale') if key in message}
+        role = message['role']
+        pending: List[str] = []
+        for block in message['content']:
+            block_type = block.get('type')
+            if block_type == 'text':
+                pending.append(block.get('text', ''))
+            elif block_type == 'image':
+                pending.append('<image>')
+                media['images'].append(OpenAIConverter._image_source(block))
+            elif block_type == 'tool_use':
+                OpenAIConverter._flush_text(new_messages, pending, role, metadata)
+                new_messages.append({
+                    'role': 'tool_call',
+                    'content': {
+                        'name': block['name'],
+                        'arguments': block.get('input', {}),
+                    },
+                    **metadata,
+                })
+            elif block_type == 'tool_result':
+                OpenAIConverter._flush_text(new_messages, pending, role, metadata)
+                new_messages.append({
+                    'role': 'tool_response',
+                    'content': OpenAIConverter._block_content(block.get('content', ''), media),
+                    **metadata,
+                })
+            else:
+                raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
+        OpenAIConverter._flush_text(new_messages, pending, role, metadata)
+
+    @staticmethod
+    def _flush_text(new_messages: Messages, pending: List[str], role: str, metadata: Dict[str, Any]) -> None:
+        """Emit the accumulated text as one message and clear the buffer; a no-op when empty.
+
+        Every argument is explicit rather than captured from the enclosing loop: a closure over a loop
+        variable is the kind of thing that works until someone defers the call.
+        """
+        if pending:
+            new_messages.append({'role': role, 'content': ''.join(pending), **metadata})
+            pending.clear()
+
+    @staticmethod
+    def _image_source(block: Dict[str, Any]) -> str:
+        """Pull a usable image reference out of an Anthropic image block.
+
+        Base64 blocks become a ``data:`` URI (so one string carries both media type and bytes); URL
+        blocks yield the plain URL. Anything else is a malformed block and raises.
+        """
+        source = block.get('source', {})
+        source_type = source.get('type')
+        if source_type == 'base64':
+            media_type = source.get('media_type')
+            data = source.get('data')
+            if not media_type or not data:
+                raise ValueError(f'Invalid Anthropic base64 image block: {block}')
+            return f'data:{media_type};base64,{data}'
+        if source_type == 'url':
+            url = source.get('url')
+            if not url:
+                raise ValueError(f'Invalid Anthropic URL image block: {block}')
+            return url
+        raise ValueError(f'Unsupported Anthropic image source type: {source_type}')
+
+    @staticmethod
+    def _block_content(content: Any, media: Dict[str, List]) -> Any:
+        """Flatten a tool_result's content, which may itself be a block list, into text.
+
+        A plain string is returned unchanged; a block list is flattened the same way a turn's content
+        is (text appended, images turned into ``<image>`` placeholders plus a lifted source).
+        """
+        if not isinstance(content, list):
+            return content
+        parts: List[str] = []
+        for block in content:
+            block_type = block.get('type')
+            if block_type == 'text':
+                parts.append(block.get('text', ''))
+            elif block_type == 'image':
+                parts.append('<image>')
+                media['images'].append(OpenAIConverter._image_source(block))
+            else:
+                raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
+        return ''.join(parts)

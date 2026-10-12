@@ -236,7 +236,8 @@ class Preprocessor:
     def batched_preprocess(self, batch: Dict[str, List[Any]], *, strict: bool) -> Dict[str, List[Any]]:
         """The function handed to ``dataset.map``: transform a column-batch, isolating per-row errors."""
         new_rows: List[Dict[str, Any]] = []
-        for row in self.batched_to_rows(batch):
+        rows = self.batched_to_rows(batch)
+        for row in rows:
             try:
                 out = self.preprocess(row)
                 out = [] if out is None else ([out] if isinstance(out, dict) else out)

@@ -114,7 +114,13 @@ class FormatConverter:
 
     @classmethod
     def detect(cls, columns: Collection[str]) -> bool:
-        """Whether this format recognises a dataset with these column names."""
+        """Whether this format recognises a dataset with these columns.
+
+        Decided on column names alone: a dataset's row shape is fixed, so the columns it carries are
+        enough to pick its format. Content that shares one shape across providers (a ``messages``
+        column holding plain, OpenAI or Anthropic content) is not a format distinction -- it is
+        handled per message inside the owning format's :meth:`FormatConverter.convert`.
+        """
         raise NotImplementedError
 
     def convert(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:

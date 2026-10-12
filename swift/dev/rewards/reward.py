@@ -89,6 +89,7 @@ def get_reward_funcs(reward_funcs: Sequence[Any], config: Optional[Any] = None) 
     return funcs, names
 
 
+## grpo等的打分也需要支持generative打分，或者jev打分
 class _ScalarRewardModelPlugin:
     """Run a twinkle frozen seq-cls model behind the legacy RM-plugin call contract."""
 
