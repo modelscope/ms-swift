@@ -3,7 +3,7 @@
 # Clef decodes ALL of a record's questions jointly in ONE forward (the only multi-question-per-forward
 # model of the three), scoring each option of every question and softmaxing within each question's own
 # option set. `--task_type decision` routes to ScoringTrainer + the decision data collator;
-# `--loss_type clef` is label-smoothing CE + Brier over each question's options.
+# `--loss_type smooth_brier` is label-smoothing CE + Brier over each question's options.
 #
 # The scoring head (`scoring_head`) is the decision layer; ScoringTrainer re-activates it for joint
 # training AUTOMATICALLY (the `--trainable_parameters scoring_head` flag is a no-op in the LoRA branch,
@@ -13,14 +13,14 @@
 # tests/test_align/test_decision_clef_align.py (removes sdpa/flash kernel divergence).
 #
 # sh examples/train/decision/clef.sh
-USE_HF=1 \
+USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --external_plugins examples/train/decision/dataset.py \
     --model Cloudflare/clef \
     --model_type clef \
     --task_type decision \
-    --loss_type clef \
+    --loss_type smooth_brier \
     --dataset clef_decision \
     --tuner_type lora \
     --target_modules all-linear \

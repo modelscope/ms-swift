@@ -1,8 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""JEV (`decision` task_type) alignment against the official `serve_decide.py::s1_pass` oracle.
+"""JEV (`decision` task_type) alignment against the reference.
 
 Portable version of ``tests/test_align/test_decision_jev_align.py``.  The original test
-logic (Stages A / B / C / D and their assertions) is preserved verbatim; the only changes are:
+logic (Stages A / B / C / D and their assertions) is preserved; the only changes are:
 
   1. **Env / fixture injection**: the JEV checkpoint dir is resolved from
      ``JEV_MODEL_DIR`` (falling back to ``modelscope.snapshot_download``) instead of a
@@ -17,24 +17,24 @@ logic (Stages A / B / C / D and their assertions) is preserved verbatim; the onl
 
 Stages (unchanged from the original):
 
-  A  encoding   -- our JevTemplate._encode input_ids are BYTE-identical to the oracle s1_pass prompt
+  A  encoding   -- our JevTemplate._encode input_ids are BYTE-identical to the reference s1_pass prompt
                    tokenized with add_special_tokens=False, the real collator flattens a fan-out batch
                    into the flat decision_meta, and noul/score are forced to the canonical verbalizer
                    options even when a record supplies custom text (tokenizer only; cheap).
   B  head-only  -- feed the reference backbone's last-token lm_logits (fp32) into BOTH the re-derived
-                   oracle s1_pass math and our JevVerbalizerHead: probs must match to fp32 precision,
+                   reference s1_pass math and our JevVerbalizerHead: probs must match to fp32 precision,
                    including a right- and a left-padded multi-question batch (isolates the head port +
                    `_readout_positions`).
   C  full fwd   -- our swift-loaded model (base + `adapter_vllm` via Swift.from_pretrained) end-to-end
                    vs the reference (plain transformers + peft) s1_pass readout on the same encoding
                    (bf16, eager both sides): validates the whole patch + adapter + head path.
-  D  loss+grad  -- JevDistillLoss is validated three ways: value == an independently re-derived
+  D  loss+grad  -- DistillRPSLoss is validated three ways: value == an independently re-derived
                    KL(target||model) + 0.5*RPS(score); its autograd grads on the head bias == the
                    re-derived formula's grads; autograd == central finite-difference.
 
-`serve_decide.py` needs a vLLM engine and cannot be imported here, so the oracle math is re-derived in
-plain torch against the SAME base+LoRA weights (de-risked by `.align_scratch/probe_jev_ref.py`, which
-reproduced the noul readout). Both model sides force attn_implementation='eager' (control group:
+The reference needs a vLLM engine and cannot be imported here, so the reference math is re-derived in
+plain torch against the SAME base+LoRA weights (the noul readout was reproduced during development).
+Both model sides force attn_implementation='eager' (control group:
 removes sdpa/flash kernel divergence so any mismatch is attributable to logic, not kernels).
 
 Env variables (all optional; missing checkpoint → alignment tests skip):
@@ -58,7 +58,7 @@ import traceback
 
 os.environ.setdefault('HF_HUB_OFFLINE', '1')
 os.environ.setdefault('TRANSFORMERS_OFFLINE', '1')
-os.environ.setdefault('USE_HF', '1')
+os.environ.setdefault('USE_HF', '0')
 
 import pytest
 import torch
@@ -70,7 +70,7 @@ _swift_ok = True
 _swift_err: list = []
 try:
     from swift.dataset.preprocessor.decision import JevPreprocessor
-    from swift.loss.decision import JevDistillLoss
+    from swift.loss.decision import DistillRPSLoss
     from swift.model import get_model_processor, get_processor
     from swift.model.decision_head import QUESTION_TYPES, JevVerbalizerHead, masked_softmax
     from swift.template import get_template
@@ -85,45 +85,91 @@ JEV_ID = 'autotrust/JEV-27B-VL'
 LETTERS = list(string.ascii_uppercase)
 KIND_OF = {'noul': 0, 'choice': 1, 'score': 2}
 
-# Faithful records: noul/score OMIT options (canonical forced); choice supplies its own. `gold` is the
+# Test records: noul/score OMIT options (canonical forced); choice supplies its own. `gold` is the
 # teacher soft distribution (score) or an option index, matching the distill-corpus contract.
 RECORDS = [
-    {'id': 'noul', 'state': 'The sky is blue.',
-     'questions': [{'kind': 'noul', 'question': 'Is the sky blue?', 'gold': 1}]},
-    {'id': 'choice3', 'state': 'A review: late and damaged.',
-     'questions': [{'kind': 'choice', 'question': 'Sentiment?',
-                    'options': ['positive', 'negative', 'neutral'], 'gold': 1}]},
-    {'id': 'choice4', 'state': 'Qwen is a hybrid model.',
-     'questions': [{'kind': 'choice', 'question': 'Who built Qwen?',
-                    'options': ['Alibaba', 'Google', 'Meta', 'OpenAI'], 'gold': 0}]},
-    {'id': 'score', 'state': 'some text to rate',
-     'questions': [{'kind': 'score', 'question': 'Rate quality.',
-                    'gold': [0.05, 0.1, 0.15, 0.4, 0.2, 0.1]}]},
-    {'id': 'joint', 'state': 'A joint record, one question per forward.',
-     'questions': [{'kind': 'noul', 'question': 'Is this spam?', 'gold': 0},
-                   {'kind': 'choice', 'question': 'Pick a topic.',
-                    'options': ['Technology', 'Sports', 'Food'], 'gold': 1},
-                   {'kind': 'score', 'question': 'Politeness level.', 'gold': 4}]},
+    {
+        'id': 'noul',
+        'state': 'The sky is blue.',
+        'questions': [{
+            'kind': 'noul',
+            'question': 'Is the sky blue?',
+            'gold': 1
+        }]
+    },
+    {
+        'id':
+        'choice3',
+        'state':
+        'A review: late and damaged.',
+        'questions': [{
+            'kind': 'choice',
+            'question': 'Sentiment?',
+            'options': ['positive', 'negative', 'neutral'],
+            'gold': 1
+        }]
+    },
+    {
+        'id':
+        'choice4',
+        'state':
+        'Qwen is a hybrid model.',
+        'questions': [{
+            'kind': 'choice',
+            'question': 'Who built Qwen?',
+            'options': ['Alibaba', 'Google', 'Meta', 'OpenAI'],
+            'gold': 0
+        }]
+    },
+    {
+        'id': 'score',
+        'state': 'some text to rate',
+        'questions': [{
+            'kind': 'score',
+            'question': 'Rate quality.',
+            'gold': [0.05, 0.1, 0.15, 0.4, 0.2, 0.1]
+        }]
+    },
+    {
+        'id':
+        'joint',
+        'state':
+        'A joint record, one question per forward.',
+        'questions': [{
+            'kind': 'noul',
+            'question': 'Is this spam?',
+            'gold': 0
+        }, {
+            'kind': 'choice',
+            'question': 'Pick a topic.',
+            'options': ['Technology', 'Sports', 'Food'],
+            'gold': 1
+        }, {
+            'kind': 'score',
+            'question': 'Politeness level.',
+            'gold': 4
+        }]
+    },
 ]
 
 
-# --------------------------- oracle s1_pass re-derivation ---------------------------
+# --------------------------- reference s1_pass re-derivation ---------------------------
 def ref_s1_text(kind, state, question, opts, prefix=''):
-    """Verbatim serve_decide.py::s1_pass content assembly (no-image path), joined into one string.
+    """s1_pass content assembly (no-image path), joined into one string.
 
     `decide()` forces opts=['false','true'] for noul and ['0'..'5'] for score; only choice renders the
     caller's options, prefixed with the A-P position letter (`f'{LETTERS[i]}) {o}'`).
     """
     lines = [f'{LETTERS[i]}) {o}' for i, o in enumerate(opts)] if kind == 'choice' else list(opts)
-    return (f'{prefix}[kind] {kind}\n[state] ' + state + f'\n[question] {question}\n[options]\n' +
-            '\n'.join(lines) + '\n[decision]:')
+    return (f'{prefix}[kind] {kind}\n[state] ' + state + f'\n[question] {question}\n[options]\n' + '\n'.join(lines)
+            + '\n[decision]:')
 
 
 def ref_s1_probs(lm_last, kind, n, cfg=None):
-    """serve_decide.py::s1_pass readout on ONE token's full-vocab logits `lm_last` [vocab] (fp32).
+    """s1_pass readout on ONE token's full-vocab logits `lm_last` [vocab] (fp32).
 
     log_softmax over the full vocab -> gather the kind's first `n` verbalizer ids -> +bias -> /temp ->
-    softmax over just those n options (the oracle `_softmax`). Returns [n] fp32.
+    softmax over just those n options (the reference `_softmax`). Returns [n] fp32.
     """
     if cfg is None:
         cfg = _get_head_config()
@@ -149,8 +195,13 @@ def flat_rows():
 
 def meta1(kind_int, n, seq_len=1):
     return {
-        'kinds': [kind_int], 'n_options': [n], 'record_index': [0], 'counts': [1],
-        'max_opt': n, 'left_padding': False, 'seq_lens': [seq_len],
+        'kinds': [kind_int],
+        'n_options': [n],
+        'record_index': [0],
+        'counts': [1],
+        'max_opt': n,
+        'left_padding': False,
+        'seq_lens': [seq_len],
     }
 
 
@@ -161,7 +212,7 @@ def maxdiff(a, b):
 
 
 def rederived_jev_loss(logits, option_mask, kinds, target, rps_w=0.5):
-    """Independent re-derivation of JevDistillLoss: masked soft-CE (== KL up to a constant) over each
+    """Independent re-derivation of DistillRPSLoss: masked soft-CE (== KL up to a constant) over each
     question's own options + 0.5 * mean_over_questions(RPS * 1{score})."""
     probs = masked_softmax(logits, option_mask)
     logp = torch.log(probs.clamp_min(1e-9))
@@ -236,8 +287,8 @@ def _get_head_config():
     # Resolve decision_head.json (adapter_vllm subdir or env override).
     head_file = os.environ.get('JEV_DECISION_HEAD')
     if not head_file or not os.path.exists(head_file):
-        for candidate in (os.path.join(jev_dir, 'adapter_vllm', 'decision_head.json'),
-                          os.path.join(jev_dir, 'decision_head.json')):
+        for candidate in (os.path.join(jev_dir, 'adapter_vllm',
+                                       'decision_head.json'), os.path.join(jev_dir, 'decision_head.json')):
             if os.path.exists(candidate):
                 head_file = candidate
                 break
@@ -310,8 +361,13 @@ def our_model(dev='cuda:1'):
         adapter = _get_adapter_dir()
         print('loading OUR swift model + head, then Swift.from_pretrained(adapter_vllm) ...', flush=True)
         model, proc = get_model_processor(
-            snap, model_type='jev', task_type='decision', torch_dtype=torch.bfloat16, device_map=dev,
-            use_hf=True, attn_impl='eager')
+            snap,
+            model_type='jev',
+            task_type='decision',
+            torch_dtype=torch.bfloat16,
+            device_map=dev,
+            use_hf=True,
+            attn_impl='eager')
         assert hasattr(model, 'scoring_head'), 'FAIL: loader did not attach the head'
         model = Swift.from_pretrained(model, adapter, is_trainable=True)
         base = getattr(model.base_model, 'model', None)
@@ -330,8 +386,8 @@ def ref_last_logits(rows_texts, dev):
     for text in rows_texts:
         enc = tok(text, return_tensors='pt', add_special_tokens=False)
         with torch.inference_mode():
-            o = model(input_ids=enc['input_ids'].to(mdev),
-                      attention_mask=enc['attention_mask'].to(mdev), return_dict=True)
+            o = model(
+                input_ids=enc['input_ids'].to(mdev), attention_mask=enc['attention_mask'].to(mdev), return_dict=True)
         out.append(o.logits[0, -1, :].float().to(dev))
     return out
 
@@ -365,10 +421,11 @@ def _make_random_head():
 # Stage A: encoding  (requires checkpoint — skips if missing)
 # ===========================================================================
 
-class TestStageA:
-    """Stage A: encoding byte-identity with the real tokenizer + oracle.
 
-    Verbatim logic from the original ``stage_a()``.
+class TestStageA:
+    """Stage A: encoding byte-identity with the real tokenizer + reference.
+
+    Logic from the original ``stage_a()``.
     """
 
     def test_encoding(self):
@@ -381,14 +438,14 @@ class TestStageA:
         tok = proc.tokenizer
         ok_all = True
 
-        print('=== A6: A-P single-token ids == verbalizer_ids[8:24] (oracle setup() assert) ===', flush=True)
+        print('=== A6: A-P single-token ids == verbalizer_ids[8:24] (reference setup() assert) ===', flush=True)
         letter_ids = [tok.encode(lab, add_special_tokens=False)[0] for lab in LETTERS[:16]]
         a6 = letter_ids == cfg['vids'][8:24]
         ok_all = ok_all and a6
         print(f'[{"PASS" if a6 else "FAIL"}] A6 letter ids {letter_ids} == verbalizer choice slots', flush=True)
         assert a6, f'A6: letter ids {letter_ids} != verbalizer_ids[8:24] {cfg["vids"][8:24]}'
 
-        print('=== A1-A5: faithful records byte-identical to the oracle s1_pass prompt ===', flush=True)
+        print('=== A1-A5: test records byte-identical to the reference s1_pass prompt ===', flush=True)
         rows = flat_rows()
         for rid, kind, row, opts in rows:
             enc = template._encode(StdTemplateInputs.from_dict(row))
@@ -400,41 +457,49 @@ class TestStageA:
             meta_ok = meta['kinds'] == [KIND_OF[kind]] and meta['n_options'] == [len(opts)]
             ok = ids_ok and meta_ok
             ok_all = ok_all and ok
-            print(f'[{"PASS" if ok else "FAIL"}] A {rid}/{kind} nopt={len(opts)} ids={ids_ok} meta={meta_ok} '
-                  f'(len {len(ours)} vs {len(ref)})', flush=True)
+            print(
+                f'[{"PASS" if ok else "FAIL"}] A {rid}/{kind} nopt={len(opts)} ids={ids_ok} meta={meta_ok} '
+                f'(len {len(ours)} vs {len(ref)})',
+                flush=True)
             if not ids_ok:
                 n = min(len(ours), len(ref))
                 div = next((i for i in range(n) if ours[i] != ref[i]), n)
                 lo = max(0, div - 6)
-                print(f'   first divergence at {div}: ours={tok.decode(ours[lo:div + 6])!r} '
-                      f'ref={tok.decode(ref[lo:div + 6])!r}', flush=True)
+                print(
+                    f'   first divergence at {div}: ours={tok.decode(ours[lo:div + 6])!r} '
+                    f'ref={tok.decode(ref[lo:div + 6])!r}',
+                    flush=True)
             assert ok, (f'A {rid}/{kind}: ids={ids_ok} meta={meta_ok} '
                         f'(len {len(ours)} vs {len(ref)})')
 
-        print('=== A7/A8: real collator -> flat decision_meta + padded labels (train right / infer left) ===',
-              flush=True)
+        print(
+            '=== A7/A8: real collator -> flat decision_meta + padded labels (train right / infer left) ===', flush=True)
         encoded = [template.encode(dict(row)) for _, _, row, _ in rows]
         collated = template.data_collator(encoded)
         dm = collated['decision_meta']
         total_q = len(rows)
-        a7 = (len(dm['record_index']) == total_q and dm['max_opt'] == max(len(o) for *_, o in rows)
-              and collated['input_ids'].shape[0] == total_q and 'labels' in collated
-              and tuple(collated['labels'].shape) == (total_q, dm['max_opt'])
-              and all(0 <= ri < total_q for ri in dm['record_index'])
-              and all(sl <= collated['input_ids'].shape[1] for sl in dm['seq_lens'])
-              and dm['left_padding'] is False)
+        a7 = (
+            len(dm['record_index']) == total_q and dm['max_opt'] == max(len(o) for *_, o in rows)
+            and collated['input_ids'].shape[0] == total_q and 'labels' in collated
+            and tuple(collated['labels'].shape) == (total_q, dm['max_opt']) and all(0 <= ri < total_q
+                                                                                    for ri in dm['record_index'])
+            and all(sl <= collated['input_ids'].shape[1] for sl in dm['seq_lens']) and dm['left_padding'] is False)
         ok_all = ok_all and a7
-        print(f'[{"PASS" if a7 else "FAIL"}] A7 train collator record_index={dm["record_index"]} '
-              f'counts={dm["counts"]} n_options={dm["n_options"]} kinds={dm["kinds"]} max_opt={dm["max_opt"]} '
-              f'left_padding={dm["left_padding"]} labels={tuple(collated["labels"].shape)}', flush=True)
+        print(
+            f'[{"PASS" if a7 else "FAIL"}] A7 train collator record_index={dm["record_index"]} '
+            f'counts={dm["counts"]} n_options={dm["n_options"]} kinds={dm["kinds"]} max_opt={dm["max_opt"]} '
+            f'left_padding={dm["left_padding"]} labels={tuple(collated["labels"].shape)}',
+            flush=True)
         assert a7, 'A7 train collator check failed'
 
         template.set_mode('transformers')
         coll_inf = template.data_collator([template.encode(dict(row)) for _, _, row, _ in rows])
         a8 = coll_inf['decision_meta']['left_padding'] is True
         ok_all = ok_all and a8
-        print(f'[{"PASS" if a8 else "FAIL"}] A8 inference collator left_padding='
-              f'{coll_inf["decision_meta"]["left_padding"]}', flush=True)
+        print(
+            f'[{"PASS" if a8 else "FAIL"}] A8 inference collator left_padding='
+            f'{coll_inf["decision_meta"]["left_padding"]}',
+            flush=True)
         template.set_mode('train')
         assert a8, 'A8 inference collator left_padding check failed'
 
@@ -449,8 +514,10 @@ class TestStageA:
             ref = tok.encode(ref_s1_text(kind, 'x', 'Q?', canonical), add_special_tokens=False)
             byte_ok = list(benc['input_ids']) == ref
             a9 = a9 and forced and byte_ok
-            print(f'[{"PASS" if forced and byte_ok else "FAIL"}] A9 {kind} custom={custom} -> forced='
-                  f'{brow["options"][0]} (canonical={canonical}) byte_ok={byte_ok}', flush=True)
+            print(
+                f'[{"PASS" if forced and byte_ok else "FAIL"}] A9 {kind} custom={custom} -> forced='
+                f'{brow["options"][0]} (canonical={canonical}) byte_ok={byte_ok}',
+                flush=True)
         ok_all = ok_all and a9
         assert a9, 'A9 divergence guard check failed'
         assert ok_all, 'Stage A: some checks failed'
@@ -460,10 +527,11 @@ class TestStageA:
 # Stage B: head-only fp32  (requires checkpoint + CUDA — skips if missing)
 # ===========================================================================
 
+
 class TestStageB:
     """Stage B: head-only fp32 alignment.
 
-    Verbatim logic from the original ``stage_b()``.
+    Logic from the original ``stage_b()``.
     """
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA required for alignment tests')
@@ -478,12 +546,13 @@ class TestStageB:
         snap = _get_jev_dir()
         head = JevVerbalizerHead.from_pretrained(snap).float().to(dev)
         rows = flat_rows()
-        texts = [ref_s1_text(kind, row['messages'][0]['content'], row['questions'][0], opts)
-                 for _, kind, row, opts in rows]
+        texts = [
+            ref_s1_text(kind, row['messages'][0]['content'], row['questions'][0], opts) for _, kind, row, opts in rows
+        ]
         last = ref_last_logits(texts, dev)  # one [vocab] per question-row
 
         ok_all = True
-        print('=== B1-B3: per-kind batch=1, our head vs oracle s1_pass math (fp32) ===', flush=True)
+        print('=== B1-B3: per-kind batch=1, our head vs reference s1_pass math (fp32) ===', flush=True)
         for i, (rid, kind, row, opts) in enumerate(rows):
             n = len(opts)
             lm = last[i].view(1, 1, -1)  # [1,1,vocab]; head reads col 0 (seq_len 1)
@@ -494,8 +563,10 @@ class TestStageB:
             d = maxdiff(our.cpu(), ref.cpu())
             ok = d < 1e-5
             ok_all = ok_all and ok
-            print(f'[{"PASS" if ok else "FAIL"}] B {rid}/{kind} n={n} max|prob diff|={d:.3e} '
-                  f'our={[round(float(x), 5) for x in our]}', flush=True)
+            print(
+                f'[{"PASS" if ok else "FAIL"}] B {rid}/{kind} n={n} max|prob diff|={d:.3e} '
+                f'our={[round(float(x), 5) for x in our]}',
+                flush=True)
             assert ok, f'B {rid}/{kind} n={n} max|prob diff|={d:.3e} (FAIL <1e-5)'
 
         print('=== B4: right- AND left-padded 3-question batch -> _readout_positions ===', flush=True)
@@ -511,8 +582,13 @@ class TestStageB:
                 col = T - 1 if left else seq_lens[r] - 1
                 lm[r, col, :] = last[j]
             meta = {
-                'kinds': kinds_i, 'n_options': nopt_i, 'record_index': list(range(len(idx))),
-                'counts': [1] * len(idx), 'max_opt': max(nopt_i), 'left_padding': left, 'seq_lens': seq_lens,
+                'kinds': kinds_i,
+                'n_options': nopt_i,
+                'record_index': list(range(len(idx))),
+                'counts': [1] * len(idx),
+                'max_opt': max(nopt_i),
+                'left_padding': left,
+                'seq_lens': seq_lens,
             }
             with torch.inference_mode():
                 out = head(None, lm, meta)
@@ -523,8 +599,10 @@ class TestStageB:
                 worst = max(worst, maxdiff(our.cpu(), ref_s1_probs(last[j], rows[j][1], n, cfg).cpu()))
             ok = worst < 1e-5
             ok_all = ok_all and ok
-            print(f'[{"PASS" if ok else "FAIL"}] B4 {"left" if left else "right"}-pad seq_lens={seq_lens} '
-                  f'worst max|prob diff|={worst:.3e}', flush=True)
+            print(
+                f'[{"PASS" if ok else "FAIL"}] B4 {"left" if left else "right"}-pad seq_lens={seq_lens} '
+                f'worst max|prob diff|={worst:.3e}',
+                flush=True)
             assert ok, f'B4 {"left" if left else "right"}-pad worst max|prob diff|={worst:.3e} (FAIL <1e-5)'
         assert ok_all, 'Stage B: some checks failed'
 
@@ -533,10 +611,11 @@ class TestStageB:
 # Stage C: full forward bf16  (requires checkpoint + CUDA — skips if missing)
 # ===========================================================================
 
+
 class TestStageC:
     """Stage C: full forward bf16 alignment.
 
-    Verbatim logic from the original ``stage_c()``.
+    Logic from the original ``stage_c()``.
     """
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA required for alignment tests')
@@ -547,23 +626,25 @@ class TestStageC:
         proc = processor()
         template = get_template(proc, template_type='jev')
         rows = flat_rows()
-        texts = [ref_s1_text(kind, row['messages'][0]['content'], row['questions'][0], opts)
-                 for _, kind, row, opts in rows]
+        texts = [
+            ref_s1_text(kind, row['messages'][0]['content'], row['questions'][0], opts) for _, kind, row, opts in rows
+        ]
         last = ref_last_logits(texts, dev_ref)  # reference readout per question
         model, sproc, mdev = our_model(dev_ours)
         stok = sproc.tokenizer if hasattr(sproc, 'tokenizer') else sproc
 
         ok_all = True
-        print('=== C1-C3: batch=1 per record, swift full forward vs reference s1_pass (bf16, eager) ===',
-              flush=True)
+        print('=== C1-C3: batch=1 per record, swift full forward vs reference s1_pass (bf16, eager) ===', flush=True)
         template.set_mode('train')
         row_i = 0
         for rid, kind, row, opts in rows:
             n = len(opts)
             enc = template.encode(dict(row))
             coll = template.data_collator([enc])
-            feed = {k: (v.to(mdev) if torch.is_tensor(v) else v)
-                    for k, v in coll.items() if k in ('input_ids', 'attention_mask', 'decision_meta')}
+            feed = {
+                k: (v.to(mdev) if torch.is_tensor(v) else v)
+                for k, v in coll.items() if k in ('input_ids', 'attention_mask', 'decision_meta')
+            }
             with torch.inference_mode():
                 out = model(**feed)
             our = masked_softmax(out.logits.float(), out.option_mask)[0, :n].cpu()
@@ -571,19 +652,22 @@ class TestStageC:
             d = maxdiff(our, ref)
             ok = d < 2e-2
             ok_all = ok_all and ok
-            print(f'[{"PASS" if ok else "FAIL"}] C {rid}/{kind} n={n} max|prob diff|={d:.3e} '
-                  f'our={[round(float(x), 4) for x in our]}', flush=True)
+            print(
+                f'[{"PASS" if ok else "FAIL"}] C {rid}/{kind} n={n} max|prob diff|={d:.3e} '
+                f'our={[round(float(x), 4) for x in our]}',
+                flush=True)
             assert ok, f'C {rid}/{kind} n={n} max|prob diff|={d:.3e} (FAIL <2e-2)'
             row_i += 1
 
-        print('=== C4: multi-row TRAIN batch (right-pad) vs per-row reference (padding invariance) ===',
-              flush=True)
+        print('=== C4: multi-row TRAIN batch (right-pad) vs per-row reference (padding invariance) ===', flush=True)
         template.set_mode('train')
         encoded = [template.encode(dict(row)) for _, _, row, _ in rows]
         coll = template.data_collator(encoded)
         dm = coll['decision_meta']
-        feed = {k: (v.to(mdev) if torch.is_tensor(v) else v)
-                for k, v in coll.items() if k in ('input_ids', 'attention_mask', 'decision_meta')}
+        feed = {
+            k: (v.to(mdev) if torch.is_tensor(v) else v)
+            for k, v in coll.items() if k in ('input_ids', 'attention_mask', 'decision_meta')
+        }
         with torch.inference_mode():
             out = model(**feed)
         worst = 0.0
@@ -593,8 +677,10 @@ class TestStageC:
             worst = max(worst, maxdiff(our, ref_s1_probs(last[q], kind, n, cfg).cpu()))
         ok = worst < 2e-2 and dm['left_padding'] is False
         ok_all = ok_all and ok
-        print(f'[{"PASS" if ok else "FAIL"}] C4 right-pad batch N={len(rows)} T={coll["input_ids"].shape[1]} '
-              f'worst max|prob diff|={worst:.3e}', flush=True)
+        print(
+            f'[{"PASS" if ok else "FAIL"}] C4 right-pad batch N={len(rows)} T={coll["input_ids"].shape[1]} '
+            f'worst max|prob diff|={worst:.3e}',
+            flush=True)
         assert ok, f'C4 right-pad worst max|prob diff|={worst:.3e} (FAIL <2e-2)'
         assert ok_all, 'Stage C: some checks failed'
 
@@ -603,10 +689,11 @@ class TestStageC:
 # Stage D: loss + grad  (two paths — checkpoint alignment + structural random)
 # ===========================================================================
 
+
 class TestStageDAlignment:
     """Stage D with the real checkpoint: loss+grad alignment.
 
-    Verbatim logic from the original ``stage_d()``.
+    Logic from the original ``stage_d()``.
     """
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA required for alignment tests')
@@ -619,8 +706,9 @@ class TestStageDAlignment:
         template.set_mode('train')
         rec = next(r for r in RECORDS if r['id'] == 'joint')
         jrows = JevPreprocessor().preprocess({k: v for k, v in rec.items() if k != 'id'})
-        texts = [ref_s1_text(r['kinds'][0], r['messages'][0]['content'], r['questions'][0], r['options'][0])
-                 for r in jrows]
+        texts = [
+            ref_s1_text(r['kinds'][0], r['messages'][0]['content'], r['questions'][0], r['options'][0]) for r in jrows
+        ]
         last = ref_last_logits(texts, dev)  # 3 rows: noul / choice3 / score6
 
         nq = len(jrows)
@@ -632,9 +720,13 @@ class TestStageDAlignment:
             lm[i, 0, :] = last[i]
         lm = lm.detach()
         meta = {
-            'kinds': [KIND_OF[r['kinds'][0]] for r in jrows], 'n_options': nopt,
-            'record_index': list(range(nq)), 'counts': [1] * nq, 'max_opt': max_opt,
-            'left_padding': False, 'seq_lens': [1] * nq,
+            'kinds': [KIND_OF[r['kinds'][0]] for r in jrows],
+            'n_options': nopt,
+            'record_index': list(range(nq)),
+            'counts': [1] * nq,
+            'max_opt': max_opt,
+            'left_padding': False,
+            'seq_lens': [1] * nq,
         }
         # real training target: the collator's padded labels for this record's fan-out
         coll = template.data_collator([template.encode(dict(r)) for r in jrows])
@@ -643,7 +735,7 @@ class TestStageDAlignment:
         snap = _get_jev_dir()
         head = JevVerbalizerHead.from_pretrained(snap).float().to(dev)
         head.bias.requires_grad_(True)
-        loss_fn = JevDistillLoss(None, _DummyTrainer())
+        loss_fn = DistillRPSLoss(None, _DummyTrainer())
 
         # (1) value
         with torch.inference_mode():
@@ -651,8 +743,10 @@ class TestStageDAlignment:
         our_val = float(loss_fn(outputs=out, labels=target, num_items_in_batch=None))
         re_val = float(rederived_jev_loss(out.logits.double(), out.option_mask, out.kinds, target.double()))
         v_pass = abs(our_val - re_val) < 1e-5
-        print(f'[{"PASS" if v_pass else "FAIL"}] D(1) loss value our={our_val:.8f} rederived={re_val:.8f} '
-              f'|diff|={abs(our_val - re_val):.3e}', flush=True)
+        print(
+            f'[{"PASS" if v_pass else "FAIL"}] D(1) loss value our={our_val:.8f} rederived={re_val:.8f} '
+            f'|diff|={abs(our_val - re_val):.3e}',
+            flush=True)
         assert v_pass, (f'D(1) loss value our={our_val:.8f} rederived={re_val:.8f} '
                         f'|diff|={abs(our_val - re_val):.3e}')
 
@@ -665,13 +759,14 @@ class TestStageDAlignment:
         o2 = head(None, lm, meta)
         rederived_jev_loss(o2.logits, o2.option_mask, o2.kinds, target).backward()
         g_re = head.bias.grad.detach().clone()
-        norm_rel = (float((g_our.double() - g_re.double()).norm()) /
-                    max(float(g_re.double().norm()), 1e-12))
+        norm_rel = (float((g_our.double() - g_re.double()).norm()) / max(float(g_re.double().norm()), 1e-12))
         act = [i for i in range(24) if float(g_re[i].abs()) > 1e-6]
         worst = max((float((g_our[i] - g_re[i]).abs()) / float(g_re[i].abs()) for i in act), default=0.0)
         g_pass = norm_rel < 1e-4 and worst < 1e-4
-        print(f'[{"PASS" if g_pass else "FAIL"}] D(2) autograd our-vs-rederived grad_norm rel={norm_rel:.3e}; '
-              f'worst activated-slot rel={worst:.3e} over {len(act)} slots', flush=True)
+        print(
+            f'[{"PASS" if g_pass else "FAIL"}] D(2) autograd our-vs-rederived grad_norm rel={norm_rel:.3e}; '
+            f'worst activated-slot rel={worst:.3e} over {len(act)} slots',
+            flush=True)
         assert g_pass, (f'D(2) autograd our-vs-rederived grad_norm rel={norm_rel:.3e}; '
                         f'worst activated-slot rel={worst:.3e} over {len(act)} slots')
 
@@ -700,8 +795,10 @@ class TestStageDAlignment:
             rel = abs(fd - autog) / max(abs(autog), abs(fd), 1e-6)
             ok = rel < 3e-2
             fd_pass = fd_pass and ok
-            print(f'   [{"PASS" if ok else "FAIL"}] D(3) fd bias[{s}]: autograd={autog:.6e} fd={fd:.6e} '
-                  f'rel={rel:.3e}', flush=True)
+            print(
+                f'   [{"PASS" if ok else "FAIL"}] D(3) fd bias[{s}]: autograd={autog:.6e} fd={fd:.6e} '
+                f'rel={rel:.3e}',
+                flush=True)
             assert ok, f'D(3) fd bias[{s}]: autograd={autog:.6e} fd={fd:.6e} rel={rel:.3e}'
         assert v_pass and g_pass and fd_pass, 'Stage D alignment: some checks failed'
 
@@ -731,9 +828,13 @@ class TestStageDStructural:
         lm = lm.detach()
 
         meta = {
-            'kinds': kinds, 'n_options': nopt,
-            'record_index': list(range(nq)), 'counts': [1] * nq, 'max_opt': max_opt,
-            'left_padding': False, 'seq_lens': [1] * nq,
+            'kinds': kinds,
+            'n_options': nopt,
+            'record_index': list(range(nq)),
+            'counts': [1] * nq,
+            'max_opt': max_opt,
+            'left_padding': False,
+            'seq_lens': [1] * nq,
         }
 
         # Target: one-hot for the joint record's gold values [0, 1, 4], padded to max_opt.
@@ -744,7 +845,7 @@ class TestStageDStructural:
 
         head = _make_random_head().float().to(dev)
         head.bias.requires_grad_(True)
-        loss_fn = JevDistillLoss(None, _DummyTrainer())
+        loss_fn = DistillRPSLoss(None, _DummyTrainer())
 
         # (1) value
         with torch.inference_mode():
@@ -752,8 +853,10 @@ class TestStageDStructural:
         our_val = float(loss_fn(outputs=out, labels=target, num_items_in_batch=None))
         re_val = float(rederived_jev_loss(out.logits.double(), out.option_mask, out.kinds, target.double()))
         v_pass = abs(our_val - re_val) < 1e-5
-        print(f'[{"PASS" if v_pass else "FAIL"}] D(1) loss value our={our_val:.8f} rederived={re_val:.8f} '
-              f'|diff|={abs(our_val - re_val):.3e}', flush=True)
+        print(
+            f'[{"PASS" if v_pass else "FAIL"}] D(1) loss value our={our_val:.8f} rederived={re_val:.8f} '
+            f'|diff|={abs(our_val - re_val):.3e}',
+            flush=True)
         assert v_pass, (f'D(1) loss value our={our_val:.8f} rederived={re_val:.8f} '
                         f'|diff|={abs(our_val - re_val):.3e}')
 
@@ -766,13 +869,14 @@ class TestStageDStructural:
         o2 = head(None, lm, meta)
         rederived_jev_loss(o2.logits, o2.option_mask, o2.kinds, target).backward()
         g_re = head.bias.grad.detach().clone()
-        norm_rel = (float((g_our.double() - g_re.double()).norm()) /
-                    max(float(g_re.double().norm()), 1e-12))
+        norm_rel = (float((g_our.double() - g_re.double()).norm()) / max(float(g_re.double().norm()), 1e-12))
         act = [i for i in range(24) if float(g_re[i].abs()) > 1e-6]
         worst = max((float((g_our[i] - g_re[i]).abs()) / float(g_re[i].abs()) for i in act), default=0.0)
         g_pass = norm_rel < 1e-4 and worst < 1e-4
-        print(f'[{"PASS" if g_pass else "FAIL"}] D(2) autograd our-vs-rederived grad_norm rel={norm_rel:.3e}; '
-              f'worst activated-slot rel={worst:.3e} over {len(act)} slots', flush=True)
+        print(
+            f'[{"PASS" if g_pass else "FAIL"}] D(2) autograd our-vs-rederived grad_norm rel={norm_rel:.3e}; '
+            f'worst activated-slot rel={worst:.3e} over {len(act)} slots',
+            flush=True)
         assert g_pass, (f'D(2) autograd our-vs-rederived grad_norm rel={norm_rel:.3e}; '
                         f'worst activated-slot rel={worst:.3e} over {len(act)} slots')
 
@@ -801,8 +905,10 @@ class TestStageDStructural:
             rel = abs(fd - autog) / max(abs(autog), abs(fd), 1e-6)
             ok = rel < 3e-2
             fd_pass = fd_pass and ok
-            print(f'   [{"PASS" if ok else "FAIL"}] D(3) fd bias[{s}]: autograd={autog:.6e} fd={fd:.6e} '
-                  f'rel={rel:.3e}', flush=True)
+            print(
+                f'   [{"PASS" if ok else "FAIL"}] D(3) fd bias[{s}]: autograd={autog:.6e} fd={fd:.6e} '
+                f'rel={rel:.3e}',
+                flush=True)
             assert ok, f'D(3) fd bias[{s}]: autograd={autog:.6e} fd={fd:.6e} rel={rel:.3e}'
         assert v_pass and g_pass and fd_pass, 'Stage D structural: some checks failed'
 
@@ -844,7 +950,7 @@ def _cli_main():
 
 
 def _legacy_stage_a():
-    """Legacy Stage A runner — verbatim original logic."""
+    """Legacy Stage A runner — original logic."""
     cfg = _get_head_config()
     proc = processor()
     template = get_template(proc, template_type='jev')
@@ -852,13 +958,13 @@ def _legacy_stage_a():
     tok = proc.tokenizer
     ok_all = True
 
-    print('=== A6: A-P single-token ids == verbalizer_ids[8:24] (oracle setup() assert) ===', flush=True)
+    print('=== A6: A-P single-token ids == verbalizer_ids[8:24] (reference setup() assert) ===', flush=True)
     letter_ids = [tok.encode(lab, add_special_tokens=False)[0] for lab in LETTERS[:16]]
     a6 = letter_ids == cfg['vids'][8:24]
     ok_all = ok_all and a6
     print(f'[{"PASS" if a6 else "FAIL"}] A6 letter ids {letter_ids} == verbalizer choice slots', flush=True)
 
-    print('=== A1-A5: faithful records byte-identical to the oracle s1_pass prompt ===', flush=True)
+    print('=== A1-A5: test records byte-identical to the reference s1_pass prompt ===', flush=True)
     rows = flat_rows()
     for rid, kind, row, opts in rows:
         enc = template._encode(StdTemplateInputs.from_dict(row))
@@ -870,38 +976,45 @@ def _legacy_stage_a():
         meta_ok = meta['kinds'] == [KIND_OF[kind]] and meta['n_options'] == [len(opts)]
         ok = ids_ok and meta_ok
         ok_all = ok_all and ok
-        print(f'[{"PASS" if ok else "FAIL"}] A {rid}/{kind} nopt={len(opts)} ids={ids_ok} meta={meta_ok} '
-              f'(len {len(ours)} vs {len(ref)})', flush=True)
+        print(
+            f'[{"PASS" if ok else "FAIL"}] A {rid}/{kind} nopt={len(opts)} ids={ids_ok} meta={meta_ok} '
+            f'(len {len(ours)} vs {len(ref)})',
+            flush=True)
         if not ids_ok:
             n = min(len(ours), len(ref))
             div = next((i for i in range(n) if ours[i] != ref[i]), n)
             lo = max(0, div - 6)
-            print(f'   first divergence at {div}: ours={tok.decode(ours[lo:div + 6])!r} '
-                  f'ref={tok.decode(ref[lo:div + 6])!r}', flush=True)
+            print(
+                f'   first divergence at {div}: ours={tok.decode(ours[lo:div + 6])!r} '
+                f'ref={tok.decode(ref[lo:div + 6])!r}',
+                flush=True)
 
-    print('=== A7/A8: real collator -> flat decision_meta + padded labels (train right / infer left) ===',
-          flush=True)
+    print('=== A7/A8: real collator -> flat decision_meta + padded labels (train right / infer left) ===', flush=True)
     encoded = [template.encode(dict(row)) for _, _, row, _ in rows]
     collated = template.data_collator(encoded)
     dm = collated['decision_meta']
     total_q = len(rows)
-    a7 = (len(dm['record_index']) == total_q and dm['max_opt'] == max(len(o) for *_, o in rows)
-          and collated['input_ids'].shape[0] == total_q and 'labels' in collated
-          and tuple(collated['labels'].shape) == (total_q, dm['max_opt'])
-          and all(0 <= ri < total_q for ri in dm['record_index'])
-          and all(sl <= collated['input_ids'].shape[1] for sl in dm['seq_lens'])
-          and dm['left_padding'] is False)
+    a7 = (
+        len(dm['record_index']) == total_q and dm['max_opt'] == max(len(o) for *_, o in rows)
+        and collated['input_ids'].shape[0] == total_q and 'labels' in collated
+        and tuple(collated['labels'].shape) == (total_q, dm['max_opt']) and all(0 <= ri < total_q
+                                                                                for ri in dm['record_index'])
+        and all(sl <= collated['input_ids'].shape[1] for sl in dm['seq_lens']) and dm['left_padding'] is False)
     ok_all = ok_all and a7
-    print(f'[{"PASS" if a7 else "FAIL"}] A7 train collator record_index={dm["record_index"]} '
-          f'counts={dm["counts"]} n_options={dm["n_options"]} kinds={dm["kinds"]} max_opt={dm["max_opt"]} '
-          f'left_padding={dm["left_padding"]} labels={tuple(collated["labels"].shape)}', flush=True)
+    print(
+        f'[{"PASS" if a7 else "FAIL"}] A7 train collator record_index={dm["record_index"]} '
+        f'counts={dm["counts"]} n_options={dm["n_options"]} kinds={dm["kinds"]} max_opt={dm["max_opt"]} '
+        f'left_padding={dm["left_padding"]} labels={tuple(collated["labels"].shape)}',
+        flush=True)
 
     template.set_mode('transformers')
     coll_inf = template.data_collator([template.encode(dict(row)) for _, _, row, _ in rows])
     a8 = coll_inf['decision_meta']['left_padding'] is True
     ok_all = ok_all and a8
-    print(f'[{"PASS" if a8 else "FAIL"}] A8 inference collator left_padding='
-          f'{coll_inf["decision_meta"]["left_padding"]}', flush=True)
+    print(
+        f'[{"PASS" if a8 else "FAIL"}] A8 inference collator left_padding='
+        f'{coll_inf["decision_meta"]["left_padding"]}',
+        flush=True)
     template.set_mode('train')
 
     print('=== A9: DIVERGENCE guard -- custom noul/score options are FORCED to canonical ===', flush=True)
@@ -915,14 +1028,16 @@ def _legacy_stage_a():
         ref = tok.encode(ref_s1_text(kind, 'x', 'Q?', canonical), add_special_tokens=False)
         byte_ok = list(benc['input_ids']) == ref
         a9 = a9 and forced and byte_ok
-        print(f'[{"PASS" if forced and byte_ok else "FAIL"}] A9 {kind} custom={custom} -> forced='
-              f'{brow["options"][0]} (canonical={canonical}) byte_ok={byte_ok}', flush=True)
+        print(
+            f'[{"PASS" if forced and byte_ok else "FAIL"}] A9 {kind} custom={custom} -> forced='
+            f'{brow["options"][0]} (canonical={canonical}) byte_ok={byte_ok}',
+            flush=True)
     ok_all = ok_all and a9
     return ok_all
 
 
 def _legacy_stage_b(dev='cuda:0'):
-    """Legacy Stage B runner — verbatim original logic."""
+    """Legacy Stage B runner — original logic."""
     if not torch.cuda.is_available():
         print('SKIP B: no CUDA', flush=True)
         return True
@@ -934,12 +1049,11 @@ def _legacy_stage_b(dev='cuda:0'):
     snap = _get_jev_dir()
     head = JevVerbalizerHead.from_pretrained(snap).float().to(dev)
     rows = flat_rows()
-    texts = [ref_s1_text(kind, row['messages'][0]['content'], row['questions'][0], opts)
-             for _, kind, row, opts in rows]
+    texts = [ref_s1_text(kind, row['messages'][0]['content'], row['questions'][0], opts) for _, kind, row, opts in rows]
     last = ref_last_logits(texts, dev)
 
     ok_all = True
-    print('=== B1-B3: per-kind batch=1, our head vs oracle s1_pass math (fp32) ===', flush=True)
+    print('=== B1-B3: per-kind batch=1, our head vs reference s1_pass math (fp32) ===', flush=True)
     for i, (rid, kind, row, opts) in enumerate(rows):
         n = len(opts)
         lm = last[i].view(1, 1, -1)
@@ -950,8 +1064,10 @@ def _legacy_stage_b(dev='cuda:0'):
         d = maxdiff(our.cpu(), ref.cpu())
         ok = d < 1e-5
         ok_all = ok_all and ok
-        print(f'[{"PASS" if ok else "FAIL"}] B {rid}/{kind} n={n} max|prob diff|={d:.3e} '
-              f'our={[round(float(x), 5) for x in our]}', flush=True)
+        print(
+            f'[{"PASS" if ok else "FAIL"}] B {rid}/{kind} n={n} max|prob diff|={d:.3e} '
+            f'our={[round(float(x), 5) for x in our]}',
+            flush=True)
 
     print('=== B4: right- AND left-padded 3-question batch -> _readout_positions ===', flush=True)
     idx = [0, 1, 3]
@@ -966,8 +1082,13 @@ def _legacy_stage_b(dev='cuda:0'):
             col = T - 1 if left else seq_lens[r] - 1
             lm[r, col, :] = last[j]
         meta = {
-            'kinds': kinds_i, 'n_options': nopt_i, 'record_index': list(range(len(idx))),
-            'counts': [1] * len(idx), 'max_opt': max(nopt_i), 'left_padding': left, 'seq_lens': seq_lens,
+            'kinds': kinds_i,
+            'n_options': nopt_i,
+            'record_index': list(range(len(idx))),
+            'counts': [1] * len(idx),
+            'max_opt': max(nopt_i),
+            'left_padding': left,
+            'seq_lens': seq_lens,
         }
         with torch.inference_mode():
             out = head(None, lm, meta)
@@ -978,13 +1099,15 @@ def _legacy_stage_b(dev='cuda:0'):
             worst = max(worst, maxdiff(our.cpu(), ref_s1_probs(last[j], rows[j][1], n, cfg).cpu()))
         ok = worst < 1e-5
         ok_all = ok_all and ok
-        print(f'[{"PASS" if ok else "FAIL"}] B4 {"left" if left else "right"}-pad seq_lens={seq_lens} '
-              f'worst max|prob diff|={worst:.3e}', flush=True)
+        print(
+            f'[{"PASS" if ok else "FAIL"}] B4 {"left" if left else "right"}-pad seq_lens={seq_lens} '
+            f'worst max|prob diff|={worst:.3e}',
+            flush=True)
     return ok_all
 
 
 def _legacy_stage_c(dev_ref='cuda:0', dev_ours='cuda:1'):
-    """Legacy Stage C runner — verbatim original logic."""
+    """Legacy Stage C runner — original logic."""
     if not torch.cuda.is_available():
         print('SKIP C: no CUDA', flush=True)
         return True
@@ -992,23 +1115,23 @@ def _legacy_stage_c(dev_ref='cuda:0', dev_ours='cuda:1'):
     proc = processor()
     template = get_template(proc, template_type='jev')
     rows = flat_rows()
-    texts = [ref_s1_text(kind, row['messages'][0]['content'], row['questions'][0], opts)
-             for _, kind, row, opts in rows]
+    texts = [ref_s1_text(kind, row['messages'][0]['content'], row['questions'][0], opts) for _, kind, row, opts in rows]
     last = ref_last_logits(texts, dev_ref)
     model, sproc, mdev = our_model(dev_ours)
     stok = sproc.tokenizer if hasattr(sproc, 'tokenizer') else sproc
 
     ok_all = True
-    print('=== C1-C3: batch=1 per record, swift full forward vs reference s1_pass (bf16, eager) ===',
-          flush=True)
+    print('=== C1-C3: batch=1 per record, swift full forward vs reference s1_pass (bf16, eager) ===', flush=True)
     template.set_mode('train')
     row_i = 0
     for rid, kind, row, opts in rows:
         n = len(opts)
         enc = template.encode(dict(row))
         coll = template.data_collator([enc])
-        feed = {k: (v.to(mdev) if torch.is_tensor(v) else v)
-                for k, v in coll.items() if k in ('input_ids', 'attention_mask', 'decision_meta')}
+        feed = {
+            k: (v.to(mdev) if torch.is_tensor(v) else v)
+            for k, v in coll.items() if k in ('input_ids', 'attention_mask', 'decision_meta')
+        }
         with torch.inference_mode():
             out = model(**feed)
         our = masked_softmax(out.logits.float(), out.option_mask)[0, :n].cpu()
@@ -1016,18 +1139,21 @@ def _legacy_stage_c(dev_ref='cuda:0', dev_ours='cuda:1'):
         d = maxdiff(our, ref)
         ok = d < 2e-2
         ok_all = ok_all and ok
-        print(f'[{"PASS" if ok else "FAIL"}] C {rid}/{kind} n={n} max|prob diff|={d:.3e} '
-              f'our={[round(float(x), 4) for x in our]}', flush=True)
+        print(
+            f'[{"PASS" if ok else "FAIL"}] C {rid}/{kind} n={n} max|prob diff|={d:.3e} '
+            f'our={[round(float(x), 4) for x in our]}',
+            flush=True)
         row_i += 1
 
-    print('=== C4: multi-row TRAIN batch (right-pad) vs per-row reference (padding invariance) ===',
-          flush=True)
+    print('=== C4: multi-row TRAIN batch (right-pad) vs per-row reference (padding invariance) ===', flush=True)
     template.set_mode('train')
     encoded = [template.encode(dict(row)) for _, _, row, _ in rows]
     coll = template.data_collator(encoded)
     dm = coll['decision_meta']
-    feed = {k: (v.to(mdev) if torch.is_tensor(v) else v)
-            for k, v in coll.items() if k in ('input_ids', 'attention_mask', 'decision_meta')}
+    feed = {
+        k: (v.to(mdev) if torch.is_tensor(v) else v)
+        for k, v in coll.items() if k in ('input_ids', 'attention_mask', 'decision_meta')
+    }
     with torch.inference_mode():
         out = model(**feed)
     worst = 0.0
@@ -1037,13 +1163,15 @@ def _legacy_stage_c(dev_ref='cuda:0', dev_ours='cuda:1'):
         worst = max(worst, maxdiff(our, ref_s1_probs(last[q], kind, n, cfg).cpu()))
     ok = worst < 2e-2 and dm['left_padding'] is False
     ok_all = ok_all and ok
-    print(f'[{"PASS" if ok else "FAIL"}] C4 right-pad batch N={len(rows)} T={coll["input_ids"].shape[1]} '
-          f'worst max|prob diff|={worst:.3e}', flush=True)
+    print(
+        f'[{"PASS" if ok else "FAIL"}] C4 right-pad batch N={len(rows)} T={coll["input_ids"].shape[1]} '
+        f'worst max|prob diff|={worst:.3e}',
+        flush=True)
     return ok_all
 
 
 def _legacy_stage_d(dev='cuda:0'):
-    """Legacy Stage D runner — verbatim original logic."""
+    """Legacy Stage D runner — original logic."""
     if not torch.cuda.is_available():
         print('SKIP D: no CUDA', flush=True)
         return True
@@ -1053,8 +1181,7 @@ def _legacy_stage_d(dev='cuda:0'):
     template.set_mode('train')
     rec = next(r for r in RECORDS if r['id'] == 'joint')
     jrows = JevPreprocessor().preprocess({k: v for k, v in rec.items() if k != 'id'})
-    texts = [ref_s1_text(r['kinds'][0], r['messages'][0]['content'], r['questions'][0], r['options'][0])
-             for r in jrows]
+    texts = [ref_s1_text(r['kinds'][0], r['messages'][0]['content'], r['questions'][0], r['options'][0]) for r in jrows]
     last = ref_last_logits(texts, dev)
 
     nq = len(jrows)
@@ -1066,9 +1193,13 @@ def _legacy_stage_d(dev='cuda:0'):
         lm[i, 0, :] = last[i]
     lm = lm.detach()
     meta = {
-        'kinds': [KIND_OF[r['kinds'][0]] for r in jrows], 'n_options': nopt,
-        'record_index': list(range(nq)), 'counts': [1] * nq, 'max_opt': max_opt,
-        'left_padding': False, 'seq_lens': [1] * nq,
+        'kinds': [KIND_OF[r['kinds'][0]] for r in jrows],
+        'n_options': nopt,
+        'record_index': list(range(nq)),
+        'counts': [1] * nq,
+        'max_opt': max_opt,
+        'left_padding': False,
+        'seq_lens': [1] * nq,
     }
     coll = template.data_collator([template.encode(dict(r)) for r in jrows])
     target = coll['labels'].to(dev).float()
@@ -1076,15 +1207,17 @@ def _legacy_stage_d(dev='cuda:0'):
     snap = _get_jev_dir()
     head = JevVerbalizerHead.from_pretrained(snap).float().to(dev)
     head.bias.requires_grad_(True)
-    loss_fn = JevDistillLoss(None, _DummyTrainer())
+    loss_fn = DistillRPSLoss(None, _DummyTrainer())
 
     with torch.inference_mode():
         out = head(None, lm, meta)
     our_val = float(loss_fn(outputs=out, labels=target, num_items_in_batch=None))
     re_val = float(rederived_jev_loss(out.logits.double(), out.option_mask, out.kinds, target.double()))
     v_pass = abs(our_val - re_val) < 1e-5
-    print(f'[{"PASS" if v_pass else "FAIL"}] D(1) loss value our={our_val:.8f} rederived={re_val:.8f} '
-          f'|diff|={abs(our_val - re_val):.3e}', flush=True)
+    print(
+        f'[{"PASS" if v_pass else "FAIL"}] D(1) loss value our={our_val:.8f} rederived={re_val:.8f} '
+        f'|diff|={abs(our_val - re_val):.3e}',
+        flush=True)
 
     head.zero_grad(set_to_none=True)
     o1 = head(None, lm, meta)
@@ -1094,13 +1227,14 @@ def _legacy_stage_d(dev='cuda:0'):
     o2 = head(None, lm, meta)
     rederived_jev_loss(o2.logits, o2.option_mask, o2.kinds, target).backward()
     g_re = head.bias.grad.detach().clone()
-    norm_rel = (float((g_our.double() - g_re.double()).norm()) /
-                max(float(g_re.double().norm()), 1e-12))
+    norm_rel = (float((g_our.double() - g_re.double()).norm()) / max(float(g_re.double().norm()), 1e-12))
     act = [i for i in range(24) if float(g_re[i].abs()) > 1e-6]
     worst = max((float((g_our[i] - g_re[i]).abs()) / float(g_re[i].abs()) for i in act), default=0.0)
     g_pass = norm_rel < 1e-4 and worst < 1e-4
-    print(f'[{"PASS" if g_pass else "FAIL"}] D(2) autograd our-vs-rederived grad_norm rel={norm_rel:.3e}; '
-          f'worst activated-slot rel={worst:.3e} over {len(act)} slots', flush=True)
+    print(
+        f'[{"PASS" if g_pass else "FAIL"}] D(2) autograd our-vs-rederived grad_norm rel={norm_rel:.3e}; '
+        f'worst activated-slot rel={worst:.3e} over {len(act)} slots',
+        flush=True)
 
     slots = [0, 1, 2, 8]
     eps = 1e-3
@@ -1127,7 +1261,8 @@ def _legacy_stage_d(dev='cuda:0'):
         ok = rel < 3e-2
         fd_pass = fd_pass and ok
         print(f'   [{"PASS" if ok else "FAIL"}] D(3) fd bias[{s}]: autograd={autog:.6e} fd={fd:.6e} '
-              f'rel={rel:.3e}', flush=True)
+              f'rel={rel:.3e}',
+              flush=True)
     return v_pass and g_pass and fd_pass
 
 

@@ -1,14 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """OmniJev branch forward + option-token registration (decision G1).
 
-A faithful port of the OmniJev official `mso/branch.py` (plus the small pieces of `mso/records.py` the
-loader needs: `add_option_tokens`, `find_rope_owner`, `rope_positions`). It is a model-local module --
+This is a model-local module --
 nothing here touches shared swift framework code; `OmniJevModelLoader` calls into it.
 
 Why branch (not a block-diagonal attention mask): a block mask keeps options apart only in the softmax
 attention layers, but OmniJev's real backbone (Qwen3.5-4B) is a *hybrid* gated-deltanet model whose
 linear-attention layers carry recurrent state along the sequence regardless of the mask, so on such a
-backbone the options leak into each other (official measured option representations differing by 4-17
+backbone the options leak into each other (measured option representations differing by 4-17
 across orders). Branching restores exact isolation the other way round::
 
     prefix  = chat head + image tokens (+ instruction)      -> ONE forward, cache kept
@@ -16,24 +15,16 @@ across orders). Branching restores exact isolation the other way round::
               batched forward continuing a COPY of the expanded prefix cache
 
 Every row starts from the same state and never sees another option, so the answer is exactly
-order-invariant (official measured 0.0) and equals a plain prefix+row forward (max |du| ~1e-4). Rows
+order-invariant (measured 0.0) and equals a plain prefix+row forward (max |du| ~1e-4). Rows
 are processed in chunks (`MSO_BRANCH_CHUNK`, default 64) against a fresh copy of the prefix cache, and
 `repeat_interleave` is differentiable, so training uses the same path (`MSO_BRANCH_CKPT=1` recomputes a
 chunk in backward instead of keeping its activations).
-
-RUN-PHASE VERIFY (fragile, no local oracle): `expand_cache` assumes the transformers 5.x cache object
-exposes `.layers` (each a layer-cache with tensor attrs); `get_rope_index`'s signature and the hybrid
-cache's `repeat_interleave`-ability are version-specific; and calling the backbone forward several times
-per step (prefix + chunks) interacts with DDP's reducer / model-level gradient checkpointing. These are
-checked against a real Qwen3.5-4B in the run phase, not during authoring (AST-only + pure-function
-self-checks here).
 """
 import copy
 import os
-from typing import Any, Dict, List, Optional, Sequence
-
 import torch
 import torch.utils.checkpoint
+from typing import Any, Dict, List, Optional, Sequence
 
 OPT_OPEN = '<|opt|>'
 OPT_CLOSE = '<|/opt|>'
@@ -67,8 +58,7 @@ def find_rope_owner(m, depth: int = 0):
 
 def rope_positions(rope_owner, enc: Dict[str, Any]) -> Optional[torch.Tensor]:
     """mrope `position_ids` `[3, B, T]` of `enc` from the model's own `get_rope_index` (None if the
-    backbone has no rope owner). Port of `MSO.rope_positions(enc, spans=None, align_options=False)` --
-    the branch prefix needs NO option alignment (each row is scored from the same prefix state, so order
+    backbone has no rope owner). The branch prefix needs NO option alignment (each row is scored from the same prefix state, so order
     invariance comes from branching, not from shared rope start positions)."""
     if rope_owner is None:
         return None
@@ -119,16 +109,6 @@ def expand_cache(cache, K):
             setattr(l2, k, _rep(v, K))
         layers.append(l2)
     new.layers = layers
-    # TRAINING FIX (swift-only; the official `mso/branch.py` port runs inference under no_grad, so it never
-    # hit this). transformers writes the post-forward recurrent state back IN-PLACE into the cache buffer
-    # (`cache_utils.update_recurrent_state` -> `recurrent_states[idx].copy_(...)`), and the linear-attention
-    # layer feeds that SAME buffer to fla's chunk kernel as `initial_state`, which `save_for_backward`
-    # snapshots. The in-place copy_ then bumps the buffer's version, so backward dies with "one of the
-    # variables needed for gradient computation has been modified by an inplace operation" (a detached
-    # state does NOT help -- fla saves initial_state unconditionally). The branch DISCARDS the updated cache
-    # anyway (every option row is an independent continuation of the one pristine prefix, re-expanded per
-    # chunk, and `_chunk_h` keeps only hidden_states), so the write-back is dead work: neutralise it on the
-    # expanded copy only. Forward values, the full prefix gradient, and `cache0` itself are all untouched.
     new.update_recurrent_state = lambda *a, **k: None
     return new
 
@@ -143,8 +123,7 @@ def prefix_inputs(enc: Dict[str, Any], L: int) -> Dict[str, Any]:
     return p
 
 
-def rows_from_ids(ids, L: int, opens: Sequence[int], closes: Sequence[int],
-                  k: Optional[int] = None) -> List[List[int]]:
+def rows_from_ids(ids, L: int, opens: Sequence[int], closes: Sequence[int], k: Optional[int] = None) -> List[List[int]]:
     """Token ids of ONE single-question sequence (prefix + instruction + option blocks), the prefix length
     `L` and the option spans -> K rows, each the shared part `ids[L:opens[0]]` followed by one option block
     `ids[o:c+1]`. `L` MUST be `< opens[0]` so every row keeps the token before its option (that is where
@@ -171,10 +150,19 @@ def _marks(r: Sequence[int], open_ids: Sequence[int], close_ids: Sequence[int]):
     return o_, c_, list(range(o_ + ol, c_ - cl + 1))
 
 
-def branch_forward(backbone, penc: Dict[str, Any], rows: List[List[int]], dev, open_ids: Sequence[int],
-                   close_ids: Sequence[int], lm_head=None, prefix_pos: Optional[torch.Tensor] = None,
-                   pos_start: Optional[int] = None, groups: Optional[List[List[int]]] = None,
-                   chunk: Optional[int] = None, pad_id: int = 0, mrope_axes: int = 3) -> Dict[str, Any]:
+def branch_forward(backbone,
+                   penc: Dict[str, Any],
+                   rows: List[List[int]],
+                   dev,
+                   open_ids: Sequence[int],
+                   close_ids: Sequence[int],
+                   lm_head=None,
+                   prefix_pos: Optional[torch.Tensor] = None,
+                   pos_start: Optional[int] = None,
+                   groups: Optional[List[List[int]]] = None,
+                   chunk: Optional[int] = None,
+                   pad_id: int = 0,
+                   mrope_axes: int = 3) -> Dict[str, Any]:
     """`penc`: prefix encoding (`input_ids [1, L]` + pixel tensors); `rows`: token-id lists continuing the
     prefix; `groups`: lists of row indices forming one question (the K-way softmax feature is taken inside a
     group). `prefix_pos`: `[3, 1, L]` positions of the prefix (`rope_positions`); `pos_start`: rope position
@@ -216,7 +204,10 @@ def branch_forward(backbone, penc: Dict[str, Any], rows: List[List[int]], dev, o
             # pass were outside (as a closure-captured cache0), checkpoint's recomputation would use
             # the stale outer cache0 whose autograd graph is already freed, breaking gradient flow.
             def _chunk_h_ckpt(ids_, att_, pos_, cpos_, pids_, patt_, ppos_):
-                pkw = {k: v for k, v in kw.items() if k != 'input_ids' and k != 'attention_mask' and k != 'position_ids'}
+                pkw = {
+                    k: v
+                    for k, v in kw.items() if k != 'input_ids' and k != 'attention_mask' and k != 'position_ids'
+                }
                 pkw['input_ids'] = pids_
                 pkw['attention_mask'] = patt_
                 if prefix_pos is not None:
@@ -233,11 +224,19 @@ def branch_forward(backbone, penc: Dict[str, Any], rows: List[List[int]], dev, o
                     position_ids=pos_,
                     logits_to_keep=1)
                 return o_.hidden_states[-1]
+
             h = torch.utils.checkpoint.checkpoint(
-                _chunk_h_ckpt, ids, full_att, pos, cache_pos, prefix_ids, torch.ones_like(prefix_ids),
+                _chunk_h_ckpt,
+                ids,
+                full_att,
+                pos,
+                cache_pos,
+                prefix_ids,
+                torch.ones_like(prefix_ids),
                 prefix_pos if prefix_pos is not None else torch.zeros(3, 1, 1, device=dev, dtype=torch.long),
                 use_reentrant=False)
         else:
+
             def _chunk_h(ids_, att_, pos_, cpos_):
                 o_ = backbone(
                     input_ids=ids_,
@@ -249,6 +248,7 @@ def branch_forward(backbone, penc: Dict[str, Any], rows: List[List[int]], dev, o
                     position_ids=pos_,
                     logits_to_keep=1)
                 return o_.hidden_states[-1]
+
             h = _chunk_h(ids, full_att, pos, cache_pos)  # [Rc, n, D]
         marks = [_marks(r, open_ids, close_ids) for r in sub]
         ar = torch.arange(Rc, device=dev)
@@ -302,9 +302,16 @@ def branch_forward(backbone, penc: Dict[str, Any], rows: List[List[int]], dev, o
     return {'u': u, 'zq': zq, 'feats': feats}
 
 
-def branch_questions(backbone, penc: Dict[str, Any], qrows: List[List[List[int]]], dev, open_ids: Sequence[int],
-                     close_ids: Sequence[int], lm_head=None, prefix_pos: Optional[torch.Tensor] = None,
-                     chunk: Optional[int] = None, pad_id: int = 0):
+def branch_questions(backbone,
+                     penc: Dict[str, Any],
+                     qrows: List[List[List[int]]],
+                     dev,
+                     open_ids: Sequence[int],
+                     close_ids: Sequence[int],
+                     lm_head=None,
+                     prefix_pos: Optional[torch.Tensor] = None,
+                     chunk: Optional[int] = None,
+                     pad_id: int = 0):
     """`qrows`: per question, its rows -> per question `(u [K, D] float32, zq [D] float32, feats [K, 6] |
     None)`. All questions of the batch ride ONE prefix pass + one chunked batched suffix pass."""
     rows: List[List[int]] = []
@@ -315,18 +322,28 @@ def branch_questions(backbone, penc: Dict[str, Any], qrows: List[List[List[int]]
     if not rows:
         return []
     br = branch_forward(
-        backbone, penc, rows, dev, open_ids, close_ids, lm_head=lm_head, prefix_pos=prefix_pos, groups=groups,
-        chunk=chunk, pad_id=pad_id)
+        backbone,
+        penc,
+        rows,
+        dev,
+        open_ids,
+        close_ids,
+        lm_head=lm_head,
+        prefix_pos=prefix_pos,
+        groups=groups,
+        chunk=chunk,
+        pad_id=pad_id)
     out = []
     for g in groups:
         gi = torch.tensor(g, device=dev)
-        out.append((br['u'][gi].float(), br['zq'][g[0]].float(), (br['feats'][gi] if br['feats'] is not None else None)))
+        out.append(
+            (br['u'][gi].float(), br['zq'][g[0]].float(), (br['feats'][gi] if br['feats'] is not None else None)))
     return out
 
 
 def add_option_tokens(model, proc, emb_path: Optional[str] = None) -> List[int]:
-    """Register `<|opt|>` / `<|/opt|>` and give them DETERMINISTIC embeddings (port of
-    `mso/records.py::add_option_tokens`). `resize_token_embeddings` fills new rows randomly; those rows are
+    """Register `<|opt|>` / `<|/opt|>` and give them DETERMINISTIC embeddings.
+    `resize_token_embeddings` fills new rows randomly; those rows are
     frozen in training (only LoRA + head train), so a fresh random draw at eval time would silently change
     the very positions the head reads. We init them to the mean embedding and, when `new_tok_emb.pt` exists,
     restore it exactly. Returns the two token ids `[open_id, close_id]`."""

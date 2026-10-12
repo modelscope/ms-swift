@@ -20,12 +20,11 @@ Subclasses override `parse_record` to turn a model-specific raw row into `(state
 where each question is a dict `{'kind', 'question', 'options', 'gold'}` and `gold` is either an
 option index (int) or a full distribution (sequence of floats, for distillation targets).
 """
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
-
 import json
 import random as _random
 import re
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .core import RowPreprocessor
 
@@ -34,10 +33,9 @@ from .core import RowPreprocessor
 class DecisionAugmentConfig:
     """Training-time schema augmentation for decision datasets.
 
-    Inspired by Unsloth's ``decision_datasets.AugmentConfig``; only the operations safe for all
-    three swift decision models (JEV / Clef / OmniJev) are included. All probabilities are
-    per-question; state_as_text is per-record. Disabled by default (all zeros / False) so
-    augmentation must be explicitly opted into.
+    Only the operations safe for all three swift decision models (JEV / Clef / OmniJev) are
+    included. All probabilities are per-question; state_as_text is per-record. Disabled by
+    default (all zeros / False) so augmentation must be explicitly opted into.
     """
 
     drop_instructions: float = 0.0
@@ -51,11 +49,6 @@ def _humanize(label: str) -> str:
 
 
 def _state_to_text(state: Any) -> str:
-    """Flatten a dict / JSON state into a human-readable text block.
-
-    A single-key dict yields its value; a multi-key dict yields ``"Key: value\\n..."`` lines
-    with humanized keys. Strings and other JSON scalars pass through.
-    """
     if not isinstance(state, dict):
         if isinstance(state, str):
             return state
@@ -68,7 +61,7 @@ def _state_to_text(state: Any) -> str:
 
 
 def _subsample_options(question: Dict[str, Any], gold: Any, rng: _random.Random,
-                        max_options: int) -> Tuple[Dict[str, Any], Any]:
+                       max_options: int) -> Tuple[Dict[str, Any], Any]:
     """Subsample choice options to ``max_options``, always keeping the highest-probability option.
 
     Only applies to ``choice`` questions whose options exceed ``max_options``. For an int gold
@@ -125,15 +118,13 @@ def augment_decision_row(
     """
     if config is None:
         return state, questions
-    if (config.drop_instructions == 0.0
-            and config.subsample_options <= 0
-            and config.state_as_text == 0.0
+    if (config.drop_instructions == 0.0 and config.subsample_options <= 0 and config.state_as_text == 0.0
             and not config.shuffle_fields):
         return state, questions
     rng = rng or _random.Random(42)
 
     # drop_instructions: set the question text to empty (template will still render the layout,
-    # model must infer intent from options only). 10% default in unsloth.
+    # model must infer intent from options only).
     if config.drop_instructions > 0:
         for q in questions:
             if rng.random() < config.drop_instructions:
@@ -181,7 +172,24 @@ class ScoringPreprocessor(RowPreprocessor):
     NOUL_OPTIONS = ['false', 'true']
     SCORE_OPTIONS = ['0', '1', '2', '3', '4', '5']
 
-    def __init__(self, *,
+    # Canonical aliases for question kinds.
+    KIND_ALIASES = {
+        'noul': 'noul',
+        'yes_no': 'noul',
+        'yn': 'noul',
+        'bool': 'noul',
+        'choice': 'choice',
+        'multiple_choice': 'choice',
+        'mcq': 'choice',
+        'select': 'choice',
+        'score': 'score',
+        'rating': 'score',
+        'ordinal': 'score',
+        'likert': 'score',
+    }
+
+    def __init__(self,
+                 *,
                  augment_config: Optional[DecisionAugmentConfig] = None,
                  augment_seed: int = 42,
                  **kwargs) -> None:
@@ -190,11 +198,6 @@ class ScoringPreprocessor(RowPreprocessor):
         self._augment_rng = _random.Random(augment_seed)
 
     def _augment(self, state: Any, questions: List[Dict[str, Any]]) -> Tuple[Any, List[Dict[str, Any]]]:
-        """Apply schema augmentation between ``parse_record`` and ``_build_row``.
-
-        Delegates to :func:`augment_decision_row`; returns inputs unchanged when
-        ``self.augment_config`` is None or all-disabled.
-        """
         return augment_decision_row(state, questions, self.augment_config, self._augment_rng)
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -208,12 +211,15 @@ class ScoringPreprocessor(RowPreprocessor):
         """Assemble ONE decision row (the contract in the module docstring) from `(state, questions)`.
 
         Split out of `preprocess` so a subclass can fan a record out into several rows (JEV renders one
-        question per prompt) while reusing this row-building logic verbatim.
+        question per prompt) while reusing this row-building logic unchanged.
         """
         kinds = [q['kind'] for q in questions]
         options = [self._resolve_options(q) for q in questions]
         out: Dict[str, Any] = {
-            'messages': [{'role': 'user', 'content': self._state_to_text(state)}],
+            'messages': [{
+                'role': 'user',
+                'content': self._state_to_text(state)
+            }],
             'questions': [q['question'] for q in questions],
             'kinds': kinds,
             'options': options,
@@ -225,14 +231,24 @@ class ScoringPreprocessor(RowPreprocessor):
             out['target_probs'] = [self.to_target_dist(q['gold'], len(opt)) for q, opt in zip(questions, options)]
         return out
 
+    @classmethod
+    def _normalize_kind(cls, kind: Any) -> str:
+        key = str(kind).strip().lower()
+        if key not in cls.KIND_ALIASES:
+            raise ValueError(f'unknown question kind {kind!r}; expected one of noul/choice/score (or an alias).')
+        return cls.KIND_ALIASES[key]
+
+    @staticmethod
+    def _question_items(questions_raw: Any) -> List[Tuple[Any, Any]]:
+        if isinstance(questions_raw, dict):
+            return list(questions_raw.items())
+        if isinstance(questions_raw, (list, tuple)):
+            return list(enumerate(questions_raw))
+        return []
+
     @staticmethod
     def _state_to_text(state: Any) -> str:
         """Coerce the ``state`` value to a plain string for the message ``content``.
-
-        Subclasses that need byte-exact rendering (Clef, OmniJev) override ``_build_row`` entirely,
-        so this base method only needs to handle the JEV case: a string passes through; a dict (e.g.
-        from ``OpenJevPreprocessor._decode_state`` JSON-parsing ``state_json``) is flattened by
-        joining its text-valued fields; ``None`` becomes the empty string.
         """
         if isinstance(state, str):
             return state
@@ -294,7 +310,8 @@ class ScoringPreprocessor(RowPreprocessor):
     @staticmethod
     def _first(source: Dict[str, Any], keys: Sequence[str], default: Any = None) -> Any:
         """Return the first non-None value among `keys` (a permissive column lookup shared by the
-        model subclasses, whose datasets use differing column names)."""
+        model subclasses, whose datasets use differing column names).
+        """
         for key in keys:
             value = source.get(key)
             if value is not None:
@@ -303,13 +320,7 @@ class ScoringPreprocessor(RowPreprocessor):
 
     @staticmethod
     def _as_option_dict(option: Any) -> Dict[str, Any]:
-        """Normalize ONE unified option element to a dict.
-
-        The user-facing schema lets an option be either a plain string (sugar for `{'text': s}`) or
-        an object `{'key'?, 'text'?, 'abstain'?, 'region'?}`. Each subclass reads only the fields it
-        needs (JEV: text; Clef: key + text; OmniJev: key/text/abstain/region), so all three accept
-        the SAME option representation.
-        """
+        """Normalize ONE unified option element to a dict."""
         if isinstance(option, str):
             return {'text': option}
         if isinstance(option, dict):
@@ -334,10 +345,10 @@ class ScoringPreprocessor(RowPreprocessor):
 class JevPreprocessor(ScoringPreprocessor):
     """JEV distill-corpus preprocessor: fan a record out into ONE row per question.
 
-    JEV's System-1 pass (`serve_decide.py::s1_pass`) scores a single question per forward, so a record
+    JEV's System-1 pass scores a single question per forward, so a record
     carrying several questions becomes several rows (`RowPreprocessor.batched_preprocess` accepts a
-    list return, core.py:214-220), each rendering one bare prompt and carrying `counts=[1]` after the
-    collator. This matches s1_pass exactly (one CompletionRequest per question).
+    list return), each rendering one bare prompt and carrying `counts=[1]` after the
+    collator (one CompletionRequest per question).
 
     `parse_record` maps the corpus columns onto the shared question dict `{kind, question, options,
     gold}`. `gold` is the teacher's soft distribution over the question's OWN options (JEV
@@ -345,7 +356,7 @@ class JevPreprocessor(ScoringPreprocessor):
 
     NOTE(schema): `SargeDev/jev-distill-corpus-v3`'s exact column names could not be verified offline
     (HF page/API unreachable in this environment), so the field lookup below is intentionally
-    permissive (it tries the natural serve_decide names plus common aliases). It MUST be re-checked
+    permissive (it tries the natural names plus common aliases). It MUST be re-checked
     against the real dataset before a training run; a `columns={...}` remap can be passed to
     `__init__` to rename the corpus columns onto the canonical names used here.
     """
@@ -356,21 +367,7 @@ class JevPreprocessor(ScoringPreprocessor):
     STATE_KEYS = ('state', 'context', 'passage', 'text')
     GOLD_KEYS = ('target_probs', 'target', 'probs', 'dist', 'distribution', 'gold', 'label', 'answer')
     # Optional: a record that already packs a list of question dicts under one column.
-    QUESTIONS_KEYS = ('questions',)
-    KIND_ALIASES = {
-        'noul': 'noul',
-        'yes_no': 'noul',
-        'yn': 'noul',
-        'bool': 'noul',
-        'choice': 'choice',
-        'multiple_choice': 'choice',
-        'mcq': 'choice',
-        'select': 'choice',
-        'score': 'score',
-        'rating': 'score',
-        'ordinal': 'score',
-        'likert': 'score',
-    }
+    QUESTIONS_KEYS = ('questions', )
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
         state, questions = self.parse_record(row)
@@ -385,11 +382,9 @@ class JevPreprocessor(ScoringPreprocessor):
 
         JEV's System-1 head scores a FIXED per-kind verbalizer: noul always reads the two tokens for
         ['false','true'] and score always reads the six digit tokens ['0'..'5'], regardless of any
-        option text a record carries. `serve_decide.py::decide()` mirrors this -- it forces
-        `['false','true']` / `[str(i) for i in range(6)]` and ignores caller options for those kinds
-        (only `choice` consumes them). Rendering custom noul/score text would desync the prompt from
-        the tokens the head actually scores and diverge from the oracle, so we force canonical here
-        (model-local override; the shared `ScoringPreprocessor` and Clef/OmniJev are unaffected).
+        option text a record carries. The canonical names force
+        `['false','true']` / `[str(i) for i in range(6)]` and ignore caller options for those kinds
+        (only `choice` consumes them).
         """
         canonical = self.default_options(question['kind'])
         if canonical is not None:  # noul / score
@@ -426,46 +421,20 @@ class JevPreprocessor(ScoringPreprocessor):
             out['gold'] = gold
         return out
 
-    @classmethod
-    def _normalize_kind(cls, kind: Any) -> str:
-        key = str(kind).strip().lower()
-        if key not in cls.KIND_ALIASES:
-            raise ValueError(f'unknown JEV question kind {kind!r}; expected one of noul/choice/score (or an alias).')
-        return cls.KIND_ALIASES[key]
-
-
-def _clef_option_ids(kind: str, criteria: Any) -> List[str]:
-    """Clef option ids in the exact order `joint_schema_model.py::question_options` emits them.
-
-    MUST stay identical to `ClefTemplate._question_options` (both mirror the official ordering), so the
-    gold one-hot index computed here lines up with the logit column the head produces:
-    noul -> ['true','false'], choice -> criteria keys sorted as strings, score -> ['0','1',...].
-    """
-    if kind == 'noul':
-        return ['true', 'false']
-    if kind == 'choice':
-        return [str(key) for key, _ in sorted((str(k), v) for k, v in (criteria or {}).items())]
-    return [str(index) for index in range(len(criteria or []))]
-
 
 class ClefPreprocessor(ScoringPreprocessor):
     """Clef joint-schema preprocessor: ONE record -> ONE row carrying ALL its questions.
 
-    Clef decodes a record's questions jointly (decision-models-comparison.md §2: Clef is the only
-    multi-question-per-forward model), so unlike `JevPreprocessor` this does NOT fan out; the base
-    `preprocess` builds a single row whose `kinds` / `questions` / `options` / `target_probs` are
-    parallel lists over the record's questions, in the original `questions` order.
+    Clef decodes a record's questions jointly (Clef is the only
+    multi-question-per-forward model); the base`preprocess` builds a single row whose
+    `kinds` / `questions` / `options` / `target_probs` are parallel lists over the
+    record's questions, in the original `questions` order.
 
     A Clef record is `{id?, state, questions: {qid: {type, instructions, criteria}}, <gold>}` where
     `criteria` is a dict {option_id: description} for `choice`, a list of level descriptions for
-    `score`, and optional for `noul`. `state` may be ANY JSON value (rendered verbatim by the
+    `score`, and optional for `noul`. `state` may be ANY JSON value (rendered as-is by the
     template), so the raw value is carried in a `state` key and `question_ids` / `criteria` are added
     for `ClefTemplate` to rebuild the byte-exact SCHEMA FIELDS layout.
-
-    NOTE(schema): Clef's training data is closed-source (decision-models-comparison.md §5), so the gold
-    column layout could not be verified offline; `_resolve_gold` is intentionally permissive (accepts
-    an option id, a bool for noul, an int index, or a full distribution, at question level or in a
-    record-level `answers` map) and MUST be re-checked against the real dataset before a training run.
     """
 
     STATE_KEYS = ('state', 'context', 'input')
@@ -476,7 +445,6 @@ class ClefPreprocessor(ScoringPreprocessor):
     GOLD_KEYS = ('answer', 'gold', 'label', 'target', 'value')
     ANSWERS_KEYS = ('answers', 'labels', 'golds', 'targets')
     ID_KEYS = ('id', 'record_id')
-    KIND_ALIASES = JevPreprocessor.KIND_ALIASES
 
     def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
         state = self._first(row, self.STATE_KEYS, default='')
@@ -490,7 +458,8 @@ class ClefPreprocessor(ScoringPreprocessor):
             kind = self._normalize_kind(self._first(q, self.KIND_KEYS, default=None))
             criteria = self._normalize_criteria(kind, self._first(q, self.CRITERIA_KEYS, default=None))
             instructions = self._first(q, self.INSTRUCTION_KEYS, default=None)
-            option_ids = _clef_option_ids(kind, criteria)
+            from swift.model.decision_head import clef_option_ids
+            option_ids = clef_option_ids(kind, criteria)
             gold = self._resolve_gold(q, answers, qid, option_ids)
             questions.append({
                 'kind': kind,
@@ -521,23 +490,13 @@ class ClefPreprocessor(ScoringPreprocessor):
             return ''
         return json.dumps(state, ensure_ascii=False, separators=(',', ':'), sort_keys=True)
 
-    @staticmethod
-    def _question_items(questions_raw: Any) -> List[Tuple[Any, Any]]:
-        if isinstance(questions_raw, dict):
-            return list(questions_raw.items())
-        if isinstance(questions_raw, (list, tuple)):
-            return list(enumerate(questions_raw))
-        return []
-
     @classmethod
     def _normalize_criteria(cls, kind: str, raw: Any) -> Any:
         """Coerce the unified `options` list into Clef's native `criteria` shape.
 
-        Clef renders byte-exact against the official SCHEMA FIELDS layout, which needs a
+        Clef renders byte-exact against the SCHEMA FIELDS layout, which needs a
         `{option_id: description}` map for `choice` (columns sorted by id) and a list of level
-        descriptions for `score`. A native `criteria` dict/list is passed through; a unified
-        `options` list of strings / `{key,text}` objects is converted to that shape, so the SAME
-        user-facing schema works for Clef too.
+        descriptions for `score`.
         """
         if raw is None or isinstance(raw, dict):
             return raw  # native criteria map (choice) or omitted (noul)
@@ -548,13 +507,11 @@ class ClefPreprocessor(ScoringPreprocessor):
         # choice (noul ignores criteria): {option_id: description}, ids from key/text/index.
         return {cls._option_key(o, i): cls._option_text(o) for i, o in enumerate(raw)}
 
-    def _resolve_gold(self, question: Dict[str, Any], answers: Any, qid: Any,
-                      option_ids: List[str]) -> Optional[Any]:
+    def _resolve_gold(self, question: Dict[str, Any], answers: Any, qid: Any, option_ids: List[str]) -> Optional[Any]:
         """Resolve the correct answer to an option INDEX (or a full distribution), or None at inference.
 
         Accepts, at question level then in a record-level `answers` map: a distribution (list/tuple of
-        floats), a bool (noul), an option id string, or an int index. An unmatched value raises rather
-        than silently mis-indexing (which would poison the one-hot target).
+        floats), a bool (noul), an option id string, or an int index.
         """
         gold = self._first(question, self.GOLD_KEYS, default=None)
         if gold is None and isinstance(answers, dict):
@@ -562,7 +519,7 @@ class ClefPreprocessor(ScoringPreprocessor):
         if gold is None:
             return None
         if isinstance(gold, (list, tuple)):
-            return [float(x) for x in gold]  # a full distribution; to_target_dist validates its length
+            return [float(x) for x in gold]
         if isinstance(gold, bool):
             gold = 'true' if gold else 'false'
         if isinstance(gold, int):
@@ -575,18 +532,12 @@ class ClefPreprocessor(ScoringPreprocessor):
             return int(text)
         raise ValueError(f'Clef gold {gold!r} for question {qid!r} matches no option id {option_ids}.')
 
-    @classmethod
-    def _normalize_kind(cls, kind: Any) -> str:
-        key = str(kind).strip().lower()
-        if key not in cls.KIND_ALIASES:
-            raise ValueError(f'unknown Clef question kind {kind!r}; expected one of noul/choice/score (or an alias).')
-        return cls.KIND_ALIASES[key]
-
 
 def _omnijev_render_option(o: Dict[str, Any]) -> str:
-    """Verbatim port of `mso/records.py::render_option`: how one option block is written into the
-    prompt. An abstain option renders as 'none of the above'; a region option as its integer box;
-    otherwise the option text truncated to 200 chars."""
+    """How one option block is written into the prompt. An abstain option renders as
+    'none of the above'; a region option as its integer box; otherwise the option text
+    truncated to 200 chars.
+    """
     if o.get('abstain'):
         return 'none of the above'
     if 'region' in o:
@@ -597,7 +548,7 @@ def _omnijev_render_option(o: Dict[str, Any]) -> str:
 
 
 def _omnijev_options(q: Dict[str, Any]) -> Tuple[List[Any], List[Dict[str, Any]]]:
-    """Verbatim port of `mso/infer.py::MSO1._options` -> `(keys, opts)`.
+    """Compute ``(keys, opts)`` for a question: the answer keys and option-block dicts.
 
     `keys` are the answer keys (noul -> ['yes'], score -> the level labels, choice -> the option
     keys); `opts` are the option-BLOCK dicts the template renders with `_omnijev_render_option`
@@ -631,51 +582,33 @@ def _omnijev_options(q: Dict[str, Any]) -> Tuple[List[Any], List[Dict[str, Any]]
     return keys, [{'text': k if crit[k] in (None, '') else f'{k}: {crit[k]}'} for k in keys]
 
 
-def _omnijev_column_keys(kind: str, keys: Sequence[Any]) -> List[str]:
-    """The answer keys of each emitted logit COLUMN, width-matched to `OmniJevHead`'s layout:
-    noul -> ['yes','no'] (2 cols; col0 == P(yes)); choice -> keys + ['abstain'] (K+1 cols); score ->
-    the level labels (L cols). MUST stay identical to the head's column layout so the gold one-hot
-    index computed here lines up with the logit column the head produces."""
-    if kind == 'noul':
-        return ['yes', 'no']
-    if kind == 'choice':
-        return [str(k) for k in keys] + ['abstain']
-    return [str(k) for k in keys]
-
-
 class OmniJevPreprocessor(ScoringPreprocessor):
     """OmniJev preprocessor: fan a record out into ONE row per question (like `JevPreprocessor`).
 
-    OmniJev scores a single question per forward (`mso/infer.py::ask`/`ask_branch`; the K option
+    OmniJev scores a single question per forward (the K option
     rows of decision G1's branch are expanded at forward time, not here), so a record carrying
-    several questions becomes several rows. Each row carries the official option-BLOCK structure
+    several questions becomes several rows. Each row carries the option-BLOCK structure
     (`_omnijev_options`) plus the width-matched `column_keys`, and the gold as a distribution over
     the COLUMN width (noul 2 / choice K+1 incl. the abstain column / score L) -- NOT the block count,
     because for noul (1 block -> 2 cols) and choice (K blocks -> K+1 cols) they differ.
 
-    The state is multimodal (`{'images': [...], 'video': {...}}` in official `system_one`); the raw
+    The state is multimodal (`{'images': [...], 'video': {...}}` in the request); the raw
     `images` / `videos` are passed through and the panel/mosaic composition (decision H) is applied
     by `OmniJevTemplate`, not here. The per-question `instructions` become the message text.
-
-    NOTE(schema): OmniJev's training corpus is not published (only the `system_one` request shape and
-    the infer CLI's `--questions` map are), so the field lookup below is intentionally permissive and
-    MUST be re-checked against the real dataset before a training run; a `columns={...}` remap can be
-    passed to `__init__` to rename corpus columns onto the canonical names used here.
     """
 
     STATE_KEYS = ('state', 'context', 'input')
     QUESTIONS_KEYS = ('questions', 'fields')
     KIND_KEYS = ('type', 'kind', 'question_type')
     INSTRUCTION_KEYS = ('instructions', 'instruction', 'question', 'prompt', 'text')
-    LEVELS_KEYS = ('levels',)
-    CRITERIA_KEYS = ('criteria',)
-    OPTIONS_KEYS = ('options',)
-    REGION_KEYS = ('region',)
+    LEVELS_KEYS = ('levels', )
+    CRITERIA_KEYS = ('criteria', )
+    OPTIONS_KEYS = ('options', )
+    REGION_KEYS = ('region', )
     GOLD_KEYS = ('answer', 'gold', 'label', 'target', 'value')
     ANSWERS_KEYS = ('answers', 'labels', 'golds', 'targets')
     IMAGES_KEYS = ('images', 'image')
     VIDEOS_KEYS = ('videos', 'video')
-    KIND_ALIASES = JevPreprocessor.KIND_ALIASES
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
         state, questions = self.parse_record(row)
@@ -702,7 +635,8 @@ class OmniJevPreprocessor(ScoringPreprocessor):
                 if value is not None:
                     src[dst] = value
             keys, opts = _omnijev_options(src)
-            column_keys = _omnijev_column_keys(kind, keys)
+            from swift.model.decision_head import omnijev_column_keys
+            column_keys = omnijev_column_keys(kind, keys)
             gold = self._resolve_gold(q, answers, qid, kind, column_keys)
             item: Dict[str, Any] = {
                 'kind': kind,
@@ -717,10 +651,13 @@ class OmniJevPreprocessor(ScoringPreprocessor):
         return state, questions
 
     def _build_row(self, row: Dict[str, Any], state: Any, questions: List[Dict[str, Any]]) -> Dict[str, Any]:
-        q = questions[0]  # fan-out: exactly one question per row
+        q = questions[0]
         column_keys = q['column_keys']
         out: Dict[str, Any] = {
-            'messages': [{'role': 'user', 'content': self._content_text(state, q['question'])}],
+            'messages': [{
+                'role': 'user',
+                'content': self._content_text(state, q['question'])
+            }],
             'questions': [q['question']],
             'kinds': [q['kind']],
             'options': [q['options']],
@@ -731,7 +668,7 @@ class OmniJevPreprocessor(ScoringPreprocessor):
         if images is not None:
             out['images'] = images
         if video is not None:
-            # The official `video` DESCRIPTOR dict, NOT a swift video file: route it to extra_kwargs so
+            # The `video` DESCRIPTOR dict, NOT a swift video file: route it to extra_kwargs so
             # OmniJevTemplate's `video_content` can crop the mosaic back into frames. Putting it in
             # `videos` would make swift treat it as a clip list and prepend a spurious `<video>` tag.
             out['omnijev_video'] = video
@@ -741,10 +678,13 @@ class OmniJevPreprocessor(ScoringPreprocessor):
 
     @staticmethod
     def _content_text(state: Any, instruction: str) -> str:
-        """The message text. Official OmniJev has NO free-text state (the state is the image/video and
+        """The message text.
+
+        OmniJev has NO free-text state (the state is the image/video and
         the instruction is the only text), so this is just the instruction; a str `state` (rare, e.g.
-        an extra context field) is prepended verbatim so nothing is silently dropped. When state is a
-        dict (e.g. from remote OpenJev ``state_json``), its text-valued fields are joined as context."""
+        an extra context field) is prepended as-is so nothing is silently dropped. When state is a
+        dict (e.g. from remote OpenJev ``state_json``), its text-valued fields are joined as context.
+        """
         if isinstance(state, str) and state.strip():
             return f'{state}\n{instruction}'
         if isinstance(state, dict):
@@ -759,13 +699,14 @@ class OmniJevPreprocessor(ScoringPreprocessor):
 
     def _resolve_media(self, row: Dict[str, Any], state: Any) -> Tuple[Optional[Any], Optional[Any]]:
         """Pull the OmniJev state's media: `images` (list of paths/PIL; `images[0]` is the pre-composed
-        video mosaic when a `video` descriptor is present) and the official `video` DESCRIPTOR dict
+        video mosaic when a `video` descriptor is present) and the `video` DESCRIPTOR dict
         `{'n_frames','cols','tile','timestamps','duration'}`. That descriptor is metadata for
         `OmniJevTemplate`'s `video_content` crop, NOT a swift video file, so the caller routes it to
         `extra_kwargs['omnijev_video']` and never to `videos` (which swift would treat as a clip list and
-        prepend a spurious `<video>` tag). A raw video FILE is not decoded inline -- official runs
-        `video_state` offline -- so raise instead of silently mis-encoding. The panel/mosaic composition
-        (decision H) is deferred to `OmniJevTemplate`; this only carries the raw media through."""
+        prepend a spurious `<video>` tag). A raw video FILE is not decoded inline --
+        `video_state` runs offline. The panel/mosaic composition(decision H) is deferred to
+        `OmniJevTemplate`; this only carries the raw media through.
+        """
         state_dict = state if isinstance(state, dict) else {}
         images = self._first(row, self.IMAGES_KEYS, default=None)
         if images is None:
@@ -774,36 +715,27 @@ class OmniJevPreprocessor(ScoringPreprocessor):
         if video is None:
             video = self._first(state_dict, self.VIDEOS_KEYS, default=None)
         if isinstance(video, dict):
-            return images, video  # the official pre-composed mosaic descriptor
+            return images, video  # the pre-composed mosaic descriptor
         if video is not None:
-            raise ValueError(
-                'OmniJev does not decode a raw video file inline; pre-compose it offline with '
-                '`swift.model.omnijev_media.video_state(clip)` -> {"images": [mosaic], "video": {...}} '
-                f'and pass that state (got video={video!r}).')
+            raise ValueError('OmniJev does not decode a raw video file inline; pre-compose it offline with '
+                             '`swift.model.omnijev_media.video_state(clip)` -> {"images": [mosaic], "video": {...}} '
+                             f'and pass that state (got video={video!r}).')
         return images, None
-
-    @staticmethod
-    def _question_items(questions_raw: Any) -> List[Tuple[Any, Any]]:
-        """`mso/records.py::q_items` shape tolerance: a {qid: q} dict or a [q, ...] list."""
-        if isinstance(questions_raw, dict):
-            return list(questions_raw.items())
-        if isinstance(questions_raw, (list, tuple)):
-            return list(enumerate(questions_raw))
-        return []
 
     def _resolve_gold(self, question: Dict[str, Any], answers: Any, qid: Any, kind: str,
                       column_keys: List[str]) -> Optional[Any]:
         """Resolve the correct answer to a COLUMN index (or a full distribution over columns), or None
         at inference. noul accepts a bool / 'yes'|'no' / 'true'|'false' / 1|0 (col0 == yes); choice and
         score match the gold text against `column_keys` (choice 'abstain'/'none' -> the abstain column)
-        or accept an explicit index. An unmatched value raises rather than silently mis-indexing."""
+        or accept an explicit index.
+        """
         gold = self._first(question, self.GOLD_KEYS, default=None)
         if gold is None and isinstance(answers, dict):
             gold = answers.get(str(qid), answers.get(qid))
         if gold is None:
             return None
         if isinstance(gold, (list, tuple)):
-            return [float(x) for x in gold]  # a full distribution; to_target_dist validates its width
+            return [float(x) for x in gold]
         if kind == 'noul':
             if isinstance(gold, bool):
                 return 0 if gold else 1
@@ -825,14 +757,6 @@ class OmniJevPreprocessor(ScoringPreprocessor):
                 return idx
         raise ValueError(f'OmniJev gold {gold!r} for question {qid!r} matches no column key {column_keys}.')
 
-    @classmethod
-    def _normalize_kind(cls, kind: Any) -> str:
-        key = str(kind).strip().lower()
-        if key not in cls.KIND_ALIASES:
-            raise ValueError(
-                f'unknown OmniJev question kind {kind!r}; expected one of noul/choice/score (or an alias).')
-        return cls.KIND_ALIASES[key]
-
 
 class GenericDecisionPreprocessor(JevPreprocessor):
     """Generic decision preprocessor: same layout as ``JevPreprocessor``, for any CausalLM.
@@ -843,4 +767,3 @@ class GenericDecisionPreprocessor(JevPreprocessor):
     ``JevTemplate``), which renders the same bare prompt layout for any text CausalLM.
     """
     pass
-

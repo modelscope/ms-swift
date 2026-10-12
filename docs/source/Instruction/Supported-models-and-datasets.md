@@ -1210,6 +1210,14 @@
 |[zenosai/MonkeyOCRv2-B](https://modelscope.cn/models/zenosai/MonkeyOCRv2-B)|monkeyocrv2|monkeyocrv2||transformers>=4.45, qwen_vl_utils|&#x2718;|vision, embedding, document-understanding|[zenosai/MonkeyOCRv2-B](https://huggingface.co/zenosai/MonkeyOCRv2-B)|
 
 
+### Decision模型
+| Model ID | Model Type | Default Template | Default Agent Template | Requires | Support Megatron | Tags | HF Model ID |
+| -------- | -----------| ---------------- | ---------------------- | -------- | ---------------- | ---- | ----------- |
+|[autotrust/JEV-27B-VL](https://modelscope.cn/models/autotrust/JEV-27B-VL)|jev|jev||transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2718;|vision, decision|[autotrust/JEV-27B-VL](https://huggingface.co/autotrust/JEV-27B-VL)|
+|[Cloudflare/clef](https://modelscope.cn/models/Cloudflare/clef)|clef|clef||transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2718;|decision|[Cloudflare/clef](https://huggingface.co/Cloudflare/clef)|
+|[AI-ModelScope/OmniJev](https://modelscope.cn/models/AI-ModelScope/OmniJev)|omnijev|omnijev||transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2718;|vision, decision|[AI-ModelScope/OmniJev](https://huggingface.co/AI-ModelScope/OmniJev)|
+
+
 ## 数据集
 下表介绍了ms-swift接入的数据集的相关信息:
 - Dataset ID: ModelScope数据集id

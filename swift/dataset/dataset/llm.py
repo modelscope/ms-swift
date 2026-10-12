@@ -9,9 +9,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from swift.template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                             ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
-from ..preprocessor.decision import (ClefPreprocessor, JevPreprocessor, OmniJevPreprocessor, ScoringPreprocessor,
-                                     DecisionAugmentConfig)
-from ..preprocessor.decision import _clef_option_ids
+from ..preprocessor.decision import (ClefPreprocessor, DecisionAugmentConfig, JevPreprocessor, OmniJevPreprocessor,
+                                     ScoringPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 
@@ -965,11 +964,18 @@ register_dataset(
 class OpenJevPreprocessor(ScoringPreprocessor):
 
     _JEV_SYNONYMS = {
-        'true': 'true', 'yes': 'true', 'y': 'true', '1': 'true',
-        'false': 'false', 'no': 'false', 'n': 'false', '0': 'false',
+        'true': 'true',
+        'yes': 'true',
+        'y': 'true',
+        '1': 'true',
+        'false': 'false',
+        'no': 'false',
+        'n': 'false',
+        '0': 'false',
     }
 
-    def __init__(self, delegate: ScoringPreprocessor,
+    def __init__(self,
+                 delegate: ScoringPreprocessor,
                  augment_config: Optional[DecisionAugmentConfig] = None,
                  augment_seed: int = 42):
         super().__init__(augment_config=augment_config, augment_seed=augment_seed)
@@ -1021,8 +1027,7 @@ class OpenJevPreprocessor(ScoringPreprocessor):
                 return state
         return state
 
-    def _remap_target(self, kind: str, options: Optional[List[str]],
-                      target: List[float]) -> List[float]:
+    def _remap_target(self, kind: str, options: Optional[List[str]], target: List[float]) -> List[float]:
         if not isinstance(target, (list, tuple)):
             return target
         target = [float(x) for x in target]
@@ -1040,19 +1045,20 @@ class OpenJevPreprocessor(ScoringPreprocessor):
                 return self._reorder_target(options, target, ['true', 'false'])
             if kind == 'choice':
                 criteria = {opt: '' for opt in options}
-                return self._reorder_target(options, target, _clef_option_ids('choice', criteria))
+                from swift.model.decision_head import clef_option_ids
+                return self._reorder_target(options, target, clef_option_ids('choice', criteria))
             return target
 
         if isinstance(self.delegate, OmniJevPreprocessor):
             if kind == 'noul':
                 return self._reorder_target(options, target, ['yes', 'no'])
             if kind == 'choice':
-                has_abstain = any(
-                    str(o).strip().lower() in ('abstain', 'none', 'none of the above')
-                    for o in options)
+                has_abstain = any(str(o).strip().lower() in ('abstain', 'none', 'none of the above') for o in options)
                 if has_abstain:
-                    canonical = [str(o) for o in options
-                                if str(o).strip().lower() not in ('abstain', 'none', 'none of the above')]
+                    canonical = [
+                        str(o) for o in options
+                        if str(o).strip().lower() not in ('abstain', 'none', 'none of the above')
+                    ]
                     canonical.append('abstain')
                     return self._reorder_target(options, target, canonical)
                 return list(target) + [0.0]
@@ -1061,8 +1067,7 @@ class OpenJevPreprocessor(ScoringPreprocessor):
         return target
 
     @classmethod
-    def _reorder_target(cls, src_options: List[str], src_target: List[float],
-                        dst_options: List[str]) -> List[float]:
+    def _reorder_target(cls, src_options: List[str], src_target: List[float], dst_options: List[str]) -> List[float]:
 
         def _norm(opt: str) -> str:
             key = str(opt).strip().lower()

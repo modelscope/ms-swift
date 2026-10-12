@@ -214,8 +214,6 @@ class SwiftInfer(SwiftPipeline):
         if args.metric == 'acc':
             mean_metric = MeanMetric()
             if args.task_type == 'decision':
-                # Decision output is a list of per-question dicts: [{'index': N, 'probs': [...]}].
-                # Gold is in `target_probs`; `labels` is None (no `label` field on decision rows).
                 for data in data_list:
                     response = data.get('response') or []
                     target_probs = data.get('target_probs') or []
@@ -223,7 +221,7 @@ class SwiftInfer(SwiftPipeline):
                         if not isinstance(resp, dict) or 'index' not in resp:
                             continue
                         if sum(tp) == 0:
-                            continue  # no gold answer
+                            continue
                         pred = resp['index']
                         gold = max(range(len(tp)), key=lambda i: tp[i])
                         mean_metric.update(pred == gold)

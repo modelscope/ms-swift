@@ -38,13 +38,7 @@ class RowPreprocessor:
                                 # Qwen3-TTS
                                 'ref_audios',
                                 'audio_codes',
-                                # `decision` task_type (typed-decision System-1 scoring). These are the
-                                # row-contract fields emitted by the ScoringPreprocessor subclasses
-                                # (see swift/dataset/preprocessor/decision.py) and consumed by the
-                                # decision templates via StdTemplateInputs.extra_kwargs. Kept here so
-                                # remove_useless_columns does not drop them before encoding; a no-op for
-                                # any dataset whose features do not contain them. MUST stay in sync with
-                                # the `_build_row` outputs in decision.py.
+                                # `decision` task_type (typed-decision System-1 scoring).
                                 'questions',
                                 'kinds',
                                 'options',

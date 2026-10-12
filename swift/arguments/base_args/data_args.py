@@ -82,7 +82,6 @@ class DataArguments:
         decision_shuffle_fields (bool): Shuffle the field order in dict ``state`` AND the question order in
             multi-question records (e.g. Clef). Makes the model robust to permutation of schema fields.
             Defaults to False.
-        decision_augment_seed (int): The random seed for decision augmentation. Defaults to 42.
     """
     # dataset_id or dataset_dir or dataset_path
     dataset: List[str] = field(default_factory=list)
@@ -112,13 +111,11 @@ class DataArguments:
 
     custom_dataset_info: List[str] = field(default_factory=list)  # .json
 
-    # Decision task_type schema augmentation (all disabled by default; zero-cost passthrough when
-    # all zero/False). See `DecisionAugmentConfig` in `swift/dataset/preprocessor/decision.py`.
+    # Decision task_type schema augmentation
     decision_drop_instructions: float = 0.0
     decision_subsample_options: int = 0
     decision_state_as_text: float = 0.0
     decision_shuffle_fields: bool = False
-    decision_augment_seed: int = 42
 
     def _init_custom_dataset_info(self):
         """register custom dataset_info.json to datasets"""
@@ -147,17 +144,10 @@ class DataArguments:
 
     @property
     def _decision_augment_enabled(self) -> bool:
-        return (self.decision_drop_instructions > 0
-                or self.decision_subsample_options > 0
-                or self.decision_state_as_text > 0
-                or self.decision_shuffle_fields)
+        return (self.decision_drop_instructions > 0 or self.decision_subsample_options > 0
+                or self.decision_state_as_text > 0 or self.decision_shuffle_fields)
 
     def get_decision_augment_config(self):
-        """Build a ``DecisionAugmentConfig`` from the CLI args, or ``None`` when all disabled.
-
-        Returns ``None`` (zero-cost passthrough) when every field is at its default, so non-decision
-        datasets are completely unaffected.
-        """
         if not self._decision_augment_enabled:
             return None
         from swift.dataset.preprocessor.decision import DecisionAugmentConfig
@@ -189,5 +179,4 @@ class DataArguments:
         }
         if self._decision_augment_enabled:
             kwargs['decision_augment_config'] = self.get_decision_augment_config()
-            kwargs['decision_augment_seed'] = self.decision_augment_seed
         return kwargs

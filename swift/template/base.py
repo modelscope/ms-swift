@@ -155,8 +155,8 @@ class Template(ProcessorMixin):
         self._agent_template = agent_template
         self.norm_bbox = norm_bbox or self.norm_bbox
         self.mode: Literal['transformers', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto'] = 'transformers'
-        self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
-                                'generative_reranker', 'decision'] = 'causal_lm'
+        self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker', 'generative_reranker',
+                                'decision'] = 'causal_lm'
         self.use_megatron = False
         self._handles = []
         self._deepspeed_initialize = None
@@ -659,17 +659,6 @@ class Template(ProcessorMixin):
         return encoded
 
     def _decision_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
-        """Encode one typed-decision record for the `decision` task_type.
-
-        A record (state + all its questions/options) is rendered into ONE sequence by the model
-        template subclass `_encode`, which also records per-question locating meta (token spans /
-        verbalizer_ids / kinds / n_options, relative to that record's own tokens) into
-        `encoded['decision_meta']`. The preprocessor puts the gold `target_probs` (each question's
-        distribution over its own options) on the row; `from_dict` collects it into `extra_kwargs`.
-        This base lifts `target_probs` into an explicit encoded key so it survives collation
-        regardless of `remove_unused_columns` -- exactly how seq_cls/reranker carry `labels`.
-        Token-level labels are dropped by `_encode_truncated` (decision is scored per-option).
-        """
         chosen = inputs.chosen
         encoded = self._encode_truncated(chosen)
         if self.is_training:
@@ -818,11 +807,7 @@ class Template(ProcessorMixin):
     def _decode_decision(self, output, top_logprobs: int):
         """Turn a decision forward's `ScoringOutput` into per-record predictions.
 
-        Every question is scored over its OWN option set: softmax is restricted to the real slots
-        (`option_mask`), so pad columns never win. `output.counts` (questions per record) regroups
-        the flat `total_q` rows back into one entry per record, each a list of per-question
-        `{'index': argmax option, 'probs': full calibrated distribution over that question's
-        options}`. Option sets are small (<=16), so the whole distribution is returned rather than
+        Option sets are small (<=16), so the whole distribution is returned rather than
         a `top_logprobs` slice (the arg is kept for parity with the engine's decode dispatch).
         """
         from swift.model.decision_head import masked_argmax, masked_softmax
@@ -2012,32 +1997,11 @@ class Template(ProcessorMixin):
                                 batch: List[Dict[str, Any]],
                                 *,
                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
-        """Collate `decision` records.
-
-        The token part is padded by `_data_collator` as usual; the per-record decision payload is
-        then flattened. Every record's questions are concatenated into `total_q` rows, and the gold
-        `target_probs` are padded into the `[total_q, max_opt]` labels tensor that ScoringLoss /
-        ScoringTrainer consume. `decision_meta` carries, per question, `record_index` (which batch
-        row it lives in) plus the record-relative spans, and batch-level `max_opt` / `left_padding`
-        / `seq_lens` so the head can resolve absolute token positions under this collator's padding
-        side. The head pads its logits to the SAME `max_opt`, keeping logits and labels aligned.
-        """
         record_metas = [b.pop('decision_meta', None) for b in batch]
         record_targets = [b.pop('target_probs', None) for b in batch]
         res = self._data_collator(batch, padding_to=padding_to)
 
-        flat_meta = self._flatten_decision_meta(record_metas, res)
-        res['decision_meta'] = flat_meta
-        labels = self._pad_decision_labels(record_targets, flat_meta['max_opt'])
-        if labels is not None:
-            res['labels'] = labels
-        return res
-
-    def _flatten_decision_meta(self, record_metas: List[Optional[Dict[str, Any]]],
-                               res: Dict[str, Any]) -> Dict[str, Any]:
-        """Concatenate per-record `decision_meta` into batched flat lists (len == total_q) and attach
-        `record_index` / `counts` / `max_opt` / padding info. Records are walked in batch order so
-        the flattened rows align with `_pad_decision_labels`."""
+        # -- flatten per-record decision_meta into batched flat lists (len == total_q) --
         flat: Dict[str, Any] = {
             'record_index': [],
             'n_options': [],
@@ -2046,23 +2010,9 @@ class Template(ProcessorMixin):
             'option_spans': [],
             'counts': [],
         }
-        verbalizer_ids: List[Any] = []
-        has_verbalizer = False
-        # OmniJev's branch forward (decision G1) needs, per question, the option-marker positions
-        # `[(open, close), ...]` (real-token-relative; the prefix length L = opens[0]-1 is derived from
-        # them in the loader), and per RECORD how many image/video grid rows it contributed, so the
-        # loader can slice the collator-concatenated `pixel_values` / `image_grid_thw` back per record
-        # for the prefix pass. Both are conditional (only OmniJev sets them), like `verbalizer_ids`.
-        option_markers: List[Any] = []
-        has_option_markers = False
-        mm_counts: List[Any] = []
-        has_mm_counts = False
         max_opt = 0
         for rec_i, meta in enumerate(record_metas):
-            mmc = (meta or {}).get('mm_counts')
-            if mmc is not None:
-                has_mm_counts = True
-            mm_counts.append(mmc or {'image': 0, 'video': 0})
+            self._extract_extra_decision_meta(meta, rec_i, flat)
             if meta is None:
                 continue
             n_options = [int(n) for n in (meta.get('n_options') or [])]
@@ -2073,22 +2023,8 @@ class Template(ProcessorMixin):
             flat['kinds'].extend(meta.get('kinds') or [])
             flat['question_spans'].extend(meta.get('question_spans') or [])
             flat['option_spans'].extend(meta.get('option_spans') or [])
-            verb = meta.get('verbalizer_ids')
-            if verb:
-                has_verbalizer = True
-                verbalizer_ids.extend(verb)
-            om = meta.get('option_markers')
-            if om is not None:
-                has_option_markers = True
-                option_markers.extend(om)
             if nq:
                 max_opt = max(max_opt, max(n_options))
-        if has_verbalizer:
-            flat['verbalizer_ids'] = verbalizer_ids
-        if has_option_markers:
-            flat['option_markers'] = option_markers
-        if has_mm_counts:
-            flat['mm_counts'] = mm_counts
         flat['max_opt'] = max_opt
 
         padding_side = self.padding_side if self.is_training else 'left'
@@ -2098,27 +2034,30 @@ class Template(ProcessorMixin):
             flat['seq_lens'] = attention_mask.sum(dim=-1).tolist()
         else:
             flat['seq_lens'] = None
-        return flat
+        res['decision_meta'] = flat
 
-    @staticmethod
-    def _pad_decision_labels(record_targets: List[Optional[Any]], max_opt: int) -> Optional[torch.Tensor]:
-        """Flatten per-record `target_probs` (each a ragged list of per-question distributions) into
-        a `[total_q, max_opt]` float tensor, zero-filling pad columns. Returns None at inference
-        (no targets). Records are walked in batch order to stay row-aligned with `_flatten_decision_meta`."""
-        if all(t is None for t in record_targets) or max_opt <= 0:
-            return None
-        rows: List[List[float]] = []
-        for targets in record_targets:
-            if targets is None:
-                continue
-            for q in targets:
-                row = [0.0] * max_opt
-                n = min(len(q), max_opt)
-                row[:n] = [float(x) for x in q[:n]]
-                rows.append(row)
-        if not rows:
-            return None
-        return torch.tensor(rows, dtype=torch.float32)
+        # -- flatten + pad target_probs into [total_q, max_opt] labels tensor --
+        if not all(t is None for t in record_targets) and max_opt > 0:
+            rows: List[List[float]] = []
+            for targets in record_targets:
+                if targets is None:
+                    continue
+                for q in targets:
+                    row = [0.0] * max_opt
+                    n = min(len(q), max_opt)
+                    row[:n] = [float(x) for x in q[:n]]
+                    rows.append(row)
+            if rows:
+                res['labels'] = torch.tensor(rows, dtype=torch.float32)
+
+        return res
+
+    def _extract_extra_decision_meta(self, meta: Optional[Dict[str, Any]], rec_i: int, flat: Dict[str, Any]) -> None:
+        """Hook for template-specific decision meta fields. The base implementation is a no-op;
+        subclasses (e.g. OmniJevTemplate) override this to flatten model-specific fields like
+        `option_markers` or `mm_counts` into ``flat`` without polluting the shared collator.
+        """
+        return
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """

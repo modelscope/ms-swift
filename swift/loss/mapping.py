@@ -1,6 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from .causal_lm import CustomCrossEntropyLoss
-from .decision import ClefLoss, JevDistillLoss, OmniJevLoss, ScoringLoss
+from .decision import CERPSLoss, DistillRPSLoss, ScoringLoss, SmoothBrierLoss
 from .embedding import ContrastiveLoss, CosineSimilarityLoss, InfonceLoss, OnlineContrastiveLoss
 from .reranker import ListwiseRerankerLoss, PointwiseRerankerLoss
 
@@ -16,7 +16,7 @@ loss_map = {
     'listwise_reranker': ListwiseRerankerLoss,
     # decision (typed-decision System-1 scoring)
     'scoring': ScoringLoss,
-    'jev_distill': JevDistillLoss,
-    'clef': ClefLoss,
-    'omnijev': OmniJevLoss,
+    'distill_rps': DistillRPSLoss,
+    'smooth_brier': SmoothBrierLoss,
+    'ce_rps': CERPSLoss,
 }

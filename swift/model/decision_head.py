@@ -1,13 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Typed-decision (System-1) scoring heads for the `decision` task_type.
-
-A "typed-decision" model does ONE forward pass over a record and emits a calibrated
-probability for every option of every question in that record. A record carries `state`
-(text / json / multimodal) plus one or more questions; each question has a
-`kind in {noul(yes/no), choice(one-of-n), score(0..5 ordinal)}` and its own option set,
-and probabilities are softmaxed within each question's own options.
-
-Data contract shared by Template / Head / Loss / Trainer (see DECISION_MODELS_PLAN.md):
+"""Data contract shared by Template / Head / Loss / Trainer:
 
 A batch flattens the questions of all records into `total_q` rows. Because each question
 scores a different number of options (noul=2, choice=n, score=6), the per-option logits are
@@ -36,27 +28,20 @@ import json
 import math
 import os
 import string
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from dataclasses import dataclass
 from transformers.modeling_outputs import ModelOutput
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-# QUESTION_TYPES mirrors the official JEV/Clef encoding: noul -> 0, choice -> 1, score -> 2.
+# QUESTION_TYPES maps the JEV/Clef encoding: noul -> 0, choice -> 1, score -> 2.
 QUESTION_TYPES = {'noul': 0, 'choice': 1, 'score': 2}
 KIND_NAMES = ('noul', 'choice', 'score')
 
 
 @dataclass
 class ScoringOutput(ModelOutput):
-    """Per-option scoring result of one decision forward pass.
-
-    `logits` is `[total_q, max_opt]` and padded; always read it together with `option_mask`
-    (mask out pad slots before softmax / argmax). Kept as a ModelOutput so the inference
-    engine's `hasattr(output, 'logits')` path and the trainer's `outputs.logits` both work.
-    """
     logits: Optional[torch.FloatTensor] = None
     option_mask: Optional[torch.BoolTensor] = None
     kinds: Optional[torch.LongTensor] = None
@@ -68,19 +53,6 @@ class ScoringOutput(ModelOutput):
 def pad_option_logits(per_question: List[torch.Tensor],
                       pad_value: float = float('-inf'),
                       width: Optional[int] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Stack ragged per-question option logits into a padded `[total_q, max_opt]` tensor + mask.
-
-    Args:
-        per_question: list of 1-D tensors, the i-th holding that question's `n_opt_i` logits.
-        pad_value: value written to pad slots (`-inf` so softmax/argmax ignore them).
-        width: force the padded width (`max_opt`). The collator fixes `max_opt` from the batch's
-            largest option count and pads the labels to it; the head MUST pass that same width so
-            logits and labels stay column-aligned. When None, width = max option count here.
-
-    Returns:
-        (logits [total_q, max_opt], option_mask [total_q, max_opt] bool). Rows/cols beyond a
-        question's own option count are pad; `option_mask` marks the real slots.
-    """
     total_q = len(per_question)
     if width is None:
         width = max((int(t.shape[0]) for t in per_question), default=0)
@@ -101,12 +73,6 @@ def pad_option_logits(per_question: List[torch.Tensor],
 
 
 def masked_softmax(logits: torch.Tensor, option_mask: torch.Tensor, dim: int = -1) -> torch.Tensor:
-    """Softmax over the real option slots only; pad slots become 0.
-
-    Every question's probabilities sum to 1 over its own options (invariant 5 of the plan).
-    A fully-masked row would produce NaN; callers must guarantee >=1 real option per question
-    (the Template raises earlier on an empty option set).
-    """
     logits = logits.float().masked_fill(~option_mask, float('-inf'))
     probs = torch.softmax(logits, dim=dim)
     return torch.nan_to_num(probs, nan=0.0)
@@ -118,10 +84,6 @@ def masked_argmax(logits: torch.Tensor, option_mask: torch.Tensor, dim: int = -1
 
 
 def get_scoring_head(model: nn.Module) -> Optional[nn.Module]:
-    """Locate the attached `scoring_head` under any wrapping (PeftModel -> LoraModel -> base, DDP,
-    SwiftModel). `named_modules()` traverses every child at any depth, and the loader always
-    registers the head as the base LM's `scoring_head` submodule (c6a: `base_model.model.scoring_head`
-    under a PeftModel), so a name-suffix match is robust to how many wrappers were added."""
     for name, module in model.named_modules():
         if name == 'scoring_head' or name.endswith('.scoring_head'):
             return module
@@ -131,16 +93,12 @@ def get_scoring_head(model: nn.Module) -> Optional[nn.Module]:
 def maybe_load_trained_scoring_head(model: nn.Module, adapter_dir: Optional[str]) -> bool:
     """After an adapter/checkpoint is applied, overlay a TRAINED head if that dir carries one.
 
-    Guarded no-op for everything but a decision model resuming/continuing/deploying from a swift
-    checkpoint:
-      - a non-decision model (no `scoring_head`) returns False immediately -- zero effect on the
-        shared call sites for every other model;
-      - a decision model pointed at a plain adapter dir (no `scoring_head.safetensors`, e.g. JEV's
-        factory `adapter_vllm`) -> `load_pretrained` returns False and the factory head is untouched.
-    Called from the two places that know the adapter dir right after `Swift.from_pretrained`:
-    `pipelines/train/tuner.py::prepare_model` (continue-train / resume) and
-    `infer_engine/transformers_engine.py::_add_adapter` (deploy). The logic is model-local; each shared
-    call site is 2 guarded lines (plan decision F; run-log decision 1 / Option A)."""
+    Two scenarios:
+    - Adapter checkpoint (LoRA): ``scoring_head.safetensors`` exists → load weights from it.
+    - Full-finetune checkpoint: ``scoring_head.safetensors`` is absent, ``scoring_head.json``
+      present → the head's parameters are inside the model safetensors shards (ignored by
+      ``from_pretrained`` because ``scoring_head`` was not yet attached). Extract them here.
+    """
     if not adapter_dir:
         return False
     head = get_scoring_head(model)
@@ -151,6 +109,22 @@ def maybe_load_trained_scoring_head(model: nn.Module, adapter_dir: Optional[str]
         from swift.utils import get_logger
         get_logger().info(f'decision: loaded trained scoring_head from {adapter_dir}.')
     return loaded
+
+
+def clef_option_ids(kind: str, criteria: Any) -> List[str]:
+    if kind == 'noul':
+        return ['true', 'false']
+    if kind == 'choice':
+        return [str(key) for key, _ in sorted((str(k), v) for k, v in (criteria or {}).items())]
+    return [str(index) for index in range(len(criteria or []))]
+
+
+def omnijev_column_keys(kind: str, keys: Sequence[Any]) -> List[str]:
+    if kind == 'noul':
+        return ['yes', 'no']
+    if kind == 'choice':
+        return [str(k) for k in keys] + ['abstain']
+    return [str(k) for k in keys]
 
 
 class ScoringHead(nn.Module):
@@ -165,7 +139,7 @@ class ScoringHead(nn.Module):
       - OmniJev dots option/question MLPs over pooled hidden states and adds an ordinal head.
 
     Subclasses MUST return a `ScoringOutput` whose `logits`/`option_mask` follow the contract
-    above, and MUST load their factory head weights with `strict=True` (invariant 2).
+    above, and MUST load their factory head weights with `strict=True`.
     """
 
     # Set by subclasses that need the base model's output embeddings (Clef lexical prior).
@@ -173,20 +147,29 @@ class ScoringHead(nn.Module):
     # Set by subclasses that read lm_head logits (JEV verbalizer columns). When False the loader
     # skips passing lm_logits, so a Clef/OmniJev forward never pays for the full-seq vocab projection.
     needs_lm_logits: bool = False
-    # Set by subclasses whose calibration weights must stay in float32 even when the base LM runs in
-    # bf16/fp16 (JEV's 24-slot bias/temperature head is fp32 by design). When True, the loader moves
-    # the head to the base device WITHOUT casting its dtype.
     keep_fp32: bool = False
 
     def set_output_embeddings(self, output_embeddings: nn.Module) -> None:
-        """Receive the base model's output-embedding module (called by the loader when
-        `needs_output_embeddings`). Kept as a live reference so LoRA-updated weights are seen."""
         self._output_embeddings = output_embeddings
 
-    def forward(self,
-                hidden_states: torch.Tensor,
-                lm_logits: Optional[torch.Tensor],
-                meta: Dict[str, Any]) -> ScoringOutput:
+    @staticmethod
+    def _locate(model_dir: str, filename: str, env_var: str, subdir: Optional[str] = None) -> Optional[str]:
+        """Locate a head artifact file: check an env-var override first, then model_dir/filename
+        (and optionally model_dir/subdir/filename). Returns the path if found, else None.
+        Shared by all three head subclasses (JEV passes ``subdir='adapter_vllm'``)."""
+        env = os.environ.get(env_var)
+        if env and os.path.exists(env):
+            return env
+        candidates = [os.path.join(model_dir, filename)]
+        if subdir:
+            candidates.append(os.path.join(model_dir, subdir, filename))
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                return candidate
+        return None
+
+    def forward(self, hidden_states: torch.Tensor, lm_logits: Optional[torch.Tensor], meta: Dict[str,
+                                                                                                 Any]) -> ScoringOutput:
         """Compute per-option logits.
 
         Args:
@@ -203,24 +186,20 @@ class ScoringHead(nn.Module):
 
     def extra_state_for_save(self) -> Dict[str, Any]:
         """Non-parameter meta (verbalizer_ids / bias / temperatures) to persist alongside the
-        head weights, so a reloaded checkpoint can rebuild the head (plan decision F)."""
+        head weights, so a reloaded checkpoint can rebuild the head."""
         return {}
 
     @classmethod
     def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'ScoringHead':
-        """Construct the head and STRICT-load its factory weights from `model_dir` (invariant 2).
+        """Construct the head and STRICT-load its factory weights from `model_dir`.
 
         Each model subclass reads its own artifact (JEV: decision_head.json + calibration.json;
         Clef: joint_head.safetensors; OmniJev: head.pt + ord.pt) and asserts a 0-missing /
         0-unexpected strict load. `model`/`config` are passed for heads that size themselves from
-        the base (e.g. Clef's hidden_size / output-embedding vocab).
+        the base
         """
         raise NotImplementedError
 
-    # Plan decision F: the head is a separate, non-LoRA submodule (deliberately NOT in PEFT's
-    # `modules_to_save`, because `set_output_embeddings` keeps a live lm_head reference that PEFT's
-    # deepcopy would duplicate). swift/PEFT save the base + adapter; the head persists itself as these
-    # two files written beside the adapter by `ScoringTrainer._save`.
     HEAD_WEIGHTS_NAME = 'scoring_head.safetensors'
     HEAD_META_NAME = 'scoring_head.json'
 
@@ -229,95 +208,118 @@ class ScoringHead(nn.Module):
         `_output_embeddings`. `set_output_embeddings` assigns an nn.Module, which `nn.Module.__setattr__`
         auto-registers as a child, so a naive `state_dict()` would drag in the ENTIRE base lm_head
         (vocab x hidden, possibly tied to embed_tokens). That reference is re-wired by the loader on
-        rebuild, so it is never persisted here."""
-        return {
-            k: v.detach().cpu()
-            for k, v in self.state_dict().items() if not k.startswith('_output_embeddings')
-        }
+        rebuild, so it is never persisted here.
+        """
+        return {k: v.detach().cpu() for k, v in self.state_dict().items() if not k.startswith('_output_embeddings')}
 
-    def save_pretrained(self, save_directory: str) -> None:
+    def save_pretrained(self, save_directory: str, save_weights: bool = True) -> None:
         """Persist the head beside the adapter: weights (`head_state_dict`) + the non-parameter
         calibration meta (`extra_state_for_save`), so a reloaded checkpoint rebuilds the TRAINED head
-        without the factory `decision_head.json` / `joint_head.safetensors` (plan decision F)."""
+        without the factory `decision_head.json` / `joint_head.safetensors` (plan decision F).
+
+        When ``save_weights=False`` (full-finetune checkpoint), the head's parameters are already
+        inside the model ``state_dict`` saved by ``super()._save``; only the meta json is written so
+        a reloaded checkpoint still carries a human-readable head manifest.
+        """
         from safetensors.torch import save_file
         os.makedirs(save_directory, exist_ok=True)
-        save_file(self.head_state_dict(), os.path.join(save_directory, self.HEAD_WEIGHTS_NAME))
+        if save_weights:
+            save_file(self.head_state_dict(), os.path.join(save_directory, self.HEAD_WEIGHTS_NAME))
         with open(os.path.join(save_directory, self.HEAD_META_NAME), 'w', encoding='utf-8') as f:
             json.dump(self.extra_state_for_save(), f, indent=2, ensure_ascii=False)
 
     def load_pretrained(self, load_directory: str) -> bool:
-        """Overlay a trained head checkpoint (written by `save_pretrained`) onto this head. Returns
-        False when the directory carries no head weights (a plain LoRA adapter), leaving the
-        factory-loaded head untouched. Non-persistent buffers (verbalizer_ids / ranges / ...) are not
-        in the file and are kept exactly as `from_pretrained` built them, so the load is `strict=False`
-        but still guarded: no unexpected key, and every head-owned PARAMETER must be present."""
+        """Two scenarios:
+        - Adapter checkpoint (LoRA): ``HEAD_WEIGHTS_NAME`` exists → load weights from it (the head
+          is NOT inside the LoRA adapter).
+        - Full-finetune checkpoint: ``HEAD_WEIGHTS_NAME`` is absent → the head's parameters are
+          already restored from the model ``state_dict`` by ``from_pretrained``; only the meta
+          json is present, and we return True so the caller knows the head was recognised.
+          """
         from safetensors.torch import load_file
         weights_file = os.path.join(load_directory, self.HEAD_WEIGHTS_NAME)
-        if not os.path.exists(weights_file):
+        meta_file = os.path.join(load_directory, self.HEAD_META_NAME)
+        has_weights = os.path.exists(weights_file)
+        has_meta = os.path.exists(meta_file)
+        if not has_weights and not has_meta:
             return False
-        state = load_file(weights_file)
+        if has_weights:
+            state = load_file(weights_file)
+            self._validate_and_load(state, weights_file)
+        elif has_meta:
+            state = self._extract_head_state_from_model_dir(load_directory)
+            if state is not None:
+                self._validate_and_load(state, 'model safetensors')
+        return True
+
+    def _validate_and_load(self, state: Dict[str, torch.Tensor], source: str) -> None:
         own_keys = {k for k in self.state_dict() if not k.startswith('_output_embeddings')}
         own_params = {n for n, _ in self.named_parameters() if not n.startswith('_output_embeddings')}
         unexpected = set(state) - own_keys
         missing_params = own_params - set(state)
         if unexpected or missing_params:
-            raise ValueError(
-                f'{weights_file} does not match head {type(self).__name__}: '
-                f'unexpected={sorted(unexpected)} missing_params={sorted(missing_params)}')
+            raise ValueError(f'{source} does not match head {type(self).__name__}: '
+                             f'unexpected={sorted(unexpected)} missing_params={sorted(missing_params)}')
         self.load_state_dict(state, strict=False)
-        return True
+
+    def _extract_head_state_from_model_dir(self, model_dir: str) -> Optional[Dict[str, torch.Tensor]]:
+        """Used when loading a full-finetune checkpoint: ``from_pretrained`` ignored scoring_head keys
+        (the submodule was not yet attached); this reads them back from the safetensors files.
+        Returns ``None`` when the model dir carries no scoring_head weights (e.g. a factory model).
+        """
+        from safetensors.torch import load_file
+        index_path = os.path.join(model_dir, 'model.safetensors.index.json')
+        if os.path.exists(index_path):
+            with open(index_path, 'r') as f:
+                index = json.load(f)
+            weight_map = index.get('weight_map', {})
+            head_keys = {k for k in weight_map if 'scoring_head' in k}
+            if not head_keys:
+                return None
+            shards = set(weight_map[k] for k in head_keys)
+            result: Dict[str, torch.Tensor] = {}
+            for shard in shards:
+                data = load_file(os.path.join(model_dir, shard))
+                for k, v in data.items():
+                    if 'scoring_head' in k:
+                        result[k.split('scoring_head.', 1)[1] if 'scoring_head.' in k else k] = v
+            return result if result else None
+        single = os.path.join(model_dir, 'model.safetensors')
+        if os.path.exists(single):
+            data = load_file(single)
+            result = {}
+            for k, v in data.items():
+                if 'scoring_head' in k:
+                    result[k.split('scoring_head.', 1)[1] if 'scoring_head.' in k else k] = v
+            return result if result else None
+        return None
 
 
 class JevVerbalizerHead(ScoringHead):
-    """JEV System-1 head: reuse the base lm_head, read the verbalizer-token columns at the final
-    prompt token, add the per-slot bias, divide by the per-kind temperature; the caller (loss /
-    decode) then softmaxes over each question's own options. This is a faithful port of
-    `serve_decide.py::s1_pass` (line 245-255): the vLLM `logprob` is `log_softmax(lm_logits)[token]`,
-    and the decision score is `(logprob + bias) / temp[kind]`.
 
-    There is NO nn.Linear projection: JEV's 24-slot head is packaged as an lm_head LoRA (the
-    `proj.weight[24, hidden]` in the offline `head.safetensors` is exactly those 24 lm_head rows), so
-    reading the verbalizer columns of `lm_logits` already applies the trained head weight. The only
-    head-owned scalar is the fp32 `bias[24]` (`proj.bias`), plus fixed per-kind `temperatures`.
-
-    Slot layout (`slots.ranges` in decision_head.json, indexed by kind-int 0=noul / 1=choice / 2=score):
-        noul -> verbalizer_ids[0:2]   = ids of 'false','true'
-        choice -> verbalizer_ids[8:8+n] = ids of the option letters 'A'..'P' (native n <= 16, plan E)
-        score -> verbalizer_ids[2:8]  = ids of '0'..'5'
-    The emitted `logits` are the pre-softmax `(logprob + bias) / temp` scores, padded to `max_opt`;
-    `masked_softmax` turns them into the calibrated distribution (invariant 5).
-    """
     needs_lm_logits = True
     keep_fp32 = True
 
-    # Fallbacks; decision_head.json / calibration.json override them when present.
     DEFAULT_RANGES = {'noul': (0, 2), 'choice': (8, 24), 'score': (2, 8)}
     DEFAULT_TEMPERATURES = {'noul': 1.0, 'choice': 1.0, 'score': 1.0}
 
-    def __init__(self,
-                 bias: Sequence[float],
-                 verbalizer_ids: Sequence[int],
-                 ranges: Dict[str, Sequence[int]],
+    def __init__(self, bias: Sequence[float], verbalizer_ids: Sequence[int], ranges: Dict[str, Sequence[int]],
                  temperatures: Dict[str, float]):
         super().__init__()
-        # Trainable fp32 calibration bias (proj.bias), jointly trained with the LoRA (plan decision C).
         self.bias = nn.Parameter(torch.as_tensor(list(bias), dtype=torch.float32))
-        self.register_buffer('verbalizer_ids', torch.as_tensor(list(verbalizer_ids), dtype=torch.long), persistent=False)
-        # ranges / temperatures rows are indexed by kind-int via KIND_NAMES == ('noul','choice','score').
+        self.register_buffer(
+            'verbalizer_ids', torch.as_tensor(list(verbalizer_ids), dtype=torch.long), persistent=False)
         self.register_buffer(
             'ranges',
             torch.as_tensor([list(ranges[KIND_NAMES[k]]) for k in range(len(KIND_NAMES))], dtype=torch.long),
             persistent=False)
         self.register_buffer(
             'temperatures',
-            torch.as_tensor([float(temperatures[KIND_NAMES[k]]) for k in range(len(KIND_NAMES))],
-                            dtype=torch.float32),
+            torch.as_tensor([float(temperatures[KIND_NAMES[k]]) for k in range(len(KIND_NAMES))], dtype=torch.float32),
             persistent=False)
 
-    def forward(self,
-                hidden_states: torch.Tensor,
-                lm_logits: Optional[torch.Tensor],
-                meta: Dict[str, Any]) -> ScoringOutput:
+    def forward(self, hidden_states: torch.Tensor, lm_logits: Optional[torch.Tensor], meta: Dict[str,
+                                                                                                 Any]) -> ScoringOutput:
         if lm_logits is None:
             raise ValueError('JevVerbalizerHead requires lm_logits (needs_lm_logits must be True).')
         kinds = [int(k) for k in meta['kinds']]
@@ -336,8 +338,6 @@ class JevVerbalizerHead(ScoringHead):
                 kinds=torch.zeros((0, ), dtype=torch.long, device=device),
                 counts=counts_t)
 
-        # The readout token is the LAST real token of the prompt (right after '[decision]:'). Resolve
-        # its column under this collator's padding side; robust to left-truncation of an over-long state.
         rows, cols = self._readout_positions(record_index, meta, lm_logits.shape[1], device)
         read_logits = lm_logits[rows, cols, :].float()  # [total_q, vocab]
         log_probs = torch.log_softmax(read_logits, dim=-1)  # log P(token), matching vLLM's logprob
@@ -371,11 +371,6 @@ class JevVerbalizerHead(ScoringHead):
     @staticmethod
     def _readout_positions(record_index: List[int], meta: Dict[str, Any], padded_len: int,
                            device) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Absolute (row, col) of each question's readout token = its record's last real token.
-
-        Under left padding the real tokens end at the final column (`padded_len - 1`); under right
-        padding they end at `seq_len - 1`. `seq_lens` comes from the collator's attention_mask.
-        """
         left_padding = bool(meta.get('left_padding', False))
         seq_lens = meta.get('seq_lens')
         cols = []
@@ -390,20 +385,21 @@ class JevVerbalizerHead(ScoringHead):
         return rows, cols_t
 
     def extra_state_for_save(self) -> Dict[str, Any]:
-        """Persist the calibration head so a reloaded checkpoint rebuilds it without decision_head.json."""
         return {
             'bias': self.bias.detach().float().tolist(),
             'verbalizer_ids': self.verbalizer_ids.tolist(),
-            'ranges': {KIND_NAMES[k]: self.ranges[k].tolist() for k in range(len(KIND_NAMES))},
-            'temperatures': {KIND_NAMES[k]: float(self.temperatures[k]) for k in range(len(KIND_NAMES))},
+            'ranges': {
+                KIND_NAMES[k]: self.ranges[k].tolist()
+                for k in range(len(KIND_NAMES))
+            },
+            'temperatures': {
+                KIND_NAMES[k]: float(self.temperatures[k])
+                for k in range(len(KIND_NAMES))
+            },
         }
 
     @classmethod
     def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'JevVerbalizerHead':
-        """Load bias / verbalizer_ids / ranges from `decision_head.json` and per-kind temperatures from
-        `calibration.json`, mirroring serve_decide.py's resolution (decision_head.json in the adapter
-        dir, calibration.json in its parent). Env overrides: JEV_DECISION_HEAD / JEV_DECIDE_CALIBRATION.
-        """
         head_file = cls._locate(model_dir, 'decision_head.json', 'JEV_DECISION_HEAD', subdir='adapter_vllm')
         if head_file is None:
             raise FileNotFoundError(
@@ -422,8 +418,7 @@ class JevVerbalizerHead(ScoringHead):
         calib_file = os.environ.get('JEV_DECIDE_CALIBRATION')
         if not calib_file or not os.path.exists(calib_file):
             calib_file = cls._locate(
-                os.path.dirname(os.path.dirname(os.path.abspath(head_file))),
-                'calibration.json',
+                os.path.dirname(os.path.dirname(os.path.abspath(head_file))), 'calibration.json',
                 'JEV_DECIDE_CALIBRATION')
         if calib_file and os.path.exists(calib_file):
             with open(calib_file, 'r') as f:
@@ -432,59 +427,27 @@ class JevVerbalizerHead(ScoringHead):
         return cls(head['bias'], head['verbalizer_ids'], ranges, temperatures)
 
     @staticmethod
-    def _locate(model_dir: str, filename: str, env_var: str, subdir: Optional[str] = None) -> Optional[str]:
-        env = os.environ.get(env_var)
-        if env and os.path.exists(env):
-            return env
-        candidates = [os.path.join(model_dir, filename)]
-        if subdir:
-            candidates.append(os.path.join(model_dir, subdir, filename))
-        for candidate in candidates:
-            if os.path.exists(candidate):
-                return candidate
-        return None
-
-    @staticmethod
     def _resolve_verbalizer_token_id(tokenizer, text: str) -> int:
-        """Resolve the single-token id for a verbalizer label (e.g. 'true', '0', 'A').
 
-        Tokens the prompt directly with `add_special_tokens=False` (matching serve_decide.py's
-        bare completion semantics). Falls back to the tokenizer's unk_token_id when the text does
-        not encode to a single token, which is acceptable at random-init time -- the LoRA on lm_head
-        will learn to produce the right distribution on the 24 verbalizer rows.
-        """
         ids = tokenizer.encode(text, add_special_tokens=False)
         if len(ids) == 1:
             return ids[0]
         unk = getattr(tokenizer, 'unk_token_id', None)
         if unk is None:
-            raise ValueError(
-                f'Tokenizer cannot resolve verbalizer token for {text!r} '
-                f'(encodes to {len(ids)} tokens: {ids}) and has no unk_token_id.')
+            raise ValueError(f'Tokenizer cannot resolve verbalizer token for {text!r} '
+                             f'(encodes to {len(ids)} tokens: {ids}) and has no unk_token_id.')
         from swift.utils import get_logger
-        get_logger().warning(
-            f'decision: verbalizer label {text!r} encodes to {len(ids)} tokens ({ids}); '
-            f'falling back to unk_token_id={unk}. The head slot will read this unk column '
-            f'instead of the intended token; a LoRA on lm_head can still learn the correct '
-            f'distribution on that column, but multiple labels collapsing to the same unk '
-            f'id makes them indistinguishable (degenerate). Consider using a tokenizer that '
-            f'encodes the verbalizer labels as single tokens.')
+        get_logger().warning(f'decision: verbalizer label {text!r} encodes to {len(ids)} tokens ({ids}); '
+                             f'falling back to unk_token_id={unk}. The head slot will read this unk column '
+                             f'instead of the intended token; a LoRA on lm_head can still learn the correct '
+                             f'distribution on that column, but multiple labels collapsing to the same unk '
+                             f'id makes them indistinguishable (degenerate). Consider using a tokenizer that '
+                             f'encodes the verbalizer labels as single tokens.')
         return unk
 
     @classmethod
     def from_tokenizer(cls, tokenizer, config=None) -> 'JevVerbalizerHead':
         """Random-init path for training a decision model from scratch on any CausalLM.
-
-        Unlike `from_pretrained` (which strict-loads factory bias / verbalizer_ids / temperatures from
-        `decision_head.json` + `calibration.json`), this resolves the 24 verbalizer token ids directly
-        from the tokenizer, initializes the bias to zeros and the per-kind temperatures to 1.0. The
-        trainable bias (24 fp32 scalars) is jointly trained with the LoRA adapter (plan decision C),
-        and the LoRA on `lm_head` (via `--target_modules ... lm_head`) provides the actual adaptation
-        of the verbalizer rows.
-
-        This makes it possible to train a JEV-style decision model from ANY CausalLM (Llama, Qwen2.5,
-        Mistral, ...) without factory head weights -- the only prerequisite is that the tokenizer can
-        encode the verbalizer labels ('false'/'true', '0'..'5', 'A'..'P') to token ids.
 
         Args:
             tokenizer: the base model's tokenizer (any `PreTrainedTokenizerBase`).
@@ -494,15 +457,13 @@ class JevVerbalizerHead(ScoringHead):
             A `JevVerbalizerHead` with zero-initialized bias and unit temperatures, ready for
             joint training with a LoRA adapter on the base CausalLM.
         """
-        # Build the 24-slot verbalizer table from the tokenizer.
-        # noul [0:2]   = 'false', 'true'
-        # score [2:8]  = '0', '1', '2', '3', '4', '5'
-        # choice [8:24] = 'A', 'B', ..., 'P'
         noul_words = ['false', 'true']
         score_words = ['0', '1', '2', '3', '4', '5']
         choice_words = list(string.ascii_uppercase[:16])  # A..P
 
-        verbalizer_ids = [cls._resolve_verbalizer_token_id(tokenizer, w) for w in noul_words + score_words + choice_words]
+        verbalizer_ids = [
+            cls._resolve_verbalizer_token_id(tokenizer, w) for w in noul_words + score_words + choice_words
+        ]
         bias = [0.0] * len(verbalizer_ids)
         ranges = dict(cls.DEFAULT_RANGES)
         temperatures = dict(cls.DEFAULT_TEMPERATURES)
@@ -510,13 +471,7 @@ class JevVerbalizerHead(ScoringHead):
 
 
 class EvidenceRoutingLayer(nn.Module):
-    """One cross-attention block of Clef's `JointSchemaHead`.
-
-    Verbatim port of `joint_schema_model.py::EvidenceRoutingLayer` (the Cloudflare Clef release), so
-    the parameter names/shapes match `joint_head.safetensors` exactly and a `strict=True` load has
-    0 missing / 0 unexpected keys (invariant 2). Pre-norm cross-attention (option queries attend the
-    pooled token memory) plus a pre-norm feedforward, both with residuals.
-    """
+    """One cross-attention block of Clef's `JointSchemaHead`."""
 
     def __init__(self, width: int, heads: int, feedforward: int, dropout: float = 0.0) -> None:
         super().__init__()
@@ -542,25 +497,7 @@ class EvidenceRoutingLayer(nn.Module):
 
 
 class ClefJointSchemaHead(ScoringHead):
-    """Clef's joint schema head: a real parameterised decoder over span-pooled hidden states.
-
-    Verbatim port of `joint_schema_model.py::JointSchemaHead` (Cloudflare Clef). Unlike JEV (which
-    reads lm_head verbalizer columns), Clef pools the base model's LAST HIDDEN STATE over each
-    question's / option's token span, runs evidence-routing cross-attention + a cross-field joint
-    transformer decoder, and scores every option as `prior + sigmoid(gate) * joint`, where `prior`
-    is a lexical-prior cosine between the option's OUTPUT-EMBEDDING mean and the question anchor
-    (hence `needs_output_embeddings=True`) and `joint` is a scaled cosine + residual MLP.
-
-    All questions of ONE record are decoded jointly (they cross-attend through `fields`), so one
-    record == one sequence == one batch row; the per-question logits are then flattened in the same
-    record-major order the collator used, and padded to `[total_q, max_opt]` (shared contract).
-
-    Padding: the official head assumes RIGHT padding (`hidden[:, :attention_mask.sum()]`, spans are
-    0-based over the real tokens). swift pads on the LEFT at inference, so `forward` shifts every
-    span by `pad_offset = padded_len - seq_len` when `meta['left_padding']` -- this keeps the pooled
-    tokens correct. (RoPE position equivalence under batched left-pad is a run-phase numeric check,
-    plan verification #5/#6; a single-record batch has no padding at all.)
-    """
+    """Clef's joint schema head: a real parameterised decoder over span-pooled hidden states."""
     needs_output_embeddings = True
     needs_lm_logits = False
     keep_fp32 = False
@@ -582,9 +519,10 @@ class ClefJointSchemaHead(ScoringHead):
         self.option_context_projection = nn.Linear(hidden_size, width, bias=False)
         self.option_lexical_projection = nn.Linear(hidden_size, width, bias=False)
         self.type_embedding = nn.Embedding(3, width)
-        self.evidence_layers = nn.ModuleList(
-            [EvidenceRoutingLayer(width=width, heads=heads, feedforward=feedforward, dropout=dropout)
-             for _ in range(routing_layers)])
+        self.evidence_layers = nn.ModuleList([
+            EvidenceRoutingLayer(width=width, heads=heads, feedforward=feedforward, dropout=dropout)
+            for _ in range(routing_layers)
+        ])
         self.option_summary_norm = nn.LayerNorm(width)
         self.layers = nn.ModuleList([
             nn.TransformerDecoderLayer(
@@ -613,8 +551,8 @@ class ClefJointSchemaHead(ScoringHead):
         start, end = span
         return values[start:end].mean(dim=0)
 
-    def forward(self, hidden_states: torch.Tensor, lm_logits: Optional[torch.Tensor],
-                meta: Dict[str, Any]) -> ScoringOutput:
+    def forward(self, hidden_states: torch.Tensor, lm_logits: Optional[torch.Tensor], meta: Dict[str,
+                                                                                                 Any]) -> ScoringOutput:
         input_ids = meta.get('input_ids')
         if input_ids is None:
             raise ValueError('ClefJointSchemaHead requires meta["input_ids"] '
@@ -646,8 +584,6 @@ class ClefJointSchemaHead(ScoringHead):
         seq_lens = meta.get('seq_lens') or [padded_len] * num_records
         output_embedding_weight = self._output_embeddings.weight
 
-        # Group the flat question rows by record; the collator emits them record-major, so each
-        # record's rows are contiguous and ascending, and re-flattening below restores that order.
         by_record: List[List[int]] = [[] for _ in range(num_records)]
         for qi in range(total_q):
             by_record[record_index[qi]].append(qi)
@@ -678,11 +614,7 @@ class ClefJointSchemaHead(ScoringHead):
     def _score_record(self, sequence_hidden: torch.Tensor, input_ids_row: torch.Tensor, pad_offset: int,
                       qidxs: List[int], question_spans: List[Any], option_spans: List[Any], kinds: List[int],
                       output_embedding_weight: torch.Tensor) -> List[torch.Tensor]:
-        """Port of `JointSchemaHead.forward`'s per-record body (official lines 354-458).
-
-        `sequence_hidden` is this record's real-token hidden states `[seq_len, H]` (spans index it
-        directly); `input_ids_row` is the PADDED id row, so lexical spans add `pad_offset`.
-        """
+        """Per-record scoring body for the joint schema head."""
         memory = self.memory_projection(sequence_hidden).unsqueeze(0)  # [1, seq_len, width]
         global_vector = sequence_hidden[-1]  # [H]
         question_vectors = torch.stack([self._mean_span(sequence_hidden, question_spans[qi]) for qi in qidxs])
@@ -705,8 +637,8 @@ class ClefJointSchemaHead(ScoringHead):
         option_queries = []
         for question_index, (context_vectors, lexical) in enumerate(zip(option_contexts, lexical_options)):
             option_queries.append(
-                self.option_context_projection(context_vectors) + self.option_lexical_projection(lexical) +
-                self.option_question_projection(question_vectors[question_index]).unsqueeze(0))
+                self.option_context_projection(context_vectors) + self.option_lexical_projection(lexical)
+                + self.option_question_projection(question_vectors[question_index]).unsqueeze(0))
         routed_options = torch.cat(option_queries, dim=0).unsqueeze(0)
         for layer in self.evidence_layers:
             routed_options = layer(routed_options, memory)
@@ -719,8 +651,8 @@ class ClefJointSchemaHead(ScoringHead):
             routing_weights = torch.softmax(torch.matmul(options, field) / math.sqrt(options.shape[-1]), dim=0)
             option_summaries.append(torch.sum(routing_weights.unsqueeze(-1) * options, dim=0))
         fields = (
-            base_fields + self.option_summary_norm(torch.stack(option_summaries)) +
-            self.global_projection(global_vector).unsqueeze(0) + self.type_embedding(type_ids))
+            base_fields + self.option_summary_norm(torch.stack(option_summaries))
+            + self.global_projection(global_vector).unsqueeze(0) + self.type_embedding(type_ids))
         fields = fields.unsqueeze(0)
         for layer in self.layers:
             fields = layer(fields, memory)
@@ -735,8 +667,9 @@ class ClefJointSchemaHead(ScoringHead):
             options = self.option_norm(routed)
             repeated_field = field.unsqueeze(0).expand_as(options)
             cosine = F.cosine_similarity(repeated_field, options, dim=-1)
-            features = torch.cat([repeated_field, options, repeated_field * options,
-                                  torch.abs(repeated_field - options)], dim=-1)
+            features = torch.cat(
+                [repeated_field, options, repeated_field * options,
+                 torch.abs(repeated_field - options)], dim=-1)
             residual = self.residual_scorer(features).squeeze(-1)
             joint_scale = self.joint_logit_scale.clamp(max=math.log(100.0)).exp()
             joint = joint_scale * cosine + residual
@@ -745,10 +678,6 @@ class ClefJointSchemaHead(ScoringHead):
 
     @classmethod
     def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'ClefJointSchemaHead':
-        """Build the head from `joint_head_config.json` and STRICT-load `joint_head.safetensors`
-        (0 missing / 0 unexpected), mirroring the official `load_release_model`. Env overrides:
-        CLEF_JOINT_HEAD_CONFIG / CLEF_JOINT_HEAD_WEIGHTS.
-        """
         from safetensors.torch import load_file
         config_file = cls._locate(model_dir, 'joint_head_config.json', 'CLEF_JOINT_HEAD_CONFIG')
         weights_file = cls._locate(model_dir, 'joint_head.safetensors', 'CLEF_JOINT_HEAD_WEIGHTS')
@@ -767,25 +696,10 @@ class ClefJointSchemaHead(ScoringHead):
             raise RuntimeError(f'Clef joint head strict load failed: missing={missing}, unexpected={unexpected}')
         return head
 
-    @staticmethod
-    def _locate(model_dir: str, filename: str, env_var: str) -> Optional[str]:
-        env = os.environ.get(env_var)
-        if env and os.path.exists(env):
-            return env
-        candidate = os.path.join(model_dir, filename)
-        return candidate if os.path.exists(candidate) else None
-
 
 class OmniOptionScorer(nn.Module):
-    """OmniJev's decision head. Verbatim port of `mso/head.py::OptionScorer` so the parameter
-    names/shapes match `head.pt` exactly and a strict load has 0 missing / 0 unexpected (invariant 2).
-
-    NOTE (corrects the plan/comparison wording): the option/question combination is NOT a dot product,
-    it is FiLM-style gating -- `h = opt(u) * tanh(que(z_q))`, then a linear `score(h)`. The 6-dim
-    backbone-opinion features enter both the gated representation (`feat`) and the logit directly
-    (`feat_lin`); `log_tau[type_id]` is a learned per-kind temperature the logit is divided by. With
-    `norm='softmax'` (this checkpoint) a choice/score logit vector carries one extra abstain logit and
-    `forward` returns `softmax(lg)[:-1]`; noul stays `sigmoid`.
+    """OmniJev's decision head. The parameter
+    names/shapes match `head.pt` exactly and a strict load has 0 missing / 0 unexpected.
     """
 
     INIT_SCORE_BIAS = -3.0
@@ -809,7 +723,8 @@ class OmniOptionScorer(nn.Module):
 
     def logits(self, u_opts: torch.Tensor, z_q: torch.Tensor, type_id: int = 0, feats=None) -> torch.Tensor:
         """The vector the probabilities come from, abstain last: `[K option logits, abstain]` for a
-        softmax choice/score, `[logit, 0]` for noul (softmax of [x, 0] == sigmoid(x))."""
+        softmax choice/score, `[logit, 0]` for noul (softmax of [x, 0] == sigmoid(x)).
+        """
         g = torch.tanh(self.que(z_q))
         h = self.opt(u_opts) * g[None, :]  # FiLM-style gating
         if feats is not None:
@@ -826,10 +741,7 @@ class OmniOptionScorer(nn.Module):
 
 
 class OmniOrdinalHead(nn.Module):
-    """OmniJev's ordinal (score) head. Verbatim port of `mso/head.py::OrdinalScoreHead` so it strict-loads
-    `ord.pt`. Cumulative link: `P(Y<=l) = sigmoid(theta_l - z)` with `theta` strictly increasing via a
-    softplus cumsum; per-level probabilities are the CDF differences.
-    """
+    """OmniJev's ordinal (score) head. Strict-loads"""
 
     def __init__(self, d_model: int, d_hidden: int = 512) -> None:
         super().__init__()
@@ -847,13 +759,8 @@ class OmniOrdinalHead(nn.Module):
 
 
 def omnijev_lm_option_feats(lm_head: nn.Module, h: torch.Tensor, ids: torch.Tensor, opens: Sequence[int],
-                            closes: Sequence[int], q_end: int, open_len: int,
-                            close_len: int) -> torch.Tensor:
-    """Verbatim port of `mso/v04.py::lm_option_feats`: the backbone's own opinion of each option, a
-    6-dim feature per option block. `h` [T, D] and `ids` [T] are the SAME (real-token) indexing; option
-    k spans opens[k]..closes[k] inclusive of the markers, its text tokens are the inner range.
-
-    Features: [sum log p(option tokens)/10, mean, n_tokens/10, log_softmax over K of the sums,
+                            closes: Sequence[int], q_end: int, open_len: int, close_len: int) -> torch.Tensor:
+    """Features: [sum log p(option tokens)/10, mean, n_tokens/10, log_softmax over K of the sums,
     first-token log p at the question end, validity flag].
     """
     n_feat = 6
@@ -906,16 +813,15 @@ def omnijev_lm_option_feats(lm_head: nn.Module, h: torch.Tensor, ids: torch.Tens
 class OmniJevHead(ScoringHead):
     """OmniJev System-1 head: `OptionScorer` (choice/noul) + `OrdinalScoreHead` (score) over the hidden
     state at each option's `<|/opt|>` marker, gated by the question hidden at the token before the first
-    `<|opt|>`, plus the 6-dim backbone-opinion features. Faithful port of `mso/infer.py::MSO1._score` +
-    `_finish` and `mso/head.py`.
+    `<|opt|>`, plus the 6-dim backbone-opinion features.
 
     Reads (per question, all positions real-token-relative, `h_row = hidden[rec, pad_offset:+seq_len]`):
       * `u_o` = `h_row[close_o]` -- the hidden at each option's OPT_CLOSE last token;
       * `z_q` = `h_row[opens[0]-1]` -- the hidden just before the first OPT_OPEN;
       * 6-dim feats via `omnijev_lm_option_feats` using the base lm_head (== output embeddings), so
-        `needs_output_embeddings=True`; the head runs in float32 (`keep_fp32=True`), as official does.
+        `needs_output_embeddings=True`; the head runs in float32 (`keep_fp32=True`).
 
-    Emitted `logits` are laid out so the shared `masked_softmax` reproduces the official probabilities:
+    Emitted `logits` are laid out so the shared `masked_softmax` reproduces the expected probabilities:
       * noul -> 2 cols `[yes_logit, 0]` (softmax == sigmoid(yes_logit) == P(yes));
       * choice -> K+1 cols `[opt_0..opt_{K-1}, abstain]` (P(abstain) == 1 - sum(option probs));
       * score -> L cols `log(ordinal_probs)` (the cumulative-link head's per-level probabilities).
@@ -960,8 +866,8 @@ class OmniJevHead(ScoringHead):
         self.open_len = int(open_len)
         self.close_len = int(close_len)
 
-    def forward(self, hidden_states: torch.Tensor, lm_logits: Optional[torch.Tensor],
-                meta: Dict[str, Any]) -> ScoringOutput:
+    def forward(self, hidden_states: torch.Tensor, lm_logits: Optional[torch.Tensor], meta: Dict[str,
+                                                                                                 Any]) -> ScoringOutput:
         device = hidden_states.device
         kinds = [int(k) for k in meta['kinds']]
         n_options = [int(n) for n in meta['n_options']]
@@ -999,14 +905,9 @@ class OmniJevHead(ScoringHead):
         return self._assemble(per_question, kinds, counts, max_opt, device)
 
     def forward_features(self, per_question_features: Sequence[Tuple[torch.Tensor, torch.Tensor,
-                                                                    Optional[torch.Tensor]]],
+                                                                     Optional[torch.Tensor]]],
                          meta: Dict[str, Any]) -> ScoringOutput:
-        """Branch entry point (decision G1). The loader runs the two-stage cached branch forward
-        (`swift/model/omnijev_branch.py`, a port of `mso/branch.py::branch_questions`) and hands back,
-        per question in flat batch order, its precomputed `(u [k,H], zq [H], feats [k,6] | None)`. This
-        scores each question over its own option set and pads to `max_opt` exactly like `forward` does;
-        the branch mechanics (prefix cache / rope / chunking) live in the loader because they call the
-        backbone, which the head does not hold."""
+        """Branch entry point (decision G1). The loader runs the two-stage cached branch forward"""
         kinds = [int(k) for k in meta['kinds']]
         n_options = [int(n) for n in meta['n_options']]
         counts = meta.get('counts')
@@ -1021,9 +922,6 @@ class OmniJevHead(ScoringHead):
 
     def _assemble(self, per_question: List[torch.Tensor], kinds: List[int], counts: Optional[Any], max_opt: int,
                   device: torch.device) -> ScoringOutput:
-        """Pad the per-question logit vectors to `max_opt` and wrap them (with `option_mask` / `kinds` /
-        `counts`) into a `ScoringOutput`. Shared by the single-pass `forward` and the branch
-        `forward_features` so the column layout / padding is defined in exactly one place."""
         counts_t = torch.as_tensor([int(c) for c in counts], dtype=torch.long, device=device) if counts else None
         if not per_question:
             return ScoringOutput(
@@ -1038,12 +936,8 @@ class OmniJevHead(ScoringHead):
             kinds=torch.as_tensor(kinds, dtype=torch.long, device=device),
             counts=counts_t)
 
-    def _score_question(self, h_row: torch.Tensor, ids_real: Optional[torch.Tensor], markers: Sequence[Tuple[int,
-                                                                                                            int]],
+    def _score_question(self, h_row: torch.Tensor, ids_real: Optional[torch.Tensor], markers: Sequence[Tuple[int, int]],
                         kind: int, lm_head: Optional[nn.Module]) -> torch.Tensor:
-        """Single-forward path: pool `u` / `zq` (+ backbone feats) out of ONE sequence's hidden state,
-        then score. The branch loader (decision G1) computes `u` / `zq` / `feats` itself and calls
-        `score_features` directly, so the scoring math lives in exactly one place."""
         opens = [int(o) for o, _ in markers]
         closes = [int(c) for _, c in markers]
         u = h_row[torch.as_tensor(closes, device=h_row.device, dtype=torch.long)].float()  # [k, H]
@@ -1057,13 +951,7 @@ class OmniJevHead(ScoringHead):
 
     def score_features(self, u: torch.Tensor, zq: torch.Tensor, feats: Optional[torch.Tensor],
                        kind: int) -> torch.Tensor:
-        """One question's emitted logit vector from PRECOMPUTED per-option features (see the class
-        docstring for the column layout): `u` [k, H] at each option's OPT_CLOSE, `zq` [H] just before the
-        first OPT_OPEN, `feats` [k, 6] the backbone-opinion features (or None). score -> the ordinal
-        head's log per-level probs; else -> the FiLM OptionScorer logits (noul `[yes,0]` / choice
-        `[opts..., abstain]`). Serving-time post-hoc calibration (per-kind temperature + noul log-odds
-        bias) is folded in ONLY when `not self.training`."""
-        if self.ordinal and kind == 2:  # score -> cumulative-link ordinal head
+        if self.ordinal and kind == 2:
             probs = self.ord(zq, u)
             cols = torch.log(probs.clamp(min=1e-8))
         else:
@@ -1083,7 +971,10 @@ class OmniJevHead(ScoringHead):
             'norm': self.head.norm,
             'lm_feats': self.lm_feats,
             'ordinal': self.ordinal,
-            'temperatures': {KIND_NAMES[k]: float(self.temps[k]) for k in range(len(KIND_NAMES))},
+            'temperatures': {
+                KIND_NAMES[k]: float(self.temps[k])
+                for k in range(len(KIND_NAMES))
+            },
             'noul_bias': float(self.noul_bias),
             'open_len': self.open_len,
             'close_len': self.close_len,
@@ -1091,10 +982,6 @@ class OmniJevHead(ScoringHead):
 
     @classmethod
     def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'OmniJevHead':
-        """Build from `head_meta.json`, STRICT-load `head.pt` into the OptionScorer and `ord.pt` into the
-        ordinal head (0 missing / 0 unexpected each), mirroring `MSO1.__init__`. Env overrides:
-        OMNIJEV_HEAD / OMNIJEV_ORD / OMNIJEV_HEAD_META.
-        """
         meta_file = cls._locate(model_dir, 'head_meta.json', 'OMNIJEV_HEAD_META')
         head_meta: Dict[str, Any] = {}
         if meta_file is not None:
@@ -1114,9 +1001,6 @@ class OmniJevHead(ScoringHead):
         if head_file is None:
             raise FileNotFoundError(f'OmniJev head.pt not found under {model_dir!r}. Set OMNIJEV_HEAD to its path.')
         head_sd = torch.load(head_file, map_location='cpu')
-        # The checkpoint is authoritative for d_model: `opt.0.weight` is [head_hidden, hidden_size].
-        # This also lets `from_pretrained` work without a live base model (adapter-only snapshot has no
-        # config.json), so the head is standalone-testable; fall back to the base/config otherwise.
         opt0 = head_sd.get('opt.0.weight')
         hidden_size = int(opt0.shape[1]) if opt0 is not None else cls._resolve_hidden_size(model_dir, model, config)
         head = cls(
@@ -1126,7 +1010,10 @@ class OmniJevHead(ScoringHead):
             norm=norm,
             lm_feats=lm_feats,
             ordinal=ordinal,
-            temperatures={k: float(v) for k, v in temps.items()},
+            temperatures={
+                k: float(v)
+                for k, v in temps.items()
+            },
             noul_bias=float(biases.get('noul', 0.0)))
         missing, unexpected = head.head.load_state_dict(head_sd, strict=False)
         if missing or unexpected:
@@ -1158,11 +1045,3 @@ class OmniJevHead(ScoringHead):
             if hidden:
                 return int(hidden)
         raise ValueError(f'OmniJevHead cannot resolve the backbone hidden_size from {model_dir!r} / model / config.')
-
-    @staticmethod
-    def _locate(model_dir: str, filename: str, env_var: str) -> Optional[str]:
-        env = os.environ.get(env_var)
-        if env and os.path.exists(env):
-            return env
-        candidate = os.path.join(model_dir, filename)
-        return candidate if os.path.exists(candidate) else None

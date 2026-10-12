@@ -1,7 +1,7 @@
 # Typed-decision (System-1) DISTILLATION fine-tuning of autotrust/JEV-27B-VL.
 #
 # JEV scores ONE question per forward (serve_decide.py::s1_pass), so JevPreprocessor fans a record out
-# into one row per question. It is a DISTILLATION model: `--loss_type jev_distill` is
+# into one row per question. It is a DISTILLATION model: `--loss_type distill_rps` is
 # KL(target || model) on the activated option distribution (+ 0.5*RPS on `score`), and `target_probs`
 # may be a full soft distribution (the teacher's) rather than a one-hot. `--task_type decision` routes
 # to ScoringTrainer; `--attn_impl eager` matches tests/test_align/test_decision_jev_align.py.
@@ -23,11 +23,11 @@
 # sh examples/train/decision/jev.sh
 # The decision LoRA lives in the model repo's `adapter_vllm/` subfolder. Resolve its local snapshot path
 # with the SAME interpreter that runs `swift` (read from the swift entry-point shebang), so this works
-# no matter which `python` happens to be first on PATH. USE_HF=1 -> huggingface_hub.
+# no matter which `python` happens to be first on PATH. USE_HF=0 -> modelscope.
 SWIFT_PY="$(sed -n '1s/^#!//p' "$(command -v swift)")"
-JEV_ADAPTER="$("$SWIFT_PY" -c "import os; from huggingface_hub import snapshot_download; print(os.path.join(snapshot_download('autotrust/JEV-27B-VL'), 'adapter_vllm'))")"
+JEV_ADAPTER="$("$SWIFT_PY" -c "import os; from modelscope import snapshot_download; print(os.path.join(snapshot_download('autotrust/JEV-27B-VL'), 'adapter_vllm'))")"
 
-USE_HF=1 \
+USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --external_plugins examples/train/decision/dataset.py \
@@ -35,7 +35,7 @@ swift sft \
     --model_type jev \
     --task_type decision \
     --adapters "$JEV_ADAPTER" \
-    --loss_type jev_distill \
+    --loss_type distill_rps \
     --dataset jev_decision \
     --torch_dtype bfloat16 \
     --attn_impl eager \

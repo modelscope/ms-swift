@@ -1,30 +1,27 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Losses for the `decision` task_type (typed-decision System-1 scoring models).
 
-See `swift/model/decision_head.py` for the shared data contract. `outputs` is a `ScoringOutput`
-whose `logits` are per-option scores `[total_q, max_opt]` (padded, read with `option_mask`);
-`labels` is the padded target distribution `target_probs` `[total_q, max_opt]` (one-hot for the
-CE heads, soft for JEV distillation; pad cols = 0).
+`outputs` is a `ScoringOutput` whose `logits` are per-option scores `[total_q, max_opt]`
+(padded, read with `option_mask`); `labels` is the padded target distribution `target_probs`
+`[total_q, max_opt]` (one-hot for the CE heads, soft for JEV distillation; pad cols = 0).
 
 `ScoringLoss` implements the shared piece: masked soft cross-entropy over each question's own
 option set (softmax restricted to the real options, then CE against the target distribution).
-This one form covers both one-hot CE (Clef / OmniJev) and soft-target distillation (JEV),
+This one form covers both one-hot CE and soft-target distillation,
 because CE-with-soft-targets equals KL up to an additive constant that does not affect grads.
-Subclasses add model-specific terms (e.g. OmniJev's ordinal CORAL/CORN) by overriding
-`_extra_loss`, which is summed onto the reduced CE loss.
+Subclasses add calibration terms (RPS for ordinal `score`, Brier for all-option calibration)
+by overriding `_extra_loss`, which is summed onto the reduced CE loss.
 """
-from typing import Optional
-
 import os
-
 import torch
+from typing import Optional
 
 from swift.model.decision_head import QUESTION_TYPES, masked_softmax
 from .base import BaseLoss
 
 
 class ScoringLoss(BaseLoss):
-    """Masked soft cross-entropy over per-question option sets (concrete; usable as-is)."""
+    """Masked soft cross-entropy over per-question option sets."""
 
     def __call__(self, outputs, labels, *, num_items_in_batch=None, loss_scale=None, **kwargs) -> torch.Tensor:
         logits = outputs.logits  # [total_q, max_opt]
@@ -44,7 +41,6 @@ class ScoringLoss(BaseLoss):
 
     @staticmethod
     def _option_mask(outputs, logits: torch.Tensor) -> torch.Tensor:
-        """Real-option mask, defaulting to all-True when the head did not emit one."""
         mask = getattr(outputs, 'option_mask', None)
         return torch.ones_like(logits, dtype=torch.bool) if mask is None else mask
 
@@ -60,9 +56,7 @@ class ScoringLoss(BaseLoss):
         return -(target * log_probs * option_mask).sum(dim=-1)
 
     def _reduce(self, per_question: torch.Tensor, num_items_in_batch: Optional[int]) -> torch.Tensor:
-        """Mean over questions; when the trainer passes `num_items_in_batch` (total questions of
-        the global accumulation window) divide the sum by it for gradient-accumulation correctness.
-        An empty batch returns a graph-connected zero."""
+        """Mean over this micro-batch's questions."""
         if num_items_in_batch is not None:
             return per_question.sum() / num_items_in_batch
         denom = per_question.shape[0]
@@ -71,17 +65,12 @@ class ScoringLoss(BaseLoss):
         return per_question.sum() / denom
 
     def _extra_loss(self, outputs, target, option_mask, *, num_items_in_batch=None, loss_scale=None, **kwargs):
-        """Hook for model-specific additive terms; returns a scalar tensor or None.
-
-        Default: none. OmniJev overrides this to add the ordinal (CORAL/CORN) term computed from
-        `outputs.ordinal_logits`.
-        """
+        """Hook for model-specific additive terms; returns a scalar tensor or None."""
         return None
 
 
-class JevDistillLoss(ScoringLoss):
-    """JEV distillation loss (decision-models-comparison.md §3): `KL(target || model)` on the activated
-    slots plus `0.5 * RPS` on `score` questions only.
+class DistillRPSLoss(ScoringLoss):
+    """Soft-target distillation CE + RPS on `score` questions.
 
     The inherited masked soft-CE IS the KL term: CE(target, model) = KL(target || model) + H(target),
     and H(target) is constant w.r.t. the model, so the gradients match. The teacher targets are soft
@@ -101,12 +90,10 @@ class JevDistillLoss(ScoringLoss):
         score_mask = kinds == QUESTION_TYPES['score']
         if not bool(score_mask.any()):
             return None
-        probs = masked_softmax(outputs.logits, option_mask)  # [total_q, max_opt], pad cols = 0
-        # Cumulative distributions; drop the last cumulative point (always 1 for both -> 0 gap).
+        probs = masked_softmax(outputs.logits, option_mask)
         cum_model = probs.cumsum(dim=-1)[:, :-1]
         cum_target = target.cumsum(dim=-1)[:, :-1]
         gap2 = (cum_model - cum_target).pow(2)
-        # Normalise each row by (#real_options - 1); pad columns contribute 0 to both CDFs.
         denom = (option_mask.sum(dim=-1) - 1).clamp(min=1).to(gap2.dtype)
         per_row_rps = gap2.sum(dim=-1) / denom  # [total_q]
         rps = per_row_rps[score_mask]
@@ -121,20 +108,16 @@ class JevDistillLoss(ScoringLoss):
         return term
 
 
-class ClefLoss(ScoringLoss):
-    """Clef supervised loss (decision-models-comparison.md §3): label-smoothing CE + Brier.
+class SmoothBrierLoss(ScoringLoss):
+    """Label-smoothing CE + Brier score.
 
-    Clef's targets are HARD (the one correct option per question -> a one-hot `target_probs`), so the
+    Targets are HARD (the one correct option per question -> a one-hot `target_probs`), so the
     inherited masked soft-CE is a plain per-question CE; label smoothing is applied to the target over
     its real options before the CE. The Brier score (mean squared gap between the calibrated
-    probability and the one-hot target, over real options) is added as the calibration term -- this is
-    the supervised half of Clef's recipe. The RLCD (proper-scoring-rule RL) term is DEFERRED to phase 2
-    (plan macro-decision ③: supervised only this phase), so it is NOT implemented here.
+    probability and the one-hot target, over real options) is added as the calibration term
 
-    The exact label-smoothing / Brier weights are not published (Clef's training data and recipe are
-    closed-source), so they default to a standard `0.1` / `1.0` and are overridable via
-    `CLEF_LABEL_SMOOTHING` / `CLEF_BRIER_WEIGHT`. This default is SURFACED to the user, not silently
-    assumed correct.
+    The exact label-smoothing / Brier weights are not published, default to a standard `0.1` / `1.0` and are overridable via
+    `CLEF_LABEL_SMOOTHING` / `CLEF_BRIER_WEIGHT`.
     """
     LABEL_SMOOTHING = 0.1
     BRIER_WEIGHT = 1.0
@@ -154,10 +137,10 @@ class ClefLoss(ScoringLoss):
     def _extra_loss(self, outputs, target, option_mask, *, num_items_in_batch=None, loss_scale=None, **kwargs):
         if self.brier_weight == 0:
             return None
-        probs = masked_softmax(outputs.logits, option_mask)  # [total_q, max_opt], pad cols = 0
+        probs = masked_softmax(outputs.logits, option_mask)
         diff2 = (probs - target).pow(2) * option_mask
         n_real = option_mask.sum(dim=-1).clamp(min=1).to(diff2.dtype)
-        per_question_brier = diff2.sum(dim=-1) / n_real  # [total_q]
+        per_question_brier = diff2.sum(dim=-1) / n_real
         if num_items_in_batch is not None:
             term = per_question_brier.sum() / num_items_in_batch
         else:
@@ -169,29 +152,25 @@ class ClefLoss(ScoringLoss):
         return term
 
 
-class OmniJevLoss(ScoringLoss):
-    """OmniJev supervised loss: PROPER scoring rules only (faithful to `mso/head.py`).
+class CERPSLoss(ScoringLoss):
+    """Plain CE (no label smoothing) + RPS on `score` questions only.
 
-    OmniJev's reference head ships four proper rules -- `log_score(p,t) = -(t*log p).sum()`,
-    `brier(p,t) = ((p-t)**2).sum()`, `rps(p,t) = ((cumsum p - cumsum t)**2).sum()` (order-aware, for
-    the ordinal `score` head) and `noul_loss` (binary log score) -- and its docstring DELIBERATELY
-    rejects focal loss and label smoothing ("neither is a proper scoring rule, both bias
-    probabilities away from the true frequency"). So unlike `ClefLoss` this applies NO label
-    smoothing: the inherited masked soft-CE over each question's own option columns IS `log_score`
-    (noul 2 cols [yes,no] -> binary log score; choice K+1 cols incl. abstain; score L cols), which is
-    the correct proper rule for all three kinds.
+    Uses PROPER scoring rules only: the inherited masked soft-CE over each question's own option
+    columns IS `log_score` (noul 2 cols [yes,no] -> binary log score; choice K+1 cols incl. abstain;
+    score L cols), which is the correct proper rule for all three kinds. No label smoothing is applied
+    (unlike `SmoothBrierLoss`): smoothing is NOT a proper scoring rule and biases probabilities away
+    from the true frequency.
 
     On top of the CE it adds `rps` for the ordered `score` kind only (`RPS_WEIGHT *
     mean_over_questions(rps * 1{score})`, sharing the CE denominator so both terms stay on the same
     per-question scale) -- the order-aware calibration term the ordinal head is trained with. `rps`
-    is computed exactly as official (plain sum over the cumulative gap, no per-row normalisation);
+    is computed as a plain sum over the cumulative gap, no per-row normalisation;
     pad columns contribute 0 to both CDFs (probs and target both cumulative-sum to 1 over the real
     options), so the padded width is safe.
 
-    The `relu(sum(mu)-1)` validity penalty official carries is IDENTICALLY ZERO under this
+    The `relu(sum(mu)-1)` validity penalty is IDENTICALLY ZERO under this
     checkpoint's softmax norm (sum(mu) = 1 - P(abstain) <= 1), so it is omitted. `brier` is available
-    in official but its training weight is not published; only the RPS weight is exposed here,
-    defaulting to 0.5 and overridable via `OMNIJEV_RPS_WEIGHT` -- SURFACED, not silently assumed.
+    only the RPS weight is exposed here, defaulting to 0.5 and overridable via `OMNIJEV_RPS_WEIGHT`
     """
     RPS_WEIGHT = 0.5
 
@@ -208,9 +187,7 @@ class OmniJevLoss(ScoringLoss):
         score_mask = kinds == QUESTION_TYPES['score']
         if not bool(score_mask.any()):
             return None
-        probs = masked_softmax(outputs.logits, option_mask)  # [total_q, max_opt], pad cols = 0
-        # rps(p, target) = ((cumsum p - cumsum target)**2).sum() over the ordered levels (official
-        # form, no normalisation). Both CDFs reach 1 at the last real option, so pad columns add 0.
+        probs = masked_softmax(outputs.logits, option_mask)
         cum_model = probs.cumsum(dim=-1)
         cum_target = target.cumsum(dim=-1)
         per_row_rps = (cum_model - cum_target).pow(2).sum(dim=-1)  # [total_q]
