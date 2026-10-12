@@ -188,6 +188,22 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             sep = ''
         return sep.join(tool_calls) + '<|observation|>'
 
+    def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
+        """GLM-4.5/4.6 chat_template renders ``{{ '\\n<tool_call>' + tc.name }}`` for
+        every tool call, so a newline separates the assistant's non-empty content from
+        ``<tool_call>``. GLM-5 style templates (glm4_7/glm5_1) have no separator."""
+        if self.model_type != 'glm4_5':
+            return tool_content
+        if not pre_message or pre_message.get('role') != 'assistant':
+            return tool_content
+        content = pre_message.get('content', '')
+        if not isinstance(content, str) or not content.strip():
+            return tool_content
+        # The official template strips content before adding the separator. This
+        # message is merged with tool_content later, so normalize it here too.
+        pre_message['content'] = content.strip()
+        return '\n' + tool_content
+
 
 class GLM4_7AgentTemplate(GLM4_5AgentTemplate):
     model_type = 'glm4_7'

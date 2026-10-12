@@ -331,7 +331,10 @@ def save_mcore_checkpoint(
         fsdp_dtensor=fsdp_dtensor,
     )
     _filter_adapter_state_dict(state_dict, peft_format)
-    kwargs = {'content_metadata': sharded_sd_metadata}
+    # sharded_state_dict() adds dp_cp_group (a ProcessGroup) to the metadata in-place, and it can't be pickled.
+    # Megatron-LM drops it the same way (_clean_metadata_for_serialization) before saving.
+    content_metadata = {k: v for k, v in sharded_sd_metadata.items() if k != 'dp_cp_group'}
+    kwargs = {'content_metadata': content_metadata}
     async_save = args.async_save
     if not models:  # save GPU memory
         assert 'optimizer' not in state_dict

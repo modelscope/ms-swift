@@ -76,6 +76,7 @@ Swift DOCUMENTATION
    BestPractices/NPU-support.md
    BestPractices/Metax-support.md
    BestPractices/AMD-support.md
+   BestPractices/MUSA-support.md
    BestPractices/More-Best-Practices.md
 
 Indices and tables

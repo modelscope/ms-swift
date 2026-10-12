@@ -156,6 +156,8 @@ class RolloutInferRequest(InferRequest):
     images: List[str] = field(default_factory=list)
     data_dict: Dict = field(default_factory=dict)
     uuid: Optional[str] = None
+    # 'auto' uses the training suffix policy when scoring completed responses.
+    add_eos: Optional[Union[bool, Literal['auto']]] = None
 
 
 def random_uuid() -> str:

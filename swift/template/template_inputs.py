@@ -238,8 +238,11 @@ class TemplateInputs:
             raise ValueError(f'rejected_response must be a str or list. rejected_response: {rejected_response}')
         # Check that the response is different from the rejected_response.
         if len(messages[idx:]) == 1 and len(rejected_responses) == 1:
-            response = messages[idx]['content']
-            rejected_response = rejected_responses[0]['content']
+            # OpenAI tool calls can omit content; compare their canonical responses.
+            responses = normalize_openai_tool_calls(messages[idx:])
+            rejected = normalize_openai_tool_calls(rejected_responses)
+            response = [message['content'] for message in responses]
+            rejected_response = [message['content'] for message in rejected]
             assert rejected_response != response, f'rejected_response: {rejected_response}, response: {response}'
         inputs['rejected_messages'] = deepcopy(messages[:idx]) + rejected_responses
 

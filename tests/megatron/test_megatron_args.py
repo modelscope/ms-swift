@@ -1,3 +1,4 @@
+import dataclasses
 import unittest
 
 
@@ -86,6 +87,65 @@ class TestMegatronArgs(unittest.TestCase):
         field_names = {f.name for f in fields(self.MegatronArguments)}
         for field_name in expected_fields:
             self.assertIn(field_name, field_names, f'MegatronArguments missing field: {field_name}')
+
+    def _rlhf_args(self, advantage_estimator):
+        """A MegatronRLHFArguments populated from field defaults.
+
+        ``_init_grpo`` only reads and writes the argument object's own
+        attributes, so seeding every dataclass field with its default exercises
+        the real method without a model, a checkpoint or a tokenizer - which the
+        construction-based cases in this file require.
+        """
+        cls = self.MegatronRLHFArguments
+        args = cls.__new__(cls)
+        for field in dataclasses.fields(cls):
+            if field.default is not dataclasses.MISSING:
+                setattr(args, field.name, field.default)
+            elif field.default_factory is not dataclasses.MISSING:
+                setattr(args, field.name, field.default_factory())
+        args.advantage_estimator = advantage_estimator
+        args._init_grpo()
+        return args
+
+    def test_advantage_estimator_tied_defaults(self):
+        """kl_in_reward and scale_rewards follow advantage_estimator.
+
+        Mirrors RLHFArguments._init_grpo. Before the Megatron path wired this
+        up, both fields kept the class defaults regardless of
+        advantage_estimator, so rloo and reinforce_plus_plus silently ran with
+        GRPO's settings (kl_in_reward=False, scale_rewards='group').
+        """
+        self._skip_if_no_megatron()
+
+        expected = {
+            'grpo': (False, 'group'),
+            'rloo': (True, 'none'),
+            'reinforce_plus_plus': (True, 'batch'),
+        }
+        for estimator, (kl_in_reward, scale_rewards) in expected.items():
+            with self.subTest(advantage_estimator=estimator):
+                args = self._rlhf_args(estimator)
+                self.assertIs(args.kl_in_reward, kl_in_reward)
+                self.assertEqual(args.scale_rewards, scale_rewards)
+
+    def test_explicit_values_override_the_tied_defaults(self):
+        """An explicit value wins over the estimator's default."""
+        self._skip_if_no_megatron()
+
+        cls = self.MegatronRLHFArguments
+        args = cls.__new__(cls)
+        for field in dataclasses.fields(cls):
+            if field.default is not dataclasses.MISSING:
+                setattr(args, field.name, field.default)
+            elif field.default_factory is not dataclasses.MISSING:
+                setattr(args, field.name, field.default_factory())
+        args.advantage_estimator = 'rloo'
+        args.kl_in_reward = False
+        args.scale_rewards = 'group'
+        args._init_grpo()
+
+        self.assertIs(args.kl_in_reward, False)
+        self.assertEqual(args.scale_rewards, 'group')
 
 
 if __name__ == '__main__':

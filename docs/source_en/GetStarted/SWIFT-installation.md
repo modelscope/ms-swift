@@ -160,6 +160,7 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 | AMD GPU | [AMD GPU Support](../BestPractices/AMD-support.md) |
 | Huawei Ascend NPU | [NPU Support](../BestPractices/NPU-support.md) |
 | MetaX GPU | [MetaX Support](../BestPractices/Metax-support.md) |
+| Moore Threads MUSA GPU | [MUSA Support](../BestPractices/MUSA-support.md) |
 | Apple MPS | [issue](https://github.com/modelscope/ms-swift/issues/4572) |
 
 

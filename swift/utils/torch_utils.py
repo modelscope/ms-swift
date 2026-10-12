@@ -13,7 +13,8 @@ from contextlib import contextmanager
 from datasets.utils.filelock import FileLock
 from datetime import timedelta
 from modelscope.hub.utils.utils import get_cache_dir
-from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
+from transformers.utils import (is_torch_cuda_available, is_torch_mps_available, is_torch_musa_available,
+                                is_torch_npu_available)
 from typing import Any, Mapping, Optional, Union
 
 from .env import get_dist_setting, get_node_setting, is_dist, is_local_master, is_master, is_mp
@@ -64,6 +65,8 @@ def _find_local_mac() -> str:
 def synchronize(device: Union[torch.device, str, int, None] = None):
     if is_torch_npu_available():
         torch.npu.synchronize(device)
+    elif is_torch_musa_available():
+        torch.musa.synchronize(device)
     elif is_torch_cuda_available():
         torch.cuda.synchronize(device)
     else:
@@ -123,6 +126,8 @@ def get_device(local_rank: Optional[Union[str, int]] = None) -> str:
     local_rank = str(local_rank)
     if is_torch_npu_available():
         device = 'npu:{}'.format(local_rank)
+    elif is_torch_musa_available():
+        device = 'musa:{}'.format(local_rank)
     elif is_torch_mps_available():
         device = 'mps:{}'.format(local_rank)
     elif is_torch_cuda_available():
@@ -136,6 +141,8 @@ def get_device(local_rank: Optional[Union[str, int]] = None) -> str:
 def get_current_device():
     if is_torch_npu_available():
         current_device = torch.npu.current_device()
+    elif is_torch_musa_available():
+        current_device = torch.musa.current_device()
     elif is_torch_cuda_available():
         current_device = torch.cuda.current_device()
     elif is_torch_mps_available():
@@ -146,7 +153,10 @@ def get_current_device():
 
 
 def get_torch_device():
-    if is_torch_cuda_available():
+    # MUSA goes first: MUSA patches such as megatron-lm-musa-patch make torch.cuda.is_available() return True.
+    if is_torch_musa_available():
+        return torch.musa
+    elif is_torch_cuda_available():
         return torch.cuda
     elif is_torch_npu_available():
         return torch.npu
@@ -161,6 +171,8 @@ def set_device(local_rank: Optional[Union[str, int]] = None):
         local_rank = max(0, get_dist_setting()[1])
     if is_torch_npu_available():
         torch.npu.set_device(local_rank)
+    elif is_torch_musa_available():
+        torch.musa.set_device(local_rank)
     elif is_torch_cuda_available():
         torch.cuda.set_device(local_rank)
 
@@ -168,6 +180,8 @@ def set_device(local_rank: Optional[Union[str, int]] = None):
 def get_device_count() -> int:
     if is_torch_npu_available():
         return torch.npu.device_count()
+    elif is_torch_musa_available():
+        return torch.musa.device_count()
     elif is_torch_cuda_available():
         return torch.cuda.device_count()
     else:
@@ -247,6 +261,8 @@ def get_physical_device_count() -> int:
 def empty_cache():
     if is_torch_npu_available():
         torch.npu.empty_cache()
+    elif is_torch_musa_available():
+        torch.musa.empty_cache()
     elif is_torch_mps_available():
         torch.mps.empty_cache()
     elif is_torch_cuda_available():
@@ -254,7 +270,10 @@ def empty_cache():
 
 
 def ipc_collect():
-    if is_torch_cuda_available():
+    # MUSA goes first, see `get_torch_device`.
+    if is_torch_musa_available():
+        torch.musa.ipc_collect()
+    elif is_torch_cuda_available():
         torch.cuda.ipc_collect()
     elif is_torch_npu_available():
         torch.npu.ipc_collect()
@@ -341,6 +360,8 @@ def init_process_group(backend: Optional[str] = None, timeout: int = 18000000):
     if backend is None:
         if is_torch_npu_available():
             backend = 'hccl'
+        elif is_torch_musa_available():
+            backend = 'mccl'
         elif torch.cuda.is_available():
             backend = 'nccl'
         else:

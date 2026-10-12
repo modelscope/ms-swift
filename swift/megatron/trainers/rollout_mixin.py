@@ -35,7 +35,8 @@ from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LO
                                        check_vllm_version_ge, expand_vllm_param_name_aliases, finish_vllm_weight_reload,
                                        parse_prompt_logprobs, patch_vllm_load_adapter,
                                        patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
-                                       set_expandable_segments, sleep_vllm_engine, vllm_supports_lora_load_inplace)
+                                       set_expandable_segments, sleep_vllm_engine, vllm_sleep,
+                                       vllm_supports_lora_load_inplace)
 from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import (JsonlWriter, get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response,
@@ -422,7 +423,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
                 self.engine = self._prepare_vllm_engine()
                 self.engine.engine.reset_mm_cache()
                 if args.sleep_level > 0:
-                    self.engine.engine.sleep(args.sleep_level)
+                    vllm_sleep(self.engine.engine, args.sleep_level)
                 set_expandable_segments(True)
         else:
             raise ValueError(f'Invalid vllm_mode: {self.vllm_mode}')
