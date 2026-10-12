@@ -17,9 +17,9 @@ RL_PLAN §二 "只补缺口，不重写"):
 
 | # | case | input | expected (contract) | where covered | failure it kills |
 |---|------|-------|---------------------|---------------|------------------|
-| 1 | colocate shares one group, CUDA-IPC sync | ``vllm_mode='colocate'`` GRPO | trainer+sampler in ONE ``model`` group; policy handed over via CUDA-IPC | planning: ``test_recipes.py::test_plan_device_groups_colocate_shares_one_group``; e2e IPC delivery: ``test_backends_e2e.py`` megatron GRPO logs "Updated N base weights via IPC"; e2e per-window cadence: ``test_samplers_e2e.py::test_colocate_grpo_publishes_weights_every_step`` | weight-sync mode chosen wrong / colocate run never hands the device over |
-| 2 | **disaggregated: disjoint groups, NCCL sync** | ``vllm_mode='disaggregated'`` + ``weight_sync_strategy='in_place'`` GRPO, nproc=1 | sampler on its OWN GPU (disjoint ``sampler`` group), policy pushed by NCCL each window, run trains on-policy | **THIS FILE** ``test_disaggregated_grpo_nccl_sync_disjoint_gpus`` (planning unit: ``test_recipes.py::test_plan_device_groups_heterogeneous_disjoint_ranks``) | overlapping device groups (NCCL same-card conflict) / the cross-GPU NCCL sync silently skipped |
-| 3 | colocate that cannot fit the sampler | ``vllm_mode='colocate'``, sampler GPUs > trainer GPUs | ``ValueError`` pointing at ``disaggregated`` | ``test_recipes.py::test_plan_device_groups_validation`` | silent mis-placement instead of a loud refusal |
+| 1 | colocate shares one group, CUDA-IPC sync | ``sampler_mode='colocate'`` GRPO | trainer+sampler in ONE ``model`` group; policy handed over via CUDA-IPC | planning: ``test_recipes.py::test_plan_device_groups_colocate_shares_one_group``; e2e IPC delivery: ``test_backends_e2e.py`` megatron GRPO logs "Updated N base weights via IPC"; e2e per-window cadence: ``test_samplers_e2e.py::test_colocate_grpo_publishes_weights_every_step`` | weight-sync mode chosen wrong / colocate run never hands the device over |
+| 2 | **disaggregated: disjoint groups, NCCL sync** | ``sampler_mode='disaggregated'`` + ``weight_sync_strategy='in_place'`` GRPO, nproc=1 | sampler on its OWN GPU (disjoint ``sampler`` group), policy pushed by NCCL each window, run trains on-policy | **THIS FILE** ``test_disaggregated_grpo_nccl_sync_disjoint_gpus`` (planning unit: ``test_recipes.py::test_plan_device_groups_heterogeneous_disjoint_ranks``) | overlapping device groups (NCCL same-card conflict) / the cross-GPU NCCL sync silently skipped |
+| 3 | colocate that cannot fit the sampler | ``sampler_mode='colocate'``, sampler GPUs > trainer GPUs | ``ValueError`` pointing at ``disaggregated`` | ``test_recipes.py::test_plan_device_groups_validation`` | silent mis-placement instead of a loud refusal |
 | 4 | frozen auxiliary owns a disjoint group | separate teacher / value model | the auxiliary is a Ray actor on its OWN group, never contending with the policy's ``parallel_state`` | ``test_algorithms_e2e.py::test_gkd_e2e_separate_teacher`` (separate teacher, accel(2)) and ``::test_ppo_*`` (critic); planning: ``test_recipes.py::test_plan_device_groups_heterogeneous_disjoint_ranks`` | auxiliary shares the policy's process-level ``parallel_state`` and corrupts it |
 
 Why row 2 is the only NEW e2e here: rows 1/3/4 already run end to end (or are pure-function contracts) in
@@ -34,7 +34,7 @@ planned onto the trainer's ranks (the NCCL broadcast between two same-card actor
 crashes instead of training), and red if the per-window publication is skipped (``stream_publishes`` stays
 flat at 0 -- a disaggregated run has NO initial ``_enter_generation`` hand-over, so a skipped publish means
 the sampler never receives the trained policy at all). Its anti-degeneracy guard additionally goes red if a
-future change silently downgrades ``vllm_mode`` to colocate or makes the two device groups overlap, so the
+future change silently downgrades ``sampler_mode`` to colocate or makes the two device groups overlap, so the
 test cannot pass while riding the colocate path it claims not to. Run with ``CUDA_VISIBLE_DEVICES=<two
 cards> pytest swift/dev/tests/feature/rl/test_placement_e2e.py -m slow``.
 """
@@ -48,7 +48,7 @@ from swift.dev.tests.feature.rl.conftest import rl_configs, run_rl
 def test_disaggregated_grpo_nccl_sync_disjoint_gpus(tiny_qwen2_5, rl_data, tmp_path, assert_rl_trained):
     """Row 2: a disaggregated GRPO run puts the sampler on its OWN GPU and NCCL-syncs the policy each window.
 
-    ``vllm_mode='disaggregated'`` makes ``plan_rl_device_groups`` append a ``sampler`` group over ranks
+    ``sampler_mode='disaggregated'`` makes ``plan_rl_device_groups`` append a ``sampler`` group over ranks
     ``[nproc, nproc + sampler_world_size)`` -- DISJOINT from the trainer's ``model`` group ``[0, nproc)`` --
     so with ``nproc=1`` the trainer owns one GPU and the vLLM sampler the other (this test is ``accel(2)``).
     ``CheckpointEngineManager(mode='standalone')`` then wires the NCCL transport, and
@@ -88,7 +88,7 @@ def test_disaggregated_grpo_nccl_sync_disjoint_gpus(tiny_qwen2_5, rl_data, tmp_p
         nproc=1,
         max_steps=6,
         rlhf_over={'num_generations': 2, 'orm': [_varied_content_reward]},
-        rollout_over={'vllm_mode': 'disaggregated', 'weight_sync_strategy': 'in_place'},
+        rollout_over={'sampler_mode': 'disaggregated', 'weight_sync_strategy': 'in_place'},
         generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16},
     )
     history = run_rl(configs)
@@ -106,12 +106,12 @@ def test_disaggregated_grpo_nccl_sync_disjoint_gpus(tiny_qwen2_5, rl_data, tmp_p
     from swift.dev.recipe.run_grpo import plan_rl_device_groups
 
     rollout_config = configs['rollout_config']
-    assert rollout_config.vllm_mode == 'disaggregated', (
-        f'the resolved run downgraded vllm_mode to {rollout_config.vllm_mode!r}: this test must exercise the '
+    assert rollout_config.sampler_mode == 'disaggregated', (
+        f'the resolved run downgraded sampler_mode to {rollout_config.sampler_mode!r}: this test must exercise the '
         f'disaggregated placement (sampler on its OWN GPUs, policy pushed by NCCL), not a colocate hand-over')
     sampler_ws = _sampler_world_size(rollout_config, _sampler_backend(rollout_config))
     groups, sampler_group, colocate = plan_rl_device_groups(
-        configs['distributed_config'].nproc_per_node, rollout_config.vllm_mode, sampler_ws)
+        configs['distributed_config'].nproc_per_node, rollout_config.sampler_mode, sampler_ws)
     assert not colocate, 'plan_rl_device_groups resolved colocate=True for a disaggregated run'
     ranks = dict(groups)
     model_ranks, sampler_ranks = set(ranks[_MODEL_GROUP]), set(ranks[sampler_group])

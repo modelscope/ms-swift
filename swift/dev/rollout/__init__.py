@@ -43,7 +43,6 @@ to actually push the trained policy in.
 
 from __future__ import annotations
 import copy
-import logging
 import threading
 import time
 import uuid
@@ -51,7 +50,9 @@ from concurrent.futures import Future
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger(__name__)
+from swift.dev.utils.logger import get_logger
+
+logger = get_logger()
 
 # Marker key written into `encoded` when the training feature's labels are already next-token
 # shifted (contract 14). Mirrors dev Template.SHIFTED_KEY so the "who shifted" fact is queryable

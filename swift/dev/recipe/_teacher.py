@@ -13,6 +13,13 @@ class Teacher(Protocol):
     Structural on purpose -- the student model itself already has ``forward_only``, so a loop may score on
     the raw student (dynamic self-distillation, or recomputing old log-probs) or on one of the wrappers
     below without ever branching on the type.
+
+    Every owner also exposes a ``placement_key``: the identity of the DeviceGroup it forwards on, used by
+    :func:`~swift.dev.recipe._scoring.overlap_by_placement` to tell which scorers may run concurrently.
+    ``None`` is the sentinel for "the policy actor itself" (the raw student, or a wrapper that reuses it),
+    so all policy-actor scorers share one key and serialize; a separate frozen model carries its own group
+    name, so scorers on disjoint groups overlap. The raw student model has no wrapper, so a loop resolves
+    its key with ``getattr(owner, 'placement_key', None)``.
     """
 
     def forward_only(self, inputs: List[dict], **kwargs: Any) -> Any:
@@ -29,6 +36,8 @@ class DisableAdapterTeacher:
 
     def __init__(self, student: Any):
         self.student = student
+        #: Forwards on the policy actor (adapter disabled), so it shares the policy's placement key.
+        self.placement_key = None
 
     def forward_only(self, inputs: List[dict], **kwargs: Any) -> Any:
         return self.student.forward_only(inputs=inputs, disable_lora=True, **kwargs)
@@ -44,6 +53,8 @@ class DynamicSelfTeacher:
 
     def __init__(self, student: Any):
         self.student = student
+        #: Forwards on the policy actor (its current weights), so it shares the policy's placement key.
+        self.placement_key = None
 
     def forward_only(self, inputs: List[dict], **kwargs: Any) -> Any:
         return self.student.forward_only(inputs=inputs, **kwargs)
@@ -58,10 +69,14 @@ class FrozenModelTeacher:
     distinct mutable reference) can reach the underlying model.
     """
 
-    def __init__(self, model: Any, *, offload: bool = False):
-        ## 这里的offload是在什么场景使用？和DynamicSelfTeacher有何区别？
+    def __init__(self, model: Any, *, offload: bool = False, placement_key: Any = None):
         self.model = model
         self.offload = offload
+        #: The DeviceGroup this frozen model occupies -- its ``remote_group``. Two frozen teachers built
+        #: into the SAME group (MOPD's packed K teachers) share one key and serialize; distinct groups
+        #: (spread) get distinct keys and overlap. A model with no group name falls back to a per-instance
+        #: token so it is never mistaken for the policy actor (``None``) or for another frozen model.
+        self.placement_key = placement_key if placement_key is not None else ('frozen', id(model))
         if offload:
             model.offload_to_cpu()
 
@@ -97,7 +112,6 @@ def response_positions(feature: Dict[str, Any]) -> List[int]:
     labels = feature.get('labels')
     if labels is None:
         return []
-    ## 这个和completion_mask关系是什么？该用什么字段？
     return [idx for idx, label in enumerate(labels) if int(label) != -100]
 
 
@@ -120,7 +134,7 @@ def encode_privileged_view(
     if template is None:
         raise ValueError('teacher_prompt requires a template to build the privileged teacher view.')
     extra = extra or {}
-    row: Dict[str, Any] = {'messages': messages, 'add_eos': False} ## add_eos代表什么
+    row: Dict[str, Any] = {'messages': messages, 'add_eos': False}
     for key in _MULTIMODAL_KEYS:
         if extra.get(key) is not None:
             row[key] = extra[key]

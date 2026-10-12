@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from .base import TrainableModel
 from .sentence_transformer_model import SentenceTransformerModel
-from .strategy import AccelerateStrategy, NativeFSDPStrategy
 from .transformers_model import TransformersModel
 from .unsloth_model import UnslothModel
 
@@ -12,8 +11,4 @@ __all__ = [
     'TransformersModel',
     'SentenceTransformerModel',
     'UnslothModel',
-    ## 下面这俩strategy导出干啥？
-    # Strategy
-    'AccelerateStrategy',
-    'NativeFSDPStrategy',
 ]

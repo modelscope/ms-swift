@@ -1,18 +1,3 @@
-"""Embedding (contrastive) assembly: run_embedding orchestration.
-
-Sibling of ``run_sft``: same atomic-Config composition, same builders, same SFTLoop. Only three
-things differ, and all three follow from embeddings being per-SEQUENCE rather than per-token:
-
-1. ``task='embedding'`` is threaded to twinkle's forward. It swaps the lm_head for an identity and
-   pools the last valid token, so the loss sees ``outputs['embeddings']`` (``[n_seqs, hidden]``,
-   L2-normalized) instead of logits.
-2. The template runs legacy's ``task_type='embedding'`` branch, which encodes each row into
-   ``anchor_*``/``positive_*``/``negative_*`` keys with ONE label per sequence, then flattens them
-   into interleaved rows at collate time. dev's next-token label shift is suppressed for this
-   task_type -- see ``DevMixin._NO_SHIFT_TASK_TYPES``.
-3. The loss comes from ``configure_embedding_loss`` (infonce / contrastive / ...) and is set on BOTH
-   backends, whereas SFT skips it under Megatron (which computes CE internally).
-"""
 from __future__ import annotations
 from typing import TYPE_CHECKING, List, Optional
 

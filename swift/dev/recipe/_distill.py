@@ -73,7 +73,7 @@ def build_frozen_teacher(rl_config: Any,
     teacher = build_model(
         teacher_cfg, teacher_dist, device_mesh=device_mesh, remote_group=remote_group, instance_id=instance_id)
     configured = configure_frozen_adapter(teacher, template, list(adapters or []), role=role)
-    return FrozenModelTeacher(configured, offload=offload)
+    return FrozenModelTeacher(configured, offload=offload, placement_key=remote_group)
 
 
 def response_ids_from_feature(feature: Dict[str, Any]) -> List[int]:

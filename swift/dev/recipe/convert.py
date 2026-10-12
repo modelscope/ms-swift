@@ -1,10 +1,11 @@
 from __future__ import annotations
 import dataclasses
-import logging
 import math
 import os
 import shutil
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -17,8 +18,7 @@ if TYPE_CHECKING:
         TemplateConfig,
     )
 
-## 为什么不用swift的logger？有多少这种问题，一起修改
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 # Forced onto MegatronArguments for every conversion. These are not user knobs: conversion is a
 # single-process CPU-side format migration, so optimizer/RNG state is meaningless (no_*_optim/rng),
@@ -348,7 +348,6 @@ def _load_hf_model_template(
     override_model = model is not None and model != model_config.model
     override_type = model_type is not None and model_config.model_type is None
     if override_model or override_type:
-        ## 这个是什么意思
         load_config = copy(model_config)
         if override_model:
             load_config.model = model

@@ -79,7 +79,7 @@ def parse_rl_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     # works for both transformers and megatron, whereas in-process ``model.generate`` is transformers-only.
     if rl_config.rl_type in {'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'}:
         rollout_config.use_vllm = True
-        rollout_config.vllm_mode = rollout_config.vllm_mode or 'colocate'
+        rollout_config.sampler_mode = rollout_config.sampler_mode or 'colocate'
         distributed_config.mode = 'ray'
     # The offline preference family (dpo/kto/cpo/orpo/simpo/rm) is RL too (RL_PLAN basic principle 2): it
     # runs mode='ray' with the policy as a Ray actor on the 'model' group, and a FULL-PARAMETER frozen

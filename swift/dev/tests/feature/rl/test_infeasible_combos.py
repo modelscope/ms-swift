@@ -132,7 +132,7 @@ def test_colocate_async_overlap_rejected(tiny_qwen2_5, rl_data, tmp_path):
     """Case 4: an overlapping async regime on a colocated sampler is refused (cannot overlap one device).
 
     ``async_mode='one_step_off'`` overlaps generation with training, which needs the sampler generating on
-    its OWN GPUs while the trainer advances; ``vllm_mode='colocate'`` time-shares ONE DeviceGroup between
+    its OWN GPUs while the trainer advances; ``sampler_mode='colocate'`` time-shares ONE DeviceGroup between
     trainer and sampler, so the two cannot run at once. ``rollout_importance_sampling_mode`` is set so the
     GRPO off-policy guard (case 5) passes first and this case isolates the colocate rejection.
     """
@@ -144,7 +144,7 @@ def test_colocate_async_overlap_rejected(tiny_qwen2_5, rl_data, tmp_path):
         dataset=rl_data.prompt_only(n=2),
         out_dir=str(tmp_path / 'out_colocate_async'),
         max_steps=1,
-        rollout_over={'async_mode': 'one_step_off', 'vllm_mode': 'colocate'},
+        rollout_over={'async_mode': 'one_step_off', 'sampler_mode': 'colocate'},
         rlhf_over={'rollout_importance_sampling_mode': 'token_truncate'},
     )
     with pytest.raises(ValueError, match='needs the sampler on its own GPUs'):
@@ -156,7 +156,7 @@ def test_async_grpo_requires_importance_sampling(tiny_qwen2_5, rl_data, tmp_path
 
     Any staleness > 0 trains on a rollout batch produced by an older policy, i.e. off-policy. GRPO trains on
     the raw sampled tokens, so it needs the token-level importance-sampling correction; without it the update
-    is silently biased. ``vllm_mode='disaggregated'`` is set so the colocate guard (case 4) does not fire
+    is silently biased. ``sampler_mode='disaggregated'`` is set so the colocate guard (case 4) does not fire
     first, isolating the missing-IS-mode rejection. (PPO's clipped surrogate already bounds the update, so
     this requirement is GRPO-specific.)
     """
@@ -168,7 +168,7 @@ def test_async_grpo_requires_importance_sampling(tiny_qwen2_5, rl_data, tmp_path
         dataset=rl_data.prompt_only(n=2),
         out_dir=str(tmp_path / 'out_async_noIS'),
         max_steps=1,
-        rollout_over={'async_mode': 'one_step_off', 'vllm_mode': 'disaggregated'},
+        rollout_over={'async_mode': 'one_step_off', 'sampler_mode': 'disaggregated'},
     )
     with pytest.raises(ValueError, match='requires off-policy correction'):
         _validate_only(configs)

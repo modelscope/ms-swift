@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from swift.dev.config.rollout_config import WeightSyncStrategyName
 from swift.dev.recipe._streaming_loop import StreamingLoopMixin
 from swift.dev.recipe.run_gkd import GKDLoop
 
@@ -52,9 +53,7 @@ class StreamingGKDLoop(StreamingLoopMixin, GKDLoop):
                  *args,
                  adapter_name: Optional[str] = None,
                  max_staleness: int = 1,
-                 ## literal？有几种选项
-                 ## 类似的地方都要修改为literal
-                 weight_sync_strategy: str = 'adapter_snapshot',
+                 weight_sync_strategy: WeightSyncStrategyName = 'adapter_snapshot',
                  allow_partial_rollout: bool = False,
                  parameter_sync_step: int = 1,
                  serialize_generation: bool = False,

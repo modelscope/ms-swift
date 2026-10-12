@@ -111,7 +111,6 @@ class ModelArch:
         instead of an ``endswith('lm_head')`` check copy-pasted into each consumer.
         """
         head = self.lm_head_name
-        ## self.language_model 类型可能是个str？下面的for name in没bug？
         return [name for name in self.language_model if not name.endswith(head)]
 
 
@@ -372,7 +371,6 @@ class ModelLoader:
     absent class costs nothing; anything beyond that overrides a ``build_*`` / ``process_*`` hook.
     ``model_cls`` is the one declaration with no safe default -- see :meth:`build_model`.
     """
-    ## 如何判断一个模型是否支持megatron
     # -- registration ---------------------------------------------------------------------------
     model_type: Optional[str] = None
     # Checkpoint ids this family covers: a bare id, or a (ms_id, hf_id) pair when the two hubs
@@ -448,7 +446,6 @@ class ModelLoader:
 
     def build_config(self, model_dir: str, **kwargs) -> PretrainedConfig:
         if self.trust_remote_code:
-            ## trust_remote_code不对称，不少地方直接穿了true，你搜下看看
             kwargs.setdefault('trust_remote_code', True)
         config_cls = _import_cls(self.config_cls) if self.config_cls else AutoConfig
         return config_cls.from_pretrained(model_dir, **kwargs)

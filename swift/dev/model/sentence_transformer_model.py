@@ -149,28 +149,13 @@ class SentenceTransformerModel(TwinkleTransformersModel):
             raise NotImplementedError('SentenceTransformerModel does not support sequence parallelism: '
                                       'a whole-sentence pooling head cannot see a sequence shard.')
         position_ids = inputs.get('position_ids')
-        if position_ids is not None and self._is_packed_position_ids(position_ids):
+        if InputProcessor._is_packed_position_ids(position_ids):
             ## 这个不支持packing吗？legacy支持吗？
             raise NotImplementedError('SentenceTransformerModel does not support padding-free packing: '
                                       'the pooling head expects one sequence per batch row.')
         features = {k: inputs[k] for k in _ST_FEATURE_KEYS if k in inputs}
         out_features = self.model(features)
         return out_features['sentence_embedding']
-
-    @staticmethod
-    def _is_packed_position_ids(position_ids) -> bool:
-        # Padding-free packing concatenates every sequence into a SINGLE [1, total] row whose position
-        # ids restart at 0 per sequence, so only a single-row layout can be a packed one -- detect it by
-        # an internal restart. A normal [B, T] batch (B > 1) is never packed: each row is one sequence
-        # that legitimately starts at position 0, so scanning across rows would false-positive on that.
-        ## 这个逻辑是不是可以复用twinkle的processor的function
-        if position_ids.dim() == 2:
-            if position_ids.shape[0] != 1:
-                return False
-            flat = position_ids.squeeze(0)
-        else:
-            flat = position_ids
-        return bool((flat[1:] == 0).any()) if flat.numel() > 1 else False
 
     def _prepare_forward(self, inputs, adapter_name):
         """Shared front half of forward/forward_only: wrap, encode inputs, split off labels."""

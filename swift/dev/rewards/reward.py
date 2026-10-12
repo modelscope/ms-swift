@@ -96,6 +96,9 @@ class _ScalarRewardModelPlugin:
     def __init__(self, model: Any, template: Any):
         self.model = model
         self.template = template
+        #: ``overlap_by_placement`` key: this reward model's own actor identity. Each RM is a distinct model
+        #: on its own ``reward_<i>`` DeviceGroup, so separate reward models score concurrently.
+        self.placement_key = id(model)
 
     def __call__(self, inputs: Sequence[Dict[str, Any]], **kwargs):
         del kwargs
@@ -223,18 +226,33 @@ def compute_reward_model_scores(inputs: Sequence[Dict[str, Any]],
     Each row contains the complete ``messages`` conversation plus the original dataset columns. A
     plugin may return a tensor or a Python sequence; ``None`` is retained as ``nan`` so weighted
     aggregation has the same semantics as rule rewards.
+
+    Each plugin is a frozen reward model on its OWN DeviceGroup, so the plugin forwards overlap across
+    their disjoint placement keys (P1a) instead of running one after another; a plugin without a
+    ``placement_key`` falls back to ``None`` and chains serially (the conservative default). Only the
+    schedule changes -- each column holds the identical scores the serial path produced.
     """
+    from swift.dev.recipe._scoring import overlap_by_placement
+
     rewards = torch.zeros((len(inputs), len(plugins)), dtype=torch.float32)
-    for index, plugin in enumerate(plugins):
-        output = plugin(inputs=copy.deepcopy(list(inputs)))
+    rows = list(inputs)
+
+    def score(plugin):
+        # The plugin deep-copies each row before ``template.encode`` (a driver-local mutation), so the shared
+        # ``rows`` need no outer copy here; under Ray the model forward serializes them to the worker anyway.
+        output = plugin(inputs=rows)
         if isinstance(output, torch.Tensor):
             scores = output.detach().float().cpu().reshape(-1)
         else:
             scores = torch.tensor(
-                [score if score is not None else torch.nan for score in output], dtype=torch.float32).reshape(-1)
-        if scores.numel() != len(inputs):
+                [s if s is not None else torch.nan for s in output], dtype=torch.float32).reshape(-1)
+        if scores.numel() != len(rows):
             name = getattr(plugin, '__name__', plugin.__class__.__name__)
-            raise ValueError(f'reward model plugin {name!r} returned {scores.numel()} scores for {len(inputs)} inputs.')
+            raise ValueError(f'reward model plugin {name!r} returned {scores.numel()} scores for {len(rows)} inputs.')
+        return scores
+
+    tasks = [(getattr(plugin, 'placement_key', None), lambda plugin=plugin: score(plugin)) for plugin in plugins]
+    for index, scores in enumerate(overlap_by_placement(tasks)):
         rewards[:, index] = scores
     return rewards
 

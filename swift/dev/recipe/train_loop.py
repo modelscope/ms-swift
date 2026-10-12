@@ -10,18 +10,19 @@ SFT orchestration.
 """
 from __future__ import annotations
 import json
-import logging
 import math
 import os
 import random
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
+from swift.dev.utils.logger import get_logger
+
 if TYPE_CHECKING:
     from swift.dev.config import LoggingConfig
     from swift.dev.model import TrainableModel
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 #: Cached TWINKLE_PERF gate; None until first read. Profiling is opt-in, so the
 #: default path stays a single boolean check with no instrumentation.

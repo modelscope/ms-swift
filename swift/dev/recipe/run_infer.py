@@ -1,27 +1,3 @@
-"""run_infer: offline inference over a dataset, on twinkle's Sampler.
-
-dev counterpart of legacy ``swift infer`` (``swift/pipelines/infer/infer.py::SwiftInfer`` plus
-``infer/utils.py``). It covers the same ground as legacy:
-
-- three generation backends (vllm / sglang / transformers; lmdeploy is deliberately dropped),
-- LoRA, either applied at request time or merged in first,
-- the pooling task types (seq_cls / embedding / reranker), which run a forward pass rather than
-  generation: on vLLM/SGLang through the sampler's ``encode``, on transformers through a HF forward,
-- a generative reranker, which is a decoder-only causal LM scored off generation (the yes/no logprob
-  difference of its first token) on vLLM/SGLang, and through a HF forward on transformers,
-- incremental result writing with cross-process gathering, and the acc/rouge metrics. Streaming to
-  the terminal is the interactive REPL's job, which now lives in :mod:`swift.dev.recipe.infer_tui`.
-
-What is structured differently from legacy, and why:
-
-- generation and pooling are two functions with one dispatcher, instead of ``task_type`` branches
-  threaded through a single ``_batch_infer``. They share the sampler surface but not the call -- one
-  decodes tokens via ``sample``, the other runs one forward via ``encode`` (or a HF forward on
-  transformers) -- so keeping them apart is what stops each from carrying the other's cases.
-- there is no ``__getattr__`` proxy onto the engine. Legacy's ``SwiftInfer.infer`` was actually the
-  engine's method, which made the public surface depend on the backend; here the recipe owns it.
-- the sampler is built once and shut down in a ``finally``, so a crash mid-run still frees the GPU.
-"""
 from __future__ import annotations
 import copy
 import hashlib
@@ -276,6 +252,8 @@ def _run_generative(
     # already rejected a non-jsonl format together with resume. A 'dpo' run that picks one forfeits its
     # crash-safe checkpointing -- say so rather than let the choice pass silently.
     is_line_format = infer_config.store_format == 'jsonl'
+    ## 这里不对吧，仍然可以存为一行，比如positive——mesages和negative-messages
+    ## 利用刚写的数据湖存储就可以实现？
     if not is_line_format and output_format == 'dpo':
         logger.warning(f"output_format='dpo' with store_format={infer_config.store_format!r} writes one store "
                        'at the end, so it cannot checkpoint/resume a long best-of-n run; use --store_format '
@@ -342,6 +320,8 @@ def _run_generative(
 
     batches = _plan_batches(len(rows), infer_config.batch_size, infer_config.max_batches)
     params = to_sampling_params(generation_config, num_samples=num_return)
+    ## 这几个选项是否应该由数据湖来完成支持？
+    ## 数据湖来决定flush时机和阅读恢复、续写
     if output_path and not is_line_format:
         writer = _BatchWriter(output_path, infer_config.store_format, infer_config.store_fields)
     elif use_checkpoint:
@@ -2288,6 +2268,7 @@ class _CandidateCache:
         if self.by_prompt:
             logger.info(f'run_infer: cache covers {len(self.by_prompt)} prompts from {len(cache_files)} file(s)')
 
+    ## 这里有问题吧？为什么不使用数据湖？
     def _load(self, path: str) -> None:
         with open(path, encoding='utf-8') as f:
             for line in f:

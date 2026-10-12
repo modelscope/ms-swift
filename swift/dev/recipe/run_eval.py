@@ -1,17 +1,3 @@
-"""In-process evaluation: build a twinkle sampler and drive it through EvalScope's Native runner.
-
-``swift eval`` scores a model by constructing a twinkle sampler in this process and handing it to
-``twinkle_agentic.evaluator.Evaluator``, which adapts the sampler to EvalScope's Native (custom-model)
-runner. There is no HTTP deployment and no remote service: the sampler *is* the model under test, so a
-LoRA adapter loads live into the engine and generation is driven per trajectory by EvalScope's own
-concurrency -- a continuous-batching backend (vLLM/SGLang) keeps the engine saturated without one
-trajectory waiting on another.
-
-The EvalScope adaptation itself (dataset normalization, TaskConfig, driving the run, the report rows) lives
-in ``swift.dev.eval.evalscope_runner``, shared with the in-training generative eval; this recipe owns the
-``swift eval``-specific parts -- the backend guard, a per-run sampler it builds and closes, and the result
-jsonl.
-"""
 from __future__ import annotations
 import datetime as dt
 from typing import Any, Dict, List, Optional

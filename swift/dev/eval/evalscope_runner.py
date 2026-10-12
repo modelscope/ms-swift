@@ -86,6 +86,7 @@ def summarize(task_config) -> Any:
     return Summarizer.get_report_from_cfg(task_cfg=task_config)
 
 
+## 改为run_evaluator
 def run_evalscope(sampler,
                   template,
                   *,

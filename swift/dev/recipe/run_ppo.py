@@ -27,9 +27,10 @@ state and does not yet cover sequence-parallel / packed layouts, so the critic r
 Placement (colocate vs heterogeneous) and weight-sync are identical to run_grpo.
 """
 from __future__ import annotations
-import logging
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
+
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -50,7 +51,7 @@ if TYPE_CHECKING:
     )
     from swift.dev.model import TrainableModel
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 _IGNORE_INDEX = -100
 
@@ -129,7 +130,7 @@ def run_ppo(
     auxiliary_groups += [(_reward_group(i), 1) for i in range(len(rl_config.reward_model or []))]
     groups, sampler_remote_group, colocate = plan_rl_device_groups(
         distributed_config.nproc_per_node,
-        rollout_config.vllm_mode,
+        rollout_config.sampler_mode,
         sampler_world_size,
         auxiliary_groups=auxiliary_groups)
     # PPO runs SP=1: the per-token value-head critic does not cover sequence-parallel / packed layouts
@@ -494,18 +495,27 @@ class PPOLoop:
         self.history: list = []
 
     def _score_rewards(self, samples: List[Any]) -> List[float]:
-        """Scalar reward per sample: mean of the reward model(s)' seq_cls score (0 if none)."""
+        """Scalar reward per sample: mean of the reward model(s)' seq_cls score (0 if none).
+
+        Each reward model is a separate Ray actor on its own ``reward_<i>`` DeviceGroup, so their forwards
+        overlap (P1a) instead of running one after another; ``id(rm)`` is the disjointness key (a distinct
+        actor per model). The mean is unchanged -- only the schedule differs.
+        """
         if not self.reward_models:
             return [0.0] * len(samples)
+        from swift.dev.recipe._scoring import overlap_by_placement
         features = [s.input_feature for s in samples]
-        totals = [0.0] * len(samples)
-        for rm in self.reward_models:
+
+        def score(rm):
             # task='seq_cls': the reward model is a num_labels=1 classification head whose forward pools to a
             # [B, 1] score, NOT vocab logits. Forwarding it as the default 'causal_lm' would make twinkle
             # gather label logps out of that [B, 1] score (a shape error) -- the samples carry the policy's
             # labeled features, so labels is not None and the logps path would otherwise fire.
-            scores = rm.forward_only(inputs=features, return_logits=True,
-                                     task='seq_cls')['logits'].reshape(-1).tolist()
+            return rm.forward_only(inputs=features, return_logits=True, task='seq_cls')['logits'].reshape(-1).tolist()
+
+        per_model = overlap_by_placement([(id(rm), lambda rm=rm: score(rm)) for rm in self.reward_models])
+        totals = [0.0] * len(samples)
+        for scores in per_model:
             totals = [t + float(s) for t, s in zip(totals, scores)]
         return [t / len(self.reward_models) for t in totals]
 
@@ -517,26 +527,32 @@ class PPOLoop:
             return []
         return [i for i, label in enumerate(labels) if label != _IGNORE_INDEX]
 
-    def _token_values(self, sample: Any, positions: List[int]) -> List[float]:
-        """The critic's per-response-token value ``V(s_t)`` at rollout time (the GAE input + clip anchor)."""
-        out = self.value_model.forward_only(inputs=[sample.input_feature], return_logits=True, task='value')
-        values = out.get('logits') if isinstance(out, dict) else None
-        if values is None:
-            raise RuntimeError("value model forward returned no logits; forward the critic with task='value'.")
-        values = values.reshape(-1)
-        return [float(values[p]) for p in positions]
+    def _batched_token_values(self, features: List[dict]) -> List[List[float]]:
+        """The critic's per-response-token value ``V(s_t)`` for a batch (the GAE input + clip anchor).
 
-    def _ref_logps_tokens(self, sample: Any, positions: List[int]) -> Optional[List[float]]:
-        """Per-response-token reference log-probs for the KL penalty (disable_lora, or a frozen ref)."""
+        Batched over ``train_batch_size`` chunks (P0): one ``forward_only`` per chunk, not one per sample,
+        so DP>1 feeds every rank (a length-1 ``inputs`` would starve all but one) and a rollout is not N
+        serial blocking round-trips. ``task='value'`` keeps the seq_cls head's PER-TOKEN output.
+        """
+        from swift.dev.recipe._scoring import batched_response_scores
+        return batched_response_scores(
+            self.value_model, features, train_batch_size=self.train_batch_size,
+            output_key='logits', forward_kwargs={'return_logits': True, 'task': 'value'})
+
+    def _batched_ref_logps(self, features: List[dict]) -> List[Optional[List[float]]]:
+        """Per-response-token reference log-probs for the KL penalty, batched (disable_lora, or a frozen ref).
+
+        ``allow_missing`` preserves the old per-sample contract: a reference forward with no ``logps`` means
+        "no KL penalty" (``None``) rather than an error.
+        """
+        from swift.dev.recipe._scoring import batched_response_scores
         if self.reference == 'disable_lora':
-            out = self.model.forward_only(inputs=[sample.input_feature], disable_lora=True)
+            scorer, forward_kwargs = self.model, {'disable_lora': True}
         else:
-            out = self.reference.forward_only(inputs=[sample.input_feature])
-        logps = out.get('logps') if isinstance(out, dict) else None
-        if logps is None:
-            return None
-        logps = logps.reshape(-1)
-        return [float(logps[p]) for p in positions]
+            scorer, forward_kwargs = self.reference, {}
+        return batched_response_scores(
+            scorer, features, train_batch_size=self.train_batch_size,
+            output_key='logps', forward_kwargs=forward_kwargs, allow_missing=True)
 
     def _token_rewards(self, sample: Any, ref_tokens: Optional[List[float]], rm_score: float) -> List[float]:
         """Per-token reward: ``-kl_coef * (logp_t - ref_logp_t)`` with the RM scalar at the final token."""
@@ -575,15 +591,18 @@ class PPOLoop:
         """
         cfg = self.rl_config
         rm_scores = self._score_rewards(samples)
+        positions_all = [self._response_positions(sample.input_feature) for sample in samples]
+        # Drop samples with no response tokens, then batch the two whole-rollout forwards (critic values +
+        # reference logps) over the KEPT features -- one chunked ``forward_only`` each, not one per sample
+        # (P0: the per-sample form was 2N serial blocking round-trips that starved DP>1).
+        kept = [(sample, positions_all[i], rm_scores[i]) for i, sample in enumerate(samples) if positions_all[i]]
+        kept_features = [sample.input_feature for sample, _, _ in kept]
+        values_all = self._batched_token_values(kept_features)
+        ref_all = self._batched_ref_logps(kept_features)
         plans: List[list] = []
         sample_rewards: List[float] = []
         completion_lengths: List[int] = []
-        for sample, rm in zip(samples, rm_scores):
-            positions = self._response_positions(sample.input_feature)
-            if not positions:
-                continue
-            values = self._token_values(sample, positions)
-            ref_tokens = self._ref_logps_tokens(sample, positions)
+        for (sample, positions, rm), values, ref_tokens in zip(kept, values_all, ref_all):
             rewards = self._token_rewards(sample, ref_tokens, rm)
             advantages, returns = self._gae(rewards, values)
             # GAE returns [1, T] tensors; flatten to the same per-token float lists the rest of the plan
@@ -609,7 +628,7 @@ class PPOLoop:
         mini-batch is a config error (the rollout width is generation_batch_size * num_generations, the same
         every round), so it raises rather than silently training nothing.
         """
-        from swift.dev.recipe.grpo import split_mini_batches
+        from swift.dev.recipe._scoring import split_mini_batches
 
         mini_batches = split_mini_batches(plans, self.train_batch_size)
         if not mini_batches:

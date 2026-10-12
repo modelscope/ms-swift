@@ -24,7 +24,6 @@ heterogeneous or colocate device groups).
 """
 from __future__ import annotations
 import copy
-import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from swift.dev.recipe.grpo import GRPOLoop, RolloutBatch
@@ -40,6 +39,7 @@ from swift.dev.recipe.run_grpo import (
     _sampler_world_size,
     plan_rl_device_groups,
 )
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -59,7 +59,7 @@ if TYPE_CHECKING:
         TunerConfig,
     )
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def _rft_kept_per_prompt(rl_config: 'RLConfig', num_samples: int) -> int:
@@ -146,7 +146,7 @@ def run_rft(
     auxiliary_groups: List[Tuple[str, int]] = [(_reward_group(i), 1) for i in range(len(reward_models))]
     groups, sampler_remote_group, colocate = plan_rl_device_groups(
         distributed_config.nproc_per_node,
-        rollout_config.vllm_mode,
+        rollout_config.sampler_mode,
         sampler_world_size,
         auxiliary_groups=auxiliary_groups)
     _initialize_twinkle_rl(

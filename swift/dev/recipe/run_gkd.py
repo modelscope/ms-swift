@@ -1,29 +1,4 @@
-"""On-policy GKD assembly: run_gkd orchestration (generalized knowledge distillation).
-
-Peer of ``run_grpo`` / ``run_rft`` for GKD. GKD trains a student to match a frozen teacher on sequences
-the STUDENT itself generates, so it learns to correct its own mistakes rather than only imitating a fixed
-corpus. This recipe is built on the SAME online-RL primitives as GRPO/RFT -- a weight-syncing vLLM
-sampler rollout over Ray, a data-parallel trainer, and design-B mini-batches -- because on-policy
-generation must be backend-general (a separate sampler + weight sync works for both transformers and
-megatron; in-process ``model.generate`` is transformers-only and megatron raises). The teacher is a
-frozen twinkle model actor (or the LoRA student's own adapter-disabled base) scored with ``forward_only``,
-never an HTTP server (no-server / all-Ray premise, RL_PLAN §2.H).
-
-Per round (one rollout, split into ``train_batch_size`` mini-batches):
-  1. with probability ``lmbda`` roll out on-policy completions from the student's live weights (pushed
-     into the sampler first, so the behaviour policy tracks the trained one); otherwise take the
-     dataset's own completions for this round (GKD's on/off-policy mixing);
-  2. score each mini-batch with the teacher ``forward_only(return_logits=True)`` -> full-vocab
-     ``teacher_logits``, lazily per mini-batch so peak memory is one mini-batch, not the whole round;
-  3. student ``forward_backward(teacher_logits=...)`` -> GKDLoss (β-JSD, optional top-k); ``sft_alpha>0``
-     adds supervised CE on the dataset-sourced rounds.
-
-Placement, backend and Ray requirements are therefore identical to ``run_grpo`` (Ray-only, vLLM sampler,
-heterogeneous or colocate device groups).
-"""
 from __future__ import annotations
-import copy
-import logging
 import random
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
 
@@ -33,6 +8,7 @@ from swift.dev.recipe._distill import (
     distill_rows_from_dataset,
     distill_sampling_params,
 )
+from swift.dev.recipe._scoring import copy_inputs
 from swift.dev.recipe._teacher import DisableAdapterTeacher
 from swift.dev.recipe.grpo import GRPOLoop
 from swift.dev.recipe.run_grpo import (
@@ -45,6 +21,7 @@ from swift.dev.recipe.run_grpo import (
     plan_rl_device_groups,
     teacher_group_world_size,
 )
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -65,7 +42,7 @@ if TYPE_CHECKING:
     )
     from swift.dev.model import TrainableModel
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def run_gkd(
@@ -131,7 +108,7 @@ def run_gkd(
     backend = _sampler_backend(rollout_config)
     sampler_world_size = _sampler_world_size(rollout_config, backend)
     groups, sampler_remote_group, colocate = plan_rl_device_groups(distributed_config.nproc_per_node,
-                                                                   rollout_config.vllm_mode, sampler_world_size,
+                                                                   rollout_config.sampler_mode, sampler_world_size,
                                                                    teacher_world_size)
     _initialize_twinkle_rl(
         distributed_config,
@@ -417,7 +394,7 @@ class GKDLoop(GRPOLoop):
         then handed to ``forward_backward``, which slice_dp-splits them along dim0 to match each rank's
         ``inputs`` shard.
         """
-        inputs = [copy.deepcopy(feature) for feature in features]
+        inputs = copy_inputs(features)
         outputs = self.teacher.forward_only(inputs=inputs, return_logits=True)
         return outputs['logits']
 
@@ -454,7 +431,7 @@ class GKDLoop(GRPOLoop):
                 break
             teacher_kwargs = self._teacher_kwargs(mini_batch, use_student)
             self._run_micro_step({
-                'inputs': [copy.deepcopy(row.feature) for row in mini_batch],
+                'inputs': copy_inputs([row.feature for row in mini_batch]),
                 'gradient_accumulation_steps': self.gradient_accumulation_steps,
                 **self._forward_kwargs(teacher_kwargs, use_student),
             })

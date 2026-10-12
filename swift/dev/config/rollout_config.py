@@ -5,6 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
+#: Weight-publication strategy name the streaming RL driver selects (see ``RolloutConfig.
+#: weight_sync_strategy``). A shared alias so the config field and the recipe constructor params
+#: cannot drift from one another. Distinct from twinkle's ``WeightSyncStrategy`` ABC, which is the
+#: strategy OBJECT this name builds via ``build_weight_sync_strategy``.
+WeightSyncStrategyName = Literal['in_place', 'adapter_snapshot']
+
 
 @dataclass
 class RolloutConfig:
@@ -61,13 +67,15 @@ class RolloutConfig:
 
     # === Rollout Mode ===
     use_vllm: bool = False
-    #: Trainer/sampler GPU placement for the online-RL rollout (any backend, vLLM or SGLang -- the
-    #: ``vllm_`` prefix is historical). ``'colocate'`` shares one DeviceGroup (CUDA-IPC weight sync);
-    #: ``'disaggregated'`` puts the sampler on disjoint GPUs (NCCL weight sync). ``'server'`` is a legacy
-    #: alias of ``'disaggregated'``: it is a historical misnomer, NOT an HTTP server -- the RL training path
-    #: has no HTTP server, the sampler is a Ray actor reached over a DeviceGroup (see plan §2.H).
-    #: ``None`` disaggregates (plan_rl_device_groups treats anything but ``'colocate'`` as disaggregated).
-    vllm_mode: Optional[Literal['disaggregated', 'server', 'colocate']] = None
+    #: Trainer/sampler GPU placement for the online-RL rollout. Backend- and sampler-agnostic (vLLM or
+    #: SGLang, megatron or transformers), hence the neutral name -- renamed from the v4 ``vllm_mode``, which
+    #: the ``--vllm_mode`` CLI flag still maps onto as a legacy alias. ``'colocate'`` shares one DeviceGroup
+    #: (CUDA-IPC weight sync); ``'disaggregated'`` puts the sampler on disjoint GPUs (NCCL weight sync).
+    #: ``'server'`` is a legacy alias of ``'disaggregated'``: it is a historical misnomer, NOT an HTTP server --
+    #: the RL training path has no HTTP server, the sampler is a Ray actor reached over a DeviceGroup (see
+    #: plan §2.H). ``None`` disaggregates (plan_rl_device_groups treats anything but ``'colocate'`` as
+    #: disaggregated).
+    sampler_mode: Optional[Literal['disaggregated', 'server', 'colocate']] = None
     vllm_enable_lora: bool = False
     #: Which rollout engine backs the independent-process samplers (GRPO/PPO/RFT and the distill family).
     #: Both ``'vllm'`` and ``'sglang'`` are wired: the loop weight-syncs the trained policy into the
@@ -112,7 +120,7 @@ class RolloutConfig:
     #: Any staleness > 0 is off-policy: GRPO trains on raw sampled tokens, so it MUST be paired with
     #: ``rollout_importance_sampling_mode``; PPO's clipped surrogate (like the distillation family's teacher
     #: target) already bounds the update, so it needs no extra correction. The two OVERLAPPING modes
-    #: (``'one_step_off'``/``'fully_async'``) both require ``vllm_mode='disaggregated'`` (colocate time-shares
+    #: (``'one_step_off'``/``'fully_async'``) both require ``sampler_mode='disaggregated'`` (colocate time-shares
     #: one DeviceGroup and cannot overlap) and are incompatible with ``dynamic_sample`` / ``remax`` (a
     #: sync-only feature needs the whole batch up front; under ``'none'`` it falls back to ``_run_sync``
     #: instead). Multi-turn is NOT refused: GRPO wires it before the dispatch and its streaming loop admits
@@ -158,7 +166,7 @@ class RolloutConfig:
     #:   to generation each cycle (use ``'in_place'`` there).
     #: - ``'in_place'``: overwrite the sampler's single live weight copy through twinkle's
     #:   ``CheckpointEngineManager`` -- CUDA IPC when colocated, NCCL when disaggregated (the transport
-    #:   follows ``vllm_mode``, it is NOT a separate strategy). At staleness 0 (``'none'``) the drain runs
+    #:   follows ``sampler_mode``, it is NOT a separate strategy). At staleness 0 (``'none'``) the drain runs
     #:   before every publish, so nothing is in flight and ``allow_partial_rollout`` is not required. Under an
     #:   OVERLAPPING driver -- GRPO/PPO ``'one_step_off'``/``'fully_async'`` and the distillation family's
     #:   ``'one_step_off'`` -- a buffer always has a generation in flight when a version is published, so
@@ -168,7 +176,7 @@ class RolloutConfig:
     #:   across the update and its logprobs stay correctable. It supports a full-parameter policy (merged base
     #:   weights) as well as LoRA, and is the only strategy a colocated or full-parameter run can use (dev
     #:   derives it there). ``validate._check_streaming_publication`` enforces the pairing.
-    weight_sync_strategy: Literal['in_place', 'adapter_snapshot'] = 'adapter_snapshot'
+    weight_sync_strategy: WeightSyncStrategyName = 'adapter_snapshot'
     #: How often a just-trained policy is published to the sampler, in consume-reported steps: one weight
     #: publication every ``parameter_sync_step`` optimizer steps (GRPO) / recorded steps (PPO). ``1`` (the
     #: default) publishes every step -- the densest sound cadence, matching the historical per-step sync;

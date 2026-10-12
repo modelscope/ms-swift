@@ -12,6 +12,8 @@ from twinkle_agentic.async_rl.types import PartitionAdmission, RLContext, Rollou
 from twinkle_agentic.async_rl.weight_sync import (AdapterSnapshotSync, WeightSyncStrategy,
                                                   build_weight_sync_strategy)
 
+from swift.dev.config.rollout_config import WeightSyncStrategyName
+
 
 class StreamingLoopMixin:
     """The algorithm-agnostic per-sample streaming half of an online dev loop (composed, not inherited).
@@ -29,7 +31,7 @@ class StreamingLoopMixin:
     def _check_streaming_config(*,
                                 adapter_name: Optional[str],
                                 max_staleness: int,
-                                weight_sync_strategy: str,
+                                weight_sync_strategy: WeightSyncStrategyName,
                                 allow_partial_rollout: bool,
                                 parameter_sync_step: int,
                                 serialize_generation: bool = False) -> None:
@@ -115,7 +117,7 @@ class StreamingLoopMixin:
                         *,
                         adapter_name: Optional[str],
                         max_staleness: int,
-                        weight_sync_strategy: str,
+                        weight_sync_strategy: WeightSyncStrategyName,
                         allow_partial_rollout: bool,
                         parameter_sync_step: int,
                         run_id: str,

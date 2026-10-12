@@ -1,9 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 import dataclasses
-import logging
 import os
 from typing import TYPE_CHECKING, Optional
+
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
         TunerConfig,
     )
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def process_configs(
@@ -679,7 +680,7 @@ def _derive_weight_sync_strategy(rollout_config: 'RolloutConfig', rl_config: Opt
 
     * a FULL-PARAMETER policy (``tuner='full'``) has no adapter to pin, so ``in_place`` is its only sound
       publication;
-    * a COLOCATED sampler (``vllm_mode='colocate'``, one DeviceGroup time-shared with the trainer) hands the
+    * a COLOCATED sampler (``sampler_mode='colocate'``, one DeviceGroup time-shared with the trainer) hands the
       device back to generation each cycle via the publish's weight sync, which only ``in_place`` performs
       (``adapter_snapshot`` publishes by writing a new path with no sync), so ``in_place`` is forced there
       regardless of tuner.
@@ -709,7 +710,7 @@ def _derive_weight_sync_strategy(rollout_config: 'RolloutConfig', rl_config: Opt
     if 'weight_sync_strategy' in changed:
         return
     tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
-    colocate = rollout_config.vllm_mode == 'colocate'
+    colocate = rollout_config.sampler_mode == 'colocate'
     if not (colocate or tuner == 'full'):
         return  # a disaggregated LoRA run pins each version by adapter path (the default) -- sound as-is.
     rollout_config.weight_sync_strategy = 'in_place'

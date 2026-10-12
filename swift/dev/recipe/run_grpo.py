@@ -1,43 +1,8 @@
-"""Online GRPO assembly: run_grpo orchestration with real weight synchronization.
-
-Peer of ``run_sft``, for the on-policy RL family (GRPO and, via ``RLConfig``, its GSPO/estimator
-variants). Unlike the ``grpo.py`` smoke loop -- which keeps the rollout engine on its INITIAL weights
-and is therefore not algorithmically-correct GRPO -- this recipe closes the loop: after every
-optimizer step the trained policy is pushed into the rollout sampler via twinkle's
-``CheckpointEngineManager`` before the next rollout, so the behaviour policy tracks the trained one.
-
-Two placements, one code path (see :func:`plan_rl_device_groups`):
-
-  - disaggregated (``RolloutConfig.vllm_mode='disaggregated'``, or its legacy alias ``'server'``, or the
-    ``None`` default): trainer and sampler occupy DISJOINT GPUs -- a ``model`` DeviceGroup on ranks
-    ``[0, M)`` and a ``sampler`` DeviceGroup on ``[M, M+S)``. Weight sync is an NCCL broadcast
-    (``CheckpointEngineManager(mode='standalone')``). This mirrors
-    ``twinkle/tests/sampler/test_weight_sync.py`` exactly.
-  - colocate (``vllm_mode='colocate'``): trainer and sampler SHARE the same GPUs -- a single
-    DeviceGroup that both roles are placed in (two ``remote_class`` roles on one DeviceGroup land on
-    the same devices with independent rank spaces, so no placement change is needed). NCCL refuses two
-    ranks on one device, so weight sync is a per-GPU CUDA IPC handover
-    (``CheckpointEngineManager(mode='colocate')``), and because the two do not fit at once the recipe
-    runs the memory schedule the manager documents: wake the sampler's weights, sync, offload the
-    trainer, wake the KV cache, generate, sleep the sampler, reload the trainer.
-
-Rollout backend is twinkle's weight-syncable sampler -- vLLM or SGLang, chosen by
-``RolloutConfig.rollout_sampler`` (NOT ``swift.dev.rollout.RolloutEngine``): weight sync requires a
-``CheckpointEngineMixin`` Ray-actor sampler with a ``device_mesh``, which those samplers have and
-``RolloutEngine`` (a bare ``GRPOVllmEngine``) does not. old_logps come from the sampler's
-per-token ``sequence.logprobs``; the training feature is rebuilt from the prompt+response token ids
-with the SAME next-token label shift ``RolloutEngine`` applies (contract 14/15), so the importance
-ratio is not silently off by one.
-
-NOTE ON VERIFICATION: the weight-sync / colocate paths need a Ray + multi-GPU + vLLM environment and
-are covered by ``@pytest.mark.slow`` tests, not the normal suite; :func:`plan_rl_device_groups` is a
-pure function with its own unit test.
-"""
 from __future__ import annotations
-import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from swift.dev.rollout import RolloutEngine
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -57,7 +22,7 @@ if TYPE_CHECKING:
         TunerConfig,
     )
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 #: DeviceGroup names. The trainer is always 'model' (build_model targets it); the sampler is a
 #: separate 'sampler' group when disaggregated, or shares 'model' when colocated.
@@ -88,6 +53,17 @@ def _prm_group(index: int) -> str:
     (outcome vs per-step prefix) and must not share one forward.
     """
     return f'prm_{index}'
+
+
+def _teacher_group(index: int) -> str:
+    """The DeviceGroup name for the ``index``-th frozen teacher when MOPD SPREADS its K teachers apart.
+
+    ``auxiliary_placement='spread'`` gives each of MOPD's K domain teachers its own group (and thus a
+    parallel ``forward_only``); ``'pack'`` (the default) instead builds all K into the single shared
+    ``_TEACHER_GROUP`` and scores them serially. Distinct from ``_TEACHER_GROUP`` so the spread groups never
+    collide with the packed one.
+    """
+    return f'teacher_{index}'
 
 
 def _split_prm_channel(prm_items: Optional[Sequence[Any]]) -> Tuple[List[Any], Optional[str]]:
@@ -127,7 +103,7 @@ def teacher_group_world_size(rl_config: RLConfig) -> int:
     return DeviceMesh.from_spec(spec).world_size
 
 
-def plan_rl_device_groups(nproc_per_node: int, vllm_mode: Optional[str], sampler_world_size: int,
+def plan_rl_device_groups(nproc_per_node: int, sampler_mode: Optional[str], sampler_world_size: int,
                           teacher_world_size: int = 0,
                           auxiliary_groups: Sequence[Tuple[str, int]] = ()) -> Tuple[List[Tuple[str, List[int]]], str,
                                                                                       bool]:
@@ -136,7 +112,7 @@ def plan_rl_device_groups(nproc_per_node: int, vllm_mode: Optional[str], sampler
     Args:
         nproc_per_node: the TRAINER's GPU count (== DistributedConfig.nproc_per_node, which sizes the
             model's data-parallel mesh in build_model).
-        vllm_mode: 'colocate' shares the trainer's GPUs; anything else (None/'disaggregated', or its
+        sampler_mode: 'colocate' shares the trainer's GPUs; anything else (None/'disaggregated', or its
             legacy alias 'server') disaggregates.
         sampler_world_size: the sampler's GPU count, computed per backend by :func:`_sampler_world_size`
             (vLLM tp*dp; SGLang tp*pp*dp).
@@ -169,10 +145,10 @@ def plan_rl_device_groups(nproc_per_node: int, vllm_mode: Optional[str], sampler
     if teacher_world_size < 0:
         raise ValueError(f'teacher_world_size must be >= 0, got {teacher_world_size}.')
 
-    if vllm_mode == 'colocate':
+    if sampler_mode == 'colocate':
         if sampler_world_size > nproc_per_node:
             raise ValueError(f'colocate needs the sampler ({sampler_world_size} GPUs) to fit within the trainer '
-                             f'GPUs ({nproc_per_node}); it shares them. Use vllm_mode="disaggregated" to '
+                             f'GPUs ({nproc_per_node}); it shares them. Use sampler_mode="disaggregated" to '
                              'place the sampler on its own GPUs.')
         groups = [(_MODEL_GROUP, list(range(nproc_per_node)))]
         sampler_remote_group, colocate, next_rank = _MODEL_GROUP, True, nproc_per_node
@@ -235,17 +211,6 @@ def _initialize_twinkle_rl(distributed_config: DistributedConfig,
         mode='ray',
         nproc_per_node=total,
         extra_torch_kwargs={'seed': seed, 'full_determinism': full_determinism, 'tf32': tf32},
-        # Ray mode -- unlike local -- does NOT auto-install a global default DeviceMesh (twinkle.initialize
-        # builds one only for mode='local'). A Ray object placed with device_mesh=None then falls back to
-        # that missing global and is rejected ("Set device_mesh=DeviceMesh(...) to enable ray"). The trainer
-        # model dodges this by passing an explicit mesh (build_ray_dp_mesh, via _apply_ray_placement), but
-        # the rollout sampler is built with device_mesh=None and relies on the global. Install the SAME
-        # mesh the model carries (pure-DP, or dp x ulysses under sequence_parallel_size) as the global
-        # default so the colocated sampler inherits it -- which is exactly the mesh build_ray_dp_mesh's
-        # contract says a colocated engine must share with the model it syncs weights from. Sized to
-        # nproc_per_node (the trainer/colocate group); giving a disaggregated 'sampler' group its own
-        # differently-sized mesh is a later-stage concern (rollout sampler universalization), not
-        # exercised by the colocate default.
         global_device_mesh=build_ray_dp_mesh(distributed_config, sequence_parallel_size),
         # --ray_exp_name names this Ray run (cluster/worker-name prefix); online RL is always ray mode.
         name=distributed_config.ray_exp_name,
@@ -336,7 +301,7 @@ def run_grpo(
 ) -> List[dict]:
     """Assemble and run online GRPO with weight sync. Returns the loss/metric history.
 
-    Placement is chosen from ``rollout_config.vllm_mode`` (see :func:`plan_rl_device_groups`):
+    Placement is chosen from ``rollout_config.sampler_mode`` (see :func:`plan_rl_device_groups`):
     ``DistributedConfig.nproc_per_node`` is the TRAINER GPU count, and the sampler's GPUs
     (:func:`_sampler_world_size`, per backend) are placed alongside (disaggregated) or shared (colocate).
     """
@@ -395,7 +360,7 @@ def run_grpo(
         auxiliary_groups.append((_prm_group(0), 1))
     groups, sampler_remote_group, colocate = plan_rl_device_groups(
         distributed_config.nproc_per_node,
-        rollout_config.vllm_mode,
+        rollout_config.sampler_mode,
         sampler_world_size,
         teacher_world_size=teacher_world_size,
         auxiliary_groups=auxiliary_groups)
@@ -743,7 +708,7 @@ def _build_frozen_model(model_config: ModelConfig,
         device_mesh = DeviceMesh.from_spec(parallel_spec)
     frozen = build_model(config, aux_dist, device_mesh=device_mesh, remote_group=remote_group)
     configured = configure_frozen_adapter(frozen, template, adapters or [], role=adapter_role)
-    return FrozenModelTeacher(configured)
+    return FrozenModelTeacher(configured, placement_key=remote_group)
 
 
 def _build_reward_model_scorers(model_config: ModelConfig, template_config: TemplateConfig, rl_config: RLConfig,

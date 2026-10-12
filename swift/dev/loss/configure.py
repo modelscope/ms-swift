@@ -165,7 +165,7 @@ _RLHF_LOSS_NAME = {
     'mopd': 'mopd',
 }
 
-
+## 这里还有一个rlhf字符没清理干净，应该改为rl
 def configure_rlhf_loss(model: TrainableModel, rl_config: 'RLConfig') -> None:
     """Set the RLHF/RL loss on ``model`` from ``rl_config.rl_type`` and its hyperparameters.
 

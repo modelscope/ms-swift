@@ -1,30 +1,3 @@
-"""run_deploy: an OpenAI-compatible server, as a thin wrapper over twinkle-server.
-
-dev counterpart of legacy ``swift deploy``. It no longer hand-rolls a FastAPI app: it turns dev's
-Configs into a twinkle-server ``ServerConfig`` (a gateway app + a sampler app, plus a data-plane app
-for token-in-token-out) and hands it to ``launch_server``, which runs it on Ray Serve. The OpenAI
-surface -- ``/v1/chat/completions``, ``/v1/completions``, ``/v1/embeddings``, ``/v1/models``,
-``/v1/infer``, ``/health`` -- is served by twinkle's gateway, so this module's only job is the config
-translation and the Ray bring-up. That mirrors how ``run_infer`` delegates the engine to twinkle's
-Sampler instead of reimplementing it.
-
-Layering (mirrors the infer module): ``cli/deploy.py`` parses and validates, ``config/deploy_config.py``
-carries the knobs, this recipe assembles the ``ServerConfig``, and ``builders/`` supplies the reusable
-config -> object glue (``build_engine_args`` / ``resolve_twinkle_template`` / ``build_device_mesh_if_dp``).
-
-Two things are deliberately the client's job, not the server's:
-
-- **Multi-turn** stays client-side. The server answers one request; a conversation is a loop the caller
-  drives, exactly as an OpenAI client does.
-- **Generation defaults** are per-request. twinkle's gateway translates each request's own sampling
-  knobs, so a server-side ``GenerationConfig`` default is not injected here (see the warning in
-  :func:`run_deploy`); send ``temperature`` / ``top_p`` / ... in the request body.
-
-**token-in-token-out** (rollout training) needs no extra endpoint: the sampler already serves
-``/twinkle/sample`` (returns each sequence's ``new_input_feature``) and, with ``enable_data_plane``,
-``/twinkle/sample_to_data_plane`` (returns a ``DataRef``). ``swift deploy`` just deploys those apps; the
-training loop that consumes them lives in the client (see ``examples`` for a rollout client sketch).
-"""
 from __future__ import annotations
 
 import os

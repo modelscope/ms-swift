@@ -1,45 +1,8 @@
-"""Offline preference assembly: run_dpo orchestration (dpo / cpo / orpo / simpo / kto / rm).
-
-Peer of ``run_sft`` for the OFFLINE preference family -- the RLHF types that need no rollout and no
-weight-sync, only a fixed dataset of chosen/rejected pairs. One entry point dispatches on
-``RLConfig.rl_type`` because the six share almost everything (data pipeline, loop, save); they
-differ only in (a) which twinkle loss ``configure_rlhf_loss`` picks and (b) whether a reference model
-is consulted:
-
-  - dpo / kto: consult a frozen reference. LoRA runs the base model with the adapter DISABLED
-    (``forward_only(disable_lora=True)``) so no second copy is loaded; full fine-tuning loads a
-    separate frozen ``ref_model`` (defaulted to the policy's init by process.py::_derive_rlhf_ref_model).
-  - cpo / orpo / simpo: reference-FREE -- the loss builds its own baseline, so no reference forward.
-  - rm: a ``task_type='seq_cls', num_labels=1`` reward head scored pairwise by RewardLoss; no logps,
-    no reference.
-
-Data pipeline (Subsystem B): the swift template encodes a preference row into ``chosen_*`` / ``rejected_*``
-fields (template ``mode='rlhf'``, or ``'kto'`` for kto; RM rides ``task_type='seq_cls'`` which drops the
-labels). For the PAIRED types (dpo/cpo/orpo/simpo/rm) :class:`PreferenceLoop` splits each row into two
-InputFeatures and feeds them INTERLEAVED -- ``[chosen_1, rejected_1, chosen_2, rejected_2, ...]`` -- which
-is exactly the layout the twinkle DPO family's ``_split_chosen_rejected`` (even/odd indices) expects, and it
-keeps every micro-batch at an even, equal sequence count so gradient accumulation stays correct.
-
-KTO is the exception: it is UNPAIRED. Each row is a single completion carrying a binary ``label``
-(desirable/undesirable), and the loss (twinkle ``KTOLoss``) anchors the policy-vs-reference log-ratio on a
-detached reference point ``z_KL`` estimated over a mismatched "KL batch" (each prompt paired with an
-unrelated completion). PreferenceLoop builds that KL batch the way legacy's KTOPreprocessor does -- rotate
-the completions by one within the batch -- scores it with two no-grad forwards, and feeds the single
-completions (not an interleave) to the policy forward with ``label``/``z_kl``/``ref_logps`` as loss kwargs.
-``calculate_KL=False`` skips the KL forwards and anchors at z_KL=0.
-
-Placement (RL_PLAN basic principle 2): the offline preference family runs ``mode='ray'`` like every other
-RL path -- the policy is a Ray actor on the 'model' DeviceGroup, and a FULL-PARAMETER frozen reference (full
-fine-tuning, or an explicit reference adapter) is a separate Ray actor on its own 'ref' group, built with
-the run's backend (basic principle 1: an auxiliary only ``forward_only``s, which megatron and transformers
-implement identically). A LoRA reference reuses the adapter-disabled policy base
-(``forward_only(disable_lora=True)``) and plans no second group. The reference-logps path returns per-token
-logps from the reference actor and hands them straight back into the policy forward.
-"""
 from __future__ import annotations
-import logging
 import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -58,7 +21,7 @@ if TYPE_CHECKING:
     )
     from swift.dev.model import TrainableModel
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 #: rl_types that consult a frozen reference model (the rest build their own baseline in the loss).
 _REF_TYPES = frozenset({'dpo', 'kto'})

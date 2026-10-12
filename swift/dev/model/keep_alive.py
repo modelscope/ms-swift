@@ -59,7 +59,6 @@ class VisionKeepAlive:
     ``active = True`` for a text-only-plus-dummy forward and restores it afterwards, e.g. via the
     :meth:`activated` context manager.
     """
-    ## 这个逻辑我没看懂，干什么用的，这个self.active
 
     def __init__(self) -> None:
         self.active: bool = False
@@ -174,7 +173,6 @@ def inject_dummy_media(batch: Dict,
         batch[key] = torch.cat([tensor, pad], dim=1)
 
     # First row gets real placeholders (attended, loss-masked); other rows get inert padding.
-    ## 这里的第一行使用placeholder，其他的使用padding是什么逻辑
     _extend('input_ids', first_row_fill=image_token_id, other_rows_fill=0)
     _extend('attention_mask', first_row_fill=1, other_rows_fill=0)
     _extend('labels', first_row_fill=-100, other_rows_fill=-100)

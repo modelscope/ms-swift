@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import logging
 import os
 from typing import TYPE_CHECKING, List, Optional, Tuple
+
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import DatasetConfig, ModelConfig, TemplateConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def export_cached_dataset(
@@ -77,7 +78,6 @@ def export_cached_dataset(
     # cheap given `lengths`), and baking it in would freeze that choice into the cache.
     encode_mode = _encode_mode(dataset_config, template)
     if encode_mode == 'lazy':
-        ## lazy为什么不行？
         # lazy would return a LazyLLMDataset wrapper (no save_to_disk) and defeat the purpose:
         # nothing would be precomputed. Force the caller to opt into eager encoding explicitly.
         raise ValueError('export_cached_dataset requires eager encoding, but the resolved mode is lazy '

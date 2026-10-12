@@ -54,7 +54,7 @@ def _force_rl_placement(configs: Dict[str, Any]) -> None:
     distributed_config = configs['distributed_config']
     if rl_config.rl_type in ONLINE_TYPES:
         rollout_config.use_vllm = True
-        rollout_config.vllm_mode = rollout_config.vllm_mode or 'colocate'
+        rollout_config.sampler_mode = rollout_config.sampler_mode or 'colocate'
         distributed_config.mode = 'ray'
     elif rl_config.rl_type in OFFLINE_TYPES:
         distributed_config.mode = 'ray'

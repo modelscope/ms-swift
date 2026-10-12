@@ -22,7 +22,7 @@ class TunerConfig:
     #: adapter. ``swift.dev.builders.adapter.apply_tuner`` maps it onto the peft config; 'full' is carried as a
     #: None TunerConfig (see ``cli/parser.select_tuner``). DoRA / rsLoRA / QLoRA are LoRA *flags*, not
     #: separate tuners, so there is deliberately no 'dora' / 'rslora' / 'qlora' value here.
-    tuner: str = 'lora'
+    tuner: Literal['full', 'lora', 'adalora', 'trainable_tokens'] = 'lora'
     adapters: List[str] = field(default_factory=list)
 
     # === Freeze Parameters (multimodal targeting) ===

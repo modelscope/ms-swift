@@ -1,7 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
-import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, get_args
+
+from swift.dev.config.rl_config import F_DIVERGENCE_TYPE
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -22,7 +24,7 @@ if TYPE_CHECKING:
         TunerConfig,
     )
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def validate_configs(
@@ -88,6 +90,7 @@ def validate_configs(
     _check_rlhf_advanced(train_config, rl_config)
     _check_grpo_cached_dataset(dataset_config, rl_config)
     _check_rlhf_padding_free(template_config, dataset_config, rl_config)
+    _check_rlhf_padding_side(template_config, rl_config)
     _check_rlhf_sequence_parallel(
         model_config, template_config, dataset_config, distributed_config, rl_config, is_megatron)
     # Packing-derived padding_free has already been resolved by process_configs. RLHF SP is fully governed
@@ -167,7 +170,9 @@ def _check_rlhf_advanced(train_config: 'TrainConfig', rl_config: Optional['RLCon
 
 
 #: The f-divergences DPO can stand in for the KL; ``f_divergence_type`` must name one of them.
-_DPO_F_DIVERGENCE_TYPES = ('reverse_kl', 'forward_kl', 'js_divergence', 'alpha_divergence')
+#: Derived from the ``F_DIVERGENCE_TYPE`` Literal so this runtime check and the config field type
+#: share one source of truth and cannot drift.
+_DPO_F_DIVERGENCE_TYPES = get_args(F_DIVERGENCE_TYPE)
 
 
 def _check_dpo_loss(cfg: 'RLConfig') -> None:
@@ -346,7 +351,7 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
       ``rollout_importance_sampling_mode`` correction. PPO's clipped surrogate and the distillation
       family's teacher target already bound the update, so they do not require it.
     - Weight sync rewrites live sampler weights and needs the sampler on its own GPUs to overlap
-      generation with training, so ``vllm_mode='disaggregated'`` is mandatory; ``'colocate'`` time-shares
+      generation with training, so ``sampler_mode='disaggregated'`` is mandatory; ``'colocate'`` time-shares
       one DeviceGroup and cannot overlap.
     - ``dynamic_sample`` regenerates zero-variance groups adaptively after seeing rewards, so it cannot be
       pre-submitted ahead of training. Multi-turn needs NO refusal here: ``_check_rlhf_advanced`` already
@@ -408,10 +413,10 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
             f'{flag} trains GRPO on a rollout batch that is stale (off-policy), so it requires off-policy '
             'correction: set --rollout_importance_sampling_mode (e.g. token_truncate or sequence_mask). '
             'Use --async_mode none if you want a strictly on-policy loop.')
-    if rollout_config.vllm_mode != 'disaggregated':
+    if rollout_config.sampler_mode != 'disaggregated':
         raise ValueError(
             f'{flag} needs the sampler on its own GPUs to overlap generation with training, but '
-            f"vllm_mode={rollout_config.vllm_mode!r}. Set --vllm_mode disaggregated; 'colocate' time-shares "
+            f"sampler_mode={rollout_config.sampler_mode!r}. Set --sampler_mode disaggregated; 'colocate' time-shares "
             'one DeviceGroup and cannot overlap.')
     if rl_config.dynamic_sample:
         raise ValueError(
@@ -482,7 +487,7 @@ def _check_streaming_publication(rollout_config: 'RolloutConfig', rl_config: 'RL
       explicit non-1 ``max_staleness`` there is ambiguous and refused (use ``fully_async`` for a deeper
       buffer); ``fully_async`` allows any ``max_staleness >= 1``; ``'none'`` pins it to 0 (refused upstream
       if set explicitly), so there is nothing to bound here.
-    * placement: a COLOCATED sampler (``vllm_mode='colocate'``, only reachable at staleness 0 since an
+    * placement: a COLOCATED sampler (``sampler_mode='colocate'``, only reachable at staleness 0 since an
       overlapping regime must be disaggregated) MUST publish ``in_place`` -- the per-cycle device hand-back
       (wake+sync the sampler before each generation window) rides in_place's publish ``sync_fn``, whereas
       ``adapter_snapshot`` publishes by writing a new adapter path with no weight sync, so nothing would
@@ -521,9 +526,9 @@ def _check_streaming_publication(rollout_config: 'RolloutConfig', rl_config: 'RL
             f'the oldest untrained window, i.e. the synchronous loop); got {rollout_config.max_staleness}.')
     strategy = rollout_config.weight_sync_strategy
     tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
-    if rollout_config.vllm_mode == 'colocate' and strategy != 'in_place':
+    if rollout_config.sampler_mode == 'colocate' and strategy != 'in_place':
         raise ValueError(
-            f"--vllm_mode colocate with --weight_sync_strategy {strategy!r} cannot hand the shared device "
+            f"--sampler_mode colocate with --weight_sync_strategy {strategy!r} cannot hand the shared device "
             "back to the sampler each cycle: a colocated sampler time-shares ONE DeviceGroup with the trainer, "
             "and the per-cycle wake+sync that returns it to generation rides in_place's publish, whereas "
             "adapter_snapshot publishes by writing a new adapter path with no weight sync. Use "
@@ -589,7 +594,7 @@ def _check_offload_knobs(rollout_config: Optional['RolloutConfig']) -> None:
     optim_set = 'offload_optimizer' in changed
     offload_model = rollout_config.offload_model
     offload_optimizer = rollout_config.offload_optimizer
-    if rollout_config.vllm_mode == 'colocate':
+    if rollout_config.sampler_mode == 'colocate':
         if model_set and optim_set and not offload_model and not offload_optimizer:
             logger.warning(
                 'colocate rollout offload is structural and atomic (twinkle offload_to_cpu bundles the '
@@ -603,14 +608,14 @@ def _check_offload_knobs(rollout_config: Optional['RolloutConfig']) -> None:
     else:
         if (model_set and offload_model) or (optim_set and offload_optimizer):
             logger.warning(
-                'vllm_mode=%r places the sampler on its own GPUs, so offloading the trainer model/optimizer '
+                'sampler_mode=%r places the sampler on its own GPUs, so offloading the trainer model/optimizer '
                 'to make room for it does not apply: ignoring --offload_model/--offload_optimizer.',
-                rollout_config.vllm_mode)
+                rollout_config.sampler_mode)
         if 'sleep_level' in changed:
             logger.warning(
-                'vllm_mode=%r does not share GPUs between trainer and sampler, so the sampler is never put '
+                'sampler_mode=%r does not share GPUs between trainer and sampler, so the sampler is never put '
                 'to sleep between steps: --sleep_level is inert here (it only takes effect under '
-                "--vllm_mode colocate).", rollout_config.vllm_mode)
+                "--sampler_mode colocate).", rollout_config.sampler_mode)
 
 
 def _check_rollout_sampler(rollout_config: Optional['RolloutConfig']) -> None:
@@ -2230,6 +2235,26 @@ def _check_rlhf_padding_free(template_config: 'TemplateConfig', dataset_config: 
     raise ValueError(f'rl_type={rl_type!r} does not support {feature}: only '
                      f'{"/".join(_RL_PADDING_FREE_WIRED_TYPES)} implement the variable-length training path it '
                      'produces. Set the corresponding flag to False.')
+
+
+def _check_rlhf_padding_side(template_config: 'TemplateConfig', rl_config: Optional['RLConfig']) -> None:
+    """RL logp extraction indexes each row's own response positions and assumes right padding.
+
+    Both the online-RL path (recipe/grpo.py) and the offline-preference path (recipe/run_dpo.py) pull
+    per-token logps out of a right-padded ``forward_only`` frame using the response positions computed at
+    encode time -- right padding never shifts them. A left-padded policy batch would shift every row's
+    tokens while the response index still assumes right padding, silently mis-aligning logps (and thus
+    advantages / preference losses) with no error. Mirrors the sequence-parallel guard
+    (_check_sp_hf_feasibility): dev refuses up front instead of corrupting the run.
+    """
+    if rl_config is None:
+        return
+    if template_config.padding_side != 'right':
+        rl_type = getattr(rl_config, 'rl_type', None)
+        raise ValueError(f'RL training (rl_type={rl_type!r}) requires padding_side="right", got '
+                         f'{template_config.padding_side!r}: the logp extraction indexes each row\'s '
+                         'response positions in a right-padded forward frame, so left padding would '
+                         'silently mis-align every logp. Remove --padding_side left.')
 
 
 #: attn_impl values whose attention kernel handles the variable-length (THD) layout that

@@ -18,7 +18,6 @@ from twinkle.utils import selective_log_softmax
 from twinkle.data_format import InputFeature, LossOutput, ModelOutput
 from swift.dev.loss import CrossEntropyLoss, GRPOLoss, Loss
 from swift.dev.model.base import TrainableModel
-from swift.dev.model.strategy import AccelerateStrategy, NativeFSDPStrategy
 from swift.dev.model.transformers_model import TransformersModel
 from swift.dev.processor import InputProcessor
 from swift.dev.utils import to_device
@@ -192,25 +191,6 @@ class TestGRPOLoss:
 
         result = grpo(inputs, outputs)
         assert result['loss'].item() == 0.0
-
-
-# ======================================================================
-# Strategy — now re-exported from twinkle (dev no longer owns a Strategy layer)
-# ======================================================================
-
-
-class TestStrategyReexport:
-
-    def test_reexported_from_twinkle(self):
-        from twinkle.model.transformers.strategy import AccelerateStrategy as TwAccelerate
-        from twinkle.model.transformers.strategy import NativeFSDPStrategy as TwNativeFSDP
-        assert AccelerateStrategy is TwAccelerate
-        assert NativeFSDPStrategy is TwNativeFSDP
-
-    def test_deepspeed_strategy_absent(self):
-        """DeepSpeedStrategy is a future item and must not be exported yet."""
-        import swift.dev.model.strategy as strategy_mod
-        assert not hasattr(strategy_mod, 'DeepSpeedStrategy')
 
 
 # ======================================================================

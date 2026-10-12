@@ -1,23 +1,13 @@
-"""run_merge_lora: fold LoRA adapters back into the base weights, as a dev recipe.
-
-dev counterpart of legacy ``swift export --merge_lora``
-(swift/pipelines/export/merge_lora.py::merge_lora), for the transformers path. The mcore/Megatron
-equivalent is a different code path and lives in ``swift.dev.recipe.convert`` (ConvertConfig.
-mcore_adapter), because an mcore LoRA has to be merged while the model is still in Megatron format.
-
-All dev Configs needed here already exist -- TunerConfig.adapters names the adapters,
-CheckpointConfig owns output_dir/safe_serialization/max_shard_size -- so unlike the convert recipe
-this one adds no new Config.
-"""
 from __future__ import annotations
-import logging
 import os
 from typing import TYPE_CHECKING, Any, Optional
+
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import CheckpointConfig, ModelConfig, TemplateConfig, TunerConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def run_merge_lora(

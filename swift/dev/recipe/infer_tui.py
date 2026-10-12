@@ -1,20 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Interactive terminal chat for ``swift infer`` -- the no-dataset REPL, with optional tool calling.
-
-This is the dev counterpart of legacy ``--eval_human true``. Two generation paths share one loop:
-
-* No tools: each human turn is one ``sampler`` call, streamed token-by-token when ``stream`` is on
-  (``sample_stream``) or printed whole otherwise. This is the fast, low-latency chat path.
-* Tools configured (``RolloutConfig.tools`` plus ``max_turns``): each human turn drives one
-  ``RolloutEngine.generate``, and twinkle's ``MultiTurnRollout`` runs the whole intra-turn loop -- the
-  model calls tools, reads their results, and continues until it stops answering with tools or hits
-  ``max_turns``. That loop is batch-oriented, so it returns the finished trajectory rather than streaming
-  tokens; the response is printed whole and the tools it invoked are traced afterwards.
-
-The UX (colors, the ``You:``/``Agent:`` prompts, the dim tool trace, bounded history) borrows
-``twinkle_client/auto``; the tool execution does NOT -- it runs dev-native through the sandbox env pool
-and swift's tool plugins, not auto's OpenAI-compatible training-control tools.
-"""
 from __future__ import annotations
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Sequence
@@ -120,6 +104,7 @@ def infer_cli(
                 # state.media, which to_trajectory then attaches (legacy's input_mm_data).
                 state.prompt_media(['images', 'audios', 'videos'])
             trajectory = state.to_trajectory()
+            ## 能否让工具多轮在tui上支持stream输出？
             if rollout is not None:
                 response = _run_tool_turn(rollout, trajectory, params_dict)
             elif stream:

@@ -428,7 +428,6 @@ class TrainAssembly:
         # Full-parameter checkpoints always provide the model weights, including resume_only_model;
         # that flag only suppresses optimizer/scheduler/RNG restoration. LoRA keeps the original base
         # and reloads the adapter through resume_from_checkpoint after apply_tuner.
-        ## 如果tuner_config不是空，还有resume_dir为什么不支持？
         redirect_to_ckpt = bool(resume_dir) and self.tuner_config is None
         model_config = self.model_config
         if redirect_to_ckpt:
@@ -469,6 +468,10 @@ class TrainAssembly:
         self.model.set_processor(
             InputProcessor,
             padding_free=self.template_config.padding_free,
+            # The collator must pad on the same side as the Template (builders/template.py forwards
+            # padding_side to it). Without this the processor kept twinkle's 'right' default, so a
+            # training-time `--padding_side left` reached the Template but not the batch collator.
+            padding_side=self.template_config.padding_side,
             cp_partition_mode=self.distributed_config.cp_partition_mode,
             task_type=self.task_type)
         self.model.set_template(self.template)

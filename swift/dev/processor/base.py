@@ -8,7 +8,6 @@ from typing import Callable, List, Optional
 from twinkle.data_format import InputFeature
 
 
-## 这个为什么不放在twinkle中？看起来是embedding和reranker相关的，twinkle有这个任务支持
 class InputProcessor(TwinkleInputProcessor):
     """Swift extension of twinkle InputProcessor.
 
@@ -131,7 +130,6 @@ class InputProcessor(TwinkleInputProcessor):
         are documents). Each flat row gets a scalar mask label: 1.0 on the anchor (group start), 0.0 on
         the positive and negatives.
         """
-        ## 这函数干什么用的
         flat: List[InputFeature] = []
         for row in rows:
             row = dict(row)

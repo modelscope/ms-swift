@@ -4,6 +4,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, List, Literal, Optional
 
+#: The f-divergences DPO can stand in for the KL term (see ``RLConfig.f_divergence_type``). A closed,
+#: dev-owned vocabulary -- ``swift.dev.config.validate`` derives its runtime-accepted set from this
+#: alias via ``typing.get_args``, so the static type and the validator cannot drift apart.
+F_DIVERGENCE_TYPE = Literal['reverse_kl', 'forward_kl', 'js_divergence', 'alpha_divergence']
+
 
 @dataclass
 class RLConfig:
@@ -244,6 +249,13 @@ class RLConfig:
     #: sizing for a big or concurrency-friendly teacher. MOPD's K teachers share this one group. It is the
     #: teachers' OWN layout, apart from the run's ``--parallel_spec`` (the policy's).
     teacher_parallel_spec: Optional[str] = None
+    #: How MOPD's K frozen teachers are PLACED across DeviceGroups. ``pack`` (default) builds all K into the
+    #: single shared ``_TEACHER_GROUP`` and scores them serially -- card-frugal, the stage-one behavior.
+    #: ``spread`` gives each teacher its OWN ``teacher_<i>`` group so the K ``forward_only`` calls run
+    #: concurrently (disjoint Ray actors) at the cost of K x the GPUs. Different roles (policy / sampler /
+    #: teacher / reference / reward) ALWAYS occupy disjoint groups regardless of this flag; it only governs
+    #: the K-teachers-among-themselves choice. Consumed by ``run_mopd``'s group planning + ``_teacher_kwargs``.
+    auxiliary_placement: Literal['pack', 'spread'] = 'pack'
     #: OPSD divergence direction, passed straight to ``OPSDLoss.reverse``. ``True`` (default) is the
     #: paper's direction ``r = teacher_logp - student_logp`` -- teacher-preferred tokens pull the student
     #: up. ``False`` swaps it (``r = student_logp - teacher_logp``) for a quick ablation without touching
@@ -290,8 +302,8 @@ class RLConfig:
     #: Compute the KL term explicitly rather than folding it into the advantage. None takes the value
     #: implied by the algorithm.
     calculate_KL: Optional[bool] = None
-    #: Which f-divergence stands in for the KL, e.g. 'reverse_kl', 'forward_kl', 'js_divergence'.
-    f_divergence_type: str = 'reverse_kl'
+    #: Which f-divergence stands in for the KL (vocabulary: ``F_DIVERGENCE_TYPE``).
+    f_divergence_type: F_DIVERGENCE_TYPE = 'reverse_kl'
     #: Coefficient of the 'alpha_divergence' f-divergence; only read when ``f_divergence_type='alpha_divergence'``.
     f_alpha_divergence_coef: float = 0.5
     #: Drop the reference model entirely and score against a constant instead. Removes a whole model

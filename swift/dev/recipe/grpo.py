@@ -10,6 +10,13 @@ import json
 from twinkle.metric import CompletionRewardMetric
 
 from swift.dev.rewards.advantage import compute_advantages
+from swift.dev.recipe._scoring import (
+    batched_response_scores,
+    copy_inputs,
+    overlap_by_placement,
+    score_chunks,
+    split_mini_batches,
+)
 from swift.dev.recipe._teacher import DisableAdapterTeacher, encode_privileged_view, response_positions
 from swift.dev.recipe.train_loop import PromptBatchScheduler, TrainLoop
 from swift.dev.rewards.reward import (
@@ -45,17 +52,6 @@ def toy_length_reward(sample: Any) -> float:
     ``response_token_ids`` is a flat ``List[int]`` (twinkle accounts a trajectory in one array).
     """
     return float(len(getattr(sample, 'response_token_ids', None) or []))
-
-
-def split_mini_batches(items: List[Any], mini_batch_size: int) -> List[List[Any]]:
-    """Split a rollout into full ``mini_batch_size`` chunks, dropping an undersized tail.
-
-    Every ``forward_backward`` must carry exactly ``mini_batch_size`` rows so slice_dp hands each DP rank
-    the same ``per_device_train_batch_size`` count; a partial tail would give ranks uneven batches (and,
-    below dp_size rows, no data at all). Dropping it keeps each optimizer step uniform -- the same
-    exact-global-batch invariant Megatron enforces -- at the cost of a few rollout samples per round.
-    """
-    return [items[i:i + mini_batch_size] for i in range(0, len(items) - mini_batch_size + 1, mini_batch_size)]
 
 
 @dataclass
@@ -451,55 +447,20 @@ class GRPOLoop(TrainLoop):
     def _response_logps(self, scorer: Any, features: List[dict]) -> List[List[float]]:
         """Score ``features`` with ``forward_only``, returning one response-token logp list per feature.
 
-        Batching -- one ``forward_only`` per ``train_batch_size`` chunk, not one call per feature -- is
-        what makes DP>1 work: ``forward_only`` is a slice_dp method, so a length-1 ``inputs`` leaves all
-        but one rank with no data ("Batch too small"). Chunks also bound the no-grad scoring memory (the
-        materialised logits) the same way design B bounds a training mini-batch.
-
-        ``forward_only`` returns full-sequence, right-padded ``logps`` of shape ``[n, seq_len]`` in
-        submission order (``collect_tensor_dict`` pads+stacks the per-rank shards), so each row is
-        indexed by that feature's own response positions -- right-padding never shifts them.
+        A thin wrapper over :func:`~swift.dev.recipe._scoring.batched_response_scores` (one chunked
+        ``forward_only`` per ``train_batch_size`` block, DP>1-correct, right-padding aware) -- the SAME
+        shared path PPO's value / reference scoring uses, so a rollout is scored one way everywhere.
         """
-        import torch
-
-        results: List[List[float]] = []
-        for chunk in self._score_chunks(features):
-            out = scorer.forward_only(inputs=[copy.deepcopy(feature) for feature in chunk])
-            logps = out.get('logps') if isinstance(out, dict) else None
-            if logps is None:
-                raise RuntimeError('reference/teacher forward returned no logps.')
-            values = torch.as_tensor(logps).detach().float().cpu()
-            if values.dim() == 1:
-                values = values.unsqueeze(0)
-            for row, feature in zip(values, chunk):
-                results.append(self._row_response_logps(row.reshape(-1), feature))
-        return results
+        return batched_response_scores(
+            scorer, features, train_batch_size=self.train_batch_size, output_key='logps')
 
     def _score_chunks(self, features: List[dict]) -> List[List[dict]]:
-        """Split ``features`` into ``train_batch_size`` chunks, folding a ragged tail into the last one.
+        """Split ``features`` into ``train_batch_size`` chunks (over :func:`_scoring.score_chunks`).
 
-        Every chunk must hold >= dp_size rows or slice_dp starves a rank. ``train_batch_size`` is a
-        multiple of dp_size, so full chunks qualify, and folding the remainder into the last full chunk
-        keeps it >= dp_size too. A rollout smaller than one chunk yields a single short chunk that
-        ``forward_only`` rejects loudly -- the same "rollout too small" condition training guards.
+        Kept for :meth:`_record_routing`, which chunks like a scoring pass but reads back ``routed_experts``
+        (a different frame shape) rather than per-token logps, so it drives the chunking itself.
         """
-        chunks = split_mini_batches(features, self.train_batch_size)
-        tail = features[len(chunks) * self.train_batch_size:]
-        if tail:
-            chunks[-1] = chunks[-1] + tail if chunks else tail
-        return chunks
-
-    def _row_response_logps(self, row: Any, feature: dict) -> List[float]:
-        """Extract one feature's response-token logps from its (possibly padded) full-sequence row."""
-        positions = self._response_positions(feature)
-        if row.numel() == len(positions):
-            return row.tolist()  # response-only form: nothing to strip
-        labels = feature.get('labels')
-        feature_length = len(labels) if labels is not None else 0
-        if row.numel() < feature_length:
-            raise RuntimeError(f'forward logps have {row.numel()} values for a {feature_length}-token feature; '
-                               'response-token alignment is impossible.')
-        return row[positions].tolist()
+        return score_chunks(features, self.train_batch_size)
 
     def _prepare_routing_replay(self, samples: List[Any]) -> None:
         """Establish each sample's MoE expert routing per ``RLConfig.router_replay_mode``, in place.
@@ -528,7 +489,6 @@ class GRPOLoop(TrainLoop):
                     'routed_experts (that needs a vLLM build + MoE checkpoint that report routing). Use '
                     'router_replay_mode="R2" to RECORD the routing on the training model instead, or '
                     '"disabled" to recompute it.')
-            ## 这里的意思是不支持R3吗
             return
         if mode == 'R2':
             # R2 records the training model's routing regardless of what the sampler returned (legacy R2
@@ -555,7 +515,7 @@ class GRPOLoop(TrainLoop):
         rows: List[Any] = []
         for chunk in self._score_chunks(features):
             out = self.model.forward_only(
-                inputs=[copy.deepcopy(feature) for feature in chunk], router_replay_action='record')
+                inputs=copy_inputs(chunk), router_replay_action='record')
             recorded = out.get('routed_experts') if isinstance(out, dict) else None
             if recorded is None:
                 raise RuntimeError(
@@ -598,6 +558,9 @@ class GRPOLoop(TrainLoop):
         return _messages_with_token_ids(messages, sample.input_feature), response_ids
 
     def _teacher_feature(self, sample: Any) -> dict:
+        ## 这些函数的放置规则有点迷
+        ## 为什么文件叫grpo，但是有teacher的内容，为什么调用了encode_privileged_view？
+        ## 你写这些代码的时候有注意过这些细节吗
         teacher_prompt = (getattr(sample, 'extra', None) or {}).get('teacher_prompt')
         if not teacher_prompt:
             return sample.input_feature
@@ -613,7 +576,14 @@ class GRPOLoop(TrainLoop):
             return None
         return self._response_logps(self.reference, [sample.input_feature for sample in samples])
 
-    def _teacher_logps(self, samples: List[Any]) -> Optional[List[List[float]]]:
+    def _teacher_owner(self, samples: List[Any]) -> Optional[Any]:
+        """The teacher scoring owner for these samples, or None when no teacher forward is needed.
+
+        Split out from :meth:`_teacher_logps` so :meth:`_assemble_rollout_batch` can read the owner's
+        ``placement_key`` and overlap the teacher forward with the reference / policy-old forwards on
+        disjoint DeviceGroups. A privileged ``teacher_prompt`` column with no explicit teacher scores on
+        the policy actor itself (``self.model``), whose placement key is the policy sentinel.
+        """
         has_privileged_prompt = any((sample.extra or {}).get('teacher_prompt') for sample in samples)
         needs_teacher = bool(self.teacher is not None or has_privileged_prompt)
         advanced = bool(self.rl_config and
@@ -622,7 +592,12 @@ class GRPOLoop(TrainLoop):
             if advanced:
                 raise ValueError('RLSD/SDAR requires teacher_model or a teacher_prompt dataset column.')
             return None
-        owner = self.teacher if self.teacher is not None else self.model
+        return self.teacher if self.teacher is not None else self.model
+
+    def _teacher_logps(self, samples: List[Any]) -> Optional[List[List[float]]]:
+        owner = self._teacher_owner(samples)
+        if owner is None:
+            return None
         return self._response_logps(owner, [self._teacher_feature(sample) for sample in samples])
 
     @staticmethod
@@ -736,13 +711,33 @@ class GRPOLoop(TrainLoop):
         self.tracker.log_prompts(self.prompts, samples, self.global_step + 1, self.num_generations)
         self._log_completions(samples, rewards_per_func)
         self._accumulate_reward_metric(samples, rewards_per_func)
-        ref_logps = self._reference_logps(samples)
-        teacher_logps = self._teacher_logps(samples)
         cfg = self.rl_config
         preserve_policy_logps = bool(cfg and (
             cfg.rollout_importance_sampling_mode or cfg.log_rollout_offpolicy_metrics))
-        old_logps = (self._response_logps(self.model, [sample.input_feature for sample in samples])
-                     if preserve_policy_logps else [sample.old_logps for sample in samples])
+        # ref / teacher / policy-old each forward on their own DeviceGroup; overlap the disjoint ones and
+        # serialize any that share the policy actor (a disable_lora reference or teacher scores on the
+        # policy, ``placement_key is None``). Only the SCHEDULE changes: each thunk is the identical scoring
+        # call, so the numbers are bit-for-bit what the serial path produced.
+        teacher_owner = self._teacher_owner(samples)
+        tasks: List[tuple] = []
+        slots: List[str] = []
+        if self.reference is not None:
+            tasks.append((getattr(self.reference, 'placement_key', None), lambda: self._reference_logps(samples)))
+            slots.append('ref')
+        if teacher_owner is not None:
+            teacher_features = [self._teacher_feature(sample) for sample in samples]
+            tasks.append((getattr(teacher_owner, 'placement_key', None),
+                          lambda: self._response_logps(teacher_owner, teacher_features)))
+            slots.append('teacher')
+        if preserve_policy_logps:
+            policy_features = [sample.input_feature for sample in samples]
+            tasks.append((getattr(self.model, 'placement_key', None),
+                          lambda: self._response_logps(self.model, policy_features)))
+            slots.append('old')
+        scored = dict(zip(slots, overlap_by_placement(tasks)))
+        ref_logps = scored.get('ref')
+        teacher_logps = scored.get('teacher')
+        old_logps = scored.get('old', [sample.old_logps for sample in samples])
         kl_in_reward = bool(cfg and cfg.kl_in_reward and cfg.beta)
         if kl_in_reward and ref_logps is None:
             raise ValueError('kl_in_reward=True requires an active reference model.')
@@ -859,6 +854,7 @@ class GRPOLoop(TrainLoop):
         import torch
 
         state = self.model.get_state_dict()
+        ## 这里有问题，没考虑ray的清况，调用不通。snyc-weights需要另选择出路
         raw_reference = reference.strategy.unwrap_model(reference.model)
         reference_params = dict(raw_reference.named_parameters())
         overlap = set(state) & set(reference_params)
@@ -886,7 +882,7 @@ class GRPOLoop(TrainLoop):
         chord = self._next_chord_features(chord_mu)
         teacher_logps = mini_batch.teacher_logps
         kwargs = {
-            'inputs': [*[copy.deepcopy(sample.input_feature) for sample in mini_batch.samples], *chord],
+            'inputs': [*copy_inputs([sample.input_feature for sample in mini_batch.samples]), *chord],
             'gradient_accumulation_steps': self.gradient_accumulation_steps,
             'advantages': [
                 self._training_advantage(

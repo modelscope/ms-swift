@@ -1,32 +1,13 @@
-"""run_quantize: post-training quantization as a dev recipe.
-
-dev counterpart of legacy ``swift export --quant_method ...``
-(swift/pipelines/export/quant.py::QuantEngine), split along the same seam the twinkle quantizers
-draw:
-
-  - the BACKEND work (AWQ/GPTQ packing, the autoawq/optimum monkey-patches, the transformers
-    quantization_config objects) lives in ``twinkle.quantizer`` -- one class per scheme, each owning
-    its own knobs (group_size, zero_point, version, ...). This recipe does not reimplement any of it.
-  - the DATA work (loading a calibration set and encoding it into the exact shape each backend
-    expects) lives here, because ``CalibrationQuantizer`` deliberately takes calibration samples from
-    the caller: twinkle has no opinion on where they come from, and swift's template/dataset stack is
-    what produces them.
-
-So the flow is: build template -> build calibration samples -> get_quantizer(...) -> quantize ->
-save. Load-time schemes (bnb/fp8/hqq/quanto/eetq) skip calibration: their scales are fitted by
-transformers WHILE it materializes the weights, so the recipe loads the model WITH the scheme's
-quantization_config and then persists it -- a full, directly loadable model directory, exactly what
-legacy ``QuantEngine.quantize`` writes for bnb/fp8 (``save_pretrained`` + ``save_checkpoint``).
-"""
 from __future__ import annotations
-import logging
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import DatasetConfig, ModelConfig, QuantizeConfig, TemplateConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 # Schemes whose scales are fitted by running the model over real samples. The rest are applied by
 # transformers at load time (see twinkle.quantizer.ConfigQuantizer) and need no data and no model.

@@ -10,6 +10,10 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional
 
+from swift.dev.utils.logger import get_logger
+
+logger = get_logger()
+
 
 def parse_export_configs(argv: Optional[List[str]] = None, *, command: str = 'export') -> Dict[str, Any]:
     """Parse argv directly into the Configs consumed by export recipes."""
@@ -81,6 +85,24 @@ def _derive_output_dir(configs: Dict[str, Any]) -> None:  # noqa: C901
         checkpoint.output_dir = os.path.join(parent, f'{name}-{suffix}')
 
 
+def _force_eager_encoding_for_cached_dataset(configs: Dict[str, Any]) -> None:
+    """Force eager encoding for ``--to_cached_dataset`` (legacy ExportArguments.__post_init__ parity).
+
+    A cached dataset is materialised and saved, which lazy tokenisation (a per-row ``__getitem__`` wrapper
+    with no ``save_to_disk``) cannot do. ``builders/dataset._encode_mode`` resolves an unset
+    ``lazy_tokenize`` to lazy for multimodal models, so pin it to False here rather than making the user
+    set it by hand; warn when overriding an explicit True so the dead setting stays visible.
+    """
+    convert_config = configs['convert_config']
+    dataset_config = configs['dataset_config']
+    if not convert_config.to_cached_dataset or dataset_config.lazy_tokenize is False:
+        return
+    if dataset_config.lazy_tokenize:
+        logger.warning('--to_cached_dataset overrides lazy_tokenize=True to False: a cached dataset must be '
+                       'encoded eagerly to be materialised and saved.')
+    dataset_config.lazy_tokenize = False
+
+
 def _validate_export(configs: Dict[str, Any]) -> None:
     quantize_config = configs['quantize_config']
     convert_config = configs['convert_config']
@@ -133,6 +155,9 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
 
     _validate_export(configs)
     _derive_output_dir(configs)
+    # A cached dataset must be encoded eagerly; pin lazy_tokenize=False before validation/derivation so
+    # builders/dataset._encode_mode does not resolve it to lazy (the multimodal default) and refuse.
+    _force_eager_encoding_for_cached_dataset(configs)
     # Export output is a final artifact, not a training work directory. Recipes own directory creation
     # and their replace/overwrite policy, so run initialization only normalizes the path.
     process_and_validate_configs(configs, add_version=False, create_output_dir=False)

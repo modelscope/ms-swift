@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import logging
 import torch
 import torch.distributed as dist
 from functools import partial
@@ -9,9 +8,10 @@ from typing import Any, Callable, List, Optional, Union
 
 from swift.dataloader.dispatcher import DataLoaderDispatcher
 from swift.dataloader.shard import BatchSamplerShard, DataLoaderShard
+from swift.dev.utils.logger import get_logger
 from .resumable import ResumableDataLoaderWrapper
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def identity_collate(batch):

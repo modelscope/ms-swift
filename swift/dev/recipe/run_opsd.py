@@ -28,7 +28,6 @@ Teacher selection (``_build_opsd_teacher``, all :class:`~swift.dev.recipe._teach
     privileged view.
 """
 from __future__ import annotations
-import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from swift.dev.recipe._distill import (
@@ -51,6 +50,7 @@ from swift.dev.recipe.run_grpo import (
     plan_rl_device_groups,
     teacher_group_world_size,
 )
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -71,7 +71,7 @@ if TYPE_CHECKING:
     )
     from swift.dev.model import TrainableModel
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def run_opsd(
@@ -141,7 +141,7 @@ def run_opsd(
     backend = _sampler_backend(rollout_config)
     sampler_world_size = _sampler_world_size(rollout_config, backend)
     groups, sampler_remote_group, colocate = plan_rl_device_groups(distributed_config.nproc_per_node,
-                                                                   rollout_config.vllm_mode, sampler_world_size,
+                                                                   rollout_config.sampler_mode, sampler_world_size,
                                                                    teacher_world_size)
     _initialize_twinkle_rl(
         distributed_config,

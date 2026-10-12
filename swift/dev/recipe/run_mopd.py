@@ -1,33 +1,4 @@
-"""Multi-teacher on-policy distillation (MOPD) assembly: run_mopd orchestration.
-
-Peer of ``run_opsd`` for MOPD (Multi-teacher On-Policy Distillation, arXiv:2606.30406 Open-MOPD). The
-student generates one on-policy trajectory; K frozen DOMAIN teachers each score that same trajectory
-token-by-token; their per-token distributions are fused into a single distillation target by weighted
-probability mixture (``log sum_k w_k p_k``), and the student is pulled toward it with the same
-sampled-token k3 surrogate OPSD uses (:class:`twinkle.loss.mopd.MOPDLoss`). Compared with single-teacher
-OPSD/GKD, MOPD reduces the cross-domain degradation a student suffers when trained on one teacher's
-distribution alone.
-
-Relationship to OPSD
---------------------
-MOPD reuses the OPSD/GKD (hence GRPO) skeleton: :class:`MOPDLoop` subclasses :class:`OPSDLoop` and
-overrides only the teacher-scoring -- instead of ONE privileged-view teacher it loops K frozen teachers
-over the student's OWN on-policy prompt+response (no privileged view; plan §3.3 stage-one has every
-teacher share the student's prompt) and returns a list of per-teacher response-only ``teacher_logps``
-channels plus ``teacher_weights``. ``MOPDLoss`` fuses them; with a single teacher it degenerates exactly
-to OPSD.
-
-Differences from OPSD that matter here:
-  * teachers are K separate frozen Ray actors (``teacher_model`` is a LIST), each scoring the student's
-    own response tokens directly -- no privileged ``teacher_prompt`` view (that is OPSD's single-teacher
-    trick);
-  * every teacher must share the student's tokenizer, since each re-scores the student's response ids;
-  * all K teachers share ONE ``'teacher'`` DeviceGroup (plan §3.3 stage-one default: card-frugal, serial
-    ``forward_only``); ``teacher_parallel_spec`` sizes that group;
-  * teacher offloading is rejected (K resident teachers on their own group; offload is a GKD-only hook).
-"""
 from __future__ import annotations
-import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from swift.dev.recipe._distill import (
@@ -44,10 +15,12 @@ from swift.dev.recipe.run_grpo import (
     _sampler_backend,
     _sampler_engine_args,
     _sampler_world_size,
+    _teacher_group,
     plan_rl_device_groups,
     teacher_group_world_size,
 )
 from swift.dev.recipe.run_opsd import OPSDLoop
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -67,7 +40,7 @@ if TYPE_CHECKING:
         TunerConfig,
     )
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def run_mopd(
@@ -123,15 +96,21 @@ def run_mopd(
         moe_config=moe_config)
     assembly.prepare()
 
-    # MOPD always builds K separate frozen teachers, so it always plans the shared 'teacher' DeviceGroup
-    # (plan §3.3); teacher_parallel_spec sizes it, else one card-frugal rank.
+    # MOPD always builds K separate frozen teachers. Placement (rl_config.auxiliary_placement):
+    #   pack   -> all K share ONE 'teacher' DeviceGroup, serial forward_only (card-frugal default);
+    #   spread -> each teacher gets its OWN teacher_<i> group, K parallel forward_only (K x GPUs).
+    # teacher_parallel_spec sizes each group either way; the two plans are mutually exclusive.
     teacher_world_size = teacher_group_world_size(rl_config)
+    spread = rl_config.auxiliary_placement == 'spread'
+    num_teachers = len(rl_config.teacher_model or [])
+    teacher_aux_groups = [(_teacher_group(i), teacher_world_size) for i in range(num_teachers)] if spread else []
 
     backend = _sampler_backend(rollout_config)
     sampler_world_size = _sampler_world_size(rollout_config, backend)
     groups, sampler_remote_group, colocate = plan_rl_device_groups(distributed_config.nproc_per_node,
-                                                                   rollout_config.vllm_mode, sampler_world_size,
-                                                                   teacher_world_size)
+                                                                   rollout_config.sampler_mode, sampler_world_size,
+                                                                   0 if spread else teacher_world_size,
+                                                                   auxiliary_groups=teacher_aux_groups)
     _initialize_twinkle_rl(
         distributed_config,
         groups,
@@ -258,15 +237,17 @@ def _resolve_teacher_weights(weights: Optional[List[float]], num_teachers: int) 
 
 def _build_mopd_teachers(template: Any, rl_config: RLConfig, teacher_world_size: int,
                          distributed_config: DistributedConfig) -> MultiTeacher:
-    """Build the K frozen domain teachers as Ray actors sharing the ``'teacher'`` DeviceGroup.
+    """Build the K frozen domain teachers as Ray actors.
 
     Each teacher is a frozen twinkle model actor (plan §3.3) sharing the student's processor/template so it
-    encodes and scores the student's response tokens identically. All K share ONE ``'teacher'`` group
-    (stage-one default: card-frugal, serial ``forward_only``); ``teacher_parallel_spec`` sizes that group.
-    Per-teacher adapters are not applied (each teacher is a distinct full model), and the single-teacher
-    ``_teacher_use_disable_adapter`` self-distillation mode does not apply to K domain teachers. There is no
-    HTTP teacher server (removed, RL_PLAN §2.H): the ``teacher_model_server`` field is gone entirely, so
-    there is nothing to re-check here. The K teachers plus their mixture weights are returned as one
+    encodes and scores the student's response tokens identically. Placement follows
+    ``rl_config.auxiliary_placement``: ``pack`` (default) builds all K into the ONE ``'teacher'`` group
+    (card-frugal, serial ``forward_only``); ``spread`` gives each its own ``teacher_<i>`` group for parallel
+    scoring. ``teacher_parallel_spec`` sizes each group. Per-teacher adapters are not applied (each teacher
+    is a distinct full model), and the single-teacher ``_teacher_use_disable_adapter`` self-distillation mode
+    does not apply to K domain teachers. There is no HTTP teacher server (removed, RL_PLAN §2.H): the
+    ``teacher_model_server`` field is gone entirely, so there is nothing to re-check here. The K teachers
+    plus their mixture weights are returned as one
     :class:`~swift.dev.recipe._teacher.MultiTeacher`.
     """
     if rl_config._teacher_use_disable_adapter:
@@ -280,18 +261,27 @@ def _build_mopd_teachers(template: Any, rl_config: RLConfig, teacher_world_size:
     if not teacher_models:
         raise ValueError('MOPD needs at least one teacher: set RLConfig.teacher_model to a list of model ids '
                          '(one per domain expert).')
-    # Each of the K teachers is a distinct frozen actor sharing the ONE 'teacher' DeviceGroup, so each needs
-    # a distinct instance_id or their Ray actor names collide: twinkle names an actor by group+class+caller
-    # +rank, and all K builds come from this same call site into the same group at the same rank.
+    spread = rl_config.auxiliary_placement == 'spread'
+    # In pack mode all K teachers share the ONE 'teacher' DeviceGroup, so each needs a distinct instance_id
+    # or their Ray actor names collide: twinkle names an actor by group+class+caller+rank, and all K builds
+    # come from this same call site into the same group at the same rank. (In spread mode each teacher has
+    # its own group, so the ids merely stay unique -- harmless.)
     teachers = [
         build_frozen_teacher(
-            rl_config, template, model_id, distributed_config=distributed_config, remote_group=_TEACHER_GROUP,
+            rl_config, template, model_id, distributed_config=distributed_config,
+            remote_group=(_teacher_group(i) if spread else _TEACHER_GROUP),
             teacher_world_size=teacher_world_size, role='teacher',
             instance_id=f'teacher{i}') for i, model_id in enumerate(teacher_models)
     ]
     return MultiTeacher(teachers, _resolve_teacher_weights(rl_config.teacher_weights, len(teachers)))
 
 
+## 整体review了RL实现之后，你需要整体重构下这里的设计。我认为目前问题有这么几个：
+## 1. 类继承比较随意，例如这个MOPD居然继承了OPSDLoop，这个很难理解两者算法的关系，不符合直觉
+## 因此，你的类继承应该重新设计，例如base_grpo.py/base_gkd.py/...，其中有若干base类；base类提供了同步和异步两个共同接口，子类分别实现
+## 这样非常易于理解。由于现在的recipe已经是调通状态，因此你重构这个的时候，代码拆分搬迁即可。这样即可减少问题的出现，又可以让架构更简洁
+## 2. 和1有关，build-device-mesh的过程也过于随意，teacher类的设计也过于随意。剃刀原则：最少的代码，最简洁的架构，最少的方法和类做大最大的泛化性和可读性
+## 分析下我上面的review是否合理
 class MOPDLoop(OPSDLoop):
     """Multi-teacher on-policy distillation loop.
 
@@ -311,5 +301,12 @@ class MOPDLoop(OPSDLoop):
         scored into one channel and its ``weights`` are the mixture weights ``MOPDLoss`` fuses by.
         """
         features = [row.feature for row in rows]
-        channels = [self._response_logps(teacher, features) for teacher in self.teacher.teachers]
+        # The K teachers run concurrently only when they sit on disjoint DeviceGroups: each carries a
+        # placement_key (its group name), so pack (all 'teacher') serializes on one actor while spread
+        # (teacher_<i>) overlaps. overlap_by_placement dedups by that key, so same-group teachers never
+        # contend for one GPU.
+        from swift.dev.recipe._scoring import overlap_by_placement
+        tasks = [(teacher.placement_key, lambda teacher=teacher: self._response_logps(teacher, features))
+                 for teacher in self.teacher.teachers]
+        channels = overlap_by_placement(tasks)
         return {'teacher_logps': channels, 'teacher_weights': self.teacher.weights}

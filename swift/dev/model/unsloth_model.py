@@ -42,7 +42,6 @@ _SHARDED_LOAD_KEYS = ('tp_plan', 'tp_size', 'distributed_config', 'device_mesh')
 # peft_* / revision / base_model_name_or_path / auto_mapping are save-time bookkeeping, runtime_config
 # is a live object peft rebuilds, inference_mode would disable training, and task_type has a
 # variant-specific default inside unsloth (the vision path defaults to CAUSAL_LM).
-## 这个是干什么的，确定逻辑正确吗
 _LORA_BOOKKEEPING_FIELDS = frozenset({
     'peft_type',
     'peft_version',

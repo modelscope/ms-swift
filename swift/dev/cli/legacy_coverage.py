@@ -211,6 +211,10 @@ LEGACY_ALIASES: Dict[str, str] = {
     'use_ray': 'mode',
     'sampler_engine': 'sampler',
     'infer_backend': 'sampler',
+    # `swift rl` renamed the trainer/sampler GPU-placement field to the backend-neutral `sampler_mode`
+    # (it covers vLLM AND SGLang, megatron AND transformers); the v4 spelling `--vllm_mode` folds onto it
+    # here (same pattern as `sampler_engine` -> `sampler`).
+    'vllm_mode': 'sampler_mode',
     'tuner_type': 'tuner',
     'reward_funcs': 'orm',
     'reward_weights': 'orm_weights',

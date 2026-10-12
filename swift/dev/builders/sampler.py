@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
 
+from swift.dev.utils.logger import get_logger
 from swift.dev.utils.naming import resolve_plugin_class
 from swift.dev.utils.plugin import PluginKind, PluginRegistry
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from swift.dev.config import (GenerationConfig, InferConfig, ModelConfig, QuantizeConfig, RolloutConfig,
                                   TemplateConfig)
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 #: The built-in engine names a ``--sampler`` resolves to with no external source. Any other twinkle
 #: ``Sampler`` subclass is a custom sampler, reached by class or by source (see :func:`_resolve_sampler`).
@@ -112,7 +112,7 @@ def build_engine_args(backend: str, infer_config: 'InferConfig', rollout_config:
     prefix = f'{backend}_'
     result = {}
     #: Prefix-stripped rollout fields that are not sampler engine args: ``mode`` is the trainer/sampler
-    #: GPU-placement knob (``vllm_mode``) and ``engine_kwargs`` is merged verbatim below.
+    #: GPU-placement knob (``sampler_mode``) and ``engine_kwargs`` is merged verbatim below.
     excluded = {'engine_kwargs', 'mode'}
     for name, value in asdict(rollout_config).items():
         if name.startswith(prefix) and value is not None:
