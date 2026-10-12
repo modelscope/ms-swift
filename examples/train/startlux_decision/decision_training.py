@@ -38,6 +38,18 @@ def install_head(model, checkpoint, tokenizer):
         model.config.text_config.use_cache = False
 
 
+def contains_media(value):
+    """Reject media blocks without rejecting ordinary JSON business evidence."""
+    if isinstance(value, dict):
+        media_keys = {'image', 'image_url', 'video', 'video_url', 'images', 'videos'}
+        return (bool(media_keys.intersection(value))
+                or value.get('type') in ('image', 'image_url', 'video', 'video_url')
+                or any(contains_media(item) for item in value.values()))
+    if isinstance(value, list):
+        return any(contains_media(item) for item in value)
+    return False
+
+
 def encode_records(path, tokenizer, max_length=8192, with_gold=False):
     from startlux_decision import jevfmt
     features, identities = [], set()
@@ -45,7 +57,7 @@ def encode_records(path, tokenizer, max_length=8192, with_gold=False):
         if not text.strip():
             continue
         record = json.loads(text)
-        if record.get('images') or not isinstance(record['state'], str):
+        if record.get('images') or record.get('videos') or contains_media(record['state']):
             raise ValueError('This training recipe is text-only')
         identity = hashlib.sha256(
             json.dumps([record['state'], record['questions']], sort_keys=True,

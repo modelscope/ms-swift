@@ -69,6 +69,39 @@ class DecisionContract(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'overlap'):
             audit_splits({'a'}, {'a'})
 
+    def test_structured_text_state_reaches_official_renderer_unchanged(self):
+        state = {'order': {'paid': True}, 'events': ['created', 'charged']}
+        seen = []
+
+        def render_state(value, *args, **kwargs):
+            seen.append(value)
+            return {'options': [{'id': 'a'}, {'id': 'b'}]}
+
+        renderer = SimpleNamespace(
+            from_systemone=render_state, render_ids=lambda row, tokenizer, order, **kwargs: ([7, 9], order))
+        row = {'state': state, 'questions': {'q': {}}, 'targets': {'q': {'a': 1.}}}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'cases.jsonl'
+            path.write_text(json.dumps(row) + '\n')
+            with patch.dict('sys.modules', {'startlux_decision': SimpleNamespace(jevfmt=renderer)}):
+                features, _ = contract.encode_records(path, None)
+                for media in ([{
+                        'image': 'data:image/png;base64,AA=='
+                }], {
+                        'content': [{
+                            'type': 'image_url',
+                            'image_url': {
+                                'url': 'image.png'
+                            }
+                        }]
+                }):
+                    row['state'] = media
+                    path.write_text(json.dumps(row) + '\n')
+                    with self.assertRaisesRegex(ValueError, 'text-only'):
+                        contract.encode_records(path, None)
+        self.assertEqual(seen, [state])
+        self.assertEqual(features[0]['input_ids'], [7, 9])
+
     def test_accuracy_gold_is_not_replaced_by_soft_target_tie_break(self):
         renderer = SimpleNamespace(
             from_systemone=lambda *args, **kwargs: {'options': [{

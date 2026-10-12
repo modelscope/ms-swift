@@ -65,7 +65,7 @@ The original checkpoint directories must include the tokenizer and `decision_con
 
 ## Data
 
-Supply JSONL cases with `state`, `questions` and `targets`. Candidate order is preserved by the official renderer. Each target is a distribution over the original option IDs. Values are finite, nonnegative and normalized by the loader. The optional `gold` field is mandatory for independent accuracy evaluation and contains the original hard label, which may differ from a tie-broken soft-target argmax.
+Supply JSONL cases with `state`, `questions` and `targets`. State may be a text string or structured JSON business evidence; the official renderer serializes it. Image/video blocks and their reserved media keys are rejected. Candidate order is preserved by the official renderer. Each target is a distribution over the original option IDs. Values are finite, nonnegative and normalized by the loader. The optional `gold` field is mandatory for independent accuracy evaluation and contains the original hard label, which may differ from a tie-broken soft-target argmax.
 
 ```json
 {"state":"A duplicate charge is visible on the receipt.","questions":{"route":{"type":"choice","instructions":"Choose the team.","criteria":{"billing":null,"shipping":null}}},"targets":{"route":{"billing":0.95,"shipping":0.05}},"gold":{"route":"billing"}}
