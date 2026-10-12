@@ -17,6 +17,9 @@
   - "moe_act": 重新计算 MoE 中的 MLP 激活函数部分。
   - "layernorm": 重新计算 input_layernorm 和 pre_mlp_layernorm。
   - "mla_up_proj": 重新计算 MLA 上投影和 RoPE 应用部分。
+- mlp_chunks_for_training: 训练时沿序列维度对 MLP 输入分块计算的块数，必须为正整数，默认为1（不分块）。大于1时需要 `megatron-core>=0.18`，目前仅支持 Dense 模型。实际块数受当前序列长度限制。
+  - 与 `--recompute_granularity selective --recompute_modules mlp` 不兼容，因为 MLP 重计算会绕过分块；默认的 `--recompute_modules core_attn` 可以使用。
+  - 分块可能降低单次 MLP 计算的临时显存开销，也可能降低吞吐；不保证保存的激活总量按块数等比例下降。请对比实际训练的显存峰值和吞吐。BF16 全参数 SFT 示例见[这里](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/dense/chunked_mlp.sh)。
 - 🔥train_iters: 训练的总迭代次数，默认为None。
   - 提示：你可以通过设置`--num_train_epochs`来设置训练的epochs数。在使用非流式数据集时，会自动根据数据集数量计算`train_iters`（兼容packing）。
 - 🔥num_train_epochs: 指定训练的epochs数。当使用非流式数据集时，该参数会为你自动计算train_iters而不需要手动传入`train_iters`。当使用流式数据集时，该参数会在训练到`num_train_epochs`时强制退出训练，并对权重进行验证和保存。默认为None。
