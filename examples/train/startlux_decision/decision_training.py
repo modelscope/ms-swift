@@ -125,6 +125,23 @@ def candidate_loss(logits, attention_mask, targets):
     return -(targets.clamp_min(0) * log_probs).sum(-1)
 
 
+def lora_targets(model, scope):
+    if scope == 'attention':
+        return [
+            'q_proj', 'k_proj', 'v_proj', 'o_proj', 'in_proj_qkv', 'in_proj_z', 'in_proj_b', 'in_proj_a', 'out_proj'
+        ]
+    if scope != 'language-linear':
+        raise ValueError(f'Unknown LoRA scope: {scope}')
+    body = model.model.language_model
+    targets = [
+        'model.language_model.' + name for name, module in body.named_modules()
+        if name and isinstance(module, torch.nn.Linear)
+    ]
+    if not targets:
+        raise ValueError('No supported linear modules in the language backbone')
+    return targets
+
+
 def audit_splits(train, validation):
     overlap = train & validation
     if overlap:

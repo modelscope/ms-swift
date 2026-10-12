@@ -6,7 +6,7 @@ This example fine-tunes the language backbone of an existing StartLux decision c
 | --- | --- |
 | Framework | SWIFT; existing Qwen3.5 dense/MoE loading and NPU kernels |
 | Checkpoints | StartLux-Decision-4B and StartLux-Decision-35B-A3B |
-| Trainable weights | Language attention / linear-attention LoRA, rank 16, alpha 32, dropout 0.05 |
+| Trainable weights | Rank 16 / alpha 32 / dropout 0.05; default attention LoRA, optional `--lora-scope language-linear` for all supported language-backbone linear layers |
 | Frozen weights | Original backbone weights, vision, embeddings and vocabulary projection |
 | Objective | Per-question soft cross-entropy at the last real prompt token; only legal candidates enter softmax |
 | Numerical head | 26 letter rows projected in FP32; original frozen weight/name retained for PEFT compatibility |
@@ -104,6 +104,8 @@ python train.py --model /models/StartLux-Decision-4B \
   --output /workspace/results/4b-resumed
 ```
 
+The optional `--lora-scope language-linear` follows the official fine-tuning scope for supported linear modules, including dense/shared feed-forward projections. It excludes vision and the vocabulary head. Fused MoE expert parameter tensors are not ordinary linear modules and are not selected. Keep the scope unchanged when resuming.
+
 A short smoke run checks execution, not model quality. `validation.json` records pre/post loss, arguments and the trainable-parameter audit. Original fitted temperatures do not remain validated after an adapter changes weights.
 
 ## Independent comparison
@@ -124,4 +126,6 @@ Outputs contain per-question predictions, checkpoint/data hashes, correct/total 
 
 ## Validation status
 
-Real 4B checkpoints have completed forward/backward, optimizer updates and save in both frameworks; SWIFT has also resumed from its full checkpoint. Twinkle full-state resume also passed after the included optimizer restore fix. Independent accuracy and real 35B acceptance are still being checked. No seven-suite improvement is claimed by this example yet.
+Both real 4B and 35B checkpoints have completed forward/backward, finite optimizer updates and checkpoint save on Ascend. SWIFT 35B was checked on four devices; Twinkle 35B on two. SWIFT full-state resume completed for both sizes, but its distributed 35B run is not bitwise identical to uninterrupted training. Twinkle 4B full-state resume after a completed accumulation group reproduced all adapter tensors exactly; its distributed 35B restore is still under validation.
+
+The included CPU tests cover candidate-only FP32 projection, causal readout, target masking, structured text input, train/evaluation overlap, original hard labels and LoRA exclusion of vision/output weights. These tests and short hardware runs establish execution contracts; independent accuracy gains and seven-suite acceptance remain experimental. No seven-suite improvement is claimed.

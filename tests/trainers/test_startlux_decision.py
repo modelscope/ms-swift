@@ -102,6 +102,26 @@ class DecisionContract(unittest.TestCase):
         self.assertEqual(seen, [state])
         self.assertEqual(features[0]['input_ids'], [7, 9])
 
+    def test_language_linear_lora_does_not_train_vision_or_output_head(self):
+        from peft import LoraConfig, get_peft_model
+        model = torch.nn.Module()
+        model.model = torch.nn.Module()
+        model.model.language_model = torch.nn.Sequential(torch.nn.Linear(4, 8), torch.nn.Linear(8, 4))
+        model.model.visual = torch.nn.Linear(4, 4)
+        model.lm_head = torch.nn.Linear(4, 6)
+        targets = contract.lora_targets(model, 'language-linear')
+        trained = get_peft_model(model, LoraConfig(r=2, target_modules=targets))
+        parameters = [name for name, param in trained.named_parameters() if param.requires_grad]
+        self.assertEqual(len(parameters), 4)
+        self.assertTrue(all('.language_model.' in name and 'lora_' in name for name in parameters))
+        output = trained.base_model.model.model.language_model(torch.ones(1, 4))
+        output.sum().backward()
+        self.assertTrue(
+            any(param.grad is not None and param.grad.abs().sum() > 0 for name, param in trained.named_parameters()
+                if 'lora_B' in name))
+        self.assertIsNone(trained.base_model.model.lm_head.weight.grad)
+        self.assertIsNone(trained.base_model.model.model.visual.weight.grad)
+
     def test_accuracy_gold_is_not_replaced_by_soft_target_tie_break(self):
         renderer = SimpleNamespace(
             from_systemone=lambda *args, **kwargs: {'options': [{

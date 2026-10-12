@@ -6,7 +6,7 @@ import os
 import torch
 from datasets import Dataset
 from decision_training import (audit_splits, audit_trainable, candidate_loss, collate, copy_metadata, encode_records,
-                               install_head)
+                               install_head, lora_targets)
 from pathlib import Path
 from peft import LoraConfig, get_peft_model
 from transformers import AutoConfig
@@ -55,6 +55,7 @@ def main():
     parser.add_argument('--batch-size', type=int, default=2)
     parser.add_argument('--accum', type=int, default=4)
     parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--lora-scope', choices=['attention', 'language-linear'], default='attention')
     parser.add_argument('--resume')
     parser.add_argument('--fsdp', action='store_true')
     args = parser.parse_args()
@@ -77,14 +78,7 @@ def main():
     template = get_template(processor, template_type='qwen3_5', padding_free=False, padding_side='right')
     template.model = model
     model = get_peft_model(
-        model,
-        LoraConfig(
-            r=16,
-            lora_alpha=32,
-            lora_dropout=0.05,
-            target_modules=[
-                'q_proj', 'k_proj', 'v_proj', 'o_proj', 'in_proj_qkv', 'in_proj_z', 'in_proj_b', 'in_proj_a', 'out_proj'
-            ]))
+        model, LoraConfig(r=16, lora_alpha=32, lora_dropout=0.05, target_modules=lora_targets(model, args.lora_scope)))
     audit = audit_trainable(model)
     extra = {}
     if args.fsdp:
