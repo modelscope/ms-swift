@@ -209,6 +209,28 @@ class MiniCPMV4_6Loader(ModelLoader):
         return super().get_model(*args, **kwargs)
 
 
+class MiniCPMV4_7Loader(MiniCPMV4_6Loader):
+
+    def get_model(self, *args, **kwargs) -> PreTrainedModel:
+        from transformers.integrations import is_deepspeed_zero3_enabled
+        from transformers.models.minicpmv4_7.modeling_minicpmv4_7 import MiniCPMV4_7Merger
+
+        self.leaf_modules = [MiniCPMV4_7Merger]
+        if self.model_info.is_moe_model:
+            from transformers.models.qwen3_5_moe.modeling_qwen3_5_moe import Qwen3_5MoeSparseMoeBlock
+            self.leaf_modules.append(Qwen3_5MoeSparseMoeBlock)
+        experts_impl = self.experts_impl
+        if self.model_info.is_moe_model and experts_impl is not None:
+            self.experts_impl = {'text_config': experts_impl}
+        try:
+            model = super().get_model(*args, **kwargs)
+        finally:
+            self.experts_impl = experts_impl
+        if is_deepspeed_zero3_enabled():
+            model.model.merger.register_forward_hook(lambda module, inputs, output: (torch.cat(output, dim=0), ))
+        return model
+
+
 register_model(
     ModelMeta(
         MLLMModelType.minicpmv4_6,
@@ -222,6 +244,23 @@ register_model(
         architectures=['MiniCPMV4_6ForConditionalGeneration'],
         model_arch=ModelArch.minicpmv4_6,
         requires=['transformers>=5.7.0'],
+        tags=['vision', 'video'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.minicpmv4_7,
+        [
+            ModelGroup([
+                Model('OpenBMB/MiniCPM-V-4.7-1B', 'openbmb/MiniCPM-V-4.7-1B'),
+                Model('OpenBMB/MiniCPM-V-4.7-35B-A3B', 'openbmb/MiniCPM-V-4.7-35B-A3B'),
+            ]),
+        ],
+        MiniCPMV4_7Loader,
+        template=TemplateType.minicpmv4_7,
+        architectures=['MiniCPMV4_7ForConditionalGeneration'],
+        model_arch=ModelArch.minicpmv4_6,
+        requires=['transformers>=5.18.0'],
         tags=['vision', 'video'],
     ))
 
