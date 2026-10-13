@@ -531,6 +531,7 @@ class TestExternalPluginReplayInWorkers(unittest.TestCase):
         self._saved_external = list(utils_module._external_files)
         self._saved_modules = set(sys.modules)
         self._saved_path = list(sys.path)
+        self._saved_meta_path = list(sys.meta_path)
         self._saved_init = DataLoader.__init__
         self._was_patched = getattr(DataLoader, '_swift_external_plugins', False)
         import_external_file(self.plugin)  # what BaseArguments._import_external_plugins does
@@ -543,6 +544,7 @@ class TestExternalPluginReplayInWorkers(unittest.TestCase):
         for name in set(sys.modules) - self._saved_modules:
             del sys.modules[name]
         sys.path[:] = self._saved_path
+        sys.meta_path[:] = self._saved_meta_path
 
     def test_get_external_files_records_the_plugin(self):
         self.assertIn(self.plugin, get_external_files())
