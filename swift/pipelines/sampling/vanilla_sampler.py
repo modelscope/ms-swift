@@ -184,7 +184,7 @@ class VanillaSampler(Sampler):
         generated = []
         resp_all = self.generate(data)
         for i, resps in enumerate(resp_all):
-            choices = resps['choices']
+            choices = list(resps['choices'])
             messages = resps['messages']
             uuid = get_messages_md5(resps)
             assert messages[-1]['role'] == 'assistant'
