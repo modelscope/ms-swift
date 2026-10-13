@@ -37,7 +37,7 @@
 
 3. 提交PR：开发、测试完成后将代码推送到远程分支。在github上点击**Pull Requests页面**，新建一个PR，源分支选择您提交的代码分支，目标分支选择`modelscope/ms-swift:main`分支
 
-4. 撰写描述：请填写 PR 模板，关联相关的 issue（如有；例如 bug fix 用 `Fixes #123`，feature/RFC 可用 `Refs #123`），让 Reviewers 知道您的修改内容
+4. 撰写描述：请填写 [PR 模板](./.github/PULL_REQUEST_TEMPLATE.md)——保留 PR type、issue 关联与 Checklist 结构，并勾选适用项；通过 CLI/API（如 `gh pr create --body`）创建 PR 时模板不会自动带入，请手动粘贴模板内容。关联相关的 issue（如有；例如 bug fix 用 `Fixes #123`，feature/RFC 可用 `Refs #123`），让 Reviewers 知道您的修改内容。未按模板填写的 PR 可能会被直接关闭。
 
 5. Review：我们希望合入的代码简洁高效，因此可能会提出一些问题并讨论。请注意，任何review中提出的问题是针对代码本身，而非您个人。在所有问题讨论通过后，您的代码会被通过
 

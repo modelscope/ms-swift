@@ -30,7 +30,7 @@ Any feature development is carried out in the form of Fork and then PR on GitHub
 2. Clone: Clone the code repository generated in the first step to your local machine and **create a new branch** for development. During development, please click the **Sync Fork button** in time to synchronize with the `main` branch to prevent code expiration and conflicts.
 3. Submit PR: After development and testing, push the code to the remote branch. On GitHub, go to the **Pull Requests page**, create a new PR, select your code branch as the source branch, and the `modelscope/ms-swift:main` branch as the target branch.
 
-4. Write Description: Fill in the PR template, link the related issue if there is one (e.g. `Fixes #123` for bug fixes, or `Refs #123` for features/RFCs), and describe your changes so that the reviewers know the content of your modification.
+4. Write Description: Fill in the [PR template](./.github/PULL_REQUEST_TEMPLATE.md) — keep the PR type checkboxes, the linked-issue line and the checklist, and tick the boxes that apply; the template is **not** auto-filled for PRs created via CLI/API (e.g. `gh pr create --body ...`), so include the template content yourself. Link the related issue if there is one (e.g. `Fixes #123` for bug fixes, or `Refs #123` for features/RFCs), and describe your changes so that the reviewers know the content of your modification. PRs that do not follow the template may be closed directly.
 5. Review: We hope that the code to be merged is concise and efficient, so we may raise some questions and discuss them. Please note that any issues raised in the review are aimed at the code itself, not at you personally. Once all issues are discussed and resolved, your code will be approved.
 
 ### First-time Contributors
