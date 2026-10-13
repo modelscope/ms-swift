@@ -240,6 +240,22 @@ loss = D(P_teacher(·|x, y), P_student(·|x, y))
 | `--lmbda` | float | 0.5 | Online sampling probability: 0=offline, 1=pure online |
 | `--sft_alpha` | float | 0 | SFT loss mixing ratio; final `loss = gkd_loss + sft_alpha * sft_loss` (only for **non-student-generated** data) |
 | `--gkd_logits_topk` | int | None | Compute KL using teacher top-K logits only; required when using `teacher_model_server` |
+| `--gkd_loss_type` | str | jsd | `jsd` uses the existing beta-interpolated divergence; `mopd` uses the temperature-1 top-k MOPD loss (HF backend only) |
+
+### Top-K MOPD Loss
+
+Set `--gkd_loss_type mopd --gkd_logits_topk 64` to use [MOPD Eq. 5](https://arxiv.org/abs/2606.30406):
+
+`sum_topk(p_student * (log(p_student) - log(p_teacher)) - p_student + p_teacher)`.
+
+Both probabilities are normalized over the **full vocabulary**, then selected at the teacher's top-k token IDs.
+They are not renormalized over the top-k support. Only response positions contribute; teacher targets are detached.
+Local teachers and external teacher logprobs use the same loss. Student and teacher must share token-ID semantics.
+
+This option requires a positive `gkd_logits_topk` and supports the HF GKD backend without Liger or sequence parallelism.
+MOPD always computes probabilities at temperature 1 and does not use `beta`; `temperature` still controls rollout
+sampling. The default `jsd` loss retains its existing temperature and beta behavior. The existing `lmbda`, teacher
+routing and `sft_alpha` options continue to apply.
 
 ### Top-K KL Computation
 
