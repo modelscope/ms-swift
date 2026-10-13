@@ -117,6 +117,10 @@ def update_last_checkpoint_symlink(checkpoint_dir: str) -> Optional[str]:
     target is relative (just the checkpoint directory name) so the output directory stays movable, and it is
     swapped in with `os.replace` so readers never observe a missing link. Returns the link path, or None if it
     could not be created (e.g. a filesystem without symlink support).
+
+    The staging symlink carries the pid of this writer: a fixed name (`last-checkpoint.tmp`) let two
+    concurrent saves remove each other's staging link, so one caller could publish another's target and a
+    second could lose its staging path entirely (#10336).
     """
     if not os.path.isdir(checkpoint_dir):
         return None
@@ -125,7 +129,7 @@ def update_last_checkpoint_symlink(checkpoint_dir: str) -> Optional[str]:
     if os.path.lexists(link_path) and not os.path.islink(link_path):
         logger.warning(f'`{link_path}` already exists and is not a symlink; skip updating it.')
         return None
-    tmp_path = f'{link_path}.tmp'
+    tmp_path = f'{link_path}.{os.getpid()}.tmp'
     try:
         if os.path.lexists(tmp_path):
             os.remove(tmp_path)
