@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Union
 from swift.rl_core.data import GKDBatch, GKDSample
 from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_output, build_teacher_requests, encode_gkd_samples,
                                              fetch_teacher_parsed_by_routing)
-from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
+from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss, mopd_gkd_loss
 from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
@@ -54,6 +54,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):
         self.vllm_client = kwargs.pop('vllm_client', None)
         self.gkd_logits_topk = kwargs.pop('gkd_logits_topk', None)
+        if kwargs['args'].gkd_loss_type == 'mopd':
+            if self.gkd_logits_topk is None or self.gkd_logits_topk <= 0:
+                raise ValueError('gkd_loss_type=mopd requires a positive gkd_logits_topk.')
+            if kwargs['args'].use_liger_kernel or kwargs['template'].sequence_parallel_size > 1:
+                raise ValueError('MOPD requires the HF GKD loss path without Liger or sequence parallelism.')
         self._pop_teacher_kwargs(kwargs)  # teacher kwargs (shared with GRPO via RolloutTrainerMixin)
         super().__init__(model, None, *_args, **kwargs)
         args = kwargs['args']
@@ -106,9 +111,13 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         """Compute JSD loss. teacher_output.labels is always set (equals student labels when non-OPSD)."""
         shifted_labels = torch.roll(labels, shifts=-1, dims=1)
         teacher_output.labels = torch.roll(teacher_output.labels, shifts=-1, dims=1)
-        if self.gkd_logits_topk is not None:
-            teacher_output = teacher_output.to_topk(self.gkd_logits_topk)
-        total, num_valid = gkd_loss(student_logits, teacher_output, shifted_labels, self.beta, self.temperature)
+        if self.args.gkd_loss_type == 'mopd':
+            teacher_output = teacher_output.to_topk(self.gkd_logits_topk, normalize=True)
+            total, num_valid = mopd_gkd_loss(student_logits, teacher_output, shifted_labels)
+        else:
+            if self.gkd_logits_topk is not None:
+                teacher_output = teacher_output.to_topk(self.gkd_logits_topk)
+            total, num_valid = gkd_loss(student_logits, teacher_output, shifted_labels, self.beta, self.temperature)
         if num_valid == 0:
             return total * 0
         return total / num_valid
