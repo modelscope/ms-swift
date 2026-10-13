@@ -693,8 +693,8 @@ class MiniCPMV4_6Template(Template):
             if mm_data:
                 media_inputs = self.processor(
                     text=self.tokenizer.eos_token.join([media_token] * len(mm_data)),
-                    images=inputs.images or None,
-                    videos=inputs.videos or None,
+                    images=mm_data if media_type == 'image' else None,
+                    videos=mm_data if media_type == 'video' else None,
                     return_tensors='pt',
                     add_special_tokens=False,
                     downsample_mode=self.downsample_mode,
@@ -752,6 +752,31 @@ register_template(
     ChatmlTemplateMeta(
         MLLMTemplateType.minicpmv4_6,
         template_cls=MiniCPMV4_6Template,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+    ))
+
+
+class MiniCPMV4_7Template(MiniCPMV4_6Template):
+    support_padding_free = False
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        encoded['mm_token_type_ids'] = torch.tensor(self.processor.create_mm_token_type_ids([encoded['input_ids']])[0])
+        return encoded
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        if self.is_training and self.padding_side == 'left':
+            res.pop('position_ids', None)
+        return res
+
+
+register_template(
+    ChatmlTemplateMeta(
+        MLLMTemplateType.minicpmv4_7,
+        template_cls=MiniCPMV4_7Template,
         is_thinking=True,
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think>\n\n</think>\n\n',
