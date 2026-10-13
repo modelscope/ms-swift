@@ -110,7 +110,7 @@ def multi_head_metrics(logits, labels, heads):
             values = prediction.argmax(-1) == target[:, 0]
             metric = 'acc'
         elif head['problem_type'] == 'multi_label_classification':
-            values = ((prediction > 0) == target.bool()).all(-1)
+            values = ((prediction >= 0) == target.bool()).all(-1)
             metric = 'acc'
         else:
             values = (prediction - target).float().square().mean(-1)

@@ -809,7 +809,7 @@ class Template(ProcessorMixin):
                     predictions = values.argmax(-1).tolist()
                     probabilities = values.log_softmax(-1)
                 else:
-                    predictions = [(v >= 0.5).nonzero(as_tuple=True)[0].tolist() for v in values.sigmoid()]
+                    predictions = [(v >= 0).nonzero(as_tuple=True)[0].tolist() for v in values]
                     probabilities = F.logsigmoid(values)
                 for i, prediction in enumerate(predictions):
                     preds[i][head['name']] = prediction

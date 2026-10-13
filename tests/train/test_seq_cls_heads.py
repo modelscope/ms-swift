@@ -87,6 +87,11 @@ class TestSequenceHeads(unittest.TestCase):
         })
         metric = AccMetrics(SimpleNamespace(), SimpleNamespace(template=template))
         torch.testing.assert_close(metric.preprocess_logits_for_metrics(logits, labels), logits)
+        for dtype in [torch.float32, torch.float16, torch.bfloat16]:
+            boundary = logits.to(dtype)
+            boundary[:, 3:5] = torch.tensor([0., -1e-5], dtype=dtype)
+            self.assertEqual(template.decode_seq_cls(boundary, 0)[0][0]['tags'], [0])
+            self.assertEqual(multi_head_metrics(boundary, labels, self.heads)['tags_acc'].item(), 1.)
 
     def test_checkpoint_layout_preserves_head_order(self):
         # Transformers writes config JSON with sort_keys=True; the head list must retain its order.

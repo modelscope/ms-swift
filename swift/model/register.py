@@ -241,7 +241,7 @@ class ModelLoader(BaseModelLoader):
         if problem_type and self.model_info.task_type == 'seq_cls':
             self.model_info.problem_type = problem_type
             config.problem_type = problem_type
-        heads = self.seq_cls_heads or getattr(config, 'seq_cls_heads', None)
+        heads = self.seq_cls_heads if self.seq_cls_heads is not None else getattr(config, 'seq_cls_heads', None)
         if heads is not None:
             from .seq_cls_head import normalize_seq_cls_heads
             if self.model_info.task_type != 'seq_cls':
