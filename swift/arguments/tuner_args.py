@@ -138,6 +138,13 @@ class TunerArguments:
     lorap_lr_ratio: Optional[float] = None
     use_rslora: bool = False
     use_dora: bool = False
+    use_npu_fused_linear_ce: bool = field(
+        default=False,
+        metadata={
+            'help':
+            'Enable the memory-efficient NPU Fused Linear Cross-Entropy for supported Qwen2/Qwen3 SFT '
+            'training on Ascend NPU. Default is False (disabled).'
+        })
 
     # lora_ga
     lora_ga_batch_size: int = 2
