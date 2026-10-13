@@ -99,7 +99,10 @@ def _parse_multi_negative_sentences(sentences, labels, hard_negatives=None):
         split_part = sentences[start:end]
         if hard_negatives is not None:
             negatives = len(split_part) - 2
-            assert negatives > 0
+            if hard_negatives < 0:
+                raise ValueError('hard_negatives must be nonnegative.')
+            if hard_negatives > 0 and negatives == 0:
+                raise ValueError('Cannot expand hard negatives from a sample without explicit negatives.')
             if negatives > hard_negatives:
                 split_part = split_part[:hard_negatives + 2]
             elif negatives < hard_negatives:
@@ -126,6 +129,12 @@ class InfonceLoss(BaseLoss):
         infonce_include_dd = strtobool(os.environ.get('INFONCE_INCLUDE_DD', 'False'))
         if hard_negatives is not None:
             hard_negatives = int(hard_negatives)
+        config = kwargs.get('infonce_config')
+        if config is not None:
+            from .infonce_config import validate_infonce_config
+            config = validate_infonce_config(config)
+            use_batch = config.get('use_in_batch_negatives', use_batch)
+            hard_negatives = config.get('hard_negatives', hard_negatives)
         if self.is_megatron:
             from megatron.core import mpu
             rank, world_size = mpu.get_data_parallel_rank(), mpu.get_data_parallel_world_size()
@@ -134,6 +143,12 @@ class InfonceLoss(BaseLoss):
         # repeat of anchor(1)+positive(1)+negatives(n)
         sentences = outputs['last_hidden_state']
         gradient_scale = 1
+        if config is not None and world_size > 1:
+            # Check before any optional embedding gather: different use_batch values must not hang ranks.
+            settings = [None] * world_size
+            dist.all_gather_object(settings, (kwargs.get('dataset_group'), use_batch, hard_negatives))
+            if any(setting != settings[0] for setting in settings):
+                raise ValueError('All ranks in an InfoNCE batch must use the same dataset and negative settings.')
 
         if world_size > 1 and use_batch:
             if getattr(sequence_parallel, 'dp_group', None) is not None:
@@ -183,6 +198,8 @@ class InfonceLoss(BaseLoss):
         # for example: batch_size=2 with tensor anchor(1)+positive(1)+negatives(3) + anchor(1)+positive(1)+negatives(2)
         # labels will be [1,0,0,0,1,0,0], meaning 1 positive, 3 negatives, 1 positive, 2 negatives
         split_tensors = _parse_multi_negative_sentences(sentences, labels, hard_negatives)
+        if config is not None and not use_batch and any(tensor.shape[0] < 3 for tensor in split_tensors):
+            raise ValueError('Disabling in-batch negatives requires explicit negatives for every sample.')
         loss = 0
         can_batched = hard_negatives is not None
         if hard_negatives is None and len(set([s.shape[0] for s in split_tensors])) == 1:
