@@ -155,8 +155,8 @@ class Template(ProcessorMixin):
         self._agent_template = agent_template
         self.norm_bbox = norm_bbox or self.norm_bbox
         self.mode: Literal['transformers', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto'] = 'transformers'
-        self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
-                                'generative_reranker'] = 'causal_lm'
+        self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker', 'generative_reranker',
+                                'decision'] = 'causal_lm'
         self.use_megatron = False
         self._handles = []
         self._deepspeed_initialize = None
@@ -658,6 +658,15 @@ class Template(ProcessorMixin):
             encoded['labels'] = labels
         return encoded
 
+    def _decision_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
+        chosen = inputs.chosen
+        encoded = self._encode_truncated(chosen)
+        if self.is_training:
+            target_probs = chosen.extra_kwargs.get('target_probs')
+            if target_probs is not None:
+                encoded['target_probs'] = target_probs
+        return encoded
+
     @torch.inference_mode()
     @retry_decorator(3)
     def encode(self,
@@ -703,6 +712,8 @@ class Template(ProcessorMixin):
             encoded = self._embedding_encode(inputs)
         elif self.task_type in {'reranker', 'generative_reranker'}:
             encoded = self._reranker_encode(inputs)
+        elif self.task_type == 'decision':
+            encoded = self._decision_encode(inputs)
         else:
             raise ValueError(f'task_type: {self.task_type} is not supported.')
 
@@ -791,6 +802,37 @@ class Template(ProcessorMixin):
                 preds = [(logprob >= 0.5).nonzero(as_tuple=True)[0].tolist() for logprob in torch.sigmoid(logits)]
                 logprobs = F.logsigmoid(logits)
             logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
+        return preds, logprobs
+
+    def _decode_decision(self, output, top_logprobs: int):
+        """Turn a decision forward's `ScoringOutput` into per-record predictions.
+
+        Option sets are small (<=16), so the whole distribution is returned rather than
+        a `top_logprobs` slice (the arg is kept for parity with the engine's decode dispatch).
+        """
+        from swift.model.decision_head import masked_argmax, masked_softmax
+        logits = output.logits
+        option_mask = getattr(output, 'option_mask', None)
+        if option_mask is None:
+            option_mask = torch.ones_like(logits, dtype=torch.bool)
+        probs = masked_softmax(logits, option_mask)  # [total_q, max_opt]
+        preds_idx = masked_argmax(logits, option_mask)  # [total_q]
+        counts = getattr(output, 'counts', None)
+        if counts is None:
+            counts = [logits.shape[0]]
+        elif isinstance(counts, torch.Tensor):
+            counts = counts.tolist()
+
+        preds = []
+        start = 0
+        for c in counts:
+            record = []
+            for j in range(start, start + int(c)):
+                mask_j = option_mask[j]
+                record.append({'index': int(preds_idx[j]), 'probs': probs[j][mask_j].tolist()})
+            preds.append(record)
+            start += int(c)
+        logprobs = [None] * len(preds)
         return preds, logprobs
 
     def decode_generate_ids(self,
@@ -1562,7 +1604,7 @@ class Template(ProcessorMixin):
                 raise ValueError(f'Invalid truncation_strategy: {self.truncation_strategy}')
         encoded['length'] = length
         encoded['input_ids'] = input_ids
-        if self.task_type in {'seq_cls', 'embedding', 'reranker', 'generative_reranker'}:
+        if self.task_type in {'seq_cls', 'embedding', 'reranker', 'generative_reranker', 'decision'}:
             encoded.pop('labels', None)
             encoded.pop('loss_scale', None)
         else:
@@ -1775,6 +1817,8 @@ class Template(ProcessorMixin):
             res = self._embedding_data_collator(batch, padding_to=padding_to)
         elif self.task_type in {'reranker', 'generative_reranker'}:
             res = self._reranker_data_collator(batch, padding_to=padding_to)
+        elif self.task_type == 'decision':
+            res = self._decision_data_collator(batch, padding_to=padding_to)
         else:
             raise ValueError(f'task_type: {self.task_type} is not supported.')
         if not self.remove_unused_columns:
@@ -1948,6 +1992,72 @@ class Template(ProcessorMixin):
                 labels = torch.tensor(labels, dtype=torch.long)
             res['labels'] = labels
         return res
+
+    def _decision_data_collator(self,
+                                batch: List[Dict[str, Any]],
+                                *,
+                                padding_to: Optional[int] = None) -> Dict[str, Any]:
+        record_metas = [b.pop('decision_meta', None) for b in batch]
+        record_targets = [b.pop('target_probs', None) for b in batch]
+        res = self._data_collator(batch, padding_to=padding_to)
+
+        # -- flatten per-record decision_meta into batched flat lists (len == total_q) --
+        flat: Dict[str, Any] = {
+            'record_index': [],
+            'n_options': [],
+            'kinds': [],
+            'question_spans': [],
+            'option_spans': [],
+            'counts': [],
+        }
+        max_opt = 0
+        for rec_i, meta in enumerate(record_metas):
+            self._extract_extra_decision_meta(meta, rec_i, flat)
+            if meta is None:
+                continue
+            n_options = [int(n) for n in (meta.get('n_options') or [])]
+            nq = len(n_options)
+            flat['counts'].append(nq)
+            flat['record_index'].extend([rec_i] * nq)
+            flat['n_options'].extend(n_options)
+            flat['kinds'].extend(meta.get('kinds') or [])
+            flat['question_spans'].extend(meta.get('question_spans') or [])
+            flat['option_spans'].extend(meta.get('option_spans') or [])
+            if nq:
+                max_opt = max(max_opt, max(n_options))
+        flat['max_opt'] = max_opt
+
+        padding_side = self.padding_side if self.is_training else 'left'
+        flat['left_padding'] = padding_side == 'left'
+        attention_mask = res.get('attention_mask')
+        if isinstance(attention_mask, torch.Tensor):
+            flat['seq_lens'] = attention_mask.sum(dim=-1).tolist()
+        else:
+            flat['seq_lens'] = None
+        res['decision_meta'] = flat
+
+        # -- flatten + pad target_probs into [total_q, max_opt] labels tensor --
+        if not all(t is None for t in record_targets) and max_opt > 0:
+            rows: List[List[float]] = []
+            for targets in record_targets:
+                if targets is None:
+                    continue
+                for q in targets:
+                    row = [0.0] * max_opt
+                    n = min(len(q), max_opt)
+                    row[:n] = [float(x) for x in q[:n]]
+                    rows.append(row)
+            if rows:
+                res['labels'] = torch.tensor(rows, dtype=torch.float32)
+
+        return res
+
+    def _extract_extra_decision_meta(self, meta: Optional[Dict[str, Any]], rec_i: int, flat: Dict[str, Any]) -> None:
+        """Hook for template-specific decision meta fields. The base implementation is a no-op;
+        subclasses (e.g. OmniJevTemplate) override this to flatten model-specific fields like
+        `option_markers` or `mm_counts` into ``flat`` without polluting the shared collator.
+        """
+        return
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
