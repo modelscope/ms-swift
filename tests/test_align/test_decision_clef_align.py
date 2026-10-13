@@ -275,8 +275,9 @@ def _make_random_head():
         heads=4,
         feedforward=_RAND_WIDTH * 2,
         dropout=0.0)
+    gen = torch.Generator().manual_seed(42)
     for p in head.parameters():
-        torch.nn.init.normal_(p, mean=0.0, std=0.02)
+        torch.nn.init.normal_(p, mean=0.0, std=0.02, generator=gen)
     return head
 
 

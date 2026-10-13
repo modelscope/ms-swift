@@ -457,6 +457,9 @@ def _make_random_omnijev_head(hidden_size=32):
         },
         noul_bias=0.0,
     )
+    gen = torch.Generator().manual_seed(42)
+    for p in head.parameters():
+        torch.nn.init.normal_(p, mean=0.0, std=0.02, generator=gen)
     return head
 
 

@@ -44,16 +44,12 @@ swift sft --task_type decision
 
 ### 符号约定
 
-
-| 符号                                                                   | 含义                                                                                   |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| $Q$                                                                  | 一个 micro-batch 中的问题总数（所有 record 展开后）                                                 |
-| $K_q$                                                                | 问题 $q$ 的选项数（`noul`=2, `score`=6, `choice`=数据集给定）                                     |
-| $\mathbf{z}_q \in \mathbb{R}^{K_q}$                                  | 头部输出的 per-option logit（softmax 前）                                                    |
-| $\mathbf{p}_q = \mathrm{softmax}(\mathbf{z}_q) \in \mathbb{R}^{K_q}$ | 模型预测概率（masked softmax，仅在真实选项上归一化）                                                    |
-| $\mathbf{t}_q \in \Delta^{K_q}$                                      | 目标分布（硬 one-hot 或软标签蒸馏）                                                               |
-| $\hat{\mathbf{p}}_q, \hat{\mathbf{t}}_q$                             | $\mathbf{p}_q, \mathbf{t}_q$ 的累积分布（CDF），$\hat{p}_q^{(k)} = \sum_{j \le k} p_q^{(j)}$ |
-
+- $Q$：一个 micro-batch 中的问题总数（所有 record 展开后）
+- $K_q$：问题 q 的选项数（`noul`=2, `score`=6, `choice`=数据集给定）
+- $z_q$：头部输出的 per-option logit（softmax 前），shape $\mathbb{R}^{K_q}$
+- $p_q = \mathrm{softmax}(z_q)$：模型预测概率（masked softmax，仅在真实选项上归一化），shape $\mathbb{R}^{K_q}$
+- $t_q$：目标分布（硬 one-hot 或软标签蒸馏），shape $\Delta^{K_q}$
+- $\hat{p}_q, \hat{t}_q$：$p_q, t_q$ 的累积分布（CDF），其中 $\hat{p}_q^{(k)} = \sum_{j \le k} p_q^{(j)}$
 
 
 
@@ -65,28 +61,55 @@ $$
 \mathcal{L}_{\mathrm{CE}} = \frac{1}{|Q|} \sum_{q \in Q} \left( -\sum_{k=1}^{K_q} t_q^{(k)} \log p_q^{(k)} \right)
 $$
 
-当 $\mathbf{t}_q$ 为软标签时，此式即 $\mathrm{KL}(\mathbf{t}_q \| \mathbf{p}_q)$（去掉不影响梯度的常数 $H(\mathbf{t}_q)$）；当 $\mathbf{t}_q$ 为 one-hot 时，退化为标准交叉熵。各模型专属损失在此基础上叠加校准项。
+当 $t_q$ 为软标签时，此式即 $\mathrm{KL}(t_q \| p_q)$（去掉不影响梯度的常数 $H(t_q)$）；当 $t_q$ 为 one-hot 时，退化为标准交叉熵。各模型专属损失在此基础上叠加校准项。
 
 ### 各损失详解
 
-**distill_rps**（JEV）：$\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}$
+**distill_rps**（JEV）：
 
-- 基础项使用软标签蒸馏目标（teacher 的概率分布），此时 $\mathcal{L}_{\mathrm{CE}} \equiv \mathrm{KL}(\mathbf{t} \| \mathbf{p})$。
+$$
+\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}
+$$
+
+- 基础项使用软标签蒸馏目标（teacher 的概率分布），此时 $\mathcal{L}_{\mathrm{CE}} \equiv \mathrm{KL}(t \| p)$。
 - RPS 附加项仅作用于 `score` 类问题（有序打分），权重 $\lambda_r = 0.5$。
-- $\mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \frac{1}{K_q - 1} \sum_{k=1}^{K_q-1} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2$
 
-**smooth_brier**（Clef）：$\mathcal{L} = \mathcal{L}_{\mathrm{CE}}^{\mathrm{LS}} + \lambda_b \cdot \mathcal{L}_{\mathrm{Brier}}$
+$$
+\mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \frac{1}{K_q - 1} \sum_{k=1}^{K_q-1} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2
+$$
 
-- 标签平滑后的 CE：将 one-hot 标签 $\mathbf{t}_q$ 与均匀分布混合，$\tilde{t}_q^{(k)} = (1-\epsilon)t_q^{(k)} + \epsilon / K_q$，$\epsilon$ = `CLEF_LABEL_SMOOTHING`（默认 0.1）。
-- Brier 分数（所有问题类型均参与）：$\mathcal{L}_{\mathrm{Brier}} = \frac{1}{|Q|} \sum_{q \in Q} \frac{1}{K_q} \sum_{k=1}^{K_q} (p_q^{(k)} - \tilde{t}_q^{(k)})^2$，权重 $\lambda_b$ = `CLEF_BRIER_WEIGHT`（默认 1.0）。
+**smooth_brier**（Clef）：
 
-**ce_rps**（OmniJev）：$\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}$
+$$
+\mathcal{L} = \mathcal{L}_{\mathrm{CE}}^{\mathrm{LS}} + \lambda_b \cdot \mathcal{L}_{\mathrm{Brier}}
+$$
 
-- 基础项为无标签平滑的 plain log_score（`noul` 2 列二分类 log-score，`choice` $K+1$ 列含 abstain 列，`score` $L$ 列有序）。
+- 标签平滑后的 CE：将 one-hot 标签 $t_q$ 与均匀分布混合，$\tilde{t}_q^{(k)} = (1-\varepsilon) \cdot t_q^{(k)} + \varepsilon / K_q$，$\varepsilon$ = `CLEF_LABEL_SMOOTHING`（默认 0.1）。
+- Brier 分数（所有问题类型均参与），权重 $\lambda_b$ = `CLEF_BRIER_WEIGHT`（默认 1.0）。
+
+$$
+\mathcal{L}_{\mathrm{Brier}} = \frac{1}{|Q|} \sum_{q \in Q} \frac{1}{K_q} \sum_{k=1}^{K_q} (p_q^{(k)} - \tilde{t}_q^{(k)})^2
+$$
+
+**ce_rps**（OmniJev）：
+
+$$
+\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}
+$$
+
+- 基础项为无标签平滑的 plain log_score（`noul` 2 列二分类 log-score，`choice` $K{+}1$ 列含 abstain 列，`score` $L$ 列有序）。
 - RPS 仅作用于 `score` 类问题，权重 $\lambda_r$ = `OMNIJEV_RPS_WEIGHT`（默认 0.5）。
-- 与 `distill_rps` 的 RPS 不同，此处不做 per-row 归一化（不除以 $K_q-1$）：$\mathcal{L}_{\mathrm{RPS}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \sum_{k=1}^{K_q} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2$
+- 与 `distill_rps` 的 RPS 不同，此处不做 per-row 归一化（不除以 $K_q{-}1$）：
 
-**scoring**：$\mathcal{L} = \mathcal{L}_{\mathrm{CE}}$
+$$
+\mathcal{L}_{\mathrm{RPS}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \sum_{k=1}^{K_q} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2
+$$
+
+**scoring**：
+
+$$
+\mathcal{L} = \mathcal{L}_{\mathrm{CE}}
+$$
 
 - 仅公共项，无附加校准项。适用于不需要模型专属损失的通用场景。
 
@@ -620,7 +643,7 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 | `OMNIJEV_HEAD`        | `head.pt`        | FiLM 双 MLP 打分头    |
 | `OMNIJEV_ORD`         | `ord.pt`         | 有序回归（CORAL/CORN）头 |
 | `OMNIJEV_HEAD_META`   | `head_meta.json` | 头元数据（各 kind 温度等）  |
-| `OMNIJEV_NEW_TOK_EMB` | `new_tok_emb.pt` | 2 个新 token（`<|opt|>`/`<|/opt|>`）的 embedding |
+| `OMNIJEV_NEW_TOK_EMB` | `new_tok_emb.pt` | 2 个新 token（`<     |
 
 
 
@@ -654,7 +677,7 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 
 > **验证环境**：transformers 5.16.1 / ms-swift 4.6.0.dev0 / 8× L20X (143 GiB) / ffmpeg + ffprobe 已安装
 >
-> **验证方式**：4 个模型逐一执行「训练前推理 → 本地数据集训练 → 训练后推理」全流程
+> **验证方式**：4 个模型逐一执行「训练前推理 → 本地数据集训练 → 训练后推理」全流程，采用的CLI均为上述示例
 >
 > **Generic Decision**:采用的是Qwen2.5-0.5B 底座
 
@@ -662,10 +685,9 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 
 ### Benchmark — 训练后推理对比
 
-
-| #   | Benchmark ID | 模型               | before acc | after acc  | Δ acc   | before top prob | after top prob | 结果      |
+| #   | 模型               | before acc | after acc  | Δ acc   | before top prob | after top prob | 结果      |
 | --- | ------------ | ---------------- | ---------- | ---------- | ------- | --------------- | -------------- | ------- |
-| 1   | CMP-01       | JEV              | 0.6667     | **1.0000** | +0.3333 | 0.9855          | **1.0000**     | ✅ +50%  |
-| 2   | CMP-02       | Clef             | 0.5000     | **0.8333** | +0.3333 | 0.9712          | 0.9311         | ✅ +67%  |
-| 3   | CMP-03       | OmniJev          | 0.5500     | 0.7500     | +0.2884 | 0.8465          | 0.8196         | ✅ +37%  |
-| 4   | CMP-04       | Generic Decision | 0.1667     | **0.6667** | +0.5000 | 0.5682          | 0.9363         | ✅ +300% |
+| 1   | JEV              | 0.6667     | **1.0000** | +0.3333 | 0.9855          | **1.0000**     | ✅ +50%  |
+| 2   | Clef             | 0.5000     | **0.8333** | +0.3333 | 0.9712          | 0.9311         | ✅ +67%  |
+| 3   | OmniJev          | 0.5500     | 0.7500     | +0.2884 | 0.8465          | 0.8196         | ✅ +37%  |
+| 4   | Generic Decision | 0.1667     | **0.6667** | +0.5000 | 0.5682          | 0.9363         | ✅ +300% |

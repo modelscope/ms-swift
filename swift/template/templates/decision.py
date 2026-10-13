@@ -153,7 +153,7 @@ register_template(
 _CLEF_SYSTEM_PROMPT = ('Read the complete state and schema. Decide every field jointly. Each answer '
                        'must be exactly one of that field\'s allowed options.')
 _CLEF_PREFIX_TMPL = '<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\nSTATE:\n'
-_CLEF_SUFFIX = '\n<|im_end|>\n<|im_start|>assistant\n@Inject\n\n<|im_start|>assistant\nSCHEMA DECISIONS:'
+_CLEF_SUFFIX = '\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nJOINT SCHEMA DECISIONS:'
 _CLEF_NOUL_CRITERIA = {
     'true': 'The proposition is true or the answer is yes.',
     'false': 'The proposition is false or the answer is no.',

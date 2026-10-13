@@ -40,14 +40,12 @@ All decision losses are **proper scoring rules** computed per-question over each
 
 ### Notation
 
-| Symbol | Meaning |
-|---|---|
-| $Q$ | Total questions in a micro-batch (after all records are flattened) |
-| $K_q$ | Number of options for question $q$ (`noul`=2, `score`=6, `choice`=dataset-defined) |
-| $\mathbf{z}_q \in \mathbb{R}^{K_q}$ | Per-option logits from the head (before softmax) |
-| $\mathbf{p}_q = \mathrm{softmax}(\mathbf{z}_q) \in \mathbb{R}^{K_q}$ | Predicted probabilities (masked softmax, normalized over real options only) |
-| $\mathbf{t}_q \in \Delta^{K_q}$ | Target distribution (hard one-hot or soft distillation labels) |
-| $\hat{\mathbf{p}}_q, \hat{\mathbf{t}}_q$ | Cumulative distributions (CDFs) of $\mathbf{p}_q, \mathbf{t}_q$; $\hat{p}_q^{(k)} = \sum_{j \le k} p_q^{(j)}$ |
+- $Q$: Total questions in a micro-batch (after all records are flattened)
+- $K_q$: Number of options for question q (`noul`=2, `score`=6, `choice`=dataset-defined)
+- $z_q$: Per-option logits from the head (before softmax), shape $\mathbb{R}^{K_q}$
+- $p_q = \mathrm{softmax}(z_q)$: Predicted probabilities (masked softmax, normalized over real options only), shape $\mathbb{R}^{K_q}$
+- $t_q$: Target distribution (hard one-hot or soft distillation labels), shape $\Delta^{K_q}$
+- $\hat{p}_q, \hat{t}_q$: Cumulative distributions (CDFs) of $p_q, t_q$, where $\hat{p}_q^{(k)} = \sum_{j \le k} p_q^{(j)}$
 
 ### Shared Term: Masked Soft Cross-Entropy
 
@@ -55,28 +53,41 @@ All losses share a base term — masked soft cross-entropy, which **is** the **l
 
 $$\mathcal{L}_{\mathrm{CE}} = \frac{1}{|Q|} \sum_{q \in Q} \left( -\sum_{k=1}^{K_q} t_q^{(k)} \log p_q^{(k)} \right)$$
 
-When $\mathbf{t}_q$ is a soft target, this equals $\mathrm{KL}(\mathbf{t}_q \| \mathbf{p}_q)$ (dropping the constant $H(\mathbf{t}_q)$ which does not affect gradients); when $\mathbf{t}_q$ is one-hot, it reduces to standard cross-entropy. Each model-specific loss adds a calibration term on top.
+When $t_q$ is a soft target, this equals $\mathrm{KL}(t_q \| p_q)$ (dropping the constant $H(t_q)$ which does not affect gradients); when $t_q$ is one-hot, it reduces to standard cross-entropy. Each model-specific loss adds a calibration term on top.
 
 ### Loss Details
 
-**distill_rps** (JEV): $\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}$
+**distill_rps** (JEV):
 
-- The base term uses soft-label distillation targets (teacher probability distributions), so $\mathcal{L}_{\mathrm{CE}} \equiv \mathrm{KL}(\mathbf{t} \| \mathbf{p})$.
+$$\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}$$
+
+- The base term uses soft-label distillation targets (teacher probability distributions), so $\mathcal{L}_{\mathrm{CE}} \equiv \mathrm{KL}(t \| p)$.
 - The RPS term applies only to `score` questions (ordinal scoring), with weight $\lambda_r = 0.5$.
-- $\mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \frac{1}{K_q - 1} \sum_{k=1}^{K_q-1} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2$
 
-**smooth_brier** (Clef): $\mathcal{L} = \mathcal{L}_{\mathrm{CE}}^{\mathrm{LS}} + \lambda_b \cdot \mathcal{L}_{\mathrm{Brier}}$
+$$\mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \frac{1}{K_q - 1} \sum_{k=1}^{K_q-1} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2$$
 
-- Label-smoothed CE: mixes the one-hot target with a uniform distribution, $\tilde{t}_q^{(k)} = (1-\epsilon)\,t_q^{(k)} + \epsilon / K_q$, with $\epsilon$ = `CLEF_LABEL_SMOOTHING` (default 0.1).
-- Brier score (all question types): $\mathcal{L}_{\mathrm{Brier}} = \frac{1}{|Q|} \sum_{q \in Q} \frac{1}{K_q} \sum_{k=1}^{K_q} (p_q^{(k)} - \tilde{t}_q^{(k)})^2$, with weight $\lambda_b$ = `CLEF_BRIER_WEIGHT` (default 1.0).
+**smooth_brier** (Clef):
 
-**ce_rps** (OmniJev): $\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}$
+$$\mathcal{L} = \mathcal{L}_{\mathrm{CE}}^{\mathrm{LS}} + \lambda_b \cdot \mathcal{L}_{\mathrm{Brier}}$$
 
-- The base term is plain log_score with no label smoothing (`noul` 2-column binary log-score, `choice` $K+1$ columns including abstain, `score` $L$ columns ordinal).
+- Label-smoothed CE: mixes the one-hot target with a uniform distribution, $\tilde{t}_q^{(k)} = (1-\varepsilon) \cdot t_q^{(k)} + \varepsilon / K_q$, with $\varepsilon$ = `CLEF_LABEL_SMOOTHING` (default 0.1).
+- Brier score (all question types), with weight $\lambda_b$ = `CLEF_BRIER_WEIGHT` (default 1.0).
+
+$$\mathcal{L}_{\mathrm{Brier}} = \frac{1}{|Q|} \sum_{q \in Q} \frac{1}{K_q} \sum_{k=1}^{K_q} (p_q^{(k)} - \tilde{t}_q^{(k)})^2$$
+
+**ce_rps** (OmniJev):
+
+$$\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}$$
+
+- The base term is plain log_score with no label smoothing (`noul` 2-column binary log-score, `choice` $K{+}1$ columns including abstain, `score` $L$ columns ordinal).
 - RPS applies only to `score` questions, with weight $\lambda_r$ = `OMNIJEV_RPS_WEIGHT` (default 0.5).
-- Unlike `distill_rps`, the RPS here is **not** per-row normalized (no division by $K_q - 1$): $\mathcal{L}_{\mathrm{RPS}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \sum_{k=1}^{K_q} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2$
+- Unlike `distill_rps`, the RPS here is **not** per-row normalized (no division by $K_q{-}1$):
 
-**scoring**: $\mathcal{L} = \mathcal{L}_{\mathrm{CE}}$
+$$\mathcal{L}_{\mathrm{RPS}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \sum_{k=1}^{K_q} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2$$
+
+**scoring**:
+
+$$\mathcal{L} = \mathcal{L}_{\mathrm{CE}}$$
 
 - Only the shared term, no extra calibration. Use when no model-specific loss applies.
 
