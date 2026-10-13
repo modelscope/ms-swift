@@ -8,7 +8,7 @@ This is useful for classification, yes/no, and ordered-scoring tasks where the m
 
 ```shell
 pip install "transformers>=5.2.0" "qwen_vl_utils>=0.0.14" decord
-pip install "ms-swift>=4.0"
+pip install "ms-swift>=4.6.0"
 ```
 
 For OmniJev video support, `ffmpeg` and `ffprobe` must also be installed on the system.
@@ -22,29 +22,63 @@ For OmniJev video support, `ffmpeg` and `ffprobe` must also be installed on the 
 3. OmniJev: Qwen3.5-4B (hybrid gated-deltanet + VL) + PEFT adapter
    - [ModelScope](https://modelscope.cn/models/AI-ModelScope/OmniJev)
 
-Developers can convert any CausalLM into a JEV-style decision model by specifying:
-
-```shell
---task_type decision
-```
-
 | Model | `--model_type` | Base | Head Artifacts | `--loss_type` |
 |-------|----------------|------|----------------|----------------|
 | JEV-27B-VL | `jev` | Qwen3-VL + PEFT adapter | `decision_head.json` + `calibration.json` (24-slot verbalizer bias) | `distill_rps` |
 | Clef | `clef` | Merged Qwen3-VL (LoRA already merged) | `joint_head.safetensors` + `joint_head_config.json` | `smooth_brier` |
 | OmniJev | `omnijev` | Qwen3.5-4B hybrid + PEFT adapter | `head.pt` (FiLM) + `ord.pt` (ordinal regression) + `new_tok_emb.pt` (2 new tokens) + `head_meta.json` | `ce_rps` |
 
+Developers can convert any CausalLM into a JEV-style decision model by specifying:
+
+```shell
+swift sft --task_type decision
+```
+
 ## Loss Functions
 
-All decision losses are **proper scoring rules** computed per-question over each question's own option set:
+All decision losses are **proper scoring rules** computed per-question over each question's own option set.
 
-- **distill_rps**: KL(target‖model) on activated slots + 0.5 × RPS on `score` questions only. Used by JEV.
-- **smooth_brier**: Label-smoothing cross-entropy (hard one-hot targets) + Brier score. Used by Clef.
-  - `CLEF_LABEL_SMOOTHING` (default 0.1): label smoothing factor.
-  - `CLEF_BRIER_WEIGHT` (default 1.0): Brier score weight.
-- **ce_rps**: Masked soft cross-entropy (= log_score, no label smoothing) + RPS on `score` questions only. Used by OmniJev.
-  - `OMNIJEV_RPS_WEIGHT` (default 0.5): RPS weight.
-- **scoring**: Generic soft cross-entropy over each question's option set, with no extra term. Use when no model-specific loss applies.
+### Notation
+
+| Symbol | Meaning |
+|---|---|
+| $Q$ | Total questions in a micro-batch (after all records are flattened) |
+| $K_q$ | Number of options for question $q$ (`noul`=2, `score`=6, `choice`=dataset-defined) |
+| $\mathbf{z}_q \in \mathbb{R}^{K_q}$ | Per-option logits from the head (before softmax) |
+| $\mathbf{p}_q = \mathrm{softmax}(\mathbf{z}_q) \in \mathbb{R}^{K_q}$ | Predicted probabilities (masked softmax, normalized over real options only) |
+| $\mathbf{t}_q \in \Delta^{K_q}$ | Target distribution (hard one-hot or soft distillation labels) |
+| $\hat{\mathbf{p}}_q, \hat{\mathbf{t}}_q$ | Cumulative distributions (CDFs) of $\mathbf{p}_q, \mathbf{t}_q$; $\hat{p}_q^{(k)} = \sum_{j \le k} p_q^{(j)}$ |
+
+### Shared Term: Masked Soft Cross-Entropy
+
+All losses share a base term — masked soft cross-entropy, which **is** the **log_score** (a proper scoring rule):
+
+$$\mathcal{L}_{\mathrm{CE}} = \frac{1}{|Q|} \sum_{q \in Q} \left( -\sum_{k=1}^{K_q} t_q^{(k)} \log p_q^{(k)} \right)$$
+
+When $\mathbf{t}_q$ is a soft target, this equals $\mathrm{KL}(\mathbf{t}_q \| \mathbf{p}_q)$ (dropping the constant $H(\mathbf{t}_q)$ which does not affect gradients); when $\mathbf{t}_q$ is one-hot, it reduces to standard cross-entropy. Each model-specific loss adds a calibration term on top.
+
+### Loss Details
+
+**distill_rps** (JEV): $\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}$
+
+- The base term uses soft-label distillation targets (teacher probability distributions), so $\mathcal{L}_{\mathrm{CE}} \equiv \mathrm{KL}(\mathbf{t} \| \mathbf{p})$.
+- The RPS term applies only to `score` questions (ordinal scoring), with weight $\lambda_r = 0.5$.
+- $\mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \frac{1}{K_q - 1} \sum_{k=1}^{K_q-1} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2$
+
+**smooth_brier** (Clef): $\mathcal{L} = \mathcal{L}_{\mathrm{CE}}^{\mathrm{LS}} + \lambda_b \cdot \mathcal{L}_{\mathrm{Brier}}$
+
+- Label-smoothed CE: mixes the one-hot target with a uniform distribution, $\tilde{t}_q^{(k)} = (1-\epsilon)\,t_q^{(k)} + \epsilon / K_q$, with $\epsilon$ = `CLEF_LABEL_SMOOTHING` (default 0.1).
+- Brier score (all question types): $\mathcal{L}_{\mathrm{Brier}} = \frac{1}{|Q|} \sum_{q \in Q} \frac{1}{K_q} \sum_{k=1}^{K_q} (p_q^{(k)} - \tilde{t}_q^{(k)})^2$, with weight $\lambda_b$ = `CLEF_BRIER_WEIGHT` (default 1.0).
+
+**ce_rps** (OmniJev): $\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}$
+
+- The base term is plain log_score with no label smoothing (`noul` 2-column binary log-score, `choice` $K+1$ columns including abstain, `score` $L$ columns ordinal).
+- RPS applies only to `score` questions, with weight $\lambda_r$ = `OMNIJEV_RPS_WEIGHT` (default 0.5).
+- Unlike `distill_rps`, the RPS here is **not** per-row normalized (no division by $K_q - 1$): $\mathcal{L}_{\mathrm{RPS}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \sum_{k=1}^{K_q} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2$
+
+**scoring**: $\mathcal{L} = \mathcal{L}_{\mathrm{CE}}$
+
+- Only the shared term, no extra calibration. Use when no model-specific loss applies.
 
 ## Accuracy
 
@@ -132,7 +166,7 @@ swift sft \
     --task_type decision \
     --adapters "$JEV_ADAPTER" \
     --loss_type distill_rps \
-    --dataset open_jev_jev \
+    --dataset open_jev_jev:all \
     --torch_dtype bfloat16 \
     --attn_impl eager \
     --num_train_epochs 1 \
@@ -167,7 +201,7 @@ swift sft \
     --model_type clef \
     --task_type decision \
     --loss_type smooth_brier \
-    --dataset open_jev_clef \
+    --dataset open_jev_clef:all \
     --tuner_type lora \
     --target_modules all-linear \
     --torch_dtype bfloat16 \
@@ -214,7 +248,7 @@ swift sft \
     --task_type decision \
     --adapters "$OMNIJEV_CKPT" \
     --loss_type ce_rps \
-    --dataset open_jev_omnijev \
+    --dataset open_jev_omnijev:all \
     --torch_dtype bfloat16 \
     --attn_impl eager \
     --freeze_vit true \
@@ -243,6 +277,13 @@ Key parameters:
 
 The `generic_decision` model type lets you convert **any text CausalLM** into a JEV-style decision model. Unlike the three model-specific paths, this builds a randomly-initialized `JevVerbalizerHead` from the tokenizer — no factory weights required:
 
+> **How `JevVerbalizerHead` works**: This is a lightweight verbalizer scoring head that introduces no additional neural network layers — it directly reuses the base CausalLM's `lm_logits`. At the last token position of each question's prompt, it applies `log_softmax` to `lm_logits`, then gathers the log-probabilities of the verbalizer tokens corresponding to the question's `kind`. The three kinds map to **24 fixed verbalizer tokens**:
+> - `noul` (2): `false`, `true`
+> - `score` (6): `0`, `1`, `2`, `3`, `4`, `5`
+> - `choice` (16): `A` … `P`
+>
+> Each verbalizer token has a trainable fp32 bias scalar (24 in total), plus 3 per-kind temperature parameters. The forward pass computes `z = (log_prob + bias) / temperature`, followed by a softmax over the question's own option set. The `from_tokenizer` construction path resolves these 24 token IDs from the tokenizer, zero-initializes the bias, and unit-initializes the temperatures, so the head can be jointly trained with a LoRA adapter starting from a random state.
+
 ```bash
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
@@ -251,7 +292,7 @@ swift sft \
     --model_type generic_decision \
     --task_type decision \
     --loss_type distill_rps \
-    --dataset open_jev_jev \
+    --dataset open_jev_jev:all \
     --tuner_type lora \
     --target_modules all-linear \
     --torch_dtype bfloat16 \
@@ -422,7 +463,7 @@ swift sft \
     --model_type jev \
     --task_type decision \
     --loss_type distill_rps \
-    --dataset open_jev_jev \
+    --dataset open_jev_jev:all \
     --adapters .../adapter_vllm \
     --decision_drop_instructions 0.3 \
     --decision_subsample_options 8 \
@@ -531,3 +572,18 @@ When unset, the loader searches `model_dir` (and `adapter_vllm/` subdirectory fo
 - **JEV choice > 16 options**: Only `single` mode (≤16 options in one forward) is supported.
 - **OmniJev audio spectrogram**: Not in the inference path. Users must provide their own converter.
 - **`tie_word_embeddings=True` adapter merge**: Only affects "merge adapter / convert format"; training and inference are unaffected.
+
+## Verification Report
+
+> **Environment**: transformers 5.16.1 / ms-swift 4.6.0.dev0 / 8× L20X (143 GiB) / ffmpeg + ffprobe installed
+>
+> **Verification method**: 4 models each executing the full pipeline: pre-training inference → local dataset training → post-training inference
+
+### Benchmark — Post-Training Inference Comparison
+
+| # | Benchmark ID | Model | Before acc | After acc | Δ acc | Before top prob | After top prob | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | CMP-01 | JEV | 0.6667 | **1.0000** | +0.3333 | 0.9855 | **1.0000** | ✅ +50% |
+| 2 | CMP-02 | Clef | 0.5000 | **0.8333** | +0.3333 | 0.9712 | 0.9311 | ✅ +67% |
+| 3 | CMP-03 | OmniJev | 0.5500 | 0.7500 | +0.2884 | 0.8465 | 0.8196 | ✅ +37% |
+| 4 | CMP-04 | Generic Decision | 0.1667 | **0.6667** | +0.5000 | 0.5682 | 0.9363 | ✅ +300% |

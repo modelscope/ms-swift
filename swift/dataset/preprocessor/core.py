@@ -46,7 +46,6 @@ class RowPreprocessor:
                                 'state',
                                 'question_ids',
                                 'criteria',
-                                'omnijev_options',
                                 'omnijev_column_keys',
                                 'omnijev_video',
                             ]

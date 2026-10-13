@@ -48,8 +48,8 @@ os.environ.setdefault('HF_HUB_OFFLINE', '1')
 os.environ.setdefault('TRANSFORMERS_OFFLINE', '1')
 os.environ.setdefault('USE_HF', '0')
 
-import pytest
-import torch
+import pytest  # noqa: E402
+import torch  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Guarded imports — module import never hard-fails in a minimal CI environment.
@@ -453,7 +453,6 @@ class TestStageDAlignment:
         _need_clef_dir()
         ref = _get_ref()
         from swift.model import get_model_processor, get_processor
-        clef_dir = _get_clef_dir()
         rec = next(r for r in RECORDS if r['id'] == 'r_joint')
         gold = GOLD_IDX['r_joint']
         print('loading OUR swift clef model (bf16, eager) ...', flush=True)
@@ -572,9 +571,7 @@ class TestStageDStructural:
 
     def test_loss_value_and_grad(self):
         _need_swift()
-        rec = next(r for r in RECORDS if r['id'] == 'r_joint')
         gold = GOLD_IDX['r_joint']
-        dev = 'cpu'
         head = _make_random_head()
         for p in head.parameters():
             p.requires_grad_(True)

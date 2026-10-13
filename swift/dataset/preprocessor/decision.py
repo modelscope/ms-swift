@@ -477,9 +477,17 @@ class ClefPreprocessor(ScoringPreprocessor):
         # `state` may be a non-str JSON value; keep the message content a string and carry the raw
         # value separately so ClefTemplate can render it byte-exactly (json for non-str).
         out['messages'] = [{'role': 'user', 'content': self._state_to_text(state)}]
-        out['state'] = state
+        if isinstance(state, str):
+            out['state'] = state
+        elif state is None:
+            out['state'] = ''
+        else:
+            out['state'] = json.dumps(state, ensure_ascii=False, separators=(',', ':'), sort_keys=True)
         out['question_ids'] = [q['question_id'] for q in questions]
-        out['criteria'] = [q.get('criteria') for q in questions]
+        out['criteria'] = [
+            json.dumps(c, ensure_ascii=False, separators=(',', ':'), sort_keys=True)
+            if c is not None and not isinstance(c, str) else c for c in [q.get('criteria') for q in questions]
+        ]
         return out
 
     @staticmethod
@@ -642,7 +650,6 @@ class OmniJevPreprocessor(ScoringPreprocessor):
                 'kind': kind,
                 'question': instruction,
                 'options': [_omnijev_render_option(o) for o in opts],
-                'omnijev_options': opts,
                 'column_keys': column_keys,
             }
             if gold is not None:
@@ -661,7 +668,6 @@ class OmniJevPreprocessor(ScoringPreprocessor):
             'questions': [q['question']],
             'kinds': [q['kind']],
             'options': [q['options']],
-            'omnijev_options': [q['omnijev_options']],
             'omnijev_column_keys': [column_keys],
         }
         images, video = self._resolve_media(row, state)

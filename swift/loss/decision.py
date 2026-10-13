@@ -116,8 +116,8 @@ class SmoothBrierLoss(ScoringLoss):
     its real options before the CE. The Brier score (mean squared gap between the calibrated
     probability and the one-hot target, over real options) is added as the calibration term
 
-    The exact label-smoothing / Brier weights are not published, default to a standard `0.1` / `1.0` and are overridable via
-    `CLEF_LABEL_SMOOTHING` / `CLEF_BRIER_WEIGHT`.
+    The exact label-smoothing / Brier weights are not published, default to a standard
+    `0.1` / `1.0` and are overridable via `CLEF_LABEL_SMOOTHING` / `CLEF_BRIER_WEIGHT`.
     """
     LABEL_SMOOTHING = 0.1
     BRIER_WEIGHT = 1.0

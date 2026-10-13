@@ -9,7 +9,7 @@ assembly and head-meta contracts are fundamentally different.
 """
 import json
 import string
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
@@ -260,8 +260,14 @@ class ClefTemplate(Qwen3_5Template):
             raise ValueError(f'Clef field lists disagree in length: qids={len(qids)}, kinds={len(kinds)}, '
                              f'instructions={len(instructions)}, criteria={len(criteria)}.')
         state = extra.get('state')
+        if isinstance(state, str):
+            try:
+                state = json.loads(state)
+            except (json.JSONDecodeError, TypeError):
+                pass
         if state is None:
             state = DecisionTemplate._get_state(inputs)
+        criteria = [json.loads(c) if isinstance(c, str) else c for c in criteria]
         questions = [(str(qids[i]), DecisionTemplate._normalize_kind(kinds[i]), instructions[i], criteria[i])
                      for i in range(len(qids))]
         return state, questions
@@ -365,6 +371,7 @@ class OmniJevTemplate(Qwen3_5Template):
         ]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        from swift.model.omnijev_branch import OPT_CLOSE, OPT_OPEN
         encoded = super()._encode(inputs)
         input_ids = encoded['input_ids']
         open_ids = self._tokenize(OPT_OPEN)
@@ -401,6 +408,19 @@ class OmniJevTemplate(Qwen3_5Template):
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return inputs
+
+    def _extract_extra_decision_meta(self, meta: Optional[Dict[str, Any]], rec_i: int, flat: Dict[str, Any]) -> None:
+        """Flatten OmniJev-specific meta fields into the collator's `flat` dict.
+
+        `option_markers` is per-question (extended like `option_spans`);
+        `mm_counts` is per-record (appended like `counts`).
+        Without this override these fields would be silently dropped by the shared collator,
+        causing a KeyError in `OmniJevModel.forward` / `OmniJevHead.forward`.
+        """
+        if meta is None:
+            return
+        flat.setdefault('option_markers', []).extend(meta.get('option_markers') or [])
+        flat.setdefault('mm_counts', []).append(meta.get('mm_counts') or {'image': 0, 'video': 0})
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.omnijev, template_cls=OmniJevTemplate, default_system=None))

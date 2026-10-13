@@ -71,8 +71,8 @@ os.environ['MSO_FLA'] = '0'
 os.environ['MSO_ATTN'] = 'eager'
 os.environ.setdefault('CUDA_VISIBLE_DEVICES', '0,1')
 
-import pytest
-import torch
+import pytest  # noqa: E402
+import torch  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Guarded imports — module import never hard-fails in a minimal CI environment.
@@ -542,7 +542,8 @@ class TestStageA:
         a5 = coll_inf['decision_meta']['left_padding'] is True
         ok_all = ok_all and a5
         print(
-            f'[{"PASS" if a5 else "FAIL"}] A5 inference collator left_padding={coll_inf["decision_meta"]["left_padding"]}',
+            f'[{"PASS" if a5 else "FAIL"}] A5 inference collator '
+            f'left_padding={coll_inf["decision_meta"]["left_padding"]}',
             flush=True)
         tmpl.set_mode('train')
         assert a5, 'A5 inference collator left_padding check failed'
@@ -591,9 +592,10 @@ class TestStageB:
             un = ref_finish_unrounded(m, q, cap[qid]['mu'].to(torch.float64))
             ok = _reproduction_ok(q, un, cap[qid]['ans'], cap[qid]['keys'])
             ok_all = ok_all and ok
+            ans_subset = {k: v for k, v in cap[qid]['ans'].items() if k in ('noul', 'probabilities', 'abstain')}
             print(
                 f'[{"PASS" if ok else "FAIL"}] B0/{qid} unrounded={[round(x, 5) for x in un]} '
-                f'rounded_ans={ {k: v for k, v in cap[qid]["ans"].items() if k in ("noul", "probabilities", "abstain")} }',
+                f'rounded_ans={ans_subset}',
                 flush=True)
             assert ok, f'B0/{qid} reproduction check failed'
 
@@ -801,7 +803,8 @@ class TestStageDAlignment:
             ok = rel < 3e-2
             ok_all = ok_all and ok
             print(
-                f'   [{"PASS" if ok else "FAIL"}] D(3) fd {name}[{idx}]: autograd={autog:.6e} fd={fd:.6e} rel={rel:.3e}',
+                f'   [{"PASS" if ok else "FAIL"}] D(3) fd {name}[{idx}]: autograd={autog:.6e} '
+                f'fd={fd:.6e} rel={rel:.3e}',
                 flush=True)
             assert ok, f'D(3) fd {name}[{idx}]: autograd={autog:.6e} fd={fd:.6e} rel={rel:.3e}'
         assert ok_all, 'Stage D alignment: some checks failed'
@@ -822,7 +825,6 @@ class TestStageDStructural:
 
     def test_loss_value_and_grad(self):
         _need_swift()
-        dev = 'cpu'
         H = 32  # small hidden_size for CPU
 
         head = _make_random_omnijev_head(hidden_size=H)
@@ -936,7 +938,8 @@ class TestStageDStructural:
             ok = rel < 3e-2
             ok_all = ok_all and ok
             print(
-                f'   [{"PASS" if ok else "FAIL"}] D(3) fd {name}[{idx}]: autograd={autog:.6e} fd={fd:.6e} rel={rel:.3e}',
+                f'   [{"PASS" if ok else "FAIL"}] D(3) fd {name}[{idx}]: autograd={autog:.6e} '
+                f'fd={fd:.6e} rel={rel:.3e}',
                 flush=True)
             assert ok, f'D(3) fd {name}[{idx}]: autograd={autog:.6e} fd={fd:.6e} rel={rel:.3e}'
         assert ok_all, 'Stage D structural: some checks failed'
@@ -1086,9 +1089,10 @@ def _legacy_stage_b():
         un = ref_finish_unrounded(m, q, cap[qid]['mu'].to(torch.float64))
         ok = _reproduction_ok(q, un, cap[qid]['ans'], cap[qid]['keys'])
         ok_all = ok_all and ok
+        ans_subset = {k: v for k, v in cap[qid]['ans'].items() if k in ('noul', 'probabilities', 'abstain')}
         print(
             f'[{"PASS" if ok else "FAIL"}] B0/{qid} unrounded={[round(x, 5) for x in un]} '
-            f'rounded_ans={ {k: v for k, v in cap[qid]["ans"].items() if k in ("noul", "probabilities", "abstain")} }',
+            f'rounded_ans={ans_subset}',
             flush=True)
 
     print('=== B1-B3: same (u,zq,feats) -> our head (fp32, eval) vs reference head/ord + finish step ===', flush=True)

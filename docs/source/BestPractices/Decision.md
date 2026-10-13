@@ -8,7 +8,7 @@ SWIFT 通过 `decision` task_type 支持**typed-decision（System-1）打分模�
 
 ```shell
 pip install "transformers>=5.2.0" "qwen_vl_utils>=0.0.14" decord
-pip install "ms-swift>=4.0"
+pip install "ms-swift>=4.6.0"
 ```
 
 如需使用 OmniJev 视频功能，还需安装系统依赖 `ffmpeg` 和 `ffprobe`。
@@ -33,22 +33,62 @@ pip install "ms-swift>=4.0"
 开发者可以将任意 CausalLM 转为 JEV 风格的决策模型，只需指定：
 
 ```shell
---task_type decision
+swift sft --task_type decision
 ```
 
 
 
 ## 损失函数
 
-所有 decision 损失都是 **proper scoring rule**，按问题在各问题自己的选项集上计算：
+所有 decision 损失都是 **proper scoring rule**，按问题在各问题自己的选项集上计算。
 
-- **distill_rps**：激活槽位上的 KL(target‖model) + 仅 `score` 问题的 0.5 × RPS。JEV 使用。
-- **smooth_brier**：标签平滑 CE（硬 one-hot 标签）+ Brier 分数。Clef 使用。
-  - `CLEF_LABEL_SMOOTHING`（默认 0.1）：标签平滑因子。
-  - `CLEF_BRIER_WEIGHT`（默认 1.0）：Brier 分数权重。
-- **ce_rps**：Masked soft CE（= log_score，无标签平滑）+ 仅 `score` 问题的 RPS。OmniJev 使用。
-  - `OMNIJEV_RPS_WEIGHT`（默认 0.5）：RPS 权重。
-- **scoring**：通用 soft CE，按问题在各问题选项集上计算，无附加项。当无模型专属损失适用时使用。
+### 符号约定
+
+
+| 符号                                                                   | 含义                                                                                   |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| $Q$                                                                  | 一个 micro-batch 中的问题总数（所有 record 展开后）                                                 |
+| $K_q$                                                                | 问题 $q$ 的选项数（`noul`=2, `score`=6, `choice`=数据集给定）                                     |
+| $\mathbf{z}_q \in \mathbb{R}^{K_q}$                                  | 头部输出的 per-option logit（softmax 前）                                                    |
+| $\mathbf{p}_q = \mathrm{softmax}(\mathbf{z}_q) \in \mathbb{R}^{K_q}$ | 模型预测概率（masked softmax，仅在真实选项上归一化）                                                    |
+| $\mathbf{t}_q \in \Delta^{K_q}$                                      | 目标分布（硬 one-hot 或软标签蒸馏）                                                               |
+| $\hat{\mathbf{p}}_q, \hat{\mathbf{t}}_q$                             | $\mathbf{p}_q, \mathbf{t}_q$ 的累积分布（CDF），$\hat{p}_q^{(k)} = \sum_{j \le k} p_q^{(j)}$ |
+
+
+
+
+### 公共项：Masked Soft Cross-Entropy
+
+所有损失共享一个基础项——masked soft cross-entropy，即 **log_score**（一种 proper scoring rule）：
+
+$$
+\mathcal{L}_{\mathrm{CE}} = \frac{1}{|Q|} \sum_{q \in Q} \left( -\sum_{k=1}^{K_q} t_q^{(k)} \log p_q^{(k)} \right)
+$$
+
+当 $\mathbf{t}_q$ 为软标签时，此式即 $\mathrm{KL}(\mathbf{t}_q \| \mathbf{p}_q)$（去掉不影响梯度的常数 $H(\mathbf{t}_q)$）；当 $\mathbf{t}_q$ 为 one-hot 时，退化为标准交叉熵。各模型专属损失在此基础上叠加校准项。
+
+### 各损失详解
+
+**distill_rps**（JEV）：$\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}$
+
+- 基础项使用软标签蒸馏目标（teacher 的概率分布），此时 $\mathcal{L}_{\mathrm{CE}} \equiv \mathrm{KL}(\mathbf{t} \| \mathbf{p})$。
+- RPS 附加项仅作用于 `score` 类问题（有序打分），权重 $\lambda_r = 0.5$。
+- $\mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \frac{1}{K_q - 1} \sum_{k=1}^{K_q-1} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2$
+
+**smooth_brier**（Clef）：$\mathcal{L} = \mathcal{L}_{\mathrm{CE}}^{\mathrm{LS}} + \lambda_b \cdot \mathcal{L}_{\mathrm{Brier}}$
+
+- 标签平滑后的 CE：将 one-hot 标签 $\mathbf{t}_q$ 与均匀分布混合，$\tilde{t}_q^{(k)} = (1-\epsilon)t_q^{(k)} + \epsilon / K_q$，$\epsilon$ = `CLEF_LABEL_SMOOTHING`（默认 0.1）。
+- Brier 分数（所有问题类型均参与）：$\mathcal{L}_{\mathrm{Brier}} = \frac{1}{|Q|} \sum_{q \in Q} \frac{1}{K_q} \sum_{k=1}^{K_q} (p_q^{(k)} - \tilde{t}_q^{(k)})^2$，权重 $\lambda_b$ = `CLEF_BRIER_WEIGHT`（默认 1.0）。
+
+**ce_rps**（OmniJev）：$\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}$
+
+- 基础项为无标签平滑的 plain log_score（`noul` 2 列二分类 log-score，`choice` $K+1$ 列含 abstain 列，`score` $L$ 列有序）。
+- RPS 仅作用于 `score` 类问题，权重 $\lambda_r$ = `OMNIJEV_RPS_WEIGHT`（默认 0.5）。
+- 与 `distill_rps` 的 RPS 不同，此处不做 per-row 归一化（不除以 $K_q-1$）：$\mathcal{L}_{\mathrm{RPS}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \sum_{k=1}^{K_q} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2$
+
+**scoring**：$\mathcal{L} = \mathcal{L}_{\mathrm{CE}}$
+
+- 仅公共项，无附加校准项。适用于不需要模型专属损失的通用场景。
 
 
 
@@ -132,7 +172,7 @@ ms-swift 提供的训练脚本（使用**本地 mini 数据集**，无需联网�
 
 ### JEV
 
-JEV 的决策能力存在于**出厂 adapter**（`adapter_vllm/`）中，因此训练是续训该 adapter：
+JEV 的决策能力存在于**发布 adapter**（`adapter_vllm/`）中，因此训练是续训该 adapter：
 
 ```bash
 SWIFT_PY="$(sed -n '1s/^#!//p' "$(command -v swift)")"
@@ -146,7 +186,7 @@ swift sft \
     --task_type decision \
     --adapters "$JEV_ADAPTER" \
     --loss_type distill_rps \
-    --dataset open_jev_jev \
+    --dataset open_jev_jev:all \
     --torch_dtype bfloat16 \
     --attn_impl eager \
     --num_train_epochs 1 \
@@ -167,14 +207,14 @@ swift sft \
 
 - `--model_type jev` — 解析 JEV 底座和头制品
 - `--task_type decision` — 路由到 `ScoringTrainer` + decision data collator
-- `--adapters "$JEV_ADAPTER"` — 续训出厂 adapter（is_trainable=True）
+- `--adapters "$JEV_ADAPTER"` — 续训发布 adapter（is_trainable=True）
 - `--loss_type distill_rps` — KL(target‖model) + 0.5 × RPS（`score`）
 
 
 
 ### Clef
 
-Clef 出厂为**已合并 backbone**，因此创建新 LoRA：
+Clef 发布为**已合并 backbone**，因此创建新 LoRA：
 
 ```bash
 USE_HF=0 \
@@ -184,7 +224,7 @@ swift sft \
     --model_type clef \
     --task_type decision \
     --loss_type smooth_brier \
-    --dataset open_jev_clef \
+    --dataset open_jev_clef:all \
     --tuner_type lora \
     --target_modules all-linear \
     --torch_dtype bfloat16 \
@@ -215,7 +255,7 @@ swift sft \
 
 ### OmniJev
 
-OmniJev 出厂为**仅 adapter**（底座权重需单独获取），头制品位于 adapter 目录中：
+OmniJev 发布为**仅 adapter**（底座权重需单独获取），头制品位于 adapter 目录中：
 
 ```bash
 SWIFT_PY="$(sed -n '1s/^#!//p' "$(command -v swift)")"
@@ -234,7 +274,7 @@ swift sft \
     --task_type decision \
     --adapters "$OMNIJEV_CKPT" \
     --loss_type ce_rps \
-    --dataset open_jev_omnijev \
+    --dataset open_jev_omnijev:all \
     --torch_dtype bfloat16 \
     --attn_impl eager \
     --freeze_vit true \
@@ -266,6 +306,14 @@ swift sft \
 
 `generic_decision` 模型类型允许将任意文本 CausalLM 转为 JEV 风格的决策模型。与三个模型专属路径不同，此路径从 tokenizer 构建随机初始化的 `JevVerbalizerHead`，无需预置头权重：
 
+> `JevVerbalizerHead` **工作原理**：该头是一种轻量级 verbalizer 打分头，不引入额外的神经网络层，而是直接复用底座 CausalLM 的 `lm_logits`。它在每个问题 prompt 的最后一个 token 位置读取 `lm_logits`，做 `log_softmax` 后，按 `kind` 从中抽取对应 verbalizer token 的 log-probability。三种 kind 对应 **24 个固定 verbalizer token**：
+>
+> - `noul`（2 个）：`false`, `true`
+> - `score`（6 个）：`0`, `1`, `2`, `3`, `4`, `5`
+> - `choice`（16 个）：`A` … `P`
+>
+> 每个 verbalizer token 拥有一个可训练的 fp32 bias 标量（共 24 个），再加上 3 个 per-kind 温度参数。前向计算为 `z = (log_prob + bias) / temperature`，随后在问题自己的选项集上做 softmax。`from_tokenizer` 构建路径会从 tokenizer 解析这 24 个 token id，bias 零初始化、温度单位初始化，使其可以直接从随机状态开始与 LoRA adapter 联合训练。
+
 ```bash
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
@@ -274,7 +322,7 @@ swift sft \
     --model_type generic_decision \
     --task_type decision \
     --loss_type distill_rps \
-    --dataset open_jev_jev \
+    --dataset open_jev_jev:all \
     --tuner_type lora \
     --target_modules all-linear \
     --torch_dtype bfloat16 \
@@ -464,7 +512,7 @@ swift sft \
     --model_type jev \
     --task_type decision \
     --loss_type distill_rps \
-    --dataset open_jev_jev \
+    --dataset open_jev_jev:all \
     --adapters .../adapter_vllm \
     --decision_drop_instructions 0.3 \
     --decision_subsample_options 8 \
@@ -552,7 +600,7 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 | `OMNIJEV_HEAD`        | `head.pt`        | FiLM 双 MLP 打分头    |
 | `OMNIJEV_ORD`         | `ord.pt`         | 有序回归（CORAL/CORN）头 |
 | `OMNIJEV_HEAD_META`   | `head_meta.json` | 头元数据（各 kind 温度等）  |
-| `OMNIJEV_NEW_TOK_EMB` | `new_tok_emb.pt` | 2 个新 token（`<|opt|>`/`<|/opt|>`）的嵌入 |
+| `OMNIJEV_NEW_TOK_EMB` | `new_tok_emb.pt` | 2 个新 token（`<|opt|>`/`<|/opt|>`）的 embedding |
 
 
 
@@ -580,3 +628,24 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 - **OmniJev 音频频谱图**：不在推理路径内，需用户自备转换器。
 - `tie_word_embeddings=True` **adapter 合并**：仅影响合并/转格式，训练与推理不受影响。
 
+
+
+## 验证报告
+
+> **验证环境**：transformers 5.16.1 / ms-swift 4.6.0.dev0 / 8× L20X (143 GiB) / ffmpeg + ffprobe 已安装
+>
+> **验证方式**：4 个模型逐一执行「训练前推理 → 本地数据集训练 → 训练后推理」全流程
+>
+> **Generic Decision**:采用的是Qwen2.5-0.5B 底座
+
+
+
+### Benchmark — 训练后推理对比
+
+
+| #   | Benchmark ID | 模型               | before acc | after acc  | Δ acc   | before top prob | after top prob | 结果      |
+| --- | ------------ | ---------------- | ---------- | ---------- | ------- | --------------- | -------------- | ------- |
+| 1   | CMP-01       | JEV              | 0.6667     | **1.0000** | +0.3333 | 0.9855          | **1.0000**     | ✅ +50%  |
+| 2   | CMP-02       | Clef             | 0.5000     | **0.8333** | +0.3333 | 0.9712          | 0.9311         | ✅ +67%  |
+| 3   | CMP-03       | OmniJev          | 0.5500     | 0.7500     | +0.2884 | 0.8465          | 0.8196         | ✅ +37%  |
+| 4   | CMP-04       | Generic Decision | 0.1667     | **0.6667** | +0.5000 | 0.5682          | 0.9363         | ✅ +300% |

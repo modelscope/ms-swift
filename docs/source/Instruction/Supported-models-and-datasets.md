@@ -858,6 +858,9 @@
 |[Tencent-Hunyuan/WeMM-Embedding-9B](https://modelscope.cn/models/Tencent-Hunyuan/WeMM-Embedding-9B)|wemm_embedding|wemm_embedding|hermes|transformers>=5.0.0.dev, qwen_vl_utils>0.0.14, decord|&#x2718;|vision, video, embedding|[tencent/WeMM-Embedding-9B](https://huggingface.co/tencent/WeMM-Embedding-9B)|
 |[Qwen/Qwen3.8-Flash-Next](https://modelscope.cn/models/Qwen/Qwen3.8-Flash-Next)|qwen4_exp|qwen3_8|qwen3_5|transformers>=5.16.0, qwen_vl_utils>=0.0.14, decord|&#x2714;|vision, video|[Qwen/Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Next)|
 |[Qwen/Qwen3.8-Flash-Next-FP8](https://modelscope.cn/models/Qwen/Qwen3.8-Flash-Next-FP8)|qwen4_exp|qwen3_8|qwen3_5|transformers>=5.16.0, qwen_vl_utils>=0.0.14, decord|&#x2714;|vision, video|[Qwen/Qwen3.8-Flash-Next-FP8](https://huggingface.co/Qwen/Qwen3.8-Flash-Next-FP8)|
+|[autotrust/JEV-27B-VL](https://modelscope.cn/models/autotrust/JEV-27B-VL)|jev|jev|hermes|transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2718;|vision, decision|[autotrust/JEV-27B-VL](https://huggingface.co/autotrust/JEV-27B-VL)|
+|[Cloudflare/clef](https://modelscope.cn/models/Cloudflare/clef)|clef|clef|hermes|transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2718;|vision, decision|[Cloudflare/clef](https://huggingface.co/Cloudflare/clef)|
+|[AI-ModelScope/OmniJev](https://modelscope.cn/models/AI-ModelScope/OmniJev)|omnijev|omnijev|hermes|transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2718;|vision, decision|[AI-ModelScope/OmniJev](https://huggingface.co/AI-ModelScope/OmniJev)|
 |[iic/gme-Qwen2-VL-2B-Instruct](https://modelscope.cn/models/iic/gme-Qwen2-VL-2B-Instruct)|qwen2_gme|qwen2_gme|hermes|-|&#x2718;|vision|[Alibaba-NLP/gme-Qwen2-VL-2B-Instruct](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-2B-Instruct)|
 |[iic/gme-Qwen2-VL-7B-Instruct](https://modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct)|qwen2_gme|qwen2_gme|hermes|-|&#x2718;|vision|[Alibaba-NLP/gme-Qwen2-VL-7B-Instruct](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-7B-Instruct)|
 |[AIDC-AI/Ovis1.6-Gemma2-9B](https://modelscope.cn/models/AIDC-AI/Ovis1.6-Gemma2-9B)|ovis1_6|ovis1_6||transformers>=4.42|&#x2718;|vision|[AIDC-AI/Ovis1.6-Gemma2-9B](https://huggingface.co/AIDC-AI/Ovis1.6-Gemma2-9B)|
@@ -885,8 +888,8 @@
 |[ZhipuAI/GLM-4.5V-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.5V-FP8)|glm4v_moe|glm4_5v|glm4_5|transformers>=4.56|&#x2714;|-|[zai-org/GLM-4.5V-FP8](https://huggingface.co/zai-org/GLM-4.5V-FP8)|
 |[ZhipuAI/GLM-4.6V](https://modelscope.cn/models/ZhipuAI/GLM-4.6V)|glm4v_moe|glm4_5v|glm4_5|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/GLM-4.6V](https://huggingface.co/zai-org/GLM-4.6V)|
 |[ZhipuAI/GLM-4.6V-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.6V-FP8)|glm4v_moe|glm4_5v|glm4_5|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/GLM-4.6V-FP8](https://huggingface.co/zai-org/GLM-4.6V-FP8)|
-|[ZhipuAI/GLM-5.3-Flash](https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash)|glm5_next|glm5_next|glm5_1|transformers>=5.16.0|&#x2714;|vision, video|[zai-org/GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash)|
-|[ZhipuAI/GLM-5.3-Flash-BF16](https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash-BF16)|glm5_next|glm5_next|glm5_1|transformers>=5.16.0|&#x2714;|vision, video|[zai-org/GLM-5.3-Flash-BF16](https://huggingface.co/zai-org/GLM-5.3-Flash-BF16)|
+|[ZhipuAI/GLM-5.3-Flash](https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash)|glm5_next|glm5_next|glm5_1|transformers>=5.16.0|&#x2718;|vision, video|[zai-org/GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash)|
+|[ZhipuAI/GLM-5.3-Flash-BF16](https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash-BF16)|glm5_next|glm5_next|glm5_1|transformers>=5.16.0|&#x2718;|vision, video|[zai-org/GLM-5.3-Flash-BF16](https://huggingface.co/zai-org/GLM-5.3-Flash-BF16)|
 |[ZhipuAI/glm-edge-v-2b](https://modelscope.cn/models/ZhipuAI/glm-edge-v-2b)|glm_edge_v|glm_edge_v|chatglm4|transformers>=4.46|&#x2718;|vision|[zai-org/glm-edge-v-2b](https://huggingface.co/zai-org/glm-edge-v-2b)|
 |[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat)|glm_edge_v|glm_edge_v|chatglm4|transformers>=4.46|&#x2718;|vision|[zai-org/glm-edge-4b-chat](https://huggingface.co/zai-org/glm-edge-4b-chat)|
 |[ZhipuAI/GLM-OCR](https://modelscope.cn/models/ZhipuAI/GLM-OCR)|glm_ocr|glm_ocr|glm4|transformers>=5.0.1dev0|&#x2718;|-|[zai-org/GLM-OCR](https://huggingface.co/zai-org/GLM-OCR)|
@@ -1208,14 +1211,6 @@
 |[JinaAI/jina-reranker-m0](https://modelscope.cn/models/JinaAI/jina-reranker-m0)|jina_reranker_m0|jina_reranker_m0||-|&#x2718;|reranker, vision|[JinaAI/jina-reranker-m0](https://huggingface.co/JinaAI/jina-reranker-m0)|
 |[zenosai/MonkeyOCRv2-S](https://modelscope.cn/models/zenosai/MonkeyOCRv2-S)|monkeyocrv2|monkeyocrv2||transformers>=4.45, qwen_vl_utils|&#x2718;|vision, embedding, document-understanding|[zenosai/MonkeyOCRv2-S](https://huggingface.co/zenosai/MonkeyOCRv2-S)|
 |[zenosai/MonkeyOCRv2-B](https://modelscope.cn/models/zenosai/MonkeyOCRv2-B)|monkeyocrv2|monkeyocrv2||transformers>=4.45, qwen_vl_utils|&#x2718;|vision, embedding, document-understanding|[zenosai/MonkeyOCRv2-B](https://huggingface.co/zenosai/MonkeyOCRv2-B)|
-
-
-### Decision模型
-| Model ID | Model Type | Default Template | Default Agent Template | Requires | Support Megatron | Tags | HF Model ID |
-| -------- | -----------| ---------------- | ---------------------- | -------- | ---------------- | ---- | ----------- |
-|[autotrust/JEV-27B-VL](https://modelscope.cn/models/autotrust/JEV-27B-VL)|jev|jev||transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2718;|vision, decision|[autotrust/JEV-27B-VL](https://huggingface.co/autotrust/JEV-27B-VL)|
-|[Cloudflare/clef](https://modelscope.cn/models/Cloudflare/clef)|clef|clef||transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2718;|decision|[Cloudflare/clef](https://huggingface.co/Cloudflare/clef)|
-|[AI-ModelScope/OmniJev](https://modelscope.cn/models/AI-ModelScope/OmniJev)|omnijev|omnijev||transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2718;|vision, decision|[AI-ModelScope/OmniJev](https://huggingface.co/AI-ModelScope/OmniJev)|
 
 
 ## 数据集

@@ -58,8 +58,9 @@ def find_rope_owner(m, depth: int = 0):
 
 def rope_positions(rope_owner, enc: Dict[str, Any]) -> Optional[torch.Tensor]:
     """mrope `position_ids` `[3, B, T]` of `enc` from the model's own `get_rope_index` (None if the
-    backbone has no rope owner). The branch prefix needs NO option alignment (each row is scored from the same prefix state, so order
-    invariance comes from branching, not from shared rope start positions)."""
+    backbone has no rope owner). The branch prefix needs NO option alignment (each row is scored
+    from the same prefix state, so order invariance comes from branching, not from shared rope
+    start positions)."""
     if rope_owner is None:
         return None
     mm = enc.get('mm_token_type_ids')

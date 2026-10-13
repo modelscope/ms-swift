@@ -60,8 +60,8 @@ os.environ.setdefault('HF_HUB_OFFLINE', '1')
 os.environ.setdefault('TRANSFORMERS_OFFLINE', '1')
 os.environ.setdefault('USE_HF', '0')
 
-import pytest
-import torch
+import pytest  # noqa: E402
+import torch  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Guarded imports — module import never hard-fails in a minimal CI environment.
@@ -542,7 +542,6 @@ class TestStageB:
         proc = processor()
         template = get_template(proc, template_type='jev')
         template.set_mode('train')
-        tok = proc.tokenizer
         snap = _get_jev_dir()
         head = JevVerbalizerHead.from_pretrained(snap).float().to(dev)
         rows = flat_rows()
@@ -631,7 +630,6 @@ class TestStageC:
         ]
         last = ref_last_logits(texts, dev_ref)  # reference readout per question
         model, sproc, mdev = our_model(dev_ours)
-        stok = sproc.tokenizer if hasattr(sproc, 'tokenizer') else sproc
 
         ok_all = True
         print('=== C1-C3: batch=1 per record, swift full forward vs reference s1_pass (bf16, eager) ===', flush=True)
@@ -700,7 +698,7 @@ class TestStageDAlignment:
     def test_loss_value_and_grad(self, dev='cuda:0'):
         _need_swift()
         _need_jev_dir()
-        cfg = _get_head_config()
+        _get_head_config()  # guard: skip if head config missing
         proc = processor()
         template = get_template(proc, template_type='jev')
         template.set_mode('train')
@@ -1045,7 +1043,6 @@ def _legacy_stage_b(dev='cuda:0'):
     proc = processor()
     template = get_template(proc, template_type='jev')
     template.set_mode('train')
-    tok = proc.tokenizer
     snap = _get_jev_dir()
     head = JevVerbalizerHead.from_pretrained(snap).float().to(dev)
     rows = flat_rows()
@@ -1118,7 +1115,6 @@ def _legacy_stage_c(dev_ref='cuda:0', dev_ours='cuda:1'):
     texts = [ref_s1_text(kind, row['messages'][0]['content'], row['questions'][0], opts) for _, kind, row, opts in rows]
     last = ref_last_logits(texts, dev_ref)
     model, sproc, mdev = our_model(dev_ours)
-    stok = sproc.tokenizer if hasattr(sproc, 'tokenizer') else sproc
 
     ok_all = True
     print('=== C1-C3: batch=1 per record, swift full forward vs reference s1_pass (bf16, eager) ===', flush=True)
@@ -1175,7 +1171,7 @@ def _legacy_stage_d(dev='cuda:0'):
     if not torch.cuda.is_available():
         print('SKIP D: no CUDA', flush=True)
         return True
-    cfg = _get_head_config()
+    _get_head_config()  # guard: skip if head config missing
     proc = processor()
     template = get_template(proc, template_type='jev')
     template.set_mode('train')
