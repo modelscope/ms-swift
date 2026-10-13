@@ -28,7 +28,10 @@ class EmbeddingTrainer(Trainer):
                                             f'({last_hidden_state.shape[-1]}).')
                         continue
                     sliced = F.normalize(last_hidden_state[..., :dim], p=2, dim=-1)
-                    cur_loss = weight * origin_loss_func({'last_hidden_state': sliced}, labels, **kwargs)
+                    dim_loss = origin_loss_func({'last_hidden_state': sliced}, labels, **kwargs)
+                    mode = 'train' if self.model.training else 'eval'
+                    self.custom_metrics[mode][f'mrl_loss_{dim}'].update(dim_loss.detach())
+                    cur_loss = weight * dim_loss
                     loss = cur_loss if loss is None else loss + cur_loss
                 return loss
 
