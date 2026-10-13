@@ -8,7 +8,6 @@ from transformers import Trainer as HfTrainer
 from transformers import get_scheduler
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
-from swift.trainers import calculate_max_steps
 from swift.utils import get_logger
 from ..base import OptimizerCallback
 
@@ -82,8 +81,7 @@ class GaloreSchedulerWrapper(LRScheduler):
         self._last_lr = lr_scheduler.get_last_lr()
 
 
-def _create_optimizer_and_scheduler(model: nn.Module, args: 'TrainingArguments', config: GaLoreConfig, max_steps,
-                                    **defaults):
+def _create_optimizer(model: nn.Module, args: 'TrainingArguments', config: GaLoreConfig, **defaults):
     galore_params = []
     for module_name, module in model.named_modules():
         if not isinstance(module, (nn.Linear, nn.Embedding)) or \
@@ -124,19 +122,7 @@ def _create_optimizer_and_scheduler(model: nn.Module, args: 'TrainingArguments',
                 else:
                     optimizer_dict[p] = optim_cls([{'params': [p], **defaults}], **optim_kwargs)
 
-        # get scheduler dict
-        scheduler_dict = {}
-        for p in model.parameters():
-            if p.requires_grad:
-                scheduler_dict[p] = get_scheduler(
-                    optimizer=optimizer_dict[p],
-                    name=args.lr_scheduler_type,
-                    num_training_steps=max_steps * 2,
-                    num_warmup_steps=args.warmup_steps * 2,
-                    scheduler_specific_kwargs=args.lr_scheduler_kwargs,
-                )
-
-        return GaloreOptimizerWrapper(optimizer_dict), GaloreSchedulerWrapper(scheduler_dict)
+        return GaloreOptimizerWrapper(optimizer_dict)
     else:
         decay_parameters = HfTrainer.get_decay_parameter_names(None, model)
         param_groups = [{
@@ -161,15 +147,7 @@ def _create_optimizer_and_scheduler(model: nn.Module, args: 'TrainingArguments',
                 0.0,
             },
         ])
-        optim = optim_cls(param_groups, **optim_kwargs)
-        scheduler = get_scheduler(
-            optimizer=optim,
-            name=args.lr_scheduler_type,
-            num_training_steps=max_steps,
-            num_warmup_steps=args.warmup_steps,
-            scheduler_specific_kwargs=args.lr_scheduler_kwargs,
-        )
-        return optim, scheduler
+        return optim_cls(param_groups, **optim_kwargs)
 
 
 def get_optimizer(args: 'TrainingArguments', config: GaLoreConfig) -> Tuple[Any, Any]:
@@ -221,10 +199,10 @@ def get_optimizer(args: 'TrainingArguments', config: GaLoreConfig) -> Tuple[Any,
 
 class GaloreOptimizerCallback(OptimizerCallback):
 
-    def create_optimizer_and_scheduler(self, num_training_steps: int):
-        trainer = self.trainer
+    def create_optimizer(self, model=None):
         args = self.args
-        training_steps = calculate_max_steps(args, trainer.train_dataset)
+        if model is None:
+            model = self.trainer.model
         galore_config = GaLoreConfig(
             target_modules=args.galore_target_modules,
             rank=args.galore_rank,
@@ -240,7 +218,24 @@ class GaloreOptimizerCallback(OptimizerCallback):
             gamma_proj=args.galore_gamma_proj,
             queue_size=args.galore_queue_size,
         )
-        optimizer, lr_scheduler = _create_optimizer_and_scheduler(
-            trainer.model, args, galore_config, training_steps, lr=args.learning_rate, weight_decay=args.weight_decay)
-        trainer.optimizer = optimizer
-        trainer.lr_scheduler = lr_scheduler
+        return _create_optimizer(model, args, galore_config, lr=args.learning_rate, weight_decay=args.weight_decay)
+
+    def create_scheduler(self, num_training_steps: int, optimizer):
+        args = self.args
+
+        def make_scheduler(optimizer):
+            return get_scheduler(
+                optimizer=optimizer,
+                name=args.lr_scheduler_type,
+                num_training_steps=num_training_steps,
+                num_warmup_steps=args.get_warmup_steps(num_training_steps),
+                scheduler_specific_kwargs=args.lr_scheduler_kwargs,
+            )
+
+        if isinstance(optimizer, GaloreOptimizerWrapper):
+            return GaloreSchedulerWrapper({p: make_scheduler(opt) for p, opt in optimizer.optimizers.items()})
+        return make_scheduler(optimizer)
+
+    def create_optimizer_and_scheduler(self, num_training_steps: int):
+        self.trainer.optimizer = self.create_optimizer()
+        self.trainer.lr_scheduler = self.create_scheduler(num_training_steps, self.trainer.optimizer)
