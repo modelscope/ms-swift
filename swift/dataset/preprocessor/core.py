@@ -38,6 +38,16 @@ class RowPreprocessor:
                                 # Qwen3-TTS
                                 'ref_audios',
                                 'audio_codes',
+                                # `decision` task_type (typed-decision System-1 scoring).
+                                'questions',
+                                'kinds',
+                                'options',
+                                'target_probs',
+                                'state',
+                                'question_ids',
+                                'criteria',
+                                'omnijev_column_keys',
+                                'omnijev_video',
                             ]
     # Bump whenever the preprocessed-cache schema or semantics change (e.g. #9214 changed
     # messages[].loss from float64 to bool and added loss_scale). map_cache files are named
