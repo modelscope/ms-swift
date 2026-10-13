@@ -11,10 +11,13 @@ SWIFT supports Reranker model training. Currently supported models include:
 3. qwen3-vl-reranker model
    - 2B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Reranker-2B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B)
    - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Reranker-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B)
+4. jina-reranker-v3 series
+   - v3: [Hugging Face](https://huggingface.co/jinaai/jina-reranker-v3)
+   - v3.5: [Hugging Face](https://huggingface.co/jinaai/jina-reranker-v3.5)
 
 ## Implementation Methods
 
-SWIFT currently supports two implementation methods for Reranker models, which have significant differences in architecture and loss function computation:
+SWIFT currently supports three implementation methods for Reranker models, which have significant differences in architecture and loss function computation:
 
 ### 1. Classification Reranker
 
@@ -32,6 +35,16 @@ SWIFT currently supports two implementation methods for Reranker models, which h
 - Based on generative language model architecture (CausalLM)
 - Input: query-document pairs, Output: probability of specific tokens (e.g., "yes"/"no")
 - Classification is performed by comparing logits of specific tokens at the final position
+
+### 3. Embedding-Similarity Reranker
+
+**Applicable Models:** jina-reranker-v3 / jina-reranker-v3.5
+
+**Core Principles:**
+- Uses the model's native query/document embedding projector and cosine-similarity score
+- SWIFT formats each query-document pair with Jina's official reranker prompt and special embedding tokens
+- The native similarity score is exposed through SWIFT's `reranker` task interface, so both pointwise and listwise reranker losses can be used
+- For inference, set `reranker_use_activation=False` to obtain the model's raw cosine-similarity score
 
 ## Loss Function Types
 
@@ -96,6 +109,7 @@ Training scripts provided by ms-swift:
 - [Pointwise Generative Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
 - [Listwise Classification Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
 - [Listwise Generative Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)
+- [Jina Reranker v3/v3.5](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_jina_reranker.sh)
 
 For inference scripts, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_reranker.py).
 

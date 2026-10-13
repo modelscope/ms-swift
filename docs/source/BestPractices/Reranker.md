@@ -11,10 +11,13 @@ SWIFT已经支持Reranker模型的训练，目前已经支持的模型有：
 3. qwen3-vl-reranker模型
    - 2B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Reranker-2B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B)
    - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Reranker-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B)
+4. jina-reranker-v3系列
+   - v3: [Hugging Face](https://huggingface.co/jinaai/jina-reranker-v3)
+   - v3.5: [Hugging Face](https://huggingface.co/jinaai/jina-reranker-v3.5)
 
 ## 实现方式
 
-目前SWIFT支持两种Reranker模型的实现方式，二者在架构和损失函数计算上有显著差异：
+目前SWIFT支持三种Reranker模型的实现方式，它们在架构和损失函数计算上有显著差异：
 
 ### 1. 分类式Reranker
 
@@ -33,6 +36,16 @@ SWIFT已经支持Reranker模型的训练，目前已经支持的模型有：
 - 基于生成式语言模型架构（CausalLM）
 - 输入：query-document对，输出：特定token的概率（如"yes"/"no"）
 - 通过对比最后位置特定token的logits进行分类
+
+### 3. Embedding-Similarity Reranker
+
+**适用模型：** jina-reranker-v3 / jina-reranker-v3.5
+
+**核心原理：**
+- 使用模型原生的query/document embedding投影层与余弦相似度分数
+- SWIFT按照Jina官方reranker格式和特殊embedding token构造每个query-document对
+- 将模型原生相似度分数接入SWIFT的`reranker`任务接口，可复用pointwise和listwise reranker损失
+- 推理时设置`reranker_use_activation=False`可获得模型原始余弦相似度分数
 
 ## 损失函数类型
 
@@ -97,6 +110,7 @@ SWIFT提供的脚手架训练脚本：
 - [Pointwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
 - [Listwise分类式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
 - [Listwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)
+- [Jina Reranker v3/v3.5](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_jina_reranker.sh)
 
 推理脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_reranker.py)。
 

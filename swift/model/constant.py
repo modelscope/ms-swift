@@ -12,6 +12,7 @@ class LLMModelType:
     qwen3_next = 'qwen3_next'
     qwen3_emb = 'qwen3_emb'
     qwen3_reranker = 'qwen3_reranker'
+    jina_reranker_v3 = 'jina_reranker_v3'
 
     qwen2_gte = 'qwen2_gte'
 
