@@ -758,9 +758,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             origin_data = batch if (self.dynamic_num_samples and self.is_multimodal) else None
 
             with torch.no_grad(), disable_gradient_checkpointing(self.model, self.args.gradient_checkpointing_kwargs):
-                grpo_batch.old_per_token_logps = (
-                    self._get_per_token_logps_and_entropies(
-                        self.model, model_inputs, grpo_batch, origin_data=origin_data)[0])
+                if self._need_old_per_token_logps(grpo_batch):
+                    grpo_batch.old_per_token_logps = (
+                        self._get_per_token_logps_and_entropies(
+                            self.model, model_inputs, grpo_batch, origin_data=origin_data)[0])
                 if self.beta == 0.0:
                     ref_per_token_logps = None
                 elif self.ref_model is not None:
@@ -1830,6 +1831,20 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self._wait_queue(self.eval_queue)
             self.eval_flag = False
         return super().training_step(model, inputs, num_items_in_batch)
+
+    def _need_old_per_token_logps(self, grpo_batch) -> bool:
+        """Whether the pre-update policy logps need a forward of their own.
+
+        With the default setup (`num_iterations=1` and the rollout batch consumed inside a single
+        optimizer step) the pre-update policy and the current policy are the same weights, so the
+        logps produced by this extra forward are bit-for-bit identical to
+        `per_token_logps.detach()` — the forward is pure overhead. It is only worth computing when
+        the weights can actually have moved, or when something reads the field directly without the
+        `per_token_logps.detach()` fallback used at the loss site.
+        """
+        return bool(self.old_policy() or (self.kl_in_reward and self.beta != 0.0)
+                    or grpo_batch.teacher_per_token_logps is not None or grpo_batch.rollout_per_token_logps is not None
+                    or self.args.async_generate or self.args.use_liger_kernel)
 
     def old_policy(self):
         if self.template.sequence_parallel_size == 1:
