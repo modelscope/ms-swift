@@ -200,6 +200,7 @@ class ModelLoader(BaseModelLoader):
         self.model_kwargs = model_kwargs
         self.patch_offload = kwargs.pop('patch_offload', False)
         self.init_strategy = kwargs.get('init_strategy')
+        self.seq_cls_heads = kwargs.get('seq_cls_heads')
         self.local_repo_path = kwargs.get('local_repo_path')
         self.leaf_modules = None
         self.pad_token = None
@@ -240,6 +241,14 @@ class ModelLoader(BaseModelLoader):
         if problem_type and self.model_info.task_type == 'seq_cls':
             self.model_info.problem_type = problem_type
             config.problem_type = problem_type
+        heads = self.seq_cls_heads or getattr(config, 'seq_cls_heads', None)
+        if heads is not None:
+            from .seq_cls_head import normalize_seq_cls_heads
+            if self.model_info.task_type != 'seq_cls':
+                raise ValueError('Multi-head checkpoints require task_type=seq_cls.')
+            config.seq_cls_heads = normalize_seq_cls_heads(heads)
+            config.num_labels = sum(h['num_labels'] for h in config.seq_cls_heads)
+            self.model_info.num_labels = config.num_labels
         self._update_attn_impl(config)
         self.model_info.config = config
         return config
@@ -288,7 +297,7 @@ class ModelLoader(BaseModelLoader):
             HfConfigFactory.set_config_attr(config, 'tie_word_embeddings', False)
         if model_info.task_type in {'seq_cls', 'reranker'} and auto_model_cls in {
                 None, AutoModelForSequenceClassification
-        } and not self.return_dummy_model:
+        } and not self.return_dummy_model and not getattr(config, 'seq_cls_heads', None):
             with patch_automodel_for_sequence_classification(model_config=config, patch_from_pretrained=False):
                 try:
                     model = AutoModelForSequenceClassification.from_pretrained(

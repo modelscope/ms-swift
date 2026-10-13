@@ -653,7 +653,11 @@ class Template(ProcessorMixin):
         if inputs.label is not None:
             labels = inputs.label
             problem_type = self.config.problem_type
-            if problem_type == 'single_label_classification':
+            heads = getattr(self.config, 'seq_cls_heads', None)
+            if heads:
+                from swift.model.seq_cls_head import encode_seq_cls_labels
+                labels = encode_seq_cls_labels(labels, heads)
+            elif problem_type == 'single_label_classification':
                 labels = int(labels)
             encoded['labels'] = labels
         return encoded
@@ -790,6 +794,29 @@ class Template(ProcessorMixin):
 
     def decode_seq_cls(self, logits: torch.Tensor, top_logprobs: int):
         assert isinstance(logits, torch.Tensor)
+        heads = getattr(self.config, 'seq_cls_heads', None)
+        if heads:
+            preds = [{} for _ in logits]
+            logprobs = [{} for _ in logits]
+            offset = 0
+            for head in heads:
+                values = logits[:, offset:offset + head['num_labels']]
+                problem = head['problem_type']
+                if problem == 'regression':
+                    predictions = values.squeeze(-1).tolist()
+                    probabilities = [None] * len(values)
+                elif problem == 'single_label_classification':
+                    predictions = values.argmax(-1).tolist()
+                    probabilities = values.log_softmax(-1)
+                else:
+                    predictions = [(v >= 0.5).nonzero(as_tuple=True)[0].tolist() for v in values.sigmoid()]
+                    probabilities = F.logsigmoid(values)
+                for i, prediction in enumerate(predictions):
+                    preds[i][head['name']] = prediction
+                    logprobs[i][head['name']] = (None if problem == 'regression' else self._get_seq_cls_logprobs(
+                        prediction, probabilities[i], top_logprobs))
+                offset += head['num_labels']
+            return preds, logprobs
         problem_type = self.config.problem_type
         if problem_type == 'regression':
             preds = logits.squeeze(dim=-1).tolist()
@@ -1981,7 +2008,7 @@ class Template(ProcessorMixin):
         res = self._data_collator(batch, padding_to=padding_to)
         if labels:
             problem_type = self.config.problem_type
-            if problem_type == 'regression':
+            if getattr(self.config, 'seq_cls_heads', None) or problem_type == 'regression':
                 labels = torch.tensor(labels, dtype=torch.float32)
             elif problem_type == 'multi_label_classification':
                 one_hot_labels = torch.zeros((len(labels), self.config.num_labels), dtype=torch.float32)
