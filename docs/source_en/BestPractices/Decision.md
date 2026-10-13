@@ -488,6 +488,26 @@ swift infer \
     --model_type jev \
     --adapters output/checkpoint-xxx
 
+# Clef
+swift infer \
+    --model Cloudflare/clef \
+    --model_type clef \
+    --adapters output/checkpoint-xxx
+
+# OmniJev
+SWIFT_PY="$(sed -n '1s/^#!//p' "$(command -v swift)")"
+OMNIJEV_CKPT="$("$SWIFT_PY" -c "from modelscope import snapshot_download; print(snapshot_download('AI-ModelScope/OmniJev'))")"
+export OMNIJEV_HEAD="$OMNIJEV_CKPT/head.pt"
+export OMNIJEV_ORD="$OMNIJEV_CKPT/ord.pt"
+export OMNIJEV_HEAD_META="$OMNIJEV_CKPT/head_meta.json"
+export OMNIJEV_NEW_TOK_EMB="$OMNIJEV_CKPT/new_tok_emb.pt"
+export MSO_BRANCH_CKPT=1
+
+swift infer \
+    --model Qwen/Qwen3.5-4B \
+    --model_type omnijev \
+    --adapters output/checkpoint-xxx
+
 # Generic Decision
 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
