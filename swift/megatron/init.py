@@ -3,6 +3,7 @@ import concurrent.futures
 import inspect
 import logging
 import os
+import re
 import sys
 import torch
 import torch.distributed as dist
@@ -74,6 +75,52 @@ def _patch_duplicated_te_parameters(layer):
     layer.__init__ = init
 
 
+def _set_expert_parameter_attributes(module, parallel_mode, use_expert_pgs):
+    # https://github.com/NVIDIA/Megatron-LM/pull/5916 (MCore 0.19.0).
+    # Only direct weights/biases carry this layer's partitioning; nested adapters
+    # have their own shard/replica layout. Row biases remain ETP replicas.
+    for name, param in module.named_parameters(recurse=False):
+        param.allreduce = not use_expert_pgs
+        match = re.fullmatch(r'(weight|bias)\d*', name)
+        kind = match.group(1) if match else None
+        is_partitioned = parallel_mode in ('column', 'row') and (
+            kind == 'weight' or (parallel_mode == 'column' and kind == 'bias'))
+        if kind in ('weight', 'bias'):
+            param.tensor_model_parallel = is_partitioned
+        if is_partitioned:
+            param.partition_dim = 1 if parallel_mode == 'row' else 0
+            param.partition_stride = 1
+
+
+def _patch_te_expert_parameters(layer, parallel_mode=None):
+    original = layer.__init__
+    if getattr(original, '_swift_te_expert_metadata', False):
+        return
+    signature = inspect.signature(original)
+
+    @wraps(original)
+    def init(self, *args, **kwargs):
+        arguments = signature.bind(self, *args, **kwargs)
+        arguments.apply_defaults()
+        arguments = arguments.arguments
+        original(self, *args, **kwargs)
+        if not arguments.get('is_expert', False):
+            return
+        config = self.config
+        etp = config.expert_tensor_parallel_size or config.tensor_model_parallel_size
+        use_expert_pgs = config.expert_model_parallel_size > 1 or etp != config.tensor_model_parallel_size
+        # Explicit expert communication clears TE's internal parallel_mode. Use
+        # the constructor input, including when the layer does not store is_expert.
+        _set_expert_parameter_attributes(self, arguments.get('parallel_mode', parallel_mode), use_expert_pgs)
+        if 'stride' in arguments:
+            for param in self.parameters(recurse=False):
+                if getattr(param, 'tensor_model_parallel', False):
+                    param.partition_stride = arguments['stride']
+
+    init._swift_te_expert_metadata = True
+    layer.__init__ = init
+
+
 def patch_megatron_compatibility():
     import megatron.core
     from megatron.core import parallel_state, tensor_parallel
@@ -111,10 +158,17 @@ def patch_megatron_compatibility():
 
     if not _legacy_expert_topology():
         return
-    if version.parse(megatron.core.__version__) < version.parse('0.17.0'):
-        from megatron.core.extensions.transformer_engine import TELinear
+    from megatron.core.extensions import transformer_engine as te
 
-        _patch_duplicated_te_parameters(TELinear)
+    if version.parse(megatron.core.__version__) < version.parse('0.17.0'):
+        _patch_duplicated_te_parameters(te.TELinear)
+    _patch_te_expert_parameters(te.TELinear)
+    _patch_te_expert_parameters(te.TEGroupedLinear)
+    # GPU Column/Row inherit TELinear; MindSpeed may replace them with independent
+    # classes or native Megatron layers. Preserve native metadata/stride handling.
+    for layer, mode in ((te.TEColumnParallelLinear, 'column'), (te.TERowParallelLinear, 'row')):
+        if not issubclass(layer, (te.TELinear, layers.ColumnParallelLinear, layers.RowParallelLinear)):
+            _patch_te_expert_parameters(layer, mode)
     native_layers = (
         (layers.VocabParallelEmbedding, 0),
         (layers.ColumnParallelLinear, 0),

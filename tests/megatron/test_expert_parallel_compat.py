@@ -123,6 +123,107 @@ class TestExpertParallelCompat(unittest.TestCase):
         self.assertIs(LocalLinear('column').weight.tensor_model_parallel, True)
         self.assertIs(LocalLinear('duplicated', is_expert=True).weight.tensor_model_parallel, True)
 
+    def test_te_expert_metadata_distinguishes_shards_and_replicas(self):
+        for mode in ('column', 'row', None):
+            for use_expert_pgs in (False, True):
+                with self.subTest(mode=mode, use_expert_pgs=use_expert_pgs):
+                    module = torch.nn.Module()
+                    for name in ('weight', 'weight12', 'bias', 'bias12', 'weight_scale'):
+                        module.register_parameter(name, torch.nn.Parameter(torch.ones(2)))
+                    module.adapter = torch.nn.Linear(2, 2)
+                    self.compat._set_expert_parameter_attributes(module, mode, use_expert_pgs)
+                    for name, param in module.named_parameters(recurse=False):
+                        self.assertIs(param.allreduce, not use_expert_pgs)
+                        if name == 'weight_scale':
+                            self.assertFalse(hasattr(param, 'tensor_model_parallel'))
+                            continue
+                        partitioned = mode in ('column', 'row') and (name.startswith('weight') or mode == 'column')
+                        self.assertIs(param.tensor_model_parallel, partitioned)
+                        if partitioned:
+                            self.assertEqual(param.partition_dim, 1 if mode == 'row' else 0)
+                            self.assertEqual(param.partition_stride, 1)
+                    self.assertFalse(hasattr(module.adapter.weight, 'allreduce'))
+                    self.assertFalse(hasattr(module.adapter.weight, 'tensor_model_parallel'))
+
+    def test_te_constructor_keeps_original_mode_and_expert_flag(self):
+        class LocalGroupedLinear(torch.nn.Module):
+
+            def __init__(self, parallel_mode, config, is_expert=False):
+                super().__init__()
+                self.config = config
+                self.parallel_mode = None  # Explicit expert communication hides the mode from TE.
+                self.weight0 = torch.nn.Parameter(torch.ones(2))
+                self.bias0 = torch.nn.Parameter(torch.ones(2))
+                self.weight0.tensor_model_parallel = False
+                self.bias0.tensor_model_parallel = False
+
+        self.compat._patch_te_expert_parameters(LocalGroupedLinear)
+        constructor = LocalGroupedLinear.__init__
+        self.compat._patch_te_expert_parameters(LocalGroupedLinear)
+        self.assertIs(LocalGroupedLinear.__init__, constructor)
+        for tp, ep, etp in ((2, 1, 2), (4, 1, 2), (2, 2, 2), (2, 1, 1)):
+            config = SimpleNamespace(
+                tensor_model_parallel_size=tp, expert_model_parallel_size=ep, expert_tensor_parallel_size=etp)
+            for mode in ('column', 'row'):
+                with self.subTest(tp=tp, ep=ep, etp=etp, mode=mode):
+                    module = LocalGroupedLinear(mode, config, True)
+                    self.assertFalse(hasattr(module, 'is_expert'))
+                    self.assertIs(module.weight0.tensor_model_parallel, True)
+                    self.assertIs(module.bias0.tensor_model_parallel, mode == 'column')
+                    self.assertIs(module.weight0.allreduce, ep == 1 and tp == etp)
+                    self.assertEqual(module.weight0.partition_dim, 1 if mode == 'row' else 0)
+            dense = LocalGroupedLinear('column', config)
+            self.assertIs(dense.weight0.tensor_model_parallel, False)
+            self.assertFalse(hasattr(dense.weight0, 'allreduce'))
+
+    def test_independent_te_constructor_preserves_stride(self):
+        class LocalColumnLinear(torch.nn.Module):
+
+            def __init__(self, config, is_expert=False, stride=1):
+                super().__init__()
+                self.config = config
+                self.weight = torch.nn.Parameter(torch.ones(2))
+                self.bias = torch.nn.Parameter(torch.ones(2))
+
+        config = SimpleNamespace(
+            tensor_model_parallel_size=4, expert_model_parallel_size=1, expert_tensor_parallel_size=2)
+        self.compat._patch_te_expert_parameters(LocalColumnLinear, 'column')
+        module = LocalColumnLinear(config, is_expert=True, stride=2)
+        for param in module.parameters():
+            self.assertIs(param.tensor_model_parallel, True)
+            self.assertIs(param.allreduce, False)
+            self.assertEqual(param.partition_dim, 0)
+            self.assertEqual(param.partition_stride, 2)
+
+    def test_etp_shards_and_row_bias_have_correct_clipping_norm(self):
+        from megatron.core import tensor_parallel
+
+        predicate = tensor_parallel.param_is_not_tensor_parallel_duplicate
+        for tp, ep, etp in ((2, 1, 2), (4, 1, 2), (2, 2, 2)):
+            with self.subTest(tp=tp, ep=ep, etp=etp):
+                modules = []
+                for rank, grad in enumerate((3., 4.)):
+                    module = torch.nn.Module()
+                    module.weight0 = torch.nn.Parameter(torch.ones(1))
+                    module.weight0.grad = torch.tensor([grad])
+                    module.bias0 = torch.nn.Parameter(torch.ones(1))
+                    module.bias0.grad = torch.tensor([5.])
+                    self.compat._set_expert_parameter_attributes(module, 'row', ep > 1 or etp != tp)
+                    modules.append(module)
+                selected = [
+                    param.grad for rank, module in enumerate(modules) for param in module.parameters()
+                    if predicate(param, tp_group=RankGroup(rank), expert_tp_group=RankGroup(rank))
+                ]
+                # Independent oracle: both weight shards and exactly one replicated bias.
+                norm = torch.stack([grad.square().sum() for grad in selected]).sum().sqrt()
+                self.assertAlmostEqual(norm.item(), 50.**0.5, places=6)
+                for module in modules:
+                    for param in module.parameters():
+                        param.grad.mul_(1. / (norm + 1e-6))
+                actual_squared = sum(module.weight0.grad.square().sum() for module in modules)
+                actual_squared += modules[0].bias0.grad.square().sum()
+                self.assertAlmostEqual(actual_squared.sqrt().item(), 1., places=6)
+
     def test_ep_one_still_uses_expert_topology_when_etp_differs(self):
         from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
         from megatron.core.transformer.moe.moe_layer import MoELayer
