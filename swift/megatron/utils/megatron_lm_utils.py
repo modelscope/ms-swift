@@ -644,7 +644,7 @@ def _ensure_fsdp_tensor_parallel_attributes(args, model) -> None:
 
 
 def wrap_model(args, models, wrap_with_ddp: bool = True):
-    from swift.megatron.expert_parallel import prepare_expert_parallel_parameters
+    from swift.megatron.init import prepare_expert_parallel_parameters
 
     # Set tensor model parallel attributes if not set.
     # Only parameters that are already tensor model parallel have these

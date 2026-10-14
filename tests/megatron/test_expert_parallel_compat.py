@@ -21,8 +21,8 @@ class TestExpertParallelCompat(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from swift.megatron import expert_parallel
-        cls.compat = expert_parallel
+        from swift.megatron import init
+        cls.compat = init
 
     def test_expert_filter_keeps_distinct_experts_and_deduplicates_replicas(self):
         from megatron.core import parallel_state, tensor_parallel
@@ -193,10 +193,10 @@ class TestExpertParallelCompat(unittest.TestCase):
     def test_patches_are_idempotent(self):
         from megatron.core.tensor_parallel import layers
 
-        self.compat.patch_expert_parallel()
+        self.compat.patch_megatron_compatibility()
         predicate = layers.param_is_not_tensor_parallel_duplicate
         copier = layers.copy_tensor_model_parallel_attributes
-        self.compat.patch_expert_parallel()
+        self.compat.patch_megatron_compatibility()
         self.assertIs(layers.param_is_not_tensor_parallel_duplicate, predicate)
         self.assertIs(layers.copy_tensor_model_parallel_attributes, copier)
 
@@ -208,6 +208,6 @@ class TestExpertParallelCompat(unittest.TestCase):
 
         with patch.object(layers, 'param_is_not_tensor_parallel_duplicate', corrected), \
                 patch.object(self.compat, '_legacy_expert_topology', return_value=False):
-            self.compat.patch_expert_parallel()
+            self.compat.patch_megatron_compatibility()
             self.assertIs(layers.param_is_not_tensor_parallel_duplicate, corrected)
             self.compat.prepare_expert_parallel_parameters(None)
