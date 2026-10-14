@@ -348,6 +348,9 @@ def _patch_mcore_bridge():
 
 
 def init_megatron_env():
+    from .expert_parallel import patch_expert_parallel
+
+    patch_expert_parallel()
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
     _patch_unified_memory()
