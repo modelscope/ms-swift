@@ -2448,6 +2448,12 @@ class Template(ProcessorMixin):
         video_grid_thw = inputs.get('video_grid_thw')
         dtype = visual.dtype
         if pixel_values is None and pixel_values_videos is None:  # plain-text
+            if not (torch.is_grad_enabled() and any(p.requires_grad for p in visual.parameters())):
+                # The dummy image below only exists so that the vision tower stays in the autograd
+                # graph. With the tower frozen there is no graph to keep and no embedding to
+                # scatter, so the image processor call and the vision tower forward are dead
+                # weight -- `patch_frozen_module` already keeps them out of the graph for us.
+                return inputs_embeds
             images = [Image.new('RGB', (32, 32), (0, 0, 0))]
             media_inputs = processor.image_processor(images=images, return_tensors='pt')
             media_inputs = to_device(media_inputs, input_ids.device)
