@@ -196,6 +196,8 @@ After entering the container, run `source /usr/local/Ascend/ascend-toolkit/set_e
 
 ### Local Environment Installation
 
+**Step 1: Prepare the environment**
+
 ```shell
 # Create a new conda virtual environment (optional)
 conda create -n swift-npu python=3.12 -y
@@ -206,13 +208,29 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 # Set the global pip mirror (optional, speeds up downloads)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-pip install ms-swift -U
+```
 
-# Install from source
+**Step 2: Install ms-swift (choose ONE of the following methods)**
+
+> Choose method A for regular use, or method B if you need the latest code from the main branch or want to modify the source. After completing either method, go directly to step 3. You do not need to run the other method.
+
+**Method A: Install the PyPI release (recommended for regular use)**
+
+```shell
+pip install ms-swift -U
+```
+
+**Method B: Install from source**
+
+```shell
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
+```
 
+**Step 3: Install the runtime and any optional components you need**
+
+```shell
 # Install the matching PyTorch/TorchNPU runtime
 pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0
 pip install torch_npu==2.10.0.post4 decorator \
@@ -268,7 +286,7 @@ pip install -e .
 cd ..
 
 # 4. Download and install triton-ascend
-pip install triton-ascend==3.2.1 --extra-index-url=https://triton-ascend.osinfra.cn/pypi/simple
+pip install triton-ascend --extra-index-url=https://mirrors.huaweicloud.com/ascend/repos/pypi
 
 # 5. Set environment variables
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
