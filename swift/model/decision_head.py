@@ -78,6 +78,21 @@ def masked_softmax(logits: torch.Tensor, option_mask: torch.Tensor, dim: int = -
     return torch.nan_to_num(probs, nan=0.0)
 
 
+def masked_log_softmax(logits: torch.Tensor, option_mask: torch.Tensor, dim: int = -1) -> torch.Tensor:
+    """Log-softmax over real option slots only. Pad slots collapse to 0 (the same
+    `nan_to_num` contract as ``masked_softmax``), so ``target * log_probs * option_mask``
+    keeps ignoring them. Prefer this over ``log(masked_softmax(...).clamp_min(...))``:
+    clamping the *probability* truncates the loss to ``-log(1e-9)`` and zeros the
+    gradient for a confidently wrong class (#10354)."""
+    logits = logits.float().masked_fill(~option_mask, float('-inf'))
+    log_probs = torch.log_softmax(logits, dim=dim)
+    # `log_softmax(-inf)` is `-inf` rather than `nan`, so the `nan_to_num`
+    # used by `masked_softmax` does not collapse the pad columns to 0 here.
+    # Mask them explicitly to keep the two helpers numerically interchangeable
+    # on the pad slots.
+    return log_probs.masked_fill(~option_mask, 0.0)
+
+
 def masked_argmax(logits: torch.Tensor, option_mask: torch.Tensor, dim: int = -1) -> torch.Tensor:
     """Argmax restricted to real option slots (pad slots never win)."""
     return logits.float().masked_fill(~option_mask, float('-inf')).argmax(dim=dim)

@@ -16,7 +16,7 @@ import os
 import torch
 from typing import Optional
 
-from swift.model.decision_head import QUESTION_TYPES, masked_softmax
+from swift.model.decision_head import QUESTION_TYPES, masked_log_softmax, masked_softmax
 from .base import BaseLoss
 
 
@@ -51,8 +51,7 @@ class ScoringLoss(BaseLoss):
         and target 0, so they contribute nothing; the `* option_mask` guards against a stray
         nonzero target landing on a pad column.
         """
-        probs = masked_softmax(logits, option_mask)  # [total_q, max_opt], pad cols = 0
-        log_probs = torch.log(probs.clamp_min(1e-9))
+        log_probs = masked_log_softmax(logits, option_mask)  # pad cols = 0
         return -(target * log_probs * option_mask).sum(dim=-1)
 
     def _reduce(self, per_question: torch.Tensor, num_items_in_batch: Optional[int]) -> torch.Tensor:
