@@ -55,6 +55,8 @@ $$\mathcal{L}_{\mathrm{CE}} = \frac{1}{|Q|} \sum_{q \in Q} \left( -\sum_{k=1}^{K
 
 When $t_q$ is a soft target, this equals $\mathrm{KL}(t_q \| p_q)$ (dropping the constant $H(t_q)$ which does not affect gradients); when $t_q$ is one-hot, it reduces to standard cross-entropy. Each model-specific loss adds a calibration term on top.
 
+The shared cross-entropy is computed with FP32 masked `log_softmax`, without clipping probabilities. This preserves corrective gradients for confidently wrong predictions, including with BF16 logits. Padding and rows with no valid options contribute zero loss and gradient.
+
 ### Loss Details
 
 **distill_rps** (JEV):
