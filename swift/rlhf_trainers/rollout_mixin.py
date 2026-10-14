@@ -25,7 +25,7 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
 from transformers.utils import is_torch_npu_available
 from types import MethodType
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, TypeVar, Union
 
 from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
@@ -53,6 +53,7 @@ from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedT
 from .vllm_client import VLLMInferClient
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
+T = TypeVar('T')
 logger = get_logger()
 
 
@@ -305,7 +306,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
             if self.accelerator.is_main_process else None
         return self._scatter_teacher_parsed(handle, parsed_global)
 
-    def split_by_mini_batches(self, samples: List[OnPolicySample]) -> List[List[OnPolicySample]]:
+    def split_by_mini_batches(self, samples: List[T]) -> List[List[T]]:
         """Split inputs into mini-batches based on steps_per_generation.
 
         For sequence_parallel_size > 1, gathers inputs across SP/RP groups first,
