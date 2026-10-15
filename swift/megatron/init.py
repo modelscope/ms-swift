@@ -83,8 +83,8 @@ def _set_expert_parameter_attributes(module, parallel_mode, use_expert_pgs):
         param.allreduce = not use_expert_pgs
         match = re.fullmatch(r'(weight|bias)\d*', name)
         kind = match.group(1) if match else None
-        is_partitioned = parallel_mode in ('column', 'row') and (
-            kind == 'weight' or (parallel_mode == 'column' and kind == 'bias'))
+        is_partitioned = parallel_mode in ('column', 'row') and (kind == 'weight' or
+                                                                 (parallel_mode == 'column' and kind == 'bias'))
         if kind in ('weight', 'bias'):
             param.tensor_model_parallel = is_partitioned
         if is_partitioned:

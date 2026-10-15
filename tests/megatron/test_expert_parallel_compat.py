@@ -146,6 +146,7 @@ class TestExpertParallelCompat(unittest.TestCase):
                     self.assertFalse(hasattr(module.adapter.weight, 'tensor_model_parallel'))
 
     def test_te_constructor_keeps_original_mode_and_expert_flag(self):
+
         class LocalGroupedLinear(torch.nn.Module):
 
             def __init__(self, parallel_mode, config, is_expert=False):
@@ -177,6 +178,7 @@ class TestExpertParallelCompat(unittest.TestCase):
             self.assertFalse(hasattr(dense.weight0, 'allreduce'))
 
     def test_independent_te_constructor_preserves_stride(self):
+
         class LocalColumnLinear(torch.nn.Module):
 
             def __init__(self, config, is_expert=False, stride=1):
