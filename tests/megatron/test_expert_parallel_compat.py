@@ -25,18 +25,31 @@ class TestExpertParallelCompat(unittest.TestCase):
         cls.compat = init
 
     def test_expert_filter_keeps_distinct_experts_and_deduplicates_replicas(self):
-        from megatron.core import parallel_state, tensor_parallel
+        from megatron.core import tensor_parallel
 
         predicate = tensor_parallel.param_is_not_tensor_parallel_duplicate
         expert = torch.nn.Parameter(torch.ones(1))
         expert.allreduce = False
         dense = torch.nn.Parameter(torch.ones(1))
-        with patch.object(parallel_state, 'get_expert_tensor_parallel_group', return_value=RankGroup(0)):
-            self.assertTrue(predicate(expert, tp_group=RankGroup(1)))
-            self.assertFalse(predicate(dense, tp_group=RankGroup(1)))
+        self.assertTrue(predicate(expert, tp_group=RankGroup(1), expert_tp_group=RankGroup(0)))
+        self.assertFalse(predicate(dense, tp_group=RankGroup(1), expert_tp_group=RankGroup(0)))
+        self.assertTrue(predicate(dense, tp_group=RankGroup(0), expert_tp_group=RankGroup(1)))
         self.assertFalse(predicate(expert, tp_group=RankGroup(0), expert_tp_group=RankGroup(1)))
         expert.tensor_model_parallel = True
         self.assertTrue(predicate(expert, tp_group=RankGroup(1), expert_tp_group=RankGroup(1)))
+
+    def test_legacy_expert_filter_uses_global_etp_group(self):
+        if not self.compat._legacy_expert_topology():
+            self.skipTest('Native MCore callers pass the expert TP group explicitly.')
+        from megatron.core import parallel_state, tensor_parallel
+
+        expert = torch.nn.Parameter(torch.ones(1))
+        expert.allreduce = False
+        predicate = tensor_parallel.param_is_not_tensor_parallel_duplicate
+        for rank in (0, 1):
+            with self.subTest(expert_tp_rank=rank), \
+                    patch.object(parallel_state, 'get_expert_tensor_parallel_group', return_value=RankGroup(rank)):
+                self.assertEqual(predicate(expert, tp_group=RankGroup(1 - rank)), rank == 0)
 
     def test_norm_includes_both_independent_experts(self):
         from megatron.core import tensor_parallel
@@ -57,7 +70,9 @@ class TestExpertParallelCompat(unittest.TestCase):
         actual = torch.stack([p.grad.square().sum() for p in params]).sum().sqrt()
         self.assertAlmostEqual(actual.item(), 1., places=6)
 
-    def test_main_param_copies_expert_metadata(self):
+    def test_legacy_main_param_copies_expert_metadata(self):
+        if not self.compat._legacy_expert_topology():
+            self.skipTest('Native MCore copies optimizer metadata with a separate helper.')
         from megatron.core import tensor_parallel
 
         model_param = torch.nn.Parameter(torch.ones(2, 2))
@@ -261,10 +276,14 @@ class TestExpertParallelCompat(unittest.TestCase):
         self.assertEqual(row.weight.partition_dim, 1)
 
     def test_expert_containers_without_backend_specific_flags(self):
-        from megatron.core.transformer.moe.experts import GroupedMLP, SequentialMLP, TEGroupedMLP
+        from megatron.core.transformer.moe import experts as expert_layers
         from megatron.core.transformer.moe.moe_layer import MoELayer
 
-        for expert_type in (TEGroupedMLP, SequentialMLP, GroupedMLP):
+        expert_types = [expert_layers.TEGroupedMLP, expert_layers.SequentialMLP]
+        # Native GroupedMLP was removed in MCore 0.19.
+        if hasattr(expert_layers, 'GroupedMLP'):
+            expert_types.append(expert_layers.GroupedMLP)
+        for expert_type in expert_types:
             for tp, ep, etp in ((1, 1, 1), (2, 1, 1), (2, 2, 1)):
                 with self.subTest(expert_type=expert_type.__name__, tp=tp, ep=ep, etp=etp):
                     # Parameter ownership, not a GPU/NPU linear's optional is_expert flag,
@@ -285,7 +304,8 @@ class TestExpertParallelCompat(unittest.TestCase):
                     moe.shared_experts = torch.nn.Linear(2, 2)
                     for p in (*moe.router.parameters(), *moe.shared_experts.parameters()):
                         p.allreduce = True
-                    self.compat.prepare_expert_parallel_parameters(moe)
+                    with patch.object(self.compat, '_legacy_expert_topology', return_value=True):
+                        self.compat.prepare_expert_parallel_parameters(moe)
                     expected = ep == 1 and tp == etp
                     self.assertIs(experts.weight0.allreduce, expected)
                     self.assertIs(experts.adapter.weight.allreduce, expected)
@@ -311,6 +331,8 @@ class TestExpertParallelCompat(unittest.TestCase):
 
         with patch.object(layers, 'param_is_not_tensor_parallel_duplicate', corrected), \
                 patch.object(self.compat, '_legacy_expert_topology', return_value=False):
+            copier = layers.copy_tensor_model_parallel_attributes
             self.compat.patch_megatron_compatibility()
             self.assertIs(layers.param_is_not_tensor_parallel_duplicate, corrected)
+            self.assertIs(layers.copy_tensor_model_parallel_attributes, copier)
             self.compat.prepare_expert_parallel_parameters(None)
