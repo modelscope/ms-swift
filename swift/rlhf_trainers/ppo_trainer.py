@@ -12,7 +12,6 @@ from swift.callbacks import callbacks_map
 from swift.trainers import SwiftMixin
 from swift.utils import patch_getattr
 
-
 if version.parse(trl.__version__) >= version.parse('0.26.0'):
     from trl.experimental.ppo import PPOTrainer as HFPPOTrainer
 else:
