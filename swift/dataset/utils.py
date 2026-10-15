@@ -38,7 +38,7 @@ def sample_dataset(
     n_repeat_sample = dataset_sample // len(dataset)
     n_remain_sample = dataset_sample % len(dataset)
     if n_repeat_sample >= 1 and n_remain_sample >= 1:
-        logger.warning(f"dataset_sample:{dataset_sample} is greater than len(dataset):{len(dataset)}, "
+        logger.warning(f'dataset_sample:{dataset_sample} is greater than len(dataset):{len(dataset)}, '
                        'repeated sampling will be performed.')
     idx = np.tile(range(len(dataset)), n_repeat_sample)
     if random_state is None:
@@ -58,16 +58,14 @@ def sample_dataset(
 class LazyLLMDataset(Dataset):
     """This class if used to lazy tokenize the dataset, and skips bad ones when training"""
 
-    def __init__(
-        self,
-        dataset: HfDataset,
-        encode_func: Callable[[Dict[str, Any]], Dict[str, Any]],
-        *,
-        n_try_fetch: int = 10,
-        strict: bool = False,
-        random_state: Optional[Union[np.random.RandomState, int]] = None,
-        traceback_limit: int = 10,
-    ) -> None:
+    def __init__(self,
+                 dataset: HfDataset,
+                 encode_func: Callable[[Dict[str, Any]], Dict[str, Any]],
+                 *,
+                 n_try_fetch: int = 10,
+                 strict: bool = False,
+                 random_state: Optional[Union[np.random.RandomState, int]] = None,
+                 traceback_limit: int = 10) -> None:
         self.dataset = dataset
         self.encode_func = encode_func
 
@@ -107,9 +105,8 @@ class LazyLLMDataset(Dataset):
                     raise
                 if isinstance(e, MaxLengthError):
                     continue
-                if (self.traceback_limit is not None and self._traceback_counter < self.traceback_limit):
+                if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
                     import traceback
-
                     logger.info(traceback.format_exc())
                     logger.warning('👆👆👆There are errors in the template.encode, '
                                    'and another piece of data will be randomly selected.')
@@ -146,7 +143,6 @@ TEMP_DIR_POOL = {}
 def get_temporary_cache_files_directory(prefix=None):
     if prefix is None:
         import datasets.config
-
         prefix = datasets.config.TEMP_CACHE_DIR_PREFIX
     if prefix in TEMP_DIR_POOL:
         TEMP_DIR = TEMP_DIR_POOL[prefix]
@@ -158,7 +154,7 @@ def get_temporary_cache_files_directory(prefix=None):
         if 'ignore_cleanup_errors' in parameters:
             kwargs['ignore_cleanup_errors'] = True
         TEMP_DIR = tempfile.TemporaryDirectory(prefix=prefix, dir=tmp_dir, **kwargs)
-        logger.info(f"create tmp_dir: {TEMP_DIR.name}")
+        logger.info(f'create tmp_dir: {TEMP_DIR.name}')
         TEMP_DIR_POOL[prefix] = TEMP_DIR
 
     return TEMP_DIR.name

@@ -31,7 +31,7 @@ class TestLazyDatasetRetries(unittest.TestCase):
                     self.assertEqual(self.attempts, [0, 1])
 
     def test_last_fallback_is_not_skipped(self):
-        data = self._dataset([True, False, False], random_state=2)
+        data = self._dataset([True, False, False], random_state=0)
         self.assertEqual(data[2], {'id': 0})
         self.assertEqual(len(self.attempts), 3)
         self.assertEqual(set(self.attempts), {0, 1, 2})
