@@ -122,6 +122,7 @@ class LLMModelType:
     bge_reranker = 'bge_reranker'
 
     olmoe = 'olmoe'
+    olmo3 = 'olmo3'
 
     # typed-decision (System-1 scoring) generic text-LLM path (loads AutoModelForCausalLM, not multimodal)
     generic_decision = 'generic_decision'

@@ -134,6 +134,7 @@ class LLMTemplateType:
     youtu_llm = 'youtu_llm'
     olmoe = 'olmoe'
     olmoe_0924 = 'olmoe_0924'
+    olmo3_think = 'olmo3_think'
     spark2_5 = 'spark2_5'
 
     generic_decision = 'generic_decision'
