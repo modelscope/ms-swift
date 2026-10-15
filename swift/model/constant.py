@@ -289,6 +289,8 @@ class MLLMModelType:
     jina_reranker_m0 = 'jina_reranker_m0'
     monkeyocrv2 = 'monkeyocrv2'
 
+    nemotron_h_omni = 'nemotron_h_omni'
+
 
 class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):
 
