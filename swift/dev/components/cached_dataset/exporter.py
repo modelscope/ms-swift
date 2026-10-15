@@ -164,7 +164,8 @@ class CacheDatasetComponent(RecipeComponent):
             mode=encode_mode,
             num_proc=self.dataset_config.dataset_num_proc,
             strict=self.dataset_config.strict,
-            materialize=self.store_encoded)
+            materialize=self.store_encoded,
+            data_seed=self.dataset_config.data_seed)
         path = store_path(os.path.join(self.output_dir, name), self.store_format)
         write_dataset_store(enc, path, backend=self.store_format, fields=self.store_fields)
         logger.info(f'cached_dataset: `{path}` ({len(enc)} rows)')

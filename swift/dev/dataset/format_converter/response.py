@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
-import random
 from typing import Any, Collection, Dict, Optional
 
 from .base import FormatConverter, register_format
@@ -73,6 +72,6 @@ class ResponseConverter(FormatConverter):
         if not response:
             return None
         from swift.dev.utils.env import random_dataset_response
-        if random_dataset_response():
-            return random.choice(response)
+        if random_dataset_response() and self.random_state is not None:
+            return response[int(self.random_state.randint(len(response)))]
         return response[0]

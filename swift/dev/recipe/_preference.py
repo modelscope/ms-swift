@@ -5,11 +5,11 @@ other offline recipe; the one leaf-specific piece it owns is how a batch of RAW 
 ``forward_backward`` / ``forward_only`` arguments. :class:`PreferenceBatchEncoder` is that piece: a callable
 whose ``__call__(unit, *, owns_ga)`` is the ``micro_step_kwargs`` seam the flat layer threads through both the
 training step and the val-loss eval. It replaces the old ``PreferenceLoop`` (an ``OfflineLoop`` leaf) -- the
-loop scaffolding it inherited now lives in the flat ``StepRunner`` / ``Evaluator`` / ``CheckpointSaver``, so
+loop scaffolding it inherited now lives in the flat ``StepRecorder`` / ``Evaluator`` / ``CheckpointSaver``, so
 only the preference data pipeline and the optional reference-logps forward remain here.
 
 :func:`preference_log_line` renders the DPO reward margin/accuracy console line; ``run_dpo`` injects it as the
-recorder's ``log_formatter`` so the flat, hook-free ``StepRunner`` still surfaces the preference signal.
+recorder's ``log_formatter`` so the flat, hook-free ``StepRecorder`` still surfaces the preference signal.
 """
 from __future__ import annotations
 
@@ -233,7 +233,7 @@ def preference_log_line(record: dict, loss: float) -> str:
     The margin (chosen-reward minus rejected-reward) and the accuracy (fraction of pairs where chosen wins)
     are what show preference learning converging -- a rising margin and an accuracy climbing toward 100% --
     which the loss alone hides. Both come from the registered DPOMetric; they are absent for the unpaired kto
-    and the seq_cls rm, so those fall back to loss + grad_norm. Injected as the flat ``StepRunner``'s
+    and the seq_cls rm, so those fall back to loss + grad_norm. Injected as the flat ``StepRecorder``'s
     ``log_formatter``; the ``on_log`` callback fan-out stays in the recorder, so this returns just the line.
     """
     parts = [f"step {record.get('step')}", f'loss={loss:.4f}']

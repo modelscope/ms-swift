@@ -62,7 +62,8 @@ class SwiftDataset(Dataset):
                  load_from_cache_file: bool = True,
                  batch_size: Optional[int] = None,
                  strict: bool = False,
-                 traceback_limit: int = 10) -> None:
+                 traceback_limit: int = 10,
+                 data_seed: int = 42) -> None:
         self.dataset = dataset
         self.template = template
         self.num_proc = num_proc
@@ -70,6 +71,7 @@ class SwiftDataset(Dataset):
         self.batch_size = batch_size
         self.strict = strict
         self.traceback_limit = traceback_limit
+        self.data_seed = int(data_seed or 0)
         self._traceback_counter = 0
         self._lengths: Optional[List[int]] = None
 
@@ -99,7 +101,7 @@ class SwiftDataset(Dataset):
         lazy wrapper raised ``KeyError: 'messages'``, and pairing them the other way raised
         ``TypeError``.
         """
-        preprocessor = MeasurePreprocessor(self.template)
+        preprocessor = MeasurePreprocessor(self.template, seed=self.data_seed)
         preprocessor.strict = self.strict
         preprocessor.traceback_limit = self.traceback_limit
         measured = preprocessor(

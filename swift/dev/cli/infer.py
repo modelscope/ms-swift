@@ -163,15 +163,14 @@ def infer_main(argv: Optional[List[str]] = None):
     interactive = cli_config.eval_human or not has_dataset
     if interactive:
         _guard_interactive(configs['distributed_config'], configs['model_config'].task_type)
-    # A message-only backend ('client'/'no') loads no local weights, so a dataset run skips model
-    # resolution. Interactive still resolves: the REPL builds its chat template from the model even when
-    # the completions come from a remote client.
-    resolve_model = interactive or infer_config.sampler not in {'client', 'no'}
+    # The message-only 'no' backend loads no local weights, so a dataset run skips model resolution.
+    # Interactive still resolves: the REPL builds its chat template from the model.
+    resolve_model = interactive or infer_config.sampler != 'no'
     process_and_validate_configs(
         configs, add_version=False, create_output_dir=False, resolve_model=resolve_model)
     _derive_result_path(configs)
     adapters = configs['tuner_config'].adapters if configs['tuner_config'] is not None else None
-    # backend is unified on sampler, whose value names the message-only 'client'/'no' too.
+    # backend is unified on sampler, whose value names the message-only 'no' too.
     backend = infer_config.sampler
     engine_args = build_engine_args(backend, infer_config, configs['rollout_config'])
     # engine_kwargs is a generic escape hatch into the engine args, not a synthesis-only knob: a plain

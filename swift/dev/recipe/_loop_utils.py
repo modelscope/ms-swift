@@ -156,12 +156,14 @@ def finish_manual_gc(was_enabled: Optional[bool]) -> None:
 
 
 def save_training_checkpoint(model: 'TrainableModel', name: str, *, output_dir: str,
-                             consumed_train_samples: int = 0, no_save_optim: bool = False,
-                             no_save_rng: bool = False, safe_serialization: bool = True,
-                             max_shard_size: str = '5GB', save_total_limit: Optional[int] = None) -> str:
+                             consumed_train_samples: int = 0, component_states: Optional[Dict[str, dict]] = None,
+                             no_save_optim: bool = False, no_save_rng: bool = False,
+                             safe_serialization: bool = True, max_shard_size: str = '5GB',
+                             save_total_limit: Optional[int] = None) -> str:
     """Save one trainable model, then retain only the newest numbered/final checkpoints."""
     kwargs = {
         'consumed_train_samples': consumed_train_samples,
+        'component_states': component_states or {},
         'safe_serialization': safe_serialization,
         'max_shard_size': max_shard_size,
         'save_total_limit': save_total_limit,

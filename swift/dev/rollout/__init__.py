@@ -178,6 +178,9 @@ class SampleHandle:
     #: the teacher privileged view -- the sample then holds its own prompt instead of the consumer resolving
     #: ``prompt_id`` against a resident prompt table.
     prompt: Optional[List[dict]] = None
+    #: Ref-only multi-turn result. The driver may pass this LazyCollect to another remote component but must
+    #: not call it; single-turn submissions and driver-local multi-turn execution leave it unset.
+    payload: Any = None
 
     def __hash__(self) -> int:
         return hash(self.submission_id)
@@ -479,15 +482,17 @@ class RolloutEngine:
                              tool_manager: Any = None,
                              harness: Any = None,
                              followup_fn: Any = None,
-                             env_pool: Any = None,
-                             tool_plugins: Optional[List[Any]] = None) -> None:
+                             rollout_config: Any = None,
+                             remote_group: Optional[str] = None) -> None:
         """Attach twinkle's native multi-turn engine (no scheduler, no gym).
 
         Per-round length is ``sampling_params.max_tokens``; whole-trajectory length is
         ``max_trajectory_tokens``. The extension points are twinkle's ``tool_manager``
-        / ``harness`` / ``followup_fn``, wired by the caller. A sandbox ``env_pool`` plus
-        ``tool_plugins`` (see :mod:`swift.dev.rollout.sandbox`) instead bind tools per episode -- each
-        trajectory leases its own env and gets the tools for it -- which is how a run exposes tools
+        / ``harness`` / ``followup_fn``, wired by the caller. Tools are opt-in via ``rollout_config``: the
+        engine builds its own sandbox env pool and resolves ``rollout_config.tools`` (see
+        :mod:`swift.dev.rollout.sandbox`) WHEREVER it lives -- the CPU actor under ``remote_group``, the
+        driver otherwise -- because the env pool holds live locks/queues that cannot cross the Ray
+        boundary. Each trajectory leases its own env and gets the tools for it, so a run exposes tools
         without sharing one workspace across concurrent episodes.
         """
         from .multi_turn import MultiTurnRollout
@@ -499,8 +504,8 @@ class RolloutEngine:
             tool_manager=tool_manager,
             harness=harness,
             followup_fn=followup_fn,
-            env_pool=env_pool,
-            tool_plugins=tool_plugins)
+            rollout_config=rollout_config,
+            remote_group=remote_group)
 
     def generate(self,
                  prompts: List[List[dict]],
@@ -670,21 +675,31 @@ class RolloutEngine:
                         adapter_path: Optional[str],
                         allow_partial_rollout: bool,
                         policy_version: int) -> SampleHandle:
-        """Admit ONE multi-turn episode on a background daemon thread (the per-episode streaming admit).
+        """Admit ONE multi-turn episode without blocking (the per-episode streaming admit).
 
         A multi-turn episode is a whole conversation -- a sequence of blocking per-turn ``sample()`` calls
         interleaved with tool execution -- so it has no sampler-level non-blocking form the way a
         single-turn ``submit_generation`` does: the engine's own pool only parallelizes a BATCH handed to
         one ``generate`` call, and the streaming driver admits one trajectory at a time. Per-episode
-        admission therefore runs the ONE-episode blocking :meth:`MultiTurnRollout.generate` on its own
-        daemon thread and returns a handle immediately; :meth:`poll_completions` reports it done when the
-        thread's Future resolves and :meth:`collect_sample` takes the result.
+        admission therefore returns a handle immediately and lets the episode run in the background, in one
+        of two shapes decided by whether the engine is a remote actor (``self._multi_turn`` has ``_actors``):
+
+        * REMOTE (ref-only, the online-RL path): ``generate`` is a lazy remote call, so it returns a
+          ``LazyCollect`` holding the episode's ObjectRef. That reference is stashed on ``handle.payload``
+          and never resolved here -- :meth:`poll_completions` probes completion with ``payload.ready()`` (a
+          non-fetching ``ray.wait``), and :meth:`collect_responses` passes the reference straight to the
+          downstream remote assembler, which resolves it in-actor. The trajectory therefore never enters
+          the driver.
+        * LOCAL (no ``remote_group``): the ONE-episode blocking :meth:`MultiTurnRollout.generate` runs on a
+          daemon thread and writes its result/exception to a ``Future``; :meth:`poll_completions` reports it
+          done when the Future resolves and :meth:`collect_sample` takes the result.
 
         Concurrency is bounded by the streaming driver's backpressure -- it admits at most its in-flight
         budget of handles -- which is the single source of admission control, so this layer adds no pool of
-        its own and an episode is never queued behind another here. The threads are parked on GPU/tool I/O
-        almost all the time, so one per in-flight episode is cheap; the sampler's continuous batching and
-        concurrency cap (and a sandbox env pool's lease) are the real throughput limits.
+        its own and an episode is never queued behind another here. The remote actor's ``max_concurrency``
+        and the local threads both only need to exceed that budget so episodes overlap; the sampler's
+        continuous batching and concurrency cap (and a sandbox env pool's lease) are the real throughput
+        limits.
 
         ``allow_partial_rollout`` (set only under ``in_place``) is threaded into every per-turn ``sample()``
         so a publish's abort-and-resume continues a turn mid-episode on the fresh weights; ``adapter_path``
@@ -693,6 +708,25 @@ class RolloutEngine:
         anchor (the oldest version any of its turns was generated under).
         """
         submission_id = uuid.uuid4().hex
+        if hasattr(self._multi_turn, '_actors'):
+            payload = self._multi_turn.generate(
+                [prompt],
+                num_samples=1,
+                sampling_params=sampling_params,
+                prompt_extras=[prompt_extras] if prompt_extras else None,
+                force_logprobs=force_logprobs,
+                adapter_path=adapter_path,
+                allow_partial_rollout=allow_partial_rollout)
+            return SampleHandle(
+                submission_id=submission_id,
+                prompt_idx=prompt_idx,
+                trajectory_idx=trajectory_idx,
+                prompt_extras=dict(prompt_extras) if prompt_extras else None,
+                require_logprobs=force_logprobs,
+                policy_version=policy_version,
+                prompt=list(prompt) if prompt is not None else None,
+                payload=payload)
+
         future: Future = Future()
         self._episode_futures[submission_id] = future
 
@@ -734,6 +768,15 @@ class RolloutEngine:
                                'it, a transformers/torch or mock sampler does not.')
         completed: List[SampleHandle] = []
         for handle in handles:
+            if handle.payload is not None:
+                # Ref-only multi-turn episode: its result stays a LazyCollect that flows straight to the
+                # remote assembler, so completion is probed without fetching any payload -- ready() is a
+                # ray.wait(timeout=0) status check, never a ray.get. A failed episode still reports ready
+                # (ray.wait surfaces completion, not success); its exception is raised downstream when the
+                # assembler resolves the reference.
+                if handle.payload.ready():
+                    completed.append(handle)
+                continue
             future = self._episode_futures.get(handle.submission_id)
             if future is not None:
                 # Multi-turn episode: its completion lives on the background thread's Future, not the
@@ -758,19 +801,46 @@ class RolloutEngine:
                 completed.append(handle)
         return completed
 
+    def collect_responses(self, handle: SampleHandle) -> Any:
+        """Return one completed submission as a LazyCollect payload, without materialising it here.
+
+        A ref-only multi-turn episode already carries its result as ``handle.payload`` (a LazyCollect the
+        remote engine produced); it is handed straight through so the downstream remote assembler resolves
+        it in-actor. A single-turn submission lazily collects its sampler responses. Only a multi-turn
+        episode that ran on a driver-local ``Future`` (no ``remote_group``, so not ref-only) cannot satisfy
+        the contract and fails before its payload enters the driver.
+        """
+        if handle.payload is not None:
+            return handle.payload
+        if handle.submission_id in self._episode_futures:
+            raise RuntimeError('ref-only online RL requires multi-turn execution on the CPU payload actor.')
+        return self._await_generation(handle.submission_id)
+
     def collect_sample(self, handle: SampleHandle) -> RolloutSample:
         """Collect ONE completed trajectory as a single :class:`RolloutSample` (stamped with its version).
 
         The per-sample collect of the streaming path (the as-completed counterpart of the blocking
         :meth:`generate`'s tail). A single-turn submission blocks until the
         sampler reports it completed (via the shared :meth:`_await_generation` poll), then lifts the
-        responses with the same training-feature assembly; a multi-turn episode takes the background
-        thread's already-assembled :class:`RolloutSample` off its Future instead. Either way the submission
+        responses with the same training-feature assembly; a multi-turn episode takes the already-assembled
+        :class:`RolloutSample` off its result -- the remote engine's LazyCollect (``handle.payload``, the
+        ref-only path, resolved here only because this method is the NON-ref-only collect) or the
+        driver-local thread's Future. Either way the submission
         held exactly one trajectory, so exactly one sample must come back -- anything else is a contract
         violation and fails loudly. The sample's group id is stamped to the GLOBAL prompt index (the same
         stamping the batch path did, so group-relative advantage keys match), and ``policy_version`` records
         the admission pin's version.
         """
+        if handle.payload is not None:
+            samples = handle.payload()
+            if len(samples) != 1:
+                raise RuntimeError(f'streaming collect_sample expected exactly 1 sample for one remote multi-turn '
+                                   f'episode (submission {handle.submission_id}), got {len(samples)}.')
+            sample = samples[0]
+            sample.prompt_id = str(handle.prompt_idx)
+            sample.policy_version = handle.policy_version
+            sample.prompt = handle.prompt
+            return sample
         future = self._episode_futures.pop(handle.submission_id, None)
         if future is not None:
             # Multi-turn episode: the background thread already assembled the single RolloutSample (the
@@ -786,7 +856,9 @@ class RolloutEngine:
             sample.policy_version = handle.policy_version
             sample.prompt = handle.prompt
             return sample
-        responses = self._await_generation(handle.submission_id)
+        responses = self.collect_responses(handle)
+        if callable(responses) and getattr(responses, '_is_lazy_collect', False):
+            responses = responses()
         samples = self._samples_from_responses(
             responses,
             prompt_extras=[handle.prompt_extras] if handle.prompt_extras else None,
@@ -805,12 +877,15 @@ class RolloutEngine:
         """Drop an admitted-but-uncollected per-sample generation (budget hit, drain, or stale cancel).
 
         A single-turn submission is cancelled on the sampler. A multi-turn episode has no sampler
-        submission to cancel (it runs blocking per-turn ``sample()`` on its own daemon thread), so it is
-        ABANDONED: its Future is dropped and the thread finishes on its own with its result discarded. A
+        submission to cancel: the ref-only remote one just drops its LazyCollect (the in-actor episode
+        finishes on its own and its result is discarded), and a driver-local one is ABANDONED -- its Future
+        is dropped and the thread finishes on its own with its result discarded. A
         ``concurrent.futures.Future`` silently drops an unretrieved exception (unlike ``asyncio.Future``,
         which logs "never retrieved" at GC), so an abandoned episode that later fails needs no drain here.
         """
         if handle is None:
+            return
+        if handle.payload is not None:
             return
         if self._episode_futures.pop(handle.submission_id, None) is not None:
             return

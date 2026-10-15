@@ -1,4 +1,5 @@
 from __future__ import annotations
+import math
 import random
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -10,6 +11,7 @@ from swift.dev.recipe._distill import (
     distill_rows_from_dataset,
     distill_sampling_params,
 )
+from swift.dev.recipe._ref_only import build_remote_batch_assembler
 from swift.dev.recipe._streaming import build_streaming_driver
 from swift.dev.recipe.checkpoint import CheckpointSaver
 from swift.dev.recipe.rl_auxiliary import PolicyAuxiliary
@@ -79,7 +81,7 @@ def run_gkd(
     LoRA student whose teacher is its own base, the adapter-disabled student
     (``rl_config._teacher_use_disable_adapter``).
     """
-    from swift.dev.builders import build_dp_mesh, build_sampler
+    from swift.dev.builders import build_dp_mesh, build_prompt_dataloader, build_sampler
     from swift.dev.loss import configure_rl_loss
     from swift.dev.builders.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly, single_teacher_id
@@ -139,7 +141,7 @@ def run_gkd(
         distributed_config).data_world_size
     # GKD replays each round once (no num_iterations), so the budget uses num_iterations=1. Under lmbda<1 the
     # off-policy rounds size their mini-batches from dataset_rows instead of the rollout, so the LR horizon is
-    # approximate there; the scheduler's exhaustion still bounds the actual round count.
+    # approximate there; the prompt dataloader's exhaustion still bounds the actual round count.
     from swift.dev.recipe.train_loop import resolve_rollout_max_steps, rollout_step_budget
     max_steps = resolve_rollout_max_steps(
         train_config.max_steps,
@@ -226,12 +228,12 @@ def run_gkd(
         rollout,
         teacher=_build_teacher(assembly.model, assembly.template, rl_config, tuner_config, distributed_config),
         template=assembly.template,
-        prompts=prompts,
         signal='logits',
         gkd_logits_topk=rl_config.gkd_logits_topk,
         sft_alpha=rl_config.sft_alpha,
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=assembly.ga)
+    payload_processor = build_remote_batch_assembler(assembler)
     recorder = StepRunner(
         assembly.model,
         CallbackHandler(build_callbacks(train_config), output_dir=output_dir),
@@ -254,8 +256,7 @@ def run_gkd(
         no_save_rng=checkpoint_config.no_save_rng or checkpoint_config.save_only_model,
         safe_serialization=checkpoint_config.safe_serialization,
         max_shard_size=checkpoint_config.max_shard_size,
-        save_total_limit=checkpoint_config.save_total_limit,
-        consumed_train_samples_fn=lambda: recorder.global_step)
+        save_total_limit=checkpoint_config.save_total_limit)
     if assembly.resume_dir:
         saver.resume(assembly.resume_model())
 
@@ -272,6 +273,10 @@ def run_gkd(
             # drain-before-publish) or 1 ('one_step_off', the only overlapping regime distillation
             # supports; 'fully_async' is rejected by validate._check_async_mode). The streaming config
             # guard runs inside build_streaming_driver.
+            # The prompt dataloader is a twinkle DataLoader over the prompt rows (messages + passthrough
+            # extras); the driver flattens its batches, draws rows, and stamps its own ordinal as prompt_id
+            # (the assemble seam reads sample.prompt).
+            prompt_dataloader = build_prompt_dataloader(prompts, prompt_extras, seed=train_config.seed)
             driver, handover = build_streaming_driver(
                 rollout_config,
                 colocate=colocate,
@@ -279,18 +284,19 @@ def run_gkd(
                 model=assembly.model,
                 rollout=rollout,
                 output_dir=output_dir,
-                prompts=prompts,
-                prompt_extras=prompt_extras,
+                prompt_dataloader=prompt_dataloader,
+                num_train_epochs=train_config.num_train_epochs,
                 adapter_name=('default' if tuner_config is not None else None),
                 train_batch_size=train_batch_size,
                 gradient_accumulation_steps=assembly.ga,
                 num_generations=rl_config.num_generations,
-                num_train_epochs=train_config.num_train_epochs,
-                seed=train_config.seed,
                 sampling_params=distill_sampling_params(rl_config, generation_config),
                 unit_size=1,
+                score=None,
                 assemble=assembler.assemble,
                 assembly_ready=assembler.assembly_ready,
+                payload_processor=payload_processor,
+                global_step=lambda: recorder.global_step,
                 reached_max=recorder.reached_max)
             _driver_cell.append(driver)
             if handover.serializes:
@@ -300,20 +306,23 @@ def run_gkd(
             for batch in driver:
                 _fold_idle_ratio()
                 optimizer_steps = 0
-                for mini_batch in assembler.plan_mini_batches(batch):
-                    recorder.micro_step += 1
-                    assembly.model.forward_backward(**assembler.forward_kwargs(mini_batch))
-                    is_boundary = recorder.is_grad_sync_boundary()
-                    assembly.model.clip_grad_and_step(
-                        max_grad_norm=recorder.max_grad_norm,
-                        gradient_accumulation_steps=recorder.gradient_accumulation_steps)
-                    if is_boundary:
-                        recorder.record_step()
-                        optimizer_steps += 1
-                        if saver.save_steps and recorder.global_step % saver.save_steps == 0:
-                            saver.save(f'checkpoint-{recorder.global_step}')
-                        if recorder.reached_max():
-                            break
+                try:
+                    for mini_batch_index in range(batch.mini_batch_count):
+                        recorder.micro_step += 1
+                        batch.forward_backward(mini_batch_index)
+                        is_boundary = recorder.is_grad_sync_boundary()
+                        assembly.model.clip_grad_and_step(
+                            max_grad_norm=recorder.max_grad_norm,
+                            gradient_accumulation_steps=recorder.gradient_accumulation_steps)
+                        if is_boundary:
+                            recorder.record_step()
+                            optimizer_steps += 1
+                            if saver.save_steps and recorder.global_step % saver.save_steps == 0:
+                                saver.save(f'checkpoint-{recorder.global_step}')
+                            if recorder.reached_max():
+                                break
+                finally:
+                    batch.release()
                 # commit releases the driver thread blocked in the iterator bridge and reports the real step
                 # count -- the publish cadence unit (twinkle publishes only after consume returns).
                 driver.commit(optimizer_steps)
@@ -325,59 +334,68 @@ def run_gkd(
             # off-policy round distils the dataset completions (and adds the SFT term via
             # apply_sft_loss); it is not a skipped round. round_index counts rounds (NOT optimizer steps,
             # W27) so the coin flip and the dataset window stay aligned with the batch being processed.
-            from swift.dev.recipe.train_loop import PromptBatchScheduler
-
-            scheduler = PromptBatchScheduler(
-                len(prompts),
-                generation_batch_size=rollout_config.generation_batch_size,
-                num_train_epochs=train_config.num_train_epochs,
-                seed=train_config.seed)
+            # The generation batches come from the SAME twinkle DataLoader bridge the streaming path uses,
+            # sized to the round's prompt count (batch_size=generation_batch_size) and looped for
+            # ceil(num_train_epochs) passes with set_epoch advancing the seeded reshuffle per pass -- the
+            # retired PromptBatchScheduler's cadence, now delegated to the loader.
+            gen_batch_size = min(rollout_config.generation_batch_size or len(prompts), len(prompts))
+            prompt_dataloader = build_prompt_dataloader(
+                prompts, prompt_extras, seed=train_config.seed, batch_size=gen_batch_size)
             round_index = 0
-            for prompt_indices in scheduler:
-                if recorder.reached_max():
-                    break
-                use_student = random.Random(train_config.seed + round_index).random() <= rl_config.lmbda
-                round_index += 1
-                if use_student:
-                    # blocking_generate syncs the trained policy into the sampler first, so an on-policy
-                    # round samples from the current policy.
-                    samples = blocking_generate(
-                        rollout,
-                        [prompts[i] for i in prompt_indices],
-                        num_samples=rl_config.num_generations,
-                        sampling_params=distill_sampling_params(rl_config, generation_config),
-                        prompt_extras=[prompt_extras[i] for i in prompt_indices])
-                    expected = len(prompt_indices) * rl_config.num_generations
-                    if len(samples) != expected:
-                        raise RuntimeError(f'rollout returned {len(samples)} samples, expected {expected} '
-                                           f'({len(prompt_indices)} prompts * {rl_config.num_generations} generations).')
-                    for local_idx, prompt_idx in enumerate(prompt_indices):
-                        for sample in samples[local_idx * rl_config.num_generations:(local_idx + 1) * rl_config.num_generations]:
-                            sample.prompt_id = str(prompt_idx)
-                    rows = [
-                        DistillRow(sample.input_feature,
-                                   sample.messages if sample.messages is not None else prompts[int(sample.prompt_id)],
-                                   sample.extra or {}) for sample in samples
-                    ]
-                else:
-                    # A rolling window over the dataset completions, so successive off-policy rounds cover
-                    # new rows (run_gkd already rejected lmbda<1 without dataset completions).
-                    count = len(dataset_rows)
-                    offset = ((round_index - 1) * train_batch_size) % count
-                    rows = [dataset_rows[(offset + i) % count] for i in range(count)]
-                for mini_batch in assembler.plan_mini_batches(DistillBatch(rows, use_student)):
+            for epoch in range(max(1, math.ceil(train_config.num_train_epochs))):
+                prompt_dataloader.set_epoch(epoch)
+                for batch in prompt_dataloader:
                     if recorder.reached_max():
                         break
-                    recorder.micro_step += 1
-                    assembly.model.forward_backward(**assembler.forward_kwargs(mini_batch))
-                    is_boundary = recorder.is_grad_sync_boundary()
-                    assembly.model.clip_grad_and_step(
-                        max_grad_norm=recorder.max_grad_norm,
-                        gradient_accumulation_steps=recorder.gradient_accumulation_steps)
-                    if is_boundary:
-                        recorder.record_step()
-                        if saver.save_steps and recorder.global_step % saver.save_steps == 0:
-                            saver.save(f'checkpoint-{recorder.global_step}')
+                    use_student = random.Random(train_config.seed + round_index).random() <= rl_config.lmbda
+                    round_index += 1
+                    if use_student:
+                        # blocking_generate syncs the trained policy into the sampler first, so an on-policy
+                        # round samples from the current policy. Each row is one prompt's messages plus its
+                        # passthrough extras; prompt_id is the batch-local index the fallback below reads.
+                        batch_messages = [row['messages'] for row in batch]
+                        batch_extras = [{k: v for k, v in row.items() if k != 'messages'} for row in batch]
+                        samples = blocking_generate(
+                            rollout,
+                            batch_messages,
+                            num_samples=rl_config.num_generations,
+                            sampling_params=distill_sampling_params(rl_config, generation_config),
+                            prompt_extras=batch_extras)
+                        expected = len(batch) * rl_config.num_generations
+                        if len(samples) != expected:
+                            raise RuntimeError(f'rollout returned {len(samples)} samples, expected {expected} '
+                                               f'({len(batch)} prompts * {rl_config.num_generations} generations).')
+                        for local_idx in range(len(batch)):
+                            for sample in samples[local_idx * rl_config.num_generations:(local_idx + 1)
+                                                  * rl_config.num_generations]:
+                                sample.prompt_id = str(local_idx)
+                        rows = [
+                            DistillRow(sample.input_feature,
+                                       sample.messages if sample.messages is not None
+                                       else batch_messages[int(sample.prompt_id)],
+                                       sample.extra or {}) for sample in samples
+                        ]
+                    else:
+                        # A rolling window over the dataset completions, so successive off-policy rounds cover
+                        # new rows (run_gkd already rejected lmbda<1 without dataset completions).
+                        count = len(dataset_rows)
+                        offset = ((round_index - 1) * train_batch_size) % count
+                        rows = [dataset_rows[(offset + i) % count] for i in range(count)]
+                    for mini_batch in assembler.plan_mini_batches(DistillBatch(rows, use_student)):
+                        if recorder.reached_max():
+                            break
+                        recorder.micro_step += 1
+                        assembly.model.forward_backward(**assembler.forward_kwargs(mini_batch))
+                        is_boundary = recorder.is_grad_sync_boundary()
+                        assembly.model.clip_grad_and_step(
+                            max_grad_norm=recorder.max_grad_norm,
+                            gradient_accumulation_steps=recorder.gradient_accumulation_steps)
+                        if is_boundary:
+                            recorder.record_step()
+                            if saver.save_steps and recorder.global_step % saver.save_steps == 0:
+                                saver.save(f'checkpoint-{recorder.global_step}')
+                if recorder.reached_max():
+                    break
     finally:
         if handover is not None and handover.serializes and handover.in_generation:
             # Ended mid-window (e.g. a budget hit during generation): give the device back to the trainer

@@ -26,7 +26,7 @@ from __future__ import annotations
 import math
 import os
 import shutil
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 from twinkle_agentic.async_rl.context_manager import RLContextManager
 from twinkle_agentic.async_rl.streaming_driver import StreamingDriver
@@ -34,7 +34,6 @@ from twinkle_agentic.async_rl.types import RLContext
 from twinkle_agentic.async_rl.weight_sync import AdapterSnapshotSync, build_weight_sync_strategy
 
 from swift.dev.config.rollout_config import WeightSyncStrategyName
-from swift.dev.recipe.train_loop import PromptStream
 
 
 # --- exclusive-device hand-over (a colocated sampler time-shares one device with the trainer) ------------
@@ -215,6 +214,54 @@ def check_streaming_config(*,
         raise ValueError(f'unknown weight_sync_strategy: {weight_sync_strategy!r}')
 
 
+class StreamingPublisher:
+    """Thin dev-side controller around twinkle's pure ``StreamingDriver``: owns the publish CADENCE and the
+    weight-push strategy, neither of which the purified driver holds any more.
+
+    It proxies the driver's iterator interface (``for batch in publisher`` yields the driver's batches) and
+    intercepts :meth:`commit`: after the recipe reports the optimizer steps it just ran, the publisher counts
+    them toward ``parameter_sync_step`` and, when the cadence is reached, asks the driver to publish -- handing
+    it ``weight_sync.publish`` as the push callable. The driver runs that push (bracketed by its own
+    version/window accounting) at its next pass boundary, so the publisher never touches driver state directly
+    and the weight push stays out of the driver. Everything else forwards to the driver, so a recipe holding a
+    publisher reads exactly what it read off the bare driver.
+
+    This is where the "external trigger authority" for weight sync lives: the driver is a pure rollout pump,
+    and the decision to publish (the cadence) plus the push itself (the strategy) are dev-side, per the
+    requirement that model/weight control not live in the driver.
+    """
+
+    def __init__(self, driver: Any, weight_sync: Any, parameter_sync_step: int):
+        if parameter_sync_step < 1:
+            raise ValueError(f'parameter_sync_step must be >= 1 (a weight publication every K steps); '
+                             f'got {parameter_sync_step}.')
+        self._driver = driver
+        self._weight_sync = weight_sync
+        self._parameter_sync_step = parameter_sync_step
+        self._steps_since_publish = 0
+
+    def __iter__(self) -> Any:
+        return iter(self._driver)
+
+    def commit(self, optimizer_steps: int = 1) -> None:
+        """Report the optimizer steps just run; request a publish when the cadence is reached, then release.
+
+        The publish request is set BEFORE ``driver.commit`` releases the driver thread, so the version bump
+        lands after this training and before the next admission window samples (the driver consumes the request
+        at the top of its next pass). A falsy step count is treated as one, matching the driver's ``commit``.
+        """
+        self._steps_since_publish += int(optimizer_steps) if optimizer_steps else 1
+        if self._steps_since_publish >= self._parameter_sync_step:
+            self._driver.request_publish(self._weight_sync.publish)
+            self._steps_since_publish = 0
+        self._driver.commit(optimizer_steps)
+
+    def __getattr__(self, name: str) -> Any:
+        # Forward attributes the publisher does not define to the wrapped driver. Only reached when normal
+        # lookup fails, and _driver is set first in __init__, so this never recurses.
+        return getattr(self._driver, name)
+
+
 def build_streaming_driver(rollout_config: Any,
                            *,
                            colocate: bool,
@@ -222,23 +269,24 @@ def build_streaming_driver(rollout_config: Any,
                            model: Any,
                            rollout: Any,
                            output_dir: str,
-                           prompts: List[Any],
-                           prompt_extras: List[Dict[str, Any]],
+                           prompt_dataloader: Any,
+                           num_train_epochs: float,
                            adapter_name: Optional[str],
                            train_batch_size: int,
                            gradient_accumulation_steps: int,
                            num_generations: int,
-                           num_train_epochs: float,
-                           seed: int,
                            sampling_params: Optional[dict],
                            unit_size: int,
                            score: Optional[Callable[[Any], Any]],
                            assemble: Callable[[List[Any]], Any],
                            assembly_ready: Callable[[List[Any]], Optional[List[Any]]],
+                           payload_processor: Any = None,
+                           global_step: Optional[Callable[[], int]] = None,
                            group_complete: Optional[Callable] = None,
                            max_group_regenerations: int = 0,
                            reached_max: Optional[Callable[[], bool]] = None) -> Tuple[Any, Any]:
-    """Build twinkle's per-sample StreamingDriver in iterator mode -> ``(driver, handover)``.
+    """Build twinkle's per-sample StreamingDriver in iterator mode, wrapped in a :class:`StreamingPublisher`
+    -> ``(publisher, handover)``.
 
     Every flat recipe (GRPO / PPO / distillation with ``lmbda == 1.0``) runs the SAME twinkle driver; only
     the injected algorithm seams and the assembly unit differ:
@@ -262,6 +310,12 @@ def build_streaming_driver(rollout_config: Any,
     re-assembled here as closures. :func:`check_streaming_config` (the same static guard) runs at
     construction, before the recipe's recorder opens any reporter. The hand-over bracket (initial ``enter``
     / final ``exit``) is the recipe's; later cycles' ``enter`` rides the in-place publish's ``sync_fn``.
+
+    ``prompt_dataloader`` is the recipe's prompt source -- a twinkle ``DataLoader`` over the prompt rows (see
+    :func:`~swift.dev.builders.build_prompt_dataloader`), yielding BATCHES the driver flattens to rows and
+    reads for ``num_train_epochs`` passes (it drives the loader's ``set_epoch`` per pass). The driver assigns
+    each drawn row its own ordinal and hands ``(row, ordinal)`` to ``submit``, so no resident prompt table is
+    indexed here.
     """
     max_staleness = (0 if rollout_config.async_mode == 'none' else 1
                      if rollout_config.async_mode == 'one_step_off' else rollout_config.max_staleness)
@@ -311,18 +365,22 @@ def build_streaming_driver(rollout_config: Any,
         abort_fn=(rollout.abort_all_inflight if strategy == 'in_place' else None))
 
     # --- per-sample data plane (the version travels with the submission) --------------------------------
-    def _submit(prompt_idx: Any, trajectory_idx: int, policy: Any) -> Any:
+    def _submit(prompt_ref: Any, trajectory_idx: int, policy: Any) -> Any:
         """Admit ONE trajectory without blocking, pinned to ``policy``'s version.
 
-        The driver eats the dataloader directly: this closure indexes the prompt rows the recipe loaded (no
-        index-table lookup -- the retired driver's ``prompt_payload`` seam is gone).
+        The driver draws prompt ROWS from ``prompt_dataloader`` and hands each over as a ``PromptRef``:
+        ``prompt_ref.row`` is the row (``messages`` plus the reward/media columns beside it) and
+        ``prompt_ref.ordinal`` is the driver-assigned per-draw id stamped as the sample's ``prompt_id``. This
+        closure builds the trajectory straight from the row -- no index lookup into a resident prompt table.
         """
+        row = prompt_ref.row
+        extras = {key: value for key, value in row.items() if key != 'messages'}
         handle = rollout.submit_sample(
-            prompts[prompt_idx],
+            row['messages'],
             trajectory_idx,
-            prompt_idx=prompt_idx,
+            prompt_idx=prompt_ref.ordinal,
             sampling_params=sampling_params,
-            prompt_extras=(prompt_extras[prompt_idx] if prompt_extras else None),
+            prompt_extras=(extras or None),
             adapter_name=policy.adapter_name or '',
             adapter_path=policy.adapter_path,
             allow_partial_rollout=allow_partial_rollout,
@@ -333,6 +391,32 @@ def build_streaming_driver(rollout_config: Any,
         return rollout.poll_completions(handles)
 
     def _collect(handle: Any) -> Any:
+        if payload_processor is not None:
+            current = ctx_mgr.get_rollout_policy(ctx).version
+            version_span = max(0, current - handle.policy_version) if strategy == 'in_place' else 0
+            if handle.payload is not None:
+                # Ref-only multi-turn: the payload is a LazyCollect of the already-translated RolloutSample
+                # list the remote engine produced. Hand the reference to the actor, which resolves and stamps
+                # it in-actor -- the trajectory never materialises in the driver.
+                return payload_processor.collect_multi_turn_sample(
+                    handle.payload,
+                    submission_id=handle.submission_id,
+                    prompt=handle.prompt,
+                    prompt_idx=handle.prompt_idx,
+                    policy_version=handle.policy_version,
+                    version_span=version_span)
+            responses = rollout.collect_responses(handle)
+            return payload_processor.collect_sample(
+                responses,
+                submission_id=handle.submission_id,
+                prompt=handle.prompt,
+                prompt_idx=handle.prompt_idx,
+                prompt_extras=handle.prompt_extras,
+                policy_version=handle.policy_version,
+                version_span=version_span,
+                require_logprobs=handle.require_logprobs,
+                allow_message_only=rollout.template is None,
+            )
         sample = rollout.collect_sample(handle)
         if strategy == 'in_place':
             # A trajectory may span versions under in_place (publish aborts and resumes it on fresh
@@ -341,6 +425,32 @@ def build_streaming_driver(rollout_config: Any,
             current = ctx_mgr.get_rollout_policy(ctx).version
             sample.version_span = max(0, current - sample.policy_version)
         return sample
+
+    if payload_processor is not None:
+        from swift.dev.recipe._ref_only import as_prepared_batch
+
+        def _record_payload(records: List[Any]) -> Tuple[Tuple[Any, ...], List[Tuple[int, str]]]:
+            return (tuple(record.sample for record in records),
+                    [(int(record.version), str(record.group_key)) for record in records])
+
+        def _assemble_payload(records: List[Any]) -> Any:
+            samples, record_meta = _record_payload(records)
+            descriptor = payload_processor.prepare_records(
+                *samples,
+                record_meta=record_meta,
+                global_step=(int(global_step()) if global_step is not None else 0),
+            )
+            return as_prepared_batch(payload_processor, descriptor)
+
+        assemble = _assemble_payload
+        score = None
+        if group_complete is not None:
+
+            def _group_complete_payload(group_key: str, records: List[Any]) -> Any:
+                samples, record_meta = _record_payload(records)
+                return payload_processor.group_complete(group_key, *samples, record_meta=record_meta)
+
+            group_complete = _group_complete_payload
 
     def _cancel(handle: Any) -> None:
         rollout.cancel_sample(handle)
@@ -359,12 +469,11 @@ def build_streaming_driver(rollout_config: Any,
     driver = StreamingDriver(
         ctx_mgr=ctx_mgr,
         ctx=ctx,
-        weight_sync=weight_sync,
-        prompt_stream=PromptStream(len(prompts), num_train_epochs=num_train_epochs, seed=seed),
+        prompt_stream=prompt_dataloader,
+        num_train_epochs=num_train_epochs,
         max_staleness=max_staleness,
         num_generations=num_generations,
         groups_per_partition=groups_per_partition,
-        parameter_sync_step=rollout_config.parameter_sync_step,
         buffer_depth=buffer_depth,
         submit=_submit,
         poll=_poll,
@@ -380,4 +489,8 @@ def build_streaming_driver(rollout_config: Any,
         initial_adapter_path=((lambda: _save_snapshot('v0'))
                               if isinstance(weight_sync, AdapterSnapshotSync) else None),
         reached_max=reached_max)
-    return driver, handover
+    # The publisher owns what the purified driver no longer does: the publish CADENCE (parameter_sync_step)
+    # and the weight-push strategy (weight_sync). The recipe iterates and commits through it exactly as it did
+    # the bare driver, so no recipe body changes.
+    publisher = StreamingPublisher(driver, weight_sync, rollout_config.parameter_sync_step)
+    return publisher, handover

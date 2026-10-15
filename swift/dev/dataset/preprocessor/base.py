@@ -9,6 +9,7 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
 from swift.dev.utils import get_logger
+from twinkle.dataloader.random_state import derive_seed, isolated_random_state
 from .._diagnostics import note_row_error
 
 __all__ = ['MessagesRepairPreprocessor', 'Preprocessor']
@@ -79,7 +80,8 @@ class Preprocessor:
         self.converter_kwargs = {**type(self).converter_kwargs, **(converter_kwargs or {})}
         self.strict = strict
         self.traceback_limit = traceback_limit
-        self.random_state = np.random.RandomState(seed)
+        self.seed = int(seed)
+        self.random_state = np.random.RandomState(self.seed)
         # Filled in on the first row (lazily, so a subclass that overrides `preprocess` and needs no
         # converter never triggers detection) and per worker process under `num_proc > 1`.
         self._converter = None
@@ -100,6 +102,7 @@ class Preprocessor:
                 self._feature_columns,
                 format_name=self.format_name,
                 aliases=self.columns,
+                random_state=self.random_state,
                 **self.converter_kwargs)
         return self._converter
 
@@ -168,6 +171,7 @@ class Preprocessor:
                 self.batched_preprocess,
                 fn_kwargs={'strict': strict},
                 remove_columns=self._feature_columns,
+                with_indices=True,
                 **map_kwargs)
         if isinstance(mapped, HfDataset) and len(mapped) != len(dataset):
             logger.info(f'Dataset filtered, origin length: {len(dataset)}, filtered length: {len(mapped)}')
@@ -233,13 +237,17 @@ class Preprocessor:
         finally:
             ArrowWriter.__init__ = original_init
 
-    def batched_preprocess(self, batch: Dict[str, List[Any]], *, strict: bool) -> Dict[str, List[Any]]:
+    def batched_preprocess(self, batch: Dict[str, List[Any]], indices: List[int], *,
+                           strict: bool) -> Dict[str, List[Any]]:
         """The function handed to ``dataset.map``: transform a column-batch, isolating per-row errors."""
         new_rows: List[Dict[str, Any]] = []
         rows = self.batched_to_rows(batch)
-        for row in rows:
+        for row, index in zip(rows, indices):
             try:
-                out = self.preprocess(row)
+                row_seed = derive_seed(self.seed, int(index))
+                self.random_state.seed(row_seed % 2**32)
+                with isolated_random_state(self.seed, int(index)):
+                    out = self.preprocess(row)
                 out = [] if out is None else ([out] if isinstance(out, dict) else out)
                 for standard_row in out:
                     self.check_messages(standard_row)

@@ -53,7 +53,7 @@ def validate_configs(
     _check_group_by_length(dataset_config, template_config)
     _check_lazy_tokenize(dataset_config)
     _check_data_sharding(dataset_config)
-    _check_streaming(dataset_config, checkpoint_config)
+    _check_streaming(dataset_config)
     _check_backend_specific(model_config, dataset_config, train_config, distributed_config, is_megatron, tuner_config)
     _check_galore(train_config, tuner_config)
     _check_param_groups(tuner_config)
@@ -665,14 +665,6 @@ def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
     # A store format is an open registry key, so check the name resolves (and is writable) here -- after
     # --external_plugins has been imported -- rather than after the run has generated rows it cannot write.
     validate_store_format(infer_config.store_format, writable=True)
-    # save_rollout_tokens persists the per-token feature the rollout produced; the message-only ``client``
-    # teacher exposes no token IDs or logprobs, so there would be nothing to write. Reject the pairing up
-    # front instead of silently emitting rows that carry no token path.
-    if infer_config.save_rollout_tokens and infer_config.sampler == 'client':
-        raise ValueError(
-            "save_rollout_tokens requires a token-capable local backend, but sampler='client' is "
-            'message-only (no token IDs or logprobs). Use a local backend (transformers/vllm/sglang) or '
-            'drop --save_rollout_tokens.')
     # Only jsonl has an incremental checkpoint writer (.tmp/.resume/state); every other writable format
     # serialises the whole run once at the end and writes no checkpoint, so it cannot continue a previous
     # run. Reject resume with any non-jsonl store rather than silently discarding the resume request.
@@ -1659,19 +1651,21 @@ def _check_data_sharding(dataset_config: 'DatasetConfig') -> None:
                          'it does nothing.')
 
 
-def _check_streaming(dataset_config: 'DatasetConfig', checkpoint_config: Optional['CheckpointConfig']) -> None:
-    """Streaming/iterable datasets cannot be resumed deterministically (no epoch-aware skip)."""
+def _check_streaming(dataset_config: 'DatasetConfig') -> None:
+    """Refuse the dataset combinations a stream cannot serve.
+
+    Resuming a stream is NOT refused: twinkle's ``DataLoader.skip_consumed_samples`` fast-forwards past
+    the consumed rows (re-reading and re-encoding them, which it logs), so ``resume_from_checkpoint``
+    works. What a stream cannot restore is the caller's epoch count -- ``get_state()`` reports
+    ``resume_epoch=0`` for an iterable dataset -- so a run bounded by ``num_train_epochs`` rather than
+    ``max_steps`` runs that many passes again from the restored row.
+    """
     # A cached_dataset is a map-style Dataset written by save_to_disk, so it cannot participate in
     # the streaming pipeline. Legacy asserts the same in SwiftSft._prepare_dataset
     # ('Cached dataset does not support streaming.').
     if dataset_config.streaming and (dataset_config.cached_dataset or dataset_config.cached_val_dataset):
         raise ValueError('cached_dataset does not support streaming=True: the exported cache is a map-style '
                          'dataset loaded via load_from_disk. Set streaming=False, or drop cached_dataset.')
-    if checkpoint_config is None:
-        return
-    if dataset_config.streaming and checkpoint_config.resume_from_checkpoint:
-        raise NotImplementedError('Resume is not supported for streaming/iterable datasets (no deterministic '
-                                  'epoch-aware skip). Use a map-style dataset, or set resume_from_checkpoint=None.')
 
 
 def _check_megatron_recompute(train_config: 'TrainConfig', distributed_config: 'DistributedConfig',

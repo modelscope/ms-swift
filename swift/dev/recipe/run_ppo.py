@@ -4,7 +4,7 @@ Peer of ``run_grpo`` for the one online RL type with a learned value function. P
 the pieces twinkle already provides, with no fabricated infrastructure:
 
   - policy loss = the shared clipped surrogate (``GRPOLoss`` with epsilon=cliprange) -- PPO's policy
-    objective is exactly that clip, so ``configure_rl_loss`` maps ppo -> GRPOLoss;
+    objective is exactly that clip, so ``configure_rlhf_loss`` maps ppo -> GRPOLoss;
   - critic = a ``seq_cls`` ``num_labels=1`` model forwarded with ``task='value'`` (which keeps the
     head's per-token output instead of pooling to the last token), emitting ``V(s_t)`` at every token,
     trained by the clipped value loss (``configure_ppo_value_loss`` -> twinkle ``PPOValueLoss``). The
@@ -80,8 +80,8 @@ def run_ppo(
     critic (clipped value loss) over each rollout for ``num_ppo_epochs``. Returns the loss history.
     """
     from swift.dev.builders import build_sampler
-    from swift.dev.loss import (configure_ppo_value_loss, configure_ppo_value_metric, configure_rl_loss,
-                                configure_rl_metrics)
+    from swift.dev.loss import (configure_ppo_value_loss, configure_ppo_value_metric, configure_rlhf_loss,
+                                configure_rlhf_metrics)
     from swift.dev.builders.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly
     from swift.dev.recipe.run_grpo import (
@@ -159,13 +159,13 @@ def run_ppo(
 
     # Design-B mini-batch width: per_device_train_batch_size * dp_size, the same global-batch formula GRPO
     # uses. Online RL is Ray-only and pure data-parallel over nproc_per_node, so dp_size comes off
-    # build_dp_mesh -- the exact mesh the policy/critic were placed on and slice_dp splits each
+    # build_ray_dp_mesh -- the exact mesh the policy/critic were placed on and slice_dp splits each
     # forward_backward across. Every mini-batch must carry >= dp_size rows or slice_dp leaves some rank
     # with no data ("Batch too small"), which is why PPO feeds train_batch_size-row mini-batches, not the
     # one-sample-per-step it used to. Computed before max_steps because the step budget is now expressed in
     # optimizer steps, a count this mini-batch width defines.
-    from swift.dev.builders import build_dp_mesh
-    dp_size = build_dp_mesh(distributed_config).data_world_size
+    from swift.dev.builders import build_prompt_dataloader, build_ray_dp_mesh
+    dp_size = build_ray_dp_mesh(distributed_config).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
 
     # Prompts are rolled out, not iterated by a dataloader, so the step budget is derived from the prompt
@@ -188,12 +188,12 @@ def run_ppo(
         recipe='run_ppo')
     assembly.resolve_step_intervals(max_steps)
 
-    # Policy (trainer): the clipped surrogate is the PPO policy loss (configure_rl_loss maps ppo). PPO
+    # Policy (trainer): the clipped surrogate is the PPO policy loss (configure_rlhf_loss maps ppo). PPO
     # plans no SP mesh (SP=1) -- the critic runs SP=1 too, so policy/critic/dp_size all agree on a pure-DP
     # mesh of data_world_size = nproc_per_node.
     assembly.build_model()
     model = assembly.model
-    configure_rl_loss(model, rl_config)
+    configure_rlhf_loss(model, rl_config)
     configure_optimizer(
         model,
         train_config,
@@ -203,7 +203,7 @@ def run_ppo(
         plugin_config=assembly.plugin_config)
     # Register PPOMetric on the policy AFTER its optimizer group exists: twinkle accumulates it inside
     # forward_backward from advantages/old_logps, so its ratio/clip stats ride calculate_metric per step.
-    configure_rl_metrics(model, rl_config)
+    configure_rlhf_metrics(model, rl_config)
 
     # Critic: a trainable seq_cls (num_labels=1) value model, trained by the clipped value loss.
     value_model = _build_value_model(
@@ -270,10 +270,11 @@ def run_ppo(
     # reporter, so an unsound stream fails loudly with no side effect. A LoRA run pins each policy version
     # by its 'default' adapter; a full-parameter run has none and is served as merged base weights.
     from swift.dev.callbacks import CallbackHandler, build_callbacks
+    from swift.dev.recipe._ref_only import build_remote_batch_assembler
     from swift.dev.recipe._streaming import build_streaming_driver
     from swift.dev.recipe.checkpoint import CheckpointSaver
     from swift.dev.recipe.ppo import PPOAssembler, _ppo_log_line
-    from swift.dev.recipe.step_runner import StepRunner
+    from swift.dev.recipe.step_recorder import StepRecorder
 
     # Late-bound component cells: the per-step extra-metric closure is injected into the recorder BEFORE
     # the assembler/driver exist, so it reads them through one-element cells filled right after each build.
@@ -336,7 +337,7 @@ def run_ppo(
             })
         return extra
 
-    recorder = StepRunner(
+    recorder = StepRecorder(
         assembly.model,
         CallbackHandler(build_callbacks(train_config), output_dir=output_dir),
         gradient_accumulation_steps=assembly.ga,
@@ -359,8 +360,7 @@ def run_ppo(
         no_save_rng=checkpoint_config.no_save_rng or checkpoint_config.save_only_model,
         safe_serialization=checkpoint_config.safe_serialization,
         max_shard_size=checkpoint_config.max_shard_size,
-        save_total_limit=checkpoint_config.save_total_limit,
-        consumed_train_samples_fn=lambda: recorder.global_step)
+        save_total_limit=checkpoint_config.save_total_limit)
     assembler = PPOAssembler(
         assembly.model,
         rollout,
@@ -372,11 +372,15 @@ def run_ppo(
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=assembly.ga,
         rl_config=rl_config)
-    _assembler_cell.append(assembler)
+    payload_processor = build_remote_batch_assembler(assembler)
+    _assembler_cell.append(payload_processor)
     # The driver: twinkle's per-sample StreamingDriver in ITERATOR mode (consume=None), injected with the
     # assembler's score/assemble seams. PPO's assembly unit is ONE sample (per-token GAE scores each row on
     # its own, no group contract), so unit_size=1 and no group-completion hook. Returns (driver, handover):
-    # the colocate hand-over bracket is the recipe's, not the driver's.
+    # the colocate hand-over bracket is the recipe's, not the driver's. The prompt dataloader is a twinkle
+    # DataLoader over the prompt rows (PPO prompts carry no extra columns); the driver flattens its batches,
+    # draws rows, and stamps its own ordinal as prompt_id.
+    prompt_dataloader = build_prompt_dataloader(prompts, None, seed=train_config.seed)
     driver, handover = build_streaming_driver(
         rollout_config,
         colocate=colocate,
@@ -384,19 +388,19 @@ def run_ppo(
         model=assembly.model,
         rollout=rollout,
         output_dir=output_dir,
-        prompts=prompts,
-        prompt_extras=[{} for _ in prompts],
+        prompt_dataloader=prompt_dataloader,
+        num_train_epochs=train_config.num_train_epochs,
         adapter_name=('default' if tuner_config is not None else None),
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=assembly.ga,
         num_generations=rl_config.num_generations,
-        num_train_epochs=train_config.num_train_epochs,
-        seed=train_config.seed,
         sampling_params=_grpo_sampling_params(rl_config, generation_config),
         unit_size=1,
         score=assembler.score_sample,
         assemble=assembler.assemble,
         assembly_ready=assembler.assembly_ready,
+        payload_processor=payload_processor,
+        global_step=lambda: recorder.global_step,
         reached_max=recorder.reached_max)
     _driver_cell.append(driver)
     if assembly.resume_dir:
@@ -429,33 +433,36 @@ def run_ppo(
         for batch in driver:
             _fold_idle_ratio()
             optimizer_steps = 0
-            for _ in range(assembler.num_replays()):
-                for mini_batch in assembler.plan_mini_batches(batch):
-                    recorder.micro_step += 1
-                    assembly.model.forward_backward(**assembler.forward_kwargs(mini_batch))
-                    is_boundary = recorder.is_grad_sync_boundary()
-                    assembly.model.clip_grad_and_step(
-                        max_grad_norm=recorder.max_grad_norm,
-                        gradient_accumulation_steps=recorder.gradient_accumulation_steps)
-                    value_model.forward_backward(**assembler.critic_kwargs(mini_batch))
-                    value_model.clip_grad_and_step(
-                        max_grad_norm=recorder.max_grad_norm,
-                        gradient_accumulation_steps=recorder.gradient_accumulation_steps)
-                    if is_boundary:
-                        recorder.record_step()
-                        optimizer_steps += 1
-                        if ema_manager is not None and recorder.global_step % rl_config.ref_model_sync_steps == 0:
-                            ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
-                        if saver.save_steps and recorder.global_step % saver.save_steps == 0:
-                            saver.save(f'checkpoint-{recorder.global_step}')
-                            _save_value_checkpoint(
-                                value_model, os.path.join(output_dir, f'checkpoint-{recorder.global_step}'),
-                                checkpoint_config=checkpoint_config,
-                                consumed_train_samples=recorder.global_step)
-                        if recorder.reached_max():
-                            break
-                if recorder.reached_max():
-                    break
+            try:
+                for _ in range(batch.replay_count):
+                    for mini_batch_index in range(batch.mini_batch_count):
+                        recorder.micro_step += 1
+                        batch.forward_backward(mini_batch_index)
+                        is_boundary = recorder.is_grad_sync_boundary()
+                        assembly.model.clip_grad_and_step(
+                            max_grad_norm=recorder.max_grad_norm,
+                            gradient_accumulation_steps=recorder.gradient_accumulation_steps)
+                        batch.forward_backward(mini_batch_index, kind='critic')
+                        value_model.clip_grad_and_step(
+                            max_grad_norm=recorder.max_grad_norm,
+                            gradient_accumulation_steps=recorder.gradient_accumulation_steps)
+                        if is_boundary:
+                            recorder.record_step()
+                            optimizer_steps += 1
+                            if ema_manager is not None and recorder.global_step % rl_config.ref_model_sync_steps == 0:
+                                ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
+                            if saver.save_steps and recorder.global_step % saver.save_steps == 0:
+                                saver.save(f'checkpoint-{recorder.global_step}')
+                                _save_value_checkpoint(
+                                    value_model, os.path.join(output_dir, f'checkpoint-{recorder.global_step}'),
+                                    checkpoint_config=checkpoint_config,
+                                    consumed_train_samples=recorder.global_step)
+                            if recorder.reached_max():
+                                break
+                    if recorder.reached_max():
+                        break
+            finally:
+                batch.release()
             # commit releases the driver thread blocked in the iterator bridge and reports the real step
             # count -- the publish cadence unit (twinkle publishes only after consume returns).
             driver.commit(optimizer_steps)

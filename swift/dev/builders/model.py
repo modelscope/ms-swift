@@ -977,7 +977,7 @@ def _apply_fp8_kwargs(kwargs: dict, model_config: ModelConfig, strict: set) -> N
             strict.add(target)
 
 
-def build_megatron_mesh(distributed_config: Optional[DistributedConfig], *, none_if_single_rank: bool = False):
+def build_parallel_mesh(distributed_config: Optional[DistributedConfig], *, none_if_single_rank: bool = False):
     """DistributedConfig -> DeviceMesh from the declared parallel sizes (tp/pp/cp/ep/etp/vpp/sp).
 
     Backend-agnostic: a transformers config has tp=pp=cp=1 (all defaults), so this naturally degenerates
@@ -1150,7 +1150,7 @@ def _build_megatron_model(model_config: ModelConfig,
     if not model_config.model:
         raise ValueError('ModelConfig.model (path/id) is required')
 
-    device_mesh = build_megatron_mesh(distributed_config)
+    device_mesh = build_parallel_mesh(distributed_config)
     model_loader = _resolve_model_loader(model_config)
     hf_config = _build_hf_config(model_config, model_loader)
 

@@ -110,6 +110,7 @@ class FormatConverter:
         # Caller-supplied aliases are applied on top of the class's own, and win on conflict: the
         # caller knows their dataset, the class only knows the common cases.
         self.aliases = {**self.MEDIA_ALIASES, **type(self).aliases, **(aliases or {})}
+        self.random_state = kwargs.pop('random_state', None)
         self.kwargs = kwargs
 
     @classmethod

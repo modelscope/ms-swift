@@ -67,6 +67,27 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
+class RFTState:
+    """The next rejection-sampling round that has not been committed to a checkpoint."""
+
+    def __init__(self):
+        self.next_round = 0
+
+    def get_state(self) -> dict:
+        return {'version': 1, 'next_round': self.next_round}
+
+    def load_state(self, state: dict) -> None:
+        if not isinstance(state, dict):
+            raise TypeError(f'RFT state must be a dict, got {type(state).__name__}.')
+        version = int(state.get('version', 1))
+        if version != 1:
+            raise ValueError(f'Unsupported RFT state version: {version}.')
+        next_round = int(state.get('next_round', 0))
+        if next_round < 0:
+            raise ValueError(f'RFT next_round must be non-negative, got {next_round}.')
+        self.next_round = next_round
+
+
 def _rft_kept_per_prompt(rl_config: 'RLConfig', num_samples: int) -> int:
     """Upper bound on completions RFT keeps PER PROMPT -- the step budget's effective ``num_generations``.
 
@@ -251,6 +272,7 @@ def run_rft(
         torch_empty_cache_steps=train_config.torch_empty_cache_steps,
         log_formatter=_rft_log_line,
         extra_metrics_fn=selector.step_telemetry)
+    rft_state = RFTState()
     saver = CheckpointSaver(
         assembly.model,
         recorder,
@@ -262,9 +284,10 @@ def run_rft(
         safe_serialization=checkpoint_config.safe_serialization,
         max_shard_size=checkpoint_config.max_shard_size,
         save_total_limit=checkpoint_config.save_total_limit,
-        consumed_train_samples_fn=lambda: recorder.global_step)
+        components={'rft': rft_state})
     if assembly.resume_dir:
         saver.resume(assembly.resume_model())
+    start_round = rft_state.next_round
 
     from twinkle.perf import Perf
 
@@ -274,7 +297,7 @@ def run_rft(
         logger.info('[perf] profiling enabled for the online RFT loop.')
     prompt_indices = list(range(len(prompts)))
     try:
-        for _ in range(rl_config.rft_iterations):
+        for round_index in range(start_round, rl_config.rft_iterations):
             if recorder.global_step >= max_steps:
                 break
             # blocking_generate syncs the trained policy into the sampler first, so this round samples
@@ -299,34 +322,39 @@ def run_rft(
             selector.accumulate_metric(samples, rewards_per_func)
             rewards = weighted_rewards(rewards_per_func, rl_config.orm_weights).detach().float().cpu().tolist()
             selected = selector.select(samples, rewards)
+            save_at_round_boundary = False
             if len(selected) == 0:
                 logger.warning('RFT round kept no completions (rewards below the filter); skipping the SFT pass.')
-                continue
-            if len(selected) < train_batch_size:
+            elif len(selected) < train_batch_size:
                 logger.warning('RFT round kept %d completions, fewer than train_batch_size=%d; skipping.',
                                len(selected), train_batch_size)
-                continue
-            dropped = len(selected.samples) % train_batch_size
-            if dropped:
-                logger.warning('Dropping %d of %d kept completions that do not fill a train_batch_size=%d '
-                               'mini-batch.', dropped, len(selected.samples), train_batch_size)
-            for mini_batch in split_mini_batches(selected.samples, train_batch_size):
-                if recorder.global_step >= max_steps:
-                    break
-                recorder.micro_step += 1
-                assembly.model.forward_backward(
-                    inputs=copy_inputs([sample.input_feature for sample in mini_batch]),
-                    gradient_accumulation_steps=assembly.ga)
-                is_boundary = recorder.is_grad_sync_boundary()
-                assembly.model.clip_grad_and_step(
-                    max_grad_norm=recorder.max_grad_norm,
-                    gradient_accumulation_steps=recorder.gradient_accumulation_steps)
-                if is_boundary:
-                    recorder.record_step()
-                    if saver.save_steps and recorder.global_step % saver.save_steps == 0:
-                        saver.save(f'checkpoint-{recorder.global_step}')
-                if recorder.reached_max():
-                    break
+            else:
+                dropped = len(selected.samples) % train_batch_size
+                if dropped:
+                    logger.warning('Dropping %d of %d kept completions that do not fill a train_batch_size=%d '
+                                   'mini-batch.', dropped, len(selected.samples), train_batch_size)
+                for mini_batch in split_mini_batches(selected.samples, train_batch_size):
+                    if recorder.global_step >= max_steps:
+                        break
+                    recorder.micro_step += 1
+                    assembly.model.forward_backward(
+                        inputs=copy_inputs([sample.input_feature for sample in mini_batch]),
+                        gradient_accumulation_steps=assembly.ga)
+                    is_boundary = recorder.is_grad_sync_boundary()
+                    assembly.model.clip_grad_and_step(
+                        max_grad_norm=recorder.max_grad_norm,
+                        gradient_accumulation_steps=recorder.gradient_accumulation_steps)
+                    if is_boundary:
+                        recorder.record_step()
+                        if saver.save_steps and recorder.global_step % saver.save_steps == 0:
+                            save_at_round_boundary = True
+                    if recorder.reached_max():
+                        break
+            # Generated/selected samples are not checkpointed. Commit the round only after its SFT pass has
+            # completed, or after max_steps has deliberately truncated it, then persist at this safe boundary.
+            rft_state.next_round = round_index + 1
+            if save_at_round_boundary:
+                saver.save(f'checkpoint-{recorder.global_step}')
             if recorder.reached_max():
                 break
         if recorder.global_step == 0:

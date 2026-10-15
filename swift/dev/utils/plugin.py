@@ -36,7 +36,10 @@ return serializable grouping rules that twinkle applies worker-side on both back
 capability, not a hook.
 """
 from __future__ import annotations
+import json
+import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, ClassVar, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 from swift.dev.utils import get_logger
@@ -44,6 +47,16 @@ from swift.dev.utils import get_logger
 logger = get_logger()
 
 __all__ = ['SwiftPlugin', 'RewardPlugin', 'ToolPlugin', 'PluginKind', 'PluginRegistry']
+
+#: Env var carrying the JSON list of external plugin sources for Ray workers to re-import at startup, and
+#: the ``module:attr`` reload hook twinkle's generic ``worker_process_setup_hook`` resolves. Local paths are
+#: stored resolved-to-absolute so a worker on another node with a different CWD still finds the file. This
+#: is the endorsed driver->worker channel for an import-time, per-process side effect (the worker inherits
+#: it through ``create_workers``' ``os.environ.copy()``); a worker re-imports the sources BEFORE any actor
+#: argument is deserialised, so plugin classes that ride in by reference (cloudpickle) resolve, and every
+#: ``@register`` runs in the worker too.
+_EXTERNAL_PLUGINS_ENV = 'SWIFT_EXTERNAL_PLUGINS'
+_WORKER_RELOAD_HOOK = 'swift.dev.utils.plugin:_reload_external_in_worker'
 
 
 class SwiftPlugin:
@@ -262,5 +275,37 @@ class PluginRegistry:
         from twinkle.utils import load_module
         for raw in raw_paths:
             load_module(raw)
+        _publish_to_workers(raw_paths)
         logger.info(f'Loaded {len(raw_paths)} external plugin source(s): {raw_paths}')
         return list(raw_paths)
+
+
+def _publish_to_workers(raw_paths: List[str]) -> None:
+    """Record the loaded sources + the reload hook in the environment so every Ray worker inherits them.
+
+    ``create_workers`` copies ``os.environ`` into each worker's ``runtime_env``; twinkle's generic
+    ``worker_process_setup_hook`` then resolves ``_WORKER_RELOAD_HOOK`` and calls
+    :func:`_reload_external_in_worker`, which re-imports these sources at worker startup. Local paths are
+    resolved to absolute here so a worker on another node (a different CWD, and no inherited ``sys.path``)
+    still finds the file; hub ids are passed through untouched.
+    """
+    from twinkle.utils.loader import WORKER_SETUP_HOOK_ENV
+    published = [
+        raw if raw.startswith(('hf://', 'ms://')) else str(Path(raw).expanduser().resolve()) for raw in raw_paths
+    ]
+    os.environ[_EXTERNAL_PLUGINS_ENV] = json.dumps(published)
+    os.environ[WORKER_SETUP_HOOK_ENV] = _WORKER_RELOAD_HOOK
+
+
+def _reload_external_in_worker() -> None:
+    """Ray worker startup hook: re-import the driver's external plugins so their ``@register`` runs here.
+
+    Invoked once per worker process by twinkle's ``run_worker_setup_hook`` (via the ``TWINKLE_WORKER_SETUP_HOOK``
+    env var), BEFORE any actor argument is deserialised -- so a plugin module the driver loaded is importable
+    under the same path-derived name here, and plugin classes that rode into this worker's arguments by
+    reference resolve. ``load_external`` is idempotent (twinkle caches each resolved source), and declaring
+    the built-in kinds first is what lets an external file ``@register`` against a built-in kind.
+    """
+    sources = json.loads(os.environ.get(_EXTERNAL_PLUGINS_ENV, '[]'))
+    if sources:
+        PluginRegistry.load_external(sources)

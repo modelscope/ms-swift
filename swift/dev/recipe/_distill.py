@@ -244,7 +244,6 @@ class DistillAssembler:
                  *,
                  teacher: Any,
                  template: Any = None,
-                 prompts: Optional[List[Any]] = None,
                  signal: str = 'logits',
                  gkd_logits_topk: Optional[int] = None,
                  sft_alpha: float = 0.0,
@@ -258,9 +257,6 @@ class DistillAssembler:
         #: K-teacher case an ``AuxiliaryBundle``), so scoring is one uniform ``forward_only`` call.
         self.teacher = teacher
         self.template = template
-        #: The rollout prompts, for :meth:`assemble`'s prompt lookup when a streamed sample carries no
-        #: ``messages`` of its own.
-        self.prompts = prompts
         self.signal = signal
         #: GKD knobs: score the JSD against only the teacher's top-k logits (None = full vocab); the weight
         #: on the supervised CE term GKD adds to dataset-sourced (off-policy) rounds.
@@ -276,11 +272,12 @@ class DistillAssembler:
 
         The stream runs only under ``lmbda == 1.0``, so every row comes from the student: each trajectory's
         ``input_feature`` is the student row, and its conversation (``sample.messages``, else the prompt it
-        was admitted for) plus ``extra`` ride along for the teacher view.
+        was admitted for, which ``collect`` stamped onto ``sample.prompt`` from the drawn row) plus ``extra``
+        ride along for the teacher view.
         """
         rows = [
             DistillRow(sample.input_feature,
-                       sample.messages if sample.messages is not None else self.prompts[int(sample.prompt_id)],
+                       sample.messages if sample.messages is not None else sample.prompt,
                        sample.extra or {}) for sample in (record.sample for record in records)
         ]
         return DistillBatch(rows, True)

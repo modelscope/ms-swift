@@ -9,6 +9,7 @@ import torch.distributed as dist
 from torch.utils.data import IterableDataset
 from tqdm import tqdm
 
+from twinkle.dataloader.random_state import isolated_random_state
 from swift.dev.utils import get_logger, is_dist, is_master, split_list
 from .base import SwiftDataset
 
@@ -225,6 +226,7 @@ class IterablePackingDataset(IterableDataset):
         strict: bool = False,
         cyclic: bool = False,
         packing_strategy: str = 'binpack',
+        data_seed: int = 0,
         **kwargs,
     ):
         template.packing = True
@@ -237,6 +239,8 @@ class IterablePackingDataset(IterableDataset):
         self.packing_interval = packing_interval
         self.cyclic = cyclic
         self.packing_strategy = packing_strategy
+        self.data_seed = int(data_seed or 0)
+        self._epoch = mp.Value('q', 0)
 
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()
@@ -245,6 +249,15 @@ class IterablePackingDataset(IterableDataset):
             worker = mp.Process(target=self._processor, daemon=True)
             worker.start()
             self.workers.append(worker)
+
+    def set_epoch(self, epoch: int) -> None:
+        self._epoch.value = int(epoch)
+        set_epoch = getattr(self.dataset, 'set_epoch', None)
+        if set_epoch is not None:
+            set_epoch(epoch)
+
+    def set_data_seed(self, data_seed: int) -> None:
+        self.data_seed = int(data_seed or 0)
 
     def _processor(self) -> None:
         """Worker loop: encode whatever arrives, and never die on one bad row.
@@ -255,24 +268,26 @@ class IterablePackingDataset(IterableDataset):
         """
         from swift.template import MaxLengthError
         while True:
-            i, data = self._in_queue.get()
+            i, data, data_seed, epoch, source_position = self._in_queue.get()
             encoded_data = {}
             try:
-                encoded_data = self.template.encode(data, return_length=True)
+                with isolated_random_state(data_seed, epoch, source_position):
+                    encoded_data = self.template.encode(data, return_length=True)
             except Exception as e:
                 if self.strict and not isinstance(e, MaxLengthError):
                     raise
             self._out_queue.put((i, encoded_data))
 
-    def _put_data_in_queue(self, iterator: Iterator) -> int:
-        """Hand at most ``packing_interval`` rows to the workers; returns how many were available."""
+    def _put_data_in_queue(self, iterator: Iterator, epoch: int,
+                           source_position: int) -> Tuple[int, int]:
+        """Hand one window to the workers and return its size plus the next source position."""
         for i in range(self.packing_interval):
             try:
                 data = next(iterator)
             except StopIteration:
-                return i
-            self._in_queue.put((i, data))
-        return i + 1
+                return i, source_position + i
+            self._in_queue.put((i, data, self.data_seed, epoch, source_position + i))
+        return i + 1, source_position + i + 1
 
     def _fetch_data_out_queue(self, last_res: List[Weighted], num_samples: int) -> List[Weighted]:
         """Collect ``num_samples`` encoded rows, restoring input order and dropping the failures."""
@@ -288,22 +303,22 @@ class IterablePackingDataset(IterableDataset):
 
     @staticmethod
     def cyclic_iter(iterable):
-        """Repeat a dataset forever, for a step-budgeted run that must not run out of data."""
+        """Repeat a re-iterable dataset forever and stop cleanly if it is empty or exhausted."""
         while True:
+            emitted = False
             for x in iterable:
+                emitted = True
                 yield x
+            if not emitted:
+                return
 
     def __iter__(self):
-        # An empty stream would otherwise spin through one window of nothing before noticing.
-        try:
-            next(iter(self.dataset))
-        except StopIteration:
-            return
-
         iterator = self.cyclic_iter(self.dataset) if self.cyclic else iter(self.dataset)
+        epoch = self._epoch.value
+        source_position = 0
         data: List[Weighted] = []
         while True:
-            num_samples = self._put_data_in_queue(iterator)
+            num_samples, source_position = self._put_data_in_queue(iterator, epoch, source_position)
             # A short window means the stream ended, which is also the signal to flush the leftover.
             finished = num_samples != self.packing_interval
             data = self._fetch_data_out_queue(data, num_samples)

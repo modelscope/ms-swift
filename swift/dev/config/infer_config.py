@@ -27,10 +27,9 @@ class InferConfig:
     #: Which sampler runs the model: a built-in engine name ('vllm' / 'transformers' / 'sglang', with 'pt'
     #: a compatibility alias of 'transformers'; lmdeploy is intentionally outside v5), a twinkle ``Sampler``
     #: subclass, or an external plugin source (a local file/folder or a ``hf://`` / ``ms://`` id) resolved
-    #: through the unified loader -- see ``swift.dev.builders.sampler._resolve_sampler``. Two message-only
-    #: values build no local sampler: 'client' distils from a remote OpenAI-compatible teacher (no local
-    #: weights) and 'no' is its cache-only companion -- both are synthesis-only backends a plain infer run
-    #: never selects.
+    #: through the unified loader -- see ``swift.dev.builders.sampler._resolve_sampler``. One message-only
+    #: value builds no local sampler: 'no', the cache-only backend (every prompt must be covered by
+    #: ``cache_files``) -- a synthesis-only backend a plain infer run never selects.
     sampler: Any = 'transformers'
     #: Requests batched into one engine call. Only meaningful for the transformers backend, since vLLM
     #: and SGLang do their own continuous batching and ignore it.
@@ -136,7 +135,7 @@ class InferConfig:
     # === Synthesis: output and resume ===
     #: Persist each kept candidate's rollout tokens (input_ids / labels / logprobs / loss mask) to an NPZ
     #: sidecar beside the jsonl, and embed the relative path plus the reward score in the row. Off by
-    #: default: it needs a token-capable local backend (not the message-only ``client`` teacher).
+    #: default: it needs a token-capable local backend (not the message-only ``no`` backend).
     save_rollout_tokens: bool = False
     #: Continue a previous run from its checkpoint instead of starting over.
     resume: bool = False

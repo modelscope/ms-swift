@@ -14,9 +14,10 @@ from __future__ import annotations
 from .artifacts import DatasetArtifact, ModelArtifact
 from .base import RecipeComponent
 from .cached_dataset import CacheDatasetComponent
+from .infer import InferComponent
 from .weight_transform import BaseWeightTransform, ConvertComponent, MergeComponent, QuantizeComponent
 
 __all__ = [
-    'DatasetArtifact', 'ModelArtifact', 'RecipeComponent', 'CacheDatasetComponent', 'BaseWeightTransform',
+    'DatasetArtifact', 'ModelArtifact', 'RecipeComponent', 'CacheDatasetComponent', 'InferComponent', 'BaseWeightTransform',
     'ConvertComponent', 'MergeComponent', 'QuantizeComponent'
 ]

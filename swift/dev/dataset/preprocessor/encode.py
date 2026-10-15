@@ -20,8 +20,8 @@ class EncodePreprocessor(Preprocessor):
     no separate pass to put encoding in either, so it runs this one inline.
     """
 
-    def __init__(self, template: 'Template'):
-        super().__init__()
+    def __init__(self, template: 'Template', *, seed: int = 42):
+        super().__init__(seed=seed)
         self.template = template
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:

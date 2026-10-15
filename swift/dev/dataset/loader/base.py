@@ -409,7 +409,7 @@ class DatasetLoader:
         elif isinstance(preprocessor, str):
             preprocessor = self.import_cls(preprocessor)
         if isinstance(preprocessor, type):
-            return preprocessor(columns=columns)
+            return preprocessor(columns=columns, seed=self._kwargs.get('seed', 42))
         return preprocessor
 
     def build_dataset(self, subset: SubsetMeta, split: str, **kwargs) -> DATASET_TYPE:
@@ -873,7 +873,8 @@ def load_dataset(
             streaming=streaming,
             hub_token=hub_token,
             model_name=model_name,
-            model_author=model_author)
+            model_author=model_author,
+            seed=seed)
         train, val = loader.post_process(
             loader.load(), split_dataset_ratio=split_dataset_ratio, shuffle=shuffle, seed=seed)
         if train is not None:

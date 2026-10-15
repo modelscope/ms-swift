@@ -3,7 +3,7 @@
 ``CheckpointSaver`` is the thin re-home of the persistence the old ``OfflineLoop.save`` / ``TrainLoop.save``
 / ``resume`` and ``TrainAssembly.save_final`` carried: one twinkle-native write (optimizer.pt /
 scheduler.pt / rng_state.pt / trainer_state.json), the ``on_save`` / ``on_push_begin`` callback fan-out,
-the optional hub upload, and the resume that re-seeds the recorder counters + skips the dataloader to its
+the optional hub upload, and the resume that re-seeds the recorder counters + skips the data to its
 consumed offset. It owns no loop -- the recipe calls :meth:`save` at the ``save_steps`` cadence and
 :meth:`save_final` at train end, and calls :meth:`resume` once before the loop when resuming.
 
@@ -13,7 +13,7 @@ callable (built from ``TrainAssembly.write_ckpt_args_json``), so this class stay
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from swift.dev.utils.logger import get_logger
 
@@ -27,7 +27,12 @@ __all__ = ['CheckpointSaver']
 
 
 class CheckpointSaver:
-    """Persist + resume one offline recipe's checkpoints, and fire the save / hub callbacks."""
+    """Persist training state and delegate component state semantics to registered components.
+
+    Every registered component implements ``get_state()`` and ``load_state(state)``. This class only stores
+    the resulting ``{namespace: state}`` mapping and returns each namespace to the same component on resume.
+    The positional ``dataloader`` remains the default offline registration for existing recipe callers.
+    """
 
     def __init__(self,
                  model: 'TrainableModel',
@@ -44,10 +49,15 @@ class CheckpointSaver:
                  ignore_data_skip: bool = False,
                  hub_pusher: Optional[Callable[[str], None]] = None,
                  hub_strategy: str = 'every_save',
-                 consumed_train_samples_fn: Optional[Callable[[], int]] = None):
+                 components: Optional[Dict[str, Any]] = None):
         self.model = model
         self.recorder = recorder
-        self.dataloader = dataloader
+        self.components = dict(components or {})
+        if dataloader is not None:
+            if 'dataloader' in self.components:
+                raise ValueError('Register the dataloader either positionally or in components, not both.')
+            self.components['dataloader'] = dataloader
+        self.dataloader = self.components.get('dataloader')
         self.output_dir = output_dir
         self.save_steps = save_steps
         self.no_save_optim = no_save_optim
@@ -62,27 +72,24 @@ class CheckpointSaver:
         # credentials / target / revision). hub_strategy='end' defers the push to the final checkpoint only.
         self.hub_pusher = hub_pusher
         self.hub_strategy = hub_strategy
-        #: An online-RL recipe rolls a prompt stream, not a dataloader, so it has no ``get_state()`` consumed
-        #: count to read; it injects this closure (the recorder's optimizer-step count) instead. ``None`` keeps
-        #: the offline behaviour of reading the count off the dataloader (see :meth:`_consumed_train_samples`).
-        self.consumed_train_samples_fn = consumed_train_samples_fn
 
     # --- write ------------------------------------------------------------------------------------
     def save(self, name: str = 'checkpoint-final', *, is_final: bool = False) -> str:
         """Persist the model + full training state, then fire the save / hub callbacks.
 
-        The twinkle-native write (optimizer.pt / scheduler.pt / scaler.pt / rng_state.pt / trainer_state.json
-        with schema cur_step / gradient_accumulation_steps / consumed_train_samples) is ``save_training_checkpoint``;
-        dev does NOT hand-roll trainer_state -- the resume position comes from the dataloader's own consumed
-        count (see :meth:`_consumed_train_samples`). ``is_final`` gates the hub-push 'end' strategy.
+        The twinkle-native write (optimizer.pt / scheduler.pt / scaler.pt / rng_state.pt / trainer_state.json)
+        is ``save_training_checkpoint``; dev passes the generic ``component_states`` mapping without interpreting
+        component-specific fields. ``is_final`` gates the hub-push 'end' strategy.
         """
         from swift.dev.recipe._loop_utils import save_training_checkpoint
 
+        component_states = self._component_states()
         result = save_training_checkpoint(
             self.model,
             name,
             output_dir=self.output_dir,
-            consumed_train_samples=self._consumed_train_samples(),
+            consumed_train_samples=self._consumed_train_samples(component_states),
+            component_states=component_states,
             no_save_optim=self.no_save_optim,
             no_save_rng=self.no_save_rng,
             safe_serialization=self.safe_serialization,
@@ -119,12 +126,10 @@ class CheckpointSaver:
     def resume(self, state: dict) -> int:
         """Seed the recorder counters + dataloader position from a restored twinkle trainer_state.
 
-        ``state`` = ``{'cur_step', 'consumed_train_samples', 'gradient_accumulation_steps'}`` (twinkle
-        schema; single counting source). Weights / optimizer / scheduler / RNG are already restored by
-        ``model.resume_from_checkpoint`` BEFORE this call. Here we only align the recorder's own counters and
-        the dataloader's skip position so training + GA phase continue exactly. Returns the epoch the recipe
-        should start its loop at (``0`` on ``ignore_data_skip``, else the dataloader's resume epoch so a
-        cross-epoch resume does not replay already-consumed epochs).
+        Weights / optimizer / scheduler / RNG are already restored by ``model.resume_from_checkpoint`` before
+        this call. Here we align recorder counters and return each ``component_states`` namespace to its owner.
+        Checkpoints without that field use the top-level ``consumed_train_samples`` dataloader fallback. The
+        return value is the dataloader epoch for the offline loop, or 0 when no dataloader is registered.
         """
         from swift.dev.recipe._loop_utils import num_optimizer_steps
 
@@ -135,31 +140,58 @@ class CheckpointSaver:
         self.recorder.micro_step = cur_step
         # global_step (optimizer steps taken) derived from cur_step + ga (single source).
         self.recorder.global_step = num_optimizer_steps(cur_step, ga)
-        # dataloader skip: reproduce the exact epoch/offset unless the user explicitly requested a fresh
-        # pass over the data while retaining checkpoint progress / optimizer state.
-        if self.ignore_data_skip:
+        if 'component_states' in state:
+            component_states = state['component_states']
+            if not isinstance(component_states, dict):
+                raise TypeError('checkpoint component_states must be a dict.')
+            self._load_component_states(component_states)
+        elif not self.ignore_data_skip and self.dataloader is not None:
+            # Compatibility with checkpoints written before component_states existed.
+            skip = getattr(self.dataloader, 'skip_consumed_samples', None)
+            if skip is not None:
+                skip(int(state.get('consumed_train_samples', 0)))
+        if self.ignore_data_skip or self.dataloader is None:
             return 0
-        consumed = int(state['consumed_train_samples'])
-        if hasattr(self.dataloader, 'skip_consumed_samples'):
-            self.dataloader.skip_consumed_samples(consumed)
-        # Start the epoch loop at the resume epoch so cross-epoch resume does not replay already-consumed
-        # epochs (the dataloader only skips the offset within its resume epoch).
-        return int(self._dataloader_state().get('resume_epoch', 0))
+        return int(self._dataloader_state().get('epoch', 0))
 
-    def _consumed_train_samples(self) -> int:
-        """The resume counter written into a checkpoint: the dataloader's consumed count, not the step count.
+    def _consumed_train_samples(self, component_states: Optional[Dict[str, dict]] = None) -> int:
+        """The resume counter written into a checkpoint: the data position, not the optimizer-step count.
 
         Read through ``get_state()`` rather than off an attribute: the dataloader is a twinkle
         ``remote_class``, so in ray mode the driver holds a handle whose attributes live in the worker and
-        only its remote_functions answer. Same call the twinkle cookbooks use. An online-RL recipe has no
-        dataloader and injects ``consumed_train_samples_fn`` instead.
+        only its remote_functions answer. Same call the twinkle cookbooks use.
+
+        A step count would be the wrong thing to store even for a recipe that has no dataloader: the two
+        numbers are unrelated, so restoring one as the other replays data the run already trained on.
         """
-        if self.consumed_train_samples_fn is not None:
-            return int(self.consumed_train_samples_fn())
-        return self._dataloader_state().get('consumed_train_samples', 0)
+        states = component_states if component_states is not None else self._component_states()
+        return int(states.get('dataloader', {}).get('consumed_train_samples', 0))
+
+    def _component_states(self) -> Dict[str, dict]:
+        states: Dict[str, dict] = {}
+        for namespace, component in self.components.items():
+            get_state = getattr(component, 'get_state', None)
+            if get_state is None:
+                raise TypeError(f'Checkpoint component {namespace!r} does not implement get_state().')
+            component_state = get_state()
+            if not isinstance(component_state, dict):
+                raise TypeError(f'Checkpoint component {namespace!r} returned non-dict state.')
+            states[namespace] = component_state
+        return states
+
+    def _load_component_states(self, states: Dict[str, dict]) -> None:
+        for namespace, component in self.components.items():
+            if namespace not in states or (namespace == 'dataloader' and self.ignore_data_skip):
+                continue
+            load_state = getattr(component, 'load_state', None)
+            if load_state is None:
+                raise TypeError(f'Checkpoint component {namespace!r} does not implement load_state().')
+            load_state(states[namespace])
 
     def _dataloader_state(self) -> dict:
-        """The train dataloader's ``{consumed_train_samples, resume_epoch}``, or ``{}`` if it has none."""
+        """Return the registered dataloader state, or an empty state when no dataloader is registered."""
+        if self.dataloader is None:
+            return {}
         get_state = getattr(self.dataloader, 'get_state', None)
         return get_state() if get_state is not None else {}
 

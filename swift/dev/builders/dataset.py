@@ -203,7 +203,8 @@ def _build_split_loader(raw: Any,
             template,
             mode=encode_mode,
             num_proc=dataset_config.dataset_num_proc,
-            strict=dataset_config.strict)
+            strict=dataset_config.strict,
+            data_seed=dataset_config.data_seed)
 
     # 1.5 merge the pre-encoded splits from disk. They are appended AFTER encoding because they were
     #     already encoded when exported -- re-running the preprocessor would either waste the work
@@ -231,7 +232,8 @@ def _build_split_loader(raw: Any,
             packing_length=dataset_config.packing_length,
             packing_strategy=dataset_config.packing_strategy,
             num_proc=dataset_config.packing_num_proc,
-            strict=dataset_config.strict)
+            strict=dataset_config.strict,
+            data_seed=dataset_config.data_seed)
 
     # 3. dataloader (list[InputFeature]; processor collates in forward). The dataloader-sampler
     #    shuffle is the per-epoch reshuffle (train_dataloader_shuffle); it is distinct from the
@@ -266,6 +268,10 @@ def _build_split_loader(raw: Any,
     # twinkle's DataLoader is inherently resumable (skip_consumed_samples / get_state); the training
     # loop decides whether to skip, so there is no separate resumable flag. Eval simply never resumes.
     num_workers = dataset_config.dataloader_num_workers or 0
+    if dataset_config.streaming and dataset_config.packing and num_workers > 0:
+        logger.warning('Streaming packing uses one dataset reader; setting `dataloader_num_workers=0`. '
+                       '`packing_num_proc` still controls parallel encoding.')
+        num_workers = 0
     worker_kwargs = {}
     if num_workers > 0:
         worker_kwargs['persistent_workers'] = dataset_config.dataloader_persistent_workers
@@ -435,8 +441,7 @@ def _drop_last(distributed_config: DistributedConfig, *, is_val: bool) -> bool:
     hf keeps the remainder: legacy defers to TrainingArguments.dataloader_drop_last (default False),
     so dropping here would discard real samples and diverge from legacy on that path.
     """
-    from swift.dev.builders.model import is_megatron_backend
-    if not is_megatron_backend(distributed_config):
+    if distributed_config.backend != 'megatron':
         return False
     # is_val stays in the signature: both splits drop today, but for different reasons, so a future
     # change may split them again.
@@ -445,7 +450,7 @@ def _drop_last(distributed_config: DistributedConfig, *, is_val: bool) -> bool:
 
 
 def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream'], num_proc: int, strict: bool,
-            materialize: bool = False) -> Any:
+            materialize: bool = False, data_seed: Optional[int] = None) -> Any:
     """Encode a raw messages split into trainable samples.
 
     Routes:
@@ -461,9 +466,8 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
     ``ConvertConfig.store_encoded``); training leaves it False and keeps encoding at train time, where the
     forward's ``_not_encoded`` guard would skip the work anyway once a row is materialised.
 
-    No seed is taken here: a row that fails to encode at train time is substituted by twinkle's
-    ``RetryDataset``, which the ``DataLoader`` seeds from ``retry_seed``. The build-time pass (this
-    function) drops unusable rows instead of replacing them, which needs no draw.
+    ``data_seed`` fixes any built-in random preprocessing to the source row. Train-time substitution is
+    still owned by twinkle's ``RetryDataset``; the build-time pass drops unusable rows instead.
     """
     from swift.dev.dataset import EncodePreprocessor, LazyLLMDataset, MeasurePreprocessor
 
@@ -477,22 +481,29 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
 
     # eager / stream: 'split' needs a full encode (emits multiple samples per input), and so does an
     # explicit materialize request; otherwise MeasurePreprocessor only writes `lengths`, leaving rows raw.
+    preprocessor_kwargs = {} if data_seed is None else {'seed': data_seed}
     if truncation_strategy == 'split' or materialize:
-        preprocessor = EncodePreprocessor(template)
+        preprocessor = EncodePreprocessor(template, **preprocessor_kwargs)
     else:
-        preprocessor = MeasurePreprocessor(template)
+        preprocessor = MeasurePreprocessor(template, **preprocessor_kwargs)
     return preprocessor(raw, num_proc=num_proc, strict=strict)
 
 
 def _pack(dataset: Any, template: Any, *, streaming: bool, packing_length: Optional[int], packing_strategy: str,
-          num_proc: int, strict: bool) -> Any:
+          num_proc: int, strict: bool, data_seed: int = 0) -> Any:
     """Pack an encoded dataset for efficient training (map-style or iterable)."""
     from swift.dev.dataset import IterablePackingDataset, PackingDataset
 
     length = packing_length or template.max_length
     cls = IterablePackingDataset if streaming else PackingDataset
     return cls(
-        template, dataset, num_proc=num_proc, packing_length=length, packing_strategy=packing_strategy, strict=strict)
+        template,
+        dataset,
+        num_proc=num_proc,
+        packing_length=length,
+        packing_strategy=packing_strategy,
+        strict=strict,
+        data_seed=data_seed)
 
 
 def load_prompt_only_rows(dataset_config: DatasetConfig, max_rows: Optional[int],
@@ -533,6 +544,48 @@ def load_prompt_only_rows(dataset_config: DatasetConfig, max_rows: Optional[int]
     if max_rows is not None:
         rows = rows[:max_rows]
     return rows
+
+
+def build_prompt_dataloader(prompts: List[List[dict]],
+                            prompt_extras: Optional[List[Dict[str, Any]]],
+                            *,
+                            seed: int,
+                            batch_size: int = 256) -> Any:
+    """A twinkle ``DataLoader`` over the online-RL prompt rows -- the prompt-side counterpart of build_dataset.
+
+    Merges each prompt's ``messages`` with its non-message columns into one row dict, wraps the rows in a
+    twinkle ``Dataset`` and hands them to a twinkle ``DataLoader``: ``batch_size`` rows per batch, a seeded
+    reshuffle per pass (``data_seed``), one pass per ``iter()`` (``set_epoch`` advances the order), and NO
+    encoding (the rollout encodes each prompt itself). This is the same swift-dataset -> twinkle-DataLoader
+    bridge the training loader rides, so the online recipes roll prompts through the framework's dataloader
+    instead of a hand-rolled scheduler.
+
+    Two consumers, one loader. The streaming driver flattens the batches back to rows and loops
+    ``num_train_epochs`` itself (``StreamingDriver._iter_rows``), so ``batch_size`` there is only the reader's
+    fetch granularity (the default suits it); the blocking round loop iterates the batches directly, so it
+    passes ``batch_size=generation_batch_size`` -- the round's prompt count. ``drop_last`` stays off, so a
+    partial trailing batch is never a dropped prompt.
+    """
+    from twinkle.dataset import Dataset, DatasetMeta
+    from twinkle.dataloader import DataLoader
+
+    if not prompts:
+        raise ValueError('build_prompt_dataloader needs at least one prompt, got an empty sequence.')
+    if batch_size <= 0:
+        raise ValueError(f'batch_size must be > 0, got {batch_size}.')
+    if prompt_extras is not None and len(prompt_extras) != len(prompts):
+        raise ValueError(
+            f'prompt_extras must align with prompts ({len(prompts)} rows), got {len(prompt_extras)}.')
+    extras = prompt_extras if prompt_extras is not None else [{} for _ in prompts]
+    rows = [{'messages': messages, **extra} for messages, extra in zip(prompts, extras)]
+    dataset = Dataset(DatasetMeta(data=rows))
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        data_seed=seed,
+        num_workers=0,
+        collate_fn=_identity_collate,
+        shuffle=True)
 
 
 def to_trajectory(row: Dict[str, Any], messages: List[Dict[str, Any]],

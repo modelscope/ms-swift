@@ -23,6 +23,8 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict, List, Optional, Tuple
 
+from twinkle import remote_class, remote_function
+
 from . import (SHIFTED_KEY, RolloutSample, _MULTIMODAL_PROMPT_KEYS, _build_sampling_params,
                _merge_multimodal_keys, _sampled_token_logprobs)
 
@@ -214,6 +216,18 @@ def trajectory_to_rollout_sample(traj: Dict[str, Any], prompt_id: str, extra: Di
         rollout_infos=rollout_infos)
 
 
+#: Ray runs a decorated actor's methods one at a time unless ``max_concurrency`` is raised above 1. Each
+#: in-flight episode is a separate blocking :meth:`MultiTurnRollout.generate` call, so the single CPU actor
+#: must allow them to run side by side or the per-episode overlap the streaming driver relies on collapses
+#: into serialization. This value is a PERFORMANCE ceiling, not a correctness bound and NOT a second
+#: admission cap: the sole truth for how many episodes may be in flight is StreamingDriver backpressure
+#: (its ``buffer_depth`` over the ``handles`` count). It only has to exceed that budget so the actor never
+#: becomes the binding constraint; if it ever fell below, episodes would merely queue here (less overlap),
+#: never over-admit.
+_MAX_CONCURRENT_EPISODES = 1024
+
+
+@remote_class(execute='first', max_concurrency=_MAX_CONCURRENT_EPISODES)
 class MultiTurnRollout:
     """Thin dev wrapper over :class:`twinkle_agentic.rollout.MultiTurnRollout`.
 
@@ -234,17 +248,23 @@ class MultiTurnRollout:
                  tool_manager: Any = None,
                  harness: Any = None,
                  followup_fn: Any = None,
-                 env_pool: Any = None,
-                 tool_plugins: Optional[List[Any]] = None):
+                 rollout_config: Any = None):
         from twinkle.data_format import SamplingParams
         from twinkle_agentic.rollout import MultiTurnRollout as TwinkleMultiTurnRollout
-        self.env_pool = env_pool
+        from .sandbox import build_tool_sandbox
+        # The sandbox env pool holds live locks/queues and subprocess/microVM-backed envs, so it cannot
+        # cross the Ray boundary; build it HERE -- in whichever process this engine lives in (the CPU actor
+        # under remote_group, the driver otherwise) -- rather than handing in a pool the driver built.
+        # build_tool_sandbox also resolves the tool plugins here: external --tools plugins are re-registered
+        # in every worker at startup (twinkle's worker_process_setup_hook re-imports the driver's
+        # --external_plugins), so they resolve in-actor exactly as they do in the driver.
+        self.env_pool, tool_plugins = build_tool_sandbox(rollout_config)
         self.tool_plugins = list(tool_plugins or [])
         # A sandbox pool binds tools per episode (each trajectory leases its own env and gets the tools
         # for that env), so the engine is built with no shared tool_manager and each call passes its own.
         # A directly-passed tool_manager is the twinkle default -- one manager shared across the batch --
         # and is kept only when there is no env pool to lease from.
-        self._per_episode_tools = env_pool is not None and bool(self.tool_plugins)
+        self._per_episode_tools = self.env_pool is not None and bool(self.tool_plugins)
         self.rollout = TwinkleMultiTurnRollout(
             sampler,
             template,
@@ -255,6 +275,7 @@ class MultiTurnRollout:
             harness=harness,
             followup_fn=followup_fn)
 
+    @remote_function(dispatch='all', collect='none', lazy_collect=True)
     def generate(self,
                  prompts: List[List[dict]],
                  num_samples: int = 1,
@@ -384,6 +405,7 @@ class MultiTurnRollout:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             return list(pool.map(_run, range(len(trajectories))))
 
+    @remote_function(dispatch='all', collect='none', lazy_collect=False)
     def close(self) -> None:
         """Release the sandbox env pool (its workspaces / microVMs). The sampler is not owned here."""
         if self.env_pool is not None:

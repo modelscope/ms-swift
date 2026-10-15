@@ -72,17 +72,14 @@ def infer_cli(
     rollout = None
     if tools_on:
         # The injected sampler stays owned by this function, so teardown is close() (the sandbox env pool)
-        # followed by sampler.shutdown(); build_tool_sandbox resolves the tool plugins and leases one env
-        # per episode, which for the REPL is the single interactive conversation.
+        # followed by sampler.shutdown(); the engine builds its sandbox from rollout_config and leases one
+        # env per episode, which for the REPL is the single interactive conversation.
         from swift.dev.rollout import RolloutEngine
-        from swift.dev.rollout.sandbox import build_tool_sandbox
         rollout = RolloutEngine(sampler=sampler, template=template)
-        env_pool, tool_plugins = build_tool_sandbox(rollout_config)
         rollout.configure_multi_turn(
             max_turns=multi_turn_config.max_turns,
             max_trajectory_tokens=multi_turn_config.max_trajectory_tokens,
-            env_pool=env_pool,
-            tool_plugins=tool_plugins)
+            rollout_config=rollout_config)
 
     state = _CliState(system=template_config.system)
     _print_welcome(tools_on, stream)

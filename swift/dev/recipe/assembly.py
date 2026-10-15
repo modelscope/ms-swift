@@ -487,7 +487,7 @@ class TrainAssembly:
 
         The config -> knob translation stays here (the assembly's layer) so every flat offline recipe
         (sft / seq_cls / embedding / reranker and the run_dpo preference family) constructs
-        :class:`~swift.dev.recipe.step_runner.StepRunner`,
+        :class:`~swift.dev.recipe.step_recorder.StepRecorder`,
         :class:`~swift.dev.recipe.evaluator.Evaluator` and
         :class:`~swift.dev.recipe.checkpoint.CheckpointSaver` from one place, instead of re-deriving
         every checkpoint / logging / eval / best-model / hub setting each. It is the single partitioned

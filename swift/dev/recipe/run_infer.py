@@ -103,9 +103,9 @@ def run_infer(
         rl_config: the reward-channel registry surface (``orm`` / ``prm`` and their ``*_weights``) and
             the multi-turn config (``max_turns`` / ``max_trajectory_tokens``), shared with GRPO.
         rollout_config: tool/sandbox config for a multi-turn rollout.
-        backend: generation engine -- 'vllm' / 'sglang' / 'transformers' to sample locally, or
-            'client' / 'no' for a remote teacher / a cache-only run.
-        engine_args: forwarded verbatim to the engine (or to the 'client' teacher).
+        backend: generation engine -- 'vllm' / 'sglang' / 'transformers' to sample locally, or 'no'
+            for a cache-only run.
+        engine_args: forwarded verbatim to the engine.
         distributed_config: DP / ray placement. The generative path gives the sampler -- and any
             GPU-resident reward model -- its own DeviceGroup; the forward paths use the 'model' group.
         tuner_config: source of ``adapters`` when not given explicitly.
@@ -189,8 +189,8 @@ def _run_generative(
 ) -> List[Dict[str, Any]]:
     """The causal-LM path: sample a candidate group per prompt, optionally score it, then emit rows.
 
-    Generation goes through one ``RolloutEngine`` (single- and multi-turn alike, a local sampler or a
-    remote 'client' teacher), scoring through ``_RewardChannels`` (rule-based ORM/PRM funcs and/or model
+    Generation goes through one ``RolloutEngine`` (single- and multi-turn alike, over a local sampler),
+    scoring through ``_RewardChannels`` (rule-based ORM/PRM funcs and/or model
     rewards), and emission through the ``output_format`` strategy -- so a new storage shape is a new
     emit function, not a new recipe.
     """
@@ -287,16 +287,14 @@ def _run_generative(
 
     cache = _CandidateCache(infer_config.cache_files)
     quant_method = getattr(quantize_config, 'quant_method', None)
-    if backend in {'client', 'no'} and quant_method is not None:
+    if backend == 'no' and quant_method is not None:
         raise ValueError(
             f'quant_method={quant_method!r} cannot affect sampler={backend!r}, which loads no local '
             'model. Configure quantization on the remote server or omit --quant_method.')
 
     template = None
     adapter_path = adapters[0] if adapters else None
-    if backend == 'client':
-        sampler = _ClientSampler(**(engine_args or {}))
-    elif backend == 'no':
+    if backend == 'no':
         sampler = None
     else:
         _, processor = load_model_processor(model_config)
@@ -324,18 +322,14 @@ def _run_generative(
     if sampler is not None:
         # One generation entry for single- and multi-turn alike: a RolloutEngine wrapping the already-built
         # sampler (injected, so this recipe keeps owning its lifecycle and calls close(), not shutdown()).
-        # With backend='client' the teacher owns chat formatting and exposes no local template, so
-        # template is None and the path runs message-only: no token IDs, just the teacher's text per turn.
         from swift.dev.rollout import RolloutEngine
         rollout = RolloutEngine(sampler=sampler, template=template)
         if multi_turn_enabled:
-            # Tools are opt-in: with RolloutConfig.tools set, a sandbox env pool is built and the tool
-            # plugins resolved so each episode leases its own env; otherwise the rollout has no tools.
-            from swift.dev.rollout.sandbox import build_tool_sandbox
-            env_pool, tool_plugins = build_tool_sandbox(rollout_config)
+            # Tools are opt-in: with RolloutConfig.tools set, the engine builds its own sandbox env pool and
+            # resolves the tool plugins (each episode leases its own env); otherwise it rolls out with none.
             rollout.configure_multi_turn(
                 max_turns=rl_config.max_turns, max_trajectory_tokens=rl_config.max_trajectory_tokens,
-                env_pool=env_pool, tool_plugins=tool_plugins)
+                rollout_config=rollout_config)
 
     batches = _plan_batches(len(rows), infer_config.batch_size, infer_config.max_batches)
     params = to_sampling_params(generation_config, num_samples=num_return)
@@ -348,7 +342,7 @@ def _run_generative(
     else:
         writer = _IncrementalWriter(output_path, 1 if output_path else None)
     # Rollout-token sidecar: only built when save_rollout_tokens is on, and only a local backend can feed
-    # it (a message-only client has no tokens; validate rejects that combination). The NPZ dir sits beside
+    # it (the message-only 'no' backend produces no tokens). The NPZ dir sits beside
     # the jsonl and each row embeds a path relative to output_dir, so the pair stays portable.
     recorder = None
     if infer_config.save_rollout_tokens:
@@ -367,7 +361,7 @@ def _run_generative(
     results: List[Dict[str, Any]] = []
     # Throughput/token summary, the dev counterpart of legacy's InferStats: prompts and generated tokens
     # are counted as batches complete, then reported once at the end. Token counts come only from a local
-    # backend (a message-only 'client'/'no' run has none), so tokens/s is logged only when tokens were seen.
+    # backend (a message-only 'no' run has none), so tokens/s is logged only when tokens were seen.
     num_prompts = 0
     num_generated_tokens = 0
     start_time = time.perf_counter()
@@ -1428,148 +1422,6 @@ def _build_slot_funcs(slots: List['_RewardSlot'], group: str, rl_config: Optiona
             funcs.append(func)
             names.append(PluginRegistry.display_name(func))
     return funcs, names
-
-
-class _ClientSampler:
-    """Sample from a remote OpenAI-compatible teacher, i.e. legacy's ``DistillSampler``.
-
-    Returns twinkle's ``SampleResponse``/``SampledSequence`` -- the slice of the Sampler interface both
-    callers read: the single-turn path takes ``.sequences[].decoded``, and twinkle's native
-    ``MultiTurnRollout`` drives message-only multi-turn off the same objects. So distillation is a
-    backend choice rather than a second code path through the recipe. It is NOT a full twinkle Sampler:
-    there is no local model, no device mesh, and no template -- the server owns the chat formatting, and
-    the sequences carry text and structured tool calls but no token ids.
-
-    Reasoning models are handled the way legacy did: when the response carries ``reasoning_content``
-    separately from ``content``, the two are recombined as
-    ``<think>{reasoning}</think>\\n\\n<answer>{content}</answer>``. Dropping the reasoning would train
-    the student on conclusions without the derivation, which is the opposite of the point.
-    """
-
-    def __init__(self,
-                 base_url: Optional[str] = None,
-                 api_key: Optional[str] = None,
-                 model: Optional[str] = None,
-                 max_workers: int = 8,
-                 concurrency: Optional[int] = None,
-                 timeout: float = 600.0,
-                 max_retries: Optional[int] = None,
-                 **client_kwargs: Any):
-        """
-        Args:
-            base_url / api_key / model: the teacher endpoint; ``model`` is required.
-            max_workers: local thread-pool size -- how many prompts are issued in parallel.
-            concurrency: cap on requests in flight against the endpoint, enforced by twinkle's OpenAI
-                protocol client (a per-instance semaphore), or None for no cap. This is the traffic
-                knob: the pool wants to be large, a provider's quota wants to be small, and only the
-                endpoint knows the latter -- so the two are deliberately separate.
-            timeout / max_retries: forwarded to the protocol client (per-request timeout, and the SDK's
-                own transient-error retries -- 429 / 5xx / timeouts -- with exponential backoff).
-            client_kwargs: anything else the ``openai`` constructor accepts.
-        """
-        from twinkle import requires
-        requires('openai')
-        from twinkle_agentic.protocol.openai import OpenAI
-
-        if not model:
-            raise ValueError("backend='client' needs the teacher's model name in "
-                             "engine_args, e.g. engine_args={'model': 'deepseek-reasoner', "
-                             "'base_url': ..., 'api_key': ...}.")
-        self.api = OpenAI(
-            model=model,
-            api_key=api_key or os.environ.get('OPENAI_API_KEY'),
-            base_url=base_url,
-            concurrency=concurrency,
-            timeout=timeout,
-            max_retries=max_retries,
-            client_kwargs=client_kwargs)
-        self.max_workers = max_workers
-
-    def sample(self, inputs: List[Dict[str, Any]], sampling_params: Any = None, **kwargs) -> List[Any]:
-        """Query the teacher once per prompt, concurrently.
-
-        Returns twinkle's ``List[SampleResponse]`` -- one per prompt, each carrying ``num_samples``
-        ``SampledSequence``s -- so the one object serves both callers: the single-turn path reads
-        ``.sequences[].decoded``, and twinkle's native ``MultiTurnRollout`` (whose default response
-        callback wants exactly one response holding one sequence) drives message-only multi-turn off
-        the same return. Threads rather than asyncio: the calls are network-bound and the recipe's loop
-        is synchronous, so a pool keeps the local parallelism while the protocol client caps endpoint
-        traffic. A failed request degrades to a single empty ``error`` sequence -- a remote teacher
-        rate-limiting one prompt must not end a long distillation run, and the recipe drops empty
-        candidates downstream.
-        """
-        from concurrent.futures import ThreadPoolExecutor
-
-        from twinkle.data_format import SamplingParams
-        from twinkle.data_format.sampling import SampleResponse
-
-        params = sampling_params if sampling_params is not None else SamplingParams()
-        with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-            groups = list(pool.map(lambda item: self._one(item, params), inputs))
-        return [SampleResponse(sequences=group) for group in groups]
-
-    def _one(self, trajectory: Dict[str, Any], sampling_params: Any) -> List[Any]:
-        from twinkle.data_format.sampling import SampledSequence
-
-        messages = list(trajectory.get('messages') or [])
-        tools = trajectory.get('tools')
-        request: Dict[str, Any] = {'messages': messages}
-        if tools:
-            request['tools'] = tools
-        try:
-            reply = self.api(request, sampling_params)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f'teacher request failed, dropping this prompt: {exc}')
-            return [SampledSequence(stop_reason='error', tokens=[], logprobs=None, decoded='')]
-        # The protocol client returns one Message when num_samples==1, else a list. Each is an
-        # OpenAI-shaped dict whose tool_calls are already in the {'id', 'type', 'function'} shape
-        # twinkle dispatches on, so they pass straight into the assistant turn.
-        sequences = []
-        for message in (reply if isinstance(reply, list) else [reply]):
-            text = _join_reasoning(message)
-            assistant: Dict[str, Any] = {'role': 'assistant', 'content': text}
-            tool_calls = message.get('tool_calls')
-            if tool_calls:
-                assistant['tool_calls'] = tool_calls
-            # The teacher exposes no token ids, so the assistant turn is carried structurally: the
-            # message-level ledger adopts these messages wholesale, which is how the reply's tool_calls
-            # reach twinkle's loop (a text-only backend has no markup for it to parse).
-            feature: Dict[str, Any] = {'messages': messages + [assistant]}
-            if tools:
-                feature['tools'] = tools
-            sequences.append(
-                SampledSequence(
-                    stop_reason=_stop_reason(message.get('finish_reason')),
-                    tokens=[],
-                    logprobs=None,
-                    decoded=text,
-                    new_input_feature=feature))
-        return sequences
-
-    def shutdown(self) -> None:
-        """Nothing to release: the protocol client holds no GPU and closes its own connections."""
-
-
-def _join_reasoning(message: Dict[str, Any]) -> str:
-    """Recombine a reasoning model's split output into one trainable string.
-
-    ``message`` is a twinkle protocol ``Message`` dict, which keeps ``reasoning_content`` separate from
-    ``content``; dropping the reasoning would train the student on conclusions without the derivation.
-    """
-    content = message.get('content') or ''
-    reasoning = message.get('reasoning_content')
-    if not reasoning:
-        return content
-    return f'<think>{reasoning}</think>\n\n<answer>{content}</answer>'
-
-
-def _stop_reason(finish_reason: Optional[str]) -> str:
-    """Map OpenAI's ``finish_reason`` onto twinkle's StopReason.
-
-    Only ``'length'`` matters downstream -- it flags a turn cut off mid-generation -- so everything
-    else (``'stop'``, ``'tool_calls'``, ``None``) collapses to ``'stop'``.
-    """
-    return 'length' if finish_reason == 'length' else 'stop'
 
 
 @dataclass

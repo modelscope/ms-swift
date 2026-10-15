@@ -44,6 +44,7 @@ from swift.dev.recipe.rl_auxiliary import (
     teacher_group as _teacher_group,
     teacher_group_world_size,
 )
+from swift.dev.recipe._ref_only import REF_ONLY_REMOTE_GROUP, build_remote_batch_assembler
 from swift.dev.recipe._streaming import build_streaming_driver
 
 
@@ -102,8 +103,13 @@ def _initialize_twinkle_rl(distributed_config: DistributedConfig,
         global_device_mesh=build_dp_mesh(distributed_config, sequence_parallel_size),
         # --ray_exp_name names this Ray run (cluster/worker-name prefix); online RL is always ray mode.
         name=distributed_config.ray_exp_name,
-        groups=[DeviceGroup(name=group_name, ranks=ranks, device_type='GPU', gpus_per_worker=1)
-                for group_name, ranks in groups])
+        groups=[
+            *[
+                DeviceGroup(name=group_name, ranks=ranks, device_type='GPU', gpus_per_worker=1)
+                for group_name, ranks in groups
+            ],
+            DeviceGroup(name=REF_ONLY_REMOTE_GROUP, ranks=1, device_type='CPU'),
+        ])
 
 
 class SyncableRollout(RolloutEngine):
@@ -305,7 +311,7 @@ def run_grpo(
     # uses (builders/dataset._twinkle_loader_layout). Online RL is Ray-only and pure data-parallel over
     # nproc_per_node, so dp_size is read off build_dp_mesh -- the exact mesh the trainer model was
     # placed on and slice_dp splits each forward_backward across, so every rank gets per_device rows.
-    from swift.dev.builders import build_dp_mesh
+    from swift.dev.builders import build_dp_mesh, build_prompt_dataloader
     from swift.dev.recipe.train_loop import resolve_rollout_max_steps, rollout_step_budget
     # data_world_size derives nproc/ulysses from the mesh, so under SP the dp_size (and thus the global
     # train_batch_size) counts SP peers as ONE data rank -- they share a sample and split its sequence.
@@ -358,17 +364,16 @@ def run_grpo(
         assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
     # Multi-turn is requested by setting max_turns; the engine is twinkle-native (no scheduler, no
     # gym). Per-round length is sampling_params.max_tokens, whole-trajectory length is
-    # max_trajectory_tokens. Tools are opt-in via RolloutConfig.tools: when set, a sandbox env pool is
-    # built and each episode leases its own env (see swift.dev.rollout.sandbox); harness / followup_fn
-    # remain caller-supplied extension points. The env pool is closed by rollout.shutdown().
+    # max_trajectory_tokens. Tools are opt-in via RolloutConfig.tools: the engine builds its own sandbox
+    # env pool in-actor (each episode leases its own env; see swift.dev.rollout.sandbox), so the pool never
+    # crosses the Ray boundary; harness / followup_fn remain caller-supplied extension points. The env pool
+    # is closed by rollout.shutdown().
     if rl_config.max_turns is not None:
-        from swift.dev.rollout.sandbox import build_tool_sandbox
-        env_pool, tool_plugins = build_tool_sandbox(rollout_config)
         rollout.configure_multi_turn(
             max_turns=rl_config.max_turns,
             max_trajectory_tokens=rl_config.max_trajectory_tokens,
-            env_pool=env_pool,
-            tool_plugins=tool_plugins)
+            rollout_config=rollout_config,
+            remote_group=REF_ONLY_REMOTE_GROUP)
 
     reward_scorers, reward_scorer_names = _build_reward_scorers(
         model_config, template_config, rl_config, distributed_config, sampler_model=model_config.model,
@@ -452,8 +457,7 @@ def run_grpo(
         no_save_rng=checkpoint_config.no_save_rng or checkpoint_config.save_only_model,
         safe_serialization=checkpoint_config.safe_serialization,
         max_shard_size=checkpoint_config.max_shard_size,
-        save_total_limit=checkpoint_config.save_total_limit,
-        consumed_train_samples_fn=lambda: recorder.global_step)
+        save_total_limit=checkpoint_config.save_total_limit)
     reference = build_auxiliary(
         ref_spec,
         template=assembly.template,
@@ -498,10 +502,15 @@ def run_grpo(
         global_step_fn=lambda: recorder.global_step,
         chord_features=chord_features,
         chord_train_batch_size=chord_train_batch_size)
-    _assembler_cell.append(assembler)
+    group_complete = GroupCompletionHook(assembler, rl_config)
+    payload_processor = build_remote_batch_assembler(assembler, group_complete=group_complete)
+    _assembler_cell.append(payload_processor)
     # The driver: twinkle's per-sample StreamingDriver in ITERATOR mode (consume=None), injected with the
     # assembler's score/assemble seams and the group-completion hook. Returns (driver, handover): the
-    # colocate hand-over bracket is the recipe's, not the driver's.
+    # colocate hand-over bracket is the recipe's, not the driver's. The prompt dataloader is a twinkle
+    # DataLoader over the prompt rows; the driver flattens its batches, draws rows, and stamps its own
+    # ordinal as prompt_id.
+    prompt_dataloader = build_prompt_dataloader(prompts, prompt_extras, seed=train_config.seed)
     driver, handover = build_grpo_streaming_driver(
         rollout_config,
         colocate=colocate,
@@ -509,16 +518,16 @@ def run_grpo(
         model=assembly.model,
         rollout=rollout,
         output_dir=output_dir,
-        prompts=prompts,
-        prompt_extras=prompt_extras,
+        prompt_dataloader=prompt_dataloader,
+        num_train_epochs=train_config.num_train_epochs,
         assembler=assembler,
-        group_complete=GroupCompletionHook(assembler, rl_config),
+        payload_processor=payload_processor,
+        global_step=lambda: recorder.global_step,
+        group_complete=group_complete,
         adapter_name=('default' if tuner_config is not None else None),
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=assembly.ga,
         num_generations=rl_config.num_generations,
-        num_train_epochs=train_config.num_train_epochs,
-        seed=train_config.seed,
         reached_max=recorder.reached_max,
         max_group_regenerations=(rl_config.max_resample_times if rl_config.dynamic_sample else 0))
     _driver_cell.append(driver)
@@ -544,39 +553,44 @@ def run_grpo(
         for batch in driver:
             _fold_idle_ratio()
             optimizer_steps = 0
-            for _ in range(assembler.num_replays()):
-                for mini_batch in assembler.plan_mini_batches(batch):
-                    recorder.micro_step += 1
-                    grpo_kwargs = assembler.forward_kwargs(mini_batch)
-                    if assembler.chord_enabled:
-                        mu = assembler.chord_mu()
-                        assembly.model.forward_backward(
-                            loss_key='grpo',
-                            loss_weight=1.0 - mu,
-                            finalize_gradients=False,
-                            **grpo_kwargs)
-                        assembly.model.forward_backward(
-                            loss_key='sft',
-                            loss_weight=mu,
-                            finalize_gradients=True,
-                            **assembler.sft_forward_kwargs())
-                    else:
-                        assembly.model.forward_backward(**grpo_kwargs)
-                    is_boundary = recorder.is_grad_sync_boundary()
-                    assembly.model.clip_grad_and_step(
-                        max_grad_norm=recorder.max_grad_norm,
-                        gradient_accumulation_steps=recorder.gradient_accumulation_steps)
-                    if is_boundary:
-                        recorder.record_step()
-                        optimizer_steps += 1
-                        if ema_manager is not None and recorder.global_step % rl_config.ref_model_sync_steps == 0:
-                            ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
-                        if saver.save_steps and recorder.global_step % saver.save_steps == 0:
-                            saver.save(f'checkpoint-{recorder.global_step}')
-                        if recorder.reached_max():
-                            break
-                if recorder.reached_max():
-                    break
+            try:
+                for _ in range(batch.replay_count):
+                    for mini_batch_index in range(batch.mini_batch_count):
+                        recorder.micro_step += 1
+                        if assembler.chord_enabled:
+                            mu = payload_processor.chord_mu(recorder.global_step)
+                            batch.forward_backward(
+                                mini_batch_index,
+                                loss_key='grpo',
+                                loss_weight=1.0 - mu,
+                                finalize_gradients=False,
+                            )
+                            batch.forward_backward(
+                                mini_batch_index,
+                                kind='sft',
+                                loss_key='sft',
+                                loss_weight=mu,
+                                finalize_gradients=True,
+                            )
+                        else:
+                            batch.forward_backward(mini_batch_index)
+                        is_boundary = recorder.is_grad_sync_boundary()
+                        assembly.model.clip_grad_and_step(
+                            max_grad_norm=recorder.max_grad_norm,
+                            gradient_accumulation_steps=recorder.gradient_accumulation_steps)
+                        if is_boundary:
+                            recorder.record_step()
+                            optimizer_steps += 1
+                            if ema_manager is not None and recorder.global_step % rl_config.ref_model_sync_steps == 0:
+                                ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
+                            if saver.save_steps and recorder.global_step % saver.save_steps == 0:
+                                saver.save(f'checkpoint-{recorder.global_step}')
+                            if recorder.reached_max():
+                                break
+                    if recorder.reached_max():
+                        break
+            finally:
+                batch.release()
             # commit releases the driver thread blocked in the iterator bridge and reports the real step
             # count -- the publish cadence unit (twinkle publishes only after consume returns).
             driver.commit(optimizer_steps)
@@ -616,16 +630,16 @@ def build_grpo_streaming_driver(rollout_config: Any,
                                 model: Any,
                                 rollout: Any,
                                 output_dir: str,
-                                prompts: List[Any],
-                                prompt_extras: List[Dict[str, Any]],
+                                prompt_dataloader: Any,
+                                num_train_epochs: float,
                                 assembler: Any,
+                                payload_processor: Any,
+                                global_step: Any,
                                 group_complete: Any,
                                 adapter_name: Optional[str],
                                 train_batch_size: int,
                                 gradient_accumulation_steps: int,
                                 num_generations: int,
-                                num_train_epochs: float,
-                                seed: int,
                                 reached_max: Any,
                                 max_group_regenerations: int = 0) -> Tuple[Any, Any]:
     """Build the per-sample StreamingDriver for the flat GRPO recipe -> ``(driver, handover)``.
@@ -645,19 +659,19 @@ def build_grpo_streaming_driver(rollout_config: Any,
         model=model,
         rollout=rollout,
         output_dir=output_dir,
-        prompts=prompts,
-        prompt_extras=prompt_extras,
+        prompt_dataloader=prompt_dataloader,
+        num_train_epochs=num_train_epochs,
         adapter_name=adapter_name,
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
         num_generations=num_generations,
-        num_train_epochs=num_train_epochs,
-        seed=seed,
         sampling_params=assembler.sampling_params,
         unit_size=num_generations,
         score=assembler.score_sample,
         assemble=assembler.assemble,
         assembly_ready=assembler.assembly_ready,
+        payload_processor=payload_processor,
+        global_step=global_step,
         group_complete=group_complete,
         max_group_regenerations=max_group_regenerations,
         reached_max=reached_max)
