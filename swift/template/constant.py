@@ -298,6 +298,8 @@ class MLLMTemplateType:
     muse_glimmer = 'muse_glimmer'
     monkeyocrv2 = 'monkeyocrv2'
 
+    nemotron_h_omni = 'nemotron_h_omni'
+
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):
 
