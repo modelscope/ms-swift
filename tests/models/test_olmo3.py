@@ -123,9 +123,15 @@ def test_auto_config_recognizes_local_olmo3(tmp_path):
 
 
 @pytest.mark.parametrize('unsupported', [
-    {'sequence_parallel_size': 2},
-    {'packing': True},
-    {'padding_free': True},
+    {
+        'sequence_parallel_size': 2
+    },
+    {
+        'packing': True
+    },
+    {
+        'padding_free': True
+    },
 ])
 def test_sft_arguments_reject_unsupported_paths_before_output_or_model_loading(tmp_path, unsupported):
     from swift import SftArguments
@@ -138,8 +144,13 @@ def test_sft_arguments_reject_unsupported_paths_before_output_or_model_loading(t
     with pytest.raises(ValueError, match='Olmo3 hybrid attention'):
         # Overriding the chat template must not bypass the model's attention guard.
         SftArguments(
-            model=str(model_dir), template='default', dataset=['unused.jsonl'],
-            output_dir=str(output_dir), torch_dtype='float32', fp16=False, bf16=False,
+            model=str(model_dir),
+            template='default',
+            dataset=['unused.jsonl'],
+            output_dir=str(output_dir),
+            torch_dtype='float32',
+            fp16=False,
+            bf16=False,
             **unsupported)
     assert not output_dir.exists()
 
