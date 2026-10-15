@@ -10,18 +10,17 @@ from swift.template import get_template
 # The text-only branch of the official Think chat template, including its
 # different historical/final assistant terminators. No Hub access is needed.
 # https://huggingface.co/allenai/Olmo-3-7B-Think/blob/main/chat_template.jinja
-CHAT_TEMPLATE = (
-    "{% if messages[0]['role'] != 'system' %}"
-    "{{ '<|im_start|>system\nYou are OLMo, a helpful function-calling AI assistant built by Ai2. "
-    'Your date cutoff is November 2024, and your model weights are available at '
-    'https://huggingface.co/allenai. You do not currently have access to any functions. '
-    "<functions></functions><|im_end|>\n' }}{% endif %}"
-    "{% for message in messages %}{{ '<|im_start|>' + message['role'] + '\n' + message['content'] }}"
-    "{% if message['role'] == 'system' %}"
-    "{{ ' You do not currently have access to any functions. <functions></functions>' }}{% endif %}"
-    "{% if message['role'] == 'assistant' and loop.last %}{{ eos_token }}"
-    "{% else %}{{ '<|im_end|>\n' }}{% endif %}{% endfor %}"
-    "{% if add_generation_prompt %}{{ '<|im_start|>assistant\n<think>' }}{% endif %}")
+CHAT_TEMPLATE = ("{% if messages[0]['role'] != 'system' %}"
+                 "{{ '<|im_start|>system\nYou are OLMo, a helpful function-calling AI assistant built by Ai2. "
+                 'Your date cutoff is November 2024, and your model weights are available at '
+                 'https://huggingface.co/allenai. You do not currently have access to any functions. '
+                 "<functions></functions><|im_end|>\n' }}{% endif %}"
+                 "{% for message in messages %}{{ '<|im_start|>' + message['role'] + '\n' + message['content'] }}"
+                 "{% if message['role'] == 'system' %}"
+                 "{{ ' You do not currently have access to any functions. <functions></functions>' }}{% endif %}"
+                 "{% if message['role'] == 'assistant' and loop.last %}{{ eos_token }}"
+                 "{% else %}{{ '<|im_end|>\n' }}{% endif %}{% endfor %}"
+                 "{% if add_generation_prompt %}{{ '<|im_start|>assistant\n<think>' }}{% endif %}")
 
 
 class TestOlmo3ThinkTemplate(unittest.TestCase):
@@ -60,8 +59,13 @@ class TestOlmo3ThinkTemplate(unittest.TestCase):
         return encoded
 
     def test_default_and_explicit_system(self):
-        conversation = [{'role': 'user', 'content': 'Question?'},
-                        {'role': 'assistant', 'content': '<think>reason</think>\nAnswer.'}]
+        conversation = [{
+            'role': 'user',
+            'content': 'Question?'
+        }, {
+            'role': 'assistant',
+            'content': '<think>reason</think>\nAnswer.'
+        }]
         for system in [None, '', 'Answer in Chinese.']:
             with self.subTest(system=system):
                 messages = deepcopy(conversation)
@@ -72,10 +76,19 @@ class TestOlmo3ThinkTemplate(unittest.TestCase):
                 self.assertNotEqual(encoded['input_ids'][0], self.tokenizer.bos_token_id)
 
     def test_multiround_preserves_thinking_and_uses_distinct_terminators(self):
-        messages = [{'role': 'user', 'content': 'First question'},
-                    {'role': 'assistant', 'content': '<think>historical reasoning</think>\nFirst answer'},
-                    {'role': 'user', 'content': 'Second question'},
-                    {'role': 'assistant', 'content': '<think>new reasoning</think>\nSecond answer'}]
+        messages = [{
+            'role': 'user',
+            'content': 'First question'
+        }, {
+            'role': 'assistant',
+            'content': '<think>historical reasoning</think>\nFirst answer'
+        }, {
+            'role': 'user',
+            'content': 'Second question'
+        }, {
+            'role': 'assistant',
+            'content': '<think>new reasoning</think>\nSecond answer'
+        }]
         encoded = self.assert_matches_hf(messages)
         text = self.tokenizer.decode(encoded['input_ids'])
         self.assertIn('historical reasoning', text)
@@ -83,16 +96,28 @@ class TestOlmo3ThinkTemplate(unittest.TestCase):
         self.assertTrue(text.endswith('Second answer<|endoftext|>'))
 
     def test_inference_prefix_has_no_extra_newline(self):
-        messages = [{'role': 'user', 'content': 'First question'},
-                    {'role': 'assistant', 'content': '<think>historical reasoning</think>\nFirst answer'},
-                    {'role': 'user', 'content': 'Next question'}]
+        messages = [{
+            'role': 'user',
+            'content': 'First question'
+        }, {
+            'role': 'assistant',
+            'content': '<think>historical reasoning</think>\nFirst answer'
+        }, {
+            'role': 'user',
+            'content': 'Next question'
+        }]
         encoded = self.assert_matches_hf(messages, mode='transformers')
         self.assertTrue(self.tokenizer.decode(encoded['input_ids']).endswith('<|im_start|>assistant\n<think>'))
 
     def test_prompt_mask_and_assistant_eos_loss(self):
         answer = '<think>reason</think>\nAnswer.'
-        encoded = self.assert_matches_hf(
-            [{'role': 'user', 'content': 'Question?'}, {'role': 'assistant', 'content': answer}])
+        encoded = self.assert_matches_hf([{
+            'role': 'user',
+            'content': 'Question?'
+        }, {
+            'role': 'assistant',
+            'content': answer
+        }])
         answer_ids = self.tokenizer.encode(answer, add_special_tokens=False) + [self.tokenizer.eos_token_id]
         prompt_len = len(encoded['input_ids']) - len(answer_ids)
         self.assertEqual(encoded['labels'][:prompt_len], [-100] * prompt_len)
@@ -101,12 +126,42 @@ class TestOlmo3ThinkTemplate(unittest.TestCase):
     def test_rejects_tool_protocols(self):
         user = {'role': 'user', 'content': 'Question?'}
         for unsupported in [
-                {'tools': [{'type': 'function', 'function': {'name': 'weather', 'parameters': {}}}]},
-                {'functions': [{'name': 'weather'}]},
-                {'messages': [user, {'role': 'tool_call', 'content': '{"name": "weather"}'}]},
-                {'messages': [user, {'role': 'environment', 'content': 'result'}]},
-                {'messages': [dict(user, functions='[]')]},
-                {'messages': [user, {'role': 'assistant', 'content': '', 'function_calls': 'weather()'}]},
+            {
+                'tools': [{
+                    'type': 'function',
+                    'function': {
+                        'name': 'weather',
+                        'parameters': {}
+                    }
+                }]
+            },
+            {
+                'functions': [{
+                    'name': 'weather'
+                }]
+            },
+            {
+                'messages': [user, {
+                    'role': 'tool_call',
+                    'content': '{"name": "weather"}'
+                }]
+            },
+            {
+                'messages': [user, {
+                    'role': 'environment',
+                    'content': 'result'
+                }]
+            },
+            {
+                'messages': [dict(user, functions='[]')]
+            },
+            {
+                'messages': [user, {
+                    'role': 'assistant',
+                    'content': '',
+                    'function_calls': 'weather()'
+                }]
+            },
         ]:
             inputs = {'messages': [user]}
             inputs.update(unsupported)
@@ -117,7 +172,10 @@ class TestOlmo3ThinkTemplate(unittest.TestCase):
         for media_type in ['images', 'videos', 'audios']:
             with self.subTest(media_type=media_type), self.assertRaisesRegex(ValueError, 'only supports text'):
                 self.make_template().encode({
-                    'messages': [{'role': 'user', 'content': 'Describe this.'}],
+                    'messages': [{
+                        'role': 'user',
+                        'content': 'Describe this.'
+                    }],
                     media_type: ['does-not-exist'],
                 })
 

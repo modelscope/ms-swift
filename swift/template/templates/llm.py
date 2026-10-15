@@ -649,8 +649,8 @@ class Olmo3ThinkTemplate(Template):
             raise ValueError('olmo3_think only supports text conversations; '
                              'images, videos and audio are not supported.')
         if inputs.tools or inputs.extra_kwargs.get('functions') is not None or any(
-                message['role'] not in {'user', 'assistant'}
-                or any(message.get(key) is not None for key in ['functions', 'function_calls', 'tool_calls'])
+                message['role'] not in {'user', 'assistant'} or any(
+                    message.get(key) is not None for key in ['functions', 'function_calls', 'tool_calls'])
                 for message in inputs.messages):
             raise ValueError('olmo3_think currently supports text-only user/assistant conversations without tools.')
         super()._preprocess_inputs(inputs)
