@@ -214,6 +214,7 @@ QWEN3_PATCHES = {
 # Keep native FP32 RoPE: OLMo 3's YaRN-scaled cos/sin also exceed npu_rotary_mul's
 # documented range. Attention keeps the native per-layer sliding/full masks.
 
+
 def npu_olmo3_rms_norm_forward(self, hidden_states):
     input_dtype = hidden_states.dtype
     if hidden_states.device.type == 'npu' and input_dtype == self.weight.dtype:
@@ -230,6 +231,7 @@ def npu_olmo3_mlp_forward(self, hidden_states):
     if hidden_states.device.type == 'npu' and self.config.hidden_act == 'silu':
         return npu_swiglu_forward(self, hidden_states)
     return self.down_proj(self.act_fn(self.gate_proj(hidden_states)) * self.up_proj(hidden_states))
+
 
 OLMO3_PATCHES = {
     'Olmo3RMSNorm.forward': npu_olmo3_rms_norm_forward,
