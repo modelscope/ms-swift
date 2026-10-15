@@ -889,8 +889,8 @@ The table below introduces the models integrated with ms-swift:
 |[ZhipuAI/GLM-4.5V-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.5V-FP8)|glm4v_moe|glm4_5v|glm4_5|transformers>=4.56|&#x2714;|-|[zai-org/GLM-4.5V-FP8](https://huggingface.co/zai-org/GLM-4.5V-FP8)|
 |[ZhipuAI/GLM-4.6V](https://modelscope.cn/models/ZhipuAI/GLM-4.6V)|glm4v_moe|glm4_5v|glm4_5|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/GLM-4.6V](https://huggingface.co/zai-org/GLM-4.6V)|
 |[ZhipuAI/GLM-4.6V-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.6V-FP8)|glm4v_moe|glm4_5v|glm4_5|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/GLM-4.6V-FP8](https://huggingface.co/zai-org/GLM-4.6V-FP8)|
-|[ZhipuAI/GLM-5.3-Flash](https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash)|glm5_next|glm5_next|glm5_1|transformers>=5.16.0|&#x2718;|vision, video|[zai-org/GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash)|
-|[ZhipuAI/GLM-5.3-Flash-BF16](https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash-BF16)|glm5_next|glm5_next|glm5_1|transformers>=5.16.0|&#x2718;|vision, video|[zai-org/GLM-5.3-Flash-BF16](https://huggingface.co/zai-org/GLM-5.3-Flash-BF16)|
+|[ZhipuAI/GLM-5.3-Flash](https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash)|glm5_next|glm5_next|glm5_1|transformers>=5.16.0|&#x2714;|vision, video|[zai-org/GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash)|
+|[ZhipuAI/GLM-5.3-Flash-BF16](https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash-BF16)|glm5_next|glm5_next|glm5_1|transformers>=5.16.0|&#x2714;|vision, video|[zai-org/GLM-5.3-Flash-BF16](https://huggingface.co/zai-org/GLM-5.3-Flash-BF16)|
 |[ZhipuAI/glm-edge-v-2b](https://modelscope.cn/models/ZhipuAI/glm-edge-v-2b)|glm_edge_v|glm_edge_v|chatglm4|transformers>=4.46|&#x2718;|vision|[zai-org/glm-edge-v-2b](https://huggingface.co/zai-org/glm-edge-v-2b)|
 |[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat)|glm_edge_v|glm_edge_v|chatglm4|transformers>=4.46|&#x2718;|vision|[zai-org/glm-edge-4b-chat](https://huggingface.co/zai-org/glm-edge-4b-chat)|
 |[ZhipuAI/GLM-OCR](https://modelscope.cn/models/ZhipuAI/GLM-OCR)|glm_ocr|glm_ocr|glm4|transformers>=5.0.1dev0|&#x2718;|-|[zai-org/GLM-OCR](https://huggingface.co/zai-org/GLM-OCR)|
@@ -1214,6 +1214,8 @@ The table below introduces the models integrated with ms-swift:
 |[JinaAI/jina-reranker-m0](https://modelscope.cn/models/JinaAI/jina-reranker-m0)|jina_reranker_m0|jina_reranker_m0||-|&#x2718;|reranker, vision|[JinaAI/jina-reranker-m0](https://huggingface.co/JinaAI/jina-reranker-m0)|
 |[zenosai/MonkeyOCRv2-S](https://modelscope.cn/models/zenosai/MonkeyOCRv2-S)|monkeyocrv2|monkeyocrv2||transformers>=4.45, qwen_vl_utils|&#x2718;|vision, embedding, document-understanding|[zenosai/MonkeyOCRv2-S](https://huggingface.co/zenosai/MonkeyOCRv2-S)|
 |[zenosai/MonkeyOCRv2-B](https://modelscope.cn/models/zenosai/MonkeyOCRv2-B)|monkeyocrv2|monkeyocrv2||transformers>=4.45, qwen_vl_utils|&#x2718;|vision, embedding, document-understanding|[zenosai/MonkeyOCRv2-B](https://huggingface.co/zenosai/MonkeyOCRv2-B)|
+|[nv-community/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16](https://modelscope.cn/models/nv-community/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16)|nemotron_h_omni|nemotron_h_omni|hermes|transformers>=5.16.1, mamba-ssm, causal-conv1d>=1.2.0|&#x2714;|vision, video|[nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16)|
+|[nv-community/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4](https://modelscope.cn/models/nv-community/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4)|nemotron_h_omni|nemotron_h_omni|hermes|transformers>=5.16.1, mamba-ssm, causal-conv1d>=1.2.0|&#x2714;|vision, video|[nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4)|
 
 
 ## Datasets
