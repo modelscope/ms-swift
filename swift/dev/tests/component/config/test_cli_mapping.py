@@ -193,14 +193,6 @@ def test_prepare_processes_before_validation(monkeypatch):
 
 
 def test_logging_steps_reaches_training_loop(monkeypatch):
-    captured = {}
-
-    class FakeLoop:
-
-        def __init__(self, *_args, **kwargs):
-            captured.update(kwargs)
-
-    monkeypatch.setattr('swift.dev.recipe.train_loop.SFTLoop', FakeLoop)
     monkeypatch.setattr('swift.dev.builders.optimizer.resolve_max_grad_norm', lambda _: 1.0)
     assembly = TrainAssembly(
         'test', ModelConfig(model='m'), TemplateConfig(), DatasetConfig(), TrainConfig(), DistributedConfig(),
@@ -208,10 +200,12 @@ def test_logging_steps_reaches_training_loop(monkeypatch):
     assembly.model = object()
     assembly.dataloader = []
     assembly.total_opt_steps = 1
-    assembly.build_loop()
-    assert captured['logging_config'].logging_steps == 7
-    assert captured['no_save_optim'] is True
-    assert captured['no_save_rng'] is True
+    # The flat offline recipes build their StepRunner / CheckpointSaver from this partitioned dict, so
+    # logging_config must reach the recorder's knobs and save_only_model must map onto the saver's flags.
+    kwargs = assembly.offline_component_kwargs()
+    assert kwargs['recorder']['logging_config'].logging_steps == 7
+    assert kwargs['saver']['no_save_optim'] is True
+    assert kwargs['saver']['no_save_rng'] is True
 
 
 def test_model_only_resume_without_trainer_state_starts_from_zero(tmp_path):
@@ -361,21 +355,15 @@ def test_all_v5_routes_are_complete(monkeypatch):
 
 
 def test_all_cli_parsers_accept_minimal_argv(tmp_path):
-    from swift.dev.cli.app import parse_app_configs
     from swift.dev.cli.deploy import parse_deploy_configs
     from swift.dev.cli.eval import parse_eval_configs
     from swift.dev.cli.infer import parse_infer_configs
     from swift.dev.cli.merge import parse_merge_configs
     from swift.dev.cli.rl import parse_rl_configs
-    from swift.dev.cli.rollout import parse_rollout_configs
-    from swift.dev.cli.sample import parse_sample_configs
 
     assert parse_infer_configs(['--model', 'm'])['model_config'].model == 'm'
     assert parse_deploy_configs(['--model', 'm'])['model_config'].model == 'm'
-    assert parse_rollout_configs(['--model', 'm'])['rollout_config'].sampler_mode == 'server'
-    assert parse_sample_configs(['--model', 'm', '--dataset', 'd'])['sampling_config'].sampler_engine == 'transformers'
     assert parse_eval_configs(['--model', 'm', '--eval_dataset', 'bench'])['eval_config'].eval_dataset == ['bench']
-    assert parse_app_configs(['--model', 'm', '--base_url', 'http://localhost:8000'])['app_config'].base_url
     assert parse_merge_configs(['--model', 'm', '--adapters', 'a'])['tuner_config'].adapters == ['a']
     for rl_type in ('dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm', 'grpo', 'ppo', 'gkd'):
         configs = parse_rl_configs(['--model', 'm', '--dataset', 'd', '--rlhf_type', rl_type])

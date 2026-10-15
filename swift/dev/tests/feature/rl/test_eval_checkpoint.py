@@ -12,8 +12,8 @@ Corner cases (RL_PLAN section 5 rows; row 4 belongs to ``test_infeasible_combos`
 
 | # | contract | input | expected | failure it kills |
 |---|----------|-------|----------|------------------|
-| 1 | offline RL periodic eval is REFUSED, not silently dropped | dpo + ``split_dataset_ratio=0.5`` (eval split + derived ``eval_steps``) | ``NotImplementedError`` raised after the model is built but BEFORE any optimizer step | a configured eval split silently ignored (``PreferenceLoop.fit`` never evaluates) |
-| 1b | forward_only val-loss eval / megatron ``calculate_loss`` guard | N/A for RL | -- | RL never reaches the SFT ``TrainLoop`` eval path (offline rejects pre-fit; grpo/ppo call no ``evaluate``). Standalone ``swift eval`` is covered by ``test_eval_lora_example_e2e`` -- not re-tested here |
+| 1 | offline RL periodic eval is HONOURED (val-loss), not refused | dpo + ``split_dataset_ratio=0.5`` (eval split + derived ``eval_steps``) | the run trains AND the flat ``Evaluator.evaluate`` records a finite ``eval_loss`` on the captured Evaluator's ``eval_history`` | a configured eval split silently ignored (``run_dpo`` never evaluating), or the old W24 refusal regressing |
+| 1b | forward_only val-loss eval / megatron ``calculate_loss`` guard | N/A for RL | -- | grpo/ppo call no ``evaluate``; the offline preference val-loss path is row 1. Standalone ``swift eval`` is covered by ``test_eval_lora_example_e2e`` -- not re-tested here |
 | 2a | resume continues the trajectory | dpo: save@step2 -> resume -> run to 4 | step counter continues at 3 AND losses match an uninterrupted control's tail within a measured band | a resume that ignores the checkpoint step count, or restores wrong weights / optimizer / data position |
 | 2b | PPO policy+value step alignment | ``PPOLoop.resume(policy=5, value=3)`` | ``ValueError``; matched (5,5) and ``value_state=None`` accepted | resuming a half-written PPO checkpoint whose policy and value sit at different completed steps |
 | 3 | ``save_total_limit`` rotation + current protection | dpo ``save_steps=1``, 3 steps + final; limit in {None,1,2} | None -> all 4 kept; 1 -> {final}; 2 -> {checkpoint-3, final}; the just-saved current ALWAYS survives | over-deleting the current save, or under-rotating (limit ignored) |
@@ -26,6 +26,7 @@ atomic policy+value checkpoint it protects is proven e2e in ``test_algorithms_e2
 Run: ``CUDA_VISIBLE_DEVICES=<c> pytest swift/dev/tests/feature/rl/test_eval_checkpoint.py -m slow``.
 """
 import os
+from contextlib import contextmanager
 
 import pytest
 
@@ -40,20 +41,53 @@ from swift.dev.tests.feature.rl.conftest import rl_configs, run_rl
 _RESUME_BAND = 3e-2
 
 
+@contextmanager
+def _captured_evaluator():
+    """Capture the ``Evaluator`` ``run_dpo``'s flat offline layer builds, so a test can read its ``eval_history``.
+
+    ``run_dpo`` returns only the training loss history; the eval metrics live on the ``Evaluator`` the flat
+    ``run_offline`` built and discarded. Subclassing the module-level ``Evaluator`` and recording ``self`` in
+    ``__init__`` observes the REAL component (run_offline imports it from its module at call time, so the
+    patched attribute is picked up) rather than stubbing ``evaluate`` -- the same technique
+    ``test_eval_sampler._captured_evaluator`` uses for the offline sft path.
+    """
+    import swift.dev.recipe.evaluator as evaluator_mod
+    captured = {}
+    original = evaluator_mod.Evaluator
+
+    class CapturingEvaluator(original):
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            captured['evaluator'] = self
+
+    evaluator_mod.Evaluator = CapturingEvaluator
+    try:
+        yield captured
+    finally:
+        evaluator_mod.Evaluator = original
+
+
 @pytest.mark.slow
 @pytest.mark.accel(1)
-def test_offline_preference_rejects_periodic_eval(tiny_qwen2_5, rl_data, tmp_path):
-    """Row 1: an offline preference run REFUSES a periodic eval split instead of silently ignoring it.
+def test_offline_preference_honours_periodic_eval(tiny_qwen2_5, rl_data, tmp_path):
+    """Row 1: an offline preference run HONOURS a periodic val-loss eval instead of refusing it.
 
     ``split_dataset_ratio>0`` carves off a val split, so ``_derive_eval_schedule`` inherits
     ``eval_strategy='steps'`` / ``eval_steps=save_steps`` and ``build_dataset`` returns a non-None
-    ``eval_dataloader``. But ``PreferenceLoop.fit`` never evaluates -- it stores the eval loader and drops
-    it -- so ``run_dpo`` fails loudly (run_dpo.py:173-177) rather than train without the eval that was asked
-    for. The guard sits AFTER ``build_model`` and BEFORE the loop's ``fit``, so this exercises the real
-    GPU-built model on the exact refusal path ``swift rlhf`` hits, with no optimizer step run.
+    ``eval_dataloader``. ``run_dpo`` now drives the flat offline layer, whose
+    :class:`~swift.dev.recipe.evaluator.Evaluator` runs the whole offline cadence INCLUDING periodic eval: its
+    ``evaluate`` runs ``_evaluate_loss`` over the eval dataloader, encoding each eval batch through the SAME
+    ``PreferenceBatchEncoder.__call__`` seam training uses (interleave chosen/rejected + one reference
+    forward), so the DPO loss is computable on the eval split too. The old W24 ``raise NotImplementedError``
+    guard is gone (record 决策二). The assertion reads a finite ``eval_loss`` off the captured Evaluator's
+    ``eval_history`` -- a real number produced by ``forward_only`` + ``calculate_metric``, not merely a green
+    run.
 
-    Reverse-verify: delete the run_dpo.py:173-177 guard and the split is silently ignored -- the run trains
-    and returns a history instead of raising, so ``pytest.raises`` goes red; restore it -> refused again.
+    Reverse-verify: restore the deleted run_dpo W24 guard and the run raises ``NotImplementedError`` before
+    any step -> red; or make ``_evaluate_loss`` feed the raw eval rows to ``forward_only`` instead of
+    ``encoder(unit, owns_ga=True)`` (``PreferenceBatchEncoder.__call__``) and the DPO eval loss is
+    absent/non-finite -> the ``eval_history`` assertion goes red. Remove either sabotage -> green.
     """
     configs = rl_configs(
         rl_type='dpo',
@@ -61,12 +95,22 @@ def test_offline_preference_rejects_periodic_eval(tiny_qwen2_5, rl_data, tmp_pat
         model_type='qwen2',
         template='qwen2_5',
         dataset=rl_data.preference(n=8),
-        out_dir=str(tmp_path / 'out_eval_reject'),
-        max_steps=1,
+        out_dir=str(tmp_path / 'out_eval_honour'),
+        max_steps=2,
         dataset_over={'split_dataset_ratio': 0.5},
+        ckpt_over={'save_steps': 1},
     )
-    with pytest.raises(NotImplementedError, match='Periodic evaluation is not implemented'):
-        run_rl(configs)
+    with _captured_evaluator() as captured:
+        history = run_rl(configs)
+
+    assert history, 'the preference run produced no optimizer steps (it should train, not refuse)'
+    evaluator = captured['evaluator']
+    assert evaluator.eval_history, ('periodic eval never ran: eval_history is empty, so the val split was '
+                                    'silently dropped instead of scored (the flat Evaluator eval path regressed)')
+    eval_losses = [r['eval_loss'] for r in evaluator.eval_history if 'eval_loss' in r]
+    assert eval_losses, f'eval ran but recorded no eval_loss: {evaluator.eval_history}'
+    assert all(x == x and abs(x) != float('inf') for x in eval_losses), \
+        f'non-finite eval_loss: {eval_losses} (the eval batch was not encoded through PreferenceBatchEncoder.__call__)'
 
 
 @pytest.mark.slow

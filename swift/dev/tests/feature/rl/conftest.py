@@ -376,7 +376,7 @@ _PROMPTS = ('What is 2+2?', 'Name a colour.', 'Say hello.', 'Count to three.')
 def kto_rows(n: int = 8) -> List[dict]:
     """KTO is UNPAIRED: one completion per row carrying a binary desirability ``label``.
 
-    ``PreferenceLoop._encode_kto_batch`` reads the last assistant turn as the completion and ``label`` as
+    ``PreferenceBatchEncoder._encode_kto_batch`` reads the last assistant turn as the completion and ``label`` as
     desirable/undesirable, and builds its own mismatched KL batch by rotating completions -- so the row
     needs no ``rejected_response``. Alternating labels keep both the desirable and undesirable branches of
     ``KTOLoss`` live (an all-one-sided batch would exercise only half the loss).

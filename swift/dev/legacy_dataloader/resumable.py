@@ -12,7 +12,7 @@ class ResumableDataLoaderWrapper:
       observable state (== consumed_batches * batch_size).
     - On resume, consumed_batches is decomposed into (resume_epoch, resume_offset) using
       batches_per_epoch (== len(dataloader) == BatchSamplerShard.__len__, honoring drop_last).
-    - The SFTLoop drives the epoch loop and calls set_epoch(epoch) each epoch; the wrapper's
+    - The offline training loop drives the epoch loop and calls set_epoch(epoch) each epoch; the wrapper's
       __iter__ skips `resume_offset` batches ONLY on the resume epoch, so the resumed stream
       reproduces the reference order from exactly the checkpoint position.
     """
@@ -39,7 +39,7 @@ class ResumableDataLoaderWrapper:
             self._resume_epoch, self._resume_offset = 0, self._consumed_batches
 
     def __iter__(self) -> Iterator:
-        # SFTLoop sets the epoch before iterating; honor it. Skip the resume offset only on the
+        # The training loop sets the epoch before iterating; honor it. Skip the resume offset only on the
         # exact resume epoch (later epochs start from the top).
         skip = self._resume_offset if self._epoch == self._resume_epoch else 0
         for i, batch in enumerate(self.dataloader):

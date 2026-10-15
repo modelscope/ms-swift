@@ -140,16 +140,3 @@ def test_pooling_task_map_and_is_pooling():
     assert is_pooling_task('seq_cls') and is_pooling_task('embedding') and is_pooling_task('reranker')
     assert not is_pooling_task('causal_lm') and not is_pooling_task('generative_reranker')
     assert not is_pooling_task(None)
-
-
-def test_tool_names_extracts_assistant_tool_calls_in_order():
-    from swift.dev.recipe.infer_tui import _tool_names
-    messages = [
-        {'role': 'user', 'content': 'go'},
-        {'role': 'assistant', 'tool_calls': [{'function': {'name': 'read_file'}},
-                                             {'function': {'name': 'run_command'}}]},
-        {'role': 'tool', 'content': 'ok'},
-        {'role': 'assistant', 'content': 'done'},  # no tool_calls
-    ]
-    assert _tool_names(messages) == ['read_file', 'run_command']
-    assert _tool_names([{'role': 'assistant', 'content': 'x'}]) == []

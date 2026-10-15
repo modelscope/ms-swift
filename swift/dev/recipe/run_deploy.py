@@ -105,7 +105,7 @@ def build_server_config(
     from twinkle.server.config import (ApplicationSpec, DataPlaneArgs, HttpOptions, PersistenceConfig, SamplerArgs,
                                        ServerArgs, ServerConfig)
 
-    from swift.dev.builders import build_device_mesh_if_dp, resolve_twinkle_template
+    from swift.dev.builders import build_parallel_mesh, resolve_twinkle_template
     from swift.dev.builders.sampler import _derive_sampler_type, _enable_lora
     from swift.dev.config import DeployConfig as _DeployConfig
     from swift.dev.config import DistributedConfig as _DistributedConfig
@@ -123,7 +123,7 @@ def build_server_config(
     sampler_type = deploy_config.sampler_type or _derive_sampler_type(backend, deploy_config.enable_data_plane)
 
     sampler_engine_args = _sampler_engine_args(backend, engine_args, adapter_mapping, deploy_config, _enable_lora)
-    device_group, device_mesh, nproc = _device_spec(distributed_config, build_device_mesh_if_dp)
+    device_group, device_mesh, nproc = _device_spec(distributed_config)
     template_spec = resolve_twinkle_template(template_config, model_config)
 
     route_prefix = deploy_config.route_prefix
@@ -307,7 +307,7 @@ def _sampler_engine_args(
     return resolved
 
 
-def _device_spec(distributed_config: DistributedConfig, build_device_mesh_if_dp) -> tuple:
+def _device_spec(distributed_config: DistributedConfig) -> tuple:
     """``(device_group, device_mesh, nproc_per_node)`` dicts for the sampler deployment.
 
     ``ranks`` is the GPU count handed to the sampler's device group; Ray sets ``CUDA_VISIBLE_DEVICES`` for
@@ -316,7 +316,7 @@ def _device_spec(distributed_config: DistributedConfig, build_device_mesh_if_dp)
     from the shared DP-mesh builder and is 1 unless data parallelism was actually requested.
     """
     nproc = distributed_config.nproc_per_node or 1
-    mesh = build_device_mesh_if_dp(distributed_config)
+    mesh = build_parallel_mesh(distributed_config, none_if_single_rank=True)
     dp_size = int(getattr(mesh, 'data_world_size', 1)) if mesh is not None else 1
     device_group = {'name': 'sampler', 'ranks': nproc, 'device_type': 'cuda'}
     device_mesh = {'device_type': 'cuda', 'dp_size': dp_size}

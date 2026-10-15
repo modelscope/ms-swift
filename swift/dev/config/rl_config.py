@@ -26,6 +26,14 @@ class RLConfig:
     ref_adapters: List[str] = field(default_factory=list)
     ref_model_type: Optional[str] = None
     ref_model_revision: Optional[str] = None
+    #: Parallel layout for the KL/reference model's DeviceGroup, same grammar as ``teacher_parallel_spec``
+    #: (e.g. ``dp2``, ``tp2``). ``None`` sizes the group to a single rank -- the card-frugal default, but it
+    #: pins a large frozen reference (a 70B ref) to one GPU. A spec shards the reference across as many ranks
+    #: as it asks for, so the reference is scale-safe exactly like the teacher. It is the reference's OWN
+    #: layout, apart from the run's ``--parallel_spec`` (the policy's). A LoRA/``disable_adapter`` reference
+    #: reuses the policy actor (no separate copy) and ignores this. Shared by the online (grpo/ppo) and the
+    #: offline (dpo/kto) reference, so one knob covers both.
+    ref_parallel_spec: Optional[str] = None
     beta: Optional[float] = None
     max_completion_length: int = 512
 
@@ -75,9 +83,9 @@ class RLConfig:
     #: Process-reward channel, with the same heterogeneous item grammar as ``orm``. Two consumers: best-of-n
     #: synthesis ranks with it as the second axis, and GRPO turns it into a per-token *process* reward -- each
     #: reasoning step is scored by its response prefix (see ``prm_scorer``) and that score is broadcast onto
-    #: the step's tokens, placed on the intermediate tokens while the outcome (``orm``) reward lands on the
-    #: last one (segmented placement). Rule items score the whole response as one scalar; a model id is a
-    #: frozen PRM built/placed exactly like an ``orm`` model.
+    #: the step's tokens, then blended with the outcome (``orm``) group-relative advantage on every response
+    #: token by ``prm_orm_mix``. Rule items score the whole response as one scalar; a model id is a frozen PRM
+    #: built/placed exactly like an ``orm`` model.
     prm: List[Any] = field(default_factory=list)
     #: Per-item weights for ``prm``; ``None`` weights every item equally.
     prm_weights: Optional[List[float]] = None
@@ -85,13 +93,28 @@ class RLConfig:
     prm_parallel_spec: Optional[str] = None
     #: Which ``prm_scorer`` plugin segments a response into reasoning steps and broadcasts each step's PRM
     #: score onto its tokens (GRPO process reward only). A registered name, a class, or a callable resolved
-    #: through :meth:`swift.dev.utils.plugin.PluginRegistry.resolve`; ``None`` uses the default ``'delimiter'``
-    #: scorer (:class:`swift.dev.rewards.prm.DelimiterPRMScorer`).
+    #: through :meth:`swift.dev.utils.plugin.PluginRegistry.resolve`; ``None`` picks the default by rollout
+    #: shape -- ``'turn'`` (:class:`swift.dev.rewards.prm.TurnPRMScorer`, one assistant turn = one step) when
+    #: ``max_turns`` is set (multi-turn), ``'delimiter'`` (:class:`swift.dev.rewards.prm.DelimiterPRMScorer`,
+    #: one delimiter-separated line = one step) otherwise. Either scorer keeps a step inside one assistant
+    #: turn under a multi-turn rollout; ``'delimiter'`` splits within a turn, never across one.
     prm_scorer: Optional[Any] = None
     #: Step boundary the default ``'delimiter'`` PRM scorer splits the decoded response on -- one reasoning
     #: step per delimiter-separated segment. A newline (one step per line) by default; a scorer that does not
     #: segment by text ignores this. ``None`` means the default newline.
     prm_step_delimiter: Optional[str] = None
+    #: PRM/ORM fusion ratio for the GRPO process reward (the GRPO assembler's ``_apply_prm``): each response token's
+    #: advantage is ``prm_orm_mix * process + (1 - prm_orm_mix) * orm``, blending the per-step process reward
+    #: with the outcome group-relative advantage on the SAME tokens. ``0`` reproduces standard GRPO (the pure
+    #: outcome advantage broadcast onto every response token); ``1`` is pure process reward. Must be in
+    #: ``[0, 1]``; only read when a ``--prm`` channel is active for ``rl_type=grpo``.
+    prm_orm_mix: float = 0.5
+    #: Override for the built-in generative-judge prompt: a ``str.format`` template rendered with ``prompt=``
+    #: and ``completion=``, asked to emit a single number. Only used when an ``orm``/``prm`` channel resolves
+    #: to a generative or api judge (see :func:`swift.dev.rewards.scorer.build_model_reward`); a scalar reward
+    #: model ignores it. Mirrors ``InferConfig.judge_template`` so the RL and inference/synthesis paths render
+    #: a judge verdict identically.
+    judge_template: Optional[str] = None
 
     # === GRPO ===
     num_generations: int = 8
@@ -140,6 +163,10 @@ class RLConfig:
     sync_ref_model: bool = False
     ref_model_sync_steps: int = 512
     ref_model_mixup_alpha: float = 0.6
+    #: Parallel layout for the reference model (``DeviceMesh.from_spec`` string). ``None`` inherits the
+    #: policy's own ``parallel_spec`` — the paired EMA sync requires both to have identical sharding, so
+    #: the default (same spec) is the correct choice unless the reference is deliberately placed differently.
+    reference_parallel_spec: Optional[str] = None
     log_entropy: bool = False
     top_entropy_quantile: float = 1.0
     tau_pos: float = 1.0

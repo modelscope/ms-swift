@@ -2,9 +2,9 @@
 
 Pure-function / pure-Python coverage that runs in the normal suite without Ray, vLLM or GPUs:
   - :func:`plan_rl_device_groups` colocate vs heterogeneous placement + its validation;
-  - :class:`PreferenceLoop` chosen/rejected interleaving (the layout the DPO family's split relies on);
+  - :class:`PreferenceBatchEncoder` chosen/rejected interleaving (the layout the DPO family's split relies on);
   - :class:`GKDLoop` prompt-window wrap-around;
-  - :func:`configure_rlhf_loss` rl_type -> loss mapping (skipped when twinkle is unavailable).
+  - :func:`configure_rl_loss` rl_type -> loss mapping (skipped when twinkle is unavailable).
 
 The heavy weight-sync / colocate / e2e paths need Ray + multi-GPU + vLLM and live behind
 ``@pytest.mark.slow`` mirroring ``twinkle/tests/sampler/test_weight_sync.py``; they are not here.
@@ -51,7 +51,7 @@ def test_plan_device_groups_validation():
 
 
 # ----------------------------------------------------------------------
-# PreferenceLoop interleaving (pure Python; stub template/model)
+# PreferenceBatchEncoder interleaving (pure Python; stub template/model)
 # ----------------------------------------------------------------------
 class _StubTemplate:
     """A template whose encode returns a fixed preference-encoded dict (chosen_*/rejected_*)."""
@@ -63,15 +63,15 @@ class _StubTemplate:
         return dict(self._encoded)
 
 
-def _preference_loop(rl_type, encoded):
-    from swift.dev.recipe.run_dpo import PreferenceLoop
+def _preference_encoder(rl_type, encoded):
+    from swift.dev.recipe._preference import PreferenceBatchEncoder
 
-    return PreferenceLoop(model=None, dataloader=None, template=_StubTemplate(encoded), rl_type=rl_type)
+    return PreferenceBatchEncoder(model=None, template=_StubTemplate(encoded), rl_type=rl_type)
 
 
 def test_preference_interleave_order_and_prefix_strip():
     """Two rows -> [chosen_1, rejected_1, chosen_2, rejected_2] with prefixes stripped, `length` dropped."""
-    loop = _preference_loop(
+    encoder = _preference_encoder(
         'dpo', {
             'chosen_input_ids': [1, 2],
             'chosen_labels': [-100, 2],
@@ -80,7 +80,7 @@ def test_preference_interleave_order_and_prefix_strip():
             'rejected_labels': [-100, 4],
             'rejected_length': 2,
         })
-    features = loop._interleave([{'x': 0}, {'x': 1}])
+    features = encoder._interleave([{'x': 0}, {'x': 1}])
     assert len(features) == 4  # 2 pairs -> 4 interleaved features (even, as the DPO split needs)
     assert features[0] == {'input_ids': [1, 2], 'labels': [-100, 2]}  # chosen_1
     assert features[1] == {'input_ids': [3, 4], 'labels': [-100, 4]}  # rejected_1
@@ -91,17 +91,17 @@ def test_preference_interleave_order_and_prefix_strip():
 def test_preference_reward_pair_has_no_labels():
     """RM (seq_cls) encodes without labels -> the pair features carry only input_ids (RewardLoss reads
     logits, not logps)."""
-    loop = _preference_loop('rm', {'chosen_input_ids': [1, 2], 'rejected_input_ids': [3, 4]})
-    features = loop._interleave([{'x': 0}])
+    encoder = _preference_encoder('rm', {'chosen_input_ids': [1, 2], 'rejected_input_ids': [3, 4]})
+    features = encoder._interleave([{'x': 0}])
     assert features == [{'input_ids': [1, 2]}, {'input_ids': [3, 4]}]
-    assert loop._is_reward is True
+    assert encoder._is_reward is True
 
 
 def test_preference_missing_side_is_fatal():
     """A row that did not encode a rejected sequence must fail loudly (paired data is required)."""
-    loop = _preference_loop('dpo', {'chosen_input_ids': [1, 2], 'chosen_labels': [-100, 2]})
+    encoder = _preference_encoder('dpo', {'chosen_input_ids': [1, 2], 'chosen_labels': [-100, 2]})
     with pytest.raises(ValueError):
-        loop._interleave([{'x': 0}])
+        encoder._interleave([{'x': 0}])
 
 
 # ----------------------------------------------------------------------
@@ -141,7 +141,7 @@ def test_configure_frozen_adapter_binds_non_trainable_group():
 
 
 # ----------------------------------------------------------------------
-# configure_rlhf_loss mapping (needs twinkle's loss registry)
+# configure_rl_loss mapping (needs twinkle's loss registry)
 # ----------------------------------------------------------------------
 class _StubModel:
     """Captures the loss instance set via set_loss so the mapping can be asserted."""
@@ -164,14 +164,14 @@ class _StubModel:
     ('rm', 'RewardLoss'),
     ('ppo', 'GRPOLoss'),
 ])
-def test_configure_rlhf_loss_maps_type_to_loss(rl_type, cls_name):
+def test_configure_rl_loss_maps_type_to_loss(rl_type, cls_name):
     """Each rl_type resolves to its twinkle loss class (ppo's POLICY loss is the shared GRPO clip)."""
     pytest.importorskip('twinkle.loss')
     from swift.dev.config import RLConfig
-    from swift.dev.loss import configure_rlhf_loss
+    from swift.dev.loss import configure_rl_loss
 
     model = _StubModel()
-    configure_rlhf_loss(model, RLConfig(rl_type=rl_type))
+    configure_rl_loss(model, RLConfig(rl_type=rl_type))
     assert type(model.loss).__name__ == cls_name
 
 
@@ -194,16 +194,16 @@ def test_configure_ppo_value_loss_sets_value_loss():
 # step-aligned resume guard are covered end-to-end in test_eval_checkpoint.py.
 
 
-def test_configure_rlhf_loss_refuses_unknown():
+def test_configure_rl_loss_refuses_unknown():
     """An unknown rl_type is a ValueError (ppo is now supported, so it is no longer refused)."""
     pytest.importorskip('twinkle.loss')
     from swift.dev.config import RLConfig
-    from swift.dev.loss import configure_rlhf_loss
+    from swift.dev.loss import configure_rl_loss
 
     cfg = RLConfig(rl_type='dpo')
     cfg.rl_type = 'no_such_type'
     with pytest.raises(ValueError):
-        configure_rlhf_loss(_StubModel(), cfg)
+        configure_rl_loss(_StubModel(), cfg)
 
 
 def test_gkd_sft_alpha_only_applies_to_dataset_batches():
@@ -212,10 +212,10 @@ def test_gkd_sft_alpha_only_applies_to_dataset_batches():
     pytest.importorskip('twinkle.loss')
 
     from swift.dev.config import RLConfig
-    from swift.dev.loss import configure_rlhf_loss
+    from swift.dev.loss import configure_rl_loss
 
     model = _StubModel()
-    configure_rlhf_loss(model, RLConfig(rl_type='gkd', beta=0.5, sft_alpha=0.75))
+    configure_rl_loss(model, RLConfig(rl_type='gkd', beta=0.5, sft_alpha=0.75))
     labels = torch.tensor([[-100, 1, 2]])
     student_logits = torch.randn(1, 3, 4, requires_grad=True)
     teacher_logits = torch.randn(1, 3, 4)
@@ -237,10 +237,10 @@ def test_advanced_grpo_loss_is_serializable_and_combines_objectives():
     from twinkle.loss import Loss
 
     from swift.dev.config import RLConfig
-    from swift.dev.loss import configure_rlhf_loss
+    from swift.dev.loss import configure_rl_loss
 
     model = _StubModel()
-    configure_rlhf_loss(
+    configure_rl_loss(
         model,
         RLConfig(rl_type='grpo', chord_sft_dataset=['dummy'], sdar_loss_coef=0.25, sdar_gate_beta=2.0))
     assert isinstance(model.loss, Loss)
@@ -284,7 +284,7 @@ def test_grpo_tensor_alignment_and_reward_weights_keep_device():
 def test_reward_model_plugin_encodes_rows_and_scores_batch():
     """The scalar RM scorer uses its own template and the twinkle forward-only contract."""
     torch = pytest.importorskip('torch')
-    from swift.dev.rewards.reward import build_reward_model_plugins, compute_reward_model_scores
+    from swift.dev.rewards.reward import build_reward_model_plugins
 
     class Template:
 
@@ -309,47 +309,52 @@ def test_reward_model_plugin_encodes_rows_and_scores_batch():
     template = Template()
     plugins, names = build_reward_model_plugins([Model()], [template])
     rows = [{'messages': [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'a'}]}]
-    scores = compute_reward_model_scores(rows, plugins)
+    # The plugin meets the ``plugin(inputs=rows)`` contract that ModelReward wraps into a RewardScorer;
+    # scoring a batch returns one score per row (a 1-D column), which score_completions stacks into [N, n].
+    scores = plugins[0](inputs=rows)
 
-    assert scores.tolist() == [[2.0]]
+    assert scores.tolist() == [2.0]
     assert names == ['_ScalarRewardModelPlugin']
     assert template.rows == rows
     assert template.rows[0] is not rows[0]
 
 
 def test_grpo_combines_rule_and_reward_model_columns():
-    """Rule rewards precede RM rewards and RM inputs retain prompt, completion, and dataset columns."""
+    """Rule rewards precede RM rewards and every scorer sees the completion plus batched dataset columns."""
     from types import SimpleNamespace
 
     from swift.dev.recipe.grpo import GRPOLoop
 
-    captured = []
+    captured = {}
 
-    def rule(completions, solution):
+    def rule(completions, **columns):
         assert completions == ['answer']
-        assert solution == ['42']
+        assert columns['solution'] == ['42']
         return [1.5]
 
-    def reward_model(*, inputs):
-        captured.extend(inputs)
+    def reward_model(completions, **columns):
+        captured['completions'] = completions
+        captured['columns'] = columns
         return [2.5]
 
     loop = object.__new__(GRPOLoop)
     loop.prompts = [[{'role': 'user', 'content': 'question'}]]
-    loop.reward_funcs = [rule]
-    loop.reward_model_plugins = [reward_model]
-    loop.reward_fn = lambda _sample: -1.0
+    loop.reward_scorers = [rule, reward_model]
     sample = SimpleNamespace(prompt_id='0', decoded='answer', extra={'solution': '42'})
 
     rewards = loop._score([sample])
     assert rewards.tolist() == [[1.5, 2.5]]
-    assert captured == [{
-        'solution': '42',
-        'messages': [
+    # Every scorer sees the SAME batched columns -- the completion text plus the rebuilt conversation and the
+    # dataset extras -- and takes the ones it needs (a rule reads ``solution``, a model reward reads
+    # ``messages``). The rule column precedes the reward-model column, matching the declaration order.
+    assert captured['completions'] == ['answer']
+    assert captured['columns'] == {
+        'solution': ['42'],
+        'messages': [[
             {'role': 'user', 'content': 'question'},
             {'role': 'assistant', 'content': 'answer'},
-        ],
-    }]
+        ]],
+    }
 
 
 # REMOVED test_grpo_appends_gym_reward_and_weights_every_column (gym total_reward column; gym/env has no
@@ -366,11 +371,11 @@ def test_grpo_combines_rule_and_reward_model_columns():
 # ----------------------------------------------------------------------
 def _advanced_grpo_loss(**overrides):
     from swift.dev.config import RLConfig
-    from swift.dev.loss import configure_rlhf_loss
+    from swift.dev.loss import configure_rl_loss
 
     config = RLConfig(rl_type='grpo', **overrides)
     model = _StubModel()
-    configure_rlhf_loss(model, config)
+    configure_rl_loss(model, config)
     return model.loss
 
 

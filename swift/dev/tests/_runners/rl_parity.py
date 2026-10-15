@@ -1,7 +1,7 @@
 """Standalone entry that runs ONE offline-preference RLHF side and writes its per-step loss trajectory.
 
 Launched by ``test_parity_legacy.py`` as TWO separate plain-python subprocesses -- one per side (legacy
-``swift.rlhf_main`` -> HF/TRL ``<TYPE>Trainer``; dev ``run_rl`` -> Ray ``PreferenceLoop``) -- so their
+``swift.rlhf_main`` -> HF/TRL ``<TYPE>Trainer``; dev ``run_rl`` -> Ray ``run_dpo``) -- so their
 per-step losses can be compared. The two pipelines cannot share one interpreter: legacy builds a TRL
 trainer on the HF Trainer/accelerate stack while dev initializes a Ray session plus the twinkle runtime
 (worker actors, loss registry), and running both in one process risks cross-contaminating those globals.
@@ -77,7 +77,7 @@ def _run_legacy(data, out_dir, tuner, rl_type, steps, lr):
 
 
 def _run_dev(data, out_dir, tuner, rl_type, steps, lr):
-    """dev ``run_rl`` (Ray PreferenceLoop); per-step loss from the returned history.
+    """dev ``run_rl`` (Ray run_dpo); per-step loss from the returned history.
 
     Hyperparameters mirror ``_run_legacy`` exactly (that is the point). ``tuner='full'`` is NOT supported by
     dev (it raises ``NotImplementedError``: only lora/adalora/trainable_tokens), so a full-param parity cell

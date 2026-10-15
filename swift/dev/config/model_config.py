@@ -33,6 +33,11 @@ class ModelConfig:
     #: Attention implementation for the vision tower, which often supports a different set than the
     #: language tower named by ``attn_impl`` -- so they are chosen separately rather than shared.
     vit_attn_impl: Optional[str] = None
+    #: Vision preprocessing overrides (min_pixels, max_pixels, fps, video_max_pixels, etc.). Keys match
+    #: the lowercase constant names in the model's ``vision_process`` module. Takes priority over the
+    #: environment variables that ``get_env_args`` reads; env remains as fallback for backwards compat.
+    #: The CLI accepts a JSON object (same parsing as ``model_kwargs``).
+    vision_process_kwargs: Optional[Dict[str, Any]] = None
     #: Build only the language tower, dropping the vision one. For training a multimodal checkpoint on
     #: text alone, where the unused tower would still occupy memory.
     language_model_only: bool = False

@@ -1,6 +1,6 @@
 """Reranker (cross-encoder) assembly: run_reranker orchestration.
 
-Sibling of ``run_embedding``: same atomic-Config composition, builders, and SFTLoop. A reranker
+Sibling of ``run_embedding``: same atomic-Config composition, builders, and offline train loop. A reranker
 scores each query-document pair with a single relevance logit, so unlike embedding it reads
 ``outputs['logits']`` (``[n_seqs, 1]``), not a pooled+normalized vector. Two task_types share this
 recipe:
@@ -56,41 +56,12 @@ def run_reranker(
     contract, which is unchanged here); ``_save_final`` has the same test-oriented meaning. The loss
     is chosen by ``TrainConfig.loss`` (default 'pointwise_reranker').
     """
+    from swift.dev.loss import configure_reranker_loss
     from swift.dev.recipe.assembly import TrainAssembly
+    from swift.dev.recipe.offline_loop import run_offline
 
     TrainAssembly.initialize_twinkle(
         distributed_config, seed=train_config.seed, full_determinism=train_config.full_determinism)
-    return _run_reranker_body(
-        model_config,
-        template_config,
-        dataset_config,
-        train_config,
-        distributed_config,
-        checkpoint_config,
-        tuner_config,
-        logging_config,
-        quantize_config,
-        output_dir=output_dir,
-        _save_final=_save_final)
-
-
-def _run_reranker_body(
-    model_config: ModelConfig,
-    template_config: TemplateConfig,
-    dataset_config: DatasetConfig,
-    train_config: TrainConfig,
-    distributed_config: DistributedConfig,
-    checkpoint_config: CheckpointConfig,
-    tuner_config: Optional[TunerConfig] = None,
-    logging_config: Optional[LoggingConfig] = None,
-    quantize_config: Optional[QuantizeConfig] = None,
-    *,
-    output_dir: str = 'output',
-    _save_final: bool = True,
-) -> List[dict]:
-    """The backend-agnostic reranker orchestration body (see run_reranker for the contract)."""
-    from swift.dev.loss import configure_reranker_loss
-    from swift.dev.recipe.assembly import TrainAssembly
 
     # Unlike its siblings this recipe serves a SET of task_types, so it resolves and validates its own
     # instead of letting the assembly compare against a single constant; the resolved value is what
@@ -106,7 +77,7 @@ def _run_reranker_body(
         # process group.
         configure_reranker_loss(model, loss_type=train_config.loss or 'pointwise_reranker')
 
-    return TrainAssembly(
+    assembly = TrainAssembly(
         'run_reranker',
         model_config,
         template_config,
@@ -119,4 +90,6 @@ def _run_reranker_body(
         output_dir=output_dir,
         logging_config=logging_config,
         quantize_config=quantize_config,
-    ).fit(reranker_loss, save_final=_save_final)
+    )
+    assembly.build_objects(reranker_loss)
+    return run_offline(assembly, save_final=_save_final)

@@ -145,7 +145,7 @@ def test_interactive_dp_width_ray_reads_mesh(monkeypatch):
     class _Mesh:
         data_world_size = 1
 
-    monkeypatch.setattr(builders, 'build_device_mesh_if_dp', lambda dc: _Mesh())
+    monkeypatch.setattr(builders, 'build_parallel_mesh', lambda dc: _Mesh())
     assert _interactive_dp_width(DistributedConfig(mode='ray')) == 1
     # ray with dp=1 (tp=N) is a single driver -> the guard allows it
     _guard_interactive(DistributedConfig(mode='ray'), 'causal_lm')

@@ -1,8 +1,5 @@
 from __future__ import annotations
-import math
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
-
-from swift.dev.utils.logger import get_logger
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -19,9 +16,6 @@ if TYPE_CHECKING:
         TrainConfig,
         TunerConfig,
     )
-    from swift.dev.model import TrainableModel
-
-logger = get_logger()
 
 #: rl_types that consult a frozen reference model (the rest build their own baseline in the loss).
 _REF_TYPES = frozenset({'dpo', 'kto'})
@@ -68,14 +62,19 @@ def run_dpo(
     """Assemble and run an offline preference optimisation from atomic Configs. Returns loss history.
 
     Dispatches on ``rl_config.rl_type`` (one of dpo/kto/cpo/orpo/simpo/rm). The build order is
-    :class:`~swift.dev.recipe.assembly.TrainAssembly`'s, shared with every other recipe; what this one
-    owns is the preference data pipeline (raw rows -> chosen/rejected -> interleaved features), the
-    optional reference-logps forward that dpo/kto add, and :class:`PreferenceLoop` in place of SFTLoop.
-    Because the loop differs, the stages are driven one by one instead of through ``fit``.
+    :class:`~swift.dev.recipe.assembly.TrainAssembly`'s, shared with every other recipe; what this one owns is
+    the preference data pipeline (raw rows -> chosen/rejected -> interleaved features) and the optional
+    reference-logps forward that dpo/kto add, packaged as a :class:`PreferenceBatchEncoder` the flat offline
+    layer calls as its ``micro_step_kwargs`` seam. Because the ASSEMBLY differs (``encode=False`` to keep the
+    raw preference columns, the rlhf loss/metric, the reference build), the stages are driven one by one
+    instead of through ``build_objects``; the LOOP half then rides the same flat ``run_offline`` every
+    other offline recipe uses.
     """
-    from swift.dev.loss import configure_rlhf_loss, configure_rlhf_metrics
-    from swift.dev.builders.optimizer import configure_optimizer, resolve_max_grad_norm
+    from swift.dev.loss import configure_rl_loss, configure_rl_metrics
+    from swift.dev.builders.optimizer import configure_optimizer
     from swift.dev.recipe.assembly import TrainAssembly
+    from swift.dev.recipe.offline_loop import run_offline
+    from swift.dev.recipe._preference import PreferenceBatchEncoder, preference_log_line
 
     rl_type = rl_config.rl_type
     if rl_type not in _OFFLINE_TYPES:
@@ -119,12 +118,12 @@ def run_dpo(
     assembly.template.set_mode('kto' if rl_type == 'kto' else 'rlhf')
 
     # Raw (un-encoded) rows: build_dataset(encode=False) keeps the preference columns intact and hands
-    # back list[row] batches; PreferenceLoop encodes + interleaves each batch itself (the SFT encode
+    # back list[row] batches; PreferenceBatchEncoder encodes + interleaves each batch itself (the SFT encode
     # path only knows single-sequence causal_lm, not chosen/rejected pairs).
     assembly.build_dataset(encode=False)
     assembly.plan_steps()
     assembly.build_model()
-    configure_rlhf_loss(assembly.model, rl_config)
+    configure_rl_loss(assembly.model, rl_config)
     configure_optimizer(
         assembly.model,
         train_config,
@@ -135,48 +134,33 @@ def run_dpo(
     # Register the preference metric (DPOMetric for dpo/cpo/orpo/simpo; a no-op for the unpaired kto and the
     # seq_cls rm) AFTER the optimizer group exists. twinkle accumulates it inside forward_backward from the
     # ref_logps the loop forwards, so rewards/margins + accuracies ride calculate_metric into every record.
-    configure_rlhf_metrics(assembly.model, rl_config)
+    configure_rl_metrics(assembly.model, rl_config)
 
-    # W24: periodic evaluation is not wired for the offline preference loop -- PreferenceLoop stores
-    # eval_dataloader/eval_steps but fit() never evaluates, so a configured eval split would be silently
-    # ignored. Fail loudly until the val-loss eval path lands, rather than train without the eval asked for.
-    if assembly.eval_dataloader is not None and train_config.eval_steps:
-        raise NotImplementedError(
-            'Periodic evaluation is not implemented for offline preference training (dpo/kto/cpo/orpo/'
-            'simpo/rm) yet, so an eval split would be silently ignored. Remove the eval dataset / '
-            '--eval_steps for this run.')
-    assembly.loop = PreferenceLoop(
+    # The reference the loop probes for ref-logps: either a separate frozen model or the 'disable_lora'
+    # sentinel (the policy with its adapter disabled). Both are read with an empty-loss forward_only
+    # (compute_loss=False), so on Megatron neither routes a probe batch through the configured loss.
+    reference = _build_reference(
+        assembly.template, rl_config, tuner_config, distributed_config, remote_group=ref_remote_group)
+    calculate_kl = bool(rl_config.calculate_KL is not False)
+    # The preference batch encoder is the one leaf-specific piece the flat offline layer asks for: how a raw
+    # preference row becomes forward_backward/forward_only arguments (encode + interleave, the optional
+    # reference-logps forward, the KTO layout, the RM seq_cls task). Everything else -- periodic val-loss eval,
+    # best-model tracking, callbacks, hub push, save/resume -- is the SAME flat StepRunner / Evaluator /
+    # CheckpointSaver cadence the other offline recipes ride, wired from offline_component_kwargs(). The
+    # encoder's console line (DPO margin/accuracy) is injected as the recorder's log_formatter so the
+    # hook-free StepRunner still surfaces it.
+    encoder = PreferenceBatchEncoder(
         assembly.model,
-        assembly.dataloader,
         assembly.template,
         rl_type=rl_type,
-        reference=_build_reference(
-            assembly.template, rl_config, tuner_config, distributed_config, remote_group=ref_remote_group),
-        calculate_kl=bool(rl_config.calculate_KL is not False),
-        max_steps=assembly.total_opt_steps,
-        num_train_epochs=train_config.num_train_epochs,
-        gradient_accumulation_steps=assembly.ga,
-        max_grad_norm=resolve_max_grad_norm(train_config),
-        logging_config=logging_config,
-        output_dir=output_dir,
-        eval_dataloader=assembly.eval_dataloader,
-        eval_steps=train_config.eval_steps,
-        save_steps=checkpoint_config.save_steps,
-        no_save_optim=checkpoint_config.no_save_optim or checkpoint_config.save_only_model,
-        no_save_rng=checkpoint_config.no_save_rng or checkpoint_config.save_only_model,
-        safe_serialization=checkpoint_config.safe_serialization,
-        max_shard_size=checkpoint_config.max_shard_size,
-        save_total_limit=checkpoint_config.save_total_limit,
-        ignore_data_skip=checkpoint_config.ignore_data_skip,
-        manual_gc=bool(megatron_config and megatron_config.manual_gc),
-        manual_gc_eval=bool(megatron_config and megatron_config.manual_gc_eval),
-        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0)
-    if assembly.resume_dir:
-        assembly.loop.resume(assembly.resume_model())
-    history = assembly.loop.fit()
-    if _save_final:
-        assembly.save_final()
-    return history
+        reference=reference,
+        calculate_kl=calculate_kl,
+        gradient_accumulation_steps=assembly.ga)
+    return run_offline(
+        assembly,
+        save_final=_save_final,
+        micro_step_kwargs=encoder,
+        log_formatter=preference_log_line)
 
 
 def _build_reference(template: Any,
@@ -247,365 +231,3 @@ def _load_frozen_reference(template: Any,
     ref = build_model(
         ref_cfg, frozen_auxiliary_distributed_config(distributed_config, 1), remote_group=remote_group)
     return configure_frozen_adapter(ref, template, rl_config.ref_adapters, role='ref')
-
-
-class PreferenceLoop:
-    """Offline preference training loop: interleave chosen/rejected features, forward_backward, step.
-
-    Peer of :class:`SFTLoop` for the preference family. Per micro-batch it encodes the raw preference
-    rows, lays the features out interleaved (``[chosen_1, rejected_1, ...]``), optionally runs a
-    reference forward for ref-logps (dpo/kto), then a single policy forward_backward with those
-    ref-logps as a loss kwarg -- the same one-micro-batch-per-step GA shape SFTLoop uses on the
-    transformers backend, so the grad-sync gate lines up.
-    """
-
-    def __init__(
-        self,
-        model: TrainableModel,
-        dataloader: Any,
-        template: Any,
-        *,
-        rl_type: str,
-        reference: Optional[Any] = None,
-        calculate_kl: bool = True,
-        max_steps: int = -1,
-        num_train_epochs: float = 1.0,
-        gradient_accumulation_steps: int = 1,
-        max_grad_norm: float = 1.0,
-        logging_steps: int = 1,
-        logging_config: Optional['LoggingConfig'] = None,
-        save_steps: Optional[int] = None,
-        output_dir: str = 'output',
-        eval_dataloader: Any = None,
-        eval_steps: Optional[int] = None,
-        no_save_optim: bool = False,
-        no_save_rng: bool = False,
-        safe_serialization: bool = True,
-        max_shard_size: str = '5GB',
-        save_total_limit: Optional[int] = None,
-        ignore_data_skip: bool = False,
-        manual_gc: bool = False,
-        manual_gc_eval: bool = True,
-        manual_gc_steps: int = 0,
-    ):
-        self.model = model
-        self.dataloader = dataloader
-        self.template = template
-        self.rl_type = rl_type
-        self.reference = reference
-        #: KTO only: whether to estimate the z_KL reference point from a mismatched KL batch. Off
-        #: (``calculate_KL=False``) anchors the KTO loss at z_KL=0 and skips the two extra KL forwards.
-        self.calculate_kl = calculate_kl
-        self.gradient_accumulation_steps = max(1, gradient_accumulation_steps)
-        self.max_grad_norm = max_grad_norm
-        self.logging_steps = logging_config.logging_steps if logging_config is not None else logging_steps
-        self.logging_config = logging_config
-        from swift.dev.recipe.tracking import RunTracker
-        self.tracker = RunTracker(logging_config, output_dir)
-        self.save_steps = save_steps
-        self.output_dir = output_dir
-        self.num_train_epochs = num_train_epochs
-        self.max_steps = max_steps
-        self.eval_dataloader = eval_dataloader
-        self.eval_steps = eval_steps
-        self.no_save_optim = no_save_optim
-        self.no_save_rng = no_save_rng
-        self.safe_serialization = safe_serialization
-        self.max_shard_size = max_shard_size
-        self.save_total_limit = save_total_limit
-        self.ignore_data_skip = ignore_data_skip
-        self.manual_gc = manual_gc
-        self.manual_gc_eval = manual_gc_eval
-        self.manual_gc_steps = manual_gc_steps
-        if self.manual_gc_steps < 0:
-            raise ValueError('manual_gc_steps must be >= 0.')
-        self._start_epoch = 0
-        # RM scores a seq_cls head (no labels, no logps); the rest read per-token labels.
-        self._is_reward = rl_type == 'rm'
-        self.global_step = 0
-        self.micro_step = 0
-        self.history: list = []
-
-    def _reached_max(self) -> bool:
-        return self.max_steps > 0 and self.global_step >= self.max_steps
-
-    def _is_grad_sync_boundary(self) -> bool:
-        """twinkle's do_grad_sync gate, loop-side: ga==1 every step, else one micro-step late."""
-        ga = self.gradient_accumulation_steps
-        return ga == 1 or ((self.micro_step - 1) % ga == 0 and self.micro_step > 1)
-
-    @staticmethod
-    def _strip_side(encoded: dict, prefix: str) -> dict:
-        """Extract one ``<prefix>_*`` side of an encoded preference row into a standalone InputFeature.
-
-        ``length`` is per-side bookkeeping the collator does not consume; drop it so the feature is just
-        the model inputs (input_ids [+ labels/loss_scale]).
-        """
-        feature = {k[len(prefix) + 1:]: v for k, v in encoded.items() if k.startswith(prefix + '_')}
-        feature.pop('length', None)
-        return feature
-
-    def _encode_pair(self, row: dict) -> List[dict]:
-        """Encode one raw preference row into ``[chosen_feature, rejected_feature]``.
-
-        The template (mode rlhf) yields a single dict with ``chosen_*`` / ``rejected_*`` keys; we strip
-        the prefixes back into two standalone InputFeatures. RM (seq_cls) has no labels, so only
-        input_ids survive -- RewardLoss scores the head's logits, not logps.
-        """
-        encoded = self.template.encode(row)
-        pair = []
-        for prefix in ('chosen', 'rejected'):
-            feature = self._strip_side(encoded, prefix)
-            if 'input_ids' not in feature:
-                raise ValueError(f'preference row did not encode a {prefix!r} sequence (no {prefix}_input_ids). '
-                                 f'rl_type={self.rl_type} needs paired chosen/rejected data.')
-            pair.append(feature)
-        return pair
-
-    def _interleave(self, rows: List[dict]) -> List[dict]:
-        """Raw rows -> interleaved feature list ``[chosen_1, rejected_1, chosen_2, rejected_2, ...]``."""
-        features: List[dict] = []
-        for row in rows:
-            features.extend(self._encode_pair(row))
-        return features
-
-    @staticmethod
-    def _last_assistant_content(row: dict) -> Any:
-        """The completion of a KTO row: the content of its final (assistant) message."""
-        messages = row.get('messages') or []
-        if not messages or messages[-1].get('role') != 'assistant':
-            raise ValueError('KTO rows must end with an assistant completion (last message '
-                             f"role='assistant'); got messages={messages!r}.")
-        return messages[-1]['content']
-
-    def _encode_kto_batch(self, rows: List[dict]) -> Tuple[List[dict], List[dict], List[bool]]:
-        """Encode a KTO batch into ``(completion_features, kl_features, labels)``.
-
-        KTO is UNPAIRED: each row is a single completion with a binary ``label`` (desirable/undesirable),
-        so there is no chosen/rejected interleave. The loss also needs a reference point z_KL estimated
-        over a MISMATCHED "KL batch" -- each prompt paired with an unrelated completion. We build that
-        batch the way legacy's KTOPreprocessor does: rotate the completions by one within the batch, so
-        prompt_i is scored against completion_{i-1} (wraparound at the front). Setting ``rejected_response``
-        reuses the template's kto encode, which returns ``chosen_*`` (the completion), ``rejected_*`` (the
-        KL completion) and ``label`` in one pass.
-        """
-        completions = [self._last_assistant_content(row) for row in rows]
-        rotated = [completions[-1]] + completions[:-1]
-        completion_features: List[dict] = []
-        kl_features: List[dict] = []
-        labels: List[bool] = []
-        for row, kl_completion in zip(rows, rotated):
-            encoded = self.template.encode({**row, 'rejected_response': kl_completion})
-            completion = self._strip_side(encoded, 'chosen')
-            if 'input_ids' not in completion:
-                raise ValueError('KTO row did not encode a completion (no chosen_input_ids).')
-            completion_features.append(completion)
-            kl_features.append(self._strip_side(encoded, 'rejected'))
-            labels.append(bool(encoded['label']))
-        return completion_features, kl_features, labels
-
-    def _sequence_logps(self, logps: Any, features: List[dict]) -> Any:
-        """Reduce per-token forward logps ``[n, seq_len]`` to one summed sequence logp per feature.
-
-        ``forward_only`` returns full-sequence, right-padded logps in submission order, so each feature's
-        trainable (response) tokens sit at ``response_positions`` and right-padding never shifts them;
-        summing the row there gives ``log pi(y|x)`` for that completion (the same frame the loss mask uses).
-        """
-        import torch
-
-        from swift.dev.recipe._teacher import response_positions
-        values = torch.as_tensor(logps).detach().float()
-        if values.dim() == 1:
-            values = values.unsqueeze(0)
-        seq = []
-        for row, feature in zip(values, features):
-            positions = response_positions(feature)
-            row = row.reshape(-1)
-            seq.append(row[positions].sum() if positions else row.new_zeros(()))
-        return torch.stack(seq)
-
-    def _kto_kl_term(self, kl_features: List[dict]) -> Optional[float]:
-        """z_KL: the detached, clamped KL(pi||pi_ref) estimate over the mismatched KL batch.
-
-        Mirrors TRL/legacy KTO: ``z_KL = mean(seq_logp_pi - seq_logp_ref).clamp(min=0)``, detached -- a
-        reference POINT, never a gradient path. Both forwards are no-grad (``forward_only``): the policy
-        with its adapter active, the reference via the same ``_ref_logps`` mechanism the completion batch
-        uses. Returns None when ``calculate_KL`` is off, which KTOLoss reads as z_KL=0.
-        """
-        if not self.calculate_kl or not kl_features:
-            return None
-        policy_out = self.model.forward_only(inputs=kl_features)
-        policy_logps = policy_out.get('logps') if isinstance(policy_out, dict) else None
-        ref_logps = self._ref_logps(kl_features)
-        if policy_logps is None or ref_logps is None:
-            return None
-        policy_seq = self._sequence_logps(policy_logps, kl_features)
-        ref_seq = self._sequence_logps(ref_logps, kl_features)
-        return float((policy_seq - ref_seq).mean().clamp(min=0).detach())
-
-    def _kto_step_kwargs(self, rows: List[dict], kwargs: Dict[str, Any]) -> List[dict]:
-        """Assemble one KTO micro-batch: fill ``kwargs`` with its loss inputs, return the completion features.
-
-        KTO is unpaired, so the policy forward is over the single completions (not an interleave). The
-        KTOLoss needs three extras, all threaded through ``kwargs``: the per-example binary ``label``
-        (desirable/undesirable), the reference logps for the SAME completions (the log-ratio anchor), and
-        the detached ``z_kl`` reference point estimated over the mismatched KL batch. z_KL is omitted when
-        ``calculate_KL`` is off, which KTOLoss reads as z_KL=0.
-        """
-        completion_features, kl_features, labels = self._encode_kto_batch(rows)
-        ref_logps = self._ref_logps(completion_features)
-        if ref_logps is not None:
-            kwargs['ref_logps'] = ref_logps
-        z_kl = self._kto_kl_term(kl_features)
-        if z_kl is not None:
-            kwargs['z_kl'] = z_kl
-        kwargs['label'] = labels
-        return completion_features
-
-    def _ref_logps(self, features: List[dict]) -> Optional[Any]:
-        """Per-token reference logps for this batch, or None when the type is reference-free.
-
-        LoRA reference == the policy with its adapter disabled (no second model); full fine-tuning
-        reference == the separate frozen model. Both are read with forward_only, which fills
-        ``outputs['logps']`` for a logps-consuming loss.
-        """
-        if self.reference is None:
-            return None
-        if self.reference == 'disable_lora':
-            outputs = self.model.forward_only(inputs=features, disable_lora=True)
-        else:
-            outputs = self.reference.forward_only(inputs=features)
-        return outputs.get('logps')
-
-    def fit(self) -> list:
-        """Run the preference loop; returns the per-optimizer-step loss history."""
-        from swift.dev.recipe.train_loop import finish_manual_gc, start_manual_gc
-
-        ga = self.gradient_accumulation_steps
-        epochs = math.ceil(self.num_train_epochs) if self.max_steps <= 0 else 10**9
-        gc_was_enabled = start_manual_gc(self.manual_gc)
-        try:
-            for epoch in range(self._start_epoch, epochs):
-                if self._reached_max():
-                    break
-                if hasattr(self.dataloader, 'set_epoch'):
-                    self.dataloader.set_epoch(epoch)
-                for rows in self.dataloader:
-                    self.micro_step += 1
-                    kwargs: Dict[str, Any] = {'gradient_accumulation_steps': ga}
-                    if self._is_reward:
-                        # RM trains a num_labels=1 seq_cls score head, not a vocab LM head. The forward must
-                        # be told task='seq_cls' so the backend pools the head's per-token output to one
-                        # [B, 1] score per sequence (megatron does this in forward_step's seq_cls branch;
-                        # transformers' *ForSequenceClassification pools internally). Without it the megatron
-                        # forward defaults to task='causal_lm' and RewardLoss reads raw [B, T, 1] per-token
-                        # scores -> garbage. Same explicit task the RM inference paths pass (reward.py /
-                        # run_ppo.py), so both backends are driven identically (basic principle 1).
-                        kwargs['task'] = 'seq_cls'
-                    if self.rl_type == 'kto':
-                        features = self._kto_step_kwargs(list(rows), kwargs)
-                    else:
-                        features = self._interleave(list(rows))
-                        if not self._is_reward:
-                            ref_logps = self._ref_logps(features)
-                            if ref_logps is not None:
-                                kwargs['ref_logps'] = ref_logps
-                    self.model.forward_backward(inputs=features, **kwargs)
-                    is_boundary = self._is_grad_sync_boundary()
-                    self.model.clip_grad_and_step(max_grad_norm=self.max_grad_norm, gradient_accumulation_steps=ga)
-                    if is_boundary:
-                        self._record_step()
-                        if self._reached_max():
-                            break
-                if self.history:
-                    self.tracker.log(self.history[-1], self.global_step, epoch_end=True)
-            return self.history
-        finally:
-            finish_manual_gc(gc_was_enabled)
-            self.tracker.close()
-
-    def _record_step(self) -> None:
-        """Count one optimizer step + log / periodic save (mirrors TrainLoop._record_step's unified merge).
-
-        PreferenceLoop is a standalone loop (not a TrainLoop subclass), so it carries its own copy of the
-        record assembly -- but the SAME shape: merge the whole twinkle.metric output (LossMetric's
-        loss/grad_norm plus the registered DPOMetric's logps/chosen|rejected and rewards/margins|accuracies),
-        coerced to numeric scalars, then re-pin ``loss`` as the authoritative normalized float.
-        """
-        from swift.dev.recipe.train_loop import collect_manual_gc
-        from swift.dev.recipe.tracking import coerce_metric_scalars
-
-        self.global_step += 1
-        collect_manual_gc(self.manual_gc, self.manual_gc_steps, self.global_step)
-        metrics = self.model.calculate_metric(is_training=True)
-        loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
-        record = {'step': self.global_step}
-        record.update(coerce_metric_scalars(metrics))
-        record['loss'] = loss
-        record = self.tracker.log(record, self.global_step)
-        self.history.append(record)
-        should_log = (self.tracker.should_log(self.global_step) if self.logging_config is not None else
-                      bool(self.logging_steps and self.global_step % self.logging_steps == 0))
-        if should_log:
-            self._log_step(record, loss)
-        if self.save_steps and self.global_step % self.save_steps == 0:
-            self.save(f'checkpoint-{self.global_step}')
-
-    def _log_step(self, record: dict, loss: float) -> None:
-        """Console head signal for the preference loops: loss plus the DPO reward margin and accuracy.
-
-        The margin (chosen-reward minus rejected-reward) and the accuracy (fraction of pairs where chosen
-        wins) are what show preference learning converging -- a rising margin and an accuracy climbing
-        toward 100% -- which the loss alone hides. Both come from the registered DPOMetric; they are absent
-        for the unpaired kto and the seq_cls rm, so those fall back to loss + grad_norm.
-        """
-        parts = [f'step {self.global_step}', f'loss={loss:.4f}']
-        margins = record.get('rewards/margins')
-        if margins is not None:
-            parts.append(f'rewards/margins={margins:.4f}')
-        accuracies = record.get('rewards/accuracies')
-        if accuracies is not None:
-            parts.append(f'rewards/accuracies={accuracies:.1f}%')
-        gn = record.get('grad_norm')
-        if gn is not None:
-            parts.append(f'grad_norm={gn:.4f}')
-        logger.info('  '.join(parts))
-
-    def save(self, name: str = 'checkpoint-final', *, is_final: bool = False) -> str:
-        """Persist the policy + training state via twinkle's native save (the reference is not saved).
-
-        ``is_final`` is accepted for the shared loop.save contract (``TrainAssembly.save_final`` passes it
-        to gate hub-push 'end'); this loop carries no hub_pusher, so it is inert here.
-        """
-        from swift.dev.recipe.train_loop import save_training_checkpoint
-
-        consumed = self._dataloader_state().get('consumed_train_samples', 0)
-        return save_training_checkpoint(
-            self.model,
-            name,
-            output_dir=self.output_dir,
-            consumed_train_samples=consumed,
-            no_save_optim=self.no_save_optim,
-            no_save_rng=self.no_save_rng,
-            safe_serialization=self.safe_serialization,
-            max_shard_size=self.max_shard_size,
-            save_total_limit=self.save_total_limit)
-
-    def _dataloader_state(self) -> dict:
-        get_state = getattr(self.dataloader, 'get_state', None)
-        return get_state() if get_state is not None else {}
-
-    def resume(self, state: dict) -> None:
-        """Resume optimizer-step counters and the preference dataloader position."""
-        from swift.dev.recipe.train_loop import num_optimizer_steps
-
-        cur_step = int(state['cur_step'])
-        self.micro_step = cur_step
-        self.global_step = num_optimizer_steps(cur_step, self.gradient_accumulation_steps)
-        if self.ignore_data_skip:
-            self._start_epoch = 0
-            return
-        consumed = int(state.get('consumed_train_samples', 0))
-        if hasattr(self.dataloader, 'skip_consumed_samples'):
-            self.dataloader.skip_consumed_samples(consumed)
-        self._start_epoch = self._dataloader_state().get('resume_epoch', 0)

@@ -9,7 +9,7 @@ WIRING (how many candidates, which columns, does the file round-trip), never abo
 
 Two backends live here:
   - ``transformers``: the reach backend, an in-process HF generate. ``distributed_config=None`` keeps it
-    single-process (a ``DistributedConfig()`` would ask ``build_device_mesh`` for ``nproc_per_node``), and
+    single-process (a ``DistributedConfig()`` would ask ``build_parallel_mesh`` for ``nproc_per_node``), and
     ``temperature>0`` is required because HF greedy decoding rejects ``num_return_sequences>1``.
   - ``vllm``: the throughput backend, gated behind ``importorskip`` + a real engine build.
 

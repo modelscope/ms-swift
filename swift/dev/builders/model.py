@@ -34,6 +34,14 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
     import torch
     from swift.model import get_model_processor
 
+    # Vision preprocessing overrides: write to env so the loader's patch_qwen_vl_utils (which reads via
+    # get_env_args) picks them up. Env is the correct channel here -- it crosses Ray worker boundaries
+    # naturally (runtime_env inheritance) and the patch runs inside the worker's process_tokenizer.
+    if model_config.vision_process_kwargs:
+        import os
+        for key, value in model_config.vision_process_kwargs.items():
+            os.environ[key.upper()] = str(value)
+
     kwargs = dict(model_config.model_kwargs or {})
     values = {
         'model_type': model_config.model_type,
@@ -61,45 +69,55 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
     return get_model_processor(model_config.model, load_model=load_model, **kwargs)
 
 
-def build_hf_device_mesh(distributed_config: DistributedConfig,
-                         sequence_parallel_size: int) -> Optional['DeviceMesh']:
-    """HF-backend local-mode DeviceMesh for Ulysses sequence parallelism.
+def build_dp_mesh(distributed_config: DistributedConfig,
+                  sequence_parallel_size: int = 1) -> Optional['DeviceMesh']:
+    """The transformers-backend data-parallel DeviceMesh (dp x ulysses), for both local and ray modes.
 
-    Returns None unless SP is actually on in local (torchrun) mode -- an sp=1 run must reach
-    TransformersModel with no mesh, exactly as before (see the load-bearing note in
-    _build_transformers_model on why the default-mesh substitution is deliberate there).
+    Merges the former local and ray DP-mesh builders into one entry:
+    the product is identical in shape (dp x ulysses), and the three differences are all driven by
+    ``distributed_config.mode``:
 
-    Unlike build_device_mesh (Megatron: a pure function of the config, nproc_per_node-driven),
-    this reads the world size the same place twinkle's local mode does -- Platform.get_world_size()
-    (the torchrun WORLD_SIZE env), NOT torch.distributed, which twinkle initializes lazily and which
-    is therefore not up yet when run_sft builds the mesh.
+    * **World source**: local reads ``Platform.get_world_size()`` (the torchrun WORLD_SIZE env); ray reads
+      ``nproc_per_node`` (the DeviceGroup rank count).
+    * **None strategy**: local with sp=1 and no ``parallel_spec`` returns None (TransformersModel must
+      receive no mesh in-process); ray always returns a mesh (infra rejects ``device_mesh=None`` for
+      Ray-remote objects).
+    * **parallel_spec**: both modes now consume it (fixes the former ray path silently dropping spec).
 
-    Distinct from the Megatron mesh on purpose: no tp/pp/cp, just dp x ulysses. Note ulysses is
-    NOT a mesh dim in twinkle -- the dp dim spans ALL ranks (dp_size=world) and ``data_world_size``
-    derives world/ulysses from it (utils/device_mesh.py), so SP peers share one data rank and
-    receive identical samples.
-
-    With ``parallel_spec`` set, the string is parsed and handed straight to DeviceMesh over the torchrun
-    world instead -- from_sizes raises if the dims do not fill it and TransformersModel rejects any
-    dimension it does not implement, so there is no validation layer here.
+    Ulysses is NOT a separate mesh dim: dp spans ALL ranks and ``data_world_size`` derives world/ulysses,
+    so SP peers share one data rank and receive identical samples.
     """
+    from twinkle import DeviceMesh
+
     spec = distributed_config.parallel_spec
-    if spec:
-        from twinkle import DeviceMesh
+    is_ray = distributed_config.mode == 'ray'
+
+    # World size source depends on mode.
+    if is_ray:
+        world = distributed_config.nproc_per_node
+        if world is None:
+            raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the 'model' "
+                             'DeviceGroup and its data-parallel mesh). Pass it explicitly -- there is no default.')
+    else:
         from twinkle.utils import Platform
-        return DeviceMesh.from_spec(spec, world_size=Platform.get_world_size())
-    if sequence_parallel_size <= 1 or distributed_config.mode != 'local':
+        world = Platform.get_world_size()
+
+    # parallel_spec takes priority over the integer sp field (both modes).
+    if spec:
+        return DeviceMesh.from_spec(spec, world_size=world)
+
+    # No spec: build the dp x ulysses mesh from integers.
+    if not is_ray and sequence_parallel_size <= 1:
+        # Local + sp=1: no mesh (TransformersModel stays in-process, the deliberate default).
         return None
 
-    from twinkle import DeviceMesh
-    from twinkle.utils import Platform
-
-    world = Platform.get_world_size()
-    if world < 2:
-        raise ValueError(f'sequence_parallel_size={sequence_parallel_size} requires torchrun (WORLD_SIZE>=2); '
-                         'a single process has no ranks to split a sequence across.')
-    if world % sequence_parallel_size != 0:
-        raise ValueError(f'world_size={world} is not divisible by sequence_parallel_size={sequence_parallel_size}.')
+    if sequence_parallel_size > 1:
+        if world < 2:
+            raise ValueError(f'sequence_parallel_size={sequence_parallel_size} requires WORLD_SIZE>=2; '
+                             'a single process has no ranks to split a sequence across.')
+        if world % sequence_parallel_size != 0:
+            raise ValueError(f'world_size={world} is not divisible by sequence_parallel_size='
+                             f'{sequence_parallel_size}.')
     return DeviceMesh.from_sizes(world_size=world, dp_size=world, ulysses_size=sequence_parallel_size)
 
 
@@ -131,7 +149,7 @@ def build_model(model_config: ModelConfig,
     DistributedConfig.backend=='megatron' builds a MegatronModel (via the selected bridge
     backend); otherwise a TransformersModel. twinkle self-builds weights on the correct rank.
 
-    ``device_mesh`` is the HF-local Ulysses SP mesh from :func:`build_hf_device_mesh` (None when
+    ``device_mesh`` is the HF-local Ulysses SP mesh from :func:`build_dp_mesh` (None when
     SP is off); it is forwarded to the TransformersModel build only and must NOT be set for the
     Megatron backend, which derives its own mesh from DistributedConfig.
 
@@ -370,7 +388,7 @@ def _apply_unsloth_kwargs(kwargs: dict, model_config: ModelConfig, tuner_config:
 
 def _apply_hf_sp_mesh(kwargs: dict, device_mesh: Optional['DeviceMesh'],
                       distributed_config: DistributedConfig) -> None:
-    """Install the Ulysses SP mesh (from build_hf_device_mesh) on a local-mode transformers build.
+    """Install the Ulysses SP mesh (from build_dp_mesh) on a local-mode transformers build.
 
     A no-op for sp=1 (device_mesh is None) and for mode='ray', where validate_configs has already
     rejected SP>1 and placement is _apply_ray_placement's business.
@@ -379,40 +397,7 @@ def _apply_hf_sp_mesh(kwargs: dict, device_mesh: Optional['DeviceMesh'],
         kwargs['device_mesh'] = device_mesh
 
 
-def build_ray_dp_mesh(distributed_config: DistributedConfig, sequence_parallel_size: int = 1) -> 'DeviceMesh':
-    """The data-parallel DeviceMesh a transformers model group spans under mode='ray'.
-
-    The transformers backend has no TP/PP weight sharding, so its Ray DeviceGroup is data parallel
-    over every rank. Both the training model (see :func:`_apply_ray_placement`) and any engine
-    colocated in the same 'model' group -- the vLLM/SGLang generative-eval sampler -- must carry this
-    SAME mesh: a Ray-remote twinkle object built with ``device_mesh=None`` and no global default is
-    rejected (infra raises "Set device_mesh=DeviceMesh(...) to enable ray"), and a colocated engine
-    that disagreed with the model's mesh would slice its ``sample`` inputs across a different rank
-    layout than the weights it syncs from that model.
-
-    ``sequence_parallel_size`` is the HF Ulysses degree (TemplateConfig.sequence_parallel_size), the ray
-    counterpart of what :func:`build_hf_device_mesh` does for local/torchrun. Ulysses is NOT an extra mesh
-    dim: the dp dim still spans ALL ranks (``dp_size=nproc``) and ``data_world_size`` derives
-    ``nproc/ulysses`` from it, so SP peers share one data rank and receive identical samples (each computes
-    a slice of every sequence). Every consumer of this mesh for one run -- model placement, the colocated
-    sampler, the global default mesh, and the ``train_batch_size = per_device * data_world_size`` formula --
-    must pass the SAME ``sequence_parallel_size`` or the layouts disagree; default 1 keeps the pure-DP
-    callers (SP off) bit-for-bit unchanged.
-
-    Distinct from :func:`build_device_mesh_if_dp`, which deliberately returns None for a single DP
-    rank so an in-process (non-Ray) engine stays mesh-free; a Ray group needs an explicit mesh even
-    at dp==1, which is exactly the nproc_per_node==1 colocate-eval case.
-    """
-    from twinkle import DeviceMesh
-    nproc = distributed_config.nproc_per_node
-    if nproc is None:
-        raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the 'model' "
-                         'DeviceGroup and its data-parallel mesh). Pass it explicitly -- there is no default.')
-    if sequence_parallel_size > 1:
-        if nproc % sequence_parallel_size != 0:
-            raise ValueError(f'nproc_per_node={nproc} is not divisible by sequence_parallel_size='
-                             f'{sequence_parallel_size}: SP peers must evenly partition the data-parallel ranks.')
-    return DeviceMesh.from_sizes(world_size=nproc, dp_size=nproc, ulysses_size=sequence_parallel_size)
+# Backwards-compatible alias removed: all callers use build_dp_mesh directly.
 
 
 def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig,
@@ -433,7 +418,7 @@ def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig,
     if distributed_config.mode == 'local':
         return
     if device_mesh is None:
-        device_mesh = build_ray_dp_mesh(distributed_config)
+        device_mesh = build_dp_mesh(distributed_config)
     kwargs['device_mesh'] = device_mesh
     kwargs['remote_group'] = remote_group
     if instance_id is not None:
@@ -674,7 +659,7 @@ def _build_transformers_model(model_config: ModelConfig,
     # 2-GPU aggregation test that pins the result).
     #
     # The one opt-in exception is Ulysses sequence parallelism: run_sft passes an explicit mesh from
-    # build_hf_device_mesh (dp x ulysses over the torchrun world) when sequence_parallel_size > 1,
+    # build_dp_mesh (dp x ulysses over the torchrun world) when sequence_parallel_size > 1,
     # which switches twinkle's TransformersModel into its SP path (_enable_sp, transformers.py).
     _apply_hf_sp_mesh(kwargs, device_mesh, distributed_config)
     #
@@ -992,19 +977,32 @@ def _apply_fp8_kwargs(kwargs: dict, model_config: ModelConfig, strict: set) -> N
             strict.add(target)
 
 
-def build_device_mesh(distributed_config: DistributedConfig):
-    """DistributedConfig -> the Megatron DeviceMesh (parallel layout).
+def build_megatron_mesh(distributed_config: Optional[DistributedConfig], *, none_if_single_rank: bool = False):
+    """DistributedConfig -> DeviceMesh from the declared parallel sizes (tp/pp/cp/ep/etp/vpp/sp).
+
+    Backend-agnostic: a transformers config has tp=pp=cp=1 (all defaults), so this naturally degenerates
+    to a pure DP mesh. The infer/deploy/sampler paths use it to get the correct DP coordinate regardless
+    of backend; the megatron training path uses it for the full parallel layout.
 
     A pure function of the config: it reads only the declared sizes, never torch.distributed or
     Megatron's mpu, so it can be called before anything is initialized.
+
+    ``none_if_single_rank=True`` returns None when the resulting mesh has data_world_size <= 1, or when
+    the config is None / has no world size and no parallel_spec (a non-distributed run). The
+    inference/sampling recipes use this so an in-process engine is not forced into a Ray layout.
     """
+    if none_if_single_rank:
+        if distributed_config is None:
+            return None
+        if distributed_config.nproc_per_node is None and not distributed_config.parallel_spec:
+            return None
     from twinkle import DeviceMesh
     spec = distributed_config.parallel_spec
     if spec:
-        # A parallel_spec string is a lossless alternative to the integer size fields. Parse it and hand
-        # the dims straight to DeviceMesh: from_sizes raises if they do not fill nproc_per_node exactly,
-        # and each model backend rejects any dimension it does not implement. No validation layer here.
-        return DeviceMesh.from_spec(spec, world_size=distributed_config.nproc_per_node)
+        mesh = DeviceMesh.from_spec(spec, world_size=distributed_config.nproc_per_node)
+        if none_if_single_rank and getattr(mesh, 'data_world_size', 1) <= 1:
+            return None
+        return mesh
 
     tp = distributed_config.tensor_model_parallel_size
     pp = distributed_config.pipeline_model_parallel_size
@@ -1039,27 +1037,11 @@ def build_device_mesh(distributed_config: DistributedConfig):
     # strategy.sequence_parallel -> device_mesh.sequence_parallel). Only meaningful with tp > 1.
     if distributed_config.sequence_parallel:
         mesh_kwargs['sequence_parallel'] = True
-    return DeviceMesh.from_sizes(**mesh_kwargs)
-
-
-def build_device_mesh_if_dp(distributed_config: Optional[DistributedConfig]) -> Any:
-    """A DeviceMesh only when DP > 1: a single-process run wants a plain in-process engine.
-
-    The inference/sampling recipes share this so "when does a sampler get a device mesh" has one
-    answer: ``None`` for no config or a single data-parallel rank (the engine stays in-process), the
-    mesh only when there are actually multiple DP ranks to slice across.
-    """
-    if distributed_config is None:
+    mesh = DeviceMesh.from_sizes(**mesh_kwargs)
+    if none_if_single_rank and getattr(mesh, 'data_world_size', 1) <= 1:
         return None
-    # No world size and no explicit layout means the run was not launched distributed: a single
-    # in-process engine, which is definitionally not multi-rank DP. Return None here rather than let
-    # build_device_mesh raise for the missing nproc_per_node -- the recipes call this on a default
-    # DistributedConfig (e.g. a programmatic run_deploy/run_infer that never went through
-    # process_and_validate_configs), and every caller already reads None as "no mesh, dp_size 1".
-    if distributed_config.nproc_per_node is None and not distributed_config.parallel_spec:
-        return None
-    mesh = build_device_mesh(distributed_config)
-    return mesh if mesh is not None and getattr(mesh, 'data_world_size', 1) > 1 else None
+    return mesh
+
 
 _NON_MODEL_MEGATRON_FIELDS = {
     'attention_backend',
@@ -1168,7 +1150,7 @@ def _build_megatron_model(model_config: ModelConfig,
     if not model_config.model:
         raise ValueError('ModelConfig.model (path/id) is required')
 
-    device_mesh = build_device_mesh(distributed_config)
+    device_mesh = build_megatron_mesh(distributed_config)
     model_loader = _resolve_model_loader(model_config)
     hf_config = _build_hf_config(model_config, model_loader)
 

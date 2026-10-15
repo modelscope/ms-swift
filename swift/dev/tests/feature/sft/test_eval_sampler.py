@@ -2,7 +2,7 @@
 """评测方式 (维度 6) x sampler (维度 7) x 启动方式 (维度 8) -- the in-training eval paths.
 
 ``run_sft`` scores a run two ways, chosen by ``TrainConfig.predict_with_generate`` and dispatched in
-``SFTLoop.evaluate`` (``train_loop.py``):
+``Evaluator.evaluate`` (``swift/dev/recipe/evaluator.py``):
 
   - **validation-loss** (``predict_with_generate=False``, the default): ``_evaluate_loss`` runs
     ``forward_only`` over the ``eval_dataloader`` that ``split_dataset_ratio`` / ``val_dataset`` carved
@@ -108,27 +108,29 @@ def _ensure_nltk_punkt():
 
 
 @contextmanager
-def _captured_loop():
-    """Capture the ``SFTLoop`` the assembly builds, so a test can read its ``eval_history`` afterwards.
+def _captured_evaluator():
+    """Capture the ``Evaluator`` run_offline builds, so a test can read its ``eval_history`` afterwards.
 
-    ``run_sft`` returns only the training loss history; the eval metrics live on the loop it built and
-    discarded. Wrapping ``build_loop`` observes the REAL loop (the same technique ``hf_dp.py`` uses to
-    read the model's mesh off a discarded assembly) rather than stubbing ``evaluate``.
+    ``run_sft`` returns only the training loss history; the eval metrics live on the Evaluator it built and
+    discarded. Wrapping the ``Evaluator`` class observes the REAL component (the same technique ``hf_dp.py``
+    uses to read the model's mesh off a discarded assembly) rather than stubbing ``evaluate``. run_offline
+    imports Evaluator from its module at call time, so patching the module attribute is picked up.
     """
-    import swift.dev.recipe.assembly as assembly_mod
+    import swift.dev.recipe.evaluator as evaluator_mod
     captured = {}
-    original = assembly_mod.TrainAssembly.build_loop
+    original = evaluator_mod.Evaluator
 
-    def capturing(self, *args, **kwargs):
-        loop = original(self, *args, **kwargs)
-        captured['loop'] = loop
-        return loop
+    class CapturingEvaluator(original):
 
-    assembly_mod.TrainAssembly.build_loop = capturing
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            captured['evaluator'] = self
+
+    evaluator_mod.Evaluator = CapturingEvaluator
     try:
         yield captured
     finally:
-        assembly_mod.TrainAssembly.build_loop = original
+        evaluator_mod.Evaluator = original
 
 
 def _evalscope_reports(out_dir):
@@ -160,7 +162,7 @@ def test_val_loss_eval_single_card(tmp_path, text_model_path):
 
     Single card, transformers backend. ``split_dataset_ratio=0.25`` carves 2 of the 8 rows into a val
     set; ``eval_steps=1`` makes ``evaluate()`` run every optimizer step plus a final pass. The assertion
-    reads ``eval_loss`` off the captured loop's ``eval_history`` -- a real number produced by
+    reads ``eval_loss`` off the captured evaluator's ``eval_history`` -- a real number produced by
     ``_evaluate_loss``'s ``forward_only`` + ``calculate_metric`` over the eval dataloader, not merely a
     green run.
     """
@@ -175,7 +177,7 @@ def test_val_loss_eval_single_card(tmp_path, text_model_path):
     out_dir = str(tmp_path / 'out')
     _write_train_jsonl(data_path)
 
-    with _captured_loop() as captured:
+    with _captured_evaluator() as captured:
         history = run_sft(
             ModelConfig(model=text_model_path, torch_dtype='bfloat16'),
             TemplateConfig(template='qwen2_5', max_length=256),
@@ -197,7 +199,7 @@ def test_val_loss_eval_single_card(tmp_path, text_model_path):
             output_dir=out_dir)
 
     losses = _assert_trained(history)
-    eval_history = captured['loop'].eval_history
+    eval_history = captured['evaluator'].eval_history
     assert eval_history, 'no eval ran: split_dataset_ratio/eval_steps did not wire the val-loss path'
     eval_losses = [e['eval_loss'] for e in eval_history]
     assert all(v == v and abs(v) != float('inf') for v in eval_losses), f'non-finite eval_loss: {eval_losses}'
@@ -247,7 +249,7 @@ def test_val_loss_eval_under_torchrun(tmp_path):
 
 
 def _run_generative(tmp_path, text_model_path, *, backend, distributed_config, per_device_batch):
-    """One ``predict_with_generate=True`` run over the hermetic general_qa; returns ``(history, loop, out)``."""
+    """One ``predict_with_generate=True`` run over the hermetic general_qa; returns ``(history, evaluator, out)``."""
     from swift.dev.config import (CheckpointConfig, DatasetConfig, ModelConfig, TemplateConfig, TrainConfig,
                                   TunerConfig)
     from swift.dev.recipe import run_sft
@@ -259,7 +261,7 @@ def _run_generative(tmp_path, text_model_path, *, backend, distributed_config, p
     _write_train_jsonl(data_path)
     _write_qa_jsonl(qa_path)
 
-    with _captured_loop() as captured:
+    with _captured_evaluator() as captured:
         history = run_sft(
             ModelConfig(model=text_model_path, torch_dtype='bfloat16'),
             TemplateConfig(template='qwen2_5', max_length=256),
@@ -287,13 +289,13 @@ def _run_generative(tmp_path, text_model_path, *, backend, distributed_config, p
             CheckpointConfig(),
             tuner_config=TunerConfig(tuner='lora'),
             output_dir=out_dir)
-    return history, captured['loop'], out_dir
+    return history, captured['evaluator'], out_dir
 
 
-def _assert_generative_scored(history, loop, out_dir, label):
+def _assert_generative_scored(history, evaluator, out_dir, label):
     """The generative post-condition: EvalScope really ran and wrote a benchmark report."""
     _assert_trained(history)
-    eval_history = loop.eval_history
+    eval_history = evaluator.eval_history
     assert eval_history, f'{label}: no generative eval ran'
     # _evaluate_generate stores the raw EvalScope summary under 'eval_report' on rank 0 / the driver.
     assert any('eval_report' in e for e in eval_history), f'{label}: eval_history carries no EvalScope report'
@@ -313,17 +315,17 @@ def test_generative_eval_transformers_sampler_single_card(tmp_path, text_model_p
     The sampler is a facade over the live LoRA module (``TransformersSampler(model=..)``): generation runs
     in-place on the weights being trained, no second copy. This is the end-to-end gate for the whole
     generative wiring -- ``_generative_eval_kwargs`` -> ``_build_eval_sampler`` -> ``_evaluate_generate``
-    -> ``run_evalscope`` -> EvalScope Native -- which builds a TaskConfig from TrainConfig. A green run
+    -> ``run_evaluator`` -> EvalScope Native -- which builds a TaskConfig from TrainConfig. A green run
     with a real report on disk means that chain is intact.
     """
     if not torch.cuda.is_available():
         pytest.skip('CUDA not available')
 
     from swift.dev.config import DistributedConfig
-    history, loop, out_dir = _run_generative(
+    history, evaluator, out_dir = _run_generative(
         tmp_path, text_model_path, backend='transformers', distributed_config=DistributedConfig(),
         per_device_batch=1)
-    reports = _assert_generative_scored(history, loop, out_dir, 'generative/transformers/single')
+    reports = _assert_generative_scored(history, evaluator, out_dir, 'generative/transformers/single')
     print(f'\ngenerative transformers single: reports={[os.path.basename(r) for r in reports]}')
 
 
@@ -341,13 +343,13 @@ def test_generative_eval_transformers_sampler_ray(tmp_path, text_model_path):
         pytest.skip('needs >=2 GPUs')
 
     from swift.dev.config import DistributedConfig
-    history, loop, out_dir = _run_generative(
+    history, evaluator, out_dir = _run_generative(
         tmp_path,
         text_model_path,
         backend='transformers',
         distributed_config=DistributedConfig(mode='ray', nproc_per_node=2),
         per_device_batch=2)
-    reports = _assert_generative_scored(history, loop, out_dir, 'generative/transformers/ray')
+    reports = _assert_generative_scored(history, evaluator, out_dir, 'generative/transformers/ray')
     print(f'\ngenerative transformers ray: reports={[os.path.basename(r) for r in reports]}')
 
 
@@ -368,11 +370,11 @@ def test_generative_eval_vllm_sampler_ray(tmp_path, text_model_path):
     pytest.importorskip('vllm', reason='vllm not installed')
 
     from swift.dev.config import DistributedConfig
-    history, loop, out_dir = _run_generative(
+    history, evaluator, out_dir = _run_generative(
         tmp_path,
         text_model_path,
         backend='vllm',
         distributed_config=DistributedConfig(mode='ray', nproc_per_node=1),
         per_device_batch=1)
-    reports = _assert_generative_scored(history, loop, out_dir, 'generative/vllm/ray')
+    reports = _assert_generative_scored(history, evaluator, out_dir, 'generative/vllm/ray')
     print(f'\ngenerative vllm ray: reports={[os.path.basename(r) for r in reports]}')

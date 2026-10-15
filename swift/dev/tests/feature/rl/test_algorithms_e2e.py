@@ -94,8 +94,8 @@ def test_dpo_loss_starts_at_ln2_identity_adapter(tiny_qwen2_5, rl_data, tmp_path
 def test_offline_preference_family_e2e(rl_type, tiny_qwen2_5, rl_data, tmp_path, assert_rl_trained):
     """Each offline preference algorithm (dpo/kto/cpo/orpo/simpo/rm) trains + persists end to end.
 
-    All six ride the SAME ``run_dpo``/``PreferenceLoop`` path on the transformers backend under
-    ``mode='ray'`` (RL is always Ray), differing only in the loss ``configure_rlhf_loss`` picks and whether
+    All six ride the SAME ``run_dpo``/``PreferenceBatchEncoder`` path on the transformers backend under
+    ``mode='ray'`` (RL is always Ray), differing only in the loss ``configure_rl_loss`` picks and whether
     a reference is consulted. ``rm`` alone is a ``seq_cls`` reward head (no labels, no logps), so it asserts
     the ``task_type='seq_cls'`` force_load key that keeps ``swift infer`` from downgrading it to causal_lm.
 

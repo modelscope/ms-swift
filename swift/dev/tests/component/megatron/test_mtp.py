@@ -279,11 +279,11 @@ def test_gate_tolerates_a_config_without_the_field():
     assert MegatronModel._mtp_training_enabled(stub, forward_only=False, task='causal_lm', disable_lora=False) is False
 
 
-# === The train loop's metric drain ===
+# === The step recorder's metric drain ===
 
 
 class _FakeModel:
-    """A model exposing only what _record_step touches, with a drainable MTP tracker."""
+    """A model exposing only what record_step touches, with a drainable MTP tracker."""
 
     def __init__(self, mtp=None):
         self._mtp = mtp
@@ -305,26 +305,33 @@ class _FakeModel:
         return {'loss': 1.5, 'grad_norm': 0.25}
 
 
-def _loop_with(model):
-    from swift.dev.recipe.train_loop import SFTLoop
-    loop = SFTLoop.__new__(SFTLoop)
-    loop.model = model
-    loop.global_step = 0
-    loop.history = []
-    loop.logging_steps = 0
-    loop.logging_config = None
-    loop.tracker = SimpleNamespace(log=lambda record, step: record)
-    loop.save_steps = 0
-    loop.eval_steps = 0
-    loop.eval_dataloader = None
-    return loop
+def _recorder_with(model):
+    from swift.dev.recipe.step_runner import StepRunner
+    recorder = StepRunner.__new__(StepRunner)
+    recorder.model = model
+    recorder.global_step = 0
+    recorder.micro_step = 0
+    recorder.epoch = 0
+    recorder.history = []
+    recorder.logging_steps = 0
+    recorder.logging_config = None
+    recorder.tracker = SimpleNamespace(log=lambda record, step: record)
+    recorder.manual_gc = False
+    recorder.manual_gc_steps = 0
+    recorder.torch_empty_cache_steps = None
+    recorder.evaluator = None
+    # record_step publishes loop position onto handler.state and reads the one-shot should_log flag; a
+    # bare namespace stands in for the real CallbackHandler (this test drives only the metric drain).
+    recorder.handler = SimpleNamespace(
+        state=SimpleNamespace(), control=SimpleNamespace(should_log=False), on_log=lambda **kwargs: None)
+    return recorder
 
 
 def test_mtp_metrics_land_in_the_step_record():
     model = _FakeModel({'mtp_1_loss': 2.0, 'mtp_loss': 2.0, 'mtp_1_accept': 0.4})
-    loop = _loop_with(model)
-    loop._record_step()
-    record = loop.history[-1]
+    recorder = _recorder_with(model)
+    recorder.record_step()
+    record = recorder.history[-1]
     assert record['mtp_1_loss'] == 2.0
     assert record['mtp_loss'] == 2.0
     assert record['mtp_1_accept'] == 0.4
@@ -332,16 +339,16 @@ def test_mtp_metrics_land_in_the_step_record():
 
 
 def test_the_record_is_unchanged_when_the_model_has_no_mtp():
-    loop = _loop_with(_FakeModel())
-    loop._record_step()
-    assert set(loop.history[-1]) == {'step', 'loss', 'grad_norm'}
+    recorder = _recorder_with(_FakeModel())
+    recorder.record_step()
+    assert set(recorder.history[-1]) == {'step', 'loss', 'grad_norm'}
 
 
 def test_an_empty_drain_adds_no_keys():
     """MTP configured but nothing accumulated (e.g. a non-last pipeline stage) must not add noise."""
-    loop = _loop_with(_FakeModel({}))
-    loop._record_step()
-    assert set(loop.history[-1]) == {'step', 'loss', 'grad_norm'}
+    recorder = _recorder_with(_FakeModel({}))
+    recorder.record_step()
+    assert set(recorder.history[-1]) == {'step', 'loss', 'grad_norm'}
 
 
 def test_each_step_drains_exactly_once():

@@ -104,7 +104,6 @@ def infer_cli(
                 # state.media, which to_trajectory then attaches (legacy's input_mm_data).
                 state.prompt_media(['images', 'audios', 'videos'])
             trajectory = state.to_trajectory()
-            ## 能否让工具多轮在tui上支持stream输出？
             if rollout is not None:
                 response = _run_tool_turn(rollout, trajectory, params_dict)
             elif stream:
@@ -164,43 +163,37 @@ def _run_plain_turn(sampler: Any, trajectory: Dict[str, Any], params: Any, adapt
 
 
 def _run_tool_turn(rollout: Any, trajectory: Dict[str, Any], params_dict: Dict[str, Any]) -> str:
-    """One human turn through the tool-calling rollout; trace the tools used, then print the final answer.
+    """One human turn through the tool-calling rollout, streamed live.
 
-    ``MultiTurnRollout`` runs the whole intra-turn loop in a single call and returns the finished
-    trajectory, so there is no live token stream to show; the tools it invoked are read back off the new
-    messages. Only the final assistant text re-enters the conversation history -- the tool plumbing is
-    per-turn and the next human turn starts from the answer, not from the intermediate calls.
+    ``rollout.stream`` yields the episode as it happens: ``StreamDelta`` token deltas are echoed as they
+    arrive (across every turn of the tool loop), ``StreamToolCall`` traces the tools each turn dispatched,
+    and the final ``StreamDone`` carries the finished transcript. Only the final assistant text re-enters
+    the conversation history -- the tool plumbing is per-turn and the next human turn starts from the
+    answer, not from the intermediate calls.
     """
+    from twinkle_agentic.rollout import StreamDelta, StreamDone, StreamToolCall
+
     messages = trajectory['messages']
-    samples = rollout.generate([messages], num_samples=1, sampling_params=params_dict, force_logprobs=False)
-    sample = samples[0] if samples else None
-    if sample is None:
-        print(f'{_YELLOW}[no response from the rollout]{_RESET}')
-        return ''
-    response = sample.decoded or ''
-    new_messages: Sequence[Dict[str, Any]] = []
-    if sample.messages:
-        new_messages = sample.messages[len(messages):] if len(sample.messages) >= len(messages) else sample.messages
-    tools = _tool_names(new_messages)
-    if tools:
-        print(f'  {_DIM}↳ called tools: {", ".join(tools)}{_RESET}')
-    if sample.truncated:
+    print(f'{_CYAN}Agent:{_RESET} ', end='', flush=True)
+    response = ''
+    truncated = False
+    for event in rollout.stream(messages, sampling_params=params_dict):
+        if isinstance(event, StreamDelta):
+            if event.text:
+                print(event.text, end='', flush=True)
+        elif isinstance(event, StreamToolCall):
+            if event.names:
+                print(f'\n  {_DIM}↳ called tools: {", ".join(event.names)}{_RESET}')
+            # The next turn generates a fresh reply; give it its own speaker prefix.
+            print(f'{_CYAN}Agent:{_RESET} ', end='', flush=True)
+        elif isinstance(event, StreamDone):
+            sample = event.trajectory
+            response = sample.decoded or ''
+            truncated = bool(sample.truncated)
+    print(flush=True)
+    if truncated:
         print(f'  {_YELLOW}[trajectory truncated at max_turns / max_trajectory_tokens]{_RESET}')
-    print(f'{_CYAN}Agent:{_RESET} {response}', flush=True)
     return response
-
-
-def _tool_names(messages: Sequence[Dict[str, Any]]) -> List[str]:
-    """The tool function names invoked across the assistant turns, in call order."""
-    names: List[str] = []
-    for message in messages:
-        if message.get('role') != 'assistant':
-            continue
-        for tool_call in message.get('tool_calls') or []:
-            name = (tool_call.get('function') or {}).get('name')
-            if name:
-                names.append(name)
-    return names
 
 
 class _CliState:

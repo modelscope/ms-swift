@@ -53,6 +53,7 @@ def merge_main(argv: Optional[List[str]] = None) -> str:
         template_config=configs['template_config'],
         checkpoint_config=configs['checkpoint_config'],
         replace_if_exists=configs['cli_config'].replace_if_exists,
+        parallel_size=configs['runtime_config'].weight_transform_parallel_size,
     )
 
 

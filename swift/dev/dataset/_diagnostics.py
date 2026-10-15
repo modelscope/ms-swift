@@ -1,10 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Shared row-error logging for the dataset classes that encode lazily and substitute on failure.
+"""Shared row-error logging for the components that encode a row and can fail on it.
 
-``SwiftDataset``, ``LazyLLMDataset`` and the ``Preprocessor`` family each catch a per-row encode error,
-keep the run alive, and want to log the traceback -- but only a bounded number of times, so one broken
-dataset cannot flood the logs. The budget logic is identical across them and only the warning text
-differs, so it lives here once.
+``SwiftDataset``, ``LazyLLMDataset`` and the ``Preprocessor`` family each catch a per-row encode error and
+want to log the traceback -- but only a bounded number of times, so one broken dataset cannot flood the
+logs. The budget logic is identical across them and only the warning text differs, so it lives here once.
+
+What happens after the log differs by layer: the preprocessors drop the row or mark it unusable, while
+the datasets let the error propagate so the reader above them (twinkle's ``RetryDataset``) can decide
+whether to substitute.
 """
 from __future__ import annotations
 

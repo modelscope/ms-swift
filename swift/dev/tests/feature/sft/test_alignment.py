@@ -386,10 +386,10 @@ def _do_grad_sync(cur_step: int, ga: int) -> bool:
 
 
 def _actual_optimizer_steps(num_micro: int, ga: int) -> int:
-    """Count optimizer steps a real SFTLoop takes over num_micro micro-batches.
+    """Count optimizer steps a real offline training loop takes over num_micro micro-batches.
 
     Mirrors the loop: each micro-step increments cur_step (backward does this) THEN
-    do_grad_sync is evaluated (SFTLoop reads it at the GA boundary).
+    do_grad_sync is evaluated (the loop reads it at the GA boundary).
     """
     cur_step = 0
     steps = 0
@@ -452,7 +452,7 @@ def test_resume_param_trajectory_bit_identical_oddphase(tmp_path):
 
     from swift.dev.builders.dataset import _encode, _identity_collate
 
-    # Self-contained: drive SFTLoop's contract directly on an in-memory dataset so the
+    # Self-contained: drive the offline loop's contract directly on an in-memory dataset so the
     # test doesn't depend on a registered dataset id.
     from swift.dev.loss import configure_loss
     from swift.dev.builders.optimizer import configure_optimizer
@@ -477,7 +477,7 @@ def test_resume_param_trajectory_bit_identical_oddphase(tmp_path):
                 'content': f'Answer number {i} here.'
             }]
         } for i in range(8)])
-        enc = _encode(raw, tpl, mode='lazy', num_proc=1, strict=False, data_seed=42)
+        enc = _encode(raw, tpl, mode='lazy', num_proc=1, strict=False)
         # Same loader dev builds in production (build_dataset's _build_split_loader): twinkle's
         # DataLoader, which is resumable by construction (skip_consumed_samples / get_state).
         return TwinkleDataLoader(enc, batch_size=1, collate_fn=_identity_collate, shuffle=False)
@@ -544,7 +544,7 @@ class _TinyTrainCfg:
 
 
 def _drive_micro(model, dataloader, *, n_micro, ga):
-    """Drive exactly n_micro micro-steps through the SFTLoop contract (no epoch wrapping)."""
+    """Drive exactly n_micro micro-steps through the offline loop contract (no epoch wrapping)."""
     it = iter(dataloader)
     for _ in range(n_micro):
         batch = next(it)
@@ -610,7 +610,7 @@ def test_lora_resume_param_trajectory_bit_identical_seed_independent(tmp_path):
                 'content': f'Answer number {i} here.'
             }]
         } for i in range(8)])
-        enc = _encode(raw, tpl, mode='lazy', num_proc=1, strict=False, data_seed=42)
+        enc = _encode(raw, tpl, mode='lazy', num_proc=1, strict=False)
         # Same loader dev builds in production (build_dataset's _build_split_loader): twinkle's
         # DataLoader, which is resumable by construction (skip_consumed_samples / get_state).
         return TwinkleDataLoader(enc, batch_size=1, collate_fn=_identity_collate, shuffle=False)

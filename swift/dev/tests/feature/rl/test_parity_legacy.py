@@ -5,7 +5,7 @@
 explicitly defers DEEP per-step parity to here ("step 2 drifts apart ... which is why deep per-step parity
 is anchored against legacy in ``test_parity_legacy``, not here"). This file is that anchor: it drives the
 REAL legacy pipeline (``swift.rlhf_main`` -> HF/RLHFArguments -> TRL ``<TYPE>Trainer``) and the REAL dev
-pipeline (``run_rl`` -> Ray ``PreferenceLoop`` -> twinkle loss) on the SAME cached Qwen2.5-0.5B, the SAME
+pipeline (``run_rl`` -> Ray ``run_dpo`` -> twinkle loss) on the SAME cached Qwen2.5-0.5B, the SAME
 preference rows and MATCHED deterministic hyperparameters, and asserts dev restores legacy's per-step loss
 trajectory. The contract is an INDEPENDENT oracle (legacy's own trainer), not a self-consistency round-trip.
 

@@ -1,16 +1,18 @@
 from __future__ import annotations
 import random
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from swift.dev.recipe._distill import (
+    DistillAssembler,
+    DistillBatch,
     DistillRow,
     build_frozen_teacher,
     distill_rows_from_dataset,
     distill_sampling_params,
 )
-from swift.dev.recipe._scoring import copy_inputs
-from swift.dev.recipe._teacher import DisableAdapterTeacher
-from swift.dev.recipe.grpo import GRPOLoop
+from swift.dev.recipe._streaming import build_streaming_driver
+from swift.dev.recipe.checkpoint import CheckpointSaver
+from swift.dev.recipe.rl_auxiliary import PolicyAuxiliary
 from swift.dev.recipe.run_grpo import (
     SyncableRollout,
     _TEACHER_GROUP,
@@ -21,6 +23,8 @@ from swift.dev.recipe.run_grpo import (
     plan_rl_device_groups,
     teacher_group_world_size,
 )
+from swift.dev.recipe.step_runner import StepRunner
+from swift.dev.rollout import blocking_generate
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -68,14 +72,15 @@ def run_gkd(
     """Assemble and run on-policy GKD with weight sync. Returns the loss history.
 
     Mirrors :func:`run_rft`'s assembly (train/sampler device groups, weight-syncable ``SyncableRollout``,
-    design-B mini-batch width) but sets the GKD loss (``configure_rlhf_loss``) and drives
-    :class:`GKDLoop` (teacher-scored distillation) instead of a policy-gradient or SFT step. The student
+    design-B mini-batch width) but sets the GKD loss (``configure_rl_loss``) and drives
+    :class:`~swift.dev.recipe._distill.DistillAssembler` (signal='logits', teacher-scored distillation)
+    instead of a policy-gradient or SFT step. The student
     is the trained model; the teacher is a frozen separate model (``rl_config.teacher_model``) or, for a
     LoRA student whose teacher is its own base, the adapter-disabled student
     (``rl_config._teacher_use_disable_adapter``).
     """
-    from swift.dev.builders import build_ray_dp_mesh, build_sampler
-    from swift.dev.loss import configure_rlhf_loss
+    from swift.dev.builders import build_dp_mesh, build_sampler
+    from swift.dev.loss import configure_rl_loss
     from swift.dev.builders.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly, single_teacher_id
 
@@ -100,16 +105,16 @@ def run_gkd(
 
     # A separate frozen teacher is a Ray actor on its own DeviceGroup (plan §3.3), which
     # plan_rl_device_groups must allocate BEFORE twinkle.initialize; the adapter-disabled teacher
-    # (DisableAdapterTeacher) reuses the student's own actor and needs no group (teacher_world_size=0).
+    # (a PolicyAuxiliary) reuses the student's own actor and needs no group (teacher_world_size=0).
     separate_teacher = (not rl_config._teacher_use_disable_adapter
                         and single_teacher_id(rl_config.teacher_model, algo='GKD') is not None)
     teacher_world_size = teacher_group_world_size(rl_config) if separate_teacher else 0
 
     backend = _sampler_backend(rollout_config)
     sampler_world_size = _sampler_world_size(rollout_config, backend)
-    groups, sampler_remote_group, colocate = plan_rl_device_groups(distributed_config.nproc_per_node,
-                                                                   rollout_config.sampler_mode, sampler_world_size,
-                                                                   teacher_world_size)
+    groups, sampler_remote_group, colocate = plan_rl_device_groups(
+        distributed_config.nproc_per_node, rollout_config.sampler_mode, sampler_world_size,
+        auxiliary_groups=[(_TEACHER_GROUP, teacher_world_size)] if teacher_world_size else [])
     _initialize_twinkle_rl(
         distributed_config,
         groups,
@@ -119,7 +124,7 @@ def run_gkd(
 
     assembly.build_template()
     assembly.build_model()
-    configure_rlhf_loss(assembly.model, rl_config)
+    configure_rl_loss(assembly.model, rl_config)
     # Prompts are rolled out, not iterated by a dataloader, so the step budget is derived from the prompt
     # set (B1): one generation batch per round, exhausted after num_train_epochs passes. Load the prompts +
     # design-B mini-batch width first, then size max_steps (the LR horizon); --max_steps still overrides.
@@ -129,8 +134,8 @@ def run_gkd(
                          'row carries an assistant completion. Add completions, or set lmbda=1 for purely on-policy '
                          'GKD.')
     # Design-B mini-batch width (per_device_train_batch_size * dp_size); see run_grpo for why dp_size comes
-    # off build_ray_dp_mesh (online RL is Ray-only, pure data-parallel over nproc_per_node).
-    train_batch_size = train_config.per_device_train_batch_size * build_ray_dp_mesh(
+    # off build_dp_mesh (online RL is Ray-only, pure data-parallel over nproc_per_node).
+    train_batch_size = train_config.per_device_train_batch_size * build_dp_mesh(
         distributed_config).data_world_size
     # GKD replays each round once (no num_iterations), so the budget uses num_iterations=1. Under lmbda<1 the
     # off-policy rounds size their mini-batches from dataset_rows instead of the rollout, so the LR horizon is
@@ -165,54 +170,84 @@ def run_gkd(
     rollout = SyncableRollout(
         assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
 
-    # async_mode selects the driver, and -- since the per-sample stream now serves EVERY regime -- GKD rides
-    # it whenever the round is purely on-policy: 'none' runs StreamingGKDLoop at max_staleness=0 (admit one
-    # window, DRAIN it, train, publish -- no overlap) and 'one_step_off' (the only overlapping regime
-    # distillation supports; 'fully_async' is rejected by validate._check_async_mode) pins staleness to 1.
-    # The ONE exception is an off-policy round (lmbda != 1.0, also enforced by validate for the overlapping
-    # mode): a dataset round generates nothing to admit ahead, so it stays on GKDLoop's synchronous
-    # _run_sync. A colocated sampler sets serialize_generation for the exclusive-device hand-over. The
-    # publication knobs mirror run_grpo (validate._check_streaming_publication enforces the same pairing).
-    loop_cls = GKDLoop
-    streaming_kwargs: Dict[str, Any] = {}
-    sync_only = rl_config.lmbda != 1.0
-    if rollout_config.async_mode != 'none' or not sync_only:
-        from swift.dev.recipe.gkd_async import StreamingGKDLoop
-        loop_cls = StreamingGKDLoop
-        streaming_kwargs = {
-            'max_staleness': 0 if rollout_config.async_mode == 'none' else 1,
-            'weight_sync_strategy': rollout_config.weight_sync_strategy,
-            'allow_partial_rollout': rollout_config.allow_partial_rollout,
-            'parameter_sync_step': rollout_config.parameter_sync_step,
-            'adapter_name': ('default' if tuner_config is not None else None),
-            # Exclusive-device serialization: only a colocated sampler (async_mode='none' on a shared device)
-            # hands the one DeviceGroup between generation and training; one_step_off is disaggregated by
-            # validation, so this is False everywhere but colocate.
-            'serialize_generation': colocate,
-        }
-    assembly.loop = loop_cls(
+    # The flat recipe body: two regimes selected by lmbda (the SAME predicate the retired
+    # build_rollout_driver(sync_only=...) used -- see validate._sync_only_feature). A purely on-policy run
+    # (lmbda == 1.0) rides the per-sample stream; an off-policy-capable run (lmbda != 1.0) needs whole
+    # dataset rounds, which a per-sample stream structurally cannot serve, so it runs the synchronous
+    # round loop. The lmbda range check and the teacher build run BEFORE the StepRunner builds its
+    # RunTracker, whose reporters initialize as a construction side effect.
+    if not 0.0 <= rl_config.lmbda <= 1.0:
+        raise ValueError(f'distillation lmbda must be in [0, 1], got {rl_config.lmbda}.')
+    from swift.dev.callbacks import CallbackHandler, build_callbacks
+
+    # Late-bound component cells: the per-step extra-metric closure is injected into the recorder BEFORE
+    # the driver exists, so it reads it through a one-element cell filled right after the build. The
+    # assembler has no reward metric (distillation scores no outcome channel), so the extra channels are
+    # the driver's alone.
+    _driver_cell: List[Any] = []
+    _idle_snapshot = {'train': 0.0, 'idle': 0.0}
+    _last_idle_ratio = 0.0
+
+    def _fold_idle_ratio() -> None:
+        """Fold the trainer-bubble ratio ONCE per batch, at the batch boundary, before training it.
+
+        Mirrors the retired StreamingRolloutDriver._fold_idle_ratio: the driver adds train_active_time only
+        AFTER a pull returns, so the delta against the last batch boundary is the PREVIOUS batch's train
+        time, and idle_time's delta is the bubble spent starved waiting for THIS batch. Reported identically
+        on every step of this batch.
+        """
+        nonlocal _idle_snapshot, _last_idle_ratio
+        driver = _driver_cell[0] if _driver_cell else None
+        if driver is None:
+            return
+        stats = driver.stats
+        d_train = stats.train_active_time - _idle_snapshot['train']
+        d_idle = stats.idle_time - _idle_snapshot['idle']
+        _idle_snapshot = {'train': stats.train_active_time, 'idle': stats.idle_time}
+        denom = d_train + d_idle
+        _last_idle_ratio = (d_idle / denom) if denom > 0 else 0.0
+
+    def _extra_metrics() -> Dict[str, Any]:
+        """Driver-side per-step channels the model's calculate_metric cannot surface."""
+        extra: Dict[str, Any] = {}
+        driver = _driver_cell[0] if _driver_cell else None
+        if driver is not None:
+            stats = driver.stats
+            extra.update({
+                'trainer_idle_ratio': _last_idle_ratio,
+                'off_policy_consumed': stats.off_policy_consumed,
+                'dropped_stale': stats.dropped_stale,
+                'stream_publishes': stats.publishes,
+            })
+        return extra
+
+    assembler = DistillAssembler(
         assembly.model,
         rollout,
-        prompts,
-        teacher=_build_teacher(assembly.model, assembly.template, rl_config, tuner_config, teacher_world_size,
-                               distributed_config),
+        teacher=_build_teacher(assembly.model, assembly.template, rl_config, tuner_config, distributed_config),
         template=assembly.template,
-        prompt_extras=prompt_extras,
-        dataset_rows=dataset_rows,
-        lmbda=rl_config.lmbda,
-        sft_alpha=rl_config.sft_alpha,
+        prompts=prompts,
+        signal='logits',
         gkd_logits_topk=rl_config.gkd_logits_topk,
-        num_generations=rl_config.num_generations,
-        seed=train_config.seed,
-        rl_config=rl_config,
-        max_steps=max_steps,
+        sft_alpha=rl_config.sft_alpha,
         train_batch_size=train_batch_size,
-        generation_batch_size=rollout_config.generation_batch_size,
-        num_train_epochs=train_config.num_train_epochs,
+        gradient_accumulation_steps=assembly.ga)
+    recorder = StepRunner(
+        assembly.model,
+        CallbackHandler(build_callbacks(train_config), output_dir=output_dir),
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
-        sampling_params=distill_sampling_params(rl_config, generation_config),
+        max_steps=max_steps,
         logging_config=logging_config,
+        output_dir=output_dir,
+        manual_gc=bool(megatron_config and megatron_config.manual_gc),
+        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
+        torch_empty_cache_steps=train_config.torch_empty_cache_steps,
+        extra_metrics_fn=_extra_metrics)
+    saver = CheckpointSaver(
+        assembly.model,
+        recorder,
+        None,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
         no_save_optim=checkpoint_config.no_save_optim or checkpoint_config.save_only_model,
@@ -220,31 +255,154 @@ def run_gkd(
         safe_serialization=checkpoint_config.safe_serialization,
         max_shard_size=checkpoint_config.max_shard_size,
         save_total_limit=checkpoint_config.save_total_limit,
-        manual_gc=bool(megatron_config and megatron_config.manual_gc),
-        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
-        **streaming_kwargs)
+        consumed_train_samples_fn=lambda: recorder.global_step)
     if assembly.resume_dir:
-        assembly.loop.resume(assembly.resume_model())
+        saver.resume(assembly.resume_model())
+
+    from twinkle.perf import Perf
+
+    from swift.dev.recipe._loop_utils import filter_perf_actors
+
+    if Perf.initialize(filter_perf_actors({'model': assembly.model, 'sampler': rollout.sampler})):
+        logger.info('[perf] profiling enabled for the online GKD loop.')
+    handover = None
     try:
-        history = assembly.loop.fit()
-        if _save_final:
-            assembly.save_final()
-        return history
+        if rl_config.lmbda == 1.0:
+            # A purely on-policy run rides the per-sample stream at max_staleness=0 ('none',
+            # drain-before-publish) or 1 ('one_step_off', the only overlapping regime distillation
+            # supports; 'fully_async' is rejected by validate._check_async_mode). The streaming config
+            # guard runs inside build_streaming_driver.
+            driver, handover = build_streaming_driver(
+                rollout_config,
+                colocate=colocate,
+                run_id='run_gkd',
+                model=assembly.model,
+                rollout=rollout,
+                output_dir=output_dir,
+                prompts=prompts,
+                prompt_extras=prompt_extras,
+                adapter_name=('default' if tuner_config is not None else None),
+                train_batch_size=train_batch_size,
+                gradient_accumulation_steps=assembly.ga,
+                num_generations=rl_config.num_generations,
+                num_train_epochs=train_config.num_train_epochs,
+                seed=train_config.seed,
+                sampling_params=distill_sampling_params(rl_config, generation_config),
+                unit_size=1,
+                assemble=assembler.assemble,
+                assembly_ready=assembler.assembly_ready,
+                reached_max=recorder.reached_max)
+            _driver_cell.append(driver)
+            if handover.serializes:
+                # Version-0 hand-over: put the pre-training policy in the sampler before the first admission.
+                # Every later cycle's enter rides the in-place publish's sync_fn (see the builder).
+                handover.enter()
+            for batch in driver:
+                _fold_idle_ratio()
+                optimizer_steps = 0
+                for mini_batch in assembler.plan_mini_batches(batch):
+                    recorder.micro_step += 1
+                    assembly.model.forward_backward(**assembler.forward_kwargs(mini_batch))
+                    is_boundary = recorder.is_grad_sync_boundary()
+                    assembly.model.clip_grad_and_step(
+                        max_grad_norm=recorder.max_grad_norm,
+                        gradient_accumulation_steps=recorder.gradient_accumulation_steps)
+                    if is_boundary:
+                        recorder.record_step()
+                        optimizer_steps += 1
+                        if saver.save_steps and recorder.global_step % saver.save_steps == 0:
+                            saver.save(f'checkpoint-{recorder.global_step}')
+                        if recorder.reached_max():
+                            break
+                # commit releases the driver thread blocked in the iterator bridge and reports the real step
+                # count -- the publish cadence unit (twinkle publishes only after consume returns).
+                driver.commit(optimizer_steps)
+                if recorder.reached_max():
+                    break
+        else:
+            # The off-policy-capable regime: per-round on/off-policy coin flip over the prompt set's
+            # generation batches (the retired FixedBatchDriver's cadence). BOTH round kinds train -- an
+            # off-policy round distils the dataset completions (and adds the SFT term via
+            # apply_sft_loss); it is not a skipped round. round_index counts rounds (NOT optimizer steps,
+            # W27) so the coin flip and the dataset window stay aligned with the batch being processed.
+            from swift.dev.recipe.train_loop import PromptBatchScheduler
+
+            scheduler = PromptBatchScheduler(
+                len(prompts),
+                generation_batch_size=rollout_config.generation_batch_size,
+                num_train_epochs=train_config.num_train_epochs,
+                seed=train_config.seed)
+            round_index = 0
+            for prompt_indices in scheduler:
+                if recorder.reached_max():
+                    break
+                use_student = random.Random(train_config.seed + round_index).random() <= rl_config.lmbda
+                round_index += 1
+                if use_student:
+                    # blocking_generate syncs the trained policy into the sampler first, so an on-policy
+                    # round samples from the current policy.
+                    samples = blocking_generate(
+                        rollout,
+                        [prompts[i] for i in prompt_indices],
+                        num_samples=rl_config.num_generations,
+                        sampling_params=distill_sampling_params(rl_config, generation_config),
+                        prompt_extras=[prompt_extras[i] for i in prompt_indices])
+                    expected = len(prompt_indices) * rl_config.num_generations
+                    if len(samples) != expected:
+                        raise RuntimeError(f'rollout returned {len(samples)} samples, expected {expected} '
+                                           f'({len(prompt_indices)} prompts * {rl_config.num_generations} generations).')
+                    for local_idx, prompt_idx in enumerate(prompt_indices):
+                        for sample in samples[local_idx * rl_config.num_generations:(local_idx + 1) * rl_config.num_generations]:
+                            sample.prompt_id = str(prompt_idx)
+                    rows = [
+                        DistillRow(sample.input_feature,
+                                   sample.messages if sample.messages is not None else prompts[int(sample.prompt_id)],
+                                   sample.extra or {}) for sample in samples
+                    ]
+                else:
+                    # A rolling window over the dataset completions, so successive off-policy rounds cover
+                    # new rows (run_gkd already rejected lmbda<1 without dataset completions).
+                    count = len(dataset_rows)
+                    offset = ((round_index - 1) * train_batch_size) % count
+                    rows = [dataset_rows[(offset + i) % count] for i in range(count)]
+                for mini_batch in assembler.plan_mini_batches(DistillBatch(rows, use_student)):
+                    if recorder.reached_max():
+                        break
+                    recorder.micro_step += 1
+                    assembly.model.forward_backward(**assembler.forward_kwargs(mini_batch))
+                    is_boundary = recorder.is_grad_sync_boundary()
+                    assembly.model.clip_grad_and_step(
+                        max_grad_norm=recorder.max_grad_norm,
+                        gradient_accumulation_steps=recorder.gradient_accumulation_steps)
+                    if is_boundary:
+                        recorder.record_step()
+                        if saver.save_steps and recorder.global_step % saver.save_steps == 0:
+                            saver.save(f'checkpoint-{recorder.global_step}')
     finally:
+        if handover is not None and handover.serializes and handover.in_generation:
+            # Ended mid-window (e.g. a budget hit during generation): give the device back to the trainer
+            # so the post-run final save finds the model resident.
+            handover.exit()
+        Perf.shutdown()
         rollout.shutdown()
+        recorder.tracker.close()
+    if _save_final:
+        saver.save_final(write_args_json=assembly.args_json_writer())
+    return recorder.history
 
 
 def _build_teacher(model: TrainableModel, template: Any, rl_config: RLConfig, tuner_config: Optional[TunerConfig],
-                   teacher_world_size: int, distributed_config: DistributedConfig) -> Any:
+                   distributed_config: DistributedConfig) -> Any:
     """Resolve the GKD teacher: the LoRA student's own adapter-disabled base, or a frozen Ray-actor model.
 
     There is no HTTP teacher server (removed, RL_PLAN §2.H): the teacher is either a
-    :class:`DisableAdapterTeacher` -- the paper's headline self-distillation setting, scoring with
-    ``forward_only(disable_lora=True)`` on the student's own actor (no separate group) -- or a
-    :class:`FrozenModelTeacher` wrapping a separate frozen twinkle model actor built from ``teacher_model``
-    on its own ``'teacher'`` DeviceGroup (``teacher_world_size`` ranks, planned by ``plan_rl_device_groups``).
-    ``offload_teacher_model`` is applied inside the frozen teacher (its full-vocab logits are the memory
-    hook), so it is rejected for the adapter-disabled base, which has no separate weights to offload.
+    :class:`~swift.dev.recipe.rl_auxiliary.PolicyAuxiliary` with ``disable_adapter=True`` -- the paper's
+    headline self-distillation setting, scoring with ``forward_only(disable_lora=True)`` on the student's own
+    actor (no separate group) -- or a :class:`~swift.dev.recipe.rl_auxiliary.FrozenAuxiliary` wrapping a
+    separate frozen twinkle model actor built from ``teacher_model`` on its own ``'teacher'`` DeviceGroup
+    (sized by ``teacher_parallel_spec``, planned by ``plan_rl_device_groups``). ``offload_teacher_model`` is
+    applied inside the frozen teacher (its full-vocab logits are the memory hook), so it is rejected for the
+    adapter-disabled base, which has no separate weights to offload.
     """
     if rl_config._teacher_use_disable_adapter:
         if tuner_config is None:
@@ -253,7 +411,7 @@ def _build_teacher(model: TrainableModel, template: Any, rl_config: RLConfig, tu
         if rl_config.offload_teacher_model:
             raise ValueError('offload_teacher_model requires a distinct frozen teacher model, not the '
                              'adapter-disabled base of the student (which has no separate weights to offload).')
-        return DisableAdapterTeacher(model)
+        return PolicyAuxiliary(model, disable_adapter=True)
     from swift.dev.recipe.assembly import single_teacher_id
     teacher_model = single_teacher_id(rl_config.teacher_model, algo='GKD')
     if teacher_model is None:
@@ -261,241 +419,5 @@ def _build_teacher(model: TrainableModel, template: Any, rl_config: RLConfig, tu
                          '_teacher_use_disable_adapter=True to distil from its own frozen base.')
     return build_frozen_teacher(
         rl_config, template, teacher_model, distributed_config=distributed_config, remote_group=_TEACHER_GROUP,
-        teacher_world_size=teacher_world_size, adapters=rl_config.teacher_adapters, role='teacher',
-        offload=rl_config.offload_teacher_model)
+        adapters=rl_config.teacher_adapters, role='teacher', offload=rl_config.offload_teacher_model)
 
-
-class GKDLoop(GRPOLoop):
-    """On-policy GKD loop: student rolls out, a frozen teacher scores, the student distils toward it.
-
-    Reuses :class:`GRPOLoop`'s weight-synced rollout (``_generate``), design-B mini-batch planning
-    (``_plan_mini_batches``) and per-step cadence; overrides ``fit`` to replace the advantage/policy-gradient
-    step with teacher-scored distillation. Each round is on-policy (a rollout) or off-policy (dataset
-    completions) per ``lmbda``, and both reduce to a list of :class:`DistillRow` so the mini-batch split and
-    teacher scoring never branch on the source. The teacher signal is full-vocab ``teacher_logits``, scored
-    lazily one mini-batch at a time.
-    """
-
-    def __init__(
-        self,
-        model: TrainableModel,
-        rollout_engine: Any,
-        prompts: List[List[dict]],
-        *,
-        teacher: Any,
-        template: Any = None,
-        prompt_extras: Optional[List[dict]] = None,
-        dataset_rows: Optional[List[DistillRow]] = None,
-        lmbda: float = 0.5,
-        sft_alpha: float = 0.0,
-        gkd_logits_topk: Optional[int] = None,
-        num_generations: int = 1,
-        seed: int = 42,
-        rl_config: Optional['RLConfig'] = None,
-        max_steps: int = 1,
-        train_batch_size: int = 1,
-        generation_batch_size: Optional[int] = None,
-        num_train_epochs: float = 1.0,
-        gradient_accumulation_steps: int = 1,
-        max_grad_norm: float = 1.0,
-        sampling_params: Optional[dict] = None,
-        logging_config: Optional['LoggingConfig'] = None,
-        output_dir: str = 'output',
-        save_steps: Optional[int] = None,
-        no_save_optim: bool = False,
-        no_save_rng: bool = False,
-        safe_serialization: bool = True,
-        max_shard_size: str = '5GB',
-        save_total_limit: Optional[int] = None,
-        manual_gc: bool = False,
-        manual_gc_steps: int = 0,
-    ):
-        # Resolve the dataset rows BEFORE super().__init__, so a misconfiguration still happens before the
-        # tracker initialises its reporters (a RunTracker side effect). The teacher offload now lives in
-        # FrozenModelTeacher, built at recipe time (also before the tracker).
-        if not 0.0 <= lmbda <= 1.0:
-            raise ValueError(f'GKD lmbda must be in [0, 1], got {lmbda}.')
-        resolved_dataset_rows = list(dataset_rows or [])
-
-        super().__init__(
-            model,
-            rollout_engine,
-            prompts,
-            prompt_extras=prompt_extras,
-            teacher=teacher,
-            template=template,
-            num_generations=num_generations,
-            rl_config=rl_config,
-            max_steps=max_steps,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            train_batch_size=train_batch_size,
-            generation_batch_size=generation_batch_size,
-            num_train_epochs=num_train_epochs,
-            seed=seed,
-            max_grad_norm=max_grad_norm,
-            sampling_params=sampling_params,
-            logging_config=logging_config,
-            output_dir=output_dir,
-            save_steps=save_steps,
-            no_save_optim=no_save_optim,
-            no_save_rng=no_save_rng,
-            safe_serialization=safe_serialization,
-            max_shard_size=max_shard_size,
-            save_total_limit=save_total_limit,
-            manual_gc=manual_gc,
-            manual_gc_steps=manual_gc_steps)
-        self.dataset_rows = resolved_dataset_rows
-        self.lmbda = lmbda
-        self.sft_alpha = sft_alpha
-        self.gkd_logits_topk = gkd_logits_topk
-        self.seed = seed
-
-    def _uses_student_generation(self, round_index: int) -> bool:
-        """Per-round on/off-policy coin flip: with probability ``lmbda`` this round rolls out on-policy."""
-        return random.Random(self.seed + round_index).random() <= self.lmbda
-
-    def _distill_rows(self, samples: List[Any]) -> List[DistillRow]:
-        """Lift on-policy rollout samples into :class:`DistillRow` (the student-generation source).
-
-        Shared by the synchronous round and the async consume half, so both build the distillation rows
-        identically from a weight-synced rollout.
-        """
-        return [
-            DistillRow(sample.input_feature,
-                       sample.messages if sample.messages is not None else self.prompts[int(sample.prompt_id)],
-                       sample.extra or {}) for sample in samples
-        ]
-
-    def _round_rows(self, round_index: int, use_student: bool, prompt_indices: Sequence[int]) -> List[DistillRow]:
-        """This round's training rows, uniform across the on-policy and off-policy sources.
-
-        An on-policy round rolls out the scheduler's generation batch (``prompt_indices``); an off-policy
-        round ignores it and takes the dataset's own completions window instead (GKD's on/off mixing).
-        """
-        if use_student:
-            return self._distill_rows(self._generate(prompt_indices))
-        return self._dataset_round_rows(round_index)
-
-    def _dataset_round_rows(self, round_index: int) -> List[DistillRow]:
-        """A rolling window over the dataset completions, so successive off-policy rounds cover new rows."""
-        if not self.dataset_rows:
-            raise RuntimeError('an off-policy GKD round needs dataset completions, but the dataset provided none; '
-                               'set lmbda=1 for purely on-policy GKD, or add assistant completions to the dataset.')
-        count = len(self.dataset_rows)
-        offset = (round_index * self.train_batch_size) % count
-        return [self.dataset_rows[(offset + i) % count] for i in range(count)]
-
-    def _teacher_logits(self, features: List[dict]) -> Any:
-        """Full-vocab teacher logits for ONE mini-batch, scored lazily to bound peak memory.
-
-        The signal is materialised per mini-batch (``train_batch_size`` rows), never for a whole round: a
-        full-vocab ``[rows, seq, vocab]`` tensor over an entire rollout would not fit. ``forward_only`` is a
-        slice_dp method, so the mini-batch (>= dp_size rows) feeds every DP rank; the collected logits are
-        then handed to ``forward_backward``, which slice_dp-splits them along dim0 to match each rank's
-        ``inputs`` shard.
-        """
-        inputs = copy_inputs(features)
-        outputs = self.teacher.forward_only(inputs=inputs, return_logits=True)
-        return outputs['logits']
-
-    def _teacher_kwargs(self, rows: List[DistillRow], use_student: bool) -> Dict[str, Any]:
-        """The teacher signal for one mini-batch. GKD scores the SHARED prompt+response (full-vocab logits).
-
-        A hook so the OPSD/MOPD subclasses -- which reuse this loop's rollout/mini-batch/step skeleton but a
-        different teacher view and signal (response-only ``teacher_logps``) -- can override just this and
-        :meth:`_forward_kwargs`.
-        """
-        return {'teacher_logits': self._teacher_logits([row.feature for row in rows])}
-
-    def _forward_kwargs(self, teacher_kwargs: Dict[str, Any], use_student: bool) -> Dict[str, Any]:
-        """The extra ``forward_backward`` kwargs beyond ``inputs``/GA: teacher signal + GKD loss knobs.
-
-        GKD's JSD loss scores top-k teacher logits when ``gkd_logits_topk`` is set and adds supervised CE on
-        the dataset-sourced rounds when ``sft_alpha > 0``.
-        """
-        return {
-            **teacher_kwargs,
-            'topk': self.gkd_logits_topk,
-            'apply_sft_loss': bool(self.sft_alpha > 0 and not use_student),
-        }
-
-    def _train_distill_rows(self, rows: List[DistillRow], use_student: bool) -> None:
-        """Score one round's rows with the teacher and run their optimizer steps (mini-batch split).
-
-        Shared by the synchronous round and the async consume half. ``use_student`` selects the teacher
-        view and the SFT-on-dataset-rows knob (off-policy rounds only), so the async path -- always
-        on-policy -- passes ``True``.
-        """
-        for mini_batch in self._plan_mini_batches(rows):
-            if self._reached_max():
-                break
-            teacher_kwargs = self._teacher_kwargs(mini_batch, use_student)
-            self._run_micro_step({
-                'inputs': copy_inputs([row.feature for row in mini_batch]),
-                'gradient_accumulation_steps': self.gradient_accumulation_steps,
-                **self._forward_kwargs(teacher_kwargs, use_student),
-            })
-
-    def _consume_async_samples(self, samples: List[Any]) -> None:
-        """Async consume half: an on-policy rollout batch is always student-generated (lmbda==1.0)."""
-        self._train_distill_rows(self._distill_rows(samples), use_student=True)
-
-    def _run_sync(self) -> None:
-        """Synchronous driver: one round at a time, on-policy (rollout) or off-policy (dataset) per lmbda.
-
-        ``round_index`` is the scheduler's emitted-batch position, NOT ``global_step``: it seeds the per-round
-        lmbda coin flip and offsets the off-policy dataset window, so it must stay aligned with the prompt
-        batch actually being processed. Deriving it from ``enumerate`` keeps the two in lockstep within a run
-        and across a resume (the scheduler restarts from batch 0, so the pairing restarts with it); seeding it
-        from ``global_step`` misaligns them whenever GA>1 or a round spans several mini-batches, because
-        ``global_step`` counts optimizer steps, not rounds (W27).
-        """
-        for round_index, prompt_indices in enumerate(self._prompt_batches):
-            if self._reached_max():
-                break
-            use_student = self._uses_student_generation(round_index)
-            self._train_distill_rows(self._round_rows(round_index, use_student, prompt_indices), use_student)
-
-    def fit(self) -> list:
-        """Train over the prompt set for ``num_train_epochs`` passes of teacher-scored distillation.
-
-        Design B (see :meth:`GRPOLoop.fit`): the prompt-set scheduler yields one generation batch per round
-        and is exhausted after ``num_train_epochs`` passes (B1); an explicit ``max_steps`` still caps the
-        optimizer-step count early. Each round's rows are split into ``train_batch_size``-row mini-batches,
-        one ``forward_backward`` runs per mini-batch and ``gradient_accumulation_steps`` mini-batches make
-        one optimizer step. A round is on-policy (a weight-synced rollout of the batch) or off-policy
-        (dataset completions) per ``lmbda``. The rollout driver itself is :meth:`_drive` (a template hook),
-        so a subclass can swap the control flow without reimplementing this manual-GC / tracker scaffolding.
-        """
-        from swift.dev.recipe.train_loop import finish_manual_gc, start_manual_gc
-
-        gc_was_enabled = start_manual_gc(self.manual_gc)
-        try:
-            self._drive()
-            return self.history
-        finally:
-            finish_manual_gc(gc_was_enabled)
-            self.tracker.close()
-
-    def _drive(self) -> None:
-        """Run this loop's rollout driver: the synchronous one (:meth:`_run_sync`).
-
-        A template hook split out of :meth:`fit` (mirroring :meth:`GRPOLoop._drive`) so
-        :class:`~swift.dev.recipe.gkd_async.StreamingGKDLoop` overrides ONLY the driver -- its per-sample
-        streaming buffer -- and inherits the identical manual-GC / tracker scaffolding above. The OPSD/MOPD
-        streaming loops recompose that subclass, so they reach the same override through their MRO. Since the
-        per-sample stream now serves EVERY regime, a purely on-policy GKD run rides it under BOTH
-        ``async_mode='none'`` (staleness 0) and ``'one_step_off'`` (staleness 1); this base driver is reached
-        only for an off-policy round (``lmbda != 1.0``), which the router keeps on ``_run_sync`` because a
-        dataset round generates nothing to admit per-sample (and ``validate`` refuses it under the overlapping
-        mode). So it is synchronous-only and carries no async branch.
-        """
-        self._run_sync()
-
-    # GKD has no reference model, so it resets the one GRPOLoop hook that would inject a reference sync. It
-    # inherits GRPOLoop's _extra_step_metrics (the driver-side reward merge) unchanged: GKD never accumulates
-    # a reward, so calculate() yields {} and the distillation loss + grad_norm reach the record purely through
-    # the unified merge of twinkle's LossMetric (the loss IS the teacher-student divergence). The rest of the
-    # per-step cadence (counter, GC tick, log-on-tracker, periodic save) is TrainLoop's.
-    def _pre_metric_step(self) -> None:
-        """No reference model to sync on a distillation step (overrides GRPOLoop's reference sync)."""

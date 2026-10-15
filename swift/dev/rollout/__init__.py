@@ -1,6 +1,6 @@
 """Isolation layer over twinkle's vLLM sampler for RL rollout.
 
-Purpose (rollout decoupled from the trainer into its own component): the GRPOLoop depends on THIS
+Purpose (rollout decoupled from the trainer into its own component): the flat GRPO recipe depends on THIS
 interface, never directly on the engine.
 
 Engine base is twinkle's ``vLLMSampler`` (built via :func:`swift.dev.builders.build_sampler`), not
@@ -114,6 +114,25 @@ class RolloutSample:
     #: 到新权重上，跨了版本）。仅指标用途（partial rollout 触发率 / version-span 分布）；staleness 的
     #: 正确性锚点始终是最老的准入 ``policy_version``，与本字段无关。
     version_span: int = 0
+    #: The ORIGINAL prompt messages this trajectory was generated from, stamped on the streaming collect
+    #: path (:meth:`RolloutEngine.collect_sample`) from the admission :class:`SampleHandle`. PRM step
+    #: scoring and the teacher's privileged view both encode against the raw prompt (not the truncated
+    #: completion), so the sample carries it verbatim instead of the consumer looking it back up by
+    #: ``prompt_id`` in a resident prompt table. ``None`` on the blocking :meth:`RolloutEngine.generate`
+    #: path, which has no per-sample handle to stamp from.
+    prompt: Optional[List[dict]] = None
+    #: Per-sample outcome-reward (ORM) row scored by the streaming ``score`` seam the instant the trajectory
+    #: is collected -- one value per resolved ``--orm`` / ``--reward_model`` scorer -- BEFORE it enters the
+    #: ready buffer. The GRPO assembler stacks these rows into the ``[N, n_scorers]`` matrix its group-relative
+    #: advantage normalizes, and the group-completion hook reads their weighted sum for the dynamic-sampling
+    #: zero-variance test, so the reward must ride the sample rather than be recomputed at assemble time.
+    #: ``None`` until the per-sample score seam runs (the blocking :meth:`RolloutEngine.generate` path never
+    #: scores per-sample).
+    orm_reward: Optional[List[float]] = None
+    #: Per-token process reward (PRM) in the response-token frame (length ``len(response_token_ids)``), scored
+    #: per-sample by the same seam. The assembler blends it with the group-relative ORM advantage under
+    #: ``RLConfig.prm_orm_mix`` at assemble time. ``None`` when no PRM channel is wired.
+    prm_process: Optional[List[float]] = None
 
     @property
     def input_feature(self) -> dict:
@@ -154,6 +173,11 @@ class SampleHandle:
     prompt_extras: Optional[Dict[str, Any]] = None
     require_logprobs: bool = True
     policy_version: int = 0
+    #: The ORIGINAL prompt messages admitted for this trajectory, carried so :meth:`RolloutEngine.collect_sample`
+    #: can stamp them onto the collected :class:`RolloutSample` (``sample.prompt``) for PRM step scoring and
+    #: the teacher privileged view -- the sample then holds its own prompt instead of the consumer resolving
+    #: ``prompt_id`` against a resident prompt table.
+    prompt: Optional[List[dict]] = None
 
     def __hash__(self) -> int:
         return hash(self.submission_id)
@@ -524,6 +548,45 @@ class RolloutEngine:
             allow_message_only=self.template is None,
             require_logprobs=force_logprobs)
 
+    def stream(self,
+               prompt: List[dict],
+               sampling_params: Optional[dict] = None,
+               prompt_extra: Optional[Dict[str, Any]] = None,
+               adapter_path: Optional[str] = None):
+        """Stream ONE episode's token deltas live (display-only), then a final ``StreamDone``.
+
+        The interactive counterpart of :meth:`generate`: a REPL echoes tokens as they arrive instead of
+        waiting for the whole episode to finish. With a multi-turn engine configured this streams every
+        turn of the tool loop (delegating to :meth:`multi_turn.MultiTurnRollout.stream`); otherwise it
+        streams a single plain generation off ``sampler.sample_stream``.
+
+        Yields twinkle ``StreamDelta`` / ``StreamToolCall`` events, then a final ``StreamDone`` whose
+        payload is a :class:`RolloutSample` (read the answer off ``.decoded``, the history off
+        ``.messages``). Not trainable -- no token ids / logprobs are banked.
+        """
+        if self._multi_turn is not None:
+            yield from self._multi_turn.stream(
+                prompt, sampling_params=sampling_params, prompt_extra=prompt_extra, adapter_path=adapter_path)
+            return
+        from twinkle_agentic.rollout import StreamDelta, StreamDone
+        params = _build_sampling_params(1, sampling_params, False)
+        trajectory = _prompt_trajectory(prompt, prompt_extra)
+        pieces: List[str] = []
+        for delta, _finish in self.sampler.sample_stream(trajectory, params, adapter_path=adapter_path):
+            if delta:
+                pieces.append(delta)
+                yield StreamDelta(delta)
+        text = ''.join(pieces)
+        yield StreamDone(
+            RolloutSample(
+                encoded={},
+                response_token_ids=[],
+                rollout_logprobs=[],
+                prompt_id='0',
+                extra=copy.deepcopy(prompt_extra or {}),
+                decoded=text,
+                messages=list(prompt) + [{'role': 'assistant', 'content': text}]))
+
     @staticmethod
     def _build_trajectories(prompts: List[List[dict]], prompt_extras: Optional[List[Dict[str, Any]]]) -> List[Any]:
         """Thread each prompt's media columns onto its ``Trajectory`` so a VLM prompt samples WITH media."""
@@ -593,7 +656,8 @@ class RolloutEngine:
             trajectory_idx=trajectory_idx,
             prompt_extras=dict(prompt_extras) if prompt_extras else None,
             require_logprobs=force_logprobs,
-            policy_version=policy_version)
+            policy_version=policy_version,
+            prompt=list(prompt) if prompt is not None else None)
 
     def _submit_episode(self,
                         prompt: List[dict],
@@ -653,7 +717,8 @@ class RolloutEngine:
             trajectory_idx=trajectory_idx,
             prompt_extras=dict(prompt_extras) if prompt_extras else None,
             require_logprobs=force_logprobs,
-            policy_version=policy_version)
+            policy_version=policy_version,
+            prompt=list(prompt) if prompt is not None else None)
 
     def poll_completions(self, handles: List[SampleHandle]) -> List[SampleHandle]:
         """Non-blocking as-completed query: the subset of ``handles`` whose generation has completed.
@@ -703,8 +768,8 @@ class RolloutEngine:
         thread's already-assembled :class:`RolloutSample` off its Future instead. Either way the submission
         held exactly one trajectory, so exactly one sample must come back -- anything else is a contract
         violation and fails loudly. The sample's group id is stamped to the GLOBAL prompt index (the same
-        stamping ``GRPOLoop._finalize_samples`` does on the batch path, so group-relative advantage keys
-        match), and ``policy_version`` records the admission pin's version.
+        stamping the batch path did, so group-relative advantage keys match), and ``policy_version`` records
+        the admission pin's version.
         """
         future = self._episode_futures.pop(handle.submission_id, None)
         if future is not None:
@@ -719,6 +784,7 @@ class RolloutEngine:
             sample = samples[0]
             sample.prompt_id = str(handle.prompt_idx)
             sample.policy_version = handle.policy_version
+            sample.prompt = handle.prompt
             return sample
         responses = self._await_generation(handle.submission_id)
         samples = self._samples_from_responses(
@@ -732,6 +798,7 @@ class RolloutEngine:
         sample = samples[0]
         sample.prompt_id = str(handle.prompt_idx)
         sample.policy_version = handle.policy_version
+        sample.prompt = handle.prompt
         return sample
 
     def cancel_sample(self, handle: Optional[SampleHandle]) -> None:

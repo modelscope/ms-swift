@@ -49,7 +49,7 @@
 # MOPD v1 applies NO reference-KL term, so --beta is REJECTED (not silently ignored). --sampling_temperature sets
 # how hot the student ROLLS OUT (a separate role from any distillation temperature, which the k3 surrogate does
 # not apply). --opsd_reverse true is the paper's on-policy divergence direction (r = teacher - student; the
-# default, inherited from OPSDLoop, shown for discoverability). --lmbda 1.0 samples on-policy every step.
+# default it shares with OPSD, shown for discoverability). --lmbda 1.0 samples on-policy every step.
 #
 # Placement: MOPD is Ray-only with a weight-syncable vLLM sampler -- the dev CLI forces use_vllm=true,
 # vllm_mode=colocate and mode=ray for --rlhf_type mopd. --nproc_per_node IS required because in Ray mode the

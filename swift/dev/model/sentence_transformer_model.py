@@ -42,10 +42,10 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         ``set_processor`` / ``set_loss``;
       - forward writes the L2-normalized ``outputs['embeddings']`` ``[B, D]`` that the loss reads.
 
-    Scope: targets the standard (non-sequence-parallel, non-packed) embedding-training path, which is
-    how sentence-transformers models are trained. Sequence parallel and padding-free packing are not
-    composed with a whole-sentence pooling head, so they are explicitly rejected rather than silently
-    mis-pooled.
+    Scope: targets the standard (non-sequence-parallel) embedding-training path. Padding-free packing
+    is supported by unpacking the features into per-sequence rows before the ST pipeline (the backbone
+    re-processes each row independently; the twinkle-native embedding path retains flash-attn varlen).
+    Sequence parallel is rejected because a whole-sentence pooling head cannot see a sequence shard.
     """
 
     def __init__(self,
@@ -144,18 +144,39 @@ class SentenceTransformerModel(TwinkleTransformersModel):
 
         The ST ``Transformer`` module reads ``input_ids``/``attention_mask`` from the features dict and
         the pipeline writes ``sentence_embedding``; pooling + normalization happen inside ST.
+
+        Under padding_free packing the batch is ``[1, total_tokens]`` (N sub-sequences concatenated).
+        The ST Pooling module is not packed-aware, so we unpack the features into ``[n_seqs, max_len]``
+        before entering the pipeline -- the backbone re-processes each row independently (no flash-attn
+        varlen benefit, but correctness first; the twinkle-native embedding path retains varlen).
         """
         if self.sp_strategy is not None:
             raise NotImplementedError('SentenceTransformerModel does not support sequence parallelism: '
                                       'a whole-sentence pooling head cannot see a sequence shard.')
+        features = {k: inputs[k] for k in _ST_FEATURE_KEYS if k in inputs}
         position_ids = inputs.get('position_ids')
         if InputProcessor._is_packed_position_ids(position_ids):
-            ## 这个不支持packing吗？legacy支持吗？
-            raise NotImplementedError('SentenceTransformerModel does not support padding-free packing: '
-                                      'the pooling head expects one sequence per batch row.')
-        features = {k: inputs[k] for k in _ST_FEATURE_KEYS if k in inputs}
+            features = self._unpack_packed_features(features, position_ids)
         out_features = self.model(features)
         return out_features['sentence_embedding']
+
+    @staticmethod
+    def _unpack_packed_features(features: Dict[str, Any], position_ids) -> Dict[str, Any]:
+        """Split packed ``[1, total]`` features into ``[n_seqs, max_len]`` for the ST pipeline."""
+        import torch
+        keys_to_unpack = [k for k in ('input_ids', 'attention_mask', 'token_type_ids') if k in features]
+        tensors = [features[k] for k in keys_to_unpack]
+        # Pad value 0 for all: input_ids pad=0 is fine (attention_mask=0 marks it), position_ids unused after.
+        unpacked = InputProcessor._unpack_by_position_ids(position_ids, *tensors, padding_values=[0] * len(tensors))
+        result = dict(features)
+        for key, tensor in zip(keys_to_unpack, unpacked):
+            result[key] = tensor
+        # Synthesize correct attention_mask from unpacked input_ids (non-zero = valid).
+        if 'attention_mask' not in result and 'input_ids' in result:
+            result['attention_mask'] = (result['input_ids'] != 0).long()
+        # Drop position_ids: ST's Transformer module derives them internally from attention_mask.
+        result.pop('position_ids', None)
+        return result
 
     def _prepare_forward(self, inputs, adapter_name):
         """Shared front half of forward/forward_only: wrap, encode inputs, split off labels."""

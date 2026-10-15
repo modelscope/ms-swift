@@ -2,13 +2,13 @@
 
 Launched by ``test_eval_sampler.py::test_val_loss_eval_under_torchrun`` under ``torchrun
 --nproc_per_node=2``. Each rank drives its own copy of the loop over its shard of the eval dataloader
-(the ``DeviceMeshSampler`` split), so a green run means ``SFTLoop.evaluate`` completed on EVERY rank of
-a real distributed launch -- the launch mode the in-process single-card / Ray-driver eval tests cannot
-reach (under Ray the loop runs once on the driver; under torchrun it runs per rank).
+(the ``DeviceMeshSampler`` split), so a green run means the offline ``Evaluator.evaluate`` completed on
+EVERY rank of a real distributed launch -- the launch mode the in-process single-card / Ray-driver eval
+tests cannot reach (under Ray the loop runs once on the driver; under torchrun it runs per rank).
 
 Each rank writes ``{out}.rank{RANK}.json`` with its training losses and the ``eval_loss`` values its
-``evaluate()`` produced, read back off the loop the assembly built (``run_sft`` returns only the
-training history, so the loop is captured the same way ``hf_dp.py`` captures the model).
+``evaluate()`` produced, read back off the Evaluator the run built (``run_sft`` returns only the
+training history, so the Evaluator is captured the same way ``hf_dp.py`` captures the model).
 
 Usage:
     python hf_eval.py --data DATA.jsonl --out RESULT.json --out_dir DIR
@@ -24,22 +24,25 @@ def _run(data_path, out_dir):
     """run_sft with a val-loss eval on the transformers backend; return this rank's train + eval losses."""
     from modelscope import snapshot_download
 
-    import swift.dev.recipe.assembly as assembly_mod
+    import swift.dev.recipe.evaluator as evaluator_mod
     from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                   TrainConfig, TunerConfig)
     from swift.dev.recipe import run_sft
 
-    # run_sft discards the assembly (and its loop), returning only the training history. Capture the
-    # loop it built to read eval_history -- observing the real object, not stubbing evaluate().
+    # run_sft discards the assembly (and the Evaluator run_offline built), returning only the training
+    # history. Capture that Evaluator to read eval_history -- observing the real object, not stubbing
+    # evaluate(). run_offline imports Evaluator from its module at call time, so patching the module
+    # attribute is picked up.
     captured = {}
-    orig_build_loop = assembly_mod.TrainAssembly.build_loop
+    orig_evaluator = evaluator_mod.Evaluator
 
-    def capturing_build_loop(self, *args, **kwargs):
-        loop = orig_build_loop(self, *args, **kwargs)
-        captured['loop'] = loop
-        return loop
+    class CapturingEvaluator(orig_evaluator):
 
-    assembly_mod.TrainAssembly.build_loop = capturing_build_loop
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            captured['evaluator'] = self
+
+    evaluator_mod.Evaluator = CapturingEvaluator
     try:
         history = run_sft(
             ModelConfig(model=snapshot_download(MODEL), torch_dtype='bfloat16'),
@@ -63,13 +66,13 @@ def _run(data_path, out_dir):
             output_dir=out_dir,
             _save_final=False)
     finally:
-        assembly_mod.TrainAssembly.build_loop = orig_build_loop
+        evaluator_mod.Evaluator = orig_evaluator
 
-    loop = captured['loop']
+    evaluator = captured['evaluator']
     return {
         'rank': int(os.environ.get('RANK', '0')),
         'train_losses': [r['loss'] for r in history],
-        'eval_losses': [e.get('eval_loss') for e in loop.eval_history],
+        'eval_losses': [e.get('eval_loss') for e in evaluator.eval_history],
     }
 
 

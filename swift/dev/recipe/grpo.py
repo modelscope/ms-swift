@@ -1,36 +1,38 @@
 from __future__ import annotations
+
 import copy
+import json
 import math
 import os
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence
 
-import json
-
+import torch
 from twinkle.metric import CompletionRewardMetric
+from twinkle_agentic.async_rl.streaming_driver import GroupDecision
 
-from swift.dev.rewards.advantage import compute_advantages
 from swift.dev.recipe._scoring import (
+    TrainingBatch,
+    accumulate_reward_metric,
     batched_response_scores,
     copy_inputs,
+    encode_privileged_view,
     overlap_by_placement,
+    response_positions,
     score_chunks,
+    score_samples,
     split_mini_batches,
+    weighted_rewards,
 )
-from swift.dev.recipe._teacher import DisableAdapterTeacher, encode_privileged_view, response_positions
-from swift.dev.recipe.train_loop import PromptBatchScheduler, TrainLoop
-from swift.dev.rewards.reward import (
-    build_reward_weights,
-    compute_reward_model_scores,
-    compute_rewards_per_func,
-    get_reward_funcs,
-)
-from swift.dev.rollout import blocking_generate
+from swift.dev.rewards.advantage import compute_advantages
+from swift.dev.rewards.reward import build_reward_weights, score_completions
 from swift.dev.utils import get_logger
 
 if TYPE_CHECKING:
-    from swift.dev.config import LoggingConfig, RLConfig
+    from twinkle_agentic.async_rl.streaming_driver import BufferRecord
+
+    from swift.dev.config import RLConfig
     from swift.dev.model import TrainableModel
+    from swift.dev.recipe.tracking import RunTracker
 
 logger = get_logger()
 
@@ -54,670 +56,278 @@ def toy_length_reward(sample: Any) -> float:
     return float(len(getattr(sample, 'response_token_ids', None) or []))
 
 
-@dataclass
-class RolloutBatch:
-    """One rollout step's per-row training payload, held column-wise with a construction-time length check.
+def _grpo_log_line(record: dict, loss: float) -> str:
+    """Console head signal: loss plus this rollout's mean total reward when one was computed.
 
-    Each field is a list parallel to ``samples`` (one entry per rollout row). Replacing the old per-sample
-    dict plus the hand-assembled parallel lists in ``_mini_batch_kwargs`` makes an off-by-one between any two
-    columns impossible to build silently: ``__post_init__`` rejects unequal lengths up front. ``ref_logps`` /
-    ``teacher_logps`` are all-or-none across a rollout (both scoring helpers return ``None`` or a full list),
-    so they are ``Optional`` columns rather than per-row optionals. RFT -- which trains the kept completions
-    with plain cross-entropy -- builds a samples-only batch and leaves the RL columns ``None``.
-
-    Slicing returns a ``RolloutBatch`` (every present column sliced consistently), so ``split_mini_batches``
-    -- which only uses ``len`` and ``items[i:j]`` -- splits a batch into mini-batches unchanged.
+    The reward is what actually shows RL converging -- the policy-gradient loss oscillates around zero by
+    construction and hides the trend -- so the step line leads with ``reward`` when the reward metric produced
+    one. Injected into ``StepRunner`` as its ``log_formatter``.
     """
-    samples: List[Any]
-    advantages: Optional[List[Any]] = None
-    old_logps: Optional[List[List[float]]] = None
-    rollout_logps: Optional[List[List[float]]] = None
-    ref_logps: Optional[List[List[float]]] = None
-    teacher_logps: Optional[List[List[float]]] = None
-    #: Per-row sampler support sets (twinkle ``SamplingMask``), present only under ``enable_sampling_replay``;
-    #: assembled into the top-level ``sampling_masks`` forward_backward kwarg (NOT into ``encoded``).
-    sampling_masks: Optional[List[Any]] = None
-
-    #: Per-row columns that must align with ``samples`` when present (unannotated, so not a dataclass field).
-    _COLUMNS = ('advantages', 'old_logps', 'rollout_logps', 'ref_logps', 'teacher_logps', 'sampling_masks')
-
-    def __post_init__(self) -> None:
-        rows = len(self.samples)
-        for name in self._COLUMNS:
-            column = getattr(self, name)
-            if column is not None and len(column) != rows:
-                raise ValueError(f'RolloutBatch column {name!r} has {len(column)} rows but samples has {rows}; '
-                                 'per-row rollout fields must align exactly.')
-
-    def __len__(self) -> int:
-        return len(self.samples)
-
-    def __getitem__(self, key: slice) -> 'RolloutBatch':
-        if not isinstance(key, slice):
-            raise TypeError(f'RolloutBatch supports slice indexing only, got {type(key).__name__}.')
-
-        def sliced(column):
-            return None if column is None else column[key]
-
-        return RolloutBatch(
-            samples=self.samples[key],
-            advantages=sliced(self.advantages),
-            old_logps=sliced(self.old_logps),
-            rollout_logps=sliced(self.rollout_logps),
-            ref_logps=sliced(self.ref_logps),
-            teacher_logps=sliced(self.teacher_logps),
-            sampling_masks=sliced(self.sampling_masks))
+    reward = record.get('train/total_reward')
+    reward_str = f'  reward={reward:.4f}' if reward is not None else ''
+    return f"step {record.get('step')}  loss={loss:.4f}{reward_str}"
 
 
-class GRPOLoop(TrainLoop):
-    """Online GRPO loop with reference, teacher, DAPO, RLSD/SDAR and CHORD support."""
+class GRPOAssembler:
+    """The GRPO score + assemble + encode component injected into the twinkle per-sample rollout driver.
+
+    The driver (``twinkle_agentic.async_rl.streaming_driver.StreamingDriver``) owns the rollout mechanism --
+    per-sample submit/poll/collect, version/staleness admission, publish cadence -- and knows nothing about
+    GRPO. This class supplies the GRPO-specific callables the driver invokes, plus the encoding half the flat
+    recipe body calls:
+
+    * :meth:`score_sample` -- the per-sample **score seam**, run by the driver between collect and consume. It
+      computes each trajectory's raw outcome reward (``sample.orm_reward``, one float per resolved ORM scorer)
+      and, when a PRM channel is wired, its per-token process reward (``sample.prm_process``). It returns
+      ``None`` so the driver keeps the in-place-mutated sample.
+    * :meth:`assemble` -- the **assemble seam**, run by the driver once a whole-group pull is ready. It turns
+      the scored samples into a :class:`~swift.dev.recipe._scoring.TrainingBatch`: group-relative advantage, the
+      PRM/ORM convex fusion, the reference / teacher / policy-old logp forwards overlapped by placement, and the
+      MoE routing-replay preparation.
+    * :meth:`forward_kwargs` -- the **encoding half**, called by the recipe body per mini-batch to build the
+      ``forward_backward`` kwargs.
+    * the group-completion helpers (:meth:`group_reward_variance` / :meth:`remax_greedy_baseline` /
+      :meth:`stash_remax_baseline`) that :class:`GroupCompletionHook` drives.
+
+    CHORD uses a second homogeneous SFT ``forward_backward`` RPC for each GRPO micro-step. This assembler
+    owns the expert-feature cycle and the warmup/cosine-decay mixing schedule, while the recipe keeps the
+    two RPC calls adjacent so they share one optimizer update. The outcome-reward half (``_score`` /
+    ``_score`` / ``_weighted_rewards`` / ``_accumulate_reward_metric``) and the response-logp primitive
+    (``_response_logps``) are thin delegates over the shared :mod:`~swift.dev.recipe._scoring` functions, so
+    GRPO is a flat recipe with no loop class or inheritance at all.
+    """
 
     def __init__(self,
-                 model: TrainableModel,
-                 rollout_engine: Any,
-                 prompts: List[List[dict]],
+                 model: 'TrainableModel',
+                 rollout: Any,
                  *,
-                 prompt_extras: Optional[List[Dict[str, Any]]] = None,
+                 template: Any = None,
                  reference: Any = None,
                  teacher: Any = None,
-                 template: Any = None,
-                 chord_features: Optional[List[dict]] = None,
-                 num_generations: int = 4,
-                 reward_funcs: Optional[List[Any]] = None,
-                 reward_model_plugins: Optional[List[Callable]] = None,
-                 reward_model_names: Optional[List[str]] = None,
+                 reward_scorers: Optional[List[Any]] = None,
+                 reward_scorer_names: Optional[List[str]] = None,
                  reward_weights: Optional[List[float]] = None,
+                 reward_fn: Callable[[Any], float] = toy_length_reward,
                  prm_scorer: Optional[Any] = None,
-                 prm_funcs: Optional[List[Any]] = None,
-                 prm_model_plugins: Optional[List[Callable]] = None,
+                 prm_scorers: Optional[List[Any]] = None,
                  prm_weights: Optional[List[float]] = None,
+                 num_generations: int = 4,
+                 train_batch_size: int = 1,
+                 gradient_accumulation_steps: int = 1,
                  advantage_estimator: str = 'grpo',
                  scale_rewards: str = 'group',
                  rl_config: Optional['RLConfig'] = None,
-                 reward_fn: Callable[[Any], float] = toy_length_reward,
-                 max_steps: int = 3,
-                 gradient_accumulation_steps: int = 1,
-                 train_batch_size: int = 1,
-                 generation_batch_size: Optional[int] = None,
-                 num_train_epochs: float = 1.0,
-                 seed: int = 42,
-                 max_grad_norm: float = 1.0,
                  sampling_params: Optional[dict] = None,
-                 logging_config: Optional['LoggingConfig'] = None,
                  output_dir: str = 'output',
-                 save_steps: Optional[int] = None,
-                 no_save_optim: bool = False,
-                 no_save_rng: bool = False,
-                 safe_serialization: bool = True,
-                 max_shard_size: str = '5GB',
-                 save_total_limit: Optional[int] = None,
-                 manual_gc: bool = False,
-                 manual_gc_steps: int = 0):
-        # Resolve + validate the rollout inputs and reward functions BEFORE super().__init__, so a
-        # misconfiguration still fails before the tracker initialises its reporters (a RunTracker side
-        # effect). get_reward_funcs may build reward-model scorers, so it stays on this pre-tracker side.
-        resolved_prompt_extras = [{} for _ in prompts] if prompt_extras is None else prompt_extras
-        if len(resolved_prompt_extras) != len(prompts):
-            raise ValueError('prompt_extras must contain exactly one mapping per prompt.')
-        resolved_reward_funcs, resolved_reward_func_names = (
-            get_reward_funcs(reward_funcs, rl_config) if reward_funcs else ([], []))
-        resolved_reward_plugins = list(reward_model_plugins or [])
-        model_names = list(reward_model_names or [])
-        if model_names and len(model_names) != len(resolved_reward_plugins):
-            raise ValueError('reward_model_names must align one-to-one with reward_model_plugins.')
-        resolved_reward_func_names.extend(
-            model_names or [type(plugin).__name__ for plugin in resolved_reward_plugins])
+                 tracker: Optional['RunTracker'] = None,
+                 global_step_fn: Optional[Callable[[], int]] = None,
+                 chord_features: Optional[List[dict]] = None,
+                 chord_train_batch_size: int = 0):
+        # Validate the outcome-reward roster up front: the recipe resolved ``--orm`` rules + ``--reward_model``
+        # scorers into ONE ordered list; this only checks the display names align one-to-one with the scorers.
+        resolved_scorers = list(reward_scorers or [])
+        scorer_names = list(reward_scorer_names or [])
+        if scorer_names and len(scorer_names) != len(resolved_scorers):
+            raise ValueError('reward_scorer_names must align one-to-one with reward_scorers.')
 
-        super().__init__(
-            model,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            max_grad_norm=max_grad_norm,
-            max_steps=max_steps,
-            logging_config=logging_config,
-            output_dir=output_dir,
-            save_steps=save_steps,
-            no_save_optim=no_save_optim,
-            no_save_rng=no_save_rng,
-            safe_serialization=safe_serialization,
-            max_shard_size=max_shard_size,
-            save_total_limit=save_total_limit,
-            manual_gc=manual_gc,
-            manual_gc_steps=manual_gc_steps)
-        self.rollout = rollout_engine
-        self.prompts = prompts
-        self.prompt_extras = resolved_prompt_extras
+        self.model = model
+        self.rollout = rollout
+        self.template = template
         self.reference = reference
         self.teacher = teacher
-        self.template = template
-        self.chord_features = chord_features or []
-        self._chord_offset = 0
+        #: The outcome-reward channel: ``reward_scorers`` is the ordered ``func(completions, **columns)`` list,
+        #: ``reward_scorer_names`` labels each column for the metric, ``reward_weights`` (``--orm_weights``)
+        #: combines them, ``reward_fn`` is the single-callable fallback used only when no scorer list resolved.
+        self.reward_scorers = resolved_scorers
+        self.reward_scorer_names = scorer_names or [type(scorer).__name__ for scorer in resolved_scorers]
+        self.reward_weights = reward_weights
+        self.reward_fn = reward_fn
+        #: Process-reward (PRM) channel: ``prm_scorer`` segments a response into reasoning steps and broadcasts
+        #: each step's score onto its tokens; ``prm_scorers`` is the ordered ``--prm`` channel scoring each step,
+        #: weighted by ``prm_weights``. Active only when a scorer AND at least one PRM channel scorer are wired.
+        self.prm_scorer = prm_scorer
+        self.prm_scorers = list(prm_scorers or [])
+        self.prm_weights = prm_weights
+        self._prm_active = bool(prm_scorer is not None and self.prm_scorers)
         self.num_generations = num_generations
+        #: Samples per ``forward_backward`` (``per_device_train_batch_size * dp_size``), so one mini-batch splits
+        #: evenly across the slice_dp ranks.
+        self.train_batch_size = max(1, train_batch_size)
+        self.gradient_accumulation_steps = max(1, gradient_accumulation_steps)
         self.advantage_estimator = advantage_estimator
         self.scale_rewards = scale_rewards
-        self.reward_weights = reward_weights
         self.rl_config = rl_config
-        self.reward_funcs = resolved_reward_funcs
-        self.reward_func_names = resolved_reward_func_names
-        self.reward_model_plugins = resolved_reward_plugins
-        self.reward_fn = reward_fn
-        #: Driver-held reward component: twinkle's ``CompletionRewardMetric``, fed once per rollout by
-        #: :meth:`_accumulate_reward_metric` and read back in :meth:`_extra_step_metrics`. Driver-side (not
-        #: ``model.add_metric``) because rewards are computed on the driver from the reward funcs/models,
-        #: never inside the model forward -- the model-side component (GRPOMetric, registered by
-        #: swift.dev.loss.configure_rlhf_metrics) covers the policy-gradient ratio/clip/entropy stats.
-        self._reward_metric = CompletionRewardMetric()
-        #: Process-reward (PRM) channel: ``prm_scorer`` segments a response into reasoning steps and
-        #: broadcasts each step's score onto its tokens (see :mod:`swift.dev.rewards.prm`); ``prm_funcs``
-        #: (rule PRMs) and ``prm_model_plugins`` (frozen PRM models) score each step, weighted by
-        #: ``prm_weights``. Active only when a scorer AND at least one PRM channel are wired together -- a
-        #: half-configured pair produces nothing, so validate rejects it rather than this silently no-op'ing.
-        self.prm_scorer = prm_scorer
-        self.prm_funcs = list(prm_funcs or [])
-        self.prm_model_plugins = list(prm_model_plugins or [])
-        self.prm_weights = prm_weights
-        self._prm_active = bool(prm_scorer is not None and (self.prm_funcs or self.prm_model_plugins))
-        #: Samples per ``forward_backward``: ``per_device_train_batch_size * dp_size``, computed by the
-        #: recipe (which owns the distributed/train configs) so one mini-batch splits evenly across the
-        #: slice_dp ranks -- each rank receives exactly ``per_device_train_batch_size`` rows. Feeding fewer
-        #: than dp_size rows is what raised "Batch too small" under the old one-sample-per-call loop.
-        self.train_batch_size = max(1, train_batch_size)
         self.sampling_params = sampling_params
-        #: Prompt-set iterator: one batch per rollout, exhausted after ``num_train_epochs`` passes. Built
-        #: here (not in the recipe) so every on-policy subclass shares one epoch/shard/seed policy; the
-        #: recipe only derives the matching ``max_steps`` LR horizon via ``rollout_step_budget``.
-        self._prompt_batches = PromptBatchScheduler(
-            len(prompts),
-            generation_batch_size=generation_batch_size,
-            num_train_epochs=num_train_epochs,
-            seed=seed)
-        #: Stored so the streaming driver (``_streaming_loop.StreamingLoopMixin``) builds its per-prompt
-        #: ``PromptStream`` over the SAME epoch/seed policy as this scheduler, not a silent default.
-        self.num_train_epochs = num_train_epochs
-        self.seed = seed
+        self.output_dir = output_dir
+        #: The recipe's RunTracker (for ``log_prompts``) and a zero-arg callable returning the current optimizer
+        #: step, both injected so this component holds no training-loop state of its own.
+        self.tracker = tracker
+        self._global_step_fn = global_step_fn if global_step_fn is not None else (lambda: 0)
+        self.chord_features = list(chord_features or [])
+        self.chord_train_batch_size = int(chord_train_batch_size)
+        if self.chord_features and self.chord_train_batch_size < 1:
+            raise ValueError('chord_train_batch_size must be positive when CHORD expert features are configured.')
+        self._chord_offset = 0
+        #: Driver-held reward component fed once per assembled batch by :meth:`_accumulate_reward_metric` and
+        #: read back by :meth:`step_telemetry`.
+        self._reward_metric = CompletionRewardMetric()
+        #: ReMax greedy baselines stashed per group_key by :class:`GroupCompletionHook` at group completion and
+        #: consumed (read + popped) by :meth:`_estimator_inputs` at assemble time.
+        self._remax_baselines: Dict[str, float] = {}
+        #: Version spans of the last assembled batch, read by :meth:`step_telemetry`.
+        self._last_batch_version_spans: List[int] = []
 
-    def _prompt_payload(self, prompt_indices: Sequence[int]):
-        """The ``(prompts, prompt_extras)`` rows for one rollout batch, by global prompt position."""
-        prompts = [self.prompts[i] for i in prompt_indices]
-        extras = [self.prompt_extras[i] for i in prompt_indices]
-        return prompts, extras
+    # --- the per-sample score seam -------------------------------------------------------------------------
 
-    def _finalize_samples(self, samples: List[Any], prompt_indices: Sequence[int]) -> List[Any]:
-        """Check the rollout count and stamp each sample with its group's global prompt id.
+    def score_sample(self, sample: Any) -> None:
+        """Score ONE rollout trajectory in place (the driver's per-sample score seam).
 
-        The synchronous :meth:`_generate` batch path enforces the ``num_generations``-per-prompt contract
-        and group id (which drives the group-relative advantage) here. The per-sample streaming path does
-        NOT call this: ``rollout.collect_sample`` stamps each trajectory's group id / version individually
-        (see ``_streaming_loop._collect_per_sample``), and this hook's whole-batch count invariant cannot
-        hold for a single trajectory.
+        Computes the raw outcome reward into ``sample.orm_reward`` (one float per resolved ORM scorer, the row of
+        the ``[N, n_scorers]`` matrix :meth:`_score` would build for a batch) and, when a PRM channel is active,
+        the per-token process reward into ``sample.prm_process``. Returns ``None`` so the driver keeps this same
+        (mutated) sample. Group-relative advantage is NOT computed here -- it needs the whole group, so it runs
+        in :meth:`assemble`.
+
+        PRM is per-sample here (not per-group): the scorer segments this one response into reasoning steps and
+        broadcasts each step's weighted score onto its tokens. A multi-turn rollout gets a
+        :class:`~swift.dev.rewards.prm.MultiTurnContext` (see :meth:`_prm_turn_context`) so a step never spans
+        two assistant turns and is scored against the real conversation history -- prior turns AND their tool
+        observations -- rather than a flat splice of trainable tokens.
         """
-        expected = len(prompt_indices) * self.num_generations
-        if len(samples) != expected:
-            raise RuntimeError(f'rollout returned {len(samples)} samples, expected {expected} '
-                               f'({len(prompt_indices)} prompts * {self.num_generations} generations).')
-        for local_idx, prompt_idx in enumerate(prompt_indices):
-            for sample in samples[local_idx * self.num_generations:(local_idx + 1) * self.num_generations]:
-                sample.prompt_id = str(prompt_idx)
-        return samples
+        rewards = self._score([sample])
+        sample.orm_reward = rewards[0].tolist()
+        if self._prm_active:
+            if getattr(sample, 'prompt', None) is None:
+                raise ValueError('PRM scoring requires the sample prompt to be stamped by the driver collect '
+                                 'step, got None.')
+            turn_context = self._prm_turn_context(sample)
+            sample.prm_process = self.prm_scorer(
+                sample.prompt,
+                sample.response_token_ids,
+                sample.decoded,
+                self._score_steps,
+                self.template.decode,
+                columns=getattr(sample, 'extra', None),
+                turn_context=turn_context)
+        return None
 
-    def _generate(self, prompt_indices: Sequence[int]) -> List[Any]:
-        """Blocking rollout: push the policy, sample to completion, hand the device back (sync path)."""
-        prompts, extras = self._prompt_payload(prompt_indices)
-        samples = blocking_generate(
-            self.rollout,
-            prompts,
-            num_samples=self.num_generations,
-            sampling_params=self.sampling_params,
-            prompt_extras=extras)
-        return self._finalize_samples(samples, prompt_indices)
+    def _prm_turn_context(self, sample: Any):
+        """The :class:`~swift.dev.rewards.prm.MultiTurnContext` for a multi-turn sample, else ``None``.
 
-    def _reward_rows(self, samples: List[Any]) -> List[Dict[str, Any]]:
-        """Rebuild complete conversations for RM plugins and retain dataset-side reward columns."""
-        rows = []
-        for sample in samples:
-            messages = getattr(sample, 'messages', None)
-            if messages is None:
-                try:
-                    prompt_index = int(sample.prompt_id)
-                except (TypeError, ValueError) as exc:
-                    raise ValueError(
-                        f'reward model scoring requires a numeric prompt_id, got {sample.prompt_id!r}.') from exc
-                messages = copy.deepcopy(self.prompts[prompt_index])
-                messages.append({'role': 'assistant', 'content': sample.decoded})
-            row = copy.deepcopy(getattr(sample, 'extra', None) or {})
-            row['messages'] = copy.deepcopy(messages)
-            rows.append(row)
-        return rows
-
-    def _score(self, samples: List[Any]):
-        import torch
-
-        reward_parts = []
-        if self.reward_funcs:
-            completions = [sample.decoded for sample in samples]
-            column_keys = {key for sample in samples for key in (getattr(sample, 'extra', None) or {})}
-            columns = {
-                key: [(getattr(sample, 'extra', None) or {}).get(key) for sample in samples]
-                for key in column_keys
-            }
-            reward_parts.append(compute_rewards_per_func(completions, self.reward_funcs, columns))
-        if self.reward_model_plugins:
-            reward_parts.append(compute_reward_model_scores(self._reward_rows(samples), self.reward_model_plugins))
-        if reward_parts:
-            return torch.cat(reward_parts, dim=1)
-        return torch.tensor([[self.reward_fn(sample)] for sample in samples], dtype=torch.float32)
-
-    def _weighted_rewards(self, rewards_per_func):
-        import torch
-
-        weight_tensor = build_reward_weights(self.reward_weights, rewards_per_func.shape[1]).to(
-            device=rewards_per_func.device, dtype=rewards_per_func.dtype)
-        return (rewards_per_func * weight_tensor.unsqueeze(0)).nansum(dim=1)
-
-    def _accumulate_reward_metric(self, samples: List[Any], rewards_per_func) -> None:
-        """Feed one rollout's rewards + completion lengths into the driver-held CompletionRewardMetric.
-
-        Reset first, so the metric reflects exactly the batch the upcoming optimizer step(s) train on: a
-        rollout can span several optimizer steps (mini-batches x num_iterations), and each of their records
-        reports this same rollout's reward via :meth:`_extra_step_metrics` (``calculate`` is a non-resetting
-        read). Shared by GRPO (:meth:`_assemble_rollout_batch`) and RFT (its own ``fit``) -- the two reward
-        chokepoints -- so both surface ``train/<func>_reward`` + ``train/total_reward`` + completion length
-        without hand-folding. Per-function columns keep their resolved names; the toy single-callable path
-        resolves no names, so only the weighted ``total`` is reported there.
+        Mirrors :meth:`_teacher_messages`'s own multi-turn detection (``sample.messages`` is stamped only by
+        the multi-turn rollout path) and reuses the same trainable-run/assistant-turn correspondence the
+        teacher's privileged view relies on (:func:`swift.dev.rollout.multi_turn.turn_token_spans`), so a
+        run-count/assistant-message-count mismatch fails loudly here exactly as it does there.
         """
-        self._reward_metric.reset()
-        names = self.reward_func_names
-        rewards: Dict[str, List[float]] = {}
-        for col in range(rewards_per_func.shape[1]):
-            if col < len(names):
-                rewards[names[col]] = [float(v) for v in rewards_per_func[:, col].tolist()]
-        rewards['total'] = [float(v) for v in self._weighted_rewards(rewards_per_func).tolist()]
-        completion_lengths = [len(getattr(sample, 'response_token_ids', None) or []) for sample in samples]
-        self._reward_metric.accumulate(rewards=rewards, completion_lengths=completion_lengths)
+        messages = getattr(sample, 'messages', None)
+        if messages is None:
+            return None
+        from swift.dev.rewards.prm import MultiTurnContext
+        from swift.dev.rollout.multi_turn import turn_token_spans
+
+        turn_spans = turn_token_spans(sample.input_feature)
+        assistant_message_indices = [
+            index for index, message in enumerate(messages) if message.get('role') == 'assistant']
+        if len(assistant_message_indices) != len(turn_spans):
+            raise RuntimeError(
+                f'multi-turn PRM scoring found {len(assistant_message_indices)} assistant turns in the '
+                f'messages but {len(turn_spans)} trainable token runs; a run-splitting mismatch means an '
+                'assistant turn produced no trainable token (an empty generation) or a completion_mask '
+                'split one turn in two.')
+        return MultiTurnContext(
+            messages=messages, turn_spans=turn_spans, assistant_message_indices=assistant_message_indices)
 
     def _score_steps(self, rows: List[Dict[str, Any]]) -> List[float]:
         """Score a batch of PRM step rows -> one weighted process score per row.
 
-        The PRM counterpart of :meth:`_score`: the scorer plugin builds each row as ``{'messages': prompt +
-        assistant(the response prefix up to one step), **columns}``, and every PRM channel scores it -- rule
-        PRMs read the prefix text as the completion, frozen PRM models read the whole row -- then the
-        per-channel scores are combined with ``prm_weights``, the same weighted sum :meth:`_weighted_rewards`
-        applies to outcome rewards. The frozen PRM runs on its OWN device group (not sliced across the policy
-        ranks), so a step batch smaller than the policy's dp_size is fine here.
+        The PRM counterpart of :meth:`_score`: the scorer plugin builds each row as ``{'messages': <the real
+        conversation prefix up to this step>, **columns}`` -- ``prompt + assistant(response[:end])`` for a
+        single-turn rollout, or the prior turns (assistant AND tool observations) plus this turn's text up to
+        the step for a multi-turn one (see :class:`~swift.dev.rewards.prm.MultiTurnContext`) -- and the one
+        ordered ``--prm`` scorer list (:attr:`prm_scorers`) scores it: a rule PRM reads the last message's
+        text as the completion, a frozen PRM model reads the whole ``messages`` row. The per-scorer scores are
+        then combined with ``prm_weights``, the same weighted sum :meth:`_weighted_rewards` applies to outcome
+        rewards. The frozen PRM runs on its OWN device group (not sliced across the policy ranks), so a step
+        batch smaller than the policy's dp_size is fine.
         """
-        import torch
-
-        parts = []
-        if self.prm_funcs:
-            completions = [row['messages'][-1]['content'] for row in rows]
-            column_keys = {key for row in rows for key in row if key != 'messages'}
-            columns = {key: [row.get(key) for row in rows] for key in column_keys}
-            parts.append(compute_rewards_per_func(completions, self.prm_funcs, columns))
-        if self.prm_model_plugins:
-            parts.append(compute_reward_model_scores(rows, self.prm_model_plugins))
-        scores = torch.cat(parts, dim=1)
+        completions = [row['messages'][-1]['content'] for row in rows]
+        columns = {key: [row.get(key) for row in rows] for key in {k for row in rows for k in row}}
+        scores = score_completions(completions, self.prm_scorers, columns)
         weights = build_reward_weights(self.prm_weights, scores.shape[1]).to(
             device=scores.device, dtype=scores.dtype)
         return (scores * weights.unsqueeze(0)).nansum(dim=1).tolist()
 
-    def _apply_prm(self, samples: List[Any], orm_advantages: Sequence[float]) -> List[List[float]]:
-        """Fold the PRM process reward into a per-token advantage (segmented placement).
+    # --- the outcome-reward half (thin delegates over the shared _scoring functions) -----------------------
 
-        The scorer broadcasts each step's weighted score onto that step's response tokens -- a per-token
-        *process* reward in the response-token frame (length ``len(response_token_ids)``, the same frame
-        ``old_logps`` and :meth:`_training_advantage`'s expansion use). The outcome (ORM) group-relative
-        advantage is then placed on the LAST response token only, so process and terminal rewards occupy
-        disjoint token segments and no token is driven by both. Returns one per-token advantage list per
-        sample, which :meth:`_training_advantage` passes through to ``forward_backward`` unchanged.
-        """
-        decode = self.template.decode
-        per_token: List[List[float]] = []
-        for sample, orm_advantage in zip(samples, orm_advantages):
-            ## 这里为什么不支持多轮？多轮是grpo主要场景
-            if getattr(sample, 'messages', None) is not None:
-                raise ValueError('PRM process reward does not support multi-turn rollouts: a step prefix '
-                                 'would span several assistant turns, so per-step scoring is undefined. Drop '
-                                 '--prm or disable multi-turn (--max_turns).')
-            try:
-                prompt_index = int(sample.prompt_id)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f'PRM scoring requires a numeric prompt_id, got {sample.prompt_id!r}.') from exc
-            process = self.prm_scorer(
-                self.prompts[prompt_index],
-                sample.response_token_ids,
-                sample.decoded,
-                self._score_steps,
-                decode,
-                columns=getattr(sample, 'extra', None))
-            advantage = list(process)
-            ## 这里的打分写的太死了，把算法层面直接融合到了工程层面。token如何打分应该是可配置的
-            ## 应该是step如何定义外部可定制（插件化），prm、orm也可以插件化，打分后，每个step的prm和orm如何融合和权重也是外部可定制的
-            if advantage:
-                advantage[-1] = float(orm_advantage)  # segmented placement: terminal ORM on the last token
-            per_token.append(advantage)
-        return per_token
+    def _score(self, samples: List[Any]):
+        """Thin delegate over :func:`~swift.dev.recipe._scoring.score_samples` (the shared reward matrix)."""
+        return score_samples(samples, reward_scorers=self.reward_scorers, reward_fn=self.reward_fn)
 
-    def _dynamic_rollout(self, prompt_indices: Sequence[int]):
-        """Replace zero-variance prompt groups, falling back atomically if retries are exhausted."""
-        import torch
+    def _weighted_rewards(self, rewards_per_func):
+        """Thin delegate over :func:`~swift.dev.recipe._scoring.weighted_rewards` (the shared weighted sum)."""
+        return weighted_rewards(rewards_per_func, self.reward_weights)
 
-        prompt_indices = list(prompt_indices)
-        original_samples = self._generate(prompt_indices)
-        original_rewards = self._score(original_samples)
-        if not (self.rl_config and self.rl_config.dynamic_sample):
-            return original_samples, original_rewards
-
-        accepted: Dict[int, tuple] = {}
-        pending = prompt_indices
-        samples = original_samples
-        rewards = original_rewards
-        max_retries = self.rl_config.max_resample_times
-        for attempt in range(max_retries + 1):
-            weighted = self._weighted_rewards(rewards)
-            next_pending = []
-            for local_idx, prompt_idx in enumerate(pending):
-                start = local_idx * self.num_generations
-                end = start + self.num_generations
-                group_rewards = weighted[start:end]
-                if group_rewards.numel() > 1 and torch.std(group_rewards, unbiased=False) > 0:
-                    accepted[prompt_idx] = (samples[start:end], rewards[start:end])
-                else:
-                    next_pending.append(prompt_idx)
-            if not next_pending:
-                ordered_samples = []
-                ordered_rewards = []
-                for prompt_idx in prompt_indices:
-                    group_samples, group_rewards = accepted[prompt_idx]
-                    ordered_samples.extend(group_samples)
-                    ordered_rewards.append(group_rewards)
-                return ordered_samples, torch.cat(ordered_rewards, dim=0)
-            if attempt == max_retries:
-                break
-            pending = next_pending
-            samples = self._generate(pending)
-            rewards = self._score(samples)
-
-        logger.warning('Dynamic sampling still has zero-variance groups after %s retries; using the original batch.',
-                       max_retries)
-        return original_samples, original_rewards
-
-    @staticmethod
-    def _response_positions(feature: dict) -> List[int]:
-        return response_positions(feature)
+    def _accumulate_reward_metric(self, samples: List[Any], rewards_per_func) -> None:
+        """Thin delegate over :func:`~swift.dev.recipe._scoring.accumulate_reward_metric` (the shared fold)."""
+        accumulate_reward_metric(
+            self._reward_metric,
+            samples,
+            rewards_per_func,
+            scorer_names=self.reward_scorer_names,
+            reward_weights=self.reward_weights)
 
     def _response_logps(self, scorer: Any, features: List[dict]) -> List[List[float]]:
         """Score ``features`` with ``forward_only``, returning one response-token logp list per feature.
 
-        A thin wrapper over :func:`~swift.dev.recipe._scoring.batched_response_scores` (one chunked
-        ``forward_only`` per ``train_batch_size`` block, DP>1-correct, right-padding aware) -- the SAME
-        shared path PPO's value / reference scoring uses, so a rollout is scored one way everywhere.
+        A thin wrapper over :func:`~swift.dev.recipe._scoring.batched_response_scores` (one chunked ``forward_only``
+        per ``train_batch_size`` block, DP>1-correct, right-padding aware): the shared "score a frozen model over
+        the student's response tokens" primitive used for the reference / teacher logps.
         """
+        forward_kwargs = None
+        if self.chord_enabled and getattr(scorer, 'placement_key', None) is None:
+            forward_kwargs = {'loss_key': 'grpo'}
         return batched_response_scores(
-            scorer, features, train_batch_size=self.train_batch_size, output_key='logps')
+            scorer,
+            features,
+            train_batch_size=self.train_batch_size,
+            output_key='logps',
+            forward_kwargs=forward_kwargs)
 
-    def _score_chunks(self, features: List[dict]) -> List[List[dict]]:
-        """Split ``features`` into ``train_batch_size`` chunks (over :func:`_scoring.score_chunks`).
+    # --- the assemble seam ---------------------------------------------------------------------------------
 
-        Kept for :meth:`_record_routing`, which chunks like a scoring pass but reads back ``routed_experts``
-        (a different frame shape) rather than per-token logps, so it drives the chunking itself.
+    def assemble(self, records: List['BufferRecord']) -> TrainingBatch:
+        """Assemble one whole-group pull into a trainable :class:`TrainingBatch` (the driver's assemble seam).
+
+        ``records`` are the driver's buffered trajectories for this pull (group-contiguous, an exact multiple of
+        ``train_batch_size * ga`` rows -- see :meth:`assembly_ready`). Each ``record.sample`` already carries its
+        raw ``orm_reward`` (and ``prm_process`` when a PRM channel is active) from :meth:`score_sample`. This
+        method does the group-level work the per-sample seam could not:
+
+        1. rebuild the ``[N, n_scorers]`` reward matrix from the per-sample ``orm_reward`` rows;
+        2. overlap the reference / teacher / policy-old logp forwards on their disjoint DeviceGroups;
+        3. compute the group-relative advantage (``compute_advantages``), with the ReMax greedy baseline read back
+           from the stash :class:`GroupCompletionHook` filled;
+        4. fold the PRM process reward into a per-token advantage (convex mix) when active;
+        5. prepare each row's MoE expert routing for the training forward's replay.
         """
-        return score_chunks(features, self.train_batch_size)
-
-    def _prepare_routing_replay(self, samples: List[Any]) -> None:
-        """Establish each sample's MoE expert routing per ``RLConfig.router_replay_mode``, in place.
-
-        Routing replay keeps an MoE policy's importance ratio honest: the training forward must REPLAY the
-        expert choices that actually produced each token rather than recompute them (recomputed routing under
-        drifted weights silently corrupts the ratio). The two modes differ only in WHERE the routing comes
-        from, then feed the SAME REPLAY path (each row's ``encoded['routed_experts']`` + a
-        ``router_replay_action='replay_forward'`` forward_backward kwarg):
-
-        - ``'R3'``: the sampler exported the generating pass's routing (``samples_from_responses`` carried it
-          into ``encoded``). Require it -- a non-exporting engine leaves none, and silently recomputing would
-          be wrong, so fail loudly and point at R2.
-        - ``'R2'``: RECORD the training model's own routing for these tokens (under the just-synced
-          generating weights, so it is a faithful proxy for the generating pass vLLM did not export).
-        """
-        mode = self.rl_config.router_replay_mode if self.rl_config else 'disabled'
-        if mode == 'disabled':
-            return
-        if mode == 'R3':
-            missing = sum(1 for sample in samples if sample.encoded.get('routed_experts') is None)
-            if missing:
-                raise RuntimeError(
-                    f'router_replay_mode="R3" replays the sampler-reported MoE routing, but {missing} of '
-                    f'{len(samples)} rollout samples carry none: the sampling engine did not export '
-                    'routed_experts (that needs a vLLM build + MoE checkpoint that report routing). Use '
-                    'router_replay_mode="R2" to RECORD the routing on the training model instead, or '
-                    '"disabled" to recompute it.')
-            return
-        if mode == 'R2':
-            # R2 records the training model's routing regardless of what the sampler returned (legacy R2
-            # semantics: set RECORD, forward, capture), so drop any sampler routing first.
-            for sample in samples:
-                sample.encoded.pop('routed_experts', None)
-            self._record_routing(samples)
-            return
-        raise ValueError(f'Unknown router_replay_mode {mode!r}; expected one of disabled/R2/R3.')
-
-    def _record_routing(self, samples: List[Any]) -> None:
-        """R2: RECORD the training model's own expert routing for the rollout tokens, in place into encoded.
-
-        Mirrors :meth:`_response_logps`' chunking -- ``forward_only`` is a slice_dp method, so each chunk must
-        hold >= dp_size rows -- but asks for ``router_replay_action='record'`` and reads back
-        ``routed_experts`` instead of logps. It runs BEFORE any training update, so the routing is captured
-        under the weights that just generated these tokens. The returned whole-sequence routing is sliced
-        back to each row's own ``input_ids`` length, so the REPLAY forward's ``align_routed_experts`` re-pads
-        it exactly as it does the R3 sampler routing (a padded RECORD row re-fed whole would misalign).
-        """
-        import torch
-
-        features = [sample.input_feature for sample in samples]
-        rows: List[Any] = []
-        for chunk in self._score_chunks(features):
-            out = self.model.forward_only(
-                inputs=copy_inputs(chunk), router_replay_action='record')
-            recorded = out.get('routed_experts') if isinstance(out, dict) else None
-            if recorded is None:
-                raise RuntimeError(
-                    'router_replay_mode="R2" asked the training model to RECORD its MoE routing, but the '
-                    'forward returned none. The policy must be an MoE model built with routing replay '
-                    'enabled; a dense policy has no expert routing to record (use "disabled").')
-            # A uniform-sequence RECORD returns one [n, seq, layers, topk] tensor; a variable-sequence one
-            # returns a per-microbatch list of them. Flatten either to row-major order (submission order).
-            for tensor in (recorded if isinstance(recorded, (list, tuple)) else [recorded]):
-                tensor = torch.as_tensor(tensor).detach().cpu()
-                for i in range(tensor.shape[0]):
-                    rows.append(tensor[i])
-        if len(rows) != len(samples):
-            raise RuntimeError(f'R2 routing RECORD returned {len(rows)} rows for {len(samples)} samples; '
-                               'per-row routing alignment is impossible.')
-        for sample, routed in zip(samples, rows):
-            length = len(sample.encoded['input_ids'])
-            if routed.shape[0] < length:
-                raise RuntimeError(f'R2 recorded routing covers {routed.shape[0]} tokens for a {length}-token '
-                                   'sequence; the RECORD forward must route the whole sequence.')
-            sample.encoded['routed_experts'] = routed[:length]
-            # Replay only the causal rows that produce response logprobs (labels != -100) -- the same set
-            # completion_mask encodes -- so the mask reuses it, mirroring the R3 path in rollout. R2's RECORD
-            # covers the whole sequence, so (unlike R3) there is no short-by-one tail to clamp.
-            sample.encoded['replay_mask'] = sample.encoded['completion_mask']
-
-    def _teacher_messages(self, sample: Any, prompt_idx: int, teacher_prompt: str) -> tuple[List[dict], List[int]]:
-        is_multi_turn = getattr(sample, 'messages', None) is not None
-        messages = copy.deepcopy(sample.messages if is_multi_turn else self.prompts[prompt_idx])
-        for message in messages:
-            if message.get('role') == 'user':
-                message['content'] = teacher_prompt
-                break
-        response_ids = [int(token) for token in sample.response_token_ids]
-        if not is_multi_turn:
-            messages.append({'role': 'assistant', 'content': response_ids})
-            return messages, response_ids
-
-        from swift.dev.rollout.multi_turn import _messages_with_token_ids
-        return _messages_with_token_ids(messages, sample.input_feature), response_ids
-
-    def _teacher_feature(self, sample: Any) -> dict:
-        ## 这些函数的放置规则有点迷
-        ## 为什么文件叫grpo，但是有teacher的内容，为什么调用了encode_privileged_view？
-        ## 你写这些代码的时候有注意过这些细节吗
-        teacher_prompt = (getattr(sample, 'extra', None) or {}).get('teacher_prompt')
-        if not teacher_prompt:
-            return sample.input_feature
-        try:
-            prompt_idx = int(sample.prompt_id)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f'teacher_prompt requires a numeric prompt_id, got {sample.prompt_id!r}.') from exc
-        messages, response_ids = self._teacher_messages(sample, prompt_idx, teacher_prompt)
-        return encode_privileged_view(self.template, messages, response_ids, getattr(sample, 'extra', None))
-
-    def _reference_logps(self, samples: List[Any]) -> Optional[List[List[float]]]:
-        if self.reference is None:
-            return None
-        return self._response_logps(self.reference, [sample.input_feature for sample in samples])
-
-    def _teacher_owner(self, samples: List[Any]) -> Optional[Any]:
-        """The teacher scoring owner for these samples, or None when no teacher forward is needed.
-
-        Split out from :meth:`_teacher_logps` so :meth:`_assemble_rollout_batch` can read the owner's
-        ``placement_key`` and overlap the teacher forward with the reference / policy-old forwards on
-        disjoint DeviceGroups. A privileged ``teacher_prompt`` column with no explicit teacher scores on
-        the policy actor itself (``self.model``), whose placement key is the policy sentinel.
-        """
-        has_privileged_prompt = any((sample.extra or {}).get('teacher_prompt') for sample in samples)
-        needs_teacher = bool(self.teacher is not None or has_privileged_prompt)
-        advanced = bool(self.rl_config and
-                        (self.rl_config.advantage_reweight == 'rlsd' or self.rl_config.sdar_loss_coef > 0))
-        if not needs_teacher:
-            if advanced:
-                raise ValueError('RLSD/SDAR requires teacher_model or a teacher_prompt dataset column.')
-            return None
-        return self.teacher if self.teacher is not None else self.model
-
-    def _teacher_logps(self, samples: List[Any]) -> Optional[List[List[float]]]:
-        owner = self._teacher_owner(samples)
-        if owner is None:
-            return None
-        return self._response_logps(owner, [self._teacher_feature(sample) for sample in samples])
-
-    @staticmethod
-    def _sequence_kl(old_logps: List[List[float]], ref_logps: List[List[float]]):
-        import torch
-
-        values = []
-        for old, ref in zip(old_logps, ref_logps):
-            if len(old) != len(ref):
-                raise RuntimeError(f'reference logps misaligned: old={len(old)}, ref={len(ref)}.')
-            delta = torch.tensor(ref, dtype=torch.float32) - torch.tensor(old, dtype=torch.float32)
-            values.append((torch.exp(delta) - delta - 1.0).mean() if delta.numel() else torch.tensor(0.0))
-        return torch.stack(values)
-
-    def _log_completions(self, samples: List[Any], rewards_per_func) -> None:
-        cfg = self.rl_config
-        if not cfg or not cfg.log_completions:
-            return
-        os.makedirs(self.output_dir, exist_ok=True)
-        path = os.path.join(self.output_dir, 'completions.jsonl')
-        rewards = rewards_per_func.detach().float().cpu().tolist()
-        with open(path, 'a', encoding='utf-8') as stream:
-            for sample, per_func in zip(samples, rewards):
-                prompt_index = int(sample.prompt_id)
-                stream.write(json.dumps({
-                    'step': self.global_step + 1,
-                    'prompt': self.prompts[prompt_index],
-                    'completion': sample.decoded,
-                    'rewards': per_func,
-                }, ensure_ascii=False) + '\n')
-
-    def _rollout_step(self, prompt_indices: Sequence[int]):
-        """Synchronous rollout: generate this batch, then score/assemble it into a trainable batch."""
-        samples, rewards_per_func = self._dynamic_rollout(prompt_indices)
-        return self._assemble_rollout_batch(samples, rewards_per_func)
-
-    def _estimator_inputs(self, samples: List[Any], cfg: Optional['RLConfig']) -> Dict[str, Any]:
-        """Extra ``compute_advantages`` kwargs the active ``advantage_estimator`` needs.
-
-        Returns an empty dict for the estimators that read only the rewards and the group size
-        (grpo / rloo / reinforce_plus_plus / reinforce_plus_plus_baseline / grpo_passk). The three that need
-        a per-sample side input are wired here so the recipe -- not the atomic API -- owns how each input is
-        produced from the rollout:
-
-        - ``opo``: per-sample response token counts (its group baseline is length-weighted).
-        - ``gpg``: the ``f_norm`` divisor from the config.
-        - ``remax``: per-sample greedy-decoding baseline rewards (an extra argmax generation pass).
-        """
-        estimator = self.advantage_estimator
-        if estimator == 'opo':
-            return {
-                'response_lengths': [len(self._response_positions(sample.input_feature)) for sample in samples]
-            }
-        if estimator == 'gpg':
-            return {'f_norm': float(cfg.f_norm) if cfg is not None else 1.0}
-        if estimator == 'remax':
-            return {'reward_baselines': self._remax_greedy_baselines(samples)}
-        return {}
-
-    def _remax_greedy_baselines(self, samples: List[Any]):
-        """ReMax baseline: the greedy (argmax) completion's reward per prompt, broadcast to its group.
-
-        ReMax centers each sampled completion's reward on the reward of a GREEDY decoding of the same prompt
-        (a lower-variance baseline than the group mean, at the cost of one extra generation pass). This runs
-        that pass -- ``temperature=0``, one sample per distinct prompt -- scores it with the SAME reward
-        functions / RM plugins as the rollout, and broadcasts each prompt's greedy reward to all of its
-        ``num_generations`` samples. Gated against ``--async_mode`` (validate.py): the pass is synchronous
-        and cannot be pre-submitted a batch ahead.
-        """
-        import torch
-
-        # Distinct prompts in first-seen order; the rollout groups samples as consecutive num_generations
-        # blocks per prompt, so prompt_id is constant within a block.
-        order: List[str] = []
-        pid_to_pos: Dict[str, int] = {}
-        for sample in samples:
-            pid = str(sample.prompt_id)
-            if pid not in pid_to_pos:
-                pid_to_pos[pid] = len(order)
-                order.append(pid)
-        prompts = [self.prompts[int(pid)] for pid in order]
-        extras = [self.prompt_extras[int(pid)] for pid in order]
-
-        greedy_params = dict(self.sampling_params or {})
-        greedy_params['temperature'] = 0.0  # argmax decoding
-        greedy_params.pop('top_p', None)
-        greedy_params.pop('top_k', None)
-
-        greedy_samples = blocking_generate(
-            self.rollout, prompts, num_samples=1, sampling_params=greedy_params, prompt_extras=extras)
-        if len(greedy_samples) != len(order):
-            raise RuntimeError(f'greedy baseline rollout returned {len(greedy_samples)} samples, expected '
-                               f'{len(order)} (one per distinct prompt).')
-        # num_samples=1, so greedy_samples[i] belongs to order[i]; stamp prompt_id for RM-plugin scoring
-        # (_reward_rows reads it) -- _finalize_samples assumes num_generations per prompt and does not apply.
-        for pid, greedy_sample in zip(order, greedy_samples):
-            greedy_sample.prompt_id = pid
-
-        greedy_rewards = self._weighted_rewards(self._score(greedy_samples))  # [num_prompts]
-        baselines = [float(greedy_rewards[pid_to_pos[str(sample.prompt_id)]]) for sample in samples]
-        return torch.tensor(baselines, dtype=torch.float32)
-
-    def _assemble_rollout_batch(self, samples: List[Any], rewards_per_func) -> 'RolloutBatch':
-        """Score an already-generated rollout into a trainable ``RolloutBatch`` (generation excluded).
-
-        Split from :meth:`_rollout_step` so the async path overlaps ONLY the sampler generation with the
-        previous step's training, then runs this scoring / advantage / PRM / routing-replay assembly (all on
-        the training / reference / teacher models, never the sampler) on the collected samples. The
-        synchronous path reaches it through :meth:`_rollout_step` unchanged.
-        """
-        self.tracker.log_prompts(self.prompts, samples, self.global_step + 1, self.num_generations)
+        samples = [record.sample for record in records]
+        group_keys = [record.group_key for record in records]
+        rewards_per_func = torch.tensor([list(sample.orm_reward) for sample in samples], dtype=torch.float32)
+        # Stash this batch's version spans for the per-step telemetry fold BEFORE training (one assemble feeds
+        # several optimizer steps and every step of this batch reports the same batch-level span aggregate).
+        self._last_batch_version_spans = [int(getattr(sample, 'version_span', 0)) for sample in samples]
+        if self.tracker is not None:
+            self.tracker.log_prompts(
+                [getattr(sample, 'prompt', None) for sample in samples], samples, self._global_step_fn() + 1, 1)
         self._log_completions(samples, rewards_per_func)
         self._accumulate_reward_metric(samples, rewards_per_func)
         cfg = self.rl_config
         preserve_policy_logps = bool(cfg and (
             cfg.rollout_importance_sampling_mode or cfg.log_rollout_offpolicy_metrics))
-        # ref / teacher / policy-old each forward on their own DeviceGroup; overlap the disjoint ones and
-        # serialize any that share the policy actor (a disable_lora reference or teacher scores on the
-        # policy, ``placement_key is None``). Only the SCHEDULE changes: each thunk is the identical scoring
-        # call, so the numbers are bit-for-bit what the serial path produced.
+        # ref / teacher / policy-old each forward on their own DeviceGroup; overlap the disjoint ones and serialize
+        # any that share the policy actor (a disable_lora reference or teacher scores on the policy,
+        # ``placement_key is None``). Only the SCHEDULE changes: each thunk is the identical scoring call, so the
+        # numbers are bit-for-bit what the serial path produced.
         teacher_owner = self._teacher_owner(samples)
         tasks: List[tuple] = []
         slots: List[str] = []
@@ -751,18 +361,16 @@ class GRPOLoop(TrainLoop):
             kl_in_reward=kl_in_reward,
             beta=float(cfg.beta or 0.0) if cfg else 0.0,
             kl_values=kl_values,
-            **self._estimator_inputs(samples, cfg))
-        # PRM process reward: fold the per-step scores into a per-token advantage (segmented placement -- the
-        # group-relative ORM advantage above lands on the last response token, the process reward on the rest).
-        # Replaces the scalar advantages with per-token lists, which _training_advantage passes through.
+            **self._estimator_inputs(samples, group_keys, cfg))
+        # PRM process reward: fold the per-token process scores (computed per sample in score_sample) into a
+        # per-token advantage, blending each token's process reward with the group-relative ORM advantage above by
+        # prm_orm_mix. Replaces the scalar advantages with per-token lists, which _training_advantage passes through.
         if self._prm_active:
             advantages = self._apply_prm(samples, advantages)
-        # MoE routing replay: establish each row's expert routing BEFORE the batch reaches the training
-        # update, whose forward REPLAYS it. R3 consumes the sampler-exported routing (already in encoded);
-        # R2 records the training model's own under the just-synced generating weights. Runs AFTER the
-        # scoring forwards so those never carry the extra routed_experts column.
+        # MoE routing replay: establish each row's expert routing BEFORE the batch reaches the training update,
+        # whose forward REPLAYS it. Runs AFTER the scoring forwards so those never carry the routed_experts column.
         self._prepare_routing_replay(samples)
-        return RolloutBatch(
+        return TrainingBatch(
             samples=list(samples),
             advantages=list(advantages),
             old_logps=list(old_logps),
@@ -772,11 +380,154 @@ class GRPOLoop(TrainLoop):
             sampling_masks=([sample.sampling_mask for sample in samples]
                             if cfg and cfg.enable_sampling_replay else None))
 
+    def _apply_prm(self, samples: List[Any], orm_advantages: Sequence[float]) -> List[List[float]]:
+        """Fold the PRM process reward and the ORM outcome advantage into one per-token advantage (convex mix).
+
+        Each sample's ``prm_process`` (a per-token process reward in the response-token frame, computed in
+        :meth:`score_sample`) is blended with its scalar group-relative ORM advantage as
+        ``mix * process[i] + (1 - mix) * orm_advantage`` under ``RLConfig.prm_orm_mix``, so the outcome and process
+        signals drive EVERY response token in a fixed proportion. ``prm_orm_mix=0`` reproduces standard GRPO
+        byte-for-byte; ``prm_orm_mix=1`` is pure process reward. Returns one per-token advantage list per sample,
+        which :meth:`_training_advantage` passes through to ``forward_backward`` unchanged.
+        """
+        mix = float(getattr(self.rl_config, 'prm_orm_mix', 0.5))
+        per_token: List[List[float]] = []
+        for sample, orm_advantage in zip(samples, orm_advantages):
+            process = getattr(sample, 'prm_process', None)
+            if process is None:
+                raise RuntimeError('PRM fusion requires a per-sample process reward, but sample.prm_process is '
+                                   'None; the score seam (score_sample) must run before assemble.')
+            orm = float(orm_advantage)
+            per_token.append([mix * step + (1.0 - mix) * orm for step in process])
+        return per_token
+
+    def _estimator_inputs(self, samples: List[Any], group_keys: List[Any],
+                          cfg: Optional['RLConfig']) -> Dict[str, Any]:
+        """Extra ``compute_advantages`` kwargs the active ``advantage_estimator`` needs.
+
+        Returns an empty dict for the estimators that read only the rewards and the group size (grpo / rloo /
+        reinforce_plus_plus / reinforce_plus_plus_baseline / grpo_passk). The three that need a per-sample side
+        input are wired here:
+
+        - ``opo``: per-sample response token counts (its group baseline is length-weighted).
+        - ``gpg``: the ``f_norm`` divisor from the config.
+        - ``remax``: the per-group greedy-decoding baseline :class:`GroupCompletionHook` stashed at group
+          completion, read back by ``group_key`` and popped so the stash never grows.
+        """
+        estimator = self.advantage_estimator
+        if estimator == 'opo':
+            return {
+                'response_lengths': [len(self._response_positions(sample.input_feature)) for sample in samples]
+            }
+        if estimator == 'gpg':
+            return {'f_norm': float(cfg.f_norm) if cfg is not None else 1.0}
+        if estimator == 'remax':
+            missing = [key for key in set(group_keys) if key not in self._remax_baselines]
+            if missing:
+                # Only reachable when dynamic_sample + remax exhausted the group's regeneration cap: the
+                # driver accepted the last retry without re-firing the hook, so no baseline was stashed.
+                # A silent 0.0 baseline would quietly disable ReMax centering for the whole batch.
+                raise ValueError(
+                    f"{len(missing)} remax group(s) have no stashed greedy baseline: the group-completion "
+                    'hook could not fire on their final regeneration. Avoid dynamic_sample=True together with '
+                    "advantage_estimator='remax', or raise --max_resample_times.")
+            baselines = [self._remax_baselines[group_key] for group_key in group_keys]
+            for group_key in set(group_keys):
+                self._remax_baselines.pop(group_key, None)
+            return {'reward_baselines': torch.tensor(baselines, dtype=torch.float32)}
+        return {}
+
+    def _log_completions(self, samples: List[Any], rewards_per_func) -> None:
+        cfg = self.rl_config
+        if not cfg or not cfg.log_completions:
+            return
+        os.makedirs(self.output_dir, exist_ok=True)
+        path = os.path.join(self.output_dir, 'completions.jsonl')
+        rewards = rewards_per_func.detach().float().cpu().tolist()
+        step = self._global_step_fn() + 1
+        with open(path, 'a', encoding='utf-8') as stream:
+            for sample, per_func in zip(samples, rewards):
+                stream.write(json.dumps({
+                    'step': step,
+                    'prompt': getattr(sample, 'prompt', None),
+                    'completion': sample.decoded,
+                    'rewards': per_func,
+                }, ensure_ascii=False) + '\n')
+
+    # --- the reference / teacher advantage-pipeline forwards -----------------------------------------------
+
+    def _teacher_messages(self, sample: Any, teacher_prompt: str) -> tuple:
+        is_multi_turn = getattr(sample, 'messages', None) is not None
+        base = sample.messages if is_multi_turn else getattr(sample, 'prompt', None)
+        if base is None:
+            raise ValueError('teacher_prompt scoring requires the sample prompt to be stamped by the driver '
+                             'collect step, got None.')
+        messages = copy.deepcopy(base)
+        for message in messages:
+            if message.get('role') == 'user':
+                message['content'] = teacher_prompt
+                break
+        response_ids = [int(token) for token in sample.response_token_ids]
+        if not is_multi_turn:
+            messages.append({'role': 'assistant', 'content': response_ids})
+            return messages, response_ids
+
+        from swift.dev.rollout.multi_turn import _messages_with_token_ids
+        return _messages_with_token_ids(messages, sample.input_feature), response_ids
+
+    def _teacher_feature(self, sample: Any) -> dict:
+        """The input feature the teacher forward scores: the student's response under the teacher's view.
+
+        This teacher -- like :meth:`_reference_logps`'s reference -- is a GRPO *advantage-pipeline* forward, NOT
+        the distillation teacher. GRPO needs a second model's per-token logps for two of its OWN features: the KL
+        penalty (the reference) and RLSD/SDAR teacher-signal advantage reweighting (``advantage_reweight='rlsd'``
+        / ``sdar_loss_coef``). With no ``teacher_prompt`` column the teacher scores the student's own encoding;
+        with one, :func:`encode_privileged_view` re-encodes the SAME response tokens under the teacher's privileged
+        prompt, so the teacher grades the student's answer from a different (hint-augmented) view.
+        """
+        teacher_prompt = (getattr(sample, 'extra', None) or {}).get('teacher_prompt')
+        if not teacher_prompt:
+            return sample.input_feature
+        messages, response_ids = self._teacher_messages(sample, teacher_prompt)
+        return encode_privileged_view(self.template, messages, response_ids, getattr(sample, 'extra', None))
+
+    def _reference_logps(self, samples: List[Any]) -> Optional[List[List[float]]]:
+        if self.reference is None:
+            return None
+        return self._response_logps(self.reference, [sample.input_feature for sample in samples])
+
+    def _teacher_owner(self, samples: List[Any]) -> Optional[Any]:
+        """The teacher scoring owner for these samples, or None when no teacher forward is needed.
+
+        Split out so :meth:`assemble` can read the owner's ``placement_key`` and overlap
+        the teacher forward with the reference / policy-old forwards on disjoint DeviceGroups. A privileged
+        ``teacher_prompt`` column with no explicit teacher scores on the policy actor itself (``self.model``).
+        """
+        has_privileged_prompt = any((sample.extra or {}).get('teacher_prompt') for sample in samples)
+        needs_teacher = bool(self.teacher is not None or has_privileged_prompt)
+        advanced = bool(self.rl_config and
+                        (self.rl_config.advantage_reweight == 'rlsd' or self.rl_config.sdar_loss_coef > 0))
+        if not needs_teacher:
+            if advanced:
+                raise ValueError('RLSD/SDAR requires teacher_model or a teacher_prompt dataset column.')
+            return None
+        return self.teacher if self.teacher is not None else self.model
+
+    @staticmethod
+    def _sequence_kl(old_logps: List[List[float]], ref_logps: List[List[float]]):
+        values = []
+        for old, ref in zip(old_logps, ref_logps):
+            if len(old) != len(ref):
+                raise RuntimeError(f'reference logps misaligned: old={len(old)}, ref={len(ref)}.')
+            delta = torch.tensor(ref, dtype=torch.float32) - torch.tensor(old, dtype=torch.float32)
+            values.append((torch.exp(delta) - delta - 1.0).mean() if delta.numel() else torch.tensor(0.0))
+        return torch.stack(values)
+
     def _rlsd_lambda(self) -> float:
         cfg = self.rl_config
         if cfg is None:
             return 0.0
-        step = self.global_step
+        step = self._global_step_fn()
         if cfg.rlsd_lambda_warmup_steps > 0 and step < cfg.rlsd_lambda_warmup_steps:
             return cfg.rlsd_lambda * step / cfg.rlsd_lambda_warmup_steps
         if cfg.rlsd_lambda_decay_steps > 0 and step >= cfg.rlsd_lambda_warmup_steps:
@@ -786,15 +537,14 @@ class GRPOLoop(TrainLoop):
 
     def _training_advantage(self, advantage: Any, old_logps: List[float], teacher_logps: Optional[List[float]]):
         if isinstance(advantage, (list, tuple)):
-            # Already per-token -- the PRM process reward with segmented terminal placement (see _apply_prm),
-            # in the response-token frame the loss expects, so pass it through with no scalar expansion. PRM
-            # and the teacher-signal reweighting below are mutually exclusive (both produce per-token
-            # advantages from different sources); validate rejects enabling them together.
+            # Already per-token -- the PRM process reward (see _apply_prm), in the response-token frame the loss
+            # expects, so pass it through with no scalar expansion. PRM and the teacher-signal reweighting below
+            # are mutually exclusive (both produce per-token advantages from different sources); validate rejects
+            # enabling them together.
             return list(advantage)
         cfg = self.rl_config
         if teacher_logps is None or cfg is None:
             return advantage
-        import torch
 
         from twinkle.advantage.teacher_signal import apply_rlsd_reweight, expand_advantage_to_per_token
 
@@ -816,73 +566,55 @@ class GRPOLoop(TrainLoop):
         return expand_advantage_to_per_token(
             base, mask, teacher, old, teacher_kl_coef=cfg.teacher_kl_coef)[0].tolist()
 
-    def _chord_mu(self) -> float:
-        cfg = self.rl_config
-        if cfg is None or not self.chord_features:
+    @property
+    def chord_enabled(self) -> bool:
+        return bool(self.chord_features)
+
+    def chord_mu(self) -> float:
+        """Return CHORD's SFT mixing weight for the current optimizer step."""
+        if not self.chord_enabled or self.rl_config is None:
             return 0.0
+        cfg = self.rl_config
         warmup = int(cfg.chord_mu_warmup_steps or 0)
         decay = int(cfg.chord_mu_decay_steps or 0)
         peak = float(cfg.chord_mu_peak or 0.0)
         valley = float(cfg.chord_mu_valley or 0.0)
-        if warmup > 0 and self.global_step < warmup:
-            return peak * self.global_step / warmup
-        if decay == 0 or self.global_step >= warmup + decay:
+        global_step = self._global_step_fn()
+        if warmup > 0 and global_step < warmup:
+            return peak * global_step / warmup
+        if decay == 0 or global_step >= warmup + decay:
             return valley
-        progress = (self.global_step - warmup) / decay
+        progress = (global_step - warmup) / decay
         return valley + (peak - valley) * 0.5 * (1.0 + math.cos(math.pi * progress))
 
-    def _next_chord_features(self, mu: float) -> List[dict]:
-        if mu <= 0 or not self.chord_features:
-            return []
-        count = int(self.rl_config.chord_sft_per_device_train_batch_size or 1)
-        result = []
-        for _ in range(count):
-            result.append(copy.deepcopy(self.chord_features[self._chord_offset % len(self.chord_features)]))
+    def sft_forward_kwargs(self) -> Dict[str, Any]:
+        """Take the next global CHORD expert batch without GRPO-only replay columns."""
+        if not self.chord_enabled:
+            raise RuntimeError('CHORD SFT inputs were requested without chord_sft_dataset.')
+        features = []
+        for _ in range(self.chord_train_batch_size):
+            features.append(copy.deepcopy(self.chord_features[self._chord_offset % len(self.chord_features)]))
             self._chord_offset += 1
-        return result
+        return {
+            'inputs': features,
+            'gradient_accumulation_steps': self.gradient_accumulation_steps,
+        }
 
-    def _sync_reference(self) -> None:
-        cfg = self.rl_config
-        if not cfg or not cfg.sync_ref_model or self.global_step % cfg.ref_model_sync_steps:
-            return
-        if self.reference is None or isinstance(self.reference, DisableAdapterTeacher):
-            raise RuntimeError('reference synchronization requires a distinct mutable reference model.')
-        reference = self.reference.model
-        if hasattr(reference, 'mix_from_policy'):
-            reference.mix_from_policy(self.model, cfg.ref_model_mixup_alpha)
-            return
-        import torch
+    # --- the encoding half (recipe body calls this per mini-batch) -----------------------------------------
 
-        state = self.model.get_state_dict()
-        ## 这里有问题，没考虑ray的清况，调用不通。snyc-weights需要另选择出路
-        raw_reference = reference.strategy.unwrap_model(reference.model)
-        reference_params = dict(raw_reference.named_parameters())
-        overlap = set(state) & set(reference_params)
-        if not overlap:
-            raise RuntimeError('policy and reference have no matching parameter names for synchronization.')
-        alpha = cfg.ref_model_mixup_alpha
-        with torch.no_grad():
-            for name in overlap:
-                target = reference_params[name]
-                source = state[name].detach().to(device=target.device, dtype=target.dtype)
-                target.mul_(1.0 - alpha).add_(source, alpha=alpha)
+    def forward_kwargs(self, mini_batch: TrainingBatch) -> Dict[str, Any]:
+        """Assemble one mini-batch's parallel-list ``forward_backward`` kwargs.
 
-    def _mini_batch_kwargs(self, mini_batch: 'RolloutBatch') -> Dict[str, Any]:
-        """Assemble one mini-batch's parallel-list ``forward_backward`` kwargs (design B).
-
-        Every list is parallel to ``mini_batch.samples`` (one entry per rollout row) so slice_dp splits them
-        all consistently across the DP ranks. CHORD auxiliary SFT rows are appended to ``inputs`` and their
-        count carried in ``chord_count`` (a broadcast scalar the loss uses to split RL rows from SFT rows);
-        that split is only correct at dp_size==1, so run_grpo rejects CHORD with dp>1 (RL_PLAN Bug#6).
-        ``ref_logps`` / ``teacher_logps`` are uniform across a rollout (both scoring helpers return None or
-        a full list), so the column being None decides whether the key is passed at all.
+        Every list is parallel to ``mini_batch.samples`` (one entry per rollout row) so slice_dp splits them all
+        consistently across the DP ranks. ``ref_logps`` / ``teacher_logps`` are uniform across a rollout (both
+        scoring helpers return None or a full list), so the column being None decides whether the key is passed at
+        all. CHORD expert rows are intentionally absent from this mapping: the recipe sends them through a
+        separate homogeneous SFT RPC from :meth:`sft_forward_kwargs`, so router and sampling replay remain GRPO-only.
         """
         cfg = self.rl_config
-        chord_mu = self._chord_mu()
-        chord = self._next_chord_features(chord_mu)
         teacher_logps = mini_batch.teacher_logps
         kwargs = {
-            'inputs': [*copy_inputs([sample.input_feature for sample in mini_batch.samples]), *chord],
+            'inputs': copy_inputs([sample.input_feature for sample in mini_batch.samples]),
             'gradient_accumulation_steps': self.gradient_accumulation_steps,
             'advantages': [
                 self._training_advantage(
@@ -896,31 +628,28 @@ class GRPOLoop(TrainLoop):
                 bool(cfg and cfg.overlong_filter and getattr(sample, 'truncated', False))
                 for sample in mini_batch.samples
             ],
-            'chord_count': len(chord),
-            'chord_mu': chord_mu,
-            'chord_phi': bool(cfg and cfg.chord_enable_phi_function),
         }
         if mini_batch.ref_logps is not None:
             kwargs['ref_logps'] = list(mini_batch.ref_logps)
         if teacher_logps is not None and cfg and cfg.sdar_loss_coef > 0:
             kwargs['teacher_logps'] = list(teacher_logps)
         if cfg and cfg.router_replay_mode != 'disabled':
-            # The training forward REPLAYS each row's routing (established in _rollout_step); twinkle's
-            # backward auto-switches to REPLAY_BACKWARD. CHORD SFT rows carry no routing, so routing replay
-            # + CHORD is rejected up front in validate (they cannot share one forward).
-            kwargs['router_replay_action'] = 'replay_forward'
+            # The training forward self-judges REPLAY from the mode (twinkle resolves router_replay_mode
+            # to the backend action; its backward auto-switches to REPLAY_BACKWARD).
+            kwargs['router_replay_mode'] = cfg.router_replay_mode
         if cfg and cfg.enable_sampling_replay:
-            # Per-row sampler support sets, parallel to ``inputs``. CHORD rows are never sampled, so validate
-            # rejects CHORD + sampling replay -- ``chord`` is empty here and the masks align with the rows.
             kwargs['sampling_masks'] = list(mini_batch.sampling_masks)
         return kwargs
 
-    def _plan_mini_batches(self, batch: 'RolloutBatch') -> List['RolloutBatch']:
-        """Split one rollout into full ``train_batch_size`` mini-batches, warning on a dropped tail.
+    def num_replays(self) -> int:
+        """GRPO replays each collected rollout ``num_iterations`` times (at least once)."""
+        return max(1, self.rl_config.num_iterations if self.rl_config else 1)
 
-        Structure-agnostic (only ``len`` + slicing): both GRPOLoop and RFTLoop pass a ``RolloutBatch``, whose
-        slice indexing yields ``RolloutBatch`` mini-batches. Raises when the rollout cannot fill even one
-        mini-batch, so the caller never silently runs a no-op training round.
+    def plan_mini_batches(self, batch: TrainingBatch) -> List[TrainingBatch]:
+        """Split one batch into full ``train_batch_size`` mini-batches, warning on a dropped tail.
+
+        Raises when the batch cannot fill even one mini-batch, so the caller never silently runs a no-op training
+        round.
         """
         mini_batches = split_mini_batches(batch, self.train_batch_size)
         if not mini_batches:
@@ -935,94 +664,236 @@ class GRPOLoop(TrainLoop):
                            dropped, len(batch), self.train_batch_size)
         return mini_batches
 
-    def _pre_metric_step(self) -> None:
-        """Sync the (mutable) reference model toward the policy before reading this step's metrics."""
-        self._sync_reference()
+    # --- the streaming geometry + telemetry ----------------------------------------------------------------
 
-    def _extra_step_metrics(self, metrics: dict) -> dict:
-        """Fold this rollout's driver-side reward component into the record.
+    def assembly_ready(self, buffer: List['BufferRecord']) -> Optional[List['BufferRecord']]:
+        """GRPO pull rule: whole groups, an exact multiple of ``train_batch_size * ga`` rows.
 
-        Entropy / clip-ratio / approx-KL are NOT re-derived here: they come from the model-registered
-        GRPOMetric (``train/entropy``, ``train/clip_ratio``, ...) through the unified record merge, so the
-        policy-gradient stats keep a single source. The reward is the one channel computed on the driver
-        (from the reward funcs/models, never inside the forward), so it is what this hook adds.
+        A group is pullable only when ALL ``num_generations`` trajectories of one prompt are buffered
+        (group-relative advantage is undefined on a partial group); siblings are admitted back-to-back under one
+        policy, so a complete group always carries ONE version.
+
+        The pull quantum is the smallest whole-group count whose rows fill whole optimizer steps --
+        ``need_rows / gcd(num_generations, need_rows)`` groups, i.e. ``lcm(num_generations, need_rows)`` rows -- so
+        every pull is an exact multiple of ``need_rows`` (no gradient-accumulation raggedness, and
+        ``split_mini_batches`` never drops a tail). Complete groups are selected in first-completion order up to
+        the largest whole-quantum count; the rest stay buffered.
+
+        The pulled records are re-emitted GROUP-CONTIGUOUS (all siblings of one group adjacent, groups in
+        selection order) because ``compute_advantages`` normalizes each consecutive block of ``num_generations`` as
+        one prompt group by POSITION -- the buffer's completion order would otherwise silently mix two groups into
+        one normalization block.
         """
-        return dict(self._reward_metric.calculate())
+        need_rows = self.train_batch_size * self.gradient_accumulation_steps
+        counts: Dict[Any, int] = {}
+        order: List[Any] = []
+        for record in buffer:
+            key = record.group_key
+            if key not in counts:
+                counts[key] = 0
+                order.append(key)
+            counts[key] += 1
+        complete = [key for key in order if counts[key] >= self.num_generations]
+        groups_per_pull = need_rows // math.gcd(self.num_generations, need_rows)
+        n_pull = groups_per_pull * (len(complete) // groups_per_pull)
+        if n_pull < 1:
+            return None
+        selected = complete[:n_pull]
+        selected_set = set(selected)
+        by_group: Dict[Any, List['BufferRecord']] = {}
+        for record in buffer:
+            if record.group_key in selected_set:
+                by_group.setdefault(record.group_key, []).append(record)
+        pulled: List['BufferRecord'] = []
+        for key in selected:
+            pulled.extend(by_group[key])
+        return pulled
 
-    def _should_log(self) -> bool:
-        """GRPO logs on the tracker's own cadence, with no logging_steps fallback."""
-        return self.tracker.should_log(self.global_step)
+    def step_telemetry(self) -> dict:
+        """This batch's version-span aggregate + the shared outcome-reward metric, folded per optimizer step.
 
-    def _log_step(self, record: dict, loss: float) -> None:
-        """Console head signal for the on-policy RL loops: loss plus this rollout's mean total reward.
-
-        The reward is what actually shows RL converging -- the policy-gradient loss oscillates around zero
-        by construction and hides the trend, which is why the step line leads with ``reward`` when the
-        driver-side CompletionRewardMetric produced one (GRPO/RFT). Distillation subclasses (GKD/OPSD/
-        MOPD) compute no reward, so ``train/total_reward`` is absent and the line falls back to loss only.
+        The span fields are emitted only when a stream actually stamped spans, so a synchronous run does not report
+        meaningless zeros. ``CompletionRewardMetric.calculate`` returns an empty mapping when nothing was
+        accumulated, so a step with no reward channel adds no keys. The driver-side counters (trainer-idle ratio,
+        lifetime stream stats) are folded by the recipe body, not here.
         """
-        reward = record.get('train/total_reward')
-        reward_str = f'  reward={reward:.4f}' if reward is not None else ''
-        logger.info(f'step {self.global_step}  loss={record["loss"]:.4f}{reward_str}')
+        extra: Dict[str, Any] = {}
+        spans = self._last_batch_version_spans
+        if spans:
+            extra.update({
+                'partial_ratio': sum(1 for span in spans if span > 0) / len(spans),
+                'max_partial_span': max(spans),
+                'version_span_mean': sum(spans) / len(spans),
+            })
+        extra.update(self._reward_metric.calculate())
+        return extra
 
-    def _train_rollout_batch(self, batch: 'RolloutBatch') -> None:
-        """Run this rollout's optimizer steps: split into mini-batches, replay ``num_iterations`` times.
+    # --- the group-completion helpers (driven by GroupCompletionHook) --------------------------------------
 
-        Design B (faithful mini-batch GRPO): a rollout is split into ``train_batch_size``-row mini-batches,
-        one ``forward_backward`` runs per mini-batch, ``gradient_accumulation_steps`` mini-batches make one
-        optimizer step, and the whole rollout is replayed ``num_iterations`` times. This mirrors SFTLoop's
-        batched feeding and is what makes DP>1 work: each mini-batch carries >= dp_size rows, so slice_dp
-        gives every rank data. Shared by the synchronous and the async (overlapped) drivers.
+    def group_reward_variance(self, samples: List[Any]) -> float:
+        """The weighted-reward std of one group's samples (``dynamic_sample``'s zero-variance test).
+
+        Pure computation over the already-scored ``orm_reward`` rows -- no generation -- so it is safe to call from
+        the group-completion hook under colocate (the trainer device is not needed). A single-sample group has no
+        variance and returns 0.0.
         """
-        mini_batches = self._plan_mini_batches(batch)
-        iterations = max(1, self.rl_config.num_iterations if self.rl_config else 1)
-        for _ in range(iterations):
-            for mini_batch in mini_batches:
-                if self._reached_max():
-                    break
-                self._run_micro_step(self._mini_batch_kwargs(mini_batch))
+        rewards = torch.tensor([list(sample.orm_reward) for sample in samples], dtype=torch.float32)
+        weighted = self._weighted_rewards(rewards)
+        if weighted.numel() <= 1:
+            return 0.0
+        return float(torch.std(weighted, unbiased=False))
 
-    def _run_sync(self) -> None:
-        """Synchronous driver: generate, then train, one rollout batch at a time (no overlap)."""
-        for prompt_indices in self._prompt_batches:
-            if self._reached_max():
-                break
-            self._train_rollout_batch(self._rollout_step(prompt_indices))
+    def remax_greedy_baseline(self, prompt: Any, extra: Optional[Dict[str, Any]]) -> float:
+        """ReMax baseline: the greedy (argmax) completion's weighted reward for ONE prompt.
 
-    def _consume_async_samples(self, samples: List[Any]) -> None:
-        """Score an already-collected async batch and run its optimizer steps (the driver's consume half)."""
-        rewards = self._score(samples)
-        self._train_rollout_batch(self._assemble_rollout_batch(samples, rewards))
+        ReMax centers each sampled completion's reward on the reward of a GREEDY decoding of the same prompt (a
+        lower-variance baseline than the group mean, at the cost of one extra generation pass). The group-completion
+        hook calls this per group. ``temperature=0`` argmax decoding, scored with the SAME reward functions / RM
+        plugins as the rollout.
 
-    def fit(self) -> list:
-        """Train over the prompt set for ``num_train_epochs`` passes, reusing each rollout ``num_iterations``.
-
-        The prompt-set scheduler yields one generation batch per rollout and is exhausted after
-        ``num_train_epochs`` full passes (B1: an epoch is now a real dataset pass, not an unbounded
-        whole-set regeneration bounded only by ``max_steps``); an explicit ``max_steps`` still caps the
-        optimizer-step count early. The rollout driver itself is :meth:`_drive` (a template hook), so a
-        subclass can swap the control flow without reimplementing this manual-GC / tracker scaffolding.
+        Only valid under disaggregated placement: the pass needs the sampler to generate, which colocate's
+        exclusive-device handover cannot safely do at group-completion time (the trainer holds the device). The
+        driver builder refuses colocate + remax up front. The bare ``generate`` does NOT stamp ``sample.prompt``
+        (only the driver's collect step does), so it is stamped here for shared reward scoring.
         """
-        from swift.dev.recipe.train_loop import finish_manual_gc, start_manual_gc
+        greedy_params = dict(self.sampling_params or {})
+        greedy_params['temperature'] = 0.0  # argmax decoding
+        greedy_params.pop('top_p', None)
+        greedy_params.pop('top_k', None)
+        greedy_samples = self.rollout.generate(
+            [prompt], num_samples=1, sampling_params=greedy_params,
+            prompt_extras=[extra] if extra else None)
+        if len(greedy_samples) != 1:
+            raise RuntimeError(f'greedy baseline rollout returned {len(greedy_samples)} samples, expected 1.')
+        greedy_sample = greedy_samples[0]
+        greedy_sample.prompt = prompt
+        return float(self._weighted_rewards(self._score([greedy_sample]))[0])
 
-        gc_was_enabled = start_manual_gc(self.manual_gc)
-        try:
-            self._drive()
-            return self.history
-        finally:
-            finish_manual_gc(gc_was_enabled)
-            self.tracker.close()
+    def stash_remax_baseline(self, group_key: str, value: float) -> None:
+        """Record one group's greedy baseline; :meth:`_estimator_inputs` reads + pops it at assemble time."""
+        self._remax_baselines[group_key] = float(value)
 
-    def _drive(self) -> None:
-        """Run this loop's rollout driver: the synchronous fixed-batch one (:meth:`_run_sync`).
+    # --- MoE routing replay --------------------------------------------------------------------------------
 
-        A template hook split out of :meth:`fit` so :class:`~swift.dev.recipe.grpo_async.StreamingGRPOLoop`
-        overrides ONLY the driver (its per-sample streaming buffer, composed via
-        :class:`~swift.dev.recipe._streaming_loop.StreamingLoopMixin`) and inherits the identical manual-GC /
-        tracker scaffolding above. Since the per-sample stream now serves EVERY regime, a GRPO run rides it
-        under ``async_mode='none'`` (staleness 0) as well as the overlapping modes; this base driver is reached
-        only for a sync-only feature that needs the WHOLE fixed batch up front (``dynamic_sample`` or
-        ``advantage_estimator='remax'``), which the router keeps on ``_run_sync`` under ``async_mode='none'``.
-        So it is synchronous-only and carries no async branch.
+    def _prepare_routing_replay(self, samples: List[Any]) -> None:
+        """Establish each sample's MoE expert routing per ``RLConfig.router_replay_mode``, in place.
+
+        Routing replay keeps an MoE policy's importance ratio honest: the training forward must REPLAY the expert
+        choices that actually produced each token rather than recompute them. The two modes differ only in WHERE the
+        routing comes from, then feed the SAME REPLAY path (each row's ``encoded['routed_experts']`` + a
+        ``router_replay_mode`` forward_backward kwarg the model layer self-judges into REPLAY):
+
+        - ``'R3'``: the sampler exported the generating pass's routing. Require it -- a non-exporting engine leaves
+          none, and silently recomputing would be wrong, so fail loudly and point at R2.
+        - ``'R2'``: RECORD the training model's own routing for these tokens (under the just-synced generating
+          weights, a faithful proxy for the generating pass vLLM did not export).
         """
-        self._run_sync()
+        mode = self.rl_config.router_replay_mode if self.rl_config else 'disabled'
+        if mode == 'disabled':
+            return
+        if mode == 'R3':
+            missing = sum(1 for sample in samples if sample.encoded.get('routed_experts') is None)
+            if missing:
+                raise RuntimeError(
+                    f'router_replay_mode="R3" replays the sampler-reported MoE routing, but {missing} of '
+                    f'{len(samples)} rollout samples carry none: the sampling engine did not export '
+                    'routed_experts (that needs a vLLM build + MoE checkpoint that report routing). Use '
+                    'router_replay_mode="R2" to RECORD the routing on the training model instead, or '
+                    '"disabled" to recompute it.')
+            return
+        if mode == 'R2':
+            # R2 records the training model's routing regardless of what the sampler returned, so drop any sampler
+            # routing first.
+            for sample in samples:
+                sample.encoded.pop('routed_experts', None)
+            self._record_routing(samples)
+            return
+        raise ValueError(f'Unknown router_replay_mode {mode!r}; expected one of disabled/R2/R3.')
+
+    def _record_routing(self, samples: List[Any]) -> None:
+        """R2: RECORD the training model's own expert routing for the rollout tokens, in place into encoded.
+
+        Mirrors :meth:`_response_logps`' chunking -- ``forward_only`` is a slice_dp method, so each chunk must hold
+        >= dp_size rows -- but asks for ``router_replay_mode='R2'`` (the model layer self-judges the RECORD action
+        on this capture pass) and reads back ``routed_experts`` instead of logps. It runs BEFORE any training update, so the routing is captured under the weights that just
+        generated these tokens. The returned whole-sequence routing is sliced back to each row's own ``input_ids``
+        length, so the REPLAY forward's ``align_routed_experts`` re-pads it exactly as it does the R3 sampler routing.
+        """
+        features = [sample.input_feature for sample in samples]
+        rows: List[Any] = []
+        for chunk in self._score_chunks(features):
+            forward_kwargs = {'router_replay_mode': 'R2'}
+            if self.chord_enabled:
+                forward_kwargs['loss_key'] = 'grpo'
+            out = self.model.forward_only(inputs=copy_inputs(chunk), **forward_kwargs)
+            recorded = out.get('routed_experts') if isinstance(out, dict) else None
+            if recorded is None:
+                raise RuntimeError(
+                    'router_replay_mode="R2" asked the training model to RECORD its MoE routing, but the '
+                    'forward returned none. The policy must be an MoE model built with routing replay '
+                    'enabled; a dense policy has no expert routing to record (use "disabled").')
+            # A uniform-sequence RECORD returns one [n, seq, layers, topk] tensor; a variable-sequence one returns a
+            # per-microbatch list of them. Flatten either to row-major order (submission order).
+            for tensor in (recorded if isinstance(recorded, (list, tuple)) else [recorded]):
+                tensor = torch.as_tensor(tensor).detach().cpu()
+                for i in range(tensor.shape[0]):
+                    rows.append(tensor[i])
+        if len(rows) != len(samples):
+            raise RuntimeError(f'R2 routing RECORD returned {len(rows)} rows for {len(samples)} samples; '
+                               'per-row routing alignment is impossible.')
+        for sample, routed in zip(samples, rows):
+            length = len(sample.encoded['input_ids'])
+            if routed.shape[0] < length:
+                raise RuntimeError(f'R2 recorded routing covers {routed.shape[0]} tokens for a {length}-token '
+                                   'sequence; the RECORD forward must route the whole sequence.')
+            sample.encoded['routed_experts'] = routed[:length]
+            # Replay only the causal rows that produce response logprobs (labels != -100) -- the same set
+            # completion_mask encodes. R2's RECORD covers the whole sequence, so there is no short-by-one tail.
+            sample.encoded['replay_mask'] = sample.encoded['completion_mask']
+
+    def _score_chunks(self, features: List[dict]) -> List[List[dict]]:
+        """Split ``features`` into ``train_batch_size`` chunks (over :func:`_scoring.score_chunks`).
+
+        Kept for :meth:`_record_routing`, which chunks like a scoring pass but reads back ``routed_experts`` rather
+        than per-token logps, so it drives the chunking itself.
+        """
+        return score_chunks(features, self.train_batch_size)
+
+    @staticmethod
+    def _response_positions(feature: dict) -> List[int]:
+        return response_positions(feature)
+
+
+class GroupCompletionHook:
+    """The driver's group-completion seam: ``dynamic_sample`` regeneration + ``remax`` greedy baseline.
+
+    Invoked by the driver once ALL ``num_generations`` trajectories of one prompt group are buffered (a组内
+    barrier; groups still overlap in the stream). It returns a :class:`GroupDecision` telling the driver what to do
+    with the complete group:
+
+    - ``dynamic_sample``: if the group's weighted-reward variance is zero (every completion scored alike, so the
+      group-relative advantage is degenerate), return ``REGENERATE`` -- the driver re-admits the same prompt under
+      the same group_key, within ``max_group_regenerations``. The variance test is pure computation over the
+      already-scored rewards, so it is safe under colocate.
+    - ``remax``: generate + score ONE greedy baseline for the group, stash it on the assembler (read back at
+      assemble time), and return ``AUGMENT`` so the driver keeps the group. The greedy pass needs the sampler, so
+      the driver builder refuses colocate + remax up front.
+    - otherwise ``ACCEPT``.
+    """
+
+    def __init__(self, assembler: GRPOAssembler, rl_config: Optional['RLConfig'] = None):
+        self._assembler = assembler
+        self._rl_config = rl_config
+
+    def __call__(self, group_key: str, records: List['BufferRecord']) -> GroupDecision:
+        samples = [record.sample for record in records]
+        cfg = self._rl_config
+        if cfg is not None and getattr(cfg, 'dynamic_sample', False):
+            if self._assembler.group_reward_variance(samples) <= 0.0:
+                return GroupDecision.REGENERATE
+        if cfg is not None and cfg.advantage_estimator == 'remax':
+            value = self._assembler.remax_greedy_baseline(
+                getattr(samples[0], 'prompt', None), getattr(samples[0], 'extra', None))
+            self._assembler.stash_remax_baseline(group_key, value)
+            return GroupDecision.AUGMENT
+        return GroupDecision.ACCEPT

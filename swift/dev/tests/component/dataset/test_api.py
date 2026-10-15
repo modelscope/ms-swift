@@ -62,7 +62,7 @@ class TestEncode:
         from swift.dev.builders.dataset import _encode
         dataset = make_mock_dataset(10)
         template = make_mock_template()
-        result = _encode(dataset, template, mode='lazy', num_proc=1, strict=False, data_seed=42)
+        result = _encode(dataset, template, mode='lazy', num_proc=1, strict=False)
         MockLazy.assert_called_once()
         assert result == MockLazy.return_value
 
@@ -75,7 +75,7 @@ class TestEncode:
         MockAddLength.return_value = mock_instance
         dataset = make_mock_dataset(10)
         template = make_mock_template()
-        _encode(dataset, template, mode='eager', num_proc=1, strict=False, data_seed=42)
+        _encode(dataset, template, mode='eager', num_proc=1, strict=False)
         MockAddLength.assert_called_once_with(template)
 
     @patch('swift.dev.dataset.MeasurePreprocessor')
@@ -87,7 +87,7 @@ class TestEncode:
         MockAddLength.return_value = mock_instance
         dataset = MagicMock()
         template = make_mock_template()
-        result = _encode(dataset, template, mode='stream', num_proc=1, strict=False, data_seed=42)
+        result = _encode(dataset, template, mode='stream', num_proc=1, strict=False)
         MockAddLength.assert_called_once_with(template)
         assert result == mock_result
 
@@ -96,9 +96,9 @@ class TestEncode:
         dataset = make_mock_dataset(10)
         template = make_mock_template(truncation_strategy='split')
         with pytest.raises(ValueError, match="truncation_strategy='split' requires mode='eager'"):
-            _encode(dataset, template, mode='lazy', num_proc=1, strict=False, data_seed=42)
+            _encode(dataset, template, mode='lazy', num_proc=1, strict=False)
         with pytest.raises(ValueError, match="truncation_strategy='split' requires mode='eager'"):
-            _encode(dataset, template, mode='stream', num_proc=1, strict=False, data_seed=42)
+            _encode(dataset, template, mode='stream', num_proc=1, strict=False)
 
     @patch('swift.dev.dataset.EncodePreprocessor')
     def test_split_strategy_with_eager_uses_full_encode(self, MockPreprocessor):
@@ -109,7 +109,7 @@ class TestEncode:
         MockPreprocessor.return_value = mock_instance
         dataset = make_mock_dataset(10)
         template = make_mock_template(truncation_strategy='split')
-        _encode(dataset, template, mode='eager', num_proc=1, strict=False, data_seed=42)
+        _encode(dataset, template, mode='eager', num_proc=1, strict=False)
         MockPreprocessor.assert_called_once_with(template)
 
     @patch('swift.dev.dataset.EncodePreprocessor')
@@ -122,7 +122,7 @@ class TestEncode:
         MockPreprocessor.return_value = mock_instance
         dataset = make_mock_dataset(10)
         template = make_mock_template()  # default truncation_strategy, NOT 'split'
-        _encode(dataset, template, mode='eager', num_proc=1, strict=False, data_seed=42, materialize=True)
+        _encode(dataset, template, mode='eager', num_proc=1, strict=False, materialize=True)
         MockPreprocessor.assert_called_once_with(template)
 
     @patch('swift.dev.dataset.MeasurePreprocessor')
@@ -135,7 +135,7 @@ class TestEncode:
         MockMeasure.return_value = mock_instance
         dataset = make_mock_dataset(10)
         template = make_mock_template()
-        _encode(dataset, template, mode='eager', num_proc=1, strict=False, data_seed=42, materialize=False)
+        _encode(dataset, template, mode='eager', num_proc=1, strict=False, materialize=False)
         MockMeasure.assert_called_once_with(template)
 
 
@@ -492,11 +492,11 @@ class DeviceMeshSamplerCase:
 
     @staticmethod
     def mesh(rank, world, monkeypatch):
-        from swift.dev.builders import build_device_mesh
+        from swift.dev.builders import build_parallel_mesh
         from swift.dev.config import DistributedConfig
         monkeypatch.setenv('RANK', str(rank))
         monkeypatch.setenv('WORLD_SIZE', str(world))
-        return build_device_mesh(DistributedConfig(backend='megatron', mode='local', nproc_per_node=world))
+        return build_parallel_mesh(DistributedConfig(backend='megatron', mode='local', nproc_per_node=world))
 
     @staticmethod
     def indices(mesh, *, total, global_batch, shuffle=False, **kw):
@@ -673,9 +673,10 @@ class TestDataSharding(DeviceMeshSamplerCase):
 
 
 class TestDataLoaderResumeContract:
-    """The resume contract dev's SFTLoop drives twinkle's DataLoader through (see recipe/train_loop.py
-    save/resume): ``get_state()`` reports consumed_train_samples + resume_epoch, and
-    ``skip_consumed_samples()`` makes the NEXT pass continue from exactly there.
+    """The resume contract dev's offline training loop drives twinkle's DataLoader through (see
+    ``swift.dev.recipe.checkpoint.CheckpointSaver`` save/resume): ``get_state()`` reports
+    consumed_train_samples + resume_epoch, and ``skip_consumed_samples()`` makes the NEXT pass
+    continue from exactly there.
 
     Read through get_state() rather than off an attribute on purpose: the DataLoader is a twinkle
     remote_class, so in ray mode the driver holds a handle whose attributes live in the worker and only
@@ -725,9 +726,9 @@ class TestDataLoaderResumeContract:
 class TestEpochReshuffle:
     """Guards the per-epoch reshuffle contract: shuffle order must change per epoch.
 
-    SFTLoop.fit calls dataloader.set_epoch(epoch) each epoch; twinkle's EpochSampler derives
+    The offline loop calls dataloader.set_epoch(epoch) each epoch; twinkle's EpochSampler derives
     its shuffle seed as base_seed + epoch. A regression where set_epoch is dropped (the
-    original SFTLoop bug) would make every epoch train on the identical order — silent
+    original bug in the old offline loop) would make every epoch train on the identical order — silent
     training-quality loss. These assertions freeze the correct reshuffle behavior.
     """
 
@@ -775,7 +776,7 @@ class TestEpochReshuffle:
         """The DeviceMesh's DP coordinate must equal the DP rank Megatron itself would assign.
 
         This is the load-bearing assumption of the mode='local' data path: the dataloader shards by
-        DP rank taken from the mesh (build_device_mesh) because mpu does not exist yet, while the
+        DP rank taken from the mesh (build_parallel_mesh) because mpu does not exist yet, while the
         model later initializes mpu from that same mesh. If the two disagreed under TP/PP/CP, ranks
         that must see IDENTICAL data would silently get different data -- corrupt training, no
         error. Compared against Megatron's own RankGenerator with the mesh's order, so it needs no
@@ -783,7 +784,7 @@ class TestEpochReshuffle:
         """
         from megatron.core.parallel_state import RankGenerator
 
-        from swift.dev.builders import build_device_mesh
+        from swift.dev.builders import build_parallel_mesh
         from swift.dev.config import DistributedConfig
 
         dc = DistributedConfig(
@@ -797,7 +798,7 @@ class TestEpochReshuffle:
         for rank in range(world):
             monkeypatch.setenv('RANK', str(rank))
             monkeypatch.setenv('WORLD_SIZE', str(world))
-            mesh = build_device_mesh(dc)
+            mesh = build_parallel_mesh(dc)
             mesh_rank[rank] = mesh.dp_rank
             order, dp_size = mesh.order, mesh.dp_world_size
 

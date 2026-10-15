@@ -119,8 +119,8 @@ def _interactive_dp_width(distributed_config: Any) -> int:
     (torchrun) mode every rank runs this same recipe, so the width is the torchrun world size.
     """
     if distributed_config is not None and distributed_config.mode == 'ray':
-        from swift.dev.builders import build_device_mesh_if_dp
-        mesh = build_device_mesh_if_dp(distributed_config)
+        from swift.dev.builders import build_parallel_mesh
+        mesh = build_parallel_mesh(distributed_config, none_if_single_rank=True)
         return int(getattr(mesh, 'data_world_size', 1)) if mesh is not None else 1
     return max(1, int(os.getenv('WORLD_SIZE') or 1))
 

@@ -24,7 +24,7 @@ def _run(shape, data_path, out_dir):
 
     build_model is wrapped rather than reimplemented so this measures the real run_sft path: the
     model it built is the only place the mesh/dp-group facts can be read, and run_sft does not return
-    it. The patch targets the module attribute because _run_sft_body imports build_model at call time.
+    it. The patch targets the module attribute because run_sft imports build_model at call time.
     """
     from modelscope import snapshot_download
 

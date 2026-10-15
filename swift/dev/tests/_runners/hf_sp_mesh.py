@@ -3,7 +3,7 @@
 Runs on CPU under ``torchrun --nproc_per_node=2`` with a gloo process group (no accelerator):
   1. validate_configs ACCEPTS sp=world on the HF backend when every guard is satisfied
      (padding_free + flash_attention_2, right padding, local mode, dist initialized);
-  2. build_hf_device_mesh returns a mesh with ulysses_size=sp and data_world_size=world/sp;
+  2. build_dp_mesh returns a mesh with ulysses_size=sp and data_world_size=world/sp;
   3. validate_configs REJECTS sp=world+1 on divisibility.
 
 Each rank writes ``{out}.rank{RANK}.json``.
@@ -26,7 +26,7 @@ def main():
 
     dist.init_process_group("gloo")
 
-    from swift.dev.builders import build_hf_device_mesh
+    from swift.dev.builders import build_dp_mesh
     from swift.dev.config import (
         CheckpointConfig,
         DatasetConfig,
@@ -54,7 +54,7 @@ def main():
     # 1+2. accepted: pure-SP layout (sp == world, so dp=1) with all guards satisfied.
     _validate(world)
     result["validate_ok"] = True
-    mesh = build_hf_device_mesh(distributed_config, world)
+    mesh = build_dp_mesh(distributed_config, world)
     result["ulysses_size"] = mesh.ulysses_size
     result["data_world_size"] = mesh.data_world_size
 

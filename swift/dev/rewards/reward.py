@@ -32,10 +32,10 @@ __all__ = [
     'build_frozen_reward_model',
     'build_reward_model_plugins',
     'build_reward_weights',
-    'compute_reward_model_scores',
     'compute_rewards_per_func',
     'get_reward_funcs',
     'is_registered_reward',
+    'score_completions',
     'weight_rewards',
 ]
 
@@ -89,9 +89,15 @@ def get_reward_funcs(reward_funcs: Sequence[Any], config: Optional[Any] = None) 
     return funcs, names
 
 
-## grpo等的打分也需要支持generative打分，或者jev打分
 class _ScalarRewardModelPlugin:
-    """Run a twinkle frozen seq-cls model behind the legacy RM-plugin call contract."""
+    """Run a twinkle frozen seq-cls model behind the ``plugin(inputs=rows)`` reward-model call contract.
+
+    The SCALAR head adapter only. Generative and api judges ("score by prompting") are the other
+    :class:`~swift.dev.rewards.scorer.RewardScorer` kinds in :mod:`swift.dev.rewards.scorer`, selected by
+    ``build_model_reward`` from the checkpoint's real ``task_type``; every kind scores through the same
+    :func:`score_completions`, so a reward channel is judge-capable at the contract level. Placing a
+    generative judge in online RL (its sampler / tp-aware DeviceGroup) is the phase③ auxiliary-placement work.
+    """
 
     def __init__(self, model: Any, template: Any):
         self.model = model
@@ -134,9 +140,10 @@ def build_frozen_reward_model(model_id: str,
     mode unless a ``distributed_config`` is threaded in. An optional frozen LoRA is attached through
     ``configure_frozen_adapter(role='reward')``.
 
-    Callers own the scoring contract: GRPO wraps the pair in :func:`build_reward_model_plugins`
-    (``plugin(inputs=rows)``), sampling wraps it in a ``func(completions, **columns)`` callable. This
-    function only builds; it does not score.
+    Callers own the scoring contract: :class:`~swift.dev.rewards.scorer.ModelReward` wraps the pair in
+    :func:`build_reward_model_plugins` and adapts it to the ``func(completions, **columns)``
+    :class:`~swift.dev.rewards.scorer.RewardScorer` contract that every reward channel scores through.
+    This function only builds; it does not score.
 
     Args:
         model_id: the reward model path/id.
@@ -219,44 +226,6 @@ def build_reward_model_plugins(models: Sequence[Any], templates: Sequence[Any]) 
     return plugins, display_names
 
 
-def compute_reward_model_scores(inputs: Sequence[Dict[str, Any]],
-                                plugins: Sequence[Callable]) -> torch.Tensor:
-    """Score reward rows with per-model plugins -> ``[N, n_models]`` on CPU.
-
-    Each row contains the complete ``messages`` conversation plus the original dataset columns. A
-    plugin may return a tensor or a Python sequence; ``None`` is retained as ``nan`` so weighted
-    aggregation has the same semantics as rule rewards.
-
-    Each plugin is a frozen reward model on its OWN DeviceGroup, so the plugin forwards overlap across
-    their disjoint placement keys (P1a) instead of running one after another; a plugin without a
-    ``placement_key`` falls back to ``None`` and chains serially (the conservative default). Only the
-    schedule changes -- each column holds the identical scores the serial path produced.
-    """
-    from swift.dev.recipe._scoring import overlap_by_placement
-
-    rewards = torch.zeros((len(inputs), len(plugins)), dtype=torch.float32)
-    rows = list(inputs)
-
-    def score(plugin):
-        # The plugin deep-copies each row before ``template.encode`` (a driver-local mutation), so the shared
-        # ``rows`` need no outer copy here; under Ray the model forward serializes them to the worker anyway.
-        output = plugin(inputs=rows)
-        if isinstance(output, torch.Tensor):
-            scores = output.detach().float().cpu().reshape(-1)
-        else:
-            scores = torch.tensor(
-                [s if s is not None else torch.nan for s in output], dtype=torch.float32).reshape(-1)
-        if scores.numel() != len(rows):
-            name = getattr(plugin, '__name__', plugin.__class__.__name__)
-            raise ValueError(f'reward model plugin {name!r} returned {scores.numel()} scores for {len(rows)} inputs.')
-        return scores
-
-    tasks = [(getattr(plugin, 'placement_key', None), lambda plugin=plugin: score(plugin)) for plugin in plugins]
-    for index, scores in enumerate(overlap_by_placement(tasks)):
-        rewards[:, index] = scores
-    return rewards
-
-
 def _resolve_awaitables(results: List[Any]) -> List[Any]:
     """Resolve any awaitable reward results concurrently, keeping the rest in place.
 
@@ -278,11 +247,114 @@ def _resolve_awaitables(results: List[Any]) -> List[Any]:
     return results
 
 
+def _as_score_column(output: Any, scorer: Any, n: int) -> torch.Tensor:
+    """Normalize one scorer's batch output to a length-``n`` float column (``None`` -> ``nan``).
+
+    A scorer may return a tensor (a scalar reward model's ``forward_only`` logits) or a Python sequence of
+    per-sample scores (a rule or a judge); both flatten to one column. ``None`` -- a judge that produced no
+    parseable verdict -- is retained as ``nan`` so weighted aggregation ignores it per sample rather than
+    counting a broken reward as a genuine 0.
+
+    Raises:
+        ValueError: the scorer returned a number of scores that does not match the ``n`` completions.
+    """
+    if isinstance(output, torch.Tensor):
+        values = output.detach().float().cpu().reshape(-1)
+    else:
+        values = torch.tensor(
+            [value if value is not None else torch.nan for value in output], dtype=torch.float32).reshape(-1)
+    if values.numel() != n:
+        name = getattr(scorer, '__name__', scorer.__class__.__name__)
+        raise ValueError(f'reward scorer {name!r} returned {values.numel()} scores for {n} completions.')
+    return values
+
+
+def score_completions(completions: Sequence[str],
+                      scorers: Sequence[RewardFunc],
+                      columns: Optional[Dict[str, List[Any]]] = None,
+                      **extra_kwargs: Any) -> torch.Tensor:
+    """Score ``completions`` with every scorer -> ``[N, n_scorers]`` float tensor.
+
+    The ONE batch-scoring entry every reward channel shares. A rule callable, a frozen scalar reward model
+    (:class:`~swift.dev.rewards.scorer.ModelReward`) and a generative / API judge all meet the same
+    ``__call__(completions, **columns)`` contract, so they sit in one ordered list and are scored together
+    rather than through a rule path and a separate reward-model path (the two old contracts converge here).
+
+    Concurrency follows each scorer's optional ``placement_key`` -- the DeviceGroup its forward runs on.
+    Scorers on DISJOINT placements overlap on threads (:func:`~swift.dev.recipe._scoring.
+    overlap_by_placement`); scorers that share one placement -- or declare none, like a rule -- form one
+    group. Within a group every scorer is called, then any ``async def`` results are resolved with a single
+    ``asyncio.gather``, so a batch of async rules still overlaps its I/O exactly as the rule-only path did.
+
+    Args:
+        completions: one completion string per sample.
+        scorers: resolved reward callables -- rules from :func:`get_reward_funcs`, model / judge scorers
+            from :func:`~swift.dev.rewards.scorer.build_model_reward`. A scorer may be ``async def``.
+        columns: batched dataset columns ``{name: [value_per_sample, ...]}``, each aligned with
+            ``completions``. Every scorer receives all of them as keyword arguments and takes the ones it
+            needs (so ``messages`` reaches a judge while a rule reads ``solution``); the built-in reward
+            plugins all accept ``**kwargs``.
+        **extra_kwargs: additional keyword arguments forwarded to every scorer.
+
+    Returns:
+        ``[N, n_scorers]`` float tensor, columns in ``scorers`` order. A scorer returning ``None`` for a
+        sample becomes ``nan`` so a broken reward is visible rather than silently scoring 0.
+
+    Raises:
+        ValueError: a column's length does not match ``completions``, or a scorer returns a wrong-length
+            list.
+    """
+    from swift.dev.recipe._scoring import overlap_by_placement
+
+    scorer_list = list(scorers)
+    n = len(completions)
+    rewards = torch.zeros((n, len(scorer_list)), dtype=torch.float32)
+    if n == 0:
+        return rewards
+
+    columns = columns or {}
+    for key, values in columns.items():
+        if len(values) != n:
+            raise ValueError(f'reward column {key!r} has length {len(values)} but there are {n} completions.')
+    kwargs: Dict[str, Any] = {**columns, **extra_kwargs}
+    completions_arg = list(completions)
+
+    # Group scorer indices by placement_key, preserving first-appearance order so results map back
+    # deterministically. A scorer with no placement_key (a rule, a sampler-reusing / API judge) reads as
+    # None and shares the one "no dedicated device" group.
+    order: List[Any] = []
+    members: Dict[Any, List[int]] = {}
+    for index, scorer in enumerate(scorer_list):
+        key = getattr(scorer, 'placement_key', None)
+        if key not in members:
+            members[key] = []
+            order.append(key)
+        members[key].append(index)
+
+    def score_group(indices: List[int]) -> List[Tuple[int, torch.Tensor]]:
+        # One placement: call its scorers serially (they contend for a single device), then overlap this
+        # group's awaitables with one gather, so a group of async rules keeps its I/O concurrency.
+        raw = [scorer_list[i](completions_arg, **kwargs) for i in indices]
+        raw = _resolve_awaitables(raw)
+        return [(i, _as_score_column(out, scorer_list[i], n)) for i, out in zip(indices, raw)]
+
+    tasks = [(key, lambda key=key: score_group(members[key])) for key in order]
+    for group in overlap_by_placement(tasks):
+        for index, column in group:
+            rewards[:, index] = column
+    return rewards
+
+
 def compute_rewards_per_func(completions: Sequence[str],
                              reward_funcs: Sequence[RewardFunc],
                              columns: Optional[Dict[str, List[Any]]] = None,
                              **extra_kwargs: Any) -> torch.Tensor:
-    """Score ``completions`` with every reward function -> ``[N, n_funcs]`` tensor.
+    """Score ``completions`` with every reward RULE -> ``[N, n_funcs]`` tensor.
+
+    The rule-shaped door onto :func:`score_completions`: a rule callable has no ``placement_key``, so all
+    rules land in the one "no dedicated device" group and their ``async def`` coroutines are resolved with a
+    single ``asyncio.gather``. Kept as a named alias because rule-only callers (the infer channel, the rule
+    tests) read clearer against it; model / judge scorers go through :func:`score_completions` directly.
 
     Args:
         completions: one completion string per sample.
@@ -301,25 +373,7 @@ def compute_rewards_per_func(completions: Sequence[str],
         ValueError: a column's length does not match ``completions``, or a reward function returns a
             list whose length does not match ``completions``.
     """
-    n = len(completions)
-    rewards = torch.zeros((n, len(reward_funcs)), dtype=torch.float32)
-    if n == 0:
-        return rewards
-
-    columns = columns or {}
-    for key, values in columns.items():
-        if len(values) != n:
-            raise ValueError(f'reward column {key!r} has length {len(values)} but there are {n} completions.')
-
-    kwargs: Dict[str, Any] = {**columns, **extra_kwargs}
-    results = [func(list(completions), **kwargs) for func in reward_funcs]
-    results = _resolve_awaitables(results)
-    for i, (func, out) in enumerate(zip(reward_funcs, results)):
-        if len(out) != n:
-            name = getattr(func, '__name__', func.__class__.__name__)
-            raise ValueError(f'reward function {name!r} returned {len(out)} scores for {n} completions.')
-        rewards[:, i] = torch.tensor([r if r is not None else torch.nan for r in out], dtype=torch.float32)
-    return rewards
+    return score_completions(completions, reward_funcs, columns, **extra_kwargs)
 
 
 def weight_rewards(rewards_per_func: torch.Tensor, reward_weights: Optional[Sequence[float]] = None) -> torch.Tensor:

@@ -9,8 +9,8 @@ reading back the report -- so the adaptation is written once and called from bot
 
 What is deliberately NOT here: the sampler lifecycle and the report/metric shape. ``swift eval`` builds a
 sampler per run and shuts it down; training holds one persistent sampler across evals (see
-``TrainAssembly.build_loop`` / ``SFTLoop``) and folds the summary into its own ``eval_history`` / tracker.
-Each caller owns those, and calls :func:`run_evalscope` for the EvalScope part in between.
+``swift.dev.recipe.evaluator.Evaluator``) and folds the summary into its own ``eval_history`` / tracker.
+Each caller owns those, and calls :func:`run_evaluator` for the EvalScope part in between.
 """
 from __future__ import annotations
 
@@ -86,8 +86,7 @@ def summarize(task_config) -> Any:
     return Summarizer.get_report_from_cfg(task_cfg=task_config)
 
 
-## 改为run_evaluator
-def run_evalscope(sampler,
+def run_evaluator(sampler,
                   template,
                   *,
                   datasets: List[str],

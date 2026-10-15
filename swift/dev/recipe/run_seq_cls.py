@@ -1,6 +1,6 @@
 """Sequence-classification assembly: run_seq_cls orchestration.
 
-Sibling of ``run_embedding``: same atomic-Config composition, builders, and SFTLoop. seq_cls scores
+Sibling of ``run_embedding``: same atomic-Config composition, builders, and offline train loop. seq_cls scores
 each sequence against a fixed label set, so it reads ``outputs['logits']`` (``[B, num_labels]``) and
 picks its objective by ``problem_type`` (regression -> MSE, single_label -> CE, multi_label -> BCE).
 
@@ -54,41 +54,12 @@ def run_seq_cls(
     contract, which is unchanged here); ``_save_final`` has the same test-oriented meaning.
     ``ModelConfig.problem_type`` is REQUIRED -- it selects the training objective and is not inferred.
     """
+    from swift.dev.loss import configure_seq_cls_loss
     from swift.dev.recipe.assembly import TrainAssembly
+    from swift.dev.recipe.offline_loop import run_offline
 
     TrainAssembly.initialize_twinkle(
         distributed_config, seed=train_config.seed, full_determinism=train_config.full_determinism)
-    return _run_seq_cls_body(
-        model_config,
-        template_config,
-        dataset_config,
-        train_config,
-        distributed_config,
-        checkpoint_config,
-        tuner_config,
-        logging_config,
-        quantize_config,
-        output_dir=output_dir,
-        _save_final=_save_final)
-
-
-def _run_seq_cls_body(
-    model_config: ModelConfig,
-    template_config: TemplateConfig,
-    dataset_config: DatasetConfig,
-    train_config: TrainConfig,
-    distributed_config: DistributedConfig,
-    checkpoint_config: CheckpointConfig,
-    tuner_config: Optional[TunerConfig] = None,
-    logging_config: Optional[LoggingConfig] = None,
-    quantize_config: Optional[QuantizeConfig] = None,
-    *,
-    output_dir: str = 'output',
-    _save_final: bool = True,
-) -> List[dict]:
-    """The backend-agnostic seq_cls orchestration body (see run_seq_cls for the contract)."""
-    from swift.dev.loss import configure_seq_cls_loss
-    from swift.dev.recipe.assembly import TrainAssembly
 
     # problem_type and num_labels are required (not inferred): the first selects the loss objective and
     # is recorded on the config for HF/legacy inference parity, the second sizes the head.
@@ -105,7 +76,7 @@ def _run_seq_cls_body(
         # per-token head output to the last valid token and calls loss_instance explicitly.
         configure_seq_cls_loss(model, problem_type=problem_type, num_labels=num_labels)
 
-    return TrainAssembly(
+    assembly = TrainAssembly(
         'run_seq_cls',
         model_config,
         template_config,
@@ -118,4 +89,6 @@ def _run_seq_cls_body(
         output_dir=output_dir,
         logging_config=logging_config,
         quantize_config=quantize_config,
-    ).fit(seq_cls_loss, save_final=_save_final)
+    )
+    assembly.build_objects(seq_cls_loss)
+    return run_offline(assembly, save_final=_save_final)

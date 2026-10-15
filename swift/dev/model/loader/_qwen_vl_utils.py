@@ -24,9 +24,16 @@ def _get_new_read_video_func(read_video_func, read_backend):
     return _new_read_video
 
 
-def patch_qwen_vl_utils(vision_process):
+def patch_qwen_vl_utils(vision_process, kwargs=None):
+    """Patch the vision_process module's resolution/pixel constants.
+
+    Priority: ``kwargs`` (from ModelConfig.vision_process_kwargs) > env var (``get_env_args``) > module
+    default.  ``kwargs`` keys are lowercase (e.g. ``min_pixels``); they map to the module's UPPER-case
+    constants.
+    """
     if hasattr(vision_process, '_patch'):
         return
+    kwargs = kwargs or {}
     if os.getenv('VIDEO_MAX_PIXELS') and not os.getenv('VIDEO_TOTAL_PIXELS'):
         # https://github.com/QwenLM/Qwen2.5-VL/issues/1120
         os.environ['VIDEO_TOTAL_PIXELS'] = str(int(128000 * 28 * 28 * 0.9))
@@ -56,7 +63,10 @@ def patch_qwen_vl_utils(vision_process):
         if default_value is None:
             # Skip keys not supported by the specific vision_process implementation
             continue
-        val = get_env_args(key, type_func, default_value)
+        if key in kwargs:
+            val = type_func(kwargs[key])
+        else:
+            val = get_env_args(key, type_func, default_value)
         setattr(vision_process, key.upper(), val)
         res[key] = val
     # Patch video reader if available

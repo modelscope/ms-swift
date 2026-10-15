@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
-import numpy as np
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
 
 from swift.dev.utils.logger import get_logger
@@ -31,7 +30,7 @@ def build_dataset(dataset_config: DatasetConfig,
       to the training/rollout phase (RL such as GRPO/GKD: False). Mirrors legacy
       ``SwiftSft._get_dataset``'s ``pre_process = not (rl_type in {grpo, gkd})``.
 
-    ``device_mesh``: the HF-local Ulysses SP mesh from ``build_hf_device_mesh`` (None when SP is
+    ``device_mesh``: the HF-local Ulysses SP mesh from ``build_dp_mesh`` (None when SP is
     off). When set, the loader slices by ``mesh.data_world_size`` (world/ulysses), so SP peers get
     identical samples and DP groups get distinct ones -- see _twinkle_loader_layout.
 
@@ -204,8 +203,7 @@ def _build_split_loader(raw: Any,
             template,
             mode=encode_mode,
             num_proc=dataset_config.dataset_num_proc,
-            strict=dataset_config.strict,
-            data_seed=dataset_config.data_seed)
+            strict=dataset_config.strict)
 
     # 1.5 merge the pre-encoded splits from disk. They are appended AFTER encoding because they were
     #     already encoded when exported -- re-running the preprocessor would either waste the work
@@ -281,6 +279,12 @@ def _build_split_loader(raw: Any,
         group_by_length=group_by_length,
         lengths=lengths,
         data_sharding=data_sharding,
+        # A row that cannot be encoded is substituted by twinkle's RetryDataset, seeded from data_seed so
+        # the same failing index resolves to the same replacement on every rank and after a resume.
+        # `strict` turns substitution off (max_retries=0): the first failure stops the run instead of
+        # quietly training on a different row.
+        retry_seed=dataset_config.data_seed,
+        max_retries=0 if dataset_config.strict else 20,
         collate_fn=_identity_collate,
         shuffle=dl_shuffle and not dataset_config.streaming,
         drop_last=_drop_last(distributed_config, is_val=is_val),
@@ -302,18 +306,18 @@ def _twinkle_loader_layout(distributed_config: DistributedConfig,
 
     twinkle's DataLoader takes the GLOBAL batch and slices it across DP ranks (its DeviceMeshSampler),
     so it is given ``per_device * dp_world_size`` and the mesh does the per-rank split. The DP layout
-    is a pure function of the config (``build_device_mesh``):
+    is a pure function of the config (``build_parallel_mesh``):
 
-      - HF Ulysses SP (``device_mesh`` given, from ``build_hf_device_mesh``): the sampler slices by
+      - HF Ulysses SP (``device_mesh`` given, from ``build_dp_mesh``): the sampler slices by
         ``mesh.data_world_size`` (= world/ulysses), so SP peers receive IDENTICAL samples and only DP
         groups differ -- exactly what Ulysses needs, since each SP rank re-splits the same sequence.
         The global batch is scaled by data_world_size so twinkle's divisibility assert holds.
       - local mode with ``nproc_per_node`` set (the Megatron path, whose CLI compat derives it from the
-        torchrun env): ``build_device_mesh`` sizes the DP layout off it and the loader is given that
+        torchrun env): ``build_parallel_mesh`` sizes the DP layout off it and the loader is given that
         mesh, so each rank takes its own slice (worker-fetcher).
       - local mode with ``nproc_per_node`` UNSET (a plain transformers torchrun launch -- the world size
         lives in the env, not the config): the DP width is ``Platform.get_world_size()``, the SAME source
-        twinkle's ``initialize(mode='local')`` and ``build_hf_device_mesh`` read. twinkle substitutes its
+        twinkle's ``initialize(mode='local')`` and ``build_dp_mesh`` read. twinkle substitutes its
         global pure-DP mesh (``data_world_size == world``) into a loader built with ``device_mesh=None``
         and slices the GLOBAL batch across it, so the batch MUST be scaled by the world size here or the
         loader's ``batch_size >= data_world_size`` assert fires for any ``per_device < world`` run. The
@@ -327,11 +331,11 @@ def _twinkle_loader_layout(distributed_config: DistributedConfig,
     if distributed_config.nproc_per_node is None:
         # Only local mode reaches here with nproc unset (ray requires it -- see initialize_twinkle), so
         # the DP width is the torchrun env world size, read exactly where twinkle's local initialize and
-        # build_hf_device_mesh read it. A single process reports 1, which leaves the batch unscaled.
+        # build_dp_mesh read it. A single process reports 1, which leaves the batch unscaled.
         from twinkle.utils import Platform
         return per_device_batch_size * Platform.get_world_size(), None
-    from swift.dev.builders.model import build_device_mesh
-    mesh = build_device_mesh(distributed_config)
+    from swift.dev.builders.model import build_parallel_mesh
+    mesh = build_parallel_mesh(distributed_config)
     global_batch_size = per_device_batch_size * mesh.data_world_size
     device_mesh = None if distributed_config.mode == 'ray' else mesh
     return global_batch_size, device_mesh
@@ -441,7 +445,7 @@ def _drop_last(distributed_config: DistributedConfig, *, is_val: bool) -> bool:
 
 
 def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream'], num_proc: int, strict: bool,
-            data_seed: int, materialize: bool = False) -> Any:
+            materialize: bool = False) -> Any:
     """Encode a raw messages split into trainable samples.
 
     Routes:
@@ -456,6 +460,10 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
     ``input_ids``/``labels`` instead of the raw row. Only the cached-dataset exporter sets it (via
     ``ConvertConfig.store_encoded``); training leaves it False and keeps encoding at train time, where the
     forward's ``_not_encoded`` guard would skip the work anyway once a row is materialised.
+
+    No seed is taken here: a row that fails to encode at train time is substituted by twinkle's
+    ``RetryDataset``, which the ``DataLoader`` seeds from ``retry_seed``. The build-time pass (this
+    function) drops unusable rows instead of replacing them, which needs no draw.
     """
     from swift.dev.dataset import EncodePreprocessor, LazyLLMDataset, MeasurePreprocessor
 
@@ -465,8 +473,7 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
                          "The 'split' strategy may produce multiple samples per input.")
 
     if mode == 'lazy':
-        random_state = np.random.RandomState(data_seed)
-        return LazyLLMDataset(raw, template.encode, strict=strict, random_state=random_state)
+        return LazyLLMDataset(raw, template.encode)
 
     # eager / stream: 'split' needs a full encode (emits multiple samples per input), and so does an
     # explicit materialize request; otherwise MeasurePreprocessor only writes `lengths`, leaving rows raw.

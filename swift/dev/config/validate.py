@@ -87,7 +87,7 @@ def validate_configs(
     _check_save_total_limit(checkpoint_config, is_megatron)
     _check_logging(logging_config)
     _check_rlhf_ref_model(model_config, tuner_config, rl_config)
-    _check_rlhf_advanced(train_config, rl_config)
+    _check_rlhf_advanced(train_config, rl_config, distributed_config)
     _check_grpo_cached_dataset(dataset_config, rl_config)
     _check_rlhf_padding_free(template_config, dataset_config, rl_config)
     _check_rlhf_padding_side(template_config, rl_config)
@@ -145,18 +145,21 @@ def _check_megatron_runtime_configs(megatron_config: Optional['MegatronConfig'],
         raise ValueError('manual_gc_steps must be >= 0.')
 
 
-def _check_rlhf_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfig']) -> None:
+def _check_rlhf_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfig'],
+                         distributed_config: Optional['DistributedConfig'] = None) -> None:
     """Validate online-RL features before models, teachers, or rollout workers are created."""
     if rl_config is None:
         return
     cfg = rl_config
     online_only = bool(cfg.chord_sft_dataset or cfg.advantage_reweight or cfg.sdar_loss_coef > 0 or cfg.dynamic_sample
-                       or cfg.sync_ref_model or cfg.max_turns is not None)
+                       or cfg.max_turns is not None)
     if online_only and cfg.rl_type != 'grpo':
-        raise ValueError('CHORD, RLSD, SDAR, dynamic sampling, reference sync, and multi-turn are GRPO-only.')
+        raise ValueError('CHORD, RLSD, SDAR, dynamic sampling, and multi-turn are GRPO-only.')
+    if cfg.sync_ref_model and cfg.rl_type not in ('grpo', 'ppo'):
+        raise ValueError('sync_ref_model requires rl_type grpo or ppo (only they have a reference model).')
     _check_dynamic_sampling(cfg)
     _check_grpo_controls(cfg)
-    _check_reference_sync(cfg, train_config)
+    _check_reference_sync(cfg, train_config, distributed_config)
     _check_chord(cfg)
     _check_router_replay(cfg)
     _check_sampling_replay(cfg)
@@ -245,11 +248,11 @@ def validate_rollout_config(rollout_config: Optional['RolloutConfig'],
     _check_async_mode(rollout_config, rl_config, tuner_config)
 
 
-#: The online loops that roll out per prompt batch and train on the collected samples, so they can overlap
-#: generation with training on the per-sample streaming driver
-#: (:class:`swift.dev.recipe._streaming_loop.StreamingLoopMixin`). RFT is
+#: The online recipes that roll out per prompt batch and train on the collected samples, so they can overlap
+#: generation with training on the shared per-sample streaming driver
+#: (:func:`swift.dev.recipe._streaming.build_streaming_driver`). RFT is
 #: excluded (it bootstraps a fixed sample set with a plain cross-entropy objective and no off-policy
-#: correction, and its ``fit`` iterates bootstrap rounds rather than prompt batches); the offline preference
+#: correction, and its body iterates bootstrap rounds rather than prompt batches); the offline preference
 #: family (dpo/kto/cpo/orpo/simpo/rm) never rolls out, so it is excluded too.
 _ASYNC_RLHF_TYPES = frozenset({'grpo', 'ppo', 'gkd', 'opsd', 'mopd'})
 
@@ -285,41 +288,37 @@ _INERT_UNDER_NONE_STREAMING = {
 
 
 def _sync_only_feature(rl_config: Optional['RLConfig']) -> bool:
-    """Whether this config needs the WHOLE fixed batch up front, so it cannot ride the per-sample stream.
+    """Whether this config cannot ride the per-sample stream and runs the synchronous round loop instead.
 
-    Mirrors the ``run_*`` dispatch predicate exactly (the two must never drift, or a config would validate as
-    streaming but be routed to ``_run_sync`` or vice-versa). A per-sample stream admits ONE trajectory at a
-    time and pulls whatever the assembly rule says is ready, so it cannot serve a feature that must see an
-    entire generated batch before deciding what to train:
+    Mirrors the ``run_*`` body dispatch exactly (the two must never drift, or a config would validate as
+    streaming but be routed to the synchronous rounds or vice-versa). A per-sample stream admits ONE
+    trajectory at a time and pulls whatever the assembly rule says is ready, so it cannot serve a feature
+    that must see an entire generated batch before deciding what to train:
 
-    * GRPO ``dynamic_sample`` regenerates zero-variance groups AFTER seeing the batch's rewards, and
-      ``advantage_estimator='remax'`` runs a synchronous greedy-baseline generation pass over the assembled
-      batch -- neither can be pre-submitted per-sample.
     * The distillation family (gkd/opsd/mopd) with ``lmbda != 1.0`` mixes in off-policy dataset rounds that
-      generate nothing, so there is no trajectory to admit.
-    * PPO has no such feature (per-token GAE has no group contract and no whole-batch prepass), so it never
-      falls back.
+      generate nothing, so there is no trajectory to admit -- its run body then trains the synchronous
+      round loop. This is the ONLY surviving sync-only feature: GRPO serves ``dynamic_sample`` / ``remax``
+      through the injected group-completion hook on the stream, and PPO has none.
+    * RFT never rides the stream (it has no off-policy correction to absorb the gap) and is gated out of
+      :data:`_ASYNC_RLHF_TYPES` before this predicate is consulted.
 
     A ``None`` rl_config (a sampling-only surface) has no online loop to stream, so it is treated as
     sync-only (the caller gates on ``rl_type in _ASYNC_RLHF_TYPES`` first anyway).
     """
     if rl_config is None:
         return True
-    rl_type = rl_config.rl_type
-    if rl_type == 'grpo':
-        return bool(rl_config.dynamic_sample or rl_config.advantage_estimator == 'remax')
-    if rl_type in {'gkd', 'opsd', 'mopd'}:
+    if rl_config.rl_type in {'gkd', 'opsd', 'mopd'}:
         return rl_config.lmbda != 1.0
     return False
 
 
 def _streams_under_none(rl_config: Optional['RLConfig']) -> bool:
-    """Whether ``async_mode='none'`` routes this config to the per-sample StreamingDriver (staleness 0).
+    """Whether ``async_mode='none'`` routes this config to the per-sample streaming driver (staleness 0).
 
     True for an online loop (grpo/ppo/gkd/opsd/mopd) with no sync-only feature; those ride the SAME driver as
     the overlapping regimes, just at staleness 0 (drain-before-publish, no overlap, colocate allowed). False
-    for a sync-only feature (which falls back to the base loop's ``_run_sync``) and for a non-online recipe
-    (which overrides ``fit`` or never rolls out per prompt batch, so it has no streaming loop at all).
+    for the distillation family's off-policy mix (``lmbda != 1.0``, which runs the synchronous round loop)
+    and for a non-online recipe (which never rolls out per prompt batch, so it has no streaming loop at all).
     """
     if rl_config is None or rl_config.rl_type not in _ASYNC_RLHF_TYPES:
         return False
@@ -337,14 +336,14 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
     ``max_staleness`` to 1 (train version ``v`` while admitting ``v+1``); ``'fully_async'`` lets the
     disaggregated sampler run several versions ahead (staleness up to ``max_staleness``). The two OVERLAPPING
     regimes are disaggregated (below) and a real off-policy gap, so each of the following is refused there
-    rather than silently degrading (under ``'none'`` a sync-only feature instead falls back to the base
-    loop's ``_run_sync``, and the staleness-0 publication is validated by ``_check_streaming_publication``):
+    rather than silently degrading (under ``'none'`` the distillation family's off-policy mix runs its
+    synchronous round loop instead, and the staleness-0 publication is validated by
+    ``_check_streaming_publication``):
 
-    - Only the loops in :data:`_ASYNC_RLHF_TYPES` implement the overlapped dispatch; RFT and the offline
-      family override ``fit`` (or never roll out) and would ignore the flag. EVERY overlapping loop runs the
-      SAME per-sample streaming driver (``recipe._streaming_loop.StreamingLoopMixin`` composed into
-      ``grpo_async.StreamingGRPOLoop`` / ``ppo_async.StreamingPPOLoop`` / ``gkd_async.StreamingGKDLoop`` and
-      its OPSD/MOPD recompositions), differing only in the staleness knob. GRPO/PPO expose both
+    - Only the recipes in :data:`_ASYNC_RLHF_TYPES` implement the overlapped dispatch; RFT and the offline
+      family would ignore the flag. EVERY overlapping recipe runs the SAME per-sample streaming driver
+      (``recipe._streaming.build_streaming_driver``, composed into each flat run body as a collaborator,
+      never a subclass), differing only in the staleness knob. GRPO/PPO expose both
       ``'one_step_off'`` (staleness 1) and ``'fully_async'`` (staleness up to ``max_staleness``);
       ``'fully_async'`` narrows to them because the distillation family overlaps only a single step.
     - GRPO trains on raw sampled tokens, so any staleness needs the token-level
@@ -379,8 +378,8 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
         # Since the per-sample stream serves EVERY regime, an online loop (grpo/ppo/gkd/opsd/mopd) with no
         # sync-only feature now rides the StreamingDriver at staleness 0 (admit one window, DRAIN it, train,
         # publish -- no overlap; a colocated sampler is allowed and serialized via the drain barrier + device
-        # hand-over). Only a sync-only feature (which needs the WHOLE fixed batch up front) falls back to the
-        # base loop's synchronous _run_sync, and a non-online recipe never rolls out per prompt batch at all.
+        # hand-over). Only the distillation family's off-policy mix (lmbda != 1.0) runs its synchronous
+        # round loop instead, and a non-online recipe never rolls out per prompt batch at all.
         if _streams_under_none(rl_config):
             # max_staleness (the dispatch pins it to 0) and allow_partial_rollout (inert at staleness 0) are
             # never read on this path, so an explicit non-default value is still refused; weight_sync_strategy
@@ -390,7 +389,7 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
             _reject_inert_streaming_knobs(rollout_config, mode, _INERT_UNDER_NONE_STREAMING)
             _check_streaming_publication(rollout_config, rl_config, tuner_config, mode)
         else:
-            # The synchronous _run_sync fallback (or a non-online recipe) reads none of the streaming knobs.
+            # The synchronous round loop (or a non-online recipe) reads none of the streaming knobs.
             _reject_inert_streaming_knobs(rollout_config, mode, _FULLY_ASYNC_ONLY_DEFAULTS)
         return
     # The legacy bool is the old spelling of 'one_step_off'; process._derive_async_mode folds it in when
@@ -478,8 +477,8 @@ def _check_streaming_publication(rollout_config: 'RolloutConfig', rl_config: 'RL
     staleness 1, ``'fully_async'`` at staleness up to ``max_staleness``. An OVERLAPPING publish always
     happens while the sampler has generations in flight and must not corrupt them; a staleness-0 publish
     happens only after the drain, so nothing is in flight. Four things are checked (the strategy pairing
-    mirrored at construction by ``recipe._streaming_loop.StreamingLoopMixin._check_streaming_config``, so a
-    loop built directly is guarded too):
+    mirrored at construction by ``recipe._streaming.check_streaming_config``, so a
+    driver built directly is guarded too):
 
     * ``parameter_sync_step`` is the publish cadence -- one weight publication every K recorded steps; it
       must be >= 1 (0 would never publish a trained policy).
@@ -829,15 +828,28 @@ def _check_dynamic_sampling(cfg: 'RLConfig') -> None:
         raise ValueError('max_resample_times must be >= 1 when dynamic_sample is enabled.')
 
 
-def _check_reference_sync(cfg: 'RLConfig', train_config: 'TrainConfig') -> None:
+def _check_reference_sync(cfg: 'RLConfig', train_config: 'TrainConfig',
+                          distributed_config: Optional['DistributedConfig'] = None) -> None:
     if not cfg.sync_ref_model:
         return
     if cfg.beta in (None, 0, 0.0):
         raise ValueError('sync_ref_model requires beta > 0 and an active reference model.')
     if cfg.ref_model_sync_steps < 1:
         raise ValueError('ref_model_sync_steps must be >= 1.')
-    if not 0.0 <= cfg.ref_model_mixup_alpha <= 1.0:
-        raise ValueError('ref_model_mixup_alpha must be in [0, 1].')
+    if not 0.0 < cfg.ref_model_mixup_alpha <= 1.0:
+        raise ValueError('ref_model_mixup_alpha must be in (0, 1]; 0 would discard the reference entirely.')
+    # Paired EMA requires both sides to have IDENTICAL sharding. When reference_parallel_spec is explicit it
+    # must equal the policy's; None auto-inherits and is always valid.
+    if cfg.reference_parallel_spec is not None and distributed_config is not None:
+        policy_spec = distributed_config.parallel_spec
+        if cfg.reference_parallel_spec != policy_spec:
+            raise ValueError(
+                f'sync_ref_model paired EMA requires reference_parallel_spec to match the policy parallel_spec '
+                f'({policy_spec!r}), got {cfg.reference_parallel_spec!r}. Set reference_parallel_spec=None to '
+                f'auto-inherit, or use the same spec as the policy.')
+    # LoRA's disable_adapter reference shares the policy actor -- EMA against itself is meaningless.
+    if cfg.ref_adapters:
+        pass  # explicit ref_adapters = a separate frozen copy, EMA is valid
     del train_config
 
 
@@ -865,14 +877,10 @@ def _check_chord(cfg: 'RLConfig') -> None:
 def _check_router_replay(cfg: 'RLConfig') -> None:
     """Reject MoE routing-replay combinations dev cannot honour, so the knob is never silently dropped.
 
-    ``router_replay_mode`` was a parsed-but-unwired dead knob; R2/R3 are now wired into GRPOLoop. Two
-    combinations remain infeasible and must fail loudly here rather than corrupt a run:
-
-    - Only GRPO consumes it: the RECORD/REPLAY driving lives in ``GRPOLoop._mini_batch_kwargs``, while the
-      RFT/GKD/OPSD/PPO loops override ``fit`` and build their own ``forward_backward`` kwargs, so a non-GRPO
-      run would set ``enable_router_replay`` on the model yet never pass a replay action -- a silent no-op.
-    - CHORD appends auxiliary SFT rows that carry no expert routing, so they cannot share the REPLAY forward
-      (twinkle's ``set_router_replay_data`` aligns routing to every row); the two are mutually exclusive.
+    ``router_replay_mode`` was a parsed-but-unwired dead knob; R2/R3 are now wired into the GRPO assembler.
+    Only GRPO consumes it: the RECORD/REPLAY driving lives in the GRPO assembler's ``forward_kwargs``,
+    while the other recipes (RFT/GKD/OPSD/PPO) build their own ``forward_backward`` kwargs, so a non-GRPO
+    run would set ``enable_router_replay`` on the model yet never pass a replay action -- a silent no-op.
 
     The MoE-only and sampler-export requirements are checked at runtime instead (a dense policy records no
     routing; a non-exporting engine leaves R3 with none) -- both surface as loud errors in the loop, since
@@ -883,12 +891,8 @@ def _check_router_replay(cfg: 'RLConfig') -> None:
         return
     if cfg.rl_type != 'grpo':
         raise ValueError(f'router_replay_mode={mode!r} is GRPO-only: R2/R3 routing replay is driven by '
-                         'GRPOLoop, and the RFT/GKD/OPSD/PPO loops build their own forward_backward kwargs '
+                         'the GRPO assembler, and the other recipes build their own forward_backward kwargs '
                          'without it. Use rl_type=grpo, or router_replay_mode=disabled.')
-    if cfg.chord_sft_dataset:
-        raise ValueError('router_replay_mode cannot be combined with CHORD: the auxiliary SFT rows carry no '
-                         'expert routing, so they cannot share the REPLAY forward. Drop chord_sft_dataset, or '
-                         'set router_replay_mode=disabled.')
 
 
 def _check_sampling_replay(cfg: 'RLConfig') -> None:
@@ -899,15 +903,12 @@ def _check_sampling_replay(cfg: 'RLConfig') -> None:
     distribution the token was actually drawn from. twinkle's GRPOLoss/forward impose hard constraints; the
     ones decidable from RLConfig alone are enforced here, the rest fail loudly at their own site:
 
-    - GRPO-only: the ``sampling_masks`` column is assembled by ``GRPOLoop`` (``_rollout_step`` /
-      ``_mini_batch_kwargs``); the RFT/GKD/OPSD/PPO loops override ``fit`` and never carry it.
+    - GRPO-only: the ``sampling_masks`` column is assembled by the GRPO assembler (``assemble`` /
+      ``forward_kwargs``); the other recipes never carry it.
     - No loss-side KL penalty: GRPOLoss raises when ``enable_sampling_replay`` and ``beta != 0``. dev only
       forwards ``beta`` to the loss when it is set, KL is not folded into the reward, and KL is calculated
       (mirroring ``_online_loss_kwargs``) -- so only that resolved value is checked here; a KL-in-reward run
       keeps the loss ``beta`` at 0 and is allowed.
-    - No CHORD: its auxiliary SFT rows are not sampled, so they have no sampling mask to replay against
-      (GRPOLoss rejects the resulting ``loss_mask != trainable``); the two are mutually exclusive.
-
     The entropy bonus (``entropy_coef``) has no dev knob, so it stays 0 and needs no guard. Sequence/context
     parallelism is rejected by the twinkle forward itself (and, today, by the blanket RLHF-SP guard), which
     this config-only check has no parallel sizes to inspect.
@@ -916,7 +917,7 @@ def _check_sampling_replay(cfg: 'RLConfig') -> None:
         return
     if cfg.rl_type != 'grpo':
         raise ValueError(f'enable_sampling_replay is GRPO-only: the sampling_masks column is assembled by '
-                         f'GRPOLoop, but rl_type={cfg.rl_type!r} builds its own forward_backward kwargs '
+                         f'the GRPO assembler, but rl_type={cfg.rl_type!r} builds its own forward_backward kwargs '
                          'without it. Use rl_type=grpo, or disable enable_sampling_replay.')
     calculate_kl = cfg.calculate_KL is not False
     loss_beta = cfg.beta if (cfg.beta is not None and not cfg.kl_in_reward and calculate_kl) else None
@@ -924,10 +925,6 @@ def _check_sampling_replay(cfg: 'RLConfig') -> None:
         raise ValueError(f'enable_sampling_replay forbids a GRPO KL penalty in the loss (beta must be 0), but '
                          f'beta={loss_beta} would reach GRPOLoss. Set beta=0, or fold the KL into the reward '
                          'with kl_in_reward=True, or disable enable_sampling_replay.')
-    if cfg.chord_sft_dataset:
-        raise ValueError('enable_sampling_replay cannot be combined with CHORD: the auxiliary SFT rows are not '
-                         'sampled, so they have no sampling mask to replay against. Drop chord_sft_dataset, or '
-                         'disable enable_sampling_replay.')
     if cfg.max_turns is not None:
         raise ValueError('enable_sampling_replay does not support multi-turn rollouts: tool/observation turns '
                          'are trainable but were not drawn from the sampled policy, so they have no sampling '
@@ -944,17 +941,20 @@ def _check_prm(cfg: 'RLConfig') -> None:
     ``rl_type`` (synthesis runs under the ``dpo`` default) ``prm`` is just a ranking axis and the
     process-reward knobs do not apply.
 
-    - Multi-turn is unsupported: a step prefix would span several assistant turns, so per-step scoring is
-      undefined (``GRPOLoop._apply_prm`` raises at runtime; refused here up front).
+    - Multi-turn is supported: a step is confined to one assistant turn (the default ``'turn'`` scorer makes
+      one turn one step; ``'delimiter'`` splits within a turn, never across one), and a step is scored against
+      the real conversation history including prior turns' tool observations.
     - Mutually exclusive with RLSD/SDAR: both replace the scalar advantage with a per-token one from a
       different source (teacher-signal reweighting vs process reward), and ``_training_advantage`` passes a
       per-token PRM advantage straight through -- it cannot also apply the teacher reweighting.
-    - A process-reward knob with no ``--prm`` channel is dead: ``prm_scorer``/``prm_step_delimiter`` only shape
-      how PRM steps are segmented and scored, so setting one without any PRM item would do nothing.
+    - A process-reward knob with no ``--prm`` channel is dead: ``prm_scorer``/``prm_step_delimiter``/
+      ``prm_orm_mix`` only shape how PRM steps are segmented, scored and fused with the outcome reward, so
+      setting one without any PRM item would do nothing.
+    - ``prm_orm_mix`` is the PRM/ORM convex-combination ratio and must lie in ``[0, 1]``.
     """
     if cfg.rl_type != 'grpo':
         return
-    scorer_knobs = sorted({'prm_scorer', 'prm_step_delimiter'}.intersection(_changed_fields(cfg)))
+    scorer_knobs = sorted({'prm_scorer', 'prm_step_delimiter', 'prm_orm_mix'}.intersection(_changed_fields(cfg)))
     if not cfg.prm:
         if scorer_knobs:
             details = ', '.join(f'--{name}' for name in scorer_knobs)
@@ -962,10 +962,10 @@ def _check_prm(cfg: 'RLConfig') -> None:
                 f'{details} shape the GRPO process reward but no --prm channel is set, so they would do '
                 'nothing. Add a --prm item (a rule name or a frozen PRM model id), or drop them.')
         return
-    if cfg.max_turns is not None:
+    if not 0.0 <= cfg.prm_orm_mix <= 1.0:
         raise ValueError(
-            'The --prm process reward does not support multi-turn rollouts: a reasoning-step prefix would span '
-            'several assistant turns, so per-step scoring is undefined. Set max_turns=None, or drop --prm.')
+            f'prm_orm_mix must be in [0, 1] (the PRM/ORM convex-combination ratio: 0 is standard GRPO, 1 is '
+            f'pure process reward), got {cfg.prm_orm_mix}.')
     if cfg.advantage_reweight == 'rlsd' or cfg.sdar_loss_coef > 0:
         raise ValueError(
             'The --prm process reward cannot be combined with RLSD/SDAR: both turn the scalar advantage into a '
@@ -2185,21 +2185,18 @@ def _check_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['T
 #: micro batch back to per-sequence ``[num_seq, max_seq]`` via ``processor.unpack_packed_sequences`` BEFORE
 #: calculate_loss, so a loss reading per-token logps/labels off that unpacked frame is packing-agnostic:
 #:   - grpo / rft: online RL -- GRPOLoss, and rft's plain cross_entropy (the SFT loss), over the unpacked
-#:     frame; both share GRPOLoop's rollout + micro-step path.
+#:     frame; both ride the flat GRPO recipe's rollout + micro-step body.
 #:   - dpo / kto / cpo / orpo / simpo: the offline PreferenceLossBase family -- all five subclass it and
 #:     consume ``_split_chosen_rejected`` + ``_compute_sequence_logps``/``_compute_avg_logps`` over the same
 #:     unpacked per-token logps, on the one run_dpo encode path (dpo/kto were the legacy-verified seeds).
 #:   - gkd: teacher-student divergence over the unpacked labels/logits.
-_RL_PADDING_FREE_WIRED_TYPES = ('grpo', 'rft', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'gkd')
+_RL_PADDING_FREE_WIRED_TYPES = ('grpo', 'rft', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'gkd', 'rm')
 
 #: rl_types refused BY NAME (never silently) because one component of their path is not packed-safe.
 _RL_PADDING_FREE_REFUSED_REASONS = {
     'ppo':
     "PPO's per-token value-head critic does not cover the packed / variable-length layout (run_ppo.py "
     'module docstring), so the critic would read a flattened row as one sequence.',
-    'rm':
-    'RewardLoss reads the seq_cls head\'s pooled [B, 1] score, and pooling a flattened packed row does not '
-    'split back into one score per packed sub-sequence.',
     'opsd':
     "OPSD's teacher->student per-token logps alignment across two independently-unpacked forwards is not "
     'verified under variable-length packing.',

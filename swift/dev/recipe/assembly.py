@@ -201,7 +201,6 @@ class TrainAssembly:
                                      f'group ({planned}); each frozen model needs a unique name.')
                 groups.append(
                     DeviceGroup(
-                        # 不需要具体指定ranks，指定数量即可生效
                         name=name, ranks=list(range(next_rank, next_rank + world_size)), device_type='GPU',
                         gpus_per_worker=1))
                 planned.append(name)
@@ -264,8 +263,8 @@ class TrainAssembly:
         bit-for-bit (local: twinkle's default pure-DP mesh; ray: ``_apply_ray_placement`` synthesizes the
         pure-DP mesh). Otherwise the mesh is mode-specific but carries the SAME ``dp x ulysses`` layout:
 
-        - ``mode='local'`` (torchrun SFT/offline): :func:`build_hf_device_mesh` over the WORLD_SIZE ranks.
-        - ``mode='ray'`` (online RL): :func:`build_ray_dp_mesh` over ``nproc_per_node`` ranks -- the ray
+        - ``mode='local'`` (torchrun SFT/offline): :func:`build_dp_mesh` over the WORLD_SIZE ranks.
+        - ``mode='ray'`` (online RL): :func:`build_dp_mesh` over ``nproc_per_node`` ranks -- the ray
           counterpart, so the trainable model, its colocated sampler and the ``data_world_size`` batch-width
           formula all agree on one ulysses degree.
 
@@ -278,13 +277,8 @@ class TrainAssembly:
         if sp <= 1:
             self.sp_mesh = None
             return self.sp_mesh
-        ## 这俩有啥区别吗？感觉你写了一大堆的build_xxx_mesh，看来看去内容都差不多
-        if self.distributed_config.mode == 'ray':
-            from swift.dev.builders import build_ray_dp_mesh
-            self.sp_mesh = build_ray_dp_mesh(self.distributed_config, sp)
-        else:
-            from swift.dev.builders import build_hf_device_mesh
-            self.sp_mesh = build_hf_device_mesh(self.distributed_config, sp)
+        from swift.dev.builders import build_dp_mesh
+        self.sp_mesh = build_dp_mesh(self.distributed_config, sp)
         return self.sp_mesh
 
     def require_task_type(self) -> str:
@@ -353,7 +347,7 @@ class TrainAssembly:
         Rather than silently run a no-op training, fail with an actionable message. Checked BEFORE
         :meth:`build_model` so we fail before loading heavy weights.
         """
-        from swift.dev.recipe.train_loop import num_optimizer_steps
+        from swift.dev.recipe._loop_utils import num_optimizer_steps
 
         if self.train_config.max_steps and self.train_config.max_steps > 0:
             self.total_opt_steps = self.train_config.max_steps
@@ -477,67 +471,102 @@ class TrainAssembly:
         self.model.set_template(self.template)
         return self.model
 
-    def build_loop(self) -> Any:
-        """Build the training loop and, if resuming, restore state into it.
+    @property
+    def forward_task(self) -> str:
+        """The twinkle task the training forward runs under.
 
-        Resume order is twinkle-locked: the optimizer must already exist, so
-        ``model.resume_from_checkpoint`` (which restores optim/sched/RNG/cur_step) runs after
-        ``configure_optimizer`` and before ``fit``; ``loop.resume`` then seeds the loop counters and
-        the dataloader skip position. LoRA passes ``adapter_name`` because twinkle defaults it to ''
-        while ``apply_tuner`` created 'default'.
+        The ``loop_task`` override wins (fused-linear-CE forwards under 'fused_lm_ce' while rows still
+        encode as causal_lm), else the recipe's ``task`` (seq_cls / embedding / reranker), else the SFT
+        default 'causal_lm'. This is what the flat recipes pass as the ``task`` of each micro-step's
+        ``forward_backward`` / ``forward_only``.
         """
-        from swift.dev.callbacks import build_callbacks
+        return self.loop_task or self.task or 'causal_lm'
+
+    def offline_component_kwargs(self) -> Dict[str, Any]:
+        """The knobs for a flat offline recipe's three thin components, partitioned by component.
+
+        The config -> knob translation stays here (the assembly's layer) so every flat offline recipe
+        (sft / seq_cls / embedding / reranker and the run_dpo preference family) constructs
+        :class:`~swift.dev.recipe.step_runner.StepRunner`,
+        :class:`~swift.dev.recipe.evaluator.Evaluator` and
+        :class:`~swift.dev.recipe.checkpoint.CheckpointSaver` from one place, instead of re-deriving
+        every checkpoint / logging / eval / best-model / hub setting each. It is the single partitioned
+        knob set for the flat layer, and folds in :meth:`_generative_eval_kwargs` for the evaluator.
+
+        ``recorder['callbacks']`` is popped by the recipe to build the shared ``CallbackHandler``.
+        """
         from swift.dev.builders.optimizer import resolve_max_grad_norm
-        from swift.dev.recipe.train_loop import SFTLoop
+        from swift.dev.callbacks import build_callbacks
 
-        loop_task = self.loop_task or self.task
-        kwargs = {'task': loop_task} if loop_task else {}
-        self.loop = SFTLoop(
-            self.model,
-            self.dataloader,
-            max_steps=self.total_opt_steps,
-            num_train_epochs=self.train_config.num_train_epochs,
-            gradient_accumulation_steps=self.ga,
-            max_grad_norm=resolve_max_grad_norm(self.train_config),
-            logging_config=self.logging_config,
-            output_dir=self.output_dir,
-            eval_dataloader=self.eval_dataloader,
-            eval_steps=self.train_config.eval_steps,
-            eval_iters=self.train_config.eval_iters,
-            save_steps=self.checkpoint_config.save_steps if self.checkpoint_config else None,
-            no_save_optim=bool(self.checkpoint_config
-                               and (self.checkpoint_config.no_save_optim or self.checkpoint_config.save_only_model)),
-            no_save_rng=bool(self.checkpoint_config
-                             and (self.checkpoint_config.no_save_rng or self.checkpoint_config.save_only_model)),
-            safe_serialization=(self.checkpoint_config.safe_serialization if self.checkpoint_config else True),
-            max_shard_size=(self.checkpoint_config.max_shard_size if self.checkpoint_config else '5GB'),
-            save_total_limit=(self.checkpoint_config.save_total_limit if self.checkpoint_config else None),
-            ignore_data_skip=bool(self.checkpoint_config and self.checkpoint_config.ignore_data_skip),
-            manual_gc=bool(self.megatron_config and self.megatron_config.manual_gc),
-            manual_gc_eval=bool(self.megatron_config and self.megatron_config.manual_gc_eval),
-            manual_gc_steps=self.megatron_config.manual_gc_steps if self.megatron_config else 0,
-            torch_empty_cache_steps=self.train_config.torch_empty_cache_steps,
-            callbacks=build_callbacks(self.train_config),
-            eval_delay=int(self.train_config.eval_delay or 0),
-            eval_on_start=self.train_config.eval_on_start,
-            metric_for_best_model=self.train_config.metric_for_best_model,
-            greater_is_better=self.train_config.greater_is_better,
-            load_best_model_at_end=self.train_config.load_best_model_at_end,
-            best_model_adapter_name=(None if self.tuner_config is None else 'default'),
-            hub_pusher=self._build_hub_pusher(),
-            hub_strategy=(self.checkpoint_config.hub_strategy if self.checkpoint_config else 'every_save'),
-            **self._generative_eval_kwargs(),
-            **kwargs)
+        ckpt = self.checkpoint_config
+        megatron = self.megatron_config
+        manual_gc = bool(megatron and megatron.manual_gc)
+        return {
+            'recorder': {
+                'gradient_accumulation_steps': self.ga,
+                'max_grad_norm': resolve_max_grad_norm(self.train_config),
+                'max_steps': self.total_opt_steps,
+                'logging_config': self.logging_config,
+                'output_dir': self.output_dir,
+                'manual_gc': manual_gc,
+                'manual_gc_steps': megatron.manual_gc_steps if megatron else 0,
+                'torch_empty_cache_steps': self.train_config.torch_empty_cache_steps,
+                'callbacks': build_callbacks(self.train_config),
+            },
+            'evaluator': {
+                'eval_dataloader': self.eval_dataloader,
+                'eval_steps': self.train_config.eval_steps,
+                'eval_iters': self.train_config.eval_iters,
+                'output_dir': self.output_dir,
+                'manual_gc': manual_gc,
+                'manual_gc_eval': bool(megatron and megatron.manual_gc_eval),
+                'eval_delay': int(self.train_config.eval_delay or 0),
+                'eval_on_start': self.train_config.eval_on_start,
+                'metric_for_best_model': self.train_config.metric_for_best_model,
+                'greater_is_better': self.train_config.greater_is_better,
+                'load_best_model_at_end': self.train_config.load_best_model_at_end,
+                'best_model_adapter_name': None if self.tuner_config is None else 'default',
+                **self._generative_eval_kwargs(),
+            },
+            'saver': {
+                'output_dir': self.output_dir,
+                'save_steps': ckpt.save_steps if ckpt else None,
+                'no_save_optim': bool(ckpt and (ckpt.no_save_optim or ckpt.save_only_model)),
+                'no_save_rng': bool(ckpt and (ckpt.no_save_rng or ckpt.save_only_model)),
+                'safe_serialization': ckpt.safe_serialization if ckpt else True,
+                'max_shard_size': ckpt.max_shard_size if ckpt else '5GB',
+                'save_total_limit': ckpt.save_total_limit if ckpt else None,
+                'ignore_data_skip': bool(ckpt and ckpt.ignore_data_skip),
+                'hub_pusher': self._build_hub_pusher(),
+                'hub_strategy': ckpt.hub_strategy if ckpt else 'every_save',
+            },
+        }
 
-        if self.resume_dir:
-            self.loop.resume(self.resume_model())
-        return self.loop
+    def args_json_writer(self) -> Callable[[str], None]:
+        """A callable that writes this run's self-describing args.json into a given checkpoint dir.
+
+        Handed to :meth:`~swift.dev.recipe.checkpoint.CheckpointSaver.save_final` so the saver stays
+        free of config knowledge; it closes over the same processor / configs :meth:`save_final` (the
+        loop-based path) writes with, so both routes produce an identical args.json.
+        """
+
+        def write(ckpt_dir: str) -> None:
+            TrainAssembly.write_ckpt_args_json(
+                ckpt_dir,
+                self.processor,
+                self.model_config,
+                self.template_config,
+                self.tuner_config,
+                self.quantize_config,
+                task_type=self.task_type)
+
+        return write
 
     def _generative_eval_kwargs(self) -> Dict[str, Any]:
         """The loop kwargs for in-training generative eval; empty when the run scores val-loss instead.
 
         Builds the resident EvalScope sampler once (design 1.4) plus the inputs the loop hands to
-        ``run_evalscope``: the normalized benchmark names, the report model id, and the TaskConfig
+        ``run_evaluator``: the normalized benchmark names, the report model id, and the TaskConfig
         kwargs. The sampler backend decides whether a colocate memory schedule brackets each run.
         """
         if not self.train_config.predict_with_generate:
@@ -589,7 +618,7 @@ class TrainAssembly:
 
         from twinkle.checkpoint_engine import CheckpointEngineManager
 
-        from swift.dev.builders import build_ray_dp_mesh, build_sampler
+        from swift.dev.builders import build_dp_mesh, build_sampler
         # The colocate hand-over sleeps the engine to free the GPU for the trainer, which each backend
         # only permits when it was built with its own memory-saver flag on (vLLM: enable_sleep_mode,
         # sglang: enable_memory_saver); without it sleep()/wake_up() warn and no-op, leaving the trainer
@@ -605,7 +634,7 @@ class TrainAssembly:
             # Ray-remote twinkle object built with device_mesh=None and no global default is rejected, and a
             # colocated engine that sliced its sample inputs across a different rank layout than the weights
             # it syncs would be wrong.
-            device_mesh=build_ray_dp_mesh(self.distributed_config, self.template_config.sequence_parallel_size),
+            device_mesh=build_dp_mesh(self.distributed_config, self.template_config.sequence_parallel_size),
             remote_group='model')
         manager = CheckpointEngineManager(model=self.model, sampler=sampler, platform='GPU', mode='colocate')
 
@@ -662,8 +691,9 @@ class TrainAssembly:
                      adapter_name: Optional[str] = None) -> dict:
         """Restore one trainable model and return twinkle's training-progress state.
 
-        Custom RLHF loops use the same checkpoint semantics as :meth:`build_loop`. PPO passes its
-        critic explicitly with ``checkpoint_dir=<policy checkpoint>/value_model``; the policy uses
+        The loop-based recipes call this before seeding their loop's counters; the flat offline recipes pass
+        it to :func:`swift.dev.recipe.offline_loop.run_offline` as the ``resume`` callable. PPO passes
+        its critic explicitly with ``checkpoint_dir=<policy checkpoint>/value_model``; the policy uses
         the assembly defaults.
         """
         from swift.dev.builders import is_megatron_backend
@@ -712,27 +742,28 @@ class TrainAssembly:
     def resume_only_model(self) -> bool:
         return bool(self.checkpoint_config and self.checkpoint_config.resume_only_model)
 
-    def fit(self,
-            configure_loss: Callable[[Any], None],
-            *,
-            configure_metric: Optional[Callable[[Any], None]] = None,
-            save_final: bool = True) -> List[dict]:
-        """Run every stage in the locked order and train. Returns the loss/grad_norm history.
+    def build_objects(self,
+                      configure_loss: Callable[[Any], None],
+                      *,
+                      configure_metric: Optional[Callable[[Any], None]] = None) -> 'TrainAssembly':
+        """Run the config -> object stages in the locked order, up to (not including) the training loop.
 
-        ``configure_loss`` is the one thing a training recipe genuinely owns -- which objective this
-        run optimises -- so it arrives as a callable taking the built model. It is invoked between
-        the model and the optimizer because the optimizer must see the loss's parameters (a loss may
-        add its own), and after the tuner for the optimizer-group reason above.
+        This is the pure config -> object half the flat offline recipes reuse: it leaves ``model`` /
+        ``dataloader`` / ``eval_dataloader`` / ``template`` / ``total_opt_steps`` on the assembly, and the
+        recipe then drives its own loop (:func:`swift.dev.recipe.offline_loop.run_offline`) over them.
+        The old ``fit`` ran these same stages and then built + fit the offline loop; that loop half now
+        lives in the recipe.
+
+        ``configure_loss`` is the one thing a training recipe genuinely owns -- which objective this run
+        optimises -- so it arrives as a callable taking the built model. It is invoked between the model and
+        the optimizer because the optimizer must see the loss's parameters (a loss may add its own), and
+        after the tuner for the optimizer-group reason above.
 
         ``configure_metric`` is the optional peer for a recipe's algorithm-specific twinkle.metric component
-        (embedding's ``EmbeddingMetric``; the RL recipes register theirs directly because they drive the staged
-        build themselves). It runs AFTER ``configure_optimizer`` because twinkle's ``add_metric`` appends onto
-        the active optimizer group's metric list, which does not exist until the group is built. ``None`` (the
-        SFT / seq_cls / reranker default) registers nothing beyond twinkle's built-in LossMetric + Accuracy.
-
-        ``save_final`` writes a final checkpoint after training (periodic saves are governed by
-        ``save_steps``). Passing False is test-oriented: it yields the loss trajectory without a
-        checkpoint, which also sidesteps the Megatron mode='local' distributed-save gap.
+        (embedding's ``EmbeddingMetric``). It runs AFTER ``configure_optimizer`` because twinkle's
+        ``add_metric`` appends onto the active optimizer group's metric list, which does not exist until the
+        group is built. ``None`` (the SFT / seq_cls / reranker default) registers nothing beyond twinkle's
+        built-in LossMetric + Accuracy.
         """
         from swift.dev.builders.optimizer import configure_optimizer
 
@@ -754,12 +785,26 @@ class TrainAssembly:
             plugin_config=self.plugin_config)
         if configure_metric is not None:
             configure_metric(self.model)
-        self.build_loop()
+        return self
 
-        history = self.loop.fit()
-        if save_final:
-            self.save_final()
-        return history
+    def perf_actors(self) -> Dict[str, Any]:
+        """The ``label -> handle`` map of the ``@remote_class`` actors this assembly built, for ``Perf.initialize``.
+
+        Called by :func:`swift.dev.recipe.offline_loop.run_offline` once the objects exist, so the whole epoch
+        loop -- including its first step -- is profiled rather than lost to a lazy attach. The labels namespace
+        the merged metrics (``perf/<label>/...``), so a run's actors never collide. Only genuine remote actors
+        are returned: :func:`~swift.dev.recipe._loop_utils.filter_perf_actors` drops the plain in-process objects
+        (a local dataloader, the template) that carry no injected ``perf_on`` -- under local mode their
+        ``@timed`` spans still land in the single driver recorder, and under Ray only real actors own worker
+        ranks with per-rank timings to dump.
+        """
+        from swift.dev.recipe._loop_utils import filter_perf_actors
+        return filter_perf_actors({
+            'model': getattr(self, 'model', None),
+            'dataloader': getattr(self, 'dataloader', None),
+            'eval_dataloader': getattr(self, 'eval_dataloader', None),
+            'processor': getattr(self, 'processor', None),
+        })
 
     def save_final(self, name: str = 'checkpoint-final') -> str:
         """Persist the final checkpoint plus the args.json ``swift infer`` reads back.

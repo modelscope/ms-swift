@@ -4,11 +4,13 @@ Entry point shared by CLI / cookbook / server-less (all call run_sft or copy it)
 atomic Configs (composition over inheritance) rather than one aggregate god-config, so each
 form assembles only the Configs it needs.
 
-The orchestration itself -- validate/plugins -> template -> dataloaders -> step budget -> model ->
-loss/optimizer -> loop -> final checkpoint -- is :class:`~swift.dev.recipe.assembly.TrainAssembly`,
-shared with every other training recipe; SFT's own contribution is one line, the objective. The
-config -> object construction glue lives in ``swift.dev.builders`` (a recipe is a complete,
-cookbook-copyable loop; the Config->kwargs translation it delegates to is a separate, lower layer).
+The config -> object orchestration -- validate/plugins -> template -> dataloaders -> step budget -> model ->
+loss/optimizer -- is :class:`~swift.dev.recipe.assembly.TrainAssembly`, shared with every other training
+recipe; SFT's own contribution is one line, the objective. The epoch loop then runs through
+:func:`swift.dev.recipe.offline_loop.run_offline`, which composes the thin StepRunner / Evaluator / CheckpointSaver
+(the eval + model-save concerns every offline recipe shares). The config -> object construction glue lives
+in ``swift.dev.builders`` (a recipe is a complete, cookbook-copyable loop; the Config->kwargs translation it
+delegates to is a separate, lower layer).
 """
 from __future__ import annotations
 from typing import TYPE_CHECKING, List, Optional
@@ -59,8 +61,8 @@ def run_sft(
         5. apply_tuner (LoRA) -> set_processor/set_template -> configure_loss + configure_optimizer
            (order is forced: the tuner creates the optimizer group the rest target)
         6. if resume: model.resume_from_checkpoint(ckpt) -> restores optim/sched/RNG/cur_step
-        7.            loop.resume(state) -> seed global_step/micro_step + dataloader skip
-        8. SFTLoop.fit
+        7.            CheckpointSaver.resume(state) -> seed global_step/micro_step + dataloader skip
+        8. run_offline epoch loop -> final checkpoint
 
     _save_final (internal): write a final checkpoint after training (default True -- production
     always persists). The underscore marks it test-oriented: the only reason to pass False is to
@@ -68,52 +70,15 @@ def run_sft(
     resume bit tests -- which also sidesteps the Megatron mode='local' distributed-save gap. Not a
     knob production callers need.
     """
+    from swift.dev.loss import configure_loss, liger_fused_ce_enabled
     from swift.dev.recipe.assembly import TrainAssembly
+    from swift.dev.recipe.offline_loop import run_offline
 
     TrainAssembly.initialize_twinkle(
         distributed_config,
         seed=train_config.seed,
         full_determinism=train_config.full_determinism,
         tf32=train_config.tf32)
-    return _run_sft_body(
-        model_config,
-        template_config,
-        dataset_config,
-        train_config,
-        distributed_config,
-        checkpoint_config,
-        tuner_config,
-        logging_config,
-        quantize_config,
-        megatron_config,
-        moe_config,
-        output_dir=output_dir,
-        _save_final=_save_final)
-
-
-def _run_sft_body(
-    model_config: ModelConfig,
-    template_config: TemplateConfig,
-    dataset_config: DatasetConfig,
-    train_config: TrainConfig,
-    distributed_config: DistributedConfig,
-    checkpoint_config: CheckpointConfig,
-    tuner_config: Optional[TunerConfig] = None,
-    logging_config: Optional[LoggingConfig] = None,
-    quantize_config: Optional[QuantizeConfig] = None,
-    megatron_config: Optional[MegatronConfig] = None,
-    moe_config: Optional[MoEConfig] = None,
-    *,
-    output_dir: str = 'output',
-    _save_final: bool = True,
-) -> List[dict]:
-    """The backend-agnostic SFT orchestration body (see run_sft for the step-by-step contract).
-
-    Separate from ``run_sft`` because twinkle initialization must NOT be repeated: the Megatron Ray
-    path initializes once and then drives this body inside the workers.
-    """
-    from swift.dev.loss import configure_loss, liger_fused_ce_enabled
-    from swift.dev.recipe.assembly import TrainAssembly
 
     # Fused-linear-CE pairs a loss choice with the loop's forward task: configure_loss selects Liger's
     # fused kernel, and loop_task='fused_lm_ce' makes the forward skip the lm_head GEMM and stash the
@@ -131,7 +96,7 @@ def _run_sft_body(
             label_smoothing=train_config.label_smoothing_factor,
         )
 
-    return TrainAssembly(
+    assembly = TrainAssembly(
         'run_sft',
         model_config,
         template_config,
@@ -146,4 +111,7 @@ def _run_sft_body(
         moe_config=moe_config,
         output_dir=output_dir,
         loop_task='fused_lm_ce' if fused_ce else None,
-    ).fit(sft_loss, save_final=_save_final)
+    )
+    # SFT registers no algorithm metric beyond twinkle's built-in LossMetric + Accuracy (configure_metric=None).
+    assembly.build_objects(sft_loss)
+    return run_offline(assembly, save_final=_save_final)

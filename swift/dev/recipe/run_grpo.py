@@ -24,46 +24,27 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
-#: DeviceGroup names. The trainer is always 'model' (build_model targets it); the sampler is a
-#: separate 'sampler' group when disaggregated, or shares 'model' when colocated.
-_MODEL_GROUP = 'model'
-_SAMPLER_GROUP = 'sampler'
-#: A separate frozen teacher (GKD/OPSD/MOPD) is its own Ray DeviceGroup, on GPUs apart from the
-#: trainer/sampler (plan §3.3); a ``disable_lora``/dynamic-self teacher reuses the student's actor and
-#: plans no group. This is the ``remote_group`` the teacher is built with and planned under.
-_TEACHER_GROUP = 'teacher'
-#: A FULL-PARAMETER frozen auxiliary model -- a full-fine-tuning reference, a seq_cls reward model, or a
-#: separate RLSD/SDAR teacher -- is an independent weight copy, so it must be heterogeneous: its OWN Ray
-#: DeviceGroup on GPUs apart from the trainer/sampler (plan §3.5). A LoRA/``disable_lora`` auxiliary reuses
-#: the policy's already-loaded base (no second copy) and plans NO group. ``plan_rl_device_groups`` appends
-#: one disjoint group per ``auxiliary_groups`` entry, under the name the caller then builds with.
-_REF_GROUP = 'ref'
-
-
-def _reward_group(index: int) -> str:
-    """The DeviceGroup name for the ``index``-th frozen reward model (each full-parameter RM gets its own)."""
-    return f'reward_{index}'
-
-
-def _prm_group(index: int) -> str:
-    """The DeviceGroup name for the ``index``-th frozen PRM model (each full-parameter PRM gets its own).
-
-    Distinct from :func:`_reward_group` so an ``orm`` reward model and a ``prm`` process-reward model that
-    happen to be the same checkpoint still land on their own actors -- they are scored at different points
-    (outcome vs per-step prefix) and must not share one forward.
-    """
-    return f'prm_{index}'
-
-
-def _teacher_group(index: int) -> str:
-    """The DeviceGroup name for the ``index``-th frozen teacher when MOPD SPREADS its K teachers apart.
-
-    ``auxiliary_placement='spread'`` gives each of MOPD's K domain teachers its own group (and thus a
-    parallel ``forward_only``); ``'pack'`` (the default) instead builds all K into the single shared
-    ``_TEACHER_GROUP`` and scores them serially. Distinct from ``_TEACHER_GROUP`` so the spread groups never
-    collide with the packed one.
-    """
-    return f'teacher_{index}'
+# DeviceGroup placement primitives live in :mod:`swift.dev.recipe.rl_auxiliary` -- the single home shared
+# with the offline preference family and the distillation recipes. They are re-exported here under their
+# historical private names because the sibling online-RL recipes (ppo/rft/gkd/opsd/mopd) and the placement
+# tests import them from ``run_grpo``; keeping the aliases means those callers are unchanged while the
+# definitions have one home. ``AuxiliarySpec`` / ``build_auxiliary`` are the description + builder this
+# recipe plans and constructs its frozen reference / RLSD teacher with.
+from swift.dev.recipe.rl_auxiliary import (
+    MODEL_GROUP as _MODEL_GROUP,
+    REF_GROUP as _REF_GROUP,
+    SAMPLER_GROUP as _SAMPLER_GROUP,
+    TEACHER_GROUP as _TEACHER_GROUP,
+    AuxiliarySpec,
+    build_auxiliary,
+    plan_rl_device_groups,
+    prm_group as _prm_group,
+    reward_group as _reward_group,
+    spec_world_size as _spec_world_size,
+    teacher_group as _teacher_group,
+    teacher_group_world_size,
+)
+from swift.dev.recipe._streaming import build_streaming_driver
 
 
 def _split_prm_channel(prm_items: Optional[Sequence[Any]]) -> Tuple[List[Any], Optional[str]]:
@@ -87,99 +68,6 @@ def _split_prm_channel(prm_items: Optional[Sequence[Any]]) -> Tuple[List[Any], O
     return rule_specs, (model_ids[0] if model_ids else None)
 
 
-def teacher_group_world_size(rl_config: RLConfig) -> int:
-    """GPU count for a separate frozen teacher's OWN DeviceGroup: ``teacher_parallel_spec``'s world size, else 1.
-
-    A separate teacher (a GKD/OPSD/MOPD distillation teacher, or a GRPO RLSD/SDAR teacher) is a Ray actor on
-    GPUs apart from the trainer/sampler (plan §3.3/§3.5), so it needs its own group. ``teacher_parallel_spec
-    = None`` is the card-frugal default -- one teacher rank, serial ``forward_only``; a spec (``dp2``/
-    ``fsdp2``/...) sizes the group for a big or concurrency-friendly teacher. ``disable_lora``/dynamic-self
-    teachers build no separate actor and need no group (caller passes 0).
-    """
-    spec = getattr(rl_config, 'teacher_parallel_spec', None)
-    if not spec:
-        return 1
-    from twinkle import DeviceMesh
-    return DeviceMesh.from_spec(spec).world_size
-
-
-def plan_rl_device_groups(nproc_per_node: int, sampler_mode: Optional[str], sampler_world_size: int,
-                          teacher_world_size: int = 0,
-                          auxiliary_groups: Sequence[Tuple[str, int]] = ()) -> Tuple[List[Tuple[str, List[int]]], str,
-                                                                                      bool]:
-    """Plan the twinkle DeviceGroups for an online-RL run. Pure function (no twinkle import).
-
-    Args:
-        nproc_per_node: the TRAINER's GPU count (== DistributedConfig.nproc_per_node, which sizes the
-            model's data-parallel mesh in build_model).
-        sampler_mode: 'colocate' shares the trainer's GPUs; anything else (None/'disaggregated', or its
-            legacy alias 'server') disaggregates.
-        sampler_world_size: the sampler's GPU count, computed per backend by :func:`_sampler_world_size`
-            (vLLM tp*dp; SGLang tp*pp*dp).
-        teacher_world_size: GPU count for a separate frozen teacher's OWN group (distillation, plan §3.3).
-            ``0`` (the default, and every GRPO/RFT call) plans no teacher group, so those runs are unchanged;
-            a ``disable_lora``/dynamic-self teacher reuses the student's actor and passes 0. Backward-compatible
-            sugar for one ``(_TEACHER_GROUP, n)`` entry of ``auxiliary_groups``.
-        auxiliary_groups: ``(name, world_size)`` for each FULL-PARAMETER frozen auxiliary model that needs its
-            own GPUs -- a full-fine-tuning reference (``_REF_GROUP``), each seq_cls reward model
-            (``_reward_group(i)``), a separate RLSD/SDAR teacher (plan §3.5). One disjoint group is appended
-            per entry with ``world_size > 0``; ``name`` is the ``remote_group`` the caller builds that model
-            with. A LoRA/``disable_lora`` auxiliary reuses the policy actor and is simply omitted here.
-
-    Returns:
-        ``(groups, sampler_remote_group, colocate)`` where ``groups`` is a list of
-        ``(name, ranks)`` to hand twinkle.initialize, ``sampler_remote_group`` is the DeviceGroup the
-        sampler is placed in, and ``colocate`` is the flag for CheckpointEngineManager. The teacher group
-        (when planned) and every ``auxiliary_groups`` entry are appended last, disjoint, in argument order.
-
-    Colocate puts trainer+sampler in ONE group over ``nproc_per_node`` GPUs (independent rank spaces);
-    disaggregated appends a disjoint ``sampler`` group after the trainer's ranks. Every frozen auxiliary
-    group is always disjoint (its resident weights never contend with the trainer/sampler), appended after
-    them, so total GPUs = nproc_per_node + (sampler_world_size if disaggregated) + teacher_world_size +
-    sum(world_size for each auxiliary group).
-    """
-    if nproc_per_node is None or nproc_per_node < 1:
-        raise ValueError(f'nproc_per_node must be >= 1 (the trainer GPU count), got {nproc_per_node!r}.')
-    if sampler_world_size < 1:
-        raise ValueError(f'sampler_world_size must be >= 1, got {sampler_world_size}.')
-    if teacher_world_size < 0:
-        raise ValueError(f'teacher_world_size must be >= 0, got {teacher_world_size}.')
-
-    if sampler_mode == 'colocate':
-        if sampler_world_size > nproc_per_node:
-            raise ValueError(f'colocate needs the sampler ({sampler_world_size} GPUs) to fit within the trainer '
-                             f'GPUs ({nproc_per_node}); it shares them. Use sampler_mode="disaggregated" to '
-                             'place the sampler on its own GPUs.')
-        groups = [(_MODEL_GROUP, list(range(nproc_per_node)))]
-        sampler_remote_group, colocate, next_rank = _MODEL_GROUP, True, nproc_per_node
-    else:
-        total = nproc_per_node + sampler_world_size
-        groups = [
-            (_MODEL_GROUP, list(range(nproc_per_node))),
-            (_SAMPLER_GROUP, list(range(nproc_per_node, total))),
-        ]
-        sampler_remote_group, colocate, next_rank = _SAMPLER_GROUP, False, total
-
-    # Append one disjoint group per frozen auxiliary model: the backward-compatible teacher sugar first,
-    # then any caller-supplied groups (full-FT reference / seq_cls reward models / RLSD-SDAR teacher). A
-    # LoRA/disable_lora auxiliary reuses the policy actor, so it is never listed and plans no group.
-    reserved = {_MODEL_GROUP, sampler_remote_group}
-    appended: List[str] = []
-    teacher_entry = [(_TEACHER_GROUP, teacher_world_size)] if teacher_world_size > 0 else []
-    for name, world_size in teacher_entry + list(auxiliary_groups):
-        if world_size < 0:
-            raise ValueError(f'auxiliary DeviceGroup {name!r} world_size must be >= 0, got {world_size}.')
-        if world_size == 0:
-            continue
-        if name in reserved or name in appended:
-            raise ValueError(f'auxiliary DeviceGroup name {name!r} collides with a reserved or already-planned '
-                             f'group ({sorted(reserved | set(appended))}); each frozen model needs a unique name.')
-        groups.append((name, list(range(next_rank, next_rank + world_size))))
-        appended.append(name)
-        next_rank += world_size
-    return groups, sampler_remote_group, colocate
-
-
 def _initialize_twinkle_rl(distributed_config: DistributedConfig,
                            groups: List[Tuple[str, List[int]]],
                            *,
@@ -200,7 +88,7 @@ def _initialize_twinkle_rl(distributed_config: DistributedConfig,
     import twinkle
     from twinkle import DeviceGroup
 
-    from swift.dev.builders import build_ray_dp_mesh
+    from swift.dev.builders import build_dp_mesh
 
     if distributed_config.mode != 'ray':
         raise ValueError("run_grpo requires DistributedConfig.mode='ray': the trainer and the rollout sampler are "
@@ -211,7 +99,7 @@ def _initialize_twinkle_rl(distributed_config: DistributedConfig,
         mode='ray',
         nproc_per_node=total,
         extra_torch_kwargs={'seed': seed, 'full_determinism': full_determinism, 'tf32': tf32},
-        global_device_mesh=build_ray_dp_mesh(distributed_config, sequence_parallel_size),
+        global_device_mesh=build_dp_mesh(distributed_config, sequence_parallel_size),
         # --ray_exp_name names this Ray run (cluster/worker-name prefix); online RL is always ray mode.
         name=distributed_config.ray_exp_name,
         groups=[DeviceGroup(name=group_name, ranks=ranks, device_type='GPU', gpus_per_worker=1)
@@ -306,10 +194,12 @@ def run_grpo(
     (:func:`_sampler_world_size`, per backend) are placed alongside (disaggregated) or shared (colocate).
     """
     from swift.dev.builders import build_sampler
-    from swift.dev.loss import configure_rlhf_loss, configure_rlhf_metrics
+    from swift.dev.loss import configure_rl_loss, configure_rl_metrics
     from swift.dev.builders.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly
-    from swift.dev.recipe.grpo import GRPOLoop
+    from swift.dev.recipe.checkpoint import CheckpointSaver
+    from swift.dev.recipe.grpo import GRPOAssembler, GroupCompletionHook, _grpo_log_line
+    from swift.dev.recipe.step_runner import StepRunner
 
     assembly = TrainAssembly(
         'run_grpo',
@@ -326,43 +216,66 @@ def run_grpo(
         quantize_config=quantize_config,
         megatron_config=megatron_config,
         moe_config=moe_config)
-    # Also imports the run's plugin files -- the reward names handed to GRPOLoop below are resolved
-    # against the registry they write into.
+    # Also imports the run's plugin files -- the reward names handed to the GRPO assembler below are
+    # resolved against the registry they write into.
     assembly.prepare()
 
     backend = _sampler_backend(rollout_config)
     sampler_world_size = _sampler_world_size(rollout_config, backend)
     # Plan the DeviceGroups for any FULL-PARAMETER frozen auxiliary (RL_PLAN §3.5): the KL reference, an
     # RLSD/SDAR teacher, and each reward model is a separate Ray actor on its own GPUs. A LoRA/disable_lora
-    # auxiliary reuses the policy actor and plans NO group, so _frozen_model_needs_group -- the exact
-    # predicate _build_frozen_model branches on -- decides each, keeping the plan and the build in lockstep.
-    # The names/world sizes planned here are the ones the build calls below pass as remote_group/world_size.
+    # auxiliary reuses the policy actor and plans NO group. Each frozen model is described once by an
+    # :class:`~swift.dev.recipe.rl_auxiliary.AuxiliarySpec`: :meth:`AuxiliarySpec.group_request` feeds the
+    # planner here and :func:`build_auxiliary` builds the SAME spec at the assembler construction below, so
+    # the plan and the build read one object and cannot drift (the invariant ``_frozen_model_needs_group``
+    # used to guard).
     from swift.dev.recipe.assembly import single_teacher_id
     teacher_model_id = single_teacher_id(rl_config.teacher_model, algo='RLSD/SDAR')
     ref_active = bool(rl_config.beta and rl_config.calculate_KL is not False)
-    ref_disable_adapter = tuner_config is not None and not rl_config.ref_adapters
-    ref_remote_group: Optional[str] = None
+    # A full-parameter frozen reference / RLSD teacher is sharded by its OWN parallel spec (world size == the
+    # ranks its mesh needs), so a large frozen model is scale-safe instead of pinned to one GPU. Both are
+    # built from a COPY of the policy ModelConfig (``base_model_config`` defaults True): the reference is
+    # usually the same checkpoint as the policy and the RLSD/SDAR teacher shares its processor knobs, so both
+    # inherit the policy's model_type. Neither overrides model_type/revision/deepspeed -- exactly as the old
+    # ``_build_frozen_model`` did, which copied the policy config and set only ``.model``.
+    ref_spec = AuxiliarySpec(
+        role='ref',
+        model_id=rl_config.ref_model,
+        name=_REF_GROUP,
+        # Paired EMA requires both sides on identical sharding: when sync_ref_model is active the reference
+        # inherits the policy's own parallel_spec (or an explicit matching one); otherwise the card-frugal
+        # ref_parallel_spec (None = single rank) is used.
+        parallel_spec=((rl_config.reference_parallel_spec or distributed_config.parallel_spec)
+                       if rl_config.sync_ref_model else rl_config.ref_parallel_spec),
+        adapters=tuple(rl_config.ref_adapters or ()),
+        disable_adapter=(tuner_config is not None and not rl_config.ref_adapters and not rl_config.sync_ref_model))
+    teacher_spec = AuxiliarySpec(
+        role='teacher',
+        model_id=teacher_model_id,
+        name=_TEACHER_GROUP,
+        parallel_spec=rl_config.teacher_parallel_spec,
+        adapters=tuple(rl_config.teacher_adapters or ()),
+        disable_adapter=rl_config._teacher_use_disable_adapter)
     auxiliary_groups: List[Tuple[str, int]] = []
-    if ref_active and _frozen_model_needs_group(model_id=rl_config.ref_model, disable_adapter=ref_disable_adapter):
-        ref_remote_group = _REF_GROUP
-        auxiliary_groups.append((_REF_GROUP, 1))
-    teacher_needs_group = _frozen_model_needs_group(
-        model_id=teacher_model_id, disable_adapter=rl_config._teacher_use_disable_adapter)
-    teacher_world_size = teacher_group_world_size(rl_config) if teacher_needs_group else 0
-    teacher_remote_group = _TEACHER_GROUP if teacher_needs_group else None
-    teacher_parallel_spec = rl_config.teacher_parallel_spec if teacher_needs_group else None
+    if ref_active:
+        ref_request = ref_spec.group_request()
+        if ref_request is not None:
+            auxiliary_groups.append(ref_request)
+    teacher_request = teacher_spec.group_request()
+    if teacher_request is not None:
+        auxiliary_groups.append(teacher_request)
+    reward_world_size = _spec_world_size(rl_config.orm_parallel_spec)
     for reward_index in range(len(rl_config.reward_model or [])):
-        auxiliary_groups.append((_reward_group(reward_index), 1))
-    # A frozen PRM model (a non-rule --prm item) is a full-parameter auxiliary too, so it gets its OWN
-    # single-GPU group exactly like a reward model; _split_prm_channel is the one splitter both this
-    # planning and _build_prm_channel use, so the planned name/world size and the build cannot drift.
+        auxiliary_groups.append((_reward_group(reward_index), reward_world_size))
+    # A frozen PRM model (a non-rule --prm item) is a full-parameter auxiliary too, so it gets its OWN group
+    # exactly like a reward model, sized by --prm_parallel_spec; _split_prm_channel is the one splitter both
+    # this planning and _build_prm_channel use, so the planned name/world size and the build cannot drift.
     if _split_prm_channel(rl_config.prm)[1] is not None:
-        auxiliary_groups.append((_prm_group(0), 1))
+        auxiliary_groups.append((_prm_group(0), _spec_world_size(rl_config.prm_parallel_spec)))
     groups, sampler_remote_group, colocate = plan_rl_device_groups(
         distributed_config.nproc_per_node,
         rollout_config.sampler_mode,
         sampler_world_size,
-        teacher_world_size=teacher_world_size,
         auxiliary_groups=auxiliary_groups)
     # RL initializes twinkle itself rather than through the assembly: it needs two device groups (trainer
     # + sampler), whose placement was just planned.
@@ -382,7 +295,7 @@ def run_grpo(
     # Trainer: a Ray-actor model in the 'model' group (build_model sets remote_group='model' under
     # mode='ray'), with the tuner applied before loss/optimizer so those target its group.
     assembly.build_model()
-    configure_rlhf_loss(assembly.model, rl_config)
+    configure_rl_loss(assembly.model, rl_config)
     # Prompts are rolled out, not iterated by a dataloader, so the step budget is derived from the prompt
     # set the way assembly derives it from a dataloader: one generation batch per rollout, exhausted after
     # num_train_epochs passes (B1). Load the prompts + design-B mini-batch width first, then size max_steps
@@ -390,24 +303,17 @@ def run_grpo(
     prompts, prompt_extras = _prompt_rows_from_dataset(dataset_config)
     # Design-B mini-batch width: per_device_train_batch_size * dp_size, the same global-batch formula SFT
     # uses (builders/dataset._twinkle_loader_layout). Online RL is Ray-only and pure data-parallel over
-    # nproc_per_node, so dp_size is read off build_ray_dp_mesh -- the exact mesh the trainer model was
+    # nproc_per_node, so dp_size is read off build_dp_mesh -- the exact mesh the trainer model was
     # placed on and slice_dp splits each forward_backward across, so every rank gets per_device rows.
-    from swift.dev.builders import build_ray_dp_mesh
+    from swift.dev.builders import build_dp_mesh
     from swift.dev.recipe.train_loop import resolve_rollout_max_steps, rollout_step_budget
     # data_world_size derives nproc/ulysses from the mesh, so under SP the dp_size (and thus the global
     # train_batch_size) counts SP peers as ONE data rank -- they share a sample and split its sequence.
-    dp_size = build_ray_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
     chord_features = _load_chord_features(rl_config, dataset_config, assembly.template)
-    if chord_features and dp_size > 1:
-        # CHORD rows are appended to the mini-batch tail and chord_count is one broadcast scalar, so only a
-        # single DP rank can split RL vs SFT rows correctly; with dp>1 the tail lands on the last rank alone
-        # and the others would mislabel real rollout rows as CHORD. Fail loudly rather than train wrong.
-        raise ValueError(
-            'CHORD auxiliary SFT (--chord_sft_dataset) is only correct on one DP rank: its rows are appended '
-            'to the mini-batch tail while chord_count is broadcast as a single scalar, so with '
-            f'dp_size={dp_size} the RL/SFT split would be wrong on all but the last rank. Run CHORD with '
-            '--nproc_per_node 1, or drop --chord_sft_dataset.')
+    chord_train_batch_size = (
+        int(rl_config.chord_sft_per_device_train_batch_size or 0) * dp_size if chord_features else 0)
     max_steps = resolve_rollout_max_steps(
         train_config.max_steps,
         rollout_step_budget(
@@ -430,7 +336,7 @@ def run_grpo(
     # Register the GRPO-family policy metric (GRPOMetric/GSPOMetric/CISPOMetric by loss_type) AFTER the
     # optimizer group exists (add_metric appends onto it). twinkle then accumulates it inside forward_backward
     # from old_logps/advantages, so its ratio/clip/entropy stats ride calculate_metric into every step record.
-    configure_rlhf_metrics(assembly.model, rl_config)
+    configure_rl_metrics(assembly.model, rl_config)
 
     # Sampler: a vLLM/SGLang sampler placed in its group (shared 'model' for colocate, separate 'sampler'
     # otherwise). The backend's memory-saver flag (forced on for colocate) is required for the device
@@ -464,101 +370,82 @@ def run_grpo(
             env_pool=env_pool,
             tool_plugins=tool_plugins)
 
-    reward_model_plugins, reward_model_names = _build_reward_model_scorers(
-        model_config, template_config, rl_config, distributed_config)
-    # Process-reward (PRM) channel: the scorer plugin + its rule/model scorers, built like the outcome
-    # reward above (a frozen PRM model gets its OWN prm_0 group, planned in the auxiliary_groups step).
-    prm_scorer, prm_funcs, prm_model_plugins = _build_prm_channel(
-        model_config, template_config, rl_config, distributed_config)
-    # async_mode selects the driver, and -- since the per-sample stream now serves EVERY regime -- almost
-    # every GRPO run rides it: 'none' runs StreamingGRPOLoop at max_staleness=0 (admit one window, DRAIN it,
-    # train, publish -- the same per-sample control flow, no overlap), 'one_step_off' pins staleness to 1,
-    # and 'fully_async' uses the configured max_staleness. The ONE exception is a feature that needs the
-    # WHOLE fixed batch up front, which a per-sample stream cannot serve: dynamic_sample (regenerate
-    # zero-variance groups after seeing rewards) and remax (a synchronous greedy-baseline pass over the
-    # assembled batch). Those stay on GRPOLoop's synchronous fixed-batch _run_sync (validate._check_async_mode
-    # refuses them under an overlapping mode, so they only ever reach _run_sync under 'none'). A colocated
-    # sampler (sharing one device with the trainer) additionally sets serialize_generation for the
-    # exclusive-device hand-over; a disaggregated one has its own GPUs and never hands over.
-    loop_cls = GRPOLoop
-    streaming_kwargs: Dict[str, Any] = {}
-    sync_only = bool(rl_config.dynamic_sample or rl_config.advantage_estimator == 'remax')
-    if rollout_config.async_mode != 'none' or not sync_only:
-        from swift.dev.recipe.grpo_async import StreamingGRPOLoop
-        loop_cls = StreamingGRPOLoop
-        streaming_kwargs = {
-            'max_staleness': (0 if rollout_config.async_mode == 'none' else 1
-                              if rollout_config.async_mode == 'one_step_off' else rollout_config.max_staleness),
-            'weight_sync_strategy': rollout_config.weight_sync_strategy,
-            # in_place publishes by aborting every in-flight generation and resuming it on the freshly
-            # overwritten weights, so an OVERLAPPING regime needs the sampler's partial-rollout loop; at
-            # staleness 0 the drain empties the in-flight set first, so the abort is a no-op and the flag is
-            # not required. adapter_snapshot pins each version by its own adapter path and never overwrites a
-            # live copy, so the flag is inert there (validate enforces exactly this pairing per regime).
-            'allow_partial_rollout': rollout_config.allow_partial_rollout,
-            # The publish cadence: one weight publication per K optimizer steps (default 1).
-            'parameter_sync_step': rollout_config.parameter_sync_step,
-            # adapter_snapshot pins each trained version by its LoRA adapter path, so it needs the trained
-            # adapter's name: dev applies a single trainable adapter named 'default' (the same name assembly
-            # uses to save/load it). A full-parameter run has none -- refused under adapter_snapshot, and
-            # served as merged base weights under in_place (which ignores adapter_name), so None is correct there.
-            'adapter_name': ('default' if tuner_config is not None else None),
-            # Exclusive-device serialization: only a colocated sampler (async_mode='none' on a shared device)
-            # hands the one DeviceGroup between generation and training. A disaggregated sampler never does,
-            # and an overlapping mode is disaggregated by validation, so this is False everywhere but colocate.
-            'serialize_generation': colocate,
-        }
-    loop = loop_cls(
+    reward_scorers, reward_scorer_names = _build_reward_scorers(
+        model_config, template_config, rl_config, distributed_config, sampler_model=model_config.model,
+        backend=backend)
+    # Process-reward (PRM) channel: the segmenter plugin + the ordered --prm scorers, resolved exactly like
+    # the outcome channel above (a frozen PRM model gets its OWN prm_0 group, planned in auxiliary_groups).
+    prm_scorer, prm_scorers = _build_prm_channel(
+        model_config, template_config, rl_config, distributed_config, sampler_model=model_config.model,
+        backend=backend)
+    # The flat recipe body: the twinkle StreamingDriver iterator (built below) yields assembled + scored
+    # TrainingBatches on a background thread, and this body trains them -- no loop class, no inheritance.
+    # Every fail-loudly validation below runs BEFORE the StepRunner builds its RunTracker, whose reporters
+    # initialize as a construction side effect.
+    _check_streaming_feature(colocate, rl_config.advantage_estimator)
+
+    # Late-bound component cells: the per-step extra-metric closure is injected into the recorder BEFORE
+    # the assembler/driver exist, so it reads them through one-element cells filled right after each build.
+    _assembler_cell: List[Any] = []
+    _driver_cell: List[Any] = []
+    _idle_snapshot = {'train': 0.0, 'idle': 0.0}
+    _last_idle_ratio = 0.0
+
+    def _fold_idle_ratio() -> None:
+        """Fold the trainer-bubble ratio ONCE per batch, at the batch boundary, before training it.
+
+        Mirrors the retired StreamingRolloutDriver._fold_idle_ratio: the driver adds train_active_time only
+        AFTER a pull returns, so the delta against the last batch boundary is the PREVIOUS batch's train
+        time, and idle_time's delta is the bubble spent starved waiting for THIS batch. Reported identically
+        on every step of this batch.
+        """
+        nonlocal _idle_snapshot, _last_idle_ratio
+        driver = _driver_cell[0] if _driver_cell else None
+        if driver is None:
+            return
+        stats = driver.stats
+        d_train = stats.train_active_time - _idle_snapshot['train']
+        d_idle = stats.idle_time - _idle_snapshot['idle']
+        _idle_snapshot = {'train': stats.train_active_time, 'idle': stats.idle_time}
+        denom = d_train + d_idle
+        _last_idle_ratio = (d_idle / denom) if denom > 0 else 0.0
+
+    def _extra_metrics() -> Dict[str, Any]:
+        """Driver-side per-step channels the model's calculate_metric cannot surface."""
+        extra: Dict[str, Any] = {}
+        assembler = _assembler_cell[0] if _assembler_cell else None
+        if assembler is not None:
+            extra.update(assembler.step_telemetry())
+        driver = _driver_cell[0] if _driver_cell else None
+        if driver is not None:
+            stats = driver.stats
+            extra.update({
+                'trainer_idle_ratio': _last_idle_ratio,
+                'off_policy_consumed': stats.off_policy_consumed,
+                'dropped_stale': stats.dropped_stale,
+                'stream_publishes': stats.publishes,
+            })
+        return extra
+
+    from swift.dev.callbacks import CallbackHandler, build_callbacks
+
+    recorder = StepRunner(
         assembly.model,
-        rollout,
-        prompts,
-        prompt_extras=prompt_extras,
-        reference=_build_frozen_model(
-            model_config,
-            assembly.template,
-            assembly.model,
-            distributed_config=distributed_config,
-            model_id=rl_config.ref_model,
-            remote_group=ref_remote_group,
-            adapters=rl_config.ref_adapters,
-            adapter_role='ref',
-            disable_adapter=ref_disable_adapter)
-        if ref_active else None,
-        teacher=_build_frozen_model(
-            model_config,
-            assembly.template,
-            assembly.model,
-            distributed_config=distributed_config,
-            model_id=teacher_model_id,
-            remote_group=teacher_remote_group,
-            adapters=rl_config.teacher_adapters,
-            adapter_role='teacher',
-            disable_adapter=rl_config._teacher_use_disable_adapter,
-            world_size=teacher_world_size or 1,
-            parallel_spec=teacher_parallel_spec),
-        template=assembly.template,
-        chord_features=chord_features,
-        num_generations=rl_config.num_generations,
-        reward_funcs=list(rl_config.orm) or None,
-        reward_model_plugins=reward_model_plugins,
-        reward_model_names=reward_model_names,
-        reward_weights=rl_config.orm_weights,
-        prm_scorer=prm_scorer,
-        prm_funcs=prm_funcs,
-        prm_model_plugins=prm_model_plugins,
-        prm_weights=rl_config.prm_weights,
-        advantage_estimator=rl_config.advantage_estimator,
-        scale_rewards=rl_config.scale_rewards or 'group',
-        rl_config=rl_config,
-        max_steps=max_steps,
+        CallbackHandler(build_callbacks(train_config), output_dir=output_dir),
         gradient_accumulation_steps=assembly.ga,
-        train_batch_size=train_batch_size,
-        generation_batch_size=rollout_config.generation_batch_size,
-        num_train_epochs=train_config.num_train_epochs,
-        seed=train_config.seed,
         max_grad_norm=resolve_max_grad_norm(train_config),
-        sampling_params=_grpo_sampling_params(rl_config, generation_config),
+        max_steps=max_steps,
         logging_config=logging_config,
+        output_dir=output_dir,
+        manual_gc=bool(megatron_config and megatron_config.manual_gc),
+        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
+        torch_empty_cache_steps=train_config.torch_empty_cache_steps,
+        log_formatter=_grpo_log_line,
+        extra_metrics_fn=_extra_metrics)
+    saver = CheckpointSaver(
+        assembly.model,
+        recorder,
+        None,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
         no_save_optim=checkpoint_config.no_save_optim or checkpoint_config.save_only_model,
@@ -566,19 +453,214 @@ def run_grpo(
         safe_serialization=checkpoint_config.safe_serialization,
         max_shard_size=checkpoint_config.max_shard_size,
         save_total_limit=checkpoint_config.save_total_limit,
-        manual_gc=bool(megatron_config and megatron_config.manual_gc),
-        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
-        **streaming_kwargs)
-    assembly.loop = loop
+        consumed_train_samples_fn=lambda: recorder.global_step)
+    reference = build_auxiliary(
+        ref_spec,
+        template=assembly.template,
+        student=assembly.model,
+        distributed_config=distributed_config,
+        model_config=model_config) if ref_active else None
+    # EMA manager: paired 2-rank NCCL groups (policy rank k <-> reference rank k) for streaming reference
+    # sync. Only when sync_ref_model is active AND the reference is a separate FrozenAuxiliary (not a
+    # PolicyAuxiliary sharing the policy actor, which has no independent weights to update).
+    ema_manager = None
+    if rl_config.sync_ref_model and reference is not None and hasattr(reference, 'model'):
+        from twinkle.checkpoint_engine import CheckpointEngineManager
+        ema_manager = CheckpointEngineManager(
+            model=assembly.model, sampler=reference.model, platform='GPU', mode='standalone')
+    teacher = build_auxiliary(
+        teacher_spec,
+        template=assembly.template,
+        student=assembly.model,
+        distributed_config=distributed_config,
+        model_config=model_config)
+    assembler = GRPOAssembler(
+        assembly.model,
+        rollout,
+        template=assembly.template,
+        reference=reference,
+        teacher=teacher,
+        reward_scorers=reward_scorers,
+        reward_scorer_names=reward_scorer_names,
+        reward_weights=rl_config.orm_weights,
+        prm_scorer=prm_scorer,
+        prm_scorers=prm_scorers,
+        prm_weights=rl_config.prm_weights,
+        num_generations=rl_config.num_generations,
+        train_batch_size=train_batch_size,
+        gradient_accumulation_steps=assembly.ga,
+        advantage_estimator=rl_config.advantage_estimator,
+        scale_rewards=rl_config.scale_rewards or 'group',
+        rl_config=rl_config,
+        sampling_params=_grpo_sampling_params(rl_config, generation_config),
+        output_dir=output_dir,
+        tracker=recorder.tracker,
+        global_step_fn=lambda: recorder.global_step,
+        chord_features=chord_features,
+        chord_train_batch_size=chord_train_batch_size)
+    _assembler_cell.append(assembler)
+    # The driver: twinkle's per-sample StreamingDriver in ITERATOR mode (consume=None), injected with the
+    # assembler's score/assemble seams and the group-completion hook. Returns (driver, handover): the
+    # colocate hand-over bracket is the recipe's, not the driver's.
+    driver, handover = build_grpo_streaming_driver(
+        rollout_config,
+        colocate=colocate,
+        run_id='run_grpo',
+        model=assembly.model,
+        rollout=rollout,
+        output_dir=output_dir,
+        prompts=prompts,
+        prompt_extras=prompt_extras,
+        assembler=assembler,
+        group_complete=GroupCompletionHook(assembler, rl_config),
+        adapter_name=('default' if tuner_config is not None else None),
+        train_batch_size=train_batch_size,
+        gradient_accumulation_steps=assembly.ga,
+        num_generations=rl_config.num_generations,
+        num_train_epochs=train_config.num_train_epochs,
+        seed=train_config.seed,
+        reached_max=recorder.reached_max,
+        max_group_regenerations=(rl_config.max_resample_times if rl_config.dynamic_sample else 0))
+    _driver_cell.append(driver)
     if assembly.resume_dir:
-        loop.resume(assembly.resume_model())
+        saver.resume(assembly.resume_model())
+
+    from twinkle.perf import Perf
+
+    from swift.dev.recipe._loop_utils import filter_perf_actors
+
+    if Perf.initialize(filter_perf_actors({
+            'model': assembly.model,
+            'sampler': rollout.sampler,
+            'reference': reference,
+            'teacher': teacher,
+    })):
+        logger.info('[perf] profiling enabled for the online GRPO loop.')
     try:
-        history = loop.fit()
-        if _save_final:
-            assembly.save_final()
-        return history
+        if handover.serializes:
+            # Version-0 hand-over: put the pre-training policy in the sampler before the first admission.
+            # Every later cycle's enter rides the in-place publish's sync_fn (see the builder).
+            handover.enter()
+        for batch in driver:
+            _fold_idle_ratio()
+            optimizer_steps = 0
+            for _ in range(assembler.num_replays()):
+                for mini_batch in assembler.plan_mini_batches(batch):
+                    recorder.micro_step += 1
+                    grpo_kwargs = assembler.forward_kwargs(mini_batch)
+                    if assembler.chord_enabled:
+                        mu = assembler.chord_mu()
+                        assembly.model.forward_backward(
+                            loss_key='grpo',
+                            loss_weight=1.0 - mu,
+                            finalize_gradients=False,
+                            **grpo_kwargs)
+                        assembly.model.forward_backward(
+                            loss_key='sft',
+                            loss_weight=mu,
+                            finalize_gradients=True,
+                            **assembler.sft_forward_kwargs())
+                    else:
+                        assembly.model.forward_backward(**grpo_kwargs)
+                    is_boundary = recorder.is_grad_sync_boundary()
+                    assembly.model.clip_grad_and_step(
+                        max_grad_norm=recorder.max_grad_norm,
+                        gradient_accumulation_steps=recorder.gradient_accumulation_steps)
+                    if is_boundary:
+                        recorder.record_step()
+                        optimizer_steps += 1
+                        if ema_manager is not None and recorder.global_step % rl_config.ref_model_sync_steps == 0:
+                            ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
+                        if saver.save_steps and recorder.global_step % saver.save_steps == 0:
+                            saver.save(f'checkpoint-{recorder.global_step}')
+                        if recorder.reached_max():
+                            break
+                if recorder.reached_max():
+                    break
+            # commit releases the driver thread blocked in the iterator bridge and reports the real step
+            # count -- the publish cadence unit (twinkle publishes only after consume returns).
+            driver.commit(optimizer_steps)
+            if recorder.reached_max():
+                break
     finally:
+        if handover.serializes and handover.in_generation:
+            # Ended mid-window (e.g. a budget hit during generation): give the device back to the trainer
+            # so the post-run final save finds the model resident.
+            handover.exit()
+        Perf.shutdown()
         rollout.shutdown()
+        recorder.tracker.close()
+    if _save_final:
+        saver.save_final(write_args_json=assembly.args_json_writer())
+    return recorder.history
+
+
+def _check_streaming_feature(colocate: bool, advantage_estimator: str) -> None:
+    """Refuse a GRPO feature the per-sample stream cannot serve under this placement (fail-loudly).
+
+    Called by the run body BEFORE the recorder's RunTracker opens any reporter, and again inside
+    :func:`build_grpo_streaming_driver` as the backstop for a direct build.
+    """
+    if colocate and advantage_estimator == 'remax':
+        raise ValueError(
+            "advantage_estimator='remax' runs a greedy baseline generation at each group completion, which "
+            'needs the sampler WHILE the trainer holds the device -- a colocated sampler cannot do that '
+            '(ExclusiveDeviceHandover time-shares one device). Set --sampler_mode disaggregated, or use '
+            "advantage_estimator='grpo'.")
+
+
+def build_grpo_streaming_driver(rollout_config: Any,
+                                *,
+                                colocate: bool,
+                                run_id: str,
+                                model: Any,
+                                rollout: Any,
+                                output_dir: str,
+                                prompts: List[Any],
+                                prompt_extras: List[Dict[str, Any]],
+                                assembler: Any,
+                                group_complete: Any,
+                                adapter_name: Optional[str],
+                                train_batch_size: int,
+                                gradient_accumulation_steps: int,
+                                num_generations: int,
+                                num_train_epochs: float,
+                                seed: int,
+                                reached_max: Any,
+                                max_group_regenerations: int = 0) -> Tuple[Any, Any]:
+    """Build the per-sample StreamingDriver for the flat GRPO recipe -> ``(driver, handover)``.
+
+    A thin delegate over :func:`~swift.dev.recipe._streaming.build_streaming_driver`: GRPO's assembly unit
+    is one WHOLE prompt group (``unit_size=num_generations``, group-relative advantage is undefined on a
+    partial group) and its algorithm seams are the assembler's ``score_sample`` / ``assemble`` /
+    ``assembly_ready`` plus the injected ``group_complete`` hook. The GRPO-specific colocate+remax refusal
+    runs here (and in the run body before the recorder's RunTracker opens any reporter) as the backstop for
+    a direct build.
+    """
+    _check_streaming_feature(colocate, assembler.advantage_estimator)
+    return build_streaming_driver(
+        rollout_config,
+        colocate=colocate,
+        run_id=run_id,
+        model=model,
+        rollout=rollout,
+        output_dir=output_dir,
+        prompts=prompts,
+        prompt_extras=prompt_extras,
+        adapter_name=adapter_name,
+        train_batch_size=train_batch_size,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        num_generations=num_generations,
+        num_train_epochs=num_train_epochs,
+        seed=seed,
+        sampling_params=assembler.sampling_params,
+        unit_size=num_generations,
+        score=assembler.score_sample,
+        assemble=assembler.assemble,
+        assembly_ready=assembler.assembly_ready,
+        group_complete=group_complete,
+        max_group_regenerations=max_group_regenerations,
+        reached_max=reached_max)
 
 
 #: The rollout engines that can back an independent-process, weight-synced sampler. The on-policy loop
@@ -653,79 +735,36 @@ def _grpo_sampling_params(rl_config: RLConfig, generation_config: Optional[Gener
     return params
 
 
-def _frozen_model_needs_group(*, model_id: Optional[str], disable_adapter: bool) -> bool:
-    """Whether :func:`_build_frozen_model` builds a separate frozen actor that needs its own DeviceGroup.
+def _build_reward_scorers(model_config: ModelConfig, template_config: TemplateConfig, rl_config: RLConfig,
+                          distributed_config: DistributedConfig, *, sampler_model: Optional[str],
+                          backend: str) -> Tuple[List[Any], List[str]]:
+    """Resolve GRPO's outcome channel -- ``--orm`` rules + ``--reward_model`` models -- into ONE scorer list.
 
-    Mirrors ``_build_frozen_model``'s branch EXACTLY so the group PLANNING (run body) and the BUILD cannot
-    drift: an adapter-disabled base reuses the student actor (no group), no ``model_id`` means no scorer at
-    all (no group), and only a distinct full-parameter frozen copy is a separate Ray actor on its own GPUs
-    (RL_PLAN §3.5: full-parameter auxiliaries are heterogeneous, LoRA ones share the policy).
+    Every scorer meets the same ``func(completions, **columns)`` contract
+    (:class:`~swift.dev.rewards.scorer.RewardScorer`), so the loop scores rules and reward models together
+    through :func:`~swift.dev.rewards.reward.score_completions` rather than down a rule path and a separate
+    reward-model path. Rules come first, then each reward model, so ``--orm_weights`` aligns to the order the
+    channel was declared in. Returns ``(scorers, names)``.
+
+    A reward model is classified by :func:`~swift.dev.rewards.scorer.resolve_reward_model` from its real
+    ``task_type`` and built by the SAME shared factory the inference/synthesis path uses
+    (:func:`~swift.dev.rewards.scorer.build_model_reward`), on its own ``reward_<i>`` DeviceGroup sized by
+    ``--orm_parallel_spec``. The group names and world sizes here MUST match what the run body planned
+    through ``plan_rl_device_groups(auxiliary_groups=...)``. Only a SCALAR (seq_cls/reranker) reward model is
+    placeable in online RL today: a generative or api judge needs the judge config surface and the tp-aware
+    DeviceGroup placement that phase③ unifies, so it is rejected here rather than silently mis-scored as a
+    scalar head.
     """
-    return bool(model_id) and not disable_adapter
+    from swift.dev.builders import frozen_auxiliary_distributed_config
+    from swift.dev.rewards.reward import get_reward_funcs
+    from swift.dev.rewards.scorer import build_model_reward, resolve_reward_model
 
+    scorers, names = get_reward_funcs(rl_config.orm, rl_config) if rl_config.orm else ([], [])
+    scorers, names = list(scorers), list(names)
 
-def _build_frozen_model(model_config: ModelConfig,
-                        template: Any,
-                        student: Any,
-                        *,
-                        distributed_config: DistributedConfig,
-                        model_id: Optional[str],
-                        remote_group: Optional[str],
-                        adapters: Optional[List[str]] = None,
-                        adapter_role: str = 'frozen',
-                        disable_adapter: bool = False,
-                        world_size: int = 1,
-                        parallel_spec: Optional[str] = None) -> Any:
-    """Build a frozen scoring owner, or the student's own adapter-disabled base.
-
-    Returns a :class:`_teacher.Teacher` wrapper: ``DisableAdapterTeacher`` scores on the student actor with
-    the LoRA adapter disabled (reusing the policy's own weights -- no separate model, no DeviceGroup),
-    ``FrozenModelTeacher`` wraps a freshly built frozen model that is a separate Ray actor on its OWN
-    ``remote_group`` DeviceGroup, and ``None`` means "no such scorer" (skipped by the loop). The frozen copy
-    inherits the run's ``backend`` and is built ``mode='ray'`` via :func:`frozen_auxiliary_distributed_config`
-    (RL_PLAN basic principles 1/2); ``world_size`` MUST equal the rank count ``plan_rl_device_groups``
-    allocated to ``remote_group`` (build_model reads it as the group size), and ``parallel_spec`` lays out a
-    sharded auxiliary (a distinct full-parameter copy is heterogeneous, plan §3.5).
-    """
-    from swift.dev.recipe._teacher import DisableAdapterTeacher, FrozenModelTeacher
-    if disable_adapter:
-        return DisableAdapterTeacher(student)
-    if not model_id:
-        return None
-    from copy import copy
-
-    from swift.dev.builders import build_model, frozen_auxiliary_distributed_config
-    from swift.dev.recipe.assembly import configure_frozen_adapter
-
-    config = copy(model_config)
-    config.model = model_id
-    aux_dist = frozen_auxiliary_distributed_config(distributed_config, world_size, parallel_spec=parallel_spec)
-    # device_mesh drives the transformers placement; the megatron path ignores it and derives its own mesh
-    # from aux_dist.parallel_spec, so setting both keeps the auxiliary correct on either backend.
-    device_mesh = None
-    if parallel_spec:
-        from twinkle import DeviceMesh
-        device_mesh = DeviceMesh.from_spec(parallel_spec)
-    frozen = build_model(config, aux_dist, device_mesh=device_mesh, remote_group=remote_group)
-    configured = configure_frozen_adapter(frozen, template, adapters or [], role=adapter_role)
-    return FrozenModelTeacher(configured, placement_key=remote_group)
-
-
-def _build_reward_model_scorers(model_config: ModelConfig, template_config: TemplateConfig, rl_config: RLConfig,
-                                distributed_config: DistributedConfig) -> Tuple[List[Any], List[str]]:
-    """Build each frozen reward model with its own tokenizer/template and adapt it to a batch scorer.
-
-    Every reward model is a FULL-PARAMETER frozen seq_cls scorer, so each is a separate Ray actor on its own
-    ``reward_<i>`` DeviceGroup (RL_PLAN §3.5), built with the run's backend via
-    :func:`frozen_auxiliary_distributed_config`. The group names and world sizes (1 each) here MUST match
-    what the run body planned through ``plan_rl_device_groups(auxiliary_groups=...)``.
-    """
     reward_models = list(rl_config.reward_model or [])
     if not reward_models:
-        return [], []
-
-    from swift.dev.builders import frozen_auxiliary_distributed_config
-    from swift.dev.rewards.reward import build_frozen_reward_model, build_reward_model_plugins
+        return scorers, names
 
     count = len(reward_models)
 
@@ -740,72 +779,90 @@ def _build_reward_model_scorers(model_config: ModelConfig, template_config: Temp
     template_names = _aligned(rl_config.reward_template, None, 'reward_template')
     adapters = _aligned(rl_config.reward_adapters or None, None, 'reward_adapters')
 
-    models = []
-    templates = []
     for index, (model_id, model_type, revision, template_name, adapter) in enumerate(
             zip(reward_models, model_types, revisions, template_names, adapters)):
-        reward_model, reward_template = build_frozen_reward_model(
-            model_id,
-            model_config,
-            template_config,
-            model_type=model_type,
-            revision=revision,
-            template_name=template_name,
-            adapter=adapter,
-            distributed_config=frozen_auxiliary_distributed_config(distributed_config, 1),
-            remote_group=_reward_group(index))
-        models.append(reward_model)
-        templates.append(reward_template)
-
-    return build_reward_model_plugins(models, templates)
+        spec = resolve_reward_model(model_id, adapter, sampler_model, backend)
+        if spec is None or spec.kind != 'scalar':
+            kind = 'none' if spec is None else spec.kind
+            raise ValueError(
+                f'--reward_model[{index}]={model_id!r} resolves to a {kind!r} reward, but online RL (grpo/rft) '
+                'places only a SCALAR (seq_cls/reranker) reward model today. A generative or api judge reward '
+                'is served by the inference/synthesis path (best-of-n ``swift infer``); online-RL judge '
+                'placement lands with the phase③ auxiliary-placement unification.')
+        spec.model_type, spec.revision, spec.template_name = model_type, revision, template_name
+        spec.parallel_spec = rl_config.orm_parallel_spec
+        scorers.append(
+            build_model_reward(
+                spec,
+                model_config=model_config,
+                template_config=template_config,
+                distributed_config=frozen_auxiliary_distributed_config(
+                    distributed_config, _spec_world_size(spec.parallel_spec), parallel_spec=spec.parallel_spec),
+                remote_group=_reward_group(index)))
+        names.append(spec.display_name)
+    return scorers, names
 
 
 def _build_prm_channel(model_config: ModelConfig, template_config: TemplateConfig, rl_config: RLConfig,
-                       distributed_config: DistributedConfig) -> Tuple[Any, List[Any], List[Any]]:
-    """Build GRPO's process-reward (PRM) channel -> ``(prm_scorer, prm_funcs, prm_model_plugins)``.
+                       distributed_config: DistributedConfig, *, sampler_model: Optional[str],
+                       backend: str) -> Tuple[Any, List[Any]]:
+    """Build GRPO's process-reward (PRM) channel -> ``(prm_scorer, prm_scorers)``.
 
-    Three pieces, each mirroring an existing outcome-reward path so a PRM is built and placed the same way:
+    ``prm_scorers`` is the ordered ``--prm`` channel resolved exactly like the outcome channel (rule PRMs
+    first, then the single frozen PRM model), so the assembler's per-sample score seam scores every step
+    through the same :func:`~swift.dev.rewards.reward.score_completions`. ``prm_scorer`` is the
+    :class:`~swift.dev.rewards.prm.PRMScorer` plugin that segments a response into steps and broadcasts each
+    step's score, resolved from ``rl_config.prm_scorer``; when unset it defaults to ``'turn'`` for a
+    multi-turn rollout (``max_turns`` set -- one assistant turn is one step) and ``'delimiter'`` otherwise
+    (one delimiter-separated line is one step). It
+    is returned only when a PRM channel is actually wired, so a scorer with no rule/model -- which would score
+    nothing -- is left ``None`` for validate to reject.
 
-    - ``prm_funcs``: the rule items of ``--prm``, resolved through :func:`get_reward_funcs` exactly like
-      ``orm`` rules (a rule scores the step's response prefix as one scalar).
-    - ``prm_model_plugins``: the single frozen PRM model id, built by :func:`build_frozen_reward_model` on
-      its OWN ``prm_0`` DeviceGroup (a full-parameter frozen seq_cls scorer, heterogeneous per RL_PLAN §3.5)
-      -- the group name and world size (1) MUST match what the run body planned through
-      ``plan_rl_device_groups(auxiliary_groups=...)``. ``prm_parallel_spec`` is synthesis-only (like
-      ``orm_parallel_spec``); GRPO reward/PRM models are always a single-GPU group.
-    - ``prm_scorer``: the :class:`~swift.dev.rewards.prm.PRMScorer` plugin that segments a response into
-      steps and broadcasts each step's score, resolved from ``rl_config.prm_scorer`` (``None`` -> the
-      default ``'delimiter'`` scorer). It is returned only when a PRM channel is actually wired, so a
-      scorer with no rule/model -- which would score nothing -- is left ``None`` for validate to reject.
+    The frozen PRM model is a SCALAR reward model on its OWN ``prm_0`` DeviceGroup sized by
+    ``--prm_parallel_spec`` (a full-parameter frozen seq_cls scorer, heterogeneous per RL_PLAN §3.5); the
+    group name and world size MUST match what the run body planned through
+    ``plan_rl_device_groups(auxiliary_groups=...)``. As in :func:`_build_reward_scorers`, a generative/api
+    process judge is not placeable in online RL yet and is rejected rather than mis-scored as a scalar head.
 
-    Returns ``(None, [], [])`` when ``--prm`` is empty, so the loop's ``_prm_active`` stays False.
+    Returns ``(None, [])`` when ``--prm`` is empty, so the loop's ``_prm_active`` stays False.
     """
     rule_specs, prm_model_id = _split_prm_channel(rl_config.prm)
     if not rule_specs and prm_model_id is None:
-        return None, [], []
+        return None, []
 
+    from swift.dev.builders import frozen_auxiliary_distributed_config
     from swift.dev.utils.plugin import PluginRegistry
-    from swift.dev.rewards.reward import build_frozen_reward_model, build_reward_model_plugins, get_reward_funcs
+    from swift.dev.rewards.reward import get_reward_funcs
+    from swift.dev.rewards.scorer import build_model_reward, resolve_reward_model
     from swift.dev.rewards import PRM_STEP_SCORER
 
-    prm_funcs, _prm_rule_names = get_reward_funcs(rule_specs, rl_config) if rule_specs else ([], [])
-    prm_model_plugins: List[Any] = []
+    rule_scorers, _rule_names = get_reward_funcs(rule_specs, rl_config) if rule_specs else ([], [])
+    scorers: List[Any] = list(rule_scorers)
     if prm_model_id is not None:
-        from swift.dev.builders import frozen_auxiliary_distributed_config
-        prm_model, prm_template = build_frozen_reward_model(
-            prm_model_id,
-            model_config,
-            template_config,
-            distributed_config=frozen_auxiliary_distributed_config(distributed_config, 1),
-            remote_group=_prm_group(0))
-        prm_model_plugins, _prm_model_names = build_reward_model_plugins([prm_model], [prm_template])
+        spec = resolve_reward_model(prm_model_id, None, sampler_model, backend)
+        if spec is None or spec.kind != 'scalar':
+            kind = 'none' if spec is None else spec.kind
+            raise ValueError(
+                f'--prm model {prm_model_id!r} resolves to a {kind!r} reward, but online RL places only a '
+                'SCALAR (seq_cls/reranker) frozen PRM today; a generative/api process judge is not placeable '
+                'in online RL yet (see the phase③ auxiliary-placement unification).')
+        spec.parallel_spec = rl_config.prm_parallel_spec
+        scorers.append(
+            build_model_reward(
+                spec,
+                model_config=model_config,
+                template_config=template_config,
+                distributed_config=frozen_auxiliary_distributed_config(
+                    distributed_config, _spec_world_size(spec.parallel_spec), parallel_spec=spec.parallel_spec),
+                remote_group=_prm_group(0)))
 
-    prm_scorer = PluginRegistry.resolve(PRM_STEP_SCORER, rl_config.prm_scorer or 'delimiter', config=rl_config)
-    return prm_scorer, prm_funcs, prm_model_plugins
+    default_scorer = 'turn' if rl_config.max_turns is not None else 'delimiter'
+    prm_scorer = PluginRegistry.resolve(PRM_STEP_SCORER, rl_config.prm_scorer or default_scorer, config=rl_config)
+    return prm_scorer, scorers
 
 
 def _load_chord_features(rl_config: RLConfig, dataset_config: DatasetConfig, template: Any) -> List[dict]:
-    """Encode CHORD's expert SFT rows once; the loop cycles over these features."""
+    """Encode CHORD's expert SFT rows once; the assembler cycles over defensive copies."""
     if not rl_config.chord_sft_dataset:
         return []
     from copy import copy

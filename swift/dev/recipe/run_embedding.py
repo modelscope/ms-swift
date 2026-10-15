@@ -41,41 +41,12 @@ def run_embedding(
     ``TrainConfig.mrl_dims``; both are read here rather than passed separately so the same Config
     that drives legacy drives this recipe.
     """
+    from swift.dev.loss import configure_embedding_loss, configure_embedding_metric
     from swift.dev.recipe.assembly import TrainAssembly
+    from swift.dev.recipe.offline_loop import run_offline
 
     TrainAssembly.initialize_twinkle(
         distributed_config, seed=train_config.seed, full_determinism=train_config.full_determinism)
-    return _run_embedding_body(
-        model_config,
-        template_config,
-        dataset_config,
-        train_config,
-        distributed_config,
-        checkpoint_config,
-        tuner_config,
-        logging_config,
-        quantize_config,
-        output_dir=output_dir,
-        _save_final=_save_final)
-
-
-def _run_embedding_body(
-    model_config: ModelConfig,
-    template_config: TemplateConfig,
-    dataset_config: DatasetConfig,
-    train_config: TrainConfig,
-    distributed_config: DistributedConfig,
-    checkpoint_config: CheckpointConfig,
-    tuner_config: Optional[TunerConfig] = None,
-    logging_config: Optional[LoggingConfig] = None,
-    quantize_config: Optional[QuantizeConfig] = None,
-    *,
-    output_dir: str = 'output',
-    _save_final: bool = True,
-) -> List[dict]:
-    """The backend-agnostic embedding orchestration body (see run_embedding for the contract)."""
-    from swift.dev.loss import configure_embedding_loss, configure_embedding_metric
-    from swift.dev.recipe.assembly import TrainAssembly
 
     def embedding_loss(model) -> None:
         # Unlike SFT, this runs on Megatron too: under task='embedding' the Megatron scheduler pools the
@@ -84,7 +55,7 @@ def _run_embedding_body(
         # does not deadlock ranks on earlier pipeline stages.
         configure_embedding_loss(model, loss_type=train_config.loss or 'infonce', mrl_dims=train_config.mrl_dims)
 
-    return TrainAssembly(
+    assembly = TrainAssembly(
         'run_embedding',
         model_config,
         template_config,
@@ -97,4 +68,6 @@ def _run_embedding_body(
         output_dir=output_dir,
         logging_config=logging_config,
         quantize_config=quantize_config,
-    ).fit(embedding_loss, configure_metric=configure_embedding_metric, save_final=_save_final)
+    )
+    assembly.build_objects(embedding_loss, configure_metric=configure_embedding_metric)
+    return run_offline(assembly, save_final=_save_final)

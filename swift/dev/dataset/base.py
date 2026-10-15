@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-import numpy as np
 from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset
 
@@ -49,12 +48,9 @@ class SwiftDataset(Dataset):
         num_proc: Worker processes for the measuring pass, when there is one.
         load_from_cache_file: Reuse a previous measuring pass's result if its fingerprint matches.
         batch_size: Rows per batch in the measuring pass.
-        n_try_fetch: How many substitutes to try before giving up on an index. A row that fails to
-            encode cannot simply be skipped -- the number of steps is already fixed by ``len(self)``, so
-            something has to come back.
-        strict: Treat the first failure as the answer, in the measuring pass and on access both. Turns
-            an unusable row from something worked around into an error.
-        random_state: Seeds the substitution order.
+        strict: Treat the first failure as the answer, in the measuring pass and on access both. On
+            access this class simply raises; whether a raised row is substituted or stops the run is
+            the reader's decision (``DataLoader(max_retries=0)`` makes it stop).
         traceback_limit: How many failures to log before going quiet.
     """
 
@@ -65,33 +61,16 @@ class SwiftDataset(Dataset):
                  num_proc: int = 1,
                  load_from_cache_file: bool = True,
                  batch_size: Optional[int] = None,
-                 n_try_fetch: int = 10,
                  strict: bool = False,
-                 random_state: Optional[Union[np.random.RandomState, int]] = None,
                  traceback_limit: int = 10) -> None:
         self.dataset = dataset
         self.template = template
         self.num_proc = num_proc
         self.load_from_cache_file = load_from_cache_file
         self.batch_size = batch_size
-
-        # `strict` means the first failure is the answer, so there is nothing to retry.
-        n_try_fetch = 1 if strict else min(n_try_fetch, max(len(dataset), 1))
-        assert n_try_fetch >= 1
         self.strict = strict
-        self.n_try_fetch = n_try_fetch
-
-        if not isinstance(random_state, np.random.RandomState):
-            random_state = np.random.RandomState(random_state)
-        self.random_state = random_state
-
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
-        # Built on the first failure rather than here: a subclass whose rows are already encoded cannot
-        # fail, and a permutation of every index is a real cost to hand it for nothing.
-        self._idx = 0
-        self._idx_list: Optional[List[int]] = None
-
         self._lengths: Optional[List[int]] = None
 
     @property
@@ -147,52 +126,31 @@ class SwiftDataset(Dataset):
         """
         return self.template.encode(row, return_length=True)
 
-    def _next_substitute(self) -> int:
-        """Pick the next replacement index for a row that could not be encoded.
-
-        A cursor over one fixed permutation, rather than a fresh draw per failure: successive failures
-        then walk distinct rows instead of possibly re-drawing the same bad one. A neighbouring index
-        would be the wrong choice for the same reason -- it tends to fail for the same cause, e.g. a long
-        document split across consecutive rows.
-        """
-        if self._idx_list is None:
-            self._idx_list = self.random_state.permutation(len(self.dataset)).tolist()
-        idx = self._idx_list[self._idx]
-        self._idx = (self._idx + 1) % len(self.dataset)
-        return idx
-
     def __getitem__(self, idx: int) -> Dict[str, Any]:
-        """Return one collator-ready row, substituting a different one if this row cannot be encoded.
+        """Return one collator-ready row, letting a row that cannot be encoded fail.
 
-        The substitution is what makes a failure survivable during training: the number of steps is
-        already fixed by ``len(self)``, so an index that cannot be served cannot simply be skipped --
-        something has to come back. A subclass whose rows are already encoded never reaches that branch,
-        and pays nothing for it.
+        Nothing here substitutes another row. The read goes through twinkle's ``RetryDataset`` (installed
+        by ``DataLoader._read_through``), which stands in a replacement drawn from ``(seed, index)`` --
+        reproducible across ranks and across a resume, because the draw does not depend on how many
+        failures came before. There is only the one mechanism, so the reader owns it.
+
+        The failure is logged before it propagates: a run that does substitute still says which row broke
+        and why, while ``RetryDataset`` reports the replacement it chose. A row that is merely too long
+        is skipped -- that is an expected property of public data, not a defect worth a traceback.
 
         Unlike the wrapper this replaces, a string subscript is not a column read: a consumer that wants
         lengths asks for :attr:`lengths`. The passthrough existed so that a wrapper placed on top could
         reach a column of the dataset underneath, and with lengths inherited there is nothing to reach
         through to.
         """
-        for i in range(self.n_try_fetch):
-            if i > 0:
-                idx = self._next_substitute()
-            row = self.dataset[idx]
-            try:
-                return self.encode_row(row)
-            except Exception as e:
-                from swift.template import MaxLengthError
-                if self.strict:
-                    logger.warning('To avoid errors, you can pass `strict=False`.')
-                    raise
-                # Too long is an expected property of public data, not a defect worth a traceback.
-                if isinstance(e, MaxLengthError):
-                    continue
-                note_row_error(self, '👆👆👆There are errors in the template.encode, '
-                               'and another piece of data will be randomly selected.')
-
-        raise ValueError('Failed to retrieve the dataset. You can avoid this issue by increasing `max_length` or '
-                         'modifying the `truncation_strategy`.')
+        try:
+            return self.encode_row(self.dataset[idx])
+        except Exception as e:
+            from swift.template import MaxLengthError
+            if not isinstance(e, MaxLengthError):
+                note_row_error(self, '👆👆👆There are errors in the template.encode, so this row is '
+                               'unusable and the reader will serve another in its place.')
+            raise
 
     def __len__(self) -> int:
         return len(self.dataset)

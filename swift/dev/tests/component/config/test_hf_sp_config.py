@@ -2,7 +2,7 @@
 
 Why these guards exist. The knob was accepted by the config and forwarded to the template
 (builders/template.py) long before any training-path consumer existed: an sp>1 run SILENTLY trained
-with SP=1. Now that run_sft wires a real mesh (build_hf_device_mesh), validate_configs must reject
+with SP=1. Now that run_sft wires a real mesh (build_dp_mesh), validate_configs must reject
 every combination where the mesh would be meaningless or the twinkle SP strategy would crash at the
 first forward -- failing at validation in milliseconds instead of after the weights load.
 
@@ -157,21 +157,21 @@ def test_sp_without_torchrun_is_rejected():
 
 def test_mesh_builder_returns_none_when_sp_is_off():
     """sp=1 must reach TransformersModel with NO mesh -- the deliberate default-mesh local path."""
-    from swift.dev.builders import build_hf_device_mesh
+    from swift.dev.builders import build_dp_mesh
     from swift.dev.config import DistributedConfig
 
-    assert build_hf_device_mesh(DistributedConfig(), 1) is None
+    assert build_dp_mesh(DistributedConfig(), 1) is None
     # Non-local mode never builds this mesh either (validate rejects ray+sp>1 before this runs).
-    assert build_hf_device_mesh(DistributedConfig(mode="ray"), 2) is None
+    assert build_dp_mesh(DistributedConfig(mode="ray"), 2) is None
 
 
 def test_mesh_builder_without_torchrun_raises():
     """Plain pytest process: WORLD_SIZE unset -> world=1 -> the torchrun requirement fires."""
-    from swift.dev.builders import build_hf_device_mesh
+    from swift.dev.builders import build_dp_mesh
     from swift.dev.config import DistributedConfig
 
     with pytest.raises(ValueError, match="torchrun"):
-        build_hf_device_mesh(DistributedConfig(), 2)
+        build_dp_mesh(DistributedConfig(), 2)
 
 
 @pytest.mark.slow

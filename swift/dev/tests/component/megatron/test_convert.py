@@ -6,7 +6,8 @@ it delegates to ``swift.megatron`` needs a real GPU + mcore-bridge and is covere
 round-trip in this file; here the recipe's OWN contract is pinned offline -- the direction guards, the
 three-way dispatch (which of ``_convert_hf2mcore`` / ``_convert_mcore`` runs for a given ConvertConfig),
 and the ``output_dir`` resolution order. These are pure control-flow decisions made before any megatron
-import, so they are asserted by stubbing the two private workers and observing which one is reached.
+import, so they are asserted by stubbing the component's two worker methods and observing which one is
+reached.
 
 The CLI surface that drives this recipe (``--to_mcore`` / ``--to_hf`` -> ``run_convert``) is pinned in
 ``component/config/test_cli_entrypoints.py``.
@@ -49,25 +50,28 @@ def test_model_is_required():
 
 @pytest.fixture
 def spy_workers(monkeypatch):
-    """Stub both private conversion workers, recording which one ``run_convert`` routes to.
+    """Stub both conversion workers, recording which one ``ConvertComponent.run`` routes to.
 
     The real workers import ``swift.megatron`` and load weights; the routing decision under test is
     made entirely from ConvertConfig fields before that, so stubbing them isolates the branch logic.
+    They are patched as bound methods (``run`` calls ``self._convert_mcore(output_dir)``), so each stub
+    takes ``self`` plus the positional ``output_dir``.
     """
     calls = {}
 
-    def _mcore(*args, **kwargs):
+    def _mcore(self, output_dir):
         calls['which'] = 'mcore'
-        calls['output_dir'] = kwargs.get('output_dir')
+        calls['output_dir'] = output_dir
         return 'MCORE'
 
-    def _hf2mcore(*args, **kwargs):
+    def _hf2mcore(self, output_dir):
         calls['which'] = 'hf2mcore'
-        calls['output_dir'] = kwargs.get('output_dir')
+        calls['output_dir'] = output_dir
         return 'HF2MCORE'
 
-    monkeypatch.setattr('swift.dev.recipe.convert._convert_mcore', _mcore)
-    monkeypatch.setattr('swift.dev.recipe.convert._convert_hf2mcore', _hf2mcore)
+    monkeypatch.setattr('swift.dev.components.weight_transform.convert.ConvertComponent._convert_mcore', _mcore)
+    monkeypatch.setattr('swift.dev.components.weight_transform.convert.ConvertComponent._convert_hf2mcore',
+                        _hf2mcore)
     return calls
 
 

@@ -31,7 +31,7 @@ class _MegatronDPBatchSampler(BatchSamplerShard):
     pure TP, NOT for the full TP/PP/CP/EP layout, where TP/PP/CP/EP members must get the SAME data
     and only the DP dimension differs.
 
-    The DP coordinate is passed IN (from builders.build_device_mesh) rather than read from Megatron's
+    The DP coordinate is passed IN (from builders.build_parallel_mesh) rather than read from Megatron's
     mpu. Reading mpu here was a real bug: run_sft builds the dataloader before build_model, and mpu
     answers 0 until the model initializes the parallel state, so ``total_samples // dp_world_size``
     divided by zero and every mode='local' Megatron run died before training. The DeviceMesh is the
@@ -40,7 +40,7 @@ class _MegatronDPBatchSampler(BatchSamplerShard):
 
     Everything else (stateless-across-epochs shuffle via set_epoch, per_device_train_batch_size
     yield granularity, __len__) is inherited unchanged, so the ResumableDataLoaderWrapper resume
-    contract and the SFTLoop._fit_megatron grouping semantics are preserved -- only the shard
+    contract and the offline loop's ``_fit_megatron`` grouping semantics are preserved -- only the shard
     rank/size is corrected. (Ray mode does not use this: there slice_dp shards on the driver.)
 
     ``data_sharding`` (Megatron-only, mirrors legacy MegatronPretrainingRandomSampler) additionally
@@ -107,7 +107,7 @@ def _mesh_dp_coords(device_mesh) -> tuple:
     if device_mesh is None:
         raise ValueError('dp_shard_in_loader=True requires a device_mesh: the dataloader must shard by '
                          'data-parallel rank, and the mesh is the only pre-initialization source for it '
-                         '(build_dataset passes builders.build_device_mesh(distributed_config)).')
+                         '(build_dataset passes builders.build_parallel_mesh(distributed_config)).')
     dp_rank, dp_world_size = device_mesh.dp_rank, device_mesh.dp_world_size
     if dp_rank is None or not dp_world_size:
         raise ValueError(f'device_mesh has no usable data-parallel coordinate for this process '

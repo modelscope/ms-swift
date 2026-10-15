@@ -1,14 +1,14 @@
 """End-to-end SFT tests: the dev happy path and a legacy-vs-dev comparison.
 
 Two things the component-level alignment tests do NOT cover:
-  1. That the full assembly (CLI -> direct Config parsing -> run_sft -> SFTLoop.fit -> save) runs
+  1. That the full assembly (CLI -> direct Config parsing -> run_sft -> run_offline -> save) runs
      to completion on real weights and produces a usable checkpoint. Every builder is unit-
      tested in isolation, but the wired-together green path was only ever hand-run.
   2. That the dev pipeline agrees with the *actual legacy pipeline* (swift sft_main /
      Seq2SeqTrainer), not just an HF shifted-CE reference. The same training values drive both.
 
 Comparison precision (legacy uses HF Seq2SeqTrainer: internal shift + mean-reduction + HF
-scheduler; dev uses twinkle SFTLoop: encode-time shift + sum-reduction + GA lagging one
+scheduler; dev uses the twinkle offline loop: encode-time shift + sum-reduction + GA lagging one
 micro-step):
   - step-1 loss is compared bit-exactly under bs=1/ga=1, where GA/scheduler differences are
     not yet in play, so the first update's loss is directly comparable.
@@ -135,7 +135,7 @@ def _legacy_step_losses(sft_args):
 @pytest.mark.slow
 @requires_gpu
 def test_legacy_vs_dev_step1_loss_bit_close(tmp_path):
-    """step-1 loss agrees between legacy Seq2SeqTrainer and dev SFTLoop under bs=1/ga=1.
+    """step-1 loss agrees between legacy Seq2SeqTrainer and the dev offline loop under bs=1/ga=1.
 
     At the first update GA/scheduler differences are not yet in play, so the two pipelines'
     first-step losses must match closely (allowing only fp/backend + sum-vs-mean-normalization

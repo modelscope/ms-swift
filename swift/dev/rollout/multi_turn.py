@@ -21,7 +21,7 @@ again. ``SHIFTED_KEY`` records that the shift already happened.
 """
 from __future__ import annotations
 import copy
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import (SHIFTED_KEY, RolloutSample, _MULTIMODAL_PROMPT_KEYS, _build_sampling_params,
                _merge_multimodal_keys, _sampled_token_logprobs)
@@ -69,19 +69,15 @@ def _trainable_positions(input_ids: List[int], labels: List[int], completion_mas
     return positions
 
 
-def _messages_with_token_ids(messages: List[dict], encoded: Dict[str, Any]) -> List[dict]:
-    """Splice each assistant turn's exact sampled tokens back into the messages.
+def _trainable_runs(encoded: Dict[str, Any]) -> List[List[int]]:
+    """Contiguous runs of trainable input_ids positions, one run per assistant turn.
 
-    The teacher-distillation view re-encodes the conversation under a different
-    prompt but must score the *same* tokens the policy produced, so each assistant
-    turn carries its ids verbatim rather than its text (re-encoding text can drift
-    to different ids and misalign every logprob after it).
-
-    ``encoded`` is twinkle's flat feature. Per-turn slices are recovered by
-    splitting the trainable positions (``labels != -100``) into contiguous runs:
-    the ledger records a whole generation as trainable and every observation as
-    masked, so the runs alternate with the assistant turns one-to-one. Newest run
-    maps to newest assistant message.
+    ``labels != -100`` intersected with ``completion_mask`` (see :func:`_trainable_positions`) marks
+    exactly the policy-generated tokens; twinkle's multi-turn ledger records a whole generation as
+    trainable and every observation as masked, so the contiguous runs alternate one-to-one with the
+    assistant turns. Shared by :func:`_messages_with_token_ids` (teacher privileged view) and
+    :func:`turn_token_spans` (multi-turn PRM step segmentation) so the run-splitting logic is written
+    once, not recomputed per caller.
     """
     input_ids = list(encoded.get('input_ids') or [])
     labels = list(encoded.get('labels') or [])
@@ -93,6 +89,41 @@ def _messages_with_token_ids(messages: List[dict], encoded: Dict[str, Any]) -> L
             runs[-1].append(j)
         else:
             runs.append([j])
+    return runs
+
+
+def turn_token_spans(encoded: Dict[str, Any]) -> List[Tuple[int, int]]:
+    """Per-assistant-turn ``[start, end)`` spans within the flat ``response_token_ids`` array.
+
+    ``response_token_ids`` (see :func:`trajectory_to_rollout_sample`) is exactly
+    ``[input_ids[j] for j in _trainable_positions(...)]`` -- the trainable positions in order -- so the
+    k-th contiguous trainable run occupies a contiguous slice of it, and this returns those slices as
+    half-open spans. This is the turn-boundary information multi-turn PRM step segmentation
+    (``swift/dev/rewards/prm.py``) needs to keep a step from spanning two assistant turns.
+    """
+    spans: List[Tuple[int, int]] = []
+    cursor = 0
+    for run in _trainable_runs(encoded):
+        spans.append((cursor, cursor + len(run)))
+        cursor += len(run)
+    return spans
+
+
+def _messages_with_token_ids(messages: List[dict], encoded: Dict[str, Any]) -> List[dict]:
+    """Splice each assistant turn's exact sampled tokens back into the messages.
+
+    The teacher-distillation view re-encodes the conversation under a different
+    prompt but must score the *same* tokens the policy produced, so each assistant
+    turn carries its ids verbatim rather than its text (re-encoding text can drift
+    to different ids and misalign every logprob after it).
+
+    ``encoded`` is twinkle's flat feature. Per-turn slices are recovered by
+    :func:`_trainable_runs`: the ledger records a whole generation as trainable and
+    every observation as masked, so the runs alternate with the assistant turns
+    one-to-one. Newest run maps to newest assistant message.
+    """
+    input_ids = list(encoded.get('input_ids') or [])
+    runs = _trainable_runs(encoded)
     turn_token_ids = [[input_ids[j] for j in run] for run in runs]
 
     result = copy.deepcopy(messages)
@@ -275,6 +306,50 @@ class MultiTurnRollout:
             trajectory_to_rollout_sample(output, prompt_id, extra)
             for output, (prompt_id, extra) in zip(outputs, metadata)
         ]
+
+    def stream(self,
+               prompt: List[dict],
+               sampling_params: Optional[dict] = None,
+               prompt_extra: Optional[Dict[str, Any]] = None,
+               adapter_path: Optional[str] = None):
+        """Stream ONE interactive episode: the display-only counterpart of :meth:`generate`.
+
+        Yields twinkle's ``StreamDelta`` / ``StreamToolCall`` events verbatim, then a final ``StreamDone``
+        whose trajectory is translated to a :class:`RolloutSample` (the same shape ``generate`` returns),
+        so a caller can read the final answer off ``sample.decoded`` and its history off ``sample.messages``.
+        Message-level and NOT trainable -- an interactive REPL shows tokens live and keeps the transcript,
+        it does not train on them, so ``force_logprobs`` is off and no token sidecar is produced.
+
+        A single prompt only (streaming is for a REPL, not a batch). Per-episode sandbox tools lease one
+        env for the duration of the stream; the lease is held open until the caller exhausts the generator.
+        """
+        from twinkle_agentic.rollout import StreamDone
+
+        extra = copy.deepcopy(prompt_extra or {})
+        trajectory: Dict[str, Any] = {'messages': copy.deepcopy(prompt)}
+        for key in _MULTIMODAL_PROMPT_KEYS:
+            if extra.get(key):
+                trajectory[key] = copy.deepcopy(extra[key])
+        sp = _build_sampling_params(1, sampling_params, False)
+
+        def _translate(events):
+            for event in events:
+                if isinstance(event, StreamDone):
+                    yield StreamDone(trajectory_to_rollout_sample(event.trajectory, '0', extra))
+                else:
+                    yield event
+
+        if self._per_episode_tools:
+            from .sandbox import tool_manager_for
+            with self.env_pool.lease() as env:
+                yield from _translate(
+                    self.rollout.stream(
+                        trajectory,
+                        sampling_params=sp,
+                        tool_manager=tool_manager_for(env, self.tool_plugins),
+                        adapter_path=adapter_path))
+        else:
+            yield from _translate(self.rollout.stream(trajectory, sampling_params=sp, adapter_path=adapter_path))
 
     def _generate_with_envs(self, trajectories: List[Dict[str, Any]],
                             sampling_params: Any,

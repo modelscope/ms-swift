@@ -471,7 +471,7 @@ def _run_megatron_sft(bridge_backend: str,
 
     per_device_batch/ga are parametrized so a GA>1 run can be compared against a GA=1 run with a
     proportionally larger batch (same effective samples per optimizer step -> same trajectory).
-    eval_steps>0 (with split_dataset_ratio>0 to carve a val split) exercises SFTLoop.evaluate on
+    eval_steps>0 (with split_dataset_ratio>0 to carve a val split) exercises the offline Evaluator on
     the Megatron backend -- its forward_only + calculate_loss(NotImplementedError) fallback path.
     context_parallel_size>1 spends the world on CP instead of DP (world=2 -> cp=2, dp=1): twinkle
     splits each sequence across the CP ranks and runs ring attention over the CP group.
@@ -525,7 +525,7 @@ def _run_megatron_sft(bridge_backend: str,
 
 @pytest.mark.slow
 def test_run_sft_megatron_evaluate_returns_metrics(tmp_path):
-    """SFTLoop.evaluate() must work on the Megatron backend (contract 9): eval goes through
+    """Evaluator.evaluate() must work on the Megatron backend (contract 9): eval goes through
     forward_only, and Megatron's calculate_loss raises NotImplementedError (pipeline scheduler
     fuses loss into forward), which evaluate() swallows because the loss is already populated.
 
@@ -1208,7 +1208,7 @@ def test_run_sft_hf_sp_matches_single(tmp_path, padding_free):
     for r in sp2:
         assert r['ulysses_size'] == 2, (
             f'rank {r["rank"]}: mesh ulysses_size={r["ulysses_size"]}, not 2 -- the SP mesh did not '
-            'reach TransformersModel (build_hf_device_mesh / device_mesh kwarg broken)')
+            'reach TransformersModel (build_dp_mesh / device_mesh kwarg broken)')
         assert r['data_world_size'] == 1, (
             f'rank {r["rank"]}: data_world_size={r["data_world_size"]}, not world/ulysses=1 -- the '
             'loader would hand SP peers different samples')

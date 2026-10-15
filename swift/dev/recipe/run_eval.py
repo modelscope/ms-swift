@@ -2,7 +2,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any, Dict, List, Optional
 
-from swift.dev.eval import build_task_config, model_name, run_evalscope, validate_eval_datasets
+from swift.dev.eval import build_task_config, model_name, run_evaluator, validate_eval_datasets
 from swift.dev.utils.logger import get_logger
 
 logger = get_logger()
@@ -69,7 +69,7 @@ def run_eval(model_config, template_config, eval_config, *, backend: str = 'vllm
         generation_config=eval_config.eval_generation_config,
         extra_eval_args=eval_config.extra_eval_args)
     try:
-        summary = run_evalscope(
+        summary = run_evaluator(
             sampler, template, datasets=datasets, model_id=model_name(model_config),
             task_config=task_config, sampler_kwargs=sampler_kwargs)
     finally:

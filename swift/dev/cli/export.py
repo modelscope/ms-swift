@@ -189,7 +189,8 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
             template_config=template_config,
             checkpoint_config=None if chains else checkpoint_config,
             output_dir=None if chains else output_dir,
-            replace_if_exists=convert_config.exist_ok)
+            replace_if_exists=convert_config.exist_ok,
+            parallel_size=configs['runtime_config'].weight_transform_parallel_size)
         model_config.model = merged
         tuner_config.adapters = []
         result = merged

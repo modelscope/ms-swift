@@ -1,13 +1,18 @@
 from __future__ import annotations
+import random
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from swift.dev.recipe._distill import (
+    DistillAssembler,
+    DistillBatch,
     DistillRow,
     build_frozen_teacher,
     distill_rows_from_dataset,
     distill_sampling_params,
 )
-from swift.dev.recipe._teacher import MultiTeacher
+from swift.dev.recipe._streaming import build_streaming_driver
+from swift.dev.recipe.checkpoint import CheckpointSaver
+from swift.dev.recipe.rl_auxiliary import AuxiliaryBundle
 from swift.dev.recipe.run_grpo import (
     SyncableRollout,
     _TEACHER_GROUP,
@@ -19,7 +24,8 @@ from swift.dev.recipe.run_grpo import (
     plan_rl_device_groups,
     teacher_group_world_size,
 )
-from swift.dev.recipe.run_opsd import OPSDLoop
+from swift.dev.recipe.step_runner import StepRunner
+from swift.dev.rollout import blocking_generate
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -65,11 +71,13 @@ def run_mopd(
 ) -> List[dict]:
     """Assemble and run multi-teacher on-policy distillation with weight sync. Returns the loss history.
 
-    Mirrors :func:`run_opsd`'s assembly, swapping in K frozen teachers (:func:`_build_mopd_teachers`) and
-    :class:`MOPDLoop`. ``teacher_weights`` (optional) sets the mixture weights; unset means uniform.
+    Mirrors :func:`run_opsd`'s assembly (train/sampler device groups, weight-syncable ``SyncableRollout``,
+    design-B mini-batch width), swapping in K frozen teachers (:func:`_build_mopd_teachers`) and
+    :class:`~swift.dev.recipe._distill.DistillAssembler` with ``signal='multi_logps'``. ``teacher_weights``
+    (optional) sets the mixture weights; unset means uniform.
     """
-    from swift.dev.builders import build_ray_dp_mesh, build_sampler
-    from swift.dev.loss import configure_rlhf_loss
+    from swift.dev.builders import build_dp_mesh, build_sampler
+    from swift.dev.loss import configure_rl_loss
     from swift.dev.builders.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.assembly import TrainAssembly
 
@@ -103,14 +111,15 @@ def run_mopd(
     teacher_world_size = teacher_group_world_size(rl_config)
     spread = rl_config.auxiliary_placement == 'spread'
     num_teachers = len(rl_config.teacher_model or [])
-    teacher_aux_groups = [(_teacher_group(i), teacher_world_size) for i in range(num_teachers)] if spread else []
+    teacher_aux_groups = (
+        [(_teacher_group(i), teacher_world_size) for i in range(num_teachers)] if spread
+        else [(_TEACHER_GROUP, teacher_world_size)] if teacher_world_size else [])
 
     backend = _sampler_backend(rollout_config)
     sampler_world_size = _sampler_world_size(rollout_config, backend)
-    groups, sampler_remote_group, colocate = plan_rl_device_groups(distributed_config.nproc_per_node,
-                                                                   rollout_config.sampler_mode, sampler_world_size,
-                                                                   0 if spread else teacher_world_size,
-                                                                   auxiliary_groups=teacher_aux_groups)
+    groups, sampler_remote_group, colocate = plan_rl_device_groups(
+        distributed_config.nproc_per_node, rollout_config.sampler_mode, sampler_world_size,
+        auxiliary_groups=teacher_aux_groups)
     _initialize_twinkle_rl(
         distributed_config,
         groups,
@@ -120,7 +129,7 @@ def run_mopd(
 
     assembly.build_template()
     assembly.build_model()
-    configure_rlhf_loss(assembly.model, rl_config)
+    configure_rl_loss(assembly.model, rl_config)
     # Prompts are rolled out, not iterated by a dataloader, so the step budget is derived from the prompt
     # set (B1): one generation batch per round, exhausted after num_train_epochs passes. MOPD replays each
     # round once (no num_iterations), so the budget uses num_iterations=1; --max_steps still overrides.
@@ -130,8 +139,8 @@ def run_mopd(
                          'row carries an assistant completion. Add completions, or set lmbda=1 for purely on-policy '
                          'MOPD.')
     # Design-B mini-batch width (per_device_train_batch_size * dp_size); see run_grpo for why dp_size comes
-    # off build_ray_dp_mesh (online RL is Ray-only, pure data-parallel over nproc_per_node).
-    train_batch_size = train_config.per_device_train_batch_size * build_ray_dp_mesh(
+    # off build_dp_mesh (online RL is Ray-only, pure data-parallel over nproc_per_node).
+    train_batch_size = train_config.per_device_train_batch_size * build_dp_mesh(
         distributed_config).data_world_size
     from swift.dev.recipe.train_loop import resolve_rollout_max_steps, rollout_step_budget
     max_steps = resolve_rollout_max_steps(
@@ -163,47 +172,82 @@ def run_mopd(
     rollout = SyncableRollout(
         assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
 
-    teacher = _build_mopd_teachers(assembly.template, rl_config, teacher_world_size, distributed_config)
-    # async_mode selects the driver (see run_gkd for the full rationale): the per-sample stream now serves
-    # EVERY regime, so MOPD rides it whenever the round is purely on-policy -- 'none' runs StreamingMOPDLoop
-    # at max_staleness=0 (drain-before-publish, no overlap) and 'one_step_off' (the only overlapping regime
-    # distillation supports) pins staleness to 1. An off-policy round (lmbda != 1.0, enforced by validate)
-    # generates nothing to admit ahead, so it stays on MOPDLoop's synchronous _run_sync. A colocated sampler
-    # sets serialize_generation for the exclusive-device hand-over.
-    loop_cls = MOPDLoop
-    streaming_kwargs: Dict[str, Any] = {}
-    sync_only = rl_config.lmbda != 1.0
-    if rollout_config.async_mode != 'none' or not sync_only:
-        from swift.dev.recipe.mopd_async import StreamingMOPDLoop
-        loop_cls = StreamingMOPDLoop
-        streaming_kwargs = {
-            'max_staleness': 0 if rollout_config.async_mode == 'none' else 1,
-            'weight_sync_strategy': rollout_config.weight_sync_strategy,
-            'allow_partial_rollout': rollout_config.allow_partial_rollout,
-            'parameter_sync_step': rollout_config.parameter_sync_step,
-            'adapter_name': ('default' if tuner_config is not None else None),
-            'serialize_generation': colocate,
-        }
-    assembly.loop = loop_cls(
+    # The flat recipe body: two regimes selected by lmbda (the SAME predicate the retired
+    # build_rollout_driver(sync_only=...) used -- see validate._sync_only_feature). A purely on-policy run
+    # (lmbda == 1.0) rides the per-sample stream; an off-policy-capable run (lmbda != 1.0) needs whole
+    # dataset rounds, which a per-sample stream structurally cannot serve, so it runs the synchronous
+    # round loop. The lmbda range check and the teacher build run BEFORE the StepRunner builds its
+    # RunTracker, whose reporters initialize as a construction side effect.
+    if not 0.0 <= rl_config.lmbda <= 1.0:
+        raise ValueError(f'distillation lmbda must be in [0, 1], got {rl_config.lmbda}.')
+    from swift.dev.callbacks import CallbackHandler, build_callbacks
+
+    # Late-bound component cells: the per-step extra-metric closure is injected into the recorder BEFORE
+    # the driver exists, so it reads it through a one-element cell filled right after the build. The
+    # assembler has no reward metric (distillation scores no outcome channel), so the extra channels are
+    # the driver's alone.
+    _driver_cell: List[Any] = []
+    _idle_snapshot = {'train': 0.0, 'idle': 0.0}
+    _last_idle_ratio = 0.0
+
+    def _fold_idle_ratio() -> None:
+        """Fold the trainer-bubble ratio ONCE per batch, at the batch boundary, before training it.
+
+        Mirrors the retired StreamingRolloutDriver._fold_idle_ratio: the driver adds train_active_time only
+        AFTER a pull returns, so the delta against the last batch boundary is the PREVIOUS batch's train
+        time, and idle_time's delta is the bubble spent starved waiting for THIS batch. Reported identically
+        on every step of this batch.
+        """
+        nonlocal _idle_snapshot, _last_idle_ratio
+        driver = _driver_cell[0] if _driver_cell else None
+        if driver is None:
+            return
+        stats = driver.stats
+        d_train = stats.train_active_time - _idle_snapshot['train']
+        d_idle = stats.idle_time - _idle_snapshot['idle']
+        _idle_snapshot = {'train': stats.train_active_time, 'idle': stats.idle_time}
+        denom = d_train + d_idle
+        _last_idle_ratio = (d_idle / denom) if denom > 0 else 0.0
+
+    def _extra_metrics() -> Dict[str, Any]:
+        """Driver-side per-step channels the model's calculate_metric cannot surface."""
+        extra: Dict[str, Any] = {}
+        driver = _driver_cell[0] if _driver_cell else None
+        if driver is not None:
+            stats = driver.stats
+            extra.update({
+                'trainer_idle_ratio': _last_idle_ratio,
+                'off_policy_consumed': stats.off_policy_consumed,
+                'dropped_stale': stats.dropped_stale,
+                'stream_publishes': stats.publishes,
+            })
+        return extra
+
+    assembler = DistillAssembler(
         assembly.model,
         rollout,
-        prompts,
-        teacher=teacher,
+        teacher=_build_mopd_teachers(assembly.template, rl_config, distributed_config),
         template=assembly.template,
-        prompt_extras=prompt_extras,
-        dataset_rows=dataset_rows,
-        lmbda=rl_config.lmbda,
-        num_generations=rl_config.num_generations,
-        seed=train_config.seed,
-        rl_config=rl_config,
-        max_steps=max_steps,
+        prompts=prompts,
+        signal='multi_logps',
         train_batch_size=train_batch_size,
-        generation_batch_size=rollout_config.generation_batch_size,
-        num_train_epochs=train_config.num_train_epochs,
+        gradient_accumulation_steps=assembly.ga)
+    recorder = StepRunner(
+        assembly.model,
+        CallbackHandler(build_callbacks(train_config), output_dir=output_dir),
         gradient_accumulation_steps=assembly.ga,
         max_grad_norm=resolve_max_grad_norm(train_config),
-        sampling_params=distill_sampling_params(rl_config, generation_config),
+        max_steps=max_steps,
         logging_config=logging_config,
+        output_dir=output_dir,
+        manual_gc=bool(megatron_config and megatron_config.manual_gc),
+        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
+        torch_empty_cache_steps=train_config.torch_empty_cache_steps,
+        extra_metrics_fn=_extra_metrics)
+    saver = CheckpointSaver(
+        assembly.model,
+        recorder,
+        None,
         output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
         no_save_optim=checkpoint_config.no_save_optim or checkpoint_config.save_only_model,
@@ -211,18 +255,140 @@ def run_mopd(
         safe_serialization=checkpoint_config.safe_serialization,
         max_shard_size=checkpoint_config.max_shard_size,
         save_total_limit=checkpoint_config.save_total_limit,
-        manual_gc=bool(megatron_config and megatron_config.manual_gc),
-        manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
-        **streaming_kwargs)
+        consumed_train_samples_fn=lambda: recorder.global_step)
     if assembly.resume_dir:
-        assembly.loop.resume(assembly.resume_model())
+        saver.resume(assembly.resume_model())
+
+    from twinkle.perf import Perf
+
+    from swift.dev.recipe._loop_utils import filter_perf_actors
+
+    if Perf.initialize(filter_perf_actors({'model': assembly.model, 'sampler': rollout.sampler})):
+        logger.info('[perf] profiling enabled for the online MOPD loop.')
+    handover = None
     try:
-        history = assembly.loop.fit()
-        if _save_final:
-            assembly.save_final()
-        return history
+        if rl_config.lmbda == 1.0:
+            # A purely on-policy run rides the per-sample stream at max_staleness=0 ('none',
+            # drain-before-publish) or 1 ('one_step_off', the only overlapping regime distillation
+            # supports; 'fully_async' is rejected by validate._check_async_mode). The streaming config
+            # guard runs inside build_streaming_driver.
+            driver, handover = build_streaming_driver(
+                rollout_config,
+                colocate=colocate,
+                run_id='run_mopd',
+                model=assembly.model,
+                rollout=rollout,
+                output_dir=output_dir,
+                prompts=prompts,
+                prompt_extras=prompt_extras,
+                adapter_name=('default' if tuner_config is not None else None),
+                train_batch_size=train_batch_size,
+                gradient_accumulation_steps=assembly.ga,
+                num_generations=rl_config.num_generations,
+                num_train_epochs=train_config.num_train_epochs,
+                seed=train_config.seed,
+                sampling_params=distill_sampling_params(rl_config, generation_config),
+                unit_size=1,
+                assemble=assembler.assemble,
+                assembly_ready=assembler.assembly_ready,
+                reached_max=recorder.reached_max)
+            _driver_cell.append(driver)
+            if handover.serializes:
+                # Version-0 hand-over: put the pre-training policy in the sampler before the first admission.
+                # Every later cycle's enter rides the in-place publish's sync_fn (see the builder).
+                handover.enter()
+            for batch in driver:
+                _fold_idle_ratio()
+                optimizer_steps = 0
+                for mini_batch in assembler.plan_mini_batches(batch):
+                    recorder.micro_step += 1
+                    assembly.model.forward_backward(**assembler.forward_kwargs(mini_batch))
+                    is_boundary = recorder.is_grad_sync_boundary()
+                    assembly.model.clip_grad_and_step(
+                        max_grad_norm=recorder.max_grad_norm,
+                        gradient_accumulation_steps=recorder.gradient_accumulation_steps)
+                    if is_boundary:
+                        recorder.record_step()
+                        optimizer_steps += 1
+                        if saver.save_steps and recorder.global_step % saver.save_steps == 0:
+                            saver.save(f'checkpoint-{recorder.global_step}')
+                        if recorder.reached_max():
+                            break
+                # commit releases the driver thread blocked in the iterator bridge and reports the real step
+                # count -- the publish cadence unit (twinkle publishes only after consume returns).
+                driver.commit(optimizer_steps)
+                if recorder.reached_max():
+                    break
+        else:
+            # The off-policy-capable regime: per-round on/off-policy coin flip over the prompt set's
+            # generation batches (the retired FixedBatchDriver's cadence). BOTH round kinds train -- an
+            # off-policy round distils the dataset completions; it is not a skipped round. round_index
+            # counts rounds (NOT optimizer steps, W27) so the coin flip and the dataset window stay
+            # aligned with the batch being processed.
+            from swift.dev.recipe.train_loop import PromptBatchScheduler
+
+            scheduler = PromptBatchScheduler(
+                len(prompts),
+                generation_batch_size=rollout_config.generation_batch_size,
+                num_train_epochs=train_config.num_train_epochs,
+                seed=train_config.seed)
+            round_index = 0
+            for prompt_indices in scheduler:
+                if recorder.reached_max():
+                    break
+                use_student = random.Random(train_config.seed + round_index).random() <= rl_config.lmbda
+                round_index += 1
+                if use_student:
+                    # blocking_generate syncs the trained policy into the sampler first, so an on-policy
+                    # round samples from the current policy.
+                    samples = blocking_generate(
+                        rollout,
+                        [prompts[i] for i in prompt_indices],
+                        num_samples=rl_config.num_generations,
+                        sampling_params=distill_sampling_params(rl_config, generation_config),
+                        prompt_extras=[prompt_extras[i] for i in prompt_indices])
+                    expected = len(prompt_indices) * rl_config.num_generations
+                    if len(samples) != expected:
+                        raise RuntimeError(f'rollout returned {len(samples)} samples, expected {expected} '
+                                           f'({len(prompt_indices)} prompts * {rl_config.num_generations} generations).')
+                    for local_idx, prompt_idx in enumerate(prompt_indices):
+                        for sample in samples[local_idx * rl_config.num_generations:(local_idx + 1) * rl_config.num_generations]:
+                            sample.prompt_id = str(prompt_idx)
+                    rows = [
+                        DistillRow(sample.input_feature,
+                                   sample.messages if sample.messages is not None else prompts[int(sample.prompt_id)],
+                                   sample.extra or {}) for sample in samples
+                    ]
+                else:
+                    # A rolling window over the dataset completions, so successive off-policy rounds cover
+                    # new rows (run_mopd already rejected lmbda<1 without dataset completions).
+                    count = len(dataset_rows)
+                    offset = ((round_index - 1) * train_batch_size) % count
+                    rows = [dataset_rows[(offset + i) % count] for i in range(count)]
+                for mini_batch in assembler.plan_mini_batches(DistillBatch(rows, use_student)):
+                    if recorder.reached_max():
+                        break
+                    recorder.micro_step += 1
+                    assembly.model.forward_backward(**assembler.forward_kwargs(mini_batch))
+                    is_boundary = recorder.is_grad_sync_boundary()
+                    assembly.model.clip_grad_and_step(
+                        max_grad_norm=recorder.max_grad_norm,
+                        gradient_accumulation_steps=recorder.gradient_accumulation_steps)
+                    if is_boundary:
+                        recorder.record_step()
+                        if saver.save_steps and recorder.global_step % saver.save_steps == 0:
+                            saver.save(f'checkpoint-{recorder.global_step}')
     finally:
+        if handover is not None and handover.serializes and handover.in_generation:
+            # Ended mid-window (e.g. a budget hit during generation): give the device back to the trainer
+            # so the post-run final save finds the model resident.
+            handover.exit()
+        Perf.shutdown()
         rollout.shutdown()
+        recorder.tracker.close()
+    if _save_final:
+        saver.save_final(write_args_json=assembly.args_json_writer())
+    return recorder.history
 
 
 def _resolve_teacher_weights(weights: Optional[List[float]], num_teachers: int) -> Optional[List[float]]:
@@ -235,8 +401,8 @@ def _resolve_teacher_weights(weights: Optional[List[float]], num_teachers: int) 
     return list(weights)
 
 
-def _build_mopd_teachers(template: Any, rl_config: RLConfig, teacher_world_size: int,
-                         distributed_config: DistributedConfig) -> MultiTeacher:
+def _build_mopd_teachers(template: Any, rl_config: RLConfig,
+                         distributed_config: DistributedConfig) -> AuxiliaryBundle:
     """Build the K frozen domain teachers as Ray actors.
 
     Each teacher is a frozen twinkle model actor (plan §3.3) sharing the student's processor/template so it
@@ -248,7 +414,7 @@ def _build_mopd_teachers(template: Any, rl_config: RLConfig, teacher_world_size:
     does not apply to K domain teachers. There is no HTTP teacher server (removed, RL_PLAN §2.H): the
     ``teacher_model_server`` field is gone entirely, so there is nothing to re-check here. The K teachers
     plus their mixture weights are returned as one
-    :class:`~swift.dev.recipe._teacher.MultiTeacher`.
+    :class:`~swift.dev.recipe.rl_auxiliary.AuxiliaryBundle`.
     """
     if rl_config._teacher_use_disable_adapter:
         raise ValueError('MOPD distils from K separate domain teachers; _teacher_use_disable_adapter (a single '
@@ -269,44 +435,7 @@ def _build_mopd_teachers(template: Any, rl_config: RLConfig, teacher_world_size:
     teachers = [
         build_frozen_teacher(
             rl_config, template, model_id, distributed_config=distributed_config,
-            remote_group=(_teacher_group(i) if spread else _TEACHER_GROUP),
-            teacher_world_size=teacher_world_size, role='teacher',
+            remote_group=(_teacher_group(i) if spread else _TEACHER_GROUP), role='teacher',
             instance_id=f'teacher{i}') for i, model_id in enumerate(teacher_models)
     ]
-    return MultiTeacher(teachers, _resolve_teacher_weights(rl_config.teacher_weights, len(teachers)))
-
-
-## 整体review了RL实现之后，你需要整体重构下这里的设计。我认为目前问题有这么几个：
-## 1. 类继承比较随意，例如这个MOPD居然继承了OPSDLoop，这个很难理解两者算法的关系，不符合直觉
-## 因此，你的类继承应该重新设计，例如base_grpo.py/base_gkd.py/...，其中有若干base类；base类提供了同步和异步两个共同接口，子类分别实现
-## 这样非常易于理解。由于现在的recipe已经是调通状态，因此你重构这个的时候，代码拆分搬迁即可。这样即可减少问题的出现，又可以让架构更简洁
-## 2. 和1有关，build-device-mesh的过程也过于随意，teacher类的设计也过于随意。剃刀原则：最少的代码，最简洁的架构，最少的方法和类做大最大的泛化性和可读性
-## 分析下我上面的review是否合理
-class MOPDLoop(OPSDLoop):
-    """Multi-teacher on-policy distillation loop.
-
-    Reuses :class:`OPSDLoop`'s rollout/mini-batch/step skeleton and its ``_forward_kwargs`` (which passes
-    the teacher signal straight through, dropping GKD's top-k/SFT knobs). Only ``_teacher_kwargs`` differs:
-    it loops the K frozen teachers over the student's OWN on-policy features (no privileged view), producing
-    one response-only ``teacher_logps`` channel per teacher via the inherited chunked ``_response_logps`` (a
-    ``forward_only`` correct at dp_size>1), and forwards ``teacher_weights`` so :class:`MOPDLoss` fuses them
-    by weighted mixture. With a single teacher the fused target is that teacher's log-probs, i.e. exactly
-    OPSD.
-    """
-
-    def _teacher_kwargs(self, rows: List[DistillRow], use_student: bool) -> Dict[str, Any]:
-        """K response-only teacher-logp channels over the student's own features, plus the mixture weights.
-
-        ``self.teacher`` is a :class:`~swift.dev.recipe._teacher.MultiTeacher`: its ``teachers`` are each
-        scored into one channel and its ``weights`` are the mixture weights ``MOPDLoss`` fuses by.
-        """
-        features = [row.feature for row in rows]
-        # The K teachers run concurrently only when they sit on disjoint DeviceGroups: each carries a
-        # placement_key (its group name), so pack (all 'teacher') serializes on one actor while spread
-        # (teacher_<i>) overlaps. overlap_by_placement dedups by that key, so same-group teachers never
-        # contend for one GPU.
-        from swift.dev.recipe._scoring import overlap_by_placement
-        tasks = [(teacher.placement_key, lambda teacher=teacher: self._response_logps(teacher, features))
-                 for teacher in self.teacher.teachers]
-        channels = overlap_by_placement(tasks)
-        return {'teacher_logps': channels, 'teacher_weights': self.teacher.weights}
+    return AuxiliaryBundle(teachers, _resolve_teacher_weights(rl_config.teacher_weights, len(teachers)))

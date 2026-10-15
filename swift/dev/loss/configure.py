@@ -149,7 +149,7 @@ def configure_seq_cls_loss(model: TrainableModel, *, problem_type: str, num_labe
     model.set_loss(loss_cls(problem_type=problem_type, num_labels=num_labels, **kwargs))
 
 
-_RLHF_LOSS_NAME = {
+_RL_LOSS_NAME = {
     'grpo': 'grpo',
     'dpo': 'dpo',
     'cpo': 'cpo',
@@ -166,7 +166,7 @@ _RLHF_LOSS_NAME = {
 }
 
 ## 这里还有一个rlhf字符没清理干净，应该改为rl
-def configure_rlhf_loss(model: TrainableModel, rl_config: 'RLConfig') -> None:
+def configure_rl_loss(model: TrainableModel, rl_config: 'RLConfig') -> None:
     """Set the RLHF/RL loss on ``model`` from ``rl_config.rl_type`` and its hyperparameters.
 
     Peer of :func:`configure_loss`, for the RLHF recipes (run_grpo / run_dpo / run_gkd / run_ppo). The
@@ -175,8 +175,8 @@ def configure_rlhf_loss(model: TrainableModel, rl_config: 'RLConfig') -> None:
     hand-picks a loss class or its argument names.
 
     The GRPO advanced controls (sequence-level IS, dual-clip, entropy filter/logging, overlong filtering,
-    truncated-IS rollout correction, off-policy sequence masking, FIPO future-KL weighting, SDAR
-    distillation and CHORD's auxiliary SFT) are constructor parameters of twinkle's ``GRPOLoss`` -- mapped
+    truncated-IS rollout correction, off-policy sequence masking, FIPO future-KL weighting and SDAR
+    distillation) are constructor parameters of twinkle's ``GRPOLoss`` -- mapped
     in :func:`_online_loss_kwargs`. twinkle therefore owns both the numerics AND the mutual-exclusion guard
     that refuses to pair those controls with a variant whose objective lives in an overridden
     ``_reduce_loss`` (REAL / DRO / DPPO / GeoMean / ClipCov / KLCov), raising with the offending control
@@ -193,10 +193,10 @@ def configure_rlhf_loss(model: TrainableModel, rl_config: 'RLConfig') -> None:
     from swift.dev.utils.naming import resolve_loss
 
     rl_type = rl_config.rl_type
-    if rl_type not in _RLHF_LOSS_NAME:
-        raise ValueError(f'Unknown rl_type={rl_type!r}; expected one of {sorted(_RLHF_LOSS_NAME)}.')
+    if rl_type not in _RL_LOSS_NAME:
+        raise ValueError(f'Unknown rl_type={rl_type!r}; expected one of {sorted(_RL_LOSS_NAME)}.')
 
-    loss_name = _RLHF_LOSS_NAME[rl_type]
+    loss_name = _RL_LOSS_NAME[rl_type]
     grpo_loss_type = 'grpo'
     if rl_type == 'grpo' and rl_config.loss_type:
         grpo_loss_type = rl_config.loss_type[0]
@@ -205,14 +205,25 @@ def configure_rlhf_loss(model: TrainableModel, rl_config: 'RLConfig') -> None:
         # while ``grpo_loss_type`` still carries the real variant into the kwargs mapping.
         loss_name = {'dapo': 'bnpo', 'fipo': 'grpo'}.get(grpo_loss_type, grpo_loss_type)
     loss_cls = resolve_loss(loss_name)
-    model.set_loss(loss_cls(**_rlhf_loss_kwargs(rl_type, rl_config, grpo_loss_type)))
+    loss = loss_cls(**_rl_loss_kwargs(rl_type, rl_config, grpo_loss_type))
+    if rl_type == 'grpo' and rl_config.chord_sft_dataset:
+        from twinkle.loss import CrossEntropyLoss
+        model.set_loss(loss, loss_key='grpo')
+        model.set_loss(
+            CrossEntropyLoss(
+                reduction='sum',
+                probability_weight=('p_one_minus_p' if rl_config.chord_enable_phi_function else None),
+            ),
+            loss_key='sft')
+    else:
+        model.set_loss(loss)
 
 
 def configure_ppo_value_loss(value_model: TrainableModel, rl_config: 'RLConfig') -> None:
     """Set PPO's clipped value-regression loss on the critic (a seq_cls num_labels=1 value model).
 
-    Separate from :func:`configure_rlhf_loss` because PPO trains two models with two objectives: the
-    policy (clipped surrogate, set by configure_rlhf_loss) and the critic (this value loss). Forwards
+    Separate from :func:`configure_rl_loss` because PPO trains two models with two objectives: the
+    policy (clipped surrogate, set by configure_rl_loss) and the critic (this value loss). Forwards
     ``cliprange_value`` and ``vf_coef``; the loop supplies ``returns``/``old_values`` per step.
     """
     from swift.dev.utils.naming import resolve_loss
@@ -221,10 +232,10 @@ def configure_ppo_value_loss(value_model: TrainableModel, rl_config: 'RLConfig')
     value_model.set_loss(loss_cls(cliprange_value=rl_config.cliprange_value, vf_coef=rl_config.vf_coef))
 
 
-def configure_rlhf_metrics(model: TrainableModel, rl_config: 'RLConfig') -> None:
+def configure_rl_metrics(model: TrainableModel, rl_config: 'RLConfig') -> None:
     """Register the algorithm-specific twinkle.metric component on ``model`` for this rl_type.
 
-    Peer of :func:`configure_rlhf_loss`, for the metric side. Every recipe's per-step loss already flows
+    Peer of :func:`configure_rl_loss`, for the metric side. Every recipe's per-step loss already flows
     through twinkle's default ``LossMetric`` (loss / grad_norm / loss_<channel>), which the loop's unified
     record merge surfaces; this adds ONLY the algorithm-specific component the loss cannot express -- the
     GRPO family's ratio/clip/entropy stats, the DPO family's rewards/margins/accuracies, PPO's policy
@@ -250,17 +261,19 @@ def configure_rlhf_metrics(model: TrainableModel, rl_config: 'RLConfig') -> None
 
     rl_type = rl_config.rl_type
     if rl_type == 'grpo':
-        # Mirror configure_rlhf_loss's variant resolution: the metric's clip statistic must match the
+        # Mirror configure_rl_loss's variant resolution: the metric's clip statistic must match the
         # loss's (GSPO clips a per-sequence geometric-mean ratio; CISPO clips unconditionally).
         grpo_loss_type = rl_config.loss_type[0] if rl_config.loss_type else 'grpo'
         metric_cls = {'gspo': GSPOMetric, 'cispo': CISPOMetric}.get(grpo_loss_type, GRPOMetric)
         kwargs: Dict[str, Any] = {'epsilon': rl_config.epsilon, 'temperature': rl_config.distill_temperature}
         if rl_config.epsilon_high is not None:
             kwargs['epsilon_high'] = rl_config.epsilon_high
+        if rl_config.chord_sft_dataset:
+            kwargs['loss_key'] = 'grpo'
         model.add_metric(metric_cls, is_training=True, **kwargs)
     elif rl_type == 'ppo':
         # PPO's policy loss is the shared clipped surrogate with clip range ``cliprange`` (see
-        # configure_rlhf_loss); PPOMetric reports the same token-level ratio/clip stats.
+        # configure_rl_loss); PPOMetric reports the same token-level ratio/clip stats.
         model.add_metric(
             PPOMetric, is_training=True, epsilon=rl_config.cliprange, temperature=rl_config.distill_temperature)
     elif rl_type in ('dpo', 'cpo', 'orpo', 'simpo'):
@@ -276,7 +289,7 @@ def configure_ppo_value_metric(value_model: TrainableModel, rl_config: 'RLConfig
 
     Surfaces value_mean / return_mean / value_clip_ratio / explained_variance from the same
     ``returns``/``old_values`` the value loss reads. MUST be called after the critic's
-    ``configure_optimizer`` (see :func:`configure_rlhf_metrics`).
+    ``configure_optimizer`` (see :func:`configure_rl_metrics`).
     """
     from twinkle.metric import PPOValueMetric
 
@@ -286,7 +299,7 @@ def configure_ppo_value_metric(value_model: TrainableModel, rl_config: 'RLConfig
 def configure_embedding_metric(model: TrainableModel) -> None:
     """Register twinkle's ``EmbeddingMetric`` on an embedding (InfoNCE/contrastive) model.
 
-    The embedding counterpart of :func:`configure_rlhf_metrics`: the contrastive loss alone is an opaque
+    The embedding counterpart of :func:`configure_rl_metrics`: the contrastive loss alone is an opaque
     scalar, so this surfaces the geometry that actually shows an embedding model converging -- ``pos_sim``
     (anchor-positive cosine, should RISE) and ``neg_sim`` (anchor vs in-batch negatives, should stay flat or
     FALL), the head signal twinkle's own embedding cookbook reads. twinkle auto-registers ``LossMetric`` +
@@ -295,7 +308,7 @@ def configure_embedding_metric(model: TrainableModel) -> None:
 
     MUST be called AFTER ``configure_optimizer`` (twinkle's ``add_metric`` appends onto the active optimizer
     group's metric list, which does not exist until the group is built) -- the same contract as
-    :func:`configure_rlhf_metrics`, which is why the recipe threads it through ``TrainAssembly.fit``'s
+    :func:`configure_rl_metrics`, which is why the recipe threads it through ``TrainAssembly.fit``'s
     ``configure_metric`` hook rather than the (pre-optimizer) ``configure_loss`` callable.
 
     Passed as a CLASS object, never a name string (a str reaching twinkle's ``construct_class`` is routed to
@@ -309,7 +322,7 @@ def configure_embedding_metric(model: TrainableModel) -> None:
     model.add_metric(EmbeddingMetric, is_training=True)
 
 
-def _rlhf_loss_kwargs(rl_type: str, rl_config: 'RLConfig', grpo_loss_type: str = 'grpo') -> Dict[str, Any]:
+def _rl_loss_kwargs(rl_type: str, rl_config: 'RLConfig', grpo_loss_type: str = 'grpo') -> Dict[str, Any]:
     """The constructor kwargs for one rl_type's loss, forwarding only the fields it reads.
 
     Split into an online (policy-gradient / distillation) and a preference/pairwise half so each stays
@@ -413,12 +426,10 @@ def _online_loss_kwargs(rl_type: str, rl_config: 'RLConfig', grpo_loss_type: str
     kwargs['fipo_clip_range'] = rl_config.fipo_clip_range
     kwargs['fipo_clip_high_only'] = rl_config.fipo_clip_high_only
     kwargs['fipo_safety_threshold'] = rl_config.fipo_safety_threshold
-    # SDAR (confidence-gated teacher distillation) and CHORD (auxiliary SFT rows appended to the batch)
-    # slice the batch and read logits/logps around the policy loss. ``enable_chord`` is derived from the
-    # CHORD dataset being configured; the recipe appends the rows and passes chord_count/mu/phi per step.
+    # SDAR slices the rollout batch and reads logits/logps around the policy loss. CHORD uses a separate
+    # keyed cross-entropy loss and therefore does not alter GRPOLoss construction.
     kwargs['sdar_loss_coef'] = rl_config.sdar_loss_coef
     kwargs['sdar_gate_beta'] = rl_config.sdar_gate_beta
-    kwargs['enable_chord'] = bool(rl_config.chord_sft_dataset)
 
     if rl_config.enable_sampling_replay:
         # The base GRPOLoss validates beta==0 / entropy_coef==0 and switches its __call__ to require the

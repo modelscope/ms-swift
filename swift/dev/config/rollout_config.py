@@ -93,12 +93,12 @@ class RolloutConfig:
     #:   step). An online loop (GRPO/PPO/GKD/OPSD/MOPD) with no sync-only feature still rides the SAME
     #:   per-sample streaming driver, at ``max_staleness=0`` -- admit one window, DRAIN it, train it, publish,
     #:   repeat, with NO overlap -- and a colocated sampler is allowed there (serialized by the drain barrier
-    #:   + device hand-over). Only a sync-only feature, which needs the WHOLE fixed batch up front (GRPO
-    #:   ``dynamic_sample`` / ``advantage_estimator='remax'``, or a distillation off-policy round
-    #:   ``lmbda != 1.0``), falls back to the base loop's synchronous ``_run_sync``.
+    #:   + device hand-over). Only the distillation family's off-policy round
+    #:   (``lmbda != 1.0``), which generates nothing to admit per-sample, runs the synchronous round loop
+    #:   instead; GRPO serves ``dynamic_sample`` / ``remax`` through the stream's group-completion hook.
     #: - ``'one_step_off'``: overlap generation with training by ONE step of look-ahead. Every online loop
     #:   (GRPO/PPO and the distillation family GKD/OPSD/MOPD) runs the SAME per-sample streaming driver
-    #:   (:class:`swift.dev.recipe._streaming_loop.StreamingLoopMixin`) with ``max_staleness`` pinned to 1
+    #:   (:func:`swift.dev.recipe._streaming.build_streaming_driver`) with ``max_staleness`` pinned to 1
     #:   (a single admission window of look-ahead: train version ``v`` while admitting ``v+1``), so the
     #:   trained batch is one step stale (``staleness <= 1``). Distillation only overlaps the purely
     #:   on-policy regime (``lmbda==1.0``); an off-policy dataset round generates nothing to admit ahead and
@@ -110,20 +110,18 @@ class RolloutConfig:
     #:   in-flight trajectories absorbs the version skew -- so ``staleness`` may exceed 1, bounded by
     #:   ``max_staleness`` (verl's fully-async regime). Staleness > 1 is a property of the DEPLOYMENT
     #:   (resource isolation + sparse publish + a queue buffer), not of keeping several weight copies: the
-    #:   sampler is never asked to sit idle, so queued samples age several versions. The GRPO and PPO loops
-    #:   implement both overlapping regimes
-    #:   (:class:`swift.dev.recipe.grpo_async.StreamingGRPOLoop` /
-    #:   :class:`swift.dev.recipe.ppo_async.StreamingPPOLoop`, both composed from
-    #:   :class:`swift.dev.recipe._streaming_loop.StreamingLoopMixin`), reusing twinkle's
-    #:   ``RLContextManager`` for the staleness gate and version tracking.
+    #:   sampler is never asked to sit idle, so queued samples age several versions. Both overlapping regimes
+    #:   are the SAME injected driver (composed into each flat run body as a collaborator, never a
+    #:   subclass), reusing twinkle's ``RLContextManager`` for the
+    #:   staleness gate and version tracking.
     #:
     #: Any staleness > 0 is off-policy: GRPO trains on raw sampled tokens, so it MUST be paired with
     #: ``rollout_importance_sampling_mode``; PPO's clipped surrogate (like the distillation family's teacher
     #: target) already bounds the update, so it needs no extra correction. The two OVERLAPPING modes
     #: (``'one_step_off'``/``'fully_async'``) both require ``sampler_mode='disaggregated'`` (colocate time-shares
-    #: one DeviceGroup and cannot overlap) and are incompatible with ``dynamic_sample`` / ``remax`` (a
-    #: sync-only feature needs the whole batch up front; under ``'none'`` it falls back to ``_run_sync``
-    #: instead). Multi-turn is NOT refused: GRPO wires it before the dispatch and its streaming loop admits
+    #: one DeviceGroup and cannot overlap) and are incompatible with ``dynamic_sample`` / ``remax`` (their
+    #:   group-completion hook runs at staleness 0; an overlapping pre-submit cannot serve it, so the
+    #:   pairing is refused up front). Multi-turn is NOT refused: GRPO wires it before the dispatch and its streaming driver admits
     #: each episode per-sample. ``validate._check_async_mode`` enforces all of this.
     async_mode: Literal['none', 'one_step_off', 'fully_async'] = 'none'
     #: LEGACY alias of ``async_mode='one_step_off'``, kept so existing ``--async_generate`` scripts run
@@ -146,13 +144,13 @@ class RolloutConfig:
     #: must abort and resume on the fresh weights to stay correctable); inert under ``'adapter_snapshot'``
     #: (each version is pinned by its own path, nothing is overwritten) and at staleness 0 (``'none'``: the
     #: drain empties the in-flight set before every publish, so a publish never meets a generation to
-    #: resume). It IS live under EVERY overlapping streaming loop -- GRPO/PPO ``'one_step_off'``/
-    #: ``'fully_async'`` AND the distillation family's ``'one_step_off'`` (GKD/OPSD/MOPD route to
-    #: ``StreamingGKDLoop`` et al.) -- because the driver admits a lookahead window, so a publish meets an
-    #: in-flight generation.
+    #:   resume). It IS live under EVERY overlapping streaming regime -- GRPO/PPO ``'one_step_off'``/
+    #:   ``'fully_async'`` AND the distillation family's ``'one_step_off'`` (GKD/OPSD/MOPD all ride the same
+    #:   streaming driver) -- because the driver admits a lookahead window, so a publish meets an
+    #:   in-flight generation.
     #: ``validate._check_streaming_publication`` enforces the in_place pairing and
-    #: ``_reject_inert_streaming_knobs`` refuses an explicit True where it is inert (a staleness-0 or
-    #: ``_run_sync`` path).
+    #: ``_reject_inert_streaming_knobs`` refuses an explicit True where it is inert (a staleness-0 run or
+    #: the synchronous round loop).
     allow_partial_rollout: bool = False
     #: How a just-trained policy is published to the sampler.
     #:

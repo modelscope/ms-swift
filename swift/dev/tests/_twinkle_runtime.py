@@ -20,7 +20,7 @@ globals (``_mode``/``_device_group``/``_device_mesh``) leak between the local an
 ``RayHelper.teardown`` drops the placement group + registry actor and clears the class-level
 ``resource_manager`` (so the next ``initialize`` rebuilds it instead of pointing at dead actors);
 ``ray.shutdown`` then kills the worker actors and frees their GPUs. Safe to call after ``run_sft``
-returns: ``SFTLoop.fit`` materializes the history into plain dicts (``float(metrics['loss'])`` per
+returns: ``run_offline`` materializes the history into plain dicts (``float(metrics['loss'])`` per
 step) before returning, so no live Ray future is dropped here. Every step is best-effort and guarded
 -- a run that never touched Ray leaves ``ray_inited()`` False and this is a cheap no-op.
 """

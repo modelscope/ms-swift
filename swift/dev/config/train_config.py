@@ -319,7 +319,7 @@ class TrainConfig:
 
     # === Callbacks ===
     #: Registered callback names (see ``swift.dev.callbacks``), fired at transformers-Trainer-equivalent
-    #: points by ``SFTLoop``. Custom callbacks are loaded through ``--external_plugins`` and selected
+    #: points by the training loop. Custom callbacks are loaded through ``--external_plugins`` and selected
     #: here by name; the built-in early-stop / perf-log / graceful-exit callbacks are appended from
     #: their own config knobs rather than named in this list.
     callbacks: List[str] = field(default_factory=list)
