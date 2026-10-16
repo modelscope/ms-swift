@@ -674,7 +674,7 @@ class TestDataSharding(DeviceMeshSamplerCase):
 
 class TestDataLoaderResumeContract:
     """The resume contract dev's offline training loop drives twinkle's DataLoader through (see
-    ``swift.dev.recipe.checkpoint.CheckpointSaver`` save/resume): ``get_state()`` reports
+    ``swift.dev.recipe.common.checkpoint.CheckpointSaver`` save/resume): ``get_state()`` reports
     consumed_train_samples + resume_epoch, and ``skip_consumed_samples()`` makes the NEXT pass
     continue from exactly there.
 

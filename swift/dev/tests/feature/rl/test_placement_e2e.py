@@ -102,19 +102,19 @@ def test_disaggregated_grpo_nccl_sync_disjoint_gpus(tiny_qwen2_5, rl_data, tmp_p
     # transport itself is evidenced at runtime by the driver logs: a 2-rank ``ncclCommInitRankConfig`` and
     # ``Rank 0 send weights done`` / ``receive_weights done: rank=1`` per window, absent for a colocate run
     # which logs ``IPC checkpoint engine`` instead.)
-    from swift.dev.recipe.run_grpo import _MODEL_GROUP, _sampler_backend, _sampler_world_size
-    from swift.dev.recipe.run_grpo import plan_rl_device_groups
+    from swift.dev.recipe.rl.auxiliary import MODEL_GROUP, plan_rl_device_groups
+    from swift.dev.recipe.rl.sampler import RolloutSamplerSpec
 
     rollout_config = configs['rollout_config']
     assert rollout_config.sampler_mode == 'disaggregated', (
         f'the resolved run downgraded sampler_mode to {rollout_config.sampler_mode!r}: this test must exercise the '
         f'disaggregated placement (sampler on its OWN GPUs, policy pushed by NCCL), not a colocate hand-over')
-    sampler_ws = _sampler_world_size(rollout_config, _sampler_backend(rollout_config))
+    sampler_ws = RolloutSamplerSpec.world_size(rollout_config, RolloutSamplerSpec.backend(rollout_config))
     groups, sampler_group, colocate = plan_rl_device_groups(
         configs['distributed_config'].nproc_per_node, rollout_config.sampler_mode, sampler_ws)
     assert not colocate, 'plan_rl_device_groups resolved colocate=True for a disaggregated run'
     ranks = dict(groups)
-    model_ranks, sampler_ranks = set(ranks[_MODEL_GROUP]), set(ranks[sampler_group])
+    model_ranks, sampler_ranks = set(ranks[MODEL_GROUP]), set(ranks[sampler_group])
     assert model_ranks.isdisjoint(sampler_ranks), (
         f'trainer {sorted(model_ranks)} and sampler {sorted(sampler_ranks)} device groups OVERLAP: an NCCL '
         f'broadcast between two actors on the SAME card conflicts, so a disjoint layout is required')

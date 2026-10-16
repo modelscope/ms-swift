@@ -15,7 +15,7 @@ The CLI surface that drives this recipe (``--to_mcore`` / ``--to_hf`` -> ``run_c
 import pytest
 
 from swift.dev.config import CheckpointConfig, ConvertConfig, ModelConfig
-from swift.dev.recipe.convert import run_convert
+from swift.dev.recipe.export.convert import run_convert
 
 
 def _model(model='m'):

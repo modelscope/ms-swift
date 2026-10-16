@@ -277,7 +277,7 @@ class RLConfig:
     #: teachers' OWN layout, apart from the run's ``--parallel_spec`` (the policy's).
     teacher_parallel_spec: Optional[str] = None
     #: How MOPD's K frozen teachers are PLACED across DeviceGroups. ``pack`` (default) builds all K into the
-    #: single shared ``_TEACHER_GROUP`` and scores them serially -- card-frugal, the stage-one behavior.
+    #: single shared ``TEACHER_GROUP`` and scores them serially -- card-frugal, the stage-one behavior.
     #: ``spread`` gives each teacher its OWN ``teacher_<i>`` group so the K ``forward_only`` calls run
     #: concurrently (disjoint Ray actors) at the cost of K x the GPUs. Different roles (policy / sampler /
     #: teacher / reference / reward) ALWAYS occupy disjoint groups regardless of this flag; it only governs

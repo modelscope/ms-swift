@@ -14,7 +14,7 @@ import os
 import pytest
 
 from swift.dev.config import DatasetConfig, GenerationConfig, InferConfig, ModelConfig, RLConfig, TemplateConfig
-from swift.dev.recipe.run_infer import run_infer
+from swift.dev.recipe.infer.run_infer import run_infer
 from swift.dev.tests.infer.conftest import write_cache_file
 
 P1 = [{'role': 'user', 'content': 'What is 2+2?'}]

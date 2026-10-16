@@ -378,7 +378,7 @@ def _generative_guard_call(infer_config, **kwargs):
     """Drive ``run_infer`` far enough to hit the _run_generative guards. They raise before load_prompt_only_rows
     / sampler build, so no dataset, cache, model or GPU is needed."""
     from swift.dev.config import DatasetConfig, GenerationConfig, ModelConfig, TemplateConfig
-    from swift.dev.recipe.run_infer import run_infer
+    from swift.dev.recipe.infer.run_infer import run_infer
     return run_infer(
         ModelConfig(task_type='causal_lm'), TemplateConfig(), DatasetConfig(), infer_config,
         GenerationConfig(), backend='no', **kwargs)

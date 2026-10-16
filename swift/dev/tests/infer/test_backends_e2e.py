@@ -45,7 +45,7 @@ def _run_generative(model_dir, data_path, infer_config, *, backend='transformers
     """Drive ``run_infer``'s generative path on a real backend and return the rows."""
     from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, RLConfig,
                                   TemplateConfig)
-    from swift.dev.recipe.run_infer import run_infer
+    from swift.dev.recipe.infer.run_infer import run_infer
 
     gen = GenerationConfig(max_new_tokens=8, temperature=0.8, **(gen_kwargs or {}))
     return run_infer(

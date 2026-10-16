@@ -126,7 +126,7 @@ def grpo_run(template, tmp_path_factory):
     import swift.dev.builders as builders
     from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, PluginConfig,
                                   RLConfig, RolloutConfig, TemplateConfig)
-    from swift.dev.recipe.run_infer import run_infer
+    from swift.dev.recipe.infer.run_infer import run_infer
 
     work = tmp_path_factory.mktemp('grpo')
     out_path = str(work / 'rollout.jsonl')
@@ -298,7 +298,7 @@ def test_infer_cli_multiturn_sandbox_executes_a_real_command(template, monkeypat
 
     import swift.dev.builders as builders
     from swift.dev.config import GenerationConfig, ModelConfig, RLConfig, RolloutConfig, TemplateConfig
-    from swift.dev.recipe.infer_tui import infer_cli
+    from swift.dev.recipe.infer.infer_tui import infer_cli
 
     proof = tmp_path / 'proof.txt'
     call = _hermes_call('run_command', 'command', f'echo executed > {proof}')

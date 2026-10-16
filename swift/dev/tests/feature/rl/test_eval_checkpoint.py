@@ -51,7 +51,7 @@ def _captured_evaluator():
     patched attribute is picked up) rather than stubbing ``evaluate`` -- the same technique
     ``test_eval_sampler._captured_evaluator`` uses for the offline sft path.
     """
-    import swift.dev.recipe.evaluator as evaluator_mod
+    import swift.dev.recipe.common.evaluator as evaluator_mod
     captured = {}
     original = evaluator_mod.Evaluator
 
@@ -76,7 +76,7 @@ def test_offline_preference_honours_periodic_eval(tiny_qwen2_5, rl_data, tmp_pat
     ``split_dataset_ratio>0`` carves off a val split, so ``_derive_eval_schedule`` inherits
     ``eval_strategy='steps'`` / ``eval_steps=save_steps`` and ``build_dataset`` returns a non-None
     ``eval_dataloader``. ``run_dpo`` now drives the flat offline layer, whose
-    :class:`~swift.dev.recipe.evaluator.Evaluator` runs the whole offline cadence INCLUDING periodic eval: its
+    :class:`~swift.dev.recipe.common.evaluator.Evaluator` runs the whole offline cadence INCLUDING periodic eval: its
     ``evaluate`` runs ``_evaluate_loss`` over the eval dataloader, encoding each eval batch through the SAME
     ``PreferenceBatchEncoder.__call__`` seam training uses (interleave chosen/rejected + one reference
     forward), so the DPO loss is computable on the eval split too. The old W24 ``raise NotImplementedError``
@@ -215,7 +215,7 @@ def test_ppo_resume_rejects_policy_value_step_mismatch():
     Reverse-verify: delete the run_ppo.py:765-766 mismatch check and the (5,3) pair resumes silently ->
     ``pytest.raises`` goes red; restore -> refused again.
     """
-    from swift.dev.recipe.run_ppo import PPOLoop
+    from swift.dev.recipe.ppo.run_ppo import PPOLoop
 
     mismatched = PPOLoop.__new__(PPOLoop)  # __init__ not run: resume only reads/sets global_step
     with pytest.raises(ValueError, match='different completed-step counts'):

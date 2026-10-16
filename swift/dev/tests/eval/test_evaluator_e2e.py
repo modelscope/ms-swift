@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Fast tier, end-to-end: the REAL ``run_eval`` chain on CPU, no GPU and no download.
 
-These drive ``swift.dev.recipe.run_eval`` for real -- the twinkle ``Evaluator``, EvalScope's Native
+These drive ``swift.dev.recipe.infer.run_eval`` for real -- the twinkle ``Evaluator``, EvalScope's Native
 ``run_task``, ``SamplerModelAPI`` and ``Summarizer`` all execute -- over a hermetic local ``general_qa``
 benchmark, replacing only the three model-construction calls (``build_sampler`` / ``load_model_processor`` /
 ``build_template``) with a scripted sampler. That is the seam the retired stub test faked away: here a break

@@ -2,7 +2,7 @@
 """评测方式 (维度 6) x sampler (维度 7) x 启动方式 (维度 8) -- the in-training eval paths.
 
 ``run_sft`` scores a run two ways, chosen by ``TrainConfig.predict_with_generate`` and dispatched in
-``Evaluator.evaluate`` (``swift/dev/recipe/evaluator.py``):
+``Evaluator.evaluate`` (``swift/dev/recipe/common/evaluator.py``):
 
   - **validation-loss** (``predict_with_generate=False``, the default): ``_evaluate_loss`` runs
     ``forward_only`` over the ``eval_dataloader`` that ``split_dataset_ratio`` / ``val_dataset`` carved
@@ -116,7 +116,7 @@ def _captured_evaluator():
     uses to read the model's mesh off a discarded assembly) rather than stubbing ``evaluate``. run_offline
     imports Evaluator from its module at call time, so patching the module attribute is picked up.
     """
-    import swift.dev.recipe.evaluator as evaluator_mod
+    import swift.dev.recipe.common.evaluator as evaluator_mod
     captured = {}
     original = evaluator_mod.Evaluator
 

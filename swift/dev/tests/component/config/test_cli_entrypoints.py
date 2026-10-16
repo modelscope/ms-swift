@@ -134,18 +134,18 @@ def test_sft_dispatches_every_supported_task(monkeypatch, task_type, recipe_name
 
 
 @pytest.mark.parametrize('rl_type,recipe_module,recipe_name', [
-    ('dpo', 'run_dpo', 'run_dpo'),
-    ('kto', 'run_dpo', 'run_dpo'),
-    ('cpo', 'run_dpo', 'run_dpo'),
-    ('orpo', 'run_dpo', 'run_dpo'),
-    ('simpo', 'run_dpo', 'run_dpo'),
-    ('rm', 'run_dpo', 'run_dpo'),
-    ('grpo', 'run_grpo', 'run_grpo'),
-    ('ppo', 'run_ppo', 'run_ppo'),
-    ('gkd', 'run_gkd', 'run_gkd'),
+    ('dpo', 'preference.run_dpo', 'run_dpo'),
+    ('kto', 'preference.run_dpo', 'run_dpo'),
+    ('cpo', 'preference.run_dpo', 'run_dpo'),
+    ('orpo', 'preference.run_dpo', 'run_dpo'),
+    ('simpo', 'preference.run_dpo', 'run_dpo'),
+    ('rm', 'preference.run_dpo', 'run_dpo'),
+    ('grpo', 'grpo.run_grpo', 'run_grpo'),
+    ('ppo', 'ppo.run_ppo', 'run_ppo'),
+    ('gkd', 'distill.run_gkd', 'run_gkd'),
 ])
 def test_rlhf_dispatches_every_supported_algorithm(monkeypatch, rl_type, recipe_module, recipe_name):
-    from swift.dev.recipe.run_rl import run_rl
+    from swift.dev.recipe.rl.run_rl import run_rl
 
     expected = object()
     recipe = importlib.import_module(f'swift.dev.recipe.{recipe_module}')
@@ -188,7 +188,7 @@ def test_pt_entrypoint_enforces_pretraining_contract(monkeypatch, backend, expec
 def test_infer_writer_appends_existing_results(tmp_path):
     import json
 
-    from swift.dev.recipe.run_infer import _IncrementalWriter
+    from swift.dev.recipe.infer.run_infer import _IncrementalWriter
 
     path = tmp_path / 'results.jsonl'
     path.write_text('{"response": "old"}\n', encoding='utf-8')

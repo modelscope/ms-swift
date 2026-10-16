@@ -17,7 +17,7 @@ import pytest
 # ----------------------------------------------------------------------
 def test_plan_device_groups_colocate_shares_one_group():
     """colocate: trainer + sampler share ONE 'model' group over the trainer's GPUs; colocate=True."""
-    from swift.dev.recipe.run_grpo import plan_rl_device_groups
+    from swift.dev.recipe.rl.auxiliary import plan_rl_device_groups
 
     groups, sampler_group, colocate = plan_rl_device_groups(4, 'colocate', 2)
     assert groups == [('model', [0, 1, 2, 3])]
@@ -27,7 +27,7 @@ def test_plan_device_groups_colocate_shares_one_group():
 
 def test_plan_device_groups_heterogeneous_disjoint_ranks():
     """server/None: a 'model' group then a DISJOINT 'sampler' group after it; colocate=False."""
-    from swift.dev.recipe.run_grpo import plan_rl_device_groups
+    from swift.dev.recipe.rl.auxiliary import plan_rl_device_groups
 
     groups, sampler_group, colocate = plan_rl_device_groups(4, 'server', 2)
     assert groups == [('model', [0, 1, 2, 3]), ('sampler', [4, 5])]
@@ -40,7 +40,7 @@ def test_plan_device_groups_heterogeneous_disjoint_ranks():
 
 def test_plan_device_groups_validation():
     """Colocate that cannot fit the sampler, and non-positive counts, are rejected."""
-    from swift.dev.recipe.run_grpo import plan_rl_device_groups
+    from swift.dev.recipe.rl.auxiliary import plan_rl_device_groups
 
     with pytest.raises(ValueError):
         plan_rl_device_groups(2, 'colocate', 4)  # sampler bigger than the shared trainer GPUs
@@ -64,7 +64,7 @@ class _StubTemplate:
 
 
 def _preference_encoder(rl_type, encoded):
-    from swift.dev.recipe._preference import PreferenceBatchEncoder
+    from swift.dev.recipe.preference.encoder import PreferenceBatchEncoder
 
     return PreferenceBatchEncoder(model=None, template=_StubTemplate(encoded), rl_type=rl_type)
 
@@ -115,7 +115,7 @@ def test_preference_missing_side_is_fatal():
 
 def test_configure_frozen_adapter_binds_non_trainable_group():
     """Auxiliary adapters are loaded frozen and receive their own processor/template group."""
-    from swift.dev.recipe.assembly import configure_frozen_adapter
+    from swift.dev.recipe.common.assembly import configure_frozen_adapter
 
     class Model:
 
@@ -268,7 +268,7 @@ def test_advanced_grpo_loss_is_serializable_and_combines_objectives():
 def test_grpo_tensor_alignment_and_reward_weights_keep_device():
     """Tensor labels never enter Python truth testing, and reward weights follow reward placement."""
     torch = pytest.importorskip('torch')
-    from swift.dev.recipe.grpo import GRPOLoop
+    from swift.dev.recipe.grpo.assembler import GRPOLoop
 
     labels = torch.tensor([-100, 7, 8, -100])
     assert GRPOLoop._response_positions({'labels': labels}) == [1, 2]
@@ -323,7 +323,7 @@ def test_grpo_combines_rule_and_reward_model_columns():
     """Rule rewards precede RM rewards and every scorer sees the completion plus batched dataset columns."""
     from types import SimpleNamespace
 
-    from swift.dev.recipe.grpo import GRPOLoop
+    from swift.dev.recipe.grpo.assembler import GRPOLoop
 
     captured = {}
 

@@ -7,7 +7,7 @@ in-REPL commands. ``input`` is monkeypatched so the command handling is exercise
 """
 import pytest
 
-from swift.dev.recipe.infer_tui import _MAX_HISTORY_MESSAGES, _QUIT, _CliState
+from swift.dev.recipe.infer.infer_tui import _MAX_HISTORY_MESSAGES, _QUIT, _CliState
 
 
 def _feed(monkeypatch, lines):

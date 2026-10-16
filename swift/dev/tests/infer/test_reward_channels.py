@@ -23,7 +23,7 @@ the judge template's marker), so the verdicts -- and thus the emitted scores -- 
 import pytest
 from twinkle.data_format.sampling import SampledSequence, SampleResponse
 
-from swift.dev.recipe.run_infer import (_exclusive_reward_groups, _judge_query, _parse_judge_score,
+from swift.dev.recipe.infer.run_infer import (_exclusive_reward_groups, _judge_query, _parse_judge_score,
                                         _render_conversation, _resolve_reward_model,
                                         plan_sampling_device_groups)
 
@@ -147,7 +147,7 @@ def test_parse_judge_score(text, expected):
 
 def test_exclusive_reward_groups_names_only_gpu_resident_channels():
     """A scalar PRM needs its own DeviceGroup; a generative_reuse ORM, a rule and an API judge do not."""
-    from swift.dev.recipe.run_infer import _RewardModelSpec, _RewardSlot
+    from swift.dev.recipe.infer.run_infer import _RewardModelSpec, _RewardSlot
     scalar_prm = _RewardSlot(spec=_RewardModelSpec('scalar', model_id='prm', task_type='seq_cls'))
     reuse_orm = _RewardSlot(spec=_RewardModelSpec('generative_reuse', model_id=MODEL, task_type='causal_lm'))
     rule_orm = _RewardSlot(rule='accuracy')
@@ -181,7 +181,7 @@ def test_scalar_reward_needs_ray(monkeypatch):
     before any dataset load, sampler build or model download."""
     from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, RLConfig,
                                   TemplateConfig)
-    from swift.dev.recipe.run_infer import run_infer
+    from swift.dev.recipe.infer.run_infer import run_infer
 
     _patch_task_type(monkeypatch, 'seq_cls')
     with pytest.raises(ValueError, match="mode='ray'"):
@@ -264,7 +264,7 @@ def test_generative_judge_scores_candidates_through_run_infer(template, monkeypa
     import swift.dev.builders as builders
     from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, RLConfig,
                                   TemplateConfig)
-    from swift.dev.recipe.run_infer import run_infer
+    from swift.dev.recipe.infer.run_infer import run_infer
 
     _patch_task_type(monkeypatch, 'causal_lm')  # the ORM model is a causal_lm -> a generative judge
     answers = ['good answer', 'bad answer']

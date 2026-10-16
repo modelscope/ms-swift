@@ -8,12 +8,12 @@ legacy ``swift.infer_engine.GRPOVllmEngine``. twinkle's sampler already speaks t
 contract, returns per-token logprobs natively (``sequence.logprobs``), exposes the prompt tokens vLLM
 conditioned on (``response.prompt_token_ids``), and owns multimodal placeholder logic + LoRA routing --
 so no swift engine / decode shim is needed. This makes dev's rollout twinkle-first like
-``run_infer`` / ``run_deploy``; the ``run_grpo`` weight-syncing ``SyncableRollout``
+``run_infer`` / ``run_deploy``; the online-RL weight-syncing ``SyncableRollout``
 subclasses :class:`RolloutEngine`, so the rollout ``generate`` contract lives in exactly one place.
 
 The rollout needs per-token logprobs for old_logps (contract 15), which the weight-syncable engines
 (vLLM and SGLang, both with a ``CheckpointEngineMixin``) provide; the RL recipes pick between them via
-``RolloutConfig.rollout_sampler`` (see :func:`swift.dev.recipe.run_grpo._sampler_backend`). This base
+``RolloutConfig.rollout_sampler`` (see :meth:`swift.dev.recipe.rl.sampler.RolloutSamplerSpec.backend`). This base
 engine's own convenience constructor builds vLLM (its default), and deliberately exposes no
 multi-backend dispatch shell here -- only ``generate(prompts, num_samples)``. The orthogonal rollout
 dimension that DOES vary is placement (colocate / disaggregated), not the sampling contract.
@@ -37,7 +37,7 @@ Weight sync: the base :class:`RolloutEngine` does NOT sync weights (vLLM keeps i
 behaviour policy is stale => NOT algorithmically-correct GRPO — a known intermediate stage). Its
 :meth:`RolloutEngine.sync_weights` / :meth:`RolloutEngine.finish_generate` are therefore warn-once
 no-ops, so an on-policy loop wired to the base engine says out loud that it is training against stale
-weights instead of skipping the sync silently (W14). ``run_grpo``'s ``SyncableRollout`` overrides them
+weights instead of skipping the sync silently (W14). ``rl.sampler``'s ``SyncableRollout`` overrides them
 to actually push the trained policy in.
 """
 
@@ -426,7 +426,7 @@ def _build_sampling_params(num_samples: int, sampling_params: Optional[dict], fo
 class RolloutEngine:
     """Thin wrapper over twinkle's ``vLLMSampler``: prompts in, RolloutSample (training feature +
     old_logps) out. The sampler owns encoding/decoding; this layer only assembles the RL training
-    sample. ``run_grpo``'s weight-syncing ``SyncableRollout`` subclasses this, reusing
+    sample. ``rl.sampler``'s weight-syncing ``SyncableRollout`` subclasses this, reusing
     :meth:`generate` / :meth:`_samples_from_responses` verbatim and overriding :meth:`sync_weights` /
     :meth:`finish_generate` to actually push the trained policy into the sampler."""
 
@@ -441,7 +441,7 @@ class RolloutEngine:
         self._init_streaming_state()
         if sampler is not None:
             # Injected: the caller built and placed the sampler (``run_infer`` across backends,
-            # ``run_grpo``'s SyncableRollout on its own remote_group). This engine borrows it and does NOT
+            # the online-RL SyncableRollout on its own remote_group). This engine borrows it and does NOT
             # own its lifecycle -- close() releases only the multi-turn env pool; shutdown() also stops it.
             self.sampler = sampler
             return
@@ -458,7 +458,7 @@ class RolloutEngine:
         """Initialise the sampler-independent streaming/rollout state every ``RolloutEngine`` carries.
 
         Factored out of :meth:`__init__` so a subclass that BORROWS an already-built sampler and therefore
-        deliberately skips ``RolloutEngine.__init__`` (``run_grpo``'s ``SyncableRollout``) still initialises
+        deliberately skips ``RolloutEngine.__init__`` (``rl.sampler``'s ``SyncableRollout``) still initialises
         these -- ``poll_completions``/``collect_sample``/``cancel_sample``/``close`` read
         ``_episode_futures`` UNCONDITIONALLY (before any ``_multi_turn`` branch), so a subclass that omits it
         crashes with ``AttributeError`` on the first poll even for a plain single-turn stream. Keeping the
@@ -932,13 +932,13 @@ class RolloutEngine:
         sampler's INITIAL weights, i.e. a stale behaviour policy -- a pipeline smoke, NOT
         algorithmically-correct on-policy RL. The loop calls this every step, so warn once rather than
         silently skipping (which is how the base used to behave, and how a half-wired run went unnoticed).
-        :class:`~swift.dev.recipe.run_grpo.SyncableRollout` overrides this to actually sync.
+        :class:`~swift.dev.recipe.rl.sampler.SyncableRollout` overrides this to actually sync.
         """
         if not self._warned_no_sync:
             logger.warning(
                 'This rollout engine does not sync weights: the sampler keeps its INITIAL weights, so the '
                 'behaviour policy stays stale and on-policy training is NOT algorithmically correct (a '
-                'pipeline smoke only). Wire a weight-syncable rollout (run_grpo.SyncableRollout, over a '
+                'pipeline smoke only). Wire a weight-syncable rollout (rl.sampler.SyncableRollout, over a '
                 'vLLM/SGLang sampler + CheckpointEngineManager) for a real GRPO/PPO/RFT/distill run.')
             self._warned_no_sync = True
 
@@ -953,7 +953,7 @@ class RolloutEngine:
                                 require_logprobs: bool = True) -> List[RolloutSample]:
         """Delegate to :func:`samples_from_responses`.
 
-        Kept as a staticmethod on the engine because ``run_grpo``'s ``SyncableRollout`` inherits
+        Kept as a staticmethod on the engine because ``rl.sampler``'s ``SyncableRollout`` inherits
         :meth:`generate` (which calls ``self._samples_from_responses``) and the rollout unit test
         drives ``RolloutEngine._samples_from_responses`` directly.
         """

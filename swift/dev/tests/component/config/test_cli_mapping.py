@@ -21,7 +21,7 @@ from swift.dev.config import (
     bootstrap_run,
     process_configs,
 )
-from swift.dev.recipe.assembly import TrainAssembly, _resolve_step_interval
+from swift.dev.recipe.common.assembly import TrainAssembly, _resolve_step_interval
 
 
 def test_defaults_come_from_configs():

@@ -29,7 +29,7 @@ def _run_pooling(model_dir, data_path, task_type, out_path=None, **model_kwargs)
     """Drive ``run_infer``'s forward-pass path on the transformers backend and return the rows."""
     from swift.dev.config import (DatasetConfig, DistributedConfig, GenerationConfig, InferConfig, ModelConfig,
                                   TemplateConfig)
-    from swift.dev.recipe.run_infer import run_infer
+    from swift.dev.recipe.infer.run_infer import run_infer
 
     return run_infer(
         ModelConfig(

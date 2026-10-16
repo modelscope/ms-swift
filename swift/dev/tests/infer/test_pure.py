@@ -12,7 +12,7 @@ import pytest
 
 
 def test_sigmoid_is_numerically_stable_both_branches():
-    from swift.dev.recipe.run_infer import _sigmoid
+    from swift.dev.recipe.infer.run_infer import _sigmoid
     assert abs(_sigmoid(0.0) - 0.5) < 1e-12
     # large positive / negative must not overflow (the two-branch form exists for exactly this)
     assert abs(_sigmoid(50.0) - 1.0) < 1e-9
@@ -23,7 +23,7 @@ def test_sigmoid_is_numerically_stable_both_branches():
 
 
 def test_normalize_minmax_degenerate_and_nan_immune():
-    from swift.dev.recipe.run_infer import _normalize
+    from swift.dev.recipe.infer.run_infer import _normalize
     # spread group -> [0, ~1]. The denominator carries a +1e-5 epsilon, so the top lands just under
     # 1.0 (2/2.00001); assert to 1e-4, not exactly.
     out = _normalize([1.0, 2.0, 3.0])
@@ -44,14 +44,14 @@ def test_normalize_minmax_degenerate_and_nan_immune():
 
 
 def test_is_too_easy_threshold_and_disable():
-    from swift.dev.recipe.run_infer import _is_too_easy
+    from swift.dev.recipe.infer.run_infer import _is_too_easy
     assert _is_too_easy(3, 4, None) is False  # None disables
     assert _is_too_easy(3, 4, 0.75) is True  # 0.75 >= 0.75
     assert _is_too_easy(2, 4, 0.75) is False
 
 
 def test_plan_batches_keeps_partial_tail_and_respects_max():
-    from swift.dev.recipe.run_infer import _plan_batches
+    from swift.dev.recipe.infer.run_infer import _plan_batches
     # 7 rows, batch 3 -> [(0,3),(3,6),(6,7)] : the trailing partial batch is KEPT (unlike legacy)
     assert _plan_batches(7, 3, None) == [(0, 3), (3, 6), (6, 7)]
     # max_batches truncates
@@ -62,7 +62,7 @@ def test_plan_batches_keeps_partial_tail_and_respects_max():
 
 
 def test_prompt_key_is_stable_and_order_insensitive_to_dict_keys():
-    from swift.dev.recipe.run_infer import _prompt_key
+    from swift.dev.recipe.infer.run_infer import _prompt_key
     a = [{'role': 'user', 'content': 'hi'}]
     b = [{'role': 'user', 'content': 'hi'}]
     assert _prompt_key(a) == _prompt_key(b)
@@ -75,7 +75,7 @@ def test_prompt_key_is_stable_and_order_insensitive_to_dict_keys():
 
 def test_compute_metric_acc_is_exact_string_match():
     """legacy's ``--metric acc`` is exact string equality, NOT token-level accuracy."""
-    from swift.dev.recipe.run_infer import compute_metric
+    from swift.dev.recipe.infer.run_infer import compute_metric
     results = [
         {'response': '4', 'labels': '4'},
         {'response': 'blue', 'labels': 'red'},
@@ -87,13 +87,13 @@ def test_compute_metric_acc_is_exact_string_match():
 
 
 def test_compute_metric_skips_rows_without_reference():
-    from swift.dev.recipe.run_infer import compute_metric
+    from swift.dev.recipe.infer.run_infer import compute_metric
     # no row has both a response and a labels -> empty dict (and a warning), not a zero score
     assert compute_metric([{'response': 'x'}], 'acc') == {}
 
 
 def test_plan_sampling_device_groups_sizes_sampler_plus_each_reward():
-    from swift.dev.recipe.run_infer import plan_sampling_device_groups
+    from swift.dev.recipe.infer.run_infer import plan_sampling_device_groups
     # reward_groups is (name, world_size, gpus_per_worker); each channel carries its OWN width, so the
     # total is sampler_ranks + sum(widths), not a uniform ranks * (1 + R).
     groups, total = plan_sampling_device_groups(2, [('orm', 2, 1), ('prm', 2, 1)])
@@ -110,7 +110,7 @@ def test_plan_sampling_device_groups_sizes_sampler_plus_each_reward():
 
 
 def test_exclusive_reward_groups_only_for_gpu_resident_kinds():
-    from swift.dev.recipe.run_infer import _RewardModelSpec, _RewardSlot, _exclusive_reward_groups
+    from swift.dev.recipe.infer.run_infer import _RewardModelSpec, _RewardSlot, _exclusive_reward_groups
 
     def slot(kind, model_id):
         return _RewardSlot(spec=_RewardModelSpec(kind=kind, model_id=model_id))

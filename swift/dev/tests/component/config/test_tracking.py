@@ -5,7 +5,7 @@ import sys
 from types import ModuleType, SimpleNamespace
 
 from swift.dev.config import LoggingConfig
-from swift.dev.recipe.tracking import RunTracker, _public_config
+from swift.dev.recipe.common.tracking import RunTracker, _public_config
 
 
 class _TensorBoardWriter:

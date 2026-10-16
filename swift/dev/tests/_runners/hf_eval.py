@@ -24,7 +24,7 @@ def _run(data_path, out_dir):
     """run_sft with a val-loss eval on the transformers backend; return this rank's train + eval losses."""
     from modelscope import snapshot_download
 
-    import swift.dev.recipe.evaluator as evaluator_mod
+    import swift.dev.recipe.common.evaluator as evaluator_mod
     from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                   TrainConfig, TunerConfig)
     from swift.dev.recipe import run_sft

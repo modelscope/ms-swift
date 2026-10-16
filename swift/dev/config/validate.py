@@ -305,7 +305,7 @@ def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: O
 
 #: The online recipes that roll out per prompt batch and train on the collected samples, so they can overlap
 #: generation with training on the shared per-sample streaming driver
-#: (:func:`swift.dev.recipe._streaming.build_streaming_driver`). RFT is
+#: (:func:`swift.dev.recipe.rl.streaming.build_streaming_driver`). RFT is
 #: excluded (it bootstraps a fixed sample set with a plain cross-entropy objective and no off-policy
 #: correction, and its body iterates bootstrap rounds rather than prompt batches); the offline preference
 #: family (dpo/kto/cpo/orpo/simpo/rm) never rolls out, so it is excluded too.
@@ -397,7 +397,7 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
 
     - Only the recipes in :data:`_ASYNC_RLHF_TYPES` implement the overlapped dispatch; RFT and the offline
       family would ignore the flag. EVERY overlapping recipe runs the SAME per-sample streaming driver
-      (``recipe._streaming.build_streaming_driver``, composed into each flat run body as a collaborator,
+      (``recipe.rl.streaming.build_streaming_driver``, composed into each flat run body as a collaborator,
       never a subclass), differing only in the staleness knob. GRPO/PPO expose both
       ``'one_step_off'`` (staleness 1) and ``'fully_async'`` (staleness up to ``max_staleness``);
       ``'fully_async'`` narrows to them because the distillation family overlaps only a single step.
@@ -537,7 +537,7 @@ def _check_streaming_publication(rollout_config: 'RolloutConfig', rl_config: 'RL
     staleness 1, ``'fully_async'`` at staleness up to ``max_staleness``. An OVERLAPPING publish always
     happens while the sampler has generations in flight and must not corrupt them; a staleness-0 publish
     happens only after the drain, so nothing is in flight. Four things are checked (the strategy pairing
-    mirrored at construction by ``recipe._streaming.check_streaming_config``, so a
+    mirrored at construction by ``recipe.rl.streaming.check_streaming_config``, so a
     driver built directly is guarded too):
 
     * ``parameter_sync_step`` is the publish cadence -- one weight publication every K recorded steps; it
@@ -853,7 +853,7 @@ def _check_grpo_cached_dataset(dataset_config: 'DatasetConfig', rl_config: Optio
 
     Mirrors legacy rlhf_args.py:342-343. ``cached_dataset`` is the map-style, already-encoded cache written
     by ``swift export --to_cached_dataset`` (input_ids/labels, no ``messages``). GRPO drives generation from
-    each row's raw ``messages`` -- its prompt loader (``run_grpo._prompt_rows_from_dataset`` ->
+    each row's raw ``messages`` -- its prompt loader (``rl.prompts.prompt_rows_from_dataset`` ->
     ``builders.dataset.load_prompt_only_rows``) reads ``DatasetConfig.dataset`` only and never
     ``cached_dataset`` -- so a cached_dataset passed to GRPO is silently ignored. Refuse up front rather
     than leave the knob inert.

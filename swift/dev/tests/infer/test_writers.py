@@ -9,7 +9,7 @@ import os
 
 import json
 
-from swift.dev.recipe.run_infer import (_ArrowWriter, _CandidateCache, _CheckpointPaths, _CheckpointWriter,
+from swift.dev.recipe.infer.run_infer import (_ArrowWriter, _CandidateCache, _CheckpointPaths, _CheckpointWriter,
                                         _IncrementalWriter)
 from swift.dev.tests.infer.conftest import write_cache_file
 

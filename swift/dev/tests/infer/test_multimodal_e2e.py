@@ -78,7 +78,7 @@ def _run_vl(model_dir, data_path, *, num_return_sequences=1, batch_size=1, out_p
     run under.
     """
     from swift.dev.config import DatasetConfig, GenerationConfig, InferConfig, ModelConfig, TemplateConfig
-    from swift.dev.recipe.run_infer import run_infer
+    from swift.dev.recipe.infer.run_infer import run_infer
 
     return run_infer(
         ModelConfig(model=model_dir, model_type=MODEL_TYPE, task_type='causal_lm', torch_dtype='bfloat16'),

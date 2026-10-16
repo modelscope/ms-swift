@@ -306,7 +306,7 @@ class _FakeModel:
 
 
 def _recorder_with(model):
-    from swift.dev.recipe.step_runner import StepRunner
+    from swift.dev.recipe.common.step_runner import StepRunner
     recorder = StepRunner.__new__(StepRunner)
     recorder.model = model
     recorder.global_step = 0

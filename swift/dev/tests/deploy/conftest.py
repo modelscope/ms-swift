@@ -134,7 +134,7 @@ def live_server():
     The yielded object exposes ``base_url`` (``{scheme}://127.0.0.1:{port}{route_prefix}``), ``port``,
     ``deploy_config`` and thin ``get`` / ``post`` / ``stream`` HTTP helpers that inject the Bearer key.
     """
-    from swift.dev.recipe.run_deploy import run_deploy_process
+    from swift.dev.recipe.infer.run_deploy import run_deploy_process
 
     @contextmanager
     def _launch(*, backend: str = 'vllm', engine_args: Optional[Dict[str, Any]] = None,

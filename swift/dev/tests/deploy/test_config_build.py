@@ -11,7 +11,7 @@ import pytest
 
 from swift.dev.builders.sampler import _derive_sampler_type
 from swift.dev.config import DeployConfig, ModelConfig, QuantizeConfig, TemplateConfig
-from swift.dev.recipe.run_deploy import (_deployment, _sampler_engine_args, _url_scheme, _validate,
+from swift.dev.recipe.infer.run_deploy import (_deployment, _sampler_engine_args, _url_scheme, _validate,
                                          build_server_config)
 
 MODEL = 'Qwen/Qwen3.5-4B'
@@ -236,7 +236,7 @@ def test_deployment_autoscaling():
 
 def test_persistence_default_and_explicit():
     from twinkle.server.config import PersistenceConfig
-    from swift.dev.recipe.run_deploy import _persistence
+    from swift.dev.recipe.infer.run_deploy import _persistence
     # no deploy knob set -> twinkle's own in-memory default
     assert _persistence(DeployConfig(), PersistenceConfig).mode == 'memory'
     p = _persistence(DeployConfig(persistence_mode='file', persistence_file_path='/tmp/s.json'), PersistenceConfig)

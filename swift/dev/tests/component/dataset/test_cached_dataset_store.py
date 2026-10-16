@@ -67,7 +67,7 @@ def _export(tmp_path,
             streaming=False):
     """Drive the real ``export_cached_dataset`` recipe over a local dataset file."""
     from swift.dev.config import DatasetConfig, ModelConfig, TemplateConfig
-    from swift.dev.recipe.cached_dataset import export_cached_dataset
+    from swift.dev.recipe.export.cached_dataset import export_cached_dataset
 
     model_config = ModelConfig(model=MODEL, model_type=MODEL_TYPE)
     template_config = TemplateConfig(template=TEMPLATE, max_length=2048)
@@ -224,7 +224,7 @@ def test_no_dataset_raises(tmp_path):
     """``cached_dataset`` is the OUTPUT of this step, not its input: an empty source is refused early,
     before any model is touched."""
     from swift.dev.config import DatasetConfig, ModelConfig, TemplateConfig
-    from swift.dev.recipe.cached_dataset import export_cached_dataset
+    from swift.dev.recipe.export.cached_dataset import export_cached_dataset
 
     with pytest.raises(ValueError, match='needs DatasetConfig.dataset'):
         export_cached_dataset(
@@ -255,7 +255,7 @@ def test_multimodal_store_encoded_raises(tmp_path):
     image placeholders with no ``pixel_values``. The recipe refuses the combo rather than write a row
     that trains broken."""
     from swift.dev.config import DatasetConfig, ModelConfig, TemplateConfig
-    from swift.dev.recipe.cached_dataset import export_cached_dataset
+    from swift.dev.recipe.export.cached_dataset import export_cached_dataset
 
     dataset_file = TinyData.sft(str(tmp_path / 'sft.jsonl'), n=2)
     with pytest.raises(ValueError, match='vision tensors'):

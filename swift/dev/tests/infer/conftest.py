@@ -23,7 +23,7 @@ def make_candidate(text: str, *, multi_turn: bool = False, messages: Optional[Li
                    response_token_ids: Optional[List[int]] = None,
                    rollout_logprobs: Optional[List[float]] = None) -> Any:
     """Build a real ``run_infer._Candidate`` so emit tests exercise the production dataclass."""
-    from swift.dev.recipe.run_infer import _Candidate
+    from swift.dev.recipe.infer.run_infer import _Candidate
     return _Candidate(
         text,
         messages=messages,

@@ -173,7 +173,7 @@ def build_frozen_reward_model(model_id: str,
 
     from swift.dev.builders import build_model, build_template, load_model_processor
     from swift.dev.config import DistributedConfig
-    from swift.dev.recipe.assembly import configure_frozen_adapter
+    from swift.dev.recipe.common.assembly import configure_frozen_adapter
     from swift.model import get_model_info_meta
 
     model_info, _ = get_model_info_meta(model_id, model_type=model_type, revision=revision)
@@ -281,7 +281,7 @@ def score_completions(completions: Sequence[str],
     rather than through a rule path and a separate reward-model path (the two old contracts converge here).
 
     Concurrency follows each scorer's optional ``placement_key`` -- the DeviceGroup its forward runs on.
-    Scorers on DISJOINT placements overlap on threads (:func:`~swift.dev.recipe._scoring.
+    Scorers on DISJOINT placements overlap on threads (:func:`~swift.dev.recipe.common.scoring.
     overlap_by_placement`); scorers that share one placement -- or declare none, like a rule -- form one
     group. Within a group every scorer is called, then any ``async def`` results are resolved with a single
     ``asyncio.gather``, so a batch of async rules still overlaps its I/O exactly as the rule-only path did.
@@ -304,7 +304,7 @@ def score_completions(completions: Sequence[str],
         ValueError: a column's length does not match ``completions``, or a scorer returns a wrong-length
             list.
     """
-    from swift.dev.recipe._scoring import overlap_by_placement
+    from swift.dev.recipe.common.scoring import overlap_by_placement
 
     scorer_list = list(scorers)
     n = len(completions)

@@ -42,7 +42,7 @@ StepSpan = Tuple[int, int]
 class MultiTurnContext:
     """Turn structure of a multi-turn rollout, so a PRM step never spans two assistant turns.
 
-    Built by the GRPO assembler (:meth:`swift.dev.recipe.grpo.GRPOAssembler.score_sample`) from a
+    Built by the GRPO assembler (:meth:`swift.dev.recipe.grpo.assembler.GRPOAssembler.score_sample`) from a
     ``RolloutSample`` whose ``messages`` carries the full conversation and whose ``encoded`` feature
     yields the per-turn token spans (:func:`swift.dev.rollout.multi_turn.turn_token_spans`). ``None``
     is passed instead for a single-turn rollout, which has no turn structure to respect.

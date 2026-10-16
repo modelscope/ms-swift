@@ -9,7 +9,7 @@ easy_query_threshold, n_best_to_keep), nan-candidate exclusion, and multi-turn t
 All pure: synthetic ``_Candidate`` objects, no sampler, no model.
 """
 from swift.dev.config import InferConfig
-from swift.dev.recipe.run_infer import _dpo_row, _emit_all, _emit_dpo
+from swift.dev.recipe.infer.run_infer import _dpo_row, _emit_all, _emit_dpo
 from swift.dev.tests.infer.conftest import make_candidate
 
 # A prompt-only trajectory (what split_prompt_and_reference hands the emit layer) and its dataset row.

@@ -92,7 +92,7 @@ def test_merge_lora_rejects_multiple_adapters():
     guard is asserted through it with placeholder paths (no real adapter, no server).
     """
     from swift.dev.config import DeployConfig, ModelConfig, TemplateConfig
-    from swift.dev.recipe.run_deploy import build_server_config
+    from swift.dev.recipe.infer.run_deploy import build_server_config
 
     model_config = ModelConfig(model=MODEL, model_type=MODEL_TYPE, torch_dtype='bfloat16')
     template_config = TemplateConfig(template=MODEL_TYPE)

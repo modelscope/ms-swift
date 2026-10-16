@@ -12,7 +12,7 @@ import pytest
 
 from swift.dev.config import EvalConfig, ModelConfig, TemplateConfig
 from swift.dev.eval import build_task_config, model_name, validate_eval_datasets
-from swift.dev.recipe.run_eval import _guard_backend, run_eval
+from swift.dev.recipe.infer.run_eval import _guard_backend, run_eval
 
 
 # --------------------------------------------------------------------------- model_name

@@ -9,7 +9,7 @@ reading back the report -- so the adaptation is written once and called from bot
 
 What is deliberately NOT here: the sampler lifecycle and the report/metric shape. ``swift eval`` builds a
 sampler per run and shuts it down; training holds one persistent sampler across evals (see
-``swift.dev.recipe.evaluator.Evaluator``) and folds the summary into its own ``eval_history`` / tracker.
+``swift.dev.recipe.common.evaluator.Evaluator``) and folds the summary into its own ``eval_history`` / tracker.
 Each caller owns those, and calls :func:`run_evaluator` for the EvalScope part in between.
 """
 from __future__ import annotations

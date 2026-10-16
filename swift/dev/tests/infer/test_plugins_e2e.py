@@ -42,7 +42,7 @@ from twinkle.template.tools import HermesQwenParser
 from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, PluginConfig, RLConfig,
                               RolloutConfig, TemplateConfig)
 from swift.dev.utils.plugin import PluginRegistry
-from swift.dev.recipe.run_infer import run_infer
+from swift.dev.recipe.infer.run_infer import run_infer
 from swift.dev.tests.infer.conftest import write_cache_file
 
 MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
@@ -343,7 +343,7 @@ def test_per_channel_parallel_spec_attaches_to_the_model_slot_only(example_plugi
     which attaches the spec to the channel's reward-MODEL slot (so its DeviceGroup width / DeviceMesh derive
     from it) and leaves a rule slot model-less, where the spec is inert. Asserting both directions pins the
     per-channel routing: a rule-only ``--orm`` ignores the spec; a channel that resolves a model carries it."""
-    from swift.dev.recipe.run_infer import _resolve_reward_channel
+    from swift.dev.recipe.infer.run_infer import _resolve_reward_channel
 
     rule_slots = _resolve_reward_channel(
         ['length_bonus'], None, None, 'no', parallel_spec='dp2', channel='orm')

@@ -81,7 +81,7 @@ class RolloutConfig:
     #: Both ``'vllm'`` and ``'sglang'`` are wired: the loop weight-syncs the trained policy into the
     #: sampler every step through a CheckpointEngineManager, which both engines support. ``'transformers'``
     #: is deliberately not an option -- TransformersSampler has no CheckpointEngineMixin, so it cannot be
-    #: weight-synced; ``validate_rollout_config`` and ``run_grpo._sampler_backend`` reject it.
+    #: weight-synced; ``validate_rollout_config`` and ``RolloutSamplerSpec.backend`` reject it.
     rollout_sampler: Literal['vllm', 'sglang'] = 'vllm'
 
     # === Async & Scheduling ===
@@ -98,7 +98,7 @@ class RolloutConfig:
     #:   instead; GRPO serves ``dynamic_sample`` / ``remax`` through the stream's group-completion hook.
     #: - ``'one_step_off'``: overlap generation with training by ONE step of look-ahead. Every online loop
     #:   (GRPO/PPO and the distillation family GKD/OPSD/MOPD) runs the SAME per-sample streaming driver
-    #:   (:func:`swift.dev.recipe._streaming.build_streaming_driver`) with ``max_staleness`` pinned to 1
+    #:   (:func:`swift.dev.recipe.rl.streaming.build_streaming_driver`) with ``max_staleness`` pinned to 1
     #:   (a single admission window of look-ahead: train version ``v`` while admitting ``v+1``), so the
     #:   trained batch is one step stale (``staleness <= 1``). Distillation only overlaps the purely
     #:   on-policy regime (``lmbda==1.0``); an off-policy dataset round generates nothing to admit ahead and

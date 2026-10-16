@@ -44,7 +44,7 @@ def _script_stdin(monkeypatch, lines):
 
 def _run_repl(tiny_model, monkeypatch, capsys, lines, *, multi_round=True):
     from swift.dev.config import GenerationConfig, ModelConfig, TemplateConfig
-    from swift.dev.recipe.infer_tui import infer_cli
+    from swift.dev.recipe.infer.infer_tui import infer_cli
 
     _script_stdin(monkeypatch, lines)
     infer_cli(
