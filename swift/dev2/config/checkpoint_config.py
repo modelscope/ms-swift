@@ -40,7 +40,8 @@ class CheckpointConfig:
     no_load_rng: bool = False
 
     # === Save mechanics ===
-    # mcore-native dist-ckpt knobs: no consumer under the unified HF-format runtime, refused.
+    # Background write after a frozen CPU staging snapshot; completion markers land post-write.
+    # Incompatible with save_total_limit.
     async_save: bool = False
     # The runtime always emits HF-format safetensors on both backends; False is rejected.
     save_safetensors: bool = True

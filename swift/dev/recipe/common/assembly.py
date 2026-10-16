@@ -547,6 +547,7 @@ class TrainAssembly:
                 'safe_serialization': ckpt.safe_serialization if ckpt else True,
                 'max_shard_size': ckpt.max_shard_size if ckpt else '5GB',
                 'save_total_limit': ckpt.save_total_limit if ckpt else None,
+                'async_save': bool(ckpt and ckpt.async_save),
                 'ignore_data_skip': bool(ckpt and ckpt.ignore_data_skip),
                 'hub_pusher': self._build_hub_pusher(),
                 'hub_strategy': ckpt.hub_strategy if ckpt else 'every_save',

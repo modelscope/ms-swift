@@ -47,8 +47,10 @@ class CheckpointConfig:
     no_load_rng: bool = False
 
     # === Megatron: save mechanics ===
-    #: Write the checkpoint from a background thread so training continues during the write. The step
-    #: after a save stops waiting on disk; a crash mid-write leaves that checkpoint incomplete.
+    #: Write the checkpoint from a background worker so training continues during the write. The save
+    #: first stages a frozen CPU snapshot (so later training steps never leak into the artifact), then
+    #: the disk I/O runs off the training path; completion markers (trainer_state.json / the iteration
+    #: tracker) are written only after the write landed. Incompatible with save_total_limit.
     async_save: bool = False
     #: Legacy Megatron compatibility switch. The dev runtime always emits HF-format safetensors,
     #: so True is supported and False is rejected explicitly.

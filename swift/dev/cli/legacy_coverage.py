@@ -155,12 +155,12 @@ CHECKPOINT_FIELDS: Tuple[str, ...] = (
     'output_dir', 'save_strategy', 'save_steps', 'save_total_limit', 'safe_serialization', 'max_shard_size',
     'save_on_each_node', 'save_only_model', 'resume_from_checkpoint', 'resume_only_model', 'ignore_data_skip',
     'push_to_hub', 'hub_model_id', 'hub_private_repo', 'hub_strategy', 'hub_revision', 'hub_always_push',
-    'no_save_optim', 'no_save_rng', 'no_load_optim', 'no_load_rng', 'async_save', 'save_safetensors',
+    'no_save_optim', 'no_save_rng', 'no_load_optim', 'no_load_rng', 'save_safetensors',
     'use_persistent_ckpt_worker', 'dist_ckpt_optim_fully_reshardable',
     'distrib_optim_fully_reshardable_mem_efficient', 'dist_ckpt_save_pre_mcore_014', 'add_version',
     'create_checkpoint_symlink', 'use_flash_ckpt', 'load_args', 'load_data_args')
 CHECKPOINT_RUNTIME_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
-    'save_on_each_node', 'async_save', 'use_persistent_ckpt_worker', 'dist_ckpt_optim_fully_reshardable',
+    'save_on_each_node', 'use_persistent_ckpt_worker', 'dist_ckpt_optim_fully_reshardable',
     'distrib_optim_fully_reshardable_mem_efficient', 'dist_ckpt_save_pre_mcore_014', 'create_checkpoint_symlink',
     'use_flash_ckpt')
 CHECKPOINT_ARGS_RESTORE_FIELDS: Tuple[str, ...] = ('load_args', 'load_data_args')
@@ -309,7 +309,10 @@ CLI_LEGACY_ONLY: Dict[str, Mapping[str, Tuple[str, ...]]] = {
     },
     'infer': {
         'unsupported_sampler': UNSUPPORTED_SAMPLER_FIELDS,
-        'unsupported_command': UNSUPPORTED_DISTRIBUTED_FIELDS + CHECKPOINT_NON_TRAINING_FIELDS,
+        # infer consumes the same two distributed knobs a training run does: its Ray sampling entry
+        # names the session (--ray_exp_name -> twinkle.initialize) and its forward/pooling path builds
+        # the model through _build_transformers_model (--ddp_timeout -> the strategy timeout env).
+        'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS + CHECKPOINT_NON_TRAINING_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS + ('data_range',),
     },
     'deploy': {

@@ -1836,6 +1836,13 @@ def _check_checkpoint_runtime(checkpoint_config: Optional['CheckpointConfig'],
             '--resume_only_model false requests a full resume (optimizer, scheduler, step count), but no '
             '--resume_from_checkpoint is set: the run would silently start from scratch. Point '
             '--resume_from_checkpoint at a checkpoint, or drop the flag.')
+    # A per-save hub upload reads the checkpoint files right after save() returns, which is exactly the
+    # window async_save leaves the write in flight; the two cannot compose.
+    if checkpoint_config.async_save and checkpoint_config.push_to_hub:
+        raise ValueError(
+            'async_save is incompatible with push_to_hub: the per-save upload reads the checkpoint files '
+            'before the background write has landed. Drop one of the two (the final checkpoint can still '
+            'be pushed with hub_strategy=end).')
     if not is_megatron:
         unsupported = {'no_save_rng', 'no_load_optim', 'no_load_rng'}.intersection(changed)
         if unsupported:
@@ -1878,12 +1885,12 @@ def _check_save_total_limit(checkpoint_config: Optional['CheckpointConfig'], is_
         return
     if checkpoint_config.save_total_limit < 1:
         raise ValueError('CheckpointConfig.save_total_limit must be >= 1.')
-    if not is_megatron:
-        return
     if checkpoint_config.async_save:
         raise ValueError('CheckpointConfig.save_total_limit is incompatible with async_save=True: the rolling '
                          'delete of old checkpoints cannot tell whether a background save has finished. Disable '
                          'one of the two.')
+    if not is_megatron:
+        return
     if checkpoint_config.save_total_limit < 2:
         raise ValueError(
             'CheckpointConfig.save_total_limit must be >= 2 on the Megatron backend, matching the legacy CLI.')

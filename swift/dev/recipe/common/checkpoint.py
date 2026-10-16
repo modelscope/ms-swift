@@ -46,6 +46,7 @@ class CheckpointSaver:
                  safe_serialization: bool = True,
                  max_shard_size: str = '5GB',
                  save_total_limit: Optional[int] = None,
+                 async_save: bool = False,
                  ignore_data_skip: bool = False,
                  hub_pusher: Optional[Callable[[str], None]] = None,
                  hub_strategy: str = 'every_save',
@@ -65,6 +66,9 @@ class CheckpointSaver:
         self.safe_serialization = safe_serialization
         self.max_shard_size = max_shard_size
         self.save_total_limit = save_total_limit
+        # Offloads the staged weight/trainer-state file I/O to a background writer. The final checkpoint
+        # always saves synchronously (its args.json write and any hub push must land after the weights).
+        self.async_save = async_save
         # On resume, skip the dataloader to the consumed offset (False) or start a fresh pass while keeping
         # checkpoint progress / optimizer state (True).
         self.ignore_data_skip = ignore_data_skip
@@ -79,7 +83,9 @@ class CheckpointSaver:
 
         The twinkle-native write (optimizer.pt / scheduler.pt / scaler.pt / rng_state.pt / trainer_state.json)
         is ``save_training_checkpoint``; dev passes the generic ``component_states`` mapping without interpreting
-        component-specific fields. ``is_final`` gates the hub-push 'end' strategy.
+        component-specific fields. ``is_final`` gates the hub-push 'end' strategy. Under ``async_save`` the
+        weight/trainer-state file I/O rides a background writer: ``on_save`` then fires at submit time (the
+        dir path is final, the files may still be landing), and the final checkpoint always saves synchronously.
         """
         from swift.dev.recipe.common.loop_utils import save_training_checkpoint
 
@@ -94,7 +100,8 @@ class CheckpointSaver:
             no_save_rng=self.no_save_rng,
             safe_serialization=self.safe_serialization,
             max_shard_size=self.max_shard_size,
-            save_total_limit=self.save_total_limit)
+            save_total_limit=self.save_total_limit,
+            async_save=self.async_save and not is_final)
         # on_save reports the resolved dir rather than ``result``: in Ray (Megatron) mode save() returns a
         # deferred handle, not a path, so recompute the same way save_final does.
         self.recorder.publish_state()
@@ -116,6 +123,9 @@ class CheckpointSaver:
         deferred handle, not a path. ``write_args_json`` (built from ``TrainAssembly.write_ckpt_args_json``)
         writes the self-describing args into the checkpoint dir; None skips it.
         """
+        # The final save is synchronous, and its args.json write must land after every earlier checkpoint's
+        # background write finished (the dir it copies args.json from is shared run metadata).
+        self.model.wait_async_saves()
         self.save(name, is_final=True)
         ckpt_dir = os.path.join(self.output_dir, name)
         if write_args_json is not None:

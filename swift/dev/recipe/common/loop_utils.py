@@ -159,7 +159,8 @@ def save_training_checkpoint(model: 'TrainableModel', name: str, *, output_dir: 
                              consumed_train_samples: int = 0, component_states: Optional[Dict[str, dict]] = None,
                              no_save_optim: bool = False, no_save_rng: bool = False,
                              safe_serialization: bool = True, max_shard_size: str = '5GB',
-                             save_total_limit: Optional[int] = None) -> str:
+                             save_total_limit: Optional[int] = None,
+                             async_save: bool = False) -> str:
     """Save one trainable model, then retain only the newest numbered/final checkpoints."""
     kwargs = {
         'consumed_train_samples': consumed_train_samples,
@@ -169,5 +170,6 @@ def save_training_checkpoint(model: 'TrainableModel', name: str, *, output_dir: 
         'save_total_limit': save_total_limit,
         # TransformersModel accepts extra save kwargs; MegatronModel consumes this one.
         'no_save_rng': no_save_rng,
+        'async_save': async_save,
     }
     return model.save(name, output_dir=output_dir, save_optimizer=not no_save_optim, **kwargs)
