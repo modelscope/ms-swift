@@ -34,6 +34,31 @@ def _check_padding_free(args, config):
         args.padding_free = False
 
 
+def _check_mlp_chunks_for_training(args, config, overrides):
+    """Validate chunking after applying user overrides, including on older MCore versions."""
+    chunks = overrides.get('mlp_chunks_for_training', getattr(args, 'mlp_chunks_for_training', 1))
+    if isinstance(chunks, bool) or not isinstance(chunks, int) or chunks < 1:
+        raise ValueError('mlp_chunks_for_training must be a positive integer.')
+    if 'mlp_chunks_for_training' not in {f.name for f in fields(config)}:
+        if chunks > 1:
+            raise ValueError('mlp_chunks_for_training > 1 requires megatron-core>=0.18 and a model configuration '
+                             'that supports mlp_chunks_for_training. Please upgrade megatron-core and your bridge.')
+        # Keep explicit no-op overrides compatible with configurations predating this field.
+        overrides.pop('mlp_chunks_for_training', None)
+        return
+    if chunks == 1:
+        return
+    if overrides.get('num_moe_experts', getattr(config, 'num_moe_experts', None)) is not None:
+        raise ValueError('mlp_chunks_for_training > 1 is only supported for dense models. '
+                         'Set --mlp_chunks_for_training 1 for MoE models.')
+    granularity = overrides.get('recompute_granularity', getattr(config, 'recompute_granularity', None))
+    modules = overrides.get('recompute_modules', getattr(config, 'recompute_modules', None)) or []
+    if granularity == 'selective' and 'mlp' in modules:
+        raise ValueError('mlp_chunks_for_training > 1 is incompatible with selective MLP recomputation, '
+                         'which bypasses chunking. Remove mlp from --recompute_modules or set '
+                         '--mlp_chunks_for_training 1.')
+
+
 def get_mcore_model_config(args, hf_config):
     kwargs = hf_to_mcore_config(hf_config)
     kwargs['mcore_model_type'] = args.megatron_model_meta.model_type
@@ -72,6 +97,7 @@ def get_mcore_model_config(args, hf_config):
         kwargs['moe_enable_routing_replay'] = True
     if args.megatron_extra_kwargs:
         kwargs.update(args.megatron_extra_kwargs)
+    _check_mlp_chunks_for_training(args, config_cls, kwargs)
     config = config_cls(**kwargs)
     if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
         setattr(config, 'use_flash_attn', True)
@@ -281,6 +307,7 @@ def _get_megatron_bridge_model(args, hf_config):
         overrides['variable_seq_lengths'] = True
 
     # --- Step 3: Apply overrides and finalize ---
+    _check_mlp_chunks_for_training(args, provider, overrides)
     provider.apply_overrides_and_finalize(dtype=dtype, overrides=overrides)
 
     import torch.nn.functional as F

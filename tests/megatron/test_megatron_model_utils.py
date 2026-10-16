@@ -21,6 +21,7 @@ class _FakeProvider:
     gated_linear_unit: bool = False
     activation_func: object = None
     variable_seq_lengths: bool = False
+    mlp_chunks_for_training: int = 1
 
     def apply_overrides_and_finalize(self, dtype, overrides):
         self.applied_overrides = overrides
@@ -39,7 +40,7 @@ class _FakeAutoBridge:
 @unittest.skipUnless(utils is not None, f'Megatron dependencies not available: {_IMPORT_ERROR}')
 class TestMegatronModelUtils(unittest.TestCase):
 
-    def test_mtp_shared_weights_maps_to_megatron_bridge_field(self):
+    def test_model_fields_reach_megatron_bridge_provider(self):
         auto_bridge_module = types.ModuleType('megatron.bridge.models.conversion.auto_bridge')
         auto_bridge_module.AutoBridge = _FakeAutoBridge
         modules = {
@@ -59,6 +60,7 @@ class TestMegatronModelUtils(unittest.TestCase):
                     megatron_extra_kwargs=None,
                     padding_free=False,
                     use_cpu_initialization=False,
+                    mlp_chunks_for_training=4,
                 )
                 backend = SimpleNamespace(_bridge=SimpleNamespace(to_megatron_provider=lambda *_args, **_kwargs: None))
                 provider = _FakeProvider(mtp_use_repeated_layer=provider_default)
@@ -69,6 +71,7 @@ class TestMegatronModelUtils(unittest.TestCase):
                     models = utils._get_megatron_bridge_model(args, SimpleNamespace())
 
                 self.assertEqual(provider.applied_overrides['mtp_num_layers'], 3)
+                self.assertEqual(provider.applied_overrides['mlp_chunks_for_training'], 4)
                 if shared_weights:
                     self.assertTrue(provider.applied_overrides['mtp_use_repeated_layer'])
                 else:
