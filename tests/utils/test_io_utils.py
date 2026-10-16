@@ -70,6 +70,32 @@ class TestIOUtils(unittest.TestCase):
         self.assertIsNone(update_last_checkpoint_symlink(self._make_checkpoint(2)))
         self.assertFalse(os.path.islink(link_path))
 
+    def test_last_checkpoint_symlink_under_concurrency(self):
+        # Concurrent checkpoint-save callbacks must not share a temporary name,
+        # otherwise one writer can publish another writer's target.
+        import threading
+        link_path = os.path.join(self.tmp_dir, LAST_CHECKPOINT_SYMLINK)
+        steps = range(1, 9)
+        errors = []
+
+        def save(checkpoint_dir):
+            try:
+                update_last_checkpoint_symlink(checkpoint_dir)
+            except Exception as exc:  # pragma: no cover - safety net only
+                errors.append(exc)
+
+        checkpoints = [self._make_checkpoint(step) for step in steps]
+        threads = [threading.Thread(target=save, args=(cp,)) for cp in checkpoints]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(errors, [])
+        self.assertTrue(os.path.islink(link_path))
+        self.assertIn(os.readlink(link_path), [f'checkpoint-{step}' for step in steps])
+        leftovers = [name for name in os.listdir(self.tmp_dir) if name.endswith('.tmp')]
+        self.assertEqual(leftovers, [])
 
 if __name__ == '__main__':
     unittest.main()

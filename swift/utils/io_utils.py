@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import json
 import os
+import uuid
 import torch.distributed as dist
 from accelerate.utils import gather_object
 from queue import Queue
@@ -125,7 +126,7 @@ def update_last_checkpoint_symlink(checkpoint_dir: str) -> Optional[str]:
     if os.path.lexists(link_path) and not os.path.islink(link_path):
         logger.warning(f'`{link_path}` already exists and is not a symlink; skip updating it.')
         return None
-    tmp_path = f'{link_path}.tmp'
+    tmp_path = f'{link_path}.{uuid.uuid4().hex}.tmp'
     try:
         if os.path.lexists(tmp_path):
             os.remove(tmp_path)
