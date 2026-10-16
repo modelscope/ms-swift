@@ -86,6 +86,12 @@ def get_torchrun_args() -> Optional[List[str]]:
 def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool = False) -> None:
     route_mapping = route_mapping or ROUTE_MAPPING
     argv = sys.argv[1:]
+    if argv and argv[0] in {'-h', '--help'}:
+        cli_name = 'megatron' if is_megatron else 'swift'
+        print(f'Usage: {cli_name} <command> [args]\n\n'
+              f'Available commands: {", ".join(route_mapping)}\n\n'
+              f'Use `{cli_name} <command> --help` for command-specific help.')
+        return
     method_name = argv[0].replace('_', '-')
     argv = argv[1:]
     file_path = importlib.util.find_spec(route_mapping[method_name]).origin
