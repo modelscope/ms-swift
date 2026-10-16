@@ -500,6 +500,7 @@ class AdaptiveResourceController:
         self._decision = None
         self._decision_step = 0
         self._shared_change = False
+        self._shared_previous_enabled = None
         self._closed = False
         self.last_error = None
         self._windows: deque[ResourceWindow] = deque(maxlen=window_steps)
@@ -577,14 +578,19 @@ class AdaptiveResourceController:
         """在 pause barrier 之后应用决策；后台构造不包含同步或准入。"""
         decision, self._decision = self._decision, None
         self._shared_change = decision in ('activate_shared', 'deactivate_shared')
+        self._shared_previous_enabled = self.handover.enabled if self._shared_change else None
         if decision == 'activate_shared':
             self.handover.set_enabled(True)
         elif decision == 'deactivate_shared':
             self.handover.set_enabled(False)
         elif decision == 'scale_up_sampler' and self._free_flex_groups:
             group = self._free_flex_groups.popleft()
+            try:
+                self._pending = self._executor.submit(self.sampler.add_workers, group, self._flex_groups[group])
+            except BaseException:
+                self._free_flex_groups.appendleft(group)
+                raise
             self._pending_group = group
-            self._pending = self._executor.submit(self.sampler.add_workers, group, self._flex_groups[group])
         elif decision == 'scale_down_sampler' and self._flex_workers:
             group, worker_ids = next(reversed(self._flex_workers.items()))
             self.sampler.drain_workers(worker_ids)
@@ -612,11 +618,15 @@ class AdaptiveResourceController:
         changed = self._shared_change or self._removal is not None or self._addition is not None
         if self._removal is not None:
             group, worker_ids = self._removal
-            if not self.sampler.remove_workers(worker_ids):
-                raise RuntimeError('A drained sampler actor received new work during its publication barrier.')
-            self._flex_workers.pop(group)
-            self._free_flex_groups.append(group)
-            self._removal = self._draining = None
+            try:
+                if not self.sampler.remove_workers(worker_ids):
+                    raise RuntimeError('A drained sampler actor received new work during its publication barrier.')
+            finally:
+                # shutdown 报错后若 actors 已移除，也只在这里返还一次 slot。
+                if not set(worker_ids) & set(self.sampler.worker_ids()):
+                    self._flex_workers.pop(group)
+                    self._free_flex_groups.append(group)
+                    self._removal = self._draining = None
         if self._addition is not None:
             group, worker_ids = self._addition
             self.sampler.activate_workers(worker_ids)
@@ -626,24 +636,39 @@ class AdaptiveResourceController:
         if changed:
             self._last_change_step = self._decision_step
         self._shared_change = False
+        self._shared_previous_enabled = None
 
-    def fail_publish(self):
-        if self._addition is None:
-            return
-        group, worker_ids = self._addition
-        try:
-            self.handover.dedicated_manager.close()
-        finally:
-            self.handover.dedicated_manager.set_receiver_workers(
-                self.sampler.worker_ids(shared=False, states=('ACTIVE', 'DRAINING')))
+    def fail_publish(self, publication_error=None):
+        if publication_error is not None:
+            self.last_error = f'{type(publication_error).__name__}: {publication_error}'
+        if self._shared_previous_enabled is not None:
+            self.handover.set_enabled(self._shared_previous_enabled)
+        self._shared_change = False
+        self._shared_previous_enabled = None
+        self._removal = None
+        manager = self.handover.dedicated_manager
+        error = None
+        if self._addition is not None:
+            group, worker_ids = self._addition
             try:
-                removed = self.sampler.remove_workers(worker_ids)
+                manager.close()
+            except BaseException as exc:
+                error = exc
+            try:
+                if not self.sampler.remove_workers(worker_ids):
+                    raise RuntimeError('Failed publication left a sampler actor with unfinished initialization work.')
+            except BaseException as exc:
+                error = error or exc
             finally:
                 if not set(worker_ids) & set(self.sampler.worker_ids()):
                     self._free_flex_groups.appendleft(group)
                     self._addition = None
-        if not removed:
-            raise RuntimeError('Failed publication left a sampler actor with unfinished initialization work.')
+        try:
+            manager.set_receiver_workers(self.sampler.worker_ids(shared=False, states=('ACTIVE', 'DRAINING')))
+        except BaseException as exc:
+            error = error or exc
+        if error is not None:
+            raise error
 
     def shutdown(self):
         if self._closed:

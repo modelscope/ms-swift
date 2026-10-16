@@ -111,6 +111,7 @@ class AdaptiveColocateHandover:
         """构造 shared 引擎前释放训练显存，休眠引擎后恢复所有训练模型。"""
         worker_ids = ()
         initialization_error = None
+        can_reload = True
         self.in_generation = True
         try:
             for model in self.models:
@@ -126,15 +127,17 @@ class AdaptiveColocateHandover:
                     raise RuntimeError('Shared sampler initialization still has unfinished worker calls.')
             except Exception:
                 logger.warning('初始化失败后未能完整关闭 shared sampler actors。', exc_info=True)
+            can_reload = not set(worker_ids) & set(self.sampler.worker_ids(shared=True))
             raise
         finally:
-            try:
-                self._reload_models()
-                self.in_generation = False
-            except BaseException:
-                if initialization_error is None:
-                    raise
-                logger.warning('初始化失败后未能完整恢复训练模型。', exc_info=True)
+            if can_reload:
+                try:
+                    self._reload_models()
+                    self.in_generation = False
+                except BaseException:
+                    if initialization_error is None:
+                        raise
+                    logger.warning('初始化失败后未能完整恢复训练模型。', exc_info=True)
         return worker_ids
 
     def _borrow_shared(self, *, publish: bool):
@@ -185,10 +188,10 @@ class AdaptiveColocateHandover:
                 self.controller.finish_publish()
             self.sampler.resume_generation(_worker_ids=dedicated_ids)
             self.sampler.resume_admission(suspended + dedicated_ids)
-        except BaseException:
+        except BaseException as error:
             try:
                 if self.controller is not None:
-                    self.controller.fail_publish()
+                    self.controller.fail_publish(error)
             except Exception:
                 logger.warning('发布失败后未能完整清理新增 sampler actors。', exc_info=True)
             try:
@@ -217,12 +220,11 @@ class AdaptiveColocateHandover:
             self.sampler.pause_workers(shared_ids)
             self.sampler.pause_generation(_worker_ids=shared_ids)
             self._wait(self.sampler.sleep(level=self.sleep_level, _worker_ids=shared_ids))
+            # pause/sleep 失败时保留交接状态；终止 actors 后再恢复训练显存。
+            self._reload_models()
+            self.in_generation = False
         finally:
-            try:
-                self._reload_models()
-                self.in_generation = False
-            finally:
-                self.reclaim_time += time.perf_counter() - started
+            self.reclaim_time += time.perf_counter() - started
 
     def close_channels(self):
         try:
