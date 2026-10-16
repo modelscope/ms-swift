@@ -563,6 +563,7 @@ RLHF参数继承于[训练参数](#训练参数)。
 - loss_type: 损失类型。默认为None，使用不同的rlhf算法，其默认值不同。
   - DPO: 可选项参考[文档](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions)，支持传入多个值实现混合训练([MPO](https://arxiv.org/abs/2411.10442)), 传入多个值时需要设置参数 loss_weights。默认为`sigmoid`。
   - GRPO: 参考[GRPO参数](#grpo参数)。
+  - GKD: `jsd`（默认）或 `abkd`。参考[蒸馏文档](./Distillation.md#31-gkd散度作为直接损失)。
 - loss_weights: 在 DPO 训练中设置多个 loss_type 时，用于指定各个损失项的权重。
 - cpo_alpha: CPO/SimPO loss 中 nll loss的系数, 默认为`1.`。
 - simpo_gamma: SimPO算法中的reward margin项，论文建议设置为0.5-1.5，默认为`1.`。
@@ -576,6 +577,8 @@ RLHF参数继承于[训练参数](#训练参数)。
 - min_p: rollout采样的min-p参数，概率低于最高概率token概率`min_p`倍的token将被过滤，0.0表示不进行min-p过滤。默认为0.0。仅对vLLM后端生效。
 
 #### GKD参数
+- abkd_alpha: `loss_type=abkd` 时的 alpha 参数，默认为 0.2。
+- abkd_beta: `loss_type=abkd` 时的 beta 参数，默认为 0.7，与 JSD 插值参数 `beta` 独立。
 - lmbda: 默认为0.5。该参数在GKD中使用。控制学生数据比例的 lambda 参数（即策略内学生生成输出所占的比例）。若lmbda为0，则不使用学生生成数据。
 - sft_alpha: 默认为0。控制GKD中加入sft_loss的权重。最后的loss为`gkd_loss + sft_alpha * sft_loss`。
 - gkd_logits_topk: 使用 Top-K logits 计算 KL 散度，默认为 None（即使用完整词表计算）。设置该参数可有效降低训练显存峰值；当配置 `teacher_model_server` 时，此参数为必填项。详见[蒸馏文档](./Distillation.md#31-gkd散度作为直接损失)。

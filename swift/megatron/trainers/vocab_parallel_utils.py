@@ -176,6 +176,19 @@ def vocab_parallel_kl_div(input_log_probs: torch.Tensor, target_log_probs: torch
     return partial_kl
 
 
+def vocab_parallel_sum(values: torch.Tensor) -> torch.Tensor:
+    """Sum per-token values over the sharded vocabulary.
+
+    The result feeds replicated loss computation, so backward retains each shard's
+    own derivative, as in ``vocab_parallel_kl_div``.
+    """
+    total = values.sum(dim=-1)
+    if mpu.get_tensor_model_parallel_world_size() > 1:
+        torch.distributed.all_reduce(
+            total, op=torch.distributed.ReduceOp.SUM, group=mpu.get_tensor_model_parallel_group())
+    return total
+
+
 def vocab_parallel_gather_logps(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     """Gather log probabilities for target labels from vocab-parallel logits.
 
