@@ -2,6 +2,7 @@
 import inspect
 import numpy as np
 import os
+import random
 import tempfile
 from datasets import Dataset as HfDataset
 from modelscope.hub.utils.utils import get_cache_dir
@@ -79,21 +80,22 @@ class LazyLLMDataset(Dataset):
 
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
-        self._idx = 0
-        self._idx_list = self.random_state.permutation(len(self.dataset)).tolist()
+        self._fallback_seed = int(self.random_state.randint(0, 2**30))
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         if isinstance(idx, str):
             return self.dataset[idx]
         initial_idx = idx % len(self.dataset)
+        fallback_indices = None
         for i in range(self.n_try_fetch):
             if i > 0:
-                # The initial sample may also appear in the fallback permutation.
-                while True:
-                    idx = self._idx_list[self._idx]
-                    self._idx = (self._idx + 1) % len(self.dataset)
-                    if idx != initial_idx:
-                        break
+                if fallback_indices is None:
+                    # Keep retries independent of access order, including after resume.
+                    rng = random.Random(self._fallback_seed + int(initial_idx))
+                    fallback_indices = iter(rng.sample(range(len(self.dataset) - 1), self.n_try_fetch - 1))
+                idx = next(fallback_indices)
+                # Map the sampled range onto all rows except the initial row.
+                idx += idx >= initial_idx
             data = self.dataset[idx]
             try:
                 return self.encode_func(data, return_length=True)
