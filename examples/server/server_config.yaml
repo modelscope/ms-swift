@@ -76,6 +76,15 @@ applications:
       # called with model_id. Remove this line to fall back to twinkle's generic AutoModel
       # path (which loses swift's per-family config/quant corrections).
       model_loader: swift.dev.model.loader:build_model_loader
+      # `model_cls: module:attr` names the class the model app serves, resolved inside the actor
+      # and layered with twinkle's tinker/twinkle compat methods; unset, it is twinkle's
+      # multi-LoRA transformers wrapper. A sentence-transformers embedding model needs
+      #   model_cls: swift.dev.model.multi_lora_sentence_transformer_model:MultiLoraSentenceTransformerModel
+      # because its pipeline (Transformer -> Pooling -> Normalize) pools inside the model and cannot
+      # be built by the AutoModel path. That deployment also needs the `sentence-transformers`
+      # package in the model workers; `max_length` caps each sample before a forward (default 8192
+      # for that class), so raise it for longer sequences.
+      # Only allowed for backend: transformers with train_mode: lora and no `hybrid` block.
       max_loras: 4
       max_length: 2048
       nproc_per_node: 1

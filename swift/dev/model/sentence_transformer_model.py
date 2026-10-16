@@ -21,7 +21,6 @@ logger = get_logger()
 _ST_FEATURE_KEYS = ('input_ids', 'attention_mask', 'token_type_ids', 'position_ids')
 
 
-## 这个有办法支持twinkle的server 多lora吗？
 class SentenceTransformerModel(TwinkleTransformersModel):
     """Train a ``sentence-transformers`` model on twinkle's embedding pipeline.
 

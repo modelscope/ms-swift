@@ -55,12 +55,15 @@ logger = get_logger()
 
 
 class InferComponent(RecipeComponent):
-    """The causal-LM path: sample a candidate group per prompt, optionally score it, then emit rows.
+    """The infer entry point: a sampling path and a forward-pass path, split inside ``__call__``.
 
-    Generation goes through one ``RolloutEngine`` (single- and multi-turn alike, over a local sampler),
-    scoring through ``_RewardChannels`` (rule-based ORM/PRM funcs and/or model
-    rewards), and emission through the ``output_format`` strategy -- so a new storage shape is a new
-    emit function, not a new recipe.
+    A causal LM samples a candidate group per prompt, optionally scores it, then emits rows: generation
+    goes through one ``RolloutEngine`` (single- and multi-turn alike, over a local sampler), scoring
+    through ``_RewardChannels`` (rule-based ORM/PRM funcs and/or model rewards), and emission through
+    the ``output_format`` strategy -- so a new storage shape is a new emit function, not a new recipe.
+
+    A pooling task (``seq_cls`` / ``embedding`` / ``reranker``) or a ``generative_reranker`` never
+    samples: one plain forward pass over the same rows (``_forward_pass``), one value per row.
     """
 
     def __init__(
@@ -117,8 +120,16 @@ class InferComponent(RecipeComponent):
         split_dataset_ratio = self.split_dataset_ratio
         output_path = self.output_path
         shutdown = self.shutdown
-        from swift.dev.builders import (build_parallel_mesh, build_sampler, build_template,
+        from swift.dev.builders import (build_parallel_mesh, build_sampler, build_template, is_pooling_task,
                                         load_model_processor, load_prompt_only_rows, to_sampling_params)
+
+        # A pooling task (seq_cls / embedding / reranker) or a generative_reranker never samples: one
+        # plain forward pass, one value per row (see _forward_pass). Split before the sampling-side
+        # validation below, which reads knobs (num_return_sequences, output_format) a forward pass
+        # never uses.
+        task_type = model_config.task_type or 'causal_lm'
+        if is_pooling_task(task_type) or task_type == 'generative_reranker':
+            return self._forward_pass(task_type)
 
         num_return = infer_config.num_return_sequences
         output_format = infer_config.output_format
@@ -203,6 +214,19 @@ class InferComponent(RecipeComponent):
         use_checkpoint = (bool(output_path) and is_line_format
                           and (output_format == 'dpo' or infer_config.resume))
         if use_checkpoint:
+            from twinkle.utils import Platform
+
+            local_world = max(1, int(Platform.get_world_size()))
+            if local_world > 1 and (distributed_config is None or distributed_config.mode != 'ray'):
+                # The checkpoint writer owns one tmp file and one state file and gathers nothing (unlike
+                # the incremental writer): under a multi-rank torchrun launch every rank would open the
+                # same tmp at its own offset and corrupt it. It assumes the single driving process of the
+                # ray layout, so reject the multi-rank local launch up front.
+                raise ValueError(
+                    f'a checkpointed run (output_format={output_format!r}, resume={infer_config.resume}) '
+                    f'needs a single driving process, but this launch has {local_world} local ranks, each '
+                    'of which would write the same checkpoint files. Run it under DistributedConfig.mode='
+                    "'ray', or with a single rank.")
             probe = _CheckpointPaths(os.path.dirname(output_path) or 'output', os.path.basename(output_path))
             if os.path.exists(probe.final) and not infer_config.override_exist_file:
                 logger.info(f'run_infer: {probe.final} exists and override_exist_file is False; nothing to do.')
@@ -357,6 +381,55 @@ class InferComponent(RecipeComponent):
                 logger.info(f'run_infer metric: {compute_metric(results, infer_config.metric)}')
         return results
 
+    def _forward_pass(self, task_type: str) -> List[Dict[str, Any]]:
+        """The non-sampling path: one forward pass over the rows, one plain value per row.
+
+        Two task families reach here. A pooling task yields one value per row -- a vector for embedding,
+        class logits for seq_cls, a score for reranker -- and picks its route by backend: vLLM / SGLang
+        have a pooling head, so the model is built as a pooling engine and served through
+        ``sampler.encode`` (the throughput path); transformers has no pooling head, so it falls back to
+        ``build_model`` + ``forward_only(task=..)``, a plain HF forward (the reach path). A
+        ``generative_reranker`` also yields one score per row, but it is a causal LM, not a pooling
+        model: its score is the logprob difference between a positive token (``yes``) and a negative one
+        (``no``) at the first generated position -- what ``get_generative_reranker_logits`` computes from
+        the lm_head for the HF path, and what the generation path reproduces here from logprobs (the two
+        agree because the log-softmax normaliser cancels in the difference). So vLLM/SGLang run it
+        through *generation* -- neither serves a decoder-only reranker through ``encode``, and sglang
+        must not be launched with ``--is-embedding`` -- while transformers runs the same HF forward the
+        pooling path uses, with ``task='generative_reranker'``.
+
+        Either way the row assembly is shared (:func:`_finalize_forward_results`), including its label
+        rule: the label comes from the row's own ``label`` column rather than from a trailing assistant
+        turn, because there is no completion to strip.
+        """
+        from swift.dev.builders import to_trajectory
+
+        rows = _forward_rows(self.dataset_config, self.max_rows, self.split_dataset_ratio,
+                             self.distributed_config)
+        trajectories = [to_trajectory(row, list(row['messages']), self.template_config) for row in rows]
+        reranker_use_activation = self.infer_config.reranker_use_activation
+
+        if self.backend in ('vllm', 'sglang'):
+            if task_type == 'generative_reranker':
+                per_row = _generative_reranker_via_sampler(
+                    self.model_config, self.template_config, self.generation_config, self.distributed_config,
+                    trajectories, self.adapters, self.quantize_config, self.backend, self.engine_args,
+                    self.shutdown, reranker_use_activation)
+            else:
+                per_row = _pooling_via_sampler(
+                    self.model_config, self.template_config, self.distributed_config, trajectories,
+                    self.adapters, self.quantize_config, self.backend, self.engine_args, self.shutdown,
+                    reranker_use_activation)
+        else:
+            per_row = _forward_via_transformers(
+                self.model_config, self.template_config, self.distributed_config, rows, trajectories,
+                self.adapters, self.quantize_config,
+                max_batch_size=(self.engine_args or {}).get('max_batch_size'),
+                reranker_use_activation=reranker_use_activation)
+
+        return _finalize_forward_results(rows, per_row, task_type, self.backend, self.output_path,
+                                         self.infer_config.metric)
+
     def _drive_per_sample(self, *, rows: List[Dict[str, Any]], rollout: Any, channels: '_RewardChannels',
                           cache: '_CandidateCache', writer: Any, recorder: Any, emit: Any, num_return: int,
                           multi_turn_enabled: bool, adapter_path: Optional[str],
@@ -370,6 +443,17 @@ class InferComponent(RecipeComponent):
         ORM/PRM channel the batch path scores with) and rows are shaped by the same ``emit`` + writers. The
         control plane is omitted (``ctx_mgr=None``): infer never publishes weights, so the driver runs its null
         ledger (version pinned at 0, no admission windows, no staleness drop). Returns ``(rows, prompts, tokens)``.
+
+        Groups are emitted in DRAW order, not completion order (see ``_assembly_ready``), and the checkpoint
+        counts prompts handled -- cache hits plus drawn groups. The emit order is deterministic (cache hits in
+        row order, then draws in the dataloader's seeded order), so a resume restores ``resume_from`` and skips
+        exactly that prefix: the cached head by row index, the drawn tail via ``skip_consumed_samples``.
+
+        Under a multi-rank torchrun launch every rank drives its own shard (the loader slices each global
+        batch across the dp ranks, so the ordinal is per-rank; a trailing batch narrower than the dp width
+        is dropped, per the loader's contract) and the incremental writer's per-group gather merges the
+        ranks' rows. A ray launch drives from one process instead -- the loader is pinned to dp=1 -- which
+        is also the layout the checkpoint writer's resume path requires.
         """
         from swift.dev.builders import build_prompt_dataloader, split_prompt_and_reference
         from twinkle_agentic.async_rl.streaming_driver import StreamingDriver
@@ -377,33 +461,58 @@ class InferComponent(RecipeComponent):
         infer_config = self.infer_config
         template_config = self.template_config
         results: List[Dict[str, Any]] = []
-        state = {'prompts': 0, 'tokens': 0, 'groups': 0}
+        # Resume point: the count of prompts a prior run already wrote (its checkpoint), or 0 for a fresh run
+        # (no checkpoint writer, or no state file). The emit order below is deterministic, so "the first N
+        # prompts" is stable across runs and a resume can skip exactly that prefix.
+        resume_from = max(0, getattr(writer, '_resume_from', -1))
+        state: Dict[str, Any] = {'prompts': 0, 'tokens': 0, 'processed': 0, 'next_ordinal': 0}
         # Split once: the trajectory is what the sampler generates from, the reference is emit's label anchor.
         trajectories, ground_truths = split_prompt_and_reference(rows, template_config)
         # Cache short-circuit: a prompt already covered by cache_files is emitted verbatim, never driven (the
         # batch path's _sample_candidates does the same lookup), so only the rest pay for generation.
         to_sample: List[int] = []
+        processed = 0
+        cached_total = 0
         for index, trajectory in enumerate(trajectories):
             hit = cache.lookup(trajectory, num_return, multi_turn=multi_turn_enabled)
             if hit is None:
                 to_sample.append(index)
                 continue
+            cached_total += 1
+            already_done = processed < resume_from
+            processed += 1
+            if already_done:
+                continue  # a prior run emitted it; the restored tmp file already holds its rows
             group = [candidate for candidate in hit if candidate.text]
-            if not group:
-                continue
-            state['prompts'] += 1
-            scores = _score_group(group, rows[index], trajectory, ground_truths[index], channels, infer_config)
-            out_rows = emit(rows[index], trajectory, ground_truths[index], group, scores, infer_config, recorder)
-            results.extend(out_rows)
-            writer.write(out_rows)
-        if to_sample:
+            if group:
+                state['prompts'] += 1
+                scores = _score_group(group, rows[index], trajectory, ground_truths[index], channels,
+                                      infer_config)
+                out_rows = emit(rows[index], trajectory, ground_truths[index], group, scores, infer_config,
+                                recorder)
+                results.extend(out_rows)
+                writer.write(out_rows)
+            writer.checkpoint(processed)
+        # The draws a prior run already emitted are exactly the first (resume_from - cached_total) of the
+        # seeded stream, so fast-forward the dataloader there: the driver's ordinal 0 becomes the first draw
+        # not yet emitted. When that covers every draw (a run that finished but did not finalize), there is
+        # nothing left to generate.
+        draw_skip = max(0, resume_from - cached_total)
+        state['processed'] = cached_total + draw_skip
+        if to_sample and draw_skip < len(to_sample):
             sample_rows = [rows[index] for index in to_sample]
             prompt_dataloader = build_prompt_dataloader(
                 [row['messages'] for row in sample_rows],
                 [{key: value for key, value in row.items() if key != 'messages'} for row in sample_rows],
-                seed=seed, batch_size=infer_config.batch_size)
+                seed=seed, batch_size=_prompt_batch_size(infer_config.batch_size))
+            if draw_skip:
+                prompt_dataloader.skip_consumed_samples(draw_skip)
             # Per-draw metadata the driver's ordinal keys: the row it drew, its split trajectory and reference.
             meta: Dict[int, Tuple[Dict[str, Any], Dict[str, Any], Optional[str]]] = {}
+
+            def _ordinal_of(record: Any) -> int:
+                # group_key is f'{ordinal}#{group_seq}' (StreamingDriver.run); the ordinal is the draw id.
+                return int(record.group_key.split('#')[0])
 
             def _submit(prompt_ref: Any, trajectory_idx: int, policy: Any) -> Any:
                 ordinal = prompt_ref.ordinal
@@ -433,49 +542,51 @@ class InferComponent(RecipeComponent):
                 rollout.cancel_sample(handle)
 
             def _assembly_ready(buffer: List[Any]) -> Optional[List[Any]]:
-                # Pull EVERY complete group (a prompt's num_return candidates), group-contiguous. Infer emits
-                # per prompt, so -- unlike GRPO -- there is no optimizer-step row quantum to fill.
-                counts: Dict[str, int] = {}
-                order: List[str] = []
+                # Pull the contiguous run of COMPLETE groups starting at the next ordinal to emit -- draw
+                # order, not completion order. Infer emits one group per prompt, so (unlike GRPO) there is no
+                # optimizer-step row quantum to fill; ordering by draw id is what keeps the checkpoint's
+                # count equal to the draws consumed, so a resume skips exactly the emitted prefix. A group
+                # still short of num_return (a straggler) holds the frontier, but the null ledger never drops
+                # a sample, so it always completes and the wait is finite.
+                by_ordinal: Dict[int, List[Any]] = {}
                 for record in buffer:
-                    if record.group_key not in counts:
-                        counts[record.group_key] = 0
-                        order.append(record.group_key)
-                    counts[record.group_key] += 1
-                complete = [key for key in order if counts[key] >= num_return]
-                if not complete:
-                    return None
-                complete_set = set(complete)
-                by_group: Dict[str, List[Any]] = {}
-                for record in buffer:
-                    if record.group_key in complete_set:
-                        by_group.setdefault(record.group_key, []).append(record)
+                    by_ordinal.setdefault(_ordinal_of(record), []).append(record)
                 pulled: List[Any] = []
-                for key in complete:
-                    pulled.extend(by_group[key])
-                return pulled
+                ordinal = state['next_ordinal']
+                while len(by_ordinal.get(ordinal, ())) >= num_return:
+                    pulled.extend(by_ordinal[ordinal])
+                    ordinal += 1
+                return pulled or None
 
             def _consume(records: List[Any]) -> None:
-                grouped: Dict[str, List[Any]] = {}
+                by_ordinal: Dict[int, List[Any]] = {}
                 for record in records:
-                    grouped.setdefault(record.group_key, []).append(record)
-                for group_key, group_records in grouped.items():
-                    row, trajectory, ground_truth = meta[int(group_key.split('#')[0])]
+                    by_ordinal.setdefault(_ordinal_of(record), []).append(record)
+                for ordinal in sorted(by_ordinal):
+                    group_records = by_ordinal[ordinal]
+                    row, trajectory, ground_truth = meta[ordinal]
                     candidates = [
                         _candidate_from_sample(record.sample, multi_turn=multi_turn_enabled)
                         for record in group_records
                     ]
                     candidates = [candidate for candidate in candidates if candidate.text]
-                    if not candidates:
-                        continue
-                    state['prompts'] += 1
-                    state['tokens'] += sum(len(candidate.response_token_ids) for candidate in candidates)
-                    scores = _score_group(candidates, row, trajectory, ground_truth, channels, infer_config)
-                    out_rows = emit(row, trajectory, ground_truth, candidates, scores, infer_config, recorder)
-                    results.extend(out_rows)
+                    out_rows: List[Dict[str, Any]] = []
+                    if candidates:
+                        state['prompts'] += 1
+                        state['tokens'] += sum(len(candidate.response_token_ids) for candidate in candidates)
+                        scores = _score_group(candidates, row, trajectory, ground_truth, channels, infer_config)
+                        out_rows = emit(row, trajectory, ground_truth, candidates, scores, infer_config, recorder)
+                        results.extend(out_rows)
+                    # Written even when the group came back empty: under a torchrun gather every rank must
+                    # enter the same number of writer calls (one per drawn group), or the all_gather inside
+                    # the writer mismatches across ranks and the run hangs.
                     writer.write(out_rows)
-                    state['groups'] += 1
-                    writer.checkpoint(state['groups'])
+                    # Advance past this draw and record the cumulative count: every drawn group (even one whose
+                    # candidates all came back empty) is a consumed prompt, so the checkpoint stays equal to
+                    # the number of draws a resume must skip.
+                    state['next_ordinal'] = ordinal + 1
+                    state['processed'] += 1
+                    writer.checkpoint(state['processed'])
                 return None
 
             StreamingDriver(
@@ -575,7 +686,7 @@ def _score_group(candidates: List['_Candidate'], row: Dict[str, Any], trajectory
     if infer_config.score_ground_truth and ground_truth:
         # trajectory['messages'] is the prompt with the reference turn already stripped (see
         # split_prompt_and_reference), so rebuilding prompt + ground_truth-as-assistant is the correct
-        # single-turn conversation. _run_generative rejects this in a multi-turn rollout, where the
+        # single-turn conversation. InferComponent.__call__ rejects this in a multi-turn rollout, where
         # reference would have no tool trajectory to compare against the candidates.
         scored.append(_Candidate(ground_truth, messages=_candidate_messages(_Candidate(ground_truth), trajectory)))
     return channels.score(scored, row, trajectory, infer_config)[:len(candidates)]
@@ -889,6 +1000,25 @@ def _gather_rows(rows: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
     return gathered if is_master() else None
 
 
+def _prompt_batch_size(batch_size: Optional[int]) -> int:
+    """The prompt-source batch size for the per-sample driver, widened to the launch's dp width.
+
+    The driver flattens the loader's batches straight back to rows (``StreamingDriver._iter_rows``), so
+    the size is only the reader's fetch granularity -- but the twinkle loader splits every global batch
+    across the dp ranks and asserts ``batch_size >= dp_width`` with divisibility, while
+    ``infer_config.batch_size`` is the generate-batch size (default 1) and can be smaller than a
+    multi-rank torchrun launch's world size. Round up to a multiple of the width; at width 1 the value
+    passes through unchanged.
+    """
+    from twinkle.utils import Platform
+
+    size = max(1, int(batch_size or 1))
+    world = max(1, int(Platform.get_world_size()))
+    if world > 1:
+        size = -(-size // world) * world
+    return size
+
+
 def _write_jsonl(path: str, rows: List[Dict[str, Any]], append: bool = False) -> None:
     directory = os.path.dirname(path)
     if directory:
@@ -940,7 +1070,7 @@ def _initialize_for_sampling(distributed_config: DistributedConfig,
     from twinkle import DeviceGroup
 
     if distributed_config.mode != 'ray':
-        # Local mode reaches here only with no reward groups: _run_generative already rejects a
+        # Local mode reaches here only with no reward groups: InferComponent.__call__ already rejects a
         # GPU-resident reward channel unless mode='ray' (there is no disjoint DeviceGroup to place it
         # in), so there is nothing left to guard here.
         twinkle.initialize(mode='local')
@@ -1309,7 +1439,7 @@ class _CheckpointPaths:
     """The four-file resume scheme, kept in one place so the ordering cannot be got wrong.
 
     ``final`` only ever appears via the closing move, which is what makes its existence mean "this run
-    finished" -- the early-return check ``_run_generative`` opens with depends on that.
+    finished" -- the early-return check ``InferComponent.__call__`` opens with depends on that.
     """
 
     def __init__(self, output_dir: str, output_file: str):
@@ -1355,3 +1485,319 @@ class _CheckpointPaths:
         for path in (self.tmp, self.state):
             if os.path.exists(path):
                 os.remove(path)
+
+
+#: How many top logprobs to request when scoring a generative reranker off generation. The positive and
+#: negative tokens must both land in this window or the score cannot be read; 20 is within the default
+#: ``max_logprobs`` of both vLLM and sglang and comfortably covers the two tokens a trained reranker
+#: puts its mass on.
+_GENERATIVE_RERANKER_TOP_LOGPROBS = 20
+
+
+def _initialize_for_forward(distributed_config: DistributedConfig) -> None:
+    """Initialize twinkle for a forward-pass run: the 'model' DeviceGroup under ray, local otherwise.
+
+    Both forward paths reach the model through twinkle -- ``build_sampler`` for the vLLM/SGLang pooling
+    head and ``build_model`` for the transformers forward -- and ray placement targets the DeviceGroup
+    named 'model' (``build_model``'s ``remote_group`` default), so the group has to exist before either
+    is built; a local (torchrun) run has no group to declare. Infer-side twin of the training
+    assembly's bootstrap, minus the auxiliary groups (those are frozen TRAINING models).
+    """
+    import twinkle
+    from twinkle import DeviceGroup
+
+    extra_torch_kwargs = {'seed': 42, 'full_determinism': False, 'tf32': None}
+    if distributed_config.mode != 'ray':
+        twinkle.initialize(mode='local', extra_torch_kwargs=extra_torch_kwargs)
+        return
+    nproc = distributed_config.nproc_per_node
+    if nproc is None:
+        raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the Ray "
+                         "'model' DeviceGroup). Pass it explicitly -- there is no default.")
+    twinkle.initialize(
+        mode='ray',
+        nproc_per_node=nproc,
+        extra_torch_kwargs=extra_torch_kwargs,
+        name=distributed_config.ray_exp_name,
+        groups=[DeviceGroup(name='model', ranks=list(range(nproc)), device_type='GPU', gpus_per_worker=1)])
+
+
+def _forward_rows(dataset_config: DatasetConfig, max_rows: Optional[int], split_dataset_ratio: float,
+                  distributed_config: DistributedConfig) -> List[Dict[str, Any]]:
+    """Initialize twinkle for a forward pass, then load the prompt rows it runs over.
+
+    Shared by the pooling and generative-reranker forwards: they differ in the forward they run, not in
+    the bootstrap or the input; the rows load AFTER the init so a ray-placed model resolves its DeviceGroup.
+    """
+    from swift.dev.builders import load_prompt_only_rows
+
+    _initialize_for_forward(distributed_config)
+    rows = load_prompt_only_rows(dataset_config, max_rows, split_dataset_ratio)
+    if not rows:
+        raise ValueError('run_infer got an empty dataset. Set DatasetConfig.dataset or .val_dataset.')
+    return rows
+
+
+def _finalize_forward_results(
+    rows: List[Dict[str, Any]],
+    per_row: List[Any],
+    task_type: Optional[str],
+    backend: str,
+    output_path: Optional[str],
+    metric: Optional[str],
+) -> List[Dict[str, Any]]:
+    """Assemble, write and score the one-value-per-row output of a forward-pass path.
+
+    Shared by the two forward task families :meth:`InferComponent._forward_pass` dispatches -- a pooling
+    task and a ``generative_reranker``: both produce exactly one plain value per row (a vector, class
+    logits, or a relevance score), so the row shape is the same. The label comes from the row's own
+    ``label`` column rather than a trailing assistant turn, because there is no completion to strip.
+    """
+    logger.info(f'run_infer: {len(rows)} rows, task_type={task_type}, backend={backend}')
+    results = []
+    for row, output in zip(rows, per_row):
+        passthrough = {key: value for key, value in row.items() if key != 'messages'}
+        results.append({
+            'response': output,
+            'responses': [output],
+            'labels': row.get('label'),
+            'messages': list(row['messages']),
+            **passthrough
+        })
+    if output_path:
+        _write_jsonl(output_path, results)
+        logger.info(f'run_infer: wrote {len(results)} rows to {output_path}')
+    if metric:
+        logger.info(f'run_infer metric: {compute_metric(results, metric)}')
+    return results
+
+
+def _sigmoid(score: float) -> float:
+    """Numerically stable sigmoid, mapping a reranker's raw score into a [0, 1] relevance."""
+    if score >= 0:
+        return 1.0 / (1.0 + math.exp(-score))
+    exp = math.exp(score)
+    return exp / (1.0 + exp)
+
+
+def _forward_sampler(
+    model_config: ModelConfig,
+    template_config: TemplateConfig,
+    distributed_config: Optional[DistributedConfig],
+    adapters: Optional[List[str]],
+    quantize_config: Optional[QuantizeConfig],
+    backend: str,
+    engine_args: Optional[Dict[str, Any]],
+    shutdown: bool,
+):
+    """Build a vLLM/SGLang sampler for a forward-pass path, and shut it down afterwards.
+
+    Shared by the pooling (``encode``) and generative-reranker (``sample``) sampler paths: they differ
+    only in the call they make, while the model/template/mesh build, the single-adapter selection and the
+    teardown are identical. Yields ``(sampler, processor, adapter_path)``.
+    """
+    from swift.dev.builders import build_parallel_mesh, build_sampler, build_template, load_model_processor
+
+    _, processor = load_model_processor(model_config)
+    template = build_template(template_config, processor)
+    sampler = build_sampler(
+        model_config,
+        backend=backend,
+        engine_args=engine_args,
+        device_mesh=build_parallel_mesh(distributed_config, none_if_single_rank=True),
+        template=template,
+        adapters=adapters,
+        quantize_config=quantize_config)
+    try:
+        yield sampler, processor, (adapters[0] if adapters else None)
+    finally:
+        if shutdown:
+            sampler.shutdown()
+
+
+def _pooling_via_sampler(
+    model_config: ModelConfig,
+    template_config: TemplateConfig,
+    distributed_config: Optional[DistributedConfig],
+    trajectories: List[Dict[str, Any]],
+    adapters: Optional[List[str]],
+    quantize_config: Optional[QuantizeConfig],
+    backend: str,
+    engine_args: Optional[Dict[str, Any]],
+    shutdown: bool,
+    reranker_use_activation: bool = True,
+) -> List[Any]:
+    """Run the pooling forward on a vLLM/SGLang sampler's ``encode``, one plain value per row."""
+    from swift.dev.builders import pooled_data, to_pooling_params
+
+    with _forward_sampler(model_config, template_config, distributed_config, adapters, quantize_config,
+                          backend, engine_args, shutdown) as (sampler, _processor, adapter_path):
+        # A cross-encoder reranker's raw score is a logit; ``use_activation`` has twinkle sigmoid it into a
+        # [0, 1] relevance comparable across queries (legacy reranker_use_activation). It rides in as a
+        # PoolingParams override, the channel to_pooling_params documents for these post-processing knobs.
+        overrides = {'use_activation': reranker_use_activation} if model_config.task_type == 'reranker' else {}
+        pooling_params = to_pooling_params(model_config.task_type, **overrides)
+        kwargs: Dict[str, Any] = {}
+        if adapter_path is not None:
+            kwargs['adapter_path'] = adapter_path
+        return pooled_data(sampler.encode(trajectories, pooling_params, **kwargs))
+
+
+def _forward_via_transformers(
+    model_config: ModelConfig,
+    template_config: TemplateConfig,
+    distributed_config: Optional[DistributedConfig],
+    rows: List[Dict[str, Any]],
+    trajectories: List[Dict[str, Any]],
+    adapters: Optional[List[str]],
+    quantize_config: Optional[QuantizeConfig],
+    max_batch_size: Optional[int] = None,
+    reranker_use_activation: bool = True,
+) -> List[Any]:
+    """Run one HF ``forward_only`` pass (transformers backend), one plain value per row.
+
+    Serves both the pooling tasks (seq_cls / embedding / reranker) and the transformers
+    ``generative_reranker`` path, which reads its yes/no logit difference out of the raw logits
+    returned here. Requests are chunked by ``max_batch_size`` so a large dataset does not materialise
+    every encoded input and every output tensor at once.
+    """
+    from swift.dev.builders import build_model, build_template, load_model_processor
+    from swift.dev.config import DistributedConfig
+
+    task_type = model_config.task_type
+    _, processor = load_model_processor(model_config)
+    template = build_template(template_config, processor)
+    # build_template leaves the template in 'train' mode (its default caller is the dataset/training
+    # path). This is the INFERENCE forward, and a train-mode ``_embedding_encode`` / ``_reranker_encode``
+    # reads ``positive_messages`` / ``negative_messages`` off the row -- pairs that only exist for
+    # contrastive training. run_infer's ``to_trajectory`` carries just the anchor ``messages``, so train
+    # mode hit ``positive[0]`` on an empty list and raised IndexError. Switching to an inference mode
+    # makes both encoders take their anchor-only branch, which is what a forward pass wants. causal_lm /
+    # seq_cls encode the anchor identically in either mode, so this does not change them.
+    template.set_mode('transformers')
+    model = build_model(
+        model_config, distributed_config or DistributedConfig(), quantize_config=quantize_config)
+    if adapters:
+        # add_adapter_to_model takes a checkpoint directory as well as a PeftConfig, so a trained
+        # adapter is loaded here rather than built -- apply_tuner would create a fresh, untrained one.
+        for index, adapter in enumerate(adapters):
+            model.add_adapter_to_model(f'adapter_{index}' if index else 'default', adapter)
+
+    # forward_only resolves a generative_reranker's yes/no token ids off the model's template, so it must
+    # be attached even though the inputs are already encoded here (the pooling tasks ignore it). Without
+    # this the transformers generative-reranker path trips twinkle's "call set_template before forwarding".
+    model.set_template(template)
+
+    batch_size = max_batch_size or len(rows) or 1
+    per_row: List[Any] = []
+    for start in range(0, len(rows), batch_size):
+        chunk = trajectories[start:start + batch_size]
+        encoded = [template.encode(trajectory) for trajectory in chunk]
+        outputs = model.forward_only(inputs=encoded, task=task_type, return_logits=True)
+        per_row.extend(_per_row_outputs(outputs, len(chunk)))
+    if reranker_use_activation and task_type in ('reranker', 'generative_reranker'):
+        # forward_only returns the raw relevance logit (a cross-encoder score, or a generative reranker's
+        # yes/no logit difference); sigmoid maps it to [0, 1], matching legacy's activation and the
+        # vLLM/SGLang paths. seq_cls / embedding are left untouched.
+        per_row = [
+            [_sigmoid(value) for value in row] if isinstance(row, (list, tuple)) else _sigmoid(row)
+            for row in per_row
+        ]
+    return per_row
+
+
+def _per_row_outputs(outputs: Any, num_rows: int) -> List[Any]:
+    """Unpack ``forward_only``'s output into one plain-Python value per row.
+
+    The shape depends on the head: seq_cls gives logits per row, embedding gives a vector. Both are
+    returned as lists so the result is jsonl-serialisable, which is the whole point of this path.
+    """
+    tensor = outputs
+    if isinstance(outputs, dict):
+        # forward_only(task='embedding') returns the pooled vectors under 'embeddings' (plural); the
+        # other heads use 'logits' / 'embedding' / 'last_hidden_state'. Missing the plural key left the
+        # raw output dict (tensors and all) as the row value, which is neither a vector nor serialisable.
+        for key in ('logits', 'embeddings', 'embedding', 'last_hidden_state'):
+            if key in outputs:
+                tensor = outputs[key]
+                break
+    if hasattr(tensor, 'tolist'):
+        listed = tensor.tolist()
+        if isinstance(listed, list) and len(listed) == num_rows:
+            return listed
+        return [listed]
+    return list(tensor) if isinstance(tensor, (list, tuple)) else [tensor] * num_rows
+
+
+def _generative_reranker_via_sampler(
+    model_config: ModelConfig,
+    template_config: TemplateConfig,
+    generation_config: Optional[GenerationConfig],
+    distributed_config: Optional[DistributedConfig],
+    trajectories: List[Dict[str, Any]],
+    adapters: Optional[List[str]],
+    quantize_config: Optional[QuantizeConfig],
+    backend: str,
+    engine_args: Optional[Dict[str, Any]],
+    shutdown: bool,
+    reranker_use_activation: bool = True,
+) -> List[float]:
+    """Score a generative reranker on a vLLM/SGLang generation engine, one score per row."""
+    from swift.dev.builders import to_sampling_params
+
+    # Built as a generation engine, not a pooling runner: build_sampler treats ``generative_reranker`` as
+    # a generative task_type, so no ``runner='pooling'``/``is_embedding`` is injected.
+    with _forward_sampler(model_config, template_config, distributed_config, adapters, quantize_config,
+                          backend, engine_args, shutdown) as (sampler, processor, adapter_path):
+        tokenizer = _tokenizer_of(processor)
+        positive_id, negative_id = _generative_reranker_token_ids(tokenizer)
+        # temperature is forced to 1.0 so the reported logprobs are the log-softmax of the raw logits:
+        # only then does logprob(yes) - logprob(no) equal the logit difference the HF path returns (any
+        # other temperature scales the logits before the softmax and changes the gap). max_tokens=1 --
+        # not 0 -- because twinkle's max_tokens==0 logprobs-only path drops logprobs, and we need the
+        # first generated token's.
+        params = to_sampling_params(
+            generation_config, max_tokens=1, temperature=1.0, logprobs=_GENERATIVE_RERANKER_TOP_LOGPROBS)
+        kwargs: Dict[str, Any] = {}
+        if adapter_path is not None:
+            kwargs['adapter_path'] = adapter_path
+        responses = sampler.sample(trajectories, params, **kwargs)
+        return [
+            _score_from_logprobs(response, positive_id, negative_id, reranker_use_activation)
+            for response in responses
+        ]
+
+
+def _score_from_logprobs(response: Any, positive_id: int, negative_id: int,
+                         use_activation: bool = True) -> float:
+    """``logprob(yes) - logprob(no)`` at the first generated position of one SampleResponse.
+
+    With ``use_activation`` the log-ratio is squashed by a sigmoid into ``P(yes) / (P(yes) + P(no))``, a
+    [0, 1] relevance comparable across queries -- the same activation legacy applies to a generative
+    reranker, and the counterpart of the pooling path's ``PoolingParams.use_activation``.
+    """
+    sequence = response.sequences[0]
+    if not sequence.logprobs:
+        raise RuntimeError('generative reranker scoring requested logprobs but the sampler returned none; '
+                           'the backend may not honour logprobs on this path.')
+    topk = dict(sequence.logprobs[0])
+    if positive_id not in topk or negative_id not in topk:
+        raise RuntimeError(
+            f'generative reranker: the positive/negative tokens ({positive_id}/{negative_id}) are not both '
+            f'in the top-{len(topk)} logprobs of the first generated token. Raise '
+            '_GENERATIVE_RERANKER_TOP_LOGPROBS (or check GENERATIVE_RERANKER_POSITIVE_TOKEN/'
+            'GENERATIVE_RERANKER_NEGATIVE_TOKEN) so both are returned.')
+    score = topk[positive_id] - topk[negative_id]
+    return _sigmoid(score) if use_activation else score
+
+
+def _generative_reranker_token_ids(tokenizer: Any) -> Tuple[int, int]:
+    """The (positive, negative) token ids, from the same env vars the HF scoring path reads."""
+    positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+    negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
+    return tokenizer.convert_tokens_to_ids(positive_token), tokenizer.convert_tokens_to_ids(negative_token)
+
+
+def _tokenizer_of(processor: Any) -> Any:
+    """A tokenizer from whatever ``load_model_processor`` returned (a tokenizer, or a processor wrapping one)."""
+    return getattr(processor, 'tokenizer', processor)

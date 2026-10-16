@@ -56,5 +56,24 @@ Env overrides (all optional, read by `train.sh`/`client.py`): `TWINKLE_SERVER_UR
 - **The sampler is vLLM with LoRA enabled** (`enable_lora: true`); `sample(..., adapter_uri=twinkle_path)`
   selects a trained adapter, `adapter_uri=None` samples the base.
 
+## Deploying a sentence-transformers embedding model
+
+A `SentenceTransformer` is a module pipeline (`Transformer -> Pooling -> Normalize`) that pools *inside* the
+model, so it cannot be built by the AutoModel path and does **not** go through the `task='embedding'`
+processor pooling. The model app serves it through an explicit class instead:
+
+```yaml
+# server_config.yaml, model app args
+model_cls: swift.dev.model.multi_lora_sentence_transformer_model:MultiLoraSentenceTransformerModel
+```
+
+`MultiLoraSentenceTransformerModel` keeps the ST pipeline as the model and installs the multi-tenant LoRA
+slots on its HF backbone, so the usual client flow (`add_adapter_to_model` -> `forward_backward` -> `save`)
+works unchanged against a `sentence_transformers` model id. Two requirements: the `sentence-transformers`
+package must be installed in the model workers (the class imports it lazily and fails with an explicit
+message otherwise), and `max_length` — the per-sample length cap checked before every forward, default
+8192 for that class — must be raised if the model trains on longer sequences. `model_cls` is accepted only
+for `backend: transformers` with `train_mode: lora` and no `hybrid` block.
+
 See the twinkle cookbooks under `twinkle/cookbook/client/{swift_model,server/transformer}/` for the upstream
 shapes this directory adapts.
