@@ -2,8 +2,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 # The generative and forward-pass bodies -- group sampling, the ``output_format`` emitters,
-# the reward-channel wiring, the candidate cache / rollout recorder, the jsonl writers and the
-# pooling / generative-reranker forwards -- live in
+# the reward-channel wiring, the candidate cache / rollout recorder and the pooling /
+# generative-reranker forwards -- live in
 # :mod:`swift.dev.components.infer.component` (:class:`InferComponent`) now. The moved private
 # names are re-exported here for backward compatibility, so the infer tests keep importing
 # ``from swift.dev.recipe.run_infer import X`` unchanged. (``_ArrowWriter`` has no definition
@@ -11,9 +11,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from swift.dev.components.infer.component import (
     _Candidate,
     _CandidateCache,
-    _CheckpointPaths,
-    _CheckpointWriter,
-    _IncrementalWriter,
     _dpo_row,
     _emit_all,
     _emit_dpo,
@@ -23,6 +20,10 @@ from swift.dev.components.infer.component import (
     _sigmoid,
     compute_metric,
 )
+# The writer family moved one layer down since, to the storage layer's write side, which owns how a
+# run streams into a store (:mod:`swift.dev.dataset.storage.writers`); the three names are
+# re-exported from there for the same backward-compatibility reason.
+from swift.dev.dataset.storage.writers import _CheckpointPaths, _CheckpointWriter, _IncrementalWriter
 
 # The reward-channel layer -- resolving, building, placing and scoring a MODEL reward (``--orm`` / ``--prm``)
 # -- lives in the shared ``swift.dev.rewards.scorer`` so online RL (grpo / ppo) drives the SAME code, not a

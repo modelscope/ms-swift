@@ -89,6 +89,13 @@ class DatasetStorage(ABC):
     #: :func:`validate_store_format` refuses them at config time rather than after a whole encode/generate
     #: run has produced rows only :meth:`write` would then reject.
     writable: bool = False
+    #: Whether the format can be appended to row by row while a run progresses -- only ``jsonl`` sets
+    #: it, the one line-appendable format -- and therefore the only family the writers of
+    #: :mod:`.writers` can checkpoint or resume; every other writable format is serialised in one
+    #: :meth:`write` at finish, so a crash loses the run. Drives the writer choice in
+    #: :func:`swift.dev.dataset.storage.writers.open_store_writer` and the resume guard in
+    #: :func:`swift.dev.config.validate.validate_infer_config`.
+    incremental: bool = False
     #: Whether a *directory* holding this format's files is detected as the format. Set only by the
     #: columnar lake sources whose data is a folder of ``.<ext>`` shards (``orc``) or a named ``.<ext>``
     #: dataset dir (``lance``). Deliberately False for the extension-mapped file formats (``jsonl``/

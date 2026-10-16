@@ -72,6 +72,7 @@ def _split_prm_channel(prm_items: Optional[Sequence[Any]]) -> Tuple[List[Any], O
 def _initialize_twinkle_rl(distributed_config: DistributedConfig,
                            groups: List[Tuple[str, List[int]]],
                            *,
+                           sampler_parallel_width: int = 1,
                            seed: int = 42,
                            full_determinism: bool = False,
                            tf32: Optional[bool] = None,
@@ -95,7 +96,26 @@ def _initialize_twinkle_rl(distributed_config: DistributedConfig,
         raise ValueError("run_grpo requires DistributedConfig.mode='ray': the trainer and the rollout sampler are "
                          'separate Ray actors that the driver drives and syncs weights between. mode="local" has no '
                          'way to place two roles.')
-    total = sum(len(ranks) for _, ranks in groups)
+    if sampler_parallel_width < 1:
+        raise ValueError('sampler_parallel_width must be >= 1.')
+    allocated = set()
+    device_groups = []
+    for group_name, ranks in groups:
+        rank_set = set(ranks)
+        shared = group_name != _MODEL_GROUP and bool(rank_set) and rank_set.issubset(allocated)
+        sampler_group = (group_name in (_SAMPLER_GROUP, 'shared_sampler') or group_name.startswith('sampler_')
+                         or group_name.startswith('shared_sampler_') or group_name.startswith('flex_sampler_'))
+        width = sampler_parallel_width if sampler_group else 1
+        device_groups.append(
+            DeviceGroup(
+                name=group_name,
+                ranks=ranks,
+                device_type='GPU',
+                gpus_per_worker=width,
+                shared=shared))
+        if not shared:
+            allocated.update(rank_set)
+    total = max(allocated) + 1 if allocated else 0
     twinkle.initialize(
         mode='ray',
         nproc_per_node=total,
@@ -103,13 +123,7 @@ def _initialize_twinkle_rl(distributed_config: DistributedConfig,
         global_device_mesh=build_dp_mesh(distributed_config, sequence_parallel_size),
         # --ray_exp_name names this Ray run (cluster/worker-name prefix); online RL is always ray mode.
         name=distributed_config.ray_exp_name,
-        groups=[
-            *[
-                DeviceGroup(name=group_name, ranks=ranks, device_type='GPU', gpus_per_worker=1)
-                for group_name, ranks in groups
-            ],
-            DeviceGroup(name=REF_ONLY_REMOTE_GROUP, ranks=1, device_type='CPU'),
-        ])
+        groups=[*device_groups, DeviceGroup(name=REF_ONLY_REMOTE_GROUP, ranks=1, device_type='CPU')])
 
 
 class SyncableRollout(RolloutEngine):
@@ -131,7 +145,8 @@ class SyncableRollout(RolloutEngine):
                  *,
                  colocate: bool,
                  platform: str = 'GPU',
-                 sleep_level: int = 0):
+                 sleep_level: int = 0,
+                 handover: Any = None):
         from twinkle.checkpoint_engine import CheckpointEngineManager
 
         from swift.dev.recipe._colocate import ColocateHandover
@@ -145,6 +160,11 @@ class SyncableRollout(RolloutEngine):
         self.sampler = sampler
         self.template = template
         self._init_streaming_state()
+        if handover is not None:
+            self.manager = None
+            self._handover = handover
+            self.phase_handover = handover
+            return
         # mode= (not a colocate= flag) is the manager's contract: 'colocate' wires the shared-GPU CUDA
         # IPC hand-over, 'standalone' wires disaggregated Ray actors over NCCL. 'auto' is NOT used here
         # because it resolves Ray actor handles to 'standalone' and deliberately never infers 'colocate'
@@ -171,6 +191,22 @@ class SyncableRollout(RolloutEngine):
     def finish_generate(self) -> None:
         """Reverse the colocate hand-over after a rollout, so the trainer can take the GPU back."""
         self._handover.exit()
+
+    def shutdown(self) -> None:
+        try:
+            self.close()
+        finally:
+            controller = getattr(self, 'resource_controller', None)
+            if controller is not None:
+                controller.shutdown()
+            else:
+                try:
+                    self._handover.exit()
+                finally:
+                    try:
+                        self.manager.close()
+                    finally:
+                        self.sampler.shutdown()
 
 
 def run_grpo(
@@ -225,9 +261,11 @@ def run_grpo(
     # Also imports the run's plugin files -- the reward names handed to the GRPO assembler below are
     # resolved against the registry they write into.
     assembly.prepare()
+    assembly.build_template()
+    prompts, prompt_extras = _prompt_rows_from_dataset(dataset_config)
+    prompt_rows = [dict(messages=messages, **extras) for messages, extras in zip(prompts, prompt_extras)]
 
     backend = _sampler_backend(rollout_config)
-    sampler_world_size = _sampler_world_size(rollout_config, backend)
     # Plan the DeviceGroups for any FULL-PARAMETER frozen auxiliary (RL_PLAN §3.5): the KL reference, an
     # RLSD/SDAR teacher, and each reward model is a separate Ray actor on its own GPUs. A LoRA/disable_lora
     # auxiliary reuses the policy actor and plans NO group. Each frozen model is described once by an
@@ -278,11 +316,27 @@ def run_grpo(
     # this planning and _build_prm_channel use, so the planned name/world size and the build cannot drift.
     if _split_prm_channel(rl_config.prm)[1] is not None:
         auxiliary_groups.append((_prm_group(0), _spec_world_size(rl_config.prm_parallel_spec)))
-    groups, sampler_remote_group, colocate = plan_rl_device_groups(
-        distributed_config.nproc_per_node,
-        rollout_config.sampler_mode,
-        sampler_world_size,
-        auxiliary_groups=auxiliary_groups)
+    from swift.dev.recipe.rl_resource import RLResourceBootstrap
+    resource_plan = RLResourceBootstrap.build(
+        model_config=model_config,
+        distributed_config=distributed_config,
+        rollout_config=rollout_config,
+        template=assembly.template,
+        prompt_rows=prompt_rows,
+        auxiliary_groups=auxiliary_groups,
+        max_completion_length=rl_config.max_completion_length)
+    sampler_world_size = _sampler_world_size(rollout_config, backend)
+    if resource_plan is None:
+        groups, sampler_remote_group, colocate = plan_rl_device_groups(
+            distributed_config.nproc_per_node,
+            rollout_config.sampler_mode,
+            sampler_world_size,
+            auxiliary_groups=auxiliary_groups)
+    else:
+        groups = RLResourceBootstrap.device_groups(
+            resource_plan, adaptive=rollout_config.resource_mode == 'adaptive')
+        sampler_remote_group, colocate = _SAMPLER_GROUP, False
+        logger.info('RL resource plan:\n%s', resource_plan.describe())
     # RL initializes twinkle itself rather than through the assembly: it needs two device groups (trainer
     # + sampler), whose placement was just planned.
     _initialize_twinkle_rl(
@@ -291,9 +345,9 @@ def run_grpo(
         seed=train_config.seed,
         full_determinism=train_config.full_determinism,
         tf32=train_config.tf32,
-        sequence_parallel_size=template_config.sequence_parallel_size)
+        sequence_parallel_size=template_config.sequence_parallel_size,
+        sampler_parallel_width=_sampler_parallel_width(rollout_config, backend))
 
-    assembly.build_template()
     # Ulysses SP mesh (None unless sequence_parallel_size>1): planned before build_model so the trainable
     # policy is placed on the dp x ulysses mesh, the same one _initialize_twinkle_rl installed globally for
     # the colocated sampler and the one the dp_size batch-width formula below reads.
@@ -306,7 +360,6 @@ def run_grpo(
     # set the way assembly derives it from a dataloader: one generation batch per rollout, exhausted after
     # num_train_epochs passes (B1). Load the prompts + design-B mini-batch width first, then size max_steps
     # (the LR-scheduler horizon) from them; an explicit --max_steps still overrides.
-    prompts, prompt_extras = _prompt_rows_from_dataset(dataset_config)
     # Design-B mini-batch width: per_device_train_batch_size * dp_size, the same global-batch formula SFT
     # uses (builders/dataset._twinkle_loader_layout). Online RL is Ray-only and pure data-parallel over
     # nproc_per_node, so dp_size is read off build_dp_mesh -- the exact mesh the trainer model was
@@ -354,14 +407,35 @@ def run_grpo(
         # enable_return_sampling_mask + processed_logprobs); set it here rather than in the shared
         # _sampler_engine_args because only the GRPO loop consumes sampling masks.
         sampler_engine_args['enable_sampling_replay'] = True
-    sampler = build_sampler(
-        model_config,
-        backend=backend,
-        engine_args=sampler_engine_args,
-        template=assembly.template,
-        remote_group=sampler_remote_group)
-    rollout = SyncableRollout(
-        assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
+    if rollout_config.resource_mode == 'adaptive':
+        from swift.dev.recipe.rl_resource import AdaptiveResourceController
+        controller = AdaptiveResourceController.build(
+            model=assembly.model,
+            model_config=model_config,
+            template=assembly.template,
+            rollout_config=rollout_config,
+            backend=backend,
+            engine_args=sampler_engine_args,
+            plan=resource_plan)
+        sampler = controller.sampler
+        rollout = SyncableRollout(
+            assembly.model,
+            sampler,
+            assembly.template,
+            colocate=False,
+            sleep_level=rollout_config.sleep_level,
+            handover=controller.handover)
+        rollout.resource_controller = controller
+    else:
+        sampler = build_sampler(
+            model_config,
+            backend=backend,
+            engine_args=sampler_engine_args,
+            device_mesh=_sampler_device_mesh(rollout_config, backend),
+            template=assembly.template,
+            remote_group=sampler_remote_group)
+        rollout = SyncableRollout(
+            assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
     # Multi-turn is requested by setting max_turns; the engine is twinkle-native (no scheduler, no
     # gym). Per-round length is sampling_params.max_tokens, whole-trajectory length is
     # max_trajectory_tokens. Tools are opt-in via RolloutConfig.tools: the engine builds its own sandbox
@@ -546,7 +620,7 @@ def run_grpo(
     })):
         logger.info('[perf] profiling enabled for the online GRPO loop.')
     try:
-        if handover.serializes:
+        if handover.serializes or getattr(handover, 'adaptive_shared', False):
             # Version-0 hand-over: put the pre-training policy in the sampler before the first admission.
             # Every later cycle's enter rides the in-place publish's sync_fn (see the builder).
             handover.enter()
@@ -597,7 +671,8 @@ def run_grpo(
             if recorder.reached_max():
                 break
     finally:
-        if handover.serializes and handover.in_generation:
+        if ((handover.serializes or getattr(handover, 'adaptive_shared', False))
+                and handover.in_generation):
             # Ended mid-window (e.g. a budget hit during generation): give the device back to the trainer
             # so the post-run final save finds the model resident.
             handover.exit()
@@ -703,16 +778,27 @@ def _sampler_backend(rollout_config: RolloutConfig) -> str:
     return backend
 
 
-def _sampler_world_size(rollout_config: RolloutConfig, backend: str) -> int:
-    """The rollout sampler's GPU count, per backend, for :func:`plan_rl_device_groups` to size its group.
-
-    vLLM spreads a replica over ``tensor_parallel_size * data_parallel_size`` GPUs. SGLang additionally
-    shards the model by pipeline stages, so its world size is ``tp * pp * dp`` -- omitting ``pp`` (the B3
-    defect) would under-size the group and mis-place the engine.
-    """
+def _sampler_parallel_width(rollout_config: RolloutConfig, backend: str) -> int:
+    """GPUs owned by one complete sampler engine worker (TP * PP)."""
     if backend == 'sglang':
-        return rollout_config.sglang_tp_size * rollout_config.sglang_pp_size * rollout_config.sglang_dp_size
-    return rollout_config.vllm_tensor_parallel_size * rollout_config.vllm_data_parallel_size
+        return rollout_config.sglang_tp_size * rollout_config.sglang_pp_size
+    return rollout_config.vllm_tensor_parallel_size * rollout_config.vllm_pipeline_parallel_size
+
+
+def _sampler_replica_count(rollout_config: RolloutConfig, backend: str) -> int:
+    """Independent sampler replicas represented by the sampler DeviceMesh DP dimension."""
+    return rollout_config.sglang_dp_size if backend == 'sglang' else rollout_config.vllm_data_parallel_size
+
+
+def _sampler_world_size(rollout_config: RolloutConfig, backend: str) -> int:
+    """Physical GPU count for all complete sampler replicas."""
+    return _sampler_parallel_width(rollout_config, backend) * _sampler_replica_count(rollout_config, backend)
+
+
+def _sampler_device_mesh(rollout_config: RolloutConfig, backend: str) -> Any:
+    """Sampler-owned DP mesh; it must never inherit the trainer's global mesh."""
+    from twinkle import DeviceMesh
+    return DeviceMesh.from_sizes(dp_size=_sampler_replica_count(rollout_config, backend))
 
 
 def _sampler_engine_args(rollout_config: RolloutConfig, engine_args: Optional[Dict[str, Any]], colocate: bool,

@@ -191,6 +191,25 @@ class RolloutConfig:
     offload_optimizer: bool = False
     offload_model: bool = False
 
+    # === Resource Planning ===
+    #: ``manual`` preserves every existing placement knob. ``estimate`` applies one static plan before
+    #: actor construction. ``adaptive`` starts from that plan and may move complete replicas at publish
+    #: boundaries without changing the trainer world or its collective groups.
+    resource_mode: Literal['manual', 'estimate', 'adaptive'] = 'manual'
+    #: Maximum physical GPUs available to this run. None lets the planner derive the required count from
+    #: the cluster; manual mode does not read this field.
+    resource_total_gpus: Optional[int] = None
+    #: Per-card memory override in GiB. None uses the smallest visible cluster GPU reported by Ray.
+    resource_gpu_memory_gib: Optional[float] = None
+    #: Disjoint GPUs reserved at initialization for runtime sampler/auxiliary role changes.
+    resource_flex_gpus: int = 0
+    #: Optimizer-step windows used by the adaptive controller when comparing cumulative statistics.
+    resource_window_steps: int = 8
+    #: Minimum optimizer steps between two completed resource changes.
+    resource_min_hold_steps: int = 16
+    #: Explicit estimator overrides. Keys are validated against ``RLResourcePlan`` before actors are built.
+    resource_overrides: Optional[Dict[str, Any]] = None
+
     # === Batch Control ===
     generation_batch_size: Optional[int] = None
 

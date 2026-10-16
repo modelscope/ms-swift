@@ -93,7 +93,9 @@ def run_ppo(
         _prompts_from_dataset,
         _reward_group,
         _sampler_backend,
+        _sampler_device_mesh,
         _sampler_engine_args,
+        _sampler_parallel_width,
         _sampler_world_size,
         _spec_world_size,
         plan_rl_device_groups,
@@ -117,6 +119,8 @@ def run_ppo(
         megatron_config=megatron_config,
         moe_config=moe_config)
     assembly.prepare()
+    assembly.build_template()
+    prompts = _prompts_from_dataset(dataset_config)
 
     backend = _sampler_backend(rollout_config)
     sampler_world_size = _sampler_world_size(rollout_config, backend)
@@ -137,11 +141,27 @@ def run_ppo(
     auxiliary_groups: List[Tuple[str, int]] = [] if ref_disable_lora else [(_REF_GROUP, ref_world_size)]
     reward_world_size = _spec_world_size(rl_config.orm_parallel_spec)
     auxiliary_groups += [(_reward_group(i), reward_world_size) for i in range(len(rl_config.reward_model or []))]
-    groups, sampler_remote_group, colocate = plan_rl_device_groups(
-        distributed_config.nproc_per_node,
-        rollout_config.sampler_mode,
-        sampler_world_size,
-        auxiliary_groups=auxiliary_groups)
+    from swift.dev.recipe.rl_resource import RLResourceBootstrap
+    resource_plan = RLResourceBootstrap.build(
+        model_config=model_config,
+        distributed_config=distributed_config,
+        rollout_config=rollout_config,
+        template=assembly.template,
+        prompt_rows=[{'messages': prompt} for prompt in prompts],
+        auxiliary_groups=auxiliary_groups,
+        max_completion_length=rl_config.max_completion_length)
+    sampler_world_size = _sampler_world_size(rollout_config, backend)
+    if resource_plan is None:
+        groups, sampler_remote_group, colocate = plan_rl_device_groups(
+            distributed_config.nproc_per_node,
+            rollout_config.sampler_mode,
+            sampler_world_size,
+            auxiliary_groups=auxiliary_groups)
+    else:
+        groups = RLResourceBootstrap.device_groups(
+            resource_plan, adaptive=rollout_config.resource_mode == 'adaptive')
+        sampler_remote_group, colocate = 'sampler', False
+        logger.info('RL resource plan:\n%s', resource_plan.describe())
     # PPO runs SP=1: the per-token value-head critic does not cover sequence-parallel / packed layouts
     # (see the module docstring), and policy+critic MUST share one mesh -- a SP policy with an SP=1 critic
     # would slice_dp each forward_backward at a different data_world_size, starving the critic's ranks. So
@@ -151,11 +171,12 @@ def run_ppo(
         groups,
         seed=train_config.seed,
         full_determinism=train_config.full_determinism,
-        tf32=train_config.tf32)
+        tf32=train_config.tf32,
+        sampler_parallel_width=_sampler_parallel_width(rollout_config, backend))
 
     # The critic, the reference and the reward models all encode with the SAME template as the policy,
     # so a batch lines up token-for-token across the four forwards.
-    template = assembly.build_template()
+    template = assembly.template
 
     # Design-B mini-batch width: per_device_train_batch_size * dp_size, the same global-batch formula GRPO
     # uses. Online RL is Ray-only and pure data-parallel over nproc_per_node, so dp_size comes off
@@ -173,7 +194,6 @@ def run_ppo(
     # included: one rollout splits into train_batch_size mini-batches and replays them num_ppo_epochs times,
     # so the LR-scheduler horizon is rollout_step_budget(num_iterations=num_ppo_epochs), NOT the rollout
     # count it used to be. --max_steps still overrides.
-    prompts = _prompts_from_dataset(dataset_config)
     from swift.dev.recipe.train_loop import resolve_rollout_max_steps, rollout_step_budget
     max_steps = resolve_rollout_max_steps(
         train_config.max_steps,
@@ -231,14 +251,33 @@ def run_ppo(
     configure_ppo_value_metric(value_model, rl_config)
 
     # Rollout (weight-syncable, exactly as run_grpo), reward model(s) and reference for the KL penalty.
-    sampler = build_sampler(
-        model_config,
-        backend=backend,
-        engine_args=_sampler_engine_args(rollout_config, engine_args, colocate, backend),
-        template=template,
-        remote_group=sampler_remote_group)
-    rollout = SyncableRollout(
-        model, sampler, template, colocate=colocate, sleep_level=rollout_config.sleep_level)
+    sampler_engine_args = _sampler_engine_args(rollout_config, engine_args, colocate, backend)
+    if rollout_config.resource_mode == 'adaptive':
+        from swift.dev.recipe.rl_resource import AdaptiveResourceController
+        controller = AdaptiveResourceController.build(
+            model=model,
+            model_config=model_config,
+            template=template,
+            rollout_config=rollout_config,
+            backend=backend,
+            engine_args=sampler_engine_args,
+            plan=resource_plan,
+            additional_handover_models=(value_model, ))
+        sampler = controller.sampler
+        rollout = SyncableRollout(
+            model, sampler, template, colocate=False, sleep_level=rollout_config.sleep_level,
+            handover=controller.handover)
+        rollout.resource_controller = controller
+    else:
+        sampler = build_sampler(
+            model_config,
+            backend=backend,
+            engine_args=sampler_engine_args,
+            device_mesh=_sampler_device_mesh(rollout_config, backend),
+            template=template,
+            remote_group=sampler_remote_group)
+        rollout = SyncableRollout(
+            model, sampler, template, colocate=colocate, sleep_level=rollout_config.sleep_level)
     reference = _build_reference(
         model_config, tuner_config, template, rl_config, distributed_config, remote_group=ref_remote_group)
     # EMA manager: paired 2-rank NCCL groups (policy rank k <-> reference rank k) for streaming reference
@@ -248,7 +287,11 @@ def run_ppo(
     if rl_config.sync_ref_model and reference is not None and reference != 'disable_lora':
         from twinkle.checkpoint_engine import CheckpointEngineManager
         ema_manager = CheckpointEngineManager(
-            model=assembly.model, sampler=reference, platform='GPU', mode='standalone')
+            model=assembly.model,
+            sampler=reference,
+            platform='GPU',
+            mode='standalone',
+            channel='ema:reference')
     # The outcome-reward channel is resolved by the SAME shared builder GRPO/RFT use: ``--orm`` rules plus
     # each ``--reward_model`` scalar scorer become one ordered ``RewardScorer`` list, so PPO scores rules and
     # reward models together through the skeleton's ``_score`` (a weighted sum over the channel, not the old
@@ -426,7 +469,7 @@ def run_ppo(
     })):
         logger.info('[perf] profiling enabled for the online PPO loop.')
     try:
-        if handover.serializes:
+        if handover.serializes or getattr(handover, 'adaptive_shared', False):
             # Version-0 hand-over: put the pre-training policy in the sampler before the first admission.
             # Every later cycle's enter rides the in-place publish's sync_fn (see the builder).
             handover.enter()
@@ -469,7 +512,8 @@ def run_ppo(
             if recorder.reached_max():
                 break
     finally:
-        if handover.serializes and handover.in_generation:
+        if ((handover.serializes or getattr(handover, 'adaptive_shared', False))
+                and handover.in_generation):
             # Ended mid-window (e.g. a budget hit during generation): give the device back to the trainer
             # so the post-run final save finds the model resident.
             handover.exit()

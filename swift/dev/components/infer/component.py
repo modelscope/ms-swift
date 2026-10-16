@@ -3,7 +3,6 @@ import copy
 import hashlib
 import math
 import os
-import shutil
 import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
@@ -33,6 +32,10 @@ from swift.dev.rewards.scorer import (
     resolve_reward_channel as _resolve_reward_channel,
     resolve_reward_model as _resolve_reward_model,
 )
+# The dataset-storage registry owns the store formats; its write side (``.writers``) owns the
+# incremental / checkpointed / batch writer family the run streams rows through.
+from swift.dev.dataset.storage import STORAGE_MAPPING
+from swift.dev.dataset.storage.writers import _write_jsonl, open_store_writer, store_output_complete
 from swift.dev.utils.logger import get_logger
 from swift.dev.components.base import RecipeComponent
 
@@ -200,18 +203,18 @@ class InferComponent(RecipeComponent):
         # atomic finalize); a plain 'all' run uses the incremental writer, which also gathers across DP
         # ranks. An existing complete checkpoint output short-circuits the run unless override_exist_file,
         # so re-running a finished job is a no-op.
-        # Only jsonl has those incremental/resumable line writers; any other writable store_format serialises
-        # once at finish (no checkpoint), so it never uses the resumable writer -- validate_infer_config has
-        # already rejected a non-jsonl format together with resume. A 'dpo' run that picks one forfeits its
-        # crash-safe checkpointing -- say so rather than let the choice pass silently.
-        is_line_format = infer_config.store_format == 'jsonl'
-        ## 这里不对吧，仍然可以存为一行，比如positive——mesages和negative-messages
-        ## 利用刚写的数据湖存储就可以实现？
-        if not is_line_format and output_format == 'dpo':
+        # Whether the store_format has those incremental/resumable line writers is a capability the format
+        # itself declares in the storage registry (``DatasetStorage.incremental``; only jsonl sets it so
+        # far), not something this component decides: every other writable store_format serialises once at
+        # finish, and validate_infer_config has already rejected resume for it. A 'dpo' run that picks one
+        # forfeits its crash-safe checkpointing -- say so rather than let the choice pass silently. The
+        # resulting choice of writer itself belongs to open_store_writer.
+        incremental = STORAGE_MAPPING[infer_config.store_format].incremental
+        if not incremental and output_format == 'dpo':
             logger.warning(f"output_format='dpo' with store_format={infer_config.store_format!r} writes one store "
                            'at the end, so it cannot checkpoint/resume a long best-of-n run; use --store_format '
                            'jsonl for that.')
-        use_checkpoint = (bool(output_path) and is_line_format
+        use_checkpoint = (bool(output_path) and incremental
                           and (output_format == 'dpo' or infer_config.resume))
         if use_checkpoint:
             from twinkle.utils import Platform
@@ -227,9 +230,8 @@ class InferComponent(RecipeComponent):
                     f'needs a single driving process, but this launch has {local_world} local ranks, each '
                     'of which would write the same checkpoint files. Run it under DistributedConfig.mode='
                     "'ray', or with a single rank.")
-            probe = _CheckpointPaths(os.path.dirname(output_path) or 'output', os.path.basename(output_path))
-            if os.path.exists(probe.final) and not infer_config.override_exist_file:
-                logger.info(f'run_infer: {probe.final} exists and override_exist_file is False; nothing to do.')
+            if store_output_complete(output_path) and not infer_config.override_exist_file:
+                logger.info(f'run_infer: {output_path} exists and override_exist_file is False; nothing to do.')
                 return []
 
         cache = _CandidateCache(infer_config.cache_files)
@@ -282,12 +284,9 @@ class InferComponent(RecipeComponent):
         params = to_sampling_params(generation_config, num_samples=num_return)
         ## 这几个选项是否应该由数据湖来完成支持？
         ## 数据湖来决定flush时机和阅读恢复、续写
-        if output_path and not is_line_format:
-            writer = _BatchWriter(output_path, infer_config.store_format, infer_config.store_fields)
-        elif use_checkpoint:
-            writer = _CheckpointWriter(output_path, infer_config.resume)
-        else:
-            writer = _IncrementalWriter(output_path, 1 if output_path else None)
+        writer = open_store_writer(output_path, infer_config.store_format,
+                                   store_fields=infer_config.store_fields, checkpoint=use_checkpoint,
+                                   resume=infer_config.resume)
         # Rollout-token sidecar: only built when save_rollout_tokens is on, and only a local backend can feed
         # it (the message-only 'no' backend produces no tokens). The NPZ dir sits beside
         # the jsonl and each row embeds a path relative to output_dir, so the pair stays portable.
@@ -864,142 +863,6 @@ def _emit_grpo(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Op
     return [out]
 
 
-class _IncrementalWriter:
-    """Append result rows to jsonl as batches complete, gathering across DP ranks first.
-
-    Why gather: with DP > 1 each rank holds only its own slice, so a naive per-rank write either
-    interleaves partial files or has every rank overwrite the same path. Legacy solved this with
-    ``JsonlWriter(gather_obj=True)``; twinkle's ``gather_object`` is the same idea.
-
-    This is the plain-'all' writer. When ``batch_size`` is falsy it does nothing until :meth:`finish`,
-    which writes everything at once. :meth:`skip` / :meth:`checkpoint` are no-ops, so the generative
-    loop drives this and :class:`_CheckpointWriter` through one interface.
-    """
-
-    def __init__(self, output_path: Optional[str], batch_size: Optional[int]):
-        self.output_path = output_path
-        self.incremental = bool(output_path and batch_size)
-        self._started = bool(output_path and os.path.exists(output_path))
-
-    def skip(self, index: int) -> bool:
-        return False
-
-    def write(self, batch: List[Dict[str, Any]]) -> None:
-        if not self.incremental:
-            return
-        rows = _gather_rows(batch)
-        if rows is None:
-            return  # not the writing rank
-        _write_jsonl(self.output_path, rows, append=self._started)
-        self._started = True
-        logger.info(f'run_infer: flushed {len(rows)} rows to {self.output_path}')
-
-    def checkpoint(self, index: int) -> None:
-        pass
-
-    def finish(self, results: List[Dict[str, Any]]) -> None:
-        if self.incremental or not self.output_path:
-            return
-        rows = _gather_rows(results)
-        if rows is None:
-            return
-        _write_jsonl(self.output_path, rows, append=os.path.exists(self.output_path))
-        logger.info(f'run_infer: wrote {len(rows)} rows to {self.output_path}')
-
-
-class _CheckpointWriter:
-    """The checkpointed jsonl writer for a 'dpo' or resumed run, over :class:`_CheckpointPaths`.
-
-    ``tmp`` is the live write, ``resume`` the snapshot taken after each completed batch, ``state`` the
-    last finished batch index, and the closing move to ``final`` is what marks a run complete -- so a
-    multi-hour run that crashes resumes instead of restarting. Rows arrive as dicts and are serialized
-    here, so it and :class:`_IncrementalWriter` share one emit surface. Under DP this assumes a single
-    driving process (the ray sampler-group layout); the incremental writer is the one that gathers
-    across torchrun DP ranks.
-    """
-
-    def __init__(self, output_path: str, resume: bool):
-        output_dir = os.path.dirname(output_path) or 'output'
-        os.makedirs(output_dir, exist_ok=True)
-        self.paths = _CheckpointPaths(output_dir, os.path.basename(output_path))
-        self._resume_from, write_mode = self.paths.prepare(resume)
-        self._f = open(self.paths.tmp, write_mode, encoding='utf-8')
-
-    def skip(self, index: int) -> bool:
-        return index <= self._resume_from
-
-    def write(self, rows: List[Dict[str, Any]]) -> None:
-        for row in rows:
-            self._f.write(json.dumps(row, ensure_ascii=False, default=str) + '\n')
-        self._f.flush()
-
-    def checkpoint(self, index: int) -> None:
-        self.paths.checkpoint(index)
-
-    def finish(self, results: List[Dict[str, Any]]) -> None:
-        self._f.close()
-        self.paths.finalize()
-        logger.info(f'run_infer: wrote {self.paths.final}')
-
-
-class _BatchWriter:
-    """Write the run's rows as one store at the end, via the shared registry, for any non-jsonl format.
-
-    The batch counterpart of :class:`_IncrementalWriter`: same emit surface, but the rows are serialised
-    once at :meth:`finish` through :func:`~swift.dev.dataset.write_dataset_store` into whichever container
-    ``store_format`` names -- ``arrow`` by default, or any writable format a ``@register_storage`` plugin
-    added -- the same store ``swift export --to_cached_dataset`` produces
-    (:mod:`swift.dev.dataset.storage`). There is no incremental flush, so a crash loses the run -- which is
-    why any non-jsonl ``store_format`` is rejected together with ``resume``
-    (:func:`swift.dev.config.validate.validate_infer_config`). jsonl keeps its own resumable line writers
-    (:class:`_IncrementalWriter` / :class:`_CheckpointWriter`) instead of coming through here.
-
-    The token payload stays in the NPZ sidecar the rows reference via ``rollout_tokens``; inlining those
-    arrays as native columns belongs to the offline-RL reader (a later phase), so this unifies the
-    container, not the token layout.
-    """
-
-    def __init__(self, output_path: str, store_format: str, store_fields: Optional[List[str]] = None):
-        # The store sits beside the jsonl name the user gave: strip a trailing ``.jsonl`` and append the
-        # format's own suffix, so the sidecar-relative ``rollout_tokens`` paths embedded in the rows stay
-        # valid. A directory format has no ``store_suffix`` (arrow is detected by shape, not name), so it
-        # takes the format name as its marker -- ``arrow`` -> ``X.arrow`` -- preserving the existing path.
-        from swift.dev.dataset.storage import STORAGE_MAPPING
-        base = output_path[:-len('.jsonl')] if output_path.endswith('.jsonl') else output_path
-        self.store_path = base + (STORAGE_MAPPING[store_format]().store_suffix or f'.{store_format}')
-        self.store_format = store_format
-        self.store_fields = store_fields
-
-    def skip(self, index: int) -> bool:
-        return False
-
-    def write(self, batch: List[Dict[str, Any]]) -> None:
-        pass  # rows are serialised once, at finish
-
-    def checkpoint(self, index: int) -> None:
-        pass
-
-    def finish(self, results: List[Dict[str, Any]]) -> None:
-        rows = _gather_rows(results)
-        if rows is None:
-            return  # not the writing rank under DP
-        from swift.dev.dataset import write_dataset_store
-        write_dataset_store(rows, self.store_path, backend=self.store_format, fields=self.store_fields)
-
-
-def _gather_rows(rows: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
-    """All ranks' rows on the writing rank, None elsewhere. A no-op without torch.distributed."""
-    import torch.distributed as dist
-
-    if not (dist.is_available() and dist.is_initialized()):
-        return rows
-
-    from twinkle.utils import framework_util, is_master
-
-    gathered = framework_util.gather_object(rows, device_mesh=None)
-    return gathered if is_master() else None
-
-
 def _prompt_batch_size(batch_size: Optional[int]) -> int:
     """The prompt-source batch size for the per-sample driver, widened to the launch's dp width.
 
@@ -1017,15 +880,6 @@ def _prompt_batch_size(batch_size: Optional[int]) -> int:
     if world > 1:
         size = -(-size // world) * world
     return size
-
-
-def _write_jsonl(path: str, rows: List[Dict[str, Any]], append: bool = False) -> None:
-    directory = os.path.dirname(path)
-    if directory:
-        os.makedirs(directory, exist_ok=True)
-    with open(path, 'a' if append else 'w', encoding='utf-8') as f:
-        for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False) + '\n')
 
 
 def compute_metric(results: List[Dict[str, Any]], metric: Literal['acc', 'rouge']) -> Dict[str, float]:
@@ -1433,58 +1287,6 @@ def _plan_batches(n_rows: int, batch_size: int, max_batches: Optional[int]) -> L
         raise ValueError(f'InferConfig.batch_size must be >= 1, got {batch_size}.')
     batches = [(start, min(start + batch_size, n_rows)) for start in range(0, n_rows, batch_size)]
     return batches[:max_batches] if max_batches else batches
-
-
-class _CheckpointPaths:
-    """The four-file resume scheme, kept in one place so the ordering cannot be got wrong.
-
-    ``final`` only ever appears via the closing move, which is what makes its existence mean "this run
-    finished" -- the early-return check ``InferComponent.__call__`` opens with depends on that.
-    """
-
-    def __init__(self, output_dir: str, output_file: str):
-        self.final = os.path.join(output_dir, output_file)
-        self.tmp = self.final + '.tmp'
-        self.resume = self.final + '.resume'
-        self.state = os.path.join(output_dir, 'sampling_state.json')
-
-    def prepare(self, resume: bool) -> Tuple[int, str]:
-        """Returns ``(last_finished_batch_index, open_mode)``; -1 means start from the first batch.
-
-        Resuming copies the snapshot back over ``tmp`` first: ``tmp`` may hold a half-written batch
-        from the crash, and appending to that would emit a truncated row.
-        """
-        if not resume:
-            for path in (self.tmp, self.resume, self.state):
-                if os.path.exists(path):
-                    os.remove(path)
-            return -1, 'w'
-
-        if os.path.exists(self.resume):
-            shutil.copyfile(self.resume, self.tmp)
-        last = -1
-        if os.path.exists(self.state):
-            with open(self.state, 'r', encoding='utf-8') as f:
-                last = json.load(f).get('batch_index', -1)
-            logger.info(f'run_infer: resuming after batch index {last}')
-        return last, 'a'
-
-    def checkpoint(self, batch_index: int) -> None:
-        """Snapshot, then record. In this order: a snapshot without a state file re-does one batch,
-        whereas a state file without its snapshot would skip a batch whose rows were never saved."""
-        shutil.copyfile(self.tmp, self.resume)
-        with open(self.state, 'w', encoding='utf-8') as f:
-            json.dump({'batch_index': batch_index}, f)
-
-    def finalize(self) -> None:
-        """Publish the snapshot as the output file, keeping any previous one under a timestamp."""
-        if os.path.exists(self.final):
-            shutil.move(self.final, f'{self.final}.{int(time.time())}')
-        source = self.resume if os.path.exists(self.resume) else self.tmp
-        shutil.move(source, self.final)
-        for path in (self.tmp, self.state):
-            if os.path.exists(path):
-                os.remove(path)
 
 
 #: How many top logprobs to request when scoring a generative reranker off generation. The positive and

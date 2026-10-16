@@ -68,6 +68,7 @@ class JsonlStorage(DatasetStorage):
     name = 'jsonl'
     extensions = ('jsonl', 'json')
     writable = True
+    incremental = True
     store_suffix = '.jsonl'
 
     def read(self, path: str, *, split: str = 'train', **kwargs) -> Any:

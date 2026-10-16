@@ -245,7 +245,62 @@ def validate_rollout_config(rollout_config: Optional['RolloutConfig'],
     _check_rollout_sampler(rollout_config)
     _check_rollout_tools(rollout_config, multi_turn_config)
     _check_offload_knobs(rollout_config)
+    _check_resource_mode(rollout_config, rl_config)
     _check_async_mode(rollout_config, rl_config, tuner_config)
+
+
+def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: Optional['RLConfig']) -> None:
+    """Validate static/adaptive resource planning before any Ray actor is created."""
+    if rollout_config is None:
+        return
+    mode = rollout_config.resource_mode
+    if mode not in {'manual', 'estimate', 'adaptive'}:
+        raise ValueError(f'unknown resource_mode {mode!r}; expected manual, estimate, or adaptive.')
+    resource_fields = {
+        'resource_total_gpus', 'resource_gpu_memory_gib', 'resource_flex_gpus', 'resource_window_steps',
+        'resource_min_hold_steps', 'resource_overrides'
+    }
+    changed = _changed_fields(rollout_config)
+    if mode == 'manual':
+        inert = sorted(resource_fields & changed)
+        if inert:
+            raise ValueError(f'resource_mode="manual" does not read {inert}; select resource_mode="estimate" '
+                             'or "adaptive", or remove these resource settings.')
+        return
+    if rl_config is None or rl_config.rl_type not in {'grpo', 'ppo', 'gkd', 'opsd', 'mopd'}:
+        raise ValueError(f'resource_mode={mode!r} is implemented only by grpo/ppo/gkd/opsd/mopd online recipes.')
+    if rollout_config.resource_total_gpus is not None and rollout_config.resource_total_gpus < 1:
+        raise ValueError('resource_total_gpus must be >= 1 when set.')
+    if rollout_config.resource_gpu_memory_gib is not None and rollout_config.resource_gpu_memory_gib <= 0:
+        raise ValueError('resource_gpu_memory_gib must be > 0 when set.')
+    if rollout_config.resource_flex_gpus < 0:
+        raise ValueError('resource_flex_gpus must be >= 0.')
+    if rollout_config.resource_window_steps < 1:
+        raise ValueError('resource_window_steps must be >= 1.')
+    if rollout_config.resource_min_hold_steps < 1:
+        raise ValueError('resource_min_hold_steps must be >= 1.')
+    if rollout_config.resource_overrides is not None and not isinstance(rollout_config.resource_overrides, dict):
+        raise ValueError('resource_overrides must be a JSON object.')
+    if mode != 'adaptive':
+        return
+    if rollout_config.sampler_mode != 'disaggregated':
+        raise ValueError('resource_mode="adaptive" keeps dedicated sampler actors and optionally borrows the '
+                         'complete trainer world; set sampler_mode="disaggregated" instead of configuring the '
+                         'legacy exclusive colocate path.')
+    if getattr(rl_config, 'max_turns', None) is not None:
+        raise ValueError('resource_mode="adaptive" does not support multi-turn rollout in the first version; '
+                         'use resource_mode="estimate" or disable max_turns.')
+    if rl_config.rl_type in {'gkd', 'opsd', 'mopd'} and rl_config.lmbda != 1.0:
+        raise ValueError('resource_mode="adaptive" requires lmbda=1 for distillation recipes: off-policy '
+                         'dataset rounds use the synchronous round loop and have no streaming publish boundary '
+                         'where the adaptive controller can move a complete replica. Set lmbda=1 or use '
+                         'resource_mode="estimate".')
+    if rollout_config.weight_sync_strategy != 'in_place' or not rollout_config.allow_partial_rollout:
+        raise ValueError('resource_mode="adaptive" requires weight_sync_strategy="in_place" and '
+                         'allow_partial_rollout=true so shared generations can pause across handovers.')
+    if rollout_config.sleep_level not in (0, 1):
+        raise ValueError('resource_mode="adaptive" supports only sleep_level 0 or 1; level 2 discards weights '
+                         'needed by the shared sampler handover.')
 
 
 #: The online recipes that roll out per prompt batch and train on the collected samples, so they can overlap
@@ -386,7 +441,12 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
             # and parameter_sync_step ARE read, so they are validated by _check_streaming_publication instead
             # of rejected (a colocated run must publish in_place, an overlapping-style in_place needs no
             # partial rollout at staleness 0, etc.).
-            _reject_inert_streaming_knobs(rollout_config, mode, _INERT_UNDER_NONE_STREAMING)
+            inert = _INERT_UNDER_NONE_STREAMING
+            if rollout_config.resource_mode == 'adaptive':
+                # At staleness zero ordinary publication drains generation, but adaptive shared handover may
+                # pause a long request at every batch boundary. Partial rollout is therefore active and required.
+                inert = {'max_staleness': _INERT_UNDER_NONE_STREAMING['max_staleness']}
+            _reject_inert_streaming_knobs(rollout_config, mode, inert)
             _check_streaming_publication(rollout_config, rl_config, tuner_config, mode)
         else:
             # The synchronous round loop (or a non-online recipe) reads none of the streaming knobs.

@@ -195,6 +195,7 @@ def build_sampler(
     adapters: Optional[List[str]] = None,
     remote_group: Optional[str] = None,
     quantize_config: Optional[QuantizeConfig] = None,
+    instance_id: Optional[str] = None,
 ) -> Any:
     """ModelConfig -> a twinkle Sampler, with the template already set.
 
@@ -225,6 +226,8 @@ def build_sampler(
             ``mode='ray'``. This is what keeps the sampler on its own GPUs instead of sharing the
             trainer's -- ``remote_class`` reads it off the constructor kwargs. Leave None in local
             mode, where there is only one process and nothing to place.
+        instance_id: stable identity used to disambiguate several sampler replicas constructed from the
+            same call site. Dynamic resource pools must provide one unique value per replica.
 
     Returns:
         The sampler. Callers own its lifetime: ``shutdown()`` is registered with atexit by the
@@ -298,9 +301,20 @@ def build_sampler(
     logger.info(f'Building {engine or sampler_cls.__name__} sampler for {model_config.model} '
                 f'with engine_args={kwargs}')
     extra: Dict[str, Any] = {'remote_group': remote_group} if remote_group else {}
+    if instance_id is not None:
+        if not instance_id:
+            raise ValueError('instance_id must be non-empty when provided.')
+        extra['instance_id'] = instance_id
     sampler = sampler_cls(model_config.model, engine_args=kwargs, device_mesh=device_mesh, **extra)
-    if template is not None:
-        sampler.set_template(template)
+    try:
+        if template is not None:
+            sampler.set_template(template)
+    except BaseException:
+        try:
+            sampler.close_workers()
+        except Exception:
+            logger.warning('模板初始化失败后未能完整关闭 sampler。', exc_info=True)
+        raise
     return sampler
 
 

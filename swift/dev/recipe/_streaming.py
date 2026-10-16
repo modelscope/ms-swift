@@ -56,6 +56,7 @@ class PhaseHandover:
 
     #: Whether generation and training must take turns (True only for a colocated sampler).
     serializes: bool = False
+    adaptive_shared: bool = False
 
     def enter(self) -> None:
         """Hand the device to the sampler with the current policy, ready to generate."""
@@ -231,17 +232,30 @@ class StreamingPublisher:
     requirement that model/weight control not live in the driver.
     """
 
-    def __init__(self, driver: Any, weight_sync: Any, parameter_sync_step: int):
+    def __init__(self, driver: Any, weight_sync: Any, parameter_sync_step: int, handover: PhaseHandover):
         if parameter_sync_step < 1:
             raise ValueError(f'parameter_sync_step must be >= 1 (a weight publication every K steps); '
                              f'got {parameter_sync_step}.')
         self._driver = driver
         self._weight_sync = weight_sync
         self._parameter_sync_step = parameter_sync_step
+        self._handover = handover
         self._steps_since_publish = 0
+        self._total_steps = 0
+        self._controller = getattr(driver, 'resource_controller', None)
 
-    def __iter__(self) -> Any:
-        return iter(self._driver)
+    def __iter__(self) -> 'StreamingPublisher':
+        iter(self._driver)
+        return self
+
+    def __next__(self) -> Any:
+        batch = next(self._driver)
+        # The iterator bridge is the serial point where a ready batch leaves the driver. Shared devices must
+        # be back under trainer ownership before the recipe receives and trains that batch.
+        if ((self._handover.serializes or getattr(self._handover, 'adaptive_shared', False))
+                and self._handover.in_generation):
+            self._handover.exit()
+        return batch
 
     def commit(self, optimizer_steps: int = 1) -> None:
         """Report the optimizer steps just run; request a publish when the cadence is reached, then release.
@@ -251,9 +265,24 @@ class StreamingPublisher:
         at the top of its next pass). A falsy step count is treated as one, matching the driver's ``commit``.
         """
         self._steps_since_publish += int(optimizer_steps) if optimizer_steps else 1
-        if self._steps_since_publish >= self._parameter_sync_step:
+        steps = int(optimizer_steps) if optimizer_steps else 1
+        self._total_steps += steps
+        publish = self._steps_since_publish >= self._parameter_sync_step
+        if self._controller is not None:
+            self._controller.observe(
+                step=self._total_steps, driver_stats=self._driver.stats,
+                score_time=self._driver.stats.score_time)
+            decision = self._controller.decide(step=self._total_steps, publish_boundary=publish)
+            self._controller.register_decision(decision, step=self._total_steps)
+        if publish:
             self._driver.request_publish(self._weight_sync.publish)
             self._steps_since_publish = 0
+        elif self._handover.serializes:
+            # No policy publication is due, but the next generation window still needs the device. Resume the
+            # sampler with its last published weights before releasing the driver's admission thread.
+            self._handover.enter()
+        elif getattr(self._handover, 'adaptive_shared', False):
+            self._handover.borrow(publish=False)
         self._driver.commit(optimizer_steps)
 
     def __getattr__(self, name: str) -> Any:
@@ -319,7 +348,9 @@ def build_streaming_driver(rollout_config: Any,
     """
     max_staleness = (0 if rollout_config.async_mode == 'none' else 1
                      if rollout_config.async_mode == 'one_step_off' else rollout_config.max_staleness)
-    handover = ExclusiveDeviceHandover(rollout) if colocate else NoHandover(rollout)
+    handover = getattr(rollout, 'phase_handover', None)
+    if handover is None:
+        handover = ExclusiveDeviceHandover(rollout) if colocate else NoHandover(rollout)
     check_streaming_config(
         adapter_name=adapter_name,
         max_staleness=max_staleness,
@@ -489,8 +520,9 @@ def build_streaming_driver(rollout_config: Any,
         initial_adapter_path=((lambda: _save_snapshot('v0'))
                               if isinstance(weight_sync, AdapterSnapshotSync) else None),
         reached_max=reached_max)
+    driver.resource_controller = getattr(rollout, 'resource_controller', None)
     # The publisher owns what the purified driver no longer does: the publish CADENCE (parameter_sync_step)
     # and the weight-push strategy (weight_sync). The recipe iterates and commits through it exactly as it did
     # the bare driver, so no recipe body changes.
-    publisher = StreamingPublisher(driver, weight_sync, rollout_config.parameter_sync_step)
+    publisher = StreamingPublisher(driver, weight_sync, rollout_config.parameter_sync_step, handover)
     return publisher, handover

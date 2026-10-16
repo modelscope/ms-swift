@@ -20,7 +20,9 @@ from swift.dev.recipe.run_grpo import (
     _TEACHER_GROUP,
     _initialize_twinkle_rl,
     _sampler_backend,
+    _sampler_device_mesh,
     _sampler_engine_args,
+    _sampler_parallel_width,
     _sampler_world_size,
     plan_rl_device_groups,
     teacher_group_world_size,
@@ -104,6 +106,8 @@ def run_gkd(
         megatron_config=megatron_config,
         moe_config=moe_config)
     assembly.prepare()
+    assembly.build_template()
+    prompts, prompt_extras, dataset_rows = distill_rows_from_dataset(dataset_config, assembly.template)
 
     # A separate frozen teacher is a Ray actor on its own DeviceGroup (plan §3.3), which
     # plan_rl_device_groups must allocate BEFORE twinkle.initialize; the adapter-disabled teacher
@@ -114,23 +118,40 @@ def run_gkd(
 
     backend = _sampler_backend(rollout_config)
     sampler_world_size = _sampler_world_size(rollout_config, backend)
-    groups, sampler_remote_group, colocate = plan_rl_device_groups(
-        distributed_config.nproc_per_node, rollout_config.sampler_mode, sampler_world_size,
-        auxiliary_groups=[(_TEACHER_GROUP, teacher_world_size)] if teacher_world_size else [])
+    auxiliary_groups = [(_TEACHER_GROUP, teacher_world_size)] if teacher_world_size else []
+    from swift.dev.recipe.rl_resource import RLResourceBootstrap
+    resource_plan = RLResourceBootstrap.build(
+        model_config=model_config,
+        distributed_config=distributed_config,
+        rollout_config=rollout_config,
+        template=assembly.template,
+        prompt_rows=[dict(messages=messages, **(extras or {}))
+                     for messages, extras in zip(prompts, prompt_extras)],
+        auxiliary_groups=auxiliary_groups,
+        max_completion_length=rl_config.max_completion_length)
+    sampler_world_size = _sampler_world_size(rollout_config, backend)
+    if resource_plan is None:
+        groups, sampler_remote_group, colocate = plan_rl_device_groups(
+            distributed_config.nproc_per_node, rollout_config.sampler_mode, sampler_world_size,
+            auxiliary_groups=auxiliary_groups)
+    else:
+        groups = RLResourceBootstrap.device_groups(
+            resource_plan, adaptive=rollout_config.resource_mode == 'adaptive')
+        sampler_remote_group, colocate = 'sampler', False
+        logger.info('RL resource plan:\n%s', resource_plan.describe())
     _initialize_twinkle_rl(
         distributed_config,
         groups,
         seed=train_config.seed,
         full_determinism=train_config.full_determinism,
-        tf32=train_config.tf32)
+        tf32=train_config.tf32,
+        sampler_parallel_width=_sampler_parallel_width(rollout_config, backend))
 
-    assembly.build_template()
     assembly.build_model()
     configure_rl_loss(assembly.model, rl_config)
     # Prompts are rolled out, not iterated by a dataloader, so the step budget is derived from the prompt
     # set (B1): one generation batch per round, exhausted after num_train_epochs passes. Load the prompts +
     # design-B mini-batch width first, then size max_steps (the LR horizon); --max_steps still overrides.
-    prompts, prompt_extras, dataset_rows = distill_rows_from_dataset(dataset_config, assembly.template)
     if rl_config.lmbda < 1.0 and not dataset_rows:
         raise ValueError('GKD with lmbda < 1 distils some rounds on the dataset\'s own completions, but no dataset '
                          'row carries an assistant completion. Add completions, or set lmbda=1 for purely on-policy '
@@ -163,14 +184,31 @@ def run_gkd(
         plugin_config=assembly.plugin_config)
 
     sampler_engine_args = _sampler_engine_args(rollout_config, engine_args, colocate, backend)
-    sampler = build_sampler(
-        model_config,
-        backend=backend,
-        engine_args=sampler_engine_args,
-        template=assembly.template,
-        remote_group=sampler_remote_group)
-    rollout = SyncableRollout(
-        assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
+    if rollout_config.resource_mode == 'adaptive':
+        from swift.dev.recipe.rl_resource import AdaptiveResourceController
+        controller = AdaptiveResourceController.build(
+            model=assembly.model,
+            model_config=model_config,
+            template=assembly.template,
+            rollout_config=rollout_config,
+            backend=backend,
+            engine_args=sampler_engine_args,
+            plan=resource_plan)
+        sampler = controller.sampler
+        rollout = SyncableRollout(
+            assembly.model, sampler, assembly.template, colocate=False,
+            sleep_level=rollout_config.sleep_level, handover=controller.handover)
+        rollout.resource_controller = controller
+    else:
+        sampler = build_sampler(
+            model_config,
+            backend=backend,
+            engine_args=sampler_engine_args,
+            device_mesh=_sampler_device_mesh(rollout_config, backend),
+            template=assembly.template,
+            remote_group=sampler_remote_group)
+        rollout = SyncableRollout(
+            assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
 
     # The flat recipe body: two regimes selected by lmbda (the SAME predicate the retired
     # build_rollout_driver(sync_only=...) used -- see validate._sync_only_feature). A purely on-policy run
@@ -299,7 +337,7 @@ def run_gkd(
                 global_step=lambda: recorder.global_step,
                 reached_max=recorder.reached_max)
             _driver_cell.append(driver)
-            if handover.serializes:
+            if handover.serializes or getattr(handover, 'adaptive_shared', False):
                 # Version-0 hand-over: put the pre-training policy in the sampler before the first admission.
                 # Every later cycle's enter rides the in-place publish's sync_fn (see the builder).
                 handover.enter()
@@ -397,7 +435,9 @@ def run_gkd(
                 if recorder.reached_max():
                     break
     finally:
-        if handover is not None and handover.serializes and handover.in_generation:
+        if (handover is not None
+                and (handover.serializes or getattr(handover, 'adaptive_shared', False))
+                and handover.in_generation):
             # Ended mid-window (e.g. a budget hit during generation): give the device back to the trainer
             # so the post-run final save finds the model resident.
             handover.exit()

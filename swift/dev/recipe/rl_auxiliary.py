@@ -23,8 +23,12 @@ reference shards across as many ranks as it asks for), never a hard-coded single
 """
 from __future__ import annotations
 
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Iterator, List, Optional, Protocol, Sequence, Tuple
+from enum import Enum
+from typing import Any, Dict, Iterator, List, Optional, Protocol, Sequence, Tuple
 
 # --- DeviceGroup name vocabulary --------------------------------------------------------------------
 #: The trainer is always ``'model'`` (``build_model`` targets it); the sampler is a separate ``'sampler'``
@@ -131,8 +135,13 @@ def plan_rl_device_groups(nproc_per_node: int, sampler_mode: Optional[str], samp
             raise ValueError(f'colocate needs the sampler ({sampler_world_size} GPUs) to fit within the trainer '
                              f'GPUs ({nproc_per_node}); it shares them. Use sampler_mode="disaggregated" to '
                              'place the sampler on its own GPUs.')
-        groups = [(MODEL_GROUP, list(range(nproc_per_node)))]
-        sampler_remote_group, colocate, next_rank = MODEL_GROUP, True, nproc_per_node
+        # The overlay has its own worker-rank space. Reusing MODEL_GROUP would inherit the trainer worker
+        # count and DeviceMesh, which is wrong as soon as sampler TP/PP is wider than one GPU.
+        groups = [
+            (MODEL_GROUP, list(range(nproc_per_node))),
+            (SAMPLER_GROUP, list(range(sampler_world_size))),
+        ]
+        sampler_remote_group, colocate, next_rank = SAMPLER_GROUP, True, nproc_per_node
     else:
         total = nproc_per_node + sampler_world_size
         groups = [
@@ -305,6 +314,148 @@ class FrozenAuxiliary:
             return self.model.forward_only(inputs=inputs, **kwargs)
         finally:
             self.model.offload_to_cpu()
+
+
+class AuxiliaryReplicaState(str, Enum):
+    WARMING = 'warming'
+    ACTIVE = 'active'
+    DRAINING = 'draining'
+    FAILED = 'failed'
+    CLOSED = 'closed'
+
+
+@dataclass
+class AuxiliaryReplica:
+    replica_id: str
+    model: AuxiliaryModel
+    state: AuxiliaryReplicaState = AuxiliaryReplicaState.WARMING
+    inflight: int = 0
+    requests: int = 0
+    service_time: float = 0.0
+
+
+class AuxiliaryReplicaPool:
+    """Load-balanced complete auxiliary replicas with stable output ordering."""
+
+    def __init__(self, role: str, replicas: Sequence[AuxiliaryReplica] = ()):
+        self.role = role
+        self.placement_key = ('auxiliary_pool', role)
+        self._replicas: Dict[str, AuxiliaryReplica] = {}
+        self._lock = threading.RLock()
+        for replica in replicas:
+            self.add_replica(replica, activate=True)
+
+    @property
+    def replicas(self) -> Tuple[AuxiliaryReplica, ...]:
+        with self._lock:
+            return tuple(self._replicas.values())
+
+    def add_replica(self, replica: AuxiliaryReplica, *, activate: bool = False, warmup: Any = None) -> None:
+        with self._lock:
+            if not replica.replica_id or replica.replica_id in self._replicas:
+                raise ValueError(f'invalid or duplicate auxiliary replica id: {replica.replica_id!r}.')
+            self._replicas[replica.replica_id] = replica
+        try:
+            if warmup is not None:
+                warmup(replica.model)
+        except Exception:
+            replica.state = AuxiliaryReplicaState.FAILED
+            raise
+        replica.state = AuxiliaryReplicaState.ACTIVE if activate or warmup is not None else AuxiliaryReplicaState.WARMING
+
+    def activate_replica(self, replica_id: str) -> None:
+        with self._lock:
+            replica = self._replicas[replica_id]
+            if replica.state is not AuxiliaryReplicaState.WARMING:
+                raise RuntimeError(f'{replica_id} is not WARMING.')
+            replica.state = AuxiliaryReplicaState.ACTIVE
+
+    def request_drain(self, replica_id: str) -> None:
+        with self._lock:
+            replica = self._replicas[replica_id]
+            if replica.state is AuxiliaryReplicaState.ACTIVE:
+                replica.state = AuxiliaryReplicaState.DRAINING
+
+    def retire_replica(self, replica_id: str) -> bool:
+        with self._lock:
+            replica = self._replicas[replica_id]
+            if replica.state is not AuxiliaryReplicaState.DRAINING:
+                raise RuntimeError(f'{replica_id} must be DRAINING before retirement.')
+            if replica.inflight:
+                return False
+            replica.state = AuxiliaryReplicaState.CLOSED
+            self._replicas.pop(replica_id)
+        model = getattr(replica.model, 'model', replica.model)
+        shutdown = getattr(model, 'shutdown', None)
+        if shutdown is not None:
+            shutdown()
+        return True
+
+    @staticmethod
+    def _merge_outputs(outputs: Sequence[Any]) -> Any:
+        if not outputs:
+            return []
+        first = outputs[0]
+        if isinstance(first, dict):
+            keys = set(first)
+            if any(set(output) != keys for output in outputs):
+                raise ValueError('auxiliary replica outputs have inconsistent fields.')
+            return {key: AuxiliaryReplicaPool._merge_outputs([output[key] for output in outputs]) for key in first}
+        if isinstance(first, tuple):
+            if any(len(output) != len(first) for output in outputs):
+                raise ValueError('auxiliary replica tuple outputs have inconsistent lengths.')
+            return tuple(AuxiliaryReplicaPool._merge_outputs([output[index] for output in outputs])
+                         for index in range(len(first)))
+        if isinstance(first, list):
+            merged = []
+            for output in outputs:
+                merged.extend(output)
+            return merged
+        try:
+            import torch
+            if torch.is_tensor(first):
+                if any(not torch.is_tensor(output) or output.shape[1:] != first.shape[1:] for output in outputs):
+                    raise ValueError('auxiliary replica tensor outputs have inconsistent trailing shapes.')
+                return torch.cat(list(outputs), dim=0)
+        except ImportError:
+            pass
+        raise TypeError(f'cannot merge auxiliary output type {type(first).__name__}.')
+
+    def forward_only(self, inputs: List[dict], **kwargs: Any) -> Any:
+        if not inputs:
+            return []
+        with self._lock:
+            active = sorted((replica for replica in self._replicas.values()
+                             if replica.state is AuxiliaryReplicaState.ACTIVE), key=lambda item: item.replica_id)
+        if not active:
+            raise RuntimeError(f'no ACTIVE {self.role} auxiliary replica is available.')
+        size, remainder = divmod(len(inputs), len(active))
+        jobs = []
+        offset = 0
+        for index, replica in enumerate(active):
+            count = size + (1 if index < remainder else 0)
+            if count:
+                jobs.append((replica, inputs[offset:offset + count]))
+                offset += count
+
+        def invoke(job: Tuple[AuxiliaryReplica, List[dict]]) -> Any:
+            replica, shard = job
+            started = time.perf_counter()
+            with self._lock:
+                if replica.state is not AuxiliaryReplicaState.ACTIVE:
+                    raise RuntimeError(f'auxiliary replica left ACTIVE state before dispatch: {replica.replica_id}.')
+                replica.inflight += 1
+                replica.requests += 1
+            try:
+                return replica.model.forward_only(shard, **kwargs)
+            finally:
+                with self._lock:
+                    replica.inflight -= 1
+                    replica.service_time += time.perf_counter() - started
+
+        with ThreadPoolExecutor(max_workers=len(jobs)) as executor:
+            outputs = list(executor.map(invoke, jobs))
+        return self._merge_outputs(outputs)
 
 
 class AuxiliaryBundle:
