@@ -22,13 +22,17 @@ class SwiftEval(SwiftPipeline):
     def run(self):
         args = self.args
         eval_report = {}
-        deploy_context = nullcontext() if args.eval_url else run_deploy(args, return_url=True)
-        with deploy_context as base_url:
-            base_url = args.eval_url or base_url
-
-            task_cfg = self.get_task_cfg(args.eval_dataset, args.eval_backend, base_url)
-            result = self.get_task_result(task_cfg)
+        if args.eval_offline:
+            result = self.get_task_result(self.get_offline_task_cfg())
             eval_report[args.eval_backend] = result
+        else:
+            deploy_context = nullcontext() if args.eval_url else run_deploy(args, return_url=True)
+            with deploy_context as base_url:
+                base_url = args.eval_url or base_url
+
+                task_cfg = self.get_task_cfg(args.eval_dataset, args.eval_backend, base_url)
+                result = self.get_task_result(task_cfg)
+                eval_report[args.eval_backend] = result
 
         eval_report.update({
             'time': args.time,
@@ -63,6 +67,39 @@ class SwiftEval(SwiftPipeline):
         else:
             result = reports
         return result
+
+    def get_offline_task_cfg(self):
+        """Evaluate the model in-process instead of calling a deployed server over HTTP.
+
+        Uses the same `swift_custom` engine the training loop already uses, so both paths run the
+        same evaluation implementation -- this one just skips the deploy and its engine startup.
+        """
+        args = self.args
+        if args.eval_backend != EvalBackend.NATIVE:
+            raise ValueError('eval_offline is only supported by the Native backend, '
+                             f'got eval_backend: {args.eval_backend}')
+        from ..utils import prepare_model_template
+        from .utils import EvalModel
+
+        model, template = prepare_model_template(args)
+        template.packing = False
+        template.padding_free = False
+        model.eval()
+        return TaskConfig(
+            model=EvalModel(
+                model_name=args.model_suffix or str(args.model),
+                model=model,
+                template=template,
+                max_batch_size=args.eval_num_proc,
+            ),
+            eval_type='swift_custom',
+            datasets=args.eval_dataset,
+            work_dir=os.path.join(args.eval_output_dir, 'offline'),
+            limit=args.eval_limit,
+            eval_batch_size=args.eval_num_proc,
+            dataset_args=args.eval_dataset_args,
+            generation_config=args.eval_generation_config or {'max_tokens': 512},
+            **args.extra_eval_args)
 
     def get_task_cfg(self, dataset: List[str], eval_backend: str, url: str):
         assert eval_backend in {EvalBackend.NATIVE, EvalBackend.OPEN_COMPASS, EvalBackend.VLM_EVAL_KIT}
