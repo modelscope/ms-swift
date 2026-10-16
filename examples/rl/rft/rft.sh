@@ -1,7 +1,7 @@
 # v5 Rejection-sampling Fine-Tuning (RFT / RAFT / ReST) with LoRA, on 2 GPUs through Ray + vLLM.
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI. `--rlhf_type rft` dispatches to
-# swift.dev.recipe.run_rft.
+# swift.dev.recipe.rft.run_rft.
 #
 # What RFT does: it reuses GRPO's rollout + reward machinery for a simpler purpose than policy gradient.
 # Each round: sample --rft_num_samples completions per prompt from the CURRENT policy (the trained weights

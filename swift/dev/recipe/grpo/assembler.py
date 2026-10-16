@@ -30,7 +30,7 @@ from swift.dev.utils import get_logger
 if TYPE_CHECKING:
     from twinkle_agentic.async_rl.streaming_driver import BufferRecord
 
-    from swift.dev.config import RLConfig
+    from swift.dev.config import RLConfig, RewardConfig
     from swift.dev.model import TrainableModel
     from swift.dev.recipe.common.tracking import RunTracker
 
@@ -117,14 +117,15 @@ class GRPOAssembler:
                  advantage_estimator: str = 'grpo',
                  scale_rewards: str = 'group',
                  rl_config: Optional['RLConfig'] = None,
+                 reward_config: Optional['RewardConfig'] = None,
                  sampling_params: Optional[dict] = None,
                  output_dir: str = 'output',
                  tracker: Optional['RunTracker'] = None,
                  global_step_fn: Optional[Callable[[], int]] = None,
                  chord_features: Optional[List[dict]] = None,
                  chord_train_batch_size: int = 0):
-        # Validate the outcome-reward roster up front: the recipe resolved ``--orm`` rules + ``--reward_model``
-        # scorers into ONE ordered list; this only checks the display names align one-to-one with the scorers.
+        # Validate the outcome-reward roster up front: the recipe resolved the ``--orm`` channel's rules +
+        # model scorers into ONE ordered list; this only checks the display names align one-to-one with the scorers.
         resolved_scorers = list(reward_scorers or [])
         scorer_names = list(reward_scorer_names or [])
         if scorer_names and len(scorer_names) != len(resolved_scorers):
@@ -157,6 +158,9 @@ class GRPOAssembler:
         self.advantage_estimator = advantage_estimator
         self.scale_rewards = scale_rewards
         self.rl_config = rl_config
+        #: The reward-channel Config the recipe co-parsed: the one surface the PRM fusion ratio
+        #: (``prm_orm_mix``) is read from, kept apart from ``rl_config``'s RL-training knobs.
+        self.reward_config = reward_config
         self.sampling_params = sampling_params
         self.output_dir = output_dir
         #: The recipe's RunTracker (for ``log_prompts``) and a zero-arg callable returning the current optimizer
@@ -385,12 +389,12 @@ class GRPOAssembler:
 
         Each sample's ``prm_process`` (a per-token process reward in the response-token frame, computed in
         :meth:`score_sample`) is blended with its scalar group-relative ORM advantage as
-        ``mix * process[i] + (1 - mix) * orm_advantage`` under ``RLConfig.prm_orm_mix``, so the outcome and process
+        ``mix * process[i] + (1 - mix) * orm_advantage`` under ``RewardConfig.prm_orm_mix``, so the outcome and process
         signals drive EVERY response token in a fixed proportion. ``prm_orm_mix=0`` reproduces standard GRPO
         byte-for-byte; ``prm_orm_mix=1`` is pure process reward. Returns one per-token advantage list per sample,
         which :meth:`_training_advantage` passes through to ``forward_backward`` unchanged.
         """
-        mix = float(getattr(self.rl_config, 'prm_orm_mix', 0.5))
+        mix = float(getattr(self.reward_config, 'prm_orm_mix', 0.5))
         per_token: List[List[float]] = []
         for sample, orm_advantage in zip(samples, orm_advantages):
             process = getattr(sample, 'prm_process', None)

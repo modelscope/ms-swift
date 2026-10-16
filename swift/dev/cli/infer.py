@@ -31,7 +31,7 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         ModelConfig,
         PluginConfig,
         QuantizeConfig,
-        RLConfig,
+        RewardConfig,
         RolloutConfig,
         RuntimeConfig,
         TemplateConfig,
@@ -40,11 +40,12 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 
     effective_argv = resolve_argv(argv)
     reject_legacy_only_flags('infer', effective_argv)
-    # infer absorbs the whole synthesis surface: InferConfig now carries the best-of-n / reward / token-dump
-    # knobs, and RLConfig is the reward-channel and multi-turn carrier (orm, prm, max_turns, tools). Every
-    # field name is unique across these Configs, so no per-flag owner disambiguation is needed.
+    # infer absorbs the whole synthesis surface: InferConfig carries the best-of-n / reward / token-dump
+    # knobs, RewardConfig carries the reward channels (orm, prm and their companion families), and
+    # RolloutConfig the multi-turn knobs (tools, max_turns). Every field name is unique across these
+    # Configs, so no per-flag owner disambiguation is needed.
     classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig,
-               TunerConfig, GenerationConfig, RolloutConfig, InferConfig, RLConfig,
+               TunerConfig, GenerationConfig, RolloutConfig, InferConfig, RewardConfig,
                QuantizeConfig, InferCliConfig, RuntimeConfig]
     configs = parse_configs_strict(
         classes, effective_argv, command='swift infer', load_args_default=True)
@@ -66,9 +67,8 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         infer_config.reward_threshold = infer_config.prm_threshold
     if 'padding_side' not in passed:
         result['template_config'].padding_side = 'left'
-    # The RLConfig doubles as the reward-channel carrier (orm / prm and their weights) and the
-    # multi-turn config; synthesis reads it directly rather than through an InferConfig field.
-    result['multi_turn_config'] = result['reward_config']
+    # The RewardConfig is the reward-channel carrier; the multi-turn knobs (max_turns and friends)
+    # moved to RolloutConfig, so the interactive REPL reads them off rollout_config directly.
     # num_samples (the CLI spelling) and num_return_sequences (the InferConfig field) are one knob under
     # two names; an explicit value for either drives the other so both entry points agree. Nothing else is
     # derived here -- how many candidates to draw, whether to score them, and how to store them
@@ -157,7 +157,7 @@ def infer_main(argv: Optional[List[str]] = None):
 
     configs = parse_infer_configs(argv)
     infer_config = configs['infer_config']
-    rl_config = configs['reward_config']
+    reward_config = configs['reward_config']
     cli_config = configs['cli_config']
     has_dataset = bool(configs['dataset_config'].dataset or configs['dataset_config'].val_dataset)
     interactive = cli_config.eval_human or not has_dataset
@@ -189,7 +189,6 @@ def infer_main(argv: Optional[List[str]] = None):
             quantize_config=configs['quantize_config'],
             multi_round=cli_config.multi_round,
             rollout_config=configs['rollout_config'],
-            multi_turn_config=configs['multi_turn_config'],
         )
 
     # result_path is the single output truth: run_infer splits a 'dpo'/resumed run's path into
@@ -200,7 +199,7 @@ def infer_main(argv: Optional[List[str]] = None):
         configs['dataset_config'],
         infer_config,
         configs['generation_config'],
-        rl_config=rl_config,
+        reward_config=reward_config,
         rollout_config=configs['rollout_config'],
         backend=backend,
         engine_args=engine_args,

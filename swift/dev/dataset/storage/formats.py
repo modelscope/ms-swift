@@ -75,6 +75,25 @@ class JsonlStorage(DatasetStorage):
         from datasets import load_dataset as hf_load_dataset
         return hf_load_dataset('json', data_files=path, split=split, **kwargs)
 
+    def iter_rows(self, path: str, **kwargs):
+        """Line-wise tolerant read: the row stream of a possibly still-being-written jsonl.
+
+        ``read`` goes through the HF json builder, which fails the whole file on one malformed line;
+        an incremental producer (a running or crashed ``swift infer``) can leave exactly that -- a
+        truncated final line, or a torn line mid-file after a crash -- so the row-stream read parses
+        line by line and skips the unparseable ones rather than refusing the file.
+        """
+        with open(path, encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError:
+                    logger.warning(f'skipping an unparseable line in {path}')
+                    continue
+
     def write(self, data: DataType, path: str, *, fields: Optional[Sequence[str]] = None) -> str:
         from datasets import Dataset as HfDataset
 

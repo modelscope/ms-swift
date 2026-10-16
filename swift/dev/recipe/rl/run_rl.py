@@ -13,6 +13,7 @@ if TYPE_CHECKING:
         ModelConfig,
         MoEConfig,
         QuantizeConfig,
+        RewardConfig,
         RLConfig,
         RolloutConfig,
         TemplateConfig,
@@ -32,6 +33,7 @@ def run_rl(
     checkpoint_config: CheckpointConfig,
     rollout_config: RolloutConfig,
     rl_config: RLConfig,
+    reward_config: Optional[RewardConfig] = None,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
@@ -69,6 +71,7 @@ def run_rl(
             distributed_config,
             checkpoint_config,
             rl_config,
+            reward_config=reward_config,
             **common,
         )
     if rl_config.rl_type == 'grpo':
@@ -81,6 +84,7 @@ def run_rl(
             checkpoint_config,
             rollout_config,
             rl_config,
+            reward_config=reward_config,
             generation_config=generation_config,
             **common,
         )
@@ -94,6 +98,7 @@ def run_rl(
             checkpoint_config,
             rollout_config,
             rl_config,
+            reward_config=reward_config,
             generation_config=generation_config,
             **common,
         )
@@ -107,6 +112,7 @@ def run_rl(
             checkpoint_config,
             rollout_config,
             rl_config,
+            reward_config=reward_config,
             generation_config=generation_config,
             **common,
         )
@@ -120,6 +126,7 @@ def run_rl(
             checkpoint_config,
             rollout_config,
             rl_config,
+            reward_config=reward_config,
             generation_config=generation_config,
             **common,
         )
@@ -133,6 +140,7 @@ def run_rl(
             checkpoint_config,
             rollout_config,
             rl_config,
+            reward_config=reward_config,
             generation_config=generation_config,
             **common,
         )
@@ -146,6 +154,7 @@ def run_rl(
             checkpoint_config,
             rollout_config,
             rl_config,
+            reward_config=reward_config,
             generation_config=generation_config,
             **common,
         )

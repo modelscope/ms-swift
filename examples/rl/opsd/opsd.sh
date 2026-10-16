@@ -2,7 +2,7 @@
 # Paper: https://arxiv.org/abs/2601.18734
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI (swift.dev.cli.rl). `--rlhf_type opsd` dispatches
-# to swift.dev.recipe.run_opsd.
+# to swift.dev.recipe.distill.run_opsd.
 #
 # What OPSD does: the student conditions on the question ALONE; a teacher conditions on a PRIVILEGED view
 # (question + a reference solution) supplied per-row by the dataset's `teacher_prompt` column. Each step the

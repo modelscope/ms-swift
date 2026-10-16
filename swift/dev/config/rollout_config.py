@@ -66,7 +66,6 @@ class RolloutConfig:
     sglang_speculative_num_draft_tokens: Optional[int] = None
 
     # === Rollout Mode ===
-    use_vllm: bool = False
     #: Trainer/sampler GPU placement for the online-RL rollout. Backend- and sampler-agnostic (vLLM or
     #: SGLang, megatron or transformers), hence the neutral name -- renamed from the v4 ``vllm_mode``, which
     #: the ``--vllm_mode`` CLI flag still maps onto as a legacy alias. ``'colocate'`` shares one DeviceGroup
@@ -221,6 +220,13 @@ class RolloutConfig:
     # switches it to an ``AgentEnv`` microVM instead.
     #: Registered 'tool' plugin names to expose to the model. Empty = no tools.
     tools: List[str] = field(default_factory=list)
+    #: Multi-turn rollout is enabled by setting this: the maximum number of assistant turns one
+    #: trajectory may take. Per-turn length is the sampling ``max_tokens``; ``max_trajectory_tokens``
+    #: caps the whole trajectory. Both knobs are independent (either may be None).
+    max_turns: Optional[int] = None
+    #: Hard cap on the total token count of one multi-turn trajectory (across every turn); None is
+    #: bounded only by ``max_turns`` and the per-turn length.
+    max_trajectory_tokens: Optional[int] = None
     #: AgentENV template name/ID. None builds a local ``LocalEnv``; a value builds an ``AgentEnv`` microVM.
     sandbox_template: Optional[str] = None
     #: Root directory the per-slot ``LocalEnv`` workspaces are created under. None uses a temp dir.

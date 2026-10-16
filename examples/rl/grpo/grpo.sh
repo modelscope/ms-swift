@@ -1,7 +1,7 @@
 # v5 Group-Relative Policy Optimization (GRPO) with LoRA, on 2 GPUs through Ray + vLLM.
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI. `--rlhf_type grpo` dispatches to
-# swift.dev.recipe.run_grpo.
+# swift.dev.recipe.grpo.run_grpo.
 #
 # What GRPO does: it is a policy-gradient method with NO critic/value model. Each step: sample
 # --num_generations completions per prompt from the CURRENT policy (the trained weights are synced into the
@@ -42,7 +42,7 @@
 # run instead loads a separate frozen reference on its own DeviceGroup).
 #
 # Placement: GRPO is Ray-only with a weight-syncable vLLM (or SGLang) sampler. The dev CLI forces
-# use_vllm=true, vllm_mode (colocate by default) and mode=ray for --rlhf_type grpo, so those need not be
+# vllm_mode (colocate by default) and mode=ray for --rlhf_type grpo, so those need not be
 # passed; --nproc_per_node IS required because in Ray mode the driver orchestrates and holds no GPU.
 #   - vllm_mode=colocate (below): the sampler SHARES the trainer GPUs (CUDA-IPC weight sync, with a
 #     sleep/wake device hand-over each step). --vllm_gpu_memory_utilization must leave room for training.

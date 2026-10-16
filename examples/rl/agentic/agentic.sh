@@ -1,7 +1,7 @@
 # v5 AGENTIC GRPO: multi-turn rollout with TOOL CALLING, LoRA, on 2 GPUs through Ray + vLLM.
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI. `--rlhf_type grpo` dispatches to
-# swift.dev.recipe.run_grpo. This builds on ../grpo/grpo.sh (read it first for the GRPO objective); what
+# swift.dev.recipe.grpo.run_grpo. This builds on ../grpo/grpo.sh (read it first for the GRPO objective); what
 # makes it AGENTIC is `--max_turns` (a multi-turn rollout) + `--tools` (the model can call tools mid-episode).
 #
 # What an agentic rollout does: instead of one shot generation, each episode runs turn by turn up to

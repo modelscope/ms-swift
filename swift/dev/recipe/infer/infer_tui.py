@@ -8,7 +8,6 @@ if TYPE_CHECKING:
         GenerationConfig,
         ModelConfig,
         QuantizeConfig,
-        RLConfig,
         RolloutConfig,
         TemplateConfig,
     )
@@ -39,12 +38,11 @@ def infer_cli(
     quantize_config: Optional[QuantizeConfig] = None,
     multi_round: bool = True,
     rollout_config: Optional[RolloutConfig] = None,
-    multi_turn_config: Optional[RLConfig] = None,
 ) -> None:
     """Interactive REPL. Commands: ``clear`` / ``reset-system`` / ``multi-line`` / ``single-line`` / ``quit``.
 
     History is kept across turns unless ``multi_round`` is False. When ``rollout_config.tools`` and
-    ``multi_turn_config.max_turns`` are both set, each turn runs the tool-calling rollout; otherwise it is
+    ``rollout_config.max_turns`` are both set, each turn runs the tool-calling rollout; otherwise it is
     a plain chat turn (streamed when ``generation_config.stream``). For a multimodal template each turn
     first calls ``prompt_media`` to collect image/audio/video paths, matching legacy's ``input_mm_data``.
     """
@@ -67,8 +65,8 @@ def infer_cli(
 
     # Tools need twinkle's multi-turn engine, which requires max_turns; validate already rejects tools
     # without it, so this gate is just "did the user actually configure a tool rollout".
-    tools_on = bool(rollout_config is not None and rollout_config.tools and multi_turn_config is not None
-                    and multi_turn_config.max_turns is not None)
+    tools_on = bool(rollout_config is not None and rollout_config.tools
+                    and rollout_config.max_turns is not None)
     rollout = None
     if tools_on:
         # The injected sampler stays owned by this function, so teardown is close() (the sandbox env pool)
@@ -77,8 +75,8 @@ def infer_cli(
         from swift.dev.rollout import RolloutEngine
         rollout = RolloutEngine(sampler=sampler, template=template)
         rollout.configure_multi_turn(
-            max_turns=multi_turn_config.max_turns,
-            max_trajectory_tokens=multi_turn_config.max_trajectory_tokens,
+            max_turns=rollout_config.max_turns,
+            max_trajectory_tokens=rollout_config.max_trajectory_tokens,
             rollout_config=rollout_config)
 
     state = _CliState(system=template_config.system)

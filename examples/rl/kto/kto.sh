@@ -1,7 +1,7 @@
 # v5 Kahneman-Tversky Optimization (KTO) with LoRA, on 2 GPUs through Ray.
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI. `--rlhf_type kto` dispatches to
-# swift.dev.recipe.run_dpo (the offline-preference family: dpo/kto/cpo/orpo/simpo/rm share one entry point).
+# swift.dev.recipe.preference.run_dpo (the offline-preference family: dpo/kto/cpo/orpo/simpo/rm share one entry point).
 #
 # What KTO does: it is the UNPAIRED cousin of DPO. Where DPO needs a (chosen, rejected) pair per prompt, KTO
 # needs only a SINGLE completion per row carrying a BINARY label -- desirable (good) or undesirable (bad). The

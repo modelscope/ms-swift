@@ -1,7 +1,7 @@
 # v5 Reward Model (RM) training with LoRA, on 2 GPUs through Ray.
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI. `--rlhf_type rm` dispatches to
-# swift.dev.recipe.run_dpo (the offline-preference family: dpo/kto/cpo/orpo/simpo/rm share one entry point).
+# swift.dev.recipe.preference.run_dpo (the offline-preference family: dpo/kto/cpo/orpo/simpo/rm share one entry point).
 #
 # What RM training does: instead of updating a policy, it trains a SCALAR REWARD MODEL -- the reward function
 # that online RL (GRPO/PPO/RFT) later scores rollouts with. The model grows a single-logit sequence-

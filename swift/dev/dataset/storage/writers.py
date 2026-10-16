@@ -34,7 +34,28 @@ from .base import STORAGE_MAPPING
 
 logger = get_logger()
 
-__all__ = ['open_store_writer', 'store_output_complete']
+__all__ = ['open_store_writer', 'store_output_complete', 'store_writer_kind']
+
+
+#: The writer kinds :func:`store_writer_kind` names, one per writer class.
+WRITER_KINDS = ('memory', 'batch', 'checkpoint', 'incremental')
+
+
+def store_writer_kind(output_path: Optional[str], store_format: str, *, checkpoint: bool = False) -> str:
+    """Which writer this run gets -- the single place the flush/checkpoint policy is decided.
+
+    The answer folds the format capability (``DatasetStorage.incremental``: only a line-appendable
+    format can flush mid-run, checkpoint, or resume) with the run-level policy the caller states as
+    intent: ``checkpoint`` marks a run that wants crash protection ('dpo' or resume). A format that
+    cannot honour it silently degrades to ``'batch'`` -- the caller is expected to warn, and
+    :func:`open_store_writer` refuses the ``resume`` combination outright. No ``output_path`` means
+    there is nothing to stream to and the rows are just held in memory until :meth:`~_IncrementalWriter.finish`.
+    """
+    if not output_path:
+        return 'memory'
+    if not STORAGE_MAPPING[store_format].incremental:
+        return 'batch'
+    return 'checkpoint' if checkpoint else 'incremental'
 
 
 def _gather_rows(rows: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
@@ -239,22 +260,20 @@ def open_store_writer(output_path: Optional[str], store_format: str, *, store_fi
                                                                                _IncrementalWriter]:
     """The writer for this run, chosen from the format capability and the run-level policy.
 
-    A non-incremental ``store_format`` with an ``output_path`` gets the batch writer (one serialisation
-    at :meth:`finish`). On an incremental format, ``checkpoint`` -- set by a 'dpo' or resumed run -- gets
-    the resumable writer, and anything else gets the plain incremental one, which with no ``output_path``
-    just holds everything until its :meth:`finish`. ``checkpoint`` on a non-incremental format raises:
-    the caller's policy and ``validate_infer_config`` already make it unreachable, so the invariant is
-    kept local and loud.
+    The choice itself is :func:`store_writer_kind`'s: ``checkpoint`` marks a run that wants crash
+    protection ('dpo' or resume); a non-incremental format answers ``'batch'`` and the degradation to
+    one write-at-the-end is the caller's to warn about -- except for ``resume``, which cannot be
+    honoured at all and is refused here (loud and local) rather than silently dropping the request.
     """
-    incremental = STORAGE_MAPPING[store_format].incremental
-    if checkpoint and not incremental:
+    kind = store_writer_kind(output_path, store_format, checkpoint=checkpoint)
+    if kind == 'batch' and resume:
         raise ValueError(
-            f'checkpoint=True needs an incremental (line-appendable) store_format, got {store_format!r}, '
-            'which writes the whole run in one go at the end and cannot checkpoint. Use --store_format '
+            f'resume=True needs an incremental (line-appendable) store_format, got {store_format!r}, '
+            'which writes the whole run in one go at the end and cannot resume. Use --store_format '
             'jsonl for a resumable run.')
-    if output_path and not incremental:
+    if kind == 'batch':
         return _BatchWriter(output_path, store_format, store_fields)
-    if checkpoint:
+    if kind == 'checkpoint':
         return _CheckpointWriter(output_path, resume)
     return _IncrementalWriter(output_path, 1 if output_path else None)
 

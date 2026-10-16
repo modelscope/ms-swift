@@ -89,16 +89,9 @@ class InferConfig:
     n_best_to_keep: int = 5
 
     # === Synthesis: reward models and judge ===
-    #: A frozen LoRA on the channel's reward model, paired with the model id named in ``RLConfig.orm``
-    #: / ``.prm`` (the merged selector -- the model ids themselves no longer live here). With no model id
-    #: in the channel it means "reuse the sampler's own model as a generative judge wearing this LoRA".
-    #: How a model id is served (http(s) URL -> API judge; scalar seq_cls RM built locally; generative
-    #: judge reusing or owning an engine) is decided in run_infer from the id plus the sampling backend.
-    orm_adapter: Optional[str] = None
-    prm_adapter: Optional[str] = None
-    #: Override for the built-in generative-judge prompt: a ``str.format`` template rendered with
-    #: ``prompt=`` and ``completion=``, asked to emit a single number. Only used by a generative judge.
-    judge_template: Optional[str] = None
+    #: Reward-channel selection (model ids, LoRA adapters, templates, rule hyperparameters) lives on
+    #: ``RewardConfig`` -- the ``--orm``/``--prm`` lists and their companion families, shared with
+    #: online RL so both businesses speak one selector. Only the synthesis-side knobs stay here.
 
     # === Synthesis: reward knobs ===
     #: Candidates scoring at or below this are dropped. None keeps every candidate.
@@ -141,9 +134,11 @@ class InferConfig:
     resume: bool = False
     #: Overwrite an existing complete output file instead of returning early.
     override_exist_file: bool = False
-    #: Previously-produced jsonl files whose rows are reused instead of resampled, keyed by prompt.
-    #: Distinct from ``resume``: these are OTHER runs' outputs -- the way to add candidates to a corpus,
-    #: or to re-score without paying for generation.
+    #: Previously-produced run outputs whose rows are reused instead of resampled, keyed by prompt.
+    #: Any store the storage layer reads back qualifies (jsonl, an arrow store directory, ...) -- one
+    #: run's ``result_path`` can serve as another run's cache verbatim. Distinct from ``resume``: these
+    #: are OTHER runs' outputs -- the way to add candidates to a corpus, or to re-score without paying
+    #: for generation.
     cache_files: List[str] = field(default_factory=list)
     #: Raise on a per-row generation failure (transformers backend only) rather than tolerating it. True by
     #: default so a systematic problem surfaces on row one instead of quietly thinning the whole output;

@@ -1,7 +1,7 @@
 # v5 GRPO, ASYNC (overlapping rollout) with LoRA -- a feature sub-example of ../grpo.sh, on 3 GPUs.
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI. `--rlhf_type grpo` dispatches to
-# swift.dev.recipe.run_grpo. Read ../grpo.sh FIRST: this file changes only the ROLLOUT CADENCE, not the
+# swift.dev.recipe.grpo.run_grpo. Read ../grpo.sh FIRST: this file changes only the ROLLOUT CADENCE, not the
 # GRPO objective (group-relative advantage, clipped surrogate, --orm accuracy, --beta KL). Everything GRPO
 # means is explained there; here we only turn on async.
 #

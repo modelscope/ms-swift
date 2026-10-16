@@ -93,7 +93,7 @@ def _unsloth_lora_kwargs(config,
     peft_type = str(getattr(peft_type, 'value', peft_type) or '').upper()
     if peft_type != 'LORA':
         raise NotImplementedError(f'unsloth implements plain LoRA only, got peft_type={peft_type or None!r} '
-                                  f'(adalora / trainable_tokens / ...). Use tuner_backend="peft" for those.')
+                                  f'(adalora / trainable_tokens / ...). Use the default backend for those.')
 
     kwargs: Dict[str, Any] = {}
     for field in dataclasses.fields(config):
@@ -298,7 +298,7 @@ class UnslothModel(TwinkleTransformersModel):
             raise NotImplementedError(f'unsloth installs a single adapter under peft\'s default name '
                                       f'{_PEFT_DEFAULT_ADAPTER_NAME!r} and takes no adapter_name, so '
                                       f'adapter_name={adapter_name!r} cannot be honoured; multi-adapter '
-                                      f'serving needs tuner_backend="peft".')
+                                      f'serving needs the default backend.')
         lora_kwargs = _unsloth_lora_kwargs(config, self._unsloth_options['max_seq_length'],
                                            self._use_gradient_checkpointing, self._unsloth_lora_kwargs)
         logger.info(f'unsloth_config: {lora_kwargs}')

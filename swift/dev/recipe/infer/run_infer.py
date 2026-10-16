@@ -56,7 +56,7 @@ if TYPE_CHECKING:
         ModelConfig,
         PluginConfig,
         QuantizeConfig,
-        RLConfig,
+        RewardConfig,
         RolloutConfig,
         TemplateConfig,
         TunerConfig,
@@ -72,7 +72,7 @@ def run_infer(
     infer_config: InferConfig,
     generation_config: Optional[GenerationConfig] = None,
     *,
-    rl_config: Optional[RLConfig] = None,
+    reward_config: Optional[RewardConfig] = None,
     rollout_config: Optional[RolloutConfig] = None,
     backend: str = 'vllm',
     engine_args: Optional[Dict[str, Any]] = None,
@@ -106,9 +106,10 @@ def run_infer(
             reward channels, resume / cache / rollout-token dumping).
         generation_config: decoding knobs. ``stream`` only affects the interactive REPL
             (:mod:`swift.dev.recipe.infer.infer_tui`); this dataset pipeline always samples in batch.
-        rl_config: the reward-channel registry surface (``orm`` / ``prm`` and their ``*_weights``) and
-            the multi-turn config (``max_turns`` / ``max_trajectory_tokens``), shared with GRPO.
-        rollout_config: tool/sandbox config for a multi-turn rollout.
+        reward_config: the reward-channel Config (``--orm`` / ``--prm``, their companion families and
+            ``*_weights``, the plugin hyperparameters, ``judge_template``), shared with online RL.
+        rollout_config: tool/sandbox config for a multi-turn rollout, including its length caps
+            (``max_turns`` / ``max_trajectory_tokens``).
         backend: generation engine -- 'vllm' / 'sglang' / 'transformers' to sample locally, or 'no'
             for a cache-only run.
         engine_args: forwarded verbatim to the engine.
@@ -154,7 +155,7 @@ def run_infer(
         dataset_config,
         infer_config,
         generation_config,
-        rl_config=rl_config,
+        reward_config=reward_config,
         rollout_config=rollout_config,
         backend=backend,
         engine_args=engine_args,

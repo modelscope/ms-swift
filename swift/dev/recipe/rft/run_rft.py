@@ -31,7 +31,7 @@ from swift.dev.recipe.common.checkpoint import CheckpointSaver
 from swift.dev.recipe.rft.selector import RFTSelector, _rft_log_line
 from swift.dev.recipe.rl.auxiliary import plan_rl_device_groups, reward_group, spec_world_size
 from swift.dev.recipe.rl.prompts import prompt_rows_from_dataset
-from swift.dev.recipe.rl.rewards import build_reward_scorers
+from swift.dev.recipe.rl.rewards import build_reward_scorers, split_reward_channel
 from swift.dev.recipe.rl.sampler import (
     RolloutSamplerSpec,
     SyncableRollout,
@@ -54,6 +54,7 @@ if TYPE_CHECKING:
         MoEConfig,
         QuantizeConfig,
         RLConfig,
+        RewardConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -114,6 +115,7 @@ def run_rft(
     checkpoint_config: CheckpointConfig,
     rollout_config: RolloutConfig,
     rl_config: RLConfig,
+    reward_config: Optional['RewardConfig'] = None,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
@@ -149,6 +151,8 @@ def run_rft(
         checkpoint_config,
         tuner_config,
         rl_config=rl_config,
+        reward_config=reward_config,
+        rollout_config=rollout_config,
         output_dir=output_dir,
         logging_config=logging_config,
         quantize_config=quantize_config,
@@ -162,13 +166,13 @@ def run_rft(
 
     backend = RolloutSamplerSpec.backend(rollout_config)
     sampler_world_size = RolloutSamplerSpec.world_size(rollout_config, backend)
-    # Each frozen reward model is a full-parameter seq_cls scorer on its own DeviceGroup (RL_PLAN §3.5); the
-    # names/world sizes must match what build_reward_scorers builds below. RFT has no reference or
-    # teacher (it is cross-entropy SFT on filtered completions), so reward models are its only auxiliary.
-    reward_models = list(rl_config.reward_model or [])
-    reward_world_size = spec_world_size(rl_config.orm_parallel_spec)
+    # Each frozen reward MODEL in the --orm channel is a full-parameter seq_cls scorer on its own
+    # DeviceGroup (RL_PLAN §3.5); the names/world sizes must match what build_reward_scorers builds below
+    # (both sides split the channel with split_reward_channel). RFT has no reference or teacher (it is
+    # cross-entropy SFT on filtered completions), so reward models are its only auxiliary.
+    reward_world_size = spec_world_size(reward_config.orm_parallel_spec)
     auxiliary_groups: List[Tuple[str, int]] = [
-        (reward_group(i), reward_world_size) for i in range(len(reward_models))]
+        (reward_group(i), reward_world_size) for i in range(len(split_reward_channel(reward_config.orm)[1]))]
     groups, sampler_remote_group, colocate = plan_rl_device_groups(
         distributed_config.nproc_per_node,
         rollout_config.sampler_mode,
@@ -236,7 +240,7 @@ def run_rft(
         assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
 
     reward_scorers, reward_scorer_names = build_reward_scorers(
-        model_config, template_config, rl_config, distributed_config, sampler_model=model_config.model,
+        model_config, template_config, reward_config, distributed_config, sampler_model=model_config.model,
         backend=backend)
     if rl_config.rft_iterations < 1:
         raise ValueError(f'rft_iterations must be >= 1, got {rl_config.rft_iterations}.')
@@ -254,7 +258,7 @@ def run_rft(
         rft_top_k=rl_config.rft_top_k,
         rft_max_samples_per_prompt=rl_config.rft_max_samples_per_prompt,
         reward_scorer_names=reward_scorer_names,
-        reward_weights=rl_config.orm_weights)
+        reward_weights=reward_config.orm_weights)
     recorder = StepRunner(
         assembly.model,
         CallbackHandler(build_callbacks(train_config), output_dir=output_dir),
@@ -316,7 +320,7 @@ def run_rft(
             # train/total_reward tracks the policy's improving sample quality -- the signal that shows RFT
             # working, since the SFT loss on the kept subset alone hides it.
             selector.accumulate_metric(samples, rewards_per_func)
-            rewards = weighted_rewards(rewards_per_func, rl_config.orm_weights).detach().float().cpu().tolist()
+            rewards = weighted_rewards(rewards_per_func, reward_config.orm_weights).detach().float().cpu().tolist()
             selected = selector.select(samples, rewards)
             save_at_round_boundary = False
             if len(selected) == 0:

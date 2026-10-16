@@ -61,61 +61,6 @@ class RLConfig:
     gamma: float = 1.0
     lam: float = 0.95
 
-    # === Reward channels (one selector shared by GRPO and best-of-n synthesis) ===
-    #: Outcome-reward channel. Each item is a registered rule name (an ``orms`` key), a reward plugin
-    #: class/callable, or a reward-model id -- the merge of the old ``reward_funcs`` (rules) and infer's
-    #: ``orm_model`` (a model) into one list, so a channel mixes rules and a model in the order typed and
-    #: ``orm_weights`` aligns to that order. GRPO reads ``orm`` as rules only (its reward models come from
-    #: ``reward_model`` below); best-of-n synthesis resolves a non-rule item through the reward-model path.
-    orm: List[Any] = field(default_factory=list)
-    #: Per-item weights for ``orm``; ``None`` weights every item equally. Length must match the resolved
-    #: channel (rules + model), enforced when the per-item scores are combined.
-    orm_weights: Optional[List[float]] = None
-    #: Parallel layout for this channel's reward model when ``orm`` names a model id (a scalar RM or an
-    #: independent generative judge) -- e.g. ``dp2``, ``tp2``. It is the reward model's OWN layout, apart
-    #: from the run's ``--parallel_spec`` (the policy / sampler's): it sizes the channel's dedicated
-    #: DeviceGroup and drives the model's DeviceMesh (scalar RM) or the judge engine's
-    #: ``tensor_parallel_size`` (independent judge). ``None`` keeps the old behavior -- the channel
-    #: inherits ``nproc_per_node`` as a pure data-parallel replica set. A scalar RM rides the transformers
-    #: backend, which does not shard weights by tp/pp, so its spec expresses dp/fsdp/ep/ulysses; tp/pp need
-    #: the megatron backend or a generative judge. Rule items in the channel hold no model and ignore this.
-    orm_parallel_spec: Optional[str] = None
-    #: Process-reward channel, with the same heterogeneous item grammar as ``orm``. Two consumers: best-of-n
-    #: synthesis ranks with it as the second axis, and GRPO turns it into a per-token *process* reward -- each
-    #: reasoning step is scored by its response prefix (see ``prm_scorer``) and that score is broadcast onto
-    #: the step's tokens, then blended with the outcome (``orm``) group-relative advantage on every response
-    #: token by ``prm_orm_mix``. Rule items score the whole response as one scalar; a model id is a frozen PRM
-    #: built/placed exactly like an ``orm`` model.
-    prm: List[Any] = field(default_factory=list)
-    #: Per-item weights for ``prm``; ``None`` weights every item equally.
-    prm_weights: Optional[List[float]] = None
-    #: Parallel layout for this channel's reward model, exactly as ``orm_parallel_spec`` but for ``prm``.
-    prm_parallel_spec: Optional[str] = None
-    #: Which ``prm_scorer`` plugin segments a response into reasoning steps and broadcasts each step's PRM
-    #: score onto its tokens (GRPO process reward only). A registered name, a class, or a callable resolved
-    #: through :meth:`swift.dev.utils.plugin.PluginRegistry.resolve`; ``None`` picks the default by rollout
-    #: shape -- ``'turn'`` (:class:`swift.dev.rewards.prm.TurnPRMScorer`, one assistant turn = one step) when
-    #: ``max_turns`` is set (multi-turn), ``'delimiter'`` (:class:`swift.dev.rewards.prm.DelimiterPRMScorer`,
-    #: one delimiter-separated line = one step) otherwise. Either scorer keeps a step inside one assistant
-    #: turn under a multi-turn rollout; ``'delimiter'`` splits within a turn, never across one.
-    prm_scorer: Optional[Any] = None
-    #: Step boundary the default ``'delimiter'`` PRM scorer splits the decoded response on -- one reasoning
-    #: step per delimiter-separated segment. A newline (one step per line) by default; a scorer that does not
-    #: segment by text ignores this. ``None`` means the default newline.
-    prm_step_delimiter: Optional[str] = None
-    #: PRM/ORM fusion ratio for the GRPO process reward (the GRPO assembler's ``_apply_prm``): each response token's
-    #: advantage is ``prm_orm_mix * process + (1 - prm_orm_mix) * orm``, blending the per-step process reward
-    #: with the outcome group-relative advantage on the SAME tokens. ``0`` reproduces standard GRPO (the pure
-    #: outcome advantage broadcast onto every response token); ``1`` is pure process reward. Must be in
-    #: ``[0, 1]``; only read when a ``--prm`` channel is active for ``rl_type=grpo``.
-    prm_orm_mix: float = 0.5
-    #: Override for the built-in generative-judge prompt: a ``str.format`` template rendered with ``prompt=``
-    #: and ``completion=``, asked to emit a single number. Only used when an ``orm``/``prm`` channel resolves
-    #: to a generative or api judge (see :func:`swift.dev.rewards.scorer.build_model_reward`); a scalar reward
-    #: model ignores it. Mirrors ``InferConfig.judge_template`` so the RL and inference/synthesis paths render
-    #: a judge verdict identically.
-    judge_template: Optional[str] = None
-
     # === GRPO ===
     num_generations: int = 8
     log_completions: bool = False
@@ -193,42 +138,6 @@ class RLConfig:
     log_rollout_offpolicy_metrics: bool = False
     off_policy_sequence_mask_delta: Optional[float] = None
 
-    # === GRPO Reward Function Parameters ===
-    cosine_min_len_value_wrong: float = -0.5
-    cosine_max_len_value_wrong: float = 0.0
-    cosine_min_len_value_correct: float = 1.0
-    cosine_max_len_value_correct: float = 0.5
-    cosine_max_len: Optional[int] = None
-    repetition_n_grams: int = 3
-    repetition_max_penalty: float = -1.0
-    soft_max_length: Optional[int] = None
-    soft_cache_length: Optional[int] = None
-
-    # === Code Execution Reward (``--orm code_execution``) ===
-    # Read by ``swift.dev.rewards.code_reward.CodeExecutionReward`` off this config, the way the cosine /
-    # repetition rewards read theirs. It scores a generated program by running it against a dataset
-    # ``test_cases`` column (JSON ``{"inputs": [...], "outputs": [...]}``: stdin -> expected stdout per
-    # case) and returns the fraction of cases it passes.
-    #: Default language when a row carries no ``language`` column. Supported: python/python3/py, c,
-    #: cpp/c++, javascript/js. An unsupported language is rejected before any code runs.
-    code_language: str = 'python'
-    #: Per-test-case execution timeout in seconds. A program that exceeds it is killed and scores 0.
-    code_timeout: int = 10
-    #: Width of the thread pool that overlaps a batch's executions. Each run is a subprocess (``LocalEnv``)
-    #: or a microVM command (``AgentEnv``), so this bounds concurrent child processes, not CPU threads.
-    code_max_concurrency: int = 8
-    #: Address-space cap per run for the local ``LocalEnv``; None does not cap. Ignored by ``AgentEnv``.
-    code_memory_limit_gb: Optional[float] = 2.0
-    #: None runs code in a throwaway local subprocess (``LocalEnv``). A template name upgrades execution to
-    #: an ``AgentEnv`` microVM, for untrusted code that must not touch the training host.
-    code_sandbox_template: Optional[str] = None
-
-    # === GRPO Multi-turn ===
-    # Multi-turn is enabled by setting max_turns. Per-turn length is sampling_params.max_tokens;
-    # max_trajectory_tokens caps the whole trajectory (both are independent knobs, either may be None).
-    max_turns: Optional[int] = None
-    max_trajectory_tokens: Optional[int] = None
-
     # === GKD ===
     sft_alpha: float = 0
     lmbda: float = 0.5
@@ -271,7 +180,7 @@ class RLConfig:
     #: methods (GKD/OPSD), which take the one teacher at full weight.
     teacher_weights: Optional[List[float]] = None
     #: Parallel layout for the distillation teacher DeviceGroup (gkd/opsd/mopd), same grammar as
-    #: ``orm_parallel_spec`` (e.g. ``dp2``, ``tp2``). ``None`` sizes the group to a single rank (serial
+    #: ``RewardConfig.orm_parallel_spec`` (e.g. ``dp2``, ``tp2``). ``None`` sizes the group to a single rank (serial
     #: ``forward_only``, card-frugal -- the stage-one default); a spec gives the frozen teacher(s) their own
     #: sizing for a big or concurrency-friendly teacher. MOPD's K teachers share this one group. It is the
     #: teachers' OWN layout, apart from the run's ``--parallel_spec`` (the policy's).
@@ -309,23 +218,6 @@ class RLConfig:
     #: ``threshold``, which can otherwise keep an unbounded number). ``None`` keeps everything selected.
     rft_max_samples_per_prompt: Optional[int] = None
 
-    # === Reward Model ===
-    reward_model: Optional[List[str]] = None
-    reward_adapters: List[str] = field(default_factory=list)
-    reward_model_type: Optional[List[str]] = None
-    reward_model_revision: Optional[List[str]] = None
-    #: Chat template per reward model, positional with ``reward_model``. Needed because a reward model
-    #: is often trained under a different template than the policy, and scoring under the wrong one
-    #: silently changes what it rewards. None lets each model use its own default.
-    reward_template: Optional[List[str]] = None
-
-    # === Megatron backend ===
-    # The Megatron path's counterparts to the fields above. Kept separate rather than folded in because
-    # a reference model in mcore format is not interchangeable with ``ref_model``: it is sharded under
-    # Megatron parameter names, so the two are loaded by different code.
-    #: Reference model in mcore format, and an mcore LoRA to apply to it.
-    mcore_ref_model: Optional[str] = None
-    mcore_ref_adapter: Optional[str] = None
     #: Compute the KL term explicitly rather than folding it into the advantage. None takes the value
     #: implied by the algorithm.
     calculate_KL: Optional[bool] = None

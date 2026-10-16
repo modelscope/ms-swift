@@ -1,7 +1,7 @@
 # v5 Proximal Policy Optimization (PPO) with LoRA, on 3 GPUs through Ray + vLLM.
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI. `--rlhf_type ppo` dispatches to
-# swift.dev.recipe.run_ppo.
+# swift.dev.recipe.ppo.run_ppo.
 #
 # What PPO does: it is the online RL method WITH a learned value function -- the piece GRPO drops. Each step:
 # sample --num_generations completions per prompt from the CURRENT policy (trained weights are synced into the
@@ -14,22 +14,23 @@
 # The FOUR models PPO assembles (this is why it is the heaviest online path):
 #   1. policy   -- the trained model (LoRA here);
 #   2. critic   -- a trainable seq_cls num_labels=1 VALUE head, built automatically (task='value' keeps its
-#                  per-token output V(s_t) instead of pooling to one scalar). It is initialised from
-#                  --reward_model[0] (TRL inits the value function from the reward model), or from the policy
-#                  base if no reward model is given. You do NOT configure it separately;
+#                  per-token output V(s_t) instead of pooling to one scalar). It is initialised from the
+#                  FIRST reward model in --orm (TRL inits the value function from the reward model), or from
+#                  the policy base if the channel carries none. You do NOT configure it separately;
 #   3. reference-- the frozen model the KL penalty anchors to. Under LoRA it is the policy's OWN base with the
 #                  adapter DISABLED (no second model, no extra GPU); a full-parameter run loads a separate
 #                  frozen copy on its own DeviceGroup;
-#   4. reward   -- the frozen scalar reward MODEL (--reward_model), scoring each completion once.
+#   4. reward   -- the frozen scalar reward MODEL (a model-id item of --orm), scoring each completion once.
 #
-# Reward model (READ THIS): PPO's reward is a trained scalar model, NOT a rule -- there is no --orm path here.
-# It MUST share the policy's tokenizer/template (the four forwards line up token-for-token), so the safe
-# choice is the same base family. For a MEANINGFUL reward, train one on your preference data first with
-# examples/rl/rm/rm.sh, then either point --reward_model at that full checkpoint, or keep the shared base
-# below and attach the RM LoRA with `--reward_adapters <rm_ckpt>`. Loading the bare base as the reward model
-# (as below) initialises its score head randomly: every PPO mechanism (critic, per-token GAE, clipped
-# surrogate + value loss, KL) still runs and trains, but the reward signal is untrained until you supply a
-# real RM -- so treat the bare-base form as a plumbing demo, not an alignment run.
+# Reward model (READ THIS): PPO's reward is a trained scalar model passed as a MODEL-ID ITEM of the shared
+# --orm channel (rules and models share the one heterogeneous list). It MUST share the policy's
+# tokenizer/template (the four forwards line up token-for-token), so the safe choice is the same base
+# family. For a MEANINGFUL reward, train one on your preference data first with examples/rl/rm/rm.sh, then
+# either point --orm at that full checkpoint, or keep the shared base below and attach the RM LoRA with
+# `--orm_adapters <rm_ckpt>` (one entry per model id in the channel). Loading the bare base as the reward
+# model (as below) initialises its score head randomly: every PPO mechanism (critic, per-token GAE,
+# clipped surrogate + value loss, KL) still runs and trains, but the reward signal is untrained until you
+# supply a real RM -- so treat the bare-base form as a plumbing demo, not an alignment run.
 #
 # HOW TO READ THIS RUN: judge convergence by the REWARD climbing AND the critic's EXPLAINED VARIANCE staying
 # high -- the clipped-surrogate loss oscillates around zero by construction and hides the trend. Watch:
@@ -48,7 +49,7 @@
 # --whiten_rewards standardises the advantages across the rollout. --num_generations is completions per prompt.
 #
 # Placement: PPO is Ray-only with a weight-syncable vLLM (or SGLang) sampler, like GRPO/RFT. The dev CLI
-# forces use_vllm=true, vllm_mode (colocate by default) and mode=ray; --nproc_per_node IS required (the driver
+# forces vllm_mode (colocate by default) and mode=ray; --nproc_per_node IS required (the driver
 # holds no GPU). Device budget = nproc_per_node (policy + critic share one mesh, sampler colocates on them)
 # PLUS one disjoint GPU per full-parameter reward model -- so nproc_per_node 2 below needs 3 cards. PPO runs
 # SP=1: the per-token value head does not cover sequence-parallel/packed layouts, and --sequence_parallel_size
@@ -75,7 +76,7 @@ swift rl \
     --rlhf_type ppo \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#20000' \
-    --reward_model Qwen/Qwen2.5-7B-Instruct \
+    --orm Qwen/Qwen2.5-7B-Instruct \
     --tuner lora \
     --lora_rank 8 \
     --lora_alpha 32 \

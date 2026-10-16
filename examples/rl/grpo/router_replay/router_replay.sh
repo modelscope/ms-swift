@@ -1,7 +1,7 @@
 # v5 GRPO with MoE ROUTING REPLAY (R2/R3) -- a feature sub-example of ../grpo.sh, for a Qwen3-MoE policy.
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI. `--rlhf_type grpo` dispatches to
-# swift.dev.recipe.run_grpo. Read ../grpo.sh FIRST: this file changes only how the MoE router is handled in
+# swift.dev.recipe.grpo.run_grpo. Read ../grpo.sh FIRST: this file changes only how the MoE router is handled in
 # the training forward, not the GRPO objective. Everything GRPO means is explained there.
 #
 # The problem routing replay solves: an MoE router picks each token's experts from the CURRENT weights. In

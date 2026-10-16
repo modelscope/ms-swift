@@ -19,6 +19,8 @@ if TYPE_CHECKING:
         PluginConfig,
         QuantizeConfig,
         RLConfig,
+        RewardConfig,
+        RolloutConfig,
         TemplateConfig,
         TrainConfig,
         TunerConfig,
@@ -95,6 +97,12 @@ class TrainAssembly:
     checkpoint_config: Optional['CheckpointConfig'] = None
     tuner_config: Optional['TunerConfig'] = None
     rl_config: Optional['RLConfig'] = None
+    #: The reward-channel Config (``--orm``/``--prm`` + plugin knobs) the RL recipes co-parse; held so
+    #: the run bodies and validators read one object rather than re-deriving the channel.
+    reward_config: Optional['RewardConfig'] = None
+    #: The rollout Config (sampler placement + the multi-turn knobs) the online recipes co-parse;
+    #: threaded so the shared validators can cross-check it against ``rl_config``.
+    rollout_config: Optional['RolloutConfig'] = None
     #: The twinkle task the loop runs (``None`` -> the loop's own default, ``'causal_lm'``).
     task: Optional[str] = None
     #: Override for the LOOP's forward task only, leaving ``task`` (and so task_type / template
@@ -234,6 +242,7 @@ class TrainAssembly:
             self.checkpoint_config,
             self.tuner_config,
             self.rl_config,
+            rollout_config=self.rollout_config,
             megatron_config=self.megatron_config,
             quantize_config=self.quantize_config,
             plugin_config=self.plugin_config,
@@ -247,7 +256,9 @@ class TrainAssembly:
             self.checkpoint_config,
             self.tuner_config,
             self.rl_config,
-            self.logging_config,
+            reward_config=self.reward_config,
+            rollout_config=self.rollout_config,
+            logging_config=self.logging_config,
             quantize_config=self.quantize_config,
             megatron_config=self.megatron_config,
             moe_config=self.moe_config,

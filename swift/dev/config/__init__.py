@@ -15,6 +15,7 @@ from .moe_config import MoEConfig
 from .plugin_config import PluginConfig
 from .process import bootstrap_run, process_and_validate_configs, process_configs
 from .quantize_config import QuantizeConfig
+from .reward_config import RewardConfig
 from .rl_config import RLConfig
 from .rollout_config import RolloutConfig
 from .runtime_config import RuntimeConfig
@@ -38,6 +39,7 @@ __all__ = [
     'PluginConfig',
     'QuantizeConfig',
     'RLConfig',
+    'RewardConfig',
     'RolloutConfig',
     'RuntimeConfig',
     'TemplateConfig',

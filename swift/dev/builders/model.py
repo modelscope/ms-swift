@@ -247,11 +247,13 @@ def _mixed_precision_for(torch_dtype: Optional[str]) -> str:
 
 def is_megatron_backend(distributed_config: DistributedConfig) -> bool:
     backend = distributed_config.backend
-    if backend in (None, 'hf'):
+    if backend in (None, 'hf', 'unsloth'):
+        # 'unsloth' rides the transformers family too: it swaps the construction class, not the
+        # strategy/parallel machinery, so every megatron-only guard keeps rejecting it.
         return False
     if backend == 'megatron':
         return True
-    raise ValueError(f"DistributedConfig.backend must be one of {{'megatron', 'hf'}}, got {backend!r}.")
+    raise ValueError(f"DistributedConfig.backend must be one of {{'megatron', 'hf', 'unsloth'}}, got {backend!r}.")
 
 
 def frozen_auxiliary_distributed_config(distributed_config: DistributedConfig,
@@ -333,7 +335,7 @@ def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig, config, model_l
     kwargs['config'] = config
 
 
-def _apply_unsloth_kwargs(kwargs: dict, model_config: ModelConfig, tuner_config: TunerConfig,
+def _apply_unsloth_kwargs(kwargs: dict, model_config: ModelConfig, tuner_config: Optional[TunerConfig],
                           train_config: Optional[TrainConfig],
                           quantize_config: Optional[QuantizeConfig]) -> None:
     """Add the UnslothModel-only kwargs to an otherwise unchanged TransformersModel kwargs dict.
@@ -341,17 +343,18 @@ def _apply_unsloth_kwargs(kwargs: dict, model_config: ModelConfig, tuner_config:
     unsloth rebuilds the module graph around a causal-LM checkpoint, so the num_labels head built by
     _apply_seq_cls_head has nowhere to land -- reject those task types instead of silently training a
     plain causal LM against a classification loss. Its load API represents BNB quantization as
-    ``load_in_4bit`` / ``load_in_8bit`` rather than a Transformers ``quantization_config``.
+    ``load_in_4bit`` / ``load_in_8bit`` rather than a Transformers ``quantization_config``. A None
+    tuner_config is a full-parameter run and maps onto unsloth's own ``full_finetuning`` switch.
     """
     if model_config.task_type in ('seq_cls', 'reranker', 'generative_reranker'):
-        raise NotImplementedError(f'tuner_backend="unsloth" supports causal_lm only; task_type='
+        raise NotImplementedError(f'backend="unsloth" supports causal_lm only; task_type='
                                   f'{model_config.task_type!r} needs a head unsloth does not build.')
-    kwargs['full_finetuning'] = tuner_config.tuner == 'full'
+    kwargs['full_finetuning'] = tuner_config is None
     if quantize_config is not None and quantize_config.quant_method is not None:
         if quantize_config.quant_method != 'bnb':
             raise NotImplementedError(
-                f'tuner_backend="unsloth" only supports BNB load-time quantization, got '
-                f'{quantize_config.quant_method!r}. Use tuner_backend="peft" for this method.')
+                f'backend="unsloth" only supports BNB load-time quantization, got '
+                f'{quantize_config.quant_method!r}. Use the default backend for this method.')
         if quantize_config.quant_bits == 4:
             kwargs.update(load_in_4bit=True, load_in_8bit=False)
         elif quantize_config.quant_bits == 8:
@@ -371,17 +374,17 @@ def _apply_unsloth_kwargs(kwargs: dict, model_config: ModelConfig, tuner_config:
     # let it silently no-op (these are constructor kwargs the base would otherwise apply worker-side).
     if model_config.new_special_tokens:
         raise NotImplementedError(
-            'new_special_tokens is not supported with tuner_backend="unsloth": unsloth owns construction and '
+            'new_special_tokens is not supported with backend="unsloth": unsloth owns construction and '
             'may load a quantized base whose embeddings cannot be resized after the fact. Add the tokens to '
-            'the checkpoint upstream, or use tuner_backend="peft".')
+            'the checkpoint upstream, or drop --backend unsloth.')
     if model_config.init_strategy is not None:
         raise NotImplementedError(
-            'init_strategy is not supported with tuner_backend="unsloth": unsloth always loads a real '
+            'init_strategy is not supported with backend="unsloth": unsloth always loads a real '
             'checkpoint (no from-config blank init), so there are no uninitialized weights to re-init, and '
             're-initializing a quantized base would corrupt it. Drop init_strategy for this backend.')
     if train_config is not None and train_config.use_liger_kernel:
         raise NotImplementedError(
-            'use_liger_kernel is not composed with tuner_backend="unsloth": unsloth already patches the module '
+            'use_liger_kernel is not composed with backend="unsloth": unsloth already patches the module '
             'graph with its own Triton kernels, so Liger kernelize would double-patch the same ops. Disable '
             'use_liger_kernel for this backend.')
 
@@ -682,9 +685,10 @@ def _build_transformers_model(model_config: ModelConfig,
     #     today only ``sentence_transformers``, whose embedding model builds Transformer -> Pooling ->
     #     Normalize and pools per sentence, so it must NOT ride the plain HF embedding task (which re-pools
     #     per-token features) -- see _resolve_model_framework;
-    #   - tuner_backend='unsloth' swaps the class: unsloth owns both construction (its Triton kernels /
-    #     optional 4bit base) and LoRA installation -- see swift/dev/model/unsloth_model.py. Everything
-    #     derived above (dtype, strategy, mixed_precision, ddp_config) is passed through unchanged;
+    #   - backend='unsloth' swaps the class: unsloth owns both construction (its Triton kernels /
+    #     optional 4bit base) and LoRA installation -- see swift/dev/model/unsloth_model.py. Works for
+    #     full-parameter runs too (a None TunerConfig maps onto full_finetuning). Everything derived
+    #     above (dtype, strategy, mixed_precision, ddp_config) is passed through unchanged;
     #   - otherwise the plain twinkle TransformersModel, with the resolved family loader handed over.
     model_framework = _resolve_model_framework(model_config, model_loader)
     if model_framework == 'sentence_transformers':
@@ -695,7 +699,7 @@ def _build_transformers_model(model_config: ModelConfig,
         # TransformersModel, silently ignoring the framework -- fail loudly instead, so a typo in a loader's
         # ``model_framework`` cannot train a different model than the family declares.
         raise ValueError(f'No builder is wired for model_framework={model_framework!r}; add a branch here.')
-    elif tuner_config is not None and tuner_config.tuner_backend == 'unsloth':
+    elif distributed_config.backend == 'unsloth':
         from swift.dev.model import UnslothModel
         _apply_unsloth_kwargs(kwargs, model_config, tuner_config, train_config, quantize_config)
         model = UnslothModel(**kwargs)
@@ -813,11 +817,11 @@ def _build_sentence_transformer_model(kwargs: dict, model_config: ModelConfig,
             'A sentence-transformers embedding model cannot train under DeepSpeed: SentenceTransformerModel '
             'builds its own module pipeline and wires no deepspeed_config into its strategy, so ZeRO would be '
             'silently ignored. Use --fsdp or plain DDP for this model.')
-    if tuner_config is not None and tuner_config.tuner_backend == 'unsloth':
+    if distributed_config.backend == 'unsloth':
         raise NotImplementedError(
-            'tuner_backend="unsloth" cannot wrap a sentence-transformers embedding model: unsloth rebuilds a '
+            'backend="unsloth" cannot wrap a sentence-transformers embedding model: unsloth rebuilds a '
             'causal-LM module graph, while this checkpoint trains as an ST pooling pipeline. Use '
-            'tuner_backend="peft" (LoRA) or full fine-tuning.')
+            'the default backend (LoRA or full fine-tuning).')
     if quantize_config is not None and quantize_config.quant_method is not None:
         raise NotImplementedError(
             f'Load-time quantization ({quantize_config.quant_method!r}) is not applied to a sentence-transformers '

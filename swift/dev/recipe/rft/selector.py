@@ -65,8 +65,8 @@ class RFTSelector:
         self.rft_threshold = rft_threshold
         self.rft_top_k = max(1, rft_top_k)
         self.rft_max_samples_per_prompt = rft_max_samples_per_prompt
-        #: The outcome-channel roster (``--orm`` + ``--reward_model`` labels), for the metric's per-scorer
-        #: columns; an empty roster reports only the weighted ``total``.
+        #: The outcome-channel roster (the ``--orm`` channel's rule + model labels), for the metric's
+        #: per-scorer columns; an empty roster reports only the weighted ``total``.
         self.reward_scorer_names = list(reward_scorer_names or [])
         self.reward_weights = reward_weights
         #: Driver-side reward component fed once per round and read back by :meth:`step_telemetry`.

@@ -176,10 +176,6 @@ class TrainConfig:
     global_batch_size: Optional[int] = None
     #: Evaluation iterations per evaluation. -1 means the whole eval set.
     eval_iters: int = -1
-    #: Load the weights but not the optimizer state, scheduler, or step count -- i.e. start a new run
-    #: from a checkpoint rather than resuming one. True by default, since dev's usual case is
-    #: fine-tuning; CheckpointConfig's ``resume_from_checkpoint`` is what continues a run instead.
-    finetune: bool = True
     #: Micro-batches per virtual-pipeline stage group. None lets Megatron choose from the interleaving.
     microbatch_group_size_per_vp_stage: Optional[int] = None
 

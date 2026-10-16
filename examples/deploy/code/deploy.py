@@ -6,7 +6,7 @@ import ray  # noqa: E402
 from twinkle.server import launch_server  # noqa: E402
 
 from swift.dev.config import DeployConfig, DistributedConfig, ModelConfig, TemplateConfig  # noqa: E402
-from swift.dev.recipe.run_deploy import build_server_config  # noqa: E402
+from swift.dev.recipe.infer.run_deploy import build_server_config  # noqa: E402
 
 
 def build_configs():
@@ -37,7 +37,7 @@ def main() -> None:
     ``run_deploy`` is validate + warn + ``_ensure_ray`` + ``build_server_config`` + ``launch_server``. This
     scaffold keeps only the load-bearing three so the assembly is visible: bring up Ray, translate dev's
     Configs into a twinkle-server ``ServerConfig``, then hand that config to the launcher. Use
-    ``swift.dev.recipe.run_deploy`` directly when you want the validation and generation-default warnings
+    ``swift.dev.recipe.infer.run_deploy`` directly when you want the validation and generation-default warnings
     too; drop down to these building blocks when you need to inspect or customise the ``ServerConfig``.
     """
     model_config, template_config, deploy_config = build_configs()

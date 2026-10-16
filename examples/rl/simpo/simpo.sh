@@ -1,7 +1,7 @@
 # v5 Simple Preference Optimization (SimPO) with LoRA, on 2 GPUs through Ray.
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI. `--rlhf_type simpo` dispatches to
-# swift.dev.recipe.run_dpo (the offline-preference family: dpo/kto/cpo/orpo/simpo/rm share one entry point).
+# swift.dev.recipe.preference.run_dpo (the offline-preference family: dpo/kto/cpo/orpo/simpo/rm share one entry point).
 #
 # What SimPO does: a reference-free preference loss whose implicit reward is the LENGTH-NORMALIZED log-prob of
 # a completion -- the average per-token logp, beta * (1/|y|) * sum_t logp(y_t) -- rather than DPO's summed

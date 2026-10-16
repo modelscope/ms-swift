@@ -52,8 +52,9 @@ class DistributedConfig:
     # This contains the distributed subset of legacy MegatronArguments. Model, optimizer, scheduler,
     # checkpoint and MoE fields live in their owning Config classes; every field below is either
     # forwarded to Twinkle/Megatron or rejected explicitly when the active backend cannot consume it.
-    # A None value means "keep Twinkle/Megatron's own default".
-    backend: Optional[Literal['megatron', 'hf']] = None
+    # A None value means "keep Twinkle/Megatron's own default"; 'unsloth' swaps the transformers build
+    # to unsloth's kernel-patched construction (LoRA and full-parameter alike).
+    backend: Optional[Literal['megatron', 'hf', 'unsloth']] = None
     bridge_backend: Literal['mcore-bridge', 'megatron-bridge'] = 'mcore-bridge'
     #: A whole parallel layout as one string, e.g. 'dp4tp2pp2' or 'dp2_cp2_tp2' -- a lossless sugar
     #: form of the integer size fields below, parsed by ``DeviceMesh.from_spec`` (keys: dp/fsdp/tp/pp/

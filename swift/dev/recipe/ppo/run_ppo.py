@@ -10,7 +10,7 @@ the pieces twinkle already provides, with no fabricated infrastructure:
     trained by the clipped value loss (``configure_ppo_value_loss`` -> twinkle ``PPOValueLoss``). The
     ``task='value'`` behaviour is symmetric across backends (transformers ``TransformersValuePatch`` /
     Megatron ``forward_step``);
-  - reward = the shared outcome channel (``--orm`` rules + ``--reward_model`` scalar scorers, resolved by
+  - reward = the shared outcome channel (``--orm`` -- rules and scalar reward models alike, resolved by
     the same builder GRPO/RFT use and scored through the skeleton's reward half) combined as a weighted sum
     once per completion, plus the standard per-token KL-to-reference penalty;
   - rollout = the same weight-syncable ``SyncableRollout`` (colocate / disaggregated) run_grpo uses.
@@ -45,6 +45,7 @@ if TYPE_CHECKING:
         MoEConfig,
         QuantizeConfig,
         RLConfig,
+        RewardConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -63,6 +64,7 @@ def run_ppo(
     checkpoint_config: CheckpointConfig,
     rollout_config: RolloutConfig,
     rl_config: RLConfig,
+    reward_config: Optional['RewardConfig'] = None,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
@@ -86,7 +88,7 @@ def run_ppo(
     from swift.dev.recipe.common.assembly import TrainAssembly
     from swift.dev.recipe.rl.auxiliary import REF_GROUP, plan_rl_device_groups, reward_group, spec_world_size
     from swift.dev.recipe.rl.prompts import prompts_from_dataset
-    from swift.dev.recipe.rl.rewards import build_reward_scorers
+    from swift.dev.recipe.rl.rewards import build_reward_scorers, split_reward_channel
     from swift.dev.recipe.rl.sampler import (
         RolloutSamplerSpec,
         SyncableRollout,
@@ -106,6 +108,8 @@ def run_ppo(
         checkpoint_config,
         tuner_config,
         rl_config=rl_config,
+        reward_config=reward_config,
+        rollout_config=rollout_config,
         output_dir=output_dir,
         logging_config=logging_config,
         quantize_config=quantize_config,
@@ -132,8 +136,9 @@ def run_ppo(
                           if rl_config.sync_ref_model else rl_config.ref_parallel_spec)
     ref_world_size = spec_world_size(effective_ref_spec)
     auxiliary_groups: List[Tuple[str, int]] = [] if ref_disable_lora else [(REF_GROUP, ref_world_size)]
-    reward_world_size = spec_world_size(rl_config.orm_parallel_spec)
-    auxiliary_groups += [(reward_group(i), reward_world_size) for i in range(len(rl_config.reward_model or []))]
+    reward_world_size = spec_world_size(reward_config.orm_parallel_spec)
+    auxiliary_groups += [(reward_group(i), reward_world_size)
+                         for i in range(len(split_reward_channel(reward_config.orm)[1]))]
     from swift.dev.recipe.rl.resource import RLResourceBootstrap
     resource_plan = RLResourceBootstrap.build(
         model_config=model_config,
@@ -221,7 +226,7 @@ def run_ppo(
     # Critic: a trainable seq_cls (num_labels=1) value model, trained by the clipped value loss.
     value_model = _build_value_model(
         model_config,
-        rl_config,
+        reward_config,
         distributed_config,
         train_config,
         template,
@@ -285,14 +290,14 @@ def run_ppo(
             platform='GPU',
             mode='standalone',
             channel='ema:reference')
-    # The outcome-reward channel is resolved by the SAME shared builder GRPO/RFT use: ``--orm`` rules plus
-    # each ``--reward_model`` scalar scorer become one ordered ``RewardScorer`` list, so PPO scores rules and
+    # The outcome-reward channel is resolved by the SAME shared builder GRPO/RFT use: the ``--orm`` channel's
+    # rules plus each reward MODEL id become one ordered ``RewardScorer`` list, so PPO scores rules and
     # reward models together through the skeleton's ``_score`` (a weighted sum over the channel, not the old
     # per-model mean). Each reward model was placed on its own ``reward_<i>`` group sized by
     # ``--orm_parallel_spec`` (planned above); a generative/api judge is rejected there until the phase③
     # auxiliary-placement unification, exactly as for GRPO.
     reward_scorers, reward_scorer_names = build_reward_scorers(
-        model_config, template_config, rl_config, distributed_config, sampler_model=model_config.model,
+        model_config, template_config, reward_config, distributed_config, sampler_model=model_config.model,
         backend=backend)
 
     # The flat recipe body: the twinkle StreamingDriver iterator (built below) yields scored + assembled
@@ -404,7 +409,7 @@ def run_ppo(
         reference=reference,
         reward_scorers=reward_scorers,
         reward_scorer_names=reward_scorer_names,
-        reward_weights=rl_config.orm_weights,
+        reward_weights=reward_config.orm_weights,
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=assembly.ga,
         rl_config=rl_config)
@@ -521,14 +526,16 @@ def run_ppo(
     return recorder.history
 
 
-def _build_value_model(model_config: ModelConfig, rl_config: RLConfig, distributed_config: DistributedConfig,
+def _build_value_model(model_config: ModelConfig, reward_config: Optional['RewardConfig'],
+                       distributed_config: DistributedConfig,
                        train_config: TrainConfig, template: Any, *, model_path: Optional[str] = None,
                        megatron_config: Optional[MegatronConfig] = None,
                        moe_config: Optional[MoEConfig] = None) -> Any:
     """Build the trainable critic: a ``seq_cls`` num_labels=1 model, forwarded with ``task='value'``.
 
-    Initialised from the first reward model when one is given (closest to TRL, which inits the value
-    function from the reward model), else from the policy's own base. The value head IS the seq_cls
+    Initialised from the first reward MODEL in the ``--orm`` channel when one is given (closest to TRL,
+    which inits the value function from the reward model), else from the policy's own base. The value
+    head IS the seq_cls
     ``score`` linear (trainable, in the optimizer) -- ``task='value'`` keeps its PER-TOKEN output
     ``V(s_t)`` instead of pooling to the last token, symmetric across transformers and Megatron. Placed
     with the SAME DistributedConfig as the policy.
@@ -538,7 +545,10 @@ def _build_value_model(model_config: ModelConfig, rl_config: RLConfig, distribut
     from swift.dev.builders import build_model
     from swift.dev.processor import InputProcessor
 
-    init_from = rl_config.reward_model[0] if rl_config.reward_model else model_config.model
+    from swift.dev.recipe.rl.rewards import split_reward_channel
+
+    orm_models = split_reward_channel(reward_config.orm)[1] if reward_config is not None else []
+    init_from = orm_models[0] if orm_models else model_config.model
     value_cfg = copy(model_config)
     value_cfg.model = model_path or init_from
     value_cfg.task_type = 'seq_cls'  # the per-token value rides the seq_cls score head

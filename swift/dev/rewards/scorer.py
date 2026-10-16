@@ -96,11 +96,11 @@ class RewardModelSpec:
     model_id: Optional[str] = None
     adapter: Optional[str] = None
     task_type: Optional[str] = None
-    #: Explicit identity overrides for a SCALAR reward model, positional with the caller's reward-model list
-    #: (GRPO's ``--reward_model_type`` / ``--reward_model_revision`` / ``--reward_template``). ``None`` lets
-    #: the checkpoint's own metadata decide (see
-    #: :func:`~swift.dev.rewards.reward.build_frozen_reward_model`); the inference/synthesis path leaves them
-    #: None, and a generative / api judge ignores them (its identity is the judge model itself).
+    #: Explicit identity overrides for a SCALAR reward model, positional with the channel's model
+    #: subsequence (``--orm_model_type`` / ``--orm_model_revision`` / ``--orm_template`` and the prm twins
+    #: on RewardConfig). ``None`` lets the checkpoint's own metadata decide (see
+    #: :func:`~swift.dev.rewards.reward.build_frozen_reward_model`); a generative / api judge ignores them
+    #: (its identity is the judge model itself).
     model_type: Optional[str] = None
     revision: Optional[str] = None
     template_name: Optional[str] = None
@@ -188,9 +188,9 @@ def resolve_reward_model(value: Optional[str], adapter: Optional[str], sampler_m
         if adapter is None:
             return None
         if not local_backend:
-            raise ValueError(f'orm_adapter/prm_adapter={adapter!r} without a matching *_model means "reuse the '
-                             f"sampler's model as a generative judge\", but backend={backend!r} loads no local "
-                             'sampler to reuse. Point *_model at a local generative model or an http(s) endpoint.')
+            raise ValueError(f'orm_adapters/prm_adapters={adapter!r} without a model id in the channel means "reuse '
+                             f"the sampler's model as a generative judge\", but backend={backend!r} loads no local "
+                             'sampler to reuse. Point the channel at a local generative model or an http(s) endpoint.')
         return RewardModelSpec('generative_reuse', model_id=sampler_model, adapter=adapter, task_type='causal_lm')
     if value.startswith('http://') or value.startswith('https://'):
         return RewardModelSpec('api', model_id=value, adapter=adapter)
@@ -208,19 +208,24 @@ def resolve_reward_model(value: Optional[str], adapter: Optional[str], sampler_m
                      f'RM {sorted(SCALAR_TASK_TYPES)} nor a generative judge {sorted(GENERATIVE_TASK_TYPES)}.')
 
 
-def resolve_reward_channel(items: List[Any], adapter: Optional[str], sampler_model: Optional[str], backend: str,
-                           *, parallel_spec: Optional[str] = None, channel: str) -> List[RewardSlot]:
+def resolve_reward_channel(items: List[Any], adapters: Optional[List[str]], sampler_model: Optional[str],
+                           backend: str, *, parallel_spec: Optional[str] = None, channel: str,
+                           model_types: Optional[List[str]] = None,
+                           model_revisions: Optional[List[str]] = None,
+                           template_names: Optional[List[str]] = None) -> List[RewardSlot]:
     """Resolve one merged ``--orm`` / ``--prm`` list into ordered rule/model slots.
 
     Registered-name-first: an item that names a registered reward rule (or is a plugin class/callable) is a
     rule slot; any other item is a reward-model id, resolved through :func:`resolve_reward_model`. Order is
     preserved so the channel's ``*_weights`` align to the list the user typed.
 
-    A channel carries at most ONE reward model -- the historical ``orm_model`` / ``prm_model`` were singular,
-    and one DeviceGroup and one LoRA pair with one model -- so a second model id is rejected rather than
-    silently sharing the channel's group and adapter. The channel's LoRA (``orm_adapter`` / ``prm_adapter``)
-    pairs with that model; with no model id in the list it keeps its old meaning -- reuse the sampler's own
-    model as a generative judge wearing the LoRA -- and is appended after the rules.
+    A channel carries at most ONE reward model -- one DeviceGroup and one ``*_parallel_spec`` pair with one
+    model -- so a second model id is rejected rather than silently sharing the channel's group. The
+    companion lists (``orm_adapters`` / ``orm_model_type`` / ``orm_model_revision`` / ``orm_template`` and
+    the prm twins, all on RewardConfig) align positionally with that model subsequence: one entry per
+    model id, or ``None``. The one legacy exception: ``adapters`` with a single entry and NO model id in
+    the channel keeps its old meaning -- reuse the sampler's own model as a generative judge wearing that
+    LoRA -- and is appended after the rules.
 
     ``parallel_spec`` (``--orm_parallel_spec`` / ``--prm_parallel_spec``) is that model's own parallel
     layout; it is attached to the channel's model spec so the DeviceGroup width, the scalar RM's DeviceMesh
@@ -235,18 +240,41 @@ def resolve_reward_channel(items: List[Any], adapter: Optional[str], sampler_mod
         raise ValueError(
             f'--{channel} resolves at most one reward model alongside any number of rule names, but got '
             f'{len(model_ids)} model ids: {model_ids}. Keep one model id per channel.')
+
+    def _aligned(values: Optional[List[Any]], field: str, *, solo_ok: bool = False) -> Optional[List[Any]]:
+        """One companion entry per model id, or None; ``solo_ok`` keeps the sampler-reuse LoRA exception."""
+        if values is None:
+            return None
+        values = list(values)
+        if len(values) == len(model_ids):
+            return values
+        if solo_ok and not model_ids and len(values) == 1:
+            return values
+        raise ValueError(
+            f'--{channel}_{field} must carry exactly one entry per model id in the channel '
+            f'({len(model_ids)} model id(s)), but got {len(values)}: {values}.')
+
+    adapter_list = _aligned(adapters, 'adapters', solo_ok=True)
+    model_type_list = _aligned(model_types, 'model_type')
+    revision_list = _aligned(model_revisions, 'model_revision')
+    template_list = _aligned(template_names, 'template')
     slots: List[RewardSlot] = []
     for item, rule in zip(items, is_rule):
         if rule:
             slots.append(RewardSlot(rule=item))
         else:
-            spec = resolve_reward_model(item, adapter, sampler_model, backend)
+            index = model_ids.index(item)
+            spec = resolve_reward_model(
+                item, adapter_list[index] if adapter_list else None, sampler_model, backend)
             if spec is not None:
                 spec.parallel_spec = parallel_spec
+                spec.model_type = model_type_list[index] if model_type_list else None
+                spec.revision = revision_list[index] if revision_list else None
+                spec.template_name = template_list[index] if template_list else None
             slots.append(RewardSlot(spec=spec))
-    if adapter is not None and not model_ids:
-        # No model id in the list: the adapter alone means "reuse the sampler as a generative judge".
-        spec = resolve_reward_model(None, adapter, sampler_model, backend)
+    if adapter_list and not model_ids:
+        # No model id in the list: the lone adapter entry means "reuse the sampler as a generative judge".
+        spec = resolve_reward_model(None, adapter_list[0], sampler_model, backend)
         if spec is not None:
             spec.parallel_spec = parallel_spec
             slots.append(RewardSlot(spec=spec))

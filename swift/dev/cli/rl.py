@@ -40,6 +40,7 @@ def parse_rl_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         MoEConfig,
         PluginConfig,
         QuantizeConfig,
+        RewardConfig,
         RLConfig,
         RolloutConfig,
         TemplateConfig,
@@ -54,18 +55,18 @@ def parse_rl_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     passed = flag_names(effective_argv)
     classes = [
         ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig,
-        LoggingConfig, TunerConfig, GenerationConfig, RolloutConfig, RLConfig, QuantizeConfig, MegatronConfig,
-        MoEConfig
+        LoggingConfig, TunerConfig, GenerationConfig, RolloutConfig, RLConfig, RewardConfig, QuantizeConfig,
+        MegatronConfig, MoEConfig
     ]
     classes.append(RlCliCompatConfig)
     # Every field name is unique across these Configs (the RL objective's distill temperature is
     # ``distill_temperature``, ``loss_scale`` lives only on TemplateConfig, ``max_new_tokens``/``temperature``
     # only on GenerationConfig), so no per-flag owner disambiguation is needed.
     configs = parse_configs_strict(classes, effective_argv, command='swift rl')
-    common = configs[:15]
+    common = configs[:16]
     (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,
-     checkpoint_config, logging_config, tuner_config, generation_config, rollout_config, rl_config, quantize_config,
-     megatron_config, moe_config) = common
+     checkpoint_config, logging_config, tuner_config, generation_config, rollout_config, rl_config, reward_config,
+     quantize_config, megatron_config, moe_config) = common
     rlhf_compat = configs[-1]
     if megatron:
         tuner_config = configure_megatron(model_config, train_config, distributed_config, tuner_config)
@@ -74,11 +75,11 @@ def parse_rl_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 
     _apply_rl_compat(passed, generation_config, rl_config, rlhf_compat)
     # Every online algorithm -- grpo/ppo/rft and the distillation family gkd/opsd/mopd -- rolls out on a
-    # separate vLLM sampler over Ray and syncs the trained weights into it, so all of them force the
-    # Ray+vLLM placement. On-policy generation must be backend-general: a separate sampler + weight sync
-    # works for both transformers and megatron, whereas in-process ``model.generate`` is transformers-only.
+    # separate vLLM/SGLang sampler over Ray and syncs the trained weights into it, so all of them force
+    # the Ray + colocate-sampler placement. On-policy generation must be backend-general: a separate
+    # sampler + weight sync works for both transformers and megatron, whereas in-process
+    # ``model.generate`` is transformers-only.
     if rl_config.rl_type in {'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'}:
-        rollout_config.use_vllm = True
         rollout_config.sampler_mode = rollout_config.sampler_mode or 'colocate'
         distributed_config.mode = 'ray'
     # The offline preference family (dpo/kto/cpo/orpo/simpo/rm) is RL too (RL_PLAN basic principle 2): it
@@ -109,6 +110,7 @@ def parse_rl_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         'generation_config': generation_config,
         'rollout_config': rollout_config,
         'rl_config': rl_config,
+        'reward_config': reward_config,
         'quantize_config': quantize_config,
         'megatron_config': megatron_config,
         'moe_config': moe_config,
@@ -130,6 +132,7 @@ def run_rl_configs(configs: Dict[str, Any]) -> List[dict]:
         configs['checkpoint_config'],
         configs['rollout_config'],
         configs['rl_config'],
+        configs['reward_config'],
         configs['tuner_config'],
         configs['generation_config'],
         configs['logging_config'],

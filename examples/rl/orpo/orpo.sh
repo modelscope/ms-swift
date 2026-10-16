@@ -1,7 +1,7 @@
 # v5 Odds Ratio Preference Optimization (ORPO) with LoRA, on 2 GPUs through Ray.
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI. `--rlhf_type orpo` dispatches to
-# swift.dev.recipe.run_dpo (the offline-preference family: dpo/kto/cpo/orpo/simpo/rm share one entry point).
+# swift.dev.recipe.preference.run_dpo (the offline-preference family: dpo/kto/cpo/orpo/simpo/rm share one entry point).
 #
 # What ORPO does: it fuses supervised fine-tuning and preference alignment into a SINGLE stage with NO
 # reference model. The loss is the plain NLL (cross-entropy) on the CHOSEN completion -- the SFT term -- plus

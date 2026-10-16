@@ -123,6 +123,16 @@ class DatasetStorage(ABC):
             f"storage format {self.name!r} is read-only: it can load an existing dataset but cannot be "
             f"written. Use --store_format arrow (a directly-trainable store) or jsonl (a portable dump).")
 
+    def iter_rows(self, path: str, **kwargs):
+        """Iterate the store's rows as plain dicts -- the row-stream read a cache-style consumer uses.
+
+        The default walks :meth:`read`, which needs the file to be complete and well-formed. An
+        ``incremental`` (line-appendable) format overrides this with a line-wise parse that tolerates a
+        producer still writing (or having crashed mid-write on) the file, so a run's partial output can
+        already be read back row by row -- the read-side counterpart of incremental writes.
+        """
+        return iter(self.read(path, **kwargs))
+
 
 #: Format name -> storage class. Populated by ``@register_storage`` in :mod:`.formats`, which the package
 #: ``__init__`` imports so the registry is complete before any read/write call.

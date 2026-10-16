@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         MoEConfig,
         QuantizeConfig,
         RLConfig,
+        RewardConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -36,6 +37,8 @@ def validate_configs(
     checkpoint_config: Optional['CheckpointConfig'] = None,
     tuner_config: Optional['TunerConfig'] = None,
     rl_config: Optional['RLConfig'] = None,
+    reward_config: Optional['RewardConfig'] = None,
+    rollout_config: Optional['RolloutConfig'] = None,
     logging_config: Optional['LoggingConfig'] = None,
     quantize_config: Optional['QuantizeConfig'] = None,
     megatron_config: Optional['MegatronConfig'] = None,
@@ -57,8 +60,8 @@ def validate_configs(
     _check_backend_specific(model_config, dataset_config, train_config, distributed_config, is_megatron, tuner_config)
     _check_galore(train_config, tuner_config)
     _check_param_groups(tuner_config)
-    _check_unsloth_strategy(tuner_config, distributed_config, template_config, is_megatron)
     _check_deepspeed_autotp(distributed_config)
+    _check_unsloth_strategy(distributed_config, template_config)
     _check_eval_generation(train_config, template_config, distributed_config)
     _check_megatron_runtime_configs(megatron_config, moe_config, is_megatron)
     _check_megatron_optimizer(train_config, is_megatron)
@@ -87,7 +90,7 @@ def validate_configs(
     _check_save_total_limit(checkpoint_config, is_megatron)
     _check_logging(logging_config)
     _check_rlhf_ref_model(model_config, tuner_config, rl_config)
-    _check_rlhf_advanced(train_config, rl_config, distributed_config)
+    _check_rlhf_advanced(train_config, rl_config, reward_config, rollout_config, distributed_config)
     _check_grpo_cached_dataset(dataset_config, rl_config)
     _check_rlhf_padding_free(template_config, dataset_config, rl_config)
     _check_rlhf_padding_side(template_config, rl_config)
@@ -146,28 +149,33 @@ def _check_megatron_runtime_configs(megatron_config: Optional['MegatronConfig'],
 
 
 def _check_rlhf_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfig'],
+                         reward_config: Optional['RewardConfig'] = None,
+                         rollout_config: Optional['RolloutConfig'] = None,
                          distributed_config: Optional['DistributedConfig'] = None) -> None:
-    """Validate online-RL features before models, teachers, or rollout workers are created."""
+    """Validate online-RL features before models, teachers, or rollout workers are created.
+
+    The reward-channel surface lives on ``reward_config`` (RewardConfig) and the multi-turn knobs on
+    ``rollout_config`` (RolloutConfig); ``rl_config`` carries the RL-training knobs. The multi-turn
+    GRPO-only gate lives in :func:`_check_rollout_tools` (with the rollout surface), not here.
+    """
     if rl_config is None:
         return
     cfg = rl_config
-    online_only = bool(cfg.chord_sft_dataset or cfg.advantage_reweight or cfg.sdar_loss_coef > 0 or cfg.dynamic_sample
-                       or cfg.max_turns is not None)
+    online_only = bool(cfg.chord_sft_dataset or cfg.advantage_reweight or cfg.sdar_loss_coef > 0 or cfg.dynamic_sample)
     if online_only and cfg.rl_type != 'grpo':
-        raise ValueError('CHORD, RLSD, SDAR, dynamic sampling, and multi-turn are GRPO-only.')
+        raise ValueError('CHORD, RLSD, SDAR, and dynamic sampling are GRPO-only.')
     if cfg.sync_ref_model and cfg.rl_type not in ('grpo', 'ppo'):
         raise ValueError('sync_ref_model requires rl_type grpo or ppo (only they have a reference model).')
-    _check_dynamic_sampling(cfg)
+    _check_dynamic_sampling(cfg, reward_config)
     _check_grpo_controls(cfg)
     _check_reference_sync(cfg, train_config, distributed_config)
     _check_chord(cfg)
     _check_router_replay(cfg)
-    _check_sampling_replay(cfg)
-    _check_prm(cfg)
-    _check_self_distillation(cfg, train_config)
+    _check_sampling_replay(cfg, rollout_config)
+    _check_prm(cfg, reward_config)
+    _check_self_distillation(cfg, train_config, reward_config)
     _check_distillation(cfg)
-    _check_auxiliary_adapters(cfg)
-    _check_multi_turn(cfg)
+    _check_auxiliary_adapters(cfg, reward_config)
     _check_preference_reference(cfg)
     _check_dpo_loss(cfg)
 
@@ -212,38 +220,39 @@ def _check_preference_reference(cfg: 'RLConfig') -> None:
                          'full fine-tuning derives one from the policy init.')
 
 
-def validate_multi_turn_config(config: 'RLConfig') -> None:
+def validate_multi_turn_config(rollout_config: Optional['RolloutConfig']) -> None:
     """Validate the shared multi-turn surface without imposing RL-training-only constraints."""
-    _check_multi_turn(config)
+    _check_multi_turn(rollout_config)
 
 
-def _check_multi_turn(cfg: 'RLConfig') -> None:
+def _check_multi_turn(rollout_config: Optional['RolloutConfig']) -> None:
     # Multi-turn is on iff max_turns is set. Per-turn length is sampling_params.max_tokens;
     # max_trajectory_tokens caps the whole trajectory. Both are independent, either may be None.
-    if cfg.max_turns is None:
+    if rollout_config is None or rollout_config.max_turns is None:
         return
-    if cfg.max_turns < 1:
+    if rollout_config.max_turns < 1:
         raise ValueError('max_turns must be >= 1.')
-    if cfg.max_trajectory_tokens is not None and cfg.max_trajectory_tokens < 1:
+    if rollout_config.max_trajectory_tokens is not None and rollout_config.max_trajectory_tokens < 1:
         raise ValueError('max_trajectory_tokens must be >= 1.')
 
 
 def validate_rollout_config(rollout_config: Optional['RolloutConfig'],
-                            multi_turn_config: Optional['RLConfig'],
                             rl_config: Optional['RLConfig'] = None,
                             tuner_config: Optional['TunerConfig'] = None) -> None:
     """Validate the rollout tools/sandbox surface without imposing RL-training-only constraints.
 
-    ``multi_turn_config`` is whatever carries ``max_turns`` for the active recipe (the RLConfig for
-    GRPO, the reward/multi-turn config for sampling); it may be None when multi-turn is not offered.
-    ``rl_config`` is the training config when this rollout backs an RL recipe (None for sampling); it
-    is only read by :func:`_check_async_mode`, which cross-checks the ``async_mode`` rollout knob against
-    the training surface. ``tuner_config`` likewise is only read there, to tell a full-parameter run from
-    an adapter run (``weight_sync_strategy='adapter_snapshot'`` needs an adapter to save). Both checks
+    ``max_turns`` lives on the ``rollout_config`` itself; the multi-turn GRPO-only gate runs here too
+    (:func:`_check_rollout_tools`), because which recipes can orchestrate a multi-turn rollout is a
+    property of the rollout, not of the training knobs. ``rl_config`` is the training config when this
+    rollout backs an RL recipe (None for sampling); it
+    is read by :func:`_check_async_mode`, which cross-checks the ``async_mode`` rollout knob against
+    the training surface, and by the multi-turn gate. ``tuner_config`` likewise is only read there, to
+    tell a full-parameter run from an adapter run (``weight_sync_strategy='adapter_snapshot'`` needs an
+    adapter to save). Both checks
     no-op when ``async_mode='none'``, so sampling recipes -- which never set it -- are unaffected.
     """
     _check_rollout_sampler(rollout_config)
-    _check_rollout_tools(rollout_config, multi_turn_config)
+    _check_rollout_tools(rollout_config, rl_config)
     _check_offload_knobs(rollout_config)
     _check_resource_mode(rollout_config, rl_config)
     _check_async_mode(rollout_config, rl_config, tuner_config)
@@ -287,7 +296,7 @@ def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: O
         raise ValueError('resource_mode="adaptive" keeps dedicated sampler actors and optionally borrows the '
                          'complete trainer world; set sampler_mode="disaggregated" instead of configuring the '
                          'legacy exclusive colocate path.')
-    if getattr(rl_config, 'max_turns', None) is not None:
+    if rollout_config.max_turns is not None:
         raise ValueError('resource_mode="adaptive" does not support multi-turn rollout in the first version; '
                          'use resource_mode="estimate" or disable max_turns.')
     if rl_config.rl_type in {'gkd', 'opsd', 'mopd'} and rl_config.lmbda != 1.0:
@@ -408,8 +417,8 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
       generation with training, so ``sampler_mode='disaggregated'`` is mandatory; ``'colocate'`` time-shares
       one DeviceGroup and cannot overlap.
     - ``dynamic_sample`` regenerates zero-variance groups adaptively after seeing rewards, so it cannot be
-      pre-submitted ahead of training. Multi-turn needs NO refusal here: ``_check_rlhf_advanced`` already
-      gates ``max_turns`` to GRPO-only (it runs before this in ``validate_configs``), and GRPO wires
+      pre-submitted ahead of training. Multi-turn needs NO refusal here: ``_check_rollout_tools`` already
+      gates ``max_turns`` to GRPO-only (both run from the same validate pass), and GRPO wires
       ``rollout.configure_multi_turn`` before the loop dispatch, so its streaming loop admits each
       multi-turn episode per-sample on the driver (a whole episode runs turn-by-turn on its own thread)
       and overlaps it correctly. The distillation family can never carry ``max_turns``, so there is no
@@ -697,17 +706,23 @@ def _check_rollout_sampler(rollout_config: Optional['RolloutConfig']) -> None:
 
 
 def _check_rollout_tools(rollout_config: Optional['RolloutConfig'],
-                         multi_turn_config: Optional['RLConfig']) -> None:
+                         rl_config: Optional['RLConfig'] = None) -> None:
     if rollout_config is None:
         return
     if rollout_config.sandbox_num_envs < 1:
         raise ValueError(f'sandbox_num_envs must be >= 1, got {rollout_config.sandbox_num_envs}.')
+    # The multi-turn rollout is orchestrated by the GRPO recipe (its streaming driver assembles the
+    # trajectory turns); the other RL recipes have no multi-turn loop, so max_turns on them would be a
+    # silent dead knob. Sampling (rl_config is None) is exempt: the TUI drives its own turns.
+    if rollout_config.max_turns is not None and rl_config is not None and rl_config.rl_type != 'grpo':
+        raise ValueError(f'multi-turn rollout (max_turns) is GRPO-only, but rl_type={rl_config.rl_type!r}: the '
+                         'GRPO recipe is the only one that assembles multi-turn trajectories. Use '
+                         'rl_type=grpo, or leave max_turns unset.')
     if not rollout_config.tools:
         return
     # Tools are injected per-turn by the multi-turn engine, so a single-turn rollout has no turn to
     # call them in -- requiring max_turns turns a silent no-op into a clear error.
-    max_turns = multi_turn_config.max_turns if multi_turn_config is not None else None
-    if max_turns is None:
+    if rollout_config.max_turns is None:
         raise ValueError(
             'RolloutConfig.tools requires a multi-turn rollout: set max_turns (>= 1) so the engine has '
             'turns in which to call the tools. A single-turn rollout cannot invoke them.')
@@ -721,17 +736,19 @@ def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
     """
     if infer_config is None:
         return
-    from swift.dev.dataset.storage import validate_store_format
+    from swift.dev.dataset.storage import STORAGE_MAPPING, validate_store_format
     # A store format is an open registry key, so check the name resolves (and is writable) here -- after
     # --external_plugins has been imported -- rather than after the run has generated rows it cannot write.
     validate_store_format(infer_config.store_format, writable=True)
-    # Only jsonl has an incremental checkpoint writer (.tmp/.resume/state); every other writable format
-    # serialises the whole run once at the end and writes no checkpoint, so it cannot continue a previous
-    # run. Reject resume with any non-jsonl store rather than silently discarding the resume request.
-    if infer_config.store_format != 'jsonl' and infer_config.resume:
+    # Resuming needs the format's own incremental capability -- the line-appendable store the
+    # checkpointed writer streams into -- not a hard-coded format name, so an ``@register_storage``
+    # plugin that declares ``incremental=True`` earns resume eligibility the same way. Every
+    # non-incremental format serialises the whole run once at the end and writes no checkpoint, so it
+    # cannot continue a previous run; reject rather than silently discarding the resume request.
+    if not STORAGE_MAPPING[infer_config.store_format].incremental and infer_config.resume:
         raise ValueError(f"store_format={infer_config.store_format!r} writes the whole run once at the end "
-                         'and cannot checkpoint, so it cannot be combined with resume=True. Use '
-                         '--store_format jsonl for a resumable run.')
+                         'and cannot checkpoint, so it cannot be combined with resume=True. Use an '
+                         'incremental store_format (jsonl) for a resumable run.')
 
 
 def validate_convert_config(convert_config: Optional['ConvertConfig']) -> None:
@@ -868,12 +885,13 @@ def _check_grpo_cached_dataset(dataset_config: 'DatasetConfig', rl_config: Optio
                          'offline and train with an offline objective (dpo/rm/...).')
 
 
-def _check_dynamic_sampling(cfg: 'RLConfig') -> None:
+def _check_dynamic_sampling(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
     if not cfg.dynamic_sample:
         return
-    if not (cfg.orm or cfg.reward_model):
+    if reward_config is None or not reward_config.orm:
         raise ValueError(
-            'dynamic_sample requires orm or reward_model because it filters groups by reward variance.')
+            'dynamic_sample requires the orm channel (a rule or a reward model) because it filters groups '
+            'by reward variance.')
     if cfg.num_generations < 2:
         raise ValueError('dynamic_sample requires num_generations >= 2 to measure reward variance.')
     if cfg.max_resample_times < 1:
@@ -947,7 +965,7 @@ def _check_router_replay(cfg: 'RLConfig') -> None:
                          'without it. Use rl_type=grpo, or router_replay_mode=disabled.')
 
 
-def _check_sampling_replay(cfg: 'RLConfig') -> None:
+def _check_sampling_replay(cfg: 'RLConfig', rollout_config: Optional['RolloutConfig'] = None) -> None:
     """Reject sampling-replay combinations dev cannot honour, so the knob is never silently dropped.
 
     ``enable_sampling_replay`` makes the training forward recompute each token's log-prob over the sampler's
@@ -977,14 +995,14 @@ def _check_sampling_replay(cfg: 'RLConfig') -> None:
         raise ValueError(f'enable_sampling_replay forbids a GRPO KL penalty in the loss (beta must be 0), but '
                          f'beta={loss_beta} would reach GRPOLoss. Set beta=0, or fold the KL into the reward '
                          'with kl_in_reward=True, or disable enable_sampling_replay.')
-    if cfg.max_turns is not None:
+    if rollout_config is not None and rollout_config.max_turns is not None:
         raise ValueError('enable_sampling_replay does not support multi-turn rollouts: tool/observation turns '
                          'are trainable but were not drawn from the sampled policy, so they have no sampling '
                          'mask to replay against (GRPOLoss rejects the resulting loss_mask != trainable). Set '
                          'max_turns=None, or disable enable_sampling_replay.')
 
 
-def _check_prm(cfg: 'RLConfig') -> None:
+def _check_prm(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
     """Reject GRPO process-reward (PRM) combinations the loop cannot honour, so no knob is silently dead.
 
     ``--prm`` is a dual-use selector: best-of-n synthesis ranks with it as a scalar axis, while GRPO turns it
@@ -1003,21 +1021,25 @@ def _check_prm(cfg: 'RLConfig') -> None:
       ``prm_orm_mix`` only shape how PRM steps are segmented, scored and fused with the outcome reward, so
       setting one without any PRM item would do nothing.
     - ``prm_orm_mix`` is the PRM/ORM convex-combination ratio and must lie in ``[0, 1]``.
+
+    The prm channel and its knobs all live on the RewardConfig, so a missing one (a programmatic call
+    without the reward surface) counts as "no --prm channel".
     """
     if cfg.rl_type != 'grpo':
         return
-    scorer_knobs = sorted({'prm_scorer', 'prm_step_delimiter', 'prm_orm_mix'}.intersection(_changed_fields(cfg)))
-    if not cfg.prm:
+    scorer_knobs = sorted({'prm_scorer', 'prm_step_delimiter', 'prm_orm_mix'}.intersection(
+        _changed_fields(reward_config)))
+    if reward_config is None or not reward_config.prm:
         if scorer_knobs:
             details = ', '.join(f'--{name}' for name in scorer_knobs)
             raise ValueError(
                 f'{details} shape the GRPO process reward but no --prm channel is set, so they would do '
                 'nothing. Add a --prm item (a rule name or a frozen PRM model id), or drop them.')
         return
-    if not 0.0 <= cfg.prm_orm_mix <= 1.0:
+    if not 0.0 <= reward_config.prm_orm_mix <= 1.0:
         raise ValueError(
             f'prm_orm_mix must be in [0, 1] (the PRM/ORM convex-combination ratio: 0 is standard GRPO, 1 is '
-            f'pure process reward), got {cfg.prm_orm_mix}.')
+            f'pure process reward), got {reward_config.prm_orm_mix}.')
     if cfg.advantage_reweight == 'rlsd' or cfg.sdar_loss_coef > 0:
         raise ValueError(
             'The --prm process reward cannot be combined with RLSD/SDAR: both turn the scalar advantage into a '
@@ -1025,14 +1047,15 @@ def _check_prm(cfg: 'RLConfig') -> None:
             'can drive the loss. Drop --prm, or disable advantage_reweight=rlsd / sdar_loss_coef.')
 
 
-def _check_self_distillation(cfg: 'RLConfig', train_config: 'TrainConfig') -> None:
-    _check_rlsd(cfg)
+def _check_self_distillation(cfg: 'RLConfig', train_config: 'TrainConfig',
+                            reward_config: Optional['RewardConfig'] = None) -> None:
+    _check_rlsd(cfg, reward_config)
     _check_sdar(cfg)
     if (cfg.advantage_reweight == 'rlsd' or cfg.sdar_loss_coef > 0) and train_config.use_liger_kernel:
         raise ValueError('RLSD and SDAR require the unfused per-token loss path; disable use_liger_kernel.')
 
 
-def _check_rlsd(cfg: 'RLConfig') -> None:
+def _check_rlsd(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
     if cfg.advantage_reweight != 'rlsd':
         return
     if not 0.0 <= cfg.rlsd_lambda <= 1.0:
@@ -1041,8 +1064,8 @@ def _check_rlsd(cfg: 'RLConfig') -> None:
         raise ValueError('rlsd_reweight_clip_range must be >= 0.')
     if cfg.rlsd_lambda_warmup_steps < 0 or cfg.rlsd_lambda_decay_steps < 0:
         raise ValueError('RLSD warmup and decay steps must be non-negative.')
-    if not (cfg.orm or cfg.reward_model):
-        raise ValueError('advantage_reweight=rlsd requires orm or reward_model.')
+    if reward_config is None or not reward_config.orm:
+        raise ValueError('advantage_reweight=rlsd requires the orm channel (a rule or a reward model).')
 
 
 def _check_sdar(cfg: 'RLConfig') -> None:
@@ -1088,27 +1111,48 @@ def _check_distillation(cfg: 'RLConfig') -> None:
         raise ValueError('GKD gkd_logits_topk must be >= 1 when set.')
 
 
-def _check_auxiliary_adapters(cfg: 'RLConfig') -> None:
+def _check_auxiliary_adapters(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
     if len(cfg.ref_adapters) > 1:
         raise ValueError('ref_adapters currently supports one frozen reference adapter.')
     if len(cfg.teacher_adapters) > 1:
         raise ValueError('teacher_adapters currently supports one frozen teacher adapter.')
     if cfg.teacher_adapters and cfg.teacher_model is None:
         raise ValueError('teacher_adapters requires a distinct local teacher_model.')
-    reward_models = cfg.reward_model or []
-    reward_fields = {
-        'reward_adapters': cfg.reward_adapters,
-        'reward_model_type': cfg.reward_model_type,
-        'reward_model_revision': cfg.reward_model_revision,
-        'reward_template': cfg.reward_template,
+    if reward_config is not None:
+        _check_channel_companions(reward_config, 'orm')
+        _check_channel_companions(reward_config, 'prm')
+
+
+def _check_channel_companions(reward_config: 'RewardConfig', channel: str) -> None:
+    """Each reward channel's companion family aligns positionally with its MODEL subsequence.
+
+    The retired ``reward_model``/``reward_adapters``/... family carried one value per reward model;
+    the channels' companions (``orm_adapters`` / ``orm_model_type`` / ``orm_model_revision`` /
+    ``orm_template`` and the prm twins) carry the same role -- one entry per MODEL id in the channel,
+    with rule items holding no model and taking no entry. Online RL has no sampler-reuse judge (a
+    scalar-only channel), so a companion with no model id in the channel is dead here and refused;
+    the synthesis path's lone-adapter sampler-reuse spelling is resolved on that path
+    (:func:`swift.dev.rewards.scorer.resolve_reward_channel`), which validate never sees.
+    """
+    from swift.dev.rewards.reward import is_registered_reward
+
+    items = getattr(reward_config, channel) or []
+    model_count = sum(1 for item in items if not is_registered_reward(item))
+    companions = {
+        f'{channel}_adapters': getattr(reward_config, f'{channel}_adapters'),
+        f'{channel}_model_type': getattr(reward_config, f'{channel}_model_type'),
+        f'{channel}_model_revision': getattr(reward_config, f'{channel}_model_revision'),
+        f'{channel}_template': getattr(reward_config, f'{channel}_template'),
     }
-    for field, values in reward_fields.items():
-        if values and not reward_models:
-            raise ValueError(f'{field} requires reward_model.')
-        if values and len(values) != len(reward_models):
-            raise ValueError(f'{field} must contain exactly one value per reward_model.')
-    if cfg.rl_type not in ('grpo', 'rft') and cfg.reward_template:
-        raise ValueError('reward_template is supported by GRPO and RFT only.')
+    for field, values in companions.items():
+        if not values:
+            continue
+        if model_count == 0:
+            raise ValueError(f'{field} requires a model id in the {channel} channel.')
+        if len(values) != model_count:
+            raise ValueError(
+                f'{field} must contain exactly one entry per model id in the {channel} channel '
+                f'({model_count} model id(s)), got {len(values)}.')
 
 
 def _check_logging(logging_config: Optional['LoggingConfig']) -> None:
@@ -1294,48 +1338,32 @@ def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedCon
                          'so the memory profile and checkpoint contents of the run are not a surprise.')
 
 
-def _check_unsloth_strategy(tuner_config: Optional['TunerConfig'], distributed_config: 'DistributedConfig',
-                            template_config: 'TemplateConfig', is_megatron: bool = False) -> None:
+def _check_unsloth_strategy(distributed_config: 'DistributedConfig',
+                            template_config: 'TemplateConfig') -> None:
     """Refuse the strategies unsloth cannot co-exist with.
 
-    unsloth rebuilds the module graph around a causal-LM checkpoint and compiles its own Triton
-    kernels/RoPE cache, so a strategy that shards the parameters (DeepSpeed ZeRO / FSDP) or splits the
-    sequence across ranks (Ulysses SP) either wraps a graph unsloth has already rewritten or feeds its
-    fused kernels a sequence shard they do not expect. Each combination is refused here rather than left
-    to crash inside unsloth's patcher or silently train an unsharded replica.
-
-    The megatron backend is refused for the same reason, and because the silence there is total: unsloth
-    is wired ONLY into the transformers build (``builders/model.py`` swaps in ``UnslothModel`` on the
-    ``_build_transformers_model`` path), while ``_build_megatron_model`` never reads ``tuner_backend`` and
-    ``adapter._build_adapter_config`` keys off ``tuner`` alone -- so a megatron run with
-    ``tuner_backend='unsloth'`` would build a plain ``MegatronModel`` and a stock peft LoRA, silently
-    dropping the unsloth kernels the user asked for. Megatron shards weights across TP/PP under its own
-    parameter names, a layout unsloth's module-graph rebuild cannot wrap, so the pairing is infeasible
-    rather than merely unwired; fail loudly and point at the megatron-native LoRA (``tuner_backend='peft'``).
+    unsloth is selected through backend='unsloth' and rebuilds the module graph around a
+    whole, unsharded causal-LM checkpoint while compiling its own kernels/RoPE cache, so a
+    strategy that shards the parameters (DeepSpeed ZeRO / FSDP) or splits the sequence across
+    ranks (Ulysses SP) either wraps a graph unsloth has already rewritten or feeds its fused
+    kernels a sequence shard they do not expect. Each combination is refused here rather than
+    left to crash inside unsloth's patcher or silently train an unsharded replica.
     """
-    if tuner_config is None or getattr(tuner_config, 'tuner_backend', None) != 'unsloth':
+    if distributed_config.backend != 'unsloth':
         return
-    if is_megatron:
-        raise NotImplementedError(
-            'tuner_backend="unsloth" cannot run on the megatron backend: unsloth rebuilds a transformers '
-            'causal-LM module graph and compiles Triton kernels for whole, unsharded weights, while megatron '
-            'shards weights across TP/PP ranks under its own parameter names. The megatron build never reads '
-            'tuner_backend, so this would silently fall back to a stock peft LoRA and drop the unsloth '
-            'kernels. Use tuner_backend="peft" for megatron LoRA, or switch DistributedConfig.backend to '
-            'transformers to use unsloth.')
     if distributed_config.deepspeed:
         raise NotImplementedError(
-            'tuner_backend="unsloth" cannot run under DeepSpeed: unsloth installs its own kernels and module '
-            'graph and does not compose with a ZeRO strategy. Drop --deepspeed, or use tuner_backend="peft".')
+            'backend="unsloth" cannot run under DeepSpeed: unsloth installs its own kernels and module '
+            'graph and does not compose with a ZeRO strategy. Drop --deepspeed, or use the default backend.')
     if distributed_config.fsdp:
         raise NotImplementedError(
-            'tuner_backend="unsloth" cannot run under FSDP: unsloth installs its own kernels and module graph '
-            'and does not compose with parameter sharding. Drop --fsdp, or use tuner_backend="peft".')
+            'backend="unsloth" cannot run under FSDP: unsloth installs its own kernels and module graph '
+            'and does not compose with parameter sharding. Drop --fsdp, or use the default backend.')
     if template_config.sequence_parallel_size > 1:
         raise NotImplementedError(
-            f'tuner_backend="unsloth" cannot run under sequence_parallel_size='
+            f'backend="unsloth" cannot run under sequence_parallel_size='
             f'{template_config.sequence_parallel_size}: unsloth\'s fused kernels assume a whole sequence per '
-            'rank. Set sequence_parallel_size=1, or use tuner_backend="peft".')
+            'rank. Set sequence_parallel_size=1, or use the default backend.')
 
 
 def _check_deepspeed_autotp(distributed_config: 'DistributedConfig') -> None:
@@ -1546,10 +1574,10 @@ def _check_load_quantization(model_config: 'ModelConfig', distributed_config: 'D
     if bits not in valid_bits:
         raise ValueError(f'quant_method={method!r} does not support quant_bits={bits!r}; expected {sorted(valid_bits, key=str)}.')
 
-    if getattr(tuner_config, 'tuner_backend', None) == 'unsloth' and method != 'bnb':
+    if distributed_config.backend == 'unsloth' and method != 'bnb':
         raise ValueError(
             f'Unsloth only exposes load_in_4bit/load_in_8bit for BNB, so quant_method={method!r} is unsupported. '
-            'Use --quant_method bnb or the default tuner backend.')
+            'Use --quant_method bnb or the default backend.')
 
     if distributed_config.fsdp and method == 'bnb' and bits == 4:
         storage = quantize_config.bnb_4bit_quant_storage
@@ -1926,7 +1954,6 @@ _MEGATRON_ONLY = (
     ('train_config', 'global_batch_size', None),
     ('train_config', 'microbatch_group_size_per_vp_stage', None),
     ('train_config', 'calculate_per_token_loss', None),
-    ('train_config', 'finetune', True),
     ('train_config', 'lr_decay_style', 'cosine'),
     ('train_config', 'lr_decay_iters', None),
     ('train_config', 'lr_warmup_init', 0.0),
@@ -2146,6 +2173,14 @@ def _check_checkpoint_runtime(checkpoint_config: Optional['CheckpointConfig'],
         raise NotImplementedError(
             f'save_strategy={checkpoint_config.save_strategy!r} is not implemented by the Twinkle training loop. '
             'Use --save_strategy steps with --save_steps, or use the legacy CLI.')
+    # ``resume_only_model=False`` on the CLI is an explicit full-resume request (the legacy --finetune
+    # false spelling folds onto it), so without a resume point the run would silently start from scratch.
+    if 'resume_only_model' in changed and not checkpoint_config.resume_only_model \
+            and not checkpoint_config.resume_from_checkpoint:
+        raise ValueError(
+            '--resume_only_model false requests a full resume (optimizer, scheduler, step count), but no '
+            '--resume_from_checkpoint is set: the run would silently start from scratch. Point '
+            '--resume_from_checkpoint at a checkpoint, or drop the flag.')
     if not is_megatron:
         unsupported = {'no_save_rng', 'no_load_optim', 'no_load_rng'}.intersection(changed)
         if unsupported:

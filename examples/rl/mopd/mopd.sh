@@ -2,7 +2,7 @@
 # Paper: https://arxiv.org/abs/2606.30406 (Open-MOPD)
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI (swift.dev.cli.rl). `--rlhf_type mopd` dispatches to
-# swift.dev.recipe.run_mopd.
+# swift.dev.recipe.distill.run_mopd.
 #
 # What MOPD does: the student generates ONE on-policy trajectory; K frozen DOMAIN teachers each re-score that
 # SAME trajectory token-by-token; their per-token distributions are fused into a single target by WEIGHTED

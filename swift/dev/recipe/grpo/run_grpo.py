@@ -14,7 +14,7 @@ from swift.dev.recipe.rl.auxiliary import (
 )
 from swift.dev.recipe.rl.prompts import prompt_rows_from_dataset
 from swift.dev.recipe.rl.ref_only import REF_ONLY_REMOTE_GROUP, build_remote_batch_assembler
-from swift.dev.recipe.rl.rewards import build_reward_scorers
+from swift.dev.recipe.rl.rewards import build_reward_scorers, split_reward_channel
 from swift.dev.recipe.rl.sampler import (
     RolloutSamplerSpec,
     SyncableRollout,
@@ -36,6 +36,7 @@ if TYPE_CHECKING:
         MoEConfig,
         QuantizeConfig,
         RLConfig,
+        RewardConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -75,6 +76,7 @@ def run_grpo(
     checkpoint_config: CheckpointConfig,
     rollout_config: RolloutConfig,
     rl_config: RLConfig,
+    reward_config: Optional['RewardConfig'] = None,
     tuner_config: Optional[TunerConfig] = None,
     generation_config: Optional[GenerationConfig] = None,
     logging_config: Optional[LoggingConfig] = None,
@@ -110,6 +112,8 @@ def run_grpo(
         checkpoint_config,
         tuner_config,
         rl_config=rl_config,
+        reward_config=reward_config,
+        rollout_config=rollout_config,
         output_dir=output_dir,
         logging_config=logging_config,
         quantize_config=quantize_config,
@@ -165,14 +169,17 @@ def run_grpo(
     teacher_request = teacher_spec.group_request()
     if teacher_request is not None:
         auxiliary_groups.append(teacher_request)
-    reward_world_size = spec_world_size(rl_config.orm_parallel_spec)
-    for reward_index in range(len(rl_config.reward_model or [])):
+    # Each MODEL id in the --orm channel (rule items need no GPUs) is a full-parameter frozen auxiliary with
+    # its OWN reward_<i> group, sized by --orm_parallel_spec. split_reward_channel is the one splitter both
+    # this planning and build_reward_scorers use, so the planned groups and the built scorers cannot drift.
+    reward_world_size = spec_world_size(reward_config.orm_parallel_spec)
+    for reward_index in range(len(split_reward_channel(reward_config.orm)[1])):
         auxiliary_groups.append((reward_group(reward_index), reward_world_size))
     # A frozen PRM model (a non-rule --prm item) is a full-parameter auxiliary too, so it gets its OWN group
     # exactly like a reward model, sized by --prm_parallel_spec; _split_prm_channel is the one splitter both
     # this planning and _build_prm_channel use, so the planned name/world size and the build cannot drift.
-    if _split_prm_channel(rl_config.prm)[1] is not None:
-        auxiliary_groups.append((prm_group(0), spec_world_size(rl_config.prm_parallel_spec)))
+    if _split_prm_channel(reward_config.prm)[1] is not None:
+        auxiliary_groups.append((prm_group(0), spec_world_size(reward_config.prm_parallel_spec)))
     from swift.dev.recipe.rl.resource import RLResourceBootstrap
     resource_plan = RLResourceBootstrap.build(
         model_config=model_config,
@@ -299,21 +306,21 @@ def run_grpo(
     # env pool in-actor (each episode leases its own env; see swift.dev.rollout.sandbox), so the pool never
     # crosses the Ray boundary; harness / followup_fn remain caller-supplied extension points. The env pool
     # is closed by rollout.shutdown().
-    if rl_config.max_turns is not None:
+    if rollout_config.max_turns is not None:
         rollout.configure_multi_turn(
-            max_turns=rl_config.max_turns,
-            max_trajectory_tokens=rl_config.max_trajectory_tokens,
+            max_turns=rollout_config.max_turns,
+            max_trajectory_tokens=rollout_config.max_trajectory_tokens,
             rollout_config=rollout_config,
             remote_group=REF_ONLY_REMOTE_GROUP)
 
     reward_scorers, reward_scorer_names = build_reward_scorers(
-        model_config, template_config, rl_config, distributed_config, sampler_model=model_config.model,
+        model_config, template_config, reward_config, distributed_config, sampler_model=model_config.model,
         backend=backend)
     # Process-reward (PRM) channel: the segmenter plugin + the ordered --prm scorers, resolved exactly like
     # the outcome channel above (a frozen PRM model gets its OWN prm_0 group, planned in auxiliary_groups).
     prm_scorer, prm_scorers = _build_prm_channel(
-        model_config, template_config, rl_config, distributed_config, sampler_model=model_config.model,
-        backend=backend)
+        model_config, template_config, reward_config, rollout_config, distributed_config,
+        sampler_model=model_config.model, backend=backend)
     # The flat recipe body: the twinkle StreamingDriver iterator (built below) yields assembled + scored
     # TrainingBatches on a background thread, and this body trains them -- no loop class, no inheritance.
     # Every fail-loudly validation below runs BEFORE the StepRunner builds its RunTracker, whose reporters
@@ -417,16 +424,17 @@ def run_grpo(
         teacher=teacher,
         reward_scorers=reward_scorers,
         reward_scorer_names=reward_scorer_names,
-        reward_weights=rl_config.orm_weights,
+        reward_weights=reward_config.orm_weights,
         prm_scorer=prm_scorer,
         prm_scorers=prm_scorers,
-        prm_weights=rl_config.prm_weights,
+        prm_weights=reward_config.prm_weights,
         num_generations=rl_config.num_generations,
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=assembly.ga,
         advantage_estimator=rl_config.advantage_estimator,
         scale_rewards=rl_config.scale_rewards or 'group',
         rl_config=rl_config,
+        reward_config=reward_config,
         sampling_params=rollout_sampling_params(rl_config, generation_config),
         output_dir=output_dir,
         tracker=recorder.tracker,
@@ -609,16 +617,28 @@ def build_grpo_streaming_driver(rollout_config: Any,
         reached_max=reached_max)
 
 
-def _build_prm_channel(model_config: ModelConfig, template_config: TemplateConfig, rl_config: RLConfig,
-                       distributed_config: DistributedConfig, *, sampler_model: Optional[str],
-                       backend: str) -> Tuple[Any, List[Any]]:
+def _one(values: Optional[Sequence[Any]], field: str) -> Any:
+    """The prm channel's single companion entry: ``None``, or exactly one value for the one model id."""
+    if values is None:
+        return None
+    values = list(values)
+    if len(values) != 1:
+        raise ValueError(
+            f'--{field} must carry exactly one entry for the one model id in the prm channel, but got '
+            f'{len(values)}: {values}.')
+    return values[0]
+
+
+def _build_prm_channel(model_config: ModelConfig, template_config: TemplateConfig, reward_config: RewardConfig,
+                       rollout_config: RolloutConfig, distributed_config: DistributedConfig, *,
+                       sampler_model: Optional[str], backend: str) -> Tuple[Any, List[Any]]:
     """Build GRPO's process-reward (PRM) channel -> ``(prm_scorer, prm_scorers)``.
 
     ``prm_scorers`` is the ordered ``--prm`` channel resolved exactly like the outcome channel (rule PRMs
     first, then the single frozen PRM model), so the assembler's per-sample score seam scores every step
     through the same :func:`~swift.dev.rewards.reward.score_completions`. ``prm_scorer`` is the
     :class:`~swift.dev.rewards.prm.PRMScorer` plugin that segments a response into steps and broadcasts each
-    step's score, resolved from ``rl_config.prm_scorer``; when unset it defaults to ``'turn'`` for a
+    step's score, resolved from ``reward_config.prm_scorer``; when unset it defaults to ``'turn'`` for a
     multi-turn rollout (``max_turns`` set -- one assistant turn is one step) and ``'delimiter'`` otherwise
     (one delimiter-separated line is one step). It
     is returned only when a PRM channel is actually wired, so a scorer with no rule/model -- which would score
@@ -627,12 +647,14 @@ def _build_prm_channel(model_config: ModelConfig, template_config: TemplateConfi
     The frozen PRM model is a SCALAR reward model on its OWN ``prm_0`` DeviceGroup sized by
     ``--prm_parallel_spec`` (a full-parameter frozen seq_cls scorer, heterogeneous per RL_PLAN §3.5); the
     group name and world size MUST match what the run body planned through
-    ``plan_rl_device_groups(auxiliary_groups=...)``. As in :func:`build_reward_scorers`, a generative/api
+    ``plan_rl_device_groups(auxiliary_groups=...)``. Its loading details come from the ``prm_adapters``/
+    ``prm_model_type``/``prm_model_revision``/``prm_template`` family -- one entry each for the one model id
+    (:func:`_one`). As in :func:`build_reward_scorers`, a generative/api
     process judge is not placeable in online RL yet and is rejected rather than mis-scored as a scalar head.
 
     Returns ``(None, [])`` when ``--prm`` is empty, so the loop's ``_prm_active`` stays False.
     """
-    rule_specs, prm_model_id = _split_prm_channel(rl_config.prm)
+    rule_specs, prm_model_id = _split_prm_channel(reward_config.prm)
     if not rule_specs and prm_model_id is None:
         return None, []
 
@@ -642,17 +664,21 @@ def _build_prm_channel(model_config: ModelConfig, template_config: TemplateConfi
     from swift.dev.rewards.scorer import build_model_reward, resolve_reward_model
     from swift.dev.rewards import PRM_STEP_SCORER
 
-    rule_scorers, _rule_names = get_reward_funcs(rule_specs, rl_config) if rule_specs else ([], [])
+    rule_scorers, _rule_names = get_reward_funcs(rule_specs, reward_config) if rule_specs else ([], [])
     scorers: List[Any] = list(rule_scorers)
     if prm_model_id is not None:
-        spec = resolve_reward_model(prm_model_id, None, sampler_model, backend)
+        spec = resolve_reward_model(prm_model_id, _one(reward_config.prm_adapters, 'prm_adapters'),
+                                    sampler_model, backend)
         if spec is None or spec.kind != 'scalar':
             kind = 'none' if spec is None else spec.kind
             raise ValueError(
                 f'--prm model {prm_model_id!r} resolves to a {kind!r} reward, but online RL places only a '
                 'SCALAR (seq_cls/reranker) frozen PRM today; a generative/api process judge is not placeable '
                 'in online RL yet (see the phase③ auxiliary-placement unification).')
-        spec.parallel_spec = rl_config.prm_parallel_spec
+        spec.model_type = _one(reward_config.prm_model_type, 'prm_model_type')
+        spec.revision = _one(reward_config.prm_model_revision, 'prm_model_revision')
+        spec.template_name = _one(reward_config.prm_template, 'prm_template')
+        spec.parallel_spec = reward_config.prm_parallel_spec
         scorers.append(
             build_model_reward(
                 spec,
@@ -662,8 +688,9 @@ def _build_prm_channel(model_config: ModelConfig, template_config: TemplateConfi
                     distributed_config, spec_world_size(spec.parallel_spec), parallel_spec=spec.parallel_spec),
                 remote_group=prm_group(0)))
 
-    default_scorer = 'turn' if rl_config.max_turns is not None else 'delimiter'
-    prm_scorer = PluginRegistry.resolve(PRM_STEP_SCORER, rl_config.prm_scorer or default_scorer, config=rl_config)
+    default_scorer = 'turn' if rollout_config.max_turns is not None else 'delimiter'
+    prm_scorer = PluginRegistry.resolve(PRM_STEP_SCORER, reward_config.prm_scorer or default_scorer,
+                                        config=reward_config)
     return prm_scorer, scorers
 
 

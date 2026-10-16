@@ -17,7 +17,6 @@ class TunerConfig:
     """
 
     # === Base ===
-    tuner_backend: Literal['peft', 'unsloth'] = 'peft'
     #: Which PEFT-backed tuner to build -- 'lora' / 'adalora' / 'trainable_tokens', or 'full' for no
     #: adapter. ``swift.dev.builders.adapter.apply_tuner`` maps it onto the peft config; 'full' is carried as a
     #: None TunerConfig (see ``cli/parser.select_tuner``). DoRA / rsLoRA / QLoRA are LoRA *flags*, not
@@ -26,19 +25,6 @@ class TunerConfig:
     adapters: List[str] = field(default_factory=list)
 
     # === Freeze Parameters (multimodal targeting) ===
-    # These three select which towers a multimodal LoRA run trains when target_modules is the default
-    # 'all-linear': twinkle expands 'all-linear' worker-side (against the real modules) into a target
-    # regex over the unfrozen towers, so the flags ride to add_adapter_to_model as plain bools -- they
-    # cannot be resolved on the driver, where the model under Ray is a PROXY with no modules. Defaults
-    # match legacy: train the language model, leave the vision tower and the aligner frozen. A plain
-    # LLM has an empty ModelArch, so there is nothing to expand and the flags are inert. freeze_vit is
-    # additionally read by _derive_vit_gradient_checkpointing to default vit_gradient_checkpointing
-    # (recompute the vision tower only when it is trained). The full-parameter freeze knobs
-    # (freeze_parameters / freeze_parameters_regex / freeze_parameters_ratio / trainable_parameters /
-    # trainable_parameters_regex) deliberately do NOT live here: a full run carries no TunerConfig at
-    # all (cli/parser.select_tuner and _megatron_compat._select_megatron_tuner both map tuner='full' to
-    # None), so those five moved to TrainConfig -- the same reason the full-parameter GaLore knobs live
-    # there rather than here.
     freeze_llm: bool = False
     freeze_vit: bool = True
     freeze_aligner: bool = True

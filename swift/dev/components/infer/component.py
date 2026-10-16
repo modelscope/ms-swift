@@ -33,9 +33,11 @@ from swift.dev.rewards.scorer import (
     resolve_reward_model as _resolve_reward_model,
 )
 # The dataset-storage registry owns the store formats; its write side (``.writers``) owns the
-# incremental / checkpointed / batch writer family the run streams rows through.
-from swift.dev.dataset.storage import STORAGE_MAPPING
-from swift.dev.dataset.storage.writers import _write_jsonl, open_store_writer, store_output_complete
+# incremental / checkpointed / batch writer family the run streams rows through, and its
+# ``store_writer_kind`` is the single place the flush / checkpoint policy is decided.
+from swift.dev.dataset.storage import STORAGE_MAPPING, detect_storage_format
+from swift.dev.dataset.storage.writers import (_write_jsonl, open_store_writer, store_output_complete,
+                                               store_writer_kind)
 from swift.dev.utils.logger import get_logger
 from swift.dev.components.base import RecipeComponent
 
@@ -48,7 +50,7 @@ if TYPE_CHECKING:
         ModelConfig,
         PluginConfig,
         QuantizeConfig,
-        RLConfig,
+        RewardConfig,
         RolloutConfig,
         TemplateConfig,
         TunerConfig,
@@ -77,7 +79,7 @@ class InferComponent(RecipeComponent):
         infer_config: InferConfig,
         generation_config: Optional[GenerationConfig],
         *,
-        rl_config: Optional[RLConfig],
+        reward_config: Optional[RewardConfig],
         rollout_config: Optional[RolloutConfig],
         backend: str,
         engine_args: Optional[Dict[str, Any]],
@@ -94,7 +96,7 @@ class InferComponent(RecipeComponent):
         self.dataset_config = dataset_config
         self.infer_config = infer_config
         self.generation_config = generation_config
-        self.rl_config = rl_config
+        self.reward_config = reward_config
         self.rollout_config = rollout_config
         self.backend = backend
         self.engine_args = engine_args
@@ -112,7 +114,7 @@ class InferComponent(RecipeComponent):
         dataset_config = self.dataset_config
         infer_config = self.infer_config
         generation_config = self.generation_config
-        rl_config = self.rl_config
+        reward_config = self.reward_config
         rollout_config = self.rollout_config
         backend = self.backend
         engine_args = self.engine_args
@@ -158,7 +160,7 @@ class InferComponent(RecipeComponent):
                 raise ValueError("output_format='grpo' stores each candidate's rollout logprobs (old_logps), "
                                  'which are only produced when save_rollout_tokens forces logprob computation. '
                                  'Re-run with --save_rollout_tokens true.')
-        multi_turn_enabled = bool(rl_config and rl_config.max_turns is not None)
+        multi_turn_enabled = bool(rollout_config and rollout_config.max_turns is not None)
         if infer_config.score_ground_truth and multi_turn_enabled:
             # The reference answer is a single assistant turn with no tool trajectory, while a multi-turn
             # candidate's reward reads its full messages / rollout_infos. Scoring both on one axis compares
@@ -175,12 +177,21 @@ class InferComponent(RecipeComponent):
         # reward LoRA resident in the engine's adapter list at construction (vLLM/SGLang size their adapter
         # slots up front). The channel callables are built after the sampler, since a judge scores through it.
         sampler_model = model_config.model
+        # A None RewardConfig means "no reward channel at all": every field reads as its empty default.
         orm_slots = _resolve_reward_channel(
-            rl_config.orm if rl_config is not None else [], infer_config.orm_adapter, sampler_model, backend,
-            parallel_spec=rl_config.orm_parallel_spec if rl_config is not None else None, channel='orm')
+            getattr(reward_config, 'orm', []), getattr(reward_config, 'orm_adapters', None), sampler_model,
+            backend, channel='orm',
+            parallel_spec=getattr(reward_config, 'orm_parallel_spec', None),
+            model_types=getattr(reward_config, 'orm_model_type', None),
+            model_revisions=getattr(reward_config, 'orm_model_revision', None),
+            template_names=getattr(reward_config, 'orm_template', None))
         prm_slots = _resolve_reward_channel(
-            rl_config.prm if rl_config is not None else [], infer_config.prm_adapter, sampler_model, backend,
-            parallel_spec=rl_config.prm_parallel_spec if rl_config is not None else None, channel='prm')
+            getattr(reward_config, 'prm', []), getattr(reward_config, 'prm_adapters', None), sampler_model,
+            backend, channel='prm',
+            parallel_spec=getattr(reward_config, 'prm_parallel_spec', None),
+            model_types=getattr(reward_config, 'prm_model_type', None),
+            model_revisions=getattr(reward_config, 'prm_model_revision', None),
+            template_names=getattr(reward_config, 'prm_template', None))
         reuse_adapters = [slot.spec.adapter for slots in (orm_slots, prm_slots) for slot in slots
                           if slot.is_model and slot.spec.kind == 'generative_reuse' and slot.spec.adapter]
         reward_groups = _exclusive_reward_groups(orm_slots, prm_slots, distributed_config)
@@ -199,24 +210,21 @@ class InferComponent(RecipeComponent):
         logger.info(f'run_infer: {len(rows)} prompts, backend={backend}, num_return_sequences={num_return}, '
                     f'output_format={output_format}')
 
-        # A 'dpo' or resumed run uses the checkpointed writer (tmp live-write, per-batch resume snapshot,
-        # atomic finalize); a plain 'all' run uses the incremental writer, which also gathers across DP
-        # ranks. An existing complete checkpoint output short-circuits the run unless override_exist_file,
-        # so re-running a finished job is a no-op.
-        # Whether the store_format has those incremental/resumable line writers is a capability the format
-        # itself declares in the storage registry (``DatasetStorage.incremental``; only jsonl sets it so
-        # far), not something this component decides: every other writable store_format serialises once at
-        # finish, and validate_infer_config has already rejected resume for it. A 'dpo' run that picks one
-        # forfeits its crash-safe checkpointing -- say so rather than let the choice pass silently. The
-        # resulting choice of writer itself belongs to open_store_writer.
-        incremental = STORAGE_MAPPING[infer_config.store_format].incremental
-        if not incremental and output_format == 'dpo':
+        # The storage layer owns the writer policy (``store_writer_kind`` folds the format's
+        # ``incremental`` capability with the run's checkpoint intent): a 'dpo' or resumed run asks for
+        # crash protection and gets the checkpointed writer (tmp live-write, per-batch resume snapshot,
+        # atomic finalize) when the format can honour it; a plain 'all' run gets the incremental writer,
+        # which also gathers across DP ranks; a non-incremental format degrades to one write at the end.
+        # An existing complete checkpoint output short-circuits the run unless override_exist_file, so
+        # re-running a finished job is a no-op.
+        writer_kind = store_writer_kind(
+            output_path, infer_config.store_format,
+            checkpoint=(output_format == 'dpo' or infer_config.resume))
+        if writer_kind == 'batch' and output_format == 'dpo':
             logger.warning(f"output_format='dpo' with store_format={infer_config.store_format!r} writes one store "
                            'at the end, so it cannot checkpoint/resume a long best-of-n run; use --store_format '
                            'jsonl for that.')
-        use_checkpoint = (bool(output_path) and incremental
-                          and (output_format == 'dpo' or infer_config.resume))
-        if use_checkpoint:
+        if writer_kind == 'checkpoint':
             from twinkle.utils import Platform
 
             local_world = max(1, int(Platform.get_world_size()))
@@ -263,7 +271,7 @@ class InferComponent(RecipeComponent):
                 quantize_config=quantize_config)
 
         channels = _build_channels(
-            infer_config, rl_config, orm_slots=orm_slots, prm_slots=prm_slots, sampler=sampler,
+            infer_config, reward_config, orm_slots=orm_slots, prm_slots=prm_slots, sampler=sampler,
             model_config=model_config, template_config=template_config, backend=backend,
             engine_args=engine_args, distributed_config=distributed_config, quantize_config=quantize_config)
 
@@ -277,16 +285,16 @@ class InferComponent(RecipeComponent):
                 # Tools are opt-in: with RolloutConfig.tools set, the engine builds its own sandbox env pool
                 # and resolves the tool plugins (each episode leases its own env); otherwise no tools.
                 rollout.configure_multi_turn(
-                    max_turns=rl_config.max_turns, max_trajectory_tokens=rl_config.max_trajectory_tokens,
+                    max_turns=rollout_config.max_turns, max_trajectory_tokens=rollout_config.max_trajectory_tokens,
                     rollout_config=rollout_config)
 
         batches = _plan_batches(len(rows), infer_config.batch_size, infer_config.max_batches)
         params = to_sampling_params(generation_config, num_samples=num_return)
-        ## 这几个选项是否应该由数据湖来完成支持？
-        ## 数据湖来决定flush时机和阅读恢复、续写
-        writer = open_store_writer(output_path, infer_config.store_format,
-                                   store_fields=infer_config.store_fields, checkpoint=use_checkpoint,
-                                   resume=infer_config.resume)
+        # The writer policy (flush timing / checkpoint / resume) is the storage layer's --
+        # ``open_store_writer`` folds the same capability-and-intent decision ``store_writer_kind`` made above.
+        writer = open_store_writer(
+            output_path, infer_config.store_format, store_fields=infer_config.store_fields,
+            checkpoint=(output_format == 'dpo' or infer_config.resume), resume=infer_config.resume)
         # Rollout-token sidecar: only built when save_rollout_tokens is on, and only a local backend can feed
         # it (the message-only 'no' backend produces no tokens). The NPZ dir sits beside
         # the jsonl and each row embeds a path relative to output_dir, so the pair stays portable.
@@ -1006,7 +1014,7 @@ class _RolloutRecorder:
 
 
 def _build_channels(infer_config: InferConfig,
-                    rl_config: Optional[RLConfig] = None,
+                    reward_config: Optional[RewardConfig] = None,
                     *,
                     orm_slots: Optional[List['_RewardSlot']] = None,
                     prm_slots: Optional[List['_RewardSlot']] = None,
@@ -1028,16 +1036,15 @@ def _build_channels(infer_config: InferConfig,
     """
     ray = distributed_config is not None and distributed_config.mode == 'ray'
     orm_funcs, orm_names = _build_slot_funcs(
-        orm_slots or [], 'orm', rl_config, infer_config, sampler, model_config, template_config, backend,
+        orm_slots or [], 'orm', reward_config, infer_config, sampler, model_config, template_config, backend,
         engine_args, distributed_config, quantize_config, ray)
     prm_funcs, prm_names = _build_slot_funcs(
-        prm_slots or [], 'prm', rl_config, infer_config, sampler, model_config, template_config, backend,
+        prm_slots or [], 'prm', reward_config, infer_config, sampler, model_config, template_config, backend,
         engine_args, distributed_config, quantize_config, ray)
-    # The channel selectors and their weights live on RLConfig (the shared surface GRPO also uses); the
-    # rest of the synthesis knobs are on InferConfig. RLConfig doubles as the reward hyperparameter
-    # carrier, so a rule plugin reads its own knobs (cosine_* / repetition_*) off it.
-    orm_weights = rl_config.orm_weights if rl_config is not None else None
-    prm_weights = rl_config.prm_weights if rl_config is not None else None
+    # The channel selectors, their weights, the rule plugins' hyperparameters and the judge prompt all live
+    # on RewardConfig (the surface online RL shares); the rest of the synthesis knobs are on InferConfig.
+    orm_weights = reward_config.orm_weights if reward_config is not None else None
+    prm_weights = reward_config.prm_weights if reward_config is not None else None
     channels = _RewardChannels(
         orm_funcs, orm_names, prm_funcs, prm_names, orm_weights=orm_weights, prm_weights=prm_weights)
     if channels.empty:
@@ -1048,17 +1055,17 @@ def _build_channels(infer_config: InferConfig,
     return channels
 
 
-def _build_slot_funcs(slots: List['_RewardSlot'], group: str, rl_config: Optional[RLConfig],
+def _build_slot_funcs(slots: List['_RewardSlot'], group: str, reward_config: Optional[RewardConfig],
                       infer_config: InferConfig, sampler: Any, model_config: Optional[ModelConfig],
                       template_config: Optional[TemplateConfig], backend: str,
                       engine_args: Optional[Dict[str, Any]], distributed_config: Optional[DistributedConfig],
                       quantize_config: Optional[QuantizeConfig], ray: bool) -> Tuple[List[Any], List[str]]:
     """Turn one channel's ordered slots into ``(funcs, names)``, preserving slot order.
 
-    A rule slot resolves through the ``reward`` extension point (``cls(args=rl_config)``, so a plugin
-    reads its own hyperparameters off the config); a model slot builds its scorer, targeting the channel's
-    DeviceGroup only under ray and only for a GPU-resident kind (local mode has no groups; a sampler-reusing
-    or API judge stays group-less).
+    A rule slot resolves through the ``reward`` extension point (``cls(args=config)`` with the
+    RewardConfig, so a plugin reads its own hyperparameters off it); a model slot builds its scorer,
+    targeting the channel's DeviceGroup only under ray and only for a GPU-resident kind (local mode has
+    no groups; a sampler-reusing or API judge stays group-less).
     """
     from swift.dev.utils.plugin import PluginRegistry
     from swift.dev.rewards import REWARD
@@ -1072,7 +1079,7 @@ def _build_slot_funcs(slots: List['_RewardSlot'], group: str, rl_config: Optiona
             funcs.append(
                 _build_model_reward(
                     spec,
-                    judge_template=infer_config.judge_template,
+                    judge_template=reward_config.judge_template if reward_config is not None else None,
                     sampler=sampler,
                     model_config=model_config,
                     template_config=template_config,
@@ -1083,7 +1090,7 @@ def _build_slot_funcs(slots: List['_RewardSlot'], group: str, rl_config: Optiona
                     remote_group=remote_group))
             names.append(spec.display_name)
         else:
-            func = PluginRegistry.resolve(REWARD, slot.rule, config=rl_config)
+            func = PluginRegistry.resolve(REWARD, slot.rule, config=reward_config)
             funcs.append(func)
             names.append(PluginRegistry.display_name(func))
     return funcs, names
@@ -1212,44 +1219,49 @@ class _CandidateCache:
     def __init__(self, cache_files: List[str]):
         self.by_prompt: Dict[str, List[_Candidate]] = {}
         for path in cache_files or []:
-            if not os.path.isfile(path):
+            if not os.path.exists(path):
                 logger.warning(f'cache_files entry {path} does not exist; ignoring it.')
                 continue
             self._load(path)
         if self.by_prompt:
             logger.info(f'run_infer: cache covers {len(self.by_prompt)} prompts from {len(cache_files)} file(s)')
 
-    ## 这里有问题吧？为什么不使用数据湖？
     def _load(self, path: str) -> None:
-        with open(path, encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
+        # Any run output is a store the storage layer reads back -- a jsonl dump (row-wise tolerant, so a
+        # crashed producer's truncated tail costs a warning, not the file), an arrow store directory, or
+        # any other registered format -- so one run's output can serve as another run's cache verbatim.
+        storage_format = detect_storage_format(path)
+        if storage_format is None:
+            logger.warning(f'cache_files entry {path} is not a store the storage layer reads (no known '
+                           'format detected; name the output .jsonl/.json or point at a store directory); '
+                           'ignoring it.')
+            return
+        try:
+            rows = STORAGE_MAPPING[storage_format]().iter_rows(path)
+        except Exception as e:
+            # A cache is an optimisation, not a dependency: an unreadable entry (a foreign or broken
+            # file) is skipped with the reason stated, like a missing one -- the run just pays for the
+            # generation itself.
+            logger.warning(f'cache_files entry {path} could not be read as {storage_format!r} ({e}); ignoring it.')
+            return
+        for entry in rows:
+            messages = entry.get('messages')
+            if not messages or messages[-1].get('role') != 'assistant':
+                continue
+            multi_turn = bool(entry.get('multi_turn'))
+            if multi_turn:
+                key = entry.get('id')
+                if not key:
                     continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    # A crashed producer leaves a truncated final line; skipping it beats refusing the
-                    # whole cache file.
-                    logger.warning(f'skipping an unparseable line in {path}')
-                    continue
-                messages = entry.get('messages')
-                if not messages or messages[-1].get('role') != 'assistant':
-                    continue
-                multi_turn = bool(entry.get('multi_turn'))
-                if multi_turn:
-                    key = entry.get('id')
-                    if not key:
-                        continue
-                else:
-                    key = _prompt_key(messages[:-1])
-                self.by_prompt.setdefault(key, []).append(
-                    _Candidate(
-                        messages[-1].get('content') or '',
-                        messages=copy.deepcopy(messages) if multi_turn else None,
-                        rollout_infos=copy.deepcopy(entry.get('rollout_infos')),
-                        truncated=bool(entry.get('truncated')),
-                        multi_turn=multi_turn))
+            else:
+                key = _prompt_key(messages[:-1])
+            self.by_prompt.setdefault(key, []).append(
+                _Candidate(
+                    messages[-1].get('content') or '',
+                    messages=copy.deepcopy(messages) if multi_turn else None,
+                    rollout_infos=copy.deepcopy(entry.get('rollout_infos')),
+                    truncated=bool(entry.get('truncated')),
+                    multi_turn=multi_turn))
 
     def lookup(self, trajectory: Dict[str, Any], wanted: int, *, multi_turn: bool = False) -> Optional[List[_Candidate]]:
         if not self.by_prompt:

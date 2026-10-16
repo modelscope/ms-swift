@@ -1,7 +1,7 @@
 # v5 Contrastive Preference Optimization (CPO) with LoRA, on 2 GPUs through Ray.
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI. `--rlhf_type cpo` dispatches to
-# swift.dev.recipe.run_dpo (the offline-preference family: dpo/kto/cpo/orpo/simpo/rm share one entry point).
+# swift.dev.recipe.preference.run_dpo (the offline-preference family: dpo/kto/cpo/orpo/simpo/rm share one entry point).
 #
 # What CPO does: it is DPO's preference margin WITHOUT the reference model, plus an explicit behaviour-
 # cloning term. The margin still pushes the chosen completion's logp above the rejected one's, but there is

@@ -68,7 +68,10 @@ class DeployConfig:
     enable_data_plane: bool = False
 
     # === Persistence (forwarded to ServerConfig.persistence) ===
-    persistence_mode: Optional[str] = None
+    #: None keeps the in-memory default. Only the modes whose required companion fields
+    #: are exposed here are accepted: 'redis' needs a redis_url the deploy surface does
+    #: not carry, so it is left to twinkle-server's own config.
+    persistence_mode: Optional[Literal['memory', 'file']] = None
     persistence_file_path: Optional[str] = None
 
     # === Scaling (forwarded to each application's deployment) ===

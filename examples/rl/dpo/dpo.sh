@@ -1,7 +1,7 @@
 # v5 Direct Preference Optimization (DPO) with LoRA, on 2 GPUs through Ray.
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI. `--rlhf_type dpo` dispatches to
-# swift.dev.recipe.run_dpo (the offline-preference family: dpo/kto/cpo/orpo/simpo/rm share one entry point).
+# swift.dev.recipe.preference.run_dpo (the offline-preference family: dpo/kto/cpo/orpo/simpo/rm share one entry point).
 #
 # What DPO does: it turns a preference dataset into a policy update WITHOUT a reward model and WITHOUT
 # rollout. Each row is a prompt plus a CHOSEN and a REJECTED completion. The loss maximises the margin

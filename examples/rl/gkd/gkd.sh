@@ -3,7 +3,7 @@
 #        https://arxiv.org/abs/2306.13649
 #
 # USE_SWIFT_V5=1 routes `swift rl` to the v5 dev CLI (swift.dev.cli.rl). `--rlhf_type gkd` dispatches to
-# swift.dev.recipe.run_gkd.
+# swift.dev.recipe.distill.run_gkd.
 #
 # What GKD does: the student is trained to match a frozen teacher ON SEQUENCES THE STUDENT ITSELF GENERATES,
 # so it learns to correct its own mistakes instead of only imitating a fixed corpus. Each round the student
@@ -71,7 +71,7 @@
 # GRPO, so a group of completions would only multiply the teacher's full-vocab scoring cost. The step budget is
 # derived from the prompt set x num_train_epochs (NOT a toy --max_steps).
 #
-# Placement: GKD is Ray-only with a weight-syncable vLLM sampler -- the dev CLI forces use_vllm=true,
+# Placement: GKD is Ray-only with a weight-syncable vLLM sampler -- the dev CLI forces
 # vllm_mode=colocate and mode=ray for --rlhf_type gkd. --nproc_per_node IS required because in Ray mode the
 # driver orchestrates and holds no GPU. colocate shares the trainer GPUs with the sampler (CUDA-IPC weight sync,
 # sleep/wake hand-over each step), so --vllm_gpu_memory_utilization must leave room for training; the separate

@@ -34,6 +34,7 @@ def process_configs(
     checkpoint_config: Optional['CheckpointConfig'] = None,
     tuner_config: Optional['TunerConfig'] = None,
     rl_config: Optional['RLConfig'] = None,
+    rollout_config: Optional['RolloutConfig'] = None,
     megatron_config: Optional['MegatronConfig'] = None,
     quantize_config: Optional['QuantizeConfig'] = None,
     plugin_config: Optional['PluginConfig'] = None,
@@ -58,7 +59,6 @@ def process_configs(
 
     _fold_megatron_aliases(train_config)
     _derive_gradient_accumulation_steps(train_config, distributed_config, is_megatron)
-    _derive_finetune_resume(train_config, checkpoint_config, is_megatron)
     # Order matters below: the eval schedule reads split_dataset_ratio after the val-dataset rule has
     # zeroed it, and task_type must be settled (rm -> seq_cls) before the per-token-loss default and
     # the best-model metric read it.
@@ -70,7 +70,7 @@ def process_configs(
     _derive_bnb_compute_dtype(model_config, quantize_config)
     _derive_rlhf_task_type(model_config, rl_config)
     _derive_rlhf_beta(rl_config)
-    _derive_rlhf_loss_scale(template_config, rl_config)
+    _derive_rlhf_loss_scale(template_config, rl_config, rollout_config)
     _derive_rlhf_ref_model(model_config, tuner_config, rl_config)
     _derive_rlhf_teacher(model_config, tuner_config, rl_config)
     _derive_grpo_reward_defaults(rl_config)
@@ -105,11 +105,11 @@ def process_and_validate_configs(
         configs.get('checkpoint_config'),
         configs.get('tuner_config'),
         rl_config=configs.get('rl_config'),
+        rollout_config=configs.get('rollout_config'),
         megatron_config=configs.get('megatron_config'),
         quantize_config=configs.get('quantize_config'),
         plugin_config=configs.get('plugin_config'),
     )
-    multi_turn_config = configs.get('multi_turn_config')
     validate_configs(
         configs['model_config'],
         configs['template_config'],
@@ -119,16 +119,18 @@ def process_and_validate_configs(
         configs.get('checkpoint_config'),
         configs.get('tuner_config'),
         configs.get('rl_config'),
-        configs.get('logging_config'),
+        reward_config=configs.get('reward_config'),
+        rollout_config=configs.get('rollout_config'),
+        logging_config=configs.get('logging_config'),
         quantize_config=configs.get('quantize_config'),
         megatron_config=configs.get('megatron_config'),
         moe_config=configs.get('moe_config'),
         training='train_config' in configs,
     )
-    if multi_turn_config is not None and multi_turn_config is not configs.get('rl_config'):
-        from .validate import validate_multi_turn_config
-        validate_multi_turn_config(multi_turn_config)
     rollout_config = configs.get('rollout_config')
+    if rollout_config is not None:
+        from .validate import validate_multi_turn_config
+        validate_multi_turn_config(rollout_config)
     if rollout_config is not None:
         from .validate import validate_rollout_config
         # Fold the legacy ``async_generate`` bool into ``async_mode`` BEFORE validation reads it, so
@@ -139,12 +141,10 @@ def process_and_validate_configs(
         # validation reads them, so a legacy ``--async_generate`` / colocated synchronous script still runs
         # with no extra flags. rl_config tells it whether ``async_mode='none'`` actually rides the driver.
         _derive_weight_sync_strategy(rollout_config, configs.get('rl_config'), configs.get('tuner_config'))
-        # max_turns lives on the RLConfig for GRPO and on the multi-turn/reward config for sampling.
-        multi_turn_carrier = multi_turn_config if multi_turn_config is not None else configs.get('rl_config')
-        # rl_config is the training surface _check_async_mode cross-references (None for sampling);
-        # tuner_config tells it a full-parameter run from an adapter run (adapter_snapshot needs a LoRA).
-        validate_rollout_config(rollout_config, multi_turn_carrier, configs.get('rl_config'),
-                                configs.get('tuner_config'))
+        # max_turns lives on the RolloutConfig itself; rl_config is the training surface
+        # _check_async_mode / _check_rollout_tools cross-reference (None for sampling); tuner_config tells
+        # it a full-parameter run from an adapter run (adapter_snapshot needs a LoRA).
+        validate_rollout_config(rollout_config, configs.get('rl_config'), configs.get('tuner_config'))
     infer_config = configs.get('infer_config')
     if infer_config is not None:
         from .validate import validate_infer_config
@@ -349,36 +349,6 @@ def _derive_gradient_accumulation_steps(train_config: 'TrainConfig', distributed
             f'gradient_accumulation_steps={train_config.gradient_accumulation_steps} conflicts with '
             f'global_batch_size={train_config.global_batch_size}, which derives {derived}.')
     train_config.gradient_accumulation_steps = derived
-
-
-def _derive_finetune_resume(train_config: 'TrainConfig', checkpoint_config: Optional['CheckpointConfig'],
-                            is_megatron: bool) -> None:
-    """Translate Megatron's ``finetune`` intent onto the dev checkpoint contract.
-
-    A fresh dev run already loads the HF model weights and starts optimizer state at step zero, which
-    is exactly legacy ``finetune=True``. For a dev checkpoint, ``finetune=True`` means weights-only
-    restore and therefore derives ``resume_only_model=True``; ``finetune=False`` means a full resume.
-    Native mcore checkpoint directories are rejected earlier by the CLI contract because their layout
-    is not interchangeable with Twinkle's HF-weights-plus-mcore-state format.
-    """
-    if not is_megatron or 'finetune' not in getattr(train_config, '_explicit_fields', set()):
-        return
-    if checkpoint_config is None or not checkpoint_config.resume_from_checkpoint:
-        if not train_config.finetune:
-            raise ValueError(
-                'Megatron --finetune false requires --resume_from_checkpoint pointing to a checkpoint written by '
-                'the dev runtime. Native mcore checkpoints must first be converted with `swift export '
-                '--backend megatron --to_hf true`.')
-        return
-
-    derived = bool(train_config.finetune)
-    resume_explicit = 'resume_only_model' in getattr(checkpoint_config, '_explicit_fields', set())
-    if resume_explicit and checkpoint_config.resume_only_model != derived:
-        raise ValueError(
-            f'finetune={train_config.finetune!r} conflicts with resume_only_model='
-            f'{checkpoint_config.resume_only_model!r}. Megatron finetune=true means a weights-only new run; '
-            'finetune=false means a full resume.')
-    checkpoint_config.resume_only_model = derived
 
 
 def _derive_lr_decay_style(train_config: 'TrainConfig', is_megatron: bool) -> None:
@@ -761,7 +731,8 @@ def _derive_rlhf_beta(rl_config: Optional['RLConfig']) -> None:
     rl_config.beta = _RLHF_BETA_DEFAULTS.get(getattr(rl_config, 'rl_type', None), 0.1)
 
 
-def _derive_rlhf_loss_scale(template_config: 'TemplateConfig', rl_config: Optional['RLConfig']) -> None:
+def _derive_rlhf_loss_scale(template_config: 'TemplateConfig', rl_config: Optional['RLConfig'],
+                            rollout_config: Optional['RolloutConfig'] = None) -> None:
     """Default the loss-mask strategy to the algorithm's sensible one when the user did not set it.
 
     Mirrors legacy rlhf_args.py::_set_loss_scale. ``loss_scale`` decides which assistant turns the loss is
@@ -788,7 +759,7 @@ def _derive_rlhf_loss_scale(template_config: 'TemplateConfig', rl_config: Option
         return
     # legacy extends the multi-turn exception to gkd as well, but dev's multi-turn rollout is GRPO-only
     # (validate rejects max_turns on any other rl_type), so gkd always takes 'last_round' here.
-    if rl_config.rl_type == 'grpo' and rl_config.max_turns is not None:
+    if rl_config.rl_type == 'grpo' and rollout_config is not None and rollout_config.max_turns is not None:
         template_config.loss_scale = 'default'
     else:
         template_config.loss_scale = 'last_round'
@@ -828,8 +799,7 @@ def _derive_rlhf_teacher(model_config: 'ModelConfig', tuner_config: Optional['Tu
         return
     if isinstance(rl_config.teacher_adapters, str):
         rl_config.teacher_adapters = [rl_config.teacher_adapters]
-    for field in ('teacher_model', 'reward_model', 'reward_adapters', 'reward_model_type',
-                  'reward_model_revision', 'reward_template'):
+    for field in ('teacher_model', ):
         value = getattr(rl_config, field)
         if isinstance(value, str):
             setattr(rl_config, field, [value])

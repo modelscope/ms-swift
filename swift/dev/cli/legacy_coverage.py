@@ -13,10 +13,13 @@ UNSUPPORTED_SAMPLER_FIELDS: Tuple[str, ...] = (
 # registration collapsed onto `--external_plugins`, and `agent_template` was never consumed.
 REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
     'ignore_args_error', 'use_swift_lora', 'write_batch_size', 'to_ollama', 'orm_model', 'prm_model',
-    'reward_model_plugin', 'custom_register_path', 'agent_template',
+    'reward_model_plugin', 'custom_register_path', 'agent_template', 'tuner_backend',
     # device_map (HF load-time sharding) is retired: the runtime places the model through its own
     # parallel/accelerate strategy on every backend, so a user-supplied device_map has no effect.
     'device_map',
+    # use_vllm is retired: an online-RL rollout always rides a weight-syncable vLLM/SGLang sampler
+    # (select it with --rollout_sampler), so the legacy bool was always forced true and gated nothing.
+    'use_vllm',
     # Template knobs likewise not consumed: the loss scale is expressed through --loss_scale and
     # thinking-block handling through --enable_thinking.
     'is_binary_loss_scale', 'template_backend', 'preserve_thinking', 'disable_ignore_empty_think')
@@ -25,10 +28,18 @@ REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
 REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
     'orm_model': 'pass the reward-model id as an item of --orm instead',
     'prm_model': 'pass the reward-model id as an item of --prm instead',
+    'reward_model': 'pass the reward-model id as an item of --orm instead',
+    'reward_adapters': 'pass the LoRA through --orm_adapters (one entry per model id in --orm) instead',
+    'reward_model_type': 'pass the override through --orm_model_type (one entry per model id) instead',
+    'reward_model_revision': 'pin it through --orm_model_revision (one entry per model id) instead',
+    'reward_template': 'pass the template through --orm_template (one entry per model id) instead',
     'reward_model_plugin': 'reward-model scoring is built in now; configure --orm/--prm directly',
     'custom_register_path': 'use --external_plugins (local file | local folder | hub id)',
     'agent_template': 'express the agent format through --template and the template registry',
+    'tuner_backend': 'select unsloth with --backend unsloth instead (it covers LoRA and full-parameter runs)',
     'device_map': 'the runtime places the model across devices on its own; drop --device_map',
+    'use_vllm': 'an online-RL rollout always uses a weight-syncable sampler engine; select it with '
+                '--rollout_sampler (vllm/sglang) instead, or drop --use_vllm',
     'merge_lora': 'this command merges the adapter implicitly; drop --merge_lora',
     'exist_ok': 'use --replace_if_exists to overwrite an existing output directory',
     'steps_per_generation': 'use --num_iterations to replay one rollout across several optimizer steps',
@@ -61,6 +72,11 @@ GENERATION_OPTION_FIELDS: Tuple[str, ...] = (
 # Rollout knobs retired together with the gym environments and the pluggable multi-turn scheduler.
 RLHF_REMOVED_ROLLOUT_FIELDS: Tuple[str, ...] = (
     'gym_env', 'use_gym_env', 'multi_turn_scheduler', 'completion_length_limit_scope')
+# The reward_model family retired into the --orm/--prm channels: a reward model is now a model-id item of
+# the channel itself, and its LoRA/type/revision/template ride the channel's companion lists
+# (--orm_adapters / --orm_model_type / --orm_model_revision / --orm_template on RewardConfig).
+REWARD_MODEL_RETIRED_FIELDS: Tuple[str, ...] = (
+    'reward_model', 'reward_adapters', 'reward_model_type', 'reward_model_revision', 'reward_template')
 # RL rollout/training knobs that were parsed but never consumed by the current pipeline: the round-based
 # sample-reuse knobs (num_sample_generations / steps_per_generation / num_mini_batches /
 # local_rollout_forward_batch_size / missing_eos_penalty), the batched weight-move and flattened
@@ -227,6 +243,9 @@ LEGACY_ALIASES: Dict[str, str] = {
     # objective) keeps its name. normalize_argv/build_legacy_contract suppress this alias on commands
     # where `loss_type` is itself a live field (rlhf), so the two never collide.
     'loss_type': 'loss',
+    # The v4 Megatron boolean `--finetune` folds onto the backend-neutral resume contract: true = a
+    # weights-only new run, false = a full resume (which then requires --resume_from_checkpoint).
+    'finetune': 'resume_only_model',
 }
 
 CHECKPOINT_NON_TRAINING_FIELDS: Tuple[str, ...] = tuple(
@@ -260,7 +279,7 @@ CLI_LEGACY_ONLY: Dict[str, Mapping[str, Tuple[str, ...]]] = {
         + MCORE_REFERENCE_CHECKPOINT_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS + TRAIN_REMOVED_OPTION_FIELDS + ('seq_kd',)
         + RLHF_REMOVED_ROLLOUT_FIELDS + RLHF_REMOVED_RL_KNOBS + RLHF_REMOVED_EVAL_FIELDS
-        + RLHF_REMOVED_SERVER_FIELDS,
+        + RLHF_REMOVED_SERVER_FIELDS + REWARD_MODEL_RETIRED_FIELDS,
     },
     'megatron_pt': {
         'unsupported_command': TRAIN_UNSUPPORTED_DISTRIBUTED_FIELDS,
@@ -278,7 +297,7 @@ CLI_LEGACY_ONLY: Dict[str, Mapping[str, Tuple[str, ...]]] = {
         + MCORE_REFERENCE_CHECKPOINT_FIELDS,
         'removed_option': REMOVED_OPTION_FIELDS + TRAIN_REMOVED_OPTION_FIELDS + ('seq_kd',)
         + RLHF_REMOVED_ROLLOUT_FIELDS + RLHF_REMOVED_RL_KNOBS + RLHF_REMOVED_EVAL_FIELDS
-        + RLHF_REMOVED_SERVER_FIELDS,
+        + RLHF_REMOVED_SERVER_FIELDS + REWARD_MODEL_RETIRED_FIELDS,
     },
     'infer': {
         'unsupported_sampler': UNSUPPORTED_SAMPLER_FIELDS,
