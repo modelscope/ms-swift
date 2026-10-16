@@ -10,13 +10,17 @@ from swift.infer_engine.protocol import (ChatCompletionResponse, ChatCompletionR
                                          RolloutInferRequest, RolloutOutput)
 from swift.template import Messages
 from swift.template.utils import get_token_backed_response_ids
-from swift.utils import remove_response
+from swift.utils import get_logger, remove_response
+from .agentark.env import AgentArkEnv
+from .agentark.scheduler import AgentArkSchedulerMixin
 from .gym_env import Env, envs
 
 if TYPE_CHECKING:
     # Imported only for type hints; importing it at runtime pulls in vllm, which would make
     # `swift.rollout` (and thus GRPO trainer init) hard-require vllm even when use_vllm=False.
     from swift.infer_engine import GRPOVllmEngine
+
+logger = get_logger()
 
 
 class RolloutScheduler(ABC):
@@ -168,6 +172,26 @@ class RolloutScheduler(ABC):
         """
         return {}
 
+    async def on_trajectory_end(self,
+                                requests: List['RolloutInferRequest'],
+                                error: Optional[BaseException] = None) -> None:
+        """Called once after a server-side or colocate trajectory batch ends.
+
+        The hook runs after successful completion and after failures, including
+        failures during ``on_trajectory_start`` or the first generation. Use it
+        to release environment sessions and other per-trajectory resources.
+
+        Args:
+            requests: All requests passed to the lifecycle boundary. A request
+                may have completed before another request in the batch failed.
+            error: The original rollout exception, or ``None`` after success.
+
+        The default implementation is a no-op. If this hook also fails while a
+        rollout exception is already active, the driver logs the cleanup error
+        and preserves the original exception.
+        """
+        pass
+
     async def async_infer(self,
                           infer_requests: List[Union['RolloutInferRequest', Dict[str, Any]]],
                           request_config: 'RequestConfig',
@@ -224,7 +248,19 @@ class RolloutScheduler(ABC):
             if isinstance(infer_request, Dict):
                 infer_request = RolloutInferRequest(**infer_request)
 
-            return await self.run(infer_request, request_config, **kwargs)
+            rollout_error = None
+            try:
+                return await self.run(infer_request, request_config, **kwargs)
+            except BaseException as error:
+                rollout_error = error
+                raise
+            finally:
+                try:
+                    await self.on_trajectory_end([infer_request], rollout_error)
+                except BaseException:
+                    if rollout_error is None:
+                        raise
+                    logger.exception('Trajectory finalization failed while preserving the original rollout error')
 
         tasks = [_infer_async_single(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
@@ -864,6 +900,12 @@ class GYMScheduler(MultiTurnScheduler):
         self._step_rewards.pop(uuid, None)
         self._pending_obs.pop(uuid, None)
 
+    async def on_trajectory_end(self,
+                                requests: List['RolloutInferRequest'],
+                                error: Optional[BaseException] = None) -> None:
+        """Close every environment still owned by the completed batch."""
+        await asyncio.gather(*[self._close_and_remove(request.uuid) for request in requests if request.uuid])
+
     # ------------------------------------------------------------------
     # Universal async hooks (called by both run() and run_multi_turn())
     # ------------------------------------------------------------------
@@ -1070,7 +1112,14 @@ class OpenEnvScheduler(GYMScheduler):
             return str(observation)
 
 
+class AgentArkScheduler(AgentArkSchedulerMixin, GYMScheduler):
+    """Drive multimodal AgentArk environments over the protocol-v2 HTTP API."""
+
+
+envs['agentark'] = AgentArkEnv
+
 multi_turns = {
+    'agentark_scheduler': AgentArkScheduler,
     'math_tip_trick': MathTipsScheduler,
     'gym_scheduler': GYMScheduler,
     'openenv_scheduler': OpenEnvScheduler,
