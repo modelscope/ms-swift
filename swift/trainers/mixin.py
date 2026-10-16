@@ -1375,6 +1375,7 @@ class DataLoaderMixin:
                 'num_workers': self.args.dataloader_num_workers,
                 'pin_memory': self.args.dataloader_pin_memory,
                 'persistent_workers': self.args.dataloader_persistent_workers,
+                'prefetch_factor': self.args.dataloader_prefetch_factor,
             }
             dataloader_params.update(self._maybe_multiprocessing_context(self.args))
 
