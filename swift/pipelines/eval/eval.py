@@ -1,4 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import copy
+import glob
 import os
 from contextlib import nullcontext
 from evalscope.constants import EvalBackend, EvalType
@@ -8,7 +10,7 @@ from typing import List, Optional, Union
 
 from swift.arguments import EvalArguments
 from swift.dataset import MediaResource
-from swift.utils import append_to_jsonl, get_logger
+from swift.utils import append_to_jsonl, gc_collect, get_logger
 from ..base import SwiftPipeline
 from ..infer import run_deploy
 
@@ -22,7 +24,9 @@ class SwiftEval(SwiftPipeline):
     def run(self):
         args = self.args
         eval_report = {}
-        if args.eval_offline:
+        if args.eval_ckpts:
+            eval_report[args.eval_backend] = self.run_ckpt_sweep()
+        elif args.eval_offline:
             result = self.get_task_result(self.get_offline_task_cfg())
             eval_report[args.eval_backend] = result
         else:
@@ -68,13 +72,13 @@ class SwiftEval(SwiftPipeline):
             result = reports
         return result
 
-    def get_offline_task_cfg(self):
+    def get_offline_task_cfg(self, args=None):
         """Evaluate the model in-process instead of calling a deployed server over HTTP.
 
         Uses the same `swift_custom` engine the training loop already uses, so both paths run the
         same evaluation implementation -- this one just skips the deploy and its engine startup.
         """
-        args = self.args
+        args = args or self.args
         if args.eval_backend != EvalBackend.NATIVE:
             raise ValueError('eval_offline is only supported by the Native backend, '
                              f'got eval_backend: {args.eval_backend}')
@@ -100,6 +104,62 @@ class SwiftEval(SwiftPipeline):
             dataset_args=args.eval_dataset_args,
             generation_config=args.eval_generation_config or {'max_tokens': 512},
             **args.extra_eval_args)
+
+    def run_ckpt_sweep(self):
+        """Evaluate several checkpoints one after another and report them side by side.
+
+        Because the model is loaded in-process, nothing has to be deployed per checkpoint, which is
+        what makes sweeping cheap -- with a server each checkpoint would pay a full engine startup.
+        """
+        args = self.args
+        if not args.eval_offline:
+            raise ValueError('eval_ckpts requires eval_offline; sweeping deployed servers is not supported.')
+
+        ckpt_dirs = []
+        for pattern in args.eval_ckpts:
+            matched = sorted(glob.glob(pattern))
+            ckpt_dirs.extend(matched or [pattern])
+
+        scores = {}  # dataset -> {checkpoint: score}
+        for ckpt_dir in ckpt_dirs:
+            logger.info(f'Evaluating checkpoint: {ckpt_dir}')
+            ckpt_args = copy.copy(args)
+            if os.path.exists(os.path.join(ckpt_dir, 'adapter_config.json')):
+                ckpt_args.adapters = [ckpt_dir]
+            else:
+                ckpt_args.model = ckpt_dir
+                ckpt_args.adapters = []
+            report = run_task(task_cfg=self.get_offline_task_cfg(ckpt_args))
+            for dataset, dataset_report in report.items():
+                scores.setdefault(dataset, {})[ckpt_dir] = dataset_report.score
+            # release the checkpoint before loading the next one
+            gc_collect()
+
+        self.write_ckpt_report(scores)
+        return scores
+
+    def write_ckpt_report(self, scores):
+        """Write a `checkpoint x dataset` table, marking the best checkpoint for each dataset."""
+        args = self.args
+        datasets = list(scores)
+        lines = [
+            '| checkpoint |' + ''.join(f' {dataset} |' for dataset in datasets),
+            '|---|' + '|'.join(['---'] * len(datasets)) + '|'
+        ]
+        ckpt_dirs = list({ckpt_dir for per_ckpt in scores.values() for ckpt_dir in per_ckpt})
+        for ckpt_dir in ckpt_dirs:
+            row = [f'| `{ckpt_dir}` |']
+            for dataset in datasets:
+                value = scores[dataset].get(ckpt_dir)
+                best = max(scores[dataset].values())
+                row.append(f' {value}{" ✅" if value == best else ""} |')
+            lines.append(''.join(row))
+
+        report_path = args.eval_report or os.path.join(args.eval_output_dir, 'benchmark_report.md')
+        os.makedirs(os.path.dirname(report_path) or '.', exist_ok=True)
+        with open(report_path, 'w') as f:
+            f.write('\n'.join(lines) + '\n')
+        logger.info(f'The checkpoint sweep report has been saved to: `{report_path}`.')
 
     def get_task_cfg(self, dataset: List[str], eval_backend: str, url: str):
         assert eval_backend in {EvalBackend.NATIVE, EvalBackend.OPEN_COMPASS, EvalBackend.VLM_EVAL_KIT}

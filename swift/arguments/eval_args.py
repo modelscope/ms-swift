@@ -48,6 +48,11 @@ class EvalArguments(DeployArguments):
         eval_offline (bool): Run the evaluation in-process instead of deploying a server and calling it over HTTP.
             This skips the engine startup of a deployed service, which makes it much cheaper for a quick check of a
             local checkpoint. Only supported by the 'Native' backend. Defaults to False.
+        eval_ckpts (List[str]): Checkpoint directories to evaluate one after another, writing a single aggregated
+            report at the end. Each entry is either a LoRA adapter directory or a full model directory; glob
+            patterns are expanded. Requires `eval_offline`. Defaults to [].
+        eval_report (Optional[str]): Where to write the aggregated report for `eval_ckpts`. Defaults to
+            `<eval_output_dir>/benchmark_report.md`.
     """
     eval_dataset: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None
@@ -62,6 +67,10 @@ class EvalArguments(DeployArguments):
     eval_num_proc: int = 16
     extra_eval_args: Optional[Union[dict, str]] = field(default_factory=dict)
     eval_offline: bool = False
+    # Evaluate each of these checkpoints in turn and write one aggregated report. Entries are
+    # checkpoint directories (a LoRA adapter dir or a full model dir); globs are expanded.
+    eval_ckpts: List[str] = field(default_factory=list)
+    eval_report: Optional[str] = None
     # If eval_url is set, ms-swift will not perform deployment operations and
     # will directly use the URL for evaluation.
     eval_url: Optional[str] = None
