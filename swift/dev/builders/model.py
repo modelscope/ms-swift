@@ -1048,7 +1048,6 @@ def build_parallel_mesh(distributed_config: Optional[DistributedConfig], *, none
 
 
 _NON_MODEL_MEGATRON_FIELDS = {
-    'attention_backend',
     'data_parallel_random_init',
     'skip_megatron_init',
     'manual_gc',

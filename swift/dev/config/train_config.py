@@ -139,9 +139,6 @@ class TrainConfig:
     qk_clip_tau: float = 10000.0
     #: Megatron's SGD momentum, read only when ``optimizer='sgd'``.
     sgd_momentum: float = 0.9
-    #: Megatron spells adam's epsilon differently from HF's ``adam_epsilon`` above; both are kept
-    #: because each backend reads its own.
-    adam_eps: Optional[float] = None
 
     # === Optimizer: precision & offload (Megatron-only) ===
     #: Keep optimizer state in lower precision than fp32, using the dtypes below. Off by default: it
@@ -164,13 +161,9 @@ class TrainConfig:
     optimizer_cuda_graph: bool = False
 
     # === Training cadence (Megatron-only) ===
-    # Megatron counts iterations where HF counts steps and epochs. These are the Megatron spellings; a
-    # single resolver is meant to fold each into its HF counterpart, so they stay Optional to tell "not
-    # set" apart from an explicit value -- the same reason clip_grad above is Optional.
-    #: Megatron spelling of ``max_steps``.
-    train_iters: Optional[int] = None
-    #: Megatron spelling of ``per_device_train_batch_size``.
-    micro_batch_size: Optional[int] = None
+    # Megatron counts iterations where HF counts steps and epochs; the v4 spellings of the shared
+    # quantities (--lr/--train_iters/...) are parse-time aliases (LEGACY_ALIASES), so only the
+    # Megatron-only quantities are declared here.
     #: Tokens-per-step expressed directly, rather than as micro-batch x accumulation x data-parallel
     #: width. Megatron derives the accumulation count from it, which is the opposite direction from HF.
     global_batch_size: Optional[int] = None
@@ -180,19 +173,12 @@ class TrainConfig:
     microbatch_group_size_per_vp_stage: Optional[int] = None
 
     # === LR schedule (Megatron-only) ===
-    # As above: the first four are Megatron spellings of fields already present, the rest are schedules
-    # HF has no equivalent for.
-    #: Megatron spelling of ``learning_rate``.
-    lr: Optional[float] = None
+    # Schedules HF has no equivalent for; the shared ones (--lr/--lr_warmup_*) are parse-time aliases.
     #: Megatron spelling of ``lr_scheduler``. 'WSD' (warmup-stable-decay) is the one value with no
     #: HF counterpart, and the reason the two cannot simply be merged.
     lr_decay_style: Literal['constant', 'linear', 'cosine', 'inverse-square-root', 'WSD'] = 'cosine'
-    #: Megatron spelling of ``warmup_ratio``.
-    lr_warmup_fraction: Optional[float] = None
-    #: Megatron spelling of ``warmup_steps``.
-    lr_warmup_iters: Optional[int] = None
     #: Iterations over which the lr decays, which Megatron takes separately from the total run length --
-    #: so decay can finish before training does. None decays across ``train_iters``.
+    #: so decay can finish before training does. None decays across the whole run.
     lr_decay_iters: Optional[int] = None
     #: Learning rate warmup starts from, rather than 0.
     lr_warmup_init: float = 0.

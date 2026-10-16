@@ -54,7 +54,6 @@ def process_configs(
     PluginRegistry.load_configured(plugin_config)
     is_megatron = is_megatron_backend(distributed_config)
 
-    _fold_megatron_aliases(train_config)
     _derive_gradient_accumulation_steps(train_config, distributed_config, is_megatron)
     # Order matters: the eval schedule reads split_dataset_ratio after the val-dataset rule zeroed
     # it, and task_type must settle (rm -> seq_cls) before the per-token-loss default reads it.
@@ -254,36 +253,6 @@ def _login_hub(dataset_config: Optional['DatasetConfig']) -> None:
         return
     from swift.dev.utils.hub import get_hub
     get_hub(dataset_config.use_hf).try_login(dataset_config.hub_token)
-
-
-# (megatron spelling, HF spelling) for the aliases that are one knob under two names. Only exact 1:1
-# pairs: `global_batch_size` is a PRODUCT of the HF fields, `lr_decay_style`'s 'WSD' has no HF value.
-_MEGATRON_ALIASES = (
-    ('lr', 'learning_rate'),
-    ('train_iters', 'max_steps'),
-    ('micro_batch_size', 'per_device_train_batch_size'),
-    ('lr_warmup_fraction', 'warmup_ratio'),
-    ('lr_warmup_iters', 'warmup_steps'),
-    ('adam_eps', 'adam_epsilon'),
-)
-
-
-def _fold_megatron_aliases(train_config: 'TrainConfig') -> None:
-    """Copy each Megatron-spelled value onto the HF field that everything already reads.
-
-    Folding here makes them work everywhere; equal values accepted, different values fail.
-    """
-    defaults = {f.name: f.default for f in dataclasses.fields(train_config)}
-    for mg_name, hf_name in _MEGATRON_ALIASES:
-        mg_value = getattr(train_config, mg_name)
-        if mg_value is None:
-            continue
-        hf_value = getattr(train_config, hf_name)
-        if hf_value != defaults[hf_name] and hf_value != mg_value:
-            raise ValueError(
-                f'{mg_name}={mg_value!r} conflicts with its canonical spelling {hf_name}={hf_value!r}. '
-                'Use one spelling or pass the same value.')
-        setattr(train_config, hf_name, mg_value)
 
 
 def _derive_gradient_accumulation_steps(train_config: 'TrainConfig', distributed_config: 'DistributedConfig',

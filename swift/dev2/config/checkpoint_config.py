@@ -15,7 +15,6 @@ class CheckpointConfig:
     save_total_limit: Optional[int] = None
     safe_serialization: bool = True
     max_shard_size: str = '5GB'
-    save_on_each_node: bool = False
     save_only_model: bool = False
 
     # === Resume ===
@@ -45,16 +44,9 @@ class CheckpointConfig:
     async_save: bool = False
     # The runtime always emits HF-format safetensors on both backends; False is rejected.
     save_safetensors: bool = True
-    use_persistent_ckpt_worker: bool = False  # one writer process alive across saves
-    # Resumable after changing TP/PP (optimizer state re-shardable under any parallel layout).
-    dist_ckpt_optim_fully_reshardable: bool = False
-    distrib_optim_fully_reshardable_mem_efficient: bool = False  # same, less memory more time
-    dist_ckpt_save_pre_mcore_014: bool = False  # pre-0.14 mcore layout, for older readers
 
     # === Misc ===
     add_version: bool = True
-    create_checkpoint_symlink: bool = False
-    use_flash_ckpt: bool = False
     # Restore model/template/quantization metadata from a checkpoint args.json (training default
     # off; inference and artifact CLIs enable it unless explicitly set).
     load_args: bool = False

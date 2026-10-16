@@ -42,9 +42,6 @@ class DeployConfig:
     # === Logging ===
     #: Log every request, including its prompt and completion.
     verbose: bool = True
-    #: Requests between throughput summaries. Only consulted when ``verbose`` is off, where it is the
-    #: sole indication the server is alive.
-    log_interval: int = 20
     log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
 
     # === Ray Serve runtime ===

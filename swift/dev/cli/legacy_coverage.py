@@ -22,7 +22,11 @@ REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
     'use_vllm',
     # Template knobs likewise not consumed: the loss scale is expressed through --loss_scale and
     # thinking-block handling through --enable_thinking.
-    'is_binary_loss_scale', 'template_backend', 'preserve_thinking', 'disable_ignore_empty_think')
+    'is_binary_loss_scale', 'template_backend', 'preserve_thinking', 'disable_ignore_empty_think',
+    # v4 spellings whose knob has no dev consumer: the eval generation budget is the sampler's own
+    # max_new_tokens/num_beams (or --eval_generation_config for in-training eval), the Megatron
+    # attention-backend pick folds onto --attn_impl, and the rest are decided by the template/server.
+    'generation_max_length', 'generation_num_beams', 'norm_bbox', 'log_interval')
 #: Per-field replacement text overriding the generic 'removed_option' guidance where the migration path
 #: is specific enough to name, so the failure points at the exact flag that replaced it.
 REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
@@ -40,6 +44,10 @@ REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
     'device_map': 'the runtime places the model across devices on its own; drop --device_map',
     'use_vllm': 'an online-RL rollout always uses a weight-syncable sampler engine; select it with '
                 '--rollout_sampler (vllm/sglang) instead, or drop --use_vllm',
+    'generation_max_length': 'use --max_new_tokens, or --eval_generation_config for in-training eval',
+    'generation_num_beams': 'use --num_beams, or --eval_generation_config for in-training eval',
+    'norm_bbox': 'bounding-box coordinate normalization follows the template; drop --norm_bbox',
+    'log_interval': 'throughput summaries follow the server builtin cadence; drop --log_interval',
     'merge_lora': 'this command merges the adapter implicitly; drop --merge_lora',
     'exist_ok': 'use --replace_if_exists to overwrite an existing output directory',
     'steps_per_generation': 'use --num_iterations to replay one rollout across several optimizer steps',
@@ -100,7 +108,7 @@ RLHF_REMOVED_SERVER_FIELDS: Tuple[str, ...] = (
 # through DeployConfig belong to `swift deploy`, not here.
 EVAL_SERVING_FIELDS: Tuple[str, ...] = (
     'host', 'port', 'api_key', 'served_model_name', 'owned_by', 'ssl_certfile', 'ssl_keyfile', 'max_logprobs',
-    'log_interval', 'log_level', 'verbose')
+    'log_level', 'verbose')
 UNSUPPORTED_DISTRIBUTED_FIELDS: Tuple[str, ...] = ('ddp_backend', 'ddp_timeout', 'device_groups', 'ray_exp_name')
 SERVING_DISTRIBUTED_FIELDS: Tuple[str, ...] = UNSUPPORTED_DISTRIBUTED_FIELDS + ('use_ray',)
 # A training run names its Ray experiment (--ray_exp_name -> twinkle.initialize) and sets its process-group
@@ -137,7 +145,7 @@ TUNER_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
     'reft_intervention_type', 'reft_args')
 TRAINING_GENERATION_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
     'top_k', 'top_p', 'repetition_penalty', 'num_beams', 'stream', 'stop_words', 'logprobs', 'top_logprobs',
-    'structured_outputs_regex', 'generation_config', 'generation_max_length', 'generation_num_beams',
+    'structured_outputs_regex', 'generation_config',
     # temperature / max_new_tokens join the other per-flag decoding knobs now that their dead TrainConfig
     # home is gone: a training run that generates during eval sets these inside --eval_generation_config.
     'temperature', 'max_new_tokens')

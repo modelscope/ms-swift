@@ -95,8 +95,6 @@ class TrainConfig:
     # The attention-logit ceiling; 10000 matches legacy, NOT twinkle MuonConfig's aggressive 100.
     qk_clip_tau: float = 10000.0
     sgd_momentum: float = 0.9  # Megatron SGD; read only when optimizer='sgd'
-    # Megatron spells adam's epsilon differently from HF's adam_epsilon; each backend reads its own.
-    adam_eps: Optional[float] = None
 
     # === Optimizer: precision & offload (Megatron-only) ===
     # Keep optimizer state below fp32: saves memory, most likely to change convergence.
@@ -114,21 +112,18 @@ class TrainConfig:
     optimizer_cuda_graph: bool = False
 
     # === Training cadence (Megatron-only) ===
-    # Optional spellings (unset vs explicit); process folds each into its HF counterpart.
-    train_iters: Optional[int] = None  # Megatron spelling of max_steps
-    micro_batch_size: Optional[int] = None  # Megatron spelling of per_device_train_batch_size
+    # v4 spellings of the shared quantities (--lr/--train_iters/...) are parse-time aliases; only the
+    # Megatron-only quantities are declared here.
     # Tokens-per-step expressed directly; Megatron derives the accumulation count from it.
     global_batch_size: Optional[int] = None
     eval_iters: int = -1  # evaluation iterations per eval; -1 = the whole eval set
     microbatch_group_size_per_vp_stage: Optional[int] = None  # None lets Megatron choose
 
     # === LR schedule (Megatron-only) ===
-    lr: Optional[float] = None  # Megatron spelling of learning_rate
+    # Schedules HF has no equivalent for; the shared ones (--lr/--lr_warmup_*) are parse-time aliases.
     # 'WSD' has no HF counterpart, hence the two fields cannot merge.
     lr_decay_style: Literal['constant', 'linear', 'cosine', 'inverse-square-root', 'WSD'] = 'cosine'
-    lr_warmup_fraction: Optional[float] = None  # Megatron spelling of warmup_ratio
-    lr_warmup_iters: Optional[int] = None  # Megatron spelling of warmup_steps
-    # Decay iterations, taken separately from the total length; None = across train_iters.
+    # Decay iterations, taken separately from the total length; None = across the whole run.
     lr_decay_iters: Optional[int] = None
     lr_warmup_init: float = 0.  # warmup starts from this rather than 0
     lr_wsd_decay_iters: Optional[int] = None  # the decay leg of WSD; read only when WSD

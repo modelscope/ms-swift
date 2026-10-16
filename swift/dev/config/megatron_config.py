@@ -37,10 +37,6 @@ class MegatronConfig:
     apply_dsa_kernel_fusion: bool = False
 
     # === Attention ===
-    #: Which attention implementation the decoder uses, e.g. 'unfused', 'flash', 'fused'. Distinct from
-    #: ModelConfig's ``attn_impl``, which names an HF implementation -- the two backends accept
-    #: different sets of names.
-    attention_backend: str = 'unfused'
     #: Compute the attention softmax in fp32 regardless of the training dtype. On by default: the
     #: softmax is where a long sequence's logits overflow first.
     attention_softmax_in_fp32: bool = True

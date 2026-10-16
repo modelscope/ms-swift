@@ -25,8 +25,6 @@ class MegatronConfig:
     apply_dsa_kernel_fusion: bool = False
 
     # === Attention ===
-    # Megatron's own names ('unfused'/'flash'/'fused'); distinct from ModelConfig.attn_impl (HF's).
-    attention_backend: str = 'unfused'
     # fp32 softmax: where a long sequence's logits overflow first.
     attention_softmax_in_fp32: bool = True
     # Scale q·k by layer number too (original Megatron fp16 stability); None = Megatron's choice.

@@ -33,8 +33,6 @@ class DeployConfig:
 
     # === Logging ===
     verbose: bool = True  # log every request, including prompt and completion
-    # Throughput summaries between quiet periods; only read when verbose is off.
-    log_interval: int = 20
     log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
 
     # === Ray Serve runtime ===

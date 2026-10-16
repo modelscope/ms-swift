@@ -22,8 +22,3 @@ class GenerationConfig:
     # A generation_config.json path/dir/instance supplying the baseline the fields above override;
     # named after HF's argument so existing command lines keep working.
     generation_config: Optional[Any] = None
-
-    # Read by the trainer during predict/evaluate: evaluation needs a fixed budget even when the
-    # sampling fields above are left unset.
-    generation_max_length: Optional[int] = None
-    generation_num_beams: Optional[int] = None

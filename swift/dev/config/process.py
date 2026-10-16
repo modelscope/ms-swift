@@ -57,7 +57,6 @@ def process_configs(
     PluginRegistry.load_configured(plugin_config)
     is_megatron = is_megatron_backend(distributed_config)
 
-    _fold_megatron_aliases(train_config)
     _derive_gradient_accumulation_steps(train_config, distributed_config, is_megatron)
     # Order matters below: the eval schedule reads split_dataset_ratio after the val-dataset rule has
     # zeroed it, and task_type must be settled (rm -> seq_cls) before the per-token-loss default and
@@ -266,52 +265,6 @@ def _login_hub(dataset_config: Optional['DatasetConfig']) -> None:
         return
     from swift.dev.utils.hub import get_hub
     get_hub(dataset_config.use_hf).try_login(dataset_config.hub_token)
-
-
-#: (megatron spelling, HF spelling) for the aliases that are one knob under two names. Only exact 1:1
-#: pairs are here: `global_batch_size` is absent because it is a PRODUCT of the HF fields rather than
-#: an alias of one, and `lr_decay_style` is absent because 'WSD' has no HF value to fold into (both are
-#: handled separately below / at build time).
-_MEGATRON_ALIASES = (
-    ('lr', 'learning_rate'),
-    ('train_iters', 'max_steps'),
-    ('micro_batch_size', 'per_device_train_batch_size'),
-    ('lr_warmup_fraction', 'warmup_ratio'),
-    ('lr_warmup_iters', 'warmup_steps'),
-    ('adam_eps', 'adam_epsilon'),
-)
-
-
-def _fold_megatron_aliases(train_config: 'TrainConfig') -> None:
-    """Copy each Megatron-spelled value onto the HF field that everything already reads.
-
-    Megatron and HF name the same quantities differently, and legacy never had to reconcile them: its
-    Megatron path parsed `lr`/`train_iters`/... and its HF path parsed `learning_rate`/`max_steps`/...,
-    in separate argument classes that never met. dev has one TrainConfig for both backends, so the
-    Megatron spellings would otherwise be accepted and then read by nobody -- a `--lr 2e-5` that
-    silently trains at the default.
-
-    Folding here rather than at each point of use is what makes them work everywhere at once, including
-    in code written before these fields existed. The alternative, a resolve_lr() called wherever the
-    learning rate is read, is the pattern resolve_max_grad_norm follows -- appropriate there because
-    `clip_grad` is deprecated and has exactly one consumer, but these five are current spellings with
-    many.
-
-    When both names are set, equal values are accepted and different values fail. CLI aliases are
-    normally folded before dataclass construction; this path preserves the same rule for programmatic
-    Config construction.
-    """
-    defaults = {f.name: f.default for f in dataclasses.fields(train_config)}
-    for mg_name, hf_name in _MEGATRON_ALIASES:
-        mg_value = getattr(train_config, mg_name)
-        if mg_value is None:
-            continue
-        hf_value = getattr(train_config, hf_name)
-        if hf_value != defaults[hf_name] and hf_value != mg_value:
-            raise ValueError(
-                f'{mg_name}={mg_value!r} conflicts with its canonical spelling {hf_name}={hf_value!r}. '
-                'Use one spelling or pass the same value.')
-        setattr(train_config, hf_name, mg_value)
 
 
 def _derive_gradient_accumulation_steps(train_config: 'TrainConfig', distributed_config: 'DistributedConfig',

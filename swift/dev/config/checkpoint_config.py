@@ -17,7 +17,6 @@ class CheckpointConfig:
     save_total_limit: Optional[int] = None
     safe_serialization: bool = True
     max_shard_size: str = '5GB'
-    save_on_each_node: bool = False
     save_only_model: bool = False
 
     # === Resume ===
@@ -54,20 +53,9 @@ class CheckpointConfig:
     #: Legacy Megatron compatibility switch. The dev runtime always emits HF-format safetensors,
     #: so True is supported and False is rejected explicitly.
     save_safetensors: bool = True
-    #: Keep one writer process alive across saves instead of starting one each time.
-    use_persistent_ckpt_worker: bool = False
-    #: Store distributed-optimizer state so it can be reloaded under any parallel layout, rather than
-    #: only the one that wrote it. This is what makes a checkpoint resumable after changing TP/PP.
-    dist_ckpt_optim_fully_reshardable: bool = False
-    #: The same, in a form that uses less memory while resharding and more time.
-    distrib_optim_fully_reshardable_mem_efficient: bool = False
-    #: Write in the pre-0.14 mcore layout, for a checkpoint that has to be read by an older mcore.
-    dist_ckpt_save_pre_mcore_014: bool = False
 
     # === Misc ===
     add_version: bool = True
-    create_checkpoint_symlink: bool = False
-    use_flash_ckpt: bool = False
     #: Restore model/template/quantization metadata from a checkpoint args.json. Training defaults this
     #: off; inference and artifact CLIs enable it unless the flag is explicitly set.
     load_args: bool = False
