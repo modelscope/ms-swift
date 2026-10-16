@@ -7,11 +7,7 @@ metadata handshakes (reliable, with timeout).
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
 import os
-import pickle
-import secrets
 import time
 import torch
 import zmq
@@ -21,6 +17,7 @@ from typing import Any, AsyncGenerator, Generator, List, Optional, Tuple
 from swift.utils import get_current_device, synchronize
 from swift.utils.logger import get_logger
 from .base import CheckpointEngine, TensorMeta, _find_free_port, _is_valid_ipv6_address
+from .zmq_auth import generate_auth_key, recv_auth_pyobj, send_auth_pyobj
 
 logger = get_logger()
 
@@ -139,43 +136,30 @@ class HCCLCheckpointEngine(CheckpointEngine):
         ``pickle.loads`` runs, so a crafted pickle from an untrusted
         peer can never reach the deserializer."""
         assert self.socket is not None
-        try:
-            msg = self.socket.recv(copy=True)
-        except zmq.error.Again as e:
-            raise RuntimeError(f'HCCL metadata timeout ({self.meta_timeout_s}s) waiting at {where}.') from e
-        if not self.auth_key:
-            # No key configured — fall back to original recv_pyobj behaviour.
-            return pickle.loads(msg) if isinstance(msg, (bytes, bytearray)) else self.socket.recv_pyobj()
-        if len(msg) < 32:
-            raise RuntimeError(f'Rejecting short ZMQ message at {where}: {len(msg)} bytes (< HMAC size 32).')
-        received_hmac = msg[:32]
-        payload = msg[32:]
-        expected_hmac = hmac.new(self.auth_key.encode(), payload, hashlib.sha256).digest()
-        if not hmac.compare_digest(received_hmac, expected_hmac):
-            raise RuntimeError(f'HMAC verification failed for ZMQ message at {where}; '
-                               'refusing to deserialize untrusted payload.')
-        return pickle.loads(payload)
+        return recv_auth_pyobj(
+            self.socket,
+            self.auth_key,
+            where=where,
+            timeout_s=self.meta_timeout_s,
+        )
 
     def _send_pyobj(self, payload: Any, where: str) -> None:
         """Send a pickled object with an HMAC signature prepended."""
         assert self.socket is not None
-        data = pickle.dumps(payload)
-        if self.auth_key:
-            sig = hmac.new(self.auth_key.encode(), data, hashlib.sha256).digest()
-            msg = sig + data
-        else:
-            msg = data
-        try:
-            self.socket.send(msg)
-        except zmq.error.Again as e:
-            raise RuntimeError(f'HCCL metadata timeout ({self.meta_timeout_s}s) sending at {where}.') from e
+        send_auth_pyobj(
+            self.socket,
+            payload,
+            self.auth_key,
+            where=where,
+            timeout_s=self.meta_timeout_s,
+        )
 
     def _start_zmq_server(self):
         import ray
         self.ip = ray.util.get_node_ip_address().strip('[]')
         self.zmq_port = _find_free_port()
         self.dist_port = _find_free_port()
-        self.auth_key = secrets.token_hex(32)  # 256-bit shared secret
+        self.auth_key = generate_auth_key()  # 256-bit shared secret
 
         self._zmq_ctx = zmq.Context()
         self.socket = self._new_socket(zmq.REP)
