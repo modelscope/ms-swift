@@ -314,6 +314,8 @@ Here is a minimal example of training to deployment using ms-swift. For more det
 |   [Custom Models](https://swift.readthedocs.io/en/latest/Customization/Custom-model.html), [🔥Custom Datasets](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html)   |
 |   [LLM Tutorial](https://github.com/modelscope/modelscope-classroom/tree/main/LLM-tutorial)   |
 
+For GPU/NPU performance collection with the default backend or Megatron-SWIFT, see [Training Profiling](docs/source_en/Instruction/Profiling.md).
+
 ### Training
 
 Supported Training Methods:
