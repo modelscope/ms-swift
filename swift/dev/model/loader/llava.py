@@ -167,9 +167,10 @@ class LlavaOnevision1_5Loader(ModelLoader):
     ``process_config`` keeps the one real fixup: ``vision_start_token_id = 151652``, which the shipped
     config omits and the template needs to locate image spans.
 
-    Dropped, per PATCH_INVENTORY: ``_no_split_modules`` (an HF ``device_map`` hint -- twinkle owns
-    placement) and ``patch_get_input_embeddings(model.visual, 'patch_embed')`` (only needed under
-    reentrant gradient checkpointing).
+    Dropped, per PATCH_INVENTORY: ``patch_get_input_embeddings(model.visual, 'patch_embed')`` (only
+    needed under reentrant gradient checkpointing). Legacy's ``_no_split_modules`` declaration is
+    kept (instance-level via ``process_model``): twinkle's FSDP2 reads it to pick its wrap boundary,
+    and this Qwen2.5-VL-style stack has no ``model.model.layers`` for the fallback to find.
 
     Note ``requires`` is a *floor* (``transformers>=4.53.0``) plus the ``qwen_vl_utils`` package, both
     satisfied on transformers 5.5 -- this family was never version-dead, unlike the older
@@ -202,3 +203,7 @@ class LlavaOnevision1_5Loader(ModelLoader):
     def process_config(self, config):
         config.vision_start_token_id = 151652
         return config
+
+    def process_model(self, model):
+        model._no_split_modules = ['LLaVAOneVision1_5_DecoderLayer', 'RiceBlock']
+        return model

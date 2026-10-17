@@ -18,7 +18,7 @@ logger = get_logger()
 
 # Feature keys a sentence-transformers ``Transformer`` module consumes from the encoded batch.
 # Everything else (labels, dataset-specific fields) is dropped before the ST forward.
-_ST_FEATURE_KEYS = ('input_ids', 'attention_mask', 'token_type_ids', 'position_ids')
+_ST_FEATURE_KEYS = ('input_ids', 'attention_mask', 'token_type_ids', 'position_ids', 'inputs_embeds')
 
 
 class SentenceTransformerModel(TwinkleTransformersModel):
@@ -231,9 +231,13 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         """Save in native sentence-transformers format (a directory loadable by ``SentenceTransformer``).
 
         Only the model is written (rank-0), matching how sentence-transformers checkpoints are consumed;
-        optimizer/scheduler resume is out of scope for this encoder recipe.
+        optimizer/scheduler resume is out of scope for this encoder recipe. Under ``async_save`` the
+        directory write rides the background writer (the bytes are frozen at call time).
         """
+        from twinkle.model.base import rotate_checkpoints
         adapter_name = kwargs.pop('adapter_name', self._get_default_group())
+        save_total_limit = kwargs.pop('save_total_limit', None)
+        async_save = kwargs.pop('async_save', False)
         optimizer_config = self.optimizer_group[adapter_name]
         if name is None:
             name = f'checkpoint-step-{optimizer_config.cur_step}'
@@ -242,10 +246,19 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         checkpoint_dir = os.path.join(output_dir, name)
         if interval and optimizer_config.cur_step % interval != 0:
             return checkpoint_dir
-        if Platform.get_rank() <= 0:
-            unwrap = getattr(self.strategy, 'unwrap_model', None)
-            st_model = unwrap(self.model) if callable(unwrap) else self.model
-            os.makedirs(checkpoint_dir, exist_ok=True)
-            st_model.save(checkpoint_dir)
-            logger.info(f'Saved SentenceTransformer checkpoint to: {checkpoint_dir}')
+        unwrap = getattr(self.strategy, 'unwrap_model', None)
+        st_model = unwrap(self.model) if callable(unwrap) else self.model
+
+        def _write():
+            if Platform.get_rank() <= 0:
+                os.makedirs(checkpoint_dir, exist_ok=True)
+                st_model.save(checkpoint_dir)
+                logger.info(f'Saved SentenceTransformer checkpoint to: {checkpoint_dir}')
+
+        if async_save:
+            self.submit_async_write(lambda: (_write(), rotate_checkpoints(output_dir, checkpoint_dir,
+                                                                          save_total_limit)))
+        else:
+            _write()
+            rotate_checkpoints(output_dir, checkpoint_dir, save_total_limit)
         return checkpoint_dir

@@ -9,9 +9,6 @@ newly added family module is picked up without editing a list here.
 """
 import importlib
 import pkgutil
-## 这里面的所有模型loader过程都和legacy对照一遍，判定：
-## 1. 加载过程是否和legacy一致
-## 2. legacy的patch删除了一些，dev的patch是否足够用
 from .base import (
     MODEL_ALIASES,
     MODEL_MAPPING,

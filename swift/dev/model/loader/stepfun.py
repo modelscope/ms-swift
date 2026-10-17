@@ -6,7 +6,6 @@ Ported from ``swift/model/models/stepfun.py`` -- the transformers-native ``got_o
 Not migrated here (see MODEL_MIGRATION.md):
   * ``got_ocr2`` -- the original remote-code ``GOTQwenForCausalLM`` loaded via bare ``AutoModel``
     (bucket B: remote-code / AutoModel load seam).
-  * ``step3_vl`` -- needs weight ``key_mapping`` surgery at load (bucket B).
   * ``step_audio`` / ``step_audio2_mini`` -- ``git_clone`` an external repo / forward-time patch
     (bucket C).
 """
@@ -17,10 +16,13 @@ from .base import ModelArch, ModelLoader, register_model
 
 @register_model
 class GotOCR2HfLoader(ModelLoader):
-    """GOT-OCR-2.0 (transformers-native). Legacy patched ``_no_split_modules`` onto the model class
-    to steer accelerate's ``device_map`` sharding, but dev places the model through twinkle
-    strategies and never uses an HF ``device_map`` (see PATCH_INVENTORY.md: ``patch_device_map`` is
-    obsolete), so no override is needed -- a plain ``model_cls`` + ``model_arch`` suffices."""
+    """GOT-OCR-2.0 (transformers-native).
+
+    Legacy also set ``_no_split_modules = ['GotOcr2VisionLayer']`` on the model class -- that
+    survives here (as an instance attribute via ``process_model``) because it has a consumer beyond
+    HF ``device_map``: twinkle's FSDP2 reads ``_no_split_modules`` to pick its wrap boundary, and the
+    in-tree class declares none, so without it the vision layers lose their no-split guarantee.
+    """
 
     model_type = 'got_ocr2_hf'
     model_cls = 'transformers:GotOcr2ForConditionalGeneration'
@@ -38,6 +40,11 @@ class GotOCR2HfLoader(ModelLoader):
             aligner='model.multi_modal_projector',
             vision_tower='model.vision_tower',
         )
+
+    def process_model(self, model):
+        # Class-level in legacy; instance-level here -- twinkle FSDP2 reads it off the model.
+        model._no_split_modules = ['GotOcr2VisionLayer']
+        return model
 
 
 @register_model

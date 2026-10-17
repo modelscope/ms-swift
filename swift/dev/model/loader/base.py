@@ -495,19 +495,16 @@ class ModelLoader:
     def ignore_check_imports():
         """Skip transformers' remote-code dependency check for the duration of a load.
 
-        ``check_imports`` scans a downloaded ``modeling_*.py`` for third-party imports and raises if
-        one is not installed. Some remote-code checkpoints declare imports that are never reached on
-        the paths we execute, and without relaxing the check the dynamic import fails outright -- so
-        this gates loading rather than papering over behaviour. Used by ``minimax_vl`` and
-        ``florence`` (legacy's ``patch_ignore_check_imports``).
+        Delegates to twinkle's ``TransformersIgnoreCheckImportsPatch``: it keeps ``check_imports``'s
+        real return value (``get_relative_imports``, which the dynamic module loader consumes to
+        pull in sibling files) and drops only the verification loop -- unlike a blank ``[]`` stub,
+        which would starve the loader of relative imports. Used by ``minimax_vl`` and ``florence``
+        (legacy's ``patch_ignore_check_imports``).
         """
-        import transformers.dynamic_module_utils as dynamic_module_utils
-        _origin_check = dynamic_module_utils.check_imports
-        dynamic_module_utils.check_imports = lambda filename: []
-        try:
+        from twinkle.patch import apply_context
+        from twinkle.patch.transformers_check_imports import TransformersIgnoreCheckImportsPatch
+        with apply_context(None, TransformersIgnoreCheckImportsPatch()):
             yield
-        finally:
-            dynamic_module_utils.check_imports = _origin_check
 
     @staticmethod
     def delegate_to_submodel(model, submodel_name: str, func_list: Optional[List[str]] = None) -> None:

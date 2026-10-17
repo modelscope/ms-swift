@@ -4,19 +4,15 @@ import dataclasses
 import inspect
 import os
 from typing import Any, Dict, Optional
-from unittest.mock import patch
 
 from twinkle.model.transformers.transformers import TransformersModel as TwinkleTransformersModel
 from twinkle.model.transformers.transformers import _default_adapter_name
-from twinkle.patch import apply_context
+from twinkle.patch import Patch, apply_context
 from twinkle.utils import get_logger
 
 from swift.dev.patch import UnslothDistributedFunctionPatch
 
 logger = get_logger()
-
-# Module that owns the ``get_peft_model`` symbol ``_patch_adapter`` calls.
-_TWINKLE_TRANSFORMERS_MODULE = 'twinkle.model.transformers.transformers'
 
 # unsloth's get_peft_model ends in peft's ``get_peft_model(model, lora_config)`` with no adapter_name,
 # so the adapter it installs always carries peft's default name. twinkle keys its own bookkeeping
@@ -111,7 +107,6 @@ def _unsloth_lora_kwargs(config,
     # called the HF gradient_checkpointing_enable() during construction; this replaces it with
     # unsloth's implementation on the LoRA-wrapped model. False keeps checkpointing off, so a caller
     # asking for no gradient checkpointing is not overridden here.
-    ## unsloth有一些特殊初始化，比如使用unsloth自己的gc什么的，你看看
     kwargs['use_gradient_checkpointing'] = use_gradient_checkpointing
     kwargs['max_seq_length'] = max_seq_length
     # unsloth-only LoRA knobs (finetune_vision_layers, finetune_last_n_layers, qat_scheme, ...) have
@@ -137,6 +132,35 @@ class _UnslothLoader:
         # ``config`` is dropped on purpose: unsloth reads the checkpoint's own config and rebuilds the
         # module graph around it, so an externally built PretrainedConfig has nowhere to go.
         return self._owner._load_unsloth_model(model_id, **load_kwargs)
+
+
+class _UnslothPeftPatch(Patch):
+    """Swap twinkle's module-global ``get_peft_model`` for unsloth's while ``_patch_adapter`` runs.
+
+    The first-class patch channel (not mock.patch): idempotent, reversible, and the same pattern
+    UnslothDistributedFunctionPatch uses.
+    """
+
+    _MARKER = '_swift_origin_get_peft_model'
+
+    def __init__(self, owner: 'UnslothModel') -> None:
+        self._owner = owner
+
+    def __call__(self, module=None, *args, **kwargs):
+        import twinkle.model.transformers.transformers as tmt
+        if hasattr(tmt, self._MARKER):
+            return module
+        setattr(tmt, self._MARKER, tmt.get_peft_model)
+        tmt.get_peft_model = self._owner._unsloth_get_peft_model
+        return module
+
+    def unpatch(self, module=None, *args, **kwargs):
+        import twinkle.model.transformers.transformers as tmt
+        origin = getattr(tmt, self._MARKER, None)
+        if origin is not None:
+            tmt.get_peft_model = origin
+            delattr(tmt, self._MARKER)
+        return module
 
 
 class UnslothModel(TwinkleTransformersModel):
@@ -290,7 +314,7 @@ class UnslothModel(TwinkleTransformersModel):
         """
         if isinstance(config_or_dir, str):
             return super()._patch_adapter(adapter_name, config_or_dir, **kwargs)
-        with patch(f'{_TWINKLE_TRANSFORMERS_MODULE}.get_peft_model', self._unsloth_get_peft_model):
+        with apply_context(None, _UnslothPeftPatch(self)):
             return super()._patch_adapter(adapter_name, config_or_dir, **kwargs)
 
     def _unsloth_get_peft_model(self, model, config, adapter_name: str = _default_adapter_name, **kwargs):

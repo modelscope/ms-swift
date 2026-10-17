@@ -189,10 +189,12 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
         ``MultiLoraTransformersModel.save`` -> ``SentenceTransformerModel.save`` (the ST class is next in
         this class's MRO), and the ST ``save`` dumps the whole pipeline in sentence-transformers' own
         format -- single-adapter behaviour, not a tenant archive. What follows is
-        ``TransformersModel.save``'s PEFT branch, with the ``PeftModel`` read from
-        ``multi_adapter.module`` (on ``MultiLoraTransformersModel`` that object is ``self.model``; here
-        ``self.model`` is the ST pipeline). ``save_context`` swaps the tenant's ``LoraConfig`` into
-        ``peft_config`` and restores the slot bookkeeping afterwards.
+        ``TransformersModel.save``'s PEFT branch (async-write structure included), with the ``PeftModel``
+        read from ``multi_adapter.module`` (on ``MultiLoraTransformersModel`` that object is ``self.model``;
+        here ``self.model`` is the ST pipeline). ``save_context`` swaps the tenant's ``LoraConfig`` into
+        ``peft_config`` and restores the slot bookkeeping afterwards, so the tenant config is captured
+        BY REFERENCE on the synchronous path -- the async writer must not re-read ``peft_config`` after
+        the context has exited.
 
         Args:
             name: The name of checkpoint to save.
@@ -205,12 +207,14 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
                 safe_serialization: Save weights with safetensors instead of torch serialization.
                 max_shard_size: Rejected for adapter checkpoints (see below).
                 save_total_limit: Maximum number of completed checkpoint directories to retain.
+                async_save: Offload the staged file I/O to the background writer.
         """
         adapter_name = kwargs.pop('adapter_name', self._get_default_group())
         self._check_adapter_valid(adapter_name)
         safe_serialization = kwargs.pop('safe_serialization', True)
         max_shard_size = kwargs.pop('max_shard_size', '5GB')
         save_total_limit = kwargs.pop('save_total_limit', None)
+        async_save = kwargs.pop('async_save', False)
         with self.multi_adapter.save_context(adapter_name):
             optimizer_config = self.optimizer_group[adapter_name]
             if name is None:
@@ -228,26 +232,38 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
                 raise NotImplementedError(
                     'max_shard_size is not supported for PEFT adapter checkpoints; remove the option or save a '
                     'full-model checkpoint.')
-            if Platform.is_master():
-                self.multi_adapter.module.peft_config[adapter_name].save_pretrained(checkpoint_dir)
-                contiguous_dict = {k: v.contiguous() for k, v in processed_state_dict.items()}
-                if safe_serialization:
-                    save_file(contiguous_dict, os.path.join(checkpoint_dir, 'adapter_model.safetensors'))
-                else:
-                    torch.save(contiguous_dict, os.path.join(checkpoint_dir, 'adapter_model.bin'))
-
-            self._save_tokenizer(checkpoint_dir, adapter_name=adapter_name)
-
+            tenant_peft_config = self.multi_adapter.module.peft_config[adapter_name]
+            self._deferred_trainer_state_writes = []
             if kwargs.get('save_optimizer', False):
                 self._save_training_state(
                     checkpoint_dir,
                     adapter_name=adapter_name,
                     consumed_train_samples=kwargs.get('consumed_train_samples', 0),
                     component_states=kwargs.get('component_states', {}),
+                    defer_trainer_state=async_save,
                 )
 
-            copy_checkpoint_args(output_dir, checkpoint_dir)
-            rotate_checkpoints(output_dir, checkpoint_dir, save_total_limit)
+            def _write_weights():
+                if Platform.is_master():
+                    tenant_peft_config.save_pretrained(checkpoint_dir)
+                    contiguous_dict = {k: v.contiguous() for k, v in processed_state_dict.items()}
+                    if safe_serialization:
+                        save_file(contiguous_dict, os.path.join(checkpoint_dir, 'adapter_model.safetensors'))
+                    else:
+                        torch.save(contiguous_dict, os.path.join(checkpoint_dir, 'adapter_model.bin'))
+
+            def _write_tail():
+                _write_weights()
+                self._save_tokenizer(checkpoint_dir, adapter_name=adapter_name)
+                copy_checkpoint_args(output_dir, checkpoint_dir)
+                rotate_checkpoints(output_dir, checkpoint_dir, save_total_limit)
+                for write in self._deferred_trainer_state_writes:
+                    write()
+
+            if async_save:
+                self.submit_async_write(_write_tail)
+            else:
+                _write_tail()
         if dist.is_initialized():
             dist.barrier()
         return checkpoint_dir
