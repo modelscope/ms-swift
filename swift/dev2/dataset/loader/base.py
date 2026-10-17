@@ -17,7 +17,7 @@ import numpy as np
 
 from swift.dev.utils.tags import validate_tags
 from swift.dev.utils import get_logger
-from swift.dev.dataset.storage import STORAGE_MAPPING, detect_storage_format
+from ..storage import STORAGE_MAPPING, detect_storage_format
 
 __all__ = [
     'DATASET_MAPPING', 'DATASET_TYPE', 'DatasetInfo', 'DatasetLoader', 'SubsetMeta', 'get_dataset_loader',
@@ -579,7 +579,7 @@ class DatasetLoader:
         and val path lists, returning lists (possibly empty) that the per-split builder merges with
         the freshly-encoded split, so a cache-only run still produces a loader.
         """
-        from swift.dev.dataset.storage import load_dataset_store  # TODO: point at dev2 once migrated
+        from ..storage import load_dataset_store
         train_datasets: List[DATASET_TYPE] = []
         val_datasets: List[DATASET_TYPE] = []
         for paths, out in ((cached_dataset, train_datasets), (cached_val_dataset, val_datasets)):

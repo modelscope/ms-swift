@@ -356,7 +356,7 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
 def _pack(dataset: Any, template: Any, *, streaming: bool, packing_length: Optional[int], packing_strategy: str,
           num_proc: int, strict: bool, data_seed: int = 0) -> Any:
     """Pack an encoded dataset for efficient training (map-style or iterable)."""
-    from swift.dev.dataset import IterablePackingDataset, PackingDataset
+    from swift.dev2.dataset import IterablePackingDataset, PackingDataset
 
     length = packing_length or template.max_length
     cls = IterablePackingDataset if streaming else PackingDataset

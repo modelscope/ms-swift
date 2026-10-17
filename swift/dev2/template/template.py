@@ -43,7 +43,7 @@ class DevMixin:
         # v5 schema gate: validate a raw standard row BEFORE the legacy encoder (missing keys
         # otherwise surface as cryptic crashes). Local import keeps the loader stack out of load time.
         if isinstance(inputs, dict) and 'input_ids' not in inputs:
-            from swift.dev.dataset.schema import validate_standard_row
+            from swift.dev2.dataset.schema import validate_standard_row
             validate_standard_row(inputs, getattr(self, 'task_type', None), getattr(self, 'mode', None))
         del add_generation_prompt
         encoded = super().encode(inputs, return_template_inputs=return_template_inputs, return_length=return_length)

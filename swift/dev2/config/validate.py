@@ -572,7 +572,7 @@ def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
     """Validate the best-of-n synthesis surface without RL-training-only constraints."""
     if infer_config is None:
         return
-    from swift.dev.dataset.storage import STORAGE_MAPPING, validate_store_format
+    from swift.dev2.dataset.storage import STORAGE_MAPPING, validate_store_format
     # A store format is an open registry key, so check the name resolves (and is writable) here -- after
     # --external_plugins is imported -- rather than after the run has generated rows it cannot write.
     validate_store_format(infer_config.store_format, writable=True)
@@ -591,7 +591,7 @@ def validate_convert_config(convert_config: Optional['ConvertConfig']) -> None:
     """
     if convert_config is None or not convert_config.to_cached_dataset:
         return
-    from swift.dev.dataset.storage import validate_store_format
+    from swift.dev2.dataset.storage import validate_store_format
     validate_store_format(convert_config.store_format, writable=True)
 
 
