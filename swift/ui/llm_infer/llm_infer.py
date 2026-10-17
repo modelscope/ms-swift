@@ -345,6 +345,22 @@ class LLMInfer(BaseUI):
         return None
 
     @classmethod
+    def mark_toolbench_observation(cls, messages):
+        """Turn the user turn that follows a toolbench assistant turn into a tool response.
+
+        The agent loop appends the observation as a `user` message, while the templates
+        expect the message after a toolbench assistant turn to be a `tool` response.
+        """
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i]['role'] != 'assistant':
+                continue
+            if i == len(messages) - 1:
+                return
+            if cls.agent_type(messages[i]['content']) == 'toolbench':
+                messages[i + 1]['role'] = 'tool'
+            return
+
+    @classmethod
     def parse_text(cls, messages):
         prepared_msgs = []
         for message in messages:
@@ -394,14 +410,7 @@ class LLMInfer(BaseUI):
         request_config.stop = ['Observation:']
         request_config.max_tokens = max_new_tokens
         stream_resp_with_history = ''
-        response = ''
-        i = len(infer_request.messages) - 1
-        for i in range(len(infer_request.messages) - 1, -1, -1):
-            if infer_request.messages[i]['role'] == 'assistant':
-                response = infer_request.messages[i]['content']
-        agent_type = cls.agent_type(response)
-        if i != len(infer_request.messages) - 1 and agent_type == 'toolbench':
-            infer_request.messages[i + 1]['role'] = 'tool'
+        cls.mark_toolbench_observation(infer_request.messages)
 
         chat = not template_type.endswith('generation')
         _infer_request = deepcopy(infer_request)
