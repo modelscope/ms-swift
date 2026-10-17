@@ -86,14 +86,14 @@ def _unsloth_lora_kwargs(config,
     routes through ``get_peft_regex``, which also changes how MoE experts are detected. Expanding it
     into a leaf list here would quietly narrow the run.
 
-    Only the tuner *type* is rejected: adalora / trainable_tokens produce a different PeftConfig that
-    unsloth's LoRA path cannot represent at all.
+    Only the tuner *type* is rejected: trainable_tokens produces a different PeftConfig that unsloth's
+    LoRA path cannot represent at all.
     """
     peft_type = getattr(config, 'peft_type', None)
     peft_type = str(getattr(peft_type, 'value', peft_type) or '').upper()
     if peft_type != 'LORA':
         raise NotImplementedError(f'unsloth implements plain LoRA only, got peft_type={peft_type or None!r} '
-                                  f'(adalora / trainable_tokens / ...). Use the default backend for those.')
+                                  f'(trainable_tokens / ...). Use the default backend for those.')
 
     kwargs: Dict[str, Any] = {}
     for field in dataclasses.fields(config):

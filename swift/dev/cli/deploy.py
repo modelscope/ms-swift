@@ -5,23 +5,14 @@ from typing import Any, Dict, List, Optional
 
 
 def _adapter_mapping(adapters: List[str]) -> Dict[str, str]:
+    from swift.dev.config.process import split_served_name
     mapping = {}
     for index, item in enumerate(adapters):
-        if '=' in item:
-            name, path = item.split('=', 1)
-        else:
-            path = item
+        name, path = split_served_name(item)
+        if name is None:
             name = f'adapter-{index + 1}'
         mapping[name] = path
     return mapping
-
-
-def _split_adapter_name(item: str):
-    """``name=path`` -> ``(name, path)``; a bare path/hub id -> ``(None, item)``."""
-    if '=' in item:
-        name, path = item.split('=', 1)
-        return name, path
-    return None, item
 
 
 def _strip_adapter_names(argv: List[str]):
@@ -35,13 +26,14 @@ def _strip_adapter_names(argv: List[str]):
     """
     names: List[Optional[str]] = []
     out: List[str] = []
+    from swift.dev.config.process import split_served_name
     index = 0
     while index < len(argv):
         token = argv[index]
         inline = token.startswith('--adapters=')
         if token == '--adapters' or inline:
             if inline:
-                name, path = _split_adapter_name(token.split('=', 1)[1])
+                name, path = split_served_name(token.split('=', 1)[1])
                 names.append(name)
                 out.append(f'--adapters={path}')
                 index += 1
@@ -50,7 +42,7 @@ def _strip_adapter_names(argv: List[str]):
                 index += 1
             # ``adapters`` is a List[str] (nargs='+'): consume the value tokens up to the next flag.
             while index < len(argv) and not argv[index].startswith('--'):
-                name, path = _split_adapter_name(argv[index])
+                name, path = split_served_name(argv[index])
                 names.append(name)
                 out.append(path)
                 index += 1

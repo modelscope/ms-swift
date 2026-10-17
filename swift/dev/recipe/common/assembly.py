@@ -456,14 +456,10 @@ class TrainAssembly:
             # task_type is threaded so a seq_cls/reranker LoRA run adds the freshly-built
             # classification head to modules_to_save -- LoRA trains/saves target_modules only, so
             # without it the head is neither trained nor persisted (checkpoint reloads random).
-            # num_training_steps is AdaLoRA's rank-schedule budget; plan_steps runs before build_model
-            # so total_opt_steps is already the resolved optimizer-step count (0 for the online-RL
-            # recipes that plan their own steps -- AdaLoRA then fails loudly, LoRA ignores it).
             apply_tuner(
                 self.model,
                 self.tuner_config,
                 gradient_accumulation_steps=self.ga,
-                num_training_steps=self.total_opt_steps,
                 task_type=self.task_type)
         else:
             # Full-parameter path: consume the freeze_parameters / trainable_parameters knobs here,

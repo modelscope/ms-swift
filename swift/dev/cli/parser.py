@@ -197,7 +197,7 @@ def select_tuner(tuner):
 
 
 # Public compatibility export; the declaration itself lives with the executable legacy contract.
-CLI_ALIASES = {name: target for name, target in LEGACY_ALIASES.items() if name not in {'bf16', 'fp16', 'response_length'}}
+CLI_ALIASES = {name: target for name, target in LEGACY_ALIASES.items() if name not in {'bf16', 'fp16'}}
 _PRECISION_ALIASES = {'bf16': 'bfloat16', 'fp16': 'float16'}
 _TRUE_VALUES = {'1', 'true', 'True', 'TRUE', 'yes', 'y', 'on'}
 _FALSE_VALUES = {'0', 'false', 'False', 'FALSE', 'no', 'n', 'off'}
@@ -387,7 +387,7 @@ _CHECKPOINT_LOAD_FIELDS = {
     'quantize_config': (
         'quant_method', 'quant_bits', 'hqq_axis', 'bnb_4bit_compute_dtype', 'bnb_4bit_quant_storage'),
     'template_config': (
-        'template', 'system', 'truncation_strategy', 'norm_bbox', 'use_chat_template', 'response_prefix'),
+        'template', 'system', 'truncation_strategy', 'use_chat_template', 'response_prefix'),
 }
 
 

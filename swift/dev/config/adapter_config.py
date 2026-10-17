@@ -17,11 +17,11 @@ class TunerConfig:
     """
 
     # === Base ===
-    #: Which PEFT-backed tuner to build -- 'lora' / 'adalora' / 'trainable_tokens', or 'full' for no
+    #: Which PEFT-backed tuner to build -- 'lora' / 'trainable_tokens', or 'full' for no
     #: adapter. ``swift.dev.builders.adapter.apply_tuner`` maps it onto the peft config; 'full' is carried as a
     #: None TunerConfig (see ``cli/parser.select_tuner``). DoRA / rsLoRA / QLoRA are LoRA *flags*, not
     #: separate tuners, so there is deliberately no 'dora' / 'rslora' / 'qlora' value here.
-    tuner: Literal['full', 'lora', 'adalora', 'trainable_tokens'] = 'lora'
+    tuner: Literal['full', 'lora', 'trainable_tokens'] = 'lora'
     adapters: List[str] = field(default_factory=list)
 
     # === Freeze Parameters (multimodal targeting) ===
@@ -61,13 +61,3 @@ class TunerConfig:
     # Trains only the given embedding rows instead of the whole embedding matrix -- the standard way
     # to learn newly added special tokens. Can be used standalone or alongside LoRA.
     trainable_token_indices: Optional[List[int]] = None
-
-    # === AdaLoRA ===
-    adalora_target_r: int = 8
-    adalora_init_r: int = 12
-    adalora_tinit: int = 0
-    adalora_tfinal: int = 0
-    adalora_deltaT: int = 1
-    adalora_beta1: float = 0.85
-    adalora_beta2: float = 0.85
-    adalora_orth_reg_weight: float = 0.5

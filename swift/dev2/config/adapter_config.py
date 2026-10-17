@@ -11,9 +11,9 @@ class TunerConfig:
     """
 
     # === Base ===
-    # 'lora'/'adalora'/'trainable_tokens', or 'full' = no adapter (a None TunerConfig; see
+    # 'lora'/'trainable_tokens', or 'full' = no adapter (a None TunerConfig; see
     # select_tuner). DoRA/rsLoRA/QLoRA are LoRA flags, not tuners.
-    tuner: Literal['full', 'lora', 'adalora', 'trainable_tokens'] = 'lora'
+    tuner: Literal['full', 'lora', 'trainable_tokens'] = 'lora'
     adapters: List[str] = field(default_factory=list)
 
     # === Freeze Parameters (multimodal targeting) ===
@@ -47,13 +47,3 @@ class TunerConfig:
     # === TrainableTokens ===
     # Train only the given embedding rows (the standard way to learn new special tokens).
     trainable_token_indices: Optional[List[int]] = None
-
-    # === AdaLoRA ===
-    adalora_target_r: int = 8
-    adalora_init_r: int = 12
-    adalora_tinit: int = 0
-    adalora_tfinal: int = 0
-    adalora_deltaT: int = 1
-    adalora_beta1: float = 0.85
-    adalora_beta2: float = 0.85
-    adalora_orth_reg_weight: float = 0.5

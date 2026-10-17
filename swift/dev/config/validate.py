@@ -1260,11 +1260,11 @@ def _check_param_groups(tuner_config: Optional['TunerConfig']) -> None:
     """
     if tuner_config is None:
         return
-    if tuner_config.lorap_lr_ratio is not None and tuner_config.tuner not in ('lora', 'adalora'):
+    if tuner_config.lorap_lr_ratio is not None and tuner_config.tuner != 'lora':
         raise ValueError(
             f'lorap_lr_ratio (LoRA+) scales the lora_B / embedding learning rate against lora_A, so it '
             f'needs a LoRA-family adapter, but tuner={tuner_config.tuner!r} has no lora_B parameters. '
-            'Use tuner="lora" or tuner="adalora", or drop lorap_lr_ratio / lorap_emb_lr.')
+            'Use tuner="lora", or drop lorap_lr_ratio / lorap_emb_lr.')
     if set(_changed_fields(tuner_config)) & {'freeze_llm', 'freeze_aligner'} and not _target_is_all_linear(tuner_config):
         logger.warning(
             'freeze_llm / freeze_aligner were set but the adapter target is an explicit '

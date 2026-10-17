@@ -20,7 +20,11 @@ REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
     'is_binary_loss_scale', 'template_backend', 'preserve_thinking', 'disable_ignore_empty_think',
     # No dev consumer: the eval budget is max_new_tokens/num_beams (--eval_generation_config for
     # in-training eval), the attention-backend pick folds onto --attn_impl, the rest are builtin.
-    'generation_max_length', 'generation_num_beams', 'norm_bbox', 'log_interval')
+    'generation_max_length', 'generation_num_beams', 'norm_bbox', 'log_interval',
+    # AdaLoRA is retired pending its rank-allocation schedule getting a runtime hook: tuner='adalora'
+    # silently degraded to a fixed-rank LoRA, so both the tuner value and its schedule knobs refuse.
+    'adalora_target_r', 'adalora_init_r', 'adalora_tinit', 'adalora_tfinal', 'adalora_deltaT',
+    'adalora_beta1', 'adalora_beta2', 'adalora_orth_reg_weight')
 # Per-field replacement text where the migration path is specific enough to name.
 REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
     'orm_model': 'pass the reward-model id as an item of --orm instead',
@@ -41,6 +45,7 @@ REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
     'generation_num_beams': 'use --num_beams, or --eval_generation_config for in-training eval',
     'norm_bbox': 'bounding-box coordinate normalization follows the template; drop --norm_bbox',
     'log_interval': 'throughput summaries follow the server builtin cadence; drop --log_interval',
+    'adalora_target_r': 'adaptive-rank LoRA is retired; use plain --tuner lora (its rank is fixed by --lora_rank)',
     'merge_lora': 'this command merges the adapter implicitly; drop --merge_lora',
     'exist_ok': 'use --replace_if_exists to overwrite an existing output directory',
     'steps_per_generation': 'use --num_iterations to replay one rollout across several optimizer steps',

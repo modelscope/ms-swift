@@ -221,7 +221,7 @@ def _resolve_model(model_config: 'ModelConfig', dataset_config: Optional['Datase
         model_config.model, revision=model_config.model_revision, use_hf=use_hf, hub_token=hub_token)
 
 
-def _split_served_name(adapter: str) -> tuple:
+def split_served_name(adapter: str) -> tuple:
     """``name=path`` -> ``(name, path)``; a bare path/hub id -> ``(None, adapter)``.
 
     Splits only when the segment before ``=`` is a bare name, so a path containing ``=`` survives.
@@ -242,7 +242,7 @@ def _resolve_adapters(tuner_config: Optional['TunerConfig'], dataset_config: Opt
     resolved = []
     for adapter in tuner_config.adapters:
         # Resolve the path portion, then re-attach the served name so deploy's routing label survives.
-        name, path = _split_served_name(adapter)
+        name, path = split_served_name(adapter)
         local = safe_snapshot_download(path, use_hf=use_hf, hub_token=hub_token)
         resolved.append(f'{name}={local}' if name else local)
     tuner_config.adapters = resolved

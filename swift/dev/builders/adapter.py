@@ -7,7 +7,6 @@ which TunerConfig fields feed it:
   - lora        -> LoraConfig. Covers QLoRA (= 4bit base model, see QuantizeConfig, + plain LoRA),
                    DoRA (use_dora) and rsLoRA (use_rslora), which are LoRA *flags*, not separate
                    tuners -- there is deliberately no 'dora'/'rslora'/'qlora' tuner.
-  - adalora     -> AdaLoraConfig (LoraConfig subclass + rank-allocation schedule).
   - trainable_tokens -> TrainableTokensConfig, for training only a few embedding rows standalone.
                    Note LoRA can also carry trainable tokens via its own trainable_token_indices,
                    so this type is only for the "no LoRA at all" case.
@@ -26,7 +25,7 @@ if TYPE_CHECKING:
 
 # tuners that are peft-backed and reachable from dev. Anything else fails fast in apply_tuner
 # rather than being silently downgraded to LoRA.
-SUPPORTED_TUNER_TYPES = ('lora', 'adalora', 'trainable_tokens')
+SUPPORTED_TUNER_TYPES = ('lora', 'trainable_tokens')
 
 #: The classification-head module names a HF ``*ForSequenceClassification`` model may use, added to
 #: ``modules_to_save`` for a seq_cls / reranker LoRA run so the freshly-initialized head is trained AND
@@ -79,7 +78,7 @@ def _resolve_init_weights(cfg: TunerConfig):
 
 
 def _lora_common_kwargs(cfg: TunerConfig, task_type: Optional[str] = None) -> dict:
-    """The LoraConfig fields AdaLoraConfig also takes (it subclasses LoraConfig)."""
+    """The LoraConfig kwargs shared by every supported tuner here."""
     # A seq_cls / reranker run builds a fresh classification head on top of the base model. LoRA only
     # wraps/trains target_modules, so without the head in modules_to_save it is neither trained nor
     # saved -- the checkpoint reloads with a randomly-initialized head. Add the candidate head names
@@ -117,7 +116,6 @@ def _lora_common_kwargs(cfg: TunerConfig, task_type: Optional[str] = None) -> di
 
 def _build_adapter_config(cfg: TunerConfig,
                           *,
-                          num_training_steps: Optional[int] = None,
                           task_type: Optional[str] = None):
     """Build the peft config for ``cfg.tuner``.
 
@@ -132,8 +130,6 @@ def _build_adapter_config(cfg: TunerConfig,
 
     Args:
         cfg: the TunerConfig.
-        num_training_steps: total optimizer steps, required by adalora only (its rank-allocation
-            schedule is expressed in steps).
         task_type: dev's task_type; seq_cls/reranker add the classification head to modules_to_save.
     """
     tuner = cfg.tuner
@@ -141,34 +137,6 @@ def _build_adapter_config(cfg: TunerConfig,
     if tuner == 'lora':
         from peft import LoraConfig
         return LoraConfig(**_lora_common_kwargs(cfg, task_type=task_type))
-
-    if tuner == 'adalora':
-        from peft import AdaLoraConfig
-        # AdaLoRA budgets its rank allocation over the whole run, so peft rejects total_step=None
-        # outright. dev knows the step count only at build time, hence the explicit argument --
-        # defaulting it to something arbitrary would silently change the pruning schedule.
-        if not num_training_steps:
-            raise ValueError('adalora needs the total training step count for its rank-allocation '
-                             'schedule; pass num_training_steps to _build_adapter_config.')
-        kwargs = _lora_common_kwargs(cfg, task_type=task_type)
-        # init_r is the STARTING rank AdaLoRA prunes down to target_r, so it supersedes lora_rank.
-        kwargs.pop('r', None)
-        # AdaLoRA reimplements the LoRA forward and has no DoRA path.
-        if cfg.use_dora:
-            raise ValueError('use_dora is not supported by adalora; use tuner="lora" instead.')
-        kwargs.pop('use_dora', None)
-        return AdaLoraConfig(
-            target_r=cfg.adalora_target_r,
-            init_r=cfg.adalora_init_r,
-            tinit=cfg.adalora_tinit,
-            tfinal=cfg.adalora_tfinal,
-            deltaT=cfg.adalora_deltaT,
-            beta1=cfg.adalora_beta1,
-            beta2=cfg.adalora_beta2,
-            orth_reg_weight=cfg.adalora_orth_reg_weight,
-            total_step=num_training_steps,
-            **kwargs,
-        )
 
     if tuner == 'trainable_tokens':
         from peft import TrainableTokensConfig
@@ -194,9 +162,8 @@ def apply_tuner(model: TrainableModel,
                 *,
                 adapter_name: str = 'default',
                 gradient_accumulation_steps: int = 1,
-                num_training_steps: Optional[int] = None,
                 task_type: Optional[str] = None) -> None:
-    adapter_config = _build_adapter_config(tuner_cfg, num_training_steps=num_training_steps, task_type=task_type)
+    adapter_config = _build_adapter_config(tuner_cfg, task_type=task_type)
     model.add_adapter_to_model(
         adapter_name,
         adapter_config,
