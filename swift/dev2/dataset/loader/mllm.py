@@ -8,7 +8,7 @@ from swift.dev.utils import get_hf_endpoint, use_hf_hub
 
 from .base import DatasetLoader, SubsetMeta, register_dataset
 from ..mm_download import MediaDownloader
-from swift.dev.dataset.preprocessor import Preprocessor  # TODO: dev2 once migrated
+from ..preprocessor import Preprocessor
 
 
 # 1. The media is usable straight from the row -- nothing to download.

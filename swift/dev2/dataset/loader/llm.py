@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from swift.dev.utils import split_str_parts_by
 
 from .base import DatasetLoader, SubsetMeta, register_dataset
-from swift.dev.dataset.preprocessor import MessagesRepairPreprocessor, Preprocessor  # TODO: dev2 once migrated
+from ..preprocessor import MessagesRepairPreprocessor, Preprocessor
 
 
 # 1. Declaration only -- no preprocessor; the format layer detects the row shape.

@@ -26,7 +26,7 @@ def build_dataset(dataset_config: DatasetConfig,
     ``encode`` pre-tokenizes now (SFT) or defers to train/rollout time (GRPO/GKD: False);
     ``cached_dataset`` splits join after encoding and are never re-encoded (legacy SwiftSft).
     """
-    from swift.dev.dataset import load_dataset, register_dataset_info
+    from swift.dev2.dataset import load_dataset, register_dataset_info
     # legacy base_args.py: a nonzero split ratio alongside val_dataset would carve a slice out of
     # --dataset that is neither trained on (train keeps only its remainder) nor evaluated.
     if dataset_config.val_dataset and dataset_config.split_dataset_ratio:
@@ -111,7 +111,7 @@ def _load_cached_datasets(dataset_config: DatasetConfig, template_config: Any) -
     """
     if not dataset_config.cached_dataset and not dataset_config.cached_val_dataset:
         return [], []
-    from swift.dev.dataset import DatasetLoader
+    from swift.dev2.dataset import DatasetLoader
 
     train_datasets, val_datasets = DatasetLoader.load_cached_datasets(
         dataset_config.cached_dataset,
@@ -264,7 +264,7 @@ def _concat_with_cached(enc: Any, cached: list, *, encode_mode: Optional[str]) -
     lazy/stream wrappers cannot be concatenated with the map-style cache, so mixing `dataset` with
     `cached_dataset` is refused in those modes; a cache ALONE is fine in any mode.
     """
-    from swift.dev.dataset import DatasetLoader
+    from swift.dev2.dataset import DatasetLoader
 
     if enc is None:
         _, cached = _align_features(None, cached)
@@ -333,7 +333,7 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
     lazy -> LazyLLMDataset (encode at __getitem__); 'split' truncation / an explicit ``materialize``
     need the full EncodePreprocessor; otherwise MeasurePreprocessor only adds `lengths`, rows stay raw.
     """
-    from swift.dev.dataset import EncodePreprocessor, LazyLLMDataset, MeasurePreprocessor
+    from swift.dev2.dataset import EncodePreprocessor, LazyLLMDataset, MeasurePreprocessor
 
     truncation_strategy = getattr(template, 'truncation_strategy', None)
     if truncation_strategy == 'split' and mode != 'eager':
@@ -377,7 +377,7 @@ def load_prompt_only_rows(dataset_config: DatasetConfig, max_rows: Optional[int]
     ``val_dataset`` wins outright; otherwise only the eval slice of ``dataset`` is used (ratio=0 runs
     all) -- legacy infer's ``_prepare_val_dataset`` semantics.
     """
-    from swift.dev.dataset import load_dataset
+    from swift.dev2.dataset import load_dataset
 
     kwargs = _load_kwargs(dataset_config)
     # legacy infer: val_dataset loads whole (its own shuffle flag; interleave_prob -- a train-mixing

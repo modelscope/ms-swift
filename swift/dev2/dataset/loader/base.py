@@ -341,7 +341,7 @@ class DatasetLoader:
         preprocessor = subset.preprocessor
         if preprocessor is None:
             # No declaration: the auto-detecting base preprocessor reads the standard layouts.
-            from swift.dev.dataset.preprocessor import Preprocessor  # TODO: point at dev2 once migrated
+            from ..preprocessor import Preprocessor
             preprocessor = Preprocessor
         elif isinstance(preprocessor, str):
             preprocessor = self.import_cls(preprocessor)
