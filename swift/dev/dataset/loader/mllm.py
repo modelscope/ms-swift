@@ -751,10 +751,12 @@ class TextCapsReRankPreprocessor(TextCapsEmbPreprocessor):
         self.negatives_per_sample = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
 
     def prepare_dataset(self, dataset):
-        column = self.columns.get('reference_strs', 'reference_strs')
-        source = column if column in dataset.features else 'response'
+        # The pool is read from whichever spelling the dataset actually carries: `prepare_dataset`
+        # runs before any renaming, so the raw name (`reference_strs`) is the usual one and the
+        # standard name (`response`) only appears on an already-converted dataset.
+        source = next(name for name in ('response', 'reference_strs') if name in dataset.features)
         pool: List[str] = []
-        for captions in (dataset[source] if source in dataset.features else []):
+        for captions in dataset[source]:
             captions = captions if isinstance(captions, (list, tuple)) else [captions]
             pool += [caption for caption in captions if isinstance(caption, str)]
         self._pool = pool

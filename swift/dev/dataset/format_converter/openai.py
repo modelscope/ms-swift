@@ -167,7 +167,14 @@ class OpenAIConverter(FormatConverter):
             if isinstance(content, list) and self._has_anthropic_blocks(content):
                 self._expand_anthropic_message(message, normalized, media)
                 continue
-            tool_calls = message.get('tool_calls') if message.get('role') == 'assistant' else None
+            # Resolve the role through ``role_map`` (not the literal ``role`` key): a sharegpt turn
+            # keeps its role under ``from`` with an alias value (``gpt``/``bot``), and its tool_calls
+            # must expand exactly like an ``role='assistant'`` turn's -- otherwise the calls are
+            # silently dropped, since normalise_messages keeps only role/content/loss/loss_scale.
+            role = self.first_present(message, self.role_keys)
+            is_assistant = (role is not None
+                            and self.role_map.get(str(role).replace('-', '_')) == 'assistant')
+            tool_calls = message.get('tool_calls') if is_assistant else None
             if not tool_calls:
                 normalized.append(message)
                 continue
