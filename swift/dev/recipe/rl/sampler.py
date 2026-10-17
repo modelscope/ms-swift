@@ -13,7 +13,7 @@ from swift.dev.recipe.rl.ref_only import REF_ONLY_REMOTE_GROUP
 from swift.dev.rollout import RolloutEngine
 
 if TYPE_CHECKING:
-    from swift.dev.config import DistributedConfig, GenerationConfig, RLConfig, RolloutConfig
+    from swift.dev.config import DistributedConfig, GenerationConfig, RLConfig, RolloutConfig, TunerConfig
 
 
 def initialize_twinkle_rl(distributed_config: DistributedConfig,
@@ -215,7 +215,7 @@ class RolloutSamplerSpec:
 
     @staticmethod
     def engine_args(rollout_config: RolloutConfig, engine_args: Optional[Dict[str, Any]], colocate: bool,
-                    backend: str = 'vllm') -> Dict[str, Any]:
+                    backend: str = 'vllm', tuner_config: Optional[TunerConfig] = None) -> Dict[str, Any]:
         """Engine args for the rollout sampler, from RolloutConfig (+ caller overrides), for ``backend``.
 
         The whole backend-prefixed knob set is mapped by :func:`swift.dev.builders.build_engine_args` (it
@@ -232,6 +232,16 @@ class RolloutSamplerSpec:
         kwargs.update(engine_args or {})
         if colocate:
             kwargs['enable_sleep_mode' if backend == 'vllm' else 'enable_memory_saver'] = True
+        # A LoRA run under adapter_snapshot loads each published version through vLLM's add_lora, which
+        # requires the engine built with LoRA on and budgeted for the training rank (the snapshots do
+        # not exist yet at construction, so the rank comes from the config, as in the twinkle cookbook);
+        # 2 slots cover a lookahead window (in-flight v while v+1 generates). in_place needs none (it
+        # merges into the base and syncs whole weights); sglang registers adapters at request time.
+        if (backend == 'vllm' and tuner_config is not None and tuner_config.tuner == 'lora'
+                and rollout_config.weight_sync_strategy == 'adapter_snapshot'):
+            kwargs.setdefault('enable_lora', True)
+            kwargs.setdefault('max_lora_rank', tuner_config.lora_rank)
+            kwargs.setdefault('max_loras', 2)
         return kwargs
 
 

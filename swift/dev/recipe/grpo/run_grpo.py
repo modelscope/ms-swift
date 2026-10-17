@@ -264,7 +264,7 @@ def run_grpo(
     # Sampler: a vLLM/SGLang sampler placed in its group (shared 'model' for colocate, separate 'sampler'
     # otherwise). The backend's memory-saver flag (forced on for colocate) is required for the device
     # hand-over.
-    sampler_engine_args = RolloutSamplerSpec.engine_args(rollout_config, engine_args, colocate, backend)
+    sampler_engine_args = RolloutSamplerSpec.engine_args(rollout_config, engine_args, colocate, backend, tuner_config=assembly.tuner_config)
     if rl_config.enable_sampling_replay:
         # Sampling replay trains against the sampler's per-token support set, so the engine must export each
         # token's sampling mask. This is VLLMEngine's own construction flag (it derives vLLM's

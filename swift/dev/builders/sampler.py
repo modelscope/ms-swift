@@ -111,9 +111,12 @@ def build_engine_args(backend: str, infer_config: 'InferConfig', rollout_config:
         return {'max_batch_size': infer_config.max_batch_size}
     prefix = f'{backend}_'
     result = {}
-    #: Prefix-stripped rollout fields that are not sampler engine args: ``mode`` is the trainer/sampler
-    #: GPU-placement knob (``sampler_mode``) and ``engine_kwargs`` is merged verbatim below.
-    excluded = {'engine_kwargs', 'mode'}
+    #: Prefix-stripped rollout fields that are not sampler engine args: ``engine_kwargs`` is merged
+    #: verbatim below. The LoRA knobs (``enable_lora`` / ``max_lora_rank`` / ``max_loras``) deliberately
+    #: have no RolloutConfig field either: they are OWNED by ``_enable_lora`` / ``_max_adapter_rank``,
+    #: which size them from the adapters themselves -- a config default here (e.g. a bool False) would
+    #: squat the key and defeat those setdefault calls, silently running vLLM with LoRA disabled.
+    excluded = {'engine_kwargs'}
     for name, value in asdict(rollout_config).items():
         if name.startswith(prefix) and value is not None:
             key = name[len(prefix):]
@@ -313,7 +316,7 @@ def build_sampler(
         try:
             sampler.close_workers()
         except Exception:
-            logger.warning('模板初始化失败后未能完整关闭 sampler。', exc_info=True)
+            logger.warning('Failed to close sampler workers after template init failed.', exc_info=True)
         raise
     return sampler
 

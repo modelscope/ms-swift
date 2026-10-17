@@ -229,7 +229,7 @@ def run_rft(
         tuner_config=assembly.tuner_config,
         plugin_config=assembly.plugin_config)
 
-    sampler_engine_args = RolloutSamplerSpec.engine_args(rollout_config, engine_args, colocate, backend)
+    sampler_engine_args = RolloutSamplerSpec.engine_args(rollout_config, engine_args, colocate, backend, tuner_config=assembly.tuner_config)
     sampler = build_sampler(
         model_config,
         backend=backend,

@@ -41,7 +41,7 @@ def parse_eval_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 
 
 def eval_main(argv: Optional[List[str]] = None):
-    from swift.dev.builders import build_engine_args
+    from swift.dev2.builders import build_engine_args
     from swift.dev2.config import process_and_validate_configs
     from swift.dev.recipe import run_eval
 

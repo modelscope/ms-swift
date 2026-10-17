@@ -42,6 +42,15 @@ def build_dataset(dataset_config: DatasetConfig,
     encoded ones.
     """
     from swift.dev.dataset import load_dataset, register_dataset_info
+    # legacy base_args.py:366: a nonzero split ratio alongside val_dataset would carve a slice out of
+    # --dataset that is then neither trained on (train keeps only its remainder) nor evaluated
+    # (val_dataset overrides it) -- silently discarding part of the training data. Refuse up front.
+    if dataset_config.val_dataset and dataset_config.split_dataset_ratio:
+        raise ValueError(
+            f'split_dataset_ratio={dataset_config.split_dataset_ratio} cannot be combined with '
+            'val_dataset: the ratio carves a val slice out of --dataset that is then neither trained '
+            'on (train keeps only its remainder) nor evaluated (val_dataset overrides it). Drop '
+            'split_dataset_ratio, or drop val_dataset to eval on the split-off slice instead.')
     for info_path in dataset_config.custom_dataset_info:
         register_dataset_info(info_path, exist_ok=True)
 
@@ -57,7 +66,9 @@ def build_dataset(dataset_config: DatasetConfig,
             **load_kwargs)
     if dataset_config.val_dataset:
         # A separate val_dataset overrides any split-off val, loaded with split_ratio=1.0 and its own
-        # val_dataset_shuffle -- legacy base_args.py:364.
+        # val_dataset_shuffle -- legacy base_args.py:364, which also pops interleave_prob: it is a
+        # train-mixing knob and must not sample the val set.
+        load_kwargs.pop('interleave_prob', None)
         _, val_raw = load_dataset(
             dataset_config.val_dataset,
             split_dataset_ratio=1.0,
@@ -519,19 +530,19 @@ def load_prompt_only_rows(dataset_config: DatasetConfig, max_rows: Optional[int]
     from swift.dev.dataset import load_dataset
 
     kwargs = _load_kwargs(dataset_config)
-    # A val-style slice (an explicit val_dataset, or the eval split of --dataset) honours
-    # val_dataset_shuffle; a whole-dataset run honours dataset_shuffle. The seed already rides in via
-    # _load_kwargs, so the shuffle is reproducible. Shuffling BEFORE the max_rows cut is what makes
-    # val_dataset_sample a random sample rather than the file's first N rows (legacy sample_dataset).
+    # legacy infer's _prepare_val_dataset: an explicit val_dataset loads whole (ratio=1.0) with its own
+    # val_dataset_shuffle and interleave_prob popped (a train-mixing knob); the eval split of --dataset
+    # is drawn with dataset_shuffle. Shuffling BEFORE the max_rows cut is what makes the cut a random
+    # sample rather than the file's first N rows (legacy sample_dataset).
     if dataset_config.val_dataset:
+        kwargs.pop('interleave_prob', None)
         _, rows = load_dataset(
-            datasets=list(dataset_config.val_dataset), split_dataset_ratio=0.0,
+            datasets=list(dataset_config.val_dataset), split_dataset_ratio=1.0,
             shuffle=dataset_config.val_dataset_shuffle, **kwargs)
-        rows = rows if rows is not None else []
     elif split_dataset_ratio:
         _, rows = load_dataset(
             datasets=list(dataset_config.dataset), split_dataset_ratio=split_dataset_ratio,
-            shuffle=dataset_config.val_dataset_shuffle, **kwargs)
+            shuffle=dataset_config.dataset_shuffle, **kwargs)
         rows = rows if rows is not None else []
         logger.info(f'load_prompt_only_rows: using the eval split of --dataset (split_dataset_ratio='
                     f'{split_dataset_ratio}); pass split_dataset_ratio=0 to run over all of it.')

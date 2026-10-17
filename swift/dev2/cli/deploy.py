@@ -92,7 +92,7 @@ def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 
 
 def deploy_main(argv: Optional[List[str]] = None) -> None:
-    from swift.dev.builders import build_engine_args
+    from swift.dev2.builders import build_engine_args
     from swift.dev2.config import process_and_validate_configs
     from swift.dev.recipe import run_deploy
 

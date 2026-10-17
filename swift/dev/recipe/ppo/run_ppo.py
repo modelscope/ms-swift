@@ -249,7 +249,7 @@ def run_ppo(
     configure_ppo_value_metric(value_model, rl_config)
 
     # Rollout (weight-syncable, exactly as run_grpo), reward model(s) and reference for the KL penalty.
-    sampler_engine_args = RolloutSamplerSpec.engine_args(rollout_config, engine_args, colocate, backend)
+    sampler_engine_args = RolloutSamplerSpec.engine_args(rollout_config, engine_args, colocate, backend, tuner_config=assembly.tuner_config)
     if rollout_config.resource_mode == 'adaptive':
         from swift.dev.recipe.rl.resource import AdaptiveResourceController
         controller = AdaptiveResourceController.build(

@@ -26,7 +26,6 @@ class RolloutConfig:
     vllm_disable_custom_all_reduce: bool = True
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Dict[str, int]] = None
-    vllm_max_lora_rank: int = 16
     vllm_enable_prefix_caching: bool = True
     vllm_use_async_engine: Optional[bool] = None
     vllm_quantization: Optional[str] = None
@@ -75,7 +74,6 @@ class RolloutConfig:
     #: plan §2.H). ``None`` disaggregates (plan_rl_device_groups treats anything but ``'colocate'`` as
     #: disaggregated).
     sampler_mode: Optional[Literal['disaggregated', 'server', 'colocate']] = None
-    vllm_enable_lora: bool = False
     #: Which rollout engine backs the independent-process samplers (GRPO/PPO/RFT and the distill family).
     #: Both ``'vllm'`` and ``'sglang'`` are wired: the loop weight-syncs the trained policy into the
     #: sampler every step through a CheckpointEngineManager, which both engines support. ``'transformers'``

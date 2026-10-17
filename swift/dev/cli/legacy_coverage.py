@@ -30,10 +30,17 @@ REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
     # AdaLoRA is retired pending its rank-allocation schedule getting a runtime hook: tuner='adalora'
     # silently degraded to a fixed-rank LoRA, so both the tuner value and its schedule knobs refuse.
     'adalora_target_r', 'adalora_init_r', 'adalora_tinit', 'adalora_tfinal', 'adalora_deltaT',
-    'adalora_beta1', 'adalora_beta2', 'adalora_orth_reg_weight')
+    'adalora_beta1', 'adalora_beta2', 'adalora_orth_reg_weight',
+    # The engine's LoRA machinery is owned by the adapters themselves: enable is automatic when
+    # adapters are passed, and the rank budget is measured from each adapter_config.json.
+    'vllm_enable_lora', 'vllm_max_lora_rank')
 #: Per-field replacement text overriding the generic 'removed_option' guidance where the migration path
 #: is specific enough to name, so the failure points at the exact flag that replaced it.
 REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
+    'vllm_enable_lora': 'LoRA support is enabled automatically whenever adapters are passed (--adapters'
+                        ' / --orm_adapters); drop this flag',
+    'vllm_max_lora_rank': 'the rank budget is measured from each adapter\'s own adapter_config.json; '
+                          'drop this flag',
     'orm_model': 'pass the reward-model id as an item of --orm instead',
     'prm_model': 'pass the reward-model id as an item of --prm instead',
     'reward_model': 'pass the reward-model id as an item of --orm instead',

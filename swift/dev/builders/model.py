@@ -38,7 +38,6 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
     # get_env_args) picks them up. Env is the correct channel here -- it crosses Ray worker boundaries
     # naturally (runtime_env inheritance) and the patch runs inside the worker's process_tokenizer.
     if model_config.vision_process_kwargs:
-        import os
         for key, value in model_config.vision_process_kwargs.items():
             os.environ[key.upper()] = str(value)
 
@@ -400,9 +399,6 @@ def _apply_hf_sp_mesh(kwargs: dict, device_mesh: Optional['DeviceMesh'],
         kwargs['device_mesh'] = device_mesh
 
 
-# Backwards-compatible alias removed: all callers use build_dp_mesh directly.
-
-
 def _apply_ray_placement(kwargs: dict, distributed_config: DistributedConfig,
                          remote_group: str = 'model',
                          device_mesh: Optional['DeviceMesh'] = None,
@@ -570,8 +566,6 @@ def _build_transformers_model(model_config: ModelConfig,
                               tuner_config: Optional[TunerConfig] = None,
                               device_mesh: Optional['DeviceMesh'] = None,
                               quantize_config: Optional[QuantizeConfig] = None,
-                              megatron_config: Optional[MegatronConfig] = None,
-                              moe_config: Optional[MoEConfig] = None,
                               remote_group: Optional[str] = None,
                               instance_id: Optional[str] = None,
                               enable_router_replay: bool = False) -> TrainableModel:
@@ -584,11 +578,9 @@ def _build_transformers_model(model_config: ModelConfig,
 
     kwargs: dict = dict(model_config.model_kwargs or {})
     kwargs['model_id'] = model_config.model
-    # dtype: ModelConfig.torch_dtype is a string ('bfloat16'); forward to from_pretrained.
+    # dtype: ModelConfig.torch_dtype is a Literal, so getattr always resolves; forward to from_pretrained.
     if model_config.torch_dtype:
-        dt = getattr(torch, model_config.torch_dtype, None)
-        if dt is not None:
-            _set_load_kwarg(kwargs, 'dtype', dt)
+        _set_load_kwarg(kwargs, 'dtype', getattr(torch, model_config.torch_dtype))
     _set_load_kwarg(kwargs, 'attn_implementation', model_config.attn_impl)
     _set_load_kwarg(kwargs, 'experts_implementation', model_config.experts_impl)
     _set_load_kwarg(kwargs, 'revision', model_config.model_revision)
@@ -1056,12 +1048,6 @@ _NON_MODEL_MEGATRON_FIELDS = {
     'megatron_extra_kwargs',
 }
 _MEGATRON_FIELD_ALIASES = {'te_rng_tracker': 'use_te_rng_tracker'}
-_UNSUPPORTED_MEGATRON_MODEL_FIELDS = {
-    'apply_dsa_kernel_fusion',
-    'csa_dense_mode',
-    'sequence_packing_scheduler',
-    'use_fused_mhc',
-}
 
 
 def _field_was_requested(config, field_name: str) -> bool:
@@ -1096,12 +1082,6 @@ def _megatron_model_kwargs(megatron_config: Optional[MegatronConfig], moe_config
     if megatron_config is not None:
         for config_field in dataclasses.fields(megatron_config):
             name = config_field.name
-            if name in _UNSUPPORTED_MEGATRON_MODEL_FIELDS:
-                if _field_was_requested(megatron_config, name):
-                    raise NotImplementedError(
-                        f'MegatronConfig.{name} is not exposed by the installed mcore-bridge ModelConfig. '
-                        'Upgrade mcore-bridge/Megatron-LM or remove this option.')
-                continue
             if name in _NON_MODEL_MEGATRON_FIELDS:
                 continue
             value = getattr(megatron_config, name)

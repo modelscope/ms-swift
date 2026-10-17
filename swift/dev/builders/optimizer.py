@@ -92,15 +92,6 @@ def resolve_max_grad_norm(cfg: TrainConfig) -> float:
     return cfg.clip_grad
 
 
-def _is_megatron_model(model) -> bool:
-    """True for the MegatronModel (whose optimizer/scheduler are Megatron-native, not torch)."""
-    try:
-        from twinkle.model.megatron import MegatronModel
-    except Exception:
-        return False
-    return isinstance(model, MegatronModel)
-
-
 def _galore_config(cfg: TrainConfig) -> dict:
     """The ``GaLoreConfig`` fields set_optimizer turns into low-rank projection param groups.
 
@@ -238,7 +229,11 @@ def configure_optimizer(model: TrainableModel,
              registers a ``param_groups`` plugin named in ``cfg.param_groups_plugins``.
     """
     lr = cfg.learning_rate
-    is_megatron = _is_megatron_model(model)
+    # Backend identity comes from the CONFIG, not from sniffing the model's type: the model may be a
+    # Ray proxy on the driver, and DistributedConfig is the single source of truth every other layer
+    # already reads (is_megatron_backend in builders/model.py). None keeps the transformers branch.
+    from swift.dev.builders.model import is_megatron_backend
+    is_megatron = distributed_config is not None and is_megatron_backend(distributed_config)
     # One backend-neutral spec feeds both branches below; None leaves the default grouping untouched.
     param_groups_spec = build_param_groups_spec(cfg, tuner_config, plugin_config)
     # Fractional warmup budget. Kept fractional for Megatron and rounded for the transformers path --
