@@ -77,6 +77,7 @@ class MeanMetric(Metric):
         self.nan_value = nan_value
         self.add_state('state', default=0.)
         self.add_state('count', default=0)
+        self.add_state('sum_count', default=0)
         if device is None:
             device = get_current_device()
         self.device = device
@@ -99,15 +100,25 @@ class MeanMetric(Metric):
         self.state += state
         self.count += count
 
+    def update_counts(self, sum_count: torch.Tensor):
+        """Accumulate device-side [sum, count] without synchronizing with the host."""
+        self.sum_count = self.sum_count + sum_count.detach().to(self.device)
+
     def compute(self):
+        state, count = self.state, self.count
         if dist.is_initialized():
-            tensor = torch.tensor([self.state, self.count], dtype=torch.float32, device=self.device)
+            tensor = torch.tensor([state, count], dtype=torch.float32, device=self.device)
+            tensor.add_(self.sum_count)
             dist.all_reduce(tensor, op=dist.ReduceOp.SUM, group=self.group)
-            self.state, self.count = tensor[0].item(), int(tensor[1].item())
-        if self.count == 0:
+            state, count = tensor.tolist()
+        elif isinstance(self.sum_count, torch.Tensor):
+            total, num_items = self.sum_count.tolist()
+            state += total
+            count += num_items
+        if count == 0:
             value = self.nan_value
         else:
-            value = self.state / self.count
+            value = state / count
         return {
             'value': value,
         }
