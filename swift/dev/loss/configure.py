@@ -165,11 +165,10 @@ _RL_LOSS_NAME = {
     'mopd': 'mopd',
 }
 
-## 这里还有一个rlhf字符没清理干净，应该改为rl
 def configure_rl_loss(model: TrainableModel, rl_config: 'RLConfig') -> None:
-    """Set the RLHF/RL loss on ``model`` from ``rl_config.rl_type`` and its hyperparameters.
+    """Set the RL loss on ``model`` from ``rl_config.rl_type`` and its hyperparameters.
 
-    Peer of :func:`configure_loss`, for the RLHF recipes (run_grpo / run_dpo / run_gkd / run_ppo). The
+    Peer of :func:`configure_loss`, for the RL recipes (run_grpo / run_dpo / run_gkd / run_ppo). The
     heavy losses themselves live in twinkle (the GRPO family, the DPO family, GKD, RewardLoss); this only
     maps the dev Config onto the right constructor and forwards the fields it reads, so a recipe never
     hand-picks a loss class or its argument names.

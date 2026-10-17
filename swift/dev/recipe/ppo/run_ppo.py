@@ -4,7 +4,7 @@ Peer of ``run_grpo`` for the one online RL type with a learned value function. P
 the pieces twinkle already provides, with no fabricated infrastructure:
 
   - policy loss = the shared clipped surrogate (``GRPOLoss`` with epsilon=cliprange) -- PPO's policy
-    objective is exactly that clip, so ``configure_rlhf_loss`` maps ppo -> GRPOLoss;
+    objective is exactly that clip, so ``configure_rl_loss`` maps ppo -> GRPOLoss;
   - critic = a ``seq_cls`` ``num_labels=1`` model forwarded with ``task='value'`` (which keeps the
     head's per-token output instead of pooling to the last token), emitting ``V(s_t)`` at every token,
     trained by the clipped value loss (``configure_ppo_value_loss`` -> twinkle ``PPOValueLoss``). The
@@ -82,8 +82,8 @@ def run_ppo(
     critic (clipped value loss) over each rollout for ``num_ppo_epochs``. Returns the loss history.
     """
     from swift.dev.builders import build_sampler
-    from swift.dev.loss import (configure_ppo_value_loss, configure_ppo_value_metric, configure_rlhf_loss,
-                                configure_rlhf_metrics)
+    from swift.dev.loss import (configure_ppo_value_loss, configure_ppo_value_metric, configure_rl_loss,
+                                configure_rl_metrics)
     from swift.dev.builders.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.recipe.common.assembly import TrainAssembly
     from swift.dev.recipe.rl.auxiliary import REF_GROUP, plan_rl_device_groups, reward_group, spec_world_size
@@ -206,12 +206,12 @@ def run_ppo(
         recipe='run_ppo')
     assembly.resolve_step_intervals(max_steps)
 
-    # Policy (trainer): the clipped surrogate is the PPO policy loss (configure_rlhf_loss maps ppo). PPO
+    # Policy (trainer): the clipped surrogate is the PPO policy loss (configure_rl_loss maps ppo). PPO
     # plans no SP mesh (SP=1) -- the critic runs SP=1 too, so policy/critic/dp_size all agree on a pure-DP
     # mesh of data_world_size = nproc_per_node.
     assembly.build_model()
     model = assembly.model
-    configure_rlhf_loss(model, rl_config)
+    configure_rl_loss(model, rl_config)
     configure_optimizer(
         model,
         train_config,
@@ -221,7 +221,7 @@ def run_ppo(
         plugin_config=assembly.plugin_config)
     # Register PPOMetric on the policy AFTER its optimizer group exists: twinkle accumulates it inside
     # forward_backward from advantages/old_logps, so its ratio/clip stats ride calculate_metric per step.
-    configure_rlhf_metrics(model, rl_config)
+    configure_rl_metrics(model, rl_config)
 
     # Critic: a trainable seq_cls (num_labels=1) value model, trained by the clipped value loss.
     value_model = _build_value_model(

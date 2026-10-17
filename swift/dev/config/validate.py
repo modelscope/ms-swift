@@ -835,7 +835,7 @@ def _check_grpo_loss_type(cfg: 'RLConfig', loss_type: str) -> None:
         raise ValueError(f'Unsupported GRPO loss_type={loss_type!r}; expected one of {sorted(supported)}.')
     # GSPO IS sequence-level importance sampling; an explicit token-level request contradicts it and would
     # silently downgrade GSPO to token-level GRPO (W13). The default 'token' is promoted to 'sequence' by
-    # configure_rlhf_loss, so only an explicitly-set 'token' is a real contradiction worth rejecting.
+    # configure_rl_loss, so only an explicitly-set 'token' is a real contradiction worth rejecting.
     if (loss_type == 'gspo' and cfg.importance_sampling_level == 'token'
             and 'importance_sampling_level' in _changed_fields(cfg)):
         raise ValueError(

@@ -13,7 +13,7 @@ def build_template(template_config: TemplateConfig, processor: Any, *, task_type
     Wraps legacy get_template and derives ``Shifted<LegacyClass>`` from the class it returns, adding
     only dev's twinkle contract (DevMixin); deriving keeps every legacy override (multimodal needs it).
     """
-    from swift.dev.template import shifted_template_class
+    from swift.dev2.template import shifted_template_class
     from swift.template import get_template
 
     # legacy Template's vocabulary has no 'delete' (that is a dataset-level length filter) -- the
