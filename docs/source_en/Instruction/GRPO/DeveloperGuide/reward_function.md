@@ -139,6 +139,19 @@ Parameters:
 - soft_max_length: L_max in the paper, the model's maximum generation length, defaulting to max_completion_length.
 - soft_cache_length: L_cache in the paper, controlling the length penalty interval, which is [soft_max_length - soft_cache_length, soft_max_length].
 
+## Example: Execution Reward for Text-to-SQL
+
+[examples/train/grpo/plugin/text2sql](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/text2sql) scores text-to-SQL rollouts by running them on SQLite databases (BIRD, Spider, or your own):
+
+- `text2sql_exec`: 1.0 if the predicted query returns the same set of rows as the reference query in `solution`, the execution-accuracy definition of BIRD and Spider. The database comes from a `db_path` column, or from a `db_id` column resolved under `TEXT2SQL_DB_ROOT`.
+- `text2sql_format`: 1.0 if the answer ends with a ```sql block that starts with `SELECT` or `WITH`.
+
+Rewards computed by executing model-written code are easy to game, so `text2sql_exec` opens the database read-only behind an SQLite authorizer (no writes, `ATTACH`, `PRAGMA` or extensions), executes one statement per query, interrupts queries after `TEXT2SQL_TIMEOUT` seconds, and caps the result size. A reference query that fails returns `None` (no reward) instead of 0, and `TEXT2SQL_SKIP_EMPTY_GOLD=1` does the same for references that return no rows, since any query returning nothing would match them.
+
+Also watch for constant answers: on BIRD Mini-Dev, 16 of the 500 reference queries return the single value `1`, so `SELECT 1` earns the full reward on 3.2% of the questions. If `log_completions` shows the policy drifting toward such queries, filter these samples or add a penalty for queries that do not reference any table.
+
+`prepare_bird.py` converts BIRD into the expected dataset format, and `text2sql.sh` is a complete training script.
+
 ## Notes
 
 If a model needs to be loaded in the reward function, the training DeepSpeed plugin (transformers logic) will be used by default. Under Zero3, this may cause the model to fail to perform inference properly. Refer to this [issue](https://github.com/modelscope/ms-swift/issues/4580) to skip the DeepSpeed initialization environment.
