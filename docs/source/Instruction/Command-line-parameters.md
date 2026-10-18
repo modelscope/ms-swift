@@ -514,6 +514,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）。通常不需要修改该值，packing速度远快于tokenize速度。
 - packing_strategy: packing 算法，可选为'binpack'和'sequential'，默认为'binpack'。'binpack'使用 best-fit-decreasing 装箱（会按长度重排样本）；'sequential'使用保序的贪心装箱（next-fit：仅维护一个开放 pack，放不下即 flush），按输入顺序逐条装箱，使样本顺序与每个 pack 的边界跟随顺序采样器（建议配合 packing_num_proc=1 以保证全局顺序）。
 - lazy_tokenize: 是否使用lazy_tokenize。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（多模态模型则包括从磁盘中读取图片）。该参数默认为None，在LLM训练中默认为False，而MLLM训练默认为True，节约内存。
+  - 对非流式的 lazy 数据集，`strict=False` 时编码失败的样本会被其他样本替代。候选顺序由 `data_seed` 和请求索引确定，不依赖之前的访问顺序；固定数据顺序、种子和编码行为时，断点恢复不会改变替代选择。同一失败索引在不同 epoch 也使用相同的候选顺序；不同失败索引仍可能选中同一替代样本。
   - 注意：若你要进行图像的数据增强，你需要将lazy_tokenize（或streaming）设置为True，并修改Template类中的encode方法。
 - use_logits_to_keep: 通过在`forward`中根据labels传入logits_to_keep，减少无效logits的计算与存储，从而减少显存占用并加快训练速度。默认为None，进行自动选择。
 - acc_strategy: 训练和验证时计算acc的策略。可选为`seq`和`token`级别的acc，默认为`token`。
