@@ -345,11 +345,17 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             os.makedirs(output_dir, exist_ok=True)
             fpath = os.path.join(output_dir, 'args.json')
             logger.info(f'The {self.__class__.__name__} will be saved in: {fpath}')
-            with open(fpath, 'w', encoding='utf-8') as f:
-                json.dump(check_json_format(self.__dict__), f, ensure_ascii=False, indent=2)
             config_file = os.getenv('SWIFT_CONFIG_FILE')
             if config_file:
-                shutil.copy(config_file, output_dir)
+                config_name = os.path.basename(config_file)
+                if config_name == 'args.json':
+                    # args.json is reserved for the resolved checkpoint arguments.
+                    config_name = 'config_args.json'
+                config_path = os.path.join(output_dir, config_name)
+                if not (os.path.exists(config_path) and os.path.samefile(config_file, config_path)):
+                    shutil.copy(config_file, config_path)
+            with open(fpath, 'w', encoding='utf-8') as f:
+                json.dump(check_json_format(self.__dict__), f, ensure_ascii=False, indent=2)
 
     def _init_device(self):
         if is_dist():
