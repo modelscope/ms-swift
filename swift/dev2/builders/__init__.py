@@ -14,6 +14,7 @@ from .model import (
 )
 from .sampler import (build_engine_args, build_sampler, is_pooling_task, pooled_data, pooling_task_for,
                       resolve_twinkle_template, sampled_texts, to_pooling_params, to_sampling_params)
+from .template import build_template
 
 __all__ = [
     'SUPPORTED_TUNER_TYPES', 'apply_tuner', 'build_dataset', 'build_prompt_dataloader',
@@ -21,5 +22,5 @@ __all__ = [
     'build_parallel_mesh', 'frozen_auxiliary_distributed_config', 'is_megatron_backend',
     'load_model_processor', 'build_engine_args', 'build_sampler', 'is_pooling_task', 'pooled_data',
     'pooling_task_for', 'resolve_twinkle_template', 'sampled_texts', 'to_pooling_params',
-    'to_sampling_params'
+    'to_sampling_params', 'build_template'
 ]

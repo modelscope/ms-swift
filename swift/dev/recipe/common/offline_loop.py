@@ -100,6 +100,9 @@ def run_offline(assembly: 'TrainAssembly',
     # Link so the recorder publishes the evaluator's best_metric onto the shared callback state.
     recorder.evaluator = evaluator
     saver = CheckpointSaver(model, recorder, dataloader, **component_kwargs['saver'])
+    # Before any training step: base-modifying LoRA inits (pissa ...) need the initial adapter
+    # snapshotted while it is still the plain init form (idempotent on a resumed run).
+    saver.prepare_initial_adapter()
     recorder.publish_state()
     handler.on_init_end()
     start_epoch = 0

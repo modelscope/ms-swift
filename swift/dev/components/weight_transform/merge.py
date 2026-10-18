@@ -192,8 +192,8 @@ class StreamingMerge(StreamingWeightTransform):
     once and the passthrough of the stored side already matches the tied reload). Each of these is
     verified bit-identical against ``merge_and_unload`` in review.
 
-    Scope (enforced by ``is_supported``): LoRA-family adapters only, without ``modules_to_save`` and
-    without DoRA. A non-LoRA tuner has no ``merge()`` contract to reuse; ``modules_to_save`` can untie
+    Scope (enforced by ``is_supported``): LoRA-family adapters only, without ``modules_to_save``,
+    without DoRA, and without a base-modifying init (pissa / olora / corda / lora-ga / loftq). A non-LoRA tuner has no ``merge()`` contract to reuse; ``modules_to_save`` can untie
     embeddings and add output keys absent from the base checkpoint, which a writer that streams the base
     key set cannot reproduce without materializing; and DoRA's magnitude vector is initialised from the
     base weight (peft ``DoraLinearVariant.init``) and saved under a bare key that the generic adapter
@@ -236,6 +236,8 @@ class StreamingMerge(StreamingWeightTransform):
         from peft import PeftConfig
         from peft.utils import PeftType
 
+        from swift.dev.builders.adapter import is_base_modifying_init
+
         if self.checkpoint_config is not None and self.checkpoint_config.safe_serialization is False:
             # The streaming saver only writes safetensors; pickle ``.bin`` output needs the materialized path.
             return False
@@ -249,6 +251,16 @@ class StreamingMerge(StreamingWeightTransform):
                 # DoRA's magnitude vector is derived from the base weight and saved under a bare key the
                 # generic loader cannot place onto a meta base (see the class scope note); fall back to
                 # the materialized path rather than special-case peft's DoRA save format here.
+                return False
+            init = getattr(config, 'init_lora_weights', True)
+            if is_base_modifying_init(init):
+                # These inits read or rewrite the base weight at injection (peft's weight-conversion
+                # family + loftq): broken on a meta base, and the raw adapter only fits the residual
+                # base they produce, so the streaming merge would be wrong even without the crash.
+                logger.warning(
+                    f'`{adapter}` uses base-modifying LoRA init ({init!r}): merging via the materialized '
+                    'path, which re-runs that init and is only correct against the base checkpoint (same '
+                    'dtype) the adapter was trained on.')
                 return False
         return True
 

@@ -128,13 +128,12 @@ class StreamingWeightTransform(BaseWeightTransform):
         """Split the keyspace across ``parallel_size`` Ray workers, each streaming its own shards.
 
         Keyspace streaming is embarrassingly parallel -- the partitions are disjoint and no worker reads
-        a tensor another holds -- so it needs no collective and runs as plain Ray CPU tasks, unlike the
-        model-parallel torchrun path. The driver resolves the source keyspace, ships each worker an
+        a tensor another holds -- so it needs no collective and runs through ``remote_map`` CPU tasks,
+        unlike the model-parallel torchrun path. The driver resolves the source keyspace, ships each worker an
         unprepared clone (config only, cheap to pickle) plus its key list, then assembles the per-rank
         manifests into one global index and writes the metadata once.
         """
-        import ray
-
+        from twinkle.infra import remote_map
         from twinkle.utils.safetensors import SafetensorLazyLoader, StreamingSafetensorSaver
 
         # prepare() on the driver only resolves the source directory: a streaming transform's prepare is
@@ -144,13 +143,12 @@ class StreamingWeightTransform(BaseWeightTransform):
             partitions = loader.partition_keyspace(self.parallel_size)
         world_size = len(partitions)
 
-        self._ensure_ray()
-        worker = ray.remote(_stream_partition)
-        futures = [
-            worker.remote(self._clone_for_worker(), keys, rank, world_size, output_dir)
-            for rank, keys in enumerate(partitions)
+        manifests = [
+            manifest for manifest in remote_map(
+                _stream_partition,
+                [(self._clone_for_worker(), keys, rank, world_size, output_dir)
+                 for rank, keys in enumerate(partitions)]) if manifest is not None
         ]
-        manifests = [manifest for manifest in ray.get(futures) if manifest is not None]
         StreamingSafetensorSaver.assemble_sharded_index(output_dir, manifests)
         self.save_metadata(output_dir)
         return output_dir
@@ -185,20 +183,6 @@ class StreamingWeightTransform(BaseWeightTransform):
         override this to pass them through.
         """
         return type(self)(self.model_config, checkpoint_config=self.checkpoint_config)
-
-    @staticmethod
-    def _ensure_ray() -> None:
-        """Start a local Ray head if none is running, seeding workers with the shared runtime_env.
-
-        Mirrors ``run_deploy``'s local-head fallback: keyspace streaming is CPU-bound and needs no
-        cluster, so one command brings Ray up in-process rather than requiring a pre-existing one.
-        """
-        import ray
-
-        if ray.is_initialized():
-            return
-        from twinkle.server.launcher import build_ray_runtime_env
-        ray.init(runtime_env=build_ray_runtime_env(), ignore_reinit_error=True)
 
     def prepare(self) -> None:
         """One-time setup before the source is opened (resolve dirs, build helper objects)."""

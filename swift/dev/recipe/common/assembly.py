@@ -547,6 +547,7 @@ class TrainAssembly:
                 'ignore_data_skip': bool(ckpt and ckpt.ignore_data_skip),
                 'hub_pusher': self._build_hub_pusher(),
                 'hub_strategy': ckpt.hub_strategy if ckpt else 'every_save',
+                'initial_adapter_dir': self._initial_adapter_dir(),
             },
         }
 
@@ -653,6 +654,24 @@ class TrainAssembly:
         from swift.dev.recipe.common.colocate import ColocateHandover
         handover = ColocateHandover(self.model, sampler, manager, colocate=True)
         return sampler, handover.enter, handover.exit
+
+    def _initial_adapter_dir(self):
+        """``output_dir/initial_model`` when the tuner's LoRA init rewrites the base weight (pissa ...).
+
+        A base-modifying init makes every saved checkpoint need the initial-adapter snapshot plus a
+        converted copy (see ``CheckpointSaver``); a plain init needs neither, so the knob stays None.
+        """
+        from swift.dev.builders import is_megatron_backend
+        from swift.dev.builders.adapter import is_base_modifying_init
+
+        if self.tuner_config is None or not is_base_modifying_init(self.tuner_config.init_weights):
+            return None
+        if is_megatron_backend(self.distributed_config):
+            logger.warning('base-modifying LoRA init %r on the megatron backend: checkpoint conversion '
+                           '(converted/default) is not wired there; only the raw adapter is saved.',
+                           self.tuner_config.init_weights)
+            return None
+        return os.path.join(self.output_dir, 'initial_model')
 
     def _build_hub_pusher(self) -> Optional[Callable[[str], None]]:
         """A callable that uploads one checkpoint dir to the hub, or None when pushing is off.

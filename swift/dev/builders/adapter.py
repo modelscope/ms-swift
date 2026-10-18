@@ -55,6 +55,18 @@ def _resolve_target_modules(cfg: TunerConfig):
     return target_modules
 
 
+def is_base_modifying_init(init_weights) -> bool:
+    """Whether a peft ``init_lora_weights`` strategy reads or rewrites the base weight at injection.
+
+    The pissa family (pissa / pissa_niter_[N] / olora / corda / lora_ga) subtracts its init factor from
+    the base weight, and 'loftq' quantises it -- an adapter trained with one only fits the *residual*
+    base it produced. Consumed by the streaming merge's fallback routing and by the checkpoint saver's
+    converted-adapter flow.
+    """
+    return isinstance(init_weights, str) and (
+        init_weights.startswith(('pissa', 'corda')) or init_weights in ('olora', 'lora_ga', 'loftq'))
+
+
 def _resolve_init_weights(cfg: TunerConfig):
     """swift spells it init_weights and accepts the strings 'true'/'false'; peft wants a bool there
     and keeps the real strategy names ('gaussian'/'pissa'/'olora'/...) as-is.

@@ -50,6 +50,7 @@ class CheckpointSaver:
                  ignore_data_skip: bool = False,
                  hub_pusher: Optional[Callable[[str], None]] = None,
                  hub_strategy: str = 'every_save',
+                 initial_adapter_dir: Optional[str] = None,
                  components: Optional[Dict[str, Any]] = None):
         self.model = model
         self.recorder = recorder
@@ -76,6 +77,26 @@ class CheckpointSaver:
         # credentials / target / revision). hub_strategy='end' defers the push to the final checkpoint only.
         self.hub_pusher = hub_pusher
         self.hub_strategy = hub_strategy
+        # Set by the assembly when the tuner uses a base-modifying LoRA init (pissa family): the
+        # adapter's initial snapshot lands here once, and every saved checkpoint gains a
+        # ``converted/default`` plain-LoRA copy that merges into ANY copy of the original base --
+        # the raw adapter only fits the residual base the run trained on.
+        self.initial_adapter_dir = initial_adapter_dir
+
+    def prepare_initial_adapter(self) -> None:
+        """Snapshot the adapter's initial weights once, before any training step touches them.
+
+        Idempotent: an existing snapshot (a resumed run already made one) is left as is, because the
+        injection re-runs deterministically from the same base checkpoint but re-running it here would
+        be a second, needless SVD pass. Main-process only: under torchrun every rank drives this path.
+        """
+        if self.initial_adapter_dir is None or not self._is_main_process():
+            return
+        marker = os.path.join(self.initial_adapter_dir, 'adapter_config.json')
+        if os.path.exists(marker):
+            return
+        os.makedirs(self.initial_adapter_dir, exist_ok=True)
+        self.model.save_initial_adapter(self.initial_adapter_dir)
 
     # --- write ------------------------------------------------------------------------------------
     def save(self, name: str = 'checkpoint-final', *, is_final: bool = False) -> str:
@@ -106,6 +127,11 @@ class CheckpointSaver:
         # deferred handle, not a path, so recompute the same way save_final does.
         self.recorder.publish_state()
         ckpt_dir = os.path.join(self.output_dir, name)
+        if self.initial_adapter_dir is not None and self._is_main_process():
+            # The portable form of the adapter (see __init__): fold the init factor back out, so a
+            # consumer merges the converted copy instead of the residual-base-only raw one.
+            self.model.save_converted_adapter(
+                os.path.join(ckpt_dir, 'converted', 'default'), self.initial_adapter_dir)
         self.recorder.handler.on_save(checkpoint_dir=ckpt_dir)
         # Hub push: on_push_begin fires before the upload so a callback can veto/annotate. 'end' pushes only
         # the final checkpoint; the push-on-save strategies push every one. Main-process only: under torchrun
