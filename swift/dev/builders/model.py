@@ -111,14 +111,17 @@ def build_model(model_config: ModelConfig,
                 device_mesh: Optional['DeviceMesh'] = None,
                 quantize_config: Optional[QuantizeConfig] = None,
                 megatron_config: Optional[MegatronConfig] = None,
-                moe_config: Optional[MoEConfig] = None,
+                moe_config: Optional['MoEConfig'] = None,
                 remote_group: Optional[str] = None,
                 instance_id: Optional[str] = None,
-                enable_router_replay: bool = False) -> TrainableModel:
+                enable_router_replay: bool = False,
+                torch_dtype: Optional[str] = None) -> TrainableModel:
     """ModelConfig + DistributedConfig -> a twinkle-native Model (no loss/optim yet).
 
     megatron -> MegatronModel (bridge), else TransformersModel; device_mesh is transformers-only.
     remote_group/instance_id name the ray group; enable_router_replay is the MoE replay flag.
+    ``torch_dtype`` overrides ModelConfig.torch_dtype on the transformers branch only (RL's
+    trainable actor pins float32 there; the megatron branch ignores it).
     """
     # Aux models (teacher/reference/reward) arrive as bare hub ids that never pass _resolve_model;
     # resolve here so callers may hand in either form -- a local path short-circuits the download.
@@ -135,6 +138,9 @@ def build_model(model_config: ModelConfig,
             remote_group=remote_group,
             instance_id=instance_id,
             enable_router_replay=enable_router_replay)
+    if torch_dtype is not None:
+        model_config = copy(model_config)
+        model_config.torch_dtype = torch_dtype
     return _build_transformers_model(
         model_config,
         distributed_config,

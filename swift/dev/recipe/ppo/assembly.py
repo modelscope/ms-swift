@@ -103,7 +103,8 @@ def initialize_ppo_cluster(*, model_config: 'ModelConfig', template_config: 'Tem
         policy_config.model = resume_dir
     model = build_model(
         policy_config, distributed_config, train_config, tuner_config, device_mesh=sp_mesh,
-        quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config)
+        quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config,
+        torch_dtype='float32')
     if tuner_config is not None:
         apply_tuner(model, tuner_config, gradient_accumulation_steps=train_config.gradient_accumulation_steps,
                     task_type=model_config.task_type)
@@ -131,7 +132,7 @@ def initialize_ppo_cluster(*, model_config: 'ModelConfig', template_config: 'Tem
     value_config.model = orm_models[0] if orm_models else model_config.model
     value_model = build_model(
         value_config, distributed_config, train_config, megatron_config=megatron_config,
-        moe_config=moe_config, instance_id='value')
+        moe_config=moe_config, instance_id='value', torch_dtype='float32')
     value_model.set_processor(
         InputProcessor, padding_free=template_config.padding_free, padding_side=template_config.padding_side,
         cp_partition_mode=distributed_config.cp_partition_mode)

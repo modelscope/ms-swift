@@ -137,7 +137,8 @@ def initialize_distill_cluster(*, model_config: 'ModelConfig', template_config: 
         policy_config.model = resume_dir
     model = build_model(
         policy_config, distributed_config, train_config, tuner_config, device_mesh=sp_mesh,
-        quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config)
+        quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config,
+        torch_dtype='float32')
     if tuner_config is not None:
         apply_tuner(model, tuner_config, gradient_accumulation_steps=train_config.gradient_accumulation_steps,
                     task_type=model_config.task_type)
