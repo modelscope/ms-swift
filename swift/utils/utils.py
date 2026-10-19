@@ -373,11 +373,17 @@ def copy_files_by_pattern(source_dir, dest_dir, patterns, exclude_patterns=None)
 
 
 def split_list(ori_list: List[_T], num_shards: int, contiguous=True) -> List[List[_T]]:
+    if num_shards <= 0:
+        raise ValueError(f'num_shards must be positive, got {num_shards}')
     shard = []
     if contiguous:
-        idx_list = np.linspace(0, len(ori_list), num_shards + 1, dtype=np.int64)
-        for i in range(len(idx_list) - 1):
-            shard.append(ori_list[idx_list[i]:idx_list[i + 1]])
+        n = len(ori_list)
+        q, r = divmod(n, num_shards)
+        start = 0
+        for i in range(num_shards):
+            end = start + q + (1 if i < r else 0)
+            shard.append(ori_list[start:end])
+            start = end
     else:
         for i in range(num_shards):
             shard.append(ori_list[i::num_shards])

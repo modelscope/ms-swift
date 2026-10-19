@@ -24,7 +24,7 @@ class TestSplitList(unittest.TestCase):
         self.assertEqual(split_list(list(range(5)), 3, contiguous=False), [[0, 3], [1, 4], [2]])
 
     def test_contiguous_order(self):
-        self.assertEqual(split_list(list(range(5)), 3), [[0], [1, 2], [3, 4]])
+        self.assertEqual(split_list(list(range(5)), 3), [[0, 1], [2, 3], [4]])
 
     def test_empty_input(self):
         for contiguous in (True, False):
@@ -33,6 +33,12 @@ class TestSplitList(unittest.TestCase):
 
     def test_more_shards_than_items(self):
         self.assertEqual(split_list([1, 2], 4, contiguous=False), [[1], [2], [], []])
+        self.assertEqual(split_list([1, 2], 4, contiguous=True), [[1], [2], [], []])
+
+    def test_invalid_num_shards(self):
+        for num_shards in (0, -1):
+            with self.subTest(num_shards=num_shards), self.assertRaises(ValueError):
+                split_list([1, 2, 3], num_shards)
 
 
 if __name__ == '__main__':
