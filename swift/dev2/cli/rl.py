@@ -114,8 +114,8 @@ def run_rl_configs(configs: Dict[str, Any]) -> List[dict]:
     from swift.dev2.config import process_and_validate_configs
 
     process_and_validate_configs(configs)
-    # The dev2 recipes (five-segment mains): grpo, and the distillation family gkd/opsd/mopd; every
-    # other rl_type still runs its native dev recipe until its own dev2 batch lands.
+    # The dev2 recipes (five-segment mains): grpo, ppo, the distillation family gkd/opsd/mopd, and
+    # the offline preference family dpo/kto/cpo/orpo/simpo/rm; the rest still run their dev recipe.
     rl_type = configs['rl_config'].rl_type
     if rl_type == 'grpo':
         from swift.dev2.recipe.grpo import run_grpo as run
@@ -123,7 +123,28 @@ def run_rl_configs(configs: Dict[str, Any]) -> List[dict]:
         from swift.dev2.recipe.ppo import run_ppo as run
     elif rl_type in {'gkd', 'opsd', 'mopd'}:
         from swift.dev2.recipe.distill import run_distill as run
+    elif rl_type in {'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'}:
+        # The offline preference family takes no rollout/generation configs.
+        from swift.dev2.recipe.preference import run_dpo as run
         return run(
+            configs['model_config'],
+            configs['template_config'],
+            configs['dataset_config'],
+            configs['train_config'],
+            configs['distributed_config'],
+            configs['checkpoint_config'],
+            configs['rl_config'],
+            reward_config=configs['reward_config'],
+            tuner_config=configs['tuner_config'],
+            logging_config=configs['logging_config'],
+            quantize_config=configs['quantize_config'],
+            megatron_config=configs['megatron_config'],
+            moe_config=configs['moe_config'],
+            output_dir=configs['checkpoint_config'].output_dir,
+        )
+    else:
+        from swift.dev.recipe import run_rl
+        return run_rl(
             configs['model_config'],
             configs['template_config'],
             configs['dataset_config'],
@@ -132,17 +153,17 @@ def run_rl_configs(configs: Dict[str, Any]) -> List[dict]:
             configs['checkpoint_config'],
             configs['rollout_config'],
             configs['rl_config'],
-            reward_config=configs['reward_config'],
-            tuner_config=configs['tuner_config'],
-            generation_config=configs['generation_config'],
-            logging_config=configs['logging_config'],
-            quantize_config=configs['quantize_config'],
+            configs['reward_config'],
+            configs['tuner_config'],
+            configs['generation_config'],
+            configs['logging_config'],
+            configs['quantize_config'],
             megatron_config=configs['megatron_config'],
             moe_config=configs['moe_config'],
             output_dir=configs['checkpoint_config'].output_dir,
         )
-    from swift.dev.recipe import run_rl
-    return run_rl(
+    # The online dev2 recipes (grpo / ppo / gkd / opsd / mopd) share one positional shape.
+    return run(
         configs['model_config'],
         configs['template_config'],
         configs['dataset_config'],
@@ -151,11 +172,11 @@ def run_rl_configs(configs: Dict[str, Any]) -> List[dict]:
         configs['checkpoint_config'],
         configs['rollout_config'],
         configs['rl_config'],
-        configs['reward_config'],
-        configs['tuner_config'],
-        configs['generation_config'],
-        configs['logging_config'],
-        configs['quantize_config'],
+        reward_config=configs['reward_config'],
+        tuner_config=configs['tuner_config'],
+        generation_config=configs['generation_config'],
+        logging_config=configs['logging_config'],
+        quantize_config=configs['quantize_config'],
         megatron_config=configs['megatron_config'],
         moe_config=configs['moe_config'],
         output_dir=configs['checkpoint_config'].output_dir,

@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# The supervised family's visible training main: sft / pt / embedding / reranker / seq_cls.
+# The supervised family: the five visible mains plus the family's own training loop.
 from __future__ import annotations
 
 import math
@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from swift.dev.utils.logger import get_logger  # TODO(dev2): bridge until the utils batch
 
-from swift.dev2.recipe.sft.assembly import GenerativeEval, build_generative_eval, build_supervised_objects
+from swift.dev2.recipe.sft.assembly import build_supervised_objects
 from swift.dev2.recipe.utils import (
-    StepState, build_save_knobs, resume_training, save_training_step, snapshot_initial_adapter,
-    write_ckpt_args_json)
+    GenerativeEval, StepState, SupervisedCluster, build_generative_eval, build_save_knobs,
+    resume_training, save_training_step, snapshot_initial_adapter, write_ckpt_args_json)
 
 if TYPE_CHECKING:
     from swift.dev2.config import (
@@ -186,42 +186,32 @@ def _load_best_model(model: Any, best_ckpt: Optional[str], *, metric_for_best_mo
     model.load(best_ckpt, **kwargs)
 
 
-def _run_supervised(*, recipe: str, model_config: 'ModelConfig', template_config: 'TemplateConfig',
-                    dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
-                    distributed_config: 'DistributedConfig',
-                    checkpoint_config: Optional['CheckpointConfig'],
-                    tuner_config: Optional['TunerConfig'], logging_config: Optional['LoggingConfig'],
-                    quantize_config: Optional['QuantizeConfig'],
-                    megatron_config: Optional['MegatronConfig'], moe_config: Optional['MoEConfig'],
-                    task: Optional[str], loop_task: Optional[str],
-                    configure_loss: Callable[[Any], None],
-                    configure_metric: Optional[Callable[[Any], None]], output_dir: str,
-                    _save_final: bool) -> List[dict]:
-    """The supervised family's one training main: assemble, resume, run the epochs, save the final.
+def _run_supervised(cluster: SupervisedCluster, model_config: 'ModelConfig',
+                   template_config: 'TemplateConfig', dataset_config: 'DatasetConfig',
+                   train_config: 'TrainConfig', distributed_config: 'DistributedConfig',
+                   checkpoint_config: Optional['CheckpointConfig'],
+                   tuner_config: Optional['TunerConfig'], logging_config: Optional['LoggingConfig'],
+                   quantize_config: Optional['QuantizeConfig'],
+                   megatron_config: Optional['MegatronConfig'], *,
+                   micro_step_fn: Callable[[Any, Any], Dict[str, Any]],
+                   output_dir: str = 'output', _save_final: bool = True,
+                   log_formatter: Optional[Callable[[dict, float], str]] = None) -> List[dict]:
+    """The supervised family's training main: resume, run the epochs, then the final save.
 
-    The old shared loop's three thin components are dissolved here: the StepRunner half into the
-    shared :class:`StepState`, the Evaluator half into the ``evaluate`` cadence and the best-metric
-    triple, the CheckpointSaver half into :func:`save_training_step` plus ``save``. Resume is
-    twinkle-locked (optimizer before resume); ``_save_final=False`` skips the final save.
+    Each entry assembles its cluster (:func:`build_supervised_objects`) and hands it here with its
+    loss closure as ``micro_step_fn`` -- how a batch becomes forward kwargs. The loop scaffolding
+    (:class:`StepState` cadence, eval + best-model tracking, save/resume) is this function's.
     """
     from swift.dev2.builders.optimizer import resolve_max_grad_norm
     from twinkle.perf import Perf
 
-    cluster = build_supervised_objects(
-        recipe=recipe, model_config=model_config, template_config=template_config,
-        dataset_config=dataset_config, train_config=train_config,
-        distributed_config=distributed_config, checkpoint_config=checkpoint_config,
-        tuner_config=tuner_config, logging_config=logging_config, quantize_config=quantize_config,
-        megatron_config=megatron_config, moe_config=moe_config, task=task, loop_task=loop_task,
-        configure_loss=configure_loss, configure_metric=configure_metric, output_dir=output_dir)
     model = cluster.model
     dataloader = cluster.dataloader
     ga = train_config.gradient_accumulation_steps
     max_steps = cluster.total_opt_steps
     num_train_epochs = train_config.num_train_epochs
-    micro_step_kwargs = _supervised_micro_kwargs(cluster.forward_task, ga)
 
-    # --- the dissolved component knob sets ---------------------------------------------------------
+    # The dissolved component knob sets.
     ckpt = checkpoint_config
     megatron = megatron_config
     manual_gc = bool(megatron and megatron.manual_gc)
@@ -241,7 +231,7 @@ def _run_supervised(*, recipe: str, model_config: 'ModelConfig', template_config
         model=model, template=cluster.template, model_config=model_config, train_config=train_config,
         distributed_config=distributed_config, template_config=template_config, output_dir=output_dir)
 
-    # --- the shared step cadence + the loop-local eval state (the dissolved halves) -----------------
+    # The shared step cadence + the loop-local eval state (the dissolved halves).
     state = StepState(
         model, train_config,
         gradient_accumulation_steps=ga, max_steps=max_steps,
@@ -249,7 +239,8 @@ def _run_supervised(*, recipe: str, model_config: 'ModelConfig', template_config
         output_dir=output_dir, save_steps=(ckpt.save_steps if ckpt else None),
         eval_steps=train_config.eval_steps, eval_delay=int(train_config.eval_delay or 0),
         manual_gc=manual_gc, manual_gc_steps=manual_gc_steps,
-        empty_cache_steps=train_config.torch_empty_cache_steps)
+        empty_cache_steps=train_config.torch_empty_cache_steps,
+        log_formatter=log_formatter)
     handler = state.handler
     eval_history: List[dict] = []
     best_step = 0
@@ -285,7 +276,7 @@ def _run_supervised(*, recipe: str, model_config: 'ModelConfig', template_config
         else:
             result = _evaluate_loss(
                 model, cluster.eval_dataloader, eval_iters=eval_iters, manual_gc=manual_gc,
-                manual_gc_eval=manual_gc_eval, micro_step_kwargs=micro_step_kwargs,
+                manual_gc_eval=manual_gc_eval, micro_step_kwargs=micro_step_fn,
                 global_step=state.global_step)
         if result is None:
             return None
@@ -306,7 +297,7 @@ def _run_supervised(*, recipe: str, model_config: 'ModelConfig', template_config
         if eval_capable() and (not eval_history or eval_history[-1].get('step') != state.global_step):
             evaluate()
 
-    def save(name: str, *, is_final: bool = False) -> str:
+    def save(name: str, is_final: bool = False) -> str:
         """One training checkpoint, with the callback state published first (its consumers read it)."""
         state.publish_state()
         # The dataloader state is read via ``get_state()`` not an attribute: under ray the driver
@@ -326,7 +317,7 @@ def _run_supervised(*, recipe: str, model_config: 'ModelConfig', template_config
         """
         state.publish_state()
         handler.on_step_begin()
-        model.forward_backward(**micro_step_kwargs(microbatch_list, owns_ga=True))
+        model.forward_backward(**micro_step_fn(microbatch_list, owns_ga=True))
         handler.on_pre_optimizer_step()
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm)
         handler.on_optimizer_step()
@@ -361,7 +352,7 @@ def _run_supervised(*, recipe: str, model_config: 'ModelConfig', template_config
                 state.micro_step += 1
                 # forward_backward / clip_grad_and_step carry @timed at their twinkle definition
                 # site, so the span is recorded on the rank that actually runs them.
-                model.forward_backward(**micro_step_kwargs(batch, owns_ga=False))
+                model.forward_backward(**micro_step_fn(batch, owns_ga=False))
                 state.publish_state()
                 handler.on_substep_end()
                 # Boundary computed loop-side (backend-agnostic); clip_grad_and_step self-guards
@@ -369,7 +360,8 @@ def _run_supervised(*, recipe: str, model_config: 'ModelConfig', template_config
                 boundary = state.is_grad_sync_boundary()
                 if boundary:
                     handler.on_pre_optimizer_step()
-                model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=ga)
+                model.clip_grad_and_step(max_grad_norm=state.max_grad_norm,
+                                         gradient_accumulation_steps=ga)
                 if boundary:
                     handler.on_optimizer_step()
                     state.record()
@@ -427,7 +419,7 @@ def _run_supervised(*, recipe: str, model_config: 'ModelConfig', template_config
                 break
         final_eval()
 
-    # --- assemble the resume state, then run -------------------------------------------------------
+    # Assemble the resume state, then run.
     # Before any training step: a base-modifying LoRA init (pissa ...) needs its initial snapshot.
     snapshot_initial_adapter(model, save_knobs.initial_adapter_dir)
     state.publish_state()
@@ -487,8 +479,8 @@ def _run_supervised(*, recipe: str, model_config: 'ModelConfig', template_config
         model.wait_async_saves()
         ckpt_dir = save('checkpoint-final', is_final=True)
         write_ckpt_args_json(
-            ckpt_dir, cluster.processor, model_config, template_config, tuner_config, quantize_config,
-            task_type=cluster.task_type)
+            ckpt_dir, cluster.processor, model_config, template_config, tuner_config,
+            quantize_config, task_type=cluster.task_type)
     return state.history
 
 
@@ -503,9 +495,9 @@ def run_sft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
             _save_final: bool = True) -> List[dict]:
     """Assemble and run causal-LM SFT from atomic Configs; returns the loss/grad_norm history.
 
-    Orchestration (backend/mode-agnostic) runs in :func:`_run_supervised`; SFT's own contribution
-    is one line, the objective. ``_save_final`` (internal) skips the final checkpoint for the
-    loss-trajectory-only test path.
+    SFT's own contribution is one thing, the objective; the config -> object stages run in
+    :func:`build_supervised_objects` and the loop in :func:`_run_supervised`. ``_save_final``
+    (internal) skips the final checkpoint for the loss-trajectory-only test path.
     """
     from swift.dev2.loss import configure_loss, liger_fused_ce_enabled
 
@@ -522,14 +514,20 @@ def run_sft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
             fused_linear_cross_entropy=fused_ce,
             label_smoothing=train_config.label_smoothing_factor)
 
-    return _run_supervised(
+    cluster = build_supervised_objects(
         recipe='run_sft', model_config=model_config, template_config=template_config,
         dataset_config=dataset_config, train_config=train_config,
         distributed_config=distributed_config, checkpoint_config=checkpoint_config,
         tuner_config=tuner_config, logging_config=logging_config, quantize_config=quantize_config,
         megatron_config=megatron_config, moe_config=moe_config, task=None,
-        loop_task='fused_lm_ce' if fused_ce else None, configure_loss=sft_loss,
-        configure_metric=None, output_dir=output_dir, _save_final=_save_final)
+        loop_task=('fused_lm_ce' if fused_ce else None), configure_loss=sft_loss,
+        configure_metric=None, output_dir=output_dir)
+    return _run_supervised(
+        cluster, model_config, template_config, dataset_config, train_config, distributed_config,
+        checkpoint_config, tuner_config, logging_config, quantize_config, megatron_config,
+        micro_step_fn=_supervised_micro_kwargs(cluster.forward_task,
+                                               train_config.gradient_accumulation_steps),
+        output_dir=output_dir, _save_final=_save_final)
 
 
 def run_pt(model_config: 'ModelConfig', template_config: 'TemplateConfig',
@@ -577,13 +575,19 @@ def run_embedding(model_config: 'ModelConfig', template_config: 'TemplateConfig'
         # explicitly, with process_group bound to the DP group so the in-batch all-gather is safe.
         configure_embedding_loss(model, loss_type=train_config.loss or 'infonce', mrl_dims=train_config.mrl_dims)
 
-    return _run_supervised(
+    cluster = build_supervised_objects(
         recipe='run_embedding', model_config=model_config, template_config=template_config,
         dataset_config=dataset_config, train_config=train_config,
         distributed_config=distributed_config, checkpoint_config=checkpoint_config,
         tuner_config=tuner_config, logging_config=logging_config, quantize_config=quantize_config,
         megatron_config=None, moe_config=None, task=EMBEDDING_TASK, loop_task=None,
         configure_loss=embedding_loss, configure_metric=configure_embedding_metric,
+        output_dir=output_dir)
+    return _run_supervised(
+        cluster, model_config, template_config, dataset_config, train_config, distributed_config,
+        checkpoint_config, tuner_config, logging_config, quantize_config, None,
+        micro_step_fn=_supervised_micro_kwargs(cluster.forward_task,
+                                               train_config.gradient_accumulation_steps),
         output_dir=output_dir, _save_final=_save_final)
 
 
@@ -613,14 +617,19 @@ def run_reranker(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         # head output to the last valid token and calls loss_instance explicitly.
         configure_reranker_loss(model, loss_type=train_config.loss or 'pointwise_reranker')
 
-    return _run_supervised(
+    cluster = build_supervised_objects(
         recipe='run_reranker', model_config=model_config, template_config=template_config,
         dataset_config=dataset_config, train_config=train_config,
         distributed_config=distributed_config, checkpoint_config=checkpoint_config,
         tuner_config=tuner_config, logging_config=logging_config, quantize_config=quantize_config,
         megatron_config=None, moe_config=None, task=task_type, loop_task=None,
-        configure_loss=reranker_loss, configure_metric=None, output_dir=output_dir,
-        _save_final=_save_final)
+        configure_loss=reranker_loss, configure_metric=None, output_dir=output_dir)
+    return _run_supervised(
+        cluster, model_config, template_config, dataset_config, train_config, distributed_config,
+        checkpoint_config, tuner_config, logging_config, quantize_config, None,
+        micro_step_fn=_supervised_micro_kwargs(cluster.forward_task,
+                                               train_config.gradient_accumulation_steps),
+        output_dir=output_dir, _save_final=_save_final)
 
 
 def run_seq_cls(model_config: 'ModelConfig', template_config: 'TemplateConfig',
@@ -650,11 +659,16 @@ def run_seq_cls(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         # per-token head output to the last valid token and calls loss_instance explicitly.
         configure_seq_cls_loss(model, problem_type=problem_type, num_labels=num_labels)
 
-    return _run_supervised(
+    cluster = build_supervised_objects(
         recipe='run_seq_cls', model_config=model_config, template_config=template_config,
         dataset_config=dataset_config, train_config=train_config,
         distributed_config=distributed_config, checkpoint_config=checkpoint_config,
         tuner_config=tuner_config, logging_config=logging_config, quantize_config=quantize_config,
         megatron_config=None, moe_config=None, task=SEQ_CLS_TASK, loop_task=None,
-        configure_loss=seq_cls_loss, configure_metric=None, output_dir=output_dir,
-        _save_final=_save_final)
+        configure_loss=seq_cls_loss, configure_metric=None, output_dir=output_dir)
+    return _run_supervised(
+        cluster, model_config, template_config, dataset_config, train_config, distributed_config,
+        checkpoint_config, tuner_config, logging_config, quantize_config, None,
+        micro_step_fn=_supervised_micro_kwargs(cluster.forward_task,
+                                               train_config.gradient_accumulation_steps),
+        output_dir=output_dir, _save_final=_save_final)

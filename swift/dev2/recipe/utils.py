@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# Shared recipe utilities: save / resume / step cadence (all families) + online-RL assembly pieces.
+# Shared recipe utilities: save / resume / step cadence (all families) + per-family assembly pieces.
 from __future__ import annotations
 
 import math
@@ -371,10 +371,9 @@ class StepState:
     """The training loop's step cadence, shared by EVERY recipe family (online and offline).
 
     Owns the global/micro step counters, the per-step metric record (``model.calculate_metric`` +
-    the megatron MTP drain, coerced to numeric scalars), the ``RunTracker`` write, the console
-    line, the callback fan-out (``on_log`` per record), the CallbackState publication, and the
-    step-end tail (the boundary save / eval cadence, ``on_step_end``, the transient control flags).
-    The loops themselves and the offline eval dispatch stay visible in the recipes.
+    the megatron MTP drain, coerced to numeric scalars), the ``RunTracker`` write, the console line,
+    the callback fan-out (``on_log`` per record), the CallbackState publication, and the step-end
+    tail (the boundary save / eval cadence, ``on_step_end``, the transient control flags).
     """
 
     def __init__(self, model: Any, train_config: 'TrainConfig', *, gradient_accumulation_steps: int,
@@ -860,3 +859,239 @@ def prompt_rows_from_dataset(dataset_config: 'DatasetConfig') -> Tuple[List[Dict
     if not prompts:
         raise ValueError('online RL found no prompt messages in the dataset rows (expected a `messages` column).')
     return rows, prompts, extras
+
+
+# The offline family's assembly pieces; each family's run file holds the loop that drives them.
+
+
+class SupervisedCluster(NamedTuple):
+    """Every object the supervised loop drives (a plain handle bundle, not a layer)."""
+
+    model: Any
+    processor: Any
+    template: Any
+    dataloader: Any
+    eval_dataloader: Any
+    #: The optimizer-step budget the LR scheduler was configured against.
+    total_opt_steps: int
+    #: The task_type the rows were encoded with ('causal_lm' / 'embedding' / 'seq_cls' / ...).
+    task_type: Optional[str]
+    #: The twinkle task each forward runs under; fused-linear-CE overrides it to 'fused_lm_ce'.
+    forward_task: str
+
+
+class GenerativeEval(NamedTuple):
+    """The resident generative-eval sampler plus the inputs its EvalScope run needs."""
+
+    sampler: Any
+    template: Any
+    datasets: List[str]
+    model_id: Optional[str]
+    task_config: Optional[Dict[str, Any]]
+    #: The colocate weight-sync + memory schedule bracketing each run (None on transformers-live).
+    enter: Optional[Callable[[], None]]
+    exit: Optional[Callable[[], None]]
+
+
+def initialize_supervised_twinkle(distributed_config: 'DistributedConfig', *, seed: int,
+                                  full_determinism: bool, tf32: Optional[bool],
+                                  auxiliary_groups: Sequence[Tuple[str, int]] = ()) -> None:
+    """Initialize twinkle for EVERY offline backend -- required for a DeviceMesh to reach the model.
+
+    mode='ray' builds the 'model' DeviceGroup the workers hold (build_model targets it with
+    remote_group='model'); everything else initializes 'local'. ``auxiliary_groups`` is one
+    ``(name, world_size)`` per FULL-PARAMETER frozen auxiliary (the preference family's reference):
+    a disjoint group appended after the 'model' ranks. The seed bundle re-seeds every ray worker.
+    """
+    import twinkle
+    from twinkle import DeviceGroup
+
+    extra_torch_kwargs = {'seed': seed, 'full_determinism': full_determinism, 'tf32': tf32}
+    if distributed_config.mode == 'ray':
+        nproc = distributed_config.nproc_per_node
+        if nproc is None:
+            raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the Ray "
+                             "'model' DeviceGroup). Pass it explicitly -- there is no default.")
+        groups = [DeviceGroup(name='model', ranks=list(range(nproc)), device_type='GPU', gpus_per_worker=1)]
+        next_rank = nproc
+        planned = ['model']
+        for name, world_size in auxiliary_groups:
+            if world_size < 0:
+                raise ValueError(f'auxiliary DeviceGroup {name!r} world_size must be >= 0, got {world_size}.')
+            if world_size == 0:
+                continue
+            if name in planned:
+                raise ValueError(f'auxiliary DeviceGroup name {name!r} collides with a reserved or already-planned '
+                                 f'group ({planned}); each frozen model needs a unique name.')
+            groups.append(DeviceGroup(name=name, ranks=list(range(next_rank, next_rank + world_size)),
+                                      device_type='GPU', gpus_per_worker=1))
+            planned.append(name)
+            next_rank += world_size
+        twinkle.initialize(
+            mode='ray', nproc_per_node=next_rank, extra_torch_kwargs=extra_torch_kwargs,
+            # --ray_exp_name names this Ray run (the cluster/worker-name prefix); a local run has no
+            # Ray experiment to name, so it is read only here. None keeps twinkle's default.
+            name=distributed_config.ray_exp_name, groups=groups)
+    else:
+        twinkle.initialize(mode='local', extra_torch_kwargs=extra_torch_kwargs)
+
+
+def process_and_validate(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+                         dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
+                         distributed_config: 'DistributedConfig',
+                         checkpoint_config: Optional['CheckpointConfig'],
+                         tuner_config: Optional['TunerConfig'], logging_config: Optional['LoggingConfig'],
+                         quantize_config: Optional['QuantizeConfig'],
+                         megatron_config: Optional['MegatronConfig'],
+                         moe_config: Optional['MoEConfig'], *,
+                         rl_config: Optional['RLConfig'] = None,
+                         reward_config: Optional['RewardConfig'] = None) -> None:
+    """Process and validate the Configs before building anything heavy (idempotent per stage).
+
+    ``rl_config`` / ``reward_config`` ride along when a family consumes them (the preference family).
+    """
+    from swift.dev2.config import process_configs, validate_configs
+
+    process_configs(
+        model_config, template_config, dataset_config, train_config, distributed_config,
+        checkpoint_config, tuner_config, rl_config,
+        rollout_config=None, megatron_config=megatron_config, quantize_config=quantize_config,
+        plugin_config=None)
+    validate_configs(
+        model_config, template_config, dataset_config, train_config, distributed_config,
+        checkpoint_config, tuner_config, rl_config,
+        reward_config=reward_config, rollout_config=None, logging_config=logging_config,
+        quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config)
+
+
+def _resolve_step_interval(value: Optional[float], total_steps: int, name: str) -> Optional[int]:
+    """Resolve a checkpoint/eval interval after the optimizer-step budget is known.
+
+    Values in (0, 1) are ratios of the total run and round up so a positive ratio can never become
+    step zero. Values >= 1 are absolute intervals and must be integral.
+    """
+    if value is None:
+        return None
+    if value < 0:
+        raise ValueError(f'{name} must be non-negative, got {value}.')
+    if 0 < value < 1:
+        return max(1, math.ceil(total_steps * value))
+    if not float(value).is_integer():
+        raise ValueError(f'{name}={value} is not a ratio in (0, 1) or an integer step interval.')
+    return int(value)
+
+
+def _resolve_eval_steps(train_config: 'TrainConfig', total_steps: int) -> Optional[int]:
+    """Turn ``eval_strategy`` into the optimizer-step interval the loop counts evals against.
+
+    ``process_configs`` already chose the strategy (defaulting it to ``save_strategy`` and forcing
+    'no' when the run has nothing to evaluate); 'epoch' maps to the per-epoch share of the budget,
+    'steps' (or a bare ``--eval_steps``) to the configured interval.
+    """
+    strategy = (train_config.eval_strategy or '').lower()
+    if strategy == 'no':
+        return None
+    if strategy == 'epoch':
+        epochs = train_config.num_train_epochs or 1.0
+        return max(1, math.ceil(total_steps / epochs))
+    return _resolve_step_interval(train_config.eval_steps, total_steps, 'eval_steps')
+
+
+def resolve_step_intervals(train_config: 'TrainConfig',
+                           checkpoint_config: Optional['CheckpointConfig'], total_steps: int) -> None:
+    """Resolve the eval/save intervals into the concrete optimizer-step counts the loop uses."""
+    train_config.eval_steps = _resolve_eval_steps(train_config, total_steps)
+    if checkpoint_config is not None:
+        checkpoint_config.save_steps = _resolve_step_interval(
+            checkpoint_config.save_steps, total_steps, 'save_steps')
+
+
+def plan_supervised_steps(recipe: str, train_config: 'TrainConfig', dataloader: Any) -> int:
+    """The optimizer-step budget, with the zero-step fail-fast.
+
+    ``N <= ga`` micro-batches yield 0 optimizer steps (the GA gate lags one step, so a dataset that
+    never fills a full lagged window would run forward/backward but NEVER update the model); rather
+    than silently run a no-op training, fail with an actionable message. Runs BEFORE build_model so
+    we fail before loading heavy weights.
+    """
+    # TODO(dev2): bridge until the recipe/common batch migrates num_optimizer_steps
+    from swift.dev.recipe.common.loop_utils import num_optimizer_steps
+
+    if train_config.max_steps and train_config.max_steps > 0:
+        return train_config.max_steps
+    try:
+        micro_per_epoch = len(dataloader)  # micro-batches (already /batch_size) per epoch
+    except TypeError:
+        micro_per_epoch = 0  # IterableDataset: caller must set max_steps
+    total_micro = math.ceil(micro_per_epoch * train_config.num_train_epochs)
+    total_opt_steps = num_optimizer_steps(total_micro, train_config.gradient_accumulation_steps)
+    if total_opt_steps <= 0:
+        raise ValueError(
+            f'{recipe}: computed {total_opt_steps} optimizer steps -- the dataloader is too small for '
+            f'gradient_accumulation_steps={train_config.gradient_accumulation_steps}, or it is a '
+            f'streaming/iterable dataset with no max_steps. Set TrainConfig.max_steps explicitly, or '
+            'provide enough data.')
+    return total_opt_steps
+
+
+def build_generative_eval(*, model: Any, template: Any, model_config: 'ModelConfig',
+                          train_config: 'TrainConfig', distributed_config: 'DistributedConfig',
+                          template_config: 'TemplateConfig',
+                          output_dir: str) -> Optional[GenerativeEval]:
+    """Build the resident generative-eval sampler and its inputs; None when the run scores val-loss.
+
+    Per ``TrainConfig.eval_sampler_backend``: 'transformers' (default) wraps the live training module
+    (no second weight copy, no sync); 'vllm'/'sglang' place a co-resident engine in the trainer's
+    'model' DeviceGroup and weight-sync it through a CheckpointEngineManager (ray mode only --
+    validate refuses it otherwise), with the colocate hand-over bracketing each eval run.
+    """
+    if not train_config.predict_with_generate:
+        return None
+    from swift.dev2.eval import build_task_config, model_name, validate_eval_datasets
+
+    cfg = train_config
+    eval_datasets = validate_eval_datasets(cfg.eval_dataset)
+    eval_model_id = model_name(model_config)
+    # TrainConfig carries no eval_output_dir / eval_num_proc (those belong to ``swift eval``'s
+    # EvalConfig): the work dir derives from output_dir, the concurrency is EvalScope's default.
+    task_config = build_task_config(
+        work_dir=os.path.join(output_dir, 'eval'),
+        limit=cfg.eval_limit,
+        dataset_args=cfg.eval_dataset_args,
+        generation_config=cfg.eval_generation_config,
+        extra_eval_args=cfg.extra_eval_args)
+
+    backend = cfg.eval_sampler_backend
+    if backend == 'transformers':
+        from twinkle.sampler import TransformersSampler
+
+        sampler = TransformersSampler(model=model)
+        sampler.set_template(template)
+        return GenerativeEval(
+            sampler=sampler, template=template, datasets=eval_datasets, model_id=eval_model_id,
+            task_config=task_config, enter=None, exit=None)
+
+    from twinkle.checkpoint_engine import CheckpointEngineManager
+
+    from swift.dev2.builders import build_dp_mesh, build_sampler
+    # The hand-over sleeps the engine to free the GPU for the trainer, which each backend permits
+    # only with its own memory-saver flag on (vLLM: enable_sleep_mode, sglang: enable_memory_saver).
+    sleep_arg = 'enable_sleep_mode' if backend == 'vllm' else 'enable_memory_saver'
+    sampler = build_sampler(
+        model_config,
+        backend=backend,
+        engine_args={sleep_arg: True},
+        template=template,
+        # Co-resident in the trainer's 'model' DeviceGroup, carrying the SAME mesh the training
+        # model was placed with: an engine slicing inputs on another rank layout would be wrong.
+        device_mesh=build_dp_mesh(distributed_config, template_config.sequence_parallel_size),
+        remote_group='model')
+    manager = CheckpointEngineManager(model=model, sampler=sampler, platform='GPU', mode='colocate')
+    # The eval hand-over is ColocateHandover's (the RL rollout's own sequence, so it cannot drift).
+    # TODO(dev2): bridge until the recipe/common batch migrates ColocateHandover
+    from swift.dev.recipe.common.colocate import ColocateHandover
+
+    handover = ColocateHandover(model, sampler, manager, colocate=True)
+    return GenerativeEval(
+        sampler=sampler, template=template, datasets=eval_datasets, model_id=eval_model_id,
+        task_config=task_config, enter=handover.enter, exit=handover.exit)
