@@ -10,6 +10,13 @@ from ..register import ModelLoader, register_model
 
 class Olmo3Loader(ModelLoader):
 
+    @classmethod
+    def validate_training_args(cls, args) -> None:
+        # Hybrid attention restrictions apply even when the default template is overridden.
+        if args.sequence_parallel_size > 1 or args.padding_free or args.packing:
+            raise ValueError('Olmo3 hybrid attention does not support sequence_parallel_size > 1, '
+                             'padding_free or packing. Use padded batches and data parallelism instead.')
+
     def _update_attn_impl(self, config):
         if is_torch_npu_available():
             # HF's NPU FlashAttention wrapper does not implement window_size. Using it

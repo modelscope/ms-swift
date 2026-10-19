@@ -206,7 +206,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 else:
                     self.adapters = [self.resume_from_checkpoint]
         BaseArguments.__post_init__(self)
-        self._check_olmo3_attention()
+        self.model_meta.loader.validate_training_args(self)
         self._init_override()
         TunerArguments.__post_init__(self)
         self._check_padding_free()
@@ -238,15 +238,6 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
 
         if 'swanlab' in self.report_to:
             self._init_swanlab()
-
-    def _check_olmo3_attention(self):
-        if self.model_type != 'olmo3':
-            return
-        # Fail before sequence_parallel.prepare mutates the attention functions,
-        # even if a caller overrides the model's default chat template.
-        if self.sequence_parallel_size > 1 or self.padding_free or self.packing:
-            raise ValueError('Olmo3 hybrid attention does not support sequence_parallel_size > 1, '
-                             'padding_free or packing. Use padded batches and data parallelism instead.')
 
     def _init_override(self):
         self._init_output_dir()
