@@ -2,16 +2,17 @@
 
 ## Megatron参数
 
-### 基础并行参数校验
+### 基础并行参数预检查
 
-仅在 Megatron 训练后端（`megatron sft/pt/rlhf`）的参数处理阶段执行以下基础检查，早于输出目录流程中的进程组初始化。默认 Transformers 后端和 Megatron 导出入口不受影响。
+Megatron 训练（`megatron sft/pt/rlhf`）在 Swift 参数入口前置 Megatron 已有的两项整除检查，早于输出目录流程中的进程组初始化；默认 Transformers 后端和 Megatron 导出入口不变。
 
-- TP、PP、CP、EP、ETP 必须为正整数；显式设置的 VPP，以及对象中已存在的 DP/Expert DP，也必须为正整数。未指定的参数使用现有参数类默认值，其中 TP、PP、CP、EP、ETP 均默认为 1，VPP 默认为 None。DP 由 World Size 与并行规模推导，不新增 `--data_parallel_size` 参数。
-- 全局 World Size 可靠时，检查 `WORLD_SIZE % (TP * PP * CP) == 0` 和 `WORLD_SIZE % (ETP * EP * PP) == 0`。普通 DP 为 `WORLD_SIZE / (TP * PP * CP)`；专家网格使用独立的 ETP/EP，不能把 EP 直接乘入普通 DP 公式，也不能再给专家乘积乘一次 CP。
-- 当前 Swift 并行初始化入口传入 TP、PP、CP、EP、ETP 和 VPP。VPP 是虚拟流水线阶段数，不增加物理进程数，因此不乘入上述公式；不把上游新版本中未由此入口启用的其他并行维度擅自加入计算。
-- World Size 优先读取已经初始化的默认进程组；否则使用 `WORLD_SIZE`，其次使用 `_PATCH_WORLD_SIZE`，空字符串按未设置处理，与现有环境解析保持一致。无分布式启动标记时按单进程 1 计算。Ray 驱动的 `skip_megatron_init=True`，或仅有 `LOCAL_WORLD_SIZE`/`LOCAL_SIZE` 等启动标记而没有全局 World Size 时，只校验参数取值，待实际训练 worker 获得规模后再检查整除关系，不使用本机设备数猜测全局规模。
+- 用户省略参数时，沿用现有参数类默认值：TP、PP、CP、EP、ETP 均为 1。显式 `ETP=None` 时按 Megatron Core 的规则使用 TP 参与检查，不改写参数对象中的 None。
+- World Size 可靠时，执行 `WORLD_SIZE % (TP * PP * CP) == 0` 和 `WORLD_SIZE % (ETP * EP * PP) == 0`。报错给出参数值、乘积、余数，以及无法将进程等分为普通/专家并行组的原因。
+- 不新增独立的 Python 类型、正负值、DP/Expert DP 或 VPP 限制。计算本身发生类型错误或除零时，在保留原异常原因的基础上补充说明；其余类型、取值和布局约束继续由现有参数解析及后端处理。不能据此认为某个未经前置拒绝的输入可以完成训练。
+- DP/Expert DP 仍由后端推导。VPP 保留既有流水线布局规范化流程，不在此处提前检查，也不乘入物理 World Size。
+- World Size 优先读取已初始化的默认进程组，否则读取 `WORLD_SIZE`、`_PATCH_WORLD_SIZE`，空字符串按未设置处理。无启动线索时按 1 处理；Ray 驱动 `skip_megatron_init=True`，或仅有本机/启动线索而全局规模未知时，暂缓预检查。
 
-例如 `WORLD_SIZE=8, TP=3, PP=1, CP=1` 会在 Swift 侧报错；`WORLD_SIZE=8, TP=2, PP=1, CP=1, ETP=1, EP=3` 则因专家并行乘积不能整除而报错。合法基础配置不代表模型结构、显存、通信或全部专家分组约束已验证。本检查不读取模型结构，不修改参数，也不新增 batch size 校验。
+本次只改善现有检查的报错时机和原因，不替代 Megatron/MindSpeed 的完整验证，不新增 batch size、模型结构或拓扑限制。当前 Swift 初始化入口未启用的上游额外维度不擅自乘入公式。
 
 **训练参数**:
 - 🔥micro_batch_size: 每个DP组的批次大小，默认为1。

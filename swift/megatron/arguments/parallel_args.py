@@ -26,37 +26,36 @@ def get_parallel_world_size(skip_megatron_init=False, distributed=None):
 
 
 def validate_parallel_args(args, world_size=None):
-    """Check the sizes used by SWIFT's initialize_model_parallel call."""
-    names = (
-        'tensor_model_parallel_size',
-        'pipeline_model_parallel_size',
-        'context_parallel_size',
-        'expert_model_parallel_size',
-        'expert_tensor_parallel_size',
-    )
-    sizes = {name: getattr(args, name) for name in names}
-    # DP is derived by SWIFT, not a new CLI argument. Validate it if already set.
-    for name in ('data_parallel_size', 'expert_data_parallel_size', 'virtual_pipeline_model_parallel_size'):
-        value = getattr(args, name, None)
-        if value is not None:
-            sizes[name] = value
-    if world_size is not None:
-        sizes['world_size'] = world_size
-    for name, value in sizes.items():
-        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            raise ValueError(f'{name} must be a positive integer, got {value!r}.')
+    """Diagnose Megatron's existing dense/expert divisibility checks earlier."""
     if world_size is None:
         return
-    # CP belongs to the dense grid; the expert grid has its own TP and DP.
-    # VPP schedules virtual stages and does not multiply the physical world size.
-    for factors in (
-        ('tensor_model_parallel_size', 'pipeline_model_parallel_size', 'context_parallel_size'),
-        ('expert_tensor_parallel_size', 'expert_model_parallel_size', 'pipeline_model_parallel_size'),
+    sizes = {
+        name: getattr(args, name)
+        for name in ('tensor_model_parallel_size', 'pipeline_model_parallel_size', 'context_parallel_size',
+                     'expert_model_parallel_size', 'expert_tensor_parallel_size')
+    }
+    # Match Megatron Core without changing the caller's argument object.
+    if sizes['expert_tensor_parallel_size'] is None:
+        sizes['expert_tensor_parallel_size'] = sizes['tensor_model_parallel_size']
+    # DP is derived and VPP may be normalized from the pipeline layout. Neither
+    # receives a new validation policy here; existing backend checks still run.
+    for grid, factors in (
+        ('dense', ('tensor_model_parallel_size', 'pipeline_model_parallel_size', 'context_parallel_size')),
+        ('expert', ('expert_tensor_parallel_size', 'expert_model_parallel_size', 'pipeline_model_parallel_size')),
     ):
-        product = 1
-        for name in factors:
-            product *= sizes[name]
-        if world_size % product:
-            expression = ' * '.join(f'{name} ({sizes[name]})' for name in factors)
+        expression = ' * '.join(f'{name} ({sizes[name]!r})' for name in factors)
+        try:
+            product = sizes[factors[0]] * sizes[factors[1]] * sizes[factors[2]]
+            remainder = world_size % product
+        except (TypeError, ZeroDivisionError) as exc:
+            reason = ('the parallel-size product is zero, so the world size cannot be divided by it' if isinstance(
+                exc, ZeroDivisionError) else 'the supplied values cannot be used in Megatron parallel-size arithmetic')
+            raise ValueError(f'Invalid Megatron parallel configuration: world_size ({world_size!r}), '
+                             f'{expression}; {reason}. Original error: {exc}') from exc
+        if remainder != 0:
+            fallback = (' expert_tensor_parallel_size=None resolves to tensor_model_parallel_size.'
+                        if grid == 'expert' and args.expert_tensor_parallel_size is None else '')
             raise ValueError(f'Invalid Megatron parallel configuration: world_size ({world_size}) must be '
-                             f'divisible by {expression} = {product}.')
+                             f'divisible by {expression} = {product}. '
+                             f'Remainder: {world_size} % {product} = {remainder}; ranks cannot be '
+                             f'partitioned into equal-sized {grid} parallel groups.{fallback}')

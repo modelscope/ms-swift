@@ -36,20 +36,56 @@ class TestParallelArgs(unittest.TestCase):
         parallel_args.validate_parallel_args(make_args(), 1)
         parallel_args.validate_parallel_args(make_args(), 8)
 
-    def test_invalid_degrees(self):
+    def test_unspecified_expert_tp_uses_megatron_fallback(self):
+        args = make_args(tensor_model_parallel_size=2, expert_tensor_parallel_size=None, expert_model_parallel_size=4)
+        before = vars(args).copy()
+        parallel_args.validate_parallel_args(args, 8)
+        self.assertEqual(vars(args), before)
+        args.tensor_model_parallel_size = 4
+        with self.assertRaisesRegex(ValueError, 'None resolves to tensor_model_parallel_size'):
+            parallel_args.validate_parallel_args(args, 8)
+
+    def test_derived_and_virtual_sizes_are_left_to_existing_flow(self):
+        for name in ('data_parallel_size', 'expert_data_parallel_size', 'virtual_pipeline_model_parallel_size'):
+            for value in (None, 0, -1, 'placeholder'):
+                with self.subTest(name=name, value=value):
+                    args = make_args(**{name: value})
+                    before = vars(args).copy()
+                    parallel_args.validate_parallel_args(args, 8)
+                    self.assertEqual(vars(args), before)
+
+    def test_no_new_python_type_or_sign_policy(self):
+
+        class ParallelSize(int):
+            pass
+
+        # Other backend stages may reject raw inputs; this preflight must not
+        # invent a restriction beyond the two checks it brings forward.
+        for value in (True, ParallelSize(2), -1, 1.0):
+            with self.subTest(value=value):
+                parallel_args.validate_parallel_args(make_args(tensor_model_parallel_size=value), 8)
+
+    def test_error_explains_failed_rank_partition(self):
+        with self.assertRaisesRegex(ValueError, r'Remainder: 8 % 3 = 2.*dense parallel groups'):
+            parallel_args.validate_parallel_args(make_args(tensor_model_parallel_size=3), 8)
+        with self.assertRaisesRegex(ValueError, r'Remainder: 8 % 3 = 2.*expert parallel groups'):
+            parallel_args.validate_parallel_args(make_args(expert_model_parallel_size=3), 8)
+
+    def test_backend_arithmetic_errors_explain_values(self):
         names = ('tensor_model_parallel_size', 'pipeline_model_parallel_size', 'context_parallel_size',
-                 'expert_model_parallel_size', 'expert_tensor_parallel_size', 'data_parallel_size',
-                 'expert_data_parallel_size', 'virtual_pipeline_model_parallel_size')
+                 'expert_model_parallel_size', 'expert_tensor_parallel_size')
         for name in names:
-            for value in (0, -1, 1.5, '2', True, False):
+            for value in (0, 'invalid'):
                 with self.subTest(name=name, value=value), self.assertRaisesRegex(ValueError, name):
                     parallel_args.validate_parallel_args(make_args(**{name: value}), 8)
-        with self.assertRaisesRegex(ValueError, 'tensor_model_parallel_size'):
+        with self.assertRaisesRegex(ValueError, 'Original error:'):
             parallel_args.validate_parallel_args(make_args(tensor_model_parallel_size=None), 8)
 
-    def test_invalid_world_sizes(self):
-        for value in (0, -8, 2.5, True, '8'):
-            with self.subTest(world_size=value), self.assertRaisesRegex(ValueError, 'world_size'):
+    def test_no_new_world_size_value_policy(self):
+        # These raw values are not a claim of valid training. Do not add a new
+        # rejection where Megatron's two arithmetic checks themselves do not fail.
+        for value in (0, -8, 8.0, True):
+            with self.subTest(world_size=value):
                 parallel_args.validate_parallel_args(make_args(), value)
 
     def test_dense_divisibility(self):
@@ -85,10 +121,9 @@ class TestParallelArgs(unittest.TestCase):
         args.virtual_pipeline_model_parallel_size = 3
         parallel_args.validate_parallel_args(args, 16)
 
-    def test_unknown_world_size_still_checks_types(self):
+    def test_unknown_world_size_defers_to_existing_flow(self):
         parallel_args.validate_parallel_args(make_args(tensor_model_parallel_size=3))
-        with self.assertRaisesRegex(ValueError, 'expert_model_parallel_size'):
-            parallel_args.validate_parallel_args(make_args(expert_model_parallel_size=0))
+        parallel_args.validate_parallel_args(make_args(expert_model_parallel_size=0))
 
     def test_validation_does_not_modify_args(self):
         args = make_args(tensor_model_parallel_size=2)
@@ -316,6 +351,12 @@ class TestNormalTrainingRegression(unittest.TestCase):
             (8, dict(pipeline_model_parallel_size=2, pipeline_model_parallel_layout='t|t')),
             (8, dict(sequence_parallel=True)),
             (8, dict(use_megatron_fsdp=True)),
+            (8, dict(tensor_model_parallel_size=2, expert_tensor_parallel_size=None, expert_model_parallel_size=4)),
+            (8,
+             dict(
+                 pipeline_model_parallel_size=2,
+                 pipeline_model_parallel_layout='tt|tt',
+                 virtual_pipeline_model_parallel_size=0)),
         )
         for world, values in cases:
             with training_entries({'WORLD_SIZE': str(world)}) as (entries, calls):
@@ -361,13 +402,11 @@ class TestNormalTrainingRegression(unittest.TestCase):
                         entries[name](tensor_model_parallel_size=3)
                 self.assertEqual(calls.backend.call_count, 3)
 
-    def test_ray_driver_skips_divisibility_but_rejects_bad_values(self):
+    def test_ray_driver_does_not_add_an_argument_policy(self):
         with training_entries({'WORLD_SIZE': '1'}) as (entries, calls):
             for name in ('sft_args', 'pretrain_args', 'rlhf_args'):
                 with self.subTest(entry=name):
                     entries[name](skip_megatron_init=True, tensor_model_parallel_size=8, expert_model_parallel_size=8)
-                    with self.assertRaisesRegex(ValueError, 'context_parallel_size'):
-                        entries[name](skip_megatron_init=True, context_parallel_size=0)
             calls.backend.assert_not_called()
             calls.output.assert_not_called()
 
@@ -406,11 +445,11 @@ class TestNormalTrainingRegression(unittest.TestCase):
         }, {
                 'context_parallel_size': 0
         }, {
-                'pipeline_model_parallel_size': -1
+                'pipeline_model_parallel_size': 0
         }, {
                 'expert_tensor_parallel_size': 2.5
         }, {
-                'tensor_model_parallel_size': True
+                'tensor_model_parallel_size': 'invalid'
         }):
             with training_entries({'WORLD_SIZE': '8'}) as (entries, calls):
                 for name in ('sft_args', 'pretrain_args', 'rlhf_args'):
@@ -422,8 +461,8 @@ class TestNormalTrainingRegression(unittest.TestCase):
                 calls.utils.init_process_group.assert_not_called()
                 calls.utils.to_abspath.assert_not_called()
 
-    def test_bad_world_size_stops_all_entries(self):
-        for value in ('0', '-1', 'abc', '1.5'):
+    def test_unparseable_world_size_stops_all_entries(self):
+        for value in ('abc', '1.5'):
             with training_entries({'WORLD_SIZE': value}) as (entries, calls):
                 for name in ('sft_args', 'pretrain_args', 'rlhf_args'):
                     with self.subTest(world=value, entry=name), self.assertRaises(ValueError):

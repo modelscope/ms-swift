@@ -2,16 +2,17 @@
 
 ## Megatron Parameters
 
-### Basic parallel argument validation
+### Basic parallel argument preflight
 
-Megatron training (`megatron sft/pt/rlhf`) validates basic parallel sizes during Swift argument processing, before process-group initialization in the output-directory flow. The default Transformers backend and Megatron export entry point are unchanged.
+Megatron training (`megatron sft/pt/rlhf`) brings forward Megatron's existing two divisibility checks at the Swift argument entry point, before process-group initialization in the output-directory flow. The default Transformers backend and Megatron export entry point are unchanged.
 
-- TP, PP, CP, EP, and ETP must be positive integers. VPP, when set, and DP/Expert DP values already present on the argument object must also be positive integers. Omitted arguments retain the existing dataclass defaults: TP, PP, CP, EP, and ETP default to 1, while VPP defaults to None. DP is derived from the world size and parallel grid; this does not introduce a `--data_parallel_size` argument.
-- When the global world size is known, require `WORLD_SIZE % (TP * PP * CP) == 0` and `WORLD_SIZE % (ETP * EP * PP) == 0`. Dense DP is `WORLD_SIZE / (TP * PP * CP)`. The expert grid uses its own ETP/EP: EP is not an additional factor in the dense grid, and CP must not be multiplied into the expert product again.
-- The current Swift initialization call passes TP, PP, CP, EP, ETP, and VPP. VPP represents virtual pipeline stages rather than additional physical processes, so it does not multiply either product. Additional axes from newer upstream implementations are not assumed active when this entry point does not enable them.
-- World size comes from an initialized default process group when available, otherwise from `WORLD_SIZE`, followed by `_PATCH_WORLD_SIZE`. Empty strings are treated as unset, matching the existing environment parser. Without distributed-launch markers, the process is treated as a single worker. For a Ray driver with `skip_megatron_init=True`, or a launcher with only markers such as `LOCAL_WORLD_SIZE`/`LOCAL_SIZE` but no global world size, only value/type checks run; divisibility is checked when actual training workers have a known size. Local device counts are not used to infer the global size.
+- Omitted parameters retain the existing defaults: TP, PP, CP, EP, and ETP are 1. An explicit `ETP=None` uses TP for checking, matching Megatron Core's fallback, without modifying the original argument.
+- When the global world size is known, check `WORLD_SIZE % (TP * PP * CP) == 0` and `WORLD_SIZE % (ETP * EP * PP) == 0`. Errors include parameter values, products, remainders, and why equal-sized dense/expert groups cannot be formed.
+- No independent Python-type, sign, DP/Expert DP, or VPP policy is added. If the same arithmetic raises a type or zero-division error, provide context while preserving the original cause. Other type, value, and layout constraints remain with the existing parser and backend. An input not rejected here is not necessarily usable for training.
+- DP/Expert DP remain backend-derived. VPP follows existing pipeline-layout normalization, is not prevalidated here, and does not multiply the physical world size.
+- World size comes from an initialized default process group, otherwise from `WORLD_SIZE` and `_PATCH_WORLD_SIZE`, with empty strings treated as unset. With no launch markers it is 1. A Ray driver with `skip_megatron_init=True`, or a process with only local/launch information and no known global size, defers the preflight.
 
-For example, `WORLD_SIZE=8, TP=3, PP=1, CP=1` fails in Swift. `WORLD_SIZE=8, TP=2, PP=1, CP=1, ETP=1, EP=3` fails the expert-grid check. Passing these checks does not validate model structure, memory capacity, communication, or every expert-group constraint. The check does not inspect models, modify arguments, or add batch-size validation.
+This change improves the timing and explanation of existing checks. It does not replace complete Megatron/MindSpeed validation or add batch-size, model-structure, or topology constraints. Extra upstream axes not enabled by the current Swift initialization entry point are not assumed active.
 
 **Training Parameters**:
 
