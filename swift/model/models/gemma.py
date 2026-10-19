@@ -195,6 +195,21 @@ register_model(
         requires=['transformers>=4.53.1'],
     ))
 
+
+class EmbeddingGemma2Loader(ModelLoader):
+
+    def get_config(self, model_dir: str):
+        self.attn_impl = self.attn_impl or 'eager'
+        return super().get_config(model_dir)
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import AutoModel
+        self.auto_model_cls = self.auto_model_cls or AutoModel
+        model = super().get_model(model_dir, config, processor, model_kwargs)
+        _patch_gemma2_forward(model)
+        return model
+
+
 register_model(
     ModelMeta(
         LLMModelType.gemma_emb,
@@ -207,6 +222,42 @@ register_model(
         template=TemplateType.dummy,
         architectures=['Gemma3TextModel'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.gemma2_emb,
+        [
+            ModelGroup([
+                Model('google/embeddinggemma-2', 'google/embeddinggemma-2'),
+            ]),
+        ],
+        EmbeddingGemma2Loader,
+        template=TemplateType.dummy,
+        architectures=['EmbeddingGemma2Model'],
+        requires=['transformers>=5.20'],
+        tags=['embedding', 'vision', 'audio'],
+    ))
+
+
+def _patch_gemma2_forward(model):
+    if hasattr(model, 'origin_forward'):
+        return
+    model.origin_forward = model.forward
+
+    def forward(self, input_ids=None, attention_mask=None, **kwargs):
+        output = self.origin_forward(input_ids=input_ids, attention_mask=attention_mask, **kwargs)
+        hidden_states = output.last_hidden_state  # [batch, seq_len, embedding_dim]
+        # mean pooling
+        if attention_mask is not None:
+            mask = attention_mask.unsqueeze(-1).to(hidden_states.dtype)
+            embeddings = (hidden_states * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)
+        else:
+            embeddings = hidden_states.mean(dim=1)
+        # L2 normalise
+        embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
+        return {'last_hidden_state': embeddings.contiguous()}
+
+    model.forward = MethodType(forward, model)
 
 
 def _patch_gemma4_forward(model, processor, is_gemma4_unified: bool = False):

@@ -77,6 +77,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🔥 2026.10.19: Support for [EmbeddingGemma-2](https://www.modelscope.cn/models/google/embeddinggemma-2) (740M, multimodal embedding model, unifying text/image/video/audio in a single 768d vector space). Inference and training verified with infonce loss fine-tuning.
 - 🔥 2026.10.15: Day-0 Support for [NVIDIA-Nemotron-3.5-Super-VL-120B-A12B](https://www.modelscope.cn/models/nv-community/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16), Refer to the [SFT examples](examples/models/nemotron_super_vl).
 - 🔥 2026.10.01: Support for [Xing4.0-29B-A4B](https://www.modelscope.cn/models/XingChen-AGI/Xing4.0-29B-A4B): transformers-backend training and inference, with LoRA & full-parameter SFT on single/multi-GPU (DDP & DeepSpeed ZeRO-3) and grouped_mm expert acceleration (~3.7x). Refer to the [examples](examples/models/xing4_0).
 - 🔥 2026.09.21: Support for [DeepSeek-V4.1-Flash](https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V4.1-Flash): Megatron-SWIFT full-parameter training (SFT and GRPO) plus vLLM inference. Refer to the [examples](examples/models/deepseek_v41).

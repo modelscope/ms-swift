@@ -73,6 +73,7 @@
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速。
 
 ## 🎉 新闻
+- 🔥 2026.10.19: 支持 [EmbeddingGemma-2](https://www.modelscope.cn/models/google/embeddinggemma-2)（740M，多模态嵌入模型，支持文本/图像/视频/音频统一向量空间），推理与训练已验证，支持 infonce loss 微调。
 - 🔥 2026.10.15: Day-0 支持 [NVIDIA-Nemotron-3.5-Super-VL-120B-A12B](https://www.modelscope.cn/models/nv-community/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16)，训练示例参考 [SFT示例](examples/models/nemotron_super_vl).
 - 🔥 2026.10.01: 支持 [Xing4.0-29B-A4B](https://www.modelscope.cn/models/XingChen-AGI/Xing4.0-29B-A4B)：transformers 后端的训练与推理，支持单/多卡（DDP 与 DeepSpeed ZeRO-3）的 LoRA 与全参数 SFT，以及 grouped_mm 专家加速（~3.7x），示例参考 [这里](examples/models/xing4_0)。
 - 🔥 2026.09.21: 支持 [DeepSeek-V4.1-Flash](https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V4.1-Flash)：Megatron-SWIFT 全参数训练（SFT 与 GRPO）以及 vLLM 推理，示例参考 [这里](examples/models/deepseek_v41)。
