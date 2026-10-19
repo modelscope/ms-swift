@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
 
 from swift.dev.utils.logger import get_logger
 
@@ -434,3 +434,38 @@ def build_prompt_dataloader(prompts: List[List[dict]],
         num_workers=0,
         collate_fn=_identity_collate,
         shuffle=True)
+
+
+def to_trajectory(row: Dict[str, Any], messages: List[Dict[str, Any]],
+                  template_config: 'TemplateConfig') -> Dict[str, Any]:
+    """Build the twinkle Trajectory for one row.
+
+    ``TemplateConfig.system`` REPLACES a system turn the row already has rather than stacking a second
+    one, matching legacy: two system messages is not a supported prompt shape for most templates.
+    """
+    trajectory: Dict[str, Any] = {'messages': messages}
+    system = getattr(template_config, 'system', None)
+    if system:
+        without_system = [message for message in messages if message.get('role') != 'system']
+        trajectory['messages'] = [{'role': 'system', 'content': system}] + without_system
+    for key in ('images', 'audios', 'videos', 'objects', 'tools'):
+        if row.get(key):
+            trajectory[key] = row[key]
+    return trajectory
+
+
+def split_prompt_and_reference(rows: List[Dict[str, Any]],
+                               template_config: 'TemplateConfig') -> Tuple[List[Dict[str, Any]], List[Optional[str]]]:
+    """rows -> ``(trajectories, references)``, with each row's trailing assistant turn moved aside.
+
+    Generation must see a prompt that stops before the reference answer, and the answer itself is
+    needed afterwards (metric label / reward ground truth); one place keeps "what the model saw"
+    identical across every consumer.
+    """
+    trajectories, references = [], []
+    for row in rows:
+        messages = list(row['messages'])
+        reference = messages.pop()['content'] if messages and messages[-1]['role'] == 'assistant' else None
+        references.append(reference)
+        trajectories.append(to_trajectory(row, messages, template_config))
+    return trajectories, references

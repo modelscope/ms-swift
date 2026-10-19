@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# GRPO's visible training main (deep_refactor.md 33-81): five segments, then ONE loop body picked by
-# placement -- colocate trains a plain two-layer loop, disaggregated drives the StreamingDriver.
+# GRPO's visible training main: five segments, then ONE loop body picked by placement.
 from __future__ import annotations
 
 import math
@@ -35,8 +34,7 @@ class _StepState:
                  output_dir: str, save_steps: Optional[int] = None, manual_gc: bool = False,
                  manual_gc_steps: int = 0, empty_cache_steps: Optional[int] = None,
                  extra_metrics_fn: Optional[Callable[[], Dict[str, Any]]] = None):
-        # The tracker initializes its reporters as a construction side effect, so every validation
-        # the caller needs has already run above this point.
+        # The tracker initializes its reporters as a construction side effect (validation ran above).
         # TODO(dev2): bridge until the recipe/common batch migrates RunTracker
         from swift.dev.recipe.common.tracking import RunTracker
 
@@ -106,13 +104,19 @@ class _StepState:
         return record
 
 
-def _score_group(cluster: Any, samples: List[Any]) -> List[List[Any]]:
+def _score_group(cluster: Any, samples: List[Any], with_prm: bool = False) -> List[List[Any]]:
     """The orm matrix as sample-major rows (``[N][n_scorers]``), None for an unparseable verdict.
 
     ``worker.score_group`` already transposes and normalizes (the same protocol the driver's
-    built-in group-barrier scoring uses); this thin wrapper keeps the colocate loop reading
-    uniformly whether scorers are wired or not.
+    built-in group-barrier scoring uses); ``with_prm`` routes through ``score_group_prm`` so both
+    channels score in ONE pass and each sample's process rewards land on it. This thin wrapper
+    keeps the colocate loop reading uniformly whether scorers are wired or not.
     """
+    if with_prm and cluster.prm_scorer is not None:
+        rewards, prm_refs = cluster.worker.score_group_prm(samples)
+        for sample, ref in zip(samples, prm_refs):
+            sample.prm_process = ref
+        return rewards
     return cluster.worker.score_group(samples) if cluster.orm_scorers else [[] for _ in samples]
 
 
@@ -186,9 +190,8 @@ def _advantage_pipeline(cluster: Any, rl_config: 'RLConfig', reward_config: 'Rew
         raise ValueError('kl_in_reward=True requires an active reference model.')
     kl_values = (torch.tensor(cluster.worker.sequence_kl(old_logps, ref_logps), dtype=torch.float32)
                  if kl_in_reward else None)
-    # None (an unparseable judge verdict) rides as nan exactly as dev recorded it; the estimator's
-    # weighted sum is nan-aware so an unscored candidate cannot poison its group's advantage. A row
-    # with no scorer (no --orm wired) stays [nan] -- a zero-column tensor cannot carry a group mean.
+    # None (an unparseable judge verdict) rides as nan, exactly as dev recorded it; a no-scorer row
+    # (no --orm wired) stays [nan] -- a zero-column tensor cannot carry a group mean.
     reward_matrix = torch.tensor(
         [[float('nan') if value is None or value != value else float(value) for value in row]
          or [float('nan')] for row in rewards], dtype=torch.float32)
@@ -334,9 +337,8 @@ def _train_mini_batches(state: _StepState, rl_config: 'RLConfig', samples: List[
                 ref_logps[lo:hi] if ref_logps is not None else None,
                 teacher_logps[lo:hi] if teacher_logps is not None else None)
             if chord_fn is not None:
-                # CHORD's dual RPC: the policy loss and the SFT expert loss accumulate on ONE
-                # gradient (weights sum to 1), so only the second RPC finalizes. The explicit loss
-                # controls never collide with _forward_kwargs's keys (the guard is the backstop).
+                # CHORD's dual RPC: the two losses accumulate on ONE gradient (weights sum to 1),
+                # so only the second RPC finalizes; the overlap guard below is the collision backstop.
                 overlap = {'loss_key', 'loss_weight', 'finalize_gradients', 'kind'} & set(kwargs)
                 if overlap:
                     raise ValueError(f'forward kwargs duplicate explicit loss controls: {sorted(overlap)}')
@@ -407,26 +409,9 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
             samples = cluster.rollout.generate(
                 prompts, num_samples=num_generations, sampling_params=cluster.sampling_params,
                 prompt_extras=extras or None)
-            rewards = _score_group(cluster, samples)
+            rewards = _score_group(cluster, samples, with_prm=True)
             for sample, reward in zip(samples, rewards):
                 sample.orm_reward = reward
-            if rl_config.advantage_estimator == 'remax':
-                # remax baseline per group: the greedy completion of the same prompt, scored the same
-                # way (the sampler is awake, so colocate CAN run the greedy pass at all).
-                for start in range(0, len(samples), num_generations):
-                    prompt = samples[start].prompt or prompts[start // num_generations]
-                    extra = samples[start].extra or None
-                    greedy = cluster.rollout.generate(
-                        [prompt], num_samples=1, sampling_params=greedy_params(cluster.sampling_params),
-                        prompt_extras=[extra] if extra else None)
-                    if len(greedy) != 1:
-                        raise RuntimeError(
-                            f'remax greedy baseline returned {len(greedy)} samples, expected 1.')
-                    greedy[0].prompt = list(prompt)
-                    row = _score_group(cluster, [greedy[0]])
-                    baseline = weighted_reward(row[0] if row else [], weights)
-                    for sample in samples[start:start + num_generations]:
-                        sample.baseline = baseline
             if rl_config.dynamic_sample:
                 # dynamic_sample: regenerate a zero-variance group (its advantage is degenerate) on
                 # the same prompt, bounded by max_resample_times; the cap accept keeps the last try.
@@ -442,15 +427,26 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
                             prompt_extras=[extra] if extra else None)
                         samples[start:start + num_generations] = regen
                         group = regen
-                        for sample, reward in zip(group, _score_group(cluster, regen)):
+                        for sample, reward in zip(group, _score_group(cluster, regen, with_prm=True)):
                             sample.orm_reward = reward
                         attempts += 1
-            if cluster.prm_scorer is not None:
-                # Colocate path: the worker carries the PRM channel (same protocol the driver's
-                # group barrier runs in the disaggregated regime).
-                prm_refs = cluster.worker.score_prm(samples)
-                for sample, ref in zip(samples, prm_refs):
-                    sample.prm_process = ref
+            if rl_config.advantage_estimator == 'remax':
+                # remax baseline per group: the greedy completion of the same prompt, scored the same
+                # way, AFTER any dynamic_sample regen so the baseline lands on the final siblings.
+                for start in range(0, len(samples), num_generations):
+                    prompt = samples[start].prompt or prompts[start // num_generations]
+                    extra = samples[start].extra or None
+                    greedy = cluster.rollout.generate(
+                        [prompt], num_samples=1, sampling_params=greedy_params(cluster.sampling_params),
+                        prompt_extras=[extra] if extra else None)
+                    if len(greedy) != 1:
+                        raise RuntimeError(
+                            f'remax greedy baseline returned {len(greedy)} samples, expected 1.')
+                    greedy[0].prompt = list(prompt)
+                    row = _score_group(cluster, [greedy[0]])
+                    baseline = weighted_reward(row[0] if row else [], weights)
+                    for sample in samples[start:start + num_generations]:
+                        sample.baseline = baseline
             advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
                 cluster, rl_config, reward_config, samples, train_batch_size, state.global_step)
             _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size)
@@ -520,17 +516,13 @@ def _disaggregated_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Ro
             old_logps=old_logps, ref_logps=ref_logps, teacher_logps=teacher_logps, chord_fn=chord_fn,
             ema_manager=ema_manager, save=save)
         # the visible publish: cadence inline, then one request; the driver brackets the push with
-        # its version accounting AND the resource adapter's decide/register at its next pass
-        # boundary (commit releases its thread).
+        # its version accounting and the adapter's decide/register (commit releases its thread).
         steps_since_publish += optimizer_steps
         publish_due = steps_since_publish >= rollout_config.parameter_sync_step
         if publish_due:
             if strategy == 'in_place':
-                # in_place overwrites the sampler's single live weight copy, so the VISIBLE half of
-                # the publish runs here (abort every in-flight generation -- a no-op under the
-                # synchronous drain -- then push the weights); the driver's bracket feeds the
-                # adapter its decision BEFORE this push, so prepare_publish consumes it in the
-                # same publication.
+                # in_place overwrites the sampler's single live weight copy, so the visible half of
+                # the publish runs here: abort every in-flight generation, then push the weights.
                 def _visible_sync(window: Any) -> None:
                     cluster.rollout.abort_all_inflight()
                     if cluster.adapter is not None:
@@ -563,7 +555,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     # segment 1: prompts (the resource estimator reads the prompt lengths off the raw rows).
     prompt_rows, prompts, prompt_extras = prompt_rows_from_dataset(dataset_config)
     # segment 2: devices (configs + template + twinkle + perf; an estimate rewrites the parallel sizes).
-    template, processor, resource_plan, auxiliary_meshes = initialize_devices(
+    template, resource_plan, auxiliary_meshes = initialize_devices(
         model_config=model_config, template_config=template_config, dataset_config=dataset_config,
         train_config=train_config, distributed_config=distributed_config,
         checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
@@ -587,7 +579,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     # segment 3: the cluster -- every actor GRPO trains with, built explicitly, nothing hidden.
     cluster = initialize_cluster(
         model_config=model_config, template_config=template_config, template=template,
-        processor=processor, train_config=train_config, distributed_config=distributed_config,
+        train_config=train_config, distributed_config=distributed_config,
         checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
         reward_config=reward_config, tuner_config=tuner_config, max_steps=max_steps,
         quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config,
@@ -600,9 +592,8 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=train_config.seed,
         batch_size=(rollout_config.generation_batch_size or len(prompts)))
-    # Late-bound cells: the step state (and its per-step metrics) is built BEFORE the
-    # disaggregated loop creates the driver, so _extra_metrics reads the driver handle and the
-    # current batch's version spans through these one-element cells.
+    # Late-bound cells: _StepState builds before the disaggregated loop creates the driver, so
+    # _extra_metrics reads the driver handle and the batch's version spans through these cells.
     _driver_cell: List[Any] = []
     _last_batch_versions: List[List[int]] = []
 
@@ -644,7 +635,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         from swift.dev.recipe.common.loop_utils import save_training_checkpoint
 
         save_training_checkpoint(
-            cluster.model, name, output_dir=output_dir, consumed_train_samples=0,
+            cluster.model, name, output_dir=output_dir, consumed_train_samples=state.global_step,
             component_states={},
             no_save_optim=(checkpoint_config.no_save_optim or checkpoint_config.save_only_model),
             no_save_rng=(checkpoint_config.no_save_rng or checkpoint_config.save_only_model),
@@ -678,11 +669,9 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
             chord_offset[0] += chord_train_batch_size
             return block
 
-    resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
+    resume_dir = checkpoint_config.resume_from_checkpoint
     if resume_dir:
-        # a full-parameter policy already loaded weights from resume_dir (initialize_cluster); a
-        # tuned policy keeps the original base and reloads its adapter here, then the trainer state
-        # seeds the counters (micro_step mirrors twinkle's cur_step so grad-sync stays aligned).
+        # Full-param resume weights already loaded; the state seeds micro_step = cur_step (grad-sync).
         # TODO(dev2): bridge until the builders batch migrates the resume guards
         from swift.dev.builders import is_megatron_backend
 

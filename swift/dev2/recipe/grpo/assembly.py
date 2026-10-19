@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# GRPO's device and cluster assembly: prompt loading, the init halves, the StreamingDriver seams.
-# Per-recipe by design (the visible training loop lives in run_grpo.py).
+# GRPO's device and cluster assembly: the init halves and the StreamingDriver seams (per-recipe).
 from __future__ import annotations
 
 import math
@@ -210,10 +209,10 @@ def initialize_devices(*, model_config: 'ModelConfig', template_config: 'Templat
                        quantize_config: Optional['QuantizeConfig'] = None,
                        megatron_config: Optional['MegatronConfig'] = None,
                        moe_config: Optional['MoEConfig'] = None, output_dir: str = 'output',
-                       prompt_rows: Sequence[Dict[str, Any]] = ()) -> Tuple[Any, Any, Any, Dict[str, Any]]:
+                       prompt_rows: Sequence[Dict[str, Any]] = ()) -> Tuple[Any, Any, Dict[str, Any]]:
     """Prepare the configs, build the template, and initialize twinkle + perf.
 
-    Returns ``(template, processor, resource_plan, auxiliary_meshes)``: the plan is the
+    Returns ``(template, resource_plan, auxiliary_meshes)``: the plan is the
     ClusterAdapter's (already APPLIED -- derived parallel sizes written back into the configs
     before twinkle.initialize reserves the GPUs) or ``None``; the meshes map each auxiliary group
     to the DeviceMesh its model shards with (empty under an estimate plan).
@@ -249,10 +248,8 @@ def initialize_devices(*, model_config: 'ModelConfig', template_config: 'Templat
         raise ValueError(f"rollout_sampler={backend!r} cannot back an online-RL rollout: weight sync into the "
                          "sampler needs a CheckpointEngineMixin engine. Use 'vllm' or 'sglang'.")
     requests = grpo_group_requests(rl_config, reward_config, distributed_config, tuner_config)
-    # One mesh per auxiliary, built once: the group's rank count and the model's own sharding both
-    # read this object, so they cannot drift apart. The estimator takes the ORIGINAL spec sizes as
-    # hints; an estimate plan rewrites the specs, so the dict is dropped there and the cluster build
-    # re-derives each mesh from the rewritten spec.
+    # One mesh per auxiliary, built once so the group's rank count and the model's sharding cannot
+    # drift; an estimate plan rewrites the specs, so the dict is dropped and re-derived at the build.
     auxiliary_meshes: Dict[str, Any] = {
         name: (DeviceMesh.from_spec(spec) if spec else None) for name, spec in requests}
     resource_plan = estimate_plan(
@@ -304,14 +301,12 @@ def initialize_devices(*, model_config: 'ModelConfig', template_config: 'Templat
         groups=[*device_groups, DeviceGroup(name=REF_ONLY_REMOTE_GROUP, ranks=1, device_type='CPU')])
     logger.info('twinkle initialized with DeviceGroups: %s', [(g.name, g.ranks) for g in device_groups])
     Perf.initialize({})  # the cluster's actors register themselves once built (see run_grpo)
-    return template, processor, resource_plan, auxiliary_meshes
+    return template, resource_plan, auxiliary_meshes
 
 
 class Cluster(NamedTuple):
     """Every actor and handle GRPO's visible loop drives (a plain handle bundle, not a layer)."""
 
-    template: Any
-    processor: Any
     model: Any
     sampler: Any
     rollout: Any
@@ -328,7 +323,6 @@ class Cluster(NamedTuple):
 
 
 def initialize_cluster(*, model_config: 'ModelConfig', template_config: 'TemplateConfig', template: Any,
-                       processor: Any,
                        train_config: 'TrainConfig', distributed_config: 'DistributedConfig',
                        checkpoint_config: Optional['CheckpointConfig'],
                        rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
@@ -336,7 +330,7 @@ def initialize_cluster(*, model_config: 'ModelConfig', template_config: 'Templat
                        max_steps: int, quantize_config: Optional['QuantizeConfig'] = None,
                        megatron_config: Optional['MegatronConfig'] = None,
                        moe_config: Optional['MoEConfig'] = None,
-                       generation_config: Optional[Any] = None, engine_args: Optional[Dict[str, Any]] = None,
+                       generation_config: Optional[Any] = None,
                        resource_plan: Any = None, auxiliary_meshes: Optional[Dict[str, Any]] = None,
                        output_dir: str = 'output') -> Cluster:
     """Build every actor GRPO trains with, explicitly: policy, sampler, reference, teacher, rewards.
@@ -386,9 +380,8 @@ def initialize_cluster(*, model_config: 'ModelConfig', template_config: 'Templat
         cp_partition_mode=distributed_config.cp_partition_mode, task_type=model_config.task_type)
     model.set_template(template)
     configure_rl_loss(model, rl_config)
-    # The optimizer reads the tuner's param groups and sizes its LR scheduler from the step budget,
-    # so it runs after the tuner; the policy metric appends onto the optimizer's metric list and
-    # MUST come after it (twinkle add_metric contract).
+    # The optimizer reads the tuner's param groups and sizes its LR scheduler from the step budget;
+    # the policy metric appends onto the optimizer's metric list (twinkle add_metric contract).
     configure_optimizer(
         model, train_config, num_training_steps=max_steps, distributed_config=distributed_config,
         tuner_config=tuner_config, plugin_config=None)
@@ -397,7 +390,6 @@ def initialize_cluster(*, model_config: 'ModelConfig', template_config: 'Templat
     backend = rollout_config.rollout_sampler
     colocate = rollout_config.sampler_mode == 'colocate'
     sampler_engine_args = build_engine_args(backend, None, rollout_config)
-    sampler_engine_args.update(engine_args or {})
     if colocate:
         sampler_engine_args['enable_sleep_mode' if backend == 'vllm' else 'enable_memory_saver'] = True
     if (backend == 'vllm' and tuner_config is not None and tuner_config.tuner == 'lora'
@@ -407,9 +399,8 @@ def initialize_cluster(*, model_config: 'ModelConfig', template_config: 'Templat
         sampler_engine_args.setdefault('max_loras', 2)
     if rl_config.enable_sampling_replay:
         sampler_engine_args['enable_sampling_replay'] = True
-    # create the samplers here -- a planned layout (estimate/adaptive) sizes the replica pool and
-    # stamps the stable instance id the elastic runtime addresses; the static shape reads the
-    # rollout_config replica knobs (estimate's apply_plan already rewrote them, so it agrees).
+    # A planned layout sizes the replica pool and stamps the elastic instance id; the static shape
+    # reads the rollout_config replica knobs (estimate's apply_plan already rewrote them, so it agrees).
     if resource_plan is not None:
         sampler = build_sampler(
             model_config, backend=backend, engine_args=dict(sampler_engine_args),
@@ -438,9 +429,8 @@ def initialize_cluster(*, model_config: 'ModelConfig', template_config: 'Templat
             value = getattr(generation_config, key, None)
             if value is not None:
                 params[key] = value
-    # One engine for every generation entry: single-turn is the one-turn degenerate. A disaggregated
-    # run places it on the CPU payload group (episode refs never enter the driver early); colocate
-    # keeps it local so the visible loop's batch generate drives the sampler directly.
+    # One engine for every generation entry (single-turn is the one-turn degenerate): disaggregated
+    # places it on the CPU payload group; colocate keeps it local for the visible loop's generate.
     rollout = MultiTurnRollout(
         sampler, template, sampling_params=SamplingParams(**params),
         allow_partial_rollout=rollout_config.allow_partial_rollout,
@@ -528,7 +518,7 @@ def initialize_cluster(*, model_config: 'ModelConfig', template_config: 'Templat
         adapter.elastic_models = elastic_models
 
     return Cluster(
-        template=template, processor=processor, model=model, sampler=sampler, rollout=rollout,
+        model=model, sampler=sampler, rollout=rollout,
         engine=engine, adapter=adapter, reference=reference, teacher=teacher, worker=worker,
         prm_scorer=prm_scorer, prm_orm_mix=reward_config.prm_orm_mix, sampling_params=params,
         colocate=colocate, orm_scorers=orm_scorers)
@@ -554,8 +544,12 @@ def build_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'Ro
     rollout = cluster.rollout
     worker = cluster.worker
     strategy = rollout_config.weight_sync_strategy
-    max_staleness = (0 if rollout_config.async_mode == 'none' else 1
-                     if rollout_config.async_mode == 'one_step_off' else rollout_config.max_staleness)
+    if rollout_config.async_mode == 'none':
+        max_staleness = 0
+    elif rollout_config.async_mode == 'one_step_off':
+        max_staleness = 1
+    else:
+        max_staleness = rollout_config.max_staleness
     adapter_name = ('default' if tuner_config is not None else None)
     check_streaming_config(
         adapter_name=adapter_name, max_staleness=max_staleness, weight_sync_strategy=strategy,
@@ -569,9 +563,8 @@ def build_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'Ro
     orm_weights = (build_reward_weights(reward_config.orm_weights, len(cluster.orm_scorers))
                    if cluster.orm_scorers else None)
 
-    # The two algorithm verdicts stay closures (their knobs -- dynamic_sample, the greedy remax
-    # generation, the weight vectors -- are GRPO's own); the PRM scoring that used to share this
-    # hook is the score_worker collaborator's own channel now.
+    # The two algorithm verdicts stay closures (dynamic_sample, the greedy remax generation, the
+    # weight vectors are GRPO's own); PRM scoring is the score_worker collaborator's channel now.
     regenerate = None
     if rl_config.dynamic_sample:
         def regenerate(group_key: str, samples: List[Any]) -> bool:
@@ -591,9 +584,8 @@ def build_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'Ro
             values = (worker.score_group([greedy[0]])[0] if cluster.orm_scorers else [])
             return weighted_reward(values, orm_weights)
 
-    # Stream geometry: one publish cycle is expected to train ``parameter_sync_step`` groups, and the
-    # buffer must hold at least one full pull quantum -- lcm(need_rows, num_generations) rows -- or
-    # assembly could deadlock under the backpressure cap.
+    # Stream geometry: a publish cycle trains ``parameter_sync_step`` groups, and the buffer must
+    # hold one full pull quantum -- lcm(need_rows, num_generations) rows -- or assembly deadlocks.
     groups_per_partition = max(1, rollout_config.parameter_sync_step)
     pull_rows = need_rows * num_generations // math.gcd(need_rows, num_generations)
     buffer_depth = max((max_staleness + 1) * groups_per_partition * num_generations, pull_rows)

@@ -82,8 +82,8 @@ class RewardWorker(ScoreWorker):
         fused: List[List[float]] = []
         for per_token, orm in zip(process, orm_advantages):
             if per_token is None:
-                raise RuntimeError('PRM fusion requires a per-sample process reward; the score_prm '
-                                   'call must run before fuse_prm.')
+                raise RuntimeError('PRM fusion requires a per-sample process reward; the '
+                                   'score_group_prm call must run before fuse_prm.')
             fused.append([mix * step + (1.0 - mix) * float(orm) for step in per_token])
         return fused
 
