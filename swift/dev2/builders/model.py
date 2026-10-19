@@ -4,7 +4,7 @@ import copy
 import dataclasses
 import math
 import os
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
 
 from swift.dev.utils.logger import get_logger
 
@@ -168,6 +168,45 @@ def apply_full_param_freeze(model: TrainableModel, train_config: Optional[TrainC
         freeze_regex=freeze_regex,
         trainable_names=trainable_names,
         trainable_regex=trainable_regex)
+
+
+def build_ref_model(*, name: str, model_id: Optional[str], model_config: ModelConfig,
+                    template, distributed_config: DistributedConfig, device_mesh: Any = None,
+                    parallel_spec: Optional[str] = None, adapters: Sequence[str] = (),
+                    policy_model: Any = None, disable_adapter: bool = False) -> Optional[Any]:
+    """One frozen auxiliary (reference / teacher), as the BARE twinkle model (cookbook shape).
+
+    ``disable_adapter`` returns the policy model itself with the caller-side contract "forward it
+    with ``disable_lora=True``" (the LoRA KL anchor -- same weights, adapters off); ``model_id``
+    empty returns ``None`` (the channel is off). Otherwise: build the frozen model in its own
+    remote group ``name`` sized by the GIVEN ``device_mesh`` (the caller derives it from its plan
+    or spec -- a None mesh is a single-rank build) and install the single frozen adapter. The
+    model IS the reference -- twinkle cookbooks forward it directly (``ref_model.forward_only``);
+    ``remote_group=name`` already encodes its placement.
+    """
+    if disable_adapter:
+        if policy_model is None:
+            raise ValueError(f'{name}: disable_adapter=True needs the policy model (the shared-weights view).')
+        return policy_model
+    if not model_id:
+        return None
+    from swift.dev2.processor import InputProcessor
+
+    config = copy(model_config)
+    config.model = model_id
+    dist = frozen_auxiliary_distributed_config(
+        distributed_config, device_mesh.world_size if device_mesh else 1, parallel_spec=parallel_spec)
+    frozen = build_model(config, dist, device_mesh=device_mesh, remote_group=name)
+    if len(adapters) > 1:
+        raise ValueError(f'{name} currently supports exactly one frozen adapter per auxiliary model.')
+    if adapters:
+        frozen.add_adapter_to_model(f'{name}_adapter', adapters[0], is_trainable=False)
+        frozen.set_processor(InputProcessor, adapter_name=f'{name}_adapter')
+        frozen.set_template(template, adapter_name=f'{name}_adapter')
+    else:
+        frozen.set_processor(InputProcessor)
+        frozen.set_template(template)
+    return frozen
 
 
 def _mixed_precision_for(torch_dtype: Optional[str]) -> str:

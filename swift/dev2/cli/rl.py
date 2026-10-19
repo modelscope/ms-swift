@@ -112,9 +112,31 @@ def parse_rl_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 def run_rl_configs(configs: Dict[str, Any]) -> List[dict]:
     """Process, validate, bootstrap, and execute an already parsed RLHF Config set."""
     from swift.dev2.config import process_and_validate_configs
-    from swift.dev.recipe import run_rl
 
     process_and_validate_configs(configs)
+    # grpo is the dev2 pilot recipe (five-segment main, StreamingDriver / colocate branch pair);
+    # every other rl_type still runs its native dev recipe until its own dev2 batch lands.
+    if configs['rl_config'].rl_type == 'grpo':
+        from swift.dev2.recipe.grpo import run_grpo
+        return run_grpo(
+            configs['model_config'],
+            configs['template_config'],
+            configs['dataset_config'],
+            configs['train_config'],
+            configs['distributed_config'],
+            configs['checkpoint_config'],
+            configs['rollout_config'],
+            configs['rl_config'],
+            reward_config=configs['reward_config'],
+            tuner_config=configs['tuner_config'],
+            generation_config=configs['generation_config'],
+            logging_config=configs['logging_config'],
+            quantize_config=configs['quantize_config'],
+            megatron_config=configs['megatron_config'],
+            moe_config=configs['moe_config'],
+            output_dir=configs['checkpoint_config'].output_dir,
+        )
+    from swift.dev.recipe import run_rl
     return run_rl(
         configs['model_config'],
         configs['template_config'],
