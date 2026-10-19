@@ -27,6 +27,8 @@ class TestAscendCheckEnv(unittest.TestCase):
         self.assertIn('| Megatron Core', output.getvalue())
         self.assertIn('| MindSpeed', output.getvalue())
         self.assertIn('| mcore-bridge', output.getvalue())
+        self.assertIn('| triton-ascend', output.getvalue())
+        self.assertNotIn('| Megatron-LM', output.getvalue())
         sections = [
             '1. Basic environment', '2. Software components', '3. Ascend installation information', '4. NPU status'
         ]
@@ -82,6 +84,12 @@ class TestAscendCheckEnv(unittest.TestCase):
     def test_permission_error(self):
         with patch.object(Path, 'open', side_effect=PermissionError('denied')):
             self.assertEqual(check_env.read_version(['version.info'])[1], 'UNKNOWN')
+
+    def test_triton_ascend_metadata(self):
+        dist = SimpleNamespace(version='3.2.1', locate_file=lambda value: Path('/opt/venv/site-packages'))
+        with patch.object(check_env.metadata, 'distribution', return_value=dist) as query:
+            self.assertEqual(check_env.package_version('triton-ascend')[:2], ('3.2.1', 'FOUND'))
+            query.assert_called_once_with('triton-ascend')
 
 
 if __name__ == '__main__':

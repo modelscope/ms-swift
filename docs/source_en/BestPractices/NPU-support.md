@@ -256,9 +256,11 @@ Before training, run from the repository root with the Python environment used f
 python examples/ascend/check_env.py
 ```
 
-The report contains four table sections: basic environment, software components, Ascend installation information, and NPU status. Software components include PyTorch, torch-npu, ms-swift, Megatron Core, MindSpeed, and mcore-bridge, with missing packages reported individually. Note shows the distribution location, Python executable, or driver/CANN version-file directory. Long paths wrap automatically. The native `npu-smi` table follows when device information is available.
+The report contains four table sections: basic environment, software components, Ascend installation information, and NPU status. Software components include PyTorch, torch-npu, ms-swift, Megatron Core, MindSpeed, mcore-bridge, and triton-ascend, with missing components reported individually. Note shows the distribution location, Python executable, or driver/CANN version-file directory. Long paths wrap automatically. The native `npu-smi` table follows when device information is available.
 
 `FOUND` means information was detected, `MISSING` means package metadata or the tool was not found, `UNKNOWN` means the version or device information could not be determined, and `UNAVAILABLE` means a query failed. Missing optional packages do not imply an unusable basic training environment; an unknown version does not imply an absent installation. The script does not validate compatibility, initialize Megatron, or execute NPU operations. Individual failures do not interrupt the report. Run the availability checks below separately if needed.
+
+The triton-ascend version comes from its own distribution metadata, not from the ordinary triton package.
 
 ### NPU Availability Check
 

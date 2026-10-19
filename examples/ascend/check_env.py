@@ -126,6 +126,7 @@ def main():
         ('Megatron Core', 'megatron-core'),
         ('MindSpeed', 'mindspeed'),
         ('mcore-bridge', 'mcore-bridge'),
+        ('triton-ascend', 'triton-ascend'),
     )
     print_table([(label, *collect(package_version, package)) for label, package in packages])
     print('\n3. Ascend installation information')
@@ -137,7 +138,7 @@ def main():
         print('\nNPU status (npu-smi):')
         print(npu[3])
     print('\nFOUND means information was detected; compatibility and runtime availability are not checked.')
-    print('Missing Megatron Core, MindSpeed or mcore-bridge may be expected when using other training backends.')
+    print('Missing backend-specific components does not necessarily indicate an unusable training environment.')
 
 
 if __name__ == '__main__':
