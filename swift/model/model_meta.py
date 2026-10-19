@@ -44,6 +44,11 @@ class ModelGroup:
 
 class BaseModelLoader(ABC):
 
+    @classmethod
+    def validate_training_args(cls, args) -> None:
+        """Validate model-specific restrictions before model loading and sequence-parallel initialization."""
+        pass
+
     @abstractmethod
     def __init__(self, model_info, model_meta, *args, **kwargs):
         pass

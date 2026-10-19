@@ -10,6 +10,7 @@ import torch
 from packaging.requirements import Requirement
 from packaging.version import Version
 from transformers import AutoConfig
+from unittest.mock import Mock
 
 from swift.model import MODEL_MAPPING, LLMModelType, ModelArch, get_model_processor
 from swift.model.models import olmo
@@ -122,6 +123,7 @@ def test_auto_config_recognizes_local_olmo3(tmp_path):
     assert loaded.rope_scaling == config.rope_scaling
 
 
+@pytest.mark.parametrize('template', ['olmo3_think', 'default'])
 @pytest.mark.parametrize('unsupported', [
     {
         'sequence_parallel_size': 2
@@ -133,7 +135,7 @@ def test_auto_config_recognizes_local_olmo3(tmp_path):
         'padding_free': True
     },
 ])
-def test_sft_arguments_reject_unsupported_paths_before_output_or_model_loading(tmp_path, unsupported):
+def test_sft_arguments_reject_unsupported_paths_before_output_or_model_loading(tmp_path, unsupported, template):
     from swift import SftArguments
 
     model_dir = tmp_path / 'model'
@@ -145,7 +147,7 @@ def test_sft_arguments_reject_unsupported_paths_before_output_or_model_loading(t
         # Overriding the chat template must not bypass the model's attention guard.
         SftArguments(
             model=str(model_dir),
-            template='default',
+            template=template,
             dataset=['unused.jsonl'],
             output_dir=str(output_dir),
             torch_dtype='float32',
@@ -153,6 +155,72 @@ def test_sft_arguments_reject_unsupported_paths_before_output_or_model_loading(t
             bf16=False,
             **unsupported)
     assert not output_dir.exists()
+
+
+@pytest.mark.parametrize('template', ['olmo3_think', 'default'])
+def test_sft_rejects_sequence_parallel_before_model_loading_or_prepare(tmp_path, monkeypatch, template):
+    from swift import SftArguments
+    from swift.pipelines.train.sft import SwiftSft
+    from swift.sequence_parallel import sequence_parallel
+
+    model_dir = tmp_path / 'model'
+    config = _tiny_config()
+    config.architectures = ['Olmo3ForCausalLM']
+    config.save_pretrained(model_dir)
+    output_dir = tmp_path / 'output'
+    load_model = Mock(side_effect=AssertionError('Model loading must not start for unsupported sequence parallelism.'))
+    prepare = Mock(side_effect=AssertionError('Sequence-parallel initialization must not start.'))
+    monkeypatch.setattr(SftArguments, 'get_model_processor', load_model)
+    monkeypatch.setattr(sequence_parallel, 'prepare', prepare)
+
+    with pytest.raises(ValueError, match='Olmo3 hybrid attention'):
+        SwiftSft([
+            '--model',
+            str(model_dir),
+            '--template',
+            template,
+            '--dataset',
+            'unused.jsonl',
+            '--output_dir',
+            str(output_dir),
+            '--torch_dtype',
+            'float32',
+            '--fp16',
+            'false',
+            '--bf16',
+            'false',
+            '--sequence_parallel_size',
+            '2',
+        ])
+    load_model.assert_not_called()
+    prepare.assert_not_called()
+    assert not output_dir.exists()
+
+
+@pytest.mark.parametrize('model_type,sp_size', [('olmo3', 1), ('llama', 2)])
+def test_sft_arguments_keep_supported_model_configurations(tmp_path, model_type, sp_size):
+    from transformers import LlamaConfig
+
+    from swift import SftArguments
+
+    model_dir = tmp_path / 'model'
+    config = _tiny_config() if model_type == 'olmo3' else LlamaConfig()
+    config.architectures = ['Olmo3ForCausalLM' if model_type == 'olmo3' else 'LlamaForCausalLM']
+    config.save_pretrained(model_dir)
+    args = SftArguments(
+        model=str(model_dir),
+        model_type=model_type,
+        template='default',
+        dataset=['unused.jsonl'],
+        output_dir=str(tmp_path / 'output'),
+        torch_dtype='float32',
+        fp16=False,
+        bf16=False,
+        sequence_parallel_size=sp_size)
+    assert args.model_type == model_type
+    assert args.sequence_parallel_size == sp_size
+    assert not args.padding_free
+    assert not args.packing
 
 
 def test_swift_loads_local_tiny_olmo3_checkpoint(tmp_path):
