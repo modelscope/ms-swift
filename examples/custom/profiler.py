@@ -38,8 +38,8 @@ def _bool_env(name, default):
 
 @dataclass(frozen=True)
 class ProfilerConfig:
-    # One-based optimizer step: step 1000 begins with 999 completed updates.
-    start_step: int = 1000
+    # One-based optimizer step: step 100 begins with 99 completed updates.
+    start_step: int = 100
     active_steps: int = 1
     warmup_steps: int = 0
     device: str = 'auto'
