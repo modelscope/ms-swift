@@ -11,20 +11,17 @@ def peek_backend(argv: Sequence[str]) -> Optional[str]:
     """Read ``--backend`` straight from raw argv, before the Configs are parsed.
 
     The backend selects which legacy-flag contract applies (Megatron and Transformers expose
-    different knobs), so it has to be known before ``reject_legacy_only_flags`` runs -- earlier than
-    the full parse that would otherwise populate ``DistributedConfig.backend``.
+    different knobs), so it has to be known before ``reject_legacy_only_flags`` runs.
     """
+    from swift.dev.cli.parser import _scan_flag
+
     for index, token in enumerate(argv):
         if not token.startswith('--'):
             continue
-        option, separator, inline_value = token[2:].partition('=')
+        option, value, _, _ = _scan_flag(argv, index)
         if option.replace('-', '_') != 'backend':
             continue
-        if separator:
-            return inline_value
-        if index + 1 < len(argv) and not argv[index + 1].startswith('--'):
-            return argv[index + 1]
-        return None
+        return value
     return None
 
 
@@ -50,7 +47,13 @@ def _fix_mtp(model_config: 'ModelConfig') -> None:
 
 
 def _derive_megatron_ga(train_config: 'TrainConfig', distributed_config: 'DistributedConfig', world_size: int) -> None:
-    """Use the shared Config derivation while honoring the launcher's effective world size."""
+    """Run the shared GA derivation against the launcher's effective world size.
+
+    ``_derive_gradient_accumulation_steps`` reads WORLD_SIZE first and falls back to nproc_per_node,
+    but the fallback would under-count a multi-node run where nproc is per-node -- so the launcher
+    value is handed in explicitly. nproc_per_node is swapped only for the call and restored after,
+    keeping its per-node semantics intact.
+    """
     if train_config.global_batch_size is None:
         return
     from swift.dev.config.process import _derive_gradient_accumulation_steps
@@ -60,7 +63,7 @@ def _derive_megatron_ga(train_config: 'TrainConfig', distributed_config: 'Distri
     try:
         _derive_gradient_accumulation_steps(train_config, distributed_config, True)
     finally:
-        distributed_config.nproc_per_node = original_nproc or world_size
+        distributed_config.nproc_per_node = original_nproc
 
 
 def _select_megatron_tuner(tuner: 'TunerConfig') -> Optional['TunerConfig']:

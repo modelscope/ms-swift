@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Eval CLI: parse/validate dev Configs and drive the in-process sampler evaluation recipe."""
 from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional
@@ -7,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 def parse_eval_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     from swift.dev.cli.legacy_coverage import reject_legacy_only_flags
-    from swift.dev.cli.parser import parse_configs_strict, resolve_argv, select_tuner
+    from swift.dev.cli.parser import normalize_sampler, parse_configs_strict, resolve_argv, select_tuner
     from swift.dev.config import (
         CheckpointConfig,
         DatasetConfig,
@@ -26,8 +25,7 @@ def parse_eval_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     reject_legacy_only_flags('eval', effective_argv)
     classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, CheckpointConfig, TunerConfig,
                RolloutConfig, InferConfig, EvalConfig, QuantizeConfig, RuntimeConfig]
-    # ``strict`` is unique to DatasetConfig (the column-mapping gate) now that InferConfig's per-row
-    # generation tolerance is spelled ``generation_strict``, so no owner disambiguation is needed.
+    # ``strict`` is unique to DatasetConfig (the column-mapping gate), so no owner pinning is needed.
     configs = parse_configs_strict(
         classes, effective_argv, command='swift eval', load_args_default=True)
     names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'checkpoint_config',
@@ -38,15 +36,14 @@ def parse_eval_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     eval_config.eval_output_dir = os.path.abspath(os.path.expanduser(eval_config.eval_output_dir))
     if eval_config.result_jsonl:
         eval_config.result_jsonl = os.path.abspath(os.path.expanduser(eval_config.result_jsonl))
-    if result['infer_config'].sampler == 'pt':
-        result['infer_config'].sampler = 'transformers'
+    normalize_sampler(result['infer_config'])
     return result
 
 
 def eval_main(argv: Optional[List[str]] = None):
     from swift.dev.builders import build_engine_args
     from swift.dev.config import process_and_validate_configs
-    from swift.dev.recipe import run_eval
+    from swift.dev.recipe.infer import run_eval
 
     configs = parse_eval_configs(argv)
     process_and_validate_configs(configs, add_version=False, create_output_dir=False, resolve_model=True)

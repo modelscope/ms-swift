@@ -1,8 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loader for ByteDance Seed-OSS.
-
-Ported from ``swift/model/models/seed.py``. A plain causal-LM family.
-"""
 from __future__ import annotations
 
 from .base import ModelLoader, register_model

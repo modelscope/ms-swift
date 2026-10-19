@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""What a checkpoint is, and which named sub-modules make up which trainable part of it."""
 from __future__ import annotations
 import importlib
 import os
@@ -19,14 +18,13 @@ __all__ = [
     'match_model_types_by_architectures', 'register_model', 'resolve_template'
 ]
 
-# Fields that accept a bare string for convenience but always read back as a list.
+# Fields that accept a bare string for convenience but always read back as a list; `moe_block` is a
+# module-name hint rather than a trainable part but normalises the same way.
 _PART_FIELDS = ('language_model', 'vision_tower', 'aligner', 'generator')
-# Fields normalised to a list of strings on assignment. Beyond the freeze/LR "parts" above, this
-# also covers `moe_block`, which is a module-name hint rather than a trainable part.
 _LIST_FIELDS = _PART_FIELDS + ('moe_block', )
 
 MODEL_MAPPING: Dict[str, Type['ModelLoader']] = {}
-# Alias -> registered model_type. Keeps `--model_type ovis_ocr2` and old `args.json` working after
+# Alias -> registered model_type, so `--model_type ovis_ocr2` and old `args.json` keep working after
 # two legacy model_types that differed only by template were merged into one family.
 MODEL_ALIASES: Dict[str, str] = {}
 # HuggingFace class name -> model_types, lazily built and invalidated on every registration.
@@ -35,63 +33,33 @@ _ARCH_MAPPING: Dict[str, List[str]] = {}
 
 @dataclass
 class ModelArch:
-    """The module-name prefixes that split a checkpoint into separately-controllable parts.
+    """Module-name prefixes splitting a checkpoint into separately-controllable parts.
 
-    Values are *module name prefixes* exactly as they appear in ``named_parameters()`` /
-    ``named_modules()`` -- not dotted templates with ``{}`` placeholders. Consumers either match with
-    ``name.startswith(prefix)`` (freeze, learning-rate grouping, quantization exclusion) or resolve
-    them with ``deep_getattr`` (gradient checkpointing, rollout weight splitting). A bare string is
-    accepted and normalised to a one-element list, because a part legitimately lives in more than one
-    place on some checkpoints (``language_model=['model.language_model', 'lm_head']``). The
-    ``Union[str, List[str]]`` annotation describes what may be *written*; reads always give a list.
-
-    All-empty is the correct value for a plain LLM: these fields describe *multimodal* partitioning,
-    and every consumer reads an empty list as "no such part, treat the whole model uniformly".
-
-    Deliberately omitted: legacy swift's ``ModelKeys`` also carried ~15 layer-path fields
-    (``module_list`` / ``attention`` / ``embedding`` / ``q_proj`` / ``qkv_proj`` / ``qa_proj`` / ...).
-    Their only real client was the llama-pro tuner's architecture matcher, which is not implemented
-    here, so they were data every new model had to fill in and nothing ever read. Whoever needs
-    per-layer access should reach for the runtime accessors (``get_decoder()``,
-    ``get_output_embeddings()``, module-type scans) rather than re-adding path strings.
-
-    Args:
-        language_model: The LLM, including its output head. Drives gradient checkpointing, rollout
-            weight splitting, and scoping a quantizer's block walk (use :attr:`decoder` for the
-            latter -- it strips the head). In a multimodal LoRA run ``freeze_llm`` keeps it in or out
-            of the expanded 'all-linear' target; it trains at the base lr (no per-tower rule).
-        vision_tower: The encoder (vision, audio, ...). ``freeze_vit`` keeps it out of the expanded
-            multimodal LoRA target and defaults ``vit_gradient_checkpointing``; ``vit_lr`` gives it a
-            separate learning-rate group. Excluded from quantization and from mcore conversion.
-        aligner: The connector between encoder and LLM -- projector / merger / resampler.
-            ``freeze_aligner`` keeps it out of the expanded multimodal LoRA target and ``aligner_lr``
-            gives it a separate learning-rate group. Excluded from quantization.
-        generator: An output generator that is not the LM head (e.g. a speech or image decoder).
-            Frozen by default: it is trained by its own recipe, not by text SFT.
-        lm_head: Output projection name, needed only when it is not literally ``lm_head`` (internlm2
-            names it ``output``, chatglm ``transformer.output_layer``). Used to keep the head out of
-            ``all-linear`` LoRA targets, so a leaf name is enough.
-        moe_block: Leaf *class* name(s) of a MoE sparse/expert block (Mixtral's
-            ``MixtralSparseMoeBlock``, llama4's ``Llama4TextMoe``). Not a trainable "part" -- it exists
-            only so the DeepSpeed ZeRO-3 setup can mark that block as a leaf module (ZeRO-3 must not
-            shard inside it). Stored as a class *name* rather than legacy's imported class so it also
-            covers remote-code blocks with no static import path, and matches on class (not attribute)
-            so an interleaved dense sibling under the same attribute is not caught;
-            :func:`apply_z3_leaf_modules` resolves the name to the live class at load time. Empty for a
-            dense model.
+    Values are verbatim ``named_parameters()`` / ``named_modules()`` names; consumers either
+    ``startswith``-match them (freeze, LR grouping, quantization exclusion) or ``deep_getattr``-
+    resolve them (gradient checkpointing, rollout weight splitting). A bare string is a one-element
+    list; all-empty is correct for a plain LLM ("no such part").
     """
 
+    # The LLM incl. its output head: gradient checkpointing, rollout weight splitting, freeze_llm.
+    # Legacy's ~15 layer-path fields are gone: only the unimplemented llama-pro matcher read them.
     language_model: Union[str, List[str]] = field(default_factory=list)
+    # Encoder: freeze_vit, vit_gradient_checkpointing, vit_lr group; no quantization/mcore.
     vision_tower: Union[str, List[str]] = field(default_factory=list)
+    # Connector between encoder and LLM (projector/merger/resampler): freeze_aligner, aligner_lr.
     aligner: Union[str, List[str]] = field(default_factory=list)
+    # An output generator that is not the LM head (speech/image decoder); trained by its own recipe.
     generator: Union[str, List[str]] = field(default_factory=list)
+    # Output projection name when it is not literally 'lm_head' (internlm2 'output', chatglm
+    # 'transformer.output_layer'); a leaf name suffices to keep the head out of 'all-linear' LoRA.
     lm_head: Optional[str] = None
+    # Leaf class name(s) of a MoE block: a ZeRO-3 leaf marker, not a trainable part. Class names
+    # cover remote-code blocks; class (not attribute) matching skips dense siblings (llama4).
     moe_block: Union[str, List[str]] = field(default_factory=list)
 
     def __setattr__(self, key: str, value) -> None:
-        # Normalise on every assignment, not just in __post_init__: the annotation advertises that a
-        # bare string is acceptable, so `arch.vision_tower = 'visual'` must not leave a string behind
-        # for `startswith` loops to iterate character by character.
+        # Normalise on every assignment, not just in __post_init__: the annotation says a bare
+        # string is fine, so `arch.vision_tower = 'visual'` must not leave a string for startswith.
         if key in _LIST_FIELDS:
             value = [value] if isinstance(value, str) else list(value or [])
         super().__setattr__(key, value)
@@ -105,10 +73,8 @@ class ModelArch:
     def decoder(self) -> List[str]:
         """:attr:`language_model` without its output head.
 
-        Registrations put the head inside ``language_model`` on purpose -- for freeze and LR purposes
-        it belongs to the LLM side. But callers asking "where do the decoder layers live" (quantizer
-        block scoping, mcore conversion) must not receive the head prefix, so the filtering lives here
-        instead of an ``endswith('lm_head')`` check copy-pasted into each consumer.
+        Registrations put the head inside ``language_model`` on purpose (freeze/LR ownership), but
+        callers asking "where do the decoder layers live" must not receive the head prefix.
         """
         head = self.lm_head_name
         return [name for name in self.language_model if not name.endswith(head)]
@@ -118,92 +84,60 @@ class ModelArch:
 class ModelInfo:
     """Everything known about one concrete checkpoint directory.
 
-    This merges legacy swift's ``ModelInfo`` (facts read out of ``config.json`` at load time) and
-    ``ModelMeta`` (facts hand-declared per model family). Keeping them apart looked principled but the
-    boundary had already leaked: ``is_multimodal`` / ``model_type`` / ``task_type`` / ``torch_dtype``
-    existed on *both*, with the declared value silently merged into the detected one, so a reader could
-    not tell which object was authoritative -- and the usage counts showed the ownership was de-facto
-    split per field anyway (``torch_dtype`` 41 reads on info vs 1 on meta; ``is_multimodal`` 2 vs 31).
-    One object, one owner per field.
-
-    Two legacy ``ModelMeta`` fields deliberately have no counterpart here:
-
-    - ``loader``: the :class:`ModelLoader` subclass *is* the per-family unit now, so a field pointing
-      at a loader class would be self-referential.
-    - ``model_groups`` (the ~1150 registered model ids): that is a *registry* concern -- it answers
-      "which family does this name belong to" before anything is downloaded. It has no meaning on an
-      object describing one already-resolved directory.
-
-    Args:
-        model_type: Family id. Resolved by the registry, either from the model id or by reverse lookup
-            from ``architectures``; ``None`` when nothing matched and the checkpoint is loaded as a
-            plain LLM.
-        model_dir: Local directory holding the resolved snapshot.
-        config: The raw ``PretrainedConfig``. An escape hatch, not a substitute for the fields below --
-            reach for it only when a value genuinely has no home here.
-        architectures: ``config.architectures`` as found on disk. Note this is the *actual* value, not
-            the class-name list a family declares for reverse lookup; that list belongs to the registry.
-        torch_dtype: Resolved compute dtype -- the caller's request, else a family default, else the
-            checkpoint's own dtype.
-        max_model_len: Maximum position count the checkpoint declares.
-        quant_method: Quantization already baked into the weights, from ``config.quantization_config``.
-        quant_bits: Bit width that goes with :attr:`quant_method`.
-        rope_scaling: RoPE scaling config, read out and possibly overridden by the caller.
-        is_moe_model: Whether the config exposes expert counts.
-        is_multimodal: Whether non-text inputs are supported -- family declaration OR config detection.
-            Merging the two is intentional here; what was wrong before was having both under one name
-            on two objects.
-        is_reward: Whether this family is a reward model, so ``num_labels`` defaults to 1.
-        task_type: Training/inference head to build, e.g. ``causal_lm`` / ``seq_cls`` / ``embedding`` /
-            ``reranker``. A family may pin it; otherwise it follows from ``num_labels``.
-        num_labels: Output count for classification heads.
-        problem_type: ``regression`` / ``single_label_classification`` /
-            ``multi_label_classification``. Declared explicitly here -- legacy set it as an undeclared
-            attribute, so it was invisible to ``asdict`` and to editors.
-        template: Chat template id. A family may offer several (thinking / non-thinking, vendor
-            re-releases sharing a structure); the registry picks one before this object is built.
-        mcore_model_type: Key into the Megatron bridge's own registry, when a conversion exists.
-        requires: Version constraints to check and warn about, e.g. ``['transformers>=4.49']``.
-        additional_saved_files: Extra files to copy next to the weights on full-parameter save or
-            merge-lora, for checkpoints whose code lives beside the config.
-        tags: Descriptive labels (``vision`` / ``video`` / ``audio`` / ``coding`` / ...). Documentation
-            and filtering only; no code branches on them.
+    Merges legacy's ``ModelInfo`` (facts read from ``config.json`` at load time) and ``ModelMeta``
+    (facts hand-declared per family) -- the boundary had already leaked (``is_multimodal`` /
+    ``model_type`` / ``torch_dtype`` existed on both). Legacy's ``loader`` field is self-referential
+    here (the loader class *is* the family unit) and ``model_groups`` is a registry concern.
     """
 
     # -- identity ------------------------------------------------------------------------------
     model_type: Optional[str] = None
     model_dir: str = ''
+    # The raw PretrainedConfig -- an escape hatch, not a substitute for the fields below.
     config: Optional[PretrainedConfig] = None
+    # config.architectures as found on disk (the family's declared list lives in the registry).
     architectures: List[str] = field(default_factory=list)
 
     # -- read off the checkpoint ---------------------------------------------------------------
+    # Resolved compute dtype: the caller's request, else a family default, else the checkpoint's.
     torch_dtype: Optional[torch.dtype] = None
     max_model_len: Optional[int] = None
+    # Quantization already baked into the weights (config.quantization_config) + its bit width.
     quant_method: Optional[Literal['gptq', 'awq', 'bnb', 'aqlm', 'hqq', 'fp8']] = None
     quant_bits: Optional[int] = None
     rope_scaling: Optional[Dict[str, Any]] = None
     is_moe_model: bool = False
+    # Family declaration OR config detection, merged on purpose (the bug was two objects each
+    # carrying the same field).
     is_multimodal: bool = False
+    # Reward family -> seq_cls head with num_labels=1.
     is_reward: bool = False
 
     # -- task shape ----------------------------------------------------------------------------
+    # Training/inference head (causal_lm/seq_cls/embedding/reranker); follows from num_labels.
     task_type: Optional[str] = None
     num_labels: Optional[int] = None
+    # Declared explicitly -- legacy set it as an undeclared attribute, invisible to asdict/editors.
     problem_type: Optional[str] = None
 
     # -- declared by the family ----------------------------------------------------------------
+    # One of several family templates (thinking / non-thinking, vendor re-releases).
     template: Optional[str] = None
+    # Key into the Megatron bridge's own registry, when a conversion exists.
     mcore_model_type: Optional[str] = None
+    # Version constraints to check and warn about, e.g. ['transformers>=4.49'].
     requires: List[str] = field(default_factory=list)
+    # Extra files to copy next to the weights on full-parameter save or merge-lora, for
+    # checkpoints whose code lives beside the config.
     additional_saved_files: List[str] = field(default_factory=list)
+    # Descriptive labels (vision/video/audio/coding/...); documentation and filtering only.
     tags: List[str] = field(default_factory=list)
 
     @property
     def model_name(self) -> str:
         """Human-readable name for API responses, recovered from :attr:`model_dir`.
 
-        A property rather than a field set in ``__post_init__``: it is a pure function of
-        ``model_dir`` and must not be able to drift away from it.
+        A property (not a field): a pure function of ``model_dir`` must not be able to drift.
         """
         model_dir = self.model_dir
         if platform.system().lower() == 'windows':
@@ -226,8 +160,8 @@ def _basename(model_id: str) -> str:
 def _iter_ids(models: Sequence[Union[str, Tuple[str, str]]]) -> Iterator[Tuple[str, str]]:
     """Yield ``(ms_id, hf_id)`` for every entry, expanding the bare-string shorthand.
 
-    A bare string means ModelScope and HuggingFace agree on the id (720 of the 1152 legacy entries
-    do); a ``(ms_id, hf_id)`` pair is written only when they differ.
+    A bare string means the two hubs agree on the id (720 of the 1152 legacy entries do); a
+    ``(ms_id, hf_id)`` pair is written only when they differ.
     """
     for entry in models:
         if isinstance(entry, str):
@@ -240,7 +174,7 @@ def register_model(loader_cls: Type['ModelLoader'] = None, *, exist_ok: bool = F
     """Register a family, keyed by its ``model_type``. Usable bare or with keywords as a decorator.
 
     Everything is read off the class, so a family is declared in one place instead of being split
-    between a loader class and a separate ``ModelMeta`` literal that has to repeat its name.
+    between a loader class and a separate ``ModelMeta`` literal repeating its name.
     """
 
     def _register(cls: Type['ModelLoader']) -> Type['ModelLoader']:
@@ -289,8 +223,7 @@ def match_model_types_by_architectures(architectures: Optional[Sequence[str]]) -
     """Reverse-lookup families from ``config.architectures``; the fallback when the id is unknown.
 
     Returns *all* candidates rather than picking one, because the mapping genuinely is many-to-many
-    -- ``ChatGLMModel`` covered six legacy model_types. The caller is expected to ask the user when
-    more than one comes back.
+    (``ChatGLMModel`` covered six legacy model_types); the caller asks the user when >1 comes back.
     """
     if not architectures:
         return []
@@ -304,10 +237,10 @@ def match_model_types_by_architectures(architectures: Optional[Sequence[str]]) -
 def resolve_template(model_type: str) -> Optional[str]:
     """The template a family speaks.
 
-    A template variant (Qwen's QVQ prompt, Xiaomi's MiMo-VL format, ...) is its own thin
-    :class:`ModelLoader` subclass -- it loads identically to its parent but declares a different
-    ``template`` and its own ``models``. So the template is a plain per-family attribute; the
-    within-family ``ModelGroup`` layer that legacy needed for this is gone.
+    A template variant (Qwen's QVQ prompt, Xiaomi's MiMo-VL format, ...) is its own thin loader
+    subclass -- it loads identically to its parent but declares a different ``template`` and its own
+    ``models`` -- so the template is a plain per-family attribute; legacy's within-family
+    ``ModelGroup`` layer is gone.
     """
     return get_model_loader(model_type).template
 
@@ -316,10 +249,9 @@ def resolve_loader_cls(model_type: Optional[str], model_id: str) -> Optional[Typ
     """The family loader class for an explicit ``model_type``, else one inferred from ``model_id``.
 
     ``model_type`` is authoritative when given: a registered family key/alias, or an external plugin
-    source (a local file/folder or a ``hf://`` / ``ms://`` id) resolved through the registry. With no
-    explicit type the family is inferred from the checkpoint name; ``None`` comes back when nothing
-    matches, so the caller falls back to the generic transformers load path instead of guessing a
-    different family from the checkpoint name.
+    source (a local file/folder or a ``hf://`` / ``ms://`` id) resolved through the registry. With
+    no explicit type the family is inferred from the checkpoint name; ``None`` means "no family
+    matched", and the caller falls back to the generic transformers path.
     """
     from swift.dev.utils.naming import resolve_plugin_class
     if model_type:
@@ -334,13 +266,9 @@ def build_model_loader(model_id: str, model_type: Optional[str] = None, **kwargs
     """Build the family loader for one checkpoint id -- the entry a twinkle server names in its
     ``model_loader`` import spec (``swift.dev.model.loader:build_model_loader``).
 
-    The server is configured with plain data and has only the checkpoint id (no ``ModelConfig``), so
-    this builds a minimal ``ModelInfo`` from the id. The six construction hooks take ``model_dir``
-    explicitly and never read the rest of ``ModelInfo``, so the omitted fields are irrelevant on this
-    path; dev's ``_resolve_model_loader`` fills them because it also drives quantization/seq_cls-head
-    decisions the server does not make. ``model_type`` overrides family inference when given. Returns
-    ``None`` when no family matches, leaving the server on the generic AutoConfig/AutoModel path --
-    the same fallback dev uses.
+    The server has only the id, so this builds a minimal ``ModelInfo``; the six hooks take
+    ``model_dir`` explicitly. ``model_type`` overrides inference; ``None`` means no family matched
+    and the server stays on the generic AutoConfig/AutoModel path.
     """
     loader_cls = resolve_loader_cls(model_type, model_id)
     if loader_cls is None:
@@ -364,14 +292,12 @@ def _import_cls(spec: str) -> type:
 class ModelLoader:
     """The plain transformers path, driven by declarations.
 
-    The happy path lives here so a family declares only what differs: ``build_config`` /
-    ``build_processor`` fall back to ``AutoConfig`` / ``AutoProcessor``, and the ``process_*`` hooks
-    are no-ops. A family that needs a specific transformers class points ``config_cls`` /
-    ``processor_cls`` / ``model_cls`` at it as a ``'module:ClassName'`` string, resolved lazily so an
-    absent class costs nothing; anything beyond that overrides a ``build_*`` / ``process_*`` hook.
-    ``model_cls`` is the one declaration with no safe default -- see :meth:`build_model`.
+    Families declare only what differs: ``build_config`` / ``build_processor`` fall back to
+    ``AutoConfig`` / ``AutoProcessor`` and the ``process_*`` hooks are no-ops. A specific class is
+    a lazy ``'module:ClassName'`` string (an absent class costs nothing); anything more overrides
+    a ``build_*`` / ``process_*`` hook.
     """
-    # -- registration ---------------------------------------------------------------------------
+
     model_type: Optional[str] = None
     # Checkpoint ids this family covers: a bare id, or a (ms_id, hf_id) pair when the two hubs
     # disagree. A template variant is its own subclass with its own `models`, so this stays flat.
@@ -381,47 +307,26 @@ class ModelLoader:
     aliases: Sequence[str] = ()
     requires: Sequence[str] = ()
     tags: Sequence[str] = ()
-    # Glob patterns of files to skip at download. ``None`` lets the download layer apply its default
-    # skips (``*.pth`` / ``consolidated*`` / ``onnx/*`` / ...). An empty list ``[]`` deliberately
-    # DISABLES those defaults to fetch everything -- required by families whose real weights live in
-    # otherwise-skipped files (Mistral ships ``consolidated*``; Qwen-Omni ships extra assets). A
-    # non-empty list skips exactly those globs (e.g. gpt-oss's ``metal/`` / ``original/`` dirs).
+    # Download skip globs. ``None`` = default skips (*.pth / consolidated* / ...); ``[]`` disables
+    # them (Mistral/Qwen-Omni need those files); a non-empty list skips exactly those globs.
     ignore_patterns: Optional[List[str]] = None
     mcore_model_type: Optional[str] = None
     is_multimodal: bool = False
-    # The task a family is *inherently* built for, when that is not a user choice: a bge reranker is
-    # always a reranker, a gte checkpoint always embedding. Left ``None`` for a generic backbone
-    # (Llama/Qwen), which can serve any task -- the user's ``ModelConfig.task_type`` decides, and it
-    # overrides this pin whenever set. ``None`` resolves to ``causal_lm``.
+    # The task a family is *inherently* built for (a bge reranker is always a reranker). ``None``
+    # for a generic backbone: the user's ModelConfig.task_type decides and overrides this pin.
     task_type: Optional[str] = None
-    # A reward model is a seq_cls head with ``num_labels=1``. Declared as a flag rather than pinning
-    # ``task_type='seq_cls'`` because legacy keeps the two separate: ``is_reward`` drives the
-    # num_labels=1 default and reward-specific load handling, while task resolution still lands on
-    # seq_cls. Left ``False`` for every non-reward family.
+    # A reward model is a seq_cls head with num_labels=1 -- kept separate from task_type because
+    # legacy drives num_labels/reward-specific load handling from is_reward, not task resolution.
     is_reward: bool = False
-    # Names the external framework that constructs this family's model when it is not the plain twinkle
-    # ``TransformersModel`` path; ``None`` (default) means that path. ``'sentence_transformers'`` marks an
-    # embedding family whose checkpoint is a ``sentence-transformers`` pipeline (Transformer -> Pooling ->
-    # Normalize, legacy ``SentenceTransformer(model_dir)``): it pools per sentence, so it trains through
-    # ``SentenceTransformerModel`` rather than the HF embedding task (which re-pools per-token features).
-    # Declared per family, not inferred from the on-disk layout -- ``qwen3_emb`` ships that layout as an
-    # *export* artifact yet still trains on the HF embedding task. One open-ended name rather than an
-    # ``is_<framework>`` boolean per framework, so adding a framework is a new value here plus a branch in
-    # ``builders/model.py``'s dispatch (``_resolve_model_framework``), never a new field on this base.
+    # External framework constructing this family ('sentence_transformers': an embedding pipeline
+    # training through SentenceTransformerModel). One open-ended name + a builders dispatch branch.
     model_framework: Optional[str] = None
-
-    # Declared per family; resolved lazily so an absent transformers class costs nothing. Leave
-    # `config_cls` / `processor_cls` unset to fall back to Auto*; `model_cls` has no safe default.
+    # Resolved lazily; unset config_cls/processor_cls fall back to Auto*, model_cls has no default.
     config_cls: Optional[str] = None
     processor_cls: Optional[str] = None
     model_cls: Optional[str] = None
-    # Set True for a remote-code checkpoint (a custom `modeling_*.py` loaded through HF's
-    # dynamic-module path). It makes `build_config` / `build_processor` / `build_model` pass
-    # `trust_remote_code=True`, so an `AutoConfig` / `AutoProcessor` / `AutoModel*` resolves the
-    # checkpoint's own classes instead of failing to find an in-tree one. In-tree families leave it
-    # False (the default) -- passing it would be harmless, but the flag also documents, per family,
-    # exactly which checkpoints ship code we execute. Injected via `setdefault` so an explicit caller
-    # kwarg always wins, and it replaces legacy's scattered `get_class_from_dynamic_module` calls.
+    # True for a remote-code checkpoint: the build_* hooks then pass trust_remote_code=True,
+    # replacing legacy's scattered get_class_from_dynamic_module calls. In-tree families: False.
     trust_remote_code: bool = False
 
     def __init__(self, model_info, **kwargs):
@@ -432,11 +337,10 @@ class ModelLoader:
 
     @property
     def model_arch(self) -> ModelArch:
-        """Architecture partition for this model family.
+        """Architecture partition for this family.
 
         All-empty is the correct default: these fields describe *multimodal* partitioning, so a
-        plain LLM wants an empty :class:`ModelArch` (every consumer reads an empty part as "no such
-        part, treat the whole model uniformly"). Multimodal families override this.
+        plain LLM wants an empty :class:`ModelArch`. Multimodal families override this.
         """
         return ModelArch()
 
@@ -468,10 +372,8 @@ class ModelLoader:
     def resolve_model_cls(cls) -> type:
         """The transformers class this family loads with, resolved from :attr:`model_cls`.
 
-        Split out of :meth:`build_model` so a caller that needs the class itself rather than a loaded
-        checkpoint -- ``from_config`` on a config with no weights behind it, an ``isinstance`` check --
-        does not have to re-resolve the ``'module:ClassName'`` string, which is the one place the
-        lazy-import rule lives.
+        Split out of :meth:`build_model` so a caller needing the class itself -- ``from_config`` on
+        a config with no weights, an ``isinstance`` check -- does not re-resolve the string.
         """
         assert cls.model_cls is not None, f'{cls.__name__} must declare `model_cls`.'
         return _import_cls(cls.model_cls)
@@ -496,10 +398,9 @@ class ModelLoader:
         """Skip transformers' remote-code dependency check for the duration of a load.
 
         Delegates to twinkle's ``TransformersIgnoreCheckImportsPatch``: it keeps ``check_imports``'s
-        real return value (``get_relative_imports``, which the dynamic module loader consumes to
-        pull in sibling files) and drops only the verification loop -- unlike a blank ``[]`` stub,
-        which would starve the loader of relative imports. Used by ``minimax_vl`` and ``florence``
-        (legacy's ``patch_ignore_check_imports``).
+        real return value (``get_relative_imports``, which the module loader consumes) and drops
+        only the verification loop -- a blank ``[]`` stub would starve the loader. Used by
+        ``minimax_vl`` / ``florence`` (legacy ``patch_ignore_check_imports``).
         """
         from twinkle.patch import apply_context
         from twinkle.patch.transformers_check_imports import TransformersIgnoreCheckImportsPatch
@@ -510,14 +411,9 @@ class ModelLoader:
     def delegate_to_submodel(model, submodel_name: str, func_list: Optional[List[str]] = None) -> None:
         """Proxy a wrapper model's top-level methods to its inner LLM sub-module.
 
-        Many MLLM checkpoints are a thin wrapper whose real language model hangs off an attribute
-        (``model.llm`` for Ovis, ``model.language_model`` elsewhere): the wrapper itself has no usable
-        ``forward`` / ``generate`` / ``get_input_embeddings``, so those calls must be forwarded to the
-        sub-module. This is the faithful half of legacy ``use_submodel_func``; the device-shuffling
-        half (moving ``res.logits`` / ``loss`` back onto the input device, and the ``fix device_map``
-        branch) is dropped -- it patched HF ``device_map`` sharding, which dev does not use (twinkle
-        owns placement). Called from a subclass ``process_model``; ``func_list`` defaults to the
-        legacy set.
+        Thin MLLM wrappers hang the real LLM off an attribute (``model.llm``, ``model.language_model``)
+        with no usable top-level ``forward`` / ``generate``. Faithful half of legacy
+        ``use_submodel_func``; the device-shuffling half is dropped (twinkle owns placement).
         """
         from functools import wraps
         from types import MethodType
@@ -539,27 +435,11 @@ class ModelLoader:
 
     @staticmethod
     def apply_z3_leaf_modules(model, moe_block: List[str]) -> None:
-        """Mark a MoE sparse/expert block as a DeepSpeed ZeRO-3 leaf module.
+        """Mark a MoE block as a ZeRO-3 leaf module, or ZeRO-3 deadlocks on dark experts.
 
-        ZeRO-3 partitions parameters across ranks and re-gathers them per submodule forward; for a
-        MoE block only a token-dependent subset of experts runs, so ZeRO-3 must treat the whole block
-        as one leaf (gather all experts up front) or it deadlocks on the experts that stay dark.
-        ``moe_block`` holds the block's *leaf class name(s)* (Mixtral ``MixtralSparseMoeBlock``); we
-        match them against the live modules' ``type(...).__name__`` rather than importing, so a
-        remote-code block with no static import path works too (legacy needed
-        ``get_class_from_dynamic_module`` per such model). Matching on the class name -- not the
-        attribute name -- is also what lets llama4 work: it names both its sparse ``Llama4TextMoe``
-        and its dense ``Llama4TextMLP`` ``self.feed_forward``, so an attribute-name match would
-        wrongly mark the dense MLP as a leaf.
-
-        Call this from the DeepSpeed ZeRO-3 *strategy setup* -- only when ZeRO-3 is active, and before
-        ``deepspeed.initialize`` partitions the parameters. The "is this ZeRO-3" decision is the
-        strategy's (it reads the planned ``DistributedConfig.deepspeed``); it is deliberately NOT
-        taken from transformers' ``is_deepspeed_zero3_enabled()``, which only reports True after HF
-        ``TrainingArguments`` has instantiated transformers' ``HfDeepSpeedConfig``. dev drives
-        DeepSpeed through twinkle/accelerate with no HF Trainer, so that global stays unset and the
-        probe would silently return False -- skipping the leaf setting and re-introducing the very
-        deadlock this prevents.
+        ``moe_block`` holds leaf *class names* matched via ``type(...).__name__`` (covers remote
+        code; class -- not attribute -- matching is what lets llama4 work). Call from the ZeRO-3
+        strategy setup, NOT transformers' ``is_deepspeed_zero3_enabled()`` (unset without HF Trainer).
         """
         if not moe_block:
             return

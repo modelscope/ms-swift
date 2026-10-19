@@ -36,24 +36,10 @@ def get_converter(columns: Collection[str],
                   **kwargs) -> 'FormatConverter':
     """Pick the converter for a dataset with these column names, and instantiate it.
 
-    This is the factory. Order of resolution:
-
-    1. ``format_name`` -- an explicit choice always wins, so a dataset whose columns lie about its
-       shape can be pinned.
-    2. Otherwise every registered format is asked :meth:`FormatConverter.detect`, lowest
-       :attr:`FormatConverter.priority` first, and the first to claim the columns wins.
-    3. Otherwise the highest-priority format that declares itself a fallback.
-
-    Args:
-        columns: The dataset's column names. Only names are needed, not types -- so this is callable
-            on an ``IterableDataset`` whose features are resolved, on a plain dict of rows, or in a
-            test with a literal list.
-        format_name: Pin a format instead of detecting one.
-        aliases: Extra column renames applied *before* detection, for a dataset whose fields are
-            named so unusually that no format recognises it (legacy's ``--columns``). These are the
-            caller's business and are kept apart from :attr:`FormatConverter.aliases`, which is the
-            format's own built-in knowledge.
-        kwargs: Passed to the converter's constructor.
+    An explicit ``format_name`` wins (a dataset whose columns lie can be pinned); else every
+    format is asked ``detect``, lowest priority first; else the highest-priority fallback.
+    ``aliases`` are caller renames applied before detection (legacy's ``--columns``). Only names
+    are needed, so this works on an IterableDataset, a dict of rows, or a literal list.
     """
     columns = set(columns)
     if aliases:
@@ -82,33 +68,28 @@ def list_formats() -> List[str]:
 class FormatConverter:
     """One raw row shape, and how to rewrite it as standard ``messages``.
 
-    Subclasses declare :attr:`format_name`, :attr:`aliases` and :attr:`priority`, then implement
-    :meth:`detect` and :meth:`convert`.
+    Subclasses declare ``format_name`` / ``aliases`` / ``priority``, then implement ``detect`` and
+    ``convert``.
     """
+
     format_name: Optional[str] = None
-    # Detection order, lowest first. Explicit because the formats are not mutually exclusive: a
-    # dataset carrying both `conversations` and `instruction` is a conversation dataset that happens
-    # to have an instruction column, so the conversation format must be asked first. Legacy encoded
-    # exactly this in the order of an if-chain, where it was invisible and easy to break.
+    # Detection order, lowest first: formats are not mutually exclusive (a `conversations` dataset
+    # also carrying `instruction` is a conversation dataset), so the asking order matters.
     priority: int = 100
-    # Column renames this format applies before reading a row: alias -> standard name. Pure data, so
-    # a reader can see every name a format answers to without executing anything.
+    # Column renames this format applies before reading a row: alias -> standard name.
     aliases: Dict[str, str] = {}
-    # True for the format used when nothing else claims the columns. Exactly one format should set it.
+    # True for the format used when nothing else claims the columns; exactly one format sets it.
     is_fallback: bool = False
 
-    # Roles the standard shape allows. `tool` is accepted as a synonym of `tool_response`, which is
-    # what legacy's message check did.
+    # `tool` is a synonym of `tool_response` -- legacy's message check accepted both.
     STANDARD_ROLES = ('system', 'user', 'assistant', 'tool_call', 'tool_response', 'tool')
 
-    # Media columns are a property of the row, not of the dialogue shape, so every format answers to
-    # the singular spelling: a dataset with one image per row names the column `image` as often as
-    # `images`. Kept apart from :attr:`aliases` so a subclass declaring its own table cannot drop them.
+    # Media columns are a property of the row, not the dialogue shape, so every format answers to
+    # the singular spelling too; kept apart from `aliases` so a subclass cannot drop them.
     MEDIA_ALIASES = {'image': 'images', 'audio': 'audios', 'video': 'videos'}
 
     def __init__(self, *, aliases: Optional[Dict[str, str]] = None, **kwargs):
-        # Caller-supplied aliases are applied on top of the class's own, and win on conflict: the
-        # caller knows their dataset, the class only knows the common cases.
+        # Caller aliases win on conflict: the caller knows their dataset, the class the common cases.
         self.aliases = {**self.MEDIA_ALIASES, **type(self).aliases, **(aliases or {})}
         self.random_state = kwargs.pop('random_state', None)
         self.kwargs = kwargs
@@ -117,23 +98,19 @@ class FormatConverter:
     def detect(cls, columns: Collection[str]) -> bool:
         """Whether this format recognises a dataset with these columns.
 
-        Decided on column names alone: a dataset's row shape is fixed, so the columns it carries are
-        enough to pick its format. Content that shares one shape across providers (a ``messages``
-        column holding plain, OpenAI or Anthropic content) is not a format distinction -- it is
-        handled per message inside the owning format's :meth:`FormatConverter.convert`.
+        Decided on column names alone -- a dataset's row shape is fixed. Content sharing one shape
+        across providers (a ``messages`` column holding plain, OpenAI or Anthropic content) is not
+        a format distinction: it is handled per message inside the owning format's ``convert``.
         """
         raise NotImplementedError
 
     def convert(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Rewrite one raw row as a standard row, or return ``None`` to drop it.
 
-        Returning ``None`` is how a structurally unusable row (empty dialogue, unparseable nesting)
-        is dropped without raising -- a public dataset with a few thousand bad rows out of a million
-        should not fail the run.
+        Dropping (rather than raising) is how a structurally unusable row is skipped: a public
+        dataset with a few bad rows out of a million should not fail the run.
         """
         raise NotImplementedError
-
-    # -- helpers ---------------------------------------------------------------------------------
 
     def apply_aliases(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """A copy of ``row`` with aliased keys renamed to their standard names."""
@@ -143,19 +120,10 @@ class FormatConverter:
     def resolve_aliases(self, keys: Collection[str]) -> Dict[str, str]:
         """Of these column names, which get renamed to which standard name: ``alias -> standard``.
 
-        Two rules, both about a name losing a contest it is in:
-
-        - A standard name the row spells out itself wins over every alias of it. Given ``response`` and
-          ``output``, ``response`` is the one meant.
-        - When only aliases compete, the one declared first in :attr:`aliases` wins, so a dataset
-          carrying both ``answer`` and ``text`` resolves the same way every time.
-
-        A loser keeps its own name and is absent from the result: it is an ordinary column of this
-        dataset (a ``text`` holding source text next to a real ``response``), and something downstream
-        may want it. Both rules read only ``keys``, never what has been decided so far, so the outcome
-        does not depend on the order the raw row happens to list its columns in. Legacy had neither
-        property: ``_to_std_key`` assigned as it looped, so the *last* alias in a literal won, and
-        ``safe_rename_columns`` resolved a contest by silently dropping *both* renames.
+        A standard name the row spells out itself beats every alias of it; among competing
+        aliases, the first declared in ``aliases`` wins. A loser keeps its own name (downstream
+        may still want it). Both rules read only ``keys``, so the outcome never depends on the raw
+        column order -- unlike legacy's last-alias-wins loop, which dropped *both* names.
         """
         keys = set(keys)
         ranks = {alias: rank for rank, alias in enumerate(self.aliases)}
@@ -173,8 +141,10 @@ class FormatConverter:
     def parse_literal(value: Any) -> Any:
         """Parse a Python literal that arrived as a string, else pass the value through.
 
-        Datasets built by dumping a DataFrame routinely store a list column as its ``repr``, so
-        ``history`` comes back as the string ``"[['q', 'a']]"``.
+        DataFrame dumps store a list column as its ``repr`` (``history`` comes back as
+        ``"[['q', 'a']]"``). A string that is not a literal yields ``None`` -- safe only for
+        fields that are always lists; see PreferenceConverter._recover_message_list for the
+        list-or-string case.
         """
         if isinstance(value, str):
             try:
@@ -187,8 +157,8 @@ class FormatConverter:
     def history_to_messages(history: Sequence[Sequence[Optional[str]]], system: Optional[str] = None) -> Messages:
         """Flatten ``[[query, response], ...]`` into messages, skipping ``None`` turns.
 
-        A ``None`` response is legitimate and means an unanswered final turn (inference input), so it
-        is skipped rather than emitted as an empty assistant message.
+        A ``None`` response is a legitimate unanswered final turn (inference input), so it is
+        skipped rather than emitted as an empty assistant message.
         """
         messages: Messages = []
         if system is not None:

@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""OpenAI-compatible deployment CLI backed by the dev serving recipe."""
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
@@ -16,13 +15,10 @@ def _adapter_mapping(adapters: List[str]) -> Dict[str, str]:
 
 
 def _strip_adapter_names(argv: List[str]):
-    """Rewrite ``--adapters name=path`` to bare ``--adapters path``; return ``(argv, names)``.
+    """Rewrite ``--adapters name=path`` to bare paths; return ``(argv, names)``.
 
-    Deploy routes a named adapter as ``name=path`` (see :func:`_adapter_mapping`), but the shared
-    checkpoint-args restore resolves every ``--adapters`` entry as a path/hub id and would try to
-    download the literal ``name=path`` (a 404 on a string that is neither). Hand the parser the bare
-    path so the restore and hub resolution work, and keep the index-aligned names to re-attach after
-    parsing, so ``_adapter_mapping`` still yields the operator's served names.
+    The checkpoint-args restore resolves each ``--adapters`` entry as a path/hub id (a literal
+    ``name=path`` would 404), so the parser sees bare paths; names re-attach after parsing.
     """
     names: List[Optional[str]] = []
     out: List[str] = []
@@ -54,7 +50,7 @@ def _strip_adapter_names(argv: List[str]):
 
 def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     from swift.dev.cli.legacy_coverage import reject_legacy_only_flags
-    from swift.dev.cli.parser import parse_configs_strict, resolve_argv, select_tuner
+    from swift.dev.cli.parser import normalize_sampler, parse_configs_strict, resolve_argv, select_tuner
     from swift.dev.config import (
         CheckpointConfig,
         DatasetConfig,
@@ -77,10 +73,8 @@ def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig,
                TunerConfig, GenerationConfig, RolloutConfig, InferConfig, DeployConfig, QuantizeConfig,
                RuntimeConfig]
-    # ``sampler_type`` (DeployConfig's twinkle-server sampler kind, which ``_validate`` guards and
-    # ``build_server_config`` pins) and ``strict`` (DatasetConfig's column-mapping gate) are each unique
-    # across these Configs now that InferConfig's vestigial ``sampler_type`` label is gone and its
-    # generation-row tolerance is spelled ``generation_strict`` -- so no owner disambiguation is needed.
+    # ``sampler_type`` (DeployConfig's twinkle-server sampler kind) and ``strict`` (DatasetConfig's
+    # column-mapping gate) are each unique across these Configs, so no owner pinning is needed.
     configs = parse_configs_strict(
         classes, effective_argv, command='swift deploy', load_args_default=True)
     names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'distributed_config',
@@ -93,22 +87,21 @@ def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     if tuner_config is not None and adapter_names and len(adapter_names) == len(tuner_config.adapters):
         tuner_config.adapters = [f'{name}={path}' if name else path
                                  for name, path in zip(adapter_names, tuner_config.adapters)]
-    if result['infer_config'].sampler == 'pt':
-        result['infer_config'].sampler = 'transformers'
+    normalize_sampler(result['infer_config'])
     return result
 
 
 def deploy_main(argv: Optional[List[str]] = None) -> None:
     from swift.dev.builders import build_engine_args
     from swift.dev.config import process_and_validate_configs
-    from swift.dev.recipe import run_deploy
+    from swift.dev.recipe.infer import run_deploy
 
     configs = parse_deploy_configs(argv)
     process_and_validate_configs(configs, add_version=False, create_output_dir=False)
     tuner_config = configs['tuner_config']
     adapters = tuner_config.adapters if tuner_config is not None else []
     deploy = configs['deploy_config']
-    return run_deploy(
+    run_deploy(
         configs['model_config'],
         configs['template_config'],
         configs['generation_config'],

@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Quantize a model directory and write the quantized checkpoint out."""
 from __future__ import annotations
 
 import os
@@ -22,11 +21,10 @@ CALIBRATION_METHODS = ('awq', 'gptq', 'gptq_v2')
 class QuantizeComponent(BaseWeightTransform):
     """Quantize ``model_config`` with ``quantize_config.quant_method``.
 
-    Two shapes, split by whether the scheme needs calibration data:
-      - load-time (bnb / fp8 / hqq / quanto / eetq): the scheme is handed to the loader, which
-        quantizes while transformers materializes the weights. No data, no second pass.
-      - calibration (awq / gptq / gptq_v2): the model is loaded in full precision and the scales are
-        fitted over encoded samples before the backend packs and writes it.
+    Two shapes, split by whether the scheme needs calibration data: load-time (bnb / fp8 / hqq /
+    quanto / eetq) hands the scheme to the loader, which quantizes while transformers materializes
+    the weights -- no data, no second pass; calibration (awq / gptq / gptq_v2) loads the model in
+    full precision and fits the scales over encoded samples before the backend packs and writes.
     """
 
     def __init__(
@@ -51,9 +49,8 @@ class QuantizeComponent(BaseWeightTransform):
         self.quant_n_samples = quant_n_samples
         self.safe_serialization = safe_serialization
         self.max_shard_size = max_shard_size
-        #: Backend knobs (group_size / zero_point / version / v2 / bnb_4bit_* ...) forwarded verbatim
-        #: to the twinkle quantizer. They are NOT mirrored onto QuantizeConfig: that would duplicate
-        #: the same fields in two places and let them drift.
+        #: Backend knobs (group_size / zero_point / v2 / bnb_4bit_* ...) forwarded verbatim to the
+        #: twinkle quantizer -- NOT mirrored onto QuantizeConfig, where they would drift.
         self.quantizer_kwargs = quantizer_kwargs
 
     def validate(self) -> None:
@@ -77,29 +74,15 @@ class QuantizeComponent(BaseWeightTransform):
     def _run_load_time(self, quant_method: str, kwargs: Dict[str, Any], output_dir: str) -> str:
         """bnb / fp8 / hqq / quanto / eetq: load the model quantized, then save the full directory.
 
-        These schemes quantize WHILE transformers materializes the weights, so there is nothing to
-        rewrite on an already-loaded model -- ``ConfigQuantizer.quantize`` raises rather than pretend
-        otherwise. The export therefore hands the scheme's ``quantization_config`` to the loader (which
-        quantizes on the way in) and persists the result with ``save_pretrained`` + ``save_checkpoint``,
-        producing a directly loadable checkpoint. This mirrors legacy ``QuantEngine.quantize`` for
-        bnb/fp8; emitting only the config json (the previous behaviour here) left the user with no model
-        to load.
-
-        This path deliberately stays materialized instead of joining the ``StreamingWeightTransform``
-        skeleton. Two facts make streaming a poor fit here (both verified against transformers 5.x):
-        the load-time quantize op is *model-bound* -- ``Bnb4bitQuantize.convert`` reads the swapped-in
-        module's config via ``model.get_parameter_or_buffer``, so it is not a pure tensor->tensor step --
-        and each backend serializes its quantized params (bnb's ``Params4bit`` -> a multi-key
-        ``quant_state``) through ``save_pretrained``'s whole-state-dict path, with no per-tensor writer
-        to reuse; streaming it would mean reimplementing five backends' on-disk formats. The peak is
-        bounded regardless: only the *quantized* model is resident (transformers quantizes layer by layer
-        on load), and ``get_default_device_map()`` -> ``'auto'`` lets accelerate offload it across
-        GPU/CPU/disk -- unlike merge, which materializes the full-precision base.
+        These schemes quantize WHILE transformers materializes the weights (``ConfigQuantizer.
+        quantize`` raises on an already-loaded model), so the scheme's ``quantization_config`` goes
+        to the loader and the result is persisted with ``save_pretrained`` + ``save_checkpoint``.
+        Not streaming on purpose: the op is model-bound; backends expose no per-tensor writer.
         """
         from twinkle.quantizer import get_quantizer
 
         from swift.dev.builders import load_model_processor
-        from swift.model import save_checkpoint
+        from swift.dev.model import save_checkpoint
 
         quant_config = get_quantizer(quant_method, **kwargs).get_quantization_config()
         model, processor = load_model_processor(
@@ -107,8 +90,8 @@ class QuantizeComponent(BaseWeightTransform):
         os.makedirs(output_dir, exist_ok=True)
         model.save_pretrained(
             output_dir, safe_serialization=self.safe_serialization, max_shard_size=self.max_shard_size)
-        # Copy the processor + the model's declared extra files so the output is self-contained and
-        # loadable on its own (legacy runs the same save_checkpoint after the weights are written).
+        # Copy the processor + the model's declared extra files so the output is self-contained
+        # and loadable on its own (legacy runs the same save_checkpoint after the weights).
         save_checkpoint(
             None,
             processor,
@@ -124,20 +107,20 @@ class QuantizeComponent(BaseWeightTransform):
         from twinkle.quantizer import get_quantizer
 
         from swift.dev.utils import HfConfigFactory
-        from swift.model import save_checkpoint
+        from swift.dev.model import save_checkpoint
 
         dataset_config = self.dataset_config
         if dataset_config is None or not dataset_config.dataset:
             raise ValueError(f'quant_method={quant_method!r} is calibration-based and needs '
                              'DatasetConfig.dataset to fit the quantization scales.')
 
-        # Probe the backend dependency first (requires() names the pip package); without this the AWQ
-        # path would surface a bare `No module named 'awq'` from _load_model_template instead.
+        # Probe the backend dependency first (requires() names the pip package); without this the
+        # AWQ path would surface a bare `No module named 'awq'` from _load_model_template instead.
         self._require_backend(quant_method)
 
         model, template, processor = self._load_model_template(quant_method)
-        # Calibration is inference over real batches; caches would both waste memory and (for GPTQ's
-        # block-by-block walk) change what each block sees. Legacy disables it the same way.
+        # Calibration is inference over real batches; caches would both waste memory and (for
+        # GPTQ's block-by-block walk) change what each block sees. Legacy disables them too.
         model.config.use_cache = False
         HfConfigFactory.set_config_attr(model.config, 'use_cache', False)
 
@@ -157,8 +140,8 @@ class QuantizeComponent(BaseWeightTransform):
             n_samples=self.quant_n_samples,
             is_multimodal=is_multimodal)
         if quant_method in ('gptq', 'gptq_v2') and is_multimodal:
-            # optimum's prepare_dataset is bypassed, so the per-batch collate+device move that the
-            # multimodal path needs has to happen here (legacy: QuantEngine._prepare_gptq_dataset).
+            # optimum's prepare_dataset is bypassed, so the per-batch collate + device move the
+            # multimodal path needs happens here (legacy: QuantEngine._prepare_gptq_dataset).
             calib = self._collate_multimodal(calib, model, template, batch_size=kwargs.get('batch_size', 1))
         quantizer.set_calib_data(calib, tokenizer=processor)
 
@@ -182,10 +165,9 @@ class QuantizeComponent(BaseWeightTransform):
     def _require_backend(quant_method: str) -> None:
         """Fail with the installable package name before any model/data work.
 
-        The twinkle quantizers already declare their dependencies via ``requires()``, but that check
-        runs in their __init__ -- which happens AFTER the model is loaded here. Probing the same names
-        up front keeps the actionable message ("Required package 'autoawq' is not installed") and avoids
-        paying for a multi-GB load that is going to fail.
+        The twinkle quantizers declare their dependencies via ``requires()``, but that check runs
+        in their __init__ -- AFTER the model is loaded here. Probing the same names up front keeps
+        the actionable message and avoids paying for a multi-GB load that is going to fail.
         """
         from twinkle.utils import requires
 
@@ -199,9 +181,9 @@ class QuantizeComponent(BaseWeightTransform):
         """Load the model + template for calibration, in the shape the backend requires.
 
         AWQ is the odd one: autoawq owns both the packing and the writer, so the model must be an
-        ``AutoAWQForCausalLM`` wrapper rather than a plain transformers model (legacy passes the same
-        auto_model_cls). The template is put in 'train' mode because calibration wants the full
-        prompt+response token stream, not a generation prompt.
+        ``AutoAWQForCausalLM`` wrapper rather than a plain transformers model (legacy passes the
+        same auto_model_cls). The template is put in 'train' mode because calibration wants the
+        full prompt+response token stream, not a generation prompt.
         """
         from swift.dev.builders import build_template, load_model_processor
 
@@ -209,13 +191,8 @@ class QuantizeComponent(BaseWeightTransform):
         if quant_method == 'awq':
             from awq import AutoAWQForCausalLM
             kwargs['auto_model_cls'] = AutoAWQForCausalLM
-        # Calibration runs the FULL-PRECISION model over real batches, so it is the memory-heaviest
-        # quantize path. Default to accelerate's 'auto' device map: the model is then dispatched
-        # across GPU/CPU/disk by max_memory and only the block being quantized is resident on GPU,
-        # capping the peak at ~one block. Without this a single-GPU run goes through
-        # get_default_device_map() -> 'cuda:0' and loads the whole model at once, which OOMs on large
-        # checkpoints. An explicit model_kwargs['device_map'] still wins (register.py only fills the
-        # default when device_map is None, and _set_load_kwarg rejects a conflicting override).
+        # Calibration runs the FULL-PRECISION model over real batches; default to accelerate's
+        # 'auto' device map so only one block is resident. An explicit model_kwargs['device_map'] wins.
         if 'device_map' not in (self.model_config.model_kwargs or {}):
             kwargs['device_map'] = 'auto'
         model, processor = load_model_processor(self.model_config, load_model=True, **kwargs)
@@ -233,9 +210,9 @@ class QuantizeComponent(BaseWeightTransform):
         """Layers that must stay in full precision (MoE routers, vision towers, lm_head).
 
         Same rule as legacy ``QuantizeArguments.get_modules_to_not_convert``: routing gates decide
-        which experts fire and vision/adapter stacks are numerically fragile, so quantizing them costs
-        far more quality than the memory it saves. lm_head is appended only when something else was
-        excluded -- a fully converted model keeps the backend's own default handling.
+        which experts fire and vision/adapter stacks are numerically fragile. lm_head is appended
+        only when something else was excluded -- a fully converted model keeps the backend's
+        default handling.
         """
         res: List[str] = []
         if getattr(model.model_info, 'is_moe_model', False):
@@ -255,9 +232,9 @@ class QuantizeComponent(BaseWeightTransform):
     def _block_name_to_quantize(model) -> Optional[str]:
         """Scope GPTQ's block walk to the language model on a multimodal checkpoint.
 
-        ``GptqQuantizer.get_block_name_to_quantize`` finds the decoder ModuleList itself, but it needs
-        to be told to look inside the LLM sub-module first -- otherwise on a VLM it may latch onto the
-        vision tower's layer list.
+        ``GptqQuantizer.get_block_name_to_quantize`` finds the decoder ModuleList itself, but it
+        needs to be told to look inside the LLM sub-module first -- otherwise on a VLM it may
+        latch onto the vision tower's layer list.
         """
         from twinkle.quantizer import GptqQuantizer
 
@@ -272,18 +249,12 @@ class QuantizeComponent(BaseWeightTransform):
     @staticmethod
     def _build_calib_data(quant_method: str, template, dataset_config: DatasetConfig, *, max_length: Optional[int],
                           n_samples: int, is_multimodal: bool) -> List[Any]:
-        """Encode a calibration set into the shape the backend expects.
+        """Encode a calibration set into the shape the backend expects (legacy ``_get_quant_dataset``).
 
-        Migrated from legacy ``QuantEngine._get_quant_dataset``. Three output shapes, because the
-        backends disagree:
-          - AWQ            -> a list of ``LongTensor[1, block_size]`` token blocks.
-          - GPTQ (text)    -> a list of ``{'input_ids': [...]}`` dicts of the same blocks.
-          - GPTQ (multimodal) -> the per-sample encoded dicts as-is (image features cannot be
-            concatenated into fixed-size token blocks), with `labels` dropped since nothing is trained.
-
-        Text samples are concatenated and re-split into ``max_length`` blocks so every calibration batch
-        is uniformly sized -- short samples would otherwise make the estimated activation ranges depend
-        on padding.
+        AWQ -> ``LongTensor[1, block_size]`` token blocks; GPTQ text -> ``{'input_ids': [...]}``
+        dicts of the same blocks; GPTQ multimodal -> per-sample encoded dicts as-is (image features
+        cannot join fixed-size blocks), ``labels`` dropped. Text is concatenated and re-split into
+        ``max_length`` blocks so every batch is uniformly sized, not padding-dependent.
         """
         import torch
         from tqdm import tqdm
@@ -294,8 +265,8 @@ class QuantizeComponent(BaseWeightTransform):
         is_gptq = quant_method in ('gptq', 'gptq_v2')
         keep_per_sample = is_gptq and is_multimodal
 
-        # Only the train split is used for calibration (split_dataset_ratio=0), then shuffled so the
-        # samples are not all from one region of the dataset.
+        # Only the train split is used for calibration (split_dataset_ratio=0), then shuffled so
+        # the samples are not all from one region of the dataset.
         dataset = load_dataset(
             dataset_config.dataset,
             split_dataset_ratio=0,
@@ -318,8 +289,8 @@ class QuantizeComponent(BaseWeightTransform):
                 try:
                     inputs = template.encode(data)
                 except MaxLengthError:
-                    # Over-length rows are skipped rather than truncated: a clipped sample would bias
-                    # the activation statistics toward prompt-only content.
+                    # Over-length rows are skipped rather than truncated: a clipped sample would
+                    # bias the activation statistics toward prompt-only content.
                     continue
                 if keep_per_sample:
                     inputs.pop('labels', None)
@@ -350,10 +321,10 @@ class QuantizeComponent(BaseWeightTransform):
     def _collate_multimodal(examples: List[Dict[str, Any]], model, template, *, batch_size: int = 1) -> List[Any]:
         """Batch + device-move multimodal GPTQ samples (legacy ``_prepare_gptq_dataset``).
 
-        optimum's own ``prepare_dataset`` is patched out by the quantizer, so its collate step has to be
-        reproduced: each group is collated by the template, pushed to the model's device to run the
-        multimodal pre-forward hook (which turns pixel values into embeddings), then moved back to CPU so
-        the whole calibration set does not sit in GPU memory at once.
+        optimum's own ``prepare_dataset`` is patched out by the quantizer, so each group is
+        collated by the template, pushed to the model's device to run the multimodal pre-forward
+        hook (which turns pixel values into embeddings), then moved back to CPU so the whole
+        calibration set does not sit in GPU memory at once.
         """
         import torch
         from tqdm import tqdm

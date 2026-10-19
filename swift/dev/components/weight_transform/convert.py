@@ -1,12 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Convert between HF and Megatron/mcore checkpoint formats.
-
-Of the three model -> model transforms this is the only one that does NOT stream safetensors itself: it
-drives the megatron bridge, whose ``load_weights``/``save_weights`` already migrate tensor by tensor, and
-whose sharding is fixed by the torchrun TP/PP/EP model-parallel sizes (orthogonal to the keyspace
-data-parallelism ``StreamingWeightTransform`` uses). It therefore extends ``BaseWeightTransform`` and keeps
-the load/save calls inside ``run`` rather than the streaming skeleton.
-"""
+# The only transform that does NOT stream itself: the megatron bridge already does, sharded by torchrun TP/PP/EP.
 from __future__ import annotations
 
 import dataclasses
@@ -36,21 +29,14 @@ logger = get_logger()
 class ConvertComponent(BaseWeightTransform):
     """Migrate weights between HF safetensors and the mcore ``torch_dist`` checkpoint.
 
-    Direction is taken from ``convert_config``:
-      - ``to_mcore=True`` with no ``mcore_model``  -> HF  -> mcore
-      - ``to_hf=True``                             -> mcore -> HF
-      - ``to_mcore=True`` with ``mcore_model``     -> mcore -> mcore (reshard, and/or merge
-        ``mcore_adapter``)
-
-    The two directions are separate workers (``_convert_hf2mcore`` / ``_convert_mcore``); ``run`` only
-    picks between them, so the routing decision stays readable and the weight work stays out of it.
+    Direction is taken from ``convert_config``: ``to_mcore=True`` with no ``mcore_model`` ->
+    HF -> mcore; ``to_hf=True`` -> mcore -> HF; ``to_mcore=True`` with ``mcore_model`` ->
+    mcore -> mcore (reshard, and/or merge ``mcore_adapter``). The two directions are separate
+    workers; ``run`` only picks between them, so the routing decision stays readable.
     """
 
-    # Forced onto MegatronArguments for every conversion. These are not user knobs: conversion is a
-    # single-process CPU-side format migration, so optimizer/RNG state is meaningless (no_*_optim/rng),
-    # weights must be materialized on CPU rather than sharded onto devices (use_cpu_initialization), and
-    # the attention/recompute settings are pinned to the numerically plainest path so a precision test
-    # compares weights rather than kernel differences.
+    # Forced onto MegatronArguments for every conversion -- not user knobs: a format migration
+    # needs no optimizer/RNG state, CPU materialization, and the plainest attention/recompute path.
     _CONVERT_KWARGS: Dict[str, Any] = {
         'use_cpu_initialization': True,
         'no_save_optim': True,
@@ -63,8 +49,8 @@ class ConvertComponent(BaseWeightTransform):
         'recompute_granularity': 'none',  # deepseek-v4
     }
 
-    # Parallelism sizes are read off DistributedConfig; the mcore checkpoint layout depends on them, so
-    # they must reach MegatronArguments even though conversion does no training.
+    # Parallelism sizes are read off DistributedConfig; the mcore checkpoint layout depends on them,
+    # so they must reach MegatronArguments even though conversion does no training.
     _PARALLEL_FIELDS = (
         'tensor_model_parallel_size',
         'pipeline_model_parallel_size',
@@ -126,8 +112,8 @@ class ConvertComponent(BaseWeightTransform):
         bridge.load_weights([mg_model], processor.model_info.model_dir)
         logger.info('Successfully transferred HF model weights to MG model.')
 
-        # SWIFT_TEST_CONVERT_PRECISION is the legacy escape hatch used by the align tests: verify the
-        # conversion without paying for the (large) checkpoint write.
+        # SWIFT_TEST_CONVERT_PRECISION is the legacy escape hatch used by the align tests: verify
+        # the conversion without paying for the (large) checkpoint write.
         if not self._skip_save():
             self._save_args(megatron_args, output_dir)
             logger.info('Saving the model...')
@@ -154,13 +140,12 @@ class ConvertComponent(BaseWeightTransform):
             test_convert_precision,
         )
 
-        # No HF weights are needed to READ an mcore checkpoint -- only the processor/config for the target
-        # architecture -- so the model is not loaded here.
+        # No HF weights are needed to READ an mcore checkpoint -- only the processor/config for the
+        # target architecture -- so the model is not loaded here.
         _, template, processor = self._load_hf_model_template(load_model=False)
 
-        # The source checkpoint's own args.json carries the tuner/task settings it was written with
-        # (tuner_type, task_type, num_labels, bridge_backend). They must win over defaults, otherwise a
-        # LoRA checkpoint would be rebuilt as a full model and fail to load.
+        # The source args.json carries the tuner/task settings the checkpoint was written with; they
+        # must win over defaults, otherwise a LoRA checkpoint is rebuilt as a full model.
         extra_config = MegatronArguments.load_args_config(
             self.convert_config.mcore_adapter or self.convert_config.mcore_model)
         extra_config['mcore_adapter'] = self.convert_config.mcore_adapter
@@ -170,7 +155,7 @@ class ConvertComponent(BaseWeightTransform):
         megatron_args = self._build_megatron_args(
             processor,
             # Only the mcore->mcore direction writes a dist checkpoint into output_dir; for ->HF the
-            # bridge writes it and MegatronArguments.output_dir would otherwise create a stray dir.
+            # bridge writes it and MegatronArguments.output_dir would create a stray dir.
             output_dir if self.convert_config.to_mcore else None,
             extra=extra_config)
 
@@ -197,8 +182,8 @@ class ConvertComponent(BaseWeightTransform):
                 args=megatron_args,
                 processor=processor)
             if is_master():
-                # Prefer the source checkpoint's args.json so the HF export records how the weights were
-                # actually trained, not how this conversion was invoked.
+                # Prefer the source checkpoint's args.json so the HF export records how the weights
+                # were actually trained, not how this conversion was invoked.
                 src = self.convert_config.mcore_adapter or self.convert_config.mcore_model
                 src_args = os.path.join(src, 'args.json') if src else None
                 if src_args and os.path.exists(src_args):
@@ -206,10 +191,8 @@ class ConvertComponent(BaseWeightTransform):
                 else:
                     self._save_args(megatron_args, output_dir)
             if self.convert_config.test_convert_precision:
-                # Pin the model_type AND template resolved from the source model (the load_model=False
-                # call above): output_dir is a freshly-written dir with no hub name to match, so an
-                # unpinned re-load falls back to ambiguous config architectures / candidate templates.
-                # legacy gets both for free off its cached args.model_type / args.template.
+                # Pin the model_type AND template resolved from the source model: output_dir is a
+                # freshly-written dir with no hub name to match, so an unpinned re-load is ambiguous.
                 resolved_model_type = processor.model_info.model_type
                 resolved_template = template.template_meta.template_type
                 hf_model, template, _ = self._load_hf_model_template(
@@ -241,8 +224,8 @@ class ConvertComponent(BaseWeightTransform):
 
         kwargs = dict(self._CONVERT_KWARGS)
         if processor.model_info.is_moe_model:
-            # Grouped GEMM is the layout the mcore MoE checkpoint is written in; without it the expert
-            # weights would be laid out per-expert and not load back.
+            # Grouped GEMM is the layout the mcore MoE checkpoint is written in; without it the
+            # expert weights are laid out per-expert and do not load back.
             kwargs['moe_grouped_gemm'] = True
         if self.distributed_config is not None:
             for name in self._PARALLEL_FIELDS:
@@ -293,17 +276,10 @@ class ConvertComponent(BaseWeightTransform):
     ) -> Tuple[Any, Any, Any]:
         """Load the HF model (optionally) + template, via dev's own builders.
 
-        legacy calls ``prepare_model_template(args)``, which only works off an ExportArguments instance
-        (it dispatches to args.get_model_processor/get_template). dev has the equivalent pair already, so
-        those are used instead of synthesizing a fake args object.
-
-        ``model_type``/``template_type`` pin the types resolved from the source model for a load whose
-        ``model`` is a freshly-written directory (the to-HF precision re-load). swift name-matches a hub id
-        to a registered model_type/template, but an arbitrary output dir has no name to match and falls
-        back to config architectures / candidate templates, which is ambiguous for some families (qwen2 vs
-        qwen2_gte; qwen2_5 vs qwq vs deepseek_r1). legacy is immune because BaseArguments caches
-        args.model_type and args.template on first resolution; dev's atomic Configs are never mutated, so
-        both resolved values are threaded in explicitly.
+        ``model_type``/``template_type`` pin the types resolved from the source model when
+        ``model`` is a freshly-written dir: swift name-matches a hub id to registered types, but
+        an arbitrary output dir falls back to config architectures / candidate templates, which
+        is ambiguous for some families. dev Configs are atomic, so both values are threaded in.
         """
         from copy import copy
 
@@ -326,11 +302,8 @@ class ConvertComponent(BaseWeightTransform):
             build_config.template = template_type
         kwargs: Dict[str, Any] = {}
         if load_model and patch_offload:
-            # patch_offload turns accelerate's align-device hook into a no-op (swift/model/patcher.py).
-            # HF->mcore conversion only has the bridge READ the HF weights tensor by tensor and never runs
-            # an HF forward, so the hook that shuttles offloaded blocks onto the GPU per forward is pure
-            # overhead here. The precision test is the exception -- it DOES run an HF forward to compare
-            # against mcore -- which is why the caller passes patch_offload=not test_convert_precision.
+            # patch_offload turns accelerate's align-device hook into a no-op: the bridge only READS
+            # the HF weights, never runs a forward. The precision test is the exception (see caller).
             kwargs['patch_offload'] = True
         hf_model, processor = load_model_processor(load_config, load_model=load_model, **kwargs)
         template = build_template(build_config, processor)
@@ -358,8 +331,9 @@ class ConvertComponent(BaseWeightTransform):
     def _save_args(megatron_args, output_dir: str) -> None:
         """Write args.json next to the weights.
 
-        ``save_args`` lives on legacy's BaseArguments, not on MegatronArguments (which is what this recipe
-        builds), so the same file is written directly rather than reaching for a method that is not there.
+        ``save_args`` lives on legacy's BaseArguments, not on MegatronArguments (which is what
+        this recipe builds), so the same file is written directly rather than reaching for a
+        method that is not there.
         """
         from swift.dev.utils import is_master
 

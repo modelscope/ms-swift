@@ -1,11 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""export CLI: argv -> dev Configs -> export recipes.
-
-The Config dataclasses are the argument surface; no legacy ``ExportArguments`` object is constructed.
-The legacy load-bearing ordering stays intact: merge_lora runs first and chains into quantization, then
-at most one of quantize / cached-dataset / convert runs. The final ``output_dir`` belongs to the final
-step, so a merge that precedes quantization writes to its own default ``{adapter}-merged`` directory.
-"""
 from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional
@@ -56,6 +49,8 @@ def parse_export_configs(argv: Optional[List[str]] = None, *, command: str = 'ex
 
 
 def _derive_output_dir(configs: Dict[str, Any]) -> None:  # noqa: C901
+    """Derive the default output as ``{source}-{operation}``; the dir belongs to the final step only,
+    so a merge chained into quantization writes to its own ``{adapter}-merged`` directory."""
     checkpoint = configs['checkpoint_config']
     if checkpoint._output_dir_explicit:
         return
@@ -86,13 +81,8 @@ def _derive_output_dir(configs: Dict[str, Any]) -> None:  # noqa: C901
 
 
 def _force_eager_encoding_for_cached_dataset(configs: Dict[str, Any]) -> None:
-    """Force eager encoding for ``--to_cached_dataset`` (legacy ExportArguments.__post_init__ parity).
-
-    A cached dataset is materialised and saved, which lazy tokenisation (a per-row ``__getitem__`` wrapper
-    with no ``save_to_disk``) cannot do. ``builders/dataset._encode_mode`` resolves an unset
-    ``lazy_tokenize`` to lazy for multimodal models, so pin it to False here rather than making the user
-    set it by hand; warn when overriding an explicit True so the dead setting stays visible.
-    """
+    """Pin ``lazy_tokenize=False`` for ``--to_cached_dataset``: a cached dataset must be materialised
+    and saved, which lazy tokenisation cannot do; warn when overriding an explicit True."""
     convert_config = configs['convert_config']
     dataset_config = configs['dataset_config']
     if not convert_config.to_cached_dataset or dataset_config.lazy_tokenize is False:
@@ -144,7 +134,7 @@ def _validate_export(configs: Dict[str, Any]) -> None:
 def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
     """Execute an already parsed export Config set."""
     from swift.dev.config import process_and_validate_configs
-    from swift.dev.recipe import (
+    from swift.dev.recipe.export import (
         export_cached_dataset,
         run_convert,
         run_merge_lora,
@@ -155,8 +145,8 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
 
     _validate_export(configs)
     _derive_output_dir(configs)
-    # A cached dataset must be encoded eagerly; pin lazy_tokenize=False before validation/derivation so
-    # builders/dataset._encode_mode does not resolve it to lazy (the multimodal default) and refuse.
+    # Pin lazy_tokenize before the shared process/validate pass: _check_lazy_tokenize and
+    # builders/dataset._encode_mode would otherwise resolve it to lazy (the multimodal default) and refuse.
     _force_eager_encoding_for_cached_dataset(configs)
     # Export output is a final artifact, not a training work directory. Recipes own directory creation
     # and their replace/overwrite policy, so run initialization only normalizes the path.

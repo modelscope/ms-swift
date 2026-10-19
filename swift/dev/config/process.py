@@ -41,16 +41,13 @@ def process_configs(
 ) -> None:
     """Load configured plugins and resolve every cross-Config derived value in place.
 
-    Idempotent: running it twice leaves the same result, so callers may safely repeat the lifecycle.
+    Idempotent: running it twice leaves the same result, so callers may repeat the lifecycle.
     """
-    # Bridge ModelConfig.enable_npu_model_patch to the Ascend patch switch BEFORE the first swift.model
-    # import below. swift.model applies its NPU model patches once, at import, and reads this env var
-    # (npu_patch._is_model_patch_enabled); create_workers later copies os.environ, so the same value also
-    # drives every Ray worker -- which argv cannot, a worker's sys.argv being the raylet's. On non-NPU
-    # platforms the patch code never runs, so the field is ignored there exactly as legacy does.
+    # Bridge enable_npu_model_patch to the env var BEFORE the first swift.model import (the patch
+    # applies once at import and reads this var); create_workers copies os.environ to every worker.
     os.environ['SWIFT_ENABLE_NPU_MODEL_PATCH'] = str(bool(model_config.enable_npu_model_patch))
 
-    from swift.dev.builders.model import is_megatron_backend
+    from swift.dev.builders import is_megatron_backend
     from swift.dev.utils.plugin import PluginRegistry
 
     # Plugins must be registered before validation resolves their configured names.
@@ -58,9 +55,8 @@ def process_configs(
     is_megatron = is_megatron_backend(distributed_config)
 
     _derive_gradient_accumulation_steps(train_config, distributed_config, is_megatron)
-    # Order matters below: the eval schedule reads split_dataset_ratio after the val-dataset rule has
-    # zeroed it, and task_type must be settled (rm -> seq_cls) before the per-token-loss default and
-    # the best-model metric read it.
+    # Order matters: the eval schedule reads split_dataset_ratio after the val-dataset rule zeroed
+    # it, and task_type must settle (rm -> seq_cls) before the per-token-loss default reads it.
     _derive_vit_gradient_checkpointing(train_config, tuner_config)
     _derive_packing(dataset_config, template_config)
     _derive_split_dataset_ratio(dataset_config)
@@ -135,14 +131,11 @@ def process_and_validate_configs(
         # Fold the legacy ``async_generate`` bool into ``async_mode`` BEFORE validation reads it, so
         # ``async_mode`` is the one source of truth downstream (process modifies, validate only reads).
         _derive_async_mode(rollout_config)
-        # A full-parameter or colocated run has no adapter to pin (or no per-cycle weight sync to hand the
-        # shared device back), so its only sound publication is in_place; derive it from the defaults BEFORE
-        # validation reads them, so a legacy ``--async_generate`` / colocated synchronous script still runs
-        # with no extra flags. rl_config tells it whether ``async_mode='none'`` actually rides the driver.
+        # A full-parameter or colocated run's only sound publication is in_place; derive from the
+        # defaults BEFORE validation reads them, so a legacy colocated script needs no extra flags.
         _derive_weight_sync_strategy(rollout_config, configs.get('rl_config'), configs.get('tuner_config'))
-        # max_turns lives on the RolloutConfig itself; rl_config is the training surface
-        # _check_async_mode / _check_rollout_tools cross-reference (None for sampling); tuner_config tells
-        # it a full-parameter run from an adapter run (adapter_snapshot needs a LoRA).
+        # max_turns lives on the RolloutConfig itself; rl_config/tuner_config tell _check_async_mode and
+        # _check_rollout_tools the training/tuner surface (None = sampling).
         validate_rollout_config(rollout_config, configs.get('rl_config'), configs.get('tuner_config'))
     infer_config = configs.get('infer_config')
     if infer_config is not None:
@@ -221,10 +214,8 @@ def _resolve_model(model_config: 'ModelConfig', dataset_config: Optional['Datase
 
     use_hf = dataset_config.use_hf if dataset_config is not None else None
     hub_token = dataset_config.hub_token if dataset_config is not None else None
-    # Preserve what the user actually passed before overwriting it with the resolved local dir. The
-    # checkpoint's args.json must record this portable id/path -- legacy saves the id, and `swift infer
-    # <ckpt>` re-resolves it on any machine, whereas the snapshot dir below is local to this one. Kept as
-    # a transient attribute (not a dataclass field) so it does not surface as a CLI flag.
+    # Preserve the user-passed id before overwriting with the local dir: args.json records the
+    # portable id (`swift infer <ckpt>` re-resolves it anywhere); transient attr, not a CLI field.
     model_config._model_id_or_path = model_config.model
     model_config.model = safe_snapshot_download(
         model_config.model, revision=model_config.model_revision, use_hf=use_hf, hub_token=hub_token)
@@ -233,10 +224,7 @@ def _resolve_model(model_config: 'ModelConfig', dataset_config: Optional['Datase
 def split_served_name(adapter: str) -> tuple:
     """``name=path`` -> ``(name, path)``; a bare path/hub id -> ``(None, adapter)``.
 
-    ``swift deploy`` spells a served adapter as ``name=path`` (see ``cli/deploy.py``) so one server can route
-    to several adapters by name. The name is a deploy-only routing label, never a hub id, so it is split off
-    here -- but only when the segment before the first ``=`` is a bare name (no path separator), so a local
-    path that legitimately contains ``=`` is downloaded verbatim instead of being mis-split.
+    Splits only when the segment before ``=`` is a bare name, so a path containing ``=`` survives.
     """
     head, sep, tail = adapter.partition('=')
     if sep and head and '/' not in head and '\\' not in head:
@@ -307,14 +295,7 @@ def _derive_gradient_accumulation_steps(train_config: 'TrainConfig', distributed
 def _derive_lr_decay_style(train_config: 'TrainConfig', is_megatron: bool) -> None:
     """Make `lr_decay_style` the single value the Megatron scheduler reads.
 
-    These two are not a plain alias pair. `lr_scheduler` is dev's canonical field and already maps
-    onto Megatron's styles through resolve_megatron_decay_style; `lr_decay_style` is Megatron's own
-    spelling, and it carries one value -- 'WSD' -- that has no `lr_scheduler` equivalent, so it
-    cannot simply be folded away.
-
-    So the rule is by precedence rather than by copying: an explicitly chosen `lr_decay_style` stands,
-    otherwise it is derived from `lr_scheduler`. Either way exactly one field holds the answer
-    afterwards, which is the point -- the previous state had two fields and no rule.
+    An explicit style stands, else it is derived from `lr_scheduler` ('WSD' has no equivalent).
     """
     if not is_megatron:
         return
@@ -340,10 +321,7 @@ def _derive_lr_decay_style(train_config: 'TrainConfig', is_megatron: bool) -> No
 def _try_megatron_decay_style(lr_scheduler: str) -> Optional[str]:
     """The Megatron style for an `lr_scheduler`, or None when there is no mapping.
 
-    Swallowing the error is right here and only here: resolve_megatron_decay_style fails fast so an
-    unsupported schedule cannot silently become cosine, and that report belongs to the scheduler build,
-    where it names the supported values. Raising it from a derivation pass would report the same problem
-    twice, from a place that was not asked about schedules.
+    Errors are swallowed only here: the fast-fail report belongs to the scheduler build site.
     """
     from swift.dev.utils.naming import resolve_megatron_decay_style
     try:
@@ -355,17 +333,7 @@ def _try_megatron_decay_style(lr_scheduler: str) -> Optional[str]:
 def _derive_virtual_pipeline(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
     """Resolve the virtual-pipeline width, and the two overlaps that only exist when it is set.
 
-    Mirrors legacy megatron_args.py::_init_vpp_size. Three separate derivations, each of which turns a
-    combination that would fail deep inside Megatron into one that is consistent up front:
-
-    - A layout string implies the number of virtual stages, so it wins over an explicit size; giving
-      both a layout and a mismatched size is the one case this refuses outright.
-    - A width of 1 is not interleaving, it is the ordinary pipeline. Normalising it to None means the
-      checks below (and Megatron's own) have a single representation of "off" to test.
-    - Without interleaving there are no alternating stages to overlap, so `overlap_p2p_comm` and
-      `align_param_gather` cannot do anything; leaving them on would report a configuration the run does
-      not have. `batch_p2p_comm` then defaults to the opposite of the overlap, since batching the pair
-      and overlapping them are alternatives.
+    Mirrors legacy _init_vpp_size: a layout implies the stage count; 1 normalises to None.
     """
     if not is_megatron:
         return
@@ -385,16 +353,14 @@ def _derive_virtual_pipeline(distributed_config: 'DistributedConfig', is_megatro
         distributed_config.overlap_p2p_comm = False
         distributed_config.align_param_gather = False
     if distributed_config.batch_p2p_comm is None:
+        # Batching the pair and overlapping them are alternatives.
         distributed_config.batch_p2p_comm = not distributed_config.overlap_p2p_comm
 
 
 def _layout_num_stages(layout: str) -> Optional[int]:
     """Stage count encoded in a pipeline layout string, or None when megatron cannot be asked.
 
-    The parsing lives in Megatron, and importing it here follows what _check_megatron_attn_backend
-    already does on this side. None when the import fails, so a driver without megatron installed --
-    a config-only test, or a dry run -- still gets through the rest of the pass; Megatron itself
-    validates the layout properly when the model is built.
+    None on ImportError keeps a config-only test / dry run going; Megatron validates at build time.
     """
     try:
         from megatron.core.transformer.pipeline_parallel_layer_layout import PipelineParallelLayerLayout
@@ -406,13 +372,7 @@ def _layout_num_stages(layout: str) -> Optional[int]:
 def _derive_grad_accum_dtype(model_config: 'ModelConfig', train_config: 'TrainConfig', is_megatron: bool) -> None:
     """Accumulate gradients in fp32 when training in bf16 and keeping fp32 master gradients.
 
-    Mirrors legacy megatron_args.py::_map_dtype, which set this for the bf16 + main_grads_dtype='fp32'
-    pair. The reason is that the two settings only agree that way: master gradients declared fp32 while
-    the reduction runs in bf16 would round every accumulation, which is precisely what the fp32 master
-    copy exists to avoid.
-
-    Only ever turns it on. A user who explicitly wants bf16 accumulation can say so, and legacy's
-    version could not tell that apart from the default.
+    Mirrors legacy _map_dtype: a bf16 reduction would round every accumulation. Only ever turns it on.
     """
     explicit = getattr(train_config, '_explicit_fields', set())
     if (not is_megatron or train_config.accumulate_allreduce_grads_in_fp32
@@ -426,12 +386,7 @@ def _derive_per_token_loss(model_config: 'ModelConfig', train_config: 'TrainConf
                            rl_config: Optional['RLConfig'], is_megatron: bool) -> None:
     """Average the loss per token for plain causal-LM training, per batch otherwise.
 
-    Mirrors legacy megatron_args.py::_set_default. Per-token is the right average for causal LM, where
-    samples have unequal lengths and the per-micro-batch mean would weight a short sample as heavily as
-    a long one. It is left off for the other objectives because their losses are already defined per
-    sequence -- an RLHF advantage or a classification logit is not a sum over tokens to be divided.
-
-    Only fills in None, so an explicit choice is never overridden.
+    Mirrors legacy _set_default; only fills in None.
     """
     if not is_megatron or train_config.calculate_per_token_loss is not None:
         return
@@ -442,20 +397,9 @@ def _derive_per_token_loss(model_config: 'ModelConfig', train_config: 'TrainConf
 
 def _derive_vit_gradient_checkpointing(train_config: 'TrainConfig',
                                        tuner_config: Optional['TunerConfig']) -> None:
-    """Checkpoint the vision tower unless it is frozen, matching whichever way the LLM tower is trained.
+    """Checkpoint the vision tower unless it is frozen, matching the LLM tower (legacy sft_args:211).
 
-    Mirrors legacy sft_args.py:211-212 (`vit_gradient_checkpointing = not freeze_vit`). Recomputing a
-    tower whose parameters are frozen saves the activation memory it would cost but buys nothing back --
-    there is no gradient to recompute for -- so the default follows freeze_vit: recompute when training
-    the tower, skip it when frozen.
-
-    Only fills in None, so an explicit choice is kept. When there is no TunerConfig (full-parameter
-    training) freeze_vit is not available and nothing is trained frozen, so the field is left for the
-    builder's own default.
-
-    Both backends consume it: the transformers path checkpoints each tower in TransformersModel.__init__,
-    and the megatron path does the same in MegatronModel.__init__ -- mcore's global recompute_* knobs cover
-    the LLM decoder but not the external HF vision tower, so megatron needs this per-tower switch too.
+    Only fills in None; no TunerConfig (full-param) leaves the builder default.
     """
     if train_config.vit_gradient_checkpointing is not None or tuner_config is None:
         return
@@ -479,13 +423,7 @@ def _derive_packing(dataset_config: 'DatasetConfig', template_config: 'TemplateC
 def _derive_split_dataset_ratio(dataset_config: 'DatasetConfig') -> None:
     """Stop carving a validation split off the train set once a real one is available.
 
-    Mirrors legacy data_args.py:110-116. `split_dataset_ratio` reserves a slice of the training data
-    for validation; a supplied `val_dataset` already provides that slice, and a streaming train set has
-    no random access to carve one from, so in both cases the ratio would either double up or fail.
-    Setting it to 0 is what makes `--val_dataset` alone do the obvious thing.
-
-    Only lowers the ratio to 0, never raises it, so it cannot manufacture a split the user did not ask
-    for.
+    Mirrors legacy data_args:110-116; only lowers the ratio to 0, never raises it.
     """
     if dataset_config.split_dataset_ratio <= 0:
         return
@@ -500,22 +438,7 @@ def _derive_eval_schedule(train_config: 'TrainConfig', dataset_config: 'DatasetC
                           checkpoint_config: Optional['CheckpointConfig']) -> None:
     """Make the evaluation cadence follow the save cadence, and turn it off when nothing validates it.
 
-    Mirrors legacy sft_args.py::_init_eval_strategy plus the guard at sft_args.py:231-232. Four
-    couplings, each removing a knob the user would otherwise have to keep in sync by hand:
-
-    - No data to evaluate means there is nothing to score, so the strategy is forced to 'no'; leaving it
-      on would evaluate an empty set every period. What counts as "data to evaluate" follows the path:
-      the validation-loss path scores a split-off val set, while the generative path
-      (``predict_with_generate``) scores an EvalScope ``eval_dataset`` benchmark and needs no val split.
-    - `eval_strategy` defaults to `save_strategy`, so a run that saves every N steps also evaluates
-      every N steps without being told twice.
-    - When evaluating by steps without an explicit `eval_steps`, it inherits `save_steps` for the same
-      reason.
-    - A final `eval_strategy` of 'no' -- forced here, set by the user, or inherited from `save_strategy`
-      -- also zeroes `split_dataset_ratio`: nothing scores the split, so carving one off the train set
-      would only waste training data (legacy sft_args.py:400-404).
-
-    Only fills in unset fields, and only ever lowers `split_dataset_ratio` to 0 (never raises it).
+    Mirrors legacy _init_eval_strategy: no eval data forces 'no'; eval_steps inherits save_steps.
     """
     if train_config.predict_with_generate:
         has_eval_data = bool(train_config.eval_dataset)
@@ -539,13 +462,9 @@ def _derive_eval_schedule(train_config: 'TrainConfig', dataset_config: 'DatasetC
 
 
 def _derive_streaming_dataloader_workers(dataset_config: 'DatasetConfig') -> None:
-    """Read a streaming dataset from a single worker.
+    """Read a streaming dataset from a single worker (legacy megatron_base_args:54-57).
 
-    Mirrors legacy megatron_base_args.py:54-57. An IterableDataset has no random access, so several
-    workers cannot each take a disjoint slice; more than one either duplicates samples or races on the
-    same iterator. legacy clamps to 1 with a log, and so does this.
-
-    Only lowers the count; a None (auto) or already-<=1 value is left for the loader to interpret.
+    An IterableDataset has no random access; several workers duplicate or race. Only lowers.
     """
     if not dataset_config.streaming:
         return
@@ -554,20 +473,15 @@ def _derive_streaming_dataloader_workers(dataset_config: 'DatasetConfig') -> Non
         dataset_config.dataloader_num_workers = 1
 
 
-#: torch_dtype -> the fp compute dtype bitsandbytes should dequantize its 4-bit weights into. fp16 and
-#: fp32 both compute in fp32 (a 4-bit path gains nothing from an fp16 accumulate and loses range);
-#: bf16 keeps bf16 so the compute dtype matches the rest of the model.
+# torch_dtype -> the fp compute dtype bitsandbytes should dequantize its 4-bit weights into. fp16 and
+# fp32 both compute in fp32 (a 4-bit path gains nothing from an fp16 accumulate and loses range).
 _BNB_COMPUTE_DTYPE = {'float16': 'float32', 'float32': 'float32', 'bfloat16': 'bfloat16'}
 
 
 def _derive_bnb_compute_dtype(model_config: 'ModelConfig', quantize_config: Optional['QuantizeConfig']) -> None:
-    """Default the bnb 4-bit compute dtype from the model's torch_dtype.
+    """Default the bnb 4-bit compute dtype from the model's torch_dtype (legacy quant_args:116-122).
 
-    Mirrors legacy quant_args.py:116-122. `bnb_4bit_compute_dtype` is the dtype the dequantized weights
-    are matmul'd in; when unset it should track the model's own dtype rather than a fixed default, so a
-    bf16 run does not silently compute its quantized layers in fp32.
-
-    Only fills in None, and only when torch_dtype is itself known.
+    When unset it tracks the model's dtype, so a bf16 run does not compute in fp32.
     """
     if quantize_config is None or quantize_config.bnb_4bit_compute_dtype is not None:
         return
@@ -579,14 +493,7 @@ def _derive_bnb_compute_dtype(model_config: 'ModelConfig', quantize_config: Opti
 def _derive_async_mode(rollout_config: 'RolloutConfig') -> None:
     """Fold the legacy ``async_generate`` bool into ``async_mode`` (the one source of truth).
 
-    ``async_generate=True`` predates ``async_mode`` and meant a one-batch-lookahead overlap -- a single
-    version of staleness, whose semantic successor is ``'one_step_off'`` (now served by the per-sample
-    streaming driver, not the retired batch double-buffer). So an unset ``async_mode`` inherits
-    ``'one_step_off'`` from it and every downstream consumer (the GRPO /
-    PPO dispatch, ``validate._check_async_mode``) reads only ``async_mode``. When ``async_mode`` is set
-    explicitly it wins and ``async_generate`` is ignored here -- a genuine conflict between the two is
-    rejected by ``validate._check_async_mode`` rather than silently resolved. Idempotent: once
-    ``async_mode`` is no longer ``'none'`` a re-run leaves it unchanged.
+    True meant a one-batch lookahead (successor 'one_step_off'); an explicit async_mode wins. Idempotent.
     """
     if rollout_config.async_generate and rollout_config.async_mode == 'none':
         rollout_config.async_mode = 'one_step_off'
@@ -596,41 +503,18 @@ def _derive_weight_sync_strategy(rollout_config: 'RolloutConfig', rl_config: Opt
                                  tuner_config: Optional['TunerConfig']) -> None:
     """Default a run that rides the streaming driver to the only publication its placement/tuner allow.
 
-    ``weight_sync_strategy`` defaults to ``adapter_snapshot``, which pins each trained version as its own
-    LoRA adapter path -- sound and interrupt-free, but it needs an adapter to pin AND a weight sync the
-    device hand-over can ride. Two constraints force ``in_place`` (overwrite the sampler's merged base
-    weights) instead:
-
-    * a FULL-PARAMETER policy (``tuner='full'``) has no adapter to pin, so ``in_place`` is its only sound
-      publication;
-    * a COLOCATED sampler (``sampler_mode='colocate'``, one DeviceGroup time-shared with the trainer) hands the
-      device back to generation each cycle via the publish's weight sync, which only ``in_place`` performs
-      (``adapter_snapshot`` publishes by writing a new path with no sync), so ``in_place`` is forced there
-      regardless of tuner.
-
-    ``allow_partial_rollout`` is then derived True ONLY for an OVERLAPPING regime (``one_step_off`` /
-    ``fully_async``): a publish there overwrites the live copy while generations are in flight, so each must
-    be aborted and resumed on the fresh weights (twinkle ``PartialRolloutMixin`` + ``InPlaceWeightSync``). At
-    staleness 0 (``async_mode='none'``) the drain empties the in-flight set before every publish, so the abort
-    is a no-op and the flag stays at its inert default. Deriving these keeps the legacy promise that a bare
-    ``--async_generate`` (or a colocated synchronous) script runs with no extra publication flags.
-
-    Only the DEFAULTS are derived: a run that explicitly set ``weight_sync_strategy`` is left alone, so an
-    explicit ``adapter_snapshot`` on a full-parameter or colocated run still reaches
-    ``validate._check_streaming_publication`` and is rejected there -- silently overriding an explicit choice
-    would hide the user's mistake. And nothing is derived when no streaming driver reads the knob: under
-    ``async_mode='none'`` only an online loop with no sync-only feature rides the driver (a sync-only feature
-    falls back to ``_run_sync``, which reads no publication knob, so deriving there would only risk tripping
-    the inert-knob rejection). Idempotent: once the strategy is ``in_place`` a re-run leaves it.
+    A full-param or colocated run derives in_place; an overlapping regime adds partial rollout.
     """
     from .validate import _changed_fields, _streams_under_none
     mode = rollout_config.async_mode
-    # Under 'none' the publication knob is read only if the config actually rides the streaming driver; an
-    # overlapping mode always does (validate gates rl_type there). Skip the sync-only / non-online fallback.
+    # Under 'none' the publication knob is read only if the config actually rides the streaming
+    # driver; an overlapping mode always does. Skip the sync-only / non-online fallback.
     if mode == 'none' and not _streams_under_none(rl_config):
         return
     changed = _changed_fields(rollout_config)
     if 'weight_sync_strategy' in changed:
+        # An explicit choice is left alone, so an adapter_snapshot on a full-param/colocated run
+        # still reaches validate._check_streaming_publication and is rejected there.
         return
     tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
     colocate = rollout_config.sampler_mode == 'colocate'
@@ -642,14 +526,9 @@ def _derive_weight_sync_strategy(rollout_config: 'RolloutConfig', rl_config: Opt
 
 
 def _derive_rlhf_task_type(model_config: 'ModelConfig', rl_config: Optional['RLConfig']) -> None:
-    """A reward model is a single-logit sequence classifier.
+    """A reward model is a single-logit sequence classifier (legacy rlhf_args.py::_init_rm).
 
-    Mirrors legacy rlhf_args.py::_init_rm (and the same block in megatron rlhf_args.py). `rl_type=rm`
-    trains a scalar reward head, which is a `seq_cls` task with `num_labels=1`; deriving the two here
-    means the user picks the algorithm and the model shape follows, instead of having to state both and
-    keep them consistent.
-
-    Only fills in defaults: an explicit task_type/num_labels is left alone.
+    `rl_type=rm` trains a seq_cls head with num_labels=1; only fills in defaults.
     """
     if rl_config is None or getattr(rl_config, 'rl_type', None) != 'rm':
         return
@@ -659,25 +538,15 @@ def _derive_rlhf_task_type(model_config: 'ModelConfig', rl_config: Optional['RLC
         model_config.num_labels = 1
 
 
-#: rl_type -> its default `beta` (KL / deviation-from-reference weight). Absent types (dpo, cpo, kto,
-#: ...) share the 0.1 fallback below; the ones listed here are singled out because 0.1 would be wrong.
-#: ``opsd``/``mopd`` are self-distillation -- the pull is toward the (self/multi) teacher, with no
-#: reference-KL term by default, so beta is 0 (an explicit ``--beta`` still adds one). ``rft`` is plain
-#: rejection-sampling SFT and has no reference-deviation concept at all; 0 keeps it inert rather than
-#: inheriting the 0.1 fallback.
+# rl_type -> its default `beta` (KL / deviation-from-reference weight). opsd/mopd are self-distillation
+# (no reference-KL term by default) and rft is plain rejection-sampling SFT, so all three take 0.
 _RLHF_BETA_DEFAULTS = {'grpo': 0.04, 'gkd': 0.5, 'simpo': 2.0, 'opsd': 0.0, 'mopd': 0.0, 'rft': 0.0}
 
 
 def _derive_rlhf_beta(rl_config: Optional['RLConfig']) -> None:
     """Fill the reference-deviation weight with the chosen algorithm's default.
 
-    Mirrors the scattered legacy defaults (rlhf_args.py::_set_default 0.1/0.5, _init_grpo 0.04,
-    _init_simpo 2.0). `beta` weights how far the policy may drift from the reference, and the sensible
-    starting value differs by algorithm; collecting the defaults in one table keeps them from
-    disagreeing across the code paths that used to each set their own.
-
-    Only fills in None, so an explicit `--beta` -- including `--beta 0` to disable the reference model
-    entirely -- is preserved.
+    The scattered legacy defaults collected into one table; only fills None (`--beta 0` preserved).
     """
     if rl_config is None or rl_config.beta is not None:
         return
@@ -686,32 +555,16 @@ def _derive_rlhf_beta(rl_config: Optional['RLConfig']) -> None:
 
 def _derive_rlhf_loss_scale(template_config: 'TemplateConfig', rl_config: Optional['RLConfig'],
                             rollout_config: Optional['RolloutConfig'] = None) -> None:
-    """Default the loss-mask strategy to the algorithm's sensible one when the user did not set it.
+    """Default the loss-mask strategy to the algorithm's sensible one (legacy _set_loss_scale).
 
-    Mirrors legacy rlhf_args.py::_set_loss_scale. ``loss_scale`` decides which assistant turns the loss is
-    computed on: 'last_round' masks every turn but the final assistant response, 'default' trains them all.
-    The two coincide on single-turn data (the lone assistant turn IS the last round) and differ only on
-    multi-turn conversations, so this derivation matters for multi-turn preference / RLHF data.
-
-    Every rl_type defaults to 'last_round' -- a preference / RL objective contrasts whole responses, and
-    reproducing earlier turns the model was merely conditioned on is not the point -- with one exception: a
-    GRPO multi-turn rollout generates several assistant turns per trajectory and scores the whole
-    trajectory, so it trains every turn ('default').
-
-    legacy also splits orpo by ``is_multimodal`` (non-multimodal -> 'default'); that flag is only known
-    after the model is resolved, which happens AFTER config processing, and orpo is a single-turn
-    preference objective where 'default' and 'last_round' coincide, so orpo takes 'last_round' here (also
-    the safer choice legacy makes for its multimodal case).
-
-    Only fills in when the user did not pass --loss_scale. TemplateConfig.loss_scale defaults to the
-    literal 'default' (not None), so "unset" is detected through _explicit_fields, not a None check.
+    'last_round' everywhere except GRPO multi-turn (-> 'default'); coincide on single-turn data.
     """
     if rl_config is None or getattr(rl_config, 'rl_type', None) is None:
         return
     if 'loss_scale' in getattr(template_config, '_explicit_fields', set()):
         return
-    # legacy extends the multi-turn exception to gkd as well, but dev's multi-turn rollout is GRPO-only
-    # (validate rejects max_turns on any other rl_type), so gkd always takes 'last_round' here.
+    # dev's multi-turn rollout is GRPO-only (validate rejects max_turns elsewhere), so every other
+    # rl_type always takes 'last_round' here.
     if rl_config.rl_type == 'grpo' and rollout_config is not None and rollout_config.max_turns is not None:
         template_config.loss_scale = 'default'
     else:
@@ -722,14 +575,7 @@ def _derive_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['
                            rl_config: Optional['RLConfig']) -> None:
     """Point the reference model at the policy model when the algorithm needs one and none was given.
 
-    Mirrors legacy rlhf_args.py:289-297. DPO/KTO/PPO/GRPO under full-parameter training compare the
-    policy against a frozen copy of the starting weights, so an unset `ref_model` defaults to `model`
-    (and likewise its type/revision). GRPO with `beta=0` drops the KL term, hence needs no reference at
-    all, so the field is cleared. Adapter training has no separate reference -- the base model with the
-    adapter disabled is the reference -- so nothing is derived there.
-
-    The mirror is the derivation only; the rejection of a ref_model passed to CPO/ORPO/LoRA (legacy's
-    trailing `elif ... raise`) lives in validate.py, so this module still never refuses.
+    Full-param DPO/KTO/PPO/GRPO default ref_model to `model` (legacy :289-297); GRPO beta=0 needs none.
     """
     if rl_config is None:
         return
@@ -766,19 +612,7 @@ def _derive_rlhf_teacher(model_config: 'ModelConfig', tuner_config: Optional['Tu
 def _derive_grpo_reward_defaults(rl_config: Optional['RLConfig']) -> None:
     """Choose the reward-normalisation defaults that match the GRPO advantage estimator.
 
-    Mirrors legacy rlhf_args.py::_init_grpo. Each estimator implies how its rewards should be scaled
-    and whether the KL belongs in the reward: plain 'grpo' normalises per group and keeps KL as a
-    separate loss term, 'rloo' does neither, 'reinforce_plus_plus' scales per batch and folds KL into
-    the reward. Deriving both from `advantage_estimator` keeps a user from pairing an estimator with a
-    scaling that contradicts it.
-
-    The added estimators follow their twinkle defaults (the ``scale`` each ``Advantage.__call__`` ships
-    with) and verl's KL placement: 'reinforce_plus_plus_baseline' is the Reinforce++ family (batch
-    whitening + KL-in-reward); 'remax'/'opo'/'gpg' center on their own baseline (greedy / length-weighted
-    group / group mean) so they take no extra reward scaling and keep KL as a loss term; 'grpo_passk' is a
-    GRPO variant (group-std normalisation, KL as a loss term).
-
-    Only fills in None. The estimator is a closed Literal, so the value always resolves.
+    Mirrors legacy _init_grpo; only fills None.
     """
     if rl_config is None or getattr(rl_config, 'rl_type', None) != 'grpo':
         return
@@ -801,18 +635,7 @@ def _derive_grpo_reward_defaults(rl_config: Optional['RLConfig']) -> None:
 def _derive_best_model_metric(train_config: 'TrainConfig', rl_config: Optional['RLConfig']) -> None:
     """Pick the metric that selects the best checkpoint, and which direction counts as better.
 
-    Mirrors legacy sft_args.py::_init_metric_for_best_model, its GRPO/PPO overrides in rlhf_args.py, and
-    the megatron block at megatron_args.py:862-865. The best-checkpoint metric depends on what the run
-    produces: a generation run is judged by ROUGE, a GRPO run by its reward, everything else by the
-    loss. `greater_is_better` then follows the metric -- loss is minimised, a reward or ROUGE score is
-    maximised -- so the two cannot be set to disagree.
-
-    PPO is the one exception: its policy/value loss is not monotone in policy quality (it swings with the
-    clip fraction and the value fit), so "best by loss" would pick a checkpoint essentially at random.
-    legacy forces the metric off for PPO (rlhf_args.py:478-480); dev leaves it unset so no best-checkpoint
-    selection runs, while still honouring an explicit --metric_for_best_model if the user wants one.
-
-    Only fills in unset fields.
+    GRPO -> reward, generation -> ROUGE, else loss; PPO stays unset (loss not monotone in quality).
     """
     rl_type = getattr(rl_config, 'rl_type', None) if rl_config is not None else None
     if train_config.metric_for_best_model is None:
@@ -825,12 +648,9 @@ def _derive_best_model_metric(train_config: 'TrainConfig', rl_config: Optional['
 
 
 def _normalize_recompute_granularity(distributed_config: 'DistributedConfig') -> None:
-    """Treat the string 'none' as no recomputation.
+    """Treat the string 'none' as no recomputation (legacy megatron_args:797-798).
 
-    Mirrors legacy megatron_args.py:797-798. The CLI can only spell "off" as the word 'none', but every
-    downstream check tests `recompute_granularity` for None; collapsing the two here gives "off" a
-    single representation, so a `--recompute_granularity none` is not read as an enabled mode named
-    'none'.
+    Every downstream check tests the field for None, so "off" gets a single representation.
     """
     if distributed_config.recompute_granularity == 'none':
         distributed_config.recompute_granularity = None

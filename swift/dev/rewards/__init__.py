@@ -1,24 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Reward plugins for swift.dev: outcome rewards (ORM) and process-reward step scorers (PRM).
+# Reward plugins: outcome rewards (ORM) and process-reward step scorers (PRM). The scoring API lives
+# in reward.py / scorer.py / advantage.py, the remote scoring boundary in worker.py (submodule imports).
+from __future__ import annotations
 
-Internalized from ``swift.rewards`` so swift.dev carries no runtime dependency on legacy swift packages.
-
-``ORM`` is the historical name of swift's reward plugin base (see :mod:`swift.dev.utils.plugin`); ``orms`` is the
-registry the ``reward`` extension point adopts, and :data:`REWARD` is that point. The scoring API over these
-registries lives in :mod:`swift.dev.rewards.reward`, and reward-to-advantage estimation in
-:mod:`swift.dev.rewards.advantage`, so the whole reward pipeline is self-contained in this package.
-
-:mod:`swift.dev.rewards.prm` declares the sibling ``prm_scorer`` extension point: :class:`PRMScorer` is the
-general base that segments a response into reasoning steps and broadcasts each step's PRM score onto its
-tokens, :class:`DelimiterPRMScorer` splits on a text delimiter (one step per line by default),
-:class:`TurnPRMScorer` is the multi-turn default (one assistant turn = one step), :class:`MultiTurnContext`
-carries a multi-turn rollout's real conversation and per-turn token spans to either scorer, ``prm_scorers``
-is the registry the extension point adopts, and :data:`PRM_STEP_SCORER` is that point. Consumed by the GRPO
-loop to build a per-token process reward.
-"""
 from .code_reward import CodeExecutionReward
 from .orm import ORM, REWARD, orms
 from .prm import PRM_STEP_SCORER, DelimiterPRMScorer, MultiTurnContext, PRMScorer, TurnPRMScorer, prm_scorers
+
 __all__ = [
     'ORM', 'REWARD', 'orms', 'CodeExecutionReward', 'PRMScorer', 'DelimiterPRMScorer', 'TurnPRMScorer',
     'MultiTurnContext', 'prm_scorers', 'PRM_STEP_SCORER'

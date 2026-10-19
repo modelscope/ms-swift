@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
 import os
@@ -16,35 +17,18 @@ from twinkle.utils import get_logger
 
 logger = get_logger()
 
-# Feature keys a sentence-transformers ``Transformer`` module consumes from the encoded batch.
-# Everything else (labels, dataset-specific fields) is dropped before the ST forward.
+# Feature keys a sentence-transformers ``Transformer`` module consumes from the encoded batch
+# (mirrors legacy's trans_features filter). Everything else is dropped before the ST forward.
 _ST_FEATURE_KEYS = ('input_ids', 'attention_mask', 'token_type_ids', 'position_ids', 'inputs_embeds')
 
 
 class SentenceTransformerModel(TwinkleTransformersModel):
     """Train a ``sentence-transformers`` model on twinkle's embedding pipeline.
 
-    Why a dedicated class instead of the plain embedding task:
-      - The HF embedding path (``task='embedding'``) keeps a causal-LM backbone, swaps ``lm_head``
-        for identity, extracts per-token ``features`` and pools them in
-        ``InputProcessor.postprocess_tensor_sp``. A ``SentenceTransformer`` is instead a *pipeline*
-        of modules (``Transformer -> Pooling -> Normalize`` and optionally ``Router``/``Dense``) that
-        already performs its own pooling and normalization, producing ``features['sentence_embedding']``
-        of shape ``[B, D]``. Re-pooling it would be wrong, so this model bypasses the per-token pooling.
-      - So the only thing that differs from the base transformers model is *model construction* and the
-        *forward output* (write ``outputs['embeddings']`` directly). Optimizer / scheduler / loss /
-        metric / step / grad-clip are inherited unchanged.
-
-    Contract kept identical to the HF embedding path so the rest of the stack is reused verbatim:
-      - the recipe wires the embedding ``InputProcessor`` (produces ``input_ids``/``attention_mask`` for
-        the flattened anchor+positive+negative batch) and an embedding loss (e.g. ``InfoNCE``) via
-        ``set_processor`` / ``set_loss``;
-      - forward writes the L2-normalized ``outputs['embeddings']`` ``[B, D]`` that the loss reads.
-
-    Scope: targets the standard (non-sequence-parallel) embedding-training path. Padding-free packing
-    is supported by unpacking the features into per-sequence rows before the ST pipeline (the backbone
-    re-processes each row independently; the twinkle-native embedding path retains flash-attn varlen).
-    Sequence parallel is rejected because a whole-sentence pooling head cannot see a sequence shard.
+    A ``SentenceTransformer`` is a *pipeline* (Transformer -> Pooling -> Normalize) that already
+    pools and normalizes, producing ``sentence_embedding`` ``[B, D]`` -- re-pooling would be wrong,
+    so this bypasses the per-token pooling of the plain ``task='embedding'`` path. The recipe wires
+    the embedding InputProcessor and loss; packing unpacks features per-sequence before the pipeline.
     """
 
     def __init__(self,
@@ -63,16 +47,14 @@ class SentenceTransformerModel(TwinkleTransformersModel):
                  gradient_checkpointing_kwargs: Optional[Dict[str, Any]] = None,
                  init_strategy: Optional[str] = None,
                  **kwargs):
-        # Mirror TwinkleTransformersModel.__init__ plumbing, but build a SentenceTransformer instead of
-        # an AutoModelFor* backbone. super(PreTrainedModel, self) intentionally skips PreTrainedModel's
-        # config-requiring __init__ (same as the parent) and initializes the remaining mixins.
+        # Mirror TwinkleTransformersModel.__init__ plumbing, but build a SentenceTransformer; the
+        # super(PreTrainedModel, self) call skips its config-requiring __init__ (same as the parent).
         os.environ['TOKENIZERS_PARALLELISM'] = 'true'
         self._try_init_process_group()
         super(PreTrainedModel, self).__init__()
         self._default_tokenizer = None
-        # This __init__ overrides the @remote_class-wrapped base, so it does NOT receive the base's
-        # automatic device_mesh injection; resolve the global default here to uphold the same invariant
-        # (a constructed model holds a real mesh) the wrapped TransformersModel.__init__ guarantees.
+        # Overrides the @remote_class-wrapped base, so no automatic device_mesh injection; resolve the
+        # global default to uphold the "a constructed model holds a real mesh" invariant.
         self.device_mesh = device_mesh if device_mesh is not None else get_device_mesh()
         self.mixed_precision = mixed_precision
         self._fsdp_config = dict(fsdp_config or {})
@@ -91,14 +73,12 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         self.model = self._build_sentence_transformer(model_id, sentence_transformer_kwargs or {})
         # hf_config is read by the processor/loss for e.g. pad-token / dtype; expose the backbone's.
         self.hf_config = getattr(config, 'name_or_path', None) and config or self._backbone_config()
-        # Gated worker-side so --gradient_checkpointing false is honored under Ray too, where a
-        # driver-side post-construction disable would only touch the proxy stub and silently no-op.
+        # Gated worker-side: a driver-side post-construction disable would only touch the Ray
+        # proxy stub and silently no-op.
         if gradient_checkpointing:
             self._enable_gradient_checkpointing(gradient_checkpointing_kwargs)
-        # Same worker-side gate as the base: re-initialize any weights the checkpoint left uninitialized
-        # (inherited TransformersModel._apply_init_strategy). ST's pipeline is an nn.Module, so
-        # self.model.parameters() reaches the backbone. new_special_tokens has no resize seam on the ST
-        # pipeline and is rejected in the builder rather than silently dropped here.
+        # Re-initialize weights the checkpoint left uninitialized (inherited method); ST's pipeline
+        # is an nn.Module so parameters() reaches the backbone. new_special_tokens is builder-rejected.
         if init_strategy is not None:
             self._apply_init_strategy(init_strategy)
 
@@ -142,12 +122,9 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         """Run the ST module pipeline and return ``[B, D]`` sentence embeddings.
 
         The ST ``Transformer`` module reads ``input_ids``/``attention_mask`` from the features dict and
-        the pipeline writes ``sentence_embedding``; pooling + normalization happen inside ST.
-
-        Under padding_free packing the batch is ``[1, total_tokens]`` (N sub-sequences concatenated).
-        The ST Pooling module is not packed-aware, so we unpack the features into ``[n_seqs, max_len]``
-        before entering the pipeline -- the backbone re-processes each row independently (no flash-attn
-        varlen benefit, but correctness first; the twinkle-native embedding path retains varlen).
+        the pipeline writes ``sentence_embedding``; pooling + normalization happen inside ST. Under
+        padding_free packing the batch is ``[1, total_tokens]`` -- the ST Pooling module is not
+        packed-aware, so unpack the features into ``[n_seqs, max_len]`` first (see below).
         """
         if self.sp_strategy is not None:
             raise NotImplementedError('SentenceTransformerModel does not support sequence parallelism: '

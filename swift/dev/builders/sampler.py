@@ -12,16 +12,16 @@ from swift.dev.utils.plugin import PluginKind, PluginRegistry
 
 if TYPE_CHECKING:
     from swift.dev.config import (GenerationConfig, InferConfig, ModelConfig, QuantizeConfig, RolloutConfig,
-                                  TemplateConfig)
+                                   TemplateConfig)
 
 logger = get_logger()
 
-#: The built-in engine names a ``--sampler`` resolves to with no external source. Any other twinkle
-#: ``Sampler`` subclass is a custom sampler, reached by class or by source (see :func:`_resolve_sampler`).
+#: Built-in engine names a ``--sampler`` resolves to with no external source; anything else is a
+#: custom sampler, reached by class or by source (see :func:`_resolve_sampler`).
 SamplerBackend = Literal['vllm', 'sglang', 'transformers']
 
-#: ModelConfig knobs the engines accept, under the name each one uses for them. Everything else
-#: an engine takes is passed verbatim through ``engine_args`` -- dev does not mirror engine flags.
+#: ModelConfig knobs the engines accept, under the name each uses for them; everything else an
+#: engine takes goes verbatim through ``engine_args`` -- dev does not mirror engine flags.
 _MODEL_KNOB_NAMES = {
     'vllm': {
         'torch_dtype': 'dtype',
@@ -45,13 +45,8 @@ _SAMPLERS: Dict[str, type] = {}
 def _sampler_kind() -> PluginKind:
     """Declare (once) and seed the 'sampler' plugin kind, then return it.
 
-    Declared lazily rather than at import or in ``PluginRegistry._BUILTIN_KIND_MODULES``: seeding it needs
-    twinkle's ``Sampler`` base, whose package ``__init__`` pulls in vLLM. Declaring it during config load
-    would force that import on every ``--external_plugins`` run -- including training runs that build no
-    sampler -- so it happens here, inside :func:`build_sampler`, where the engine stack is imported anyway.
-    The engines live in twinkle and cannot carry a swift ``@register`` decorator, so they are seeded by
-    name here; that keeps one table the built-ins and any external ``@register('sampler', ...)`` plugin
-    both write to.
+    Lazy: seeding needs twinkle's Sampler base (whose package pulls in vLLM), so it runs here where
+    the engine stack is imported anyway; engines are seeded by name into the table plugins share.
     """
     if 'sampler' not in PluginRegistry.KINDS:
         import twinkle.sampler as twinkle_sampler
@@ -65,13 +60,8 @@ def _sampler_kind() -> PluginKind:
 def _resolve_sampler(spec: Any) -> Tuple[type, Optional[str]]:
     """A ``--sampler`` spec -> ``(sampler class, engine key)``.
 
-    ``engine key`` is 'vllm' / 'sglang' / 'transformers' for a built-in engine -- it selects the
-    ModelConfig knob mapping, LoRA and pooling rules in :func:`build_sampler` -- and ``None`` for a custom
-    sampler, which is built with ``engine_args`` verbatim. ``spec`` may be a built-in name, 'pt' (an alias
-    of 'transformers'), a twinkle ``Sampler`` subclass, or an external source (a local ``.py`` file, a
-    local folder, or a ``hf://`` / ``ms://`` id) resolved through the unified plugin loader. A custom
-    sampler must follow the built-ins' constructor contract: ``Cls(model, *, engine_args, device_mesh,
-    remote_group)``.
+    engine key ('vllm'/'sglang'/'transformers'; 'pt' aliases the last) selects the knob mapping /
+    LoRA / pooling rules; None = a custom sampler built with engine_args verbatim.
     """
     if spec == 'pt':
         spec = 'transformers'
@@ -81,25 +71,16 @@ def _resolve_sampler(spec: Any) -> Tuple[type, Optional[str]]:
     return sampler_cls, engine
 
 
-#: dev ``task_type`` values that are a pooling forward rather than generation, and the twinkle/vLLM
-#: pooling head each one runs. ``embedding``->``embed`` (a sentence vector), ``seq_cls``->``classify``
-#: (per-class logits/probs), ``reranker``->``classify`` (a cross-encoder relevance score is what a
-#: ``classify`` scoring model returns; vLLM has no separate ``score`` pooling task). These need a
-#: backend with a pooling head, so only vLLM/SGLang serve them; transformers has none and still goes
-#: through ``build_model`` + ``task=``. A *generative* reranker is deliberately absent -- see
-#: ``_GENERATIVE_TASK_TYPES``.
+#: dev task_types that run a pooling forward, and the head each runs: embedding -> embed (a sentence
+#: vector), seq_cls/reranker -> classify. Pooling needs a backend with a pooling head (vLLM/SGLang).
 _POOLING_TASK_MAP = {
     'embedding': 'embed',
     'seq_cls': 'classify',
     'reranker': 'classify',
 }
 
-#: dev ``task_type`` values served by the *generation* path rather than a pooling head. ``causal_lm`` is
-#: plain generation; ``generative_reranker`` is a decoder-only reranker (e.g. Qwen3-Reranker) scored by
-#: the yes/no logprob difference of its first generated token, so it needs a generation engine, not a
-#: pooling runner -- neither vLLM nor sglang serves it through ``encode`` (sglang's docs are explicit:
-#: launch it *without* ``--is-embedding``). ``run_infer`` builds the sampler here and does the yes/no
-#: scoring itself.
+#: dev task_types served by generation rather than a pooling head: causal_lm is plain generation;
+#: generative_reranker is decoder-only, scored off its first generated token (run_infer's own math).
 _GENERATIVE_TASK_TYPES = ('causal_lm', 'generative_reranker')
 
 
@@ -111,11 +92,8 @@ def build_engine_args(backend: str, infer_config: 'InferConfig', rollout_config:
         return {'max_batch_size': infer_config.max_batch_size}
     prefix = f'{backend}_'
     result = {}
-    #: Prefix-stripped rollout fields that are not sampler engine args: ``engine_kwargs`` is merged
-    #: verbatim below. The LoRA knobs (``enable_lora`` / ``max_lora_rank`` / ``max_loras``) deliberately
-    #: have no RolloutConfig field either: they are OWNED by ``_enable_lora`` / ``_max_adapter_rank``,
-    #: which size them from the adapters themselves -- a config default here (e.g. a bool False) would
-    #: squat the key and defeat those setdefault calls, silently running vLLM with LoRA disabled.
+    #: Not engine args: ``engine_kwargs`` is merged verbatim below, and the LoRA knobs are owned by
+    #: _enable_lora/_max_adapter_rank -- a config default here would squat the key and defeat them.
     excluded = {'engine_kwargs'}
     for name, value in asdict(rollout_config).items():
         if name.startswith(prefix) and value is not None:
@@ -128,29 +106,19 @@ def build_engine_args(backend: str, infer_config: 'InferConfig', rollout_config:
 
 def resolve_twinkle_template(template_config: Optional['TemplateConfig'],
                              model_config: 'ModelConfig') -> Dict[str, Any]:
-    """dev Configs -> a serializable twinkle template spec, for a sampler that runs in a Ray actor.
+    """dev Configs -> a serializable twinkle template spec, for a sampler in a Ray actor.
 
-    Returns ``{'template_cls': <name>, **kwargs}`` -- a *class name* plus keyword args, not the
-    ``ShiftedTemplate`` instance :func:`build_template` produces. The instance carries a DevMixin and
-    training-time label logic, so it cannot cross Ray's actor boundary; a served OpenAI chat needs none
-    of that, and twinkle's native template (which reads the model's own jinja ``chat_template``) is both
-    correct and picklable-by-name. The class name comes from twinkle's own :func:`get_template_for_model`
-    so dev keeps no second mapping table, and the kwargs are the subset of ``TemplateConfig`` that
-    ``twinkle.template.Template.__init__`` accepts. ``model_id`` is left out: the sampler fills it from
-    its own, which is the same model.
-
-    The result is what ``SamplerArgs.template`` pins at construction (see ``run_deploy``), so the
-    replica serves trajectories from its first request instead of waiting on the gateway's lazy
-    name-based ``set_template`` fallback.
+    Returns ``{'template_cls': <name>, **kwargs}`` -- a class NAME plus kwargs, not the DevMixin
+    instance (it cannot cross the actor boundary); the name comes from twinkle's own template map.
     """
     from twinkle.server.utils import get_template_for_model
 
+    # model_id is left out: the sampler fills it from its own (the same model).
     spec: Dict[str, Any] = {'template_cls': get_template_for_model(str(model_config.model or ''))}
     if template_config is None:
         return spec
-    # TemplateConfig field -> Template.__init__ parameter. Only values the config actually sets are
-    # carried, so twinkle's own defaults (use_chat_template=True, max_length=8192, enable_thinking=True)
-    # stand for the rest rather than being overwritten with None.
+    # Only values the config actually sets are carried, so twinkle's own defaults
+    # (use_chat_template=True, max_length=8192, enable_thinking=True) stand for the rest.
     for spec_key, value in (('use_chat_template', template_config.use_chat_template),
                             ('max_length', template_config.max_length),
                             ('truncation_strategy', template_config.truncation_strategy),
@@ -164,12 +132,8 @@ def resolve_twinkle_template(template_config: Optional['TemplateConfig'],
 def _derive_sampler_type(backend: str, enable_data_plane: bool = False) -> str:
     """Map a dev backend (+ the data-plane flag) to a twinkle-server ``sampler_type``.
 
-    The server sampler implements ``mock`` / ``vllm`` / ``vllm_async`` / ``sglang`` / ``sglang_async`` /
-    ``torch``. Each engine has a plain variant and an ``_async`` variant: the async one adds the
-    non-blocking ``submit_generation`` that ``sample_to_data_plane`` needs to hand a rollout a ``DataRef``
-    for token-in-token-out training. So ``enable_data_plane`` selects the async variant (vLLM ->
-    ``vllm_async``, sglang -> ``sglang_async``) and otherwise the plain one; transformers runs on
-    ``torch`` and has no async variant (it does not serve the data plane).
+    The async variants add the non-blocking submit_generation that sample_to_data_plane needs to
+    hand a rollout a DataRef, so enable_data_plane selects them; transformers has none and refuses.
     """
     if backend == 'pt':
         backend = 'transformers'
@@ -202,39 +166,8 @@ def build_sampler(
 ) -> Any:
     """ModelConfig -> a twinkle Sampler, with the template already set.
 
-    Args:
-        model_config: supplies ``model`` (the model id/path) plus the knobs in
-            ``_MODEL_KNOB_NAMES``. ``task_type`` may be a generation task in ``_GENERATIVE_TASK_TYPES``
-            (``causal_lm``, or ``generative_reranker``, a decoder-only reranker scored off generation)
-            or one of the pooling tasks in ``_POOLING_TASK_MAP`` (embedding/seq_cls/reranker); a pooling
-            task builds the engine as a pooling model and is served by ``sampler.encode``. Pooling needs
-            a backend with a pooling head, so it is vLLM/SGLang only -- transformers still goes through
-            ``build_model`` + ``task=``.
-        backend: the ``--sampler`` spec -- a built-in engine name ('vllm' / 'sglang' / 'transformers',
-            with 'pt' an alias of 'transformers'), a twinkle ``Sampler`` subclass, or an external source
-            (see :func:`_resolve_sampler`).
-        engine_args: passed verbatim to the engine, and wins over the ModelConfig knobs so a caller
-            can always reach an engine flag dev does not model.
-        device_mesh: twinkle DeviceMesh for data parallelism. ``sample`` is declared
-            ``dispatch='slice_dp'``, so under Ray the inputs are sliced across DP ranks for free;
-            leave it None for a single in-process engine.
-        template: a twinkle Template instance, set on the sampler so Trajectory inputs (messages)
-            can be encoded. Without it only pre-encoded InputFeature inputs work.
-        adapters: LoRA paths this sampler will be asked to serve. Needed at CONSTRUCTION time, not
-            just at ``sample()`` time: vLLM refuses ``LoRARequest`` unless the engine was created with
-            ``enable_lora=True``, and it sizes its adapter slots from ``max_loras``. Passing the list
-            up front is what makes ``sample(adapter_path=...)`` work at all, and what lets several
-            adapters be resident at once. Ignored for transformers, which loads adapters on demand.
-        remote_group: name of the twinkle ``DeviceGroup`` to place the engine in, under
-            ``mode='ray'``. This is what keeps the sampler on its own GPUs instead of sharing the
-            trainer's -- ``remote_class`` reads it off the constructor kwargs. Leave None in local
-            mode, where there is only one process and nothing to place.
-        instance_id: stable identity used to disambiguate several sampler replicas constructed from the
-            same call site. Dynamic resource pools must provide one unique value per replica.
-
-    Returns:
-        The sampler. Callers own its lifetime: ``shutdown()`` is registered with atexit by the
-        sampler itself, but a long-lived process should call it explicitly to free the GPU.
+    Built-in backends map ModelConfig knobs + LoRA/pooling rules (custom samplers get engine_args
+    verbatim); engine_args win over mapped knobs; adapters must arrive at construction time.
     """
     if model_config.model is None:
         raise ValueError('ModelConfig.model is required to build a sampler (it is the model id/path).')
@@ -252,9 +185,8 @@ def build_sampler(
     kwargs = dict(engine_args or {})
     quant_method = getattr(quantize_config, 'quant_method', None)
     if engine is None:
-        # A custom sampler owns its engine's knob vocabulary, so dev passes engine_args through verbatim and
-        # applies none of the built-in engines' ModelConfig / LoRA / pooling mapping below. quant_method is a
-        # transformers load-time setting with no meaning for an arbitrary sampler, so it is refused, not dropped.
+        # A custom sampler owns its engine's knob vocabulary: engine_args pass through verbatim, none
+        # of the built-ins' mapping applies; quant_method (transformers load-time) is refused, not dropped.
         if quant_method is not None:
             raise ValueError(
                 f'quant_method={quant_method!r} is a Transformers load-time setting and cannot be applied to the '
@@ -279,9 +211,8 @@ def build_sampler(
             if value is not None:
                 kwargs.setdefault(engine_name, value)
         if is_pooling:
-            # Route the model to the backend's pooling forward. vLLM spells it ``runner='pooling'`` (which
-            # swaps the LM head for the pooling head and serves requests through ``encode``); sglang spells
-            # it ``is_embedding=True``. setdefault so an explicit engine_args entry still wins.
+            # Route the model to the backend's pooling forward: vLLM spells it ``runner='pooling'``
+            # (swaps the LM head for the pooling head), sglang ``is_embedding=True``.
             if engine == 'vllm':
                 kwargs.setdefault('runner', 'pooling')
             elif engine == 'sglang':
@@ -290,12 +221,8 @@ def build_sampler(
             _enable_lora(kwargs, engine, adapters)
 
         if engine == 'transformers':
-            # The transformers engine defaults to AutoModelForCausalLM, which cannot load a vision-language
-            # checkpoint (a VL config is not a causal-LM config, so from_pretrained rejects it). Hand it the
-            # family loader's declared model_cls so a VL model loads with its ...ForConditionalGeneration
-            # class; a text model's loader declares AutoModelForCausalLM, so this is a no-op there. The class
-            # travels as the loader's 'module:ClassName' string, which is what the engine resolves and what
-            # survives Ray engine_args. setdefault keeps an explicit engine_args entry authoritative.
+            # AutoModelForCausalLM cannot load a VL checkpoint; hand the family loader's declared
+            # model_cls ('module:ClassName': engine-resolvable, Ray-safe); setdefault keeps overrides.
             from swift.dev.builders.model import _resolve_model_loader
             loader = _resolve_model_loader(model_config)
             if loader is not None:
@@ -324,10 +251,8 @@ def build_sampler(
 def _enable_lora(kwargs: Dict[str, Any], backend: str, adapters: List[str]) -> None:
     """Turn on the engine's LoRA machinery, sized for ``adapters``.
 
-    vLLM allocates ``max_loras`` adapter slots and rejects ranks above ``max_lora_rank`` at request
-    time, so both have to be right before the first request rather than discovered from it. The rank
-    is read from each adapter's own ``adapter_config.json`` -- guessing low fails the request, and
-    guessing high wastes memory on every slot.
+    vLLM allocates max_loras slots and rejects ranks above max_lora_rank at request time, so both
+    must be right before the first request; the rank is read from each adapter_config.json.
     """
     if backend == 'transformers':
         return  # peft loads adapters into the live module; nothing to reserve.
@@ -357,17 +282,8 @@ def _max_adapter_rank(adapters: List[str], default: int = 16) -> int:
 def to_sampling_params(generation_config: Optional[GenerationConfig] = None, **overrides) -> Any:
     """GenerationConfig -> twinkle SamplingParams.
 
-    Only the fields the config actually sets are carried over, so twinkle's own defaults stand for
-    the rest (temperature 1.0, top_p 1.0, top_k -1, repetition_penalty 1.0) rather than being
-    overwritten with None.
-
-    Name differences worth stating, since a silent mismatch is a silently different distribution:
-    ``max_new_tokens`` -> ``max_tokens``, ``stop_words`` -> ``stop``, and the ``logprobs`` bool +
-    ``top_logprobs`` int pair collapses into twinkle's single int, whose meaning is vLLM's: 0 means
-    the sampled token's logprob only, k means the top k alongside it.
-
-    ``overrides`` win over the config; ``num_samples`` (the n-best-of width) has no GenerationConfig
-    field and is expected to arrive that way.
+    Only set fields are carried (twinkle's defaults stand); names map max_new_tokens -> max_tokens,
+    stop_words -> stop, logprobs+top_logprobs -> one int (vLLM semantics). ``overrides`` win.
     """
     from twinkle.data_format import SamplingParams
 
@@ -389,11 +305,7 @@ def to_sampling_params(generation_config: Optional[GenerationConfig] = None, **o
 
 
 def _reject_unsupported(generation_config: GenerationConfig) -> None:
-    """Fail loudly on GenerationConfig knobs twinkle's SamplingParams has no field for.
-
-    Dropping them silently would return a plausible-looking sample generated under different rules
-    than the caller asked for, which is worse than not running.
-    """
+    """Fail loudly on GenerationConfig knobs twinkle's SamplingParams has no field for."""
     if generation_config.num_beams and generation_config.num_beams > 1:
         raise ValueError(f'num_beams={generation_config.num_beams} is not supported: twinkle SamplingParams '
                          'has no beam-search field. Use num_samples for parallel sampling instead.')
@@ -404,20 +316,12 @@ def _reject_unsupported(generation_config: GenerationConfig) -> None:
 
 
 def sampled_texts(responses: List[Any]) -> List[List[str]]:
-    """SampleResponse list -> the decoded text of each sequence, grouped per input.
-
-    Both the infer and sampling recipes need exactly this projection (one inner list per input,
-    ``num_samples`` entries long), so it lives here rather than being written twice.
-    """
+    """SampleResponse list -> the decoded text of each sequence, grouped per input."""
     return [[seq.decoded for seq in response.sequences] for response in responses]
 
 
 def pooling_task_for(task_type: Optional[str]) -> str:
-    """dev ``task_type`` -> the twinkle/vLLM pooling head name, or ``None`` for a generation task.
-
-    The single place the dev-vocabulary to pooling-vocabulary mapping is applied, so ``run_infer`` and
-    ``run_deploy`` do not each carry their own copy of it.
-    """
+    """dev ``task_type`` -> the twinkle/vLLM pooling head name, or ``None`` for a generation task."""
     return _POOLING_TASK_MAP.get(task_type or 'causal_lm')
 
 
@@ -429,19 +333,13 @@ def is_pooling_task(task_type: Optional[str]) -> bool:
 def to_pooling_params(task_type: Optional[str] = None, **overrides) -> Any:
     """dev ``task_type`` (+ overrides) -> twinkle ``PoolingParams``.
 
-    The pooling counterpart of :func:`to_sampling_params`. ``task_type`` selects the head via
-    :func:`pooling_task_for` (defaulting to ``embed``), and a ``reranker`` also sets ``is_cross_encoder``
-    (see below); ``overrides`` win and carry the post-processing knobs ``PoolingParams`` exposes
-    (``use_activation``/``dimensions``/``normalize``), which have no dev Config field and are expected to
-    arrive that way.
+    task_type selects the head (default embed); reranker also sets is_cross_encoder (vLLM infers it
+    from the model, sglang routes on it). ``overrides`` carry the post-processing knobs.
     """
     from twinkle.data_format import PoolingParams
 
     task_type = task_type or 'causal_lm'
     params: Dict[str, Any] = {'task': pooling_task_for(task_type) or 'embed'}
-    # A dev ``reranker`` is a cross-encoder: it scores a (query, document) pair rather than classifying
-    # a single sequence. vLLM infers this from the scoring model, so the flag is a no-op there, but
-    # sglang routes on it (and then wants the raw text pair, not token ids).
     if task_type == 'reranker':
         params['is_cross_encoder'] = True
     params.update(overrides)
@@ -449,10 +347,5 @@ def to_pooling_params(task_type: Optional[str] = None, **overrides) -> Any:
 
 
 def pooled_data(responses: List[Any]) -> List[List[float]]:
-    """PoolingResponse list -> the pooled floats of each, one entry per input.
-
-    The pooling counterpart of :func:`sampled_texts`: ``data`` is already a flat ``List[float]`` (see
-    ``pooling_to_list``), so this is just the projection, kept here so the recipes do not each reach
-    into the response.
-    """
+    """PoolingResponse list -> the pooled floats of each, one entry per input."""
     return [list(response.data) for response in responses]

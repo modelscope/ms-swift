@@ -11,9 +11,7 @@ from ..mm_download import MediaDownloader
 from ..preprocessor import Preprocessor
 
 
-# ============================================================================================
 # 1. The media is usable straight from the row -- nothing to download.
-# ============================================================================================
 
 
 @register_dataset
@@ -140,9 +138,8 @@ class SA1BCaptionPreprocessor(Preprocessor):
         return super().preprocess({
             'query': str(self.random_state.choice(self.CAPTION_PROMPTS)),
             'response': caption,
-            # Legacy returned only `messages`, dropping the image column it had just renamed -- so
-            # these two datasets, both tagged multi-modal, yielded rows asking what is in a picture
-            # that is not there. Carried through instead.
+            # Legacy returned only `messages`, dropping the image column it had just renamed -- the
+            # rows asked about a picture that was not there. Carried through instead.
             'images': row['images'],
         })
 
@@ -204,10 +201,8 @@ class PixelProseLoader(DatasetLoader):
     huge_dataset = True
 
 
-# ============================================================================================
 # 2. The media lives in an archive next to the dataset: fetch it once, then resolve each row's
 #    relative path against it.
-# ============================================================================================
 
 
 class ArchiveMediaPreprocessor(Preprocessor):
@@ -435,11 +430,8 @@ class EgoSchemaLoader(DatasetLoader):
     tags = ['chat', 'multi-modal', 'video']
 
 
-# ============================================================================================
-# 1 (continued). More datasets whose media needs no fetching -- what these have to say is about
-#     their *text*: a question column that has to be picked from several, an answer assembled from
-#     a rationale and a choice, or no question at all.
-# ============================================================================================
+# 1 (continued). More media-free datasets -- what these have to say is about their *text*: a
+# question picked from several, an answer assembled from a rationale and a choice, or none at all.
 
 
 @register_dataset
@@ -575,13 +567,9 @@ class CaptchaImagesLoader(DatasetLoader):
 
 class ClevrPreprocessor(Preprocessor):
     """Counting questions for GRPO: the question is extended to demand a specific answer format,
-    because the reward function parses the tags rather than the prose.
-
-    The answer is also kept under ``solution``, which is where that reward function reads the reference
-    from. Legacy kept it by a different route -- a ``__#solution`` column added before its ``map`` and
-    stripped inside it, so the name survived the rename to ``response`` -- which dev does not have.
-    Written onto the converted row, since setting it beforehand would make the alias pass fight over
-    which column is the answer.
+    because the reward function parses the tags rather than the prose. The answer is also kept under
+    ``solution``, where that reward function reads the reference from; written onto the converted row,
+    since setting it beforehand would make the alias pass fight over which column is the answer.
     """
 
     instruction = (' Output the thinking process in <think> </think> and '
@@ -736,12 +724,9 @@ class TextCapsEmbPreprocessor(TextCapsPreprocessor):
 class TextCapsReRankPreprocessor(TextCapsEmbPreprocessor):
     """The reranking view: the same positive, plus captions of *other* images as negatives.
 
-    The negatives have to come from somewhere, and this dataset ships none -- so they are sampled from
-    the other rows' captions, which is what makes them hard: they describe real images of the same
-    kind. Captions belonging to this row are excluded, since a correct caption is not a negative.
-
-    The pool is built once in :meth:`prepare_dataset`, which is also what bounds the cost: reading one
-    column of the dataset, not one pass per row.
+    The dataset ships none, so they are sampled from the other rows' captions -- hard negatives, they
+    describe real images of the same kind; this row's own captions are excluded. The pool is built
+    once in ``prepare_dataset``, bounding the cost to one column read.
     """
 
     def __init__(self, **kwargs) -> None:
@@ -751,9 +736,8 @@ class TextCapsReRankPreprocessor(TextCapsEmbPreprocessor):
         self.negatives_per_sample = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
 
     def prepare_dataset(self, dataset):
-        # The pool is read from whichever spelling the dataset actually carries: `prepare_dataset`
-        # runs before any renaming, so the raw name (`reference_strs`) is the usual one and the
-        # standard name (`response`) only appears on an already-converted dataset.
+        # Whichever spelling the dataset carries: `prepare_dataset` runs before renaming, so the raw
+        # name (`reference_strs`) is the usual one; `response` appears only on converted data.
         source = next(name for name in ('response', 'reference_strs') if name in dataset.features)
         pool: List[str] = []
         for captions in dataset[source]:
@@ -800,20 +784,15 @@ class TextCapsLoader(DatasetLoader):
     tags = ['multi-modal', 'en', 'caption', 'quality']
 
 
-# ============================================================================================
 # 2 (continued). More archive-backed datasets.
-# ============================================================================================
 
 
 class ShareGPT4VPreprocessor(Preprocessor):
     """Captions written for images drawn from seven public collections.
 
-    Like :class:`LLaVADataPreprocessor`, a path's leading component says which archive holds it -- but
-    here the rewrite is not always a strip: three collections are named after themselves while their
-    paths are written under ``data/``, so each prefix carries the replacement to apply.
-
-    Which archives are needed depends on the subset, and only the needed ones are fetched: the ``-PT``
-    subset draws from three of the seven, and each is a multi-gigabyte download.
+    Like ``LLaVADataPreprocessor``, a path's leading component says which archive holds it -- but the
+    rewrite is not always a strip (three collections' paths sit under ``data/``), so each prefix
+    carries the replacement. Only the archives the subset needs are fetched: each is huge.
     """
 
     # path prefix -> (archive, text to replace, replacement)
@@ -1002,23 +981,16 @@ class Qwen3TTSFurinaLoader(DatasetLoader):
     tags = ['chat', 'multi-modal', 'audio', 'tts']
 
 
-# ============================================================================================
-# 3. Grounding: rows carrying boxes, where the prompt itself is part of the task.
-#
-# A box dataset can be read as two opposite tasks -- name a thing and be told where it is
-# (`grounding`), or be given a place and say what is there (`caption`) -- so the phrasing is drawn
-# from a table per row rather than fixed, to keep the model from learning one wording.
-# ============================================================================================
+# 3. Grounding: rows carrying boxes, where the prompt itself is part of the task. A box dataset
+# reads as two opposite tasks, so the phrasing is drawn per row, not fixed.
 
 
 class GroundingPreprocessor(Preprocessor):
     """Rows with boxes, phrased as one of the two grounding tasks.
 
-    The wording is drawn per row, and from :attr:`Preprocessor.random_state` rather than legacy's
-    global numpy generator -- so a rerun of the same dataset asks the same questions.
-
-    Boxes travel in the standard ``objects`` column, which the template turns into whatever coordinate
-    notation the model was trained on; ``bbox_type`` says what the numbers currently mean.
+    The wording is drawn per row from ``Preprocessor.random_state`` (not legacy's global numpy
+    generator), so a rerun asks the same questions. Boxes travel in the standard ``objects`` column;
+    ``bbox_type`` says what the numbers currently mean.
     """
 
     task_type: str = 'grounding'
@@ -1115,12 +1087,9 @@ class RefCOCOgLoader(RefCOCOLoader):
 class GritPreprocessor(GroundingPreprocessor):
     """Web captions with spans of the caption annotated with the box they refer to.
 
-    Each annotation is ``(start, end, x1, y1, x2, y2, confidence)``: a slice of the caption text plus
-    where in the image it points. Overlapping spans are dropped rather than resolved -- one word
-    cannot refer to two boxes at once, and picking either would invent an annotation.
-
-    The ``vqa`` task asks for the caption itself, so it is the one view here that does not draw a
-    prompt from the grounding table.
+    Each annotation is ``(start, end, x1, y1, x2, y2, confidence)``. Overlapping spans are dropped
+    rather than resolved -- one word cannot point at two boxes, and picking either invents data. The
+    ``vqa`` task asks for the caption itself, the one view not drawing from the grounding table.
     """
 
     columns = {'url': 'images'}
@@ -1234,21 +1203,16 @@ class M3ITLoader(DatasetLoader):
     tags = ['chat', 'multi-modal', 'vision']
 
 
-# ============================================================================================
-# 4. Video. The same archive story as images, with one difference worth its own section: a video
-#    corpus is published in *many* parts, so what to fetch is a list and how it is packaged (one
-#    archive per part, or loose files) varies per dataset.
-# ============================================================================================
+# 4. Video: the same archive story as images, except a corpus ships in *many* parts -- what to
+# fetch is a list, and the packaging (one archive per part, or loose files) varies per dataset.
 
 
 class VideoChatGPTPreprocessor(ArchiveMediaPreprocessor):
     """Questions about test videos, up to three per row, of which the first asked one is used.
 
-    The columns are ``query`` / ``question_1`` / ``question_2``, and an unasked one holds the *string*
-    ``'None'`` rather than a null -- so it has to be compared as text.
-
-    The set of available videos is read once here. Legacy listed the directory inside ``preprocess``,
-    i.e. once per row.
+    The columns are ``query``/``question_1``/``question_2``; an unasked one holds the *string*
+    ``'None'`` rather than a null, so it is compared as text. The available-video set is read once
+    here -- legacy listed the directory per row.
     """
 
     media_alias = 'video_chatgpt'
@@ -1405,22 +1369,16 @@ class LLaVAVideo178KLoader(DatasetLoader):
     tags = ['chat', 'multi-modal', 'video']
 
 
-# ============================================================================================
 # 5. One dataset whose rows are not examples: consecutive rows are *steps of one episode*, and the
-#    example is the episode. Regrouping happens in `prepare_dataset`, which is the hook that may
-#    return a different dataset -- there is no per-row transform that could do it.
-# ============================================================================================
+# example is the episode -- regrouped in `prepare_dataset`, since no per-row transform could do it.
 
 
 class Mind2WebPreprocessor(Preprocessor):
     """Web-browsing episodes: each source row is one action, and a full episode is the training example.
 
-    Rows arrive in order and ``target_action_index == '0'`` marks the start of a new episode, so the
-    regrouping is a fold over the dataset -- which no row transform can express, hence the reshape in
-    :meth:`prepare_dataset` and a pass-through row transform afterwards.
-
-    The screenshot is carried inline as a PIL image and is written to disk here, because what the rest
-    of the pipeline passes around is a path.
+    ``target_action_index == '0'`` marks an episode start, so the regrouping is a fold over the
+    dataset -- no row transform can express it, hence the reshape in ``prepare_dataset``. The inline
+    PIL screenshot is written to disk here: the pipeline passes paths around.
     """
 
     TOOLS = [{

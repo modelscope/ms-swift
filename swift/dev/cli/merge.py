@@ -1,11 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Dedicated merge CLI (``swift merge``) using the dev merge recipe.
-
-The command folds a LoRA adapter into its base weights and saves one plain model. It shares the
-``run_merge_lora`` recipe with the chained ``swift export --merge_lora true`` form; only the command
-name is ``merge`` -- the recipe and the export flag keep the precise ``merge_lora`` wording because
-infer/deploy also consume them.
-"""
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -43,7 +36,7 @@ def parse_merge_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 
 def merge_main(argv: Optional[List[str]] = None) -> str:
     from swift.dev.config import process_and_validate_configs
-    from swift.dev.recipe import run_merge_lora
+    from swift.dev.recipe.export import run_merge_lora
 
     configs = parse_merge_configs(argv)
     process_and_validate_configs(configs, add_version=False, create_output_dir=False)

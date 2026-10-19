@@ -1,10 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loader for Mamba.
-
-Ported from ``swift/model/models/mamba.py``. Install ``causal-conv1d>=1.2.0`` and ``mamba-ssm`` or
-training/inference will be very slow (legacy logged this at load time; it is a setup note, not a
-runtime behavior, so it lives here rather than as a log line).
-"""
+# Install causal-conv1d>=1.2.0 and mamba-ssm, or training/inference will be very slow.
 from __future__ import annotations
 
 from .base import ModelLoader, register_model

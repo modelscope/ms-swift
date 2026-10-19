@@ -16,15 +16,11 @@ class CallbackHandler:
         self.state = CallbackState(output_dir=output_dir)
         self.control = CallbackControl()
 
-    def add(self, callback: TrainCallback) -> None:
-        self.callbacks.append(callback)
-
     def _fan(self, event: str, **payload: Any) -> None:
         """Call ``event`` on every callback with the shared state/control plus any event payload."""
         for callback in self.callbacks:
             getattr(callback, event)(self.state, self.control, **payload)
 
-    # --- lifecycle ---
     def on_init_end(self) -> None:
         self._fan('on_init_end')
 
@@ -40,7 +36,6 @@ class CallbackHandler:
     def on_epoch_end(self) -> None:
         self._fan('on_epoch_end')
 
-    # --- step ---
     def on_step_begin(self) -> None:
         self._fan('on_step_begin')
 
@@ -56,7 +51,6 @@ class CallbackHandler:
     def on_optimizer_step(self) -> None:
         self._fan('on_optimizer_step')
 
-    # --- logging / eval / save / push ---
     def on_log(self, logs: Optional[Dict[str, Any]] = None) -> None:
         self._fan('on_log', logs=logs)
 
@@ -71,6 +65,3 @@ class CallbackHandler:
 
     def on_predict(self) -> None:
         self._fan('on_predict')
-
-    def on_prediction_step(self) -> None:
-        self._fan('on_prediction_step')

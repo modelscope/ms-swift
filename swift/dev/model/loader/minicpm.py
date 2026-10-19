@@ -1,16 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the MiniCPM-V / MiniCPM-o multimodal families (from ``swift/model/models/minicpm.py``).
-
-These are outer-wrapper remote-code checkpoints: the real LLM is ``model.llm``, so top-level calls
-are delegated there (``delegate_to_submodel``). Unlike Ovis, MiniCPM-V also binds two of the *model's*
-methods onto the *processor* (``get_slice_image_placeholder`` / ``transform``); that coupling needs
-both objects at once, so it lives in ``build_model`` (which receives ``processor``) rather than
-``process_model``. Legacy's ``_patch_minicpmv_device_map`` and ``patch_output_clone`` are obsolete per
-PATCH_INVENTORY and dropped.
-
-Not migrated here (see MODEL_MIGRATION.md):
-  * ``minicpmo``'s 4_5 group -- pinned ``transformers==4.51.3`` + extra ``minicpmo-utils`` dep.
-"""
+# MiniCPM families (outer wrappers -> delegate_to_submodel); minicpmo4_5 is version-dead.
 from __future__ import annotations
 
 from .base import ModelArch, ModelLoader, register_model
@@ -86,14 +75,11 @@ class MiniCPMV4_5Loader(MiniCPMVLoader):
 
 @register_model
 class MiniCPMV4_6Loader(ModelLoader):
-    """MiniCPM-V-4.6: unlike the earlier remote-code ``MiniCPMV`` wrappers, this one is transformers-
-    native (``MiniCPMV4_6ForConditionalGeneration``, needs >=5.7.0) and loads through
-    ``AutoModelForImageTextToText`` with the standard ``model.language_model`` layout -- so no
-    ``delegate_to_submodel`` and no processor-method binding.
+    """MiniCPM-V-4.6: transformers-native (``MiniCPMV4_6ForConditionalGeneration``, >=5.7.0), the
+    standard ``model.language_model`` layout -- no ``delegate_to_submodel``, no processor binding.
 
-    Its LLM uses qwen3.5-style linear attention. The sequence-parallel forward for that is owned by
-    twinkle's SequenceParallelStrategy (it applies ``Qwen3_5GatedDeltaNetUlyssesPatch`` when SP is
-    enabled), so this loader no longer applies any linear-attention patch itself.
+    Its LLM uses qwen3.5-style linear attention; the sequence-parallel forward for that is owned by
+    twinkle's SequenceParallelStrategy (``Qwen3_5GatedDeltaNetUlyssesPatch`` when SP is enabled).
     """
 
     model_type = 'minicpmv4_6'
@@ -140,16 +126,12 @@ class MiniCPMOLoader(MiniCPMVLoader):
 
 @register_model
 class MiniCPMO4_5Loader(MiniCPMOLoader):
-    """MiniCPM-o-4_5: same remote-code ``MiniCPMO`` class and module layout as 2_6, but its own chat
-    template -- hence a template variant with ``architectures=[]`` (2_6 keeps ownership of the class
-    name for reverse-lookup).
+    """MiniCPM-o-4_5: same ``MiniCPMO`` class/layout as 2_6, its own template (``architectures=[]``).
 
-    **This checkpoint is not usable on transformers 5.5.** Legacy pins the group at
-    ``transformers==4.51.3`` and additionally requires ``minicpmo-utils==1.0.6`` (not installed here).
-    Registering it anyway is deliberate: ``--model_type minicpmo4_5`` and id matching resolve, and the
-    version check then reports the real conflict -- exactly the legacy behaviour. The pin is left as
-    legacy wrote it rather than optimistically widened, because unlike ``qwen3_asr`` there is no
-    evidence about what the pin actually guards.
+    **Not usable on transformers 5.5** (legacy pins ``transformers==4.51.3`` +
+    ``minicpmo-utils==1.0.6``). Registered anyway: ``--model_type`` and id matching resolve and the
+    version check reports the real conflict -- exactly legacy behaviour; the pin is left as legacy
+    wrote it (no evidence what it guards, unlike ``qwen3_asr``).
     """
 
     model_type = 'minicpmo4_5'
@@ -159,7 +141,7 @@ class MiniCPMO4_5Loader(MiniCPMOLoader):
     models = [('OpenBMB/MiniCPM-o-4_5', 'openbmb/MiniCPM-o-4_5')]
 
 
-# ============================ MiniCPM text families ============================
+# MiniCPM text families
 
 
 @register_model
@@ -215,11 +197,9 @@ class MiniCPM3Loader(ModelLoader):
 
 @register_model
 class MiniCPM5Loader(ModelLoader):
-    """MiniCPM5-1B. Unlike its older siblings this is a plain in-tree ``LlamaForCausalLM`` checkpoint --
-    legacy registered it as a ``minicpm5``-template group *under* ``llama``, not under the MiniCPM
-    model_type. It lands here (with the family it belongs to by name) as an ``architectures=[]``
-    template variant, so reverse-lookup for ``LlamaForCausalLM`` still resolves to ``llama``.
-    """
+    """MiniCPM5-1B: a plain in-tree ``LlamaForCausalLM`` checkpoint that legacy registered under
+    ``llama``; it lands here as an ``architectures=[]`` template variant, so reverse-lookup for
+    ``LlamaForCausalLM`` still resolves to ``llama``."""
 
     model_type = 'minicpm5'
     model_cls = 'transformers:AutoModelForCausalLM'

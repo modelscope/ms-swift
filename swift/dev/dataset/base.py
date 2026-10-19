@@ -18,40 +18,12 @@ logger = get_logger()
 
 
 class SwiftDataset(Dataset):
-    """Standard rows in, collator-ready rows out -- and nothing else needs arranging around it.
+    """Standard rows in, collator-ready rows out; encodes in ``__getitem__``.
 
-    This is the base of the torch-facing layer. It replaces the arrangement where a caller decided,
-    from a handful of interacting arguments, whether to run an encoding pass and then which wrapper to
-    put around the result. Here the two things that decision was really about are separate and each
-    belongs to something:
-
-    - *When a row is encoded* is a property of the class. This one encodes in :meth:`__getitem__`; a
-      subclass that wants it earlier overrides that.
-    - *Whether the dataset gets measured* is decided by whoever needs a length, by asking for
-      :attr:`lengths`. Nothing measures a dataset nobody measures.
-
-    The second point is the one that changes behaviour rather than just shape. A measuring pass costs a
-    full encode of the dataset, and the old arrangement ran it whenever eager encoding was on --
-    including for a run that packed nothing and sorted by nothing, where the numbers were computed and
-    then only logged. Deferring to first access means that run does no pass at all, while a run that
-    packs still pays for exactly one.
-
-    Subclasses get :attr:`lengths` by inheriting it, so :class:`PackingDataset` can plan its groups from
-    ``self.lengths`` in its constructor instead of reaching into a wrapped dataset's columns -- which is
-    what forced the wrapper underneath it to pass string subscripts through to its own wrapped dataset.
-
-    Args:
-        dataset: Standard rows -- ``messages`` plus whatever media and ``objects`` columns the dataset
-            has. Loading and format conversion happen before this, in ``loader`` and ``preprocessor``.
-        template: Encodes a row. Also decides what counts as too long, so it is what makes a row
-            unusable.
-        num_proc: Worker processes for the measuring pass, when there is one.
-        load_from_cache_file: Reuse a previous measuring pass's result if its fingerprint matches.
-        batch_size: Rows per batch in the measuring pass.
-        strict: Treat the first failure as the answer, in the measuring pass and on access both. On
-            access this class simply raises; whether a raised row is substituted or stops the run is
-            the reader's decision (``DataLoader(max_retries=0)`` makes it stop).
-        traceback_limit: How many failures to log before going quiet.
+    A subclass that encodes earlier overrides ``encode_row`` and ``_measure`` **together** -- the
+    old arrangement paired an eager pass with a lazy wrapper in two separate places and raised
+    ``KeyError: 'messages'`` one way, ``TypeError`` the other. Measuring is decided by whoever asks
+    for :attr:`lengths`: a packing run pays exactly one pass, one that measures nothing pays none.
     """
 
     def __init__(self,
@@ -62,8 +34,7 @@ class SwiftDataset(Dataset):
                  load_from_cache_file: bool = True,
                  batch_size: Optional[int] = None,
                  strict: bool = False,
-                 traceback_limit: int = 10,
-                 data_seed: int = 42) -> None:
+                 traceback_limit: int = 10) -> None:
         self.dataset = dataset
         self.template = template
         self.num_proc = num_proc
@@ -71,7 +42,6 @@ class SwiftDataset(Dataset):
         self.batch_size = batch_size
         self.strict = strict
         self.traceback_limit = traceback_limit
-        self.data_seed = int(data_seed or 0)
         self._traceback_counter = 0
         self._lengths: Optional[List[int]] = None
 
@@ -79,13 +49,9 @@ class SwiftDataset(Dataset):
     def lengths(self) -> List[int]:
         """Encoded token count per row, measured on first access and kept.
 
-        One entry per row of ``self``, at the same index, so a consumer reads ``lengths[i]`` for the row
-        it will later ask for. A row that could not be encoded reads 0: it has no token count, and
-        substituting some other row's count would put a number in a pack plan that the pack will not
-        actually contain. A consumer that plans from these should leave the zeros out.
-
-        The pass this triggers is the expensive part of setting up a dataset, so it happens here rather
-        than in the constructor -- constructing this class does not commit anyone to paying for it.
+        One entry per row at the same index, so a consumer reads ``lengths[i]`` for the row it will
+        later ask for; a row that cannot be encoded reads 0, and a planner leaves those out rather
+        than putting a number in a plan the pack will not contain.
         """
         if self._lengths is None:
             self._lengths = self._measure()
@@ -94,15 +60,12 @@ class SwiftDataset(Dataset):
     def _measure(self) -> List[int]:
         """Encode every row once to record its token count, keeping the rows as they are.
 
-        Reads ``self.dataset`` as standard rows, which is the same assumption :meth:`encode_row` makes.
-        A subclass whose rows are already encoded has to override **both** -- this one to read the
-        stored count instead of encoding, that one to stop encoding what is already encoded. Overriding
-        only one is what the arrangement this replaces got wrong: pairing an eager encoding pass with a
-        lazy wrapper raised ``KeyError: 'messages'``, and pairing them the other way raised
-        ``TypeError``.
+        A subclass whose rows are already encoded overrides this and :meth:`encode_row` together --
+        this one to read the stored count, that one to stop re-encoding.
         """
-        preprocessor = MeasurePreprocessor(self.template, seed=self.data_seed)
-        preprocessor.strict = self.strict
+        # MeasurePreprocessor's constructor takes only template/seed, so the budget knob is set
+        # after construction; `strict` goes through the call, which overrides the instance default.
+        preprocessor = MeasurePreprocessor(self.template)
         preprocessor.traceback_limit = self.traceback_limit
         measured = preprocessor(
             self.dataset,
@@ -122,28 +85,18 @@ class SwiftDataset(Dataset):
     def encode_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """Turn one standard row into a collator-ready row.
 
-        The seam a subclass overrides to encode at a different time -- see :meth:`_measure` for why the
-        two have to be overridden together. Raising is how a row is reported unusable;
-        :meth:`__getitem__` is arranged around that.
+        The seam a subclass overrides to encode at a different time (see :meth:`_measure` for the
+        pairing rule); raising is how a row is reported unusable.
         """
         return self.template.encode(row, return_length=True)
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         """Return one collator-ready row, letting a row that cannot be encoded fail.
 
-        Nothing here substitutes another row. The read goes through twinkle's ``RetryDataset`` (installed
-        by ``DataLoader._read_through``), which stands in a replacement drawn from ``(seed, index)`` --
-        reproducible across ranks and across a resume, because the draw does not depend on how many
-        failures came before. There is only the one mechanism, so the reader owns it.
-
-        The failure is logged before it propagates: a run that does substitute still says which row broke
-        and why, while ``RetryDataset`` reports the replacement it chose. A row that is merely too long
-        is skipped -- that is an expected property of public data, not a defect worth a traceback.
-
-        Unlike the wrapper this replaces, a string subscript is not a column read: a consumer that wants
-        lengths asks for :attr:`lengths`. The passthrough existed so that a wrapper placed on top could
-        reach a column of the dataset underneath, and with lengths inherited there is nothing to reach
-        through to.
+        Nothing here substitutes another row: the read goes through twinkle's ``RetryDataset``, which
+        stands in a replacement drawn from ``(seed, index)`` -- reproducible across ranks and resume,
+        independent of how many failures came before. The failure is logged before it propagates
+        (except a merely too-long row); a string subscript is not a column read.
         """
         try:
             return self.encode_row(self.dataset[idx])

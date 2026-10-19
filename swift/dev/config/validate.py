@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, get_args
 
-from swift.dev.config.rl_config import F_DIVERGENCE_TYPE
+from .rl_config import F_DIVERGENCE_TYPE
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -46,11 +46,8 @@ def validate_configs(
     *,
     training: bool = True,
 ) -> None:
-    """Validate constraints that span multiple Configs. Raises ValueError on an illegal combination.
-
-    Call this BEFORE building anything heavy (dataset/model)
-    """
-    from swift.dev.builders.model import is_megatron_backend
+    """Validate cross-Config constraints before anything heavy is built; raises ValueError."""
+    from swift.dev.builders import is_megatron_backend
     is_megatron = is_megatron_backend(distributed_config)
 
     _check_group_by_length(dataset_config, template_config)
@@ -60,8 +57,8 @@ def validate_configs(
     _check_backend_specific(model_config, dataset_config, train_config, distributed_config, is_megatron, tuner_config)
     _check_galore(train_config, tuner_config)
     _check_param_groups(tuner_config)
-    _check_deepspeed_autotp(distributed_config)
     _check_unsloth_strategy(distributed_config, template_config)
+    _check_deepspeed_autotp(distributed_config)
     _check_eval_generation(train_config, template_config, distributed_config)
     _check_megatron_runtime_configs(megatron_config, moe_config, is_megatron)
     _check_megatron_optimizer(train_config, is_megatron)
@@ -70,6 +67,7 @@ def validate_configs(
     _check_megatron_microbatch_schedule(train_config, distributed_config, is_megatron)
     _check_eval_iters(train_config)
     _check_megatron_attn_backend(model_config, template_config, is_megatron)
+    _check_padding_free_attn(model_config, template_config, dataset_config, is_megatron)
     _check_mtp(model_config, is_megatron, tuner_config)
     _check_quantization(model_config, distributed_config, is_megatron)
     _check_load_quantization(
@@ -91,6 +89,7 @@ def validate_configs(
     _check_logging(logging_config)
     _check_rlhf_ref_model(model_config, tuner_config, rl_config)
     _check_rlhf_advanced(train_config, rl_config, reward_config, rollout_config, distributed_config)
+    _check_grpo_truncation_strategy(template_config, rl_config)
     _check_grpo_cached_dataset(dataset_config, rl_config)
     _check_rlhf_padding_free(template_config, dataset_config, rl_config)
     _check_rlhf_padding_side(template_config, rl_config)
@@ -103,7 +102,7 @@ def validate_configs(
 
 
 def _changed_fields(config) -> list:
-    """Return user-visible fields that differ from defaults or were explicit on the CLI."""
+    """User-visible fields that differ from defaults or were explicit on the CLI."""
     import dataclasses
 
     if config is None:
@@ -154,14 +153,14 @@ def _check_rlhf_advanced(train_config: 'TrainConfig', rl_config: Optional['RLCon
                          distributed_config: Optional['DistributedConfig'] = None) -> None:
     """Validate online-RL features before models, teachers, or rollout workers are created.
 
-    The reward-channel surface lives on ``reward_config`` (RewardConfig) and the multi-turn knobs on
-    ``rollout_config`` (RolloutConfig); ``rl_config`` carries the RL-training knobs. The multi-turn
-    GRPO-only gate lives in :func:`_check_rollout_tools` (with the rollout surface), not here.
+    Reward-channel surface on reward_config, multi-turn on rollout_config; the multi-turn GRPO-only
+    gate lives in _check_rollout_tools.
     """
     if rl_config is None:
         return
     cfg = rl_config
-    online_only = bool(cfg.chord_sft_dataset or cfg.advantage_reweight or cfg.sdar_loss_coef > 0 or cfg.dynamic_sample)
+    online_only = bool(cfg.chord_sft_dataset or cfg.advantage_reweight or cfg.sdar_loss_coef > 0
+                       or cfg.dynamic_sample)
     if online_only and cfg.rl_type != 'grpo':
         raise ValueError('CHORD, RLSD, SDAR, and dynamic sampling are GRPO-only.')
     if cfg.sync_ref_model and cfg.rl_type not in ('grpo', 'ppo'):
@@ -180,19 +179,13 @@ def _check_rlhf_advanced(train_config: 'TrainConfig', rl_config: Optional['RLCon
     _check_dpo_loss(cfg)
 
 
-#: The f-divergences DPO can stand in for the KL; ``f_divergence_type`` must name one of them.
-#: Derived from the ``F_DIVERGENCE_TYPE`` Literal so this runtime check and the config field type
-#: share one source of truth and cannot drift.
+# The f-divergences DPO can stand in for the KL; derived from F_DIVERGENCE_TYPE so the runtime check and
+# the config field type share one source of truth and cannot drift.
 _DPO_F_DIVERGENCE_TYPES = get_args(F_DIVERGENCE_TYPE)
 
 
 def _check_dpo_loss(cfg: 'RLConfig') -> None:
-    """Validate the DPO loss surface: the f-divergence name and the multi-loss (MPO) weight alignment.
-
-    Both are also enforced when the DPO loss is constructed, but checking here fails before any model is
-    loaded and keeps the message command-neutral. Only applies to ``rl_type='dpo'`` -- the other
-    preference losses (kto/simpo/cpo/orpo/rm) read neither knob.
-    """
+    """Validate the DPO f-divergence name and the multi-loss (MPO) weight alignment (dpo-only knobs)."""
     if cfg.rl_type != 'dpo':
         return
     if cfg.f_divergence_type not in _DPO_F_DIVERGENCE_TYPES:
@@ -205,14 +198,7 @@ def _check_dpo_loss(cfg: 'RLConfig') -> None:
 
 
 def _check_preference_reference(cfg: 'RLConfig') -> None:
-    """Reject reference-free KTO: KTO has no reference-free form (W12).
-
-    KTO's implicit reward IS the policy-vs-reference log-ratio, and its z_KL anchor is a KL against that
-    same reference, so both terms need reference logps. ``reference_free=True`` would leave KTOLoss with
-    none -- it raises mid-training -- so refuse here and point at the fix: under LoRA the adapter-disabled
-    base is the reference (run_dpo builds it automatically), and full fine-tuning derives one from the
-    policy init.
-    """
+    """Reject reference-free KTO: its implicit reward AND z_KL anchor are both log-ratios vs the reference."""
     if cfg.rl_type == 'kto' and cfg.reference_free:
         raise ValueError('KTO cannot be reference-free: its implicit reward is the log-ratio against a '
                          'reference and z_KL is a KL against that reference. Remove --reference_free; '
@@ -221,12 +207,12 @@ def _check_preference_reference(cfg: 'RLConfig') -> None:
 
 
 def validate_multi_turn_config(rollout_config: Optional['RolloutConfig']) -> None:
-    """Validate the shared multi-turn surface without imposing RL-training-only constraints."""
+    """Validate the shared multi-turn surface without RL-training-only constraints."""
     _check_multi_turn(rollout_config)
 
 
 def _check_multi_turn(rollout_config: Optional['RolloutConfig']) -> None:
-    # Multi-turn is on iff max_turns is set. Per-turn length is sampling_params.max_tokens;
+    # Multi-turn is on iff max_turns is set; per-turn length is sampling_params.max_tokens,
     # max_trajectory_tokens caps the whole trajectory. Both are independent, either may be None.
     if rollout_config is None or rollout_config.max_turns is None:
         return
@@ -239,17 +225,11 @@ def _check_multi_turn(rollout_config: Optional['RolloutConfig']) -> None:
 def validate_rollout_config(rollout_config: Optional['RolloutConfig'],
                             rl_config: Optional['RLConfig'] = None,
                             tuner_config: Optional['TunerConfig'] = None) -> None:
-    """Validate the rollout tools/sandbox surface without imposing RL-training-only constraints.
+    """Validate the rollout tools/sandbox surface without RL-training-only constraints.
 
-    ``max_turns`` lives on the ``rollout_config`` itself; the multi-turn GRPO-only gate runs here too
-    (:func:`_check_rollout_tools`), because which recipes can orchestrate a multi-turn rollout is a
-    property of the rollout, not of the training knobs. ``rl_config`` is the training config when this
-    rollout backs an RL recipe (None for sampling); it
-    is read by :func:`_check_async_mode`, which cross-checks the ``async_mode`` rollout knob against
-    the training surface, and by the multi-turn gate. ``tuner_config`` likewise is only read there, to
-    tell a full-parameter run from an adapter run (``weight_sync_strategy='adapter_snapshot'`` needs an
-    adapter to save). Both checks
-    no-op when ``async_mode='none'``, so sampling recipes -- which never set it -- are unaffected.
+    max_turns lives on the rollout_config itself; its GRPO-only gate runs here too
+    (_check_rollout_tools). rl_config/tuner_config are read only by _check_rollout_tools and
+    _check_async_mode (no-op at async_mode='none').
     """
     _check_rollout_sampler(rollout_config)
     _check_rollout_tools(rollout_config, rl_config)
@@ -312,29 +292,13 @@ def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: O
                          'needed by the shared sampler handover.')
 
 
-#: The online recipes that roll out per prompt batch and train on the collected samples, so they can overlap
-#: generation with training on the shared per-sample streaming driver
-#: (:func:`swift.dev.recipe.rl.streaming.build_streaming_driver`). RFT is
-#: excluded (it bootstraps a fixed sample set with a plain cross-entropy objective and no off-policy
-#: correction, and its body iterates bootstrap rounds rather than prompt batches); the offline preference
-#: family (dpo/kto/cpo/orpo/simpo/rm) never rolls out, so it is excluded too.
+# Online recipes that roll out per prompt batch and train on the collected samples (overlap generation
+# with training on the shared streaming driver). RFT and the offline RLHF family are excluded.
 _ASYNC_RLHF_TYPES = frozenset({'grpo', 'ppo', 'gkd', 'opsd', 'mopd'})
 
 
-#: Knobs read ONLY by the per-sample streaming driver. Under an OVERLAPPING ``async_mode``
-#: (``one_step_off``/``fully_async``) all four are read. Under ``async_mode='none'`` the online loops now
-#: ride the SAME driver at staleness 0, so ``weight_sync_strategy`` / ``parameter_sync_step`` are read there
-#: too -- but ``max_staleness`` (the dispatch pins it to 0) and ``allow_partial_rollout`` (inert at staleness
-#: 0: the drain empties the in-flight set before every publish, so a publish never meets a generation to
-#: interrupt) are NOT. So the inert set depends on whether ``'none'`` streams or falls back:
-#:
-#: * a ``'none'`` run that STREAMS (an online loop with no sync-only feature) reads weight_sync_strategy /
-#:   parameter_sync_step, so only ``_INERT_UNDER_NONE_STREAMING`` is refused there;
-#: * a ``'none'`` run that FALLS BACK to the synchronous ``_run_sync`` (a sync-only feature, or a non-online
-#:   recipe) reads none of them, so the whole ``_FULLY_ASYNC_ONLY_DEFAULTS`` is refused.
-#:
-#: An explicit non-default value of an inert knob would be a silent dead knob, so it is rejected rather than
-#: ignored (``_changed_fields`` limits this to values the user actually set).
+# Streaming knobs read ONLY by the per-sample streaming driver: all four under an OVERLAPPING
+# async_mode; staleness-0 streaming all but max_staleness/allow_partial_rollout; sync-only none.
 _FULLY_ASYNC_ONLY_DEFAULTS = {
     'max_staleness': 1,
     'weight_sync_strategy': 'adapter_snapshot',
@@ -342,9 +306,8 @@ _FULLY_ASYNC_ONLY_DEFAULTS = {
     'parameter_sync_step': 1
 }
 
-#: The subset of ``_FULLY_ASYNC_ONLY_DEFAULTS`` that stays inert even when ``async_mode='none'`` rides the
-#: streaming driver (see above): the dispatch pins ``max_staleness`` to 0 and the staleness-0 drain makes
-#: ``allow_partial_rollout`` a no-op, so neither is read on that path.
+# The subset inert even when async_mode='none' rides the streaming driver: the dispatch pins max_staleness
+# to 0 and the staleness-0 drain makes allow_partial_rollout a no-op, so neither is read on that path.
 _INERT_UNDER_NONE_STREAMING = {
     'max_staleness': _FULLY_ASYNC_ONLY_DEFAULTS['max_staleness'],
     'allow_partial_rollout': _FULLY_ASYNC_ONLY_DEFAULTS['allow_partial_rollout'],
@@ -352,22 +315,9 @@ _INERT_UNDER_NONE_STREAMING = {
 
 
 def _sync_only_feature(rl_config: Optional['RLConfig']) -> bool:
-    """Whether this config cannot ride the per-sample stream and runs the synchronous round loop instead.
+    """Whether this config runs the synchronous round loop instead of the per-sample stream.
 
-    Mirrors the ``run_*`` body dispatch exactly (the two must never drift, or a config would validate as
-    streaming but be routed to the synchronous rounds or vice-versa). A per-sample stream admits ONE
-    trajectory at a time and pulls whatever the assembly rule says is ready, so it cannot serve a feature
-    that must see an entire generated batch before deciding what to train:
-
-    * The distillation family (gkd/opsd/mopd) with ``lmbda != 1.0`` mixes in off-policy dataset rounds that
-      generate nothing, so there is no trajectory to admit -- its run body then trains the synchronous
-      round loop. This is the ONLY surviving sync-only feature: GRPO serves ``dynamic_sample`` / ``remax``
-      through the injected group-completion hook on the stream, and PPO has none.
-    * RFT never rides the stream (it has no off-policy correction to absorb the gap) and is gated out of
-      :data:`_ASYNC_RLHF_TYPES` before this predicate is consulted.
-
-    A ``None`` rl_config (a sampling-only surface) has no online loop to stream, so it is treated as
-    sync-only (the caller gates on ``rl_type in _ASYNC_RLHF_TYPES`` first anyway).
+    Mirrors the run_* dispatch: only distillation with lmbda != 1.0 and a None rl_config are sync-only.
     """
     if rl_config is None:
         return True
@@ -377,12 +327,9 @@ def _sync_only_feature(rl_config: Optional['RLConfig']) -> bool:
 
 
 def _streams_under_none(rl_config: Optional['RLConfig']) -> bool:
-    """Whether ``async_mode='none'`` routes this config to the per-sample streaming driver (staleness 0).
+    """Whether async_mode='none' routes this config to the streaming driver (staleness 0).
 
-    True for an online loop (grpo/ppo/gkd/opsd/mopd) with no sync-only feature; those ride the SAME driver as
-    the overlapping regimes, just at staleness 0 (drain-before-publish, no overlap, colocate allowed). False
-    for the distillation family's off-policy mix (``lmbda != 1.0``, which runs the synchronous round loop)
-    and for a non-online recipe (which never rolls out per prompt batch, so it has no streaming loop at all).
+    True for an online loop with no sync-only feature; False for the off-policy mix and non-online.
     """
     if rl_config is None or rl_config.rl_type not in _ASYNC_RLHF_TYPES:
         return False
@@ -391,69 +338,25 @@ def _streams_under_none(rl_config: Optional['RLConfig']) -> bool:
 
 def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Optional['RLConfig'],
                       tuner_config: Optional['TunerConfig'] = None) -> None:
-    """Reject ``async_mode`` combinations the online loops cannot honour (fail-loudly).
+    """Reject async_mode combinations the online loops cannot honour (fail-loudly).
 
-    ``async_mode`` picks how far the rollout may run ahead of training, i.e. how off-policy the trained
-    batch is. EVERY online regime now rides the SAME per-sample streaming driver, differing only in the
-    staleness knob: ``'none'`` is synchronous (``max_staleness=0`` -- admit one window, drain it, train,
-    publish, no overlap; a colocated sampler is allowed and serialized); ``'one_step_off'`` pins
-    ``max_staleness`` to 1 (train version ``v`` while admitting ``v+1``); ``'fully_async'`` lets the
-    disaggregated sampler run several versions ahead (staleness up to ``max_staleness``). The two OVERLAPPING
-    regimes are disaggregated (below) and a real off-policy gap, so each of the following is refused there
-    rather than silently degrading (under ``'none'`` the distillation family's off-policy mix runs its
-    synchronous round loop instead, and the staleness-0 publication is validated by
-    ``_check_streaming_publication``):
-
-    - Only the recipes in :data:`_ASYNC_RLHF_TYPES` implement the overlapped dispatch; RFT and the offline
-      family would ignore the flag. EVERY overlapping recipe runs the SAME per-sample streaming driver
-      (``recipe.rl.streaming.build_streaming_driver``, composed into each flat run body as a collaborator,
-      never a subclass), differing only in the staleness knob. GRPO/PPO expose both
-      ``'one_step_off'`` (staleness 1) and ``'fully_async'`` (staleness up to ``max_staleness``);
-      ``'fully_async'`` narrows to them because the distillation family overlaps only a single step.
-    - GRPO trains on raw sampled tokens, so any staleness needs the token-level
-      ``rollout_importance_sampling_mode`` correction. PPO's clipped surrogate and the distillation
-      family's teacher target already bound the update, so they do not require it.
-    - Weight sync rewrites live sampler weights and needs the sampler on its own GPUs to overlap
-      generation with training, so ``sampler_mode='disaggregated'`` is mandatory; ``'colocate'`` time-shares
-      one DeviceGroup and cannot overlap.
-    - ``dynamic_sample`` regenerates zero-variance groups adaptively after seeing rewards, so it cannot be
-      pre-submitted ahead of training. Multi-turn needs NO refusal here: ``_check_rollout_tools`` already
-      gates ``max_turns`` to GRPO-only (both run from the same validate pass), and GRPO wires
-      ``rollout.configure_multi_turn`` before the loop dispatch, so its streaming loop admits each
-      multi-turn episode per-sample on the driver (a whole episode runs turn-by-turn on its own thread)
-      and overlaps it correctly. The distillation family can never carry ``max_turns``, so there is no
-      silent single-turn degradation to guard against on this path.
-    - Async distillation must be purely on-policy (``lmbda==1.0``): an off-policy dataset round generates
-      nothing, so there is no batch to admit ahead.
+    Refused, not degraded: non-online recipes, no IS correction, colocate, remax, off-policy mix.
     """
     if rollout_config is None:
         return
-    # allow_partial_rollout is a real sampler capability now (twinkle's PartialRolloutMixin: the dev vLLM/SGLang
-    # sampler can interrupt an in-flight generation and resume it on freshly-synced weights), but it is only
-    # MEANINGFUL under an OVERLAPPING streaming publish (in_place overwrites the sampler's single live weight
-    # copy under an in-flight generation). At staleness 0 -- the synchronous regime, which now also rides the
-    # streaming driver -- the drain empties the in-flight set before every publish, so there is nothing to
-    # resume and the flag is inert (refused below if set explicitly); for EVERY overlapping regime
-    # (GRPO/PPO/distillation), _check_streaming_publication validates it per weight_sync_strategy (required
-    # for in_place, inert for adapter_snapshot). So there is no blanket rejection here -- only the per-regime
-    # checks below.
+    # allow_partial_rollout is only MEANINGFUL under an OVERLAPPING streaming publish; at staleness 0 the
+    # drain empties the in-flight set, so it is inert there (refused below if set explicitly).
     mode = rollout_config.async_mode
     if mode == 'none':
-        # Since the per-sample stream serves EVERY regime, an online loop (grpo/ppo/gkd/opsd/mopd) with no
-        # sync-only feature now rides the StreamingDriver at staleness 0 (admit one window, DRAIN it, train,
-        # publish -- no overlap; a colocated sampler is allowed and serialized via the drain barrier + device
-        # hand-over). Only the distillation family's off-policy mix (lmbda != 1.0) runs its synchronous
-        # round loop instead, and a non-online recipe never rolls out per prompt batch at all.
+        # An online loop with no sync-only feature rides the StreamingDriver at staleness 0; only the
+        # distillation off-policy mix (lmbda != 1.0) runs its synchronous round loop instead.
         if _streams_under_none(rl_config):
-            # max_staleness (the dispatch pins it to 0) and allow_partial_rollout (inert at staleness 0) are
-            # never read on this path, so an explicit non-default value is still refused; weight_sync_strategy
-            # and parameter_sync_step ARE read, so they are validated by _check_streaming_publication instead
-            # of rejected (a colocated run must publish in_place, an overlapping-style in_place needs no
-            # partial rollout at staleness 0, etc.).
+            # max_staleness (pinned to 0) and allow_partial_rollout (inert at staleness 0) are never read on
+            # this path; weight_sync_strategy and parameter_sync_step ARE, validated by the publication check.
             inert = _INERT_UNDER_NONE_STREAMING
             if rollout_config.resource_mode == 'adaptive':
-                # At staleness zero ordinary publication drains generation, but adaptive shared handover may
-                # pause a long request at every batch boundary. Partial rollout is therefore active and required.
+                # Adaptive shared handover may pause a long request at every batch boundary even at
+                # staleness 0, so partial rollout is active and required there.
                 inert = {'max_staleness': _INERT_UNDER_NONE_STREAMING['max_staleness']}
             _reject_inert_streaming_knobs(rollout_config, mode, inert)
             _check_streaming_publication(rollout_config, rl_config, tuner_config, mode)
@@ -461,9 +364,8 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
             # The synchronous round loop (or a non-online recipe) reads none of the streaming knobs.
             _reject_inert_streaming_knobs(rollout_config, mode, _FULLY_ASYNC_ONLY_DEFAULTS)
         return
-    # The legacy bool is the old spelling of 'one_step_off'; process._derive_async_mode folds it in when
-    # async_mode is unset, so reaching here with async_generate True AND a different explicit mode is an
-    # ambiguous request (both were set), not something to silently resolve.
+    # The legacy bool is the old spelling of 'one_step_off'; process folds it in when async_mode is
+    # unset, so reaching here with async_generate True AND a different explicit mode is ambiguous.
     if rollout_config.async_generate and mode != 'one_step_off':
         raise ValueError(
             f'--async_generate is the legacy spelling of --async_mode one_step_off, but --async_mode '
@@ -509,24 +411,15 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
         raise ValueError(
             f'{flag} is only implemented for GRPO and PPO; got rl_type={rl_type!r}. The '
             'distillation loops overlap a single step -- use --async_mode one_step_off for them.')
-    # Every surviving overlapping regime -- GRPO/PPO under one_step_off|fully_async and the distillation
-    # family under one_step_off -- runs the SAME per-sample StreamingDriver (differing only in the staleness
-    # knob), so all validate their publication identically: the publish cadence, the staleness bound, and
-    # the adapter_snapshot/in_place pairing.
+    # Every surviving overlapping regime runs the SAME per-sample StreamingDriver (differing only in the
+    # staleness knob), so all validate their publication identically below.
     _check_streaming_publication(rollout_config, rl_config, tuner_config, mode)
 
 
 def _reject_inert_streaming_knobs(rollout_config: 'RolloutConfig', mode: str, inert_defaults: dict) -> None:
-    """Refuse a streaming knob explicitly set to a non-inert value the selected driver never reads.
+    """Refuse a streaming knob explicitly set to a value the selected driver never reads.
 
-    ``inert_defaults`` maps each knob that is INERT on the path this config selects to the value it is
-    forced to there. Two callers: ``async_mode='none'`` on the synchronous ``_run_sync`` fallback (a sync-only
-    feature, or a non-online recipe) reads NONE of the streaming knobs, so it passes the full
-    ``_FULLY_ASYNC_ONLY_DEFAULTS``; ``async_mode='none'`` on an online loop that rides the streaming driver
-    at staleness 0 still ignores ``max_staleness`` (pinned to 0) and ``allow_partial_rollout`` (the drain
-    leaves nothing in flight to resume), so it passes the narrower ``_INERT_UNDER_NONE_STREAMING``. An
-    explicit non-default value of an inert knob would silently do nothing, so fail loudly instead
-    (``_changed_fields`` limits this to values the user actually set).
+    inert_defaults maps each inert knob to its forced value (full set on the sync fallback).
     """
     changed = _changed_fields(rollout_config)
     for name, inert in inert_defaults.items():
@@ -539,42 +432,9 @@ def _reject_inert_streaming_knobs(rollout_config: 'RolloutConfig', mode: str, in
 
 def _check_streaming_publication(rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
                                  tuner_config: Optional['TunerConfig'], mode: str) -> None:
-    """Guards for the per-sample streaming driver's publication (EVERY online regime that rides it).
+    """Publication guards for the per-sample streaming driver (every online regime that rides it).
 
-    Each regime runs the SAME per-sample ``StreamingDriver``, differing only in the staleness knob:
-    ``'none'`` at staleness 0 (drain-before-publish, no overlap, colocate allowed), ``'one_step_off'`` at
-    staleness 1, ``'fully_async'`` at staleness up to ``max_staleness``. An OVERLAPPING publish always
-    happens while the sampler has generations in flight and must not corrupt them; a staleness-0 publish
-    happens only after the drain, so nothing is in flight. Four things are checked (the strategy pairing
-    mirrored at construction by ``recipe.rl.streaming.check_streaming_config``, so a
-    driver built directly is guarded too):
-
-    * ``parameter_sync_step`` is the publish cadence -- one weight publication every K recorded steps; it
-      must be >= 1 (0 would never publish a trained policy).
-    * staleness: ``one_step_off`` pins the driver to a single lookahead window (staleness 1), so an
-      explicit non-1 ``max_staleness`` there is ambiguous and refused (use ``fully_async`` for a deeper
-      buffer); ``fully_async`` allows any ``max_staleness >= 1``; ``'none'`` pins it to 0 (refused upstream
-      if set explicitly), so there is nothing to bound here.
-    * placement: a COLOCATED sampler (``sampler_mode='colocate'``, only reachable at staleness 0 since an
-      overlapping regime must be disaggregated) MUST publish ``in_place`` -- the per-cycle device hand-back
-      (wake+sync the sampler before each generation window) rides in_place's publish ``sync_fn``, whereas
-      ``adapter_snapshot`` publishes by writing a new adapter path with no weight sync, so nothing would
-      re-hand the shared device to the sampler after the first consume's exit.
-    * the publish mechanism, per ``weight_sync_strategy``:
-
-      - ``adapter_snapshot`` pins each trained version as its own LoRA adapter path, so publishing writes a
-        NEW path and never disturbs a running generation. It needs an adapter run (a full-parameter policy
-        has no adapter to pin) and must NOT set ``allow_partial_rollout`` -- nothing is overwritten in
-        place, so there is no generation to interrupt and resume and the flag would be inert.
-      - ``in_place`` overwrites the sampler's single live weight copy. Under an OVERLAPPING regime a stream
-        always has trajectories in flight at a publish, so it is sound ONLY with partial rollout: the publish
-        aborts every in-flight generation and each resumes from its own tokens on the fresh weights (twinkle
-        ``PartialRolloutMixin`` + ``InPlaceWeightSync`` abort-on-publish), so no generation decodes across the
-        update and its logprobs stay correctable -- hence ``allow_partial_rollout`` is REQUIRED there. Under
-        the SYNCHRONOUS regime (``'none'``, staleness 0) the drain empties the in-flight set before every
-        publish, so the abort is a no-op and ``allow_partial_rollout`` is NOT required. It supports a
-        full-parameter policy (merged base weights over NCCL when disaggregated, CUDA IPC when colocated)
-        as well as LoRA.
+    Checks sync_step>=1, staleness per regime, colocate->in_place, and the strategy/partial pairing.
     """
     if rollout_config.parameter_sync_step < 1:
         raise ValueError(
@@ -619,10 +479,8 @@ def _check_streaming_publication(rollout_config: 'RolloutConfig', rl_config: 'RL
                 'generation decodes and there is nothing to interrupt and resume. Drop --allow_partial_rollout, '
                 'or use --weight_sync_strategy in_place (which overwrites one live copy and so needs it).')
     elif strategy == 'in_place':
-        # Overwriting the single live copy under an in-flight generation is unsound unless each generation is
-        # aborted and resumed on the fresh weights, which is exactly what allow_partial_rollout enables. At
-        # staleness 0 ('none') the drain empties the in-flight set before every publish, so the abort is a
-        # no-op and the flag is not required (and is refused upstream if set, being inert there).
+        # Overwriting the live copy under an in-flight generation is unsound unless each is aborted and
+        # resumed on fresh weights (allow_partial_rollout); the staleness-0 drain makes it a no-op there.
         if mode != 'none' and not rollout_config.allow_partial_rollout:
             raise ValueError(
                 f"--async_mode {mode} with --weight_sync_strategy in_place overwrites the sampler's single "
@@ -640,20 +498,9 @@ def _check_streaming_publication(rollout_config: 'RolloutConfig', rl_config: 'RL
 
 
 def _check_offload_knobs(rollout_config: Optional['RolloutConfig']) -> None:
-    """Warn on offload/sleep knobs dev cannot honour exactly as set (fail-loudly, non-fatal).
+    """Warn on offload/sleep knobs dev cannot honour exactly as set (non-fatal).
 
-    In the colocate placement the rollout offload is *structural and atomic*: twinkle's ``offload_to_cpu``
-    bundles the model and the optimizer together and is coupled to the wake/sleep memory handover in
-    ``ColocateHandover.enter()``, so it always runs and can be neither switched off nor split into two
-    independent tiers. ``offload_model``/``offload_optimizer`` therefore stay as flags for CLI parity but
-    do not gate anything, and any explicit request that deviates from "both on" is warned about rather
-    than silently applied.
-
-    In the disaggregated (or server) placement the sampler owns its own GPUs, so offloading the trainer's
-    model/optimizer to make room for it is moot, and ``sleep_level`` is inert because the handover never
-    sleeps a sampler that is not sharing the device.
-
-    Only explicitly-set values are flagged (``_changed_fields``), so defaults stay silent.
+    Colocate offload is atomic; disaggregated has its own GPUs, so offload is moot and sleep inert.
     """
     if rollout_config is None:
         return
@@ -687,14 +534,9 @@ def _check_offload_knobs(rollout_config: Optional['RolloutConfig']) -> None:
 
 
 def _check_rollout_sampler(rollout_config: Optional['RolloutConfig']) -> None:
-    """Reject a rollout engine dev cannot wire as an independent-process, weight-synced sampler.
+    """Reject a rollout engine dev cannot wire as a weight-synced sampler (vllm/sglang only).
 
-    ``'vllm'`` and ``'sglang'`` are both wired (GRPO/PPO/RFT and the distill family read it for the
-    rollout sampler). ``'transformers'`` is not: the online loop syncs the trained policy into the
-    sampler every step through a CheckpointEngineManager, which needs a CheckpointEngineMixin engine,
-    and TransformersSampler deliberately has none (it generates on the trainer's own weights). The
-    ``rollout_sampler`` Literal already excludes it; this is the loud backstop so a mis-set value fails
-    at validation rather than silently running without weight sync.
+    Weight sync needs a CheckpointEngineMixin engine; TransformersSampler has none by design.
     """
     if rollout_config is None:
         return
@@ -711,9 +553,7 @@ def _check_rollout_tools(rollout_config: Optional['RolloutConfig'],
         return
     if rollout_config.sandbox_num_envs < 1:
         raise ValueError(f'sandbox_num_envs must be >= 1, got {rollout_config.sandbox_num_envs}.')
-    # The multi-turn rollout is orchestrated by the GRPO recipe (its streaming driver assembles the
-    # trajectory turns); the other RL recipes have no multi-turn loop, so max_turns on them would be a
-    # silent dead knob. Sampling (rl_config is None) is exempt: the TUI drives its own turns.
+    # Multi-turn is orchestrated by the GRPO recipe only; sampling (rl_config is None, the TUI) is exempt.
     if rollout_config.max_turns is not None and rl_config is not None and rl_config.rl_type != 'grpo':
         raise ValueError(f'multi-turn rollout (max_turns) is GRPO-only, but rl_type={rl_config.rl_type!r}: the '
                          'GRPO recipe is the only one that assembles multi-turn trajectories. Use '
@@ -729,22 +569,15 @@ def _check_rollout_tools(rollout_config: Optional['RolloutConfig'],
 
 
 def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
-    """Validate the best-of-n synthesis surface without imposing RL-training-only constraints.
-
-    Synthesis runs through the ``infer`` CLI rather than a training recipe, so this is kept apart from
-    :func:`validate_configs`; it only rejects combinations that cannot work at generation time.
-    """
+    """Validate the best-of-n synthesis surface without RL-training-only constraints."""
     if infer_config is None:
         return
     from swift.dev.dataset.storage import STORAGE_MAPPING, validate_store_format
     # A store format is an open registry key, so check the name resolves (and is writable) here -- after
-    # --external_plugins has been imported -- rather than after the run has generated rows it cannot write.
+    # --external_plugins is imported -- rather than after the run has generated rows it cannot write.
     validate_store_format(infer_config.store_format, writable=True)
-    # Resuming needs the format's own incremental capability -- the line-appendable store the
-    # checkpointed writer streams into -- not a hard-coded format name, so an ``@register_storage``
-    # plugin that declares ``incremental=True`` earns resume eligibility the same way. Every
-    # non-incremental format serialises the whole run once at the end and writes no checkpoint, so it
-    # cannot continue a previous run; reject rather than silently discarding the resume request.
+    # Resume eligibility is the format's own incremental capability, not a hard-coded name -- a plugin
+    # declaring incremental=True earns it the same way. Non-incremental formats write once at the end.
     if not STORAGE_MAPPING[infer_config.store_format].incremental and infer_config.resume:
         raise ValueError(f"store_format={infer_config.store_format!r} writes the whole run once at the end "
                          'and cannot checkpoint, so it cannot be combined with resume=True. Use an '
@@ -754,11 +587,7 @@ def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
 def validate_convert_config(convert_config: Optional['ConvertConfig']) -> None:
     """Validate the export-side store choice, but only where a store is actually written.
 
-    ``store_format`` is consumed solely by ``--to_cached_dataset``; the other export directions (merge /
-    quantize / to_hf / to_mcore) never touch it, so validating it there would reject an unrelated run that
-    merely carries the field's default. Like :func:`validate_infer_config`, this runs after
-    ``--external_plugins`` is imported, so a user-registered writable format passes and a bad or read-only
-    one fails before the encode.
+    store_format is consumed solely by --to_cached_dataset; runs after --external_plugins is imported.
     """
     if convert_config is None or not convert_config.to_cached_dataset:
         return
@@ -766,10 +595,8 @@ def validate_convert_config(convert_config: Optional['ConvertConfig']) -> None:
     validate_store_format(convert_config.store_format, writable=True)
 
 
-#: The GRPO-family ``loss_type`` values dev accepts (each maps onto a twinkle ``GRPOLoss`` subclass via
-#: ``torch_loss_mapping``). Kept as one constant so the GRPO-only gate in :func:`_check_grpo_controls` and
-#: the support check in :func:`_check_grpo_loss_type` cannot drift apart. The verl-ported variants
-#: (gpg / dro / dppo_tv / dppo_kl / geo_mean / clip_cov / kl_cov) join the pre-existing set.
+# The GRPO-family loss_type values dev accepts (each maps onto a twinkle GRPOLoss subclass). One constant
+# so the GRPO-only gate in _check_grpo_controls and the support check in _check_grpo_loss_type cannot drift.
 _GRPO_LOSS_TYPES = frozenset({
     'grpo', 'dapo', 'fipo', 'gspo', 'sapo', 'cispo', 'bnpo', 'dr_grpo', 'real', 'gpg', 'dro', 'dppo_tv',
     'dppo_kl', 'geo_mean', 'clip_cov', 'kl_cov'
@@ -785,21 +612,16 @@ def _check_grpo_controls(cfg: 'RLConfig') -> None:
         or cfg.importance_sampling_level != 'token' or cfg.overlong_filter or cfg.log_entropy
         or cfg.top_entropy_quantile != 1.0 or cfg.rollout_importance_sampling_mode
         or cfg.log_rollout_offpolicy_metrics or cfg.off_policy_sequence_mask_delta is not None
-        # A GRPO-SPECIFIC variant named on a non-GRPO run. The plain 'grpo' default is excluded on purpose:
-        # it is the fallback for an UNSET loss_type, so counting it would flag every dpo/kto/cpo/... run
-        # (whose loss_type is None -> 'grpo') as carrying a GRPO-only control. _check_grpo_loss_type, by
-        # contrast, DOES accept 'grpo' -- the two gates key off the same constant with different intents.
+        # A GRPO-SPECIFIC variant named on a non-GRPO run; the plain 'grpo' default is excluded on
+        # purpose (the fallback for an UNSET loss_type -- counting it would flag every dpo/kto run).
         or (loss_type in _GRPO_LOSS_TYPES and loss_type != 'grpo'))
     if cfg.rl_type != 'grpo':
         if grpo_only:
             raise ValueError('GRPO clipping, replay, entropy, FIPO, and completion logging controls are GRPO-only.')
         return
     _check_grpo_loss_type(cfg, loss_type)
-    # GRPO's advantage is group-relative: each prompt's completions are centered on their group mean, so a
-    # single generation per prompt has no baseline to center on and GRPOAdvantage falls back to the raw
-    # reward (twinkle advantage/grpo.py, the num_generations==1 branch) -- baseline-free REINFORCE, not
-    # GRPO. legacy rejects it (rlhf_args.py:408-409). A teacher (OPD-RL / self-distillation) is exempt: it
-    # distills on a single generation rather than contrasting a group.
+    # GRPO's advantage is group-relative: one generation per prompt has no baseline and degenerates to
+    # raw-reward REINFORCE (legacy rejects it too). A teacher (OPD-RL) is exempt.
     has_teacher = bool(cfg.teacher_model or cfg.teacher_adapters or cfg._teacher_use_disable_adapter)
     if cfg.num_generations < 2 and not has_teacher:
         raise ValueError(f'GRPO requires num_generations >= 2 (got {cfg.num_generations}): its advantage is '
@@ -833,9 +655,8 @@ def _check_grpo_loss_type(cfg: 'RLConfig', loss_type: str) -> None:
         raise ValueError('GRPO supports exactly one loss_type.')
     if loss_type not in supported:
         raise ValueError(f'Unsupported GRPO loss_type={loss_type!r}; expected one of {sorted(supported)}.')
-    # GSPO IS sequence-level importance sampling; an explicit token-level request contradicts it and would
-    # silently downgrade GSPO to token-level GRPO (W13). The default 'token' is promoted to 'sequence' by
-    # configure_rl_loss, so only an explicitly-set 'token' is a real contradiction worth rejecting.
+    # GSPO IS sequence-level importance sampling; an explicitly-set token-level request contradicts it
+    # (the default 'token' is promoted to 'sequence', so only the explicit one is a real contradiction).
     if (loss_type == 'gspo' and cfg.importance_sampling_level == 'token'
             and 'importance_sampling_level' in _changed_fields(cfg)):
         raise ValueError(
@@ -848,9 +669,7 @@ def _check_grpo_loss_type(cfg: 'RLConfig', loss_type: str) -> None:
 def _check_grpo_loss_knobs(cfg: 'RLConfig', loss_type: str) -> None:
     """Fail-loudly on the verl-ported loss variants' hyperparameters before training starts.
 
-    The twinkle loss constructors validate these too, but checking at config time surfaces a bad value in
-    the argument pass rather than deep in the first training step. Each knob is read by exactly one variant
-    (see ``_online_loss_kwargs``), so only the matching variant's knob is checked.
+    The twinkle constructors re-validate; checking here surfaces a bad value in the argument pass.
     """
     if loss_type == 'dro' and cfg.dro_beta <= 0:
         raise ValueError(f'loss_type=dro requires dro_beta > 0, got {cfg.dro_beta}.')
@@ -868,12 +687,7 @@ def _check_grpo_loss_knobs(cfg: 'RLConfig', loss_type: str) -> None:
 def _check_grpo_cached_dataset(dataset_config: 'DatasetConfig', rl_config: Optional['RLConfig']) -> None:
     """Reject a pre-encoded cached_dataset for GRPO, which rolls out from raw prompt messages.
 
-    Mirrors legacy rlhf_args.py:342-343. ``cached_dataset`` is the map-style, already-encoded cache written
-    by ``swift export --to_cached_dataset`` (input_ids/labels, no ``messages``). GRPO drives generation from
-    each row's raw ``messages`` -- its prompt loader (``rl.prompts.prompt_rows_from_dataset`` ->
-    ``builders.dataset.load_prompt_only_rows``) reads ``DatasetConfig.dataset`` only and never
-    ``cached_dataset`` -- so a cached_dataset passed to GRPO is silently ignored. Refuse up front rather
-    than leave the knob inert.
+    Its prompt loader reads DatasetConfig.dataset only, so a cached_dataset would be silently ignored.
     """
     if rl_config is None or getattr(rl_config, 'rl_type', None) != 'grpo':
         return
@@ -883,6 +697,22 @@ def _check_grpo_cached_dataset(dataset_config: 'DatasetConfig', rl_config: Optio
                          'so a cached_dataset (pre-encoded input_ids/labels, no messages) would be silently '
                          'ignored. Pass the original prompts via --dataset, or pre-generate completions '
                          'offline and train with an offline objective (dpo/rm/...).')
+
+
+def _check_grpo_truncation_strategy(template_config: 'TemplateConfig', rl_config: Optional['RLConfig']) -> None:
+    """GRPO truncates over-long prompts from the left or drops them; never 'right'/'split'.
+
+    'right' cuts the prompt end the completion is conditioned on; 'split' breaks one prompt into two.
+    """
+    if rl_config is None or getattr(rl_config, 'rl_type', None) != 'grpo':
+        return
+    strategy = template_config.truncation_strategy
+    if strategy in (None, 'left', 'delete'):
+        return
+    raise ValueError(f"GRPO requires truncation_strategy 'left' or 'delete' (or None), got {strategy!r}: "
+                      "'right' cuts the end of the prompt -- the part the completion is conditioned on -- "
+                      "and 'split' would split one prompt row into two rollout prompts. "
+                      'Set --truncation_strategy left or delete.')
 
 
 def _check_dynamic_sampling(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
@@ -945,16 +775,9 @@ def _check_chord(cfg: 'RLConfig') -> None:
 
 
 def _check_router_replay(cfg: 'RLConfig') -> None:
-    """Reject MoE routing-replay combinations dev cannot honour, so the knob is never silently dropped.
+    """Reject routing-replay combinations dev cannot honour (GRPO-only, never silently dropped).
 
-    ``router_replay_mode`` was a parsed-but-unwired dead knob; R2/R3 are now wired into the GRPO assembler.
-    Only GRPO consumes it: the RECORD/REPLAY driving lives in the GRPO assembler's ``forward_kwargs``,
-    while the other recipes (RFT/GKD/OPSD/PPO) build their own ``forward_backward`` kwargs, so a non-GRPO
-    run would set ``enable_router_replay`` on the model yet never pass a replay action -- a silent no-op.
-
-    The MoE-only and sampler-export requirements are checked at runtime instead (a dense policy records no
-    routing; a non-exporting engine leaves R3 with none) -- both surface as loud errors in the loop, since
-    validate has no model/engine to inspect.
+    The RECORD/REPLAY driving lives in the GRPO assembler; MoE/sampler-export checks surface at runtime.
     """
     mode = cfg.router_replay_mode
     if mode == 'disabled':
@@ -968,20 +791,7 @@ def _check_router_replay(cfg: 'RLConfig') -> None:
 def _check_sampling_replay(cfg: 'RLConfig', rollout_config: Optional['RolloutConfig'] = None) -> None:
     """Reject sampling-replay combinations dev cannot honour, so the knob is never silently dropped.
 
-    ``enable_sampling_replay`` makes the training forward recompute each token's log-prob over the sampler's
-    exact support set (twinkle ``replayed_selective_log_softmax``), so the GRPO ratio is measured against the
-    distribution the token was actually drawn from. twinkle's GRPOLoss/forward impose hard constraints; the
-    ones decidable from RLConfig alone are enforced here, the rest fail loudly at their own site:
-
-    - GRPO-only: the ``sampling_masks`` column is assembled by the GRPO assembler (``assemble`` /
-      ``forward_kwargs``); the other recipes never carry it.
-    - No loss-side KL penalty: GRPOLoss raises when ``enable_sampling_replay`` and ``beta != 0``. dev only
-      forwards ``beta`` to the loss when it is set, KL is not folded into the reward, and KL is calculated
-      (mirroring ``_online_loss_kwargs``) -- so only that resolved value is checked here; a KL-in-reward run
-      keeps the loss ``beta`` at 0 and is allowed.
-    The entropy bonus (``entropy_coef``) has no dev knob, so it stays 0 and needs no guard. Sequence/context
-    parallelism is rejected by the twinkle forward itself (and, today, by the blanket RLHF-SP guard), which
-    this config-only check has no parallel sizes to inspect.
+    GRPO-only, no loss-side KL (beta must be 0 unless folded into the reward), no multi-turn.
     """
     if not cfg.enable_sampling_replay:
         return
@@ -1003,27 +813,10 @@ def _check_sampling_replay(cfg: 'RLConfig', rollout_config: Optional['RolloutCon
 
 
 def _check_prm(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
-    """Reject GRPO process-reward (PRM) combinations the loop cannot honour, so no knob is silently dead.
+    """Reject GRPO process-reward (PRM) combinations the loop cannot honour (no silently dead knob).
 
-    ``--prm`` is a dual-use selector: best-of-n synthesis ranks with it as a scalar axis, while GRPO turns it
-    into a per-token *process* reward (each reasoning step scored by its response prefix, broadcast onto the
-    step's tokens -- see :mod:`swift.dev.rewards.prm`). Only the GRPO consumer is validated here; for any other
-    ``rl_type`` (synthesis runs under the ``dpo`` default) ``prm`` is just a ranking axis and the
-    process-reward knobs do not apply.
-
-    - Multi-turn is supported: a step is confined to one assistant turn (the default ``'turn'`` scorer makes
-      one turn one step; ``'delimiter'`` splits within a turn, never across one), and a step is scored against
-      the real conversation history including prior turns' tool observations.
-    - Mutually exclusive with RLSD/SDAR: both replace the scalar advantage with a per-token one from a
-      different source (teacher-signal reweighting vs process reward), and ``_training_advantage`` passes a
-      per-token PRM advantage straight through -- it cannot also apply the teacher reweighting.
-    - A process-reward knob with no ``--prm`` channel is dead: ``prm_scorer``/``prm_step_delimiter``/
-      ``prm_orm_mix`` only shape how PRM steps are segmented, scored and fused with the outcome reward, so
-      setting one without any PRM item would do nothing.
-    - ``prm_orm_mix`` is the PRM/ORM convex-combination ratio and must lie in ``[0, 1]``.
-
-    The prm channel and its knobs all live on the RewardConfig, so a missing one (a programmatic call
-    without the reward surface) counts as "no --prm channel".
+    Refuses RLSD/SDAR overlap, scorer knobs with no --prm channel, prm_orm_mix outside [0, 1].
+    The prm channel and its knobs all live on the RewardConfig; a missing one counts as "no channel".
     """
     if cfg.rl_type != 'grpo':
         return
@@ -1080,10 +873,7 @@ def _check_sdar(cfg: 'RLConfig') -> None:
 def _check_distillation(cfg: 'RLConfig') -> None:
     """Validate the on-policy distillation family (gkd / opsd / mopd).
 
-    ``lmbda`` and the "offload / teacher_deepspeed need a distinct local teacher_model" guards are shared
-    by all three (each may generate on-policy and may distil from a separate frozen teacher). The
-    full-vocab JSD knobs (``distill_temperature`` / ``gkd_logits_topk`` / ``sft_alpha``) are GKD-only: OPSD/MOPD
-    use the logits-free sampled-token k3 surrogate, which reads none of them.
+    lmbda/distinct-teacher shared; JSD knobs GKD-only; OPSD/MOPD refuse non-zero beta (no KL term).
     """
     if cfg.rl_type not in ('gkd', 'opsd', 'mopd'):
         return
@@ -1094,9 +884,6 @@ def _check_distillation(cfg: 'RLConfig') -> None:
     if cfg.teacher_deepspeed and cfg.teacher_model is None:
         raise ValueError('teacher_deepspeed requires a distinct local teacher_model.')
     if cfg.rl_type in ('opsd', 'mopd'):
-        # OPSD/MOPD v1 distils with the sampled-token k3 surrogate only: it applies no reference-KL term,
-        # so a non-zero beta would be a silently-ignored knob. Reject rather than drop. (The GKD-only
-        # full-vocab knobs distill_temperature/gkd_logits_topk/sft_alpha are simply never read here.)
         if cfg.beta not in (None, 0, 0.0):
             raise ValueError(f'{cfg.rl_type} v1 has no reference-KL term; beta={cfg.beta!r} would be ignored. '
                              'Leave beta unset/0 -- self-distillation pulls the student toward the teacher directly.')
@@ -1124,15 +911,10 @@ def _check_auxiliary_adapters(cfg: 'RLConfig', reward_config: Optional['RewardCo
 
 
 def _check_channel_companions(reward_config: 'RewardConfig', channel: str) -> None:
-    """Each reward channel's companion family aligns positionally with its MODEL subsequence.
+    """Each channel's companion family aligns positionally with its MODEL subsequence.
 
-    The retired ``reward_model``/``reward_adapters``/... family carried one value per reward model;
-    the channels' companions (``orm_adapters`` / ``orm_model_type`` / ``orm_model_revision`` /
-    ``orm_template`` and the prm twins) carry the same role -- one entry per MODEL id in the channel,
-    with rule items holding no model and taking no entry. Online RL has no sampler-reuse judge (a
-    scalar-only channel), so a companion with no model id in the channel is dead here and refused;
-    the synthesis path's lone-adapter sampler-reuse spelling is resolved on that path
-    (:func:`swift.dev.rewards.scorer.resolve_reward_channel`), which validate never sees.
+    One entry per model id (rule items hold no model); the synthesis path's lone-adapter sampler-reuse
+    spelling is resolved there (resolve_reward_channel), which validate never sees.
     """
     from swift.dev.rewards.reward import is_registered_reward
 
@@ -1188,20 +970,7 @@ _GALORE_UNSUPPORTED = (
 def _check_galore(train_config: 'TrainConfig', tuner_config: Optional['TunerConfig']) -> None:
     """Refuse GaLore combinations that cannot train the way the user asked.
 
-    ``use_galore`` is transformers-only (it is in _HF_ONLY, so _check_backend_specific already rejects
-    it on Megatron). GaLore projects the FULL-PARAMETER gradient into a low-rank subspace, which is a
-    different low-rank approximation than an adapter, so three combinations are fatal here rather than
-    silently degraded:
-      - GaLore alongside an adapter (a non-None TunerConfig -- ``select_tuner`` maps ``tuner='full'`` to
-        None, so any config here means an adapter is applied): stacking two low-rank maps trains their
-        product, not either method. GaLore is a full-parameter technique.
-      - the legacy GaLore knobs twinkle's GaLoreConfig does not implement (per-parameter optimizers,
-        the with_embedding switch): accepting them would train without them. QGaLore (quantized
-        projection, ``galore_quantization`` + its knobs) IS implemented -- twinkle resolves it to
-        QGaLoreAdamW8bit -- so it is not in this list.
-      - a base optim with no GaLore variant (Adam / SGD / muon), or a quantized projection on a base
-        with no QGaLore variant (anything but AdamW): resolve_galore_target refuses both, so the error
-        surfaces here, before the weights load, rather than deep in configure_optimizer.
+    Fatal: with an adapter, unsupported legacy knobs, or a base optim with no GaLore variant.
     """
     if not train_config.use_galore:
         return
@@ -1226,10 +995,10 @@ def _check_galore(train_config: 'TrainConfig', tuner_config: Optional['TunerConf
 
 
 def _target_is_all_linear(tuner_config: 'TunerConfig') -> bool:
-    """Whether the adapter target resolves to the 'all-linear' keyword that triggers the worker-side
-    multimodal expansion. Mirrors ``adapter._resolve_target_modules`` plus twinkle's expansion gate:
-    an explicit ``target_regex`` or a module-name list bypasses the expansion entirely, so the
-    freeze_* flags are inert there."""
+    """Whether the adapter target resolves to 'all-linear' (the worker-side MM expansion trigger).
+
+    An explicit target_regex/module list bypasses the expansion, so freeze_* flags are inert there.
+    """
     if tuner_config.target_regex:
         return tuner_config.target_regex == 'all-linear'
     return 'all-linear' in (tuner_config.target_modules or [])
@@ -1238,25 +1007,7 @@ def _target_is_all_linear(tuner_config: 'TunerConfig') -> bool:
 def _check_param_groups(tuner_config: Optional['TunerConfig']) -> None:
     """Fail loudly on param_groups knobs that cannot apply the way the user asked.
 
-    These knobs are consumed worker-side -- LoRA+ and the per-tower lr by
-    ``swift.dev.builders.optimizer.build_param_groups_spec``, the freeze_* flags by twinkle's multimodal
-    'all-linear' expansion -- so two combinations that are knowable on the driver must not silently
-    do nothing:
-
-      - LoRA+ (``lorap_lr_ratio`` / ``lorap_emb_lr``) differentiates the lora_B / embedding learning
-        rate from lora_A, so it needs a LoRA-family adapter that HAS those parameters. On
-        ``trainable_tokens`` (embedding rows only, no lora_B) it cannot apply. ``tuner='full'`` never
-        reaches here: ``select_tuner`` drops the whole TunerConfig, exactly as it drops every other
-        adapter field for a full run.
-      - ``freeze_llm`` / ``freeze_aligner`` steer only the multimodal 'all-linear' expansion. An
-        explicit target_regex or module-name list bypasses that expansion, so the flags are inert;
-        warn rather than raise because the run is still precisely what the explicit target named.
-        ``freeze_vit`` is excluded: it has a second consumer (``vit_gradient_checkpointing`` default),
-        so it is never fully inert.
-
-    ``vit_lr`` / ``aligner_lr`` are deliberately NOT checked here: whether the model even has that
-    tower is unknowable on the driver (under Ray the model is a PROXY), so the twinkle applier warns
-    when a per-tower rule matches 0 trainable parameters.
+    LoRA+ needs a LoRA-family adapter; freeze_llm/aligner steer only the 'all-linear' MM expansion.
     """
     if tuner_config is None:
         return
@@ -1276,17 +1027,7 @@ def _check_param_groups(tuner_config: Optional['TunerConfig']) -> None:
 def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
     """Reject muon pairings that Megatron itself refuses, or that would train something else.
 
-    Mirrors legacy megatron_args.py::_check_muon with one deliberate difference: legacy silently sets
-    ``use_distributed_optimizer = False`` when muon is selected, and this raises instead. The knob is
-    one the user typed, and turning off the distributed optimizer changes both the memory profile and
-    what a checkpoint contains -- the same class of hidden downgrade as the padding_free case above.
-
-    The mcore version gate is legacy's too. Checking it here means a CLI mistake fails on the driver;
-    it is safe to read on this side because it is a package version rather than a device property, so
-    unlike the FP8/Blackwell checks it does not describe hardware this process may not have.
-
-    The transformers backend selects muon differently -- with ``optim='muon'`` (twinkle MuonClip), not
-    the Megatron-only ``optimizer`` knob -- so its guards live in the ``not is_megatron`` branch below.
+    Break from legacy: raises on the distributed optimizer instead of silently turning it off.
     """
     if not is_megatron:
         # Point a Megatron `optimizer='muon'` mistake at the transformers spelling instead of letting
@@ -1296,12 +1037,8 @@ def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedCon
                 f'TrainConfig.optimizer={train_config.optimizer!r} is a Megatron optimizer, but the active '
                 'backend is transformers. Use TrainConfig.optim for the transformers path, or switch '
                 'DistributedConfig.backend.')
-        # muon_momentum / muon_use_nesterov / muon_num_ns_steps are dual-backend (MegatronOptimizer on
-        # Megatron, MuonClip's MuonConfig here), and qk_clip_enabled / qk_clip_tau are transformers-only
-        # MuonClip knobs (in _HF_ONLY, so _check_backend_specific already refuses them on Megatron). All
-        # of them are read on this backend ONLY when optim='muon', so this guards them against being
-        # silently ignored by a non-muon optim. The Megatron-specific muon_* fields stay in
-        # _MEGATRON_ONLY and are refused here by _check_backend_specific.
+        # muon_momentum/use_nesterov/num_ns_steps are dual-backend, qk_clip_* transformers-only; all are
+        # read on this backend ONLY when optim='muon', so guard them against being silently ignored.
         if train_config.optim.lower() != 'muon':
             stray = [n for n in ('muon_momentum', 'muon_use_nesterov', 'muon_num_ns_steps',
                                  'qk_clip_enabled', 'qk_clip_tau')
@@ -1340,14 +1077,9 @@ def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedCon
 
 def _check_unsloth_strategy(distributed_config: 'DistributedConfig',
                             template_config: 'TemplateConfig') -> None:
-    """Refuse the strategies unsloth cannot co-exist with.
+    """Refuse the strategies unsloth (backend='unsloth') cannot co-exist with.
 
-    unsloth is selected through backend='unsloth' and rebuilds the module graph around a
-    whole, unsharded causal-LM checkpoint while compiling its own kernels/RoPE cache, so a
-    strategy that shards the parameters (DeepSpeed ZeRO / FSDP) or splits the sequence across
-    ranks (Ulysses SP) either wraps a graph unsloth has already rewritten or feeds its fused
-    kernels a sequence shard they do not expect. Each combination is refused here rather than
-    left to crash inside unsloth's patcher or silently train an unsharded replica.
+    It rebuilds the graph for whole, unsharded weights: ZeRO/FSDP and Ulysses SP are refused.
     """
     if distributed_config.backend != 'unsloth':
         return
@@ -1369,12 +1101,7 @@ def _check_unsloth_strategy(distributed_config: 'DistributedConfig',
 def _check_deepspeed_autotp(distributed_config: 'DistributedConfig') -> None:
     """DeepSpeed AutoTP is not implemented on the twinkle strategy, so refuse the knob rather than drop it.
 
-    AutoTP needs two things the twinkle DeepSpeed path does not provide: tensor-parallel groups built from
-    ``tensor_parallel.autotp_size`` in the config, AND a data sampler that treats each TP group as one data
-    rank (legacy shards its BatchSamplerShard with ``tp_size=autotp_size``). Injecting only the config key
-    would leave every rank in a TP group fed different data -- a silent correctness bug -- so the knob is
-    rejected on both backends instead of half-wired. (It is deliberately NOT in _HF_ONLY: that table's
-    "only implemented by transformers" message would be wrong, since neither backend implements it.)
+    AutoTP needs TP groups AND a TP-aware sampler; half-wiring it feeds TP peers different data.
     """
     if distributed_config.deepspeed_autotp_size is None:
         return
@@ -1387,20 +1114,9 @@ def _check_deepspeed_autotp(distributed_config: 'DistributedConfig') -> None:
 
 def _check_eval_generation(train_config: 'TrainConfig', template_config: 'TemplateConfig',
                            distributed_config: 'DistributedConfig') -> None:
-    """Guards for the in-training generative eval path (``predict_with_generate`` -> EvalScope).
+    """Guards for the in-training generative eval path (predict_with_generate -> EvalScope).
 
-    ``predict_with_generate`` is transformers-only (it is in _HF_ONLY, so _check_backend_specific already
-    refused it on Megatron before this runs). Four combinations cannot evaluate the way they claim and are
-    refused here rather than producing a number from a partial/wrong setup:
-      - no ``eval_dataset``: the generative path runs an EvalScope benchmark, so there is nothing to serve
-        without one (the validation-loss path uses the split-off validation set instead).
-      - transformers sampler under sequence parallelism: HF ``.generate()`` runs the whole sequence on one
-        rank and is unaware of the ulysses/ring shard, so it would generate from a partial sequence.
-      - vllm/sglang sampler outside ray: those backends weight-sync into a co-resident engine through a Ray
-        DeviceGroup (CheckpointEngineManager), which a local/torchrun launch has no way to place.
-      - transformers sampler under a parameter-sharding strategy in a multi-rank local/torchrun launch: only
-        rank 0 drives EvalScope while its peers park at the eval barrier, so a sharded forward's all-gather
-        never completes and the run hangs (see the guard below).
+    Refuses no eval_dataset, SP transformers sampler, vllm/sglang outside ray, sharded multi-rank local.
     """
     if not train_config.predict_with_generate:
         return
@@ -1422,12 +1138,8 @@ def _check_eval_generation(train_config: 'TrainConfig', template_config: 'Templa
             f'eval_sampler_backend={backend!r} weight-syncs the training weights into a co-resident engine through '
             f'a Ray DeviceGroup (CheckpointEngineManager), which mode={distributed_config.mode!r} cannot place. Run '
             'under --mode ray, or use --eval_sampler_backend transformers (which wraps the live training module).')
-    # rank0-only generation is safe only while the model's forward is rank-local. A parameter-sharding
-    # strategy rebuilds each weight through a collective all-gather inside forward; under torchrun the
-    # peers park at the eval barrier (dist.barrier in _evaluate_generate), so rank 0's all-gather never
-    # completes and the run hangs at the first generative eval. Only ZeRO-3 shards params -- ZeRO-1/2 and
-    # DDP replicate them and stay rank-local -- so those are allowed (the loop warns about their 1/N
-    # throughput at runtime). Refuse here, before ranks spawn, rather than deadlock mid-training.
+    # rank0-only generation is safe only while the model's forward is rank-local. Only ZeRO-3 shards params
+    # (ZeRO-1/2 and DDP replicate them and stay rank-local), so those are allowed.
     if backend == 'transformers' and distributed_config.mode == 'local':
         from swift.dev.utils import deepspeed_zero_stage, get_dist_setting
         world_size = get_dist_setting()[2]
@@ -1447,9 +1159,7 @@ def _check_eval_generation(train_config: 'TrainConfig', template_config: 'Templa
 def _check_megatron_fsdp(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
     """Reject Megatron-FSDP pairings that megatron itself rejects, or that silently do nothing.
 
-    Duplicated on purpose with MegatronStrategy._check_fsdp, which is the authority: that one runs in
-    the process that builds the model, so it also covers cookbook users who never touch dev's config
-    layer. Checking here as well means a CLI typo fails on the driver, before ranks are spawned.
+    Duplicated with MegatronStrategy._check_fsdp (the authority) so a CLI typo fails on the driver.
     """
     if not distributed_config.use_megatron_fsdp:
         return
@@ -1473,23 +1183,16 @@ def _check_megatron_fsdp(distributed_config: 'DistributedConfig', is_megatron: b
                          'parallelism; use the default DDP wrapper for a CP run.')
 
 
-#: (format field, param-gather field) for each low-precision format dev exposes. The amax knobs are
-#: deliberately absent: their defaults are non-None, so "did the user set this?" is unanswerable and
-#: a dependency check on them would fire on every run.
+# (format field, param-gather field) per low-precision format. The amax knobs are absent on purpose:
+# non-None defaults make "did the user set this?" unanswerable, so a dependency check would fire always.
 _QUANT_FORMATS = (('fp4_format', 'fp4_param_gather'), ('fp8_format', 'fp8_param_gather'))
 
 
 def _check_quantization(model_config: 'ModelConfig', distributed_config: 'DistributedConfig',
                         is_megatron: bool) -> None:
-    """Reject FP4/FP8 settings that cannot do what they say.
+    """Reject FP4/FP8 settings that cannot do what they say (errors, not warnings).
 
-    Errors rather than warnings because every case below starts, reports a normal-looking loss, and
-    trains nothing or trains something other than what was asked for.
-
-    The environment preconditions (Blackwell for NVFP4, a TE new enough for the chosen recipe) are
-    deliberately NOT checked here: this runs on the driver, which in Ray mode is not the process --
-    nor necessarily the node -- that builds the model, so a check here would test the wrong GPU.
-    mcore-bridge's ModelConfig checks them where the model is actually built.
+    Hardware/TE preconditions are NOT checked here (the driver is not the model-building process).
     """
     active = [fmt for fmt, _ in _QUANT_FORMATS if getattr(model_config, fmt) is not None]
     explicit = getattr(model_config, '_explicit_fields', set())
@@ -1515,20 +1218,16 @@ def _check_quantization(model_config: 'ModelConfig', distributed_config: 'Distri
                              'Engine feature; the HF path has no equivalent.')
 
         if getattr(model_config, param_gather) and not distributed_config.use_distributed_optimizer:
-            # DistributedOptimizer._copy_main_params_to_model_params is the only code that
-            # re-quantizes the FP32 master shards back into the quantized parameters. Under any other
-            # optimizer they keep their initial values for the whole run while the loss is computed
-            # from them, so it neither errors nor learns. megatron asserts the same thing on its own
-            # CLI ('--fp8-param-gather only supported with distributed optimizer, ...').
+            # Only the distributed optimizer re-quantizes the FP32 master shards back into the quantized
+            # parameters; under any other optimizer they never change -- it neither errors nor learns.
             raise ValueError(
                 f'ModelConfig.{param_gather} requires DistributedConfig.use_distributed_optimizer=True: '
                 'quantized parameters are updated by re-quantizing the distributed optimizer\'s master shards, '
                 'and no other optimizer implements that step, so the model would never change.')
 
     if len(active) > 1:
-        # megatron enters exactly one quantization context per transformer layer and its own
-        # TransformerConfig raises on this; caught here so it fails on the driver, before a model is
-        # built on every rank.
+        # megatron enters exactly one quantization context per transformer layer (its own config raises
+        # too); caught here so it fails on the driver, before a model is built on every rank.
         raise ValueError(f'{" and ".join(f"ModelConfig.{fmt}" for fmt in active)} are mutually exclusive: megatron '
                          'applies a single quantization recipe per transformer layer. Pick one.')
 
@@ -1594,9 +1293,7 @@ def _check_load_quantization(model_config: 'ModelConfig', distributed_config: 'D
 def _check_mtp(model_config: 'ModelConfig', is_megatron: bool, tuner_config: Optional['TunerConfig']) -> None:
     """Reject MTP settings that cannot do what they say.
 
-    Every failure here is one that would otherwise be silent -- an MTP run that trains nothing, or
-    exports no MTP layer -- which is why these are errors rather than warnings. The only exception is
-    LoRA, which *can* work if the adapter covers the MTP modules, so it warns instead.
+    Failures would otherwise be silent; only LoRA (which can cover the MTP modules) warns instead.
     """
     mtp_dependents = (
         'mtp_loss_scaling_factor', 'enable_mtp_training', 'mtp_freeze', 'mtp_decoder_input_detach',
@@ -1633,9 +1330,8 @@ def _check_mtp(model_config: 'ModelConfig', is_megatron: bool, tuner_config: Opt
 
     if (model_config.enable_mtp_training and tuner_config is not None
             and getattr(tuner_config, 'tuner', 'full') != 'full'):
-        # Not an error: this is trainable if the adapter targets the MTP modules, which we cannot
-        # decide from target_modules alone (it may be 'all-linear', or name them explicitly).
-        # twinkle re-checks against the built model and warns if nothing ended up trainable.
+        # Not an error: trainable if the adapter targets the MTP modules, which target_modules alone
+        # cannot decide. twinkle re-checks against the built model and warns if nothing ended up trainable.
         logger.warning('enable_mtp_training with tuner=%r: the MTP layers are base parameters, so they only '
                        'train if the adapter covers them. Otherwise the MTP loss is computed and discarded.',
                        tuner_config.tuner)
@@ -1643,31 +1339,16 @@ def _check_mtp(model_config: 'ModelConfig', is_megatron: bool, tuner_config: Opt
 
 def _check_megatron_attn_backend(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                                  is_megatron: bool) -> None:
-    """padding_free needs an attention kernel that supports variable-length (THD) input.
+    """padding_free needs a variable-length (THD) attention kernel (megatron path).
 
-    legacy handles this by DOWNGRADING: on an 'unfused' backend it logs a warning and sets
-    args.padding_free = False (swift/megatron/model/utils.py::_check_padding_free). dev raises
-    instead, deliberately not mirroring that:
-      - silently rewriting the user's request is the exact failure mode this refactor has been
-        removing (the warmup rounding and the min_lr override both silently ran something else);
-      - 'unfused' is never a default -- reaching it means the user typed both it and padding_free,
-        i.e. asked for two things that cannot hold together, which is worth reporting;
-      - the downgrade also silently changes throughput/memory, so a run could look fine and be much
-        slower than the config implies.
-    Recorded as a break-change rather than hidden.
-
-    legacy's other attention guard (flash + softmax_type='learnable' -> raise) is NOT mirrored: dev
-    has no softmax_type or experimental_attention_variant field, so mcore keeps its default
-    ('vanilla') and the condition cannot be reached. Mirroring it would add a permanently-false
-    branch. If either field is ever added to dev, that guard has to come with it.
+    legacy silently downgrades here; dev raises deliberately (no softmax_type field, guard unreachable).
     """
     if not is_megatron or not template_config.padding_free:
         return
     if model_config.attn_impl is None:
         return
-    # Resolve first: 'sdpa' also lands on the unfused kernel, so comparing the raw string would miss
-    # it. Unknown/unsupported values are not this guard's business -- resolve_megatron_attn_backend
-    # reports those at build time with a better message.
+    # Resolve first: 'sdpa' also lands on the unfused kernel, so comparing the raw string would miss it;
+    # unknown values are resolve_megatron_attn_backend's business (better message, at build time).
     from megatron.core.transformer.enums import AttnBackend
 
     from swift.dev.utils.naming import resolve_megatron_attn_backend
@@ -1683,6 +1364,27 @@ def _check_megatron_attn_backend(model_config: 'ModelConfig', template_config: '
                          'or set padding_free=False.')
 
 
+# attn_impl values whose kernel handles the variable-length (THD) layout padding_free produces, on the
+# transformers backend -- under Ulysses SP and (mirroring legacy sft_args) also without it.
+_SP_PADDING_FREE_ATTN_IMPLS = ('flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4')
+
+
+def _check_padding_free_attn(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+                             dataset_config: 'DatasetConfig', is_megatron: bool) -> None:
+    """padding_free/packing requires a flash attention kernel on the transformers backend.
+
+    Mirrors legacy sft_args._check_padding_free (dev dropped it); None is unsupported too.
+    """
+    if is_megatron or not (template_config.padding_free or dataset_config.packing):
+        return
+    feature = 'packing' if dataset_config.packing else 'padding_free'
+    if model_config.attn_impl not in _SP_PADDING_FREE_ATTN_IMPLS:
+        raise ValueError(
+            f'The "{feature}" feature requires a flash attention implementation, got '
+            f'attn_impl={model_config.attn_impl!r}. Please use one of: '
+            f'{", ".join(_SP_PADDING_FREE_ATTN_IMPLS)}.')
+
+
 def _check_group_by_length(dataset_config: 'DatasetConfig', template_config: 'TemplateConfig') -> None:
     if not dataset_config.group_by_length:
         return
@@ -1695,16 +1397,14 @@ def _check_group_by_length(dataset_config: 'DatasetConfig', template_config: 'Te
         raise ValueError('group_by_length is incompatible with packing: packing already bin-packs samples to '
                          '~packing_length and implies padding_free, so length grouping cannot help. '
                          'Use packing alone, or set group_by_length=False.')
-    # Streaming has no random access and no precomputed `lengths` column, so the sampler cannot
-    # group. Previously build_dataset passed group_by_length through WITHOUT lengths, so this died
-    # later as an opaque 'lengths must be provided'; failing here reports the actual cause.
+    # Streaming has no random access and no precomputed `lengths` column, so the sampler cannot group --
+    # previously this died later as an opaque 'lengths must be provided'.
     if dataset_config.streaming:
         raise ValueError('group_by_length requires a map-style dataset: streaming datasets have no `lengths` '
                          'column and no random access, so samples cannot be reordered by length. '
                          'Set streaming=False or group_by_length=False.')
-    # `lengths` only exists after an EAGER encode. lazy_tokenize=None means AUTO, and auto always
-    # backs off to eager when group_by_length is on (see _encode_mode), so only an EXPLICIT opt-in
-    # to lazy is a conflict here.
+    # `lengths` only exists after an EAGER encode; lazy_tokenize=None is auto, and auto always backs off
+    # to eager when group_by_length is on, so only an EXPLICIT opt-in to lazy is a conflict here.
     if dataset_config.lazy_tokenize:
         raise ValueError('group_by_length requires lazy_tokenize=False: the per-sample `lengths` column it '
                          'sorts on is only produced by eager encoding (AddLengthPreprocessor).')
@@ -1713,8 +1413,7 @@ def _check_group_by_length(dataset_config: 'DatasetConfig', template_config: 'Te
 def _check_lazy_tokenize(dataset_config: 'DatasetConfig') -> None:
     """Explicit lazy_tokenize=True conflicts with packing / streaming (legacy base_args.py:136-140).
 
-    Only the EXPLICIT opt-in is a conflict: None is auto, and auto backs off to eager whenever one
-    of these is on, so it can never reach here in a violating state.
+    None is auto, and auto backs off to eager when either is on, so only the explicit opt-in conflicts.
     """
     if not dataset_config.lazy_tokenize:
         return
@@ -1729,9 +1428,7 @@ def _check_lazy_tokenize(dataset_config: 'DatasetConfig') -> None:
 def _check_data_sharding(dataset_config: 'DatasetConfig') -> None:
     """data_sharding needs a shuffled order to reshuffle; it is a no-op under sequential reads.
 
-    The group_by_length conflict is intentionally NOT fatal here: legacy downgrades data_sharding to
-    False with a warning (batch_sampler.py:86-90), and existing Megatron scripts that set both must
-    keep running unchanged. build_dataset performs that downgrade.
+    The group_by_length conflict is NOT fatal here: build_dataset performs legacy's warning downgrade.
     """
     if dataset_config.data_sharding and not dataset_config.train_dataloader_shuffle:
         raise ValueError('data_sharding requires train_dataloader_shuffle=True: it only changes the SCOPE of the '
@@ -1742,15 +1439,10 @@ def _check_data_sharding(dataset_config: 'DatasetConfig') -> None:
 def _check_streaming(dataset_config: 'DatasetConfig') -> None:
     """Refuse the dataset combinations a stream cannot serve.
 
-    Resuming a stream is NOT refused: twinkle's ``DataLoader.skip_consumed_samples`` fast-forwards past
-    the consumed rows (re-reading and re-encoding them, which it logs), so ``resume_from_checkpoint``
-    works. What a stream cannot restore is the caller's epoch count -- ``get_state()`` reports
-    ``resume_epoch=0`` for an iterable dataset -- so a run bounded by ``num_train_epochs`` rather than
-    ``max_steps`` runs that many passes again from the restored row.
+    Resume works (skip_consumed_samples); only the epoch count is unrestorable after a resume.
     """
-    # A cached_dataset is a map-style Dataset written by save_to_disk, so it cannot participate in
-    # the streaming pipeline. Legacy asserts the same in SwiftSft._prepare_dataset
-    # ('Cached dataset does not support streaming.').
+    # A cached_dataset is a map-style Dataset written by save_to_disk, so it cannot participate in the
+    # streaming pipeline. Legacy asserts the same in SwiftSft._prepare_dataset.
     if dataset_config.streaming and (dataset_config.cached_dataset or dataset_config.cached_val_dataset):
         raise ValueError('cached_dataset does not support streaming=True: the exported cache is a map-style '
                          'dataset loaded via load_from_disk. Set streaming=False, or drop cached_dataset.')
@@ -1760,15 +1452,7 @@ def _check_megatron_recompute(train_config: 'TrainConfig', distributed_config: '
                               is_megatron: bool) -> None:
     """gradient_checkpointing decides nothing on Megatron; recompute_granularity does.
 
-    build_model forwards only recompute_granularity/method/num_layers to MegatronModel, so the
-    HF-named flag is unread there. It cannot go in the _HF_ONLY table: its default is True, so every
-    existing Megatron run would start failing. The two directions differ in what they deserve --
-    flag-on-but-nothing-configured is the DEFAULT state and can only warn, while flag-off-yet-
-    recompute-configured is a contradiction the user typed and is fatal.
-
-    The default also disagrees with legacy, which recomputes ('selective') unless told otherwise;
-    aligning that would change dev's memory/throughput baseline, so it is recorded in the design doc
-    rather than changed here.
+    flag-off-yet-recompute-configured is fatal; flag-on-but-unconfigured is the default (warn only).
     """
     if not is_megatron:
         return
@@ -1835,8 +1519,7 @@ def _check_megatron_optimizer(train_config: 'TrainConfig', is_megatron: bool) ->
         raise ValueError('Megatron lr_warmup_init must satisfy 0 <= lr_warmup_init <= learning_rate.')
 
     # 'cosine_with_min_lr' is Megatron's plain cosine plus a floor, so without min_lr it would run as
-    # ordinary cosine -- the name silently not doing what it says. (On the HF path transformers
-    # itself raises when neither min_lr nor min_lr_rate is given.)
+    # ordinary cosine -- the name silently not doing what it says.
     if train_config.lr_scheduler.lower() == 'cosine_with_min_lr' and not train_config.min_lr:
         raise ValueError("lr_scheduler='cosine_with_min_lr' needs TrainConfig.min_lr > 0 on the Megatron "
                          'backend; with min_lr=0 it is just cosine. Set min_lr, or use '
@@ -1906,9 +1589,8 @@ def _check_optimizer_specific_fields(train_config: 'TrainConfig') -> None:
 
 def _is_off(value, off_value) -> bool:
     if off_value is None:
-        # A falsy NUMBER is a real setting, a falsy container is not. start_weight_decay=0.0 (ramp
-        # up from no decay) has to count as set or the wrong-backend check skips it, while the CLI
-        # normalizes an unset fsdp to [] against a None default and must still count as unset.
+        # A falsy NUMBER is a real setting, a falsy container is not: start_weight_decay=0.0 must count
+        # as set, while the CLI's [] for an unset fsdp must still count as unset.
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             return False
         return not value
@@ -1917,23 +1599,18 @@ def _is_off(value, off_value) -> bool:
     return value == off_value
 
 
+# (holder, field, off-value) triples rejected on the transformers backend. clip_grad is NOT here (CLI
+# folds it into max_grad_norm); the dual-backend muon knobs are excluded too (_check_muon guards them).
 _MEGATRON_ONLY = (
     ('model_config', 'vit_attn_impl', None),
     ('model_config', 'language_model_only', False),
     ('dataset_config', 'data_sharding', False),
-    # NOTE: clip_grad is NOT here -- CLI normalization folds it into max_grad_norm for both backends.
     ('train_config', 'weight_decay_incr_style', 'constant'),
     ('train_config', 'start_weight_decay', None),
     ('train_config', 'end_weight_decay', None),
     ('train_config', 'min_lr', 0.0),
     ('train_config', 'optimizer', 'adam'),
     ('train_config', 'sgd_momentum', 0.9),
-    # muon_momentum / muon_use_nesterov / muon_num_ns_steps are deliberately NOT here: they are
-    # dual-backend (MegatronOptimizer reads them here, MuonClip's MuonConfig reads them on the
-    # transformers path), so _check_backend_specific must not reject them on transformers. The
-    # remaining muon_* fields are Megatron-implementation-specific (split_qkv / scale_mode / tp_mode
-    # / ... have no MuonConfig counterpart) and stay transformers-rejected. _check_muon additionally
-    # refuses the three dual ones on transformers unless optim='muon' actually consumes them.
     ('train_config', 'muon_split_qkv', True),
     ('train_config', 'muon_scale_mode', 'spectral'),
     ('train_config', 'muon_fp32_matmul_prec', 'medium'),
@@ -1992,6 +1669,8 @@ _MEGATRON_ONLY = (
     ('distributed_config', 'nccl_comm_warmup', False),
 )
 
+# Rejected on the megatron backend. qk_clip_* feed twinkle MuonClip's MuonConfig on the transformers
+# path only; off_value = the TrainConfig default, so an untouched field is not rejected.
 _HF_ONLY = (
     ('model_config', 'experts_impl', None),
     ('model_config', 'max_memory', None),
@@ -2015,8 +1694,6 @@ _HF_ONLY = (
     ('train_config', 'label_smoothing_factor', 0.0),
     ('train_config', 'acc_strategy', 'token'),
     ('train_config', 'predict_with_generate', False),
-    # QK-Clip feeds twinkle MuonClip's MuonConfig on the transformers path only; Megatron's muon has no
-    # QK-Clip counterpart. off_value = the TrainConfig default, so an untouched field is not rejected.
     ('train_config', 'qk_clip_enabled', False),
     ('train_config', 'qk_clip_tau', 10000.0),
 )
@@ -2066,11 +1743,7 @@ def _check_backend_specific(model_config: 'ModelConfig',
 def _check_selective_recompute(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
     """'selective' recompute chooses WHAT to recompute; recompute_method chooses HOW MUCH of 'full'.
 
-    Mirrors legacy megatron_args.py:799-800. Selective recomputation always targets the same
-    (attention) operations, so it has no layer partitioning to configure -- `recompute_method`
-    (uniform/block) only means something under 'full'. Pairing them asks Megatron to partition a mode
-    that is not partitioned, which it refuses; catching it here reports the contradiction before ranks
-    are spawned rather than deep in the model build.
+    Selective targets the attention ops with no layer partitioning, so a method beside it is refused.
     """
     if not is_megatron:
         return
@@ -2083,12 +1756,9 @@ def _check_selective_recompute(distributed_config: 'DistributedConfig', is_megat
 
 
 def _check_pipeline_decoder_layers(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
-    """The per-stage decoder layer overrides need a pipeline to distribute across.
+    """The per-stage decoder layer overrides need a pipeline to distribute across (legacy :832-835).
 
-    Mirrors legacy megatron_args.py:832-835. `decoder_first_pipeline_num_layers` /
-    `decoder_last_pipeline_num_layers` move layers onto the first/last pipeline stage to balance an
-    uneven split; with `pipeline_model_parallel_size == 1` there is only one stage, so both are the
-    whole model and the override describes a partition that does not exist.
+    With pipeline_model_parallel_size == 1 both stages are the whole model, so there is nothing to move.
     """
     if not is_megatron or distributed_config.pipeline_model_parallel_size > 1:
         return
@@ -2103,15 +1773,7 @@ def _check_freeze_ratio_pp(train_config: 'TrainConfig', distributed_config: 'Dis
                            tuner_config: Optional['TunerConfig']) -> None:
     """freeze_parameters_ratio cannot be combined with Megatron pipeline parallelism.
 
-    The ratio freezes the leading fraction of parameters by cumulative element count in
-    ``named_parameters()`` order. Under PP>1 each pipeline rank holds a DIFFERENT set of layers, so
-    "the first N% by element count" selects a different, meaningless slice on each stage -- and the
-    freeze runs per rank (twinkle's remote seam has no cross-stage view to make it consistent). Mirrors
-    legacy Megatron-SWIFT, which documents the two as mutually exclusive. Name-prefix / regex freeze is
-    unaffected (it matches by name on whatever a rank holds) and stays allowed.
-
-    Only the full-parameter path consumes the ratio (tuner_config is None); an adapter run ignores it,
-    so there is nothing to reject there.
+    Under PP>1 each rank holds different layers, so "the first N%" is a meaningless per-stage slice.
     """
     if not is_megatron or tuner_config is not None:
         return
@@ -2125,12 +1787,9 @@ def _check_freeze_ratio_pp(train_config: 'TrainConfig', distributed_config: 'Dis
 
 
 def _check_tp_comm_overlap(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
-    """Tensor-parallel comm/GEMM overlap only exists when sequence parallelism splits the activations.
+    """TP comm/GEMM overlap only exists when sequence parallelism splits the activations (legacy :896-898).
 
-    Mirrors legacy megatron_args.py:896-898. The overlap hides the tensor-parallel all-gather/
-    reduce-scatter behind the GEMM, and those collectives only appear when `sequence_parallel` shards
-    the activations along the sequence; without it there is nothing to overlap and Megatron asserts the
-    same pairing.
+    The overlap hides the TP collectives behind the GEMM, and they only appear under sequence_parallel.
     """
     if not is_megatron:
         return
@@ -2141,13 +1800,9 @@ def _check_tp_comm_overlap(distributed_config: 'DistributedConfig', is_megatron:
 
 
 def _check_sequence_parallel_tp(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
-    """Sequence parallelism splits activations across the tensor-parallel ranks, so it needs TP > 1.
+    """Sequence parallelism splits activations across the TP ranks, so it needs TP > 1.
 
-    legacy silently sets `sequence_parallel = False` here (megatron_args.py:890-891). dev raises
-    instead, for the reason the muon and attn-backend guards give: `sequence_parallel` is one the user
-    typed, and quietly turning it off changes the activation memory profile so a run can look fine and
-    use far more memory than the config implies. With `tensor_model_parallel_size == 1` there are no
-    tensor-parallel ranks to split across, so the flag cannot do anything.
+    legacy silently turns it off here (:890-891); dev raises -- the memory profile must not be a surprise.
     """
     if not is_megatron:
         return
@@ -2224,8 +1879,7 @@ def _check_checkpoint_runtime(checkpoint_config: Optional['CheckpointConfig'],
 def _check_save_total_limit(checkpoint_config: Optional['CheckpointConfig'], is_megatron: bool) -> None:
     """Validate the rolling checkpoint limit and preserve legacy Megatron's stricter lower bound.
 
-    ``async_save`` writes in the background, and the limit's delete-oldest step cannot tell whether an
-    in-flight async save has finished, so the two are incompatible.
+    async_save's delete-oldest cannot tell whether a background save finished, so the two conflict.
     """
     if checkpoint_config is None or checkpoint_config.save_total_limit is None:
         return
@@ -2242,8 +1896,8 @@ def _check_save_total_limit(checkpoint_config: Optional['CheckpointConfig'], is_
             'CheckpointConfig.save_total_limit must be >= 2 on the Megatron backend, matching the legacy CLI.')
 
 
-#: rl_type -> whether it trains against a separate reference model. CPO/ORPO fold the reference into
-#: their own loss and LoRA uses the adapter-disabled base as reference, so neither takes a ref_model.
+# rl_type -> whether it trains against a separate reference model. CPO/ORPO fold the reference into
+# their own loss and LoRA uses the adapter-disabled base as reference, so neither takes a ref_model.
 _RLHF_USES_REF_MODEL = ('dpo', 'kto', 'ppo', 'grpo')
 
 
@@ -2251,11 +1905,7 @@ def _check_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['T
                           rl_config: Optional['RLConfig']) -> None:
     """Reject a reference model passed to an algorithm that has none.
 
-    Mirrors the trailing `elif self.ref_model is not None: raise` of legacy rlhf_args.py:297-298. The
-    derivation half (defaulting ref_model to model for the algorithms that use one) lives in
-    process.py::_derive_rlhf_ref_model; this is the refusal half. CPO/ORPO build the reference into
-    their loss and LoRA training uses the base model with the adapter disabled, so a `--ref_model`
-    there is a knob that would be silently ignored -- the class of mistake validate.py exists to catch.
+    The refusal half of process._derive_rlhf_ref_model: --ref_model on CPO/ORPO/LoRA would be ignored.
     """
     if rl_config is None:
         return
@@ -2276,19 +1926,10 @@ def _check_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['T
                          'Remove it.')
 
 
-#: rl_types whose training loss path is verified correct under the packed / variable-length layout that
-#: padding_free (and packing, which implies it) produces. The transformers forward normalizes every packed
-#: micro batch back to per-sequence ``[num_seq, max_seq]`` via ``processor.unpack_packed_sequences`` BEFORE
-#: calculate_loss, so a loss reading per-token logps/labels off that unpacked frame is packing-agnostic:
-#:   - grpo / rft: online RL -- GRPOLoss, and rft's plain cross_entropy (the SFT loss), over the unpacked
-#:     frame; both ride the flat GRPO recipe's rollout + micro-step body.
-#:   - dpo / kto / cpo / orpo / simpo: the offline PreferenceLossBase family -- all five subclass it and
-#:     consume ``_split_chosen_rejected`` + ``_compute_sequence_logps``/``_compute_avg_logps`` over the same
-#:     unpacked per-token logps, on the one run_dpo encode path (dpo/kto were the legacy-verified seeds).
-#:   - gkd: teacher-student divergence over the unpacked labels/logits.
+# rl_types verified correct under the packed layout padding_free (and packing) produces: the forward
+# unpacks each packed micro batch to per-sequence rows BEFORE calculate_loss (packing-agnostic).
 _RL_PADDING_FREE_WIRED_TYPES = ('grpo', 'rft', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'gkd', 'rm')
 
-#: rl_types refused BY NAME (never silently) because one component of their path is not packed-safe.
 _RL_PADDING_FREE_REFUSED_REASONS = {
     'ppo':
     "PPO's per-token value-head critic does not cover the packed / variable-length layout (run_ppo.py "
@@ -2306,12 +1947,7 @@ def _check_rlhf_padding_free(template_config: 'TemplateConfig', dataset_config: 
                             rl_config: Optional['RLConfig']) -> None:
     """Only some RLHF algorithms have a padding-free/packing training path.
 
-    padding_free (and packing, which implies it) flattens a micro batch into one variable-length sequence;
-    the forward unpacks it back to per-sequence rows before calculate_loss, so any loss over that unpacked
-    per-token frame is correct (``_RL_PADDING_FREE_WIRED_TYPES``). The refused types are named explicitly
-    with the component that is not packed-safe rather than silently mis-computed later. Widened from
-    legacy rlhf_args.py::_check_padding_free (grpo/dpo/kto/gkd) after verifying cpo/orpo/simpo share DPO's
-    PreferenceLossBase and rft shares GRPO's rollout with the SFT cross_entropy loss.
+    The forward unpacks packed batches before calculate_loss; refused types name the unsafe component.
     """
     if rl_config is None:
         return
@@ -2331,14 +1967,9 @@ def _check_rlhf_padding_free(template_config: 'TemplateConfig', dataset_config: 
 
 
 def _check_rlhf_padding_side(template_config: 'TemplateConfig', rl_config: Optional['RLConfig']) -> None:
-    """RL logp extraction indexes each row's own response positions and assumes right padding.
+    """RL logp extraction indexes each row's response positions and assumes right padding.
 
-    Both the online-RL path (recipe/grpo.py) and the offline-preference path (recipe/run_dpo.py) pull
-    per-token logps out of a right-padded ``forward_only`` frame using the response positions computed at
-    encode time -- right padding never shifts them. A left-padded policy batch would shift every row's
-    tokens while the response index still assumes right padding, silently mis-aligning logps (and thus
-    advantages / preference losses) with no error. Mirrors the sequence-parallel guard
-    (_check_sp_hf_feasibility): dev refuses up front instead of corrupting the run.
+    Left padding silently mis-aligns every logp; dev refuses up front instead of corrupting the run.
     """
     if rl_config is None:
         return
@@ -2350,35 +1981,21 @@ def _check_rlhf_padding_side(template_config: 'TemplateConfig', rl_config: Optio
                          'silently mis-align every logp. Remove --padding_side left.')
 
 
-#: attn_impl values whose attention kernel handles the variable-length (THD) layout that
-#: padding_free produces under Ulysses SP. Mirrors legacy sft_args.py supported_impls; twinkle's
-#: SP strategy enforces the same requirement at first forward (flash_attention_2/3 only).
-_SP_PADDING_FREE_ATTN_IMPLS = ('flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4')
-
-#: Online-RL rl_types whose Ulysses SP consumer wiring is in place: run_grpo/run_rft call
-#: ``assembly.plan_sp_mesh()`` before build_model (installing the dp x ulysses ray mesh the trainable
-#: policy, its colocated sampler and the ``data_world_size`` batch-width formula all share). PPO is
-#: deliberately absent -- its per-token value-head critic runs WITHOUT SP/packed layouts (run_ppo.py
-#: module docstring), so a SP policy paired with an SP=1 critic would slice_dp each forward_backward at a
-#: different data_world_size and starve the critic's ranks. Offline preference types (dpo/kto/...) are
-#: absent too: they are not an "under ray" recipe, so W38 does not wire them.
+# Online-RL rl_types whose Ulysses SP wiring is in place (run_grpo/run_rft call plan_sp_mesh):
+# PPO's critic cannot follow the policy onto the SP mesh, and the offline family is not "under ray".
 _RL_SP_WIRED_TYPES = ('grpo', 'rft')
 
 
 def _check_sp_hf_feasibility(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                             dataset_config: 'DatasetConfig', distributed_config: 'DistributedConfig',
                             is_megatron: bool, sp: int) -> None:
-    """Backend/layout feasibility guards shared by the SFT (local) and online-RL (ray) Ulysses SP paths.
+    """Backend/layout feasibility guards shared by the SFT (local) and online-RL (ray) SP paths.
 
-    These are facts about the transformers backend and the batch layout, independent of HOW the ranks are
-    launched, so both SP callers reuse them and only the world-size source differs (SFT reads
-    ``Platform.get_world_size()``; online RL reads ``DistributedConfig.nproc_per_node``). Every branch
-    raises: SP that cannot do what the config says would otherwise SILENTLY train with SP=1 or crash deep
-    in the first forward.
+    Every branch raises rather than silently training with SP=1; only the world source differs.
     """
     if is_megatron:
-        # TemplateConfig.sequence_parallel_size is the HF Ulysses knob; Megatron's sequence
-        # parallelism is DistributedConfig.sequence_parallel (TP-SP), a different feature.
+        # TemplateConfig.sequence_parallel_size is the HF Ulysses knob; Megatron's sequence parallelism
+        # is DistributedConfig.sequence_parallel (TP-SP), a different feature.
         raise ValueError(f'TemplateConfig.sequence_parallel_size={sp} only applies to the transformers backend, '
                          'but the active backend is megatron. Megatron sequence parallelism is '
                          'DistributedConfig.sequence_parallel (TP-SP over the tensor-parallel ranks) -- set that '
@@ -2409,13 +2026,7 @@ def _check_rlhf_sequence_parallel(model_config: 'ModelConfig', template_config: 
                                  rl_config: Optional['RLConfig'], is_megatron: bool) -> None:
     """Ulysses SP (TemplateConfig.sequence_parallel_size) for the online-RL recipes under ray.
 
-    Only ``grpo``/``rft`` are wired (``_RL_SP_WIRED_TYPES``): their recipes plan the dp x ulysses ray mesh
-    via ``assembly.plan_sp_mesh()`` and read ``data_world_size`` off it for the batch width, so the config
-    and the run agree. Every other rl_type raises rather than silently training with SP=1 -- PPO because
-    its critic cannot follow the policy onto the SP mesh, the offline preference family because W38 wires
-    only the "under ray" path. Feasibility reuses the SFT guards; the world here is ``nproc_per_node`` (the
-    ray 'model' group size), NOT ``Platform.get_world_size()`` -- the driver orchestrates and has no
-    torchrun WORLD_SIZE.
+    Only grpo/rft are wired; the world is nproc_per_node, NOT Platform.get_world_size().
     """
     if rl_config is None or template_config.sequence_parallel_size <= 1:
         return
@@ -2447,14 +2058,7 @@ def _check_hf_sequence_parallel(model_config: 'ModelConfig', template_config: 'T
                                 is_megatron: bool, rl_config: Optional['RLConfig'] = None) -> None:
     """Guards for Ulysses sequence parallelism (TemplateConfig.sequence_parallel_size) on the HF SFT path.
 
-    Every check raises: SP that cannot do what the config says would otherwise SILENTLY train with
-    SP=1 (nothing on the HF path used to read this knob) or crash deep in the first forward.
-    ``process_configs`` has already resolved packing-derived padding_free, so the flash-attn guard sees the
-    effective value. Streaming is allowed: twinkle's IterableFetcher slices by data_world_size the same way.
-
-    RLHF runs are delegated to :func:`_check_rlhf_sequence_parallel` (the online grpo/rft ray path uses
-    ``nproc_per_node`` as its world, and PPO / offline types are rejected there), so this returns early for
-    them -- otherwise the ``mode != 'local'`` guard below would double-reject the ray RL path.
+    Every check raises; streaming is allowed; RLHF is delegated (early return below).
     """
     sp = template_config.sequence_parallel_size
     if sp <= 1:
@@ -2470,8 +2074,7 @@ def _check_hf_sequence_parallel(model_config: 'ModelConfig', template_config: 'T
                                   'SP would silently not apply. Run with torchrun, or set sequence_parallel_size=1.')
 
     # twinkle.initialize(mode='local') never calls dist.init_process_group -- world size comes from
-    # Platform.get_world_size() (the WORLD_SIZE env torchrun sets), the same source initialize uses
-    # to build the default mesh. Requiring dist here would reject every real SP run.
+    # Platform.get_world_size() (the WORLD_SIZE env torchrun sets), initialize's own source.
     from twinkle.utils import Platform
     world = Platform.get_world_size()
     if world < 2:

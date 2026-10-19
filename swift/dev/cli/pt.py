@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""PT CLI: the SFT Config surface with non-chat causal-LM defaults."""
 from __future__ import annotations
 from typing import List, Optional
 
@@ -7,7 +6,7 @@ from typing import List, Optional
 def pt_main(argv: Optional[List[str]] = None) -> List[dict]:
     from swift.dev.cli.sft import parse_sft_configs
     from swift.dev.config import process_and_validate_configs
-    from swift.dev.recipe import run_pt
+    from swift.dev.recipe.sft import run_pt
 
     configs = parse_sft_configs(argv, command='pt')
     model_config = configs['model_config']

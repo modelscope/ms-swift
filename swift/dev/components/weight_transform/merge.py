@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Merge adapters into their base model and save one plain checkpoint."""
 from __future__ import annotations
 
 import os
@@ -19,8 +18,8 @@ class MergeComponent(BaseWeightTransform):
     """Fold ``tuner_config.adapters`` into the base weights of ``model_config``.
 
     Named after the operation rather than after one adapter format. The base is loaded in full
-    precision (a quantized base cannot absorb adapter deltas correctly) and each adapter is merged in
-    turn, which is additive -- equivalent to stacking them all at once.
+    precision (a quantized base cannot absorb adapter deltas correctly) and each adapter is merged
+    in turn, which is additive -- equivalent to stacking them all at once.
     """
 
     def __init__(
@@ -69,10 +68,10 @@ class MergeComponent(BaseWeightTransform):
     def run(self, output_dir: str) -> str:
         """Merge through the streaming path when eligible, otherwise the materialized path.
 
-        The streaming path keeps peak memory at a single module (see ``StreamingMerge``); the
-        materialized path -- load the whole base, ``merge_and_unload``, ``save_checkpoint`` -- is the
-        fallback for everything streaming deliberately does not cover, so the component still produces
-        the same result it did before this dispatch existed.
+        The streaming path keeps peak memory at a single module; the materialized path -- load the
+        whole base, ``merge_and_unload``, ``save_checkpoint`` -- is the fallback for everything
+        streaming deliberately does not cover, so the component still produces the same result it
+        did before this dispatch existed.
         """
         streaming = StreamingMerge(
             self.model_config,
@@ -89,18 +88,16 @@ class MergeComponent(BaseWeightTransform):
     def _run_materialized(self, output_dir: str) -> str:
         from peft import PeftModel
 
-        from swift.model import save_checkpoint
+        from swift.dev.model import save_checkpoint
 
         model, processor = self._load_base_model()
         # Built (and attached) before merging because some multimodal templates patch the model on
-        # attach; the template itself is not used afterwards, only its side effect on the model.
+        # attach; the template is not used afterwards, only that side effect on the model.
         self._build_template(processor, model)
 
         logger.info('Merge LoRA...')
-        # dev only ships peft adapters, so merge with peft directly instead of swift.tuners.Swift.
-        # Each adapter is wrapped, merged into the base weights, and unwound in turn:
-        # merge_and_unload returns the plain transformers model (no SwiftModel/PeftModel shell to
-        # strip afterwards).
+        # dev ships only peft adapters, so merge with peft directly: each adapter is wrapped,
+        # merged into the base weights, and merge_and_unload returns the plain transformers model.
         for adapter in self.tuner_config.adapters:
             peft_model = PeftModel.from_pretrained(model, adapter)
             self._check_tie_word_embeddings(peft_model)
@@ -113,7 +110,7 @@ class MergeComponent(BaseWeightTransform):
             output_dir,
             safe_serialization=(self.checkpoint_config.safe_serialization if self.checkpoint_config else True),
             max_shard_size=(self.checkpoint_config.max_shard_size if self.checkpoint_config else '5GB'),
-            # Copies the adapter dir's own extra files (args.json, chat template, ...) alongside the
+            # Copy the adapter dir's own extra files (args.json, chat template, ...) alongside the
             # weights, so the merged output is self-contained.
             model_dirs=list(self.tuner_config.adapters),
             additional_saved_files=model.model_meta.additional_saved_files)
@@ -123,15 +120,9 @@ class MergeComponent(BaseWeightTransform):
     def _load_base_model(self):
         """Load the base model in full precision for the merge.
 
-        A quantized base cannot absorb adapter deltas correctly -- peft raises / silently degrades
-        (huggingface/peft#2321) -- so the merge must run on unquantized weights. dev needs no explicit
-        clearing step (legacy clears ``args.quant_method`` before loading): ``load_model_processor``
-        reads no transformers load-time quantization off ``ModelConfig`` -- the only quant fields there
-        are Megatron fp8 knobs, unused on this path -- and the `swift merge` CLI does not parse
-        ``QuantizeConfig``, so the base is loaded full-precision by construction.
-
-        ``device_map`` rides in as a load override because ``ModelConfig`` no longer carries a
-        device_map field -- the runtime, not the config, owns model placement.
+        A quantized base cannot absorb adapter deltas correctly (huggingface/peft#2321), and the
+        merge CLI parses no load-time quantization, so the base is full-precision by construction.
+        ``device_map`` rides in as a load override because ``ModelConfig`` no longer carries it.
         """
         from swift.dev.builders import load_model_processor
 
@@ -143,8 +134,7 @@ class MergeComponent(BaseWeightTransform):
         """Build the template and attach the model when the template needs it.
 
         Multimodal templates read submodules off the model during encoding; legacy wires this up
-        inside prepare_model_template. It matters here only because some templates patch the model on
-        attach.
+        inside prepare_model_template. It matters here only because of the attach-time patching.
         """
         from swift.dev.builders import build_template
         from swift.dev.config import TemplateConfig
@@ -158,11 +148,10 @@ class MergeComponent(BaseWeightTransform):
     def _check_tie_word_embeddings(model) -> None:
         """Untie word embeddings when only ONE side of the tie was actually trained.
 
-        If a tuner wrapped the input/output embeddings via modules_to_save, the two are no longer the
-        same tensor, but the config still claims tie_word_embeddings=True -- reloading would then drop
-        the trained output embedding and silently restore the input one. Flipping the flag keeps both.
-        Guarded broadly (like legacy) because it is a best-effort fix-up: peft internals differ across
-        versions and a failure here must not abort an otherwise valid merge.
+        If a tuner wrapped the embeddings via modules_to_save, the two are no longer the same
+        tensor but the config still claims tie_word_embeddings=True -- reloading would drop the
+        trained output embedding. Flipping the flag keeps both; guarded broadly (like legacy) as
+        a best-effort fix-up.
         """
         from swift.dev.utils import HfConfigFactory
 
@@ -182,24 +171,10 @@ class MergeComponent(BaseWeightTransform):
 class StreamingMerge(StreamingWeightTransform):
     """Fold LoRA adapters into the base weights one module at a time, never holding the whole model.
 
-    A weightless (meta) copy of the base supplies the architecture; peft injects the adapters onto it.
-    Each base checkpoint tensor is then either passed through untouched or, when it belongs to a LoRA
-    target module, materialized on its own, merged via peft's own ``LoraLayer.merge()``, emitted, and
-    released. Delegating the delta to ``merge()`` -- rather than recomputing ``B @ A * scaling`` here --
-    is what makes the output bit-identical to ``merge_and_unload`` for every delta variant whose
-    injection does not read the base weight: scaling, rsLoRA, ``lora_bias``, Linear and Embedding
-    targets (including a LoRA target on a *tied* embedding, where the base checkpoint stores the tie
-    once and the passthrough of the stored side already matches the tied reload). Each of these is
-    verified bit-identical against ``merge_and_unload`` in review.
-
-    Scope (enforced by ``is_supported``): LoRA-family adapters only, without ``modules_to_save``,
-    without DoRA, and without a base-modifying init (pissa / olora / corda / lora-ga / loftq). A non-LoRA tuner has no ``merge()`` contract to reuse; ``modules_to_save`` can untie
-    embeddings and add output keys absent from the base checkpoint, which a writer that streams the base
-    key set cannot reproduce without materializing; and DoRA's magnitude vector is initialised from the
-    base weight (peft ``DoraLinearVariant.init``) and saved under a bare key that the generic adapter
-    loader cannot place onto a meta base, so it would stay weightless through the merge. Anything outside
-    this scope is rejected so ``MergeComponent`` falls back to the materialized path; correctness never
-    depends on this class covering an edge case.
+    A meta base supplies the architecture, peft injects the adapters; each base tensor passes
+    through untouched or, on a LoRA target, is materialized alone, merged via peft's own
+    ``LoraLayer.merge()`` -- bit-identical to ``merge_and_unload`` for every variant whose
+    injection does not read the base weight -- emitted, and released. Scope: ``is_supported``.
     """
 
     #: peft nests the wrapped transformers model under ``base_model.model.``, so stripping this prefix
@@ -232,31 +207,32 @@ class StreamingMerge(StreamingWeightTransform):
         return StreamingMerge(self.model_config, self.adapters, checkpoint_config=self.checkpoint_config)
 
     def is_supported(self) -> bool:
-        """Whether every adapter can go through the streaming path (see the class scope note)."""
+        """Streaming-compatible? LoRA-family only; no modules_to_save, DoRA, or base-modifying init."""
         from peft import PeftConfig
         from peft.utils import PeftType
 
         from swift.dev.builders.adapter import is_base_modifying_init
 
         if self.checkpoint_config is not None and self.checkpoint_config.safe_serialization is False:
-            # The streaming saver only writes safetensors; pickle ``.bin`` output needs the materialized path.
+            # The streaming saver only writes safetensors; pickle ``.bin`` output needs the
+            # materialized path.
             return False
         for adapter in self.adapters:
             config = PeftConfig.from_pretrained(adapter)
             if config.peft_type != PeftType.LORA:
                 return False
+            # modules_to_save can untie embeddings and add output keys absent from the base
+            # checkpoint, which a writer streaming the base key set cannot reproduce.
             if getattr(config, 'modules_to_save', None):
                 return False
             if getattr(config, 'use_dora', False):
-                # DoRA's magnitude vector is derived from the base weight and saved under a bare key the
-                # generic loader cannot place onto a meta base (see the class scope note); fall back to
-                # the materialized path rather than special-case peft's DoRA save format here.
+                # DoRA's magnitude vector is derived from the base weight and saved under a bare key
+                # the generic loader cannot place onto a meta base; fall back, do not special-case.
                 return False
             init = getattr(config, 'init_lora_weights', True)
             if is_base_modifying_init(init):
-                # These inits read or rewrite the base weight at injection (peft's weight-conversion
-                # family + loftq): broken on a meta base, and the raw adapter only fits the residual
-                # base they produce, so the streaming merge would be wrong even without the crash.
+                # These inits read or rewrite the base weight at injection: broken on a meta base, and
+                # the raw adapter only fits the residual base they produce. Materialized re-runs the init.
                 logger.warning(
                     f'`{adapter}` uses base-modifying LoRA init ({init!r}): merging via the materialized '
                     'path, which re-runs that init and is only correct against the base checkpoint (same '
@@ -273,17 +249,15 @@ class StreamingMerge(StreamingWeightTransform):
         from swift.dev.builders import load_model_processor
 
         # return_dummy_model builds ``cls(config)`` without reading the checkpoint; under
-        # init_empty_weights every parameter lands on meta, so the full architecture (plus the resolved
-        # model_dir / model_meta / processor) is available without materializing a single base weight.
-        # download_model=True still fetches the safetensors, which the lazy loader reads shard by shard.
+        # init_empty_weights every parameter lands on meta. download_model=True still fetches it.
         with init_empty_weights():
             base, self._processor = load_model_processor(
                 self.model_config,
                 load_model=True,
                 return_dummy_model=True,
                 download_model=True,
-                # The dummy build ignores device_map, but pinning it keeps get_default_device_map from
-                # resolving to a GPU/'auto' dispatch we never use, so the base is meta on any machine.
+                # The dummy build ignores device_map, but pinning 'cpu' keeps
+                # get_default_device_map from resolving to a GPU/'auto' dispatch we never use.
                 device_map='cpu')
         self._base_model = base
         self._base_dir = base.model_dir
@@ -295,9 +269,8 @@ class StreamingMerge(StreamingWeightTransform):
             name = f'adapter_{index}'
             peft_model.load_adapter(adapter, adapter_name=name, low_cpu_mem_usage=True)
             self._rematerialize_adapter(peft_model, adapter, name)
-        # Every adapter is merged by name (see _merge_module) rather than activated together: PeftModel
-        # set_adapter takes one name, and LoRA deltas are additive, so merging the list per module equals
-        # the materialized path's merge-one-then-next sequence.
+        # Every adapter is merged by name per module: PeftModel.set_adapter takes one name, and
+        # LoRA deltas are additive, so merging the list per module equals merge-one-then-next.
         self._adapter_names = [f'adapter_{index}' for index in range(len(self.adapters))]
         self._peft_model = peft_model
 
@@ -310,10 +283,9 @@ class StreamingMerge(StreamingWeightTransform):
         """Pull one adapter's weights off meta and onto CPU, leaving the base weightless.
 
         peft couples an adapter's device to its base layer's, so injecting onto a meta base parks
-        ``lora_A``/``lora_B`` on meta with no data. The adapters are small, so reload them and assign
-        directly; the base layer is not in the adapter state dict, so ``assign=True`` leaves it on meta.
-        ``_insert_adapter_name_into_state_dict`` is peft's own key remapping (the on-disk keys omit the
-        adapter-name segment that the live module dict carries), so the assigned keys line up exactly.
+        ``lora_A``/``lora_B`` on meta with no data -- the adapters are small, so reload them and
+        assign directly. ``_insert_adapter_name_into_state_dict`` is peft's own key remapping (the
+        on-disk keys omit the adapter-name segment), so the assigned keys line up exactly.
         """
         from peft.utils import load_peft_weights
         from peft.utils.save_and_load import _insert_adapter_name_into_state_dict
@@ -331,10 +303,10 @@ class StreamingMerge(StreamingWeightTransform):
     def stream_tensors(self, state: dict):
         """Yield every base key, merging LoRA targets in place and passing the rest through.
 
-        The output key set is exactly the base checkpoint's: a LoRA merge changes a weight's *values*,
-        never its key, and untouched tensors are emitted as loaded. A module's merged tensors are freed
-        as soon as all of its keys (weight and, when present, bias) have been emitted, which -- together
-        with the saver flushing per shard -- caps peak memory at one shard plus one module.
+        The output key set is exactly the base checkpoint's: a merge changes a weight's values,
+        never its key. A module's merged tensors are freed once all its keys (weight and, when
+        present, bias) have been emitted, which -- with the saver flushing per shard -- caps peak
+        memory at one shard plus one module.
         """
         pending = {}
         for key in state:
@@ -353,12 +325,11 @@ class StreamingMerge(StreamingWeightTransform):
                 yield key, lazy.load()
 
     def _merge_module(self, module_path: str, state: dict) -> dict:
-        """Materialize one module's base weight, fold in the LoRA delta via peft, and cache the result.
+        """Materialize one module's base weight, fold in the LoRA delta via peft, and cache it.
 
-        The merged tensors are cached until every key of the module has been emitted (weight and bias
-        arrive as separate keys, in checkpoint order), then dropped by ``stream_tensors``. Right after
-        merging, the base layer is reset to a meta parameter so peft holds no materialized weight while
-        the next module is processed.
+        The merged tensors are cached until every key of the module has been emitted (weight and
+        bias arrive as separate keys, in checkpoint order). Right after merging, the base layer is
+        reset to a meta parameter so peft holds no materialized weight while the next module runs.
         """
         cached = self._merged_cache.get(module_path)
         if cached is not None:
@@ -391,13 +362,12 @@ class StreamingMerge(StreamingWeightTransform):
     def save_metadata(self, output_dir: str) -> None:
         """Write config / generation_config / tokenizer and copy the adapters' sidecar files.
 
-        The weights are already streamed, so this reproduces only the non-weight half of
-        ``save_checkpoint``: the config comes from the same post-processed meta base the materialized
-        path would save, and ``save_checkpoint(model=None, ...)`` is reused verbatim for the processor
-        and the extra-file copy (args.json, chat template, preprocessor_config), keeping the sidecar set
+        Reproduces only the non-weight half of ``save_checkpoint``: the config from the same
+        post-processed meta base the materialized path would save, and ``save_checkpoint(None,
+        ...)`` reused verbatim for the processor and extra-file copy, keeping the sidecar set
         identical to the materialized output.
         """
-        from swift.model import save_checkpoint
+        from swift.dev.model import save_checkpoint
 
         base = self._base_model
         base.config.save_pretrained(output_dir)

@@ -9,7 +9,6 @@ import torch.distributed as dist
 from torch.utils.data import IterableDataset
 from tqdm import tqdm
 
-from twinkle.dataloader.random_state import isolated_random_state
 from swift.dev.utils import get_logger, is_dist, is_master, split_list
 from .base import SwiftDataset
 
@@ -23,20 +22,10 @@ Weighted = Tuple[Any, int]
 class PackingDataset(SwiftDataset):
     """A map-style dataset whose items are *groups* of samples that together fill ``packing_length``.
 
-    Planning happens once in the constructor, which is what a map-style dataset buys: all lengths are
-    known, so the groups can be chosen globally rather than greedily over a window. ``__getitem__``
-    then returns the rows of one group and leaves concatenation to the collator.
-
-    The plan is computed on the master rank and broadcast, not recomputed per rank: bin packing is
-    deterministic in principle but its cost is real, and every rank must agree on the grouping or the
-    ranks would disagree on the number of steps.
-
-    Inherits :class:`SwiftDataset` rather than wrapping a dataset, and the lengths it plans from are
-    :attr:`~SwiftDataset.lengths` -- its own. Wrapping is what made this awkward before: the lengths
-    lived in a column of a dataset two layers down, so the layer in between had to pass string
-    subscripts through to reach it, a hole that existed for this one read. Encoding a member of a group
-    is likewise inherited, so there is no longer a lazily-encoding wrapper underneath whose only job was
-    to encode what this class asks for.
+    Planning happens once in the constructor, on the master rank and broadcast: bin packing is
+    deterministic in principle but its cost is real, and every rank must agree on the grouping or
+    they would disagree on the number of steps. ``__getitem__`` returns the rows of one group;
+    concatenation is the collator's (the template builds the block-diagonal attention mask).
     """
 
     # Rows per bin-packing call. Packing a whole dataset in one call would hold every length in one
@@ -120,8 +109,7 @@ class PackingDataset(SwiftDataset):
     def create_packed_idx(self, rank: int, offset: int, lengths: List[Any]) -> None:
         """Pack one worker's slice, putting each batch's groups on the queue as they are formed."""
         # A list length belongs to a row the template splits into several sequences; the whole row
-        # still travels together, so its lengths sum. A row that reads 0 could not be encoded at all,
-        # and planning around it would reserve room for a sample the pack will never contain.
+        # still travels together, so its lengths sum. A row that reads 0 could not be encoded at all.
         data = [(i + offset, sum(length) if isinstance(length, list) else length)
                 for i, length in enumerate(lengths)
                 if (sum(length) if isinstance(length, list) else length)]
@@ -148,17 +136,10 @@ class PackingDataset(SwiftDataset):
                                 strategy: str = 'binpack') -> Tuple[List[List[Weighted]], List[Weighted]]:
         """Group ``(item, length)`` pairs into packs of at most ``packing_length``.
 
-        Returns ``(packs, leftover)``. When ``is_finished`` is false the last, still-fillable pack is
-        returned as ``leftover`` for the caller to carry into the next window instead of emitting a
-        pack that is shorter than it needs to be.
-
-        Two strategies, and the choice is about order, not efficiency:
-
-        - ``'binpack'`` (default) is best-fit-decreasing (https://arxiv.org/pdf/2404.10830). It fills
-          packs fullest but reorders samples freely.
-        - ``'sequential'`` is next-fit: one open pack, flushed when the next sample does not fit. Packs
-          are less full, but sample order is preserved -- which is what a sequential sampler needs.
-          Use ``packing_num_proc=1`` for a single global ordering.
+        Returns ``(packs, leftover)``; a false ``is_finished`` carries the last still-fillable pack
+        into the next window instead of emitting it short. ``'binpack'`` (default, best-fit-decreasing,
+        https://arxiv.org/pdf/2404.10830) fills fullest but reorders freely; ``'sequential'`` (next-fit)
+        is less full but order-preserving -- use it with ``packing_num_proc=1`` for one global order.
         """
         if len(sequences) == 0:
             return [], []
@@ -193,12 +174,9 @@ class PackingDataset(SwiftDataset):
     def __getitem__(self, index: int) -> List[Dict[str, Any]]:
         """Return the encoded rows of one group, encoding each through the inherited access path.
 
-        ``super().__getitem__`` is what encodes a member -- including substituting a row that fails --
-        so a group is assembled from the same access path a non-packing dataset serves, rather than from
-        a separate lazily-encoding wrapper placed underneath this one.
-
-        Concatenation is still the collator's, because the template does it (``base.py:1874``) and the
-        template is not in scope here.
+        ``super().__getitem__`` is what encodes a member, so a group is assembled from the same
+        access path a non-packing dataset serves -- not from a separate lazily-encoding wrapper
+        underneath this one. Concatenation stays the collator's (the template does it).
         """
         return [super(PackingDataset, self).__getitem__(i) for i in self.packed_idx[index]]
 
@@ -211,8 +189,8 @@ class IterablePackingDataset(IterableDataset):
 
     A stream cannot be planned: lengths are only known once a row is read and encoded. So packing
     runs over a sliding window of ``packing_interval`` samples, and encoding happens in worker
-    processes here -- for a map-style dataset that is a separate preprocessing pass, but a stream has
-    no such pass to put it in.
+    processes here -- for a map-style dataset that is a separate preprocessing pass, but a stream
+    has no such pass to put it in.
     """
 
     def __init__(
@@ -239,8 +217,9 @@ class IterablePackingDataset(IterableDataset):
         self.packing_interval = packing_interval
         self.cyclic = cyclic
         self.packing_strategy = packing_strategy
+        # Kept for the twinkle DataLoader streaming protocol, which calls set_data_seed on a state
+        # restore and set_epoch per pass; encode itself consumes no randomness.
         self.data_seed = int(data_seed or 0)
-        self._epoch = mp.Value('q', 0)
 
         self._in_queue = mp.Queue()
         self._out_queue = mp.Queue()
@@ -251,12 +230,13 @@ class IterablePackingDataset(IterableDataset):
             self.workers.append(worker)
 
     def set_epoch(self, epoch: int) -> None:
-        self._epoch.value = int(epoch)
+        """Forward to the underlying stream, whose shuffle buffer seeds by epoch (twinkle calls this)."""
         set_epoch = getattr(self.dataset, 'set_epoch', None)
         if set_epoch is not None:
             set_epoch(epoch)
 
     def set_data_seed(self, data_seed: int) -> None:
+        """Store the seed twinkle hands back on a state restore."""
         self.data_seed = int(data_seed or 0)
 
     def _processor(self) -> None:
@@ -268,26 +248,24 @@ class IterablePackingDataset(IterableDataset):
         """
         from swift.template import MaxLengthError
         while True:
-            i, data, data_seed, epoch, source_position = self._in_queue.get()
+            i, data = self._in_queue.get()
             encoded_data = {}
             try:
-                with isolated_random_state(data_seed, epoch, source_position):
-                    encoded_data = self.template.encode(data, return_length=True)
+                encoded_data = self.template.encode(data, return_length=True)
             except Exception as e:
                 if self.strict and not isinstance(e, MaxLengthError):
                     raise
             self._out_queue.put((i, encoded_data))
 
-    def _put_data_in_queue(self, iterator: Iterator, epoch: int,
-                           source_position: int) -> Tuple[int, int]:
-        """Hand one window to the workers and return its size plus the next source position."""
+    def _put_data_in_queue(self, iterator: Iterator) -> int:
+        """Hand at most ``packing_interval`` rows to the workers; returns how many were available."""
         for i in range(self.packing_interval):
             try:
                 data = next(iterator)
             except StopIteration:
-                return i, source_position + i
-            self._in_queue.put((i, data, self.data_seed, epoch, source_position + i))
-        return i + 1, source_position + i + 1
+                return i
+            self._in_queue.put((i, data))
+        return i + 1
 
     def _fetch_data_out_queue(self, last_res: List[Weighted], num_samples: int) -> List[Weighted]:
         """Collect ``num_samples`` encoded rows, restoring input order and dropping the failures."""
@@ -314,11 +292,9 @@ class IterablePackingDataset(IterableDataset):
 
     def __iter__(self):
         iterator = self.cyclic_iter(self.dataset) if self.cyclic else iter(self.dataset)
-        epoch = self._epoch.value
-        source_position = 0
         data: List[Weighted] = []
         while True:
-            num_samples, source_position = self._put_data_in_queue(iterator, epoch, source_position)
+            num_samples = self._put_data_in_queue(iterator)
             # A short window means the stream ended, which is also the signal to flush the leftover.
             finished = num_samples != self.packing_interval
             data = self._fetch_data_out_queue(data, num_samples)

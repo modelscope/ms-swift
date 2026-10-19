@@ -1,7 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Dataset loading, splitting, streaming, packing, and dataloader configuration."""
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional
 
@@ -49,7 +46,8 @@ class DatasetConfig:
     packing_length: Optional[int] = None
     packing_num_proc: int = 1
     packing_strategy: Literal['binpack', 'sequential'] = 'binpack'
-    lazy_tokenize: Optional[bool] = None  # see default value in dev/builders/dataset _encode_mode
+    # None = auto (see default value in dev/builders/dataset _encode_mode).
+    lazy_tokenize: Optional[bool] = None
 
     # === Sampling & DataLoader ===
     train_dataloader_shuffle: bool = True
@@ -59,6 +57,5 @@ class DatasetConfig:
     dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = False
     dataloader_prefetch_factor: Optional[int] = None
-    #: Discard a final short batch instead of padding it. Needed when a step assumes a fixed batch
-    #: size -- otherwise the last batch of an epoch is a different shape from every other.
+    # Discard a final short batch: a step assuming a fixed batch size otherwise sees a different shape.
     dataloader_drop_last: bool = False

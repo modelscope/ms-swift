@@ -1,10 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the Skywork families.
-
-Ported from ``swift/model/models/skywork.py``. The plain ``skywork`` LLM plus the two reward
-families. A reward model is a seq_cls head with ``num_labels=1`` -- declared via ``is_reward=True``
-(mirrors legacy, where ``is_reward`` drives the num_labels=1 default and reward load handling).
-"""
+# The plain skywork LLM plus two reward families (is_reward -> seq_cls head with num_labels=1).
 from __future__ import annotations
 
 from .base import ModelLoader, register_model

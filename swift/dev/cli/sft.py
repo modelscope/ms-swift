@@ -1,27 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""SFT CLI: argv -> dev Configs -> run_sft.
-
-dev counterpart of legacy ``swift sft``. The Config dataclasses ARE the argument surface: argv is
-parsed straight into them (see ``swift.dev.cli.parser``), so there is no legacy ``SftArguments`` bridge
-and no same-name copy step. The eight Configs SFT needs share no field name, so a single flat argparse
-namespace has no collisions.
-
-``LoggingConfig`` is parsed alongside the seven core Configs and reaches the common dev tracker used by
-both transformers and Megatron training loops.
-``GenerationConfig`` stays outside the parse set because its training-time fields are already owned by
-``TrainConfig``; unsupported generation flags land in ``remaining`` and are refused.
-"""
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
-
-from .legacy_coverage import TRAINING_GENERATION_UNSUPPORTED_FIELDS, TRAIN_UNSUPPORTED_FIELDS, TUNER_UNSUPPORTED_FIELDS
-
-# Exhaustive classification of the legacy SftArguments fields which have no dev Config field.
-# Precision aliases are normalized centrally by parser.normalize_argv; every remaining field is
-# rejected with its category rather than disappearing in a generic same-name copy.
-LEGACY_ONLY_CLASSIFICATION = {
-    'unsupported_training': TRAIN_UNSUPPORTED_FIELDS + TUNER_UNSUPPORTED_FIELDS + TRAINING_GENERATION_UNSUPPORTED_FIELDS,
-}
 
 
 def parse_sft_configs(
@@ -31,13 +10,8 @@ def parse_sft_configs(
 ) -> Dict[str, Any]:
     """Parse argv into the Configs run_sft/run_pt consume; dispatch the tuner by ``tuner``.
 
-    The backend is a single flag: ``--backend megatron`` selects the Megatron path (and its own
-    legacy-flag contract, keyed ``megatron_<command>``), while the default Transformers path is
-    unchanged. MegatronConfig/MoEConfig are always parsed so the Megatron knobs are expressible; on
-    the Transformers backend validate_configs rejects any of them that were actually set.
-
-    ``tuner_config`` is None for full-parameter training (tuner='full') and a filled TunerConfig
-    for 'lora'. Any other tuner is refused rather than silently building LoRA.
+    ``--backend megatron`` selects the Megatron path (legacy contract keyed ``megatron_<command>``);
+    MegatronConfig/MoEConfig are always parsed, and the Transformers path rejects any actually set.
     """
     from swift.dev.cli._megatron_compat import configure_megatron, is_megatron_argv
     from swift.dev.cli.parser import parse_configs, resolve_argv, select_tuner
@@ -95,7 +69,7 @@ def parse_sft_configs(
 
 def sft_main(argv: Optional[List[str]] = None) -> List[dict]:
     from swift.dev.config import process_and_validate_configs
-    from swift.dev.recipe import run_embedding, run_reranker, run_seq_cls, run_sft
+    from swift.dev.recipe.sft import run_embedding, run_reranker, run_seq_cls, run_sft
 
     configs = parse_sft_configs(argv)
     process_and_validate_configs(configs)

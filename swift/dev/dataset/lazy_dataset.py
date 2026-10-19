@@ -13,19 +13,10 @@ __all__ = ['LazyLLMDataset']
 class LazyLLMDataset(Dataset):
     """A dataset that runs ``template.encode`` in ``__getitem__``.
 
-    Two reasons to encode late rather than in a preprocessing pass:
-
-    - Encoding the whole dataset up front costs a full pass and stores every ``input_ids`` before the
-      first training step. For a large dataset that is the dominant startup cost, and its output is
-      tied to one tokenizer / template / ``max_length`` -- so it cannot be reused.
-    - Encoding is where truncation happens, and truncation is where rows get rejected. Rejecting late
-      means a bad row costs one substitution, not a re-run of the pass.
-
-    The substitution is not this class's to make. The read goes through twinkle's ``RetryDataset``
-    (installed by ``DataLoader._read_through``), which stands in a replacement drawn from
-    ``(seed, index)`` -- reproducible across ranks and across a resume, because the draw does not depend
-    on how many failures came before. What this class owes the training loop is a fixed ``len(dataset)``
-    to compute the step count from, and that holds whether or not a given row encodes.
+    Encoding late avoids a startup pass tied to one tokenizer/template/``max_length``, and rejects
+    a too-long row at access time -- one substitution, not a pass re-run. Substitution is not this
+    class's: the read goes through twinkle's ``RetryDataset``, which stands in a replacement drawn
+    from ``(seed, index)``; what it owes the loop is a fixed ``len(dataset)``.
     """
 
     def __init__(self,

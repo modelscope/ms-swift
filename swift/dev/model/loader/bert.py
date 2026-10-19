@@ -1,14 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the BERT families.
-
-Ported from ``swift/model/models/bert.py``. These are encoder backbones: the training task
-(seq_cls with ``num_labels`` / embedding) is the user's choice via ``--task_type``, not a fixed
-property of the checkpoint -- swift has no ``mlm`` task, so a ``*ForMaskedLM`` checkpoint is just a
-seq_cls/embedding backbone. The gte checkpoints, which are only ever embedding / reranker, pin that
-task. The legacy embedding hook (CLS-pool + L2 normalize) is NOT reproduced here: dev does
-pooling/normalization downstream in the loss/processor layer (see PATCH_INVENTORY.md
-``patch_output_normalizer``).
-"""
+# Encoder backbones: the task is the user's choice (gte pins it); the CLS-pool+L2 hook is downstream.
 from __future__ import annotations
 
 from .base import ModelLoader, register_model

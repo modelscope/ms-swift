@@ -1,18 +1,19 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 import os
 import numpy as np
 import torch
-from twinkle.processor import InputProcessor as TwinkleInputProcessor
 from typing import Callable, List, Optional
 
 from twinkle.data_format import InputFeature
+from twinkle.processor import InputProcessor as TwinkleInputProcessor
 
 
 class InputProcessor(TwinkleInputProcessor):
     """Swift extension of twinkle InputProcessor.
 
-    Adds template collate_mm_data hook for model-specific VLM collation,
-    and post-forward gather helpers for the transformers framework.
+    Adds template collate_mm_data hook for model-specific VLM collation, the embedding / reranker
+    group-row flattening, and post-forward gather helpers for the transformers framework.
     """
 
     def __init__(self,
@@ -25,12 +26,10 @@ class InputProcessor(TwinkleInputProcessor):
         self._external_collate_fn = collate_fn
         self._cp_partition_mode = cp_partition_mode
         self._template = None
-        #: The task_type the template encoded with. embedding / reranker / generative_reranker rows are
-        #: GROUP-shaped (one row holds an anchor + candidates, not a single sequence), so prepare_inputs
-        #: must flatten them into per-sequence rows before twinkle's collate -- see _flatten_group_rows.
+        #: The task_type the template encoded with. embedding / reranker rows are GROUP-shaped (one
+        #: row holds an anchor + candidates), so prepare_inputs flattens them -- see _flatten_group_rows.
         self._task_type = task_type
-        #: Persistent RNG for the reranker positive/negative subsampling, seeded to match legacy's
-        #: _reranker_data_collator (np.random.RandomState(42)) so dev trains on the same candidate subset.
+        #: Persistent RNG for the reranker subsampling, seeded to match legacy's RandomState(42).
         self._reranker_rng = None
 
     def _get_packed_seq_params(self, position_ids):
@@ -39,58 +38,22 @@ class InputProcessor(TwinkleInputProcessor):
             packed.cp_partition_mode = self._cp_partition_mode
         return packed
 
-    # swift-only bookkeeping fields that must not reach the collate stage. Everything else passes
-    # through untouched: the dev Template's _encode already constructs exactly the forward kwargs
-    # each model needs (the legacy convention), so a WHITELIST would have to be re-checked against
-    # twinkle's padding_map and every model's forward signature on each change. A blacklist only
-    # grows when swift adds a bookkeeping field of its own -- which is under our control.
-    #
-    # Why these two must go:
-    #   lengths          -- written by template.encode(return_length=True) for packing /
-    #                       group_by_length (dataset/utils.py:122-129). twinkle's collate pads every
-    #                       text key via padding_map[key] and would KeyError on it.
-    #   _labels_shifted  -- the dev Template / RolloutEngine marker recording "labels already
-    #                       next-token shifted" (contract 14). It guards shift idempotency at encode
-    #                       time (template.py:64) and is queryable there; it is not a model input.
-    #
-    # NOTE: label semantics (next-token shift) are owned by the dev Template's encode
-    # ("whoever encodes, shifts", matching twinkle's _roll_labels). The InputProcessor MUST
-    # NOT mutate labels here — doing so previously created a fake double-shift guard.
+    # swift-only bookkeeping fields that must not reach the collate stage (everything else passes
+    # through). A blacklist, not a whitelist; label semantics are owned by the Template's encode.
     _DROP_KEYS = frozenset({'lengths', 'length', '_labels_shifted'})
 
     def prepare_inputs(self, inputs, **kwargs):
-        """Drop swift-only bookkeeping fields before the collate stage.
+        """Drop swift-only bookkeeping fields, flatten group rows, then delegate to twinkle.
 
-        Only the swift bookkeeping keys in _DROP_KEYS are removed; every other field produced by
-        the dev Template's encode is a deliberate model input and passes through.
-
-        `length` is dropped along with `lengths` even though twinkle's padding_map accepts it: the
-        only processor-side consumer is align_routed_experts, which now derives the sequence length
-        from input_ids (a cached length would be stale after pad_cp extends the sequence anyway).
-
-        Packing: PackingDataset yields a LIST of rows per item (packing.py:130 /
-        IterablePackingDataset.__iter__), and the dataloader's identity collate passes it through
-        unchanged, so a packed batch arrives here as list[list[dict]]. Flatten it first -- exactly what
-        legacy does in Template.data_collator (template/base.py:1668-1669 `batch = sum(batch, start=[])`).
-        Without this the dict-comprehension below hits AttributeError: 'list' has no 'items'.
-        Flattening belongs HERE rather than in the dataloader: in ray mode the driver's slice_dp
-        splits the batch element-wise across DP ranks, so flattening earlier would scatter one
-        packed group over different DP ranks, and batch_size would silently change meaning from
-        "packed sequences" to "rows".
-
-        position_ids: the encode path does not emit them, but they are what makes packing work --
-        each row gets range(len(input_ids)), and twinkle's _collate_macro_batch concatenates the
-        rows under padding_free (processor/base.py:697-711), so the per-row [0,1,2] + [0,1] become
-        [0,1,2,0,1]: the multiple-zero-reset form that _is_packed_position_ids detects and
-        _get_packed_seq_params turns into cu_seqlens. Injected for BOTH frameworks: legacy's
-        packing_row is backend-agnostic, and without position_ids a transformers-backend packed
-        batch would be treated as one long sequence by flash-attn (cross-sample attention leak).
+        A packed batch arrives as list[list[dict]] (PackingDataset + identity collate); flatten HERE,
+        in ray mode the driver's slice_dp splits the batch element-wise, so flattening earlier would
+        scatter one packed group over DP ranks. position_ids are injected per row -- the
+        multiple-zero-reset form twinkle's collate detects as packed under padding_free.
         """
         if isinstance(inputs, dict):
             inputs = [inputs]
-        # embedding / reranker rows are GROUP-shaped (anchor + candidates in one row); expand them into
-        # flat per-sequence rows FIRST, so the packing flatten / position_ids / to_tensor below see the
-        # same single-sequence layout causal_lm and seq_cls already arrive in.
+        # GROUP-shaped rows (anchor + candidates) expand into flat per-sequence rows FIRST, so the
+        # packing flatten / position_ids / to_tensor below see the single-sequence layout.
         inputs = self._flatten_group_rows(inputs)
         if inputs and isinstance(inputs[0], list):
             inputs = [row for item in inputs for row in item]
@@ -100,15 +63,8 @@ class InputProcessor(TwinkleInputProcessor):
                 feat['position_ids'] = list(range(len(feat['input_ids'])))
         return super().prepare_inputs(cleaned, **kwargs)
 
-    # --- embedding / reranker group flatten -------------------------------------------------
-    # The dev Template reuses legacy's encode, which stores an embedding / reranker example as ONE
-    # GROUP-shaped row rather than one row per sequence. twinkle's collate (and its InfoNCE / reranker
-    # losses) instead want flat per-sequence rows plus a per-row label, so the group is expanded here --
-    # the dev counterpart of legacy's _embedding_data_collator / _reranker_data_collator, minus their
-    # padding (twinkle pads downstream). The label FORM differs from legacy on purpose: twinkle's
-    # InfonceLoss takes a per-ROW mask (1.0 at each group's anchor, len(labels) == len(sentences)) and
-    # finds groups via nonzero(labels), whereas legacy emits one fewer label per group and re-inserts
-    # the anchor offset inside its own _parse_multi_negative_sentences.
+    # legacy's encode stores an embedding / reranker example as ONE GROUP-shaped row; twinkle wants
+    # flat per-sequence rows with a per-ROW mask label (1.0 at each group's anchor).
     _EMBEDDING_TASK_TYPES = frozenset({'embedding'})
     _RERANKER_TASK_TYPES = frozenset({'reranker', 'generative_reranker'})
 
@@ -123,17 +79,15 @@ class InputProcessor(TwinkleInputProcessor):
     def _flatten_embedding_rows(self, rows: List[InputFeature]) -> List[InputFeature]:
         """Flatten legacy's ``anchor_* / positive_* / negative_*`` embedding encode into sequences.
 
-        Each row carries the anchor and positive as single prefixed fields and the hard negatives as
-        LIST-valued ``negative_<field>`` (one entry per negative). The flat order is anchor, positive,
-        then each negative -- the group layout InfonceLoss expects (element 0 is the query, the rest
-        are documents). Each flat row gets a scalar mask label: 1.0 on the anchor (group start), 0.0 on
-        the positive and negatives.
+        The flat order is anchor, positive, then each negative -- the group layout InfonceLoss
+        expects (element 0 is the query, the rest are documents). Each flat row gets a scalar mask
+        label: 1.0 on the anchor (group start), 0.0 on the positive and negatives.
         """
         flat: List[InputFeature] = []
         for row in rows:
             row = dict(row)
-            # negative_<field> holds a list over negatives; split it into negative{i}_<field> scalars so
-            # every candidate is addressable by a single prefix, mirroring legacy's collator.
+            # negative_<field> holds a list over negatives; split it into negative{i}_<field> scalars
+            # so every candidate is addressable by a single prefix, mirroring legacy's collator.
             num_negatives = 0
             for key in [k for k in row if k.startswith('negative_')]:
                 values = row.pop(key)
@@ -155,11 +109,9 @@ class InputProcessor(TwinkleInputProcessor):
     def _flatten_reranker_rows(self, rows: List[InputFeature]) -> List[InputFeature]:
         """Flatten legacy's list-valued reranker encode into per-candidate rows.
 
-        Each row stores every field as a LIST over candidates (positives first, then negatives) with
-        ``labels = [1]*P + [0]*N``. Legacy caps each query at MAX_POSITIVE_SAMPLES positives and, per
-        positive, MAX_NEGATIVE_SAMPLES negatives, drawing which survive from a persistent
-        ``RandomState(42)``; dev reproduces that exactly so both train on the same subset. Each selected
-        candidate becomes a flat row carrying its scalar relevance label (1 relevant / 0 not).
+        Each row stores every field as a LIST over candidates with ``labels = [1]*P + [0]*N``.
+        Legacy caps each query at MAX_POSITIVE/MAX_NEGATIVE_SAMPLES, drawing which survive from a
+        persistent ``RandomState(42)``; dev reproduces that exactly so both train on the same subset.
         """
         if self._reranker_rng is None:
             self._reranker_rng = np.random.RandomState(42)
@@ -188,7 +140,6 @@ class InputProcessor(TwinkleInputProcessor):
 
     # Optional sequence-level fields (e.g. mm_token_type_ids) absent on some rows of a mixed batch
     # are padded by twinkle's collate (_fill_optional_sequence_fields inside _collate_macro_batch).
-    # Override twinkle's collate_fn stage to inject template hook
     def collate_fn(self, inputs: List[InputFeature], **kwargs) -> List[InputFeature]:
         """Override: add template collate_mm_data hook after default collation."""
         # Priority 1: external collate_fn (explicit override)

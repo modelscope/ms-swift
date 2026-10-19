@@ -27,9 +27,9 @@ def _get_new_read_video_func(read_video_func, read_backend):
 def patch_qwen_vl_utils(vision_process, kwargs=None):
     """Patch the vision_process module's resolution/pixel constants.
 
-    Priority: ``kwargs`` (from ModelConfig.vision_process_kwargs) > env var (``get_env_args``) > module
-    default.  ``kwargs`` keys are lowercase (e.g. ``min_pixels``); they map to the module's UPPER-case
-    constants.
+    Priority: ``kwargs`` (from ModelConfig.vision_process_kwargs) > env var (``get_env_args``) >
+    module default. ``kwargs`` keys are lowercase (e.g. ``min_pixels``); they map to the module's
+    UPPER-case constants.
     """
     if hasattr(vision_process, '_patch'):
         return

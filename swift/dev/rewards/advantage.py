@@ -1,19 +1,12 @@
-"""Advantage: turn rewards into per-sequence advantages (L1 atomic API).
-
-Dispatches to twinkle's advantage estimators (``GRPOAdvantage`` / ``RLOOAdvantage`` /
-``ReinforcePlusPlusAdvantage``), which cover the full surface used here (grpo / rloo / reinforce++
-estimators; group / batch / none / gdpo scaling; optional ref-KL-in-reward). This module is a thin,
-typed entry point over them, so callers do not need to build tensors by hand.
-
-General API, not recipe-private: inputs are plain rewards (a ``[N, n_funcs]`` matrix or a ``[N]``
-list) plus the group size; nothing here knows about rollout sample classes or training loops.
-"""
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
 import torch
 from typing import Any, Dict, List, Optional, Sequence, Union
 
-__all__ = ['compute_advantages']
+from swift.dev.utils.scoring import build_reward_weights
+
+__all__ = ['build_reward_weights', 'compute_advantages']
 
 # Estimators / scalings supported by twinkle.advantage (kept as literals for discoverability).
 ESTIMATORS = ('grpo', 'rloo', 'reinforce_plus_plus', 'reinforce_plus_plus_baseline', 'remax', 'opo', 'gpg',
@@ -35,34 +28,11 @@ def compute_advantages(rewards: Union[torch.Tensor, Sequence[float]],
                        f_norm: float = 1.0) -> List[float]:
     """Per-sequence advantages from rewards (delegates to ``twinkle.advantage``).
 
-    Args:
-        rewards: either a ``[N, n_funcs]`` per-function reward matrix (multi-reward) or a flat ``[N]``
-            sequence of already-combined rewards (single reward). Samples must be ordered so each
-            consecutive block of ``num_generations`` belongs to one prompt group.
-        num_generations: group size K (completions per prompt).
-        reward_weights: per-function weights; defaults to all-ones. Only meaningful for a matrix
-            input, and its length must equal ``n_funcs``.
-        advantage_estimator: one of :data:`ESTIMATORS`.
-        scale_rewards: one of :data:`SCALINGS`.
-        kl_in_reward: subtract ``beta * kl_values`` from rewards BEFORE normalization (standard
-            GRPO/PPO ref-model regularization). Requires ``kl_values``.
-        beta: ref-KL penalty coefficient (used only when ``kl_in_reward``).
-        kl_values: ``[N]`` per-sample ref-model KL (required when ``kl_in_reward``).
-        reward_baselines: ``[N]`` per-sample greedy-decoding baselines (required by ``'remax'``; the
-            greedy completion's reward for the same prompt). Ignored by other estimators.
-        response_lengths: ``[N]`` valid response token counts (required by ``'opo'``, which weights the
-            group baseline by length). Ignored by other estimators.
-        f_norm: GPG normalization divisor (``'gpg'`` only); ``alpha * (r_i - mean) / f_norm``. 1.0 disables.
-
-    Returns:
-        ``[N]`` advantages as a plain list, aligned with ``rewards``.
-
-    Raises:
-        ValueError: unknown estimator/scaling, N not divisible by ``num_generations``, weight-length
-            mismatch, ``kl_in_reward`` without ``kl_values``, or a missing estimator-specific input
-            (``reward_baselines`` for remax, ``response_lengths`` for opo).
+    ``rewards`` is a ``[N, n_funcs]`` matrix or a flat ``[N]`` of combined rewards, each consecutive
+    block of ``num_generations`` one prompt group. ``kl_in_reward`` subtracts ``beta * kl_values``
+    BEFORE normalization; ``remax`` needs ``reward_baselines``, ``opo`` ``response_lengths``, ``gpg``
+    ``f_norm``. Returns ``[N]`` advantages as a plain list.
     """
-    from swift.dev.rewards.reward import build_reward_weights
     from twinkle.advantage import (GPGAdvantage, GRPOAdvantage, GRPOPassKAdvantage, OPOAdvantage,
                                    ReinforcePlusPlusAdvantage, ReinforcePPBaselineAdvantage, ReMaxAdvantage,
                                    RLOOAdvantage)
@@ -96,8 +66,8 @@ def compute_advantages(rewards: Union[torch.Tensor, Sequence[float]],
         'gpg': GPGAdvantage,
         'grpo_passk': GRPOPassKAdvantage,
     }[advantage_estimator]
-    # Estimator-specific inputs are forwarded as extra kwargs; the twinkle estimators read only what they
-    # need (remax -> reward_baselines, opo -> response_lengths, gpg -> f_norm) and ignore the rest.
+    # Estimator-specific inputs are forwarded as extra kwargs; the twinkle estimators read only what
+    # they need (remax -> reward_baselines, opo -> response_lengths, gpg -> f_norm) and ignore the rest.
     extra_kwargs: Dict[str, Any] = {}
     if reward_baselines is not None:
         extra_kwargs['reward_baselines'] = reward_baselines

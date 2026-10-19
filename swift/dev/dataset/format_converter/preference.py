@@ -12,36 +12,30 @@ __all__ = ['PreferenceConverter']
 
 @register_format
 class PreferenceConverter(ResponseConverter):
-    """Top-level ``chosen`` / ``rejected`` -- the RLHF row shape behind DPO, reward modelling and KTO.
+    """Top-level ``chosen`` / ``rejected`` -- the RLHF row shape behind DPO, reward modelling, KTO.
 
-    The chosen side becomes the standard ``messages`` and the rejected side becomes
-    ``rejected_messages`` (full turns) or ``rejected_response`` (a single reply): exactly the pair the
-    preference encoders read. Each side is normalised by the converter that already owns its shape --
-    a message LIST goes through a composed messages converter (which rewrites plain, OpenAI and
-    Anthropic content per message), a bare STRING through this class's own response handling, which
-    assembles it with the shared ``query``/``prompt``/``instruction`` turn. Scalars ride along
-    untouched, so a ``chosen`` with a ``label`` but no ``rejected`` is the KTO shape and reaches the
-    row as ``messages`` + ``label``.
+    The chosen side becomes the standard ``messages``, the rejected side ``rejected_messages``
+    (full turns) or ``rejected_response`` (a single reply). Each side is normalised by the
+    converter that owns its shape: a message list via a composed messages converter, a bare
+    string via this class's own response handling.
     """
 
     format_name = 'preference'
-    # Between openai (10) and alpaca (20). A dataset carrying BOTH `conversations` and `chosen` is a
-    # conversation dataset, so openai must win; but a top-level `chosen` is a stronger RLHF signal than
-    # `instruction`, so preference must beat alpaca.
+    # Between openai (10) and alpaca (20): a dataset with BOTH `conversations` and `chosen` is a
+    # conversation dataset, but a top-level `chosen` is a stronger signal than `instruction`.
     priority = 15
     is_fallback = False
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # The message-list side is normalised by a composed OpenAIConverter, while this class already
-        # IS a ResponseConverter for the string side. The messages converter is built lazily on the
-        # first message-list row and cached; see :meth:`_messages_side`.
+        # The message-list side is normalised by a composed OpenAIConverter, built lazily on the
+        # first message-list row and cached; see `_messages_side`.
         self._messages_converter: Optional[OpenAIConverter] = None
 
     @classmethod
     def detect(cls, columns: Collection[str]) -> bool:
         # Exact top-level names, not the `rejected_*` standard keys: a dataset already carrying
-        # `rejected_messages`/`rejected_response` is in the standard shape and belongs to openai/response.
+        # `rejected_messages`/`rejected_response` is standard-shaped and belongs to openai/response.
         return 'chosen' in columns or 'rejected' in columns
 
     def convert(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -49,9 +43,8 @@ class PreferenceConverter(ResponseConverter):
         chosen = self._recover_message_list(row.pop('chosen', None))
         rejected = self._recover_message_list(row.pop('rejected', None))
 
-        # The rejected side is decided independently of the chosen side's shape. A message list becomes
-        # `rejected_messages` verbatim; anything else is folded to a single reply first (some datasets
-        # store several rejected candidate strings in a list) so it is never mistaken for a message list.
+        # The rejected side is decided independently of the chosen side's shape: a message list
+        # becomes `rejected_messages` verbatim; anything else folds to a single reply first.
         if self._is_message_list(rejected):
             row['rejected_messages'] = rejected
         elif rejected is not None:
@@ -60,23 +53,20 @@ class PreferenceConverter(ResponseConverter):
                 row['rejected_response'] = rejected
 
         if self._is_message_list(chosen):
-            # chosen is a full conversation, so it IS the messages; let the messages converter normalise
-            # roles/content, lift inline media and prepend the system turn (and rejected_messages too).
+            # chosen is a full conversation, so it IS the messages: the messages converter
+            # normalises roles/content, lifts inline media and prepends the system turn.
             row['messages'] = chosen
             return self._messages_side().convert(row)
-        # chosen is a bare reply: the response converter (this class's own base) assembles it with the
-        # shared query turn and folds a rejected_response string into place.
+        # chosen is a bare reply: the response converter (this class's own base) assembles it with
+        # the shared query turn and folds a rejected_response string into place.
         row['response'] = chosen
         return super().convert(row)
 
     def _messages_side(self) -> OpenAIConverter:
         """The converter for a message-list ``chosen``, built lazily and cached.
 
-        A message-list side is always the standard messages shape, so it goes to
-        :class:`~.openai.OpenAIConverter`, whose per-message
-        :meth:`~.openai.OpenAIConverter.normalize_content` rewrites plain, OpenAI and Anthropic
-        content alike. It is configured from this converter's own ``aliases`` and ``kwargs``, so a
-        dataset pinning ``role_key``/``content_key``/... applies to the dialogue.
+        It is configured from this converter's own ``aliases`` and ``kwargs``, so a dataset pinning
+        ``role_key``/``content_key`` applies to the dialogue too.
         """
         if self._messages_converter is None:
             self._messages_converter = OpenAIConverter(aliases=self.aliases, **self.kwargs)
@@ -84,12 +74,11 @@ class PreferenceConverter(ResponseConverter):
 
     @classmethod
     def _recover_message_list(cls, value: Any) -> Any:
-        """Recover a message list a DataFrame dump stored as its repr string; any other value as-is.
+        """Recover a message list a DataFrame dump stored as its repr string; anything else as-is.
 
-        ``parse_literal`` returns ``None`` for a string that is not a Python literal -- right for
-        ``history`` (always a list) but fatal here, where a plain ``chosen``/``rejected`` reply such as
-        ``"the answer"`` is a valid string that must NOT be dropped. So only a string that parses to a
-        list is replaced by that list; a plain reply (or an already-real list) passes through untouched.
+        ``parse_literal`` returns ``None`` for a non-literal string -- right for ``history``
+        (always a list) but fatal here, where a plain ``chosen``/``rejected`` reply such as ``"the
+        answer"`` is valid and must not be dropped. Only a string that parses to a list is replaced.
         """
         if isinstance(value, str):
             parsed = cls.parse_literal(value)

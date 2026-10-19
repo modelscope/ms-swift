@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
-from dataclasses import asdict
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Sequence, Tuple
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -19,11 +18,11 @@ _YELLOW = '\033[1;33m'
 _DIM = '\033[2m'
 _RESET = '\033[0m'
 
-#: Keep the conversation bounded; pruning cuts at a user boundary so a turn is never left half-dropped.
+#: Keep the conversation bounded; pruning cuts at a user boundary so a turn is never half-dropped.
 _MAX_HISTORY_MESSAGES = 50
 
-#: Sentinel returned by ``_CliState.read_query`` for 'quit', kept distinct from an empty line (which means
-#: "reprompt") and from None (a command that was already handled).
+#: Sentinel returned by ``_CliState.read_query`` for 'quit', kept distinct from an empty line (which
+#: means "reprompt") and from None (a command that was already handled).
 _QUIT = object()
 
 
@@ -41,12 +40,13 @@ def infer_cli(
 ) -> None:
     """Interactive REPL. Commands: ``clear`` / ``reset-system`` / ``multi-line`` / ``single-line`` / ``quit``.
 
-    History is kept across turns unless ``multi_round`` is False. When ``rollout_config.tools`` and
-    ``rollout_config.max_turns`` are both set, each turn runs the tool-calling rollout; otherwise it is
-    a plain chat turn (streamed when ``generation_config.stream``). For a multimodal template each turn
-    first calls ``prompt_media`` to collect image/audio/video paths, matching legacy's ``input_mm_data``.
+    History is kept across turns unless ``multi_round`` is False. With ``rollout_config.tools`` and
+    ``max_turns`` set, each turn runs the tool-calling rollout (streamed live); otherwise a plain
+    chat turn (streamed when ``generation_config.stream``). A multimodal template prompts for media
+    paths first, matching legacy's ``input_mm_data``.
     """
     from swift.dev.builders import build_sampler, build_template, load_model_processor, to_sampling_params
+    from swift.dev.builders.sandbox import tools_factory
 
     _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
@@ -60,24 +60,23 @@ def infer_cli(
         quantize_config=quantize_config)
     adapter_path = adapters[0] if adapters else None
     params = to_sampling_params(generation_config)
-    params_dict = asdict(params)
     stream = bool(generation_config is not None and generation_config.stream)
 
-    # Tools need twinkle's multi-turn engine, which requires max_turns; validate already rejects tools
+    # Tools need the multi-turn engine, which requires max_turns; validate already rejects tools
     # without it, so this gate is just "did the user actually configure a tool rollout".
     tools_on = bool(rollout_config is not None and rollout_config.tools
                     and rollout_config.max_turns is not None)
     rollout = None
     if tools_on:
-        # The injected sampler stays owned by this function, so teardown is close() (the sandbox env pool)
-        # followed by sampler.shutdown(); the engine builds its sandbox from rollout_config and leases one
-        # env per episode, which for the REPL is the single interactive conversation.
-        from swift.dev.rollout import RolloutEngine
-        rollout = RolloutEngine(sampler=sampler, template=template)
-        rollout.configure_multi_turn(
+        from twinkle_agentic.rollout import MultiTurnRollout
+
+        # The engine builds its sandbox from rollout_config and leases one env per episode -- for the
+        # REPL that is the single interactive conversation; teardown is rollout.close(), not shutdown.
+        rollout = MultiTurnRollout(
+            sampler, template, sampling_params=params,
             max_turns=rollout_config.max_turns,
             max_trajectory_tokens=rollout_config.max_trajectory_tokens,
-            rollout_config=rollout_config)
+            tools_factory=tools_factory, tools_config=rollout_config)
 
     state = _CliState(system=template_config.system)
     _print_welcome(tools_on, stream)
@@ -100,7 +99,7 @@ def infer_cli(
                 state.prompt_media(['images', 'audios', 'videos'])
             trajectory = state.to_trajectory()
             if rollout is not None:
-                response = _run_tool_turn(rollout, trajectory, params_dict)
+                response = _run_tool_turn(rollout, trajectory, adapter_path)
             elif stream:
                 response = _run_stream_turn(sampler, trajectory, params, adapter_path)
             else:
@@ -110,19 +109,16 @@ def infer_cli(
             else:
                 state.clear()
     finally:
-        # Releasing the model spins down the vLLM engine core and its worker subprocesses, which
-        # takes a few seconds and prints nothing. Say so: a second Ctrl+C during that pause (the
-        # natural reaction to a silent hang) interrupts the workers mid-exit, dumps a traceback that
-        # looks like a crash, and leaks their IPC semaphores/shared memory to resource_tracker.
+        # Releasing the model spins down the vLLM engine core and its workers, silently for a few
+        # seconds -- say so, or a second Ctrl+C mid-exit dumps a traceback and leaks IPC objects.
         print(f'\n{_DIM}Shutting down (releasing the model and sandbox), please wait...{_RESET}', flush=True)
         try:
             if rollout is not None:
                 rollout.close()
             sampler.shutdown()
         except KeyboardInterrupt:
-            # Interrupted anyway -- the OS reclaims the workers' memory and IPC objects once the
-            # process dies, so acknowledge instead of propagating a scary stack. atexit's shutdown is
-            # idempotent (guarded by _shutdown_called), so nothing runs twice.
+            # The OS reclaims the workers' memory and IPC objects once the process dies, and atexit's
+            # shutdown is idempotent -- acknowledge instead of propagating a scary stack.
             print(f'{_YELLOW}Interrupted during shutdown; exiting.{_RESET}', flush=True)
     print(f'\n{_DIM}Bye.{_RESET}')
 
@@ -157,22 +153,22 @@ def _run_plain_turn(sampler: Any, trajectory: Dict[str, Any], params: Any, adapt
     return response
 
 
-def _run_tool_turn(rollout: Any, trajectory: Dict[str, Any], params_dict: Dict[str, Any]) -> str:
+def _run_tool_turn(rollout: Any, trajectory: Dict[str, Any], adapter_path: Optional[str]) -> str:
     """One human turn through the tool-calling rollout, streamed live.
 
-    ``rollout.stream`` yields the episode as it happens: ``StreamDelta`` token deltas are echoed as they
-    arrive (across every turn of the tool loop), ``StreamToolCall`` traces the tools each turn dispatched,
-    and the final ``StreamDone`` carries the finished transcript. Only the final assistant text re-enters
-    the conversation history -- the tool plumbing is per-turn and the next human turn starts from the
-    answer, not from the intermediate calls.
+    ``rollout.stream`` yields the episode as it happens: ``StreamDelta`` deltas echo as they arrive
+    (across every tool-loop turn), ``StreamToolCall`` traces each turn's dispatched tools, and the
+    final ``StreamDone`` carries the transcript. Only the final assistant text re-enters the history
+    -- the tool plumbing is per-turn, and the next human turn starts from the answer.
     """
     from twinkle_agentic.rollout import StreamDelta, StreamDone, StreamToolCall
 
-    messages = trajectory['messages']
     print(f'{_CYAN}Agent:{_RESET} ', end='', flush=True)
     response = ''
     truncated = False
-    for event in rollout.stream(messages, sampling_params=params_dict):
+    # sampling_params falls back to the construction-time params, and tool_manager to the sandbox the
+    # engine built from tools_factory -- nothing per-turn needs re-passing.
+    for event in rollout.stream(trajectory, adapter_path=adapter_path):
         if isinstance(event, StreamDelta):
             if event.text:
                 print(event.text, end='', flush=True)
@@ -270,10 +266,9 @@ class _CliState:
     def prompt_media(self, kinds: Sequence[str]) -> None:
         """Ask for media paths -- one per line, blank line to finish each kind (legacy's ``input_mm_data``).
 
-        Each kind loops until a blank line, so any number of images/audios/videos can be attached to this
-        turn; the paths land in ``self.media`` and ``to_trajectory`` attaches them to the trajectory. The
-        running count in the prompt is what signals "you can keep going" -- without it the repeated
-        one-per-line prompt reads as if only a single path is expected.
+        Each kind loops until a blank line, so any number of media can attach to this turn; the paths
+        land in ``self.media`` and ``to_trajectory`` attaches them. The running count in the prompt is
+        what signals "you can keep going" -- without it the prompt reads as one-path-only.
         """
         for kind in kinds:
             singular = kind[:-1]

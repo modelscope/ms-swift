@@ -18,17 +18,10 @@ logger = get_logger()
 class CacheDatasetComponent(RecipeComponent):
     """Encode ``dataset_config`` once and save it under ``output_dir`` as a reusable cache.
 
-    The layout ('train' / 'val' subdirectories) matches legacy's exporter so a cache produced by either
-    side is interchangeable, and each subdirectory is a standalone ``load_from_disk`` target -- which is
-    what ``DatasetConfig.cached_dataset`` / ``cached_val_dataset`` expect (they take the SUBDIRECTORY, not
-    ``output_dir``). ``__call__`` returns a :class:`DatasetArtifact` naming both splits.
-
-    ``template_mode`` selects the encoding objective ('train' / 'rlhf' / 'kto'): the same rows encode
-    differently per objective, so a cache built for one is wrong for the others. It mirrors legacy
-    ``ExportCachedDataset`` calling ``template.set_mode(args.template_mode)``.
-
-    No model is loaded and no distributed init happens: this is a single-process CPU job. Run it on a
-    CPU box, then reuse the output across experiments.
+    The 'train' / 'val' subdirectories match legacy's exporter (interchangeable caches) and are
+    standalone ``load_from_disk`` targets -- what ``cached_dataset`` / ``cached_val_dataset``
+    expect. A CPU-only job; ``template_mode`` picks the encoding objective ('train' / 'rlhf' /
+    'kto') -- the same rows encode differently per objective, so a cache serves one only.
     """
 
     def __init__(
@@ -58,9 +51,8 @@ class CacheDatasetComponent(RecipeComponent):
         self._guard_multimodal(template)
         train_raw, val_raw = self._load_raw()
 
-        # Same mode resolution as training, so the cache matches what an eager run would have built.
-        # Packing is NOT applied here: it is a training-time layout (it depends on packing_length and is
-        # cheap given `lengths`), and baking it in would freeze that choice into the cache.
+        # Same mode resolution as training, so the cache matches what an eager run builds. Packing
+        # is a training-time layout (cheap given `lengths`); baking it in would freeze the choice.
         encode_mode = self._resolve_encode_mode(template)
 
         os.makedirs(self.output_dir, exist_ok=True)
@@ -84,23 +76,18 @@ class CacheDatasetComponent(RecipeComponent):
         """Load the processor (tokenizer only) and build the template in the requested mode."""
         from swift.dev.builders import build_template, load_model_processor
 
-        # Only the processor (tokenizer) is needed -- the template encodes with it. load_model=False keeps
-        # this a CPU-only job; legacy instead builds a meta-device model to satisfy SwiftSft's __init__.
+        # Only the processor (tokenizer) is needed; load_model=False keeps this a CPU-only job
+        # (legacy instead builds a meta-device model to satisfy SwiftSft's __init__).
         _, processor = load_model_processor(self.model_config)
         template = build_template(self.template_config, processor)
-        # build_template fixes the mode to 'train' (the training default); override it here so an rlhf/kto
-        # cache encodes with the right structure. Without this, --template_mode parsed but changed nothing.
+        # build_template fixes the mode to 'train'; override it so an rlhf/kto cache encodes with
+        # the right structure. Without this, --template_mode parsed but changed nothing.
         template.set_mode(self.template_mode)
         return template
 
     def _guard_multimodal(self, template) -> None:
-        # store_encoded materialises the FULL template.encode output -- for multimodal rows that includes
-        # both input_ids AND vision tensors (pixel_values / image_grid_thw / ...) together, so the
-        # forward's _not_encoded guard correctly skips re-encoding with all modalities present.
-        # The only unsafe case is partial materialisation (tokens without vision), which cannot happen
-        # here because EncodePreprocessor stores every key template.encode produces.
-        # store_fields: if the user explicitly restricts columns and drops a vision key, the row would
-        # arrive incomplete -- warn rather than raise, since the default (None = keep all) is safe.
+        # store_encoded materialises the full encode output (input_ids AND vision tensors), so
+        # re-encoding is correctly skipped; only store_fields omitting vision columns is unsafe.
         if self.store_encoded and template.model_meta.is_multimodal and self.store_fields:
             logger.warning(
                 'store_fields is set on a multimodal store_encoded run: if the allow-list omits vision '
@@ -135,8 +122,8 @@ class CacheDatasetComponent(RecipeComponent):
 
         encode_mode = _encode_mode(self.dataset_config, template)
         if encode_mode == 'lazy':
-            # lazy would return a LazyLLMDataset wrapper (no save_to_disk) and defeat the purpose:
-            # nothing would be precomputed. Force the caller to opt into eager encoding explicitly.
+            # lazy would return a LazyLLMDataset wrapper (no save_to_disk) and precompute nothing;
+            # force the caller to opt into eager encoding explicitly.
             raise ValueError('export_cached_dataset requires eager encoding, but the resolved mode is lazy '
                              '(DatasetConfig.lazy_tokenize=True, or the multimodal default). Set '
                              'DatasetConfig.lazy_tokenize=False to precompute and save.')
@@ -145,12 +132,10 @@ class CacheDatasetComponent(RecipeComponent):
     def _encode_and_save(self, raw, template, encode_mode: str, name: str) -> Optional[str]:
         """Encode one split and save it to ``output_dir/name``; returns the path (None if no split).
 
-        The write goes through :func:`~swift.dev.dataset.storage.write_dataset_store`, the one serialiser
-        shared with ``swift infer``. The store path is derived by
-        :func:`~swift.dev.dataset.storage.store_path` from the format's ``store_suffix``: ``arrow`` (the
-        default) writes a ``save_to_disk`` directory with no suffix, so a cache produced here stays
-        interchangeable with legacy's exporter; ``jsonl`` appends ``.jsonl``, giving a single file a reader
-        detects the backend from. A custom writable format contributes its own suffix.
+        The write goes through ``write_dataset_store``, the one serialiser shared with ``swift
+        infer``; the path comes from ``store_path`` and the format's ``store_suffix``: ``arrow``
+        (default) writes a suffix-less ``save_to_disk`` directory, interchangeable with legacy's
+        exporter; ``jsonl`` appends ``.jsonl``; a custom writable format brings its own suffix.
         """
         from swift.dev.builders.dataset import _encode
         from swift.dev.dataset import write_dataset_store

@@ -1,99 +1,35 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# Outcome Reward Model (ORM) implementations for GRPO training.
-#
-# Internalized copy of ``swift.rewards.orm`` for swift.dev: the reward logic is unchanged, but the
-# top-level ``from swift.infer_engine import InferRequest`` (used only in quoted type hints) is moved
-# under ``TYPE_CHECKING`` and the legacy ``args`` union type (GRPOConfig / MegatronArguments) is
-# relaxed to ``Any`` so this module carries no runtime dependency on legacy swift packages.
+# Outcome-reward (ORM) rule plugins over trajectory rows; comparators shared with twinkle/reward.
 
 import json
-import os
 import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from swift.dev.utils.plugin import PluginRegistry, RewardPlugin
-from swift.dev.rewards.code_reward import CodeExecutionReward
+from swift.dev.utils.plugin import PluginRegistry
+
+from .code_reward import CodeExecutionReward
+from .reward import ORM
+from twinkle.reward import FormatReward, MathReward
+from twinkle.reward.gsm8k import MathVerifyAccuracyReward as _MathVerifyAccuracyReward
 
 if TYPE_CHECKING:
     from swift.infer_engine import InferRequest
 
-#: The reward plugin base under its historical name. A reward ORM *is* swift's reward plugin -- same
-#: ``cls(args=...)`` construction, same ``__call__(completions, **columns) -> List[float]`` contract --
-#: so this is an alias rather than a parallel base class, and a user's existing ``class MyReward(ORM)``
-#: keeps working while gaining the registry's shape check. An async reward needs no separate base: it
-#: writes ``async def __call__`` on this same ``ORM`` / ``RewardPlugin`` and the scoring loop gathers it.
-ORM = RewardPlugin
 
+class MathAccuracy(_MathVerifyAccuracyReward):
+    """twinkle's math-verify scorer with swift's 'solution' gold column as the default key."""
 
-class MathAccuracy(ORM):
-
-    def __init__(self, args=None, **kwargs):
-        super().__init__(args, **kwargs)
-        import importlib.util
-        assert importlib.util.find_spec('math_verify') is not None, (
-            'The math_verify package is required but not installed. '
-            "Please install it using 'pip install math_verify'.")
-
-    def __call__(self, completions, solution, **kwargs) -> List[float]:
-        from latex2sympy2_extended import NormalizationConfig
-        from math_verify import LatexExtractionConfig, parse, verify
-        rewards = []
-        for content, sol in zip(completions, solution):
-            content_match = re.search(r'<answer>(.*?)</answer>', content, re.DOTALL)
-            content_to_parse = content_match.group(1).strip() if content_match else content
-            has_answer_tag = content_match is not None
-
-            sol_match = re.search(r'<answer>(.*?)</answer>', sol, re.DOTALL)
-            sol_to_parse = sol_match.group(1).strip() if sol_match else sol
-
-            gold_parsed = parse(sol_to_parse, extraction_mode='first_match')
-            if len(gold_parsed) != 0:
-                if has_answer_tag:
-                    answer_parsed = parse(content_to_parse, extraction_mode='first_match')
-                else:
-                    answer_parsed = parse(
-                        content_to_parse,
-                        extraction_config=[
-                            LatexExtractionConfig(
-                                normalization_config=NormalizationConfig(
-                                    nits=False,
-                                    malformed_operators=False,
-                                    basic_latex=True,
-                                    boxed=True,
-                                    units=True,
-                                ),
-                                boxed_match_priority=0,
-                                try_extract_without_anchor=False,
-                            )
-                        ],
-                        extraction_mode='first_match',
-                    )
-                try:
-                    reward = float(verify(gold_parsed, answer_parsed))
-                except Exception:
-                    reward = 0.0
-            else:
-                # If the gold solution is not parseable, we reward 0 to skip this example
-                reward = 0.0
-            rewards.append(reward)
-        return rewards
-
-
-class Format(ORM):
-
-    def __call__(self, completions, **kwargs) -> List[float]:
-        """Reward function that checks if the completion has a specific format."""
-        pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>(?![\s\S])'
-        matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
-        return [1.0 if match else 0.0 for match in matches]
+    def __init__(self, **kwargs):
+        kwargs.setdefault('ground_truth_key', 'solution')
+        super().__init__(**kwargs)
 
 
 class ReActFormat(ORM):
 
-    def __call__(self, completions, **kwargs) -> List[float]:
+    def __call__(self, trajectories, **kwargs) -> List[float]:
         """Reward function that checks if the completion has a specific format."""
         pattern = r'^<think>.*?</think>\s*Action:.*?Action Input:.*?$'
-        matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
+        matches = [re.match(pattern, self.completion(t), re.DOTALL | re.MULTILINE) for t in trajectories]
         return [1.0 if match else 0.0 for match in matches]
 
 
@@ -113,11 +49,10 @@ class CosineReward(ORM):
         import math
         return max_value - (max_value - min_value) * (1 - math.cos(t * math.pi / T)) / 2
 
-    def __call__(self, completions, solution, **kwargs) -> List[float]:
-        acc_rewards = self.accuracy_orm(completions, solution, **kwargs)
-        response_token_ids = kwargs.get('response_token_ids')
+    def __call__(self, trajectories, **kwargs) -> List[float]:
+        acc_rewards = self.accuracy_orm(trajectories)
         rewards = []
-        for ids, acc_reward in zip(response_token_ids, acc_rewards):
+        for trajectory, acc_reward in zip(trajectories, acc_rewards):
             is_correct = acc_reward >= 1.
             if is_correct:
                 # Swap min/max for correct answers
@@ -126,9 +61,8 @@ class CosineReward(ORM):
             else:
                 min_value = self.max_len_value_wrong
                 max_value = self.min_len_value_wrong
-            gen_len = len(ids)
-            reward = self.cosfn(gen_len, self.max_len, min_value, max_value)
-            rewards.append(reward)
+            gen_len = len(trajectory.get('response_token_ids') or [])
+            rewards.append(self.cosfn(gen_len, self.max_len, min_value, max_value))
         return rewards
 
 
@@ -144,31 +78,20 @@ class RepetitionPenalty(ORM):
         words = text.lower().split()
         return zip(*[words[i:] for i in range(ngram_size)])
 
-    def __call__(self, completions, **kwargs) -> List[float]:
-        """
-        reward function the penalizes repetitions
-
-        Args:
-            completions: List of model completions
-        """
+    def __call__(self, trajectories, **kwargs) -> List[float]:
+        """reward function the penalizes repetitions"""
         rewards = []
-        for completion in completions:
-            if completion == '':
+        for trajectory in trajectories:
+            completion = self.completion(trajectory)
+            if completion == '' or len(completion.split()) < self.ngram_size:
                 rewards.append(0.0)
                 continue
-            if len(completion.split()) < self.ngram_size:
-                rewards.append(0.0)
-                continue
-
             ngrams = set()
             total = 0
             for ng in self.zipngram(completion, self.ngram_size):
                 ngrams.add(ng)
                 total += 1
-
-            scaling = 1 - len(ngrams) / total
-            reward = scaling * self.max_penalty
-            rewards.append(reward)
+            rewards.append((1 - len(ngrams) / total) * self.max_penalty)
         return rewards
 
 
@@ -180,11 +103,10 @@ class SoftOverlong(ORM):
         self.soft_max_length = args.soft_max_length
         self.soft_cache_length = args.soft_cache_length
 
-    def __call__(self, completions, **kwargs) -> List[float]:
+    def __call__(self, trajectories, **kwargs) -> List[float]:
         rewards = []
-        response_token_ids = kwargs.get('response_token_ids')
-        for ids in response_token_ids:
-            completion_length = len(ids)
+        for trajectory in trajectories:
+            completion_length = len(trajectory.get('response_token_ids') or [])
             expected_len = self.soft_max_length - self.soft_cache_length
             exceed_len = completion_length - expected_len
             rewards.append(min(-exceed_len / self.soft_cache_length, 0))
@@ -229,11 +151,6 @@ class ReactORM(ORM):
                     f1.append(1)
             else:
                 if not isinstance(ref_input_json, dict) or not isinstance(cand_input_json, dict):
-                    # This cannot be happen, but:
-                    # line 62, in evaluate_action_reward
-                    # for k, v in ref_input_json.items():
-                    # AttributeError: 'str' object has no attribute 'items'
-                    # print(f'>>>>>>ref_input_json: {ref_input_json}, cand_input_json: {cand_input_json}')
                     f1.append(0)
                     continue
 
@@ -287,36 +204,21 @@ class ReactORM(ORM):
         action, action_input = ReactORM.parse_action(text)
         return action, action_input
 
-    def __call__(self, infer_requests: List[Union['InferRequest', Dict]], solution: List[str], **kwargs) -> List[float]:
+    def __call__(self, trajectories: List[Union['InferRequest', Dict]], **kwargs) -> List[float]:
         rewards = []
-        if not isinstance(infer_requests[0], str):
-            predictions = [request['messages'][-1]['content'] for request in infer_requests]
-        else:
-            predictions = infer_requests
-        for prediction, ground_truth in zip(predictions, solution):
+        for trajectory in trajectories:
+            prediction = self.completion(trajectory)
+            ground_truth = self.column(trajectory, 'ground_truth')
+            if ground_truth is None:
+                ground_truth = self.column(trajectory, 'solution')
             if prediction.endswith('Observation:'):
                 prediction = prediction[:prediction.index('Observation:')].strip()
-            action_ref = []
-            action_input_ref = []
-            action_pred = []
-            action_input_pred = []
             reference = ground_truth
             prediction = prediction.replace('<|endoftext|>', '').replace('<|im_end|>', '').strip()
             ref_action, ref_input = ReactORM.parse_output(reference)
             pred_action, pred_input = ReactORM.parse_output(prediction)
-            action_ref.append(ref_action)
-            action_input_ref.append(ref_input)
-            if pred_action is None:
-                action_pred.append('none')
-            else:
-                action_pred.append(pred_action)
-
-            if pred_input is None:
-                action_input_pred.append('{}')
-            else:
-                action_input_pred.append(pred_input)
-
-            reward = ReactORM.evaluate_action_reward(action_pred, action_ref, action_input_pred, action_input_ref)
+            reward = ReactORM.evaluate_action_reward(
+                [pred_action or 'none'], [ref_action], [pred_input or '{}'], [ref_input])
             rewards.append(float(reward))
         return rewards
 
@@ -334,88 +236,13 @@ class ReactORM(ORM):
             return None
 
 
-class MathORM(ORM):
-
-    def __init__(self, args=None, **kwargs):
-        super().__init__(args)
-        from transformers.utils import strtobool
-        self.use_opencompass = strtobool(os.environ.get('USE_OPENCOMPASS_EVALUATOR', 'False'))
-        if self.use_opencompass:
-            from opencompass.datasets.math import MATHEvaluator
-            self.evaluator = MATHEvaluator()
-
-    @staticmethod
-    def check_terminate(answers: Union[str, List[str]]) -> List[bool]:
-        if isinstance(answers, str):
-            answers = [answers]
-        results = []
-        for answer in answers:
-            results.append('\\boxed' in answer)
-        return results
-
-    @staticmethod
-    def extract_boxed_result(text):
-        pattern = r'\\boxed{([^}]*)}'
-        match = re.search(pattern, text)
-        if match:
-            return match.group(1).strip()
-        else:
-            return text
-
-    @staticmethod
-    def clean_latex(latex_str):
-        latex_str = re.sub(r'\\\(|\\\)|\\\[|\\]', '', latex_str)
-        latex_str = latex_str.replace('}}', '}').replace('{', '').replace('}', '')
-        return latex_str.strip()
-
-    @staticmethod
-    def parse_expression(latex_str):
-        from sympy import simplify
-        from sympy.parsing.latex import parse_latex
-        try:
-            expr = parse_latex(latex_str)
-            return simplify(expr)
-        except Exception:
-            return None
-
-    @staticmethod
-    def compare_consecutive(first, second):
-        cleaned_list = [MathORM.clean_latex(latex) for latex in [first, second]]
-        parsed_exprs = [MathORM.parse_expression(latex) for latex in cleaned_list]
-        if hasattr(parsed_exprs[0], 'equals') and hasattr(parsed_exprs[1], 'equals'):
-            value = parsed_exprs[0].equals(parsed_exprs[1])
-        else:
-            value = parsed_exprs[0] == parsed_exprs[1]
-        if value is None:
-            value = False
-        return value
-
-    def __call__(self, infer_requests: List[Union['InferRequest', Dict]], ground_truths: List[str],
-                 **kwargs) -> List[float]:
-        rewards = []
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
-        for prediction, ground_truth in zip(predictions, ground_truths):
-            if '# Answer' in prediction:
-                prediction = prediction.split('# Answer')[1]
-            if '# Answer' in ground_truth:
-                ground_truth = ground_truth.split('# Answer')[1]
-            prediction = prediction.strip()
-            ground_truth = ground_truth.strip()
-            prediction = MathORM.extract_boxed_result(prediction)
-            ground_truth = MathORM.extract_boxed_result(ground_truth)
-            if self.use_opencompass:
-                reward = self.evaluator.is_equiv(prediction, ground_truth)
-            else:
-                reward = MathORM.compare_consecutive(prediction, ground_truth)
-            rewards.append(float(reward))
-        return rewards
-
-
 orms = {
     'toolbench': ReactORM,
-    'math': MathORM,
+    # identical scorers are twinkle's own classes, used directly (no re-wrapper): resolve()
+    # no-arg constructs them and the row protocol is already their native input.
+    'math': MathReward,
+    'format': FormatReward,
     'accuracy': MathAccuracy,
-    'format': Format,
     'react_format': ReActFormat,
     'cosine': CosineReward,
     'repetition': RepetitionPenalty,
@@ -425,8 +252,8 @@ orms = {
 
 #: The 'reward' extension point adopts ``orms`` *itself* as its registry, so
 #: ``@PluginRegistry.register('reward', ...)`` and the historical ``orms['my'] = MyReward`` write to one
-#: dict -- no consumer has to know which form a plugin arrived in, and there is no second roster to keep
-#: in sync. An async reward is just a ``RewardPlugin`` with ``async def __call__``; it registers and is
-#: selected by the same ``--orm`` / ``--prm`` as any other.
+#: dict -- no consumer has to know which form a plugin arrived in, and there is no second roster to
+#: keep in sync. The kind's base is the ``ORM`` rule itself (the twinkle ``Reward`` protocol plus the
+#: plugin construction contract); an async reward is just an ``ORM`` with ``async def __call__``.
 REWARD = PluginRegistry.register_kind(
-    'reward', RewardPlugin, config_field='orm', entries=orms)
+    'reward', ORM, config_field='orm', entries=orms)

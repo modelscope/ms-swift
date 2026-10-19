@@ -1,23 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the InternLM / InternVL families, from ``swift/model/models/internlm.py``.
-
-Migrated: the remote-code text trio ``internlm`` / ``internlm2`` / ``internlm3`` (``InternLM*ForCausalLM``
-are not in transformers 5.5, so they load via ``AutoModelForCausalLM`` + ``trust_remote_code=True`` --
-the base ``trust_remote_code`` flag), and the transformers-native ``internvl`` (the ``-hf`` checkpoints,
-``InternVLForConditionalGeneration`` via ``AutoModelForImageTextToText``). Legacy wrapped internvl in a
-``patched_enable_input_require_grads`` hook needed only under reentrant gradient checkpointing;
-PATCH_INVENTORY.md marks that obsolete when ``use_reentrant=False`` (dev's path), so it is dropped.
-The text trio are pure LLMs, so they keep the empty ``ModelArch()`` default (legacy's
-``ModelArch.llama`` / ``internlm2`` only mattered for multimodal partitioning).
-
-Not migrated here (see MODEL_MIGRATION.md):
-  * ``interns1`` -- ``InternS1ForConditionalGeneration`` absent from transformers 5.5 and pinned
-    ``<4.56``.
-  * ``xcomposer2`` / ``xcomposer2_4khd`` / ``xcomposer2_5`` -- remote-code + dynamic CLIP vision tower
-    (bucket C); ``xcomposer2_5_ol_audio`` -- the Qwen2-Audio half of xcomposer, part of that family.
-  * the two phi3-based ``internvl_chat`` groups (``Mini-InternVL-Chat-4B-V1-5`` /
-    ``InternVL2-4B``) -- pinned ``transformers<4.42``, dead on 5.5.
-"""
+# InternLM text trio + internvl + remote-code internvl_chat families (xcomposer* dropped).
 from __future__ import annotations
 
 from .base import ModelArch, ModelLoader, register_model
@@ -128,12 +110,10 @@ class InternVLLoader(ModelLoader):
 
 @register_model
 class InternLM2RewardLoader(ModelLoader):
-    """InternLM2 reward model. Remote-code ``InternLM2ForRewardModel`` (absent from transformers 5.5),
-    which legacy's ``RewardModelLoader`` loads via ``AutoModel`` (the checkpoint's ``auto_map`` points
-    ``AutoModel`` at the reward class) -- so ``model_cls='transformers:AutoModel'`` + the g7
-    ``trust_remote_code`` flag. ``is_reward`` records that this is a reward head (num_labels=1 seq_cls
-    at build time); like other dev metadata it is declared now and consumed when the reward path is
-    wired."""
+    """InternLM2 reward model. Remote-code ``InternLM2ForRewardModel`` (absent from transformers
+    5.5), which legacy's ``RewardModelLoader`` loads via ``AutoModel`` (the checkpoint's
+    ``auto_map`` points ``AutoModel`` at the reward class); ``is_reward`` records the reward head
+    (num_labels=1 seq_cls at build time)."""
 
     model_type = 'internlm2_reward'
     model_cls = 'transformers:AutoModel'
@@ -149,26 +129,17 @@ class InternLM2RewardLoader(ModelLoader):
     ]
 
 
-# ---------------------------- InternVL-Chat (remote-code, non -hf) ----------------------------
-# Legacy filed all of InternVL1.5 / 2 / 2.5 / 3 / 3.5 under the single `internvl_chat` model_type with
-# eight template groups. A dev model_type carries exactly one template, so the base keeps the legacy
-# name (the `internvl` template) and the other formats are family-qualified subclasses with
-# `architectures=[]`, leaving `InternVLChatModel` reverse-lookup on the base alone. Distinct from the
-# `internvl` loader above, which owns the transformers-native ``-hf`` checkpoints.
+# InternVL-Chat (remote-code, non -hf): legacy filed InternVL1.5/2/2.5/3/3.5 under one model_type
+# with eight template groups; the base keeps the legacy name, other formats are []-arch subclasses.
 
 
 @register_model
 class InternVLChatLoader(ModelLoader):
     """InternVL-Chat: remote-code ``InternVLChatModel`` -- an outer wrapper whose real LLM hangs off
-    ``model.language_model``, so ``process_model`` proxies the top-level calls there
-    (legacy ``use_submodel_func(model, 'language_model')``). ``processor_cls`` is pinned to
-    ``AutoTokenizer`` because legacy forced it: these checkpoints ship a ``preprocessor_config.json``
-    that would otherwise send the base's file detection to ``AutoProcessor``, while the template does
-    its own image preprocessing and needs the plain tokenizer.
-
-    Dropped from legacy, per PATCH_INVENTORY: ``patch_output_clone`` on the input embeddings (a
-    reentrant-checkpointing workaround) and the bnb ``force_no_igemmlt`` branch (QLoRA is not wired
-    through dev's loader path).
+    ``model.language_model``, so ``process_model`` proxies the top-level calls there (legacy
+    ``use_submodel_func``). ``processor_cls`` is pinned to ``AutoTokenizer`` as legacy forced it:
+    a shipped ``preprocessor_config.json`` would send file detection to ``AutoProcessor`` while the
+    template does its own preprocessing. Dropped: ``patch_output_clone``, bnb ``force_no_igemmlt``.
     """
 
     model_type = 'internvl_chat'
@@ -228,8 +199,7 @@ class InternVLChat2Loader(InternVLChatLoader):
 @register_model
 class InternVLChat2_5Loader(InternVLChatLoader):
     """InternVL2.5 *and* InternVL3: legacy filed them as two separate groups that share the
-    ``internvl2_5`` template and differ only in floor (>=4.36 vs >=4.37.2), so they merge here under
-    the stricter floor -- the same per-group-requires convention used elsewhere."""
+    ``internvl2_5`` template and differ only in floor, so they merge under the stricter one."""
 
     model_type = 'internvl_chat_v2_5'
     architectures = []

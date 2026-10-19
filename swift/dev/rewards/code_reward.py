@@ -1,39 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Code-execution reward: score generated code by running it against test cases.
-
-A rule reward (``--orm code_execution``) for the code-generation setting: each completion is a
-program, each dataset row carries ``test_cases`` -- a JSON ``{"inputs": [...], "outputs": [...]}``,
-the competitive-programming shape where ``inputs[i]`` is fed to the program's stdin and ``outputs[i]``
-is the stdout it must produce. The score is the fraction of test cases the program passes, a
-continuous value in ``[0, 1]``.
-
-Execution reuses twinkle's sandbox envs rather than running code in the trainer:
-
-* ``LocalEnv`` (the default) spawns each run in a new session with a capped address space and a hard
-  ``killpg`` timeout, in a throwaway temp directory. That subprocess *is* the isolation boundary, so
-  this reward never ``exec``s a completion in its own process -- the wrapper below is source handed to
-  ``run_script``, run as a child.
-* ``AgentEnv`` (a Firecracker microVM) is used instead when ``code_sandbox_template`` names a
-  template, for untrusted code that must not touch the training host. Both envs expose the identical
-  ``run_script(source, interpreter, timeout) -> (exit_code, output)`` contract, so the scoring path is
-  the same object; only construction differs.
-
-Two properties of that shared contract shape the wrapper:
-
-* ``run_script`` gives the child no stdin, so a test-case input is embedded into the program rather
-  than piped -- for Python by redirecting ``sys.stdin`` to a ``StringIO``, for a shell language by a
-  quoted heredoc the run redirects from.
-* ``run_script`` returns stdout and stderr merged, so the program's own stdout is captured between
-  unique markers and extracted back out; anything the program (or a compiler) wrote to stderr lands
-  outside the markers and never contaminates the comparison.
-
-Concurrency: :meth:`CodeExecutionReward.__call__` is ``async def`` and fans the batch out over a
-bounded ``ThreadPoolExecutor`` (``code_max_concurrency`` workers). ``run_script`` blocks in
-``communicate()``, which releases the GIL, so threads genuinely overlap the child processes; the pool's
-``max_workers`` is the whole concurrency bound (no separate semaphore on top). A process pool would add
-pickling constraints -- the env is not picklable and would have to be rebuilt per worker -- for no
-isolation gain over the subprocess the env already spawns.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -44,22 +9,20 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, List, Optional, Sequence, Tuple
 
-from swift.dev.utils.plugin import RewardPlugin
 from swift.dev.utils import get_logger
+from .reward import ORM
 
 logger = get_logger()
 
 __all__ = ['CodeExecutionReward']
 
-#: Markers the wrapper prints around the program's captured stdout, so it can be lifted back out of
-#: the merged stdout+stderr ``run_script`` returns. Unique enough that a program will not print them
-#: by accident; if one somehow does, only that test case's comparison is affected.
+#: Markers the wrapper prints around the program's captured stdout, lifted back out of the merged
+#: stdout+stderr ``run_script`` returns. Unique enough that a program will not print them by accident.
 _STDOUT_BEGIN = '<<<TWINKLE_CODE_STDOUT_BEGIN>>>'
 _STDOUT_END = '<<<TWINKLE_CODE_STDOUT_END>>>'
 
 #: A fenced ```lang ... ``` block, the shape code completions usually arrive in. The language tag is
-#: matched loosely (any word chars) and the body taken verbatim; a completion with no fence is used
-#: whole.
+#: matched loosely and the body taken verbatim; a completion with no fence is used whole.
 _FENCE_RE = re.compile(r'```[a-zA-Z0-9_+\-#]*[ \t]*\r?\n(.*?)```', re.DOTALL)
 
 #: A leading ```lang opener with no closer -- what a rollout truncated by ``max_tokens`` leaves behind.
@@ -81,8 +44,7 @@ class _ShellLang:
 _PYTHON_LANGS = frozenset({'python', 'python3', 'py'})
 
 #: Languages run through a shell heredoc + build + run. Restricted to toolchains a training host
-#: commonly has; an unlisted language is rejected up front (see :func:`_check_language`) rather than
-#: failing at run time.
+#: commonly has; an unlisted language is rejected up front (see _check_language), not at run time.
 _SHELL_LANGS = {
     'c': _ShellLang('.c', 'gcc -O2 -std=c11 {src} -o {exe}', './{exe}'),
     'cpp': _ShellLang('.cpp', 'g++ -O2 -std=c++17 {src} -o {exe}', './{exe}'),
@@ -256,20 +218,13 @@ def _execute_one(env: Any, code: str, test_input: str, language: str, timeout: i
     return _extract_stdout(merged)
 
 
-class CodeExecutionReward(RewardPlugin):
+class CodeExecutionReward(ORM):
     """Score generated code by executing it against per-sample test cases.
 
-    Registered as ``code_execution`` in the ``reward`` extension point. Its hyperparameters are read off
-    the run's ``RLConfig`` (``self.args``), the same way ``CosineReward`` reads ``cosine_*``; each has
-    a default so the plugin also works when constructed with ``args=None`` (a cookbook or a test).
-
-    Config knobs (see ``rl_config.py``): ``code_language`` (default when a row carries no ``language``
-    column), ``code_timeout`` (seconds per test case), ``code_max_concurrency`` (executor width),
-    ``code_memory_limit_gb`` (``LocalEnv`` address-space cap), ``code_sandbox_template`` (None -> the
-    local subprocess env; a template name -> an ``AgentEnv`` microVM).
-
-    The registry key is ``orms['code_execution']`` (see :mod:`swift.dev.rewards.orm`) -- the same dict
-    slot every sibling ORM uses, not a ``name`` attribute nothing on that path reads.
+    Registered as ``code_execution``; knobs read off the run's RLConfig (``self.args``, each with a
+    default so ``args=None`` works): ``code_language`` (the default when a row carries no ``language``
+    column), ``code_timeout``, ``code_max_concurrency``, ``code_memory_limit_gb``,
+    ``code_sandbox_template`` (None -> LocalEnv; a template name -> an AgentEnv microVM).
     """
 
     def __init__(self, args: Optional[Any] = None, **kwargs):
@@ -280,10 +235,6 @@ class CodeExecutionReward(RewardPlugin):
         self.memory_limit_gb = getattr(args, 'code_memory_limit_gb', 2.0)
         self.sandbox_template = getattr(args, 'code_sandbox_template', None)
         _check_language(self.language)
-
-    # ------------------------------------------------------------------
-    # Env construction
-    # ------------------------------------------------------------------
 
     def _build_env(self) -> Any:
         """A throwaway execution env: ``LocalEnv`` by default, ``AgentEnv`` when a template is named.
@@ -310,33 +261,27 @@ class CodeExecutionReward(RewardPlugin):
         except Exception as exc:  # noqa: BLE001 -- teardown is best effort; the score is already computed
             logger.warning(f'code_execution reward: env close failed: {type(exc).__name__}: {exc}')
 
-    # ------------------------------------------------------------------
-    # Scoring
-    # ------------------------------------------------------------------
+    async def __call__(self, trajectories, **kwargs) -> List[float]:
+        """One score per trajectory: the fraction of its test cases the program passes.
 
-    async def __call__(self,
-                       completions: Sequence[str],
-                       test_cases: Optional[Sequence[Any]] = None,
-                       language: Optional[Any] = None,
-                       **kwargs) -> List[float]:
-        """One score per completion: the fraction of its test cases the program passes.
-
-        ``test_cases`` and ``language`` arrive as batched dataset columns (lists aligned with
-        ``completions``) or as scalars broadcast across the batch; ``language`` may be omitted to take
-        ``code_language`` from the config.
+        ``test_cases`` and ``language`` ride each trajectory row (the packed ``user_data`` label or
+        the flat column); ``language`` may be absent to take ``code_language`` from the config.
         """
-        if test_cases is None:
+        from twinkle.reward.base import ground_truth, last_assistant_text
+
+        completions = [last_assistant_text(t) for t in trajectories]
+        cases_raw = [ground_truth(t, 'test_cases') for t in trajectories]
+        if not any(case is not None for case in cases_raw):
             raise ValueError("the 'code_execution' reward scores code against test cases, but no "
                              "'test_cases' column was provided. Add one to the dataset as JSON "
                              '\'{"inputs": [...], "outputs": [...]}\' (stdin / expected stdout per case).')
-        n = len(completions)
-        cases_col = self._as_column(test_cases, n, 'test_cases', required=True)
-        lang_col = self._as_column(language, n, 'language', required=False, default=self.language)
+        n = len(trajectories)
+        lang_col = [ground_truth(t, 'language') or self.language for t in trajectories]
         for lang in set(lang_col):
             _check_language(lang)
 
         codes = [_extract_code(completion, lang) for completion, lang in zip(completions, lang_col)]
-        parsed = [_parse_test_cases(raw) for raw in cases_col]
+        parsed = [_parse_test_cases(raw) for raw in cases_raw]
 
         env = None
         executor = None
@@ -354,20 +299,6 @@ class CodeExecutionReward(RewardPlugin):
             if env is not None:
                 self._close_env(env)
         return list(scores)
-
-    @staticmethod
-    def _as_column(value: Any, n: int, name: str, *, required: bool, default: Any = None) -> List[Any]:
-        """A scalar (broadcast), a list (length-checked), or None -> the default / a loud failure."""
-        if value is None:
-            if required:
-                raise ValueError(f'code_execution reward: {name!r} is required but was not provided.')
-            return [default] * n
-        if isinstance(value, (list, tuple)):
-            if len(value) != n:
-                raise ValueError(f'code_execution reward: {name!r} has length {len(value)} '
-                                 f'but there are {n} completions.')
-            return list(value)
-        return [value] * n
 
     async def _score_one(self, loop: Any, executor: ThreadPoolExecutor, env: Any, code: str,
                          cases: List[Tuple[str, str]], language: str) -> float:

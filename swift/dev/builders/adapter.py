@@ -1,23 +1,7 @@
-"""Map a TunerConfig onto the peft adapter config the requested tuner needs.
-
-Every tuner here is peft-backed, so ``add_adapter_to_model`` receives a plain peft config and the
-model-side path is identical for all of them. What differs is only which config class is built and
-which TunerConfig fields feed it:
-
-  - lora        -> LoraConfig. Covers QLoRA (= 4bit base model, see QuantizeConfig, + plain LoRA),
-                   DoRA (use_dora) and rsLoRA (use_rslora), which are LoRA *flags*, not separate
-                   tuners -- there is deliberately no 'dora'/'rslora'/'qlora' tuner.
-  - trainable_tokens -> TrainableTokensConfig, for training only a few embedding rows standalone.
-                   Note LoRA can also carry trainable tokens via its own trainable_token_indices,
-                   so this type is only for the "no LoRA at all" case.
-
-LoRA+ is NOT a tuner: it changes the optimizer's param groups, not the module graph, so it has no peft
-config here. It is wired through the optimizer instead -- ``lorap_lr_ratio`` / ``lorap_emb_lr`` on
-TunerConfig feed :func:`swift.dev.builders.optimizer.build_param_groups_spec`.
-"""
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 if TYPE_CHECKING:
     from swift.dev.config import TunerConfig
@@ -27,22 +11,15 @@ if TYPE_CHECKING:
 # rather than being silently downgraded to LoRA.
 SUPPORTED_TUNER_TYPES = ('lora', 'trainable_tokens')
 
-#: The classification-head module names a HF ``*ForSequenceClassification`` model may use, added to
-#: ``modules_to_save`` for a seq_cls / reranker LoRA run so the freshly-initialized head is trained AND
-#: saved (otherwise the checkpoint reloads with a random head). Both are listed because the name is
-#: family-specific -- Qwen/LLaMA-style use ``score``, Bert/Deberta-style use ``classifier`` -- and it
-#: cannot be probed from the built model here: under Ray ``apply_tuner`` runs on the driver against a
-#: model PROXY with no modules, and the peft config (modules_to_save included) is serialized to the
-#: workers before ``add_adapter_to_model`` builds the adapter on the real model. peft matches
-#: modules_to_save by ``name.endswith(entry)`` and silently ignores an entry that matches nothing
-#: (_set_trainable, strict_module_check=False), so listing both is safe: the one the family actually
-#: has gets wrapped, the other is a no-op.
+#: The classification-head module names an HF ``*ForSequenceClassification`` model may use, added to
+#: ``modules_to_save`` for a seq_cls / reranker LoRA run so the fresh head is trained AND saved. Both are
+#: listed (family-specific: Qwen/LLaMA use ``score``, Bert/Deberta ``classifier``) because it cannot be
+#: probed here: under Ray this runs on the driver against a model PROXY, and peft matches by
+#: ``name.endswith(entry)`` with strict_module_check=False, so the miss is a safe no-op.
 _SEQ_CLS_HEAD_MODULES = ('score', 'classifier')
 #: task_types that ride a separate classification head needing the modules_to_save treatment above.
-#: generative_reranker is deliberately excluded -- it keeps the CausalLM vocab head (no new module),
-#: and the PPO value critic rides task_type='seq_cls' so it is covered by the same rule.
+#: generative_reranker keeps the CausalLM vocab head (no new module); the PPO value critic rides seq_cls.
 _HEAD_SAVING_TASK_TYPES = ('seq_cls', 'reranker')
-
 
 
 def _resolve_target_modules(cfg: TunerConfig):
@@ -69,18 +46,12 @@ def is_base_modifying_init(init_weights) -> bool:
 
 def _resolve_init_weights(cfg: TunerConfig):
     """swift spells it init_weights and accepts the strings 'true'/'false'; peft wants a bool there
-    and keeps the real strategy names ('gaussian'/'pissa'/'olora'/...) as-is.
-
-    NOTE: 'loftq' additionally needs a loftq_config, which TunerConfig does not model -- peft
-    raises in that case, same as the legacy swift path.
-    """
+    and keeps the real strategy names ('gaussian'/'pissa'/'olora'/...) as-is."""
     init_weights = cfg.init_weights
     if isinstance(init_weights, str) and init_weights.lower() in {'true', 'false'}:
         return init_weights.lower() == 'true'
-    # LoRA-GA initialises the adapter through a separate weight-init pass (legacy's get_lora_ga_model)
-    # driven by the lora_ga_* parameters -- all rejected as unsupported, and dev runs no such pass. peft
-    # would only raise a confusing 'unknown initialization' (hyphen spelling) or demand a lora_ga_config
-    # dev does not model (underscore spelling), so reject here with the actual reason instead.
+    # LoRA-GA needs the lora_ga_* parameters (rejected as unsupported) and a separate weight-init pass
+    # dev does not run; peft would only raise a confusing error, so reject here with the actual reason.
     if isinstance(init_weights, str) and init_weights.lower().replace('-', '_') == 'lora_ga':
         raise ValueError(
             "init_weights='lora-ga' (LoRA-GA) is not supported by dev: it needs the lora_ga_* parameters "
@@ -91,18 +62,11 @@ def _resolve_init_weights(cfg: TunerConfig):
 
 def _lora_common_kwargs(cfg: TunerConfig, task_type: Optional[str] = None) -> dict:
     """The LoraConfig kwargs shared by every supported tuner here."""
-    # A seq_cls / reranker run builds a fresh classification head on top of the base model. LoRA only
-    # wraps/trains target_modules, so without the head in modules_to_save it is neither trained nor
-    # saved -- the checkpoint reloads with a randomly-initialized head. Add the candidate head names
-    # (peft ignores the one this model family does not have). cfg.modules_to_save is copied, not
-    # mutated, so a reused TunerConfig keeps whatever the user set.
+    # A seq_cls / reranker run builds a fresh classification head; LoRA wraps target_modules only, so
+    # without the head in modules_to_save the checkpoint reloads with a random head. Copied, not mutated.
     modules_to_save = list(cfg.modules_to_save or [])
-    # The 'all-norm'/'all-embedding' shorthands ride through verbatim and are expanded worker-side against
-    # the real modules (twinkle's _patch_adapter -> _expand_modules_to_save / get_modules_to_save), because
-    # the driver's model under Ray is a PROXY with no modules to walk. transformers expands both; megatron
-    # expands 'all-embedding' and rejects 'all-norm' (mcore fuses norm into its linear layers, so there is
-    # no standalone norm module to save). peft would silently ignore an unexpanded shorthand, so leaving
-    # the resolution to the one place that can see the model is what keeps it from vanishing.
+    # The 'all-norm'/'all-embedding' shorthands ride through verbatim and are expanded worker-side
+    # (twinkle _expand_modules_to_save) against the real modules; megatron rejects 'all-norm'.
     if task_type in _HEAD_SAVING_TASK_TYPES:
         modules_to_save += [name for name in _SEQ_CLS_HEAD_MODULES if name not in modules_to_save]
     kwargs = dict(
@@ -116,8 +80,8 @@ def _lora_common_kwargs(cfg: TunerConfig, task_type: Optional[str] = None) -> di
         use_dora=cfg.use_dora,
         init_lora_weights=_resolve_init_weights(cfg),
     )
-    # Both are newer peft additions and both default to "unset"; only pass them when actually
-    # requested so an older peft (or a config that rejects them) is not handed an unknown kwarg.
+    # Newer peft additions that default to "unset"; only pass them when requested so an older peft
+    # is not handed an unknown kwarg.
     if cfg.target_parameters:
         # requires peft>=0.17.0
         kwargs['target_parameters'] = cfg.target_parameters
@@ -129,20 +93,13 @@ def _lora_common_kwargs(cfg: TunerConfig, task_type: Optional[str] = None) -> di
 def _build_adapter_config(cfg: TunerConfig,
                           *,
                           task_type: Optional[str] = None):
-    """Build the peft config for ``cfg.tuner``.
+    """Build the peft config for ``cfg.tuner``: lora -> LoraConfig (QLoRA/DoRA/rsLoRA are flags),
+    trainable_tokens -> TrainableTokensConfig; anything else raises.
 
-    peft's own ``task_type`` FIELD is intentionally NOT set: get_peft_model then returns a base
-    PeftModel that forwards straight to the wrapped model, matching every twinkle cookbook. Setting it
-    to 'CAUSAL_LM' yields PeftModelForCausalLM, whose forward reads base_model.config.model_type --
-    fine for a HF model, but the Megatron path's config is mcore's ModelConfig (only hf_model_type),
-    so it raises AttributeError under forward_backward. Omitting it keeps both backends on the same,
-    safe wrapper. The ``task_type`` ARGUMENT here is dev's task_type (seq_cls/reranker/...), used
-    only to decide whether the classification head must be added to modules_to_save -- unrelated to
-    the peft field.
-
-    Args:
-        cfg: the TunerConfig.
-        task_type: dev's task_type; seq_cls/reranker add the classification head to modules_to_save.
+    peft's own ``task_type`` FIELD is intentionally NOT set: get_peft_model then returns a base PeftModel
+    that forwards straight to the wrapped model, matching every twinkle cookbook -- the CAUSAL_LM wrapper
+    reads base_model.config.model_type, which the Megatron path's mcore ModelConfig lacks. The
+    ``task_type`` ARGUMENT is dev's (seq_cls/reranker/...), used only for the head-saving rule above.
     """
     tuner = cfg.tuner
 
@@ -152,12 +109,11 @@ def _build_adapter_config(cfg: TunerConfig,
 
     if tuner == 'trainable_tokens':
         from peft import TrainableTokensConfig
-        # Standalone TrainableTokens spells the indices token_indices (LoRA's own passthrough field
-        # is trainable_token_indices); it needs the embedding module as its target.
+        # Standalone TrainableTokens spells the indices token_indices (LoRA's passthrough field is
+        # trainable_token_indices); with no explicit target peft infers the input-embedding module.
         if not cfg.trainable_token_indices:
             raise ValueError('tuner="trainable_tokens" requires trainable_token_indices.')
         kwargs = {}
-        # Default to the standard HF embedding module name only when the user did not target one.
         if cfg.target_regex or cfg.target_modules != ['all-linear']:
             kwargs['target_modules'] = _resolve_target_modules(cfg)
         return TrainableTokensConfig(token_indices=cfg.trainable_token_indices, **kwargs)
@@ -183,3 +139,20 @@ def apply_tuner(model: TrainableModel,
         freeze_llm=tuner_cfg.freeze_llm,
         freeze_vit=tuner_cfg.freeze_vit,
         freeze_aligner=tuner_cfg.freeze_aligner)
+
+
+def configure_frozen_adapter(model: Any, template: Any, adapters: List[str], *, role: str) -> Any:
+    """Load one frozen adapter onto an auxiliary model and bind its processor/template group."""
+    from swift.dev.processor import InputProcessor
+
+    if len(adapters) > 1:
+        raise ValueError(f'{role}_adapters currently supports exactly one adapter per auxiliary model.')
+    if adapters:
+        adapter_name = f'{role}_adapter'
+        model.add_adapter_to_model(adapter_name, adapters[0], is_trainable=False)
+        model.set_processor(InputProcessor, adapter_name=adapter_name)
+        model.set_template(template, adapter_name=adapter_name)
+    else:
+        model.set_processor(InputProcessor)
+        model.set_template(template)
+    return model

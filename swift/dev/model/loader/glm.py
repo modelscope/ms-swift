@@ -1,27 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the GLM / GLM-4 / GLM-4V families, from ``swift/model/models/glm.py``.
-
-Only the transformers-native GLM-4-era models are migrated here. Legacy packed several chat formats
-into one ``model_type`` via per-``ModelGroup`` ``template`` overrides; dev has one ``template`` per
-loader, so each format becomes its own thin subclass with ``architectures=[]`` (a *template variant*
-that must never win reverse-lookup -- only the base family owns the HF class name). The invented
-variant ids follow the template name (matching the llama convention): ``glm4_z1_rumination``,
-``glm4_7``, ``glm5_1``, ``glm5_2``, ``glm4_5v``.
-
-Every legacy GLM-4V loader carried ``patch_get_input_embeddings(model.visual, 'patch_embed')``;
-PATCH_INVENTORY.md marks that obsolete, so it is dropped and the vision loaders are plain.
-
-Not migrated here (bucket C, see MODEL_MIGRATION.md): ``chatglm2``/``chatglm3`` + ``codegeex4``
-(same remote-code ``ChatGLMModel`` as ``chatglm4`` below, but pinned ``transformers<4.42`` -- dead on
-5.5), and ``cogvlm``/``cogagent_*``/``cogvlm2`` (remote-code, ``transformers<4.42``, borrowed vicuna
-tokenizer).
-"""
+# GLM-4-era families: per-Group templates become template variants; GLM-4V patches dropped.
 from __future__ import annotations
 
 from .base import ModelArch, ModelLoader, register_model
 
 
-# ------------------------------- text, dense -------------------------------
 @register_model
 class Glm4Loader(ModelLoader):
     model_type = 'glm4'
@@ -56,7 +39,6 @@ class GlmEdgeLoader(ModelLoader):
     models = ['ZhipuAI/glm-edge-1.5b-chat', 'ZhipuAI/glm-edge-4b-chat']
 
 
-# ------------------------------- text, MoE -------------------------------
 @register_model
 class Glm4MoeLoader(ModelLoader):
     model_type = 'glm4_moe'
@@ -133,7 +115,6 @@ class Glm5_2Loader(GlmMoeDsaLoader):
     models = ['ZhipuAI/GLM-5.2', 'ZhipuAI/GLM-5.2-FP8']
 
 
-# ------------------------------- vision -------------------------------
 @register_model
 class Glm4vLoader(ModelLoader):
     model_type = 'glm4v'
@@ -214,18 +195,11 @@ class GlmEdgeVLoader(ModelLoader):
 
 @register_model
 class CogVLM2VideoLoader(ModelLoader):
-    """CogVLM2-Video: remote-code ``CogVLMVideoForCausalLM`` (absent from transformers 5.5), loaded via
-    ``AutoModelForCausalLM`` + the ``trust_remote_code`` flag.
-
-    Legacy's ``CogVLM2Loader`` body is *entirely* obsolete on dev: it ran
-    ``patch_output_to_input_device`` over every vision MLP / post-attention layernorm and hand-moved the
-    ``boi``/``eoi`` parameters onto the projector's device -- all of it working around HF ``device_map``
-    sharding, which dev does not use (twinkle owns placement; see PATCH_INVENTORY.md). With those
-    dropped this becomes a plain declarative loader.
-
-    Only ``cogvlm2_video`` migrates: its ``transformers>=4.42`` is a floor, whereas the image-only
-    ``cogvlm``/``cogvlm2``/``cogagent_*`` siblings pin ``transformers<4.42`` (dead on 5.5).
-    """
+    """CogVLM2-Video: remote-code ``CogVLMVideoForCausalLM`` via ``AutoModelForCausalLM`` +
+    ``trust_remote_code``. Legacy's loader body was entirely HF ``device_map`` sharding work
+    (patch_output_to_input_device + hand-moved boi/eoi params), dropped per PATCH_INVENTORY. Only
+    ``cogvlm2_video`` migrates: its ``transformers>=4.42`` is a floor, whereas the image-only
+    siblings pin ``<4.42`` (dead on 5.5)."""
 
     model_type = 'cogvlm2_video'
     model_cls = 'transformers:AutoModelForCausalLM'
@@ -243,29 +217,16 @@ class CogVLM2VideoLoader(ModelLoader):
         return ModelArch(language_model='model.layers', vision_tower='model.vision')
 
 
-# ------------------------------- ChatGLM (remote-code) -------------------------------
+# ChatGLM (remote-code): the glm-4-9b era checkpoints.
 
 
 class _ChatGLMLoader(ModelLoader):
     """Shared base for the remote-code ``ChatGLMModel`` checkpoints (glm-4-9b era).
 
-    The one legacy behaviour worth keeping is the ``_pad`` signature fix: these checkpoints ship an
-    old tokenizer whose ``_pad`` predates transformers' ``padding_side`` argument, so a caller passing
-    ``padding_side=None`` (which transformers itself now does) raises ``TypeError``. The wrapper drops
-    that key only when the underlying ``_pad`` cannot accept it. It patches the tokenizer *class*
-    because that is where ``_pad`` lives, and is idempotent via the ``_origin_pad`` marker.
-
-    Dropped from legacy:
-      * the global ``CrossEntropyLoss.forward`` override that moved ``target`` onto the inputs' device
-        -- a cross-device workaround for HF ``device_map`` sharding, which dev does not use (twinkle
-        owns placement, so labels and logits already share a device). Patching a *torch* class
-        globally for one model family is exactly the kind of blast radius PATCH_INVENTORY rules out.
-      * ``quantization_config.llm_int8_skip_modules = ['output_layer']`` -- QLoRA is not wired through
-        dev's loader path (build_model never receives a quantization config).
-      * the dynamic-class tokenizer surgery (fetch the class from ``auto_map``, set ``_auto_class``,
-        ``remove_property``): the g7 ``trust_remote_code`` flag already routes ``AutoTokenizer``
-        through the checkpoint's ``auto_map``. Only re-add pieces of it if a specific checkpoint is
-        observed to fail.
+    Kept: the ``_pad`` signature fix (old tokenizers whose ``_pad`` predates ``padding_side`` raise
+    on ``padding_side=None``; the wrapper drops that key when ``_pad`` rejects it, patches the
+    tokenizer *class*, idempotent via ``_origin_pad``). Dropped: the CrossEntropyLoss device
+    override, llm_int8_skip_modules (QLoRA unwired), dynamic-class tokenizer surgery.
     """
 
     model_cls = 'transformers:AutoModelForCausalLM'
@@ -297,13 +258,10 @@ class _ChatGLMLoader(ModelLoader):
 
 @register_model
 class ChatGLM4Loader(_ChatGLMLoader):
-    """glm-4-9b (the pre-GLM-4-0414 remote-code line). Legacy's extra step: some of these checkpoints
-    list the chat control tokens in ``tokenizer.special_tokens`` but never register them, so
-    ``<|user|>`` tokenizes into several pieces -- detected and repaired by adding them.
-
-    Legacy split this family into two groups purely for bookkeeping (glm-4-9b* and LongWriter-glm4-9b);
-    both speak the ``chatglm4`` template, so they are one loader here.
-    """
+    """glm-4-9b (the pre-GLM-4-0414 remote-code line). Some of these checkpoints list the chat
+    control tokens in ``tokenizer.special_tokens`` but never register them, so ``<|user|>``
+    tokenizes into several pieces -- detected and repaired by adding them. Legacy split this family
+    into two bookkeeping groups; both speak the ``chatglm4`` template, so they are one loader."""
 
     model_type = 'chatglm4'
     template = 'chatglm4'
@@ -325,21 +283,11 @@ class ChatGLM4Loader(_ChatGLMLoader):
 
 @register_model
 class ChatGLM4VLoader(_ChatGLMLoader):
-    """glm-4v-9b / cogagent-9b: the vision half of the same remote-code ``ChatGLMModel`` class, hence a
-    declared ``architectures`` (a *task/modality* difference, not a template variant -- reverse-lookup
-    returns chatglm4 and chatglm4v together and the caller disambiguates by id).
-
-    ``build_processor`` keeps the ``image_size=1120`` default legacy wrote into ``init_kwargs``; the
-    checkpoint's own preprocessor config omits it and the template relies on it.
-
-    Legacy's ``get_model`` body was purely HF ``device_map`` work (``patch_output_to_input_device`` on
-    every vision MLP / layernorm once >=4 GPUs per process, plus hand-moving ``boi``/``eoi`` onto the
-    projector's device); obsolete on dev and dropped, same call as ``CogVLM2VideoLoader`` above.
-
-    Only the ``cogagent-9b-20241220`` group's ``transformers>=4.42`` is a plain floor; the
-    ``glm-4v-9b`` group additionally pins ``<4.45``, which is dead on 5.5 -- the id stays registered
-    (id matching still resolves it) but it will fail the version check, exactly as legacy would.
-    """
+    """glm-4v-9b / cogagent-9b: the vision half of the same remote-code ``ChatGLMModel`` class, hence
+    a declared ``architectures`` (a modality difference, not a template variant; the caller
+    disambiguates chatglm4 vs chatglm4v by id). ``build_processor`` keeps the ``image_size=1120``
+    default legacy wrote into ``init_kwargs`` (the checkpoint omits it; the template relies on it).
+    Legacy's ``get_model`` was pure HF ``device_map`` work, dropped."""
 
     model_type = 'chatglm4v'
     template = 'chatglm4v'

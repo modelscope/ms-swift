@@ -9,7 +9,7 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
 from swift.dev.utils import get_logger
-from twinkle.dataloader.random_state import derive_seed, isolated_random_state
+from twinkle.dataloader.random_state import derive_seed
 from .._diagnostics import note_row_error
 
 __all__ = ['MessagesRepairPreprocessor', 'Preprocessor']
@@ -20,29 +20,10 @@ logger = get_logger()
 class Preprocessor:
     """Run a row transform over a dataset, dropping rows it cannot convert.
 
-    :attr:`format_name` and :attr:`columns` are readable as class attributes, so a dataset declares
-    its quirks by subclassing rather than by registering a pre-built instance. That matters beyond
-    style: a loader's ``preprocessor`` is a class attribute shared by every load, and this object
-    carries per-load mutable state (the detected converter, the traceback counter), so a shared
-    instance would leak one load's state into the next -- which is exactly what legacy did by putting
-    ``preprocess_func=SomePreprocessor(...)`` in its declarations.
-
-    Args:
-        format_name: Pin a specific :class:`FormatConverter` instead of auto-detecting one. Only the
-            default converter-based :meth:`preprocess` reads it; a subclass that builds rows itself
-            ignores it.
-        columns: Column renames applied before format detection -- legacy's ``--columns`` -- for a
-            dataset whose field names no format would otherwise recognise. Merged over the class
-            attribute of the same name, and winning on conflict.
-        converter_kwargs: Passed to the converter's constructor, for a dataset whose dialogue column
-            spells things unusually enough to need configuring rather than renaming (``content_key``
-            when a message's text lives under ``'text'``, say). Merged over the class attribute.
-        strict: Re-raise on a bad row instead of dropping it. A default that a per-call argument
-            may override.
-        traceback_limit: How many dropped-row tracebacks to log before going quiet, so one broken
-            dataset cannot flood the logs.
-        seed: Seeds :attr:`random_state`, for the datasets that have to pick among several candidate
-            answers. Fixed by default so a run is reproducible.
+    ``format_name`` and ``columns`` are readable as class attributes, so a dataset declares its quirks
+    by subclassing rather than registering a pre-built instance: a loader's ``preprocessor`` is shared
+    by every load, while this object carries per-load mutable state (detected converter, traceback
+    counter) -- a shared instance, legacy's ``preprocess_func=SomePreprocessor(...)``, leaks across loads.
     """
 
     # Declarations, overridable per subclass; see the constructor for the per-instance forms.
@@ -50,20 +31,14 @@ class Preprocessor:
     columns: Dict[str, str] = {}
     converter_kwargs: Dict[str, Any] = {}
 
-    # Columns whose Arrow type must be pinned rather than inferred. Inference only looks at the rows
-    # in hand, so two shards of one dataset -- or two datasets about to be concatenated -- can end up
-    # with types that will not align. Measured on datasets 4.7.0, all three groups below fail:
-    # `messages` with `loss_scale` in one part and without in the other; `images` whose `bytes` is
-    # all-None in one part and real bytes in the other; `objects` with an integer `bbox` in one part
-    # and float in the other. The failure surfaces at concatenation, i.e. far from its cause.
+    # Columns whose Arrow type must be pinned rather than inferred: inference sees only the rows in
+    # hand, so two shards of one dataset can infer types that only fail to align at concatenation.
     MESSAGE_COLUMNS = ('messages', 'rejected_messages', 'positive_messages', 'negative_messages')
-    # Media stored as {bytes, path} structs -- cast_mm_data normalises images to this shape, and a shard
-    # whose `bytes` is all-None infers a different type than one with real bytes, so the type is pinned.
+    # Media as {bytes, path} structs, the shape cast_mm_data normalises images to: an all-None-bytes
+    # shard infers a different type than one with real bytes.
     MEDIA_COLUMNS = ('images', 'rejected_images')
-    # Media stored as plain path-string lists -- cast_mm_data leaves videos/audios as [str]. Pinned too so
-    # an all-None shard cannot infer a null element type and misalign at concatenation. No rejected_*
-    # variant: the preference schema carries rejected_images only (cast_mm_data handles exactly these four
-    # keys), so there is no rejected_videos/rejected_audios column to pin.
+    # Videos/audios stay plain path-string lists; pinned for the same reason. No rejected_* variant:
+    # the preference schema carries rejected_images only (the four keys cast_mm_data handles).
     MEDIA_PATH_COLUMNS = ('videos', 'audios')
     FREEFORM_COLUMNS = ('objects', 'chat_template_kwargs')
 
@@ -75,6 +50,12 @@ class Preprocessor:
                  strict: bool = False,
                  traceback_limit: int = 10,
                  seed: int = 42) -> None:
+        """Build one transform; ``format_name``/``columns``/``converter_kwargs`` merge over the class
+        attributes and win on conflict, and respectively pin a converter, rename columns before
+        detection (legacy ``--columns``) and reach the converter's constructor. ``strict`` re-raises
+        on a bad row; ``traceback_limit`` bounds dropped-row tracebacks; ``seed`` seeds
+        :attr:`random_state` so picks among candidate answers are reproducible.
+        """
         self.format_name = format_name or type(self).format_name
         self.columns = {**type(self).columns, **(columns or {})}
         self.converter_kwargs = {**type(self).converter_kwargs, **(converter_kwargs or {})}
@@ -82,8 +63,8 @@ class Preprocessor:
         self.traceback_limit = traceback_limit
         self.seed = int(seed)
         self.random_state = np.random.RandomState(self.seed)
-        # Filled in on the first row (lazily, so a subclass that overrides `preprocess` and needs no
-        # converter never triggers detection) and per worker process under `num_proc > 1`.
+        # Filled in on the first row, so a subclass overriding `preprocess` never triggers detection;
+        # per worker process under `num_proc > 1`.
         self._converter = None
         self._feature_columns: List[str] = []
         self._traceback_counter = 0
@@ -92,9 +73,9 @@ class Preprocessor:
     def converter(self):
         """The :class:`FormatConverter` for this dataset, built on first use.
 
-        Lazy on purpose: a subclass that builds standard rows itself never pays for detection, and
-        under ``num_proc > 1`` each worker builds its own instead of one being shipped across the
-        process boundary.
+        Lazy so a subclass that builds standard rows itself never pays for detection, and under
+        ``num_proc > 1`` each worker builds its own rather than shipping one across the process
+        boundary.
         """
         if self._converter is None:
             from ..format_converter import get_converter
@@ -106,41 +87,25 @@ class Preprocessor:
                 **self.converter_kwargs)
         return self._converter
 
-    # -- row transform (override point) ----------------------------------------------------------
-
     def preprocess(self, row: Dict[str, Any]) -> Optional[Union[Dict[str, Any], List[Dict[str, Any]]]]:
-        """Convert one raw row to a standard row (or ``None`` to drop it, or a list to fan out).
+        """Convert one raw row to a standard row (``None`` drops it, a list fans out).
 
-        The row arrives exactly as the dataset stores it: no renaming has happened yet, because
-        :attr:`columns` and the format's own aliases are both applied inside the converter, below.
-        Subclasses therefore see raw field names -- a simple contract, but the opposite of legacy,
-        which renamed columns dataset-wide *before* calling its ``preprocess``.
-
-        Subclasses either tweak ``row`` and call ``super().preprocess(row)``, or build the standard
-        row themselves and never involve a converter. A subclass that needs to *read* a standard
-        field before conversion calls :meth:`standardise` first.
+        The row arrives exactly as the dataset stores it -- renaming happens inside the converter,
+        the opposite of legacy's dataset-wide pre-rename. Subclasses tweak ``row`` and call ``super()``
+        or build the standard row themselves; to *read* a standard field first call
+        :meth:`standardise`.
         """
         return self.converter.convert(row)
 
     def standardise(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        """A copy of ``row`` with aliased column names replaced by their standard ones.
+        """A copy of ``row`` with aliased column names replaced by standard ones, via the converter's
+        own alias table -- by construction the rename conversion itself will do.
 
-        Legacy renamed the whole dataset up front, so its ``preprocess`` bodies were written against
-        standard names (``row['query']``) and never had to know what the dataset actually called the
-        column. Dev hands ``preprocess`` the raw row instead; calling this first reproduces legacy's
-        view. It reuses the converter's own alias table rather than a second copy, so the rename is
-        by construction the same one conversion will do.
-
-        One trap, and the reason legacy's single up-front rename differed: conversion applies the
-        aliases *again*. Re-reading an already standard row is harmless, since a standard name present
-        is never overwritten -- but putting an **aliased** name back on the row afterwards is not. A
-        row given a fresh ``target`` column after standardising gets it promoted to ``response`` by
-        that second pass, inventing an assistant turn. Set such columns on the row conversion
-        *returns* instead.
+        The trap: conversion applies the aliases *again*. A standard name present is never overwritten,
+        but a fresh **aliased** name put back afterwards is promoted -- ``target`` becomes ``response``,
+        inventing an assistant turn. Set such columns on the row conversion *returns*.
         """
         return self.converter.apply_aliases(row)
-
-    # -- dataset-level orchestration -------------------------------------------------------------
 
     def __call__(self,
                  dataset,
@@ -178,30 +143,23 @@ class Preprocessor:
         return mapped
 
     def prepare_dataset(self, dataset):
-        """Hook for work that has to happen once for the whole dataset, before any row is seen.
+        """Hook for work that must happen once per dataset, before any row is seen.
 
-        Fetching the media archive a multimodal dataset's rows only reference by relative path belongs
-        here: it is one download for the dataset, and the local path it returns is what
-        :meth:`preprocess` needs to turn those references into usable file paths. Whatever the hook
-        stores on ``self`` reaches the workers of a ``num_proc > 1`` run, since the instance is
-        pickled after this point.
-
-        Returning the dataset (rather than mutating it) lets the hook narrow it too, which is worth it
-        when the media for most rows is missing: dropping them here beats carrying them through
-        conversion only to discard them.
+        Fetching the media archive that rows only reference by relative path belongs here, and
+        whatever it stores on ``self`` reaches the workers of a ``num_proc > 1`` run, the instance
+        being pickled after this point. Returning the dataset (rather than mutating it) lets the hook
+        narrow it too.
         """
         return dataset
 
     @contextmanager
     def pin_features(self):
-        """Pin the Arrow type of the unstable columns for the duration of one ``map``.
+        """Pin the Arrow type of the unstable columns for one ``map``, by overriding the features the
+        writer is constructed with -- a single write pass, versus rereading and rewriting the whole
+        table to cast afterwards.
 
-        Done by overriding the features the writer is constructed with, which keeps it to the single
-        write pass -- casting the columns afterwards would mean reading and rewriting the whole table.
-
-        Versus legacy's ``_patch_arrow_writer``: only columns the output **actually has** are pinned.
-        Legacy assigned all of them unconditionally, so every dataset -- a plain text one included --
-        gained an all-null ``images``, ``objects`` and ``rejected_messages`` column it had no use for.
+        Unlike legacy's ``_patch_arrow_writer``, only columns the output actually has are pinned:
+        legacy assigned all of them, giving every dataset all-null ``images``/``objects`` columns.
         """
         from datasets import Value
         from datasets.arrow_writer import ArrowWriter
@@ -244,10 +202,8 @@ class Preprocessor:
         rows = self.batched_to_rows(batch)
         for row, index in zip(rows, indices):
             try:
-                row_seed = derive_seed(self.seed, int(index))
-                self.random_state.seed(row_seed % 2**32)
-                with isolated_random_state(self.seed, int(index)):
-                    out = self.preprocess(row)
+                self.random_state.seed(derive_seed(self.seed, int(index)) % 2**32)
+                out = self.preprocess(row)
                 out = [] if out is None else ([out] if isinstance(out, dict) else out)
                 for standard_row in out:
                     self.check_messages(standard_row)
@@ -260,22 +216,18 @@ class Preprocessor:
                     raise
                 from swift.template import MaxLengthError
                 if isinstance(e, MaxLengthError):
-                    # Not a malformed row -- it encoded fine, it just does not fit. Dropping it is the
-                    # intended outcome, so it neither warrants a traceback nor should it spend the
-                    # traceback budget that real data errors need.
+                    # It encoded fine, it just does not fit: dropping it is the intended outcome, so
+                    # it spends no traceback budget that real data errors need.
                     continue
                 note_row_error(self, '👆 There are errors in the dataset. This row will be dropped.')
         return self.rows_to_batched(new_rows)
-
-    # -- helpers ---------------------------------------------------------------------------------
 
     @staticmethod
     def serialised(key: str = 'dataset_preprocess'):
         """Let one rank run the pass and write its cache first, then the rest read it.
 
         Not ``sticky``: the same key is used once per dataset per run, so each round needs its own
-        ordering rather than being satisfied by a flag an earlier round left set. See
-        :meth:`DatasetLoader.serialised` for why this is not ``safe_ddp_context``.
+        ordering. See :meth:`DatasetLoader.serialised` for why this is not ``safe_ddp_context``.
         """
         from twinkle.utils import processing_lock
         return processing_lock(key)
@@ -284,11 +236,9 @@ class Preprocessor:
     def map_cache_path(dataset) -> str:
         """Where to cache the ``map`` of a dataset that has no cache files of its own.
 
-        A dataset read from the hub keeps its Arrow files on disk, so ``map`` caches its result beside
-        them and a second run reuses it. One built in memory (a ``from_list``, a synthesised split) has
-        nowhere to put that, so its result is written to a temporary file and recomputed on every
-        launch -- expensive for exactly the datasets a user iterates on. Keyed by the fingerprint
-        ``datasets`` already computes, which covers both the rows and the transform.
+        A hub dataset keeps its Arrow files on disk, so ``map`` caches beside them; one built in
+        memory has nowhere to put that, so the result is keyed by the fingerprint ``datasets``
+        already computes (rows + transform) and reused on a second launch.
         """
         from modelscope.hub.utils.utils import get_cache_dir
         directory = os.path.join(get_cache_dir(), 'datasets', 'map_cache')
@@ -314,9 +264,9 @@ class Preprocessor:
     def rows_to_batched(rows: List[Dict[str, Any]]) -> Dict[str, List[Any]]:
         """Rows back to a column-major batch, unioning keys and padding absent ones with ``None``.
 
-        Rows from one dataset can carry different keys (one turn has images, the next does not), so
-        the column set is the union and every missing cell becomes ``None`` to keep columns aligned.
-        An empty result is returned as an empty ``messages`` column, i.e. zero rows.
+        Rows can carry different keys (one turn has images, the next does not), so the column set is
+        the union and missing cells become ``None``; an empty result is zero rows via an empty
+        ``messages`` column.
         """
         if not rows:
             return {'messages': []}
@@ -331,8 +281,8 @@ class Preprocessor:
     def pop_first(row: Dict[str, Any], *keys: str) -> Any:
         """Pop the first of ``keys`` the row actually has, or ``None``.
 
-        For a field a dataset spells inconsistently (``content`` here, ``text`` there) that a
-        subclass must consume itself rather than leave to the converter's aliases.
+        For a field a dataset spells inconsistently that a subclass must consume itself, rather than
+        leave to the converter's aliases.
         """
         for key in keys:
             if key in row:
@@ -358,14 +308,9 @@ class Preprocessor:
     def check_objects(row: Dict[str, Any]) -> None:
         """Validate and normalise the bounding boxes of a grounding row's ``objects``.
 
-        Two ways a box can be wrong that nothing downstream would report. A box of the wrong length:
-        the template walks it as ``zip(bbox[::2], bbox[1::2])``, so a 3-number box yields silently
-        wrong coordinates rather than an error. And a box whose corners arrive swapped (``x1 > x2``),
-        which still looks like a box and normalises into a negative-area region.
-
-        Legacy's ``_check_objects`` did this too, alongside pinning the key order of ``objects`` --
-        which dev has no need for, the column being pinned as ``Json()`` and so tolerating rows whose
-        keys differ in order or in presence.
+        A box of the wrong length walks ``zip(bbox[::2], bbox[1::2])`` into silently wrong
+        coordinates, and swapped corners (``x1 > x2``) normalise into a negative-area region. Legacy
+        also pinned the key order of ``objects``, unneeded now the column is pinned as ``Json()``.
         """
         objects = row.get('objects')
         if not objects:
@@ -398,25 +343,18 @@ class Preprocessor:
 
 
 class MessagesRepairPreprocessor(Preprocessor):
-    """A dialogue dataset whose ``messages`` column has to be fixed before it can be converted.
+    """A dialogue dataset whose ``messages`` column must be fixed before it can be converted.
 
-    Two recurring problems, both needing the dialogue in hand before conversion starts: the column is
-    a string that is only *almost* a Python literal (a dump that lost its commas), and rows that turn
-    out to be unusable once the dialogue is read (a leaked system prompt, too few distinct tools).
-
-    Legacy passed these in as a ``repair_messages=`` callable on ``MessagesPreprocessor``, which meant
-    the repair for a dataset sat in the argument list of its declaration. Here it is an override
-    point, so each repair is a named method on the loader's own preprocessor.
+    Legacy passed a ``repair_messages=`` callable on ``MessagesPreprocessor``, putting each repair in
+    an argument list; here it is an override point -- a named method on the loader's own preprocessor.
     """
 
     def repair(self, messages: Any) -> Optional[Any]:
         """Return the repaired dialogue, or ``None`` / empty to drop the row.
 
-        The value arrives exactly as the column holds it, *unparsed*: repairing a string that is not
-        yet a valid literal is the main reason this hook exists, so parsing first would destroy the
-        very input it needs. The base parses whatever comes back, so a repair that only patches string
-        damage need not parse; one that inspects turns calls :meth:`FormatConverter.parse_literal`
-        itself, exactly as legacy's repair callables did.
+        The value arrives unparsed: repairing an almost-literal string is the point, so parsing first
+        would destroy the input. The base parses whatever comes back; a repair that inspects turns
+        calls :meth:`FormatConverter.parse_literal` itself, exactly as legacy's repair callables did.
         """
         raise NotImplementedError
 

@@ -1,67 +1,38 @@
-"""Rejection-sampling fine-tuning (RFT / RAFT / ReST) assembly: run_rft orchestration.
-
-Peer of ``run_grpo`` for RFT. Where GRPO turns rewards into group-relative advantages and takes a
-policy-gradient step, RFT uses the SAME rollout+reward machinery for a simpler purpose: sample N
-completions per prompt from the current policy, score them, KEEP only the good ones (best-of-N, a reward
-threshold, or top-K), and run plain cross-entropy SFT on the kept set. Repeating this over
-``rft_iterations`` rounds -- each round re-sampling from the just-improved policy -- is the
-rejection-sampling loop (RAFT/ReST): the policy bootstraps toward its own high-reward outputs with no
-advantage estimator, no reference model, and no importance ratio.
-
-What it reuses
---------------
-Rollout, weight sync and reward are the shared online-RL machinery: the flat run body blocks on one
-whole-prompt-set rollout per round through :func:`~swift.dev.rollout.blocking_generate` (which pushes the
-trained policy into the sampler before each rollout, so the behaviour policy tracks the trained one),
-scores it through the shared :mod:`~swift.dev.recipe.common.scoring` outcome-reward chokepoint
-(``score_samples`` / ``weighted_rewards`` / ``accumulate_reward_metric``), and hands the scored samples to
-:class:`~swift.dev.recipe.rft.selector.RFTSelector` (select-then-SFT) instead of an advantage/policy-gradient step.
-Device placement, sampler construction, the dataset prompt loader and reward-model scorers are imported
-from ``run_grpo`` (the shared online-RL rollout primitives). The loss is SFT's ``cross_entropy``
-(``configure_loss``), NOT an RL loss -- RFT has no entry in ``_RL_LOSS_NAME`` on purpose.
-
-Placement, backend and Ray requirements are therefore identical to ``run_grpo`` (Ray-only, vLLM sampler,
-heterogeneous or colocate device groups).
-"""
+# Copyright (c) ModelScope Contributors. All rights reserved.
+# RFT's visible training main: five segments, then the blocking rejection-sampling round loop.
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from swift.dev.recipe.common.scoring import copy_inputs, score_samples, split_mini_batches, weighted_rewards
-from swift.dev.recipe.common.checkpoint import CheckpointSaver
-from swift.dev.recipe.rft.selector import RFTSelector, _rft_log_line
-from swift.dev.recipe.rl.auxiliary import plan_rl_device_groups, reward_group, spec_world_size
-from swift.dev.recipe.rl.prompts import prompt_rows_from_dataset
-from swift.dev.recipe.rl.rewards import build_reward_scorers, split_reward_channel
-from swift.dev.recipe.rl.sampler import (
-    RolloutSamplerSpec,
-    SyncableRollout,
-    initialize_twinkle_rl,
-    rollout_sampling_params,
-)
-from swift.dev.recipe.common.step_runner import StepRunner
-from swift.dev.rollout import blocking_generate
+import json
+import os
+from typing import TYPE_CHECKING, Any, List, Optional
+
 from swift.dev.utils.logger import get_logger
+
+from swift.dev.recipe.rft.assembly import initialize_rft_cluster, rft_group_requests
+from swift.dev.recipe.utils import (
+    StepState, build_save_knobs, initialize_rl_devices, prompt_rows_from_dataset,
+    resolve_rollout_max_steps, resume_training, rollout_step_budget, save_training_step,
+    snapshot_initial_adapter)
 
 if TYPE_CHECKING:
     from swift.dev.config import (
-        CheckpointConfig,
-        DatasetConfig,
-        DistributedConfig,
-        GenerationConfig,
-        LoggingConfig,
-        MegatronConfig,
-        ModelConfig,
-        MoEConfig,
-        QuantizeConfig,
-        RLConfig,
-        RewardConfig,
-        RolloutConfig,
-        TemplateConfig,
-        TrainConfig,
-        TunerConfig,
-    )
+        CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig, LoggingConfig, MegatronConfig,
+        ModelConfig, MoEConfig, QuantizeConfig, RLConfig, RewardConfig, RolloutConfig, TemplateConfig,
+        TrainConfig, TunerConfig)
 
 logger = get_logger()
+
+
+def _rft_log_line(record: dict, loss: float) -> str:
+    """Console head signal for RFT: loss plus this round's mean total reward when one was computed.
+
+    The reward is what actually shows rejection sampling working -- the SFT loss on the kept
+    completions starts near its floor and stays flat -- so the step line leads with ``reward`` when
+    the round produced one.
+    """
+    reward = record.get('train/total_reward')
+    reward_str = f'  reward={reward:.4f}' if reward is not None else ''
+    return f'step {record.get("step")}  loss={loss:.4f}{reward_str}'
 
 
 class RFTState:
@@ -86,12 +57,12 @@ class RFTState:
 
 
 def _rft_kept_per_prompt(rl_config: 'RLConfig', num_samples: int) -> int:
-    """Upper bound on completions RFT keeps PER PROMPT -- the step budget's effective ``num_generations``.
+    """Upper bound on completions RFT keeps PER PROMPT -- the budget's effective ``num_generations``.
 
-    Mirrors :meth:`RFTSelector._select_keep`'s per-mode count from config alone (no rewards exist yet, since the
-    budget is sized before any rollout): ``best_of_n`` keeps exactly 1, ``top_k`` keeps ``min(rft_top_k, N)``,
-    and ``threshold`` can keep all N (the only reward-dependent mode, so its budget is the all-clear upper
-    bound). ``rft_max_samples_per_prompt`` caps every mode. MUST stay in sync with ``_select_keep``.
+    Mirrors :meth:`RFTSelector._select_keep` from config alone (no rewards exist yet, since the
+    budget is sized before any rollout): ``best_of_n`` keeps 1, ``top_k`` keeps ``min(rft_top_k, N)``,
+    ``threshold`` can keep all N (the reward-dependent mode, so its budget is the all-clear bound).
+    ``rft_max_samples_per_prompt`` caps every mode; MUST stay in sync with ``_select_keep``.
     """
     select = rl_config.rft_select
     if select == 'best_of_n':
@@ -106,261 +77,316 @@ def _rft_kept_per_prompt(rl_config: 'RLConfig', num_samples: int) -> int:
     return max(1, kept)
 
 
-def run_rft(
-    model_config: ModelConfig,
-    template_config: TemplateConfig,
-    dataset_config: DatasetConfig,
-    train_config: TrainConfig,
-    distributed_config: DistributedConfig,
-    checkpoint_config: CheckpointConfig,
-    rollout_config: RolloutConfig,
-    rl_config: RLConfig,
-    reward_config: Optional['RewardConfig'] = None,
-    tuner_config: Optional[TunerConfig] = None,
-    generation_config: Optional[GenerationConfig] = None,
-    logging_config: Optional[LoggingConfig] = None,
-    quantize_config: Optional[QuantizeConfig] = None,
-    megatron_config: Optional[MegatronConfig] = None,
-    moe_config: Optional[MoEConfig] = None,
-    *,
-    engine_args: Optional[Dict[str, Any]] = None,
-    output_dir: str = 'output',
-    _save_final: bool = True,
-) -> List[dict]:
-    """Assemble and run rejection-sampling fine-tuning with weight sync. Returns the loss history.
+class RFTSelector:
+    """The rejection-sampling selector + reward-metric holder RFT's round loop drives.
 
-    Mirrors :func:`run_grpo`'s assembly (train/sampler device groups, weight-syncable ``SyncableRollout``,
-    reward scorers) but sets the SFT ``cross_entropy`` loss instead of an RL loss, and drives
-    :class:`~swift.dev.recipe.rft.selector.RFTSelector` (select-then-SFT) in a blocking round loop instead of a
-    streaming driver.
+    ``num_generations`` is the per-prompt sample count N (``rft_num_samples`` or
+    ``num_generations``): every block of N samples is one prompt's generation set, and the filter
+    runs per block. The selector owns the ``CompletionRewardMetric`` the loop feeds once per round;
+    ``step_telemetry`` folds it into every step record (``StepState``'s ``extra_metrics_fn``).
     """
-    from swift.dev.builders import build_sampler
-    from swift.dev.loss import configure_loss
-    from swift.dev.builders.optimizer import configure_optimizer, resolve_max_grad_norm
-    from swift.dev.recipe.common.assembly import TrainAssembly
 
-    if rl_config.rl_type != 'rft':
-        raise ValueError(f'run_rft requires rl_type="rft", got {rl_config.rl_type!r}.')
-    assembly = TrainAssembly(
-        'run_rft',
-        model_config,
-        template_config,
-        dataset_config,
-        train_config,
-        distributed_config,
-        checkpoint_config,
-        tuner_config,
-        rl_config=rl_config,
-        reward_config=reward_config,
-        rollout_config=rollout_config,
-        output_dir=output_dir,
-        logging_config=logging_config,
-        quantize_config=quantize_config,
-        megatron_config=megatron_config,
-        moe_config=moe_config)
-    assembly.prepare()
+    def __init__(self, *, num_generations: int, rft_select: str = 'best_of_n',
+                 rft_threshold: float = 0.0, rft_top_k: int = 1,
+                 rft_max_samples_per_prompt: Optional[int] = None,
+                 reward_scorer_names: Optional[List[str]] = None,
+                 reward_weights: Optional[List[float]] = None):
+        if rft_select not in ('best_of_n', 'threshold', 'top_k'):
+            raise ValueError(f"rft_select must be one of 'best_of_n'/'threshold'/'top_k', got {rft_select!r}.")
+        if rft_max_samples_per_prompt is not None and rft_max_samples_per_prompt < 1:
+            raise ValueError(f'rft_max_samples_per_prompt must be >= 1 or None, got {rft_max_samples_per_prompt}.')
+        self.num_generations = num_generations
+        self.rft_select = rft_select
+        self.rft_threshold = rft_threshold
+        self.rft_top_k = max(1, rft_top_k)
+        self.rft_max_samples_per_prompt = rft_max_samples_per_prompt
+        #: The outcome-channel roster (the ``--orm`` channel's rule + model labels), for the metric's
+        #: per-scorer columns; an empty roster reports only the weighted ``total``.
+        self.reward_scorer_names = list(reward_scorer_names or [])
+        self.reward_weights = reward_weights
+        #: The round reward metric, fed once per round and read back by :meth:`step_telemetry`.
+        self._reward_metric = None
 
+    def accumulate_metric(self, samples: List[Any], rewards_per_func: Any) -> None:
+        """Feed one round's WHOLE generated rollout into the reward metric (reset-then-accumulate).
+
+        Called before rejection so the logged reward tracks the policy's improving sample quality --
+        filtering first would make the metric read only the kept winners and hide the trend.
+        """
+        from swift.dev.utils.scoring import accumulate_reward_metric
+        from twinkle.metric import CompletionRewardMetric
+
+        if self._reward_metric is None:
+            self._reward_metric = CompletionRewardMetric()
+        accumulate_reward_metric(self._reward_metric, samples, rewards_per_func,
+                                 scorer_names=self.reward_scorer_names, reward_weights=self.reward_weights)
+
+    def step_telemetry(self) -> dict:
+        """The per-optimizer-step metric fold read by the loop's ``StepState``.
+
+        Every step of one round reports the same round-level reward (RFT re-samples only between
+        rounds, so the reward is naturally one value per round); ``calculate`` is non-resetting and
+        returns an empty mapping when nothing was accumulated.
+        """
+        if self._reward_metric is None:
+            return {}
+        return dict(self._reward_metric.calculate())
+
+    def _select_keep(self, group_rewards: List[float]) -> List[int]:
+        """Local indices (into one prompt's N samples) to keep, ordered best-first."""
+        order = sorted(range(len(group_rewards)), key=lambda i: group_rewards[i], reverse=True)
+        if self.rft_select == 'best_of_n':
+            keep = order[:1]
+        elif self.rft_select == 'top_k':
+            keep = order[:self.rft_top_k]
+        else:  # threshold: keep every sample at/above the threshold, best-first.
+            keep = [i for i in order if group_rewards[i] >= self.rft_threshold]
+        if self.rft_max_samples_per_prompt is not None:
+            keep = keep[:self.rft_max_samples_per_prompt]
+        return keep
+
+    def select(self, samples: List[Any], rewards: List[float]) -> List[Any]:
+        """Apply the rejection filter across every prompt group, returning the kept samples.
+
+        The kept completions train with plain cross-entropy, so only the sample list is consumed
+        downstream -- no advantage / log-prob columns exist in RFT.
+        """
+        n = self.num_generations
+        if len(samples) % n != 0:
+            raise RuntimeError(f'{len(samples)} samples is not a multiple of num_generations={n}; '
+                               'group-wise rejection sampling is impossible.')
+        selected: List[Any] = []
+        for start in range(0, len(samples), n):
+            group = samples[start:start + n]
+            group_rewards = rewards[start:start + n]
+            for local in self._select_keep(group_rewards):
+                selected.append(group[local])
+        return selected
+
+
+def _resume_round(checkpoint_config: 'CheckpointConfig', rft_state: RFTState) -> int:
+    """Seed the round counter from the checkpoint's ``component_states['rft']`` (0 when absent).
+
+    The model-side restore already ran (:func:`resume_training`); a weights-only checkpoint carries
+    no trainer_state.json, which means a fresh round 0 -- the same fresh-run reading the model side
+    took. ``rft_state`` is updated in place; the return is the seeded ``next_round``.
+    """
+    path = checkpoint_config.resume_from_checkpoint
+    trainer_state_path = os.path.join(path, 'trainer_state.json')
+    if not os.path.isfile(trainer_state_path):
+        return rft_state.next_round
+    with open(trainer_state_path) as f:
+        component_states = json.load(f).get('component_states', {})
+    if 'rft' in component_states:
+        rft_state.load_state(component_states['rft'])
+    return rft_state.next_round
+
+
+def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+            dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
+            distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
+            rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
+            reward_config: Optional['RewardConfig'] = None, tuner_config: Optional['TunerConfig'] = None,
+            generation_config: Optional['GenerationConfig'] = None,
+            logging_config: Optional['LoggingConfig'] = None,
+            quantize_config: Optional['QuantizeConfig'] = None,
+            megatron_config: Optional['MegatronConfig'] = None,
+            moe_config: Optional['MoEConfig'] = None, *, output_dir: str = 'output',
+            _save_final: bool = True) -> List[dict]:
+    """RFT's five-segment main: prompts -> devices -> cluster -> loop scaffolding -> the round loop.
+
+    A synchronous multi-round rejection-sampling loop, no driver: each of ``rft_iterations`` rounds
+    pushes the just-trained policy into the sampler, blocking-generates over the WHOLE prompt set,
+    scores, selects the kept completions (:class:`RFTSelector`) and SFTs them. Checkpoints commit at
+    round boundaries only (the round component rides along), so a resume replays whole rounds.
+    """
+    # segment 1: prompts (the resource estimator reads the prompt lengths off the raw rows).
+    prompt_rows, prompts, prompt_extras = prompt_rows_from_dataset(dataset_config)
+    # segment 2: devices (configs + template + twinkle + perf; an estimate rewrites the parallel sizes).
+    template, resource_plan, _ = initialize_rl_devices(
+        model_config=model_config, template_config=template_config, dataset_config=dataset_config,
+        train_config=train_config, distributed_config=distributed_config,
+        checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
+        reward_config=reward_config, tuner_config=tuner_config, logging_config=logging_config,
+        quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config,
+        output_dir=output_dir, prompt_rows=prompt_rows,
+        group_requests=(lambda: rft_group_requests(reward_config)))
     num_samples = rl_config.rft_num_samples or rl_config.num_generations
     if num_samples < 1:
         raise ValueError(f'RFT needs at least one sampled completion per prompt, got {num_samples}.')
-
-    backend = RolloutSamplerSpec.backend(rollout_config)
-    sampler_world_size = RolloutSamplerSpec.world_size(rollout_config, backend)
-    # Each frozen reward MODEL in the --orm channel is a full-parameter seq_cls scorer on its own
-    # DeviceGroup (RL_PLAN §3.5); the names/world sizes must match what build_reward_scorers builds below
-    # (both sides split the channel with split_reward_channel). RFT has no reference or teacher (it is
-    # cross-entropy SFT on filtered completions), so reward models are its only auxiliary.
-    reward_world_size = spec_world_size(reward_config.orm_parallel_spec)
-    auxiliary_groups: List[Tuple[str, int]] = [
-        (reward_group(i), reward_world_size) for i in range(len(split_reward_channel(reward_config.orm)[1]))]
-    groups, sampler_remote_group, colocate = plan_rl_device_groups(
-        distributed_config.nproc_per_node,
-        rollout_config.sampler_mode,
-        sampler_world_size,
-        auxiliary_groups=auxiliary_groups)
-    initialize_twinkle_rl(
-        distributed_config,
-        groups,
-        seed=train_config.seed,
-        full_determinism=train_config.full_determinism,
-        tf32=train_config.tf32,
-        sequence_parallel_size=template_config.sequence_parallel_size)
-
-    assembly.build_template()
-    # Ulysses SP mesh (None unless sequence_parallel_size>1): planned before build_model so the trainable
-    # policy is placed on the dp x ulysses mesh, the same one initialize_twinkle_rl installed globally for
-    # the colocated sampler and the one the train_batch_size formula below reads. RFT is single-model
-    # SFT-style (no critic), so its policy mesh and batch width agree exactly as GRPO's do.
-    assembly.plan_sp_mesh()
-    assembly.build_model()
-    # RFT trains with plain cross-entropy SFT on the filtered completions -- NOT an RL loss.
-    configure_loss(assembly.model, loss_type='cross_entropy', reduction='sum')
-    # Prompts are rolled out, not iterated by a dataloader, so the step budget -- the LR-scheduler horizon AND
-    # the run body's cap -- is DERIVED from the prompt set exactly as run_grpo/run_gkd derive it (an explicit
-    # --max_steps still overrides). RFT runs rft_iterations rejection-sampling rounds, each one full generation
-    # pass over the prompt set plus one SFT pass over the KEPT completions, so the budget sizes those rounds
-    # with the per-prompt kept count as the effective num_generations and no replay (num_iterations=1). The old
-    # `train_config.max_steps or 1` let the -1 "unset" sentinel through (-1 is truthy), so the run body's
-    # `global_step >= max_steps` guard tripped at step 0 and the run trained nothing while misreporting it as
-    # "kept too few completions".
-    prompts, prompt_extras = prompt_rows_from_dataset(dataset_config)
+    if rl_config.rft_iterations < 1:
+        raise ValueError(f'rft_iterations must be >= 1, got {rl_config.rft_iterations}.')
+    # The optimizer's LR-scheduler horizon, derived BEFORE the cluster builds the optimizer: each of
+    # the rft_iterations rounds generates the whole prompt set and SFTs the kept completions, so the
+    # budget sizes those rounds with the per-prompt kept count as the effective num_generations and
+    # no replay (num_iterations=1); an explicit --max_steps still overrides.
     from swift.dev.builders import build_dp_mesh
-    from swift.dev.recipe.rl.prompts import resolve_rollout_max_steps, rollout_step_budget
-    # Design-B mini-batch width (per_device_train_batch_size * dp_size); see run_grpo for why dp_size comes
-    # off build_dp_mesh (online RL is Ray-only, pure data-parallel over nproc_per_node).
-    train_batch_size = train_config.per_device_train_batch_size * build_dp_mesh(
-        distributed_config, template_config.sequence_parallel_size).data_world_size
+
+    dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    train_batch_size = train_config.per_device_train_batch_size * dp_size
     max_steps = resolve_rollout_max_steps(
         train_config.max_steps,
         rollout_step_budget(
-            num_prompts=len(prompts),
-            num_generations=_rft_kept_per_prompt(rl_config, num_samples),
+            num_prompts=len(prompts), num_generations=_rft_kept_per_prompt(rl_config, num_samples),
             train_batch_size=train_batch_size,
-            gradient_accumulation_steps=assembly.ga,
-            num_train_epochs=rl_config.rft_iterations,
-            num_iterations=1),
+            gradient_accumulation_steps=train_config.gradient_accumulation_steps,
+            num_train_epochs=rl_config.rft_iterations, num_iterations=1),
         recipe='run_rft')
-    assembly.resolve_step_intervals(max_steps)
-    configure_optimizer(
-        assembly.model,
-        train_config,
-        num_training_steps=max_steps,
-        distributed_config=distributed_config,
-        tuner_config=assembly.tuner_config,
-        plugin_config=assembly.plugin_config)
-
-    sampler_engine_args = RolloutSamplerSpec.engine_args(rollout_config, engine_args, colocate, backend, tuner_config=assembly.tuner_config)
-    sampler = build_sampler(
-        model_config,
-        backend=backend,
-        engine_args=sampler_engine_args,
-        template=assembly.template,
-        remote_group=sampler_remote_group)
-    rollout = SyncableRollout(
-        assembly.model, sampler, assembly.template, colocate=colocate, sleep_level=rollout_config.sleep_level)
-
-    reward_scorers, reward_scorer_names = build_reward_scorers(
-        model_config, template_config, reward_config, distributed_config, sampler_model=model_config.model,
-        backend=backend)
-    if rl_config.rft_iterations < 1:
-        raise ValueError(f'rft_iterations must be >= 1, got {rl_config.rft_iterations}.')
-    # RFT's control flow is a synchronous multi-round rejection-sampling loop (no driver): each of
-    # rft_iterations rounds blocking-generates over the WHOLE prompt set through blocking_generate (which
-    # pushes the just-trained policy into the sampler first), scores, selects the kept completions and
-    # SFTs them. The old FixedBatchDriver (build_rollout_driver(sync_only=True)) was a dead shell -- fit
-    # never called driver.run -- so the flat body drops it entirely.
-    from swift.dev.callbacks import CallbackHandler, build_callbacks
+    # segment 3: the cluster -- the policy, the sampler, the orm reward channel, nothing else.
+    cluster = initialize_rft_cluster(
+        model_config=model_config, template_config=template_config, template=template,
+        train_config=train_config, distributed_config=distributed_config,
+        checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
+        reward_config=reward_config, tuner_config=tuner_config, max_steps=max_steps,
+        quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config,
+        generation_config=generation_config, resource_plan=resource_plan, output_dir=output_dir)
+    # segment 4: the dissolved step cadence + the save closure (round-atomic, see save below).
+    from swift.dev.builders.optimizer import resolve_max_grad_norm
 
     selector = RFTSelector(
-        num_generations=num_samples,
-        rft_select=rl_config.rft_select,
-        rft_threshold=rl_config.rft_threshold,
-        rft_top_k=rl_config.rft_top_k,
+        num_generations=num_samples, rft_select=rl_config.rft_select,
+        rft_threshold=rl_config.rft_threshold, rft_top_k=rl_config.rft_top_k,
         rft_max_samples_per_prompt=rl_config.rft_max_samples_per_prompt,
-        reward_scorer_names=reward_scorer_names,
-        reward_weights=reward_config.orm_weights)
-    recorder = StepRunner(
-        assembly.model,
-        CallbackHandler(build_callbacks(train_config), output_dir=output_dir),
-        gradient_accumulation_steps=assembly.ga,
-        max_grad_norm=resolve_max_grad_norm(train_config),
-        max_steps=max_steps,
-        logging_config=logging_config,
-        output_dir=output_dir,
+        reward_scorer_names=cluster.orm_scorer_names, reward_weights=reward_config.orm_weights)
+    state = StepState(
+        cluster.model, train_config,
+        gradient_accumulation_steps=train_config.gradient_accumulation_steps,
+        max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
+        logging_config=logging_config, output_dir=output_dir,
+        save_steps=checkpoint_config.save_steps,
         manual_gc=bool(megatron_config and megatron_config.manual_gc),
         manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
-        torch_empty_cache_steps=train_config.torch_empty_cache_steps,
-        log_formatter=_rft_log_line,
-        extra_metrics_fn=selector.step_telemetry)
+        empty_cache_steps=train_config.torch_empty_cache_steps,
+        extra_metrics_fn=selector.step_telemetry, log_formatter=_rft_log_line)
+    save_knobs = build_save_knobs(
+        checkpoint_config, dataset_config, distributed_config, tuner_config, output_dir=output_dir)
+    # Before any training step: a base-modifying LoRA init (pissa ...) needs its initial snapshot.
+    snapshot_initial_adapter(cluster.model, save_knobs.initial_adapter_dir)
     rft_state = RFTState()
-    saver = CheckpointSaver(
-        assembly.model,
-        recorder,
-        None,
-        output_dir=output_dir,
-        save_steps=checkpoint_config.save_steps,
-        no_save_optim=checkpoint_config.no_save_optim or checkpoint_config.save_only_model,
-        no_save_rng=checkpoint_config.no_save_rng or checkpoint_config.save_only_model,
-        safe_serialization=checkpoint_config.safe_serialization,
-        max_shard_size=checkpoint_config.max_shard_size,
-        save_total_limit=checkpoint_config.save_total_limit,
-        components={'rft': rft_state})
-    if assembly.resume_dir:
-        saver.resume(assembly.resume_model())
-    start_round = rft_state.next_round
 
+    def save(name: str, is_final: bool = False) -> str:
+        """One training checkpoint with the round component, so a resume replays whole rounds only.
+
+        Generated / selected samples are never checkpointed, so a checkpoint saved mid-round would
+        have the round's optimizer steps but not its completions; committing ``next_round`` and the
+        save together at the round boundary keeps every checkpoint round-atomic.
+        """
+        state.publish_state()
+        return save_training_step(
+            cluster.model, state.handler, name, save_knobs,
+            consumed_train_samples=state.global_step,
+            component_states={'rft': rft_state.get_state()}, is_final=is_final)
+
+    start_round = 0
+    if checkpoint_config.resume_from_checkpoint:
+        state.global_step, state.micro_step, _ = resume_training(
+            cluster.model, checkpoint_config=checkpoint_config, distributed_config=distributed_config,
+            megatron_config=megatron_config, tuner_config=tuner_config,
+            gradient_accumulation_steps=train_config.gradient_accumulation_steps)
+        start_round = _resume_round(checkpoint_config, rft_state)
     from twinkle.perf import Perf
 
-    from swift.dev.recipe.common.loop_utils import filter_perf_actors
+    from swift.dev.recipe.utils import filter_perf_actors
 
-    if Perf.initialize(filter_perf_actors({'model': assembly.model, 'sampler': rollout.sampler})):
+    if Perf.initialize(filter_perf_actors({'model': cluster.model, 'sampler': cluster.sampler})):
         logger.info('[perf] profiling enabled for the online RFT loop.')
-    prompt_indices = list(range(len(prompts)))
+    # segment 5: the visible round loop.
+    save_steps = checkpoint_config.save_steps
+    ga = train_config.gradient_accumulation_steps
+    from swift.dev.utils.scoring import copy_inputs
+
+    state.handler.on_train_begin()
     try:
         for round_index in range(start_round, rl_config.rft_iterations):
-            if recorder.global_step >= max_steps:
+            if state.reached_max():
                 break
-            # blocking_generate syncs the trained policy into the sampler first, so this round samples
-            # from the policy the previous round produced (the rejection-sampling bootstrap).
-            samples = blocking_generate(
-                rollout,
-                [prompts[i] for i in prompt_indices],
-                num_samples=num_samples,
-                sampling_params=rollout_sampling_params(rl_config, generation_config),
-                prompt_extras=[prompt_extras[i] for i in prompt_indices])
-            expected = len(prompt_indices) * num_samples
-            if len(samples) != expected:
-                raise RuntimeError(f'rollout returned {len(samples)} samples, expected {expected} '
-                                   f'({len(prompt_indices)} prompts * {num_samples} generations).')
-            for local_idx, prompt_idx in enumerate(prompt_indices):
-                for sample in samples[local_idx * num_samples:(local_idx + 1) * num_samples]:
-                    sample.prompt_id = str(prompt_idx)
-            rewards_per_func = score_samples(samples, reward_scorers=reward_scorers)
-            # Feed the whole generated rollout (before rejection) into the reward component, so the logged
-            # train/total_reward tracks the policy's improving sample quality -- the signal that shows RFT
-            # working, since the SFT loss on the kept subset alone hides it.
-            selector.accumulate_metric(samples, rewards_per_func)
-            rewards = weighted_rewards(rewards_per_func, reward_config.orm_weights).detach().float().cpu().tolist()
-            selected = selector.select(samples, rewards)
-            save_at_round_boundary = False
+            entered = False
+            try:
+                # borrow the device for generation (colocate) / push the trained policy into the
+                # sampler, so this round samples from the policy the previous round produced -- the
+                # rejection-sampling bootstrap.
+                cluster.sampler.wake_up(tags=['weights'])
+                cluster.engine.sync_weights(merge_and_sync=True)
+                cluster.model.offload_to_cpu()
+                cluster.sampler.wake_up(tags=['kv_cache'])
+                entered = True
+                samples = cluster.rollout.generate(
+                    prompts, num_samples=num_samples, sampling_params=cluster.sampling_params,
+                    prompt_extras=prompt_extras or None)
+                expected = len(prompts) * num_samples
+                if len(samples) != expected:
+                    raise RuntimeError(f'rollout returned {len(samples)} samples, expected {expected} '
+                                       f'({len(prompts)} prompts * {num_samples} generations).')
+                import torch
+
+                from swift.dev.utils.scoring import weighted_rewards
+
+                rewards_per_func = cluster.worker.score_group(samples)
+                # None (an unparseable judge verdict) rides as nan: the metric fold and the weighted
+                # sum below consume the same nan-normalized sample-major matrix.
+                rewards_matrix = torch.tensor(
+                    [[float('nan') if value is None or value != value else float(value) for value in row]
+                     for row in rewards_per_func], dtype=torch.float32)
+                # Feed the whole generated rollout (before rejection) into the reward metric, so the
+                # logged train/total_reward tracks the policy's improving sample quality -- the SFT
+                # loss on the kept subset alone hides it.
+                selector.accumulate_metric(samples, rewards_matrix)
+                rewards = weighted_rewards(rewards_matrix, reward_config.orm_weights).tolist()
+                selected = selector.select(samples, rewards)
+                # return the device to the trainer: sleep the sampler, then reload the weights.
+                cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
+                cluster.model.reload_to_gpu()
+                entered = False
+            finally:
+                if entered:
+                    # ended mid-window (a count-contract failure during generation): give the device
+                    # back so the final save finds the model resident.
+                    cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
+                    cluster.model.reload_to_gpu()
+            round_save_due = False
             if len(selected) == 0:
                 logger.warning('RFT round kept no completions (rewards below the filter); skipping the SFT pass.')
             elif len(selected) < train_batch_size:
                 logger.warning('RFT round kept %d completions, fewer than train_batch_size=%d; skipping.',
                                len(selected), train_batch_size)
             else:
-                dropped = len(selected.samples) % train_batch_size
+                dropped = len(selected) % train_batch_size
                 if dropped:
                     logger.warning('Dropping %d of %d kept completions that do not fill a train_batch_size=%d '
-                                   'mini-batch.', dropped, len(selected.samples), train_batch_size)
-                for mini_batch in split_mini_batches(selected.samples, train_batch_size):
-                    if recorder.global_step >= max_steps:
+                                   'mini-batch.', dropped, len(selected), train_batch_size)
+                for start in range(0, len(selected) - train_batch_size + 1, train_batch_size):
+                    if state.reached_max():
                         break
-                    recorder.micro_step += 1
-                    assembly.model.forward_backward(
-                        inputs=copy_inputs([sample.input_feature for sample in mini_batch]),
-                        gradient_accumulation_steps=assembly.ga)
-                    is_boundary = recorder.is_grad_sync_boundary()
-                    assembly.model.clip_grad_and_step(
-                        max_grad_norm=recorder.max_grad_norm,
-                        gradient_accumulation_steps=recorder.gradient_accumulation_steps)
-                    if is_boundary:
-                        recorder.record_step()
-                        if saver.save_steps and recorder.global_step % saver.save_steps == 0:
-                            save_at_round_boundary = True
-                    if recorder.reached_max():
+                    mini = selected[start:start + train_batch_size]
+                    state.micro_step += 1
+                    cluster.model.forward_backward(
+                        inputs=copy_inputs([sample.encoded for sample in mini]),
+                        gradient_accumulation_steps=ga)
+                    boundary = state.is_grad_sync_boundary()
+                    cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm,
+                                                     gradient_accumulation_steps=ga)
+                    if boundary:
+                        state.record()
+                        # The periodic save is DEFERRED to the round boundary (the round component
+                        # commits with it, keeping every checkpoint round-atomic); snapshot the
+                        # callback's one-shot request before the tail clears it.
+                        wanted = state.handler.control.should_save
+                        state.step_tail()
+                        if wanted or (save_steps and state.global_step % save_steps == 0):
+                            round_save_due = True
+                    if state.reached_max():
                         break
-            # Generated/selected samples are not checkpointed. Commit the round only after its SFT pass has
-            # completed, or after max_steps has deliberately truncated it, then persist at this safe boundary.
+            # Commit the round only after its SFT pass has completed (or max_steps deliberately
+            # truncated it), then persist at this safe boundary.
             rft_state.next_round = round_index + 1
-            if save_at_round_boundary:
-                saver.save(f'checkpoint-{recorder.global_step}')
-            if recorder.reached_max():
+            if round_save_due:
+                save(f'checkpoint-{state.global_step}')
+            if state.reached_max() or state.should_stop():
                 break
-        if recorder.global_step == 0:
-            # No round produced a full mini-batch, so the run trained nothing. Saving now would hand back
-            # an untrained checkpoint that looks like a completed run -- fail loudly instead (contract: an
-            # empty selected set is never a silent 0-step run).
+        if state.global_step == 0:
+            # No round produced a full mini-batch, so the run trained nothing. Saving now would hand
+            # back an untrained checkpoint that looks like a completed run -- fail loudly instead
+            # (contract: an empty selected set is never a silent 0-step run).
             raise RuntimeError(
                 f'RFT took 0 optimizer steps across {rl_config.rft_iterations} rejection-sampling round(s) '
                 f'(max_steps={max_steps}); no round kept enough completions to fill a train_batch_size='
@@ -369,9 +395,14 @@ def run_rft(
                 'the prompt dataset so at least one round fills a mini-batch.')
     finally:
         Perf.shutdown()
-        rollout.shutdown()
-        recorder.tracker.close()
+        # MultiTurnRollout owns only the sandbox env pool; the sampler's GPU memory is the Cluster's
+        # to release (a Ray-deployed rollout is a proxy whose sampler lives worker-side).
+        cluster.rollout.close()
+        cluster.sampler.shutdown()
+        state.tracker.close()
+    state.handler.on_train_end()
     if _save_final:
-        saver.save_final(write_args_json=assembly.args_json_writer())
-    return recorder.history
-
+        # the final checkpoint is synchronous; its args.json was written at initialize_devices.
+        cluster.model.wait_async_saves()
+        save('checkpoint-final', is_final=True)
+    return state.history

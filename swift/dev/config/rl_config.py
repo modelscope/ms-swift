@@ -1,12 +1,10 @@
-"""RLHF algorithm hyperparameters (DPO/KTO/CPO/PPO/GRPO/GKD/OPSD/MOPD/RFT/RM)."""
-
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, List, Literal, Optional
 
-#: The f-divergences DPO can stand in for the KL term (see ``RLConfig.f_divergence_type``). A closed,
-#: dev-owned vocabulary -- ``swift.dev.config.validate`` derives its runtime-accepted set from this
-#: alias via ``typing.get_args``, so the static type and the validator cannot drift apart.
+# The f-divergences DPO can stand in for the KL; validate derives its accepted set from this alias
+# via typing.get_args, so the static type and the validator cannot drift apart.
 F_DIVERGENCE_TYPE = Literal['reverse_kl', 'forward_kl', 'js_divergence', 'alpha_divergence']
 
 
@@ -15,24 +13,15 @@ class RLConfig:
     """RLHF algorithm hyperparameters for all supported rl_type variants."""
 
     # === Core ===
-    #: Which algorithm the RL command runs. ``opsd``/``mopd``/``rft`` are the three first-class methods
-    #: added this refactor (self-distillation, multi-teacher distillation, rejection-sampling FT); each
-    #: dispatches to its own recipe in ``run_rl`` and reuses the fields grouped below.
-    #: CLI flag ``--rl_type`` (matches the ``swift rl`` command); the v4 spelling ``--rlhf_type`` still
-    #: resolves onto it through ``LEGACY_ALIASES``.
+    # Which algorithm the RL command runs; opsd/mopd/rft are this refactor's first-class additions.
     rl_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo', 'gkd', 'opsd', 'mopd',
                      'rft'] = 'dpo'
     ref_model: Optional[str] = None
     ref_adapters: List[str] = field(default_factory=list)
     ref_model_type: Optional[str] = None
     ref_model_revision: Optional[str] = None
-    #: Parallel layout for the KL/reference model's DeviceGroup, same grammar as ``teacher_parallel_spec``
-    #: (e.g. ``dp2``, ``tp2``). ``None`` sizes the group to a single rank -- the card-frugal default, but it
-    #: pins a large frozen reference (a 70B ref) to one GPU. A spec shards the reference across as many ranks
-    #: as it asks for, so the reference is scale-safe exactly like the teacher. It is the reference's OWN
-    #: layout, apart from the run's ``--parallel_spec`` (the policy's). A LoRA/``disable_adapter`` reference
-    #: reuses the policy actor (no separate copy) and ignores this. Shared by the online (grpo/ppo) and the
-    #: offline (dpo/kto) reference, so one knob covers both.
+    # Parallel layout for the reference model's DeviceGroup ('dp2'/'tp2'...); None = single rank
+    # (card-frugal but pins a large reference to one GPU). A LoRA/disable_adapter reference ignores it.
     ref_parallel_spec: Optional[str] = None
     beta: Optional[float] = None
     max_completion_length: int = 512
@@ -71,8 +60,7 @@ class RLConfig:
     advantage_estimator: Literal[
         'grpo', 'rloo', 'reinforce_plus_plus', 'reinforce_plus_plus_baseline', 'remax', 'opo', 'gpg', 'grpo_passk'
     ] = 'grpo'
-    #: GPG advantage normalization divisor (``alpha * (r_i - mean) / f_norm``); 1.0 disables.
-    f_norm: float = 1.0
+    f_norm: float = 1.0  # GPG advantage normalization divisor; 1.0 disables
     kl_in_reward: Optional[bool] = None
     scale_rewards: Optional[Literal['group', 'batch', 'none', 'gdpo']] = None
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
@@ -81,18 +69,13 @@ class RLConfig:
     overlong_filter: bool = False
 
     # === Additional policy-loss knobs (clip_cov / kl_cov / dppo / dro) ===
-    #: DRO quadratic log-ratio penalty strength (``loss_type='dro'``); must be positive.
-    dro_beta: float = 0.1
-    #: DPPO truncated IS weight upper bound for stability (Section 5.4 of the DPPO paper). The DPPO
-    #: divergence threshold is NOT a separate knob -- verl reuses clip_ratio_low/high, so it is the
-    #: shared ``epsilon``/``epsilon_high`` above.
+    dro_beta: float = 0.1  # DRO quadratic log-ratio penalty strength (loss_type='dro'); > 0
+    # DPPO truncated IS weight bound; the divergence threshold reuses epsilon/epsilon_high (verl).
     clip_ratio_c: float = 20.0
-    #: Clip-Cov fraction of valid tokens to zero out (``loss_type='clip_cov'``).
-    clip_cov_ratio: float = 0.0002
+    clip_cov_ratio: float = 0.0002  # Clip-Cov fraction of valid tokens zeroed out
     clip_cov_lb: float = 1.0
     clip_cov_ub: float = 5.0
-    #: KL-Cov fraction of valid tokens to apply the extra KL penalty (``loss_type='kl_cov'``).
-    kl_cov_ratio: float = 0.0002
+    kl_cov_ratio: float = 0.0002  # KL-Cov fraction of valid tokens with the extra KL penalty
     ppo_kl_coef: float = 1.0
 
     # === CHORD auxiliary SFT ===
@@ -108,9 +91,8 @@ class RLConfig:
     sync_ref_model: bool = False
     ref_model_sync_steps: int = 512
     ref_model_mixup_alpha: float = 0.6
-    #: Parallel layout for the reference model (``DeviceMesh.from_spec`` string). ``None`` inherits the
-    #: policy's own ``parallel_spec`` — the paired EMA sync requires both to have identical sharding, so
-    #: the default (same spec) is the correct choice unless the reference is deliberately placed differently.
+    # Parallel layout for the reference model; None inherits the policy's parallel_spec -- the
+    # paired EMA sync needs identical sharding, so same-spec is the correct default.
     reference_parallel_spec: Optional[str] = None
     log_entropy: bool = False
     top_entropy_quantile: float = 1.0
@@ -142,107 +124,62 @@ class RLConfig:
     sft_alpha: float = 0
     lmbda: float = 0.5
     gkd_logits_topk: Optional[int] = None
-    #: DISTILLATION / logit-scoring temperature -- softens the teacher/student distributions inside the
-    #: divergence (GKD's β-JSD; for OPSD/MOPD it scales the logits before the sampled-token log-probs are
-    #: taken), and is the temperature the GRPO/PPO policy metric divides logits by to line its log-probs up
-    #: with the sampled distribution. This is the model-forward / loss knob, NOT how hot the student rollout
-    #: is sampled. Named apart from ``GenerationConfig.temperature`` (the CLI ``--temperature`` sampling
-    #: knob) so that flag has a single unambiguous owner; see ``sampling_temperature`` for the rollout knob.
+    # DISTILLATION temperature: softens teacher/student distributions and scales logits before
+    # sampled-token log-probs; NOT the rollout temperature (see sampling_temperature).
     distill_temperature: float = 0.9
-    #: SAMPLING temperature for the student's on-policy generation (GKD/OPSD/MOPD in-process rollouts).
-    #: Kept apart from ``distill_temperature`` so a run can, e.g., sample greedily-ish (low) while scoring
-    #: softly (high). ``None`` preserves the pre-split behavior by falling back to ``distill_temperature``,
-    #: so existing runs are unchanged; set it to decouple the two.
+    # SAMPLING temperature for the student's on-policy generation; None falls back to
+    # distill_temperature (the pre-split behavior).
     sampling_temperature: Optional[float] = None
 
     # === RM ===
     center_rewards_coefficient: Optional[float] = None
 
     # === Teacher Model ===
-    #: The frozen teacher(s), always a list so the CLI can pass several space-separated ids (a bare
-    #: ``Union[str, List[str]]`` is parsed single-valued -- see cli/parser.py's ``str_list_none`` case -- so
-    #: MOPD's K teachers could not be expressed). GKD/OPSD and GRPO's RLSD/SDAR distil from exactly ONE
-    #: entry (``recipe.assembly.single_teacher_id`` rejects more, pointing at MOPD); MOPD reads the whole
-    #: list, one frozen model per domain teacher, each scored with ``forward_only``. OPSD's headline setting
-    #: needs NO external teacher -- it distills the policy's own base via ``disable_lora`` (see
-    #: ``_teacher_use_disable_adapter``) -- so ``teacher_model=None`` is valid there. There is deliberately
-    #: no HTTP teacher server (no-server / all-Ray premise, plan §2.H).
+    # Always a list; GKD/OPSD distil from exactly ONE (assembly rejects more), MOPD reads all.
     teacher_model: Optional[List[str]] = None
     teacher_adapters: List[str] = field(default_factory=list)
     teacher_model_type: Optional[str] = None
     teacher_model_revision: Optional[str] = None
     teacher_deepspeed: Optional[str] = None
     offload_teacher_model: bool = False
-    #: Per-teacher fusion weights for MOPD (``rl_type='mopd'``), positional with a list-valued
-    #: ``teacher_model``. Non-negative; normalized to sum 1 inside ``MOPDLoss``. ``None`` weights every
-    #: teacher equally (``1/K``). Length must equal the teacher count -- enforced at loss time, so a
-    #: mismatch fails loudly rather than silently dropping or padding a channel. Ignored by single-teacher
-    #: methods (GKD/OPSD), which take the one teacher at full weight.
+    # Per-teacher fusion weights for MOPD, positional with teacher_model; normalized to sum 1 in
+    # MOPDLoss (length mismatch fails at loss time). None = 1/K each.
     teacher_weights: Optional[List[float]] = None
-    #: Parallel layout for the distillation teacher DeviceGroup (gkd/opsd/mopd), same grammar as
-    #: ``RewardConfig.orm_parallel_spec`` (e.g. ``dp2``, ``tp2``). ``None`` sizes the group to a single rank (serial
-    #: ``forward_only``, card-frugal -- the stage-one default); a spec gives the frozen teacher(s) their own
-    #: sizing for a big or concurrency-friendly teacher. MOPD's K teachers share this one group. It is the
-    #: teachers' OWN layout, apart from the run's ``--parallel_spec`` (the policy's).
+    # Parallel layout for the teacher DeviceGroup (gkd/opsd/mopd); None = single rank, serial.
     teacher_parallel_spec: Optional[str] = None
-    #: How MOPD's K frozen teachers are PLACED across DeviceGroups. ``pack`` (default) builds all K into the
-    #: single shared ``TEACHER_GROUP`` and scores them serially -- card-frugal, the stage-one behavior.
-    #: ``spread`` gives each teacher its OWN ``teacher_<i>`` group so the K ``forward_only`` calls run
-    #: concurrently (disjoint Ray actors) at the cost of K x the GPUs. Different roles (policy / sampler /
-    #: teacher / reference / reward) ALWAYS occupy disjoint groups regardless of this flag; it only governs
-    #: the K-teachers-among-themselves choice. Consumed by ``run_mopd``'s group planning + ``_teacher_kwargs``.
+    # How MOPD's K teachers are PLACED: 'pack' (default) shares one group (card-frugal, serial);
+    # 'spread' gives each its own group (concurrent at K x the GPUs).
     auxiliary_placement: Literal['pack', 'spread'] = 'pack'
-    #: OPSD divergence direction, passed straight to ``OPSDLoss.reverse``. ``True`` (default) is the
-    #: paper's direction ``r = teacher_logp - student_logp`` -- teacher-preferred tokens pull the student
-    #: up. ``False`` swaps it (``r = student_logp - teacher_logp``) for a quick ablation without touching
-    #: the loss. Only read by OPSD/MOPD; other types ignore it.
+    # OPSD divergence direction (OPSDLoss.reverse); True = the paper's teacher - student.
     opsd_reverse: bool = True
 
     # === RFT / RAFT / ReST (rejection-sampling fine-tuning) ===
-    #: Completions sampled per prompt each iteration. ``None`` reuses ``num_generations`` so an RFT run
-    #: shares GRPO's rollout sizing by default; set it to override independently.
+    # Completions sampled per prompt each iteration; None reuses num_generations.
     rft_num_samples: Optional[int] = None
-    #: How the sampled completions are filtered down to the SFT set. ``best_of_n`` keeps the single
-    #: highest-reward completion per prompt (RAFT's default, D4-A); ``threshold`` keeps every completion
-    #: scoring ``>= rft_threshold``; ``top_k`` keeps the ``rft_top_k`` best per prompt. An empty selected
-    #: set fails loudly (never a silent 0-step run).
+    # How sampled completions are filtered: 'best_of_n' keeps the best per prompt, 'threshold'
+    # keeps >= rft_threshold, 'top_k' keeps the rft_top_k best. Empty selection fails loudly.
     rft_select: Literal['best_of_n', 'threshold', 'top_k'] = 'best_of_n'
-    #: Reward cutoff for ``rft_select='threshold'``. Ignored by the other two selectors.
-    rft_threshold: float = 0.0
-    #: Per-prompt keep count for ``rft_select='top_k'``. Ignored by the other two selectors.
-    rft_top_k: int = 1
-    #: Rejection-sampling rounds: sample -> score -> filter -> SFT -> re-sync the updated policy into the
-    #: sampler, repeated this many times (ReST's iterative loop). ``1`` is a single best-of-n SFT pass.
+    rft_threshold: float = 0.0  # reward cutoff for rft_select='threshold'
+    rft_top_k: int = 1  # per-prompt keep count for rft_select='top_k'
+    # Rejection-sampling rounds (sample -> score -> filter -> SFT -> re-sync); 1 = one best-of-n pass.
     rft_iterations: int = 1
-    #: Optional hard cap on kept completions per prompt after selection (a memory/throughput bound for
-    #: ``threshold``, which can otherwise keep an unbounded number). ``None`` keeps everything selected.
+    # Hard cap on kept completions per prompt (a memory bound for 'threshold'); None keeps all.
     rft_max_samples_per_prompt: Optional[int] = None
 
-    #: Compute the KL term explicitly rather than folding it into the advantage. None takes the value
-    #: implied by the algorithm.
+    # Compute the KL term explicitly rather than folding it into the advantage; None = per-algorithm.
     calculate_KL: Optional[bool] = None
-    #: Which f-divergence stands in for the KL (vocabulary: ``F_DIVERGENCE_TYPE``).
     f_divergence_type: F_DIVERGENCE_TYPE = 'reverse_kl'
-    #: Coefficient of the 'alpha_divergence' f-divergence; only read when ``f_divergence_type='alpha_divergence'``.
-    f_alpha_divergence_coef: float = 0.5
-    #: Drop the reference model entirely and score against a constant instead. Removes a whole model
-    #: from memory, and with it the anchor that keeps the policy near where it started.
+    f_alpha_divergence_coef: float = 0.5  # only read when f_divergence_type='alpha_divergence'
+    # Drop the reference model and score against a constant: removes a whole model from memory and
+    # the anchor keeping the policy near where it started.
     reference_free: bool = False
-    #: Temperature on the REAL objective's soft constraint.
-    real_tau: float = 0.5
-    #: Replay the router's expert choices from the generating pass during the training pass, so an MoE
-    #: policy's log-probabilities are computed under the routing that actually produced the tokens.
-    #: 'disabled' recomputes routing, which can silently make the importance ratio wrong.
+    real_tau: float = 0.5  # temperature on the REAL objective's soft constraint
+    # Replay the router's expert choices from the generating pass in the training pass, so an MoE
+    # policy's log-probs are computed under the routing that produced the tokens.
     router_replay_mode: Literal['disabled', 'R2', 'R3'] = 'disabled'
-    #: Replay the sampler's per-token sampling distribution during the training forward, so the GRPO
-    #: importance ratio is measured against the exact support set each token was drawn from instead of a
-    #: recomputed full-vocab softmax. Needs the vLLM sampler to export sampling masks (dev turns on the
-    #: engine's ``enable_sampling_replay``, which sets vLLM ``enable_return_sampling_mask`` +
-    #: ``processed_logprobs``). twinkle's GRPOLoss forbids it alongside a KL penalty (``beta``) or entropy
-    #: bonus, and the forward forbids it under sequence/context parallelism; GRPO-only. Distinct from
-    #: ``rollout_importance_sampling_mode`` (a truncated-IS correction on the recomputed ratio).
+    # Replay the sampler's per-token distribution in the training forward so the GRPO ratio is
+    # measured against the exact support set (GRPO-only; no KL penalty, no multi-turn).
     enable_sampling_replay: bool = False
-    #: Obtain the teacher's outputs by disabling the policy's adapter instead of loading a second model.
-    #: Only valid when the teacher is exactly the base model of a LoRA policy. Private: it is set from
-    #: the teacher configuration above rather than passed directly.
+    # Teacher outputs obtained by disabling the policy's adapter instead of loading a second model;
+    # only valid when the teacher is exactly the base model of a LoRA policy. Private.
     _teacher_use_disable_adapter: bool = False

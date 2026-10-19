@@ -14,7 +14,11 @@ def quantizer_kwargs(quantize_config: QuantizeConfig,
                      *,
                      modules_to_not_convert: Optional[List[str]] = None,
                      torch_dtype: Optional[str] = None) -> Dict[str, Any]:
-    """Translate ``QuantizeConfig`` into kwargs understood by ``twinkle.quantizer``."""
+    """Translate ``QuantizeConfig`` into kwargs understood by ``twinkle.quantizer``.
+
+    bnb_4bit_compute_dtype falls back to torch_dtype; None values are dropped BEFORE overrides merge
+    in, so an explicit override can still set a key whose config default is None.
+    """
     kwargs: Dict[str, Any] = {'quant_bits': quantize_config.quant_bits}
     method = quantize_config.quant_method
     if method == 'bnb':
@@ -35,7 +39,11 @@ def quantizer_kwargs(quantize_config: QuantizeConfig,
 
 
 def modules_to_not_convert(model_loader: Any) -> Optional[List[str]]:
-    """Return architecture parts that legacy keeps in the model's compute dtype."""
+    """Return architecture parts that legacy keeps in the model's compute dtype.
+
+    MoE gates (their fp32 precision is load-bearing), the vision tower + aligner (frozen multimodal
+    parts), and lm_head. De-duplicated, order-preserving; None when nothing applies.
+    """
     if model_loader is None:
         return None
     arch = model_loader.model_arch

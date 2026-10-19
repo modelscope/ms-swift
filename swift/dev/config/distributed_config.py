@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Distributed training and parallelism configuration."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -17,131 +16,95 @@ class DistributedConfig:
 
     # === FSDP ===
     fsdp: Optional[str] = None
-    #: FSDP's own settings -- wrapping policy, sharding strategy, offload. The CLI accepts a JSON
-    #: object or JSON file. Nested because the accepted keys are FSDP's and change with its version.
+    # FSDP's own settings (wrapping policy, sharding, offload) as a JSON object/file.
     fsdp_config: Optional[Dict[str, Any]] = None
 
     # === Launch ===
     mode: Literal['ray', 'local'] = 'local'
     nproc_per_node: Optional[int] = None
-    #: Name of this run, handed to ``twinkle.initialize(name=...)`` so the Ray session and twinkle's
-    #: own run bookkeeping carry it. Only read in ``mode='ray'`` (a local/torchrun run has no Ray
-    #: experiment to name); None leaves twinkle's unnamed default.
+    # Run name handed to twinkle.initialize(name=...); only read in mode='ray'.
     ray_exp_name: Optional[str] = None
 
     # === DDP ===
-    #: Collective timeout in seconds for the process group the transformers backend initialises
-    #: (accelerate / DeepSpeed). None keeps twinkle's own default. A long first step -- a large model
-    #: load or a slow dataset cache -- can otherwise trip the default and tear the group down.
+    # Collective timeout (transformers backend); a long first step can trip the default.
     ddp_timeout: Optional[int] = None
     ddp_find_unused_parameters: Optional[bool] = None
-    #: Broadcast buffers (e.g. batchnorm statistics) from rank 0 each forward. None takes torch's
-    #: default of True; turning it off is a throughput win for models with no such buffers.
+    # Broadcast buffers from rank 0 each forward; off is a throughput win when there are none.
     ddp_broadcast_buffers: Optional[bool] = None
-    #: Gradient bucket size for the all-reduce. Larger buckets overlap communication better and delay
-    #: the first reduction. None takes torch's default.
+    # All-reduce bucket size; larger overlaps communication better, delays the first reduction.
     ddp_bucket_cap_mb: Optional[int] = None
-    #: Declare the graph unchanging so DDP can reuse its reduction order. Faster, but wrong for a model
-    #: whose active parameters vary per step -- e.g. an MoE with a changing set of routed experts.
+    # Fixed reduction order; faster but wrong when the active parameter set varies per step.
     ddp_static_graph: Optional[bool] = None
-    #: This process's rank, supplied by the launcher. -1 means not launched distributed. Set by
-    #: torchrun rather than by a user.
+    # This process's rank, supplied by the launcher (-1 = not launched distributed); set by torchrun.
     local_rank: int = -1
 
-    # === Megatron ===
-    # This contains the distributed subset of legacy MegatronArguments. Model, optimizer, scheduler,
-    # checkpoint and MoE fields live in their owning Config classes; every field below is either
-    # forwarded to Twinkle/Megatron or rejected explicitly when the active backend cannot consume it.
-    # A None value means "keep Twinkle/Megatron's own default"; 'unsloth' swaps the transformers build
-    # to unsloth's kernel-patched construction (LoRA and full-parameter alike).
+    # === Backend ===
+    # 'unsloth' rides transformers construction (LoRA/full-param); None/'hf' is plain transformers.
     backend: Optional[Literal['megatron', 'hf', 'unsloth']] = None
+    # Megatron-only: which bridge converts mcore checkpoints (training load + export).
     bridge_backend: Literal['mcore-bridge', 'megatron-bridge'] = 'mcore-bridge'
-    #: A whole parallel layout as one string, e.g. 'dp4tp2pp2' or 'dp2_cp2_tp2' -- a lossless sugar
-    #: form of the integer size fields below, parsed by ``DeviceMesh.from_spec`` (keys: dp/fsdp/tp/pp/
-    #: cp/ep/etp/epfsdp/vpp sizes plus the bare boolean 'sp' for Megatron sequence parallelism).
-    #: Backend-agnostic: both the Megatron mesh (build_parallel_mesh) and the transformers mesh
-    #: (build_dp_mesh) consume it, and each model backend rejects any dimension it does not
-    #: implement (TransformersModel reads dp/fsdp/ep/ulysses, not tp/pp), so there is no allow-list
-    #: here. Prefer it over the integer fields rather than mixing the two forms. The dims must fill the
-    #: world (nproc_per_node for Megatron, the torchrun world for transformers); from_sizes raises else.
+
+    # === Parallel layout (backend-agnostic) ===
+    # 'dp4tp2pp2' via DeviceMesh.from_spec (dp/fsdp/tp/pp/cp/ep/etp/epfsdp/vpp + 'sp'); both read it.
     parallel_spec: Optional[str] = None
+
+    # === Megatron ===
+    # Distributed subset of legacy MegatronArguments; None keeps Megatron's own default.
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
     context_parallel_size: int = 1
     expert_model_parallel_size: int = 1
-    # sequence_parallel: Megatron tensor-parallel sequence parallelism (splits activations along
-    # the sequence dim inside TP regions). Distinct from TemplateConfig.sequence_parallel_size
-    # (Ulysses/CP-style SP for the transformers path). Only effective when tp > 1.
+    # Megatron TP-SP (activations split along the sequence inside TP regions); distinct from
+    # TemplateConfig.sequence_parallel_size (transformers Ulysses). Only effective when tp > 1.
     sequence_parallel: bool = False
     use_distributed_optimizer: bool = True
-    #: Shard the parameters with Megatron-FSDP instead of replicating them under Megatron-DDP.
-    #: NOT the same knob as ``fsdp`` above: that one is the transformers backend's (torch FSDP via
-    #: accelerate) and has no effect on the megatron path. Named after the legacy Megatron CLI flag
-    #: so args_to_configs picks it up by same-name copy.
-    #: Requires ``use_distributed_optimizer`` (sharded parameters need matching master-weight shards)
-    #: and is incompatible with ``context_parallel_size > 1``; both are checked in validate_configs.
-    #: megatron's other implementation, Torch FSDP2, is deliberately not exposed: it additionally
-    #: demands untied embeddings and a second checkpoint sharding format, neither of which the legacy
-    #: surface supports either.
+    # Shard parameters with Megatron-FSDP (NOT the transformers backend's ``fsdp`` above);
+    # requires use_distributed_optimizer, incompatible with context_parallel_size > 1 (validate).
     use_megatron_fsdp: bool = False
     recompute_granularity: Optional[Literal['selective', 'full', 'none']] = None
     recompute_method: Optional[Literal['uniform', 'block']] = None
     recompute_num_layers: Optional[int] = None
-    #: Which submodules are recomputed, e.g. 'core_attn', 'mlp', 'moe'. Finer than
-    #: ``recompute_granularity``, which only chooses between whole layers and selected ops.
+    # Which submodules are recomputed ('core_attn'/'mlp'/'moe'); finer than recompute_granularity.
     recompute_modules: List[str] = field(default_factory=lambda: ['core_attn'])
 
     # === Megatron: expert & context parallel detail ===
-    #: Tensor-parallel width used inside expert layers, which may differ from the dense
-    #: ``tensor_model_parallel_size`` because an expert matrix is a different shape.
+    # TP width inside expert layers, which may differ from the dense tp size.
     expert_tensor_parallel_size: int = 1
-    #: How context-parallel ranks exchange keys and values, e.g. 'p2p', 'a2a', 'allgather', or a
-    #: per-layer list. None takes Megatron's default.
+    # How CP ranks exchange keys/values ('p2p'/'a2a'/'allgather', or a per-layer list).
     cp_comm_type: Optional[Union[str, List[str]]] = None
-    #: How the sequence is split across context-parallel ranks. 'zigzag' interleaves so every rank gets
-    #: both early and late positions, which is what keeps causal-attention work even; 'contiguous'
-    #: gives each rank one block and so leaves the first rank with much less to do.
+    # 'zigzag' interleaves so every rank gets early and late positions (even causal-attention
+    # work); 'contiguous' gives each rank one block and leaves the first rank less to do.
     cp_partition_mode: Literal['zigzag', 'contiguous'] = 'zigzag'
-    #: What the data-parallel optimizer shards. Increasing it trades communication for memory, ending at
-    #: 'optim_grads_params', which is ZeRO-3-equivalent.
+    # What the DP optimizer shards; 'optim_grads_params' is ZeRO-3-equivalent.
     data_parallel_sharding_strategy: Literal['no_shard', 'optim', 'optim_grads', 'optim_grads_params'] = (
         'optim_grads_params')
 
     # === Megatron: pipeline layout ===
-    #: Interleaved (virtual) pipeline stages per rank. Shrinks the pipeline bubble and costs one extra
-    #: activation set per virtual stage. None means non-interleaved.
+    # Interleaved (virtual) stages per rank: shrinks the bubble, costs an activation set per stage.
     virtual_pipeline_model_parallel_size: Optional[int] = None
-    #: An explicit layer-to-stage assignment, overriding the even split. The way to compensate when the
-    #: first and last stages also carry the embedding and the loss.
+    # Explicit layer-to-stage assignment overriding the even split.
     pipeline_model_parallel_layout: Optional[str] = None
-    #: Layer counts for the first and last stages, as a lighter alternative to a full layout: the even
-    #: split is otherwise unbalanced precisely because those two stages do more.
+    # First/last stage layer counts (those two stages also carry the embedding and the loss).
     decoder_first_pipeline_num_layers: Optional[int] = None
     decoder_last_pipeline_num_layers: Optional[int] = None
-    #: Count the embedding / the loss as a layer when splitting, so the balancing arithmetic accounts
-    #: for them instead of leaving those stages overloaded.
+    # Count the embedding / the loss as a layer when splitting.
     account_for_embedding_in_pipeline_split: bool = False
     account_for_loss_in_pipeline_split: bool = False
 
     # === Megatron: communication overlap ===
-    # Each overlaps a collective with compute. They are off or on following Megatron's own defaults;
-    # note that the two gradient/parameter overlaps are refused by the plain 'muon' optimizer
-    # (TrainConfig.optimizer), which needs whole parameters -- 'dist_muon' accepts them.
+    # Refused by plain 'muon' (whole parameters); 'dist_muon' accepts them.
     overlap_grad_reduce: bool = False
     overlap_param_gather: bool = False
-    #: Overlap the parameter gather with the optimizer step itself. Requires ``overlap_param_gather``.
+    # Overlap the parameter gather with the optimizer step itself; requires overlap_param_gather.
     overlap_param_gather_with_optimizer_step: bool = False
     overlap_p2p_comm: bool = True
-    #: Batch the pipeline's send and receive into one call. None takes Megatron's default, which depends
-    #: on whether p2p is being overlapped.
+    # Batch the pipeline's send+receive into one call; None takes Megatron's default.
     batch_p2p_comm: Optional[bool] = None
-    #: Pad buckets so every rank reduces or gathers at the same offsets. On by default: without it the
-    #: ranks issue differently-shaped collectives and the overlap above stops overlapping.
+    # Pad buckets so every rank reduces/gathers at the same offsets; without it the overlaps
+    # stop overlapping.
     align_grad_reduce: bool = True
     align_param_gather: bool = True
-    #: Overlap tensor-parallel communication with compute. Needs Transformer Engine and a userbuffer
-    #: configuration, which is why it is not on by default.
+    # TP communication/GEMM overlap; needs Transformer Engine and a userbuffer configuration.
     tp_comm_overlap: bool = False
-    #: Run a warm-up collective on every NCCL communicator at startup, so the first real step does not
-    #: pay the connection setup and skew the initial timings.
+    # Warm-up collective on every NCCL communicator so the first real step pays no setup cost.
     nccl_comm_warmup: bool = False

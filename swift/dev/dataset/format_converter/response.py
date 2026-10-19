@@ -62,10 +62,10 @@ class ResponseConverter(FormatConverter):
     def pick_response(self, response: Any) -> Any:
         """Collapse a multi-answer response column to a single answer.
 
-        Some datasets store several reference answers in a list. Default to the first for
-        reproducibility; ``RANDOM_DATASET_RESPONSE`` picks one at random, for when the extra answers are
-        augmentation rather than alternatives. The flag is read through :mod:`swift.dev.utils.env`, which
-        owns env-var access; the import is local because ``swift.dev.utils`` pulls in torch on init.
+        Some datasets store several reference answers in a list: default to the first for
+        reproducibility; ``RANDOM_DATASET_RESPONSE`` picks one at random, for when the extra
+        answers are augmentation rather than alternatives. The import is local because
+        ``swift.dev.utils`` pulls in torch on init.
         """
         if not isinstance(response, (list, tuple)):
             return response

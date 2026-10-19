@@ -1,19 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for assorted transformers-native multimodal families (from ``swift/model/models/mllm.py``).
-
-Migrated: the transformers-native ``idefics3`` and ``pixtral``, plus the remote-code ``keye_vl`` /
-``molmo`` / ``molmo2`` / ``dots_ocr`` (loaded via an Auto class + ``trust_remote_code`` -- the base g7
-flag). Their legacy loaders only did device_map work (``get_class_from_dynamic_module`` to set
-``_no_split_modules``) and output-clone / ``keye_vl_utils`` patches, all obsolete per PATCH_INVENTORY,
-so they are dropped. The ``qwen2_gme`` embedding variant is a pure Qwen2-VL template variant in
-``qwen.py``.
-
-Not migrated here (see MODEL_MIGRATION.md):
-  * ``keye_vl_1_5`` -- pinned ``transformers==4.52.4`` (dead on dev's 5.5).
-  * ``sail_vl2`` -- pinned ``transformers<=4.51.3`` (dead on dev's 5.5). Its only loader logic is
-    ``use_submodel_func(language_model)``, which ``delegate_to_submodel`` would now cover, but the
-    version pin kills it regardless.
-"""
+# Assorted multimodal families; device_map/clone patches dropped, keye_vl_1_5/sail_vl2 dead.
 from __future__ import annotations
 
 from .base import ModelArch, ModelLoader, register_model
@@ -82,8 +68,8 @@ class KeyeVLLoader(ModelLoader):
 
 @register_model
 class MolmoLoader(ModelLoader):
-    """Molmo: remote-code ``MolmoForCausalLM``. Legacy set ``_no_split_modules`` (device_map, obsolete)
-    and cloned the embedding output (obsolete); both dropped."""
+    """Molmo: remote-code ``MolmoForCausalLM``. Legacy set ``_no_split_modules`` (device_map,
+    obsolete) and cloned the embedding output (obsolete); both dropped."""
 
     model_type = 'molmo'
     model_cls = 'transformers:AutoModelForCausalLM'
@@ -128,21 +114,11 @@ class Molmo2Loader(MolmoLoader):
 @register_model
 class FlorenceLoader(ModelLoader):
     """Florence-2: remote-code ``Florence2ForConditionalGeneration``, a wrapper whose real decoder is
-    ``language_model`` (a BART-style seq2seq), so ``process_model`` proxies ``forward``/``generate``
-    there -- legacy's ``use_submodel_func(model, 'language_model', ['generate', 'forward'])``.
+    ``language_model`` (BART-style); ``process_model`` proxies ``forward``/``generate`` there.
 
-    Three legacy behaviours are real and kept:
-      * ``ignore_check_imports`` around the load: the checkpoint's ``modeling_*.py`` declares imports
-        (flash-attn among them) that are never reached on our paths, and the dependency check would
-        otherwise refuse the dynamic import outright.
-      * ``config.vision_config.model_type = 'davit'`` in ``process_config``: the shipped config leaves
-        it unset, which breaks merge-lora (legacy's own comment) because the sub-config cannot be
-        re-instantiated from a saved dict without a model_type.
-      * ``vision_tower.enable_checkpoint = True``: the DaViT tower's own gradient-checkpointing switch,
-        which transformers' generic ``gradient_checkpointing_enable`` does not reach.
-
-    Dropped: the ``device_map == 'auto'`` override (dev does not use HF device_map; twinkle owns
-    placement, per PATCH_INVENTORY.md).
+    Kept: ``ignore_check_imports`` around the load; ``vision_config.model_type = 'davit'`` (unset
+    breaks merge-lora); ``vision_tower.enable_checkpoint = True`` (a gc switch the generic call
+    cannot reach). Dropped: the ``device_map == 'auto'`` override (twinkle owns placement).
     """
 
     model_type = 'florence'
@@ -181,21 +157,11 @@ class FlorenceLoader(ModelLoader):
 @register_model
 class MolmoELoader(MolmoLoader):
     """MolmoE-1B: the MoE sibling of Molmo, whose remote-code class name is ``OLMoForCausalLM`` (not
-    ``MolmoForCausalLM``), so it owns that architecture name for reverse-lookup. Shares the ``molmo``
-    template and module layout.
+    ``MolmoForCausalLM``), so it owns that architecture name for reverse-lookup.
 
-    Two legacy behaviours are real and kept:
-      * **fp32 weights.** Legacy declared ``torch_dtype=torch.float32`` on the ModelMeta: this
-        checkpoint is numerically unstable in bf16/fp16. dev has no family-level default-dtype
-        declaration, so it is injected as a ``setdefault`` in ``build_model`` -- an explicit user
-        ``--torch_dtype`` still wins.
-      * **``config.to_dict`` repair.** ``vision_backbone`` is a plain object on the config rather than
-        a nested ``PretrainedConfig``, so stock ``to_dict()`` silently omits it and any
-        save/serialize round-trip loses the vision settings. The wrapper folds it back in (and drops
-        the two bookkeeping keys it would otherwise leak).
-
-    Dropped: ``patch_output_clone`` on the token embedding (obsolete per PATCH_INVENTORY -- a
-    reentrant-gradient-checkpointing workaround).
+    Kept: **fp32 weights** (bf16/fp16 unstable) as a ``setdefault`` in ``build_model`` (explicit
+    ``--torch_dtype`` wins); the **``to_dict`` repair** (stock ``to_dict()`` omits the plain-object
+    ``vision_backbone``, so save round-trips lose vision settings). Dropped: ``patch_output_clone``.
     """
 
     model_type = 'molmoe'
@@ -251,16 +217,9 @@ class DotsOCRLoader(ModelLoader):
 @register_model
 class MegrezOmniLoader(ModelLoader):
     """Megrez-3B-Omni: remote-code ``MegrezO``, a thin wrapper whose real language model hangs off
-    ``model.llm`` -- so ``process_model`` proxies the wrapper's forward/generate/get_input_embeddings
-    to it via ``delegate_to_submodel`` (legacy ``use_submodel_func(model, 'llm')``; the device_map
-    ``_no_split_modules`` and ``patch_output_clone`` around it are obsolete per PATCH_INVENTORY and
-    dropped).
-
-    Processor-from-model coupling: Megrez builds its processor *from the loaded model*
-    (``model._get_or_init_processor()``), the reverse of dev's usual config->processor->model order.
-    ``build_processor`` expresses this by instantiating the model to obtain its processor. (The dev
-    loader hooks are registry-only today; if the orchestrator later hands the built model to a
-    processor hook, this can drop the extra instantiation.)
+    ``model.llm`` -- ``process_model`` proxies forward/generate/get_input_embeddings there. Megrez
+    builds its processor *from the loaded model* (``_get_or_init_processor()``), the reverse of the
+    usual config-to-processor-to-model order, so ``build_processor`` instantiates the model first.
     """
 
     model_type = 'megrez_omni'
@@ -290,13 +249,10 @@ class MegrezOmniLoader(ModelLoader):
 @register_model
 class JinaRerankerM0Loader(ModelLoader):
     """jina-reranker-m0: a multimodal reranker. Remote-code, loaded via ``AutoModel`` +
-    ``trust_remote_code`` so the checkpoint's own head is used. ``task_type='reranker'``.
-
-    ``process_model`` wraps ``forward`` to emit a ``SequenceClassifierOutputWithPast`` whose
-    ``logits`` are the model's scalar score minus a fixed ``logit_bias`` (legacy value 2.65), and
-    installs the ``padding_free_fn`` the packed path calls to score the last non-pad token. This is a
-    genuine model-method tweak (binding methods onto the instance), hence a ``process_model`` job.
-    """
+    ``trust_remote_code`` so the checkpoint's own head is used. ``process_model`` wraps ``forward``
+    to emit a ``SequenceClassifierOutputWithPast`` whose ``logits`` are the model's scalar score
+    minus a fixed ``logit_bias`` (legacy value 2.65), and installs the ``padding_free_fn`` the
+    packed path calls to score the last non-pad token."""
 
     model_type = 'jina_reranker_m0'
     model_cls = 'transformers:AutoModel'

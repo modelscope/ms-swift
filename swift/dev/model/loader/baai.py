@@ -1,12 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the BAAI families.
-
-Ported from ``swift/model/models/baai.py``. Only ``bge_reranker`` is migrated, with a pinned
-``task_type='reranker'`` (a bge reranker is only ever a reranker; the user need not pass it, and a
-user ``--task_type`` still overrides). Dropped (see MODEL_MIGRATION.md): ``emu3_gen`` / ``emu3_chat``
-git-clone the upstream Emu3 repo and download a separate VisionTokenizer to assemble the processor --
-2024 constructions too complex to carry forward.
-"""
+# Only bge_reranker migrated; emu3_gen/chat dropped (2024 git-clone constructions, MODEL_MIGRATION.md).
 from __future__ import annotations
 
 from .base import ModelLoader, register_model

@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
 import os
@@ -24,51 +25,10 @@ from .sentence_transformer_model import SentenceTransformerModel
 class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTransformerModel):
     """A sentence-transformers encoder served to several LoRA tenants at once.
 
-    Both parents are needed, and neither alone is enough:
-      - ``SentenceTransformerModel`` (the single-adapter embedding model) builds the ST pipeline and runs
-        it: the ``Transformer -> Pooling -> Normalize`` chain produces the sentence embeddings itself,
-        and its checkpointing is ST's own whole-pipeline format;
-      - ``MultiLoraTransformersModel`` owns the multi-tenant LoRA machinery: pre-allocated PEFT slots,
-        per-tenant optimizer groups and adapter checkpoints, tenant validation, then wraps the training
-        methods (``forward``/``forward_only``/``calculate_loss``/``backward``/``step``...) in an adapter
-        context so one base model serves many tenants.
-
-    Layout chosen here (differs from both parents):
-      - ``self.model`` stays the ST pipeline, which is the contract the inherited ``forward`` and
-        ``forward_only`` rely on when they call ``SentenceTransformerModel._encode_sentence_embeddings``;
-      - the LoRA slots are installed on the pipeline's HF backbone, and the resulting ``PeftModel`` is
-        written back into the leading ``Transformer`` module (``pipeline[0].model``) so the ST module
-        chain routes through the LoRA layers. ``MultiLora`` holds that same object as
-        ``self.multi_adapter.module``. The backbone is what gets patched because ``peft.get_peft_model``
-        only accepts a transformers ``PreTrainedModel``, while the pipeline is an ``nn.Sequential``.
-
-    Only the members the layout above invalidates are overridden: ``__init__`` (build the ST pipeline,
-    then patch the backbone), ``save``/``load`` (the inherited bodies look for the ``PeftModel`` on
-    ``self.model``, which holds the pipeline here), and ``register_global_mm_forward_hook``. Everything
-    else is inherited unchanged -- the tenant lifecycle (``add_adapter_to_model``/``remove_adapter``),
-    the adapter-context wrappers, the optimizer/scheduler/step surface, and the ST encoding path.
-
-    Scope: the standard (non-sequence-parallel) deployment of a text or multimodal ST model. Sequence
-    parallel is rejected by ``SentenceTransformerModel`` because the pooling head reads whole sentences.
-
-    Args:
-        model_id: A sentence-transformers model id or local directory. Required: ST models are loaded by
-            ``SentenceTransformer(model_id)``, never built from a config.
-        config: Optional pretrained config, taken as ``hf_config`` as-is. Without it, ``hf_config`` comes
-            from ``model_loader`` when one is given, otherwise from the loaded backbone.
-        model_loader: The loader seam ``MultiLoraTransformersModel`` uses. Its config/processor hooks
-            stay wired the same way, but ``build_model`` is not called: the ST pipeline owns the model
-            construction.
-        sentence_transformer_kwargs: Extra keyword arguments forwarded to ``SentenceTransformer``.
-        gradient_checkpointing / gradient_checkpointing_kwargs: Applied to the backbone through
-            ``SentenceTransformerModel._enable_gradient_checkpointing`` (the ST pipeline has no top-level
-            gradient-checkpointing entry point).
-        init_strategy: Re-initialize the weights a partial checkpoint left uninitialized; applied to the
-            pipeline before the LoRA slots are installed.
-        The remaining arguments (``device_mesh``, ``mixed_precision``, ``strategy``, ``ddp_config``,
-        ``fsdp_config``, ``lora_config``, ``grad_scaler_config``, ``memory_efficient_init``,
-        ``max_loras``, ``max_r``, ``max_length``, ``target_modules``, ``acc_strategy``, ``model_arch``)
-        keep the meaning ``MultiLoraTransformersModel`` gives them.
+    ``SentenceTransformerModel`` builds and runs the ST pipeline; ``MultiLoraTransformersModel``
+    owns the multi-tenant LoRA machinery. ``self.model`` stays the ST pipeline; the LoRA slots go on
+    its HF backbone (``get_peft_model`` rejects the ``nn.Sequential`` pipeline) with the ``PeftModel``
+    written back into ``pipeline[0].model``. Only ``__init__``/``save``/``load``/the mm hook differ.
     """
 
     def __init__(self,
@@ -94,17 +54,14 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
                  acc_strategy: str = 'token',
                  model_arch: Optional[Dict[str, Any]] = None,
                  **kwargs):
-        # This __init__ overrides both parents' (the ST one builds the pipeline, the multi-LoRA one
-        # patches an AutoModel backbone), so it carries the union of the state they set up: the strategy
-        # plumbing and slot bookkeeping of MultiLoraTransformersModel, plus the ST construction helpers
-        # of SentenceTransformerModel, in an order where each piece sees what it needs.
+        # Overrides both parents' __init__ (the ST one builds the pipeline, the multi-LoRA one
+        # patches an AutoModel backbone), so it carries the union of the state they set up.
         os.environ['TOKENIZERS_PARALLELISM'] = 'true'
         self._try_init_process_group()
         super(PreTrainedModel, self).__init__()
         self._default_tokenizer = None
-        # This __init__ overrides the @remote_class-wrapped base, so it does NOT receive the base's
-        # automatic device_mesh injection; resolve the global default here to uphold the same invariant
-        # (a constructed model holds a real mesh) the wrapped TransformersModel.__init__ guarantees.
+        # Overrides the @remote_class-wrapped base, so no automatic device_mesh injection; resolve
+        # the global default to uphold the "a constructed model holds a real mesh" invariant.
         self.device_mesh = device_mesh if device_mesh is not None else get_device_mesh()
         self.mixed_precision = mixed_precision
         self._fsdp_config = dict(fsdp_config or {})
@@ -113,10 +70,8 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
         # Router replay is a MoE-causal-LM concept; irrelevant to sentence encoders.
         self._router_replay_enabled = False
         self._router_replay_applied = False
-        # ``_acc_strategy`` / ``model_arch`` are read by inherited TransformersModel code: the former by
-        # ``_construct_default_optimizer_group`` (reached from ``_register_adapter``, i.e. every
-        # ``add_adapter_to_model``), the latter by the Muon/GaLore param-group builder. Neither parent's
-        # fork forwards them, so this one sets both itself, with the base's role normalization.
+        # ``_acc_strategy`` / ``model_arch`` are read by inherited TransformersModel code but
+        # forwarded by neither parent's fork; set both with the base's role normalization.
         self._acc_strategy = acc_strategy
         self.model_arch = dict(model_arch or {})
         for _role in ('language_model', 'vision_tower', 'aligner'):
@@ -150,14 +105,13 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
         self._model_wrapped = False
         self.optimizer_group: Dict[str, OptimizerGroup] = {}
         self.multi_adapter = MultiLora(max_loras=max_loras, max_r=max_r, max_length=max_length)
-        # Patch the backbone in place inside the pipeline and write it back: ``Transformer.forward``
-        # dispatches through this attribute (its ``auto_model`` property is the same object), so the ST
-        # module chain keeps working and now runs the LoRA-augmented backbone.
+        # Patch the backbone in place inside the pipeline and write it back: Transformer.forward
+        # dispatches through this attribute, so the ST chain now runs the LoRA-augmented backbone.
         transformer_module = self._first_module()
         transformer_module.model = self.multi_adapter.patch(
             transformer_module.model, target_modules=target_modules, lora_config=self.lora_config)
-        # PEFT creates LoRA parameters in FP32 even when the base model uses a lower-precision dtype.
-        # Align the preallocated slots before FSDP2 records their parameter and gradient dtypes.
+        # PEFT creates LoRA parameters in FP32 even when the base model uses a lower-precision dtype;
+        # align the preallocated slots before FSDP2 records their parameter and gradient dtypes.
         self._ensure_lora_dtype(self.model)
         self.multi_adapter.save_initial_weights()
         # Active group for compatibility with single adapter
@@ -168,46 +122,23 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
     def register_global_mm_forward_hook(self):
         """Do not install MultiLoraTransformersModel's global multimodal pre-forward hook.
 
-        That hook reads ``model.active_adapters[0]`` off the base model to find the tenant whose template
-        should prepare the batch. Here the base model is the ST pipeline, and the pipeline's PEFT API
-        raises instead of answering: sentence-transformers' ``active_adapters`` delegates to the wrapped
-        backbone only when it is a transformers ``PeftAdapterMixin``, which the ``peft`` ``PeftModel`` in
-        the ``Transformer`` module is not. The hook would also only ever see HF-forward-shaped calls,
-        while the pipeline forwards a features dict. Per-tenant templates keep working through the
-        template lookup inside ``forward``. A multimodal ST deployment that needs a tenant-aware
-        pre-forward hook needs a pipeline-shaped one, which is deliberately left out for now.
+        That hook reads ``model.active_adapters[0]`` off the base model; here the base model is the
+        ST pipeline, whose PEFT API raises instead of answering, and the pipeline forwards a
+        features dict the HF-shaped hook would never match. Per-tenant templates keep working
+        through the template lookup inside ``forward``.
         """
         return None
 
-    # lazy_collect=False: see TransformersModel.save -- a checkpoint write the caller acts on immediately
-    # must block until it lands, or the run's final save is torn down with the actor before writing.
+    # lazy_collect=False: see TransformersModel.save -- a checkpoint write the caller acts on
+    # immediately must block until it lands, or the run's final save is torn down with the actor.
     @remote_function(collect='first', lazy_collect=False)
     def save(self, name, output_dir: Optional[str] = None, interval: int = 1, **kwargs):
-        """Save one tenant's adapter checkpoint.
+        """Save one tenant's adapter checkpoint (``TransformersModel.save``'s PEFT branch, mirrored).
 
-        Why the body is spelled out instead of calling ``super().save``: the inherited chain is
-        ``MultiLoraTransformersModel.save`` -> ``SentenceTransformerModel.save`` (the ST class is next in
-        this class's MRO), and the ST ``save`` dumps the whole pipeline in sentence-transformers' own
-        format -- single-adapter behaviour, not a tenant archive. What follows is
-        ``TransformersModel.save``'s PEFT branch (async-write structure included), with the ``PeftModel``
-        read from ``multi_adapter.module`` (on ``MultiLoraTransformersModel`` that object is ``self.model``;
-        here ``self.model`` is the ST pipeline). ``save_context`` swaps the tenant's ``LoraConfig`` into
-        ``peft_config`` and restores the slot bookkeeping afterwards, so the tenant config is captured
-        BY REFERENCE on the synchronous path -- the async writer must not re-read ``peft_config`` after
-        the context has exited.
-
-        Args:
-            name: The name of checkpoint to save.
-            output_dir: An output_dir to save the model.
-            interval: Save each interval steps.
-            **kwargs:
-                adapter_name: The tenant to save. Required: a multi-LoRA deployment only ever saves the
-                    adapters registered under tenant names.
-                save_optimizer: Whether to save optimizer state.
-                safe_serialization: Save weights with safetensors instead of torch serialization.
-                max_shard_size: Rejected for adapter checkpoints (see below).
-                save_total_limit: Maximum number of completed checkpoint directories to retain.
-                async_save: Offload the staged file I/O to the background writer.
+        The inherited chain (MLTFM.save -> ST.save, next in this class's MRO) would dump the whole
+        pipeline in ST's own format -- single-adapter behaviour, not a tenant archive. The tenant
+        ``LoraConfig`` is captured BY REFERENCE inside ``save_context`` (the async writer must not
+        re-read ``peft_config`` after the context has exited).
         """
         adapter_name = kwargs.pop('adapter_name', self._get_default_group())
         self._check_adapter_valid(adapter_name)
@@ -224,9 +155,8 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
             checkpoint_dir = os.path.join(output_dir, name)
             if optimizer_config.cur_step % interval != 0:
                 return
-            # ``TransformersModel.save``'s ``adapter_name == _default_adapter_name`` full-model branch is
-            # unreachable here: this class only ever registers tenant adapters, and
-            # ``_check_adapter_valid`` rejects every other name.
+            # The full-model branch is unreachable here: this class only ever registers tenant
+            # adapters, and ``_check_adapter_valid`` rejects every other name.
             processed_state_dict = self._get_adapter_state_dict_for_save(adapter_name)
             if max_shard_size != '5GB':
                 raise NotImplementedError(
@@ -272,17 +202,9 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
     def load(self, name: str, output_dir: Optional[str] = None, **kwargs):
         """Load one tenant's LoRA weights and, on request, its training state.
 
-        Same shape as ``MultiLoraTransformersModel.load``, except that the
-        ``isinstance(self.model, PeftModel)`` gate is dropped: the ``PeftModel`` lives on
-        ``multi_adapter.module`` (``self.model`` is the ST pipeline), and ``MultiLora.set_state_dict``
-        resolves the tenant's slot itself.
-
-        Args:
-            name: The name of checkpoint to load.
-            output_dir: An output_dir to load the model.
-            **kwargs:
-                adapter_name: The tenant to load into.
-                load_optimizer: Whether to load optimizer and scheduler states.
+        Same shape as ``MultiLoraTransformersModel.load``, except the ``isinstance(self.model,
+        PeftModel)`` gate is dropped: the ``PeftModel`` lives on ``multi_adapter.module`` (here
+        ``self.model`` is the ST pipeline), and ``MultiLora.set_state_dict`` resolves the slot.
         """
         adapter_name = kwargs.get('adapter_name')
         self._check_adapter_valid(adapter_name)

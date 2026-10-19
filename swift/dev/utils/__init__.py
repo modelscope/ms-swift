@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 # Public name -> the submodule that defines it. Imports are deferred (PEP 562 ``__getattr__``) so
 # that importing this package -- e.g. via the stdlib-only leaf ``swift.dev.utils.logger`` -- never
 # eager-loads the torch / hub / transformers-heavy submodules (``torch_utils`` / ``hub`` /
-# ``hf_config`` / ``utils``). ``swift.dev.config`` and ``swift.dev.rollout`` rely on this to keep
+# ``hf_config`` / ``utils``). ``swift.dev.config`` relies on this to keep
 # their own import torch-free; ``get_logger`` stays a light leaf for the same reason (see logger.py,
 # whose lazy ``env`` read is also stdlib-only).
 _LAZY_ATTRS = {

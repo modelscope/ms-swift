@@ -318,8 +318,8 @@ def resolve_scheduler(swift_name: str):
     if name is None:
         return None
     # Imported lazily so this module stays cheap for callers that only need name lookups.
-    from swift.dev.builders import scheduler as dev_scheduler
-    return getattr(dev_scheduler, name, name)
+    from swift.dev.builders import scheduler
+    return getattr(scheduler, name, name)
 
 
 def mcore_version_at_least(min_version: str) -> bool:

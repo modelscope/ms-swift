@@ -1,12 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the OpenBuddy families.
-
-Ported from ``swift/model/models/openbuddy.py``. Plain Llama/Mistral/Mixtral backbones with the
-OpenBuddy chat format. ``openbuddy_llama`` legacy mixed two chat templates across its groups
-(``openbuddy`` for the v8/v10/deepseek checkpoints, ``openbuddy2`` for the llama3+ ones); that is a
-template variant, so it is split into a base loader and an ``architectures=[]`` subclass to keep the
-reverse ``LlamaForCausalLM`` lookup from being polluted.
-"""
+# Plain Llama/Mistral/Mixtral backbones with the OpenBuddy chat format (llama3+: openbuddy2 variant).
 from __future__ import annotations
 
 from .base import ModelLoader, register_model

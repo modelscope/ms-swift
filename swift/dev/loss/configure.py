@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.config import RLConfig, TrainConfig
     from swift.dev.model import TrainableModel
+    from swift.dev.config import RLConfig, TrainConfig
 
 # Losses that read ``outputs['embeddings']`` (the pooled, L2-normalized sentence vector) rather
 # than logits. Keys are swift loss names as they appear in TrainConfig.loss_type.
@@ -20,12 +20,10 @@ PROBLEM_TYPES = ('regression', 'single_label_classification', 'multi_label_class
 def liger_fused_ce_enabled(train_config: TrainConfig) -> bool:
     """True when the run asked for Liger's fused-linear-cross-entropy loss path.
 
-    Both switches must be on: ``use_liger_kernel`` (the master Liger flag) and the op-level
-    ``liger_kernel_config['fused_linear_cross_entropy']``. This is the single source of truth shared
-    by :func:`configure_loss` (which selects the loss) and the recipe (which sets the loop's forward
-    task to ``'fused_lm_ce'`` so TransformersFusedCEPatch skips the lm_head GEMM and stashes the head).
-    The two must agree: a fused loss under task='causal_lm' silently degrades to unfused CE, while a
-    standard CE under task='fused_lm_ce' would read hidden states as if they were logits.
+    Both switches must be on: ``use_liger_kernel`` and the op-level
+    ``liger_kernel_config['fused_linear_cross_entropy']``. Single source of truth shared with the
+    recipe (which sets the forward task to ``'fused_lm_ce'``) -- the two must agree, else the loss
+    silently degrades to unfused CE or reads hidden states as logits.
     """
     return bool(train_config.use_liger_kernel
                 and (train_config.liger_kernel_config or {}).get('fused_linear_cross_entropy'))
@@ -41,24 +39,17 @@ def configure_loss(model: TrainableModel,
                    **kwargs) -> None:
     """Set the SFT loss on ``model`` with an explicit reduction (default 'sum').
 
-    Args:
-        model: a twinkle-derived Model (has set_loss).
-        loss_type: swift loss name resolved via the unified naming layer (SFT default
-            'cross_entropy'). Non-CE losses (grpo/dpo/...) resolve too but belong to
-            their own recipes; SFT keeps CE.
-        reduction: 'sum' (default; GA-correct, aligns legacy) or 'mean'.
-        enable_channel_loss: Report token-level loss grouped by the dataset's sample-level ``channel`` field.
-        dft: Apply DFT entropy weighting before total and channel aggregation.
-        fused_linear_cross_entropy: select Liger's fused lm_head+CE loss (see
-            :func:`liger_fused_ce_enabled`). The caller must also run the forward under
-            task='fused_lm_ce'; the recipe wires both from that one predicate.
+    ``loss_type`` stays 'cross_entropy' (RL objectives belong to :func:`configure_rl_loss`);
+    ``reduction='sum'`` is GA-correct (aligns legacy). ``enable_channel_loss``/``dft`` add the
+    channel-grouped / DFT-weighted aggregations. ``fused_linear_cross_entropy`` selects Liger's fused
+    lm_head+CE loss (see :func:`liger_fused_ce_enabled`) and requires forward under task='fused_lm_ce'.
     """
     from swift.dev.utils.naming import resolve_loss
     if loss_type != 'cross_entropy':
         raise NotImplementedError(f"SFT configure_loss only supports 'cross_entropy', got {loss_type!r}")
     if fused_linear_cross_entropy:
         # The fused kernel computes CE itself, so the channel-grouped and DFT-weighted aggregations
-        # (which wrap the standard CE) do not apply -- refuse rather than silently drop them.
+        # do not apply -- refuse rather than silently drop them.
         if enable_channel_loss or dft:
             raise ValueError('fused_linear_cross_entropy replaces the standard CE path and cannot be combined '
                              'with enable_channel_loss or enable_dft_loss.')
@@ -76,21 +67,10 @@ def configure_embedding_loss(model: TrainableModel,
                              **kwargs) -> None:
     """Set the embedding (contrastive) loss on ``model``.
 
-    Separate from :func:`configure_loss` because the two have incompatible contracts: SFT's CE takes
-    ``reduction`` and normalizes by token count, whereas these losses score whole sentences and
-    report ``num_tokens=0`` (no per-token normalization), so passing a reduction would be rejected.
-
-    Applied on BOTH backends, unlike SFT. Megatron computes CE internally and ignores set_loss for
-    causal_lm, but under ``task='embedding'`` its scheduler pools to ``[n_seqs, hidden]`` and calls
-    ``loss_instance`` explicitly -- and MegatronModel.set_loss additionally binds ``process_group``
-    to the DP group so InfonceLoss's in-batch all-gather cannot deadlock earlier PP stages.
-
-    Args:
-        model: a twinkle-derived Model (has set_loss).
-        loss_type: one of :data:`EMBEDDING_LOSS_TYPES`.
-        mrl_dims: Matryoshka ``{dim: weight}``. ``None`` trains the full width only. Rejected by
-            ``cosine_similarity``, whose absolute-similarity target has no per-prefix reading.
-        **kwargs: forwarded to the loss constructor (temperature, margin, distance_metric, ...).
+    Separate from :func:`configure_loss` (contracts are incompatible: SFT's CE takes ``reduction``;
+    these score whole sentences). Applied on BOTH backends: Megatron's scheduler pools to
+    ``[n_seqs, hidden]`` and calls ``loss_instance`` explicitly. ``mrl_dims`` is the Matryoshka
+    ``{dim: weight}`` (None = full width); **kwargs forward to the loss constructor.
     """
     from swift.dev.utils.naming import resolve_loss
 
@@ -109,14 +89,8 @@ def configure_reranker_loss(model: TrainableModel, *, loss_type: str = 'pointwis
 
     Reads ``outputs['logits']`` (a per-pair relevance score), so it is separate from the embedding
     losses. Works on both backends: transformers rides a num_labels=1 SequenceClassification head;
-    Megatron maps reranker to the bridge's seq_cls head (num_labels=1). The last-valid-token pooling
-    that produces ``[n_seqs, 1]`` is done by the head (transformers) or the processor (Megatron)
-    before this loss runs.
-
-    Args:
-        model: a twinkle-derived Model (has set_loss).
-        loss_type: one of :data:`RERANKER_LOSS_TYPES`.
-        **kwargs: forwarded to the loss constructor (e.g. temperature for listwise).
+    Megatron maps reranker to the bridge's seq_cls head. ``loss_type`` is one of
+    :data:`RERANKER_LOSS_TYPES`; **kwargs forward to the loss constructor.
     """
     from swift.dev.utils.naming import resolve_loss
 
@@ -130,15 +104,9 @@ def configure_reranker_loss(model: TrainableModel, *, loss_type: str = 'pointwis
 def configure_seq_cls_loss(model: TrainableModel, *, problem_type: str, num_labels: int, **kwargs) -> None:
     """Set the sequence-classification loss on ``model``.
 
-    ``problem_type`` is REQUIRED (not inferred): it selects the objective (regression -> MSE,
-    single_label -> CE, multi_label -> BCE), matching HF/legacy numerics. The head has already
-    reduced logits to ``[B, num_labels]`` (transformers head / Megatron processor pooling) before
-    this loss runs.
-
-    Args:
-        model: a twinkle-derived Model (has set_loss).
-        problem_type: one of :data:`PROBLEM_TYPES`.
-        num_labels: class count (1 for regression), used for the CE reshape and the MSE squeeze.
+    ``problem_type`` is REQUIRED (not inferred): regression -> MSE, single_label -> CE,
+    multi_label -> BCE, matching HF/legacy numerics. ``num_labels`` is the class count (1 for
+    regression), used for the CE reshape and the MSE squeeze.
     """
     from swift.dev.utils.naming import resolve_loss
 
@@ -165,29 +133,14 @@ _RL_LOSS_NAME = {
     'mopd': 'mopd',
 }
 
+
 def configure_rl_loss(model: TrainableModel, rl_config: 'RLConfig') -> None:
     """Set the RL loss on ``model`` from ``rl_config.rl_type`` and its hyperparameters.
 
-    Peer of :func:`configure_loss`, for the RL recipes (run_grpo / run_dpo / run_gkd / run_ppo). The
-    heavy losses themselves live in twinkle (the GRPO family, the DPO family, GKD, RewardLoss); this only
-    maps the dev Config onto the right constructor and forwards the fields it reads, so a recipe never
-    hand-picks a loss class or its argument names.
-
-    The GRPO advanced controls (sequence-level IS, dual-clip, entropy filter/logging, overlong filtering,
-    truncated-IS rollout correction, off-policy sequence masking, FIPO future-KL weighting and SDAR
-    distillation) are constructor parameters of twinkle's ``GRPOLoss`` -- mapped
-    in :func:`_online_loss_kwargs`. twinkle therefore owns both the numerics AND the mutual-exclusion guard
-    that refuses to pair those controls with a variant whose objective lives in an overridden
-    ``_reduce_loss`` (REAL / DRO / DPPO / GeoMean / ClipCov / KLCov), raising with the offending control
-    names; dev keeps no duplicate of that guard.
-
-    Only the fields each algorithm actually reads are forwarded, so twinkle's own defaults stand for the
-    rest (e.g. an unset ``beta`` leaves the loss default rather than being overwritten with None). ``beta``
-    in particular is normally pre-filled per-algorithm by process.py::_derive_rlhf_beta.
-
-    rl_type='ppo' sets only the POLICY loss (the shared clipped surrogate, GRPOLoss, with epsilon=cliprange
-    and KL applied in the loop's reward shaping rather than the loss). Its critic is a separate value model
-    whose loss is set by :func:`configure_ppo_value_loss`.
+    The heavy losses live in twinkle (GRPO family, DPO family, GKD, RewardLoss); this maps the dev
+    Config onto the right constructor and forwards only the fields each algorithm reads, so a recipe
+    never hand-picks a loss class or its argument names. twinkle owns the numerics and the guard
+    refusing to pair the GRPO advanced controls with a ``_reduce_loss``-overriding variant.
     """
     from swift.dev.utils.naming import resolve_loss
 
@@ -199,9 +152,8 @@ def configure_rl_loss(model: TrainableModel, rl_config: 'RLConfig') -> None:
     grpo_loss_type = 'grpo'
     if rl_type == 'grpo' and rl_config.loss_type:
         grpo_loss_type = rl_config.loss_type[0]
-        # dapo reuses BNPO's batch-normalised aggregation; fipo reuses the plain GRPO surrogate and layers
-        # its future-KL weighting on top (see GRPOLoss._configured_grpo). Both resolve to a base class here
-        # while ``grpo_loss_type`` still carries the real variant into the kwargs mapping.
+        # dapo reuses BNPO's aggregation, fipo the plain GRPO surrogate (+future-KL weighting) --
+        # both resolve to a base class here while the variant rides in via ``grpo_loss_type``.
         loss_name = {'dapo': 'bnpo', 'fipo': 'grpo'}.get(grpo_loss_type, grpo_loss_type)
     loss_cls = resolve_loss(loss_name)
     loss = loss_cls(**_rl_loss_kwargs(rl_type, rl_config, grpo_loss_type))
@@ -221,9 +173,8 @@ def configure_rl_loss(model: TrainableModel, rl_config: 'RLConfig') -> None:
 def configure_ppo_value_loss(value_model: TrainableModel, rl_config: 'RLConfig') -> None:
     """Set PPO's clipped value-regression loss on the critic (a seq_cls num_labels=1 value model).
 
-    Separate from :func:`configure_rl_loss` because PPO trains two models with two objectives: the
-    policy (clipped surrogate, set by configure_rl_loss) and the critic (this value loss). Forwards
-    ``cliprange_value`` and ``vf_coef``; the loop supplies ``returns``/``old_values`` per step.
+    PPO trains two models with two objectives: the policy (configure_rl_loss) and the critic (this).
+    Forwards ``cliprange_value`` and ``vf_coef``; the loop supplies ``returns``/``old_values`` per step.
     """
     from swift.dev.utils.naming import resolve_loss
 
@@ -234,27 +185,10 @@ def configure_ppo_value_loss(value_model: TrainableModel, rl_config: 'RLConfig')
 def configure_rl_metrics(model: TrainableModel, rl_config: 'RLConfig') -> None:
     """Register the algorithm-specific twinkle.metric component on ``model`` for this rl_type.
 
-    Peer of :func:`configure_rl_loss`, for the metric side. Every recipe's per-step loss already flows
-    through twinkle's default ``LossMetric`` (loss / grad_norm / loss_<channel>), which the loop's unified
-    record merge surfaces; this adds ONLY the algorithm-specific component the loss cannot express -- the
-    GRPO family's ratio/clip/entropy stats, the DPO family's rewards/margins/accuracies, PPO's policy
-    stats. Registered on the model (not held by the loop) so twinkle accumulates it automatically inside
-    ``forward_backward`` from the same forward kwargs the loss sees (``old_logps``/``advantages`` for GRPO,
-    ``ref_logps`` for DPO), and ``model.calculate_metric`` returns it.
-
-    MUST be called AFTER ``configure_optimizer``: twinkle's ``add_metric`` appends onto the active
-    optimizer group's metric list, which does not exist until the group is built.
-
-    Metric classes are passed as CLASS objects, never name strings -- a str reaching twinkle's
-    ``construct_class`` is routed to ``Plugin.load_plugin`` (hub download), which is exactly what
-    ``test_no_name_string_is_handed_to_twinkles_loader`` forbids.
-
-    rl_types with no algorithm component (deliberate no-ops):
-      - ``gkd`` / ``opsd`` / ``mopd``: the training loss IS the teacher-student divergence (JSD / k3), so
-        ``LossMetric`` already surfaces it; a separate distill component would recompute the same quantity.
-      - ``kto``: unpaired (one completion + a binary label), so it does not fit DPOMetric's interleaved
-        chosen/rejected contract.
-      - ``rm``: a num_labels=1 seq_cls score head, not a paired LM objective.
+    Adds ONLY the component the default ``LossMetric`` cannot express (GRPO family's
+    ratio/clip/entropy stats, the DPO family's rewards/margins/accuracies, PPO's policy stats).
+    MUST be called AFTER ``configure_optimizer``; metric classes are passed as CLASS objects,
+    never name strings (a str is routed to ``Plugin.load_plugin`` hub download).
     """
     from twinkle.metric import CISPOMetric, DPOMetric, GRPOMetric, GSPOMetric, PPOMetric
 
@@ -271,16 +205,16 @@ def configure_rl_metrics(model: TrainableModel, rl_config: 'RLConfig') -> None:
             kwargs['loss_key'] = 'grpo'
         model.add_metric(metric_cls, is_training=True, **kwargs)
     elif rl_type == 'ppo':
-        # PPO's policy loss is the shared clipped surrogate with clip range ``cliprange`` (see
-        # configure_rl_loss); PPOMetric reports the same token-level ratio/clip stats.
+        # PPO's policy loss is the shared clipped surrogate with clip range ``cliprange``; PPOMetric
+        # reports the same token-level ratio/clip stats.
         model.add_metric(
             PPOMetric, is_training=True, epsilon=rl_config.cliprange, temperature=rl_config.distill_temperature)
     elif rl_type in ('dpo', 'cpo', 'orpo', 'simpo'):
-        # Paired preference objectives: DPOMetric surfaces logps/chosen|rejected and (with a reference)
-        # rewards/margins|accuracies. Forward beta only when set so twinkle's default stands otherwise.
+        # Paired preference objectives: forward beta only when set so twinkle's default stands.
         kwargs = {'beta': rl_config.beta} if rl_config.beta is not None else {}
         model.add_metric(DPOMetric, is_training=True, **kwargs)
-    # gkd / opsd / mopd / kto / rm: no algorithm-specific component (see the docstring).
+    # gkd / opsd / mopd / kto / rm: no algorithm-specific component (the training loss IS the
+    # teacher-student divergence for the distill family; kto is unpaired; rm is a score head).
 
 
 def configure_ppo_value_metric(value_model: TrainableModel, rl_config: 'RLConfig') -> None:
@@ -298,23 +232,10 @@ def configure_ppo_value_metric(value_model: TrainableModel, rl_config: 'RLConfig
 def configure_embedding_metric(model: TrainableModel) -> None:
     """Register twinkle's ``EmbeddingMetric`` on an embedding (InfoNCE/contrastive) model.
 
-    The embedding counterpart of :func:`configure_rl_metrics`: the contrastive loss alone is an opaque
-    scalar, so this surfaces the geometry that actually shows an embedding model converging -- ``pos_sim``
-    (anchor-positive cosine, should RISE) and ``neg_sim`` (anchor vs in-batch negatives, should stay flat or
-    FALL), the head signal twinkle's own embedding cookbook reads. twinkle auto-registers ``LossMetric`` +
-    ``Accuracy`` + ``TrainMetric`` on every model, but ``Accuracy`` is a no-op here (embeddings carry no class
-    label), so without this the record would hold only ``loss``.
-
-    MUST be called AFTER ``configure_optimizer`` (twinkle's ``add_metric`` appends onto the active optimizer
-    group's metric list, which does not exist until the group is built) -- the same contract as
-    :func:`configure_rl_metrics`, which is why the recipe threads it through ``TrainAssembly.fit``'s
-    ``configure_metric`` hook rather than the (pre-optimizer) ``configure_loss`` callable.
-
-    Passed as a CLASS object, never a name string (a str reaching twinkle's ``construct_class`` is routed to
-    ``Plugin.load_plugin`` -- the hub download ``test_no_name_string_is_handed_to_twinkles_loader`` forbids).
-    ``EmbeddingMetric`` also reports ``loss``/``grad_norm``; for embeddings those coincide with ``LossMetric``'s
-    (per-sequence losses report ``num_tokens=0``, so ``LossMetric`` falls back to the same ``total/count`` mean),
-    and ``_record_step`` re-pins the authoritative ``loss`` after the merge.
+    The contrastive loss alone is an opaque scalar, so this surfaces the geometry that shows an
+    embedding model converging -- ``pos_sim`` (should RISE) and ``neg_sim`` (in-batch negatives,
+    should stay flat or FALL). MUST be called AFTER ``configure_optimizer``; passed as a CLASS
+    object, never a name string.
     """
     from twinkle.metric import EmbeddingMetric
 
@@ -324,10 +245,9 @@ def configure_embedding_metric(model: TrainableModel) -> None:
 def _rl_loss_kwargs(rl_type: str, rl_config: 'RLConfig', grpo_loss_type: str = 'grpo') -> Dict[str, Any]:
     """The constructor kwargs for one rl_type's loss, forwarding only the fields it reads.
 
-    Split into an online (policy-gradient / distillation) and a preference/pairwise half so each stays
-    a short, single-purpose mapping rather than one long branch. ``grpo_loss_type`` is the resolved GRPO
-    variant (grpo/sapo/dr_grpo/...), needed because a variant's own hyperparameters are read only by its
-    loss subclass.
+    Split into an online (policy-gradient / distillation) and a preference/pairwise half so each
+    stays a short, single-purpose mapping. ``grpo_loss_type`` is the resolved GRPO variant, needed
+    because a variant's own hyperparameters are read only by its loss subclass.
     """
     if rl_type in ('grpo', 'gkd', 'ppo', 'opsd', 'mopd'):
         return _online_loss_kwargs(rl_type, rl_config, grpo_loss_type)
@@ -338,26 +258,21 @@ def _online_loss_kwargs(rl_type: str, rl_config: 'RLConfig', grpo_loss_type: str
     """kwargs for the on-policy losses (GRPO/PPO clip params, GKD's temperature); grpo/gkd read beta."""
     kwargs: Dict[str, Any] = {}
     if rl_type in ('opsd', 'mopd'):
-        # The sampled-token k3 surrogate reads ONLY the divergence direction. v1 deliberately applies no
-        # distillation temperature (it distils on the model's native log-probs) and carries no
-        # reference-KL term, so neither is forwarded to the loss -- OPSDLoss.__call__ reads neither.
-        # ``beta`` is rejected at validate time for opsd/mopd rather than dropped here in silence;
-        # ``distill_temperature`` is NOT rejected because it still drives the rollout sampling fallback
-        # (recipe/_distill.py::distill_sampling_params) -- it just never reaches the divergence.
+        # The sampled-token k3 surrogate reads ONLY the divergence direction: no distillation
+        # temperature and no reference-KL term; ``beta`` is rejected at validate time.
         kwargs['reverse'] = rl_config.opsd_reverse
         return kwargs
     if rl_type == 'gkd':
         if rl_config.beta is not None:
             kwargs['beta'] = rl_config.beta
         kwargs['temperature'] = rl_config.distill_temperature
-        # Auxiliary supervised CE mixed into the distillation loss on dataset-sourced rounds; 0 (default)
-        # keeps pure distillation. The recipe enables it per round via GKDLoss.__call__(apply_sft_loss=True).
+        # Auxiliary supervised CE mixed into the distillation loss on dataset-sourced rounds; 0
+        # (default) keeps pure distillation (enabled per round via apply_sft_loss=True).
         kwargs['sft_alpha'] = rl_config.sft_alpha
         return kwargs
     if rl_type == 'ppo':
-        # PPO's policy loss is the shared clipped surrogate; the clip range is `cliprange`, and its KL
-        # is applied as a reward penalty in the loop (beta=0 here, GRPOLoss's default) to avoid
-        # double-counting.
+        # PPO's policy loss is the shared clipped surrogate; the clip range is `cliprange`, and its
+        # KL is applied as a reward penalty in the loop (beta=0 here) to avoid double-counting.
         kwargs['epsilon'] = rl_config.cliprange
         return kwargs
     # grpo: KL is either folded into the reward or added by GRPOLoss, never both.
@@ -367,26 +282,24 @@ def _online_loss_kwargs(rl_type: str, rl_config: 'RLConfig', grpo_loss_type: str
     kwargs['epsilon'] = rl_config.epsilon
     if rl_config.epsilon_high is not None:
         kwargs['epsilon_high'] = rl_config.epsilon_high
-    # Variant-only hyperparameters: SAPO's soft-gate temperatures and DR-GRPO's length normaliser are read
-    # solely by their own loss subclass, so forward them only for the matching variant -- passing them to
-    # the base GRPOLoss would land in ``**kwargs`` and be dropped silently (the W20/W23 dead-param trap).
+    # Variant-only hyperparameters are read solely by their own loss subclass, so forward them only
+    # for the matching variant -- the base GRPOLoss would drop them silently (dead-param trap).
     if grpo_loss_type == 'sapo':
         kwargs['tau_pos'] = rl_config.tau_pos
         kwargs['tau_neg'] = rl_config.tau_neg
     elif grpo_loss_type == 'dr_grpo':
         kwargs['max_completion_length'] = rl_config.max_completion_length
     elif grpo_loss_type == 'real':
-        # REAL reduces each sequence to a scalar score and splits generation groups, so it needs the group
-        # size to reshape the batch; its soft-constraint temperature is real_tau.
+        # REAL reduces each sequence to a scalar score and splits generation groups, so it needs the
+        # group size to reshape the batch; its soft-constraint temperature is real_tau.
         kwargs['real_tau'] = rl_config.real_tau
         kwargs['num_generations'] = rl_config.num_generations
     elif grpo_loss_type == 'dro':
         # DRO's quadratic log-ratio penalty strength; read only by DROLoss (it validates >0).
         kwargs['dro_beta'] = rl_config.dro_beta
     elif grpo_loss_type in ('dppo_tv', 'dppo_kl'):
-        # DPPO's divergence threshold IS the shared epsilon/epsilon_high (verl reuses clip_ratio_low/high
-        # as clip_divergence_low/high), already forwarded above; the only DPPO-specific knob is the
-        # truncated-IS stability bound, read solely by the DPPO losses.
+        # DPPO's divergence threshold IS the shared epsilon/epsilon_high, already forwarded above;
+        # the only DPPO-specific knob is the truncated-IS stability bound.
         kwargs['clip_ratio_c'] = rl_config.clip_ratio_c
     elif grpo_loss_type == 'clip_cov':
         # Clip-Cov's covariance-window bounds and the fraction of tokens to zero; read only by ClipCovLoss.
@@ -397,20 +310,16 @@ def _online_loss_kwargs(rl_type: str, rl_config: 'RLConfig', grpo_loss_type: str
         # KL-Cov's selected-token fraction and the extra KL coefficient; read only by KLCovLoss.
         kwargs['kl_cov_ratio'] = rl_config.kl_cov_ratio
         kwargs['ppo_kl_coef'] = rl_config.ppo_kl_coef
-    # 'gpg' (pure REINFORCE, -logp*adv) and 'geo_mean' (sequence geometric mean) read no extra knobs beyond
-    # the shared epsilon/epsilon_high/beta forwarded above, so they need no variant branch here.
+    # 'gpg' (pure REINFORCE, -logp*adv) and 'geo_mean' (sequence geometric mean) read no extra knobs
+    # beyond the shared epsilon/epsilon_high/beta forwarded above, so they need no variant branch.
 
-    # -- advanced on-policy controls (twinkle GRPOLoss constructor knobs) -----------------------------
-    # Forwarded for every GRPO variant. Each defaults to "off", so a plain run leaves GRPOLoss's
-    # ``_advanced`` / ``_distill_wrap`` False and takes the unchanged base surrogate path. twinkle owns the
-    # numerics and the guard that refuses to pair these with a ``_reduce_loss``-overriding variant.
+    # Advanced on-policy controls: twinkle GRPOLoss constructor knobs, forwarded for every GRPO
+    # variant. Each defaults to "off"; twinkle owns the numerics and the variant guard.
     kwargs['loss_type'] = grpo_loss_type
     importance_sampling_level = rl_config.importance_sampling_level
     if grpo_loss_type == 'gspo' and importance_sampling_level == 'token':
-        # GSPO is sequence-level IS by definition, and GSPOLoss pins that default. The configured pipeline
-        # recomputes the ratio from ``importance_sampling_level`` (it does not call the base override), so
-        # promote an otherwise-default 'token' to keep GSPO sequence-level when another control turns the
-        # pipeline on; an explicit 'sequence' / 'sequence_token' (GSPO-token) is honored as-is.
+        # GSPO is sequence-level IS by definition; promote an otherwise-default 'token' when another
+        # control turns the configured pipeline on; an explicit 'sequence'/'sequence_token' stands.
         importance_sampling_level = 'sequence'
     kwargs['importance_sampling_level'] = importance_sampling_level
     kwargs['delta'] = rl_config.delta
@@ -425,15 +334,14 @@ def _online_loss_kwargs(rl_type: str, rl_config: 'RLConfig', grpo_loss_type: str
     kwargs['fipo_clip_range'] = rl_config.fipo_clip_range
     kwargs['fipo_clip_high_only'] = rl_config.fipo_clip_high_only
     kwargs['fipo_safety_threshold'] = rl_config.fipo_safety_threshold
-    # SDAR slices the rollout batch and reads logits/logps around the policy loss. CHORD uses a separate
-    # keyed cross-entropy loss and therefore does not alter GRPOLoss construction.
+    # SDAR slices the rollout batch and reads logits/logps around the policy loss. CHORD uses a
+    # separate keyed cross-entropy loss and therefore does not alter GRPOLoss construction.
     kwargs['sdar_loss_coef'] = rl_config.sdar_loss_coef
     kwargs['sdar_gate_beta'] = rl_config.sdar_gate_beta
 
     if rl_config.enable_sampling_replay:
-        # The base GRPOLoss validates beta==0 / entropy_coef==0 and switches its __call__ to require the
-        # forward-replayed logps. The model forward reads the flag off the loss instance, which (with the
-        # dev wrappers gone) is this same GRPOLoss, so the constructor kwarg is the single source of truth.
+        # The base GRPOLoss validates beta==0 / entropy_coef==0 and switches its __call__ to require
+        # the forward-replayed logps; the model forward reads the flag off this same loss instance.
         kwargs['enable_sampling_replay'] = True
     return kwargs
 
@@ -446,34 +354,28 @@ def _preference_loss_kwargs(rl_type: str, rl_config: 'RLConfig') -> Dict[str, An
     if beta is not None and rl_type in ('dpo', 'kto', 'simpo', 'cpo'):
         kwargs['beta'] = beta
     if rl_type == 'kto':
-        # KTO is the UNPAIRED objective (KTOLoss): a single completion per row + a binary label, anchored
-        # on the detached z_KL the loop estimates from a mismatched KL batch. It reads beta and the two
-        # imbalance-correcting weights only -- no loss_type/label_smoothing/sft_weight (DPO-family paired
-        # knobs) and no reference_free form (both the log-ratio and z_KL need a reference).
+        # KTO is the UNPAIRED objective (single completion + binary label, anchored on the detached
+        # z_KL): reads beta and the two imbalance-correcting weights only, no reference_free form.
         kwargs['desirable_weight'] = rl_config.desirable_weight
         kwargs['undesirable_weight'] = rl_config.undesirable_weight
     elif rl_type == 'dpo':
-        # DPOLoss takes a single variant OR a list combined as a weighted sum (MPO), so forward the whole
-        # list rather than just its head; twinkle validates every item and the loss_weights alignment.
+        # DPOLoss takes a single variant OR a list combined as a weighted sum (MPO), so forward the
+        # whole list; twinkle validates every item and the loss_weights alignment.
         kwargs['loss_type'] = rl_config.loss_type or ['sigmoid']
         kwargs['label_smoothing'] = rl_config.label_smoothing
-        # DPO-family knobs the twinkle DPOLoss reads: the DiscoPOP gate temperature, the f-divergence that
-        # reshapes the preference margin plus its alpha coefficient. Their dev defaults equal twinkle's, so
-        # forwarding them unconditionally is a no-op for a plain sigmoid run.
+        # DPO-family knobs the twinkle DPOLoss reads: the DiscoPOP gate temperature, the f-divergence
+        # that reshapes the preference margin plus its alpha coefficient.
         kwargs['discopop_tau'] = rl_config.discopop_tau
         kwargs['f_divergence_type'] = rl_config.f_divergence_type
         kwargs['f_alpha_divergence_coef'] = rl_config.f_alpha_divergence_coef
-        # ld_alpha (length-desensitization) and loss_weights (MPO) default to None; forward only when set so
-        # twinkle's own defaults stand rather than being overwritten with None.
+        # ld_alpha (length-desensitization) and loss_weights (MPO) default to None; forward only when
+        # set so twinkle's own defaults stand rather than being overwritten with None.
         if rl_config.ld_alpha is not None:
             kwargs['ld_alpha'] = rl_config.ld_alpha
         if rl_config.loss_weights is not None:
             kwargs['loss_weights'] = rl_config.loss_weights
-        # DPOLoss also honors ``reference_free`` (drop the reference log-ratio) and an NLL term on the
-        # chosen response to curb likelihood displacement; dev carries the latter as ``rpo_alpha`` (RPO's
-        # NLL weight), which maps onto twinkle's ``sft_weight``. Both were declared-but-unforwarded dead
-        # params (W21). ``reference_free`` is wired together with run_dpo._build_reference returning None
-        # so the loss takes its reference-free branch instead of the zero-loss fallthrough.
+        # ``reference_free`` is wired together with run_dpo._build_reference returning None;
+        # ``rpo_alpha`` (RPO's NLL weight on the chosen response) maps onto twinkle's ``sft_weight``.
         kwargs['reference_free'] = rl_config.reference_free
         if rl_config.rpo_alpha:
             kwargs['sft_weight'] = rl_config.rpo_alpha

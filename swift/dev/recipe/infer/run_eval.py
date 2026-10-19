@@ -1,9 +1,10 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 import datetime as dt
 from typing import Any, Dict, List, Optional
 
-from swift.dev.eval import build_task_config, model_name, run_evaluator, validate_eval_datasets
 from swift.dev.utils.logger import get_logger
+from swift.dev.eval import build_task_config, model_name, run_evaluator, validate_eval_datasets
 
 logger = get_logger()
 
@@ -22,17 +23,9 @@ def run_eval(model_config, template_config, eval_config, *, backend: str = 'vllm
              quantize_config=None) -> Dict[str, Any]:
     """Score a model by building a twinkle sampler in-process and running EvalScope's Native runner on it.
 
-    Args:
-        model_config: model id/path plus the engine knobs ``build_sampler`` reads (dtype, max_model_len).
-        template_config: chat template; the Evaluator uses it to decode and to parse tool calls.
-        eval_config: datasets, limit, generation config, output dir, result jsonl.
-        backend: 'vllm' / 'sglang' / 'transformers' -- the local engine that serves the model under test.
-        engine_args: forwarded verbatim to the engine (tensor parallelism, memory fraction, ...).
-        adapters: LoRA checkpoints loaded live into the engine; the first is selected for every request.
-        quantize_config: load-time quantization for the transformers backend (see ``build_sampler``).
-
-    Returns:
-        The report dict that is also appended to ``eval_config.result_jsonl`` when set.
+    ``model_config`` carries the engine knobs ``build_sampler`` reads; ``adapters`` load live into the
+    engine with the first pinned for every request (eval scores a single model). Returns the report
+    dict that is also appended to ``eval_config.result_jsonl`` when set.
     """
     import twinkle
 

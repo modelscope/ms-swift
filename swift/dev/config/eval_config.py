@@ -1,6 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Evaluation harness configuration."""
-from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -9,9 +7,7 @@ from typing import Any, Dict, List, Optional
 class EvalConfig:
     """EvalScope Native datasets, generation, output, and result selection.
 
-    Evaluation runs in-process off a twinkle sampler through EvalScope's Native runner, so there is no
-    remote-service URL, no backend choice (Native only), and no chat-template toggle here -- chat formatting
-    is the template's job (``TemplateConfig.use_chat_template``).
+    Runs in-process off a twinkle sampler through EvalScope's Native runner.
     """
 
     eval_dataset: List[str] = field(default_factory=list)

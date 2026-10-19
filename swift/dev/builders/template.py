@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""build_template: TemplateConfig + processor -> dev Template (VL subclass via mapping)."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
@@ -11,26 +10,14 @@ if TYPE_CHECKING:
 def build_template(template_config: TemplateConfig, processor: Any, *, task_type: Optional[str] = None) -> Any:
     """TemplateConfig + processor -> a swift Template whose labels are next-token shifted.
 
-    Wraps the legacy get_template (which resolves template_type + injects
-    max_length/system/truncation/loss_scale) and derives `Shifted<LegacyClass>` from the class it
-    returns, adding only dev's twinkle contract (`DevMixin`: the label convention + batch_encode).
-
-    Deriving rather than re-classing is the whole point: overwriting `__class__` drops every method
-    the legacy subclass overrode -- measured on Qwen3.5: 14, including `_encode`, `replace_tag`,
-    `_data_collator`, `_get_position_ids`, `packing_row` -- and silently routes `super()._encode()`
-    to the BASE legacy `_encode` instead of the family's. Two of those overrides sit on legacy's OWN
-    call path, so they are not neutralised by delegating `_encode`: `replace_tag` (base.py, inside
-    `_swift_encode`), whose media preprocessing `fetch_image`s in place, and
-    `Gemma3VisionTemplate._swift_prepare_inputs`. Text survives re-classing (`qwen2_5`/`qwen3` ARE the
-    base class); multimodal does not.
-
-    The returned template is used by BOTH the dataset (encode/lengths/packing) and the model (twinkle
-    calls `batch_encode`), so one implementation produces the training tokens.
+    Wraps legacy get_template and derives ``Shifted<LegacyClass>`` from the class it returns, adding
+    only dev's twinkle contract (DevMixin); deriving keeps every legacy override (multimodal needs it).
     """
     from swift.dev.template import shifted_template_class
     from swift.template import get_template
 
-    # follow legacy, TODO: refactor
+    # legacy Template's vocabulary has no 'delete' (that is a dataset-level length filter) -- the
+    # dev default maps onto legacy's own 'raise' default.
     truncation_strategy = template_config.truncation_strategy
     if truncation_strategy in (None, 'delete'):
         truncation_strategy = 'raise'
@@ -45,23 +32,15 @@ def build_template(template_config: TemplateConfig, processor: Any, *, task_type
         padding_free=template_config.padding_free,
         padding_side=template_config.padding_side,
         sequence_parallel_size=template_config.sequence_parallel_size,
-        # Must be forwarded: the dev Template reuses legacy _swift_encode, whose
-        # _add_non_thinking_prefix branch reads self.add_non_thinking_prefix (template/base.py:1279).
-        # Leaving it out silently took legacy's True default, so `--add_non_thinking_prefix false`
-        # was honoured by legacy but ignored here -- dev then prepended an empty
-        # '<think>\n\n</think>\n\n' (4 tokens) to every assistant turn and no legacy-vs-dev loss
-        # comparison could line up.
+        # Must be forwarded: legacy _swift_encode reads self.add_non_thinking_prefix, and leaving it
+        # out silently took legacy's True default (--add_non_thinking_prefix false was then ignored).
         add_non_thinking_prefix=template_config.add_non_thinking_prefix,
     )
-    # Derive in place rather than copy.copy + re-class: there is nothing to preserve a separate
-    # instance for, and the derived class keeps the legacy one as its base.
+    # Derive in place rather than copy.copy + re-class: nothing needs a separate instance.
     legacy.__class__ = shifted_template_class(type(legacy))
     template = legacy
-    # task_type drives BOTH legacy branches: `_encode` -> `_embedding_encode` (anchor_/positive_/
-    # negative_ prefixed keys + per-sequence labels) and `data_collator` -> `_embedding_data_collator`
-    # (flattens those prefixes into interleaved rows and concatenates the labels). Legacy takes it off
-    # model_info.task_type, which `get_template` never sees here (it is built from a processor loaded
-    # with load_model=False), so it defaults to 'causal_lm' and must be set explicitly.
+    # task_type drives legacy's _encode/_embedding_encode and data_collator branches; get_template
+    # never sees it here (processor built with load_model=False), so it must be set explicitly.
     if task_type is not None:
         template.task_type = task_type
     template.set_mode('train')

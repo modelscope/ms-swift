@@ -1,7 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Chat template, formatting, truncation, and loss configuration."""
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Literal, Optional
 

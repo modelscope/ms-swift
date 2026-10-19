@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Cross-backend training hyperparameters (lr/batch/optimizer/scheduler/gradient/eval)."""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
@@ -7,14 +6,12 @@ from typing import Any, Dict, List, Literal, Optional
 
 @dataclass
 class TrainConfig:
-    """Cross-backend training hyperparameters for lr, batch, optimizer, scheduler, gradient, and eval."""
+    """Cross-backend training hyperparameters for lr, batch, optimizer, scheduler, gradient, eval."""
 
     # === Learning Rate & Scheduling ===
     learning_rate: float = 1e-5
-    #: LR schedule name. Renamed from the HF spelling ``lr_scheduler_type`` to the kind name
-    #: ``lr_scheduler`` so the flag matches what it selects; ``--lr_scheduler_type`` still resolves
-    #: through LEGACY_ALIASES. Resolved by naming.resolve_scheduler, which also accepts an external
-    #: scheduler class/source, not just the built-in names.
+    # Schedule name, resolved by naming.resolve_scheduler (also accepts an external class/source);
+    # the v4 spelling --lr_scheduler_type still resolves through LEGACY_ALIASES.
     lr_scheduler: str = 'cosine'
     lr_scheduler_kwargs: Optional[Dict[str, Any]] = None
     warmup_ratio: float = 0.0
@@ -28,16 +25,12 @@ class TrainConfig:
     num_train_epochs: float = 3.0
 
     # === Gradient ===
-    # Gradient-clipping threshold for BOTH backends. legacy split this in two (HF `max_grad_norm`,
-    # Megatron `clip_grad`) and its Megatron path simply never read `max_grad_norm` -- setting it
-    # there was silently dropped. The two are synonyms, so dev carries one name; see `clip_grad`
-    # below for the deprecated alias.
+    # One name for BOTH backends (legacy Megatron never read max_grad_norm); clip_grad is deprecated.
     max_grad_norm: float = 1.0
     gradient_checkpointing: bool = True
     gradient_checkpointing_kwargs: Optional[Dict[str, Any]] = None
     vit_gradient_checkpointing: Optional[bool] = None
-    #: Checkpointing options for the vision tower, separate from ``gradient_checkpointing_kwargs``
-    #: because the two towers are wrapped independently.
+    # Vision-tower options are separate: the two towers are wrapped independently.
     vit_gradient_checkpointing_kwargs: Optional[Dict[str, Any]] = None
 
     # === Optimizer ===
@@ -49,21 +42,14 @@ class TrainConfig:
     adam_epsilon: float = 1e-8
 
     # === Optimizer: GaLore ===
-    #: Project the FULL-PARAMETER gradient into a low-rank subspace and keep optimizer state only there.
-    #: A full-parameter optimizer technique (requires ``tuner=full``), not an adapter, so it lives with
-    #: the other optimizer knobs rather than on TunerConfig, and ``configure_optimizer`` reads it off
-    #: this config -- the only place it is consumed. transformers backend only (see validate._HF_ONLY).
-    #: rank / target_modules / update_proj_gap / scale / proj_type drive the plain low-rank projection;
-    #: galore_quantization (+ proj_quant / proj_bits / proj_group_size / cos_threshold / gamma_proj /
-    #: queue_size) turns on QGaLore's quantized projection, resolved to twinkle's QGaLoreAdamW8bit (which
-    #: needs the external ``q_galore_torch``). Only galore_optim_per_parameter / galore_with_embedding have
-    #: no twinkle counterpart and are rejected by ``validate._check_galore``.
+    # Full-param low-rank gradient projection (transformers only); galore_quantization = QGaLore.
     use_galore: bool = False
     galore_target_modules: Optional[List[str]] = None
     galore_rank: int = 128
     galore_update_proj_gap: int = 50
     galore_scale: float = 1.0
     galore_proj_type: str = 'std'
+    # No twinkle counterpart; rejected by validate._check_galore.
     galore_optim_per_parameter: bool = False
     galore_with_embedding: bool = False
     galore_quantization: bool = False
@@ -75,115 +61,72 @@ class TrainConfig:
     galore_queue_size: int = 5
 
     # === Optimizer: Megatron-only ===
-    # Deprecated alias of max_grad_norm, kept so existing Megatron scripts/argv keep working.
-    # `None` means "not set" -- it must stay Optional to tell an explicit `--clip_grad 1.0` apart
-    # from the default, otherwise the deprecation warning could not fire on the former.
-    # `resolve_max_grad_norm()` (dev/optimizer.py) is the single place that folds the two.
+    # Deprecated alias of max_grad_norm (resolve_max_grad_norm folds the two).
     clip_grad: Optional[float] = None
     weight_decay_incr_style: Literal['constant', 'linear', 'cosine'] = 'constant'
     start_weight_decay: Optional[float] = None
     end_weight_decay: Optional[float] = None
-    # Megatron's scheduler takes the lr floor as a first-class arg, so 'cosine' + min_lr is what
-    # cosine_with_min_lr means here
+    # Megatron's scheduler takes the lr floor as a first-class arg: 'cosine' + min_lr here is
+    # cosine_with_min_lr.
     min_lr: float = 0.0
 
     # === Optimizer: Muon ===
-    #: Which optimizer Megatron builds. Distinct from ``optim`` above, which names a torch/HF optimizer
-    #: for the transformers backend -- the two backends construct optimizers by different means, and
-    #: neither accepts the other's names. Only consulted when the Megatron backend is in use.
-    #: 'dist_muon' is the sharded variant, and the only one compatible with the overlap options in
-    #: DistributedConfig: plain 'muon' needs both overlaps off, because it reads whole parameters.
+    # Megatron's optimizer (distinct from optim); 'dist_muon' is the sharded, overlap-compatible one.
     optimizer: Literal['adam', 'sgd', 'muon', 'dist_muon'] = 'adam'
-    #: Muon momentum. Dual-backend: Megatron reads it when ``optimizer`` selects a muon variant
-    #: (requires megatron-core>=0.16); the transformers backend reads it into MuonClip's MuonConfig when
-    #: ``optim='muon'``. muon_use_nesterov and muon_num_ns_steps below are dual-backend the same way --
-    #: the OTHER muon_* fields are Megatron-only (twinkle's MuonConfig has no counterpart for them).
+    # Dual-backend (Megatron optimizer=muon*; transformers optim='muon' into MuonClip). Same for
+    # muon_use_nesterov / muon_num_ns_steps; the other muon_* fields are Megatron-only.
     muon_momentum: float = 0.9
-    #: Orthogonalise q, k and v separately rather than as one fused matrix. On by default because the
-    #: fused weight's singular values mix the three heads' scales, which is not what muon assumes.
-    #: Megatron-only.
+    # Orthogonalise q/k/v separately; the fused weight mixes the three heads' scales. Megatron-only.
     muon_split_qkv: bool = True
-    #: Blend the raw gradient into the momentum buffer before orthogonalising it. Dual-backend (see
-    #: muon_momentum).
     muon_use_nesterov: bool = False
-    #: How the orthogonalised update is rescaled before it is applied. Megatron-only.
     muon_scale_mode: Literal['spectral', 'unit_rms_norm', 'shape_scaling'] = 'spectral'
-    #: Precision of the matmuls inside the Newton-Schulz iteration, not of the weights. Megatron-only.
+    # Precision of the Newton-Schulz matmuls, not of the weights. Megatron-only.
     muon_fp32_matmul_prec: Literal['low', 'medium', 'high'] = 'medium'
     muon_coefficient_type: str = 'quintic'
-    #: Newton-Schulz iterations per step. More is a closer orthogonalisation at linear cost.
-    #: Dual-backend (see muon_momentum).
-    muon_num_ns_steps: int = 5
-    #: How the update is computed across tensor-parallel ranks. 'blockwise' orthogonalises each shard
-    #: on its own, so its result depends on the TP width; the other two do not. Megatron-only.
+    muon_num_ns_steps: int = 5  # Newton-Schulz iterations; closer orthogonalisation at linear cost
+    # 'blockwise' depends on the TP width, the other two do not. Megatron-only.
     muon_tp_mode: Literal['blockwise', 'duplicated', 'distributed'] = 'blockwise'
     muon_extra_scale_factor: float = 1.
-    #: Optimizer used for the parameters muon does not handle -- scalars, biases, norms, which have no
-    #: matrix structure to orthogonalise. Megatron-only.
+    # For parameters muon does not handle (scalars, biases, norms: no matrix structure).
     muon_scalar_optimizer: str = 'adam'
-    #: QK-Clip -- MuonClip's brake on attention-logit blow-up. Transformers-only: these feed twinkle
-    #: MuonClip's MuonConfig when ``optim='muon'``; Megatron's muon has no QK-Clip counterpart, so
-    #: _check_backend_specific rejects them there (they are in _HF_ONLY).
-    #:
-    #: DEFAULT OFF, so ``optim='muon'`` is plain Muon. QK-Clip rescales the Q/K WEIGHTS (not the gradient)
-    #: by ``sqrt(qk_clip_tau / peak_attention_logit)`` on every step whose peak exceeds the tau ceiling --
-    #: it is a from-scratch-pretraining stabiliser (Kimi K2). A pretrained model already runs its attention
-    #: logits far above a low tau (Qwen2.5-0.5B peaks ~1e3), so turning it on with a small tau clips EVERY
-    #: step and geometrically collapses Q/K: verified weight-norm 60 -> 0.001 in 6 steps and loss 1.8 -> 8,
-    #: independent of lr (the rescale never multiplies by lr) and of attention backend. Opt in only for
-    #: from-scratch runs, and set qk_clip_tau above the model's natural logit scale.
+    # QK-Clip rescales the Q/K WEIGHTS when the peak logit exceeds tau (Kimi K2). DEFAULT OFF: a
+    # small tau geometrically collapses a pretrained model's Q/K; opt in only from scratch.
     qk_clip_enabled: bool = False
-    #: The attention-logit ceiling QK-Clip holds the model under; read only when qk_clip_enabled. Defaults
-    #: to 10000 (legacy swift/optimizers/muonclip.py and MuonClip.__init__), NOT twinkle MuonConfig's far
-    #: more aggressive 100 -- dev overrides that default with this value.
+    # The attention-logit ceiling; 10000 matches legacy, NOT twinkle MuonConfig's aggressive 100.
     qk_clip_tau: float = 10000.0
-    #: Megatron's SGD momentum, read only when ``optimizer='sgd'``.
-    sgd_momentum: float = 0.9
+    sgd_momentum: float = 0.9  # Megatron SGD; read only when optimizer='sgd'
 
     # === Optimizer: precision & offload (Megatron-only) ===
-    #: Keep optimizer state in lower precision than fp32, using the dtypes below. Off by default: it
-    #: saves a large fraction of optimizer memory and is the setting most likely to change convergence.
+    # Keep optimizer state below fp32: saves memory, most likely to change convergence.
     use_precision_aware_optimizer: bool = False
     main_params_dtype: Literal['fp32', 'fp16'] = 'fp32'
     main_grads_dtype: Literal['fp32', 'bf16'] = 'fp32'
     exp_avg_dtype: Literal['fp32', 'fp16', 'bf16', 'fp8'] = 'fp32'
     exp_avg_sq_dtype: Literal['fp32', 'fp16', 'bf16', 'fp8'] = 'fp32'
-    #: Accumulate the gradient all-reduce in fp32 even when training in bf16. Costs bandwidth and
-    #: removes the reduction as a source of drift across ranks.
+    # fp32 gradient all-reduce under bf16 training: costs bandwidth, removes a drift source.
     accumulate_allreduce_grads_in_fp32: bool = False
-    #: Hold optimizer state on the host and move it per step. Buys device memory at the cost of PCIe
-    #: traffic every step, so it is for a model that does not otherwise fit.
+    # Hold optimizer state on the host, move per step: device memory at PCIe-traffic cost.
     optimizer_cpu_offload: bool = False
-    #: Fraction of that state to offload; 1.0 offloads all of it. Read only when offload is on.
-    optimizer_offload_fraction: float = 1.
-    #: Capture the optimizer step in a CUDA graph, removing its launch overhead. Requires a step whose
-    #: shapes never change.
+    optimizer_offload_fraction: float = 1.  # fraction offloaded; read only when offload is on
+    # Capture the optimizer step in a CUDA graph; needs shapes that never change.
     optimizer_cuda_graph: bool = False
 
     # === Training cadence (Megatron-only) ===
-    # Megatron counts iterations where HF counts steps and epochs; the v4 spellings of the shared
-    # quantities (--lr/--train_iters/...) are parse-time aliases (LEGACY_ALIASES), so only the
+    # v4 spellings of the shared quantities (--lr/--train_iters/...) are parse-time aliases; only the
     # Megatron-only quantities are declared here.
-    #: Tokens-per-step expressed directly, rather than as micro-batch x accumulation x data-parallel
-    #: width. Megatron derives the accumulation count from it, which is the opposite direction from HF.
+    # Tokens-per-step expressed directly; Megatron derives the accumulation count from it.
     global_batch_size: Optional[int] = None
-    #: Evaluation iterations per evaluation. -1 means the whole eval set.
-    eval_iters: int = -1
-    #: Micro-batches per virtual-pipeline stage group. None lets Megatron choose from the interleaving.
-    microbatch_group_size_per_vp_stage: Optional[int] = None
+    eval_iters: int = -1  # evaluation iterations per eval; -1 = the whole eval set
+    microbatch_group_size_per_vp_stage: Optional[int] = None  # None lets Megatron choose
 
     # === LR schedule (Megatron-only) ===
     # Schedules HF has no equivalent for; the shared ones (--lr/--lr_warmup_*) are parse-time aliases.
-    #: Megatron spelling of ``lr_scheduler``. 'WSD' (warmup-stable-decay) is the one value with no
-    #: HF counterpart, and the reason the two cannot simply be merged.
+    # 'WSD' has no HF counterpart, hence the two fields cannot merge.
     lr_decay_style: Literal['constant', 'linear', 'cosine', 'inverse-square-root', 'WSD'] = 'cosine'
-    #: Iterations over which the lr decays, which Megatron takes separately from the total run length --
-    #: so decay can finish before training does. None decays across the whole run.
+    # Decay iterations, taken separately from the total length; None = across the whole run.
     lr_decay_iters: Optional[int] = None
-    #: Learning rate warmup starts from, rather than 0.
-    lr_warmup_init: float = 0.
-    #: The decay leg of the WSD schedule. Read only when ``lr_decay_style='WSD'``.
-    lr_wsd_decay_iters: Optional[int] = None
+    lr_warmup_init: float = 0.  # warmup starts from this rather than 0
+    lr_wsd_decay_iters: Optional[int] = None  # the decay leg of WSD; read only when WSD
     lr_wsd_decay_style: Literal['exponential', 'linear', 'cosine', 'minus_sqrt'] = 'exponential'
 
     # === General ===
@@ -196,88 +139,56 @@ class TrainConfig:
     router_aux_loss_coef: float = 0.0
     enable_dft_loss: bool = False
     enable_channel_loss: bool = False
-    #: Supervised-loss name for SFT/embedding/reranker. Renamed from ``loss_type`` to the kind name
-    #: ``loss`` (``--loss_type`` still resolves through LEGACY_ALIASES). Distinct from
-    #: ``RLConfig.loss_type``, which names the GRPO objective and keeps that name.
+    # Supervised-loss name (v4 --loss_type still resolves via aliases); distinct from
+    # RLConfig.loss_type (the GRPO objective), which keeps its name.
     loss: Optional[str] = None
     mrl_dims: Optional[Dict[int, float]] = None
     acc_strategy: Literal['token', 'seq'] = 'token'
 
     # === Per-group learning rates ===
-    # Consumed by swift.dev.builders.optimizer.build_param_groups_spec, which turns them into a backend-neutral
-    # param-group spec that twinkle applies worker-side on both backends (transformers: split the
-    # decay/no-decay groups by tower; megatron: translate to config_overrides). vit_lr/aligner_lr give
-    # a multimodal run's vision tower / aligner their own learning rate; each falls back to
-    # learning_rate when None, and both are inert on a plain LLM (empty ModelArch). The towers are named
-    # by role, not by literal prefix, so twinkle expands them from the model's own ModelArch.
-    #: Learning rate for the vision tower; None uses ``learning_rate``.
+    # Per-tower lr for multimodal runs (None falls back to learning_rate; inert on a plain LLM).
     vit_lr: Optional[float] = None
-    #: Learning rate for the aligner (vision-language connector); None uses ``learning_rate``.
     aligner_lr: Optional[float] = None
-    #: Names of extra ``param_groups`` plugins (registered via --external_plugins) whose rules are
-    #: appended after the built-in per-tower / LoRA+ grouping. Empty by default.
+    # Extra param_groups plugins, appended after the built-in per-tower / LoRA+ grouping.
     param_groups_plugins: List[str] = field(default_factory=list)
 
     # === Full-parameter freeze ===
-    # Consumed ONLY on the full-parameter path (tuner_config is None), where legacy runs
-    # ``requires_grad_(True)`` then ``freeze_parameters(ratio/list/regex)`` then
-    # ``activate_parameters(trainable_*)`` -- so trainable_* WINS over freeze_*. They live on
-    # TrainConfig, not TunerConfig, because a full run carries no TunerConfig (select_tuner maps
-    # tuner='full' to None); this is the same reason the full-parameter GaLore knobs are here.
-    # freeze_parameters_ratio is mutually exclusive with Megatron PP>1 (validate._check_freeze_ratio_pp):
-    # a pipeline rank holds only its own layers, so "freeze the first N% by element count" per rank
-    # freezes a different, meaningless slice on each stage.
-    #: Freeze parameters whose name starts with any of these prefixes.
+    # Full-param path only (no TunerConfig); trainable_* wins over freeze_*; ratio refuses PP>1.
     freeze_parameters: List[str] = field(default_factory=list)
-    #: Freeze parameters whose name matches (re.search) this regex.
+    # Freeze parameters whose name matches (re.search) this regex.
     freeze_parameters_regex: Optional[str] = None
-    #: Freeze the leading fraction (0~1) of parameters, counted by cumulative element count in
-    #: model.parameters() order.
+    # Freeze the leading fraction (0~1) by cumulative element count in parameters() order.
     freeze_parameters_ratio: float = 0.0
-    #: Re-enable parameters whose name starts with any of these prefixes (applied after freeze_*).
     trainable_parameters: List[str] = field(default_factory=list)
-    #: Re-enable parameters whose name matches (re.search) this regex (applied after freeze_*).
     trainable_parameters_regex: Optional[str] = None
 
     # === Precision & Performance ===
-    # torch_dtype in ModelConfig is what the weights are; these are about the run around them.
-    #: Allow tf32 on matmuls and convolutions. Large speedup on Ampere and later at reduced mantissa;
-    #: None leaves torch's own default alone.
-    tf32: Optional[bool] = None
-    #: Empty the CUDA cache every N steps. Buys headroom against fragmentation and costs a
-    #: synchronisation each time, so it is for runs that OOM late rather than a default.
+    tf32: Optional[bool] = None  # allow tf32 on matmuls/convs; None leaves torch's default alone
+    # Empty the CUDA cache every N steps: headroom against fragmentation at a sync cost.
     torch_empty_cache_steps: Optional[int] = None
-    #: The model's KV cache. Off during training, where it wastes memory and conflicts with gradient
-    #: checkpointing; only useful when the run generates.
+    # The model's KV cache: off during training, only useful when the run generates.
     use_cache: bool = False
 
     # === Loss ===
-    #: Spread this much probability mass off the target token. 0.0 disables it.
-    label_smoothing_factor: float = 0.0
-    #: Average the loss over real tokens across the whole global batch rather than per micro-batch.
-    #: Matters whenever micro-batches hold unequal token counts, i.e. any packed or padding-free run,
-    #: where the per-micro-batch mean quietly weights short batches more. None takes Megatron's default.
+    label_smoothing_factor: float = 0.0  # probability mass off the target token; 0 disables
+    # Average over real tokens across the whole global batch rather than per micro-batch; matters
+    # for packed/padding-free runs. None takes Megatron's default.
     calculate_per_token_loss: Optional[bool] = None
-    #: Apply weight decay to the q/k layernorm parameters too. Off by default, following the usual
-    #: convention that norm parameters are exempt.
+    # Weight decay on q/k layernorm parameters too; off follows the usual norm exemption.
     apply_wd_to_qk_layernorm: bool = False
 
     # === Nested third-party configs ===
-    # Kept as an opaque dict on purpose: the keys belong to that library and change with its
-    # version, so enumerating them here would go stale on the next upgrade.
-    #: Which Liger ops to patch in, applied worker-side by twinkle's ``TransformersModel._apply_liger_kernel``.
-    #: Read only when ``use_liger_kernel`` is on; None patches Liger's own default set.
+    # Opaque dict on purpose: the keys belong to that library and change with its version.
     liger_kernel_config: Optional[Dict[str, bool]] = None
 
     # === Evaluation ===
     eval_strategy: Optional[str] = None
-    #: Integer interval, or a ratio in (0, 1) resolved against total optimizer steps in TrainAssembly.plan_steps.
+    # Integer interval, or a ratio in (0, 1) resolved against total optimizer steps in plan_steps.
     eval_steps: Optional[float] = None
     eval_on_start: bool = False
-    #: Skip evaluation until this many steps (or epochs, following ``eval_strategy``) have passed.
+    # Skip evaluation until this many steps (or epochs, following eval_strategy) have passed.
     eval_delay: float = 0
-    #: Reload the best checkpoint when training ends, as ranked by ``metric_for_best_model``. Requires
-    #: that checkpoint to still exist, so it does not combine with an aggressive ``save_total_limit``.
+    # Reload the best checkpoint at train end (metric_for_best_model); needs it to still exist.
     load_best_model_at_end: bool = False
     metric_for_best_model: Optional[str] = None
     greater_is_better: Optional[bool] = None
@@ -289,19 +200,13 @@ class TrainConfig:
     eval_limit: Optional[int] = None
     eval_generation_config: Optional[Dict[str, Any]] = None
     extra_eval_args: Optional[Dict[str, Any]] = None
-    #: Which engine serves the model under test when ``predict_with_generate`` runs EvalScope inside
-    #: training. 'transformers' wraps the live training module in-process (no weight copy, no extra
-    #: GPU, but generation is not sequence-parallel aware); 'vllm'/'sglang' place a co-resident engine
-    #: and weight-sync into it (offload+colocate, ray mode only). Standalone ``swift eval`` reads the
-    #: equivalent off its own ``--sampler``.
+    # Which engine serves predict_with_generate: 'transformers' wraps the live module in-process;
+    # 'vllm'/'sglang' place a co-resident engine and weight-sync into it (ray mode only).
     eval_sampler_backend: Literal['transformers', 'vllm', 'sglang'] = 'transformers'
 
     # === Early stopping ===
     early_stop_interval: Optional[int] = None
 
     # === Callbacks ===
-    #: Registered callback names (see ``swift.dev.callbacks``), fired at transformers-Trainer-equivalent
-    #: points by the training loop. Custom callbacks are loaded through ``--external_plugins`` and selected
-    #: here by name; the built-in early-stop / perf-log / graceful-exit callbacks are appended from
-    #: their own config knobs rather than named in this list.
+    # Registered names fired at Trainer-equivalent points; built-ins append from their own knobs.
     callbacks: List[str] = field(default_factory=list)

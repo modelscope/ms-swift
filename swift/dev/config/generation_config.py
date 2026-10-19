@@ -1,12 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Generation parameters for inference and deployment."""
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
 
-# TODO: integrate it
 @dataclass
 class GenerationConfig:
     """Sampling, beam search, streaming, and structured output settings."""
@@ -23,9 +19,6 @@ class GenerationConfig:
     top_logprobs: Optional[int] = None
     structured_outputs_regex: Optional[str] = None
 
-    # === Defaults from a file ===
-    #: A ``generation_config.json``, a directory holding one, or a ready GenerationConfig. Supplies the
-    #: baseline that the fields above then override, which is how a model's shipped sampling defaults
-    #: are honoured without restating them. Named after HF's argument despite sitting inside a class of
-    #: the same name -- renaming it would break every command line that already passes it.
+    # A generation_config.json path/dir/instance supplying the baseline the fields above override;
+    # named after HF's argument so existing command lines keep working.
     generation_config: Optional[Any] = None

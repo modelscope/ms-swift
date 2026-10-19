@@ -1,8 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+from swift.dev.utils.plugin import PluginRegistry
+
 from swift.dev.callbacks.base import CALLBACK, CallbackControl, CallbackState, TrainCallback
 from swift.dev.callbacks.builtins import EarlyStopCallback, GracefulExitCallback, PerfLogCallback
 from swift.dev.callbacks.handler import CallbackHandler
-from swift.dev.utils.plugin import PluginRegistry
 
 __all__ = [
     'CALLBACK', 'TrainCallback', 'CallbackState', 'CallbackControl', 'CallbackHandler', 'EarlyStopCallback',
@@ -11,16 +12,10 @@ __all__ = [
 
 
 def build_callbacks(train_config) -> list:
-    """Resolve ``TrainConfig.callbacks`` to instances and append the warranted built-ins.
+    """Resolve ``TrainConfig.callbacks`` to instances, then append the warranted built-ins.
 
-    Order matters: user-named callbacks run first (in the order given), then the built-ins, so a
-    user's ``on_evaluate`` sees the metric before :class:`EarlyStopCallback` may veto the run. A
-    built-in already named explicitly is not appended twice (deduped by class), so naming ``perf_log``
-    keeps the user's single instance and position.
-
-    - ``EarlyStopCallback`` only when ``early_stop_interval`` is set (otherwise it could never fire).
-    - ``PerfLogCallback`` / ``GracefulExitCallback`` always: throughput visibility and a clean
-      SIGTERM/SIGINT stop are the defaults a training run wants, mirroring legacy swift.
+    User callbacks run first (so an ``on_evaluate`` sees the metric before early stop may veto);
+    built-ins dedupe by class, early_stop only when ``early_stop_interval`` is set.
     """
     callbacks = [
         PluginRegistry.resolve('callback', name, config=train_config) for name in (train_config.callbacks or [])

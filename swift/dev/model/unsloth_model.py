@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
 import dataclasses
@@ -14,16 +15,12 @@ from swift.dev.patch import UnslothDistributedFunctionPatch
 
 logger = get_logger()
 
-# unsloth's get_peft_model ends in peft's ``get_peft_model(model, lora_config)`` with no adapter_name,
-# so the adapter it installs always carries peft's default name. twinkle keys its own bookkeeping
-# (optimizer_group, state_dict export, set_adapter) off the requested name, so any other name would
-# leave the two disagreeing about what exists.
+# unsloth's get_peft_model takes no adapter_name, so the adapter always carries peft's default
+# name; twinkle keys its bookkeeping off the requested name, so any other name would disagree.
 _PEFT_DEFAULT_ADAPTER_NAME = 'default'
 
-# unsloth reads these at import / patch time, so they are set before the first unsloth import.
-# UNSLOTH_RETURN_LOGITS is load-bearing, not a preference: unsloth fuses the CE loss and returns
-# ``logits=None`` by default, while twinkle's Loss objects compute the loss themselves from
-# ``outputs['logits']``. Forced (not setdefault) for that reason -- same values legacy swift sets.
+# Set before the first unsloth import. UNSLOTH_RETURN_LOGITS is load-bearing: unsloth fuses the CE
+# loss and returns ``logits=None`` by default, while twinkle's Loss objects need ``outputs['logits']``.
 _UNSLOTH_ENV = {
     'UNSLOTH_RETURN_LOGITS': '1',
     'UNSLOTH_DISABLE_STATISTICS': '1',
@@ -33,11 +30,8 @@ _UNSLOTH_ENV = {
 # Load kwargs that mean "the parameters are sharded", which unsloth cannot consume.
 _SHARDED_LOAD_KEYS = ('tp_plan', 'tp_size', 'distributed_config', 'device_mesh')
 
-# LoraConfig fields that must not be forwarded to unsloth's get_peft_model. unsloth builds its own
-# LoraConfig from the kwargs it receives, so these would either be overwritten anyway or fight it:
-# peft_* / revision / base_model_name_or_path / auto_mapping are save-time bookkeeping, runtime_config
-# is a live object peft rebuilds, inference_mode would disable training, and task_type has a
-# variant-specific default inside unsloth (the vision path defaults to CAUSAL_LM).
+# LoraConfig fields not forwarded to unsloth's get_peft_model: save-time bookkeeping, a live object
+# peft rebuilds, a training disabler, and a variant-specific default unsloth owns.
 _LORA_BOOKKEEPING_FIELDS = frozenset({
     'peft_type',
     'peft_version',
@@ -53,8 +47,8 @@ _LORA_BOOKKEEPING_FIELDS = frozenset({
 def _accepted_params(fn) -> frozenset:
     """The keyword names ``fn`` declares, excluding ``*args`` / ``**kwargs``.
 
-    A wrapper such as ``FastModel.get_peft_model(model, *args, **kwargs)`` therefore reports almost
-    nothing, so this must only be used on entry points with a real signature (the ``from_pretrained``
+    A wrapper such as ``FastModel.get_peft_model(model, *args, **kwargs)`` reports almost nothing,
+    so this must only be used on entry points with a real signature (the ``from_pretrained``
     variants); filtering LoRA kwargs against it would drop everything.
     """
     try:
@@ -70,20 +64,11 @@ def _unsloth_lora_kwargs(config,
                          extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """peft ``LoraConfig`` -> ``get_peft_model`` kwargs for unsloth.
 
-    Every LoRA field the caller set is forwarded, including the ones unsloth does not declare as
-    named parameters. That is safe *and* the only correct thing to do: unsloth's ``get_peft_model``
-    filters its ``**kwargs`` through ``inspect.signature(LoraConfig)`` and feeds the survivors into
-    the LoraConfig it builds, so a field like ``use_dora`` or ``trainable_token_indices`` lands where
-    it should instead of being dropped. ``target_parameters`` (MoE expert LoRA) is a first-class
-    parameter on the vision/generic path and is auto-detected for MoE models.
-
-    ``target_modules`` is passed through untouched. ``'all-linear'`` in particular is unsloth's own
-    shorthand -- it turns on the finetune_{vision,language,attention,mlp,audio}_layers family and
-    routes through ``get_peft_regex``, which also changes how MoE experts are detected. Expanding it
-    into a leaf list here would quietly narrow the run.
-
-    Only the tuner *type* is rejected: trainable_tokens produces a different PeftConfig that unsloth's
-    LoRA path cannot represent at all.
+    Every LoRA field the caller set is forwarded, including the ones unsloth does not declare
+    (unsloth filters its ``**kwargs`` through ``inspect.signature(LoraConfig)``, so ``use_dora`` /
+    ``trainable_token_indices`` land where they should). ``target_modules`` passes through untouched
+    (``'all-linear'`` is unsloth's own shorthand -- expanding it here would narrow the run). Only the
+    tuner *type* is rejected: trainable_tokens produces a PeftConfig unsloth cannot represent.
     """
     peft_type = getattr(config, 'peft_type', None)
     peft_type = str(getattr(peft_type, 'value', peft_type) or '').upper()
@@ -103,10 +88,8 @@ def _unsloth_lora_kwargs(config,
         # peft's __post_init__ turns a list into a set; sort for a deterministic layer order.
         kwargs['target_modules'] = sorted(kwargs['target_modules'])
 
-    # unsloth's offloaded checkpointing -- the memory win people install unsloth for. twinkle already
-    # called the HF gradient_checkpointing_enable() during construction; this replaces it with
-    # unsloth's implementation on the LoRA-wrapped model. False keeps checkpointing off, so a caller
-    # asking for no gradient checkpointing is not overridden here.
+    # unsloth's offloaded checkpointing: replaces the HF enable() twinkle already ran; False keeps
+    # checkpointing off, so a caller asking for none is not overridden here.
     kwargs['use_gradient_checkpointing'] = use_gradient_checkpointing
     kwargs['max_seq_length'] = max_seq_length
     # unsloth-only LoRA knobs (finetune_vision_layers, finetune_last_n_layers, qat_scheme, ...) have
@@ -120,17 +103,16 @@ class _UnslothLoader:
 
     twinkle builds the model with ``model_cls.from_pretrained(model_id, config=..., **load_kwargs)``
     and only ever touches that one attribute, so passing this object as ``model_cls`` reuses the
-    entire parent ``__init__`` (hub download, strategy decision, optimizer group, tokenizer default)
-    and swaps just the construction call -- cheaper and far less drift-prone than re-implementing
-    ``__init__``.
+    entire parent ``__init__`` and swaps just the construction call -- cheaper and far less
+    drift-prone than re-implementing ``__init__``.
     """
 
     def __init__(self, owner: 'UnslothModel') -> None:
         self._owner = owner
 
     def from_pretrained(self, model_id: str, config=None, **load_kwargs):
-        # ``config`` is dropped on purpose: unsloth reads the checkpoint's own config and rebuilds the
-        # module graph around it, so an externally built PretrainedConfig has nowhere to go.
+        # ``config`` is dropped on purpose: unsloth reads the checkpoint's own config and rebuilds
+        # the module graph around it, so an externally built PretrainedConfig has nowhere to go.
         return self._owner._load_unsloth_model(model_id, **load_kwargs)
 
 
@@ -166,33 +148,11 @@ class _UnslothPeftPatch(Patch):
 class UnslothModel(TwinkleTransformersModel):
     """A ``TransformersModel`` whose weights and LoRA come from unsloth.
 
-    Args:
-        model_id: Checkpoint id or path. Required -- unsloth has no from-config path.
-        max_seq_length: Sequence length unsloth compiles its kernels and RoPE cache for. It is also
-            forwarded to ``get_peft_model``; 2048 is unsloth's own default.
-        full_finetuning: Train all weights instead of LoRA (unsloth still patches the kernels).
-        load_in_4bit / load_in_8bit / load_in_16bit: bnb quantization of the base model. 4bit + LoRA
-            == QLoRA.
-        variant: unsloth entry class name, e.g. ``'FastModel'`` (the generic one upstream now points
-            at), ``'FastLanguageModel'``, ``'FastVisionModel'``, ``'FastTextModel'``. Defaults to the
-            is_multimodal / is_moe dispatch below, which is what legacy swift's ``load_by_unsloth``
-            does.
-        is_multimodal / is_moe: Pick the default variant when ``variant`` is not given.
-        use_gradient_checkpointing: ``'unsloth'`` is unsloth's offloaded implementation; ``False``
-            turns checkpointing off for callers that asked for that. Passed to both
-            ``from_pretrained`` (it matters for full finetuning, where no LoRA call follows) and
-            ``get_peft_model``.
-        offload_embedding / unsloth_tiled_mlp / float32_mixed_precision / qat_scheme: unsloth's
-            memory and quantization-aware-training knobs, forwarded when the chosen variant declares
-            them.
-        unsloth_kwargs: Forwarded to ``from_pretrained`` after the same signature filter -- the way to
-            reach the rest of unsloth's surface (``fast_inference`` + ``gpu_memory_utilization`` +
-            ``max_lora_rank`` for its built-in vLLM, ``load_in_fp8``, ``whisper_language``,
-            ``fix_tokenizer``, ``random_state``, ...).
-        unsloth_lora_kwargs: Forwarded to ``get_peft_model``, for the knobs with no LoraConfig
-            equivalent (``finetune_vision_layers`` / ``finetune_language_layers`` /
-            ``finetune_attention_modules`` / ``finetune_mlp_modules`` / ``finetune_audio_layers``,
-            ``finetune_last_n_layers``, ``ensure_weight_tying``, ``qat_scheme``, ...).
+    ``model_id`` (required) plus unsloth's own knobs -- max_seq_length / full_finetuning /
+    load_in_{4,8,16}bit / variant / is_multimodal / is_moe / use_gradient_checkpointing /
+    offload_embedding / unsloth_tiled_mlp / float32_mixed_precision / qat_scheme, signature-filtered
+    against the chosen entry class; unsloth_kwargs / unsloth_lora_kwargs escape to
+    from_pretrained / get_peft_model.
     """
 
     def __init__(self,
@@ -218,9 +178,8 @@ class UnslothModel(TwinkleTransformersModel):
             raise ValueError('UnslothModel requires `model_id`: unsloth loads a checkpoint by name or path '
                              'and cannot build a blank model from a config.')
         if kwargs.get('memory_efficient_init'):
-            # That path builds an empty model straight from the config on every rank but local rank 0,
-            # bypassing this class's loader -- those ranks would run unpatched HF modules while rank 0
-            # runs unsloth's. Fail instead of training a model that differs per rank.
+            # That path bypasses this class's loader on every rank but local rank 0, which would run
+            # unpatched HF modules while rank 0 runs unsloth's. Fail instead of training a mismatch.
             raise NotImplementedError('UnslothModel does not support memory_efficient_init: the rank0-broadcast '
                                       'path skips unsloth on the other ranks.')
         # Construction is owned by unsloth; an explicit model_cls has nothing to act on.
@@ -229,8 +188,7 @@ class UnslothModel(TwinkleTransformersModel):
         os.environ.update(_UNSLOTH_ENV)
         self._unsloth_variant = variant or ('FastVisionModel'
                                             if is_multimodal else 'FastModel' if is_moe else 'FastLanguageModel')
-        # Filtered against the chosen variant's from_pretrained signature before the call, so naming
-        # a knob an older/other variant lacks logs a drop instead of raising.
+        # Filtered against the variant's from_pretrained signature; a knob it lacks is logged, not raised.
         self._unsloth_options = {
             'max_seq_length': max_seq_length,
             'full_finetuning': full_finetuning,
@@ -251,8 +209,8 @@ class UnslothModel(TwinkleTransformersModel):
 
         super().__init__(model_cls=_UnslothLoader(self), model_id=model_id, **kwargs)
 
-        # unsloth returns its (fixed-up) tokenizer/processor next to the model. Keep it as the default
-        # so save() writes a loadable checkpoint even when the recipe set no template.
+        # unsloth returns its (fixed-up) tokenizer/processor next to the model. Keep it as the
+        # default so save() writes a loadable checkpoint even when the recipe set no template.
         if self._unsloth_tokenizer is not None:
             self._default_tokenizer = self._unsloth_tokenizer
 
@@ -279,13 +237,11 @@ class UnslothModel(TwinkleTransformersModel):
 
         # The import is inside the context too: unsloth runs its compiled-kernel setup through
         # distributed_function at import time, not just during from_pretrained.
-        ## 得写一个ddp的example实际测试下
         with apply_context(None, UnslothDistributedFunctionPatch()):
             unsloth_cls = self._unsloth_cls()
             accepted = _accepted_params(unsloth_cls.from_pretrained)
-            # twinkle forwards every leftover ctor kwarg to the construction call (e.g.
-            # attn_implementation, which unsloth replaces with its own kernel). Keep what this variant
-            # declares and report the rest, so an ignored request is visible in the log.
+            # twinkle forwards every leftover ctor kwarg to the construction call; keep what this
+            # variant declares and report the rest, so an ignored request is visible in the log.
             candidates = {**self._unsloth_options, **load_kwargs}
             forwarded = {k: v for k, v in candidates.items() if k in accepted and v is not None}
             # Only report names that were actually *set* and are not in this variant's signature; an

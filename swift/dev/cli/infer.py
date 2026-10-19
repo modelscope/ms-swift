@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Inference CLI backed only by dev Configs and recipes."""
 from __future__ import annotations
 import datetime as dt
 import os
@@ -21,7 +20,7 @@ class InferCliConfig:
 
 def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     from swift.dev.cli.legacy_coverage import reject_legacy_only_flags
-    from swift.dev.cli.parser import flag_names, parse_configs_strict, resolve_argv, select_tuner
+    from swift.dev.cli.parser import flag_names, normalize_sampler, parse_configs_strict, resolve_argv, select_tuner
     from swift.dev.config import (
         CheckpointConfig,
         DatasetConfig,
@@ -41,9 +40,7 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     effective_argv = resolve_argv(argv)
     reject_legacy_only_flags('infer', effective_argv)
     # infer absorbs the whole synthesis surface: InferConfig carries the best-of-n / reward / token-dump
-    # knobs, RewardConfig carries the reward channels (orm, prm and their companion families), and
-    # RolloutConfig the multi-turn knobs (tools, max_turns). Every field name is unique across these
-    # Configs, so no per-flag owner disambiguation is needed.
+    # knobs, RewardConfig the reward channels, RolloutConfig the multi-turn knobs. All names unique here.
     classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig,
                TunerConfig, GenerationConfig, RolloutConfig, InferConfig, RewardConfig,
                QuantizeConfig, InferCliConfig, RuntimeConfig]
@@ -55,8 +52,7 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     result = dict(zip(names, configs))
     result['tuner_config'] = select_tuner(result['tuner_config'])
     infer_config = result['infer_config']
-    if infer_config.sampler == 'pt':
-        infer_config.sampler = 'transformers'
+    normalize_sampler(infer_config)
     passed = flag_names(effective_argv)
     # Legacy sampling spellings folded into their canonical InferConfig fields, mirroring the old sample CLI.
     if infer_config.num_sampling_batch_size is not None:
@@ -67,19 +63,14 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         infer_config.reward_threshold = infer_config.prm_threshold
     if 'padding_side' not in passed:
         result['template_config'].padding_side = 'left'
-    # The RewardConfig is the reward-channel carrier; the multi-turn knobs (max_turns and friends)
-    # moved to RolloutConfig, so the interactive REPL reads them off rollout_config directly.
     # num_samples (the CLI spelling) and num_return_sequences (the InferConfig field) are one knob under
-    # two names; an explicit value for either drives the other so both entry points agree. Nothing else is
-    # derived here -- how many candidates to draw, whether to score them, and how to store them
-    # (output_format) each keep their own Config default and bend only to the flags the user passes.
+    # two names; an explicit value for either drives the other so both entry points agree.
     if 'num_samples' in passed:
         infer_config.num_return_sequences = result['cli_config'].num_samples
     if 'num_return_sequences' in passed:
         result['cli_config'].num_samples = infer_config.num_return_sequences
     if infer_config.output_format != 'dpo':
-        # The best-of-n ranking knobs only shape 'dpo' output; under 'all'/'grpo' every candidate is stored
-        # as-is, so a threshold set here would be silently ignored. Say so instead of dropping it on the floor.
+        # The best-of-n ranking knobs only shape 'dpo' output; say so instead of dropping them silently.
         ignored = [name for name, value in (('reward_threshold', infer_config.reward_threshold),
                                             ('easy_query_threshold', infer_config.easy_query_threshold))
                    if value is not None]
@@ -99,8 +90,8 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 def _derive_result_path(configs: Dict[str, Any]) -> None:
     infer_config = configs['infer_config']
     dataset_config = configs['dataset_config']
-    # result_path is the single output truth for both plain infer and synthesis: an explicit --result_path
-    # wins, otherwise a dataset run falls back to a timestamped path under result/<model>/infer_result.
+    # result_path is the single output truth: an explicit --result_path wins, otherwise a dataset run
+    # falls back to a timestamped path under result/<model>/infer_result.
     if infer_config.result_path:
         infer_config.result_path = os.path.abspath(os.path.expanduser(infer_config.result_path))
     elif dataset_config.dataset or dataset_config.val_dataset:
@@ -114,9 +105,8 @@ def _derive_result_path(configs: Dict[str, Any]) -> None:
 def _interactive_dp_width(distributed_config: Any) -> int:
     """How many data-parallel drivers an interactive run would have.
 
-    Under ``mode='ray'`` the recipe runs once on a single driver and DP is expressed inside the sampler's
-    device mesh, so the width is that mesh's data world size (1 when no DP mesh is built). Under local
-    (torchrun) mode every rank runs this same recipe, so the width is the torchrun world size.
+    Ray mode runs one driver with DP inside the sampler mesh (data world size); local (torchrun) mode
+    runs this recipe on every rank, so the width is the torchrun world size.
     """
     if distributed_config is not None and distributed_config.mode == 'ray':
         from swift.dev.builders import build_parallel_mesh
@@ -126,16 +116,8 @@ def _interactive_dp_width(distributed_config: Any) -> int:
 
 
 def _guard_interactive(distributed_config: Any, task_type: Optional[str]) -> None:
-    """Reject interactive REPL runs that cannot drive a single turn-by-turn conversation.
-
-    Two cases, matching legacy's ``_init_ddp`` assertion that DDP forbids ``eval_human``/``stream``:
-
-    * A non-generative ``task_type`` (pooling / reranker) scores a forward pass; the REPL only generates
-      text, so it would silently produce the wrong thing. Score those over a dataset instead.
-    * More than one data-parallel driver: under torchrun every rank would open a competing REPL, and a
-      DP>1 sampler shards the batch across ranks. A single DP rank is fine, so ray with dp=1 (tp=N) --
-      one driver, tensor parallelism inside the engine -- is allowed.
-    """
+    """Reject interactive REPL runs it cannot drive: a non-generative task_type only scores a forward
+    pass, and dp>1 would open competing REPLs (torchrun) or shard the batch (DP>1 sampler)."""
     from swift.dev.builders import is_pooling_task
     task_type = task_type or 'causal_lm'
     if is_pooling_task(task_type) or task_type == 'generative_reranker':
@@ -153,7 +135,7 @@ def _guard_interactive(distributed_config: Any, task_type: Optional[str]) -> Non
 def infer_main(argv: Optional[List[str]] = None):
     from swift.dev.builders import build_engine_args
     from swift.dev.config import process_and_validate_configs
-    from swift.dev.recipe import infer_cli, run_infer
+    from swift.dev.recipe.infer import infer_cli, run_infer
 
     configs = parse_infer_configs(argv)
     infer_config = configs['infer_config']

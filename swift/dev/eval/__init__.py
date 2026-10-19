@@ -1,4 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+from __future__ import annotations
+
 from .evalscope_runner import (build_task_config, model_name, run_evaluator, summarize,
                                validate_eval_datasets)
 

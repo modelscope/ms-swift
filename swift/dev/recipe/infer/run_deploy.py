@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
 import os
@@ -7,8 +8,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
-    from swift.dev.config import (DeployConfig, DistributedConfig, GenerationConfig, ModelConfig, QuantizeConfig,
-                                  TemplateConfig)
+    from swift.dev.config import (DeployConfig, DistributedConfig, GenerationConfig, ModelConfig,
+                                    QuantizeConfig, TemplateConfig)
 
 logger = get_logger()
 
@@ -27,28 +28,10 @@ def run_deploy(
 ) -> None:
     """Serve the model until interrupted, by launching twinkle-server on Ray Serve.
 
-    Args:
-        model_config / template_config: the model to serve and how to render its chat. ``template_config``
-            is resolved to a *serializable* twinkle template spec (a class name + kwargs) rather than the
-            in-process ``ShiftedTemplate`` instance, because the sampler runs inside a Ray actor.
-        generation_config: accepted for parity with ``run_infer``; its sampling defaults are NOT applied
-            server-side (see the module docstring). A warning names any that were set so nothing is
-            silently dropped.
-        backend: the sampler engine. ``vllm``, ``sglang`` and ``transformers`` (``pt``) are all served.
-            With ``enable_data_plane``, vLLM and sglang use their non-blocking ``_async`` sampler
-            (``vllm_async`` / ``sglang_async``); transformers has no async variant, so
-            ``transformers`` + ``enable_data_plane`` raises.
-        engine_args: forwarded to the engine (from ``build_engine_args``); ``max_logprobs`` and the LoRA
-            sizing for ``adapter_mapping`` are merged in here.
-        adapter_mapping: ``{served name: adapter path}``. Each name is listed in ``/v1/models`` and the
-            engine is built with LoRA enabled and sized for them. With ``deploy_config.merge_lora`` a
-            single adapter is baked into the base weights instead (and the mapping cleared).
-        quantize_config: a load-time ``quant_method`` is a transformers-only setting the Ray Serve sampler
-            cannot apply, so it is rejected with a pointer to the engine's own quantization args.
-        distributed_config: ``mode``/``nproc_per_node`` drive the Ray bring-up and the sampler's device
-            group / data-parallel mesh.
-        deploy_config: the serving surface -- address, TLS, auth, identity, route prefix, data plane,
-            persistence and scaling.
+    ``template_config`` resolves to a serializable twinkle template spec (the sampler runs inside a
+    Ray actor); ``generation_config`` is accepted for parity with ``run_infer`` but its sampling
+    defaults are NOT applied server-side -- a warning names any that were set. Blocks until
+    SIGINT/SIGTERM; twinkle's launcher installs the handlers and calls serve.shutdown().
     """
     from twinkle.server import launch_server
 
@@ -76,7 +59,6 @@ def run_deploy(
         distributed_config=distributed_config,
         deploy_config=deploy_config,
     )
-    # Blocks until SIGINT/SIGTERM; twinkle's launcher installs the handlers and calls serve.shutdown().
     launch_server(config=config, ray_namespace=deploy_config.ray_namespace)
 
 
@@ -94,18 +76,15 @@ def build_server_config(
 ) -> Any:
     """dev Configs -> a twinkle-server ``ServerConfig`` (gateway + sampler [+ data plane]).
 
-    Separate from :func:`run_deploy` so the assembled config can be inspected, dumped to YAML, or handed
-    to ``launch_server`` by a caller that manages Ray itself.
-
-    The gateway is mounted at ``deploy_config.route_prefix`` (``/v1`` by default) and the sampler at
-    ``{route_prefix}/sampler/{public_name}``; twinkle's proxy rebuilds that exact path from the request's
-    model, so the public name and the sampler's route must agree. ``ServerArgs.route_prefix`` is set to
-    the same ``route_prefix`` for that reason.
+    Separate from :func:`run_deploy` so the assembled config can be inspected, dumped to YAML, or
+    handed to ``launch_server`` by a caller that manages Ray itself. The gateway is mounted at
+    ``route_prefix`` and the sampler at ``{route_prefix}/sampler/{public_name}`` -- twinkle's proxy
+    rebuilds that exact path from the request's model, so the two must agree.
     """
     from twinkle.server.config import (ApplicationSpec, DataPlaneArgs, HttpOptions, PersistenceConfig, SamplerArgs,
                                        ServerArgs, ServerConfig)
 
-    from swift.dev.builders import build_parallel_mesh, resolve_twinkle_template
+    from swift.dev.builders import resolve_twinkle_template
     from swift.dev.builders.sampler import _derive_sampler_type, _enable_lora
     from swift.dev.config import DeployConfig as _DeployConfig
     from swift.dev.config import DistributedConfig as _DistributedConfig
@@ -127,11 +106,8 @@ def build_server_config(
     template_spec = resolve_twinkle_template(template_config, model_config)
 
     route_prefix = deploy_config.route_prefix
-    # 127.0.0.1 is correct here, not a placeholder: ``data_plane_url`` is what the *sampler actor* dials to
-    # reach the data-plane app, and Ray Serve runs one HTTP proxy per node listening on that node's
-    # loopback. The sampler and the proxy it talks to are co-located, so loopback routes to the data-plane
-    # application without exposing it on the external interface. The scheme follows the TLS config so an
-    # HTTPS deployment does not have its sampler silently dial plaintext at its own proxy.
+    # 127.0.0.1 is deliberate: the sampler actor dials its own node's co-located Ray Serve proxy, so
+    # loopback reaches the data plane without exposing it; the scheme follows TLS (no plaintext dial).
     scheme = _url_scheme(deploy_config)
     data_plane_url = (f'{scheme}://127.0.0.1:{deploy_config.port}{route_prefix}/data-plane'
                       if deploy_config.enable_data_plane else None)
@@ -151,13 +127,8 @@ def build_server_config(
             deployments=[_deployment('GatewayServer', deploy_config)],
         ),
     ]
-    # Three Ray Serve applications make up the deployment, each mounted at its own route_prefix:
-    #   - 'server' (the gateway): the OpenAI surface (/v1/chat/completions, /v1/models, ...) and the proxy
-    #     that forwards token-in-token-out calls to the sampler app below.
-    #   - 'data-plane' (only when enable_data_plane): stores rollout groups server-side and hands back a
-    #     DataRef, so a trainer can consume generations without shipping tokens over the wire.
-    #   - 'sampler-<name>': the engine replica that actually runs the model, mounted where the gateway's
-    #     proxy rebuilds its target URL ({route_prefix}/sampler/{public_name}).
+    # Three Ray Serve applications: 'server' (the OpenAI gateway + proxy), optional 'data-plane'
+    # (server-side rollout groups via DataRef), and 'sampler-<name>' (the engine replica).
     if deploy_config.enable_data_plane:
         applications.append(
             ApplicationSpec(
@@ -201,10 +172,9 @@ def build_server_config(
 def _url_scheme(deploy_config: DeployConfig) -> str:
     """``https`` when TLS is configured, else ``http`` -- the one place the scheme is decided.
 
-    Every URL this module builds for the *running* server (the data-plane dial target, the readiness
-    probe, and the base URL yielded to callers) must agree with how Ray Serve's proxy was started, which
-    ``HttpOptions`` drives off ``ssl_certfile``. Deriving the scheme from that same field keeps an HTTPS
-    deployment from being handed plaintext URLs.
+    Every URL this module builds for the running server (the data-plane dial target, the readiness
+    probe, the base URL yielded to callers) must agree with how Ray Serve's proxy was started, which
+    ``HttpOptions`` drives off ``ssl_certfile``.
     """
     return 'https' if deploy_config.ssl_certfile else 'http'
 
@@ -214,10 +184,8 @@ def _validate(deploy_config: DeployConfig, quantize_config: Optional[QuantizeCon
     if bool(deploy_config.ssl_keyfile) != bool(deploy_config.ssl_certfile):
         raise ValueError('HTTPS needs both ssl_keyfile and ssl_certfile; one alone would start a plain HTTP '
                          'server while the operator believed it was encrypted.')
-    # An explicitly pinned sampler_type bypasses _derive_sampler_type, so guard data-plane compatibility
-    # here: sample_to_data_plane needs the sampler's non-blocking submit_generation, which only the
-    # *_async variants provide. A plain vllm/sglang/torch/mock with the data plane would start a server
-    # whose token-in-token-out endpoint 503s on every call.
+    # A pinned sampler_type bypasses _derive_sampler_type: the data plane needs the non-blocking
+    # submit_generation only *_async provides -- guard here or every token-in-token-out call 503s.
     if deploy_config.enable_data_plane and deploy_config.sampler_type not in (None, 'vllm_async', 'sglang_async'):
         raise ValueError(f'sampler_type={deploy_config.sampler_type!r} cannot serve the data plane: '
                          'sample_to_data_plane needs the sampler\'s non-blocking submit_generation, which '
@@ -233,9 +201,8 @@ def _validate(deploy_config: DeployConfig, quantize_config: Optional[QuantizeCon
 def _warn_unapplied_generation_defaults(generation_config: Optional[GenerationConfig]) -> None:
     """Name any server-side generation defaults that the twinkle-server path does not inject.
 
-    The gateway translates each request's own sampling knobs, so a ``GenerationConfig`` default set here
-    would be silently ignored. Warning (only when something was actually set) keeps that visible instead
-    of letting a client get a different distribution than the operator configured.
+    The gateway translates each request's own sampling knobs, so a ``GenerationConfig`` default set
+    here would be silently ignored; warning (only when something was set) keeps that visible.
     """
     if generation_config is None:
         return
@@ -252,14 +219,9 @@ def _warn_unapplied_generation_defaults(generation_config: Optional[GenerationCo
 def _ensure_ray(distributed_config: DistributedConfig, deploy_config: DeployConfig) -> None:
     """Bring up Ray so ``launch_server`` can deploy onto it.
 
-    ``launch_server._init_ray`` only calls ``ray.init(address='auto')`` when Ray is not already up, and
-    ``address='auto'`` needs a cluster that already exists. So:
-
-    - ``mode='ray'`` or ``ray_address='auto'``: leave Ray alone and let the launcher attach to the
-      existing cluster.
-    - otherwise (the single-command default): start a local Ray head here, seeding workers with the same
-      runtime_env the launcher would (``build_ray_runtime_env``), so one ``swift deploy`` serves without a
-      pre-existing cluster.
+    ``launch_server._init_ray`` only attaches (``address='auto'``) to an existing cluster, so
+    ``mode='ray'`` / ``ray_address='auto'`` are left alone; the single-command default starts a
+    local Ray head here, seeding workers with the same runtime_env the launcher would.
     """
     import ray
 
@@ -289,17 +251,10 @@ def _sampler_engine_args(
     deploy_config: DeployConfig,
     enable_lora,
 ) -> Dict[str, Any]:
-    """The engine args for the server sampler: the caller's, plus max_logprobs and LoRA sizing.
-
-    ``max_logprobs`` is a vLLM engine flag (the server-side ceiling on a request's ``top_logprobs``); the
-    LoRA machinery is sized for ``adapter_mapping`` via the same helper the in-process sampler uses, so
-    both paths reserve adapter slots identically.
-    """
+    """The engine args for the server sampler: the caller's, plus max_logprobs and LoRA sizing."""
     resolved = dict(engine_args or {})
-    # max_logprobs is a vLLM *engine-startup* flag (the server-side ceiling on a request's top_logprobs),
-    # so it is set once here. sglang has no startup equivalent -- its logprobs are configured per request
-    # (return_logprob / top_logprobs_num / logprob_start_len), so there is nothing to reserve at build time
-    # and injecting max_logprobs would be an unknown kwarg. Hence vllm-only.
+    # max_logprobs is a vLLM engine-startup flag (sglang has no equivalent -- its logprobs are
+    # per-request), so vllm-only; LoRA sizing uses the same helper the in-process sampler uses.
     if backend == 'vllm' and deploy_config.max_logprobs:
         resolved.setdefault('max_logprobs', deploy_config.max_logprobs)
     if adapter_mapping:
@@ -310,12 +265,13 @@ def _sampler_engine_args(
 def _device_spec(distributed_config: DistributedConfig) -> tuple:
     """``(device_group, device_mesh, nproc_per_node)`` dicts for the sampler deployment.
 
-    ``ranks`` is the GPU count handed to the sampler's device group; Ray sets ``CUDA_VISIBLE_DEVICES`` for
-    the actor from it, which is what a vLLM engine without an explicit ``tensor_parallel_size`` falls back
-    to, so ``ranks=nproc`` gives tensor parallelism across all allocated GPUs by default. ``dp_size`` comes
-    from the shared DP-mesh builder and is 1 unless data parallelism was actually requested.
+    ``ranks=nproc`` gives tensor parallelism across all allocated GPUs by default (Ray sets
+    CUDA_VISIBLE_DEVICES from it, which a vLLM engine without explicit TP falls back to); ``dp_size``
+    comes from the shared DP-mesh builder, 1 unless data parallelism was requested.
     """
     nproc = distributed_config.nproc_per_node or 1
+    from swift.dev.builders import build_parallel_mesh
+
     mesh = build_parallel_mesh(distributed_config, none_if_single_rank=True)
     dp_size = int(getattr(mesh, 'data_world_size', 1)) if mesh is not None else 1
     device_group = {'name': 'sampler', 'ranks': nproc, 'device_type': 'cuda'}
@@ -357,7 +313,7 @@ def _merge_single_adapter(model_config: ModelConfig, template_config: TemplateCo
                           adapter_mapping: Dict[str, str]):
     """Merge the one adapter into the base weights; returns the new config and an empty mapping."""
     from swift.dev.config import TunerConfig
-    from swift.dev.recipe.export.merge_lora import run_merge_lora
+    from swift.dev.recipe.export import run_merge_lora
 
     if len(adapter_mapping) > 1:
         raise ValueError(f'merge_lora=True cannot serve {len(adapter_mapping)} adapters: merging bakes one '
@@ -373,12 +329,9 @@ def _merge_single_adapter(model_config: ModelConfig, template_config: TemplateCo
 def run_deploy_process(*args, port: int = 8000, timeout: float = 300.0, **kwargs):
     """Context manager that serves in a subprocess and yields the base URL once it answers.
 
-    Legacy's ``run_deploy``. Kept because evaluation harnesses want a live endpoint inside a Python block
-    without giving up the current process, and because a server in-process would have to share the
-    caller's event loop, GPU and Ray instance.
-
-    Spawn, not fork: the parent may already hold a CUDA context (and its own Ray), and forking that
-    produces a child whose state is unusable in ways that surface much later.
+    Legacy's ``run_deploy``, kept because evaluation harnesses want a live endpoint without giving
+    up the current process (an in-process server would share its event loop, GPU and Ray). Spawn,
+    not fork: forking a parent that already holds a CUDA context breaks the child much later.
     """
     import multiprocessing
     from contextlib import contextmanager
@@ -410,13 +363,9 @@ def run_deploy_process(*args, port: int = 8000, timeout: float = 300.0, **kwargs
 def _wait_until_accessible(port: int, timeout: float, process, route_prefix: str, scheme: str = 'http') -> None:
     """Poll ``{route_prefix}/models`` until it answers 200, failing fast if the child dies first.
 
-    An HTTP probe rather than a bare socket connect: the port opens when Ray Serve's proxy is up, but the
-    gateway app (and its model list) is only ready a little later, and yielding before that would hand the
-    caller a URL that 404s on the first request.
-
-    ``scheme`` comes from the same TLS config that started the proxy. For an HTTPS probe the cert is
-    typically self-signed, so verification is disabled for this readiness check only -- otherwise the
-    handshake error would be swallowed by the retry loop and surface as a bogus timeout.
+    An HTTP probe, not a bare socket connect: the port opens when Ray Serve's proxy is up, but the
+    gateway is ready a little later -- yielding before that hands the caller a URL that 404s. For
+    HTTPS the cert is typically self-signed, so verification is off for this probe only.
     """
     import ssl
     import time

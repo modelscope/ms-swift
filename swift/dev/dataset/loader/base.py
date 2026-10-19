@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Which dataset a name refers to, and how to turn it into rows."""
+# Which dataset a name refers to, and how to turn it into rows.
 from __future__ import annotations
 
 import importlib
@@ -17,7 +17,7 @@ import numpy as np
 
 from swift.dev.utils.tags import validate_tags
 from swift.dev.utils import get_logger
-from swift.dev.dataset.storage import STORAGE_MAPPING, detect_storage_format
+from ..storage import STORAGE_MAPPING, detect_storage_format
 
 __all__ = [
     'DATASET_MAPPING', 'DATASET_TYPE', 'DatasetInfo', 'DatasetLoader', 'SubsetMeta', 'get_dataset_loader',
@@ -35,31 +35,22 @@ _ID_MAPPING: Dict[Tuple[str, str], str] = {}
 class SubsetMeta:
     """One selectable subset of a dataset, and what makes it differ from its siblings.
 
-    A subset is not merely a name passed through to the hub: sibling subsets of the same dataset
-    routinely need *different* preprocessing (legacy's `stsb` registers four subsets whose scores map
-    to four different label sets), so `preprocessor` and `split` are overridable per subset. Both
-    default to ``None`` meaning "inherit from the owning loader" -- see :meth:`resolve`.
-
-    Args:
-        subset: Subset name as the hub knows it. ``'default'`` for a dataset with no real subsets.
-        name: Name users select on the command line. Defaults to :attr:`subset`; set it only when the
-            hub's name is not the one worth typing.
-        split: Splits to load for this subset. ``None`` inherits the loader's.
-        preprocessor: Row preprocessor for this subset. ``None`` inherits the loader's.
-        columns: Column renames for this subset. ``None`` inherits the loader's. Per-subset because
-            sibling subsets of one dataset are often dumps of different sources that spell the same
-            field differently (legacy's ``medical_zh`` names it ``instruction`` in zh and ``input``
-            in en).
-        is_weak_subset: Exclude this subset when the user asks for ``all``. For subsets that are
-            noisy, tiny, or a near-duplicate of another -- they should be reachable by name but not
-            silently mixed into a bulk request.
+    Sibling subsets routinely need *different* preprocessing (legacy's `stsb` maps four subsets to
+    four label sets), so `preprocessor` and `split` are overridable per subset; both default to
+    ``None`` meaning "inherit from the owning loader" -- see ``resolve``.
     """
 
     subset: str = 'default'
+    # Command-line name; defaults to `subset`. Set only when the hub's name is not worth typing.
     name: Optional[str] = None
+    # Splits to load; None inherits the loader's.
     split: Optional[List[str]] = None
+    # Row preprocessor; None inherits. Sibling subsets are often dumps of different sources that
+    # spell the same field differently (legacy `medical_zh`: `instruction` in zh, `input` in en).
     preprocessor: Optional[Any] = None
+    # Column renames; None inherits.
     columns: Optional[Dict[str, str]] = None
+    # Exclude from a bulk `all` request: reachable by name, not silently mixed in.
     is_weak_subset: bool = False
 
     def __post_init__(self) -> None:
@@ -69,9 +60,8 @@ class SubsetMeta:
     def resolve(self, loader_cls: Type['DatasetLoader']) -> 'SubsetMeta':
         """A copy with every inherited (``None``) field filled in from ``loader_cls``.
 
-        Returns a copy rather than mutating: the same :class:`SubsetMeta` object lives on the loader
-        class as a shared class attribute, so filling fields in place would leak one load's resolved
-        values into the next.
+        A copy, not a mutation: the same object lives on the loader class as a shared attribute,
+        so filling it in place would leak one load's resolved values into the next.
         """
         return SubsetMeta(
             subset=self.subset,
@@ -85,47 +75,34 @@ class SubsetMeta:
 
 @dataclass
 class DatasetInfo:
-    """What one concrete load request resolved to.
+    """What one concrete load request resolved to -- the dataset-side ``ModelInfo``.
 
-    This is the dataset-side counterpart of ``ModelInfo``, and like it, it describes *what is being
-    loaded* -- not *how*. Options that only affect the mechanics of loading (``num_proc``,
-    ``load_from_cache_file``, ``streaming``, ``strict``) stay as keyword arguments threaded through
-    the load call; putting them here would turn one object into both a description and a settings
-    bag, and every consumer would have to know which half it was looking at.
-
-    It merges what legacy split across ``DatasetSyntax`` (the parse of the command-line string) and
-    the loose arguments passed alongside it. The parse itself does not live here -- the loader turns a
-    string like ``'ms://id:sub1/sub2#5000'`` (or its ``hf://`` spelling) into one of these: the scheme
-    picks the hub, ``:sub1/sub2`` the subsets, ``#5000`` the row budget.
-
-    Args:
-        dataset: The dataset as the user wrote it: a hub id, a local file, or a local directory.
-        dataset_type: Family id, once the registry has matched one. ``None`` for an unregistered
-            dataset, which is the common case and not an error -- see :func:`get_dataset_loader`.
-        source: Where rows come from. ``'ms'`` / ``'hf'`` for a hub id, ``'path'`` for a local file,
-            ``'repo'`` for a local directory holding a downloaded snapshot. Resolved once here so
-            downstream code branches on an enum instead of re-running ``os.path`` probes.
-        subsets: Subset names the user asked for. Empty means "the loader's default selection".
-        sample_count: Row budget from the ``#N`` suffix. ``None`` for the whole dataset. May exceed
-            the dataset's length, which means oversampling with repeats.
-        revision: Hub revision to pin, when one was declared or requested.
+    Describes *what is being loaded*, not *how*: loading mechanics (``num_proc``,
+    ``load_from_cache_file``, ``streaming``, ``strict``) stay keyword arguments threaded through the
+    load call. Merges what legacy split between ``DatasetSyntax`` (the command-line parse) and loose
+    arguments; the parse itself lives in ``parse_dataset_syntax``.
     """
 
     dataset: str = ''
+    # Family id once the registry matched; None (unregistered) is the common case, not an error.
     dataset_type: Optional[str] = None
+    # 'ms'/'hf' for a hub id, 'path' for a local file, 'repo' for a local snapshot directory.
     source: str = 'ms'
+    # Subset names asked for; empty means the loader's default selection.
     subsets: List[str] = field(default_factory=list)
+    # Row budget from the `#N` suffix; None for the whole dataset. May exceed the length
+    # (oversampling with repeats).
     sample_count: Optional[int] = None
+    # Hub revision to pin, when declared or requested.
     revision: Optional[str] = None
 
 
 def register_dataset(loader_cls: Type['DatasetLoader'] = None, *, exist_ok: bool = False):
     """Register a dataset family, keyed by its ``dataset_type``. Usable bare or with keywords.
 
-    Everything is read off the class, so a dataset is declared in one place. Legacy instead paired a
-    ``DatasetMeta`` literal with a separately-defined preprocessor and keyed the registry on the
-    tuple ``(ms_dataset_id, hf_dataset_id, dataset_path)`` -- a composite key that no lookup could
-    use directly, which is why a second reverse index had to be built and kept in sync.
+    Everything is read off the class, so a dataset is declared in one place. Legacy instead paired
+    a ``DatasetMeta`` literal with a separately-defined preprocessor and keyed the registry on the
+    tuple ``(ms_dataset_id, hf_dataset_id, dataset_path)`` -- a key no lookup could use directly.
     """
 
     def _register(cls: Type['DatasetLoader']) -> Type['DatasetLoader']:
@@ -145,30 +122,15 @@ def register_dataset(loader_cls: Type['DatasetLoader'] = None, *, exist_ok: bool
 def register_dataset_info(dataset_info: Union[str, List[Dict[str, Any]], None] = None,
                           *,
                           exist_ok: bool = False) -> List[Type['DatasetLoader']]:
-    """Register datasets declared as data rather than as code, synthesising a loader class for each.
+    """Register datasets declared as data rather than as code, synthesising a loader class per entry.
 
-    Most datasets differ from each other only in *what* they are -- ids, subsets, splits, which raw
-    column means ``query`` -- and not in *how* they are read. Those need no Python at all, so they
-    live in ``dataset_info.json`` and arrive here. This is also the entry point for a user's
-    ``--custom_dataset_info`` file, which is the same shape.
-
-    Each entry becomes a real :class:`DatasetLoader` subclass, so a JSON-declared dataset and a
-    hand-written one are indistinguishable downstream -- there is no second code path that only
-    understands dicts, which is where legacy's ``_preprocess_d_info`` shape-shifting lived.
-
-    Recognised keys, all optional except that one of the two ids must be present:
-    ``ms_dataset_id`` / ``hf_dataset_id`` / ``dataset_path`` / ``dataset_type`` / ``subsets`` /
-    ``split`` / ``columns`` / ``tags`` / ``help`` / ``huge_dataset``. A ``subsets`` entry is either a
-    plain name or an object with the same ``subset`` / ``split`` / ``columns`` keys.
-
-    Args:
-        dataset_info: A path to a JSON file, a JSON string, an already-parsed list, or ``None`` for
-            the built-in ``dataset_info.json`` next to this module.
-        exist_ok: Allow re-registering a ``dataset_type`` that is already taken.
-
-    Returns:
-        The synthesised loader classes, in declaration order.
+    Most datasets differ only in *what* they are (ids, subsets, splits, which raw column means
+    ``query``), so they live in ``dataset_info.json`` -- or a user's ``--custom_dataset_info`` file
+    of the same shape. Each entry becomes a real ``DatasetLoader`` subclass, so a JSON-declared
+    dataset and a hand-written one are indistinguishable downstream.
     """
+    # Keys (all optional except one id): the dataset ids/path, dataset_type, subsets (names or
+    # objects with subset/split/columns), split, columns, tags, help, huge_dataset.
     base_dir = None
     if dataset_info is None:
         dataset_info = os.path.join(os.path.dirname(__file__), 'dataset_info.json')
@@ -190,13 +152,11 @@ def register_dataset_info(dataset_info: Union[str, List[Dict[str, Any]], None] =
 
 
 def get_dataset_loader(dataset_type: Optional[str]) -> Type['DatasetLoader']:
-    """The loader for a family, or the plain :class:`DatasetLoader` when nothing matched.
+    """The loader for a family, or the plain ``DatasetLoader`` when nothing matched.
 
-    Unlike the model registry, a miss here is normal and must not raise: any hub id and any local
-    jsonl is a legitimate dataset, and the whole point of the auto-detecting preprocessor is to read
-    one that nobody registered. Registration only adds knowledge (which subsets exist, which
-    preprocessor untangles this dataset's field names); its absence degrades to "infer everything",
-    which is what legacy expressed by returning a bare ``DatasetMeta()`` from a failed lookup.
+    Unlike the model registry, a miss is normal and must not raise: any hub id and any local jsonl
+    is a legitimate dataset. Registration only adds knowledge (which subsets exist, which
+    preprocessor untangles this dataset's fields); its absence degrades to "infer everything".
     """
     if not dataset_type:
         return DatasetLoader
@@ -206,16 +166,10 @@ def get_dataset_loader(dataset_type: Optional[str]) -> Type['DatasetLoader']:
 def match_dataset_type(dataset: str, *, use_hf: bool = False) -> Optional[str]:
     """Match what the user typed against registered datasets; ``None`` when nothing does.
 
-    Two passes, mirroring legacy's behaviour:
-
-    1. Exact match on ``(hub, id)``, so the same name may legitimately mean different things on
-       ModelScope and on HuggingFace.
-    2. Basename match, so a local directory holding an already-downloaded snapshot resolves to the
-       family it came from.
-
-    The basename pass is deliberately second and deliberately looser: it exists for local snapshots,
-    but two hubs can host different datasets whose ids end in the same word, so it must never
-    override an exact hit.
+    Two passes: an exact ``(hub, id)`` match first, so the same name may mean different things on
+    ModelScope and HuggingFace; then a basename match, so a local directory holding a downloaded
+    snapshot resolves to the family it came from. The basename pass is deliberately second and
+    looser -- two hubs can host different datasets whose ids end in the same word.
     """
     if dataset in DATASET_MAPPING:
         return dataset
@@ -245,34 +199,26 @@ class DatasetLoader:
     """The plain ``datasets.load_dataset`` path, driven by declarations.
 
     The happy path lives here so a family declares only what differs: an unregistered dataset is
-    loaded by this class as-is, and a registered one usually adds no more than its ids and a
-    preprocessor. Anything beyond that overrides a ``build_*`` / ``process_*`` hook.
-
-    Note this class is not abstract and is itself the fallback -- see :func:`get_dataset_loader`.
-    Legacy had a ``BaseDatasetLoader(ABC)`` whose only concrete implementation was the one the
-    fallback used anyway, so the abstract layer bought nothing and made "no registration" look like
-    an error case.
+    loaded by this class as-is, and a registered one usually adds no more than ids and a
+    preprocessor. Not abstract -- this class is itself the fallback (see ``get_dataset_loader``).
     """
     # -- registration ---------------------------------------------------------------------------
     dataset_type: Optional[str] = None
-    # Hub ids this family covers: a bare id when both hubs agree, or a (ms_id, hf_id) pair when they
-    # differ or only one hosts it -- use `None` for the absent side, e.g. `('swift/x', None)`.
+    # Hub ids this family covers: a bare id when both hubs agree, or a (ms_id, hf_id) pair when
+    # they differ or only one hosts it -- `None` for the absent side, e.g. `('swift/x', None)`.
     datasets: Sequence[Union[str, Tuple[Optional[str], Optional[str]]]] = ()
-    # Local paths this family covers, for datasets that ship with swift or are declared by a user's
-    # dataset_info file rather than living on a hub.
+    # Local paths this family covers: datasets shipping with swift, or a user's dataset_info entry.
     dataset_paths: Sequence[str] = ()
-    # Subsets, as names or full SubsetMeta objects. The default single 'default' subset is what a
-    # dataset with no subsets on the hub needs, so most families leave this alone.
+    # Subsets, as names or full SubsetMeta objects. The single 'default' subset is what a dataset
+    # with no subsets on the hub needs, so most families leave this alone.
     subsets: Sequence[Union[str, SubsetMeta]] = ('default', )
     # Splits to load, applying to every subset that does not override them.
     split: Sequence[str] = ('train', )
-    # Row preprocessor: a class, an instance, or a `'module:ClassName'` string resolved lazily.
-    # `None` selects auto-detection, which is the right default -- it reads the standard field-name
-    # layouts, and only a dataset with genuinely odd field names needs to name a preprocessor.
+    # Row preprocessor: a class, an instance, or a 'module:ClassName' string resolved lazily. None
+    # selects auto-detection -- only a dataset with genuinely odd field names needs to name one.
     preprocessor: Optional[Any] = None
-    # Column renames this dataset needs: raw name -> standard name. Declared here rather than baked
-    # into a Preprocessor subclass so a dataset whose only quirk is its field names needs no code at
-    # all -- which is what lets the whole `dataset_info.json` batch be pure data.
+    # Column renames this dataset needs: raw name -> standard name. Declared rather than baked into
+    # a Preprocessor subclass, so a dataset whose only quirk is its field names needs no code.
     columns: Dict[str, str] = {}
     ms_revision: Optional[str] = None
     hf_revision: Optional[str] = None
@@ -282,13 +228,12 @@ class DatasetLoader:
     # Too large to materialise: consumers should default to streaming rather than a full local copy.
     huge_dataset: bool = False
 
-    # Temporary directories handed to `datasets`, one per prefix, kept alive for the process. See
-    # :meth:`use_swift_cache_for_temp_files`.
+    # Temporary directories handed to `datasets`, one per prefix, kept alive for the process.
     _temp_dirs: Dict[str, Any] = {}
 
     def __init__(self, dataset_info: DatasetInfo, **kwargs):
-        # `dataset_info` describes one concrete load request, so it arrives per instance rather than
-        # being a per-family constant.
+        # `dataset_info` describes one concrete load request, so it arrives per instance rather
+        # than being a per-family constant.
         self._dataset_info = dataset_info
         self._kwargs = kwargs
 
@@ -304,9 +249,8 @@ class DatasetLoader:
                   exist_ok: bool = False) -> Type['DatasetLoader']:
         """Build and register a loader subclass from one ``dataset_info`` entry.
 
-        Called per entry by :func:`register_dataset_info`. Subclassing ``cls`` rather than
-        :class:`DatasetLoader` means a family can expose its own JSON-declarable variant by calling
-        this on itself.
+        Called per entry by ``register_dataset_info``. Subclassing ``cls`` rather than
+        ``DatasetLoader`` means a family can expose its own JSON-declarable variant.
         """
         entry = dict(entry)
         ms_id = entry.pop('ms_dataset_id', None)
@@ -318,9 +262,8 @@ class DatasetLoader:
             dataset_path = os.path.abspath(os.path.expanduser(dataset_path))
         assert ms_id or hf_id or dataset_path, f'A dataset_info entry needs an id or a path: {entry}'
 
-        # The trailing component of the id is the name worth typing, and is what legacy's basename
-        # fallback already resolved to -- so it is the natural registry key. An entry may pin one
-        # explicitly when two hubs host same-named datasets.
+        # The trailing id component is the name worth typing (legacy's basename fallback resolved
+        # here too) -- the natural registry key; an entry may pin one when hubs host same names.
         dataset_type = entry.pop('dataset_type', None) or cls.dataset_name(ms_id or hf_id or dataset_path)
 
         attrs: Dict[str, Any] = {'dataset_type': dataset_type}
@@ -338,8 +281,8 @@ class DatasetLoader:
                 attrs[key] = entry.pop(key)
         assert not entry, f'Unrecognised dataset_info keys for `{dataset_type}`: {sorted(entry)}'
 
-        # A class name is cosmetic (it shows up in logs and tracebacks) but must still be a valid
-        # identifier, and a few dataset names start with a digit.
+        # A class name is cosmetic (logs, tracebacks) but must be an identifier; some dataset
+        # names start with a digit.
         class_name = re.sub(r'\W', '_', dataset_type)
         if not class_name[:1].isalpha():
             class_name = f'Dataset_{class_name}'
@@ -351,7 +294,7 @@ class DatasetLoader:
         """Yield ``(ms_id, hf_id)`` for every entry, expanding the bare-string shorthand.
 
         A bare string means both hubs use the same id; a pair is written only when they differ or
-        when one hub does not host the dataset at all.
+        one hub does not host the dataset.
         """
         for entry in cls.datasets:
             if isinstance(entry, str):
@@ -363,17 +306,16 @@ class DatasetLoader:
     def resolve_subsets(cls, names: Sequence[str] = ()) -> List[SubsetMeta]:
         """The subsets to load, with inherited fields filled in.
 
-        An empty ``names`` selects every non-weak subset; ``['all']`` is the explicit spelling of the
-        same request. Naming a weak subset directly still loads it -- weakness only governs bulk
-        selection.
+        An empty ``names`` selects every non-weak subset; ``['all']`` spells the same request.
+        Naming a weak subset directly still loads it -- weakness only governs bulk selection.
         """
         declared = [SubsetMeta(subset=s) if isinstance(s, str) else s for s in cls.subsets]
         if not names or list(names) == ['all']:
             selected = [s for s in declared if not s.is_weak_subset]
         else:
             by_name = {s.name: s for s in declared}
-            # An unregistered subset name is passed through to the hub rather than rejected: this
-            # class is also the fallback for datasets nobody declared, whose subsets we cannot know.
+            # An unregistered subset name passes through to the hub rather than being rejected:
+            # this class is also the fallback for datasets nobody declared.
             selected = [by_name.get(name) or SubsetMeta(subset=name) for name in names]
         return [s.resolve(cls) for s in selected]
 
@@ -391,14 +333,9 @@ class DatasetLoader:
     def build_preprocessor(self, subset: SubsetMeta) -> Any:
         """Instantiate the row preprocessor for ``subset``.
 
-        Resolves a class or a ``'module:ClassName'`` string to an instance and passes an instance
-        through untouched. A family whose preprocessor needs constructor arguments beyond ``columns``
-        overrides this instead of trying to encode those arguments in a declaration -- the arguments
-        are code, so they belong in code.
-
-        Column renames from the declaration and from the caller are merged, with the caller winning:
-        the declaration is what the framework believes about this dataset, ``--columns`` is what the
-        user knows about the copy in front of them.
+        Resolves a class or a ``'module:ClassName'`` string to an instance; an instance passes
+        through. One needing constructor arguments beyond ``columns`` overrides this -- those
+        arguments are code. Declaration and caller renames merge, caller winning.
         """
         columns = {**(subset.columns or {}), **(self._kwargs.get('columns') or {})}
         preprocessor = subset.preprocessor
@@ -415,29 +352,16 @@ class DatasetLoader:
     def build_dataset(self, subset: SubsetMeta, split: str, **kwargs) -> DATASET_TYPE:
         """Fetch one (subset, split) as rows, before any preprocessing.
 
-        Dispatches on :attr:`DatasetInfo.source`. A local path (``source == 'path'``) is routed by the
-        unified storage layer: :func:`~swift.dev.dataset.storage.detect_storage_format` names the format
-        -- a single file by its extension, a ``save_to_disk`` directory as ``arrow``, and the columnar
-        data-lake formats `datasets` cannot route on its own (``orc`` has no builder; a ``lance``
-        directory is never folder-detected) -- and the matching registered storage reads it. Only an
-        ordinary snapshot directory (no format detected) falls through to the hub folder scanner, as does
-        any hub id. A family that has to reach past this -- a manual file download, an archive to unpack
-        -- overrides this hook, and should keep the lock.
-
-        The fetch is serialised across ranks: one downloads and writes the cache while the others wait,
-        then read it. ``sticky`` because the key names the *result* -- this (dataset, subset, split) --
-        and fetching is idempotent, so a rank arriving after the work is done proceeds rather than
-        waiting for a fresh round.
+        Dispatches on ``DatasetInfo.source``. A local path is routed by the unified storage layer
+        (``detect_storage_format``: a file by extension, a ``save_to_disk`` dir as arrow, the lake
+        formats ``datasets`` cannot route alone); an ordinary snapshot dir falls through to the hub
+        folder scanner, as does any hub id. A family reaching past this overrides the hook.
         """
         info = self._dataset_info
+        # The fetch is serialised across ranks, sticky because the key names the *result* and
+        # fetching is idempotent: a rank arriving after the work is done proceeds, not waits.
         with self.serialised(f'{info.dataset}/{subset.subset}/{split}', sticky=True):
             if info.source == 'path':
-                # A local path is routed by the unified storage layer: the columnar lake formats
-                # `datasets` cannot route on its own (``orc`` has no builder, a ``lance`` directory is
-                # never folder-detected), a single file by its extension, and an arrow ``save_to_disk``
-                # directory all resolve to a registered format and read through it. ``None`` means an
-                # ordinary downloaded snapshot directory, which `datasets` reads as a folder by itself,
-                # so that goes through the HF loader whichever hub the copy came from.
                 storage_format = detect_storage_format(info.dataset)
                 if storage_format is not None:
                     return STORAGE_MAPPING[storage_format]().read(info.dataset, split=split, **kwargs)
@@ -450,20 +374,16 @@ class DatasetLoader:
 
     @staticmethod
     def serialised(key: str, sticky: bool = False):
-        """Let one rank do the work on ``key`` first, then the rest -- every rank still runs the body.
+        """Let one rank do the work on ``key`` first, then the rest -- every rank runs the body.
 
-        Wraps ``twinkle.utils.processing_lock``, which orders ranks through its own coordination store
-        (global master, then node masters, then everyone else) and falls back to a file lock when there
-        is no store. Deliberately not ``swift.utils.safe_ddp_context``: that orders ranks with
-        ``dist.barrier()``, which puts a dataset pass -- minutes to hours on a large corpus -- under the
-        collective watchdog timeout, and leaves the waiters hanging if the writing rank dies.
+        Wraps ``twinkle.utils.processing_lock`` (global master, node masters, then everyone; a
+        file lock when there is no store). Deliberately not a ``dist.barrier()`` round: that puts
+        a dataset pass under the collective watchdog timeout, and leaves waiters hanging if the
+        writing rank dies.
+        """  # sticky: the key names a *result*, so a late rank proceeds instead of waiting for a
+        # fresh flag; use it for idempotent content-addressed work (a download), not work repeating
+        # under the same key.
 
-        Args:
-            key: Names the resource being written.
-            sticky: The key names a *result* rather than a round, so a late rank proceeds instead of
-                waiting for a fresh flag. For idempotent, content-addressed work such as a download;
-                leave it off for work that repeats under the same key, such as preprocessing.
-        """
         from twinkle.utils import processing_lock
         return processing_lock(key, sticky=sticky)
 
@@ -471,10 +391,10 @@ class DatasetLoader:
     def load_from_hub(dataset_id: str, subset: str, split: str, *, use_hf: bool, **kwargs) -> DATASET_TYPE:
         """Load from whichever hub ``use_hf`` selects, through dev's hub layer.
 
-        Not a bare ``datasets.load_dataset``: that reaches HuggingFace only, while a ModelScope id has
-        to go through ``MsDataset`` -- which is also where login, the differing revision names
-        (``master`` on ModelScope, ``main`` on HuggingFace) and ``trust_remote_code`` are handled.
-        ``swift.dev.utils.get_hub`` already owns those differences, so this only unwraps the result.
+        Not a bare ``datasets.load_dataset``: that reaches HuggingFace only, while a ModelScope id
+        must go through ``MsDataset`` -- where login, the differing revision names (``master`` vs
+        ``main``) and ``trust_remote_code`` are handled. ``swift.dev.utils.get_hub`` owns those
+        differences, so this only unwraps the result.
         """
         from swift.dev.utils import get_hub
         hub = get_hub(use_hf)
@@ -489,8 +409,8 @@ class DatasetLoader:
     def hide_dataset_infos(directory: str) -> None:
         """Move a snapshot's ``dataset_infos.json`` aside so ``datasets`` does not read it.
 
-        A dataset downloaded from ModelScope carries this extra file; ``datasets`` treats it as
-        authoritative metadata for the folder and can then disagree with the actual data files.
+        A ModelScope-downloaded dataset carries this extra file; ``datasets`` treats it as
+        authoritative folder metadata and can then disagree with the actual data files.
         """
         path = os.path.join(directory, 'dataset_infos.json')
         if not os.path.isfile(path):
@@ -505,13 +425,13 @@ class DatasetLoader:
     def load(self) -> Optional[DATASET_TYPE]:
         """Load every requested (subset, split), preprocess each, and concatenate the lot.
 
-        This is the per-family entry the top-level :func:`load_dataset` calls once per dataset string.
-        Loading concerns (``num_proc``, ``strict`` ...) travel in ``self._kwargs``, set at
-        construction, so this signature stays empty and every hook it calls reads them from there.
+        The per-family entry the top-level ``load_dataset`` calls once per dataset string. Loading
+        concerns (``num_proc``, ``strict`` ...) travel in ``self._kwargs``, set at construction, so
+        this signature stays empty and every hook reads them from there.
         """
         info = self._dataset_info
         kwargs = self._kwargs
-        # A token is only sent when there is one: passing `token=None` explicitly would override the
+        # A token is only sent when there is one: passing `token=None` explicitly would override
         # credentials the hub client has already cached for the user.
         hub_kwargs = {'token': kwargs['hub_token']} if kwargs.get('hub_token') else {}
         parts: List[DATASET_TYPE] = []
@@ -541,12 +461,10 @@ class DatasetLoader:
                      seed: Optional[int] = 42) -> Tuple[Optional[DATASET_TYPE], Optional[DATASET_TYPE]]:
         """Apply the ``#N`` row budget, then carve off a validation split. Returns ``(train, val)``.
 
-        Sampling comes before the split so the ratio applies to the sampled size, matching legacy and
-        matching the intent of ``dataset#1000`` -- take 1000 rows, *then* hold out a fraction.
-
-        ``shuffle`` decides both which rows a ``#N`` budget keeps and whether the validation rows are
-        drawn from across the dataset or taken as the contiguous tail. Off by default: ``dataset#500``
-        then means the first 500 rows, which is reproducible and matches legacy's default.
+        Sampling comes before the split so the ratio applies to the sampled size, matching legacy
+        and the intent of ``dataset#1000``. ``shuffle`` decides both which rows a ``#N`` budget
+        keeps and whether validation rows are drawn across the dataset or taken as the contiguous
+        tail; off by default, so ``dataset#500`` means the first 500 rows, reproducibly.
         """
         if dataset is None:
             return None, None
@@ -570,8 +488,8 @@ class DatasetLoader:
     def import_cls(spec: str) -> type:
         """Resolve ``'swift.dev.dataset.format.openai:OpenAIPreprocessor'`` lazily.
 
-        Deferred so a declaration costs nothing at import time, and so a preprocessor may live in a
-        module that is expensive or optional to import.
+        Deferred so a declaration costs nothing at import time, and so a preprocessor may live in
+        a module that is expensive or optional to import.
         """
         module_name, _, attr = spec.partition(':')
         return getattr(importlib.import_module(module_name), attr)
@@ -580,8 +498,8 @@ class DatasetLoader:
     def dataset_name(dataset: str) -> str:
         """Trailing component of an id or path, with hub cache decorations stripped.
 
-        Hub caches bury the real name inside ``.../datasets--org--name/snapshots/<sha>``, so a plain
-        ``rsplit('/')`` on a cached snapshot path would return a commit sha.
+        Hub caches bury the real name inside ``.../datasets--org--name/snapshots/<sha>``, so a
+        plain ``rsplit('/')`` on a cached snapshot path would return a commit sha.
         """
         dataset = dataset.rstrip('/')
         match = re.search('/datasets--(?:.+?--)?(.+?)/snapshots/', dataset)
@@ -595,8 +513,8 @@ class DatasetLoader:
     def concat_datasets(datasets: List[DATASET_TYPE]) -> Optional[DATASET_TYPE]:
         """Concatenate, short-circuiting the 0- and 1-element cases.
 
-        The single-dataset short-circuit is not just an optimisation: ``concatenate_datasets`` on one
-        element still rebuilds the Arrow table, which would drop the cheap zero-copy path that the
+        The single-dataset short-circuit is not just an optimisation: ``concatenate_datasets`` on
+        one element still rebuilds the Arrow table, dropping the cheap zero-copy path that the
         overwhelmingly common single-dataset load takes.
         """
         if not datasets:
@@ -607,7 +525,7 @@ class DatasetLoader:
 
     @staticmethod
     def interleave_datasets(datasets: List[DATASET_TYPE], **kwargs) -> Optional[DATASET_TYPE]:
-        """Interleave with per-dataset probabilities; same short-circuits as :meth:`concat_datasets`."""
+        """Interleave with per-dataset probabilities; same short-circuits as ``concat_datasets``."""
         if not datasets:
             return None
         if len(datasets) == 1:
@@ -621,13 +539,9 @@ class DatasetLoader:
                        seed: Optional[int] = None) -> DATASET_TYPE:
         """Take ``sample_count`` rows, oversampling with whole repeats when it exceeds the length.
 
-        A request larger than the dataset is not an error: the surplus is made of full copies plus a
-        remainder, so ``dataset#Ntimeslength`` repeats every row evenly.
-
-        ``shuffle`` governs only which rows the remainder is: off, it is the first rows of the dataset,
-        so ``dataset#500`` means "the first 500" and is reproducible without a seed; on, it is a random
-        draw. The whole-copy part is never shuffled either way -- it holds every row regardless, and
-        the training sampler will shuffle epochs anyway.
+        A larger-than-length request is not an error: the surplus is full copies plus a remainder.
+        ``shuffle`` governs only the remainder -- off, the first rows (reproducible without a seed);
+        on, a random draw. The whole-copy part is never shuffled: it holds every row regardless.
         """
         length = len(dataset)
         if sample_count is None or length == 0:
@@ -660,17 +574,12 @@ class DatasetLoader:
                              shuffle: bool = False) -> Tuple[List[DATASET_TYPE], List[DATASET_TYPE]]:
         """Load pre-encoded splits written by ``swift export --to_cached_dataset`` from disk.
 
-        Reimplements legacy ``swift.pipelines.utils.get_cached_dataset`` on dev primitives so the dev
-        dataset path no longer reaches into ``swift.pipelines``. The per-path mechanics -- backend
-        detection, the trailing ``#N`` row budget, the 3.x ``length``->``lengths`` rename and the
-        ``truncation_strategy='delete'`` length filter -- live in :func:`~swift.dev.dataset.storage.
-        load_dataset_store`, the same reader the unified store writes for; this method only loops it over
-        the train and val path lists.
-
-        Returns ``(train, val)`` as lists (possibly empty), not concatenated: the per-split builder
-        merges each with the freshly-encoded split, so a cache-only run still produces a loader.
+        The per-path mechanics (backend detection, the ``#N`` budget, the 3.x `length`->`lengths`
+        rename, the delete filter) live in ``load_dataset_store``; this loops it over the train
+        and val path lists, returning lists (possibly empty) that the per-split builder merges with
+        the freshly-encoded split, so a cache-only run still produces a loader.
         """
-        from swift.dev.dataset.storage import load_dataset_store
+        from ..storage import load_dataset_store
         train_datasets: List[DATASET_TYPE] = []
         val_datasets: List[DATASET_TYPE] = []
         for paths, out in ((cached_dataset, train_datasets), (cached_val_dataset, val_datasets)):
@@ -688,16 +597,10 @@ class DatasetLoader:
     def parse_dataset_syntax(entry: str) -> Tuple[str, List[str], Optional[int], Optional[bool]]:
         """Pull the one-string dataset syntax apart into the plain loader fields.
 
-        ``hf://org/name:sub1/sub2#500`` selects hub ``hf``, id ``org/name``, subsets ``sub1`` and
-        ``sub2``, and a 500-row budget. The parser keeps this per-entry notation local so nothing else
-        in the dataset stack needs to know the syntax.
-
-        Returns ``(dataset, subsets, sample_count, use_hf)``, where ``use_hf`` is ``None`` when the
-        string pins no hub and ``subsets`` is empty when it names none.
-
-        An existing path is returned untouched: a Windows drive letter and an ordinary filename can
-        both contain the characters this splits on, so a path is never parsed. The check is repeated
-        after the row budget comes off, since a path may be what is left.
+        ``hf://org/name:sub1/sub2#500`` selects hub ``hf``, id ``org/name``, subsets ``sub1``/``sub2``,
+        a 500-row budget. Returns ``(dataset, subsets, sample_count, use_hf)`` (``None``/empty when
+        the string pins/names none). An existing path returns untouched -- its drive letter or file
+        name can contain the split characters -- re-checked after the budget comes off.
         """
         if os.path.exists(entry):
             return entry, [], None, None
@@ -720,8 +623,8 @@ class DatasetLoader:
     def shuffle_dataset(dataset: DATASET_TYPE, seed: Optional[int] = None, buffer_size: int = 1000) -> DATASET_TYPE:
         """Shuffle either kind of dataset: a materialised one globally, a stream through a buffer.
 
-        A stream cannot be permuted, only reordered within a window, so ``buffer_size`` is the whole
-        extent of the shuffle there and does nothing for a materialised dataset.
+        A stream cannot be permuted, only reordered within a window, so ``buffer_size`` is the
+        whole extent of the shuffle there and does nothing for a materialised dataset.
         """
         if isinstance(dataset, HfIterableDataset):
             return dataset.shuffle(seed=seed, buffer_size=buffer_size)
@@ -734,10 +637,10 @@ class DatasetLoader:
                         split_dataset_ratio: float) -> Tuple[Optional[DATASET_TYPE], Optional[DATASET_TYPE]]:
         """``(train, val)`` for a stream, where a split can only be taken off the front.
 
-        A stream has no length, so a *fraction* of it only means something once a row budget bounds it:
-        given ``#N``, the first ``N * ratio`` rows become the validation set and the remainder the
-        training set. Without a budget only the degenerate ratios have an answer -- 0, no validation
-        set, and 1, the whole stream is one.
+        A stream has no length, so a *fraction* only means something once a row budget bounds it:
+        given ``#N``, the first ``N * ratio`` rows become validation and the remainder training.
+        Without a budget only the degenerate ratios have an answer -- 0, no validation set, and 1,
+        the whole stream is one.
         """
         if sample_count is None:
             if split_dataset_ratio <= 0:
@@ -756,13 +659,10 @@ class DatasetLoader:
     def use_swift_cache_for_temp_files(cls) -> None:
         """Point ``datasets``' temporary Arrow files at swift's cache directory.
 
-        A dataset held in memory -- a fresh ``map`` result, a synthesised split -- writes its Arrow
-        file to a temporary directory, which defaults to ``/tmp``: routinely a small tmpfs in a
-        container, where a real dataset fills it and the run dies far from the cause.
-
-        Legacy did the same, but as a side effect of importing its package, so merely importing the
-        dataset code changed ``datasets``' global behaviour for the process. Here the caller that is
-        about to create those files asks for it.
+        An in-memory dataset (a fresh ``map`` result, a synthesised split) writes its Arrow file to
+        a temp directory defaulting to ``/tmp`` -- routinely a small tmpfs in a container, where a
+        real dataset fills it and the run dies far from the cause. Legacy did the same as an import
+        side effect; here the caller about to create those files asks for it.
         """
         import tempfile
 
@@ -775,9 +675,8 @@ class DatasetLoader:
             if prefix not in cls._temp_dirs:
                 root = os.path.join(get_cache_dir(), 'tmp')
                 os.makedirs(root, exist_ok=True)
-                # Held in a class-level pool rather than used as a context manager: callers treat the
-                # path as valid for the rest of the process, so the directory has to outlive this call
-                # and is cleaned up when the interpreter drops the object at exit.
+                # Class-level pool, not a context manager: the path must outlive this call; the
+                # interpreter cleans the dir up when the object drops at exit.
                 cls._temp_dirs[prefix] = tempfile.TemporaryDirectory(
                     prefix=prefix, dir=root, ignore_cleanup_errors=True)
                 logger.info(f'Created dataset tmp_dir: {cls._temp_dirs[prefix].name}')
@@ -815,26 +714,17 @@ def load_dataset(
 ) -> Tuple[Optional[DATASET_TYPE], Optional[DATASET_TYPE]]:
     """Load and preprocess one or more datasets into standard ``(train, val)`` splits.
 
-    A name is matched against the registry to pick a :class:`DatasetLoader`; an unmatched name is a
-    normal case (a bare hub id or a local file) and loads through the base loader.
-
-    How the parts are then put together: by default every dataset's train part is concatenated (and
-    likewise every val part), so the result is all of the data. Passing ``interleave_prob`` instead
-    samples between them with those probabilities, which is what mixing corpora of very different
-    sizes needs -- ``stopping_strategy`` then decides whether the mixture ends with the smallest
-    dataset or keeps drawing until every one is spent. ``shuffle`` applies last, to the combined
-    result, and in streaming mode is a ``shuffle_buffer_size`` window rather than a permutation.
-
-    ``subsets``, ``use_hf`` and a ``#N`` row budget are ordinary arguments here. They may also be
-    encoded per dataset as ``hf://org/name:sub#500``; the string values win over the corresponding
-    arguments for that dataset.
+    A name matched against the registry picks a ``DatasetLoader``; an unmatched name is normal
+    (a bare hub id, a local file) and loads through the base loader. Train parts concatenate by
+    default (likewise val); ``interleave_prob`` samples between them instead, ``shuffle`` applies
+    last (a buffer window when streaming), and ``hf://org/name:sub#500`` wins per dataset.
     """
     if isinstance(datasets, str):
         datasets = [datasets]
     DatasetLoader.use_swift_cache_for_temp_files()
     if streaming:
-        # `num_proc` distributes a `map` over shards of a materialised table; a stream is consumed by
-        # one process and `datasets` rejects the pair.
+        # `num_proc` distributes a `map` over shards of a materialised table; a stream is consumed
+        # by one process and `datasets` rejects the pair.
         num_proc = None
 
     train_parts: List[DATASET_TYPE] = []
@@ -845,12 +735,8 @@ def load_dataset(
             entry_use_hf = use_hf
         dataset_type = match_dataset_type(dataset, use_hf=bool(entry_use_hf))
         loader_cls = get_dataset_loader(dataset_type)
-        # A dataset declared with only a local `dataset_path` (a user's --custom_dataset_info file, or
-        # one that ships with swift) is selected on the command line by its registered NAME, but its
-        # rows live at that path. detect_source() on the typed name would classify it as a hub id and
-        # fetch it, so resolve the name to the declared path first; dataset_type still carries the name
-        # for preprocessor/column lookup. Path-only guards the substitution -- a loader that also
-        # declares hub ids keeps the hub path -- and a hand-typed real path/hub id is left untouched.
+        # A path-only dataset (a local `dataset_path`, no hub ids) is selected by NAME; resolve the
+        # name to the path before detect_source() calls it a hub id. Hub-id loaders stay untouched.
         load_id = dataset
         if loader_cls.dataset_paths and not loader_cls.datasets and not os.path.exists(dataset):
             load_id = loader_cls.dataset_paths[0]

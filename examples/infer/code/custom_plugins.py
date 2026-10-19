@@ -13,7 +13,7 @@ implementation by name. One file therefore carries all six kinds; a real project
 
 The kinds demonstrated here, and the field that selects each:
 
-  * reward (sync)   -- ``RewardPlugin.__call__``                       -> ``--orm`` / ``--prm`` by name
+  * reward (sync)   -- ``ORM.__call__(trajectories, **kwargs)``        -> ``--orm`` / ``--prm`` by name
   * reward (async)  -- the SAME base, ``async def __call__``           -> ``--orm`` / ``--prm`` by name
   * tool            -- ``ToolPlugin.build(env)``                       -> ``--tools`` by name
   * model loader    -- ``ModelLoader`` + ``@register_model``           -> ``--model_type`` by name
@@ -41,38 +41,38 @@ from datasets import Dataset as HfDataset
 
 from swift.dev.dataset.loader import DatasetLoader, register_dataset
 from swift.dev.model.loader import ModelLoader, register_model
-from swift.dev.utils.plugin import PluginRegistry, RewardPlugin, ToolPlugin
+from swift.dev.rewards.reward import ORM
+from swift.dev.utils.plugin import PluginRegistry, ToolPlugin
 from swift.template import TemplateMeta, register_template
 from twinkle.data_format.message import Tool as ToolInfo
 
 # --- reward: a sync rule and an async rule, one extension point ---------------------------
-# A reward plugin scores model completions against the dataset's other columns: __call__ receives the
-# list of completions plus every dataset column as a keyword (so `solution=`, `messages=`, ... arrive
-# when the dataset has them), and returns one float per completion, in order. Returning None for an
-# item records it as NaN rather than a guessed 0.
+# A reward rule scores trajectory rows: each row IS a trajectory dict (the conversation plus the
+# sample's flat extras), ORM.completion(row) is the newest assistant turn's text, and __call__ returns
+# one float per trajectory, in order. Returning None for an item records it as NaN, not a guessed 0.
 
 
 @PluginRegistry.register('reward', 'length_bonus')
-class LengthBonus(RewardPlugin):
+class LengthBonus(ORM):
     """A synchronous reward: longer answers score higher, capped at 1.0. Selected with ``--orm length_bonus``."""
 
-    def __call__(self, completions: List[str], **columns: Any) -> List[float]:
-        return [min(len(text) / 100.0, 1.0) for text in completions]
+    def __call__(self, trajectories: List[Any], **kwargs: Any) -> List[float]:
+        return [min(len(self.completion(trajectory)) / 100.0, 1.0) for trajectory in trajectories]
 
 
 @PluginRegistry.register('reward', 'async_length_bonus')
-class AsyncLengthBonus(RewardPlugin):
+class AsyncLengthBonus(ORM):
     """The SAME contract written ``async`` -- there is no separate async base to choose.
 
-    ``swift.dev.rewards.reward.compute_rewards_per_func`` detects the returned coroutines and resolves a batch
-    with one ``asyncio.gather``, so the I/O of many completions overlaps instead of running one after
-    another. Use it when scoring does real I/O (an API call, a database lookup); the ``await`` here stands
-    in for that. A run may mix sync and async rewards freely in one ``--orm`` list.
+    Reward resolution wraps the rule so the scoring loop can invoke it synchronously: the returned
+    coroutine is run to completion (``asyncio.run``), inside which the rule's own gather still overlaps
+    the I/O of many completions. Use it when scoring does real I/O (an API call, a database lookup);
+    the ``await`` here stands in for that. A run may mix sync and async rules freely in one ``--orm`` list.
     """
 
-    async def __call__(self, completions: List[str], **columns: Any) -> List[float]:
+    async def __call__(self, trajectories: List[Any], **kwargs: Any) -> List[float]:
         await asyncio.sleep(0)  # the yield point a real async scorer's I/O would provide
-        return [min(len(text) / 200.0, 1.0) for text in completions]
+        return [min(len(self.completion(trajectory)) / 200.0, 1.0) for trajectory in trajectories]
 
 
 # --- tool: a multi-turn rollout tool ------------------------------------------------------

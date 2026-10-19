@@ -1,9 +1,4 @@
-"""The ``run_convert`` entry point for HF <-> Megatron/mcore weight conversion.
-
-``run_convert`` is the name the CLI (``swift export --to_mcore / --to_hf``) calls; the conversion itself
-lives in :class:`swift.dev.components.ConvertComponent`. This module keeps the procedural signature and
-returns a plain ``str``, so the CLI is unaffected by the component's typed artifact.
-"""
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
@@ -32,13 +27,9 @@ def run_convert(
 ) -> str:
     """Convert between HF and mcore formats; returns the output directory.
 
-    Direction is taken from ``convert_config``:
-      - ``to_mcore=True`` with no ``mcore_model``  -> HF  -> mcore
-      - ``to_hf=True``                             -> mcore -> HF
-      - ``to_mcore=True`` with ``mcore_model``     -> mcore -> mcore (reshard, and/or merge
-        ``mcore_adapter``)
-
-    ``output_dir`` overrides ``checkpoint_config.output_dir``.
+    Direction comes from ``convert_config``: ``to_mcore`` without ``mcore_model`` is HF -> mcore,
+    ``to_hf`` is mcore -> HF, ``to_mcore`` with ``mcore_model`` is an mcore reshard (and/or
+    ``mcore_adapter`` merge). ``output_dir`` overrides ``checkpoint_config.output_dir``.
     """
     from swift.dev.components import ConvertComponent
 

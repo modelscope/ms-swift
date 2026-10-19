@@ -1,17 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the Moonshot Kimi multimodal families (from ``swift/model/models/moonshot.py``).
-
-Only ``kimi_k3`` is migrated: remote-code ``KimiK3ForConditionalGeneration`` (no in-tree class on
-transformers 5.5) loaded via ``AutoModelForImageTextToText`` + the ``trust_remote_code`` flag. Its sole
-legacy seam is silencing a chatty remote-code tokenizer logger, which fits ``build_processor``.
-
-Not migrated here (see MODEL_MIGRATION.md):
-  * ``kimi_vl`` -- pinned ``transformers<4.49`` (dead on dev's 5.5); its loader also deletes
-    ``_supports_sdpa`` off the dynamic class and applies ``patch_get_input_embeddings``, the latter
-    obsolete per PATCH_INVENTORY.
-  * ``kimi_k25`` -- pinned ``transformers>=4.57.1,<5.0.0``; the ``<5.0.0`` ceiling excludes dev's 5.5,
-    so the family is version-dead even though it needs no loader logic at all.
-"""
+# Only kimi_k3 migrated; kimi_vl / kimi_k25 are version-dead on transformers 5.5 (MODEL_MIGRATION.md).
 from __future__ import annotations
 
 from .base import ModelArch, ModelLoader, register_model

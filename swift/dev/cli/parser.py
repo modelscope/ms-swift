@@ -1,16 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Self-parse of argv straight into dev's atomic Configs.
-
-The dev CLI used to lean on legacy ``SftArguments``/``ExportArguments``: parse the legacy surface,
-then copy same-named fields onto the Configs. That bridge dragged in ``swift/arguments`` and left the
-legacy ``__post_init__`` side effects (output_dir versioning, plugin import, hub login, ...) behind.
-This module removes the bridge: ``HfArgumentParser`` builds argparse options directly from the Config
-dataclasses, so the Config *is* the argument surface and its defaults are the single source of truth.
-
-Container annotations that ``HfArgumentParser`` cannot introspect are rewritten only for argparse;
-the parsed values are then restored from each Config's original runtime annotation.
-"""
 from __future__ import annotations
+import json
 import os
 import sys
 from contextlib import contextmanager
@@ -18,7 +8,6 @@ from dataclasses import MISSING, field, fields, make_dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union, get_args, get_origin, get_type_hints
 
-import json
 from transformers import HfArgumentParser
 
 from swift.dev.utils.logger import get_logger
@@ -47,11 +36,8 @@ def _patch_type_hints():
     def get_type_hints(*args, **kwargs):
         hints = origin_get_type_hints(*args, **kwargs)
         for k, v in hints.items():
-            # ``Any`` cannot be coerced from a string by argparse (it would call ``Any(value)``). A
-            # field declared ``Any``/``List[Any]`` accepts a class object when built in Python, but
-            # every value crossing the CLI is a string spec (name | id | path | class name) the resolve
-            # layer parses, so argparse only needs to collect strings. Only the parser's view changes;
-            # the dataclass field keeps ``Any`` for programmatic construction.
+            # Any crosses the CLI only as a string spec (name | id | path | class name) the resolve
+            # layer parses, so argparse collects strings; the dataclass field keeps Any.
             if v is Any:
                 hints[k] = str
                 continue
@@ -126,12 +112,8 @@ def _coerce_mapping(value, annotation) -> dict:
 def _restore_scalar_or_list(config, name, annotation) -> None:
     """Collapse a lone CLI value back to a scalar for a ``Union[scalar, List[scalar]]`` field.
 
-    ``_patch_type_hints`` hands ``HfArgumentParser`` such a field as ``List[scalar]`` (``nargs='+'``)
-    so a repeated flag stays expressible, which turns even one value into a 1-element list. The
-    runtime annotation still permits the bare scalar, and consumers branch on scalar-vs-list: a
-    Megatron router expects a scalar ``moe_aux_loss_coeff`` when its load-balancing type is a single
-    string, and only indexes it as a list when that type is itself a list. Unwrap a lone value so
-    ``--flag x`` yields ``x`` while ``--flag x y`` keeps ``[x, y]``.
+    The parser view is ``List[scalar]`` so a repeated flag stays expressible, but consumers branch
+    on scalar-vs-list (a Megatron router wants a scalar ``moe_aux_loss_coeff``), so unwrap lone values.
     """
     if get_origin(annotation) is not Union:
         return
@@ -183,22 +165,32 @@ def flag_names(argv: Sequence[str]) -> set:
 
 
 def select_tuner(tuner):
-    """Represent a full-parameter run without a TunerConfig.
-
-    ``tuner='full'`` maps to None, and every adapter/full-param branch downstream reads a None
-    TunerConfig as "no adapter applied" (``tuner_config is None``). GaLore is a full-parameter
-    optimizer technique, but its ``use_galore`` / ``galore_*`` knobs live on TrainConfig -- not here --
-    so a GaLore run no longer needs the config kept: full is full, and the optimizer knobs travel with
-    TrainConfig regardless.
-    """
+    """Map ``tuner='full'`` to None so downstream reads a missing TunerConfig as no-adapter; GaLore
+    is a full-param optimizer technique whose knobs live on TrainConfig, so no config is kept."""
     if tuner.tuner == 'full':
         return None
     return tuner
 
 
+def normalize_sampler(infer_config) -> None:
+    """Fold the legacy ``pt`` sampler value onto the backend name ``transformers`` in place.
+
+    ``run_deploy``'s backend Literal and the engine-arg builders only know the backend names, so
+    every command that parses an InferConfig folds the v4 spelling before use (infer/deploy/eval).
+    """
+    if infer_config.sampler == 'pt':
+        infer_config.sampler = 'transformers'
+
+
+# Boolean legacy flags select an enum value instead of passing one through: bf16/fp16 fold onto
+# torch_dtype (off drops the token, keeping the default dtype), use_ray onto mode (off = local).
+_BOOLEAN_ALIASES = {
+    'bf16': ('torch_dtype', 'bfloat16', None),
+    'fp16': ('torch_dtype', 'float16', None),
+    'use_ray': ('mode', 'ray', 'local'),
+}
 # Public compatibility export; the declaration itself lives with the executable legacy contract.
-CLI_ALIASES = {name: target for name, target in LEGACY_ALIASES.items() if name not in {'bf16', 'fp16'}}
-_PRECISION_ALIASES = {'bf16': 'bfloat16', 'fp16': 'float16'}
+CLI_ALIASES = {name: target for name, target in LEGACY_ALIASES.items() if name not in _BOOLEAN_ALIASES}
 _TRUE_VALUES = {'1', 'true', 'True', 'TRUE', 'yes', 'y', 'on'}
 _FALSE_VALUES = {'0', 'false', 'False', 'FALSE', 'no', 'n', 'off'}
 
@@ -226,35 +218,40 @@ def _comparable_value(value: str):
         return value
 
 
+def _scan_flag(argv: Sequence[str], index: int) -> Tuple[str, Optional[str], bool, int]:
+    """Split ``argv[index]`` (plus a following value token) into option/value/has_value/next_index."""
+    token = argv[index]
+    option, separator, inline_value = token[2:].partition('=')
+    has_value = bool(separator)
+    value = inline_value if has_value else None
+    next_index = index + 1
+    if not has_value and next_index < len(argv) and not argv[next_index].startswith('--'):
+        value = argv[next_index]
+        has_value = True
+        next_index += 1
+    return option, value, has_value, next_index
+
+
 def normalize_argv(argv: Sequence[str],
                    available_fields: Sequence[str],
                    field_owners: Optional[Dict[str, Type]] = None) -> List[str]:
-    """Rewrite legacy aliases to canonical Config flags and reject conflicting double writes.
-
-    Scalar aliases accept both ``--name value`` and ``--name=value``. Hyphens and underscores are
-    equivalent. If an alias and its canonical spelling are both explicit, equal values are accepted
-    while different values fail before argparse can silently let the last occurrence win.
-
-    ``field_owners`` maps each available field name to the Config that owns it, used to suppress an
-    alias whose source is a live field of a different Config than its target (see below).
-    """
+    """Rewrite legacy aliases to canonical Config flags; reject conflicting double writes (equal
+    values pass, different values fail) before argparse can silently let the last occurrence win."""
     available = set(available_fields)
     owner_of = dict(field_owners or {})
     aliases: Dict[str, str] = {}
     for alias, target in CLI_ALIASES.items():
         if target not in available:
             continue
-        # A legacy spelling that is itself a live field of a DIFFERENT Config than its alias target is
-        # that Config's own current flag, not a rename -- `--loss_type` under `rlhf` selects the GRPO
-        # objective on RLConfig, while `--loss` names the supervised loss on TrainConfig. Aliasing it
-        # would silently retarget the flag, so leave it direct. Same-owner pairs (`--lr` ->
-        # `--learning_rate`, both TrainConfig) are genuine renames and still fold.
+        # A legacy spelling that is itself a live field of a DIFFERENT Config than its target is that
+        # Config's own flag, not a rename (--loss_type is the GRPO objective, --loss the loss); same-owner pairs still fold.
         source_owner = owner_of.get(alias)
         if source_owner is not None and owner_of.get(target) is not source_owner:
             continue
         aliases[alias] = target
-    if 'torch_dtype' in available:
-        aliases.update({name: 'torch_dtype' for name in _PRECISION_ALIASES})
+    for alias, (target, _, _) in _BOOLEAN_ALIASES.items():
+        if target in available:
+            aliases[alias] = target
 
     result: List[str] = []
     seen: Dict[str, Tuple[str, object]] = {}
@@ -266,37 +263,24 @@ def normalize_argv(argv: Sequence[str],
             index += 1
             continue
 
-        option, separator, inline_value = token[2:].partition('=')
+        option, value, has_value, next_index = _scan_flag(argv, index)
         source = option.replace('-', '_')
         target = aliases.get(source, source)
-        has_value = bool(separator)
-        value = inline_value if has_value else None
-        if not has_value and index + 1 < len(argv) and not argv[index + 1].startswith('--'):
-            value = argv[index + 1]
-            has_value = True
-            index += 1
-
-        if source in _PRECISION_ALIASES and target == 'torch_dtype':
+        if source in _BOOLEAN_ALIASES and source in aliases:
+            _, on_value, off_value = _BOOLEAN_ALIASES[source]
             enabled = True if value is None else _boolean_value(value)
             if enabled is None:
                 raise ValueError(f'--{option} expects a boolean value, got {value!r}.')
-            if not enabled:
-                index += 1
+            if enabled:
+                value, has_value = on_value, True
+            elif off_value is None:
+                index = next_index
                 continue
-            value = _PRECISION_ALIASES[source]
-            has_value = True
-        elif source == 'use_ray' and target == 'mode':
-            enabled = True if value is None else _boolean_value(value)
-            if enabled is None:
-                raise ValueError(f'--{option} expects a boolean value, got {value!r}.')
-            value = 'ray' if enabled else 'local'
-            has_value = True
+            else:
+                value, has_value = off_value, True
 
         if target in available and (source in aliases or source == target):
-            if not has_value:
-                comparable = True
-            else:
-                comparable = _comparable_value(value)
+            comparable = True if not has_value else _comparable_value(value)
             previous = seen.get(target)
             if previous is not None and previous[1] != comparable:
                 raise ValueError(
@@ -307,28 +291,27 @@ def normalize_argv(argv: Sequence[str],
         result.append(f'--{target}')
         if has_value:
             result.append(value)
-        index += 1
+        index = next_index
     return result
 
 
-def _merged_parse_class(config_classes: Sequence[Type], field_owners: Optional[Dict[str, Type]] = None):
-    """Build one argparse dataclass from several Configs, resolving duplicate field names explicitly.
-
-    A field name declared by more than one Config is ambiguous in the merged CLI namespace: one flag
-    spelling must resolve to exactly one owner. Every duplicate therefore has to be pinned through
-    ``field_owners`` to a Config that is actually present here. An unpinned duplicate -- or one pinned
-    to an absent Config -- raises instead of silently letting the first-declaring Config win, which
-    would make the parsed value's destination depend on the order ``config_classes`` is listed in.
+def _merged_parse_class(config_classes: Sequence[Type],
+                        field_owners: Optional[Dict[str, Type]] = None) -> Tuple[Type, Dict[str, Type], Dict[str, Type]]:
+    """Merge Configs into one argparse dataclass; a duplicate field must be pinned via ``field_owners``,
+    else the value's destination depends on the Config listing order. Returns the class plus the
+    first-declarer and effective-owner maps that ``parse_configs`` feeds to its consumers.
     """
     owners = dict(field_owners or {})
     present = set(config_classes)
     specs = []
     seen = {}
     declared_by: Dict[str, List[Type]] = {}
+    first_owner: Dict[str, Type] = {}
     for config_class in config_classes:
         hints = get_type_hints(config_class)
         for config_field in fields(config_class):
             name = config_field.name
+            first_owner.setdefault(name, config_class)
             if name in seen:
                 declared_by[name].append(config_class)
                 preferred = owners.get(name)
@@ -362,13 +345,13 @@ def _merged_parse_class(config_classes: Sequence[Type], field_owners: Optional[D
             else:
                 seen[name] = len(specs)
                 specs.append(spec)
-    return make_dataclass('MergedCliConfig', [spec for spec in specs if spec is not None])
+    merged = make_dataclass('MergedCliConfig', [spec for spec in specs if spec is not None])
+    owner_of = {name: owners.get(name, cls) for name, cls in first_owner.items()}
+    return merged, first_owner, owner_of
 
 
-#: Checkpoint args.json keys infer applies regardless of the current value. An entry is a plain field
-#: name (the JSON key equals it), or a ``(json_key, field_name)`` pair when a persisted key kept its
-#: historical spelling after the Config field was renamed -- args.json still carries 'tuner_type' (which
-#: legacy infer also force-loads) even though the field is now ``tuner``.
+# Checkpoint args.json keys applied regardless of the current value. An entry is a plain field name,
+# or a (json_key, field_name) pair when a persisted key kept its historical spelling (tuner_type).
 _CHECKPOINT_FORCE_LOAD_FIELDS = {
     'model_config': ('task_type',),
     'quantize_config': ('bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'),
@@ -441,6 +424,7 @@ def _resolve_checkpoint_args_source(configs: Dict[str, Any]) -> Optional[str]:
             return args_path
     return None
 
+
 def _restore_checkpoint_args(configs: Sequence[Any], *, default_load_args: bool) -> None:
     """Apply legacy ``load_args_from_ckpt`` semantics to atomic dev Configs."""
     mapped = _config_mapping(configs)
@@ -461,13 +445,11 @@ def _restore_checkpoint_args(configs: Sequence[Any], *, default_load_args: bool)
         raise TypeError(f'Checkpoint arguments must be a JSON object: {args_path}')
 
     load_fields = {name: list(names) for name, names in _CHECKPOINT_LOAD_FIELDS.items()}
+    from packaging import version
+    # model_type was reshaped after v4, so only trust an args.json written by 4.0.0.dev or newer.
     swift_version = old_args.get('swift_version')
-    if swift_version is None:
+    if swift_version is None or version.parse(swift_version) < version.parse('4.0.0.dev'):
         load_fields['model_config'].remove('model_type')
-    else:
-        from packaging import version
-        if version.parse(swift_version) < version.parse('4.0.0.dev'):
-            load_fields['model_config'].remove('model_type')
     for config_name, names in _CHECKPOINT_FORCE_LOAD_FIELDS.items():
         config = mapped.get(config_name)
         if config is None:
@@ -502,20 +484,12 @@ def parse_configs(
 ) -> Tuple[list, List[str]]:
     """Parse argv into Config instances, including Config sets with duplicate field names.
 
-    ``field_owners`` selects which Config owns a duplicate CLI spelling. Other Configs retain their
-    own defaults; command-specific post-processing may deliberately mirror the parsed value when one
-    flag controls more than one runtime component.
+    ``field_owners`` selects which Config owns a duplicate CLI spelling; other Configs retain their
+    own defaults, and each Config records which of its fields were explicit on the command line.
     """
     effective_argv = resolve_argv(argv)
-    merged_class = _merged_parse_class(config_classes, field_owners)
+    merged_class, first_owner, owner_of = _merged_parse_class(config_classes, field_owners)
     owners = dict(field_owners or {})
-    first_owner = {}
-    for config_class in config_classes:
-        for config_field in fields(config_class):
-            first_owner.setdefault(config_field.name, config_class)
-    # Effective owner per field name (an explicit pin wins), so normalize_argv can tell a genuine
-    # rename from a legacy spelling that is another Config's own current flag.
-    owner_of = {name: owners.get(name, cls) for name, cls in first_owner.items()}
     effective_argv = normalize_argv(
         effective_argv, [config_field.name for config_field in fields(merged_class)], field_owners=owner_of)
     explicit_fields = flag_names(effective_argv)
@@ -549,10 +523,8 @@ _ALLOW_UNKNOWN_ARGS_FLAG = 'allow_unknown_args'
 def _strip_allow_unknown_args(argv: Sequence[str]) -> Tuple[List[str], bool]:
     """Pull the ``--allow_unknown_args`` meta-flag out of argv, returning ``(cleaned_argv, enabled)``.
 
-    It carries no Config field -- it toggles parser behavior rather than a value -- so it must be
-    consumed here; otherwise HfArgumentParser would drop it into the unrecognized remainder and it
-    would trip the very check it exists to relax. Accepts the same spellings as a Config boolean flag:
-    bare presence, ``--allow_unknown_args=true/false``, and ``--allow_unknown_args true/false``.
+    It carries no Config field -- it toggles parser behavior -- so it must be consumed here, else
+    HfArgumentParser would drop it into the unrecognized remainder it exists to relax.
     """
     flag = f'--{_ALLOW_UNKNOWN_ARGS_FLAG}'
     cleaned: List[str] = []
@@ -561,7 +533,8 @@ def _strip_allow_unknown_args(argv: Sequence[str]) -> Tuple[List[str], bool]:
     while i < n:
         token = argv[i]
         if token == flag:
-            # Bare presence enables it; a following boolean literal is its explicit value.
+            # Bare presence enables it; a following boolean literal is its explicit value (other
+            # tokens are NOT consumed: only a boolean literal is unambiguously this flag's value).
             if i + 1 < n and _boolean_value(argv[i + 1]) is not None:
                 enabled = _boolean_value(argv[i + 1])
                 i += 2
@@ -588,13 +561,8 @@ def parse_configs_strict(
     load_args_default: bool = False,
     allow_unknown_args: bool = False,
 ) -> list:
-    """Parse Configs and reject every unrecognized argument.
-
-    ``--allow_unknown_args`` on the command line (or ``allow_unknown_args=True`` from a caller)
-    downgrades that rejection to a warning naming the flags no Config claimed, so a run can tolerate
-    arguments meant for a downstream launcher or a forward-compatible spelling. Unknown arguments are
-    dropped, not forwarded -- the warning is the only signal that they had no effect here.
-    """
+    """Parse Configs and reject every unrecognized argument; ``--allow_unknown_args`` (or the
+    caller's flag) downgrades that to a warning naming the flags no Config claimed."""
     effective_argv, flag_enabled = _strip_allow_unknown_args(resolve_argv(argv))
     configs, remaining = parse_configs(
         config_classes, effective_argv, field_owners=field_owners, load_args_default=load_args_default)

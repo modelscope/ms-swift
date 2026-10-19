@@ -1,6 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Checkpoint saving and resumption configuration."""
-from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -12,7 +10,7 @@ class CheckpointConfig:
     # === Save Strategy ===
     output_dir: str = 'output'
     save_strategy: Literal['steps', 'epoch', 'no', 'best'] = 'steps'
-    #: Integer interval, or a ratio in (0, 1) resolved against total optimizer steps in TrainAssembly.plan_steps.
+    # Integer interval, or a ratio in (0, 1) resolved against total optimizer steps in plan_steps.
     save_steps: float = 500.0
     save_total_limit: Optional[int] = None
     safe_serialization: bool = True
@@ -25,41 +23,32 @@ class CheckpointConfig:
     ignore_data_skip: bool = False
 
     # === Hub ===
-    # The single home for hub credentials and target repo. ConvertConfig deliberately holds none of
-    # these -- only the commit message -- so that a training push and an export push cannot end up
-    # pointing at different repos.
+    # The single home for hub credentials and target repo, so training and export push the same way.
     push_to_hub: bool = False
     hub_model_id: Optional[str] = None
     hub_private_repo: bool = False
     hub_strategy: Literal['end', 'every_save', 'checkpoint', 'all_checkpoints'] = 'every_save'
     hub_revision: Optional[str] = None
-    #: Block at each push until the previous one finishes. Off by default so uploading does not stall
-    #: training; turn it on when a dropped push would go unnoticed.
+    # Off by default so uploading does not stall training; on to notice a dropped push.
     hub_always_push: bool = False
 
-    # === Megatron: save/load selectivity ===
-    # Megatron saves weights, optimizer state and RNG state as separate pieces, so each can be skipped.
-    # Dropping the optimizer makes a checkpoint much smaller and no longer resumable; dropping the RNG
-    # state makes a resumed run's dropout and data order differ from an uninterrupted one.
+    # === Save/load selectivity ===
+    # no_save_optim folds into save_optimizer on both backends; the rng/load trio is megatron-only.
     no_save_optim: bool = False
     no_save_rng: bool = False
     no_load_optim: bool = False
     no_load_rng: bool = False
 
-    # === Megatron: save mechanics ===
-    #: Write the checkpoint from a background worker so training continues during the write. The save
-    #: first stages a frozen CPU snapshot (so later training steps never leak into the artifact), then
-    #: the disk I/O runs off the training path; completion markers (trainer_state.json / the iteration
-    #: tracker) are written only after the write landed. Incompatible with save_total_limit.
+    # === Save mechanics ===
+    # Background write after a frozen CPU staging snapshot; completion markers land post-write.
+    # Incompatible with save_total_limit.
     async_save: bool = False
-    #: Legacy Megatron compatibility switch. The dev runtime always emits HF-format safetensors,
-    #: so True is supported and False is rejected explicitly.
+    # The runtime always emits HF-format safetensors on both backends; False is rejected.
     save_safetensors: bool = True
 
     # === Misc ===
     add_version: bool = True
-    #: Restore model/template/quantization metadata from a checkpoint args.json. Training defaults this
-    #: off; inference and artifact CLIs enable it unless the flag is explicitly set.
+    # Restore model/template/quantization metadata from a checkpoint args.json (training default
+    # off; inference and artifact CLIs enable it unless explicitly set).
     load_args: bool = False
-    #: With load_args, also restore DatasetConfig fields from the checkpoint.
-    load_data_args: bool = False
+    load_data_args: bool = False  # with load_args, also restore DatasetConfig fields

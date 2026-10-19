@@ -1,28 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Process Reward Model (PRM) step scorers for swift.dev -- the built-in ``prm_scorer`` plugins.
-
-A PRM scores *how* a solution reasons, not only whether its final answer is right, so training against one
-needs a reward for each reasoning step rather than a single scalar for the whole response. This module owns
-that "segment + score" process behind one extension point (:data:`PRM_STEP_SCORER`), exactly the way
-:mod:`swift.dev.rewards.orm` owns outcome rewards:
-
-  - :class:`PRMScorer` is the general base -- a template method that segments a response into steps, scores
-    each step with an injected PRM callable, and broadcasts the per-step scores into a per-response-token
-    process reward. A subclass owns only *how a response is split into steps*; building the scoring rows,
-    calling the PRM and the per-step broadcast (the mapping the training loop consumes) are shared.
-  - :class:`DelimiterPRMScorer` splits the decoded response on a text delimiter
-    (``RLConfig.prm_step_delimiter``, one step per line by default); under a multi-turn rollout it splits
-    WITHIN each assistant turn separately, never across a turn boundary.
-  - :class:`TurnPRMScorer` is the multi-turn default: one assistant turn (thought + action) is one step,
-    matching how agentic-RL PRM research (PAIR, AgentPRM) scores a tool-using trajectory -- the tool
-    observation a turn triggers is context for the NEXT turn, not part of this one.
-
-A scorer never owns a model. The training loop injects ``score_steps`` (a batch of step rows -> one PRM
-score per row, wired to the frozen PRM) and ``decode`` (the policy tokenizer's decode), so a scorer is pure
-text/token logic and is exercisable without a GPU or a checkpoint. A multi-turn rollout also injects a
-:class:`MultiTurnContext` (the real conversation plus its per-turn token spans) so a step is scored against
-the true history -- prior turns AND their tool observations -- rather than a flat splice of trainable tokens.
-"""
 from __future__ import annotations
 import copy
 from dataclasses import dataclass
@@ -32,9 +8,8 @@ from swift.dev.utils.plugin import PluginRegistry, SwiftPlugin
 
 __all__ = ['PRMScorer', 'DelimiterPRMScorer', 'TurnPRMScorer', 'MultiTurnContext', 'prm_scorers', 'PRM_STEP_SCORER']
 
-#: One reasoning step as a half-open ``[start, end)`` span of response-token indices. The spans a scorer
-#: returns must be contiguous and cover the whole response, so every response token belongs to exactly one
-#: step (see :meth:`PRMScorer._checked_spans`).
+#: One reasoning step as a half-open ``[start, end)`` span of response-token indices. Spans a scorer
+#: returns must tile the whole response (see :meth:`PRMScorer._checked_spans`).
 StepSpan = Tuple[int, int]
 
 
@@ -42,19 +17,10 @@ StepSpan = Tuple[int, int]
 class MultiTurnContext:
     """Turn structure of a multi-turn rollout, so a PRM step never spans two assistant turns.
 
-    Built by the GRPO assembler (:meth:`swift.dev.recipe.grpo.assembler.GRPOAssembler.score_sample`) from a
-    ``RolloutSample`` whose ``messages`` carries the full conversation and whose ``encoded`` feature
-    yields the per-turn token spans (:func:`swift.dev.rollout.multi_turn.turn_token_spans`). ``None``
-    is passed instead for a single-turn rollout, which has no turn structure to respect.
-
-    Fields:
-        messages: the full conversation exactly as the rollout recorded it -- assistant turns AND the
-            tool/observation turns between them.
-        turn_spans: ``[start, end)`` spans, one per assistant turn, indexing the flat
-            ``response_token_ids`` array :meth:`PRMScorer.__call__` receives.
-        assistant_message_indices: for the k-th ``turn_spans`` entry, the index into ``messages`` of that
-            turn's assistant message, so ``messages[:assistant_message_indices[k]]`` is the true history
-            (prior assistant turns AND their tool observations) preceding turn k.
+    Built from a RolloutSample whose ``messages`` carry the full conversation and whose encoded
+    feature yields the per-turn spans; ``None`` for single-turn. ``turn_spans``: ``[start, end)``
+    per assistant turn over the flat response tokens; ``assistant_message_indices[k]``: the messages
+    index of turn k's assistant message (the slice before it is that turn's true history).
     """
     messages: List[dict]
     turn_spans: List[StepSpan]
@@ -75,23 +41,10 @@ class MultiTurnContext:
 class PRMScorer(SwiftPlugin):
     """Turn one response into a per-response-token process reward by scoring its reasoning steps.
 
-    ``__call__`` is a template method fixed to three stages so every PRM scorer is interchangeable:
-
-    1. :meth:`segment` -- the one subclass-owned stage -- splits the response into step spans.
-    2. Each step is scored by its *response prefix*: for a single-turn rollout that is
-       ``prompt + assistant(response[:end])``; for a multi-turn rollout (``turn_context`` given) it is the
-       real conversation history preceding the step's turn -- prior assistant turns AND their tool
-       observations -- plus that turn's own text up to the step, so a scalar PRM judges the solution as far
-       as that step with the context it actually had. All steps of a response are
-       scored in ONE ``score_steps`` batch so the frozen PRM sees a full batch, not one row at a time.
-    3. :meth:`broadcast` maps the per-step scores onto tokens. The default is the *per-step broadcast*
-       (every token in a step inherits that step's score); a scorer wanting per-token interpolation
-       overrides this one method, leaving segmentation and scoring untouched.
-
-    The result is a plain per-token process reward. Combining it with the outcome (ORM) reward -- the
-    training loop's ``prm_orm_mix`` convex blend of this per-token process reward with the group-relative
-    outcome advantage -- is the training loop's job, not the scorer's, so a scorer stays reusable across
-    advantage schemes.
+    ``__call__`` is a fixed three-stage template: ``segment`` (the subclass-owned stage) splits the
+    response into step spans; every step is scored by its prefix (the true history under multi-turn)
+    in ONE ``score_steps`` batch; ``broadcast`` maps step scores onto tokens (default per-step;
+    override for interpolation). Blending the result with the ORM outcome is the loop's job.
     """
 
     #: Registry key; :class:`DelimiterPRMScorer` (single-turn default) and :class:`TurnPRMScorer`
@@ -109,22 +62,10 @@ class PRMScorer(SwiftPlugin):
                  turn_context: Optional[MultiTurnContext] = None) -> List[float]:
         """One process reward per response token (length ``len(response_token_ids)``).
 
-        Args:
-            prompt_messages: the prompt turns; a single-turn step is scored against
-                ``prompt + the response so far``.
-            response_token_ids: the policy-produced completion tokens -- the frame the output aligns to.
-            decoded: the decoded completion text (what :meth:`segment` splits).
-            score_steps: scores a batch of step rows (each ``{'messages': [...], **columns}``) with the
-                frozen PRM, returning one scalar per row in order. Injected so a scorer owns no model.
-            decode: the policy tokenizer's decode, ``List[int] -> str``. Used to render each step's response
-                prefix as text and (in the default scorer) to locate step boundaries in token space.
-            columns: dataset passthrough columns (``solution`` / ...) the PRM may need; copied onto every
-                step row.
-            turn_context: the multi-turn rollout's real conversation and per-turn token spans (see
-                :class:`MultiTurnContext`); ``None`` for a single-turn rollout. When present, a step is
-                scored against the true history preceding its turn (prior assistant turns AND their tool
-                observations) plus that turn's own text up to the step, and :meth:`segment` must not span
-                two turns.
+        ``prompt_messages``: prompt turns. ``response_token_ids``: completion tokens. ``decoded``:
+        the text ``segment`` splits. ``score_steps``: scores the step rows with the frozen PRM
+        (injected; the scorer owns no model). ``decode``: the tokenizer's decode. ``turn_context``:
+        multi-turn structure, else single-turn (a step scores against ``prompt + response-so-far``).
         """
         response_token_ids = list(response_token_ids)
         if not response_token_ids:
@@ -158,12 +99,11 @@ class PRMScorer(SwiftPlugin):
     def segment(self, response_token_ids: Sequence[int], decoded: str,
                 decode: Callable[[Sequence[int]], str],
                 turn_context: Optional[MultiTurnContext] = None) -> List[StepSpan]:
-        """Split one response into contiguous ``[start, end)`` response-token spans, one per reasoning step.
+        """Split one response into contiguous ``[start, end)`` response-token spans, one per step.
 
-        The single stage a subclass owns. Spans are in token space (so the broadcast is exact) and must
-        cover ``[0, len(response_token_ids))`` without gaps or overlaps. When ``turn_context`` is given
-        (a multi-turn rollout), no span may cross an assistant-turn boundary --
-        :meth:`PRMScorer._checked_spans` enforces this regardless of the subclass.
+        The single subclass-owned stage. Spans must tile ``[0, len(response_token_ids))`` with no
+        gaps or overlaps; under ``turn_context`` no span may cross an assistant-turn boundary
+        (:meth:`_checked_spans` enforces both regardless of the subclass).
         """
         raise NotImplementedError
 
@@ -184,12 +124,11 @@ class PRMScorer(SwiftPlugin):
     @staticmethod
     def _checked_spans(spans: Sequence[StepSpan], length: int,
                        turn_context: Optional[MultiTurnContext] = None) -> List[StepSpan]:
-        """Validate that ``spans`` tiles ``[0, length)`` exactly; a segmentation bug must be loud, not silent.
+        """Validate that ``spans`` tiles ``[0, length)`` exactly; a segmentation bug must be loud.
 
-        A gap would leave a response token with no process reward, and an overlap would score one token
-        twice -- both would corrupt the per-token advantage without any visible error, so reject them here.
-        When ``turn_context`` is given, also reject a span that crosses an assistant-turn boundary: a step
-        must live entirely within one turn so its scored prefix is that turn's own text, not a splice of two.
+        A gap leaves a token unscored and an overlap scores one twice -- both corrupt the per-token
+        advantage silently, so reject here. With ``turn_context``, also reject a span crossing an
+        assistant-turn boundary: a step must live entirely within one turn.
         """
         checked = list(spans)
         if not checked:
@@ -218,24 +157,10 @@ class PRMScorer(SwiftPlugin):
 class DelimiterPRMScorer(PRMScorer):
     """One reasoning step per delimiter-separated segment of the response.
 
-    Steps are located in TOKEN space by walking the response one token at a time and cutting a step where
-    the accumulated per-token text contains the delimiter (``RLConfig.prm_step_delimiter``, a newline by
-    default, i.e. one step per line -- the shape most chain-of-thought answers emit). Cutting on a token
-    boundary keeps the spans exact; the trailing segment after the last delimiter is its own step, and a
-    response with no delimiter is a single step covering all its tokens.
-
-    Under a multi-turn rollout (``turn_context`` given) the same scan runs separately WITHIN each assistant
-    turn's span, so a step never crosses a turn boundary -- a line break at the very end of one turn and
-    the very start of the next is a turn boundary, not a step boundary.
-
-    Each step is then scored by its response prefix (:meth:`PRMScorer.__call__`), so a step's score is the
-    PRM's judgement of the solution up to and including that step.
-
-    The per-token scan decodes each token in isolation to find delimiters, which can differ from a
-    whole-sequence decode at BPE/space boundaries; that only affects *where* a line break is detected, never
-    the exactness of the token spans, and the text actually scored is a proper ``decode(response[:end])``
-    prefix. A delimiter that is merged into a larger token is still detected because the check is a substring
-    test on the accumulated pieces.
+    Steps are cut in TOKEN space where the accumulated per-token text contains the delimiter
+    (``prm_step_delimiter``; a newline by default, one step per line); the trailing segment is its
+    own step, and under multi-turn the scan runs separately within each assistant turn. Isolated
+    per-token decodes may differ at BPE boundaries, which only moves a line break, never the spans.
     """
 
     name = 'delimiter'
@@ -276,12 +201,10 @@ class DelimiterPRMScorer(PRMScorer):
 class TurnPRMScorer(PRMScorer):
     """The multi-turn default: one assistant turn (thought + action) is one reasoning step.
 
-    Agentic-RL PRM research (PAIR, AgentPRM) scores a tool-using trajectory one assistant turn at a time --
-    a turn's thought+action is the unit a PRM judges, and the tool observation it triggers is context for
-    the NEXT turn, not part of this one. This scorer therefore needs no delimiter and no text scan: the turn
-    spans :func:`swift.dev.rollout.multi_turn.turn_token_spans` recovers from the trajectory's labels ARE
-    the steps. Requires ``turn_context`` (a multi-turn rollout); a single-turn response has no turn
-    structure to segment and must use :class:`DelimiterPRMScorer` instead.
+    Agentic-RL PRM research scores a tool-using trajectory one assistant turn at a time -- a turn's
+    thought+action is the unit a PRM judges, and the tool observation it triggers is context for the
+    NEXT turn. The turn spans ``turn_token_spans`` recovers ARE the steps; requires ``turn_context``
+    (single-turn has no turn structure -- use ``delimiter`` there).
     """
 
     name = 'turn'

@@ -1,10 +1,4 @@
-"""Optimizer/scheduler configuration from TrainConfig.
-
-Maps the backend-agnostic ``TrainConfig`` onto twinkle Model's
-``set_optimizer`` / ``set_lr_scheduler`` (which build the instances internally).
-Kept tiny and explicit: no training-plan reverse-engineering, callers pass
-``num_training_steps``.
-"""
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
 import math
@@ -23,10 +17,8 @@ logger = get_logger()
 def megatron_weight_decay_bounds(cfg: TrainConfig) -> tuple:
     """(start_wd, end_wd) for Megatron's OptimizerParamScheduler.
 
-    Mirrors legacy swift's MegatronArguments post-init (megatron_args.py:1096-1102): the 'constant'
-    style derives both ends from weight_decay and forbids setting them, any other style requires
-    both explicitly. Shared by validate_configs (so an illegal combination fails in milliseconds,
-    before any weight load) and configure_optimizer, so there is one copy of the rule.
+    Mirrors legacy megatron_args.py: 'constant' derives both ends from weight_decay and forbids
+    explicit ends; any other style requires both ends. Shared by validate_configs and here.
     """
     if cfg.weight_decay_incr_style == 'constant':
         if cfg.start_weight_decay is not None or cfg.end_weight_decay is not None:
@@ -45,14 +37,8 @@ def megatron_weight_decay_bounds(cfg: TrainConfig) -> tuple:
 def warmup_budget(cfg: TrainConfig, num_training_steps: int, *, is_megatron: bool) -> float:
     """Warmup length in OPTIMIZER steps, possibly fractional.
 
-    The two backends resolve the ratio/absolute pair with OPPOSITE priority, and each is reproduced
-    here rather than unified -- picking one rule would silently change the warmup on one backend:
-      - transformers: TrainingArguments.get_warmup_steps takes warmup_steps when it is >= 1, else
-        ceil(num_training_steps * warmup_ratio). So the ABSOLUTE count wins.
-      - megatron: megatron_lm_utils uses lr_warmup_fraction * lr_decay_steps when the fraction is
-        set, else lr_warmup_iters. So the RATIO wins.
-    Returns a float so the Megatron path keeps its fractional ramp; the transformers branch rounds
-    up itself (see configure_optimizer).
+    The two backends resolve the ratio/absolute pair with OPPOSITE priority, each reproduced rather
+    than unified: transformers takes the ABSOLUTE steps when >= 1, megatron the RATIO first.
     """
     if is_megatron:
         if cfg.warmup_ratio:
@@ -66,20 +52,12 @@ def warmup_budget(cfg: TrainConfig, num_training_steps: int, *, is_megatron: boo
 def resolve_max_grad_norm(cfg: TrainConfig) -> float:
     """Gradient-clipping threshold, folding the deprecated `clip_grad` alias into `max_grad_norm`.
 
-    legacy carried two names for one knob -- HF `max_grad_norm` (clipped outside the optimizer) and
-    Megatron `clip_grad` (clipped inside `optimizer.step()` from `OptimizerConfig.clip_grad`). The
-    clipping THRESHOLD means the same thing in both, and legacy's Megatron path never read
-    `max_grad_norm` at all, so setting it there was silently dropped. dev merges them under
-    `max_grad_norm` and keeps `clip_grad` working with a deprecation warning.
-
-    Both set is not a supported combination: `max_grad_norm` wins and the conflict is warned about,
-    rather than fail-fast, because `clip_grad` is on its way out and legacy Megatron scripts that
-    already carry a stray `max_grad_norm` would otherwise start erroring on a value legacy ignored.
+    Both set: max_grad_norm wins with a warning (clip_grad is on its way out, and legacy Megatron
+    scripts carrying a stray max_grad_norm would otherwise start erroring on a value legacy ignored).
     """
     if cfg.clip_grad is None:
         return cfg.max_grad_norm
-    # Read the default off the dataclass rather than hardcoding 1.0, so "did the user change it"
-    # cannot drift if the default is ever retuned.
+    # Read the default off the dataclass, so "did the user change it" cannot drift if retuned.
     import dataclasses
     default_mgn = next(f for f in dataclasses.fields(cfg) if f.name == 'max_grad_norm').default
     if cfg.max_grad_norm != default_mgn:
@@ -95,14 +73,8 @@ def resolve_max_grad_norm(cfg: TrainConfig) -> float:
 def _galore_config(cfg: TrainConfig) -> dict:
     """The ``GaLoreConfig`` fields set_optimizer turns into low-rank projection param groups.
 
-    The plain-GaLore knobs (rank / target_modules / update_proj_gap / galore_scale / proj_type) are
-    always read; when ``galore_quantization`` is set the QGaLore knobs (quantize + the projection
-    quantization / subspace-reuse / gradient-queue settings) are added too, and twinkle resolves the
-    optimizer to ``QGaLoreAdamW8bit``, which reads those keys off the param group. The two remaining
-    legacy ``galore_*`` fields (optim_per_parameter / with_embedding) have no counterpart and are
-    rejected up front by ``validate._check_galore``, so this builder never has to account for them.
-    ``target_modules`` is passed only when set: GaLoreConfig defaults it to the attn/mlp
-    Linear+Embedding weights, and forwarding an explicit None would override that default with None.
+    QGaLore knobs ride along when galore_quantization is set; target_modules is passed only when
+    set (forwarding None would override GaLoreConfig's own default).
     """
     config = {
         'rank': cfg.galore_rank,
@@ -128,16 +100,8 @@ def _galore_config(cfg: TrainConfig) -> dict:
 def _muon_config(cfg: TrainConfig) -> dict:
     """The ``MuonConfig`` fields set_optimizer turns into Muon/QK-Clip param groups for MuonClip.
 
-    MuonClip reads its update rules off per-group defaults that ``create_muon_param_groups`` installs
-    from this config; without it MuonClip is plain momentum SGD. Only the knobs TrainConfig exposes
-    generally are mapped -- ``adam_beta1/2`` and ``adam_epsilon`` feed the AdamW step Muon applies to
-    the groups it does not orthogonalise, and the three dual-backend ``muon_*`` fields feed the Muon
-    update itself. The Megatron-specific muon fields (split_qkv / scale_mode / tp_mode / ...) have no
-    MuonConfig counterpart and stay rejected on this backend by ``validate._check_backend_specific``.
-    ``qk_clip_enabled`` / ``qk_clip_tau`` are mapped too: dev defaults QK-Clip OFF (plain Muon) because
-    MuonConfig's own defaults (enabled, tau=100) clip a pretrained model's ~1e3 attention logits every
-    step and collapse Q/K -- see the TrainConfig field comment. The remaining MuonConfig knobs
-    (rms_scale_factor, exclude/qk keys) keep twinkle's defaults, which dev has no field for.
+    adam betas/eps feed the AdamW step Muon applies to non-orthogonalised groups; qk_clip defaults
+    OFF (MuonConfig's own defaults clip ~1e3 attention logits every step and collapse Q/K).
     """
     return {
         'momentum': cfg.muon_momentum,
@@ -153,51 +117,34 @@ def _muon_config(cfg: TrainConfig) -> dict:
 def build_param_groups_spec(cfg: TrainConfig,
                             tuner_config: Optional[TunerConfig] = None,
                             plugin_config: Optional[PluginConfig] = None) -> Optional[list]:
-    """Compose the backend-neutral optimizer param-group spec for a run.
+    """Compose the backend-neutral optimizer param-group spec: ordered first-match-wins rules that
+    twinkle's ``set_optimizer`` applies worker-side on both backends, or None when nothing is set.
 
-    Returns an ordered list of rules -- first match wins, most specific first -- that twinkle's
-    ``set_optimizer`` applies worker-side on both backends (see ``twinkle.module.optimizer.param_groups``
-    for the grammar), or ``None`` when nothing is configured so the default decay / no-decay grouping is
-    left untouched. Three sources, appended in this order:
-
-      1. LoRA+ (``tuner_config.lorap_lr_ratio``): the embedding / lora_B / ``ndim == 1`` split legacy
-         swift's ``create_optimizer_param_groups`` builds. Most specific first, so first-match-wins
-         reproduces its ``if isinstance(Embedding) / elif 'lora_B' or ndim == 1 / else`` chain; lora_A
-         matches no rule and keeps the base lr.
-      2. Per-tower learning rates (``cfg.vit_lr`` / ``cfg.aligner_lr``). The aligner rule precedes the
-         vision_tower rule because the aligner's name prefix nests under the vision tower's
-         (``model.visual.merger`` under ``model.visual``); legacy keeps aligner params out of the vit
-         group the same way (``get_param_startswith(vision_tower, rejected=aligner)``).
-      3. User ``param_groups`` plugins, last, so a plugin only claims what no built-in rule matched.
-
-    The spec is pure data: the matching (by tower role, name glob, ``ndim``, or parent-module type) runs
-    on the worker against the real parameters, which is what lets it cross the Ray boundary -- the driver
-    only holds a PROXY model with no parameters to inspect.
+    Order: LoRA+ (embedding / lora_B / ndim==1, reproducing legacy's isinstance chain) -> per-tower
+    lrs (aligner before vision_tower: its prefix nests under the tower's) -> user plugins last.
     """
     from swift.dev.builders.optimizer_plugins import PARAM_GROUPS
     from swift.dev.utils.plugin import PluginRegistry
 
     spec: list = []
 
-    # 1. LoRA+ -- on only when lorap_lr_ratio is set (validate.py rejects it under a non-LoRA tuner, so
-    #    reaching here with a ratio implies a LoRA run whose trainable params are lora_A / lora_B).
+    # LoRA+ -- on only with lorap_lr_ratio (validate rejects it under a non-LoRA tuner, so reaching
+    # here implies lora_A/lora_B trainables); lora_A matches no rule and keeps the base lr.
     if tuner_config is not None and tuner_config.lorap_lr_ratio is not None:
         ratio = tuner_config.lorap_lr_ratio
         spec.append({'match': {'module_type': 'Embedding'}, 'lr': tuner_config.lorap_emb_lr})
         spec.append({'match': {'name': '*lora_B*'}, 'lr_mult': ratio})
         spec.append({'match': {'ndim': 1}, 'lr_mult': ratio})
 
-    # 2. Per-tower learning rates. The aligner rule is emitted whenever any tower lr is set -- at
-    #    aligner_lr, or at the base lr purely to claim aligner params -- so the broader vision_tower
-    #    rule (whose prefix also covers the aligner) cannot swallow them under first-match-wins.
+    # The aligner rule is emitted whenever any tower lr is set -- at base lr if only vit_lr is, purely
+    # to claim aligner params -- so the broader vision_tower rule cannot swallow them.
     if cfg.vit_lr is not None or cfg.aligner_lr is not None:
         base_lr = cfg.learning_rate
         spec.append({'match': {'tower': 'aligner'}, 'lr': base_lr if cfg.aligner_lr is None else cfg.aligner_lr})
         if cfg.vit_lr is not None:
             spec.append({'match': {'tower': 'vision_tower'}, 'lr': cfg.vit_lr})
 
-    # 3. User plugins (resolved by name; load_configured is idempotent and a no-op when plugin_config is
-    #    None, i.e. the sources were already imported during the run's config lifecycle).
+    # User plugins (load_configured is idempotent; a no-op when plugin_config is None).
     if cfg.param_groups_plugins:
         PluginRegistry.load_configured(plugin_config)
         for name in cfg.param_groups_plugins:
@@ -214,61 +161,24 @@ def configure_optimizer(model: TrainableModel,
                         distributed_config: Optional[DistributedConfig] = None,
                         tuner_config: Optional[TunerConfig] = None,
                         plugin_config: Optional[PluginConfig] = None) -> None:
-    """Set optimizer + lr_scheduler on ``model`` from a ``TrainConfig``.
-
-    Args:
-        model: a twinkle-derived Model (has set_optimizer / set_lr_scheduler).
-        cfg: TrainConfig (learning_rate / optim / weight_decay / adam_* /
-             lr_scheduler / warmup_ratio, and ``use_galore`` / ``galore_*``). learning_rate is read
-             as-is: the default lives on TrainConfig, so no hidden fallback here can disagree with
-             what the Config reports.
-        num_training_steps: total optimizer steps (for warmup + decay schedule).
-        tuner_config: the run's TunerConfig (``None`` for full-parameter training). Feeds the LoRA+
-             rules in :func:`build_param_groups_spec`; the per-tower lr rules come off ``cfg``.
-        plugin_config: the run's PluginConfig, used to load any ``--external_plugins`` source that
-             registers a ``param_groups`` plugin named in ``cfg.param_groups_plugins``.
-    """
+    """Set optimizer + lr_scheduler on ``model`` from a ``TrainConfig`` (backend per distributed_config)."""
     lr = cfg.learning_rate
-    # Backend identity comes from the CONFIG, not from sniffing the model's type: the model may be a
-    # Ray proxy on the driver, and DistributedConfig is the single source of truth every other layer
-    # already reads (is_megatron_backend in builders/model.py). None keeps the transformers branch.
+    # Backend identity comes from the CONFIG (the model may be a Ray proxy); DistributedConfig is
+    # the single source every other layer reads (is_megatron_backend). None keeps transformers.
     from swift.dev.builders.model import is_megatron_backend
     is_megatron = distributed_config is not None and is_megatron_backend(distributed_config)
-    # One backend-neutral spec feeds both branches below; None leaves the default grouping untouched.
+    # One backend-neutral spec feeds both branches; None leaves the default grouping untouched.
     param_groups_spec = build_param_groups_spec(cfg, tuner_config, plugin_config)
-    # Fractional warmup budget. Kept fractional for Megatron and rounded for the transformers path --
-    # see each branch below; the two schedulers disagree on what a fractional step count means.
-    warmup_steps_exact = warmup_budget(cfg, num_training_steps, is_megatron=is_megatron)
 
     if is_megatron:
-        # Megatron builds its native optimizer and OptimizerParamScheduler. cfg.optim remains the HF
-        # optimizer spelling and is validated separately; cfg.optimizer selects adam/sgd/muon/dist_muon.
-        #
-        # Step unit: lr_decay_steps/lr_warmup_steps are OPTIMIZER steps here, because twinkle's
-        # lr_step() advances the scheduler by increment=1 per optimizer step. (Legacy megatron
-        # expresses the same schedule in samples -- iters * global_batch_size -- and steps by
-        # global_batch_size. Same curve, different unit; do not "fix" one to look like the other.)
-        #
-        # clip_grad: Megatron clips inside optimizer.step() from OptimizerConfig.clip_grad, and
-        # twinkle's Megatron clip_grad_and_step() ignores its max_grad_norm argument entirely, so
-        # the threshold MUST be plumbed here or clipping silently runs at twinkle's own default.
-        # The value comes from resolve_max_grad_norm (max_grad_norm, or the deprecated clip_grad
-        # alias) -- one knob, two accepted names.
-        #
-        # start_wd/end_wd/wd_incr_style: OptimizerParamScheduler.step() overwrites
-        # param_group['weight_decay'] on every step, so the weight_decay passed to set_optimizer
-        # survives exactly zero steps -- the SCHEDULE is the authority and must be passed too, or
-        # training silently uses twinkle's 0.01 default. wd_incr_steps is NOT passed: twinkle
-        # hardcodes it to lr_decay_steps (the value we want) and does not pop it, so passing it
-        # would raise a duplicate-keyword TypeError.
+        # Megatron's native optimizer + OptimizerParamScheduler; the step unit is OPTIMIZER steps
+        # (twinkle's lr_step() advances 1/step) -- legacy spells the same curve in samples.
         start_wd, end_wd = megatron_weight_decay_bounds(cfg)
-        # min_lr goes to the OPTIMIZER too, not just the scheduler. mcore writes
-        # {'min_lr': OptimizerConfig.min_lr} into every param group (optimizer/__init__.py:399) and
-        # OptimizerParamScheduler.get_lr then reads the bound OFF THE PARAM GROUP first
-        # (param_group.get('min_lr', self.min_lr)). So passing min_lr only to set_lr_scheduler leaves
-        # the group's 0.0 in charge and cosine decays past the floor all the way to 0 -- observed as
-        # dev ending a 50-step run at lr=0 while legacy held at 1e-5 with identical flags.
+        # clip_grad MUST ride here: Megatron clips inside step() and twinkle's clip_grad_and_step
+        # ignores its max_grad_norm argument entirely.
         import torch
+        # min_lr must reach the OPTIMIZER too: the scheduler reads the bound off the param group
+        # first, so leaving the group's 0.0 lets cosine decay past the floor all the way to 0.
         dtype_map = {'fp32': torch.float32, 'fp16': torch.float16, 'bf16': torch.bfloat16, 'fp8': torch.uint8}
         model.set_optimizer(
             'MegatronOptimizer',
@@ -303,19 +213,16 @@ def configure_optimizer(model: TrainableModel,
                 distributed_config and distributed_config.overlap_param_gather_with_optimizer_step),
             apply_wd_to_qk_layernorm=cfg.apply_wd_to_qk_layernorm,
             param_groups_spec=param_groups_spec)
-        # lr_warmup_steps stays FRACTIONAL here: OptimizerParamScheduler interpolates the warmup ramp
-        # linearly on this value, and legacy megatron also keeps it fractional (lr_warmup_steps =
-        # lr_warmup_fraction * lr_decay_steps in SAMPLES, megatron_lm_utils.py:579-581, never rounded).
-        # warmup_ratio=0.05 over 50 steps is 2.5 steps; rounding it to 2 made every warmup lr 1.25x
-        # (2.5/2) too high and moved the peak a step earlier. Verified directly against
-        # OptimizerParamScheduler: fractional -> dev's 50-step lr curve is bit-identical to legacy's,
-        # rounded -> all 50 steps differ.
+        # lr_warmup_steps stays FRACTIONAL: OptimizerParamScheduler interpolates the ramp linearly on
+        # it and legacy never rounds it either (0.05 over 50 = 2.5 steps; rounding shifts the peak).
         lr_decay_steps = cfg.lr_decay_iters if cfg.lr_decay_iters is not None else max(1, num_training_steps)
         warmup_steps_exact = warmup_budget(cfg, lr_decay_steps, is_megatron=True)
         lr_decay_style = cfg.lr_decay_style
         if lr_decay_style == 'cosine' and cfg.lr_scheduler != 'cosine':
             from swift.dev.utils.naming import resolve_megatron_decay_style
             lr_decay_style = resolve_megatron_decay_style(cfg.lr_scheduler)
+        # wd_incr_steps is NOT passed: twinkle hardcodes it to lr_decay_steps and does not pop it
+        # (passing it would raise a duplicate-keyword TypeError).
         model.set_lr_scheduler(
             'default',
             lr_decay_steps=lr_decay_steps,
@@ -332,44 +239,36 @@ def configure_optimizer(model: TrainableModel,
         return
 
     optim_cls, extra_kwargs = resolve_optim_target(cfg.optim)
-    # GaLore: upgrade the base optimizer to its GaLore variant and hand set_optimizer the config it
-    # turns into low-rank projection param groups (galore_config is inert on a non-GaLore optimizer).
+    # GaLore: upgrade the base optimizer to its variant; galore_config is inert on a non-GaLore one.
     galore_config = None
     if cfg.use_galore:
         optim_cls = resolve_galore_target(optim_cls, quantize=cfg.galore_quantization)
-        # Neither GaLoreAdamW nor QGaLoreAdamW8bit has a fused CUDA kernel; `fused` is an AdamW-only
-        # constructor arg.
+        # Neither GaLoreAdamW nor QGaLoreAdamW8bit has a fused CUDA kernel; `fused` is AdamW-only.
         extra_kwargs.pop('fused', None)
         galore_config = _galore_config(cfg)
-    # MuonClip is more than momentum SGD only with a muon_config (it drives the param grouping and
-    # QK-Clip), so build one whenever the resolved optimizer is MuonClip.
+    # MuonClip is more than momentum SGD only with a muon_config (param grouping + QK-Clip).
     muon_config = _muon_config(cfg) if optim_cls == 'MuonClip' else None
 
     opt_kwargs: dict = {'lr': lr, 'weight_decay': cfg.weight_decay}
-    # betas/eps only for the Adam family (incl. its GaLore variant); Adafactor, SGD and MuonClip take
-    # different coefficient names -- MuonClip reads adamw_betas/adamw_eps off muon_config instead.
+    # betas/eps only for the Adam family (incl. GaLore variants); Adafactor/SGD/MuonClip take other
+    # names -- MuonClip reads adamw_betas/adamw_eps off muon_config instead.
     if optim_cls in ('AdamW', 'Adam', 'GaLoreAdamW', 'QGaLoreAdamW8bit'):
         opt_kwargs['betas'] = (cfg.adam_beta1, cfg.adam_beta2)
         opt_kwargs['eps'] = cfg.adam_epsilon
     # Name-specific constructor args (fused / Adafactor flags) -- see naming._OPTIM_EXTRA_KWARGS.
     opt_kwargs.update(extra_kwargs)
-    # optim_args last: it is the user's explicit escape hatch, so it wins over our defaults
-    # (matches HF, where _parse_optim_args output is merged into optimizer_kwargs).
+    # optim_args last: the user's explicit escape hatch wins (matches HF's optimizer_kwargs merge).
     opt_kwargs.update(parse_optim_args(cfg.optim_args))
     if galore_config is not None:
         opt_kwargs['galore_config'] = galore_config
     if muon_config is not None:
         opt_kwargs['muon_config'] = muon_config
     if param_groups_spec is not None:
-        # Applied before galore_config / muon_config reshape the groups, so a per-tower lr or LoRA+ rule
-        # owns its parameters first (see TransformersModel.set_optimizer).
+        # Applied before galore_config / muon_config reshape the groups, so a per-tower lr or LoRA+
+        # rule owns its parameters first (see TransformersModel.set_optimizer).
         opt_kwargs['param_groups_spec'] = param_groups_spec
-    # NOTE: `params` is deliberately NOT passed. twinkle's set_optimizer builds the two
-    # weight-decay param groups itself (_create_param_group), reusing transformers'
-    # get_decay_parameter_names rules (bias / *norm excluded from decay) AND filtering by
-    # adapter_name for LoRA. Passing a flat param list here would BYPASS that and apply
-    # weight_decay to norms/biases, diverging from legacy swift. galore_config / muon_config are NOT
-    # `params`: set_optimizer pops them and reshapes the param groups it built itself.
+    # NOTE: `params` is deliberately NOT passed. twinkle builds the decay/no-decay groups itself
+    # (get_decay_parameter_names + LoRA adapter_name filter); a flat list here would bypass that.
     model.set_optimizer(optim_cls, **opt_kwargs)
 
     sched_cls = resolve_scheduler(cfg.lr_scheduler)
@@ -377,14 +276,9 @@ def configure_optimizer(model: TrainableModel,
         return  # constant lr: no scheduler
     model.set_lr_scheduler(
         sched_cls,
-        # Rounded UP for the transformers path, matching HF exactly: TrainingArguments.get_warmup_steps
-        # uses math.ceil(num_training_steps * warmup_ratio) (training_args.py), and HF's schedules
-        # compare the step index against this as an integer boundary -- a fractional value would not
-        # mean "2.5 steps of warmup" there. round() is NOT equivalent: Python rounds 2.5 to 2
-        # (banker's rounding), so warmup_ratio=0.05 over 50 steps gave dev 2 warmup steps against
-        # legacy's 3, shifting the whole LR curve. Measured effect: step-1/2 losses matched to 0.02%
-        # while steps 3-10 drifted up to 6% before training dynamics absorbed it.
-        num_warmup_steps=math.ceil(warmup_steps_exact),
+        # Rounded UP, matching HF: TrainingArguments uses math.ceil(ratio * steps) and the schedules
+        # compare against an integer boundary; round() is banker's (2.5 -> 2), off-by-one vs legacy.
+        num_warmup_steps=math.ceil(warmup_budget(cfg, num_training_steps, is_megatron=False)),
         num_training_steps=num_training_steps,
         # Per-schedule extras (min_lr for cosine_with_min_lr, power for polynomial, ...).
         **(cfg.lr_scheduler_kwargs or {}),
