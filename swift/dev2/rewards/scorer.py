@@ -211,11 +211,13 @@ class RewardModel:
 
     def __init__(self, model: Any, template: Any = None, *, placement_key: Any = None,
                  disable_adapter: bool = False, worker_factory: Any = None,
-                 device_mesh: Any = None):
+                 device_mesh: Any = None, display_name: Optional[str] = None):
         self.model = model
         self.template = template
         #: The DeviceGroup identity this handle forwards on; None means the policy actor itself.
         self.placement_key = placement_key
+        #: The metric-column label (the RewardSpec's display name); rules carry the registry's.
+        self.display_name = display_name or 'reward'
         self.disable_adapter = disable_adapter
         #: The actor-native elasticity inputs, recorded by ``remote_class`` at construction: the
         #: (cls, args, kwargs, torch_kwargs) worker factory and the mesh the frozen model sharded

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import copy
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional
 
 from swift.dev.utils.logger import get_logger  # TODO(dev2): bridge until the utils batch
 
 from swift.dev2.recipe.utils import (
-    SupervisedCluster, initialize_supervised_twinkle, plan_supervised_steps, process_and_validate,
+    initialize_supervised_twinkle, plan_supervised_steps, process_and_validate,
     resolve_step_intervals, write_ckpt_args_json)
 
 if TYPE_CHECKING:
@@ -32,6 +32,22 @@ def _require_task_type(recipe: str, model_config: 'ModelConfig', task: str) -> s
                          f'{task_type!r}. Other task types encode a different row layout and reach a '
                          'different loss.')
     return task_type
+
+
+class SupervisedCluster(NamedTuple):
+    """Every object the supervised loop drives (a plain handle bundle, not a layer)."""
+
+    model: Any
+    processor: Any
+    template: Any
+    dataloader: Any
+    eval_dataloader: Any
+    #: The optimizer-step budget the LR scheduler was configured against.
+    total_opt_steps: int
+    #: The task_type the rows were encoded with ('causal_lm' / 'embedding' / 'seq_cls' / ...).
+    task_type: Optional[str]
+    #: The twinkle task each forward runs under; fused-linear-CE overrides it to 'fused_lm_ce'.
+    forward_task: str
 
 
 def build_supervised_objects(*, recipe: str, model_config: 'ModelConfig',

@@ -864,22 +864,6 @@ def prompt_rows_from_dataset(dataset_config: 'DatasetConfig') -> Tuple[List[Dict
 # The offline family's assembly pieces; each family's run file holds the loop that drives them.
 
 
-class SupervisedCluster(NamedTuple):
-    """Every object the supervised loop drives (a plain handle bundle, not a layer)."""
-
-    model: Any
-    processor: Any
-    template: Any
-    dataloader: Any
-    eval_dataloader: Any
-    #: The optimizer-step budget the LR scheduler was configured against.
-    total_opt_steps: int
-    #: The task_type the rows were encoded with ('causal_lm' / 'embedding' / 'seq_cls' / ...).
-    task_type: Optional[str]
-    #: The twinkle task each forward runs under; fused-linear-CE overrides it to 'fused_lm_ce'.
-    forward_task: str
-
-
 class GenerativeEval(NamedTuple):
     """The resident generative-eval sampler plus the inputs its EvalScope run needs."""
 
@@ -900,7 +884,7 @@ def initialize_supervised_twinkle(distributed_config: 'DistributedConfig', *, se
 
     mode='ray' builds the 'model' DeviceGroup the workers hold (build_model targets it with
     remote_group='model'); everything else initializes 'local'. ``auxiliary_groups`` is one
-    ``(name, world_size)`` per FULL-PARAMETER frozen auxiliary (the preference family's reference):
+    ``(name, world_size)`` per FULL-PARAMETER frozen auxiliary (the RLHF family's reference):
     a disjoint group appended after the 'model' ranks. The seed bundle re-seeds every ray worker.
     """
     import twinkle
@@ -948,7 +932,7 @@ def process_and_validate(model_config: 'ModelConfig', template_config: 'Template
                          reward_config: Optional['RewardConfig'] = None) -> None:
     """Process and validate the Configs before building anything heavy (idempotent per stage).
 
-    ``rl_config`` / ``reward_config`` ride along when a family consumes them (the preference family).
+    ``rl_config`` / ``reward_config`` ride along when a family consumes them (the RLHF family).
     """
     from swift.dev2.config import process_configs, validate_configs
 

@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from swift.dev.utils.logger import get_logger  # TODO(dev2): bridge until the utils batch
 
-from swift.dev2.recipe.sft.assembly import build_supervised_objects
+from swift.dev2.recipe.sft.assembly import SupervisedCluster, build_supervised_objects
 from swift.dev2.recipe.utils import (
-    GenerativeEval, StepState, SupervisedCluster, build_generative_eval, build_save_knobs,
+    GenerativeEval, StepState, build_generative_eval, build_save_knobs,
     resume_training, save_training_step, snapshot_initial_adapter, write_ckpt_args_json)
 
 if TYPE_CHECKING:

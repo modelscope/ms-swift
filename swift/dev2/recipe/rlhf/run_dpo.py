@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# The offline preference family: the run_dpo main plus the family's own training loop.
+# The offline RLHF family: the run_dpo main plus the family's own training loop.
 from __future__ import annotations
 
 import math
@@ -13,7 +13,7 @@ from swift.dev2.recipe.utils import (
     save_training_step, snapshot_initial_adapter, write_ckpt_args_json)
 
 if TYPE_CHECKING:
-    from swift.dev2.recipe.preference.assembly import PreferenceCluster
+    from swift.dev2.recipe.rlhf.assembly import PreferenceCluster
     from swift.dev2.config import (
         CheckpointConfig, DatasetConfig, DistributedConfig, LoggingConfig, MegatronConfig, ModelConfig,
         MoEConfig, QuantizeConfig, RLConfig, RewardConfig, TemplateConfig, TrainConfig, TunerConfig)
@@ -174,7 +174,7 @@ def _run_supervised(cluster: PreferenceCluster, model_config: 'ModelConfig',
                    micro_step_fn: Callable[[Any, Any], Dict[str, Any]],
                    output_dir: str = 'output', _save_final: bool = True,
                    log_formatter: Optional[Callable[[dict, float], str]] = None) -> List[dict]:
-    """The preference family's training main: resume, run the epochs, then the final save.
+    """The offline RLHF family's training main: resume, run the epochs, then the final save.
 
     ``run_dpo`` assembles its cluster (:func:`build_preference_objects`) and hands it here with the
     preference encoder as ``micro_step_fn`` -- how a batch becomes forward kwargs. The loop
@@ -479,8 +479,8 @@ def run_dpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     is the encoder's -- the family loop's ``micro_step_fn`` seam; every other stage rides
     :func:`build_preference_objects` and :func:`_run_supervised`.
     """
-    from swift.dev2.recipe.preference.assembly import build_preference_objects
-    from swift.dev2.recipe.preference.encoder import PreferenceBatchEncoder, preference_log_line
+    from swift.dev2.recipe.rlhf.assembly import build_preference_objects
+    from swift.dev2.recipe.rlhf.encoder import PreferenceBatchEncoder, preference_log_line
 
     rl_type = rl_config.rl_type
     if rl_type not in _OFFLINE_TYPES:

@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# The offline preference family's batch encoder + console line: raw rows -> forward kwargs.
+# The offline RLHF family's batch encoder + console line: raw rows -> forward kwargs.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple

@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# The offline preference family's assembly: the preference config -> object stages + the reference.
+# The offline RLHF family's assembly: the preference config -> object stages + the reference.
 from __future__ import annotations
 
 import copy

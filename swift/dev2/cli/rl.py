@@ -77,7 +77,7 @@ def parse_rl_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     if rl_config.rl_type in {'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'}:
         rollout_config.sampler_mode = rollout_config.sampler_mode or 'colocate'
         distributed_config.mode = 'ray'
-    # The offline preference family runs mode='ray' with the policy and a full-param frozen reference as
+    # The offline RLHF family runs mode='ray' with the policy and a full-param frozen reference as
     # separate actors; it rolls out nothing, so only the mode is forced.
     elif rl_config.rl_type in {'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'}:
         distributed_config.mode = 'ray'
@@ -87,7 +87,7 @@ def parse_rl_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         raise ValueError(
             f'--rl_type {rl_config.rl_type!r} is not classified in parse_rl_configs. Every rl_type must '
             f"force distributed_config.mode='ray' (RL has no mode='local' path): add it to the online family "
-            f'(rolls out on a separate vLLM sampler) or the offline preference family (mode only) above.')
+            f'(rolls out on a separate vLLM sampler) or the offline RLHF family (mode only) above.')
 
     return {
         'model_config': model_config,
@@ -114,18 +114,20 @@ def run_rl_configs(configs: Dict[str, Any]) -> List[dict]:
     from swift.dev2.config import process_and_validate_configs
 
     process_and_validate_configs(configs)
-    # The dev2 recipes (five-segment mains): grpo, ppo, the distillation family gkd/opsd/mopd, and
-    # the offline preference family dpo/kto/cpo/orpo/simpo/rm; the rest still run their dev recipe.
+    # The dev2 recipes (five-segment mains): grpo, ppo, rft, the distillation family gkd/opsd/mopd,
+    # and the offline RLHF family dpo/kto/cpo/orpo/simpo/rm; the rest run their dev recipe.
     rl_type = configs['rl_config'].rl_type
     if rl_type == 'grpo':
         from swift.dev2.recipe.grpo import run_grpo as run
     elif rl_type == 'ppo':
         from swift.dev2.recipe.ppo import run_ppo as run
+    elif rl_type == 'rft':
+        from swift.dev2.recipe.rft import run_rft as run
     elif rl_type in {'gkd', 'opsd', 'mopd'}:
         from swift.dev2.recipe.distill import run_distill as run
     elif rl_type in {'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'}:
-        # The offline preference family takes no rollout/generation configs.
-        from swift.dev2.recipe.preference import run_dpo as run
+        # The offline RLHF family takes no rollout/generation configs.
+        from swift.dev2.recipe.rlhf import run_dpo as run
         return run(
             configs['model_config'],
             configs['template_config'],
@@ -162,7 +164,7 @@ def run_rl_configs(configs: Dict[str, Any]) -> List[dict]:
             moe_config=configs['moe_config'],
             output_dir=configs['checkpoint_config'].output_dir,
         )
-    # The online dev2 recipes (grpo / ppo / gkd / opsd / mopd) share one positional shape.
+    # The online dev2 recipes (grpo / ppo / rft / gkd / opsd / mopd) share one positional shape.
     return run(
         configs['model_config'],
         configs['template_config'],

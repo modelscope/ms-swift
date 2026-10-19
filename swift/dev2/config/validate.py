@@ -293,7 +293,7 @@ def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: O
 
 
 # Online recipes that roll out per prompt batch and train on the collected samples (overlap generation
-# with training on the shared streaming driver). RFT and the offline preference family are excluded.
+# with training on the shared streaming driver). RFT and the offline RLHF family are excluded.
 _ASYNC_RLHF_TYPES = frozenset({'grpo', 'ppo', 'gkd', 'opsd', 'mopd'})
 
 

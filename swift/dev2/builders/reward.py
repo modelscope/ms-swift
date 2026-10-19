@@ -58,7 +58,7 @@ def build_reward_model(spec: 'RewardSpec', *, model_config: 'ModelConfig',
     return RewardModel(
         frozen, template, placement_key=remote_group,
         worker_factory=getattr(frozen, '_worker_factory', None),
-        device_mesh=getattr(frozen, 'device_mesh', None))
+        device_mesh=getattr(frozen, 'device_mesh', None), display_name=spec.display_name)
 
 
 def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
