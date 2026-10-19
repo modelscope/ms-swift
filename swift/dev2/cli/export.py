@@ -134,7 +134,7 @@ def _validate_export(configs: Dict[str, Any]) -> None:
 def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
     """Execute an already parsed export Config set."""
     from swift.dev2.config import process_and_validate_configs
-    from swift.dev.recipe import (
+    from swift.dev2.recipe.export import (
         export_cached_dataset,
         run_convert,
         run_merge_lora,

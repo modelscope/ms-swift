@@ -44,55 +44,17 @@ def run_infer(
     output_path: Optional[str] = None,
     _shutdown: bool = True,
 ) -> List[Dict[str, Any]]:
-    """Infer over a dataset: one pipeline, three task-type paths, and (for generation) three knobs.
+    """Infer over a dataset: plugin load, adapter resolution, then the InferComponent.
 
-    The generative path is a single pipeline -- sample a candidate group per prompt, optionally
-    score it, then shape the rows -- whose behavior is set by three orthogonal knobs on
-    ``infer_config``: ``num_return_sequences`` (candidates per prompt), the reward funcs (score
-    every candidate, for any n), and ``output_format`` ('all' stores the whole group, 'dpo' stores
-    best-of-n pairs, 'grpo' stores the whole scored group with group-relative advantages). A
-    pooling ``task_type`` (seq_cls / embedding / reranker) or a ``generative_reranker`` instead runs
-    a forward pass and returns one value per row.
-
-    Args:
-        model_config: model id/path, dtype, ``task_type`` (selects the path).
-        template_config: chat template, and the ``system`` that overrides the dataset's.
-        dataset_config: what to infer over. See ``split_dataset_ratio`` for how the split is chosen.
-        infer_config: engine choice plus every generation/output/scoring knob (``sampler``,
-            ``num_return_sequences``, ``output_format``, ``batch_size``, ``metric``, the reward
-            channels, resume / cache / rollout-token dumping).
-        generation_config: decoding knobs. ``stream`` only affects the interactive REPL (still on
-            the dev side); this dataset pipeline always samples in batch.
-        reward_config: the reward-channel Config (``--orm`` / ``--prm``, their companion families
-            and ``*_weights``, the plugin hyperparameters, ``judge_template``), shared with online RL.
-        rollout_config: tool/sandbox config for a multi-turn rollout, including its length caps
-            (``max_turns`` / ``max_trajectory_tokens``).
-        backend: generation engine -- 'vllm' / 'sglang' / 'transformers' to sample locally, or 'no'
-            for a cache-only run.
-        engine_args: forwarded verbatim to the engine.
-        distributed_config: DP / ray placement. The generative path gives the sampler -- and any
-            GPU-resident reward model -- its own DeviceGroup; the forward paths use the 'model'
-            group.
-        tuner_config: source of ``adapters`` when not given explicitly.
-        adapters: LoRA checkpoints. One adapter is selected per request (``adapter_path``); the
-            engine is configured for LoRA at construction because vLLM cannot enable it later.
-        max_rows: stop after this many rows, for smoke tests.
-        split_dataset_ratio: how much of ``dataset`` becomes the eval split when
-            ``DatasetConfig.val_dataset`` is not set. 0 runs over the whole dataset.
-        output_path: jsonl destination. None returns the rows without writing a file.
-        _shutdown: leave True. False keeps the engine alive for tests that reuse it.
-
-    Returns:
-        Result rows. The generative 'all' path yields one row per prompt (``response`` /
-        ``responses`` / ``labels`` / ``messages``, plus ``scores`` when scored, plus every dataset
-        column); 'dpo' yields chosen/rejected pairs; the forward paths yield one value per row.
+    The generative path -- sample a candidate group per prompt, optionally score it, then shape
+    the rows -- is driven by ``num_return_sequences``, the reward funcs and ``output_format``
+    ('all' the whole group, 'dpo' best-of-n pairs, 'grpo' the scored group). A pooling
+    ``task_type`` or ``generative_reranker`` instead runs a forward pass, one value per row.
     """
     from swift.dev.utils.plugin import PluginRegistry
 
-    # A custom model / dataset / reward / tool lives in a plugin file, so its registration must
-    # precede the first name lookup. ``load_configured`` declares swift's built-in kinds before
-    # importing the user file (see ``_declare_builtin_kinds``), so an external
-    # ``@register('tool'/'reward', ...)`` finds its kind already declared.
+    # A plugin file's registration must precede the first name lookup: load_configured declares
+    # swift's built-in kinds first, so an external @register finds its kind already declared.
     PluginRegistry.load_configured(plugin_config)
 
     adapters = _resolve_adapters(adapters, tuner_config)
@@ -101,9 +63,8 @@ def run_infer(
         # runs before either path initializes.
         model_config, adapters = _merge_adapters(model_config, template_config, adapters)
 
-    # One component serves every task type: InferComponent splits a sampling task (causal_lm) from
-    # a forward-pass task (pooling / generative_reranker) inside its own __call__, so the recipe
-    # constructs the node directly rather than through a per-task entry point.
+    # One component serves every task type: InferComponent splits the sampling task from the
+    # forward-pass task inside its own __call__, so no per-task entry point is needed here.
     from swift.dev2.components.infer import InferComponent
 
     return InferComponent(
@@ -143,9 +104,8 @@ def _merge_adapters(model_config: ModelConfig, template_config: TemplateConfig,
     """
     import dataclasses
 
-    # TODO(dev2): bridge until the export batch migrates run_merge_lora
-    from swift.dev.recipe.export.merge_lora import run_merge_lora
     from swift.dev2.config import TunerConfig
+    from swift.dev2.recipe.export import run_merge_lora
 
     merged = run_merge_lora(
         model_config, TunerConfig(adapters=list(adapters)), template_config=template_config, device_map='cpu')

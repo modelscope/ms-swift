@@ -9,8 +9,11 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from swift.dev.utils.logger import get_logger  # TODO(dev2): bridge until the utils batch
 from swift.dev2.recipe.grpo.assembly import (
-    greedy_params, group_variance, initialize_cluster, initialize_devices, prompt_rows_from_dataset,
-    resolve_rollout_max_steps, rollout_step_budget, weighted_reward)
+    greedy_params, grpo_group_requests, group_variance, initialize_cluster, weighted_reward)
+from swift.dev2.recipe.utils import (
+    REF_GROUP, TEACHER_GROUP, StepState, build_save_knobs, initialize_rl_devices,
+    prompt_rows_from_dataset, resolve_rollout_max_steps, resume_training, rollout_step_budget,
+    save_training_step, snapshot_initial_adapter)
 
 if TYPE_CHECKING:
     from swift.dev2.config import (
@@ -19,89 +22,6 @@ if TYPE_CHECKING:
         TrainConfig, TunerConfig)
 
 logger = get_logger()
-
-
-class _StepState:
-    """The loop's step cadence (the retired recorder, dissolved into this recipe): counters, metrics.
-
-    Owns the global/micro step counters, the metric record (``model.calculate_metric`` + the
-    megatron MTP drain), the ``RunTracker`` write, the console line, and the callback fan-out --
-    nothing else; the loops, the save cadence, and the publish cadence stay visible in the branches.
-    """
-
-    def __init__(self, model: Any, train_config: 'TrainConfig', *, gradient_accumulation_steps: int,
-                 max_steps: int, max_grad_norm: float, logging_config: Optional['LoggingConfig'],
-                 output_dir: str, save_steps: Optional[int] = None, manual_gc: bool = False,
-                 manual_gc_steps: int = 0, empty_cache_steps: Optional[int] = None,
-                 extra_metrics_fn: Optional[Callable[[], Dict[str, Any]]] = None):
-        # The tracker initializes its reporters as a construction side effect (validation ran above).
-        # TODO(dev2): bridge until the recipe/common batch migrates RunTracker
-        from swift.dev.recipe.common.tracking import RunTracker
-
-        from swift.dev2.callbacks import build_callbacks
-        from swift.dev2.callbacks.handler import CallbackHandler
-
-        self.model = model
-        self.ga = gradient_accumulation_steps
-        self.max_steps = max_steps
-        self.max_grad_norm = max_grad_norm
-        self.save_steps = save_steps
-        self.manual_gc = manual_gc
-        self.manual_gc_steps = manual_gc_steps
-        self.empty_cache_steps = empty_cache_steps
-        self._extra_metrics_fn = extra_metrics_fn
-        self.global_step = 0
-        self.micro_step = 0
-        self.history: List[dict] = []
-        self.tracker = RunTracker(logging_config, output_dir)
-        self.handler = CallbackHandler(build_callbacks(train_config), output_dir=output_dir)
-
-    def is_grad_sync_boundary(self) -> bool:
-        """Whether the current ``micro_step`` closes an optimizer window."""
-        # TODO(dev2): bridge until the recipe/common batch migrates the cadence helpers
-        from swift.dev.recipe.common.loop_utils import is_grad_sync_boundary
-
-        return is_grad_sync_boundary(self.micro_step, self.ga)
-
-    def reached_max(self) -> bool:
-        return self.max_steps > 0 and self.global_step >= self.max_steps
-
-    def record(self) -> dict:
-        """Count one optimizer step: metrics, tracker write, console line, callback fan-out."""
-        # TODO(dev2): bridge until the recipe/common batch migrates the cadence helpers
-        from swift.dev.recipe.common.loop_utils import collect_empty_cache, collect_manual_gc
-
-        from twinkle.perf import Perf
-
-        self.global_step += 1
-        collect_manual_gc(self.manual_gc, self.manual_gc_steps, self.global_step)
-        collect_empty_cache(self.model, self.empty_cache_steps, self.global_step)
-        Perf.advance_step()
-        metrics = self.model.calculate_metric(is_training=True)
-        pop = getattr(self.model, 'pop_mtp_metrics', None)
-        if pop is not None:
-            # megatron tracks the MTP channel outside twinkle's metrics; drain it or it grows unbounded
-            metrics.update({key: float(value) for key, value in (pop() or {}).items()})
-        loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
-        record = {'step': self.global_step, **metrics, 'loss': loss}
-        if self._extra_metrics_fn is not None:
-            record.update(self._extra_metrics_fn())
-        record = self.tracker.log(record, self.global_step)
-        self.history.append(record)
-        self.handler.state.global_step = self.global_step
-        self.handler.state.micro_step = self.micro_step
-        self.handler.state.loss = loss
-        self.handler.state.metrics = record
-        if self.tracker.should_log(self.global_step) or self.handler.control.should_log:
-            self.handler.control.should_log = False
-            gn = record.get('grad_norm')
-            line = (f"step {self.global_step}  loss={loss:.4f}"
-                    + (f"  grad_norm={gn:.4f}" if isinstance(gn, (int, float)) else '')
-                    + ''.join(f'  {key}={value:.4f}' for key, value in record.items()
-                              if key.startswith('loss_') and isinstance(value, (int, float))))
-            logger.info(line)
-            self.handler.on_log(logs=record)
-        return record
 
 
 def _score_group(cluster: Any, samples: List[Any], with_prm: bool = False) -> List[List[Any]]:
@@ -156,20 +76,21 @@ def _advantage_pipeline(cluster: Any, rl_config: 'RLConfig', reward_config: 'Rew
                    if any(sample.prm_process is not None for sample in samples) else None)
     old_logps: List[Any] = [list(sample.rollout_logps) for sample in samples]
     preserve = bool(rl_config.rollout_importance_sampling_mode or rl_config.log_rollout_offpolicy_metrics)
-    # ref / teacher / policy-old each forward on their own group; a privileged teacher_prompt column
-    # with no explicit teacher scores on the policy actor itself (placement_key None).
+    # ref / teacher / policy-old each forward on their own group; a disable_adapter auxiliary IS the
+    # policy object itself (identity derives disable_lora AND the policy-group placement).
     tasks: List[Tuple[Any, Callable[[], Any]]] = []
     slots: List[str] = []
     if cluster.reference is not None:
         reference = cluster.reference
-        tasks.append((reference.placement_key, lambda: _response_logps(
-            reference.model, [sample.encoded for sample in samples], train_batch_size=train_batch_size,
-            disable_lora=reference.disable_adapter)))
+        ref_shared = reference is cluster.model
+        tasks.append((None if ref_shared else REF_GROUP, lambda: _response_logps(
+            reference, [sample.encoded for sample in samples], train_batch_size=train_batch_size,
+            disable_lora=ref_shared)))
         slots.append('ref')
     if cluster.teacher is not None or any((s.extra or {}).get('teacher_prompt') for s in samples):
         if cluster.teacher is not None:
-            teacher = cluster.teacher
-            t_key, t_model, t_disable = teacher.placement_key, teacher.model, teacher.disable_adapter
+            t_shared = cluster.teacher is cluster.model
+            t_key, t_model, t_disable = (None if t_shared else TEACHER_GROUP), cluster.teacher, t_shared
         else:
             t_key, t_model, t_disable = None, cluster.model, False
         privileged = cluster.worker.privileged_features(samples)
@@ -308,7 +229,7 @@ def _forward_kwargs(rl_config: 'RLConfig', ga: int, mini: Any, advantages: Any, 
     return kwargs
 
 
-def _train_mini_batches(state: _StepState, rl_config: 'RLConfig', samples: List[Any], *,
+def _train_mini_batches(state: StepState, rl_config: 'RLConfig', samples: List[Any], *,
                         train_batch_size: int, advantages: Any, old_logps: Any, ref_logps: Any,
                         teacher_logps: Any, chord_fn: Optional[Callable[[], List[Any]]] = None,
                         ema_manager: Any = None, save: Optional[Callable[[str], Any]] = None) -> int:
@@ -367,17 +288,16 @@ def _train_mini_batches(state: _StepState, rl_config: 'RLConfig', samples: List[
                 optimizer_steps += 1
                 if ema_manager is not None and state.global_step % rl_config.ref_model_sync_steps == 0:
                     ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
-                if save is not None and state.save_steps and state.global_step % state.save_steps == 0:
-                    save(f'checkpoint-{state.global_step}')
-                if state.reached_max():
+                state.step_tail(save=save)
+                if state.reached_max() or state.should_stop():
                     break
-        if state.reached_max():
+        if state.reached_max() or state.should_stop():
             break
     return optimizer_steps
 
 
 def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
-                   reward_config: 'RewardConfig', dataloader: Any, state: _StepState, *,
+                   reward_config: 'RewardConfig', dataloader: Any, state: StepState, *,
                    train_batch_size: int, chord_fn: Optional[Callable[[], List[Any]]] = None,
                    ema_manager: Any = None, save: Optional[Callable[[str], Any]] = None) -> None:
     """The colocate branch (deep_refactor.md 71-81): a plain loop, no driver, no version face.
@@ -458,7 +378,7 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
                                 advantages=advantages, old_logps=old_logps, ref_logps=ref_logps,
                                 teacher_logps=teacher_logps, chord_fn=chord_fn, ema_manager=ema_manager,
                                 save=save)
-            if state.reached_max():
+            if state.reached_max() or state.should_stop():
                 break
     finally:
         if entered:
@@ -470,7 +390,7 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
 
 def _disaggregated_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
                         reward_config: 'RewardConfig', tuner_config: Optional['TunerConfig'],
-                        dataloader: Any, state: _StepState, *, train_batch_size: int,
+                        dataloader: Any, state: StepState, *, train_batch_size: int,
                         num_train_epochs: float, output_dir: str,
                         chord_fn: Optional[Callable[[], List[Any]]] = None, ema_manager: Any = None,
                         save: Optional[Callable[[str], Any]] = None,
@@ -536,7 +456,7 @@ def _disaggregated_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Ro
                 driver.request_publish()
             steps_since_publish = 0
         driver.commit(optimizer_steps)
-        if state.reached_max():
+        if state.reached_max() or state.should_stop():
             break
 
 
@@ -555,13 +475,15 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     # segment 1: prompts (the resource estimator reads the prompt lengths off the raw rows).
     prompt_rows, prompts, prompt_extras = prompt_rows_from_dataset(dataset_config)
     # segment 2: devices (configs + template + twinkle + perf; an estimate rewrites the parallel sizes).
-    template, resource_plan, auxiliary_meshes = initialize_devices(
+    template, resource_plan, auxiliary_meshes = initialize_rl_devices(
         model_config=model_config, template_config=template_config, dataset_config=dataset_config,
         train_config=train_config, distributed_config=distributed_config,
         checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
         reward_config=reward_config, tuner_config=tuner_config, logging_config=logging_config,
         quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config,
-        output_dir=output_dir, prompt_rows=prompt_rows)
+        output_dir=output_dir, prompt_rows=prompt_rows,
+        group_requests=(lambda: grpo_group_requests(
+            rl_config, reward_config, distributed_config, tuner_config)))
     # the optimizer's LR-scheduler horizon, derived BEFORE the cluster builds the optimizer.
     # TODO(dev2): bridge until the builders batch migrates build_dp_mesh
     from swift.dev.builders import build_dp_mesh
@@ -592,7 +514,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=train_config.seed,
         batch_size=(rollout_config.generation_batch_size or len(prompts)))
-    # Late-bound cells: _StepState builds before the disaggregated loop creates the driver, so
+    # Late-bound cells: StepState builds before the disaggregated loop creates the driver, so
     # _extra_metrics reads the driver handle and the batch's version spans through these cells.
     _driver_cell: List[Any] = []
     _last_batch_versions: List[List[int]] = []
@@ -618,7 +540,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                 })
         return extra
 
-    state = _StepState(
+    state = StepState(
         cluster.model, train_config,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
@@ -629,30 +551,23 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         empty_cache_steps=train_config.torch_empty_cache_steps,
         extra_metrics_fn=_extra_metrics)
 
-    def save(name: str) -> str:
-        """One training checkpoint (weights + trainer state + rotation), then the save callbacks."""
-        # TODO(dev2): bridge until the recipe/common batch migrates the checkpoint writer
-        from swift.dev.recipe.common.loop_utils import save_training_checkpoint
+    save_knobs = build_save_knobs(
+        checkpoint_config, dataset_config, distributed_config, tuner_config, output_dir=output_dir)
+    # Before any training step: a base-modifying LoRA init (pissa ...) needs its initial snapshot.
+    snapshot_initial_adapter(cluster.model, save_knobs.initial_adapter_dir)
 
-        save_training_checkpoint(
-            cluster.model, name, output_dir=output_dir, consumed_train_samples=state.global_step,
-            component_states={},
-            no_save_optim=(checkpoint_config.no_save_optim or checkpoint_config.save_only_model),
-            no_save_rng=(checkpoint_config.no_save_rng or checkpoint_config.save_only_model),
-            safe_serialization=checkpoint_config.safe_serialization,
-            max_shard_size=checkpoint_config.max_shard_size,
-            save_total_limit=checkpoint_config.save_total_limit)
-        ckpt_dir = os.path.join(output_dir, name)
-        state.handler.on_save(checkpoint_dir=ckpt_dir)
-        return ckpt_dir
+    def save(name: str, is_final: bool = False) -> str:
+        """One training checkpoint: the twinkle-native write, the converted adapter, the hub push."""
+        return save_training_step(cluster.model, state.handler, name, save_knobs,
+                                  consumed_train_samples=state.global_step, is_final=is_final)
 
     ema_manager = None
-    if rl_config.sync_ref_model and cluster.reference is not None and hasattr(cluster.reference, 'model'):
+    if rl_config.sync_ref_model and cluster.reference is not None:
         # EMA pair: policy rank k <-> reference rank k, synced every ref_model_sync_steps.
         from twinkle.checkpoint_engine import CheckpointEngineManager
 
         ema_manager = CheckpointEngineManager(
-            model=cluster.model, sampler=cluster.reference.model, platform='GPU', mode='standalone')
+            model=cluster.model, sampler=cluster.reference, platform='GPU', mode='standalone')
     chord_fn = None
     if rl_config.chord_sft_dataset:
         # TODO(dev2): bridge until the recipe batch migrates the CHORD feature loader
@@ -669,38 +584,11 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
             chord_offset[0] += chord_train_batch_size
             return block
 
-    resume_dir = checkpoint_config.resume_from_checkpoint
-    if resume_dir:
-        # Full-param resume weights already loaded; the state seeds micro_step = cur_step (grad-sync).
-        # TODO(dev2): bridge until the builders batch migrates the resume guards
-        from swift.dev.builders import is_megatron_backend
-
-        from swift.dev.recipe.common.loop_utils import num_optimizer_steps
-
-        resume_kwargs = {'resume_only_model': checkpoint_config.resume_only_model}
-        if tuner_config is not None:
-            resume_kwargs['adapter_name'] = 'default'
-        if is_megatron_backend(distributed_config):
-            resume_kwargs.update(
-                no_load_optim=checkpoint_config.no_load_optim, no_load_rng=checkpoint_config.no_load_rng,
-                data_parallel_random_init=bool(megatron_config
-                                               and megatron_config.data_parallel_random_init))
-        trainer_state_path = os.path.join(resume_dir, 'trainer_state.json')
-        if not os.path.isfile(trainer_state_path):
-            if not checkpoint_config.resume_only_model:
-                raise FileNotFoundError(
-                    f'{trainer_state_path} is missing, so this model-only checkpoint cannot resume '
-                    'optimizer, scheduler, RNG, or progress state. Set --resume_only_model true to '
-                    'start a new run from its weights, or resume from a checkpoint saved without '
-                    '--no_save_optim/--save_only_model.')
-            if resume_kwargs.get('adapter_name'):
-                cluster.model.load(resume_dir, adapter_name=resume_kwargs['adapter_name'])
-            state.global_step = 0
-        else:
-            trainer_state = cluster.model.resume_from_checkpoint(resume_dir, **resume_kwargs)
-            state.micro_step = int(trainer_state['cur_step'])
-            state.global_step = num_optimizer_steps(
-                int(trainer_state['cur_step']), train_config.gradient_accumulation_steps)
+    if checkpoint_config.resume_from_checkpoint:
+        state.global_step, state.micro_step, _ = resume_training(
+            cluster.model, checkpoint_config=checkpoint_config, distributed_config=distributed_config,
+            megatron_config=megatron_config, tuner_config=tuner_config,
+            gradient_accumulation_steps=train_config.gradient_accumulation_steps)
     # TODO(dev2): bridge until the recipe/common batch migrates filter_perf_actors
     from twinkle.perf import Perf
 
@@ -737,5 +625,5 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     if _save_final:
         # the final checkpoint is synchronous; its args.json is written by initialize_devices' copy
         cluster.model.wait_async_saves()
-        save('checkpoint-final')
+        save('checkpoint-final', is_final=True)
     return state.history

@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# GRPO's algorithm halves (advantage fusion, teacher reweighting) on twinkle's ScoreWorker --
-# both scoring channels (ORM rows, PRM process rewards) are the base class's protocol now.
+# GRPO's algorithm halves (advantage fusion, teacher reweighting) on twinkle's ScoreWorker.
 from __future__ import annotations
 
 from typing import Any, List, Optional, Sequence
 
 import torch
 from twinkle import remote_class, remote_function
-from twinkle_agentic.async_rl.score_worker import ScoreWorker, _resolve, _score_rows
+from twinkle_agentic.async_rl.score_worker import ScoreWorker, _resolve
 
 
 def _prm_plugin(plugin: Any):
@@ -92,11 +91,10 @@ class RewardWorker(ScoreWorker):
         """Re-encode each response under its privileged ``teacher_prompt`` column -> feature refs.
 
         Without a ``teacher_prompt`` column the sample's own input feature is returned unchanged;
-        with one, the SAME response tokens are re-encoded from the teacher's privileged view, so the
-        teacher grades the student's answer from a hint-augmented prompt (RLSD/SDAR).
+        with one, the SAME response tokens are re-encoded from the privileged view (the first user
+        turn carries the hint), so the teacher grades the student's answer hint-augmented.
         """
-        # TODO(dev2): bridge until the recipe/common batch migrates encode_privileged_view
-        from swift.dev.recipe.common.scoring import encode_privileged_view
+        from swift.dev2.recipe.utils import encode_privileged_feature
 
         features = []
         for sample in samples:
@@ -104,13 +102,35 @@ class RewardWorker(ScoreWorker):
             teacher_prompt = (getattr(sample, 'extra', None) or {}).get('teacher_prompt')
             if not teacher_prompt:
                 features.append(sample.input_feature)
-            else:
-                extra = getattr(sample, 'extra', None) or {}
+                continue
+            extra = getattr(sample, 'extra', None) or {}
+            response_ids = [int(t) for t in sample.response_token_ids]
+            messages = getattr(sample, 'messages', None)
+            if messages is None:
+                # single-turn: prompt + the assistant turn carrying the sampled ids verbatim
+                prompt = getattr(sample, 'prompt', None)
+                if prompt is None:
+                    raise ValueError('teacher_prompt scoring requires the sample prompt to be stamped '
+                                     'by the driver collect step, got None.')
                 features.append(
-                    encode_privileged_view(
-                        self.template,
-                        _score_rows([sample])[0]['messages'],
-                        [int(t) for t in sample.response_token_ids], extra))
+                    encode_privileged_feature(self.template, list(prompt), teacher_prompt, response_ids, extra))
+            else:
+                # multi-turn: the hint rides the first user turn; every assistant turn is pinned to
+                # its exact sampled ids (TODO(dev2): bridge until recipe/common migrates the helpers).
+                from swift.dev.recipe.common.scoring import encode_privileged_view
+                from swift.dev.rollout.multi_turn import _messages_with_token_ids
+
+                pinned = [dict(message) for message in messages]
+                for message in pinned:
+                    if message.get('role') == 'user':
+                        message['content'] = teacher_prompt
+                        break
+                else:
+                    raise ValueError('teacher_prompt requires a user turn in the prompt to carry the '
+                                     'privileged context.')
+                features.append(encode_privileged_view(
+                    self.template, _messages_with_token_ids(pinned, sample.input_feature),
+                    response_ids, extra))
         return features
 
     @remote_function(dispatch='all', collect='first', lazy_collect=True)

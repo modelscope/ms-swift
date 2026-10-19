@@ -36,7 +36,7 @@ def parse_merge_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 
 def merge_main(argv: Optional[List[str]] = None) -> str:
     from swift.dev2.config import process_and_validate_configs
-    from swift.dev.recipe import run_merge_lora
+    from swift.dev2.recipe.export import run_merge_lora
 
     configs = parse_merge_configs(argv)
     process_and_validate_configs(configs, add_version=False, create_output_dir=False)

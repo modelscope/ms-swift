@@ -173,7 +173,9 @@ def apply_full_param_freeze(model: TrainableModel, train_config: Optional[TrainC
 def build_ref_model(*, name: str, model_id: Optional[str], model_config: ModelConfig,
                     template, distributed_config: DistributedConfig, device_mesh: Any = None,
                     parallel_spec: Optional[str] = None, adapters: Sequence[str] = (),
-                    policy_model: Any = None, disable_adapter: bool = False) -> Optional[Any]:
+                    policy_model: Any = None, disable_adapter: bool = False,
+                    model_type: Optional[str] = None, model_revision: Optional[str] = None,
+                    instance_id: Optional[str] = None, deepspeed: Optional[str] = None) -> Optional[Any]:
     """One frozen auxiliary (reference / teacher), as the BARE twinkle model (cookbook shape).
 
     ``disable_adapter`` returns the policy model itself with the caller-side contract "forward it
@@ -182,7 +184,9 @@ def build_ref_model(*, name: str, model_id: Optional[str], model_config: ModelCo
     remote group ``name`` sized by the GIVEN ``device_mesh`` (the caller derives it from its plan
     or spec -- a None mesh is a single-rank build) and install the single frozen adapter. The
     model IS the reference -- twinkle cookbooks forward it directly (``ref_model.forward_only``);
-    ``remote_group=name`` already encodes its placement.
+    ``remote_group=name`` already encodes its placement. ``model_type`` / ``model_revision`` let an
+    architecturally distinct teacher override the policy's metadata; ``instance_id`` disambiguates
+    K same-group actors (MOPD's packed teachers); ``deepspeed`` is the teacher-only engine config.
     """
     if disable_adapter:
         if policy_model is None:
@@ -194,9 +198,14 @@ def build_ref_model(*, name: str, model_id: Optional[str], model_config: ModelCo
 
     config = copy(model_config)
     config.model = model_id
+    if model_type is not None:
+        config.model_type = model_type
+    if model_revision is not None:
+        config.model_revision = model_revision
     dist = frozen_auxiliary_distributed_config(
-        distributed_config, device_mesh.world_size if device_mesh else 1, parallel_spec=parallel_spec)
-    frozen = build_model(config, dist, device_mesh=device_mesh, remote_group=name)
+        distributed_config, device_mesh.world_size if device_mesh else 1, parallel_spec=parallel_spec,
+        deepspeed=deepspeed)
+    frozen = build_model(config, dist, device_mesh=device_mesh, remote_group=name, instance_id=instance_id)
     if len(adapters) > 1:
         raise ValueError(f'{name} currently supports exactly one frozen adapter per auxiliary model.')
     if adapters:

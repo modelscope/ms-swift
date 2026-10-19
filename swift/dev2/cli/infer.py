@@ -135,9 +135,7 @@ def _guard_interactive(distributed_config: Any, task_type: Optional[str]) -> Non
 def infer_main(argv: Optional[List[str]] = None):
     from swift.dev2.builders import build_engine_args
     from swift.dev2.config import process_and_validate_configs
-    from swift.dev2.recipe.infer import run_infer
-    # TODO(dev2): bridge until the infer batch migrates the interactive REPL (infer_tui)
-    from swift.dev.recipe import infer_cli
+    from swift.dev2.recipe.infer import infer_cli, run_infer
 
     configs = parse_infer_configs(argv)
     infer_config = configs['infer_config']

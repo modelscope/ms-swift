@@ -114,11 +114,16 @@ def run_rl_configs(configs: Dict[str, Any]) -> List[dict]:
     from swift.dev2.config import process_and_validate_configs
 
     process_and_validate_configs(configs)
-    # grpo is the dev2 pilot recipe (five-segment main, StreamingDriver / colocate branch pair);
-    # every other rl_type still runs its native dev recipe until its own dev2 batch lands.
-    if configs['rl_config'].rl_type == 'grpo':
-        from swift.dev2.recipe.grpo import run_grpo
-        return run_grpo(
+    # The dev2 recipes (five-segment mains): grpo, and the distillation family gkd/opsd/mopd; every
+    # other rl_type still runs its native dev recipe until its own dev2 batch lands.
+    rl_type = configs['rl_config'].rl_type
+    if rl_type == 'grpo':
+        from swift.dev2.recipe.grpo import run_grpo as run
+    elif rl_type == 'ppo':
+        from swift.dev2.recipe.ppo import run_ppo as run
+    elif rl_type in {'gkd', 'opsd', 'mopd'}:
+        from swift.dev2.recipe.distill import run_distill as run
+        return run(
             configs['model_config'],
             configs['template_config'],
             configs['dataset_config'],

@@ -7,7 +7,7 @@ import json
 import math
 import os
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
@@ -115,11 +115,9 @@ class InferComponent(RecipeComponent):
         multi_turn_enabled = bool(self.rollout_config and self.rollout_config.max_turns is not None)
         self._validate_sampling(num_return, output_format, multi_turn_enabled)
 
-        # Resolve the reward channels BEFORE twinkle init and the sampler build: each merged
-        # --orm/--prm list becomes ordered rule/model entries, and a channel's model spec decides
-        # whether a reward model needs its own GPU DeviceGroup (declared at init) and whether a
-        # generative judge reusing the sampler needs its reward LoRA resident in the engine's
-        # adapter list at construction (vLLM/SGLang size their adapter slots up front).
+        # Resolve the reward channels BEFORE twinkle init and the sampler build: a channel's model
+        # spec decides whether an RM needs its own GPU DeviceGroup (declared at init) and whether a
+        # generative judge reusing the sampler needs its reward LoRA in the engine's adapter list.
         orm_plan = _resolve_channel(reward_config, 'orm', model_config.model, self.backend)
         prm_plan = _resolve_channel(reward_config, 'prm', model_config.model, self.backend)
         reuse_adapters = [spec.adapter for plan in (orm_plan, prm_plan) for spec in plan.specs
@@ -140,11 +138,9 @@ class InferComponent(RecipeComponent):
         logger.info(f'run_infer: {len(rows)} prompts, backend={self.backend}, '
                     f'num_return_sequences={num_return}, output_format={output_format}')
 
-        # The storage layer owns the writer policy (``store_writer_kind`` folds the format's
-        # ``incremental`` capability with the run's checkpoint intent): a 'dpo' or resumed run asks
-        # for crash protection and gets the checkpointed writer when the format can honour it; a
-        # plain 'all' run gets the incremental writer, which also gathers across DP ranks; a
-        # non-incremental format degrades to one write at the end.
+        # The storage layer owns the writer policy: a 'dpo' or resumed run gets the checkpointed
+        # writer when the format honours it, a plain 'all' run the incremental writer (which also
+        # gathers across DP ranks), a non-incremental format one write at the end.
         writer_kind = store_writer_kind(
             self.output_path, infer_config.store_format,
             checkpoint=(output_format == 'dpo' or infer_config.resume))
@@ -203,10 +199,9 @@ class InferComponent(RecipeComponent):
             infer_config, reward_config, orm_plan, prm_plan, sampler=sampler, model_config=model_config,
             template_config=self.template_config, backend=self.backend, engine_args=self.engine_args,
             distributed_config=distributed_config, quantize_config=self.quantize_config)
-        # The shared scoring worker produces the ONE matrix both channels land in (rules, judges
-        # and model handles all duck-typed on the same rows, disjoint device groups overlapping as
-        # threads); the channel arithmetic stays on this side, the caller's -- the same split
-        # run_grpo uses, where the worker yields the matrix and the recipe combines it.
+        # The worker yields the ONE matrix both channels land in; the channel arithmetic stays on
+        # the caller's side -- the same split run_grpo uses, where the worker yields the matrix and
+        # the recipe combines it.
         from swift.dev2.rewards.advantage import build_reward_weights
         from twinkle_agentic.async_rl.score_worker import ScoreWorker
 
@@ -263,11 +258,9 @@ class InferComponent(RecipeComponent):
         num_generated_tokens = 0
         start_time = time.perf_counter()
         emit = {'dpo': _emit_dpo, 'grpo': _emit_grpo}.get(output_format, _emit_all)
-        # Two dataset routes, chosen by SAMPLER CAPABILITY (not by backend name): a sampler
-        # exposing the non-blocking submit_generation (twinkle GenerationSubmissionMixin --
-        # vLLM/SGLang) rides the SAME per-sample StreamingDriver online RL uses, on the null ledger
-        # (version pinned at 0, nothing publishes), reusing its rollout and the group scoring;
-        # anything else (transformers, or the cache-only 'no' backend) keeps the batch loop.
+        # Two dataset routes, chosen by SAMPLER CAPABILITY (not backend name): vLLM/SGLang expose
+        # the non-blocking submit_generation and ride the SAME per-sample StreamingDriver online RL
+        # uses (null ledger); transformers or the cache-only 'no' backend keeps the batch loop.
         async_route = sampler is not None and callable(getattr(sampler, 'submit_generation', None))
         try:
             if async_route:
@@ -300,8 +293,8 @@ class InferComponent(RecipeComponent):
                         num_prompts += 1
                         num_generated_tokens += sum(len(candidate.response_token_ids) for candidate in group)
                         scores = self._score_group(group, row, trajectory, ground_truth)
-                        batch_rows.extend(
-                            emit(row, trajectory, ground_truth, group, scores, infer_config, recorder))
+                        batch_rows.extend(emit(row, trajectory, ground_truth, group, scores, infer_config,
+                                               recorder, multi_turn=multi_turn_enabled))
                     results.extend(batch_rows)
                     writer.write(batch_rows)
                     writer.checkpoint(index)
@@ -349,10 +342,9 @@ class InferComponent(RecipeComponent):
                                  f'num_return_sequences={num_return}: the lowest-scoring candidate becomes '
                                  'the rejected response, so it cannot also be a positive.')
         elif output_format == 'grpo':
-            # A GRPO dump is the group itself -- every candidate's trajectory, trainable mask and
-            # rollout logps -- and the group-relative advantage is recomputed at train time, not
-            # here. save_rollout_tokens is what forces logprob computation, so without it there
-            # would be no old_logps to store.
+            # A GRPO dump is the group itself (trajectories, masks, rollout logps); the advantage
+            # is recomputed at train time. save_rollout_tokens forces the logprob computation --
+            # without it there are no old_logps to store.
             if num_return < 2:
                 raise ValueError(f"output_format='grpo' needs num_return_sequences >= 2 to dump a group, "
                                  f'got {num_return}.')
@@ -365,30 +357,23 @@ class InferComponent(RecipeComponent):
                 'score_ground_truth cannot combine with a multi-turn rollout: the reference answer has '
                 "no tool trajectory to score against the candidates'. Turn off score_ground_truth, or "
                 'run single-turn.')
+        if infer_config.generation_strict is False:
+            # The engine's generation path has no template-encode strictness knob to thread, so an
+            # explicit opt-out is honoured nowhere; say so instead of failing silently.
+            logger.warning('generation_strict=False has no effect on this path: the rollout engine '
+                           'owns template encoding and has no strictness knob. The flag is accepted '
+                           'only for CLI compatibility.')
 
     def _drive_per_sample(self, *, rows: List[Dict[str, Any]], rollout: Any,
                           cache: '_CandidateCache', writer: Any, recorder: Any, emit: Any,
                           num_return: int, multi_turn_enabled: bool, adapter_path: Optional[str],
                           sampling_params: Dict[str, Any], seed: int) -> Tuple[List[Dict[str, Any]], int, int]:
-        """The async dataset route: the SAME per-sample StreamingDriver online RL rides, on the null ledger.
+        """The async dataset route: the SAME per-sample StreamingDriver online RL rides, null ledger.
 
-        vLLM/SGLang expose the non-blocking submission the driver's per-sample data plane needs, so
-        each prompt's ``num_return`` candidates are admitted independently and emitted the instant a
-        group completes -- no batch lock-step. The engine seams (admit/poll/collect/cancel) are the
-        rollout engine's own, default-bound by the driver; scoring reuses the same channel the batch
-        path scores with and rows are shaped by the same ``emit`` + writers. The control plane is
-        omitted (``ctx_mgr=None``): infer never publishes weights, so the driver runs its null ledger
-        (version pinned at 0, no admission windows, no staleness drop). Returns ``(rows, prompts,
-        tokens)``.
-
-        Groups are emitted in DRAW order, not completion order (see ``_assembly_ready``), and the
-        checkpoint counts prompts handled -- cache hits plus drawn groups. The emit order is
-        deterministic, so a resume restores ``resume_from`` and skips exactly that prefix.
-
-        Under a multi-rank torchrun launch every rank drives its own shard (the loader slices each
-        global batch across the dp ranks) and the incremental writer's per-group gather merges the
-        ranks' rows. A ray launch drives from one process instead, which is also the layout the
-        checkpoint writer's resume path requires.
+        Each prompt's ``num_return`` candidates are admitted independently and emitted the instant
+        its group completes -- no batch lock-step; ``ctx_mgr=None`` pins the version at 0. Groups
+        are emitted in DRAW order (see ``_assembly_ready``), so a resume skips exactly the emitted
+        prefix; torchrun drives one shard per rank (gather merges), ray one process.
         """
         from swift.dev2.builders import build_prompt_dataloader, split_prompt_and_reference
         from twinkle_agentic.async_rl.streaming_driver import StreamingDriver
@@ -425,7 +410,7 @@ class InferComponent(RecipeComponent):
                 state['prompts'] += 1
                 scores = self._score_group(group, rows[index], trajectory, ground_truths[index])
                 out_rows = emit(rows[index], trajectory, ground_truths[index], group, scores,
-                                infer_config, recorder)
+                                infer_config, recorder, multi_turn=multi_turn_enabled)
                 results.extend(out_rows)
                 writer.write(out_rows)
             writer.checkpoint(processed)
@@ -467,12 +452,8 @@ class InferComponent(RecipeComponent):
 
             def _assembly_ready(buffer: List[Any]) -> Optional[List[Any]]:
                 # Pull the contiguous run of COMPLETE groups starting at the next ordinal to emit --
-                # draw order, not completion order. Infer emits one group per prompt, so (unlike
-                # GRPO) there is no optimizer-step row quantum to fill; ordering by draw id is what
-                # keeps the checkpoint's count equal to the draws consumed, so a resume skips
-                # exactly the emitted prefix. A group still short of num_return (a straggler) holds
-                # the frontier, but the null ledger never drops a sample, so it always completes and
-                # the wait is finite.
+                # draw order, not completion order, so the checkpoint's count equals the draws
+                # consumed and a resume skips exactly the emitted prefix.
                 by_ordinal: Dict[int, List[Any]] = {}
                 for record in buffer:
                     by_ordinal.setdefault(_ordinal_of(record), []).append(record)
@@ -490,10 +471,7 @@ class InferComponent(RecipeComponent):
                 for ordinal in sorted(by_ordinal):
                     group_records = by_ordinal[ordinal]
                     row, trajectory, ground_truth = meta[ordinal]
-                    candidates = [
-                        _candidate_from_sample(
-                            record.sample, trajectory['messages'], multi_turn=multi_turn_enabled)
-                        for record in group_records]
+                    candidates = [record.sample for record in group_records]
                     candidates = [candidate for candidate in candidates if candidate.decoded]
                     out_rows: List[Dict[str, Any]] = []
                     if candidates:
@@ -502,7 +480,7 @@ class InferComponent(RecipeComponent):
                             len(candidate.response_token_ids) for candidate in candidates)
                         scores = self._score_group(candidates, row, trajectory, ground_truth)
                         out_rows = emit(row, trajectory, ground_truth, candidates, scores, infer_config,
-                                        recorder)
+                                        recorder, multi_turn=multi_turn_enabled)
                         results.extend(out_rows)
                     # Written even when the group came back empty: under a torchrun gather every
                     # rank must enter the same number of writer calls (one per drawn group), or the
@@ -527,17 +505,10 @@ class InferComponent(RecipeComponent):
     def _forward_pass(self, task_type: str) -> List[Dict[str, Any]]:
         """The non-sampling path: one forward pass over the rows, one plain value per row.
 
-        A pooling task yields one value per row -- a vector for embedding, class logits for seq_cls,
-        a score for reranker -- and picks its route by backend: vLLM / SGLang have a pooling head, so
-        the model is built as a pooling engine and served through ``sampler.encode`` (the throughput
-        path); transformers has no pooling head, so it falls back to ``build_model`` +
-        ``forward_only(task=..)``, a plain HF forward (the reach path). A ``generative_reranker``
-        also yields one score per row, but it is a causal LM, not a pooling model: vLLM/SGLang run it
-        through *generation* (neither serves a decoder-only reranker through ``encode``) while
-        transformers runs the same HF forward the pooling path uses. Either way the row assembly is
-        shared (:func:`_finalize_forward_results`), including its label rule: the label comes from
-        the row's own ``label`` column rather than a trailing assistant turn, because there is no
-        completion to strip.
+        A pooling task routes by backend: vLLM / SGLang have a pooling head, so the model is served
+        through ``sampler.encode``; transformers falls back to ``build_model`` + ``forward_only``.
+        A ``generative_reranker`` is a causal LM -- generation-scored on vLLM/SGLang, the same HF
+        forward on transformers. Row assembly is shared, label from the row's ``label`` column.
         """
         from swift.dev2.builders import to_trajectory
 
@@ -567,7 +538,7 @@ class InferComponent(RecipeComponent):
         return _finalize_forward_results(rows, per_row, task_type, self.backend, self.output_path,
                                          self.infer_config.metric)
 
-    def _score_group(self, candidates: List['_Candidate'], row: Dict[str, Any],
+    def _score_group(self, candidates: List[Any], row: Dict[str, Any],
                      trajectory: Dict[str, Any], ground_truth: Optional[str]) -> Optional[List[float]]:
         """Score one prompt's candidates -> one float each, or None when no channel is configured.
 
@@ -588,8 +559,10 @@ class InferComponent(RecipeComponent):
             # trajectory['messages'] is the prompt with the reference turn already stripped (see
             # split_prompt_and_reference), so rebuilding prompt + ground_truth-as-assistant is the
             # correct single-turn conversation; __call__ rejects this in a multi-turn rollout.
-            scored.append(_Candidate(
-                ground_truth,
+            from twinkle_agentic.rollout import RolloutSample
+
+            scored.append(RolloutSample(
+                decoded=ground_truth,
                 messages=copy.deepcopy(trajectory['messages'])
                 + [{'role': 'assistant', 'content': ground_truth}],
                 extra=dict(columns)))
@@ -777,14 +750,12 @@ def _sample_candidates(sampler: Any, rollout: Any, batch: List[Dict[str, Any]], 
                        template_config: 'TemplateConfig', infer_config: 'InferConfig',
                        cache: '_CandidateCache', adapter_path: Optional[str],
                        multi_turn_enabled: bool) -> Tuple[List[Dict[str, Any]], List[Optional[str]],
-                                                          List[List['_Candidate']]]:
+                                                          List[List[Any]]]:
     """One batch of prompts -> ``(trajectories, ground_truths, candidate groups)``, sampling only.
 
     Scoring and row shaping happen in the caller so both output formats share one sampling call.
     Prompts already covered by ``cache_files`` skip generation entirely -- they are the expensive
-    part, and their candidates are reused verbatim. Known divergence from the dev copy: the
-    transformers ``generation_strict`` kwarg is not threaded (the engine's batch entry has no
-    pass-through for it), so template-encode strictness rides the engine's own default.
+    part, and their candidates are reused verbatim.
     """
     from swift.dev2.builders import split_prompt_and_reference
 
@@ -795,7 +766,7 @@ def _sample_candidates(sampler: Any, rollout: Any, batch: List[Dict[str, Any]], 
     # reuse their cached candidates verbatim. Fresh candidates are written back to their original
     # index below.
     to_sample = [index for index, hit in enumerate(cached) if hit is None]
-    candidates: List[List['_Candidate']] = [hit or [] for hit in cached]
+    candidates: List[List[Any]] = [hit or [] for hit in cached]
     if to_sample:
         if sampler is None:
             raise ValueError("sampler='no' requires cache_files to cover every input prompt.")
@@ -811,11 +782,9 @@ def _sample_candidates(sampler: Any, rollout: Any, batch: List[Dict[str, Any]], 
             extra.update({key: copy.deepcopy(value) for key, value in trajectory.items()
                           if key != 'messages'})
             prompt_extras.append(extra)
-        # One generation call for single- and multi-turn alike: the engine's batch entry
-        # dispatches on its own configuration and both paths yield the same sample. logprobs are
-        # forced only when the recorder keeps tokens (a plain run skips the extra compute);
-        # ``adapter_path`` selects the LoRA the engine reserved slots for and is honoured by both
-        # paths -- the multi-turn engine threads it into every per-turn sample.
+        # One generation call for single- and multi-turn alike: the engine dispatches on its own
+        # configuration. logprobs are forced only when the recorder keeps tokens; ``adapter_path``
+        # selects the LoRA the engine reserved slots for (threaded into every per-turn sample).
         sample_kwargs: Dict[str, Any] = {}
         if adapter_path is not None:
             sample_kwargs['adapter_path'] = adapter_path
@@ -830,70 +799,21 @@ def _sample_candidates(sampler: Any, rollout: Any, batch: List[Dict[str, Any]], 
         if len(samples) != expected:
             raise RuntimeError(f'rollout returned {len(samples)} samples, expected {expected}.')
         for offset, index in enumerate(to_sample):
-            candidates[index] = [
-                _candidate_from_sample(sample, selected_trajectories[offset]['messages'],
-                                       multi_turn=multi_turn_enabled)
-                for sample in samples[offset * wanted:(offset + 1) * wanted]]
+            candidates[index] = samples[offset * wanted:(offset + 1) * wanted]
     if len(to_sample) < len(batch):
         logger.info(f'run_infer: reused cached candidates for {len(batch) - len(to_sample)}/{len(batch)} '
                     'prompts')
     return trajectories, ground_truths, candidates
 
 
-@dataclass
-class _Candidate:
-    """One generated candidate, optionally carrying its full trajectory and rollout tokens.
-
-    ``decoded`` / ``messages`` / ``extra`` / ``response_token_ids`` are the RolloutSample duck-typed
-    face the scoring rows are rebuilt from; the token payload (``encoded`` and the three token
-    lists) is empty for a message-only backend or when tokens were not kept. ``extra`` holds the
-    dataset columns, filled at the scoring entry (see ``_score_group``), not at adoption.
-    """
-
-    decoded: str
-    messages: Optional[List[Dict[str, Any]]] = None
-    rollout_infos: Optional[Dict[str, Any]] = None
-    truncated: bool = False
-    multi_turn: bool = False
-    extra: Optional[Dict[str, Any]] = None
-    encoded: Optional[Dict[str, Any]] = None
-    response_token_ids: List[int] = field(default_factory=list)
-    rollout_logprobs: List[float] = field(default_factory=list)
-    response_loss_mask: List[int] = field(default_factory=list)
-
-
-def _candidate_from_sample(sample: Any, prompt_messages: List[Dict[str, Any]], *,
-                           multi_turn: bool) -> _Candidate:
-    """Adopt a RolloutSample's payload into a _Candidate (single- and multi-turn alike).
-
-    ``messages`` carries the full trajectory: the sample's own for a multi-turn episode, else the
-    prompt plus this completion (the view every scorer and emitter reads). The token half is empty
-    for a message-only backend and populated for a local one, which is what the recorder persists.
-    """
-    messages = copy.deepcopy(sample.messages) if sample.messages is not None else None
-    if messages is None:
-        messages = copy.deepcopy(prompt_messages) + [{'role': 'assistant', 'content': sample.decoded}]
-    return _Candidate(
-        sample.decoded,
-        messages=messages,
-        rollout_infos=copy.deepcopy(sample.rollout_infos) if sample.rollout_infos else None,
-        truncated=sample.truncated,
-        multi_turn=multi_turn,
-        encoded=dict(sample.encoded) if sample.encoded else None,
-        response_token_ids=list(sample.response_token_ids or []),
-        rollout_logprobs=list(sample.rollout_logprobs or []),
-        response_loss_mask=list(sample.response_loss_mask or []))
-
-
-def _candidate_messages(candidate: _Candidate, trajectory: Dict[str, Any]) -> List[Dict[str, Any]]:
-    if candidate.messages is not None:
-        return copy.deepcopy(candidate.messages)
-    return copy.deepcopy(trajectory['messages']) + [{'role': 'assistant', 'content': candidate.decoded}]
+def _candidate_messages(candidate: Any) -> List[Dict[str, Any]]:
+    """The candidate's full conversation (the emit view); a copy so output rows own their messages."""
+    return copy.deepcopy(candidate.messages)
 
 
 def _emit_all(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Optional[str],
-              candidates: List[_Candidate], scores: Optional[List[float]], infer_config: 'InferConfig',
-              recorder: Any = None) -> List[Dict[str, Any]]:
+              candidates: List[Any], scores: Optional[List[float]], infer_config: 'InferConfig',
+              recorder: Any = None, *, multi_turn: bool = False) -> List[Dict[str, Any]]:
     """'all' format: one row per prompt carrying every candidate (the plain-inference / eval shape).
 
     ``response`` is the first candidate and ``responses`` all of them, the shape the acc/rouge metric
@@ -904,11 +824,11 @@ def _emit_all(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Opt
     out: Dict[str, Any] = {key: value for key, value in row.items() if key != 'messages'}
     out['response'] = candidates[0].decoded
     out['responses'] = [candidate.decoded for candidate in candidates]
-    out['messages'] = _candidate_messages(candidates[0], trajectory)
-    if candidates[0].multi_turn:
+    out['messages'] = _candidate_messages(candidates[0])
+    if multi_turn:
         # Each multi-turn candidate is a distinct trajectory (its own tool calls); ``messages`` keeps
         # only the first, so store every candidate's full trajectory rather than losing all but one.
-        out['all_messages'] = [_candidate_messages(candidate, trajectory) for candidate in candidates]
+        out['all_messages'] = [_candidate_messages(candidate) for candidate in candidates]
     if candidates[0].rollout_logprobs:
         # Populated only when logprobs were requested (generation_config.logprobs /
         # save_rollout_tokens); mirrors legacy's per-row ``logprobs`` for the response this row
@@ -928,8 +848,8 @@ def _emit_all(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Opt
 
 
 def _emit_dpo(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Optional[str],
-              candidates: List[_Candidate], scores: Optional[List[float]], infer_config: 'InferConfig',
-              recorder: Any = None) -> List[Dict[str, Any]]:
+              candidates: List[Any], scores: Optional[List[float]], infer_config: 'InferConfig',
+              recorder: Any = None, *, multi_turn: bool = False) -> List[Dict[str, Any]]:
     """'dpo' format: best-of-n chosen/rejected pairs for DPO training.
 
     Without any reward func (``scores is None``) every candidate is emitted as a positive with no
@@ -945,14 +865,14 @@ def _emit_dpo(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Opt
         rows = []
         for index, positive in enumerate(candidates):
             token_path = record(prompt_id, index, positive) if keep_tokens else None
-            rows.append(_dpo_row(row, trajectory, positive, None, ground_truth, rollout_tokens=token_path))
+            rows.append(_dpo_row(row, trajectory, positive, None, ground_truth, rollout_tokens=token_path,
+                                 multi_turn=multi_turn))
         return rows
 
     threshold = infer_config.reward_threshold
-    # An unscored candidate (nan, from a judge/API that returned nothing numeric) is dropped from
-    # the ranking whole: it can be neither a positive nor the rejected response, and writing nan
-    # into a reward_score would emit invalid JSON. ``scorable`` is the nan-free pool the ranking
-    # works on.
+    # An unscored candidate (nan, from a judge that returned nothing numeric) can be neither a
+    # positive nor the rejected response, and nan in reward_score breaks JSON serialisation --
+    # ``scorable`` is the nan-free pool the ranking works on.
     scorable = [i for i in range(len(candidates)) if scores[i] == scores[i]]
     if not scorable:
         return []
@@ -982,15 +902,17 @@ def _emit_dpo(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Opt
                 rollout_tokens=record(prompt_id, i, candidates[i]) if keep_tokens else None,
                 reward_score=scores[i] if keep_tokens else None,
                 rejected_rollout_tokens=rejected_tokens,
-                rejected_reward_score=scores[negative_index] if keep_tokens else None))
+                rejected_reward_score=scores[negative_index] if keep_tokens else None,
+                multi_turn=multi_turn))
     return rows
 
 
-def _dpo_row(row: Dict[str, Any], trajectory: Dict[str, Any], positive: _Candidate,
-             negative: Optional[_Candidate], ground_truth: Optional[str], *,
+def _dpo_row(row: Dict[str, Any], trajectory: Dict[str, Any], positive: Any,
+             negative: Optional[Any], ground_truth: Optional[str], *,
              rollout_tokens: Optional[str] = None, reward_score: Optional[float] = None,
              rejected_rollout_tokens: Optional[str] = None,
-             rejected_reward_score: Optional[float] = None) -> Dict[str, Any]:
+             rejected_reward_score: Optional[float] = None,
+             multi_turn: bool = False) -> Dict[str, Any]:
     """Build one DPO output row while preserving complete multi-turn chosen/rejected trajectories.
 
     The token/score fields are the save_rollout_tokens schema additions: each is written only when
@@ -1002,13 +924,13 @@ def _dpo_row(row: Dict[str, Any], trajectory: Dict[str, Any], positive: _Candida
         'rejected_truncated', 'rejected_rollout_infos', 'id'
     }
     out: Dict[str, Any] = {key: value for key, value in row.items() if key not in generated_keys}
-    out['messages'] = _candidate_messages(positive, trajectory)
+    out['messages'] = _candidate_messages(positive)
     if negative is not None:
-        if positive.multi_turn or negative.multi_turn:
-            out['rejected_messages'] = _candidate_messages(negative, trajectory)
+        if multi_turn:
+            out['rejected_messages'] = _candidate_messages(negative)
         else:
             out['rejected_response'] = negative.decoded
-    if positive.multi_turn:
+    if multi_turn:
         out['multi_turn'] = True
         out['truncated'] = positive.truncated
         if positive.rollout_infos:
@@ -1034,24 +956,21 @@ def _dpo_row(row: Dict[str, Any], trajectory: Dict[str, Any], positive: _Candida
 
 
 def _emit_grpo(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Optional[str],
-               candidates: List[_Candidate], scores: Optional[List[float]], infer_config: 'InferConfig',
-               recorder: Any = None) -> List[Dict[str, Any]]:
+               candidates: List[Any], scores: Optional[List[float]], infer_config: 'InferConfig',
+               recorder: Any = None, *, multi_turn: bool = False) -> List[Dict[str, Any]]:
     """'grpo' format: one row per prompt holding the whole sampled group as an offline GRPO corpus.
 
-    The row stores what GRPO training reads and nothing it recomputes. Every candidate keeps its
-    full ``all_messages`` trajectory (multi-turn candidates diverge at their own tool calls, so each
-    is stored whole rather than collapsed to one response) and its rollout tokens -- the NPZ sidecar
-    with input_ids / labels / completion_mask / logprobs / loss_mask (the old-policy logps) -- plus
-    a stable group ``id`` and ``num_generations``. The group-relative advantage is deliberately NOT
-    computed here: it is cheap and belongs to the training step, which recomputes it from the stored
-    rewards and logps.
+    Each candidate keeps its full ``all_messages`` trajectory (multi-turn candidates diverge at
+    their own tool calls, so none is collapsed to one response) and its rollout-token NPZ sidecar,
+    plus a stable group ``id`` and ``num_generations``. The group-relative advantage is NOT
+    computed here: the training step recomputes it from the stored rewards and logps.
     """
     prompt_id = _prompt_key(trajectory['messages'])
     out: Dict[str, Any] = {key: value for key, value in row.items() if key != 'messages'}
     out['id'] = prompt_id
     out['messages'] = copy.deepcopy(trajectory['messages'])
     out['completions'] = [candidate.decoded for candidate in candidates]
-    out['all_messages'] = [_candidate_messages(candidate, trajectory) for candidate in candidates]
+    out['all_messages'] = [_candidate_messages(candidate) for candidate in candidates]
     out['num_generations'] = len(candidates)
     if ground_truth is not None:
         out['labels'] = ground_truth
@@ -1089,13 +1008,10 @@ def _prompt_batch_size(batch_size: Optional[int]) -> int:
 def compute_metric(results: List[Dict[str, Any]], metric: Literal['acc', 'rouge']) -> Dict[str, float]:
     """Score the first completion of each row against its reference answer.
 
-    ``acc`` is exact string equality, which is what legacy's ``--metric acc`` measured -- NOT the
-    token-level ``twinkle.metric.Accuracy``, which scores logits against label ids and would report
-    a different (and much higher) number for the same run.
-
-    Only the first completion is scored: with ``num_samples > 1`` a best-of-n score is a different
-    measurement (pass@n) and reporting it as accuracy would overstate the model. Rows without a
-    reference are skipped rather than counted as wrong.
+    ``acc`` is exact string equality, what legacy's ``--metric acc`` measured -- NOT the token-level
+    ``twinkle.metric.Accuracy`` (logits vs label ids), which reports a much higher number. Only the
+    first completion is scored: with ``num_samples > 1`` best-of-n is pass@n, a different measure.
+    Rows without a reference are skipped, not counted as wrong.
     """
     from twinkle.metric import ExactMatch, RougeBleu
 
@@ -1129,22 +1045,11 @@ class _RolloutRecorder:
     def record(self, prompt_id: str, candidate_index: int, candidate: Any) -> Optional[str]:
         """Persist one candidate's rollout tokens; return the NPZ path relative to ``base_dir``.
 
-        The sidecar holds the token-level training payload every dump format shares (SFT/DPO/GRPO
-        alike): ``input_ids`` / ``labels`` / ``completion_mask`` (the trainable mask over the full
-        sequence) / ``response_token_ids`` / ``response_loss_mask`` / ``rollout_logprobs`` (the
-        sampling-policy old_logps). old_logps are the one thing training cannot recompute -- the
-        policy has drifted -- so they must be stored; the rest pins the response boundary the logps
-        align to.
-
-        Multimodal tensors (pixel_values / image_grid_thw / ...) are deliberately NOT written: they
-        are large and, unlike old_logps, fully reproducible. Each output row keeps the dataset's
-        image/video columns and the candidate messages (with their placeholders), so training
-        re-encodes the vision inputs from those -- the same re-encode an online rollout does -- and
-        the stored token arrays line up because the template is deterministic for identical
-        messages + images.
-
-        Returns None when disabled, or when the candidate carries no token feature (a message-only
-        backend), so a path is embedded only for candidates that actually have tokens.
+        The sidecar holds the payload every dump format shares (``input_ids`` / ``labels`` /
+        ``completion_mask`` / ``response_token_ids`` / ``response_loss_mask`` / ``rollout_logprobs``)
+        -- old_logps are the one thing training cannot recompute (the policy has drifted). Multimodal
+        tensors are omitted on purpose: reproducible, so training re-encodes them from the row's kept
+        media columns and messages, as an online rollout would. None when disabled or token-less.
         """
         if not self.enabled:
             return None
@@ -1182,7 +1087,9 @@ class _CandidateCache:
     """
 
     def __init__(self, cache_files: List[str]):
-        self.by_prompt: Dict[str, List[_Candidate]] = {}
+        # Values pair each stored sample with ITS OWN row's multi_turn flag: a multi-turn-stored
+        # trajectory can serve a single-turn run as a plain completion, never the other way round.
+        self.by_prompt: Dict[str, List[Tuple[Any, bool]]] = {}
         for path in cache_files or []:
             if not os.path.exists(path):
                 logger.warning(f'cache_files entry {path} does not exist; ignoring it.')
@@ -1194,9 +1101,8 @@ class _CandidateCache:
 
     def _load(self, path: str) -> None:
         # Any run output is a store the storage layer reads back -- a jsonl dump (row-wise
-        # tolerant, so a crashed producer's truncated tail costs a warning, not the file), an
-        # arrow store directory, or any other registered format -- so one run's output can serve
-        # as another run's cache verbatim.
+        # tolerant of a crashed producer's truncated tail), an arrow store directory, or another
+        # registered format -- so one run's output serves as another run's cache verbatim.
         from swift.dev2.dataset.storage import STORAGE_MAPPING, detect_storage_format
 
         storage_format = detect_storage_format(path)
@@ -1214,6 +1120,8 @@ class _CandidateCache:
             logger.warning(f'cache_files entry {path} could not be read as {storage_format!r} ({e}); '
                            'ignoring it.')
             return
+        from twinkle_agentic.rollout import RolloutSample
+
         for entry in rows:
             messages = entry.get('messages')
             if not messages or messages[-1].get('role') != 'assistant':
@@ -1225,26 +1133,34 @@ class _CandidateCache:
                     continue
             else:
                 key = _prompt_key(messages[:-1])
-            self.by_prompt.setdefault(key, []).append(
-                _Candidate(
-                    messages[-1].get('content') or '',
-                    messages=copy.deepcopy(messages) if multi_turn else None,
-                    rollout_infos=copy.deepcopy(entry.get('rollout_infos')),
-                    truncated=bool(entry.get('truncated')),
-                    multi_turn=multi_turn))
+            self.by_prompt.setdefault(key, []).append((
+                RolloutSample(
+                    decoded=messages[-1].get('content') or '',
+                    messages=copy.deepcopy(messages),
+                    rollout_infos=copy.deepcopy(entry.get('rollout_infos')) or {},
+                    truncated=bool(entry.get('truncated'))),
+                multi_turn))
 
     def lookup(self, trajectory: Dict[str, Any], wanted: int,
-               *, multi_turn: bool = False) -> Optional[List[_Candidate]]:
+               *, multi_turn: bool = False) -> Optional[List[Any]]:
         if not self.by_prompt:
             return None
         cached = self.by_prompt.get(_prompt_key(trajectory['messages']))
         if cached is None:
             return None
-        if multi_turn:
-            cached = [candidate for candidate in cached
-                      if candidate.multi_turn and candidate.messages is not None]
+        if not multi_turn:
+            # A multi-turn-stored entry still serves as a plain completion, but the row must carry
+            # THIS run's single-turn view -- the current prompt plus that completion, never the
+            # stored tool-call trajectory.
+            from twinkle_agentic.rollout import RolloutSample
+
+            prompt_messages = copy.deepcopy(trajectory['messages'])
+            cached = [RolloutSample(
+                decoded=sample.decoded,
+                messages=prompt_messages + [{'role': 'assistant', 'content': sample.decoded}])
+                      for sample, _flag in cached]
         else:
-            cached = [_Candidate(candidate.decoded) for candidate in cached]
+            cached = [sample for sample, flag in cached if flag and sample.messages is not None]
         return cached[:wanted] if len(cached) >= wanted else None
 
 
@@ -1414,10 +1330,9 @@ def _pooling_via_sampler(
 
     with _forward_sampler(model_config, template_config, distributed_config, adapters, quantize_config,
                           backend, engine_args, shutdown) as (sampler, _processor, adapter_path):
-        # A cross-encoder reranker's raw score is a logit; ``use_activation`` has twinkle sigmoid it
-        # into a [0, 1] relevance comparable across queries (legacy reranker_use_activation). It
-        # rides in as a PoolingParams override, the channel to_pooling_params documents for these
-        # post-processing knobs.
+        # A cross-encoder reranker's raw score is a logit; ``use_activation`` has twinkle sigmoid
+        # it into [0, 1] relevance (legacy reranker_use_activation), riding in as a PoolingParams
+        # override -- the channel to_pooling_params documents for such post-processing knobs.
         overrides = {'use_activation': reranker_use_activation} if model_config.task_type == 'reranker' else {}
         pooling_params = to_pooling_params(model_config.task_type, **overrides)
         kwargs: Dict[str, Any] = {}
@@ -1450,13 +1365,9 @@ def _forward_via_transformers(
     task_type = model_config.task_type
     _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
-    # build_template leaves the template in 'train' mode (its default caller is the dataset/training
-    # path). This is the INFERENCE forward, and a train-mode ``_embedding_encode`` /
-    # ``_reranker_encode`` reads ``positive_messages`` / ``negative_messages`` off the row -- pairs
-    # that only exist for contrastive training. run_infer's ``to_trajectory`` carries just the
-    # anchor ``messages``, so train mode would hit ``positive[0]`` on an empty list. Switching to an
-    # inference mode makes both encoders take their anchor-only branch, which is what a forward
-    # pass wants; causal_lm / seq_cls encode the anchor identically in either mode.
+    # build_template leaves 'train' mode (its default caller is the dataset path), whose pair
+    # encoders read contrastive-only ``positive_messages`` / ``negative_messages`` columns; the
+    # inference mode below takes the anchor-only branch a forward pass wants.
     template.set_mode('transformers')
     model = build_model(
         model_config, distributed_config or DistributedConfig(), quantize_config=quantize_config)
@@ -1466,10 +1377,9 @@ def _forward_via_transformers(
         for index, adapter in enumerate(adapters):
             model.add_adapter_to_model(f'adapter_{index}' if index else 'default', adapter)
 
-    # forward_only resolves a generative_reranker's yes/no token ids off the model's template, so it
-    # must be attached even though the inputs are already encoded here (the pooling tasks ignore
-    # it). Without this the transformers generative-reranker path trips twinkle's "call
-    # set_template before forwarding".
+    # forward_only resolves a generative_reranker's yes/no token ids off the model's template, so
+    # it must be attached even with inputs pre-encoded -- else the transformers reranker path trips
+    # twinkle's "call set_template before forwarding".
     model.set_template(template)
 
     batch_size = max_batch_size or len(rows) or 1
@@ -1498,10 +1408,9 @@ def _per_row_outputs(outputs: Any, num_rows: int) -> List[Any]:
     """
     tensor = outputs
     if isinstance(outputs, dict):
-        # forward_only(task='embedding') returns the pooled vectors under 'embeddings' (plural); the
-        # other heads use 'logits' / 'embedding' / 'last_hidden_state'. Missing the plural key left
-        # the raw output dict (tensors and all) as the row value, which is neither a vector nor
-        # serialisable.
+        # forward_only(task='embedding') returns the pooled vectors under 'embeddings' (plural),
+        # the other heads under 'logits' / 'embedding' / 'last_hidden_state'; missing the plural
+        # key would leave the raw tensor dict as the row value.
         for key in ('logits', 'embeddings', 'embedding', 'last_hidden_state'):
             if key in outputs:
                 tensor = outputs[key]
@@ -1537,11 +1446,9 @@ def _generative_reranker_via_sampler(
                           backend, engine_args, shutdown) as (sampler, processor, adapter_path):
         tokenizer = _tokenizer_of(processor)
         positive_id, negative_id = _generative_reranker_token_ids(tokenizer)
-        # temperature is forced to 1.0 so the reported logprobs are the log-softmax of the raw
-        # logits: only then does logprob(yes) - logprob(no) equal the logit difference the HF path
-        # returns (any other temperature scales the logits before the softmax and changes the gap).
-        # max_tokens=1 -- not 0 -- because twinkle's max_tokens==0 logprobs-only path drops
-        # logprobs, and we need the first generated token's.
+        # temperature is forced to 1.0 so logprob(yes) - logprob(no) equals the raw logit
+        # difference the HF path returns; max_tokens=1 (not 0) because twinkle's logprobs-only
+        # max_tokens==0 path drops the logprobs we need.
         params = to_sampling_params(
             generation_config, max_tokens=1, temperature=1.0, logprobs=_GENERATIVE_RERANKER_TOP_LOGPROBS)
         kwargs: Dict[str, Any] = {}

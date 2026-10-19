@@ -227,6 +227,10 @@ class SentenceTransformerModel(TwinkleTransformersModel):
 
     # --- persistence ----------------------------------------------------------
 
+    # Decorated like the base save (collect='first' returns the rank-0 path; lazy_collect=False blocks
+    # through staging): an undecorated override runs on the driver's proxy stub in ray mode and dies on
+    # the missing instance state before the async half is ever reached.
+    @remote_function(collect='first', lazy_collect=False)
     def save(self, name: Optional[str] = None, output_dir: Optional[str] = None, interval: int = 1, **kwargs):
         """Save in native sentence-transformers format (a directory loadable by ``SentenceTransformer``).
 

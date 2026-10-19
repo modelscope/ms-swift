@@ -69,7 +69,7 @@ def parse_sft_configs(
 
 def sft_main(argv: Optional[List[str]] = None) -> List[dict]:
     from swift.dev2.config import process_and_validate_configs
-    from swift.dev.recipe import run_embedding, run_reranker, run_seq_cls, run_sft
+    from swift.dev2.recipe.sft import run_embedding, run_reranker, run_seq_cls, run_sft
 
     configs = parse_sft_configs(argv)
     process_and_validate_configs(configs)
