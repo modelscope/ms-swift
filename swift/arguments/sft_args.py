@@ -206,6 +206,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 else:
                     self.adapters = [self.resume_from_checkpoint]
         BaseArguments.__post_init__(self)
+        self.model_meta.loader.validate_training_args(self)
         self._init_override()
         TunerArguments.__post_init__(self)
         self._check_padding_free()
