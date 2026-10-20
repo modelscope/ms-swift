@@ -227,7 +227,8 @@ def write_ckpt_args_json(ckpt_dir: str, processor: Any, model_config: 'ModelConf
 def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
                        consumed_train_samples: int = 0,
                        component_states: Optional[Dict[str, dict]] = None,
-                       is_final: bool = False) -> str:
+                       is_final: bool = False,
+                       requantize_source: Optional[str] = None) -> str:
     """One training checkpoint: the twinkle-native write, the converted adapter, the hub push.
 
     ``consumed_train_samples`` / ``component_states`` carry the data position: the offline family
@@ -247,7 +248,10 @@ def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
         save_total_limit=knobs.save_total_limit,
         # dev's CheckpointSaver gate: the final save is synchronous, every earlier one may hand its
         # file I/O to the background writer (async_save x save_total_limit is rejected upstream).
-        async_save=knobs.async_save and not is_final)
+        async_save=knobs.async_save and not is_final,
+        # A background writer may still be flushing shards; only the synchronous saves can
+        # be re-quantized in place.
+        requantize_source=requantize_source if (is_final or not knobs.async_save) else None)
     ckpt_dir = os.path.join(knobs.output_dir, name)
     if knobs.initial_adapter_dir is not None and is_main_process():
         # The portable form of a base-modifying adapter: fold the init factor back out, so a
@@ -1199,7 +1203,8 @@ def save_training_checkpoint(model: 'TrainableModel', name: str, *, output_dir: 
                              no_save_optim: bool = False, no_save_rng: bool = False,
                              safe_serialization: bool = True, max_shard_size: str = '5GB',
                              save_total_limit: Optional[int] = None,
-                             async_save: bool = False) -> str:
+                             async_save: bool = False,
+                             requantize_source: Optional[str] = None) -> str:
     """Save one trainable model, then retain only the newest numbered/final checkpoints."""
     kwargs = {
         'consumed_train_samples': consumed_train_samples,
@@ -1211,7 +1216,15 @@ def save_training_checkpoint(model: 'TrainableModel', name: str, *, output_dir: 
         'no_save_rng': no_save_rng,
         'async_save': async_save,
     }
-    return model.save(name, output_dir=output_dir, save_optimizer=not no_save_optim, **kwargs)
+    model.save(name, output_dir=output_dir, save_optimizer=not no_save_optim, **kwargs)
+    ckpt_dir = os.path.join(output_dir, name)
+    if requantize_source is not None:
+        # A full-parameter BF16 export of a packed source is not loadable by the packed
+        # rollout engine (DeepSeek-V4's FlashMLA o_proj reads FP8 weight_scale_inv).
+        # Restore the source's packed format in place, using the trained weights.
+        from swift.dev.weight_sync.requantize import requantize_checkpoint
+        requantize_checkpoint(ckpt_dir, requantize_source)
+    return ckpt_dir
 
 
 _SUPPORTED_REPORTERS = frozenset({'tensorboard', 'wandb', 'swanlab'})

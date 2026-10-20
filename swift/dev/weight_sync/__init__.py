@@ -38,6 +38,7 @@ from .manager import (
                       quant_weights,
 )
 from .mxfp4_kernel import dequantize_mxfp4_e2m1, quantize_mxfp4_e2m1
+from .requantize import requantize_checkpoint
 from .vllm_fp8 import copy_param_subclass_attrs, process_fp8_weights_after_loading, stage_fp8_params_for_loading
 from .vllm_mxfp4 import (
                       check_mxfp4_experts_are_syncable,
@@ -76,6 +77,7 @@ __all__ = [
     'process_quanted_weights_after_loading',
     'quant_weights',
     'quantize_mxfp4_e2m1',
+    'requantize_checkpoint',
     'scaled_fp8_blockwise',
     'stage_fp8_params_for_loading',
     'stage_mxfp4_moe_params_for_loading',

@@ -664,8 +664,14 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     def save(name: str, is_final: bool = False) -> str:
         """One training checkpoint: the twinkle-native write, the converted adapter, the hub push."""
+        # Full-parameter training on a packed source exports BF16 weights. Re-quantize the
+        # export back to the source's packed format so the artifact is loadable by the
+        # quantized rollout engine; LoRA saves deltas and has nothing to re-quantize.
+        requantize_source = (model_config.model
+                             if (tuner_config is None or tuner_config.tuner == 'full') else None)
         return save_training_step(cluster.model, state.handler, name, save_knobs,
-                                  consumed_train_samples=state.global_step, is_final=is_final)
+                                  consumed_train_samples=state.global_step, is_final=is_final,
+                                  requantize_source=requantize_source)
 
     ema_manager = None
     if rl_config.sync_ref_model and cluster.reference is not None:
