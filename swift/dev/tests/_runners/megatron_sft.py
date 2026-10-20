@@ -30,7 +30,7 @@ def _run_dev(data_path, out_dir, steps, lr):
 
     from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig)
-    from swift.dev.recipe import run_sft
+    from swift.dev.recipe.sft.run_sft import run_sft
 
     model_path = snapshot_download(MODEL)
     history = run_sft(

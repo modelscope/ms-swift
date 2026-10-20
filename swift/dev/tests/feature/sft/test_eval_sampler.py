@@ -117,7 +117,10 @@ def _captured_evaluator():
     ``_evaluate_generate``) are wrapped instead -- observing the REAL return values rather than
     stubbing ``evaluate``. Yields the list of result dicts.
     """
-    import swift.dev.recipe.sft.run_sft as run_sft_mod
+    import importlib
+    # `import ... as` would bind the FUNCTION the package __init__ re-exports under the
+    # same name, not the module; importlib is explicit about wanting the module object.
+    run_sft_mod = importlib.import_module('swift.dev.recipe.sft.run_sft')
     captured = []
     originals = (run_sft_mod._evaluate_loss, run_sft_mod._evaluate_generate)
 

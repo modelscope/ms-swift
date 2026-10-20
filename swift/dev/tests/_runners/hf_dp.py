@@ -31,7 +31,7 @@ def _run(shape, data_path, out_dir):
     import swift.dev.builders as builders
     from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig, TunerConfig)
-    from swift.dev.recipe import run_sft
+    from swift.dev.recipe.sft.run_sft import run_sft
 
     captured = {}
     orig_build_model = builders.build_model

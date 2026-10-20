@@ -15,7 +15,7 @@ def main(spec: dict) -> None:
     from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                   TrainConfig)
     from swift.dev.config.process import process_configs
-    from swift.dev.recipe import run_sft
+    from swift.dev.recipe.sft.run_sft import run_sft
 
     model_config = ModelConfig(**spec['model'])
     template_config = TemplateConfig(**spec['template'])

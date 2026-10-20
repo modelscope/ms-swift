@@ -17,8 +17,8 @@ the task_type / inputs. This one varies the framework that builds and drives the
     off ``TransformersModel`` onto ``SentenceTransformerModel`` (builders/model.py::_resolve_model_framework),
     which builds a ``SentenceTransformer`` module pipeline (Transformer -> Pooling -> Dense -> Normalize)
     that does its own pooling. Driven here on the real ``google/embeddinggemma-300m`` ST checkpoint.
-  - **unsloth** -- NOT installed in this environment and, being pinned to older transformers, not
-    loadable against the installed 5.x. Covered as a documented gap (see the test), not a stub.
+  - **unsloth** -- driven end to end in ``test_frameworks_unsloth.py`` (isolated: importing unsloth
+    closes the process stderr, which kills pytest's capture; that file runs with ``-s``).
   - **megatron** -- a backend rather than a model framework, and already covered end to end (dp/sp
     sharding, GA equivalence, two-bridge bit-identity, dev-vs-legacy loss, save/resume) in
     ``test_e2e.py``; cross-referenced here rather than duplicated.
@@ -165,37 +165,3 @@ def test_run_embedding_sentence_transformers_end_to_end(tmp_path, tiny_data, ass
     assert_trained(history, out_dir, 'embedding', max_loss=_EMBEDDING_MAX_LOSS)
 
 
-#: unsloth is a documented gap, not a stub. It is NOT installed in this environment and is pinned to
-#: older transformers, so it cannot load against the installed 5.x even if installed. dev routes an
-#: unsloth tuner through ``DistributedConfig(backend='unsloth')``; the sentence-transformers builder
-#: already rejects that combination explicitly (builders/model.py:657). The test below skips when the
-#: package is absent (the case here) and, if a future environment does install a compatible unsloth,
-#: drives a real LoRA run rather than passing unconditionally -- so it stays honest either way.
-def test_run_sft_unsloth_tuner_end_to_end(tmp_path, text_model_path, assert_trained, write_jsonl):
-    """unsloth tuner backend: real LoRA run when the package is importable, documented skip otherwise."""
-    if not torch.cuda.is_available():
-        pytest.skip('CUDA not available')
-    try:
-        import unsloth  # noqa: F401
-    except ImportError:
-        pytest.skip('unsloth not installed (and pinned to pre-5.x transformers, incompatible with the '
-                    'installed 5.x); dev routes it via DistributedConfig(backend="unsloth") -- a tracked '
-                    'framework gap, see the module docstring.')
-
-    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                  TrainConfig, TunerConfig)
-    from swift.dev.recipe.sft.run_sft import run_sft
-
-    data = write_jsonl(tmp_path / 'unsloth_sft.jsonl', _tiny_sft_rows())
-    out_dir = str(tmp_path / 'out_unsloth')
-    history = run_sft(
-        ModelConfig(model=text_model_path, task_type='causal_lm', torch_dtype='bfloat16'),
-        TemplateConfig(template='qwen2_5', max_length=256),
-        DatasetConfig(dataset=[data], dataset_shuffle=False),
-        TrainConfig(learning_rate=1e-4, per_device_train_batch_size=2, gradient_accumulation_steps=1, max_steps=3),
-        DistributedConfig(backend='unsloth'),
-        CheckpointConfig(),
-        TunerConfig(tuner='lora'),
-        output_dir=out_dir,
-    )
-    assert_trained(history, out_dir, 'causal_lm', max_loss=_CAUSAL_LM_MAX_LOSS)

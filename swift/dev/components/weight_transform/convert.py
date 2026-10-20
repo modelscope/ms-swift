@@ -98,11 +98,15 @@ class ConvertComponent(BaseWeightTransform):
     def _convert_hf2mcore(self, output_dir: str) -> str:
         """HF -> mcore: load the HF weights, hand them to the bridge, write a dist checkpoint."""
         from swift.megatron.model import get_mcore_model
-        from swift.megatron.utils import patch_torch_dist_shard, save_mcore_checkpoint, test_convert_precision
+        from swift.megatron.utils import save_mcore_checkpoint, test_convert_precision
+
+        from swift.dev.patch.torch_dist_save import TorchDistSaveThreadCountPatch
+        from twinkle.patch import apply_patch
+
         hf_model, template, processor = self._load_hf_model_template(
             load_model=True, patch_offload=not self.convert_config.test_convert_precision)
         self._set_thread_count(hf_model)
-        patch_torch_dist_shard(self.convert_config.thread_count)
+        apply_patch(None, TorchDistSaveThreadCountPatch(self.convert_config.thread_count))
 
         megatron_args = self._build_megatron_args(processor, output_dir)
         mg_model = get_mcore_model(megatron_args, processor.model_info.config)[0]
@@ -134,11 +138,13 @@ class ConvertComponent(BaseWeightTransform):
         from swift.megatron.model import get_mcore_model
         from swift.megatron.utils import (
             load_mcore_checkpoint,
-            patch_torch_dist_shard,
             prepare_mcore_model,
             save_mcore_checkpoint,
             test_convert_precision,
         )
+
+        from swift.dev.patch.torch_dist_save import TorchDistSaveThreadCountPatch
+        from twinkle.patch import apply_patch
 
         # No HF weights are needed to READ an mcore checkpoint -- only the processor/config for the
         # target architecture -- so the model is not loaded here.
@@ -208,7 +214,7 @@ class ConvertComponent(BaseWeightTransform):
                     test_convert_dtype=self._dtype(self.convert_config.test_convert_dtype))
         else:
             self._set_thread_count(mg_model)
-            patch_torch_dist_shard(self.convert_config.thread_count)
+            apply_patch(None, TorchDistSaveThreadCountPatch(self.convert_config.thread_count))
             self._save_args(megatron_args, output_dir)
             logger.info('Saving the model...')
             save_mcore_checkpoint(megatron_args, [mg_model])
@@ -301,11 +307,16 @@ class ConvertComponent(BaseWeightTransform):
             build_config = copy(build_config)
             build_config.template = template_type
         kwargs: Dict[str, Any] = {}
+        # patch_offload turns accelerate's align-device hook into a no-op: the bridge only READS
+        # the HF weights, never runs a forward. The precision test is the exception (see caller).
         if load_model and patch_offload:
-            # patch_offload turns accelerate's align-device hook into a no-op: the bridge only READS
-            # the HF weights, never runs a forward. The precision test is the exception (see caller).
-            kwargs['patch_offload'] = True
-        hf_model, processor = load_model_processor(load_config, load_model=load_model, **kwargs)
+            from swift.dev.patch.accelerate_offload_hook import AccelerateSkipOffloadHookPatch
+            from twinkle.patch import apply_context
+
+            with apply_context(None, AccelerateSkipOffloadHookPatch()):
+                hf_model, processor = load_model_processor(load_config, load_model=load_model, **kwargs)
+        else:
+            hf_model, processor = load_model_processor(load_config, load_model=load_model, **kwargs)
         template = build_template(build_config, processor)
         if hf_model is not None and getattr(template, 'use_model', False):
             template.model = hf_model

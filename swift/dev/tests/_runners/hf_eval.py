@@ -24,7 +24,10 @@ def _run(data_path, out_dir):
     """run_sft with a val-loss eval on the transformers backend; return this rank's train + eval losses."""
     from modelscope import snapshot_download
 
-    import swift.dev.recipe.sft.run_sft as run_sft_mod
+    import importlib
+    # `import ... as` would bind the FUNCTION the package __init__ re-exports under the
+    # same name, not the module; importlib is explicit about wanting the module object.
+    run_sft_mod = importlib.import_module('swift.dev.recipe.sft.run_sft')
     from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                   TrainConfig, TunerConfig)
     run_sft = run_sft_mod.run_sft

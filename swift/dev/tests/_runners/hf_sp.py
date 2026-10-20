@@ -52,7 +52,7 @@ def _run(shape, data_path, out_dir, padding_free, max_length, sp_size, max_steps
         TrainConfig,
         TunerConfig,
     )
-    from swift.dev.recipe import run_sft
+    from swift.dev.recipe.sft.run_sft import run_sft
 
     model_path = MODEL if os.path.isdir(MODEL) else __import__("modelscope").snapshot_download(MODEL)
 

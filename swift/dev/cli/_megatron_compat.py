@@ -67,10 +67,16 @@ def _derive_megatron_ga(train_config: 'TrainConfig', distributed_config: 'Distri
 
 
 def _select_megatron_tuner(tuner: 'TunerConfig') -> Optional['TunerConfig']:
+    # Legacy's MegatronArguments defaults tuner_type to 'full' (swift/megatron/arguments/
+    # megatron_args.py), overriding the shared base default of 'lora'. TunerConfig carries that base
+    # default, so a Megatron argv with no explicit --tuner/--tuner_type must resolve to full-parameter
+    # training: falling through to the base 'lora' here silently trains adapters instead of the whole
+    # model, breaking argv parity with legacy (the cli-vs-legacy e2e gate caught it as a ~6x smaller
+    # grad_norm and a loss that barely moved). An explicit --tuner lora is still honoured.
     if tuner.tuner == 'full':
         return None
     if tuner.tuner == 'lora':
-        return tuner
+        return tuner if 'tuner' in getattr(tuner, '_explicit_fields', ()) else None
     raise NotImplementedError(f'dev Megatron training supports tuner in {{full, lora}}, got {tuner.tuner!r}.')
 
 

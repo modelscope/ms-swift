@@ -60,8 +60,12 @@ def _dense_argv(model, datasets, out_dir, steps):
     argv += [
         '--save_safetensors',
         'true',
-        '--merge_lora',
-        'false',
+        # dense.sh also passes `--merge_lora false`; it is dropped here on purpose. merge_lora is a
+        # save/export-time concern the dev CLI intentionally removed for the training commands (dev
+        # merges the adapter implicitly and classifies --merge_lora as unsupported), while legacy's
+        # own default is already False -- so omitting it is a no-op for legacy, unblocks the dev CLI,
+        # and touches neither the lr schedule nor the loss this test measures. Both sides still parse
+        # the SAME argv.
         '--tuner_type',
         'lora',
         '--lora_rank',

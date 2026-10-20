@@ -127,7 +127,12 @@ TRAIN_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
 # another flag; each is refused with the migration note in REMOVED_OPTION_REPLACEMENTS.
 TRAIN_REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
     'prediction_loss_only', 'do_eval', 'eval_use_evalscope', 'label_names', 'max_epochs', 'disable_tqdm',
-    'check_model', 'lora_dtype', 'eval_metric')
+    'check_model', 'lora_dtype', 'eval_metric',
+    # merge_lora is a save/export-time concern (it lives on DeployConfig/ConvertConfig, not on any
+    # training Config); a training run merges the adapter implicitly, so refuse it here with the
+    # migration note instead of letting it fall through to parse_configs' cryptic "Unrecognized
+    # arguments" -- `swift eval` already classifies it, this makes the training commands consistent.
+    'merge_lora')
 TUNER_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
     'lisa_activated_layers', 'lisa_step_interval', 'lora_ga_batch_size', 'lora_ga_iters', 'lora_ga_max_length',
     'lora_ga_direction', 'lora_ga_scale', 'lora_ga_stable_gamma', 'fourier_n_frequency', 'fourier_scaling',

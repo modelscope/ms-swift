@@ -24,6 +24,13 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
+# Global, version-gated: torch 2.9.x ships a broken nn.Conv3d for video/3D ViT patch embeds; the
+# patch is a no-op on every other torch. Mirrors legacy swift/model/utils.py's import-time apply.
+from swift.dev.patch.torch_conv3d import TorchConv3dPatch  # noqa: E402
+from twinkle.patch import apply_patch  # noqa: E402
+
+apply_patch(None, TorchConv3dPatch())
+
 
 def load_model_processor(model_config: ModelConfig, *, load_model: bool = False, **overrides):
     """Load a legacy-compatible processor/model with every relevant ``ModelConfig`` option.
@@ -64,7 +71,13 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
             _set_load_kwarg(kwargs, name, value)
     for name, value in overrides.items():
         _set_load_kwarg(kwargs, name, value)
-    return get_model_processor(model_config.model, load_model=load_model, **kwargs)
+    # trust_remote_code loads make every rank race on the same dynamic-module cache write; the
+    # patch serializes the first writer while the rest wait (legacy register.py applies the same).
+    from swift.dev.patch.transformers_dynamic_module import TransformersDynamicModulePatch
+    from twinkle.patch import apply_context
+
+    with apply_context(None, TransformersDynamicModulePatch()):
+        return get_model_processor(model_config.model, load_model=load_model, **kwargs)
 
 
 def build_dp_mesh(distributed_config: DistributedConfig,

@@ -397,13 +397,14 @@ class ModelLoader:
     def ignore_check_imports():
         """Skip transformers' remote-code dependency check for the duration of a load.
 
-        Delegates to twinkle's ``TransformersIgnoreCheckImportsPatch``: it keeps ``check_imports``'s
+        Delegates to ``TransformersIgnoreCheckImportsPatch``: it keeps ``check_imports``'s
         real return value (``get_relative_imports``, which the module loader consumes) and drops
         only the verification loop -- a blank ``[]`` stub would starve the loader. Used by
         ``minimax_vl`` / ``florence`` (legacy ``patch_ignore_check_imports``).
         """
         from twinkle.patch import apply_context
-        from twinkle.patch.transformers_check_imports import TransformersIgnoreCheckImportsPatch
+
+        from swift.dev.patch.transformers_check_imports import TransformersIgnoreCheckImportsPatch
         with apply_context(None, TransformersIgnoreCheckImportsPatch()):
             yield
 
