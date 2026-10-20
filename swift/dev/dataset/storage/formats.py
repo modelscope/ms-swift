@@ -31,6 +31,12 @@ class ArrowStorage(DatasetStorage):
         from datasets import load_from_disk
         # A save_to_disk store is one table with no splits; ``split`` and the loading kwargs
         # (num_proc, streaming, ...) are accepted for signature parity but do not apply.
+        # A zero-row store is a degenerate but legal artifact (an export of an empty split);
+        # load_from_disk itself IndexErrors on the zero shards, so answer 0 rows here.
+        import glob
+        if not glob.glob(os.path.join(path, '*.arrow')):
+            from datasets import Dataset as HfDataset
+            return HfDataset.from_list([])
         return load_from_disk(path)
 
     def write(self, data: DataType, path: str, *, fields: Optional[Sequence[str]] = None) -> str:
@@ -63,6 +69,11 @@ class JsonlStorage(DatasetStorage):
 
     def read(self, path: str, *, split: str = 'train', **kwargs) -> Any:
         from datasets import load_dataset as hf_load_dataset
+        # An empty dump (a run that produced no rows) is degenerate but legal; the HF json
+        # builder raises StopIteration on a 0-byte file, so answer 0 rows here.
+        if os.path.getsize(path) == 0:
+            from datasets import Dataset as HfDataset
+            return HfDataset.from_list([])
         return hf_load_dataset('json', data_files=path, split=split, **kwargs)
 
     def iter_rows(self, path: str, **kwargs):

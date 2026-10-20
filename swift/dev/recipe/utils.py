@@ -706,7 +706,7 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
 
 def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutConfig', template: Any,
                      tuner_config: Optional['TunerConfig'], resource_plan: Any = None,
-                     colocate: bool = False) -> Any:
+                     colocate: bool = False, enable_sampling_replay: bool = False) -> Any:
     """The weight-syncable rollout sampler: shaped engine args, then the planned or static build.
 
     The planned layout (estimate/adaptive) sizes the replica pool and stamps the elastic instance id;
@@ -726,7 +726,7 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
         sampler_engine_args.setdefault('enable_lora', True)
         sampler_engine_args.setdefault('max_lora_rank', tuner_config.lora_rank)
         sampler_engine_args.setdefault('max_loras', 2)
-    if rollout_config.enable_sampling_replay:
+    if enable_sampling_replay:
         sampler_engine_args['enable_sampling_replay'] = True
     if resource_plan is not None:
         return build_sampler(

@@ -158,7 +158,8 @@ def initialize_distill_cluster(*, model_config: 'ModelConfig', template_config: 
     colocate = rollout_config.sampler_mode == 'colocate'
     sampler = build_rl_sampler(
         model_config=model_config, rollout_config=rollout_config, template=template,
-        tuner_config=tuner_config, resource_plan=resource_plan, colocate=colocate)
+        tuner_config=tuner_config, resource_plan=resource_plan, colocate=colocate,
+                   enable_sampling_replay=rl_config.enable_sampling_replay)
     adapter = None
     if resource_plan is not None and rollout_config.resource_mode == 'adaptive':
         from twinkle_agentic.async_rl import ClusterAdapter

@@ -1,0 +1,1287 @@
+"""End-to-end SFT happy-path integration test (the last piece of "minimal refactor works").
+
+Unlike the component-level bit tests (configure_loss / resume trajectory / GA equivalence),
+this drives the FULL L4 assembly: run_sft(ModelConfig, TemplateConfig, DatasetConfig,
+TrainConfig) once, from atomic Configs, with no manual model/template/dataloader wiring — the
+green-path that was previously only hand-verified in a throwaway script.
+
+Asserts: optimizer steps ran, loss is finite + normalized (readable per-token, not raw sum),
+and a self-describing checkpoint (weights + args.json) is written so `swift infer` can load it.
+
+Marked slow: loads a real Qwen2.5-0.5B. Run with -m slow.
+"""
+import os
+
+import json
+import pytest
+import torch
+
+from swift.dev.tests._runners import Runners
+from swift.dev.tests._twinkle_runtime import reset_twinkle_runtime
+
+MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
+
+# Rendezvous ports, unique to THIS pytest process. The offsets are still hand-assigned per launch
+# below (a lingering rendezvous from an earlier phase of the SAME run must not be joinable); only the
+# base moves. Fixed bases made two concurrent invocations of this file share a rendezvous, which
+# surfaces as a bogus training failure rather than as a port conflict. Kept out of the ephemeral
+# range (32768+) so the OS cannot hand the same port to something else mid-run.
+_PORT_BASE = 20000 + (os.getpid() % 500) * 20
+
+
+def _master_port(offset: int) -> int:
+    return _PORT_BASE + offset
+
+
+class _FakeMeta:
+
+    def __init__(self, model_type):
+        self.model_type = model_type
+
+
+class _FakeProcessor:
+
+    def __init__(self, model_type='qwen2_5'):
+        self.model_meta = _FakeMeta(model_type)
+
+
+def test_write_ckpt_args_json_includes_force_load_keys(tmp_path):
+    """args.json must carry the force_load keys infer applies unconditionally (task_type,
+    tuner_type) so seq_cls / LoRA checkpoints are not silently downgraded to causal_lm/full.
+
+    Mirrors the read side load_args_from_ckpt (base_args.py:246-301): task_type and tuner_type
+    are force_load_keys; omitting them leaves infer on its default. Pure function, no model.
+    """
+    from swift.dev.config import ModelConfig, TemplateConfig, TunerConfig
+    from swift.dev.recipe.common.assembly import TrainAssembly
+
+    ckpt = str(tmp_path)
+    TrainAssembly.write_ckpt_args_json(
+        ckpt,
+        _FakeProcessor('qwen2_5'),
+        ModelConfig(model='/m', task_type='seq_cls', torch_dtype='bfloat16', attn_impl='flash_attn'),
+        TemplateConfig(template='qwen2_5', system='sys', truncation_strategy='left'),
+        TunerConfig(tuner='lora'),
+    )
+    with open(os.path.join(ckpt, 'args.json')) as f:
+        args = json.load(f)
+    # force_load keys present (would otherwise silently degrade infer)
+    assert args['task_type'] == 'seq_cls'
+    assert args['tuner_type'] == 'lora'
+    # load_keys dev knows are carried too
+    assert args['model_type'] == 'qwen2_5'
+    assert args['attn_impl'] == 'flash_attn'
+    assert args['truncation_strategy'] == 'left'
+
+
+def test_write_ckpt_args_json_omits_none_full_param(tmp_path):
+    """Full-param causal_lm run: task_type/tuner_type stay None -> filtered out (infer's own
+    defaults stand), so we don't write misleading keys."""
+    from swift.dev.config import ModelConfig, TemplateConfig
+    from swift.dev.recipe.common.assembly import TrainAssembly
+
+    ckpt = str(tmp_path)
+    TrainAssembly.write_ckpt_args_json(
+        ckpt,
+        _FakeProcessor('qwen2_5'),
+        ModelConfig(model='/m', torch_dtype='bfloat16'),
+        TemplateConfig(template='qwen2_5'),
+        None,
+    )
+    with open(os.path.join(ckpt, 'args.json')) as f:
+        args = json.load(f)
+    assert 'task_type' not in args
+    assert 'tuner_type' not in args
+    assert args['model_type'] == 'qwen2_5'
+
+
+def test_initialize_twinkle_sets_a_device_group_on_every_backend():
+    """A device group must exist before any model is built -- it is what keeps a DeviceMesh alive.
+
+    remote_class filters every DeviceMesh out of a model's kwargs while twinkle holds no device group
+    (infra/__init__.py:548-552), and twinkle.initialize is what sets that group. A run that skips it
+    therefore trains with device_mesh=None, which is not cosmetic: calculate_loss then divides its
+    token count by 1 instead of the dp world size, so DDP's averaging yields an avg-of-avg instead of
+    legacy's global token weighting, and no metric is ever gathered. One GPU cannot see any of that,
+    which is exactly why the transformers backend -- whose run_sft path used to return BEFORE
+    initialize -- shipped that way until a 4-GPU comparison. Hence this cheap guard on the decision
+    itself. The Ray branch is left to the slow tests: asserting it here would boot a Ray cluster.
+    """
+    import twinkle.infra as infra
+
+    from swift.dev.config import DistributedConfig
+    from swift.dev.recipe.common.assembly import TrainAssembly
+
+    saved = (infra._mode, infra._device_group, infra._device_mesh)
+    try:
+        # mode defaults to 'local' and the transformers backend has no Ray path at all, so a default
+        # DistributedConfig (what every HF caller passes) must still init.
+        for dist_config in (DistributedConfig(), DistributedConfig(mode='local'),
+                            DistributedConfig(backend='megatron', mode='local', nproc_per_node=1)):
+            infra._mode, infra._device_group, infra._device_mesh = None, None, None
+            TrainAssembly.initialize_twinkle(dist_config)
+            assert infra._device_group is not None, f'no device group for {dist_config}'
+            assert infra._device_mesh is not None, f'no device mesh for {dist_config}'
+            assert infra._mode == 'local', f'unexpected mode {infra._mode} for {dist_config}'
+    finally:
+        infra._mode, infra._device_group, infra._device_mesh = saved
+
+
+def test_initialize_twinkle_forwards_seed_and_full_determinism(monkeypatch):
+    """TrainConfig.seed / full_determinism must reach twinkle.initialize on BOTH the local and ray branch.
+
+    Companion to the device-group guard above: twinkle.initialize seeds the driver and re-seeds each
+    Ray worker from these values (infra/__init__.py), so dropping them silently reverts the run to
+    twinkle's own default (seed=42) and overwrites the user's seed -- and seed also drives the Megatron
+    modelling RNG, so it is a reproducibility load-bearer, not a transformers-only knob. The ray branch
+    matters most (workers re-seed from the EXTRA_TORCH_KWARGS env) yet the guard above skips it to avoid
+    booting a cluster.
+
+    twinkle.initialize is captured rather than executed: the contract under test is *what dev passes*,
+    and executing it with full_determinism=True would flip process-global torch state
+    (use_deterministic_algorithms, CUDA_LAUNCH_BLOCKING, cudnn flags) that leaks into every later test
+    in the session. Capture covers both branches cheaply and side-effect-free.
+    """
+    import twinkle
+
+    from swift.dev.config import DistributedConfig
+    from swift.dev.recipe.common.assembly import TrainAssembly
+
+    captured = {}
+
+    def _fake_initialize(**kwargs):
+        captured.clear()
+        captured.update(kwargs)
+
+    monkeypatch.setattr(twinkle, 'initialize', _fake_initialize)
+
+    TrainAssembly.initialize_twinkle(DistributedConfig(mode='local'), seed=1234, full_determinism=True)
+    assert captured['mode'] == 'local'
+    assert captured['extra_torch_kwargs']['seed'] == 1234, 'local branch dropped the user seed'
+    assert captured['extra_torch_kwargs']['full_determinism'] is True, 'local branch dropped full_determinism'
+
+    TrainAssembly.initialize_twinkle(
+        DistributedConfig(mode='ray', nproc_per_node=2), seed=7, full_determinism=False)
+    assert captured['mode'] == 'ray'
+    assert captured['extra_torch_kwargs']['seed'] == 7, 'ray branch dropped the user seed'
+    assert captured['extra_torch_kwargs']['full_determinism'] is False, 'ray branch dropped full_determinism'
+
+
+def _write_toy_dataset(path):
+    rows = [
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'What is 2+2?'
+            }, {
+                'role': 'assistant',
+                'content': '2 + 2 equals 4.'
+            }]
+        },
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'Say hello.'
+            }, {
+                'role': 'assistant',
+                'content': 'Hello! How can I help you today?'
+            }]
+        },
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'Capital of France?'
+            }, {
+                'role': 'assistant',
+                'content': 'The capital of France is Paris.'
+            }]
+        },
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'Name a color.'
+            }, {
+                'role': 'assistant',
+                'content': 'Blue is a color.'
+            }]
+        },
+    ]
+    with open(path, 'w') as f:
+        for r in rows:
+            f.write(json.dumps(r) + '\n')
+
+
+def _write_identical_dataset(path, n=4):
+    """Write n IDENTICAL rows so every DP rank is fed the same sequence (isolates construction
+    correctness from the two backends' differing dataloader sharding)."""
+    row = {
+        'messages': [{
+            'role': 'user',
+            'content': 'What is 2+2?'
+        }, {
+            'role': 'assistant',
+            'content': '2 + 2 equals 4.'
+        }]
+    }
+    with open(path, 'w') as f:
+        for _ in range(n):
+            f.write(json.dumps(row) + '\n')
+
+
+@pytest.mark.slow
+def test_run_sft_end_to_end_happy_path(tmp_path):
+    """Full run_sft green-path: 4 atomic Configs -> trained checkpoint, from a real 0.5B model."""
+    if not torch.cuda.is_available():
+        pytest.skip('CUDA not available')
+
+    from modelscope import snapshot_download
+
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+    )
+    from swift.dev.recipe.sft.run_sft import run_sft
+
+    model_path = snapshot_download(MODEL)
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    out_dir = str(tmp_path / 'out')
+    _write_toy_dataset(data_path)
+
+    history = run_sft(
+        ModelConfig(model=model_path, torch_dtype='bfloat16'),
+        TemplateConfig(template='qwen2_5', max_length=512),
+        DatasetConfig(dataset=[data_path], dataset_shuffle=True, data_seed=42),
+        TrainConfig(
+            learning_rate=1e-4,
+            optim='adamw',
+            lr_scheduler='cosine',
+            warmup_ratio=0.0,
+            per_device_train_batch_size=2,
+            gradient_accumulation_steps=1,
+            max_steps=4,
+            max_grad_norm=1.0),
+        DistributedConfig(),
+        CheckpointConfig(),
+        output_dir=out_dir,
+    )
+
+    assert history, 'run_sft produced no optimizer steps'
+    losses = [r['loss'] for r in history]
+    assert all(loss == loss and abs(loss) != float('inf') for loss in losses), \
+        f'non-finite loss: {losses}'
+    assert losses[0] < 20, f'first loss {losses[0]:.2f} too large -> not normalized (raw sum?)'
+
+    ckpt = os.path.join(out_dir, 'checkpoint-final')
+    assert os.path.isdir(ckpt), f'no checkpoint dir at {ckpt}'
+    files = set(os.listdir(ckpt))
+    assert any(f.endswith('.safetensors') or f == 'model.safetensors' for f in files), \
+        f'no model weights in checkpoint: {sorted(files)}'
+    assert 'args.json' in files, f'no args.json (checkpoint not self-describing): {sorted(files)}'
+    with open(os.path.join(ckpt, 'args.json')) as f:
+        args = json.load(f)
+    for k in ('model_type', 'template', 'swift_version'):
+        assert k in args, f'args.json missing {k!r} (swift infer would be ambiguous): {sorted(args)}'
+
+
+@pytest.mark.slow
+def test_run_sft_zero_opt_steps_raises(tmp_path):
+    """Contract 5 (fail-fast): when N micro-batches <= ga the GA gate never fires, so run_sft
+    would train forward/backward but NEVER update the model (0 optimizer steps). run_sft must
+    raise ValueError rather than silently run a no-op "green" training.
+
+    Setup: 2-row dataset, per_device_train_batch_size=2 -> 1 micro-batch/epoch; ga=2, 1 epoch ->
+    num_optimizer_steps(1, 2) == 0 -> raise. The check runs BEFORE build_model, so this is cheap
+    (no weight loading); it only needs the processor + a dataset load, hence gated on the model.
+    """
+    from modelscope import snapshot_download
+
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+    )
+    from swift.dev.recipe.sft.run_sft import run_sft
+
+    model_path = snapshot_download(MODEL)
+    data_path = str(tmp_path / 'tiny_sft.jsonl')
+    # exactly 2 rows -> with batch_size=2 that is a single micro-batch (one GA window)
+    with open(data_path, 'w') as f:
+        for _ in range(2):
+            f.write(
+                json.dumps({
+                    'messages': [{
+                        'role': 'user',
+                        'content': 'What is 2+2?'
+                    }, {
+                        'role': 'assistant',
+                        'content': '2 + 2 equals 4.'
+                    }]
+                }) + '\n')
+
+    with pytest.raises(ValueError, match='computed 0 optimizer steps'):
+        run_sft(
+            ModelConfig(model=model_path, torch_dtype='bfloat16'),
+            TemplateConfig(template='qwen2_5', max_length=512),
+            DatasetConfig(dataset=[data_path], dataset_shuffle=False, data_seed=42),
+            TrainConfig(
+                per_device_train_batch_size=2, gradient_accumulation_steps=2, num_train_epochs=1.0, max_steps=None),
+            DistributedConfig(),
+            CheckpointConfig(),
+            output_dir=str(tmp_path / 'out'),
+        )
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('bridge_backend', ['mcore-bridge', 'megatron-bridge'])
+def test_run_sft_megatron_end_to_end(tmp_path, bridge_backend):
+    """Full run_sft on the Megatron backend (DP=2, Ray), for BOTH bridge backends.
+
+    Smoke-level e2e: loss finite/normalized + a loadable HF checkpoint written, for each bridge.
+    Cross-bridge numeric equality is gated by test_run_sft_megatron_two_bridges_bit_identical; the
+    dev-vs-legacy numeric gate is test_run_sft_megatron_vs_legacy_loss.
+
+    Scope: gradient_accumulation_steps=1 (larger GA is gated by test_run_sft_megatron_ga_equivalence).
+    """
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+    # Only the megatron-bridge parametrization needs the megatron.bridge package; the mcore-bridge
+    # instance must NOT be skipped just because megatron.bridge is absent in this env.
+    try:
+        if bridge_backend == 'megatron-bridge':
+            from megatron.bridge.models.conversion.auto_bridge import AutoBridge  # noqa: F401
+    except Exception:
+        pytest.skip('megatron.bridge (Megatron-Bridge) not importable in this env')
+
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_toy_dataset(data_path)
+    history = _run_megatron_sft(bridge_backend, data_path, str(tmp_path / f'out_{bridge_backend}'))
+
+    assert history, f'run_sft (megatron/{bridge_backend}) produced no optimizer steps'
+    losses = [r['loss'] for r in history]
+    assert all(loss == loss and abs(loss) != float('inf') for loss in losses), \
+        f'non-finite loss: {losses}'
+    assert losses[0] < 20, f'first loss {losses[0]:.2f} too large -> not normalized (raw sum?)'
+
+    ckpt = os.path.join(str(tmp_path / f'out_{bridge_backend}'), 'checkpoint-final')
+    assert os.path.isdir(ckpt), f'no checkpoint dir at {ckpt}'
+    files = set(os.listdir(ckpt))
+    assert any(f.endswith('.safetensors') for f in files), \
+        f'no model weights in checkpoint: {sorted(files)}'
+    print(f'\nrun_sft megatron/{bridge_backend}: steps={len(history)} losses={losses}')
+
+
+@pytest.mark.slow
+def test_run_sft_megatron_two_bridges_bit_identical(tmp_path):
+    """The two bridge backends, driven through the SAME run_sft assembly on the SAME
+    model/data/dtype/hparams, must produce a bit-identical loss trajectory.
+
+    Both build the same mcore GPTModel (only the construction library differs), so any per-step
+    loss divergence means a real construction/normalization mismatch between the bridges. Each
+    backend runs sequentially in its OWN twinkle Ray session (this test resets the runtime between
+    the two -- run_sft initializes but production is one-shot, so it has no shutdown counterpart).
+    """
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+    try:
+        from megatron.bridge.models.conversion.auto_bridge import AutoBridge  # noqa: F401
+    except Exception:
+        pytest.skip('megatron.bridge (Megatron-Bridge) not importable in this env')
+
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_toy_dataset(data_path)
+
+    mcore = _run_megatron_sft('mcore-bridge', data_path, str(tmp_path / 'out_mcore'))
+    # Each run_sft(mode='ray') is its own twinkle Ray session; the autouse fixture only resets
+    # BETWEEN tests, so tear the first session down here or the second collides on twinkle's
+    # deterministic worker-actor name (see reset_twinkle_runtime).
+    reset_twinkle_runtime()
+    mbridge = _run_megatron_sft('megatron-bridge', data_path, str(tmp_path / 'out_mbridge'))
+
+    mcore_losses = [r['loss'] for r in mcore]
+    mbridge_losses = [r['loss'] for r in mbridge]
+    print(f'\ntwo-bridge SFT: mcore={mcore_losses} megatron-bridge={mbridge_losses}')
+    assert len(mcore_losses) == len(mbridge_losses) and mcore_losses, \
+        f'step count mismatch: mcore={mcore_losses} mbridge={mbridge_losses}'
+    assert mcore_losses == mbridge_losses, (f'two bridges diverged (construction/normalization mismatch): '
+                                            f'mcore={mcore_losses} megatron-bridge={mbridge_losses}')
+
+
+@pytest.mark.slow
+def test_run_sft_megatron_ga_equivalence(tmp_path):
+    """GA>1 gate: Megatron ga=2/bs=2 must match ga=1/bs=4 (same 8 samples per optimizer step).
+
+    Megatron accumulates gradients across the microbatch LIST inside one forward_backward, so
+    grouping ga=2 dataloader batches into one step must be gradient-equivalent to a single ga=1 step
+    over a proportionally larger batch. The dataloader batch is the GLOBAL batch
+    (per_device_train_batch_size * dp = per_device * 2 here), so the effective samples per optimizer
+    step are per_device * dp * ga = 8 for BOTH configs (2*2*2 and 4*2*1). At step 1 both see identical
+    initial weights over identical rows, so the step-1 loss is bit-identical; the grad_norm equality is
+    the real accumulation check (it reflects the summed/normalized gradient).
+
+    8 IDENTICAL rows: enough for both a global batch of 4 (ga=2 -> 2 batches/step) and of 8 (ga=1 ->
+    1 batch/step) to form complete groups under drop_last, and identical content so DP-rank slicing
+    order cannot perturb the equality. Runs mcore-bridge only; max_steps=1 keeps the data window
+    aligned to exactly one step.
+    """
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_identical_dataset(data_path, n=8)  # 8 rows == one optimizer step at effective batch 8
+
+    ga_hist = _run_megatron_sft(
+        'mcore-bridge', data_path, str(tmp_path / 'out_ga2'), per_device_batch=2, ga=2, max_steps=1)
+    # Two run_sft(mode='ray') sessions in one test: reset the first before the second initializes,
+    # or it collides on twinkle's deterministic worker-actor name (see reset_twinkle_runtime).
+    reset_twinkle_runtime()
+    big_hist = _run_megatron_sft(
+        'mcore-bridge', data_path, str(tmp_path / 'out_bs4'), per_device_batch=4, ga=1, max_steps=1)
+
+    ga_loss = [r['loss'] for r in ga_hist]
+    big_loss = [r['loss'] for r in big_hist]
+    ga_gn = [r.get('grad_norm') for r in ga_hist]
+    big_gn = [r.get('grad_norm') for r in big_hist]
+    print(f'\nGA equiv: ga2xbs2 loss={ga_loss} gn={ga_gn} | bs4 loss={big_loss} gn={big_gn}')
+    assert ga_loss and big_loss and len(ga_loss) == len(big_loss) == 1, \
+        f'expected 1 optimizer step each: ga2={ga_loss} bs4={big_loss}'
+    assert ga_loss == big_loss, (f'GA>1 diverged from equivalent large-batch loss: ga2xbs2={ga_loss} bs4={big_loss}')
+    if ga_gn[0] is not None and big_gn[0] is not None:
+        assert abs(ga_gn[0] - big_gn[0]) < 1e-4, (
+            f'GA>1 grad_norm diverged (accumulation mismatch): ga2xbs2={ga_gn} bs4={big_gn}')
+
+
+def _run_megatron_sft(bridge_backend: str,
+                      data_path: str,
+                      out_dir: str,
+                      *,
+                      per_device_batch: int = 2,
+                      ga: int = 1,
+                      max_steps: int = 2,
+                      eval_steps: int = 0,
+                      split_dataset_ratio: float = 0.0,
+                      context_parallel_size: int = 1):
+    """Run one Megatron run_sft (DP=2, fp32) and return its loss/grad_norm history.
+
+    per_device_batch/ga are parametrized so a GA>1 run can be compared against a GA=1 run with a
+    proportionally larger batch (same effective samples per optimizer step -> same trajectory).
+    eval_steps>0 (with split_dataset_ratio>0 to carve a val split) exercises the offline Evaluator on
+    the Megatron backend -- its forward_only + calculate_loss(NotImplementedError) fallback path.
+    context_parallel_size>1 spends the world on CP instead of DP (world=2 -> cp=2, dp=1): twinkle
+    splits each sequence across the CP ranks and runs ring attention over the CP group.
+    """
+    from modelscope import snapshot_download
+
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+    )
+    from swift.dev.recipe.sft.run_sft import run_sft
+
+    model_path = snapshot_download(MODEL)
+    return run_sft(
+        # fp32 (float32) so the loss is comparable across bridges without a wide bf16 band.
+        ModelConfig(model=model_path, torch_dtype='float32'),
+        TemplateConfig(template='qwen2_5', max_length=512),
+        DatasetConfig(dataset=[data_path], dataset_shuffle=False, split_dataset_ratio=split_dataset_ratio),
+        # per_device_train_batch_size must be >= dp_size (2): twinkle slice_dp splits each driver
+        # batch across the 2 DP ranks, so a batch of 1 would starve a rank. eval batch likewise >=2.
+        # optim is deliberately not set: it is a transformers-only knob (rejected by the _HF_ONLY
+        # guard on the Megatron backend, which always uses Adam).
+        TrainConfig(
+            learning_rate=1e-5,
+            lr_scheduler='constant',
+            warmup_ratio=0.0,
+            per_device_train_batch_size=per_device_batch,
+            per_device_eval_batch_size=2,
+            eval_steps=(eval_steps or None),
+            gradient_accumulation_steps=ga,
+            max_steps=max_steps,
+            max_grad_norm=1.0),
+        # mode='ray' is explicit: this test relies on the Ray driver scatter (slice_dp splits each
+        # driver batch across the 2 DP ranks -- see the per_device_train_batch_size note above), and
+        # DistributedConfig.mode defaults to 'local', where slice_dp no-ops and the dataloader shards
+        # instead.
+        DistributedConfig(
+            backend='megatron',
+            bridge_backend=bridge_backend,
+            nproc_per_node=2,
+            context_parallel_size=context_parallel_size,
+            mode='ray'),
+        CheckpointConfig(),
+        output_dir=out_dir,
+    )
+
+
+@pytest.mark.slow
+def test_run_sft_megatron_evaluate_returns_metrics(tmp_path):
+    """Evaluator.evaluate() must work on the Megatron backend (contract 9): eval goes through
+    forward_only, and Megatron's calculate_loss raises NotImplementedError (pipeline scheduler
+    fuses loss into forward), which evaluate() swallows because the loss is already populated.
+
+    This guards that fallback end-to-end: a run_sft with eval_steps>0 + a val split drives
+    evaluate() during training. If the NotImplementedError weren't caught, evaluate() -- and thus
+    run_sft -- would raise; a green run is the guard. mcore-bridge only (backend-agnostic eval path;
+    the two-bridge equality is gated elsewhere).
+    """
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+
+    # 8 rows so a 0.25 val split yields a non-empty eval set (>=2 for DP=2 eval batch).
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_identical_dataset(data_path, n=8)
+    # eval_steps=1 -> evaluate() runs every optimizer step (and a final eval), exercising the
+    # Megatron forward_only + calculate_loss-NotImplementedError fallback repeatedly.
+    history = _run_megatron_sft(
+        'mcore-bridge',
+        data_path,
+        str(tmp_path / 'out'),
+        per_device_batch=2,
+        max_steps=2,
+        eval_steps=1,
+        split_dataset_ratio=0.25)
+    # A green run means evaluate() completed (no uncaught NotImplementedError from calculate_loss).
+    assert history, 'run_sft (megatron eval) produced no optimizer steps'
+    losses = [r['loss'] for r in history]
+    assert all(loss == loss and abs(loss) != float('inf') for loss in losses), \
+        f'non-finite loss: {losses}'
+
+
+@pytest.mark.slow
+def test_run_sft_megatron_context_parallel_end_to_end(tmp_path):
+    """Megatron SFT with context parallelism (cp=2) must train end-to-end.
+
+    CP splits every sequence across the CP ranks: twinkle pads the sequence to a multiple of
+    2*cp_size and runs ring attention over the CP group, and the Megatron strategy normalizes the
+    gradient token-count by cp_size so the loss stays per-token. This is the ONLY feature-level guard
+    that the ``context_parallel_size`` knob drives a working CP training run -- config validation
+    (test_fsdp) and the packing pad_cp unit (test_packing) check the plumbing, but nothing else
+    actually trains with cp>1, and no example exercises it. world=2 -> cp=2, dp=1.
+    """
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_toy_dataset(data_path)
+    history = _run_megatron_sft('mcore-bridge', data_path, str(tmp_path / 'out_cp'), context_parallel_size=2)
+
+    assert history, 'run_sft (megatron cp=2) produced no optimizer steps'
+    losses = [r['loss'] for r in history]
+    assert all(loss == loss and abs(loss) != float('inf') for loss in losses), \
+        f'non-finite loss: {losses}'
+    assert losses[0] < 20, f'first loss {losses[0]:.2f} too large -> not normalized (raw sum?)'
+
+    ckpt = os.path.join(str(tmp_path / 'out_cp'), 'checkpoint-final')
+    assert os.path.isdir(ckpt), f'no checkpoint dir at {ckpt}'
+    files = set(os.listdir(ckpt))
+    assert any(f.endswith('.safetensors') for f in files), \
+        f'no model weights in checkpoint: {sorted(files)}'
+    print(f'\nrun_sft megatron cp=2: steps={len(history)} losses={losses}')
+
+
+def _run_torchrun(cmd, *, timeout=1800):
+    """(stdout, stderr) from a bounded torchrun launch -- see ``Runners.launch`` for why it is bounded.
+
+    Kept as a local adapter so the four call sites below keep unpacking a pair; the launch itself lives
+    in ``Runners`` because the capability suite needs the same guarantee.
+    """
+    proc = Runners.launch(cmd, timeout=timeout)
+    return proc.stdout, proc.stderr
+
+
+def _run_backend_subprocess(backend, data_path, out_dir, result_path, steps, lr):
+    """Launch _megatron_sft_runner.py for ONE backend as a fresh torchrun subprocess.
+
+    Each backend runs in its OWN process because a legacy MegatronTrainer and dev-Megatron cannot
+    coexist in one process (the first leaves Megatron/TE global state -- parallel_state, TE backend,
+    RNG -- that NaN-poisons the second). Returns the per-step loss list read back from result_path.
+    """
+    import sys
+
+    runner = Runners.path('megatron_sft')
+    # Distinct port per backend so a lingering rendezvous from a previous backend cannot be joined.
+    port_offset = {'dev': 0, 'legacy': 1, 'dev_cli': 2}[backend]
+    cmd = [
+        sys.executable,
+        '-m',
+        'torch.distributed.run',
+        '--nproc_per_node=2',
+        f'--master_port={_master_port(port_offset)}',
+        runner,
+        '--backend',
+        backend,
+        '--data',
+        data_path,
+        '--out',
+        result_path,
+        '--out_dir',
+        out_dir,
+        '--steps',
+        str(steps),
+        '--lr',
+        str(lr),
+    ]
+    out, err = _run_torchrun(cmd)
+    if not os.path.exists(result_path):
+        raise AssertionError(f'{backend} runner produced no result file. stdout tail:\n{out[-2000:]}\n'
+                             f'stderr tail:\n{err[-3000:]}')
+    with open(result_path) as f:
+        return json.load(f)['losses']
+
+
+@pytest.mark.slow
+def test_run_sft_megatron_vs_legacy_loss(tmp_path):
+    """dev-Megatron SFT must track legacy megatron_sft_main step-for-step (same model/data/hparams).
+
+    dev (run_sft, mode='local') and legacy (megatron_sft_main) both build the same mcore GPTModel
+    and train the same bf16 0.5B at bs=1/ga=1, each in its OWN torchrun subprocess (they cannot share
+    a process -- see _run_backend_subprocess). bf16 is megatron's production dtype, so this compares
+    the path real users run (dev-Megatron's fp32 construction is separately gated by the two-bridge
+    bit test).
+
+    Data: every row is IDENTICAL -- and this is load-bearing. dev and legacy reduce the reported loss
+    across DP DIFFERENTLY: dev is avg-of-avg (each rank self-normalizes loss/count, then op=AVG across
+    DP; megatron.py:527/550); legacy is token-weighted global mean (op=SUM on [sum,count] then divide;
+    trainer.py loss_func). These are equal ONLY when every DP rank has the same token count. With
+    DISTINCT rows the ranks get different-length samples and the two reductions diverge for a pure
+    LOGGING-convention reason (the 63% gap first observed), NOT a construction bug. Identical rows
+    force equal per-rank token counts so the two reductions coincide by construction, leaving a step-1
+    mismatch attributable only to a real construction/normalization difference. (Training gradients
+    match regardless; only the logged scalar's DP reduction differs.)
+
+    Precision policy (bands set from OBSERVED bf16 noise, not guessed):
+      - step-0 loss (no optimizer update yet) must match tightly (rel < 1e-2): pure forward
+        agreement, the load-bearing construction/normalization gate. Observed identical-data rel
+        ~3e-3; 1e-2 sits just above that noise floor and still catches a ~1% drift.
+      - later steps: relative tolerance is meaningless here because identical repeated data overfits
+        to near-zero loss within 3 steps (observed dev [0.20, 0.04, 4e-4]); a ~0.01 absolute bf16 gap
+        then reads as ~20% relative. So later steps assert TRAJECTORY agreement instead: both backends
+        strictly decreasing + small ABSOLUTE per-step gap.
+    """
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_identical_dataset(data_path, n=4)
+    steps, lr = 3, 1e-5
+
+    dev_losses = _run_backend_subprocess('dev', data_path, str(tmp_path / 'dev_out'), str(tmp_path / 'dev.json'), steps,
+                                         lr)
+    legacy_losses = _run_backend_subprocess('legacy', data_path, str(tmp_path / 'legacy_out'),
+                                            str(tmp_path / 'legacy.json'), steps, lr)
+
+    print(f'\nmegatron dev-vs-legacy: dev={dev_losses} legacy={legacy_losses}')
+    assert dev_losses and legacy_losses, f'empty losses: dev={dev_losses} legacy={legacy_losses}'
+    assert all(loss == loss for loss in dev_losses + legacy_losses), \
+        f'NaN loss: dev={dev_losses} legacy={legacy_losses}'
+    n = min(len(dev_losses), len(legacy_losses))
+    assert n >= 1, f'no comparable steps: dev={dev_losses} legacy={legacy_losses}'
+
+    rel0 = abs(dev_losses[0] - legacy_losses[0]) / max(abs(legacy_losses[0]), 1e-8)
+    assert rel0 < 1e-2, (f'step-0 dev-vs-legacy construction mismatch: dev={dev_losses[0]:.6f} '
+                         f'legacy={legacy_losses[0]:.6f} rel={rel0:.2e} (limit 1e-2)')
+
+    for i in range(1, n):
+        assert dev_losses[i] < dev_losses[i - 1], f'dev loss not decreasing: {dev_losses}'
+        assert legacy_losses[i] < legacy_losses[i - 1], f'legacy loss not decreasing: {legacy_losses}'
+        gap = abs(dev_losses[i] - legacy_losses[i])
+        assert gap < 0.05, (f'step {i} dev-vs-legacy absolute loss gap too large: dev={dev_losses[i]:.6f} '
+                            f'legacy={legacy_losses[i]:.6f} gap={gap:.4f} (limit 0.05)')
+
+
+@pytest.mark.slow
+def test_megatron_cli_vs_legacy_loss(tmp_path):
+    """The dev Megatron CLI must train identically to legacy given the SAME argv.
+
+    Sibling of test_run_sft_megatron_vs_legacy_loss, one layer up: that test drives dev by building
+    Configs directly, so it validates the Megatron training path. This one drives dev through
+    ``swift.dev.cli.megatron.megatron_sft_main`` on legacy's own ``MegatronSftArguments`` parser, so
+    it validates the argv -> Config MAPPING as well -- the renames (lr / train_iters /
+    micro_batch_size / adam_eps / lr_decay_style), the gradient_accumulation_steps derivation from
+    global_batch_size, and the dev-only backend/mode/nproc_per_node the entry point must set itself.
+
+    Why this is the mapping's real gate: a missed rename does not raise, it silently trains at a dev
+    default (e.g. lr falls back to 1e-5), which the fast tests catch only for the fields they name.
+    Here any such fallback shows up as a step-0 loss divergence, because both sides parsed the same
+    flags. The two dev backends stay separable on purpose: if only dev_cli moves, the mapping is at
+    fault; if dev moves too, the Megatron path is.
+
+    Data/precision policy is inherited verbatim from the sibling test -- identical rows to force
+    equal per-DP-rank token counts (dev logs avg-of-avg, legacy token-weighted; they coincide only
+    then), step-0 rel < 1e-2 as the construction gate, later steps by trajectory + absolute gap.
+    """
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_identical_dataset(data_path, n=4)
+    steps, lr = 3, 1e-5
+
+    cli_losses = _run_backend_subprocess('dev_cli', data_path, str(tmp_path / 'cli_out'), str(tmp_path / 'cli.json'),
+                                         steps, lr)
+    legacy_losses = _run_backend_subprocess('legacy', data_path, str(tmp_path / 'legacy_out'),
+                                            str(tmp_path / 'legacy.json'), steps, lr)
+
+    print(f'\nmegatron CLI-vs-legacy: cli={cli_losses} legacy={legacy_losses}')
+    assert cli_losses and legacy_losses, f'empty losses: cli={cli_losses} legacy={legacy_losses}'
+    assert all(loss == loss for loss in cli_losses + legacy_losses), \
+        f'NaN loss: cli={cli_losses} legacy={legacy_losses}'
+    n = min(len(cli_losses), len(legacy_losses))
+    assert n >= 1, f'no comparable steps: cli={cli_losses} legacy={legacy_losses}'
+
+    rel0 = abs(cli_losses[0] - legacy_losses[0]) / max(abs(legacy_losses[0]), 1e-8)
+    assert rel0 < 1e-2, (f'step-0 CLI-vs-legacy mismatch (argv mapped to different hyperparameters?): '
+                         f'cli={cli_losses[0]:.6f} legacy={legacy_losses[0]:.6f} rel={rel0:.2e} (limit 1e-2)')
+
+    for i in range(1, n):
+        assert cli_losses[i] < cli_losses[i - 1], f'cli loss not decreasing: {cli_losses}'
+        assert legacy_losses[i] < legacy_losses[i - 1], \
+            f'legacy loss not decreasing: {legacy_losses}'
+        gap = abs(cli_losses[i] - legacy_losses[i])
+        assert gap < 0.05, (f'step {i} CLI-vs-legacy absolute loss gap too large: cli={cli_losses[i]:.6f} '
+                            f'legacy={legacy_losses[i]:.6f} gap={gap:.4f} (limit 0.05)')
+
+
+def _run_dense_backend(backend, out_dir, result_path, steps, *, model=None, dataset=None):
+    """Launch _megatron_dense_runner.py for ONE backend (dense.sh-shaped config) via torchrun.
+
+    Separate from _run_backend_subprocess because this runner takes a different flag set and returns
+    an lr trajectory as well; same isolation reason though (legacy and dev-Megatron cannot share a
+    process). Returns (losses, lrs).
+    """
+    import sys
+
+    runner = Runners.path('megatron_dense')
+    port = _master_port(3 + (1 if backend == 'legacy' else 0))
+    cmd = [
+        sys.executable,
+        '-m',
+        'torch.distributed.run',
+        '--nproc_per_node=2',
+        f'--master_port={port}',
+        runner,
+        '--backend',
+        backend,
+        '--out',
+        result_path,
+        '--out_dir',
+        out_dir,
+        '--steps',
+        str(steps),
+    ]
+    if model:
+        cmd += ['--model', model]
+    if dataset:
+        cmd += ['--dataset'] + list(dataset)
+    out, err = _run_torchrun(cmd, timeout=3600)
+    if not os.path.exists(result_path):
+        raise AssertionError(f'{backend} dense runner produced no result file. stdout tail:\n{out[-2000:]}\n'
+                             f'stderr tail:\n{err[-3000:]}')
+    with open(result_path) as f:
+        data = json.load(f)
+    return data['losses'], data['lrs']
+
+
+@pytest.mark.slow
+def test_megatron_dense_cli_vs_legacy_50_steps(tmp_path):
+    """dense.sh-shaped 50-step run: lr must match legacy BIT-FOR-BIT, loss within an observed band.
+
+    Config mirrors examples/megatron/lora/dense.sh (tp=2 + sequence_parallel, micro=global=16, LoRA,
+    warmup_fraction + cosine + min_lr, recompute full/uniform/1) -- i.e. every argv-mapping branch at
+    once, which is what a minimal bs=1/tp=1 comparison cannot reach. Both sides parse the SAME argv.
+
+    Judgement, split by what is physically achievable (bands from OBSERVED values, never guessed):
+      - lr, all 50 steps: EXACT equality. lr is a closed-form function of the schedule, so it carries
+        no bf16 noise; this is the one bit-level dev-vs-legacy gate. It found two real bugs (warmup
+        budget rounded to an int; min_lr not reaching the optimizer, so cosine decayed past the floor
+        to 0) -- both now also pinned CPU-only in test_megatron_lr_schedule.py.
+      - loss: banded, NOT bit-level, but compared STEP-FOR-STEP across all 50 steps. The band is
+        widest at step 0 and narrows after -- the opposite of drift:
+            step 0     0.5B abs 0.015 (rel 8.0e-3) / 7B abs 0.094 (rel 6.0e-2)
+            steps 1-3  0.5B abs <=0.017          / 7B abs <=0.21 (worst point, step 2)
+            steps 4+   0.5B abs <=0.037          / 7B abs <=0.017
+        Scale-dependent and front-loaded, which is the signature of per-layer bf16 accumulation in
+        the forward, not of a schedule or data-order bug: dataloader_num_workers=0 leaves step 0
+        unchanged and the lr sequences are bit-identical.
+
+        This test previously needed a shift-aware comparison past the first epoch boundary, because
+        dev trained the trailing partial batch while legacy dropped it (500 samples at
+        global_batch_size 16 = 31.25 steps/epoch), putting dev one step behind from step 32 on.
+        That was a real defect, now fixed: builders/dataset.py::_drop_last returns True on the
+        Megatron backend, matching legacy's train sampler
+        (MegatronPretrainingRandomSampler, which has no drop_last knob and discards the remainder
+        unconditionally via last_batch_size/active_total_samples --
+        swift/megatron/trainers/batch_sampler.py:100,114).
+        The fix is confirmed in both directions -- aligned max fell 0.4356 -> 0.0368 while the
+        one-step-shifted comparison went from better-than-aligned (0.001-0.03) to far worse (0.68),
+        i.e. the offset is genuinely gone rather than merely smaller.
+    """
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs >=2 GPUs (tp=2 in the dense.sh config)')
+
+    steps = 50
+    cli_losses, cli_lrs = _run_dense_backend('dev_cli', str(tmp_path / 'cli_out'), str(tmp_path / 'cli.json'), steps)
+    legacy_losses, legacy_lrs = _run_dense_backend('legacy', str(tmp_path / 'legacy_out'),
+                                                   str(tmp_path / 'legacy.json'), steps)
+
+    print(f'\ndense cli  lr[:3]={cli_lrs[:3]} loss[:3]={cli_losses[:3]}')
+    print(f'dense leg  lr[:3]={legacy_lrs[:3]} loss[:3]={legacy_losses[:3]}')
+
+    # --- lr: bit-level ---
+    assert len(cli_lrs) == len(legacy_lrs) == steps, \
+        f'step count mismatch: cli={len(cli_lrs)} legacy={len(legacy_lrs)}'
+    lr_mismatch = [(i, cli_lrs[i], legacy_lrs[i]) for i in range(steps) if cli_lrs[i] != legacy_lrs[i]]
+    assert not lr_mismatch, (f'lr differs from legacy at {len(lr_mismatch)}/{steps} steps (the schedule mapping is '
+                             f'wrong, not a precision issue); first 3: {lr_mismatch[:3]}')
+
+    # --- loss ---
+    # Absolute gaps, not relative: loss dips toward ~0.1 in places, where a numerically tiny gap
+    # reads as a huge percentage.
+    n = min(len(cli_losses), len(legacy_losses))
+    assert all(x == x for x in cli_losses + legacy_losses), \
+        f'NaN loss: cli={cli_losses} legacy={legacy_losses}'
+
+    gaps = [abs(cli_losses[i] - legacy_losses[i]) for i in range(n)]
+    for i in range(min(4, n)):
+        assert gaps[i] < 0.30, (f'step {i} (forward-dominated) absolute loss gap {gaps[i]:.4f} exceeds 0.30 '
+                                f'(cli={cli_losses[i]:.6f} legacy={legacy_losses[i]:.6f})')
+    for i in range(4, n):
+        assert gaps[i] < 0.08, (f'step {i} absolute loss gap {gaps[i]:.4f} exceeds 0.08 '
+                                f'(cli={cli_losses[i]:.6f} legacy={legacy_losses[i]:.6f})')
+
+    mean_gap = sum(gaps) / n
+    assert mean_gap < 0.02, (
+        f'mean absolute loss gap over {n} steps is {mean_gap:.4f} (limit 0.02) -- the trajectories '
+        f'are drifting apart, not just jittering')
+
+    # A step offset would make the shifted comparison the better one; assert it is NOT, so a
+    # reintroduced partial-batch mismatch cannot hide inside the bands above.
+    if n > 5:
+        shifted = [abs(cli_losses[i] - legacy_losses[i - 1]) for i in range(1, n)]
+        assert sum(shifted) / len(shifted) > mean_gap, (
+            'the one-step-shifted comparison fits better than the aligned one -- dev and legacy are '
+            'off by a step again (check drop_last / partial-batch handling)')
+
+    assert max(cli_losses) < 20 and max(legacy_losses) < 20, 'a side diverged'
+
+
+def _run_resume_phase(phase, out_dir, result_path, *, resume_from=None, steps=3):
+    """Launch _megatron_resume_runner.py for ONE phase as a fresh torchrun subprocess (mode='local').
+
+    Each phase runs in its own clean process (no shared Megatron/TE global state). Returns the
+    result dict {phase, losses, weights_path, optim_dir} read back from result_path.
+    """
+    import sys
+
+    runner = Runners.path('megatron_resume')
+    ports = {'A': _master_port(5), 'B': _master_port(6), 'cont': _master_port(7), 'resume_cont': _master_port(8)}
+    cmd = [
+        sys.executable,
+        '-m',
+        'torch.distributed.run',
+        '--nproc_per_node=2',
+        f'--master_port={ports[phase]}',
+        runner,
+        '--phase',
+        phase,
+        '--out',
+        result_path,
+        '--out_dir',
+        out_dir,
+        '--steps',
+        str(steps),
+    ]
+    if resume_from is not None:
+        cmd += ['--resume_from', resume_from]
+    out, err = _run_torchrun(cmd)
+    if not os.path.exists(result_path):
+        raise AssertionError(f'resume phase {phase} produced no result file. stdout tail:\n{out[-2000:]}\n'
+                             f'stderr tail:\n{err[-3000:]}')
+    with open(result_path) as f:
+        return json.load(f)
+
+
+@pytest.mark.slow
+def test_run_sft_megatron_local_save_resume(tmp_path):
+    """Megatron mode='local' (torchrun) save + resume closed loop, 3-layer criteria.
+
+    Validates that a mode='local' Megatron checkpoint is not only written but restores correctly.
+    (An earlier "local save fails" report was traced to /tmp disk exhaustion -- each fp32 ckpt with
+    Adam optimizer state is ~7GB, and 4 accumulated ckpts fill a 30GB /tmp; the save code itself is
+    sound. This test guards the restore, which "save didn't crash" does NOT prove: load_state_dict(
+    strict=False) at twinkle megatron.py:1204/1209 silently tolerates missing/misplaced shards.)
+
+    Three layers, each catching a distinct failure mode:
+      1. MAIN (weights bit-exact, load-bearing): phase A trains from seed 0 and saves; phase B inits
+         from a DIFFERENT seed (999), resumes A, trains 0 steps, saves. A complete resume overwrites
+         the seed-999 init entirely, so B's weights must equal A's max|diff|==0. Any non-zero diff
+         means strict=False silently dropped/misplaced a weight shard.
+      2. SECONDARY (optimizer existence): A and B optimizer dist-ckpts must have the same file set
+         (both DP shards + metadata). Catches whole-shard loss/misplacement. NOTE: optimizer momentum
+         ROUND-TRIP NUMERIC accuracy is NOT directly gated here -- a 0-step resume has no cheap direct
+         criterion and the last bits carry known upstream mcore noise (~1.6e-3/step full-param); numeric
+         fidelity is covered end-to-end by layer 3 instead.
+      3. TRAJECTORY (must, not optional): interrupt-resume vs continuous training. cont trains 2N
+         steps straight; resume_cont resumes A (already N steps) and trains N more. Their overlapping
+         steps must match -- the ONLY end-to-end signal that optimizer momentum was restored to the
+         SAVED values (not silently reloaded as zero, which layers 1-2 cannot see). Bands pinned from a
+         SMOOTH-trajectory observation (lr=1e-6 so loss decreases monotonically; a larger lr diverges
+         and makes the diff chaotic/unattributable):
+           - step right after resume (optimizer-most-sensitive): abs diff < 1e-3 (observed 0.0000;
+             a zero/misloaded momentum would offset this step by O(0.1)).
+           - later overlapping steps: abs diff < 1e-2 (observed monotonic accumulation up to 4.9e-3
+             from full-param momentum round-trip; still an order of magnitude below O(0.1)).
+    """
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+
+    from safetensors.torch import load_file
+    steps = 3
+    out = str(tmp_path / 'rz')
+
+    # --- layers 1+2: seed-differentiated weight bit-exact + optimizer existence ---
+    a = _run_resume_phase('A', out, str(tmp_path / 'A.json'), steps=steps)
+    b = _run_resume_phase('B', out, str(tmp_path / 'B.json'), resume_from=os.path.join(out, 'ckpt-A'), steps=steps)
+
+    wa, wb = load_file(a['weights_path']), load_file(b['weights_path'])
+    common = [k for k in wa if k in wb]
+    assert common and not [k for k in wa if k not in wb], \
+        f'weight key mismatch: A-only={[k for k in wa if k not in wb][:4]}'
+    max_diff = max((wa[k].float() - wb[k].float()).abs().max().item() for k in common)
+    print(f'\nresume MAIN: weights max|diff|={max_diff:.3e} over {len(common)} params')
+    assert max_diff == 0.0, (f'resume did NOT fully restore weights (strict=False silently dropped a shard?): '
+                             f'seed-999 phase B != seed-0 phase A, max|diff|={max_diff:.3e} over {len(common)} params')
+
+    a_optim = set(os.listdir(a['optim_dir']))
+    b_optim = set(os.listdir(b['optim_dir']))
+    print(f'resume SECONDARY: optim files A={sorted(a_optim)} B={sorted(b_optim)}')
+    assert a_optim == b_optim and any(f.endswith('.distcp') for f in a_optim), \
+        f'optimizer dist-ckpt file set differs / no shards: A={sorted(a_optim)} B={sorted(b_optim)}'
+
+    # --- layer 3 (must): interrupt-resume vs continuous trajectory ---
+    cont = _run_resume_phase('cont', out, str(tmp_path / 'cont.json'), steps=steps)['losses']
+    # free cont's ckpt before resume_cont writes its own (each fp32+optim ckpt is ~7GB; /tmp is 30GB)
+    import shutil
+    shutil.rmtree(os.path.join(out, 'ckpt-cont'), ignore_errors=True)
+    rc = _run_resume_phase(
+        'resume_cont', out, str(tmp_path / 'rc.json'), resume_from=os.path.join(out, 'ckpt-A'), steps=steps)['losses']
+
+    # cont = [s1..s2N]; resume_cont = [s(N+1)..s2N]. Overlap starts at cont[steps].
+    overlap = [(cont[steps + i], rc[i]) for i in range(len(rc)) if steps + i < len(cont)]
+    print(f'\nresume TRAJECTORY: cont={cont} resume_cont={rc} overlap={overlap}')
+    assert overlap, f'no overlapping steps: cont={cont} resume_cont={rc}'
+    for i, (c, r) in enumerate(overlap):
+        diff = abs(c - r)
+        limit = 1e-3 if i == 0 else 1e-2  # i==0 is the resume-immediate step (momentum-most-sensitive)
+        assert diff < limit, (f'resume trajectory step {i} (cont={c:.6f} vs resume_cont={r:.6f}) diff={diff:.3e} '
+                              f'>= {limit} -> optimizer momentum not restored to saved values (loaded as zero?)')
+
+    # Release the remaining checkpoints (ckpt-A, ckpt-B, ckpt-resume_cont -- ~7GB each). Unlike the
+    # other Megatron runners, this cleanup cannot live inside the runner: ckpt-A is phase B's and
+    # resume_cont's INPUT, so it must survive until every phase has run. Placed after the assertions
+    # on purpose -- if one fails, the checkpoints are the evidence and are worth keeping. pytest only
+    # retains the last few basetemp dirs, so a failed run's leftovers still get reclaimed eventually.
+    shutil.rmtree(out, ignore_errors=True)
+
+
+def _write_imbalanced_dataset(path):
+    """Two samples differing in BOTH token count and per-token loss -- both differences are needed.
+
+    A token-weighted global mean and an avg-of-avg coincide when every rank holds the same number of
+    tokens (identical rows are used elsewhere in this file precisely to make them coincide), and they
+    coincide again when the per-token losses match. So the two conventions can only be told apart by a
+    short fluent answer against a long implausible one: that separates them by far more than bf16
+    noise, while equal-length or equally-surprising rows would let the broken path pass.
+    """
+    rows = [
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'What is 2+2?'
+            }, {
+                'role': 'assistant',
+                'content': '4.'
+            }]
+        },
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'Repeat this code exactly.'
+            }, {
+                'role': 'assistant',
+                'content': ' '.join(['qx7', 'zzp', '44b', 'kkv', 'w9q'] * 12)
+            }]
+        },
+    ]
+    with open(path, 'w') as f:
+        for r in rows:
+            f.write(json.dumps(r) + '\n')
+
+
+def _run_hf_shape(shape, data_path, out_dir, result_prefix):
+    """Launch _hf_dp_runner.py for ONE shape; returns one result dict per rank.
+
+    dp2 goes through torchrun (2 ranks, one sample each); single is a plain process, which is how a
+    one-GPU user actually runs it -- WORLD_SIZE unset, so twinkle's default mesh is dp=1 and the
+    reported loss is just sum/tokens over the whole batch. Both use _run_torchrun for its
+    process-group kill, since a hung rank otherwise blocks on inherited pipes forever.
+    """
+    import sys
+
+    runner = Runners.path('hf_dp')
+    cmd = [sys.executable]
+    if shape == 'dp2':
+        cmd += ['-m', 'torch.distributed.run', '--nproc_per_node=2', f'--master_port={_master_port(9)}']
+    cmd += [runner, '--shape', shape, '--data', data_path, '--out', result_prefix, '--out_dir', out_dir]
+    out, err = _run_torchrun(cmd)
+
+    results = []
+    for rank in range(2 if shape == 'dp2' else 1):
+        path = f'{result_prefix}.rank{rank}.json'
+        if not os.path.exists(path):
+            raise AssertionError(f'{shape} runner produced no result for rank {rank}. stdout tail:\n{out[-2000:]}\n'
+                                 f'stderr tail:\n{err[-3000:]}')
+        with open(path) as f:
+            results.append(json.load(f))
+    return results
+
+
+@pytest.mark.slow
+def test_run_sft_hf_dp_loss_is_globally_token_weighted(tmp_path):
+    """2-GPU transformers SFT must train on (and report) the GLOBAL token-weighted loss.
+
+    This is the multi-GPU counterpart of the single-GPU legacy-vs-dev comparison, and it exists
+    because that comparison cannot see the failure: with device_mesh=None every rank normalises by its
+    OWN token count, so one GPU looks perfect while two GPUs silently optimise a different objective
+    (an avg-of-avg of per-rank means instead of legacy's global_sum_grad / global_num_tokens). dev
+    shipped that way -- run_sft returned before twinkle.initialize on this backend, and remote_class
+    then dropped the mesh -- and no test noticed, because there was no multi-GPU test on this path.
+
+    Reference is the SAME two samples in one process (bs=2), which by construction reports
+    sum_loss/total_tokens -- exactly what legacy computes. A dp2 run that aggregates correctly must
+    land on it; a broken one reports whatever its own rank held, and the deliberately imbalanced rows
+    (see _write_imbalanced_dataset) put that tens of percent away.
+
+    Three assertions, each pinning a different link:
+      - plumbing: mesh present with dp world size 2, dp group built. This is the gradient side --
+        calculate_loss reads _get_dp_fsdp_world_size() straight off the mesh, so a right mesh here IS
+        the right divisor, which no logged scalar can prove on its own.
+      - cross-rank identity: both ranks report one number, i.e. the gather happened.
+      - value: that number equals the single-process token-weighted mean (band from bf16 noise).
+
+    Every number below is measured, including the failing side -- the pre-fix behaviour was replayed
+    on purpose to check this test can see it. Fixed: both ranks 0.7794 against a single-process 0.7764
+    (rel 3.9e-3, pure bf16 grouping noise, so the 2e-2 band has room without going slack). Pre-fix:
+    mesh absent, rank0 reported 2.6482 and rank1 0.7321 -- each its own sample, with rank0 off the
+    global value by 241%. All three assertion groups fire on that, which is the point of having them.
+    """
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs >=2 GPUs')
+
+    data_path = str(tmp_path / 'imbalanced.jsonl')
+    _write_imbalanced_dataset(data_path)
+
+    dp2 = _run_hf_shape('dp2', data_path, str(tmp_path / 'dp2_out'), str(tmp_path / 'dp2'))
+    single = _run_hf_shape('single', data_path, str(tmp_path / 'single_out'), str(tmp_path / 'single'))
+
+    print(f'\nHF dp aggregation: dp2={[r["losses"] for r in dp2]} single={single[0]["losses"]}')
+    for r in dp2:
+        assert r['device_mesh_present'], (
+            f'rank {r["rank"]}: device_mesh is None -- remote_class dropped it, so the gradient '
+            'divisor is 1 instead of the dp world size (call twinkle.initialize before build_model)')
+        assert r['dp_world_size'] == 2, (
+            f'rank {r["rank"]}: mesh reports dp world size {r["dp_world_size"]}, not 2 -- the token '
+            'count would be normalised by the wrong divisor')
+        assert r['dp_group_present'], (
+            f'rank {r["rank"]}: dp process group not built, so LossMetric skips its gather and this '
+            "rank only ever reports its own loss (see set_optimizer's _ensure_optimizer_dp_groups)")
+
+    assert dp2[0]['losses'] == dp2[1]['losses'], (
+        f'ranks disagree: rank0={dp2[0]["losses"]} rank1={dp2[1]["losses"]} -- each is reporting its '
+        'own loss instead of the dp-wide aggregate')
+
+    ref, got = single[0]['losses'][0], dp2[0]['losses'][0]
+    rel = abs(got - ref) / max(abs(ref), 1e-8)
+    assert rel < 0.02, (f'dp2 loss {got:.6f} is not the global token-weighted mean {ref:.6f} (rel={rel:.2e}, limit '
+                        '2e-2): the two shapes trained on the same two samples, so this gap is an aggregation '
+                        'convention difference, not noise')
+
+
+def _accel_device_count() -> int:
+    """Accelerator count, CUDA or NPU -- the cuda-only gates above all skip on an Ascend machine."""
+    if torch.cuda.is_available():
+        return torch.cuda.device_count()
+    try:
+        import torch_npu  # noqa: F401
+        return torch.npu.device_count() if torch.npu.is_available() else 0
+    except ImportError:
+        return 0
+
+
+def _flash_attn_available() -> bool:
+    """Flash attention per twinkle's SP gate (transformers' is_flash_attn_available, which counts
+    torch_npu/torch_xpu as flash-capable -- is_flash_attn_2_available alone would skip on Ascend)."""
+    try:
+        from transformers.modeling_flash_attention_utils import is_flash_attn_available
+        return is_flash_attn_available()
+    except Exception:
+        return False
+
+
+def _run_hf_sp_shape(shape, data_path, out_dir, result_prefix, padding_free, port_offset, nproc=None, sp_size=2):
+    """Launch the hf_sp runner for ONE shape; returns one result dict per rank. Sibling of
+    _run_hf_shape -- sp2 goes through torchrun (2 ranks, half a sequence each), single is a plain
+    process. nproc overrides the rank count (torchrun x4 + sp_size=2 is the hybrid dp+sp layout)."""
+    import sys
+
+    if nproc is None:
+        nproc = 2 if shape == 'sp2' else 1
+    runner = Runners.path('hf_sp')
+    cmd = [sys.executable]
+    if nproc > 1:
+        cmd += [
+            '-m', 'torch.distributed.run', f'--nproc_per_node={nproc}', f'--master_port={_master_port(port_offset)}'
+        ]
+    cmd += [runner, '--shape', shape, '--data', data_path, '--out', result_prefix, '--out_dir', out_dir]
+    if padding_free:
+        cmd += ['--padding_free']
+    if sp_size != 2:
+        cmd += ['--sp_size', str(sp_size)]
+    out, err = _run_torchrun(cmd)
+
+    results = []
+    for rank in range(nproc):
+        path = f'{result_prefix}.rank{rank}.json'
+        if not os.path.exists(path):
+            raise AssertionError(f'{shape} runner produced no result for rank {rank}. stdout tail:\n{out[-2000:]}\n'
+                                 f'stderr tail:\n{err[-3000:]}')
+        with open(path) as f:
+            results.append(json.load(f))
+    return results
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('padding_free', [False, True])
+def test_run_sft_hf_sp_matches_single(tmp_path, padding_free):
+    """sp=2 transformers SFT must report the SAME loss as a single-process run on the same batch.
+
+    Ulysses SP is a pure re-partition: both SP ranks receive identical samples (the loader slices by
+    data_world_size = world/ulysses) and each computes half of every sequence, then twinkle's
+    gather_loss_tensors reassembles the global token-weighted loss. So the sp2 loss must land on the
+    single-process loss within bf16 band, exactly like the dp2 aggregation test above.
+
+    padding_free=False runs the padded path (default sdpa kernel, portable); padding_free=True runs
+    the variable-length path, which twinkle's SP strategy gates on a flash attention kernel -- that
+    parametrization skips where flash-attn is unavailable.
+
+    Three assertion groups, mirroring the dp2 test:
+      - plumbing: mesh ulysses_size==2, data_world_size==1, sp_strategy constructed after training;
+      - cross-rank identity: both SP ranks report the same loss (the gather replicated it);
+      - value: sp2 loss ~= single-process loss (rel < 2e-2 band, same as dp2).
+    """
+    if _accel_device_count() < 2:
+        pytest.skip('needs >=2 accelerators')
+    if padding_free and not _flash_attn_available():
+        pytest.skip('padding_free + SP requires flash attention (flash_attn/torch_npu), not available')
+
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_toy_dataset(data_path)
+    port_offset = 12 if padding_free else 11
+    tag = 'pf' if padding_free else 'pad'
+
+    sp2 = _run_hf_sp_shape('sp2', data_path, str(tmp_path / f'sp2_{tag}_out'), str(tmp_path / f'sp2_{tag}'),
+                           padding_free, port_offset)
+    single = _run_hf_sp_shape('single', data_path, str(tmp_path / f'single_{tag}_out'),
+                              str(tmp_path / f'single_{tag}'), padding_free, port_offset + 2)
+
+    print(f'\nHF sp (padding_free={padding_free}): sp2={[r["losses"] for r in sp2]} single={single[0]["losses"]}')
+    for r in sp2:
+        assert r['ulysses_size'] == 2, (
+            f'rank {r["rank"]}: mesh ulysses_size={r["ulysses_size"]}, not 2 -- the SP mesh did not '
+            'reach TransformersModel (build_dp_mesh / device_mesh kwarg broken)')
+        assert r['data_world_size'] == 1, (
+            f'rank {r["rank"]}: data_world_size={r["data_world_size"]}, not world/ulysses=1 -- the '
+            'loader would hand SP peers different samples')
+        assert r['enable_sp'], f'rank {r["rank"]}: model._enable_sp is False -- SP did not activate'
+        assert r['sp_strategy_present'], (
+            f'rank {r["rank"]}: sp_strategy never constructed -- the first-forward lazy init did not run')
+
+    assert sp2[0]['losses'] == sp2[1]['losses'], (
+        f'SP ranks disagree: rank0={sp2[0]["losses"]} rank1={sp2[1]["losses"]} -- gather_loss_tensors '
+        'did not replicate the loss across the SP group')
+
+    ref, got = single[0]['losses'][0], sp2[0]['losses'][0]
+    rel = abs(got - ref) / max(abs(ref), 1e-8)
+    assert rel < 0.02, (f'sp2 loss {got:.6f} != single-process loss {ref:.6f} (rel={rel:.2e}, limit 2e-2): SP is '
+                        'a pure re-partition over the same global batch, so this gap is a real split/gather '
+                        'bug, not noise')
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('padding_free', [False, True])
+def test_run_sft_hf_sp_hybrid_dp(tmp_path, padding_free):
+    """Hybrid layout: torchrun x4 with sp=2 -- world=4, ulysses=2, so data_world_size=2 and the two
+    SP groups train on DIFFERENT data slices (twinkle data_rank = dp_rank // ulysses_size: ranks
+    {0,1} -> data 0, ranks {2,3} -> data 1). Baseline: torchrun x2 with sp=1 (pure DP, world=2) --
+    with shuffle off the sampler hands data_rank d the same rows in both runs, so hybrid rank 2d
+    must report the baseline rank d loss (within bf16 band), and each SP pair must agree exactly.
+
+    Assertion groups:
+      - plumbing: ulysses_size==2, data_world_size==2, data_rank == rank//2, sp_strategy present;
+      - SP-pair identity: rank0==rank1 and rank2==rank3 losses (gather replicated within the group);
+      - value: hybrid rank0 ~= dp2 rank0, hybrid rank2 ~= dp2 rank1 (rel < 2e-2, same band as the
+        sp2-vs-single and dp2 aggregation tests).
+    """
+    if _accel_device_count() < 4:
+        pytest.skip('needs >=4 accelerators for the world=4 / sp=2 hybrid layout')
+    if padding_free and not _flash_attn_available():
+        pytest.skip('padding_free + SP requires flash attention (flash_attn/torch_npu), not available')
+
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_toy_dataset(data_path)
+    port_offset = 14 if padding_free else 13
+    tag = 'pf' if padding_free else 'pad'
+
+    hybrid = _run_hf_sp_shape(
+        'sp2', data_path, str(tmp_path / f'hybrid_{tag}_out'), str(tmp_path / f'hybrid_{tag}'), padding_free,
+        port_offset, nproc=4)
+    dp2 = _run_hf_sp_shape(
+        'single', data_path, str(tmp_path / f'dp2_{tag}_out'), str(tmp_path / f'dp2_{tag}'), padding_free,
+        port_offset + 2, nproc=2)
+
+    print(f'\nHF sp hybrid (padding_free={padding_free}): '
+          f'hybrid={[r["losses"] for r in hybrid]} dp2={[r["losses"] for r in dp2]}')
+    for r in hybrid:
+        assert r['world_size'] == 4 and r['ulysses_size'] == 2, (
+            f'rank {r["rank"]}: world={r["world_size"]} ulysses={r["ulysses_size"]} -- expected the '
+            'world=4 / sp=2 hybrid mesh')
+        assert r['data_world_size'] == 2, (
+            f'rank {r["rank"]}: data_world_size={r["data_world_size"]}, not world/ulysses=2 -- the '
+            'loader layout did not switch to the hybrid mesh')
+        assert r['data_rank'] == r['rank'] // 2, (
+            f'rank {r["rank"]}: data_rank={r["data_rank"]}, expected rank//2={r["rank"] // 2} -- '
+            'data_rank = dp_rank // ulysses_size mapping broken; SP peers would see different samples')
+        assert r['enable_sp'] and r['sp_strategy_present'], (
+            f'rank {r["rank"]}: SP did not activate (enable_sp={r["enable_sp"]}, '
+            f'sp_strategy={r["sp_strategy_present"]})')
+
+    assert hybrid[0]['losses'] == hybrid[1]['losses'] and hybrid[2]['losses'] == hybrid[3]['losses'], (
+        f'SP pairs disagree: {[r["losses"] for r in hybrid]} -- gather_loss_tensors did not replicate '
+        'the loss within each SP group')
+
+    for h_rank, d_rank in ((0, 0), (2, 1)):
+        ref, got = dp2[d_rank]['losses'][0], hybrid[h_rank]['losses'][0]
+        rel = abs(got - ref) / max(abs(ref), 1e-8)
+        assert rel < 0.02, (
+            f'hybrid rank{h_rank} loss {got:.6f} != dp2 rank{d_rank} loss {ref:.6f} (rel={rel:.2e}, '
+            'limit 2e-2): same data slice, SP a pure re-partition -- a real gap is a split/gather bug')

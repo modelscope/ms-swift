@@ -251,7 +251,8 @@ def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: O
     }
     changed = _changed_fields(rollout_config)
     if mode == 'manual':
-        inert = sorted(resource_fields & changed)
+        # _changed_fields returns a list; intersection accepts any iterable while ``&`` needs a set.
+        inert = sorted(resource_fields.intersection(changed))
         if inert:
             raise ValueError(f'resource_mode="manual" does not read {inert}; select resource_mode="estimate" '
                              'or "adaptive", or remove these resource settings.')

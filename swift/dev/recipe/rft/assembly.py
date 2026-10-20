@@ -111,7 +111,8 @@ def initialize_rft_cluster(*, model_config: 'ModelConfig', template_config: 'Tem
     colocate = rollout_config.sampler_mode == 'colocate'
     sampler = build_rl_sampler(
         model_config=model_config, rollout_config=rollout_config, template=template,
-        tuner_config=tuner_config, resource_plan=resource_plan, colocate=colocate)
+        tuner_config=tuner_config, resource_plan=resource_plan, colocate=colocate,
+                   enable_sampling_replay=rl_config.enable_sampling_replay)
     params: Dict[str, Any] = {'max_tokens': rl_config.max_completion_length}
     if generation_config is not None:
         for key in ('temperature', 'top_p', 'top_k'):

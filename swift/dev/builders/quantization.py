@@ -17,7 +17,9 @@ def quantizer_kwargs(quantize_config: QuantizeConfig,
     """Translate ``QuantizeConfig`` into kwargs understood by ``twinkle.quantizer``.
 
     bnb_4bit_compute_dtype falls back to torch_dtype; None values are dropped BEFORE overrides merge
-    in, so an explicit override can still set a key whose config default is None.
+    in, so an explicit override can still set a key whose config default is None. The calibration
+    family (awq/gptq/gptq_v2) takes group_size and batch_size straight from the config so
+    programmatic callers get them too, not just the CLI.
     """
     kwargs: Dict[str, Any] = {'quant_bits': quantize_config.quant_bits}
     method = quantize_config.quant_method
@@ -31,6 +33,9 @@ def quantizer_kwargs(quantize_config: QuantizeConfig,
     elif method == 'hqq':
         kwargs.update(axis=quantize_config.hqq_axis, group_size=quantize_config.group_size,
                       skip_modules=modules_to_not_convert)
+    elif method in {'awq', 'gptq', 'gptq_v2'}:
+        kwargs.update(group_size=quantize_config.group_size,
+                      batch_size=quantize_config.quant_batch_size)
     elif method in {'eetq', 'quanto', 'fp8'}:
         kwargs['modules_to_not_convert'] = modules_to_not_convert
     kwargs = {name: value for name, value in kwargs.items() if value is not None}

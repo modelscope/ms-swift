@@ -139,7 +139,7 @@ def build_model(model_config: ModelConfig,
             instance_id=instance_id,
             enable_router_replay=enable_router_replay)
     if torch_dtype is not None:
-        model_config = copy(model_config)
+        model_config = copy.copy(model_config)
         model_config.torch_dtype = torch_dtype
     return _build_transformers_model(
         model_config,
@@ -202,7 +202,7 @@ def build_ref_model(*, name: str, model_id: Optional[str], model_config: ModelCo
         return None
     from swift.dev.processor import InputProcessor
 
-    config = copy(model_config)
+    config = copy.copy(model_config)
     config.model = model_id
     if model_type is not None:
         config.model_type = model_type

@@ -35,7 +35,7 @@ class QuantizeComponent(BaseWeightTransform):
         dataset_config: Optional[DatasetConfig] = None,
         *,
         output_dir: Optional[str] = None,
-        quant_n_samples: int = 256,
+        quant_n_samples: Optional[int] = None,
         safe_serialization: bool = True,
         max_shard_size: str = '5GB',
         **quantizer_kwargs,
@@ -45,8 +45,9 @@ class QuantizeComponent(BaseWeightTransform):
         self.quantize_config = quantize_config
         #: Required for AWQ/GPTQ, unused otherwise.
         self.dataset_config = dataset_config
-        #: Caps how many rows are encoded for calibration (legacy's ``--quant_n_samples``).
-        self.quant_n_samples = quant_n_samples
+        #: Caps how many rows are encoded for calibration; falls back to the config's
+        #: ``quant_n_samples`` so programmatic callers that only fill QuantizeConfig still get it.
+        self.quant_n_samples = quant_n_samples if quant_n_samples is not None else quantize_config.quant_n_samples
         self.safe_serialization = safe_serialization
         self.max_shard_size = max_shard_size
         #: Backend knobs (group_size / zero_point / v2 / bnb_4bit_* ...) forwarded verbatim to the
@@ -314,7 +315,10 @@ class QuantizeComponent(BaseWeightTransform):
         res: List[Any] = []
         for i in range(n_split):
             input_ids = samples[i * block_size:(i + 1) * block_size]
-            res.append({'input_ids': input_ids} if is_gptq else torch.tensor(input_ids)[None])
+            # GPTQ batches are dicts fed straight to model(**batch): twinkle patches optimum's
+            # prepare_dataset to identity, so tensor-izing the ids must happen here -- a plain list
+            # would reach the embedding as a non-Tensor. AWQ takes bare [1, L] tensors instead.
+            res.append({'input_ids': torch.tensor(input_ids)[None]} if is_gptq else torch.tensor(input_ids)[None])
         return res
 
     @staticmethod

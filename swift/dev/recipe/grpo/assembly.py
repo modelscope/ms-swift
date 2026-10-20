@@ -170,7 +170,8 @@ def initialize_cluster(*, model_config: 'ModelConfig', template_config: 'Templat
     colocate = rollout_config.sampler_mode == 'colocate'
     sampler = build_rl_sampler(
         model_config=model_config, rollout_config=rollout_config, template=template,
-        tuner_config=tuner_config, resource_plan=resource_plan, colocate=colocate)
+        tuner_config=tuner_config, resource_plan=resource_plan, colocate=colocate,
+                   enable_sampling_replay=rl_config.enable_sampling_replay)
     # The adaptive runtime consumes the sampler AND the policy, so it is wired here next to the
     # elastic-handle registration below.
     adapter = None

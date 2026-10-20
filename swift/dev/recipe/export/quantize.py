@@ -13,7 +13,7 @@ def run_quantize(
     dataset_config: Optional[DatasetConfig] = None,
     *,
     output_dir: str = 'output',
-    quant_n_samples: int = 256,
+    quant_n_samples: Optional[int] = None,
     safe_serialization: bool = True,
     max_shard_size: str = '5GB',
     **quantizer_kwargs,
@@ -22,7 +22,8 @@ def run_quantize(
 
     ``quantizer_kwargs`` go verbatim to the twinkle quantizer, where every backend knob lives --
     mirroring them onto QuantizeConfig would duplicate fields and let them drift.
-    ``dataset_config`` feeds AWQ/GPTQ calibration; ``quant_n_samples`` caps its rows.
+    ``dataset_config`` feeds AWQ/GPTQ calibration; ``quant_n_samples`` caps its rows and falls back
+    to ``quantize_config.quant_n_samples`` when left None.
     """
     from swift.dev.components import QuantizeComponent
 

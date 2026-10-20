@@ -193,11 +193,8 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
             quantize_config,
             dataset_config,
             output_dir=output_dir,
-            quant_n_samples=quantize_config.quant_n_samples,
             safe_serialization=checkpoint_config.safe_serialization,
-            max_shard_size=checkpoint_config.max_shard_size,
-            batch_size=quantize_config.quant_batch_size,
-            group_size=quantize_config.group_size)
+            max_shard_size=checkpoint_config.max_shard_size)
     elif convert_config.to_cached_dataset:
         train_dir, _ = export_cached_dataset(
             model_config, template_config, dataset_config, output_dir=output_dir,

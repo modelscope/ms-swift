@@ -360,6 +360,10 @@ def _pack(dataset: Any, template: Any, *, streaming: bool, packing_length: Optio
 
     length = packing_length or template.max_length
     cls = IterablePackingDataset if streaming else PackingDataset
+    # data_seed is the streaming protocol's (set_data_seed on a state restore); the map-style
+    # PackingDataset forwards **kwargs to SwiftDataset, whose signature is closed, so it must
+    # not receive it -- map-style resume rides SampleIndex.epoch instead.
+    seed_kwargs = {'data_seed': data_seed} if streaming else {}
     return cls(
         template,
         dataset,
@@ -367,7 +371,7 @@ def _pack(dataset: Any, template: Any, *, streaming: bool, packing_length: Optio
         packing_length=length,
         packing_strategy=packing_strategy,
         strict=strict,
-        data_seed=data_seed)
+        **seed_kwargs)
 
 
 def load_prompt_only_rows(dataset_config: DatasetConfig, max_rows: Optional[int],

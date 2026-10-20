@@ -164,7 +164,7 @@ def build_server_config(
             ssl_keyfile=deploy_config.ssl_keyfile,
             ssl_certfile=deploy_config.ssl_certfile,
         ),
-        persistence=_persistence(deploy_config, PersistenceConfig),
+        persistence=PersistenceConfig(),
         applications=applications,
     )
 
@@ -297,16 +297,6 @@ def _deployment(name: str, deploy_config: DeployConfig) -> Dict[str, Any]:
             options['num_replicas'] = deploy_config.num_replicas
         options['max_ongoing_requests'] = deploy_config.max_concurrency
     return options
-
-
-def _persistence(deploy_config: DeployConfig, PersistenceConfig) -> Any:
-    """``ServerConfig.persistence`` from the deploy knobs, or the in-memory default."""
-    if not deploy_config.persistence_mode:
-        return PersistenceConfig()
-    return PersistenceConfig(
-        mode=deploy_config.persistence_mode,
-        file_path=deploy_config.persistence_file_path,
-    )
 
 
 def _merge_single_adapter(model_config: ModelConfig, template_config: TemplateConfig,
