@@ -98,6 +98,14 @@ class InferComponent(RecipeComponent):
         )
         from swift.dev.dataset.storage import store_output_complete, store_writer_kind
 
+        # transformers>=5.2 pulls kernel repos from the Hub during a kernelized load; route them
+        # through ModelScope (USE_HF=1 keeps the original HF source). Same wiring as legacy's
+        # TransformersEngine.__init__.
+        from swift.dev.patch.transformers_hub_kernels import TransformersHubKernelPatch
+        from twinkle.patch import apply_patch
+
+        apply_patch(None, TransformersHubKernelPatch())
+
         model_config = self.model_config
         infer_config = self.infer_config
         reward_config = self.reward_config

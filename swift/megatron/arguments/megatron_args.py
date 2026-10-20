@@ -601,7 +601,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     sequence_parallel: bool = False
     context_parallel_size: int = 1
-    cp_comm_type: Optional[Union[str, List[str]]] = None
+    # List[str] first: transformers' HfArgumentParser probes isinstance(None, __args__[1]) on a
+    # 3-way Union and dies on a subscripted generic there; with str second the field parses as
+    # a single str (the broadcast form mcore accepts), same as legacy's Union[str, dict, None] fix.
+    cp_comm_type: Optional[Union[List[str], str]] = None
     cp_partition_mode: Literal['zigzag', 'contiguous'] = 'zigzag'
     sequence_packing_scheduler: Optional[Literal['dp_balanced', 'default_dynamic_cp']] = None
     tp_comm_overlap: bool = False

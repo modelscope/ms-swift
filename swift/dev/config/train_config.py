@@ -92,7 +92,7 @@ class TrainConfig:
     # QK-Clip rescales the Q/K WEIGHTS when the peak logit exceeds tau (Kimi K2). DEFAULT OFF: a
     # small tau geometrically collapses a pretrained model's Q/K; opt in only from scratch.
     qk_clip_enabled: bool = False
-    # The attention-logit ceiling; 10000 matches legacy, NOT twinkle MuonConfig's aggressive 100.
+    # The attention-logit ceiling; 10000 matches legacy and twinkle MuonConfig's default.
     qk_clip_tau: float = 10000.0
     sgd_momentum: float = 0.9  # Megatron SGD; read only when optimizer='sgd'
 

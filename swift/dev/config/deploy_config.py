@@ -47,12 +47,6 @@ class DeployConfig:
     # Token-in-token-out over the data plane: adds a data_plane app the rollout can stream into.
     enable_data_plane: bool = False
 
-    # === Persistence (forwarded to ServerConfig.persistence) ===
-    # None keeps the in-memory default; 'redis' needs a redis_url the deploy surface
-    # does not carry, so it is left to twinkle-server's own config.
-    persistence_mode: Optional[Literal['memory', 'file']] = None
-    persistence_file_path: Optional[str] = None
-
     # === Scaling (forwarded to each application's deployment) ===
     num_replicas: Optional[int] = None  # None keeps Ray Serve's single-replica default
     autoscaling: bool = False

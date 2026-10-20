@@ -46,6 +46,8 @@ class SentenceTransformerModel(TwinkleTransformersModel):
                  gradient_checkpointing: bool = True,
                  gradient_checkpointing_kwargs: Optional[Dict[str, Any]] = None,
                  init_strategy: Optional[str] = None,
+                 acc_strategy: str = 'token',
+                 model_arch: Optional[Dict[str, Any]] = None,
                  **kwargs):
         # Mirror TwinkleTransformersModel.__init__ plumbing, but build a SentenceTransformer; the
         # super(PreTrainedModel, self) call skips its config-requiring __init__ (same as the parent).
@@ -63,6 +65,14 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         # Router replay is a MoE-causal-LM concept; irrelevant to sentence encoders.
         self._router_replay_enabled = False
         self._router_replay_applied = False
+        # ``_acc_strategy`` / ``model_arch`` are read by inherited TransformersModel code (the
+        # optimizer-group and metric paths) but this forked __init__ skips the base one that sets
+        # them -- same gap the multi-LoRA variant closes, with the base's role normalization.
+        self._acc_strategy = acc_strategy
+        self.model_arch = dict(model_arch or {})
+        for _role in ('language_model', 'vision_tower', 'aligner'):
+            _value = self.model_arch.get(_role)
+            self.model_arch[_role] = [_value] if isinstance(_value, str) else list(_value or [])
         self._decide_strategy(strategy)
         self.grad_scaler_config = grad_scaler_config
         if model_id is not None:

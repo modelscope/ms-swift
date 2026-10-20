@@ -101,7 +101,7 @@ def _muon_config(cfg: TrainConfig) -> dict:
     """The ``MuonConfig`` fields set_optimizer turns into Muon/QK-Clip param groups for MuonClip.
 
     adam betas/eps feed the AdamW step Muon applies to non-orthogonalised groups; qk_clip defaults
-    OFF (MuonConfig's own defaults clip ~1e3 attention logits every step and collapse Q/K).
+    OFF (clipping ~1e3 attention logits every step collapses a pretrained model's Q/K).
     """
     return {
         'momentum': cfg.muon_momentum,
@@ -257,8 +257,23 @@ def configure_optimizer(model: TrainableModel,
         opt_kwargs['eps'] = cfg.adam_epsilon
     # Name-specific constructor args (fused / Adafactor flags) -- see naming._OPTIM_EXTRA_KWARGS.
     opt_kwargs.update(extra_kwargs)
+    # MuonClip / GaLore read their knobs off the param groups that create_*_param_groups stamps from
+    # the config object, so the same key passed as a constructor arg would be silently overridden by
+    # the group-level value. Merge the keys the user set via optim_args into the config instead, so
+    # the escape hatch actually wins. Galore maps by constructor/group key name, not field name.
+    parsed_optim_args = parse_optim_args(cfg.optim_args)
+    if muon_config is not None:
+        muon_config.update({key: value for key, value in parsed_optim_args.items()
+                             if key in ('momentum', 'nesterov', 'newton_schulz_steps', 'qk_clip_tau', 'qk_clip_enabled',
+                                        'rms_scale_factor', 'adamw_betas', 'adamw_eps')})
+    if galore_config is not None:
+        galore_config.update({field: parsed_optim_args[key] for key, field in {
+            'rank': 'rank', 'update_proj_gap': 'update_proj_gap', 'scale': 'galore_scale',
+            'proj_type': 'proj_type', 'quant': 'proj_quant', 'quant_n_bit': 'proj_bits',
+            'quant_group_size': 'proj_group_size', 'cos_threshold': 'cos_threshold',
+            'gamma_proj': 'gamma_proj', 'queue_size': 'queue_size'}.items() if key in parsed_optim_args})
     # optim_args last: the user's explicit escape hatch wins (matches HF's optimizer_kwargs merge).
-    opt_kwargs.update(parse_optim_args(cfg.optim_args))
+    opt_kwargs.update(parsed_optim_args)
     if galore_config is not None:
         opt_kwargs['galore_config'] = galore_config
     if muon_config is not None:

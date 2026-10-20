@@ -124,7 +124,12 @@ class Preprocessor:
         map_kwargs: Dict[str, Any] = {'batched': True}
         if isinstance(dataset, HfDataset):
             map_kwargs['batch_size'] = batch_size if batch_size is not None else 1000
-            map_kwargs['num_proc'] = num_proc if num_proc and num_proc > 1 else None
+            # num_proc <= 1 maps in-process: a one-worker pool is pure spawn overhead, and a spawned
+            # worker rebuilds an UNPATCHED ArrowWriter (see _pin_message_columns_for_pool), which
+            # fails to serialise mixed-type message content (a tool_call dict beside plain text).
+            map_kwargs['num_proc'] = num_proc if num_proc >= 2 else None
+            if num_proc >= 2:
+                dataset = self._pin_message_columns_for_pool(dataset)
             map_kwargs['load_from_cache_file'] = load_from_cache_file
             if not dataset.cache_files:
                 map_kwargs['cache_file_name'] = self.map_cache_path(dataset)
@@ -194,6 +199,36 @@ class Preprocessor:
             yield
         finally:
             ArrowWriter.__init__ = original_init
+
+    def _pin_message_columns_for_pool(self, dataset):
+        """Carry the message-column pin into pooled map workers as DATA, not as a class patch.
+
+        ``pin_features`` patches ``ArrowWriter.__init__`` in THIS process only. datasets' pool
+        workers on a spawn start method re-import the module and rebuild an unpatched writer, so
+        mixed-type message content (a ``tool_call`` dict beside plain text) fails to serialise --
+        and with ``strict=False`` the row is silently DROPPED. The worker's writer is seeded from
+        the input shard's features (``writer_features = shard.features``), and those features are
+        pickled to the worker as data, so casting the message columns to ``List[Json]`` here makes
+        the pin survive any start method. Forked workers already inherit the patched class, so
+        only a spawned pool pays the cast pass.
+        """
+        try:
+            from datasets.features import Json
+            from datasets.features import List as ListFeature
+        except ImportError:  # datasets < 4 inferred these columns from a fixed schema already
+            return dataset
+        import multiprocess
+        if multiprocess.get_start_method() == 'fork':
+            return dataset
+        features = dataset.features.copy()  # Features.copy() keeps the class (a plain dict breaks cast)
+        changed = False
+        for name in self.MESSAGE_COLUMNS:
+            feature = features.get(name)
+            if feature is None or (isinstance(feature, ListFeature) and isinstance(feature.feature, Json)):
+                continue
+            features[name] = ListFeature(Json())
+            changed = True
+        return dataset.cast(features) if changed else dataset
 
     def batched_preprocess(self, batch: Dict[str, List[Any]], indices: List[int], *,
                            strict: bool) -> Dict[str, List[Any]]:
