@@ -2,8 +2,8 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, get_args
 
-from .rl_config import F_DIVERGENCE_TYPE
 from swift.dev.utils.logger import get_logger
+from .rl_config import F_DIVERGENCE_TYPE
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -17,8 +17,8 @@ if TYPE_CHECKING:
         ModelConfig,
         MoEConfig,
         QuantizeConfig,
-        RLConfig,
         RewardConfig,
+        RLConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,

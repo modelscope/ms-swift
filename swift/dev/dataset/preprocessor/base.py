@@ -7,9 +7,9 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
+from twinkle.dataloader.random_state import derive_seed
 
 from swift.dev.utils import get_logger
-from twinkle.dataloader.random_state import derive_seed
 from .._diagnostics import note_row_error
 
 __all__ = ['MessagesRepairPreprocessor', 'Preprocessor']

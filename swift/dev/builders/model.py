@@ -39,6 +39,7 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
     translation here stops call sites from each forwarding a different subset of the contract.
     """
     import torch
+
     from swift.model import get_model_processor
 
     # Vision preprocessing overrides go through env so the loader's patch_qwen_vl_utils (read via
