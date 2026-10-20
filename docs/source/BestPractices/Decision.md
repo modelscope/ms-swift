@@ -126,6 +126,104 @@ $$
 
 
 
+## 温度校准
+
+`temperature_calibration` 回调在训练结束后、最终保存前，于**验证集**上对 decision 模型做**后训练温度校准**（post-training temperature scaling）——让模型输出的置信度数字变得"诚实"（说 80% 把握的题，实际正确率约八成）。
+
+### 为什么需要校准
+
+微调后的模型普遍存在**过度自信**或**信心不足**：softmax 概率偏离真实正确率。温度缩放用一个标量 $T$ 修正 logits：$p = \mathrm{softmax}(z/T)$。由于 $T$ 不改变 logits 间的相对大小，**argmax（预测选项、accuracy）完全不变**，只重塑概率分布的"尖锐程度"——T > 1 拉平分布（降信心），T < 1 拉尖分布（增信心）。下游若拿 confidence 做阈值、排序或风险加权，校准是这些数字可用的前提。
+
+### 触发与跳过条件
+
+**自动启用**：`task_type=decision`时自动挂载，无需手动传参。也可显式指定：
+
+```bash
+--callbacks temperature_calibration
+```
+
+**静默跳过**（温度保持出厂/加载值，不报错）：
+
+- head 不携带温度 buffer（如 Clef 的 `ClefJointSchemaHead`）；
+- 训练器没有 eval_dataset；
+- 验证集收集到的总题数 < 10（`SWIFT_CALIBRATION_MIN_ITEMS` 可调）；
+- logits 收集阶段抛出异常。
+
+**前提**：需要验证集。三个示例脚本的 `--split_dataset_ratio 0` 关闭了自动切分，如需校准请改为 `--split_dataset_ratio 0.1`（从训练集按整 record 切 10% 做验证），或显式传 `--val_dataset`。
+
+### 校准原理（两阶段拟合）
+
+温度不是单一标量，而是**全局 × 每题型**的分解结构：
+
+1. **Stage 1**：把全部问题（noul / choice / score 池化）合在一起拟合一个全局温度 `head_temperature`（$T_h$），捕捉模型整体的"锐度"偏差；
+2. **Stage 2**：logits 先除以 $T_h$，再对每个题型单独拟合相对温度 $T_r^{\mathrm{kind}}$，捕捉题型特有的残差；
+3. 线上生效温度为二者乘积：$T^{\mathrm{kind}} = T_h \cdot T_r^{\mathrm{kind}}$，最终被夹取到 0.05~20 之间。
+
+拟合目标（最小化对象）由 `SWIFT_CALIBRATION_LOSS` 选择。设 $p = \mathrm{softmax}(z/T)$ 为校准后概率（masked，仅真实选项参与归一化），目标分布为 $t$，两种损失的目标分别为：
+
+$$
+\mathcal{L}_{\mathrm{Brier}} = \sum_k \left( p_k - t_k \right)^2 \qquad \mathcal{L}_{\mathrm{NLL}} = -\sum_k t_k \log p_k
+$$
+
+| 损失            | 求解器                            | 特点                                |
+| ------------- | ------------------------------ | --------------------------------- |
+| `brier`（默认）  | 粗网格（0.05~10, 50 步）+ 黄金分割         | 无 scipy/LBFGS 依赖，有界梯度，对噪声稳健       |
+| `nll`         | LBFGS + strong_wolfe 线搜索       | 对"高置信但答错"惩罚更重，更激进地压制过度自信         |
+
+**样本门槛**：总题数不足 10 条不启动校准（`SWIFT_CALIBRATION_MIN_ITEMS` 可调）；启动后某题型单独不足 10 条，该题型保持 $T_r = 1$（只校准够数的题型）。少量样本上拟合温度会被偶然模式主导，保持默认 T = 1（不修正）比错误修正更安全。
+
+**报告指标（2-fold 交叉验证）**：为避免"用拟合数据给自己打分"的乐观偏差，日志里的 accuracy / ECE / Brier / NLL 是 **out-of-fold** 的——验证 record 按奇偶分两折，每折的温度在对面那折上拟合，再用来给本折打分。注意：**写进 checkpoint 供线上使用的温度仍是用全部验证数据拟合的**（生产估计），CV 只影响日志口径。同一条 record 的多道题总是落在同一折，避免信息泄漏。
+
+### 日志解读
+
+训练开始时先输出 base 基线（`on_train_begin`，用出厂/加载温度在验证集上评估，纯报告不写入）：
+
+```
+temperature_calibration: base metrics (pre-training, n=520): accuracy=0.6231, ece=0.1523, brier=0.2045, nll=1.1023
+```
+
+训练结束、校准完成后输出：
+
+```
+temperature_calibration done (loss=brier, head_T=1.412): noul: T=1.523 (Brier 0.1823 -> 0.1102, n=180); choice: T=1.298 (Brier 0.2151 -> 0.1534, n=220); score: T=1.611 (Brier 0.2401 -> 0.1620, n=120)
+temperature_calibration CV (out-of-fold): accuracy=0.8077, ece=0.0311, brier=0.1420, nll=0.5621
+temperature_calibration: base (pre-training, n=520) vs tuned (out-of-fold): accuracy 0.6231 -> 0.8077, ece 0.1523 -> 0.0311, brier 0.2045 -> 0.1420, nll 1.1023 -> 0.5621
+temperature_calibration: written to ['output/scoring_head.json', ...]
+```
+
+- 第一行：每题型的最终 T、校准前后 in-sample Brier、样本数；
+- 第二行：out-of-fold 指标。**accuracy 校准前后必然不变**（温度不改变 argmax），它是对照项；**ECE 是校准是否生效的最直接指标**（纯校准误差，不参与温度拟合）；
+- 第三行：训练前 base vs 训练+校准后对比，量化整次微调的收益。
+
+### 持久化与生效
+
+拟合好的温度写入 head 的非持久化 buffer，并通过 `save_pretrained` 序列化到 `output_dir` 和最后 checkpoint 目录的 **`scoring_head.json`**（不进 safetensors，JSON 人类可读）。加载 checkpoint 时由 `maybe_load_trained_scoring_head` → `_load_calibration_meta` 自动恢复，线上推理的概率即为**校准后**温度下的输出，无需任何额外部署步骤。
+
+### 多卡（DDP）下的行为
+
+DDP 训练时验证集会被分片到各 rank（每个 rank 只看到约 1/world_size 的题），回调对此做了两层处理：
+
+- **收集阶段**：各 rank 在自己的分片上前向收集 logits/target/mask 后，通过 `all_gather_object` 合并成**全量验证集**（record_id 按 rank 偏移防止 CV 分折碰撞）——保证温度在全量数据上拟合，而非某个分片；
+- **拟合与写盘阶段**：仅主进程（rank 0）拟合温度、写 `scoring_head.json` 并输出日志，其余 rank 在 gather 后直接返回——保证落盘值与日志值一致、且结果确定。
+
+### 环境变量
+
+| 环境变量                        | 取值            | 默认     | 说明                            |
+| --------------------------- | ------------- | ------ | ----------------------------- |
+| `SWIFT_CALIBRATION_LOSS`    | `brier` / `nll` | `brier` | 拟合目标（非法值回退 brier 并告警）         |
+| `SWIFT_CALIBRATION_MIN_ITEMS` | 正整数           | `10`   | 启动校准 / 单题型拟合的最少样本门槛           |
+
+环境变量为进程级，多机训练需保证每个节点都已 export；其取值不会记录进 `args.json`，复现实验时请注意留存。
+
+```bash
+# 示例：切到 NLL 拟合目标，降低样本门槛
+export SWIFT_CALIBRATION_LOSS=nll
+export SWIFT_CALIBRATION_MIN_ITEMS=5
+swift sft --task_type decision ... --split_dataset_ratio 0.1
+```
+
+
+
 ## 数据集格式
 
 每个模型有自己的原始 JSONL schema，预处理器将其归一化为统一内部契约。
@@ -688,8 +786,36 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 ### Benchmark — 训练后推理对比
 
 | #   | 模型               | before acc | after acc  | Δ acc   | before top prob | after top prob | 结果      |
-| --- | ------------ | ---------------- | ---------- | ---------- | ------- | --------------- | -------------- | ------- |
+| --- | ------------ | ---------------- | ---------- | ---------- | ------- | --------------- | -------------- |
 | 1   | JEV              | 0.6667     | **1.0000** | +0.3333 | 0.9855          | **1.0000**     | ✅ +50%  |
 | 2   | Clef             | 0.5000     | **0.8333** | +0.3333 | 0.9712          | 0.9311         | ✅ +67%  |
 | 3   | OmniJev          | 0.5500     | 0.7500     | +0.2884 | 0.8465          | 0.8196         | ✅ +37%  |
 | 4   | Generic Decision | 0.1667     | **0.6667** | +0.5000 | 0.5682          | 0.9363         | ✅ +300% |
+
+### 温度模块消融实验：同 checkpoint 有/无温度后处理
+
+用**同一份 checkpoint**（权重与 bias 完全一致）在训练时真正留出的 80 条 held-out 数据上单次前向，对同一份 raw logits 分别按有无温度缩放计算指标（温度是 softmax 前的单调缩放，argmax 不变，故 acc 必须恒等——这也是实验的有效性校验）。
+
+实验配置：JEV-27B-VL + 发布 adapter 续训（`open_jev_jev:all#800`，`split_dataset_ratio 0.1`，1 epoch，checkpoint-23）；脚本 `examples/train/decision/ablation_jev_confidence.py`。
+
+| 变体 | T | acc | conf | gap(conf−acc) | ECE | Brier |
+| --- | --- | --- | --- | --- | --- | --- |
+| **无温度** | 1.000 | 0.7500 | 0.7023 | −0.048 | 0.1650 | 0.0882 |
+| checkpoint 落盘 T | 0.903 | 0.7500 | 0.7204 | −0.030 | 0.1304 | 0.0860 |
+| 训练日志 T（分片拟合） | 0.528 | 0.7500 | 0.8132 | +0.063 | 0.0830 | 0.0829 |
+| 全量重拟合（in-sample） | 0.618 | 0.7500 | 0.7871 | +0.037 | 0.0961 | 0.0823 |
+| **2-fold out-of-fold** | ~0.645 | 0.7500 | 0.7873 | +0.037 | 0.1210 | **0.0798** |
+
+分题型（无温度 → out-of-fold 温度）：
+
+| 题型 | n | acc | conf 变化 | ECE 变化 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| noul | 50 | 0.900 | 0.781 → 0.862 | 0.130 → 0.089 | 欠自信主因，T<1 提信心方向正确 |
+| choice | 22 | 0.636 | 0.613 → 0.705 | 0.185 → 0.228 | 中性偏正 |
+| score | 8 | 0.125 | 0.456 → 0.550 | 0.379 → 0.455 | **反例**：样本少且 acc 极低，统一 T<1 有害，需 per-kind 温度 |
+
+结论：
+
+1. **方向与量级合理**：模型欠自信（conf 0.702 < acc 0.750，noul 差 −0.119），拟合出 T<1 正确；out-of-fold（未参与拟合的一半数据）Brier 0.0882→0.0798（−9.5%）、ECE 0.1650→0.1210，改善可泛化而非 in-sample 假象；
+2. **per-kind 温度有价值**：score 题型 acc 仅 0.125 且样本少（8 < 10），统一温度对它有害——两阶段 per-kind 拟合的设计是必要的，样本不足的题型保持 T=1 是安全兜底；
+3. **拟合样本量决定噪声**：10 条分片拟合出 0.528/0.903 两个互异值，全量 80 条拟合 0.618，40 条子集分别为 0.446/0.844——校准数据越多，温度越稳定。

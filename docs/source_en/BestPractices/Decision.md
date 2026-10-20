@@ -100,6 +100,102 @@ $$\mathcal{L} = \mathcal{L}_{\mathrm{CE}}$$
 - `acc` **(per-question)**: masked argmax over each question's option set gives the prediction, compared to the gold (argmax of `target_probs`) — each question is scored independently.
 - `record_acc` **(per-record)**: record-level accuracy where all must be correct — a record is counted as correct only when all of its questions are predicted correctly, otherwise it is counted as incorrect. Especially meaningful for multi-question joint-decode models (e.g. Clef).
 
+## Temperature Calibration
+
+The `temperature_calibration` callback performs **post-training temperature scaling** on the **eval set** after training finishes and before the final save — making the model's confidence numbers honest (questions where the model claims 80% confidence should be right about 80% of the time).
+
+### Why calibration is needed
+
+Fine-tuned models are systematically **overconfident** (or underconfident): the softmax probabilities drift away from the empirical accuracy. Temperature scaling corrects the logits with a scalar $T$: $p = \mathrm{softmax}(z/T)$. Since $T$ does not change the relative order of logits, **the argmax (predicted option, accuracy) is unchanged** — only the "sharpness" of the distribution is reshaped: T > 1 flattens the distribution (lower confidence), T < 1 sharpens it (higher confidence). If your downstream consumes confidence for thresholding, ranking, or risk weighting, calibration is the prerequisite for those numbers to be meaningful.
+
+### Activation and skip conditions
+
+**Auto-activation**: the callback is attached automatically for `task_type=decision` — no manual flag needed. It can also be enabled explicitly:
+
+```bash
+--callbacks temperature_calibration
+```
+
+**Silently skipped** (temperatures stay at their loaded/factory values, no error):
+
+- the head carries no temperature buffer (e.g. Clef's `ClefJointSchemaHead`);
+- the trainer has no eval_dataset;
+- fewer than 10 questions are collected from the eval set (tunable via `SWIFT_CALIBRATION_MIN_ITEMS`);
+- an exception is raised during logits collection.
+
+**Prerequisite**: an eval set. The example training scripts set `--split_dataset_ratio 0`; to calibrate, change it to `--split_dataset_ratio 0.1` (carves 10% of the training rows, whole records, as the eval set) or pass `--val_dataset` explicitly.
+
+### How calibration works (two-stage fitting)
+
+The temperature is not a single scalar but a **global × per-kind** decomposition:
+
+1. **Stage 1**: fit a single global temperature `head_temperature` ($T_h$) on ALL questions pooled across kinds, capturing the model's overall "sharpness" bias;
+2. **Stage 2**: scale logits by $T_h$, then fit a per-kind relative temperature $T_r^{\mathrm{kind}}$, capturing kind-specific residuals;
+3. The served temperature is the product $T^{\mathrm{kind}} = T_h \cdot T_r^{\mathrm{kind}}$, clamped to the range 0.05~20.
+
+The fitting objective (the quantity being minimised) is selected by `SWIFT_CALIBRATION_LOSS`. Let $p = \mathrm{softmax}(z/T)$ be the calibrated probability (masked, normalised over real options only) and $t$ be the target distribution; the two objectives are:
+
+$$
+\mathcal{L}_{\mathrm{Brier}} = \sum_k \left( p_k - t_k \right)^2 \qquad \mathcal{L}_{\mathrm{NLL}} = -\sum_k t_k \log p_k
+$$
+
+| Loss          | Solver                          | Notes                                                       |
+| ------------- | ------------------------------- | ----------------------------------------------------------- |
+| `brier` (default) | coarse grid (0.05–10, 50 steps) + golden section | No scipy/LBFGS dependency, bounded gradients, robust to noise |
+| `nll`         | LBFGS + strong_wolfe line search | Stronger penalty on confident-but-wrong answers; more aggressive at suppressing overconfidence |
+
+**Minimum sample threshold**: calibration does not start with fewer than 10 questions in total (tunable via `SWIFT_CALIBRATION_MIN_ITEMS`); once started, a kind with fewer than 10 questions keeps $T_r = 1$ (only sufficiently populated kinds are fitted). Fitting a temperature on a tiny sample fits noise — keeping the default T = 1 (no correction) is safer than a wrong correction.
+
+**Reported metrics (2-fold cross-validation)**: to avoid the in-sample optimism of scoring the fitted data with the fitted temperature, the accuracy / ECE / Brier / NLL in the logs are **out-of-fold** — eval records are split into two halves by parity, each half's temperature is fitted on the opposite half, and used to score its own half. Note that **the temperature written into the checkpoint is still fitted on ALL eval data** (the production estimate); the CV only affects the reported numbers. All questions of one record always land in the same fold, preventing leakage.
+
+### Reading the logs
+
+A base baseline is logged at the start of training (`on_train_begin`, evaluated with the loaded/factory temperatures, report-only):
+
+```
+temperature_calibration: base metrics (pre-training, n=520): accuracy=0.6231, ece=0.1523, brier=0.2045, nll=1.1023
+```
+
+After training and calibration:
+
+```
+temperature_calibration done (loss=brier, head_T=1.412): noul: T=1.523 (Brier 0.1823 -> 0.1102, n=180); choice: T=1.298 (Brier 0.2151 -> 0.1534, n=220); score: T=1.611 (Brier 0.2401 -> 0.1620, n=120)
+temperature_calibration CV (out-of-fold): accuracy=0.8077, ece=0.0311, brier=0.1420, nll=0.5621
+temperature_calibration: base (pre-training, n=520) vs tuned (out-of-fold): accuracy 0.6231 -> 0.8077, ece 0.1523 -> 0.0311, brier 0.2045 -> 0.1420, nll 1.1023 -> 0.5621
+temperature_calibration: written to ['output/scoring_head.json', ...]
+```
+
+- Line 1: per-kind final T, in-sample Brier before/after calibration, and sample counts;
+- Line 2: out-of-fold metrics. **Accuracy is unchanged by calibration** (temperature does not move the argmax) — it is the control; **ECE is the most direct measure of whether calibration worked** (pure calibration error, not involved in the fitting);
+- Line 3: base (pre-training) vs tuned comparison, quantifying what the whole fine-tune bought you.
+
+### Persistence and serving
+
+The fitted temperatures are written into the head's non-persistent buffers and serialised via `save_pretrained` to **`scoring_head.json`** in `output_dir` and the last checkpoint directory (not into safetensors — the JSON stays human-readable). Loading a checkpoint restores them automatically via `maybe_load_trained_scoring_head` → `_load_calibration_meta`; the probabilities served by `swift infer` are therefore already **calibrated**, with no extra deployment step.
+
+### Multi-GPU (DDP) behavior
+
+Under DDP training the eval set is sharded across ranks (each rank sees only about 1/world_size of the questions); the callback handles this in two layers:
+
+- **Collection**: each rank forwards over its own shard to collect logits/targets/masks, then merges them into the **full eval set** via `all_gather_object` (record_ids are offset per rank to avoid collisions when splitting CV folds) — ensuring the temperature is fitted on the full data rather than on one shard;
+- **Fitting and writing**: only the main process (rank 0) fits the temperature, writes `scoring_head.json` and logs; the other ranks return right after the gather — guaranteeing that the persisted values and the logged values agree, and that the result is deterministic.
+
+### Environment variables
+
+| Variable                      | Values         | Default | Description                                                   |
+| ----------------------------- | -------------- | ------- | ------------------------------------------------------------- |
+| `SWIFT_CALIBRATION_LOSS`      | `brier` / `nll` | `brier` | Fitting objective (invalid values fall back to brier with a warning) |
+| `SWIFT_CALIBRATION_MIN_ITEMS` | positive int   | `10`    | Minimum sample threshold for starting calibration / fitting a kind |
+
+Environment variables are process-scoped: in multi-node training, make sure they are exported on every node. Their values are not recorded in `args.json`, so preserve them separately when reproducing experiments.
+
+```bash
+# Example: switch to the NLL objective and lower the sample threshold
+export SWIFT_CALIBRATION_LOSS=nll
+export SWIFT_CALIBRATION_MIN_ITEMS=5
+swift sft --task_type decision ... --split_dataset_ratio 0.1
+```
+
 ## Dataset Format
 
 Each model has its own raw JSONL schema. The preprocessor normalizes them into the unified internal contract.
@@ -610,13 +706,43 @@ When unset, the loader searches `model_dir` (and `adapter_vllm/` subdirectory fo
 
 > **Environment**: transformers 5.16.1 / ms-swift 4.6.0.dev0 / 8× L20X (143 GiB) / ffmpeg + ffprobe installed
 >
-> **Verification method**: 4 models each executing the full pipeline: pre-training inference → local dataset training → post-training inference
+> **Verification method**: 4 models each executing the full pipeline: pre-training inference → local dataset training → post-training inference, using the CLI examples above
+>
+> **Generic Decision**: uses Qwen2.5-0.5B as the base model
 
 ### Benchmark — Post-Training Inference Comparison
 
-| # | Benchmark ID | Model | Before acc | After acc | Δ acc | Before top prob | After top prob | Result |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | CMP-01 | JEV | 0.6667 | **1.0000** | +0.3333 | 0.9855 | **1.0000** | ✅ +50% |
-| 2 | CMP-02 | Clef | 0.5000 | **0.8333** | +0.3333 | 0.9712 | 0.9311 | ✅ +67% |
-| 3 | CMP-03 | OmniJev | 0.5500 | 0.7500 | +0.2884 | 0.8465 | 0.8196 | ✅ +37% |
-| 4 | CMP-04 | Generic Decision | 0.1667 | **0.6667** | +0.5000 | 0.5682 | 0.9363 | ✅ +300% |
+| # | Model | Before acc | After acc | Δ acc | Before top prob | After top prob | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | JEV | 0.6667 | **1.0000** | +0.3333 | 0.9855 | **1.0000** | ✅ +50% |
+| 2 | Clef | 0.5000 | **0.8333** | +0.3333 | 0.9712 | 0.9311 | ✅ +67% |
+| 3 | OmniJev | 0.5500 | 0.7500 | +0.2884 | 0.8465 | 0.8196 | ✅ +37% |
+| 4 | Generic Decision | 0.1667 | **0.6667** | +0.5000 | 0.5682 | 0.9363 | ✅ +300% |
+
+### Temperature Ablation: Same Checkpoint With/Without Temperature Post-Processing
+
+Using the **same checkpoint** (identical weights and bias), a single forward pass is run over the 80 held-out rows actually reserved during training; the metrics are computed on the same raw logits with and without temperature scaling (temperature is a monotonic scaling before softmax, so the argmax is unchanged and acc must be identical — this doubles as the validity check of the experiment).
+
+Setup: JEV-27B-VL + released adapter continued training (`open_jev_jev:all#800`, `split_dataset_ratio 0.1`, 1 epoch, checkpoint-23); script `examples/train/decision/ablation_jev_confidence.py`.
+
+| Variant | T | acc | conf | gap(conf−acc) | ECE | Brier |
+| --- | --- | --- | --- | --- | --- | --- |
+| **No temperature** | 1.000 | 0.7500 | 0.7023 | −0.048 | 0.1650 | 0.0882 |
+| Checkpoint-persisted T | 0.903 | 0.7500 | 0.7204 | −0.030 | 0.1304 | 0.0860 |
+| Training-log T (shard-fitted) | 0.528 | 0.7500 | 0.8132 | +0.063 | 0.0830 | 0.0829 |
+| Full refit (in-sample) | 0.618 | 0.7500 | 0.7871 | +0.037 | 0.0961 | 0.0823 |
+| **2-fold out-of-fold** | ~0.645 | 0.7500 | 0.7873 | +0.037 | 0.1210 | **0.0798** |
+
+Per kind (no temperature → out-of-fold temperature):
+
+| Kind | n | acc | conf change | ECE change | Notes |
+| --- | --- | --- | --- | --- | --- |
+| noul | 50 | 0.900 | 0.781 → 0.862 | 0.130 → 0.089 | Main driver of underconfidence; T<1 raising confidence is the right direction |
+| choice | 22 | 0.636 | 0.613 → 0.705 | 0.185 → 0.228 | Neutral, slightly positive |
+| score | 8 | 0.125 | 0.456 → 0.550 | 0.379 → 0.455 | **Counter-example**: few samples and very low acc; a uniform T<1 hurts — per-kind temperatures are needed |
+
+Conclusions:
+
+1. **Direction and magnitude are sound**: the model is underconfident (conf 0.702 < acc 0.750, noul gap −0.119), so the fitted T<1 is correct; out-of-fold (the half of the data that did not participate in fitting) Brier goes 0.0882→0.0798 (−9.5%) and ECE 0.1650→0.1210 — the improvement generalises rather than being an in-sample artifact;
+2. **Per-kind temperatures are valuable**: the score kind has acc of only 0.125 with few samples (8 < 10), and a uniform temperature hurts it — the two-stage per-kind fitting design is necessary, and keeping T=1 for kinds without enough samples is the safe fallback;
+3. **Fitting sample size determines noise**: 10-row shards fitted two divergent values (0.528/0.903), the full 80 rows fitted 0.618, and the 40-row subsets fitted 0.446/0.844 respectively — the more calibration data, the more stable the temperature.

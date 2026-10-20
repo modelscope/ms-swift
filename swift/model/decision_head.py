@@ -235,7 +235,11 @@ class ScoringHead(nn.Module):
         - Full-finetune checkpoint: ``HEAD_WEIGHTS_NAME`` is absent → the head's parameters are
           already restored from the model ``state_dict`` by ``from_pretrained``; only the meta
           json is present, and we return True so the caller knows the head was recognised.
-          """
+
+        In both cases, if ``HEAD_META_NAME`` carries non-parameter calibration state (temperatures,
+        biases, etc. from ``extra_state_for_save``), it is applied to the head so a reloaded
+        TRAINED checkpoint restores its fitted calibration, not the factory defaults.
+        """
         from safetensors.torch import load_file
         weights_file = os.path.join(load_directory, self.HEAD_WEIGHTS_NAME)
         meta_file = os.path.join(load_directory, self.HEAD_META_NAME)
@@ -250,6 +254,8 @@ class ScoringHead(nn.Module):
             state = self._extract_head_state_from_model_dir(load_directory)
             if state is not None:
                 self._validate_and_load(state, 'model safetensors')
+        if has_meta:
+            self._load_calibration_meta(meta_file)
         return True
 
     def _validate_and_load(self, state: Dict[str, torch.Tensor], source: str) -> None:
@@ -294,6 +300,22 @@ class ScoringHead(nn.Module):
             return result if result else None
         return None
 
+    def _load_calibration_meta(self, meta_file: str) -> None:
+        """Subclasses override to map the JSON dict onto their own buffers"""
+        try:
+            with open(meta_file, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return
+        self._apply_calibration_meta(meta)
+
+    def _apply_calibration_meta(self, meta: Dict[str, Any]) -> None:
+        """Apply non-parameter calibration meta (temperatures, biases, ...) to this head.
+
+        Override in subclasses that carry ``persistent=False`` calibration buffers.
+        """
+        pass
+
 
 class JevVerbalizerHead(ScoringHead):
 
@@ -303,8 +325,12 @@ class JevVerbalizerHead(ScoringHead):
     DEFAULT_RANGES = {'noul': (0, 2), 'choice': (8, 24), 'score': (2, 8)}
     DEFAULT_TEMPERATURES = {'noul': 1.0, 'choice': 1.0, 'score': 1.0}
 
-    def __init__(self, bias: Sequence[float], verbalizer_ids: Sequence[int], ranges: Dict[str, Sequence[int]],
-                 temperatures: Dict[str, float]):
+    def __init__(self,
+                 bias: Sequence[float],
+                 verbalizer_ids: Sequence[int],
+                 ranges: Dict[str, Sequence[int]],
+                 temperatures: Dict[str, float],
+                 head_temperature: float = 1.0):
         super().__init__()
         self.bias = nn.Parameter(torch.as_tensor(list(bias), dtype=torch.float32))
         self.register_buffer(
@@ -313,6 +339,9 @@ class JevVerbalizerHead(ScoringHead):
             'ranges',
             torch.as_tensor([list(ranges[KIND_NAMES[k]]) for k in range(len(KIND_NAMES))], dtype=torch.long),
             persistent=False)
+        # Two-stage temperature: head_temperature (global) × temperatures[kind] (per-kind residual).
+        self.register_buffer(
+            'head_temperature', torch.as_tensor(float(head_temperature), dtype=torch.float32), persistent=False)
         self.register_buffer(
             'temperatures',
             torch.as_tensor([float(temperatures[KIND_NAMES[k]]) for k in range(len(KIND_NAMES))], dtype=torch.float32),
@@ -346,6 +375,7 @@ class JevVerbalizerHead(ScoringHead):
         bias = self.bias.to(device=device, dtype=torch.float32)
         ranges = self.ranges.to(device)
         temperatures = self.temperatures.to(device=device, dtype=torch.float32)
+        head_t = self.head_temperature.to(device=device, dtype=torch.float32)
         per_question: List[torch.Tensor] = []
         for i in range(total_q):
             k = kinds[i]
@@ -357,7 +387,7 @@ class JevVerbalizerHead(ScoringHead):
                     f'JEV kind {KIND_NAMES[k]} supports at most {hi - lo} options (verbalizer slots), got {n}.')
             ids = verbalizer_ids[lo:lo + n]  # [n]
             lp = log_probs[i].gather(0, ids)  # [n]
-            z = (lp + bias[lo:lo + n]) / temperatures[k]
+            z = (lp + bias[lo:lo + n]) / (head_t * temperatures[k])
             per_question.append(z)
 
         max_opt = int(meta.get('max_opt') or max(n_options))
@@ -392,11 +422,21 @@ class JevVerbalizerHead(ScoringHead):
                 KIND_NAMES[k]: self.ranges[k].tolist()
                 for k in range(len(KIND_NAMES))
             },
+            'head_temperature': float(self.head_temperature),
             'temperatures': {
                 KIND_NAMES[k]: float(self.temperatures[k])
                 for k in range(len(KIND_NAMES))
             },
         }
+
+    def _apply_calibration_meta(self, meta: Dict[str, Any]) -> None:
+        if 'head_temperature' in meta:
+            self.head_temperature = torch.as_tensor(float(meta['head_temperature']), dtype=torch.float32)
+        temps = meta.get('temperatures')
+        if temps:
+            for k, name in enumerate(KIND_NAMES):
+                if name in temps:
+                    self.temperatures[k] = float(temps[name])
 
     @classmethod
     def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'JevVerbalizerHead':
@@ -422,9 +462,12 @@ class JevVerbalizerHead(ScoringHead):
                 'JEV_DECIDE_CALIBRATION')
         if calib_file and os.path.exists(calib_file):
             with open(calib_file, 'r') as f:
-                per_kind = json.load(f).get('per_kind', {})
+                calib = json.load(f)
+            per_kind = calib.get('per_kind', {})
             temperatures.update({k: float(v) for k, v in per_kind.items() if k in temperatures})
-        return cls(head['bias'], head['verbalizer_ids'], ranges, temperatures)
+        head_temperature = float(calib.get('head_temperature',
+                                           1.0)) if calib_file and os.path.exists(calib_file) else 1.0
+        return cls(head['bias'], head['verbalizer_ids'], ranges, temperatures, head_temperature=head_temperature)
 
     @staticmethod
     def _resolve_verbalizer_token_id(tokenizer, text: str) -> int:
@@ -467,7 +510,7 @@ class JevVerbalizerHead(ScoringHead):
         bias = [0.0] * len(verbalizer_ids)
         ranges = dict(cls.DEFAULT_RANGES)
         temperatures = dict(cls.DEFAULT_TEMPERATURES)
-        return cls(bias, verbalizer_ids, ranges, temperatures)
+        return cls(bias, verbalizer_ids, ranges, temperatures, head_temperature=1.0)
 
 
 class EvidenceRoutingLayer(nn.Module):
@@ -845,13 +888,16 @@ class OmniJevHead(ScoringHead):
                  lm_feats: bool = True,
                  ordinal: bool = True,
                  temperatures: Optional[Dict[str, float]] = None,
-                 noul_bias: float = 0.0) -> None:
+                 noul_bias: float = 0.0,
+                 head_temperature: float = 1.0) -> None:
         super().__init__()
         self.head = OmniOptionScorer(hidden_size, head_hidden, n_types, norm)
         self.ord = OmniOrdinalHead(hidden_size, ord_hidden)
         self.lm_feats = bool(lm_feats)
         self.ordinal = bool(ordinal)
         temps = temperatures or {}
+        self.register_buffer(
+            'head_temperature', torch.as_tensor(float(head_temperature), dtype=torch.float32), persistent=False)
         self.register_buffer(
             'temps',
             torch.as_tensor([float(temps.get(KIND_NAMES[k], 1.0)) for k in range(n_types)], dtype=torch.float32),
@@ -957,7 +1003,8 @@ class OmniJevHead(ScoringHead):
         else:
             cols = self.head.logits(u, zq, kind, feats)  # noul -> [yes,0]; choice -> [opts..., abstain]
         if not self.training:  # serving-time post-hoc calibration (temperature + noul log-odds bias)
-            tau = self.temps[kind].to(cols.device)
+            head_t = self.head_temperature.to(cols.device)
+            tau = (head_t * self.temps[kind]).to(cols.device)
             if kind == 0:
                 bias = self.noul_bias.to(cols.device)
                 cols = torch.cat([(cols[0:1] + bias) / tau, cols[1:] / tau])
@@ -971,6 +1018,7 @@ class OmniJevHead(ScoringHead):
             'norm': self.head.norm,
             'lm_feats': self.lm_feats,
             'ordinal': self.ordinal,
+            'head_temperature': float(self.head_temperature),
             'temperatures': {
                 KIND_NAMES[k]: float(self.temps[k])
                 for k in range(len(KIND_NAMES))
@@ -979,6 +1027,18 @@ class OmniJevHead(ScoringHead):
             'open_len': self.open_len,
             'close_len': self.close_len,
         }
+
+    def _apply_calibration_meta(self, meta: Dict[str, Any]) -> None:
+        """Restore fitted temperatures and noul_bias from ``scoring_head.json``."""
+        if 'head_temperature' in meta:
+            self.head_temperature = torch.as_tensor(float(meta['head_temperature']), dtype=torch.float32)
+        temps = meta.get('temperatures')
+        if temps:
+            for k, name in enumerate(KIND_NAMES):
+                if name in temps:
+                    self.temps[k] = float(temps[name])
+        if 'noul_bias' in meta:
+            self.noul_bias = torch.as_tensor(float(meta['noul_bias']), dtype=torch.float32)
 
     @classmethod
     def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'OmniJevHead':
@@ -1014,7 +1074,8 @@ class OmniJevHead(ScoringHead):
                 k: float(v)
                 for k, v in temps.items()
             },
-            noul_bias=float(biases.get('noul', 0.0)))
+            noul_bias=float(biases.get('noul', 0.0)),
+            head_temperature=float(head_meta.get('head_temperature', 1.0)))
         missing, unexpected = head.head.load_state_dict(head_sd, strict=False)
         if missing or unexpected:
             raise RuntimeError(f'OmniJev head.pt strict load failed: missing={missing}, unexpected={unexpected}')
