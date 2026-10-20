@@ -206,6 +206,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 else:
                     self.adapters = [self.resume_from_checkpoint]
         BaseArguments.__post_init__(self)
+        self._init_decision_callbacks()
         self._init_override()
         TunerArguments.__post_init__(self)
         self._check_padding_free()
@@ -237,6 +238,11 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
 
         if 'swanlab' in self.report_to:
             self._init_swanlab()
+
+    def _init_decision_callbacks(self):
+        if self.task_type == 'decision':
+            if 'temperature_calibration' not in self.callbacks:
+                self.callbacks.append('temperature_calibration')
 
     def _init_override(self):
         self._init_output_dir()
