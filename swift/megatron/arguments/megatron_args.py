@@ -505,6 +505,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     recompute_method: Literal['uniform', 'block'] = None
     recompute_num_layers: Optional[int] = None
     recompute_modules: List[str] = field(default_factory=lambda: ['core_attn'])
+    mlp_chunks_for_training: int = 1
     train_iters: Optional[int] = None
     num_train_epochs: Optional[int] = None
 

@@ -19,6 +19,9 @@
   - "layernorm": Recomputes the input_layernorm and pre_mlp_layernorm.
   - "mla_up_proj": Recomputes the MLA up-projection and RoPE application parts.
 - deterministic_mode: Deterministic mode, which may lead to slower training speed, default is False.
+- mlp_chunks_for_training: Number of chunks used to compute the MLP along the sequence dimension during training. Must be a positive integer. Defaults to 1 (no chunking). Values greater than 1 require `megatron-core>=0.18` and are currently supported only for dense models. The actual number of chunks is limited by the current sequence length.
+  - Incompatible with `--recompute_granularity selective --recompute_modules mlp`, since MLP recomputation bypasses chunking. The default `--recompute_modules core_attn` is compatible.
+  - Chunking may reduce temporary memory used by each MLP call, but may also reduce throughput. It does not guarantee a proportional reduction in total saved activations. Compare peak memory and throughput on your workload. See the [BF16 full-parameter SFT example](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/dense/chunked_mlp.sh).
 - 🔥train_iters: Total number of training iterations, default is None.
   - Tip: You can set `--num_train_epochs` to specify the number of training epochs. When using a non-streaming dataset, `train_iters` will be automatically calculated based on the dataset size (compatible with packing).
 - 🔥num_train_epochs: Specifies the number of training epochs. When using non-streaming datasets, this parameter will automatically calculate train_iters for you without the need to manually pass `train_iters`. When using streaming datasets, this parameter will force exit the training when `num_train_epochs` is reached, and perform validation and saving of weights. Defaults to None.
