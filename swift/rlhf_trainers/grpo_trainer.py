@@ -1779,6 +1779,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         logits_to_keep = grpo_batch.logits_to_keep
         completion_ids = input_ids[:, -logits_to_keep:]
         completion_mask = grpo_batch.completion_mask
+        if self.overlong_filter:
+            completion_mask = completion_mask & ~grpo_batch.truncated_mask.unsqueeze(-1)
 
         last_hidden_state = self._get_last_hidden_state(unwrapped_model, model_inputs, logits_to_keep)
 
