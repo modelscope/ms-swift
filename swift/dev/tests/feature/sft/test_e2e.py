@@ -53,10 +53,10 @@ def test_write_ckpt_args_json_includes_force_load_keys(tmp_path):
     are force_load_keys; omitting them leaves infer on its default. Pure function, no model.
     """
     from swift.dev.config import ModelConfig, TemplateConfig, TunerConfig
-    from swift.dev.recipe.common.assembly import TrainAssembly
+    from swift.dev.recipe.utils import write_ckpt_args_json
 
     ckpt = str(tmp_path)
-    TrainAssembly.write_ckpt_args_json(
+    write_ckpt_args_json(
         ckpt,
         _FakeProcessor('qwen2_5'),
         ModelConfig(model='/m', task_type='seq_cls', torch_dtype='bfloat16', attn_impl='flash_attn'),
@@ -75,13 +75,14 @@ def test_write_ckpt_args_json_includes_force_load_keys(tmp_path):
 
 
 def test_write_ckpt_args_json_omits_none_full_param(tmp_path):
-    """Full-param causal_lm run: task_type/tuner_type stay None -> filtered out (infer's own
-    defaults stand), so we don't write misleading keys."""
+    """Full-param causal_lm run: a None task_type is filtered out (infer's own default stands),
+    while tuner_type is ALWAYS written -- it is a force_load key, so 'full' must reach infer
+    explicitly rather than be inferred from absence."""
     from swift.dev.config import ModelConfig, TemplateConfig
-    from swift.dev.recipe.common.assembly import TrainAssembly
+    from swift.dev.recipe.utils import write_ckpt_args_json
 
     ckpt = str(tmp_path)
-    TrainAssembly.write_ckpt_args_json(
+    write_ckpt_args_json(
         ckpt,
         _FakeProcessor('qwen2_5'),
         ModelConfig(model='/m', torch_dtype='bfloat16'),
@@ -91,7 +92,7 @@ def test_write_ckpt_args_json_omits_none_full_param(tmp_path):
     with open(os.path.join(ckpt, 'args.json')) as f:
         args = json.load(f)
     assert 'task_type' not in args
-    assert 'tuner_type' not in args
+    assert args['tuner_type'] == 'full'
     assert args['model_type'] == 'qwen2_5'
 
 
@@ -110,7 +111,7 @@ def test_initialize_twinkle_sets_a_device_group_on_every_backend():
     import twinkle.infra as infra
 
     from swift.dev.config import DistributedConfig
-    from swift.dev.recipe.common.assembly import TrainAssembly
+    from swift.dev.recipe.utils import initialize_supervised_twinkle
 
     saved = (infra._mode, infra._device_group, infra._device_mesh)
     try:
@@ -119,7 +120,7 @@ def test_initialize_twinkle_sets_a_device_group_on_every_backend():
         for dist_config in (DistributedConfig(), DistributedConfig(mode='local'),
                             DistributedConfig(backend='megatron', mode='local', nproc_per_node=1)):
             infra._mode, infra._device_group, infra._device_mesh = None, None, None
-            TrainAssembly.initialize_twinkle(dist_config)
+            initialize_supervised_twinkle(dist_config, seed=42, full_determinism=False, tf32=None)
             assert infra._device_group is not None, f'no device group for {dist_config}'
             assert infra._device_mesh is not None, f'no device mesh for {dist_config}'
             assert infra._mode == 'local', f'unexpected mode {infra._mode} for {dist_config}'
@@ -145,7 +146,7 @@ def test_initialize_twinkle_forwards_seed_and_full_determinism(monkeypatch):
     import twinkle
 
     from swift.dev.config import DistributedConfig
-    from swift.dev.recipe.common.assembly import TrainAssembly
+    from swift.dev.recipe.utils import initialize_supervised_twinkle
 
     captured = {}
 
@@ -155,13 +156,13 @@ def test_initialize_twinkle_forwards_seed_and_full_determinism(monkeypatch):
 
     monkeypatch.setattr(twinkle, 'initialize', _fake_initialize)
 
-    TrainAssembly.initialize_twinkle(DistributedConfig(mode='local'), seed=1234, full_determinism=True)
+    initialize_supervised_twinkle(DistributedConfig(mode='local'), seed=1234, full_determinism=True, tf32=None)
     assert captured['mode'] == 'local'
     assert captured['extra_torch_kwargs']['seed'] == 1234, 'local branch dropped the user seed'
     assert captured['extra_torch_kwargs']['full_determinism'] is True, 'local branch dropped full_determinism'
 
-    TrainAssembly.initialize_twinkle(
-        DistributedConfig(mode='ray', nproc_per_node=2), seed=7, full_determinism=False)
+    initialize_supervised_twinkle(
+        DistributedConfig(mode='ray', nproc_per_node=2), seed=7, full_determinism=False, tf32=None)
     assert captured['mode'] == 'ray'
     assert captured['extra_torch_kwargs']['seed'] == 7, 'ray branch dropped the user seed'
     assert captured['extra_torch_kwargs']['full_determinism'] is False, 'ray branch dropped full_determinism'

@@ -167,7 +167,7 @@ def test_run_embedding_sentence_transformers_end_to_end(tmp_path, tiny_data, ass
 
 #: unsloth is a documented gap, not a stub. It is NOT installed in this environment and is pinned to
 #: older transformers, so it cannot load against the installed 5.x even if installed. dev routes an
-#: unsloth tuner through ``TunerConfig(tuner_backend='unsloth')``; the sentence-transformers builder
+#: unsloth tuner through ``DistributedConfig(backend='unsloth')``; the sentence-transformers builder
 #: already rejects that combination explicitly (builders/model.py:657). The test below skips when the
 #: package is absent (the case here) and, if a future environment does install a compatible unsloth,
 #: drives a real LoRA run rather than passing unconditionally -- so it stays honest either way.
@@ -179,7 +179,7 @@ def test_run_sft_unsloth_tuner_end_to_end(tmp_path, text_model_path, assert_trai
         import unsloth  # noqa: F401
     except ImportError:
         pytest.skip('unsloth not installed (and pinned to pre-5.x transformers, incompatible with the '
-                    'installed 5.x); dev routes it via TunerConfig(tuner_backend="unsloth") -- a tracked '
+                    'installed 5.x); dev routes it via DistributedConfig(backend="unsloth") -- a tracked '
                     'framework gap, see the module docstring.')
 
     from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
@@ -193,9 +193,9 @@ def test_run_sft_unsloth_tuner_end_to_end(tmp_path, text_model_path, assert_trai
         TemplateConfig(template='qwen2_5', max_length=256),
         DatasetConfig(dataset=[data], dataset_shuffle=False),
         TrainConfig(learning_rate=1e-4, per_device_train_batch_size=2, gradient_accumulation_steps=1, max_steps=3),
-        DistributedConfig(),
+        DistributedConfig(backend='unsloth'),
         CheckpointConfig(),
-        TunerConfig(tuner='lora', tuner_backend='unsloth'),
+        TunerConfig(tuner='lora'),
         output_dir=out_dir,
     )
     assert_trained(history, out_dir, 'causal_lm', max_loss=_CAUSAL_LM_MAX_LOSS)

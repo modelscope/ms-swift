@@ -132,7 +132,7 @@ def _dense_argv(model, datasets, out_dir, steps):
 def _run_dev_cli(model, datasets, out_dir, steps):
     """dev via swift.dev.cli.sft.sft_main --backend megatron (the argv -> Config mapping under test).
 
-    lr is read straight off the Megatron optimizer after each step: dev's StepRunner history carries
+    lr is read straight off the Megatron optimizer after each step: dev's StepState history carries
     loss/grad_norm but no lr (twinkle exposes lr only through TrainMetric, which also emits
     iters/time/speed noise). Patching record_step here keeps the lr probe in the test scaffold
     rather than changing dev's logging format for a test's benefit.
@@ -142,11 +142,11 @@ def _run_dev_cli(model, datasets, out_dir, steps):
     from "the probe samples at a different moment than legacy does".
     """
     from swift.dev.cli.sft import sft_main as dev_megatron_sft_main
-    from swift.dev.recipe.common.step_runner import StepRunner
+    from swift.dev.recipe.utils import StepState
 
     trace = os.environ.get('DENSE_RUNNER_TRACE_SCHED') == '1'
     lrs, sched_states = [], []
-    orig_record = StepRunner.record_step
+    orig_record = StepState.record
 
     def patched_record(self):
         orig_record(self)
@@ -154,11 +154,11 @@ def _run_dev_cli(model, datasets, out_dir, steps):
         if trace:
             sched_states.append(_read_sched_state(self.model))
 
-    StepRunner.record_step = patched_record
+    StepState.record = patched_record
     try:
         history = dev_megatron_sft_main([*_dense_argv(model, datasets, out_dir, steps), '--backend', 'megatron'])
     finally:
-        StepRunner.record_step = orig_record
+        StepState.record = orig_record
     if trace and int(os.environ.get('RANK', '0')) == 0:
         print(f'SCHED_STATES(first3)={sched_states[:3]}', flush=True)
         print(f'SCHED_STATES(last2)={sched_states[-2:]}', flush=True)

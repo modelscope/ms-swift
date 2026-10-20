@@ -109,28 +109,33 @@ def _ensure_nltk_punkt():
 
 @contextmanager
 def _captured_evaluator():
-    """Capture the ``Evaluator`` run_offline builds, so a test can read its ``eval_history`` afterwards.
+    """Capture every eval-pass result row run_sft produces, so a test can read them afterwards.
 
-    ``run_sft`` returns only the training loss history; the eval metrics live on the Evaluator it built and
-    discarded. Wrapping the ``Evaluator`` class observes the REAL component (the same technique ``hf_dp.py``
-    uses to read the model's mesh off a discarded assembly) rather than stubbing ``evaluate``. run_offline
-    imports Evaluator from its module at call time, so patching the module attribute is picked up.
+    ``run_sft`` returns only the training loss history; its ``evaluate()`` appends each pass to a local
+    ``eval_history``. The ``Evaluator`` class this used to wrap now lives in twinkle_agentic and only
+    backs the generative path, so both module-level evaluators run_sft calls (``_evaluate_loss`` /
+    ``_evaluate_generate``) are wrapped instead -- observing the REAL return values rather than
+    stubbing ``evaluate``. Yields the list of result dicts.
     """
-    import swift.dev.recipe.common.evaluator as evaluator_mod
-    captured = {}
-    original = evaluator_mod.Evaluator
+    import swift.dev.recipe.sft.run_sft as run_sft_mod
+    captured = []
+    originals = (run_sft_mod._evaluate_loss, run_sft_mod._evaluate_generate)
 
-    class CapturingEvaluator(original):
+    def _wrap(orig):
 
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            captured['evaluator'] = self
+        def wrapped(*args, **kwargs):
+            result = orig(*args, **kwargs)
+            if result is not None:
+                captured.append(result)
+            return result
 
-    evaluator_mod.Evaluator = CapturingEvaluator
+        return wrapped
+
+    run_sft_mod._evaluate_loss, run_sft_mod._evaluate_generate = _wrap(originals[0]), _wrap(originals[1])
     try:
         yield captured
     finally:
-        evaluator_mod.Evaluator = original
+        run_sft_mod._evaluate_loss, run_sft_mod._evaluate_generate = originals
 
 
 def _evalscope_reports(out_dir):
@@ -199,7 +204,7 @@ def test_val_loss_eval_single_card(tmp_path, text_model_path):
             output_dir=out_dir)
 
     losses = _assert_trained(history)
-    eval_history = captured['evaluator'].eval_history
+    eval_history = captured
     assert eval_history, 'no eval ran: split_dataset_ratio/eval_steps did not wire the val-loss path'
     eval_losses = [e['eval_loss'] for e in eval_history]
     assert all(v == v and abs(v) != float('inf') for v in eval_losses), f'non-finite eval_loss: {eval_losses}'
@@ -289,13 +294,13 @@ def _run_generative(tmp_path, text_model_path, *, backend, distributed_config, p
             CheckpointConfig(),
             tuner_config=TunerConfig(tuner='lora'),
             output_dir=out_dir)
-    return history, captured['evaluator'], out_dir
+    return history, captured, out_dir
 
 
-def _assert_generative_scored(history, evaluator, out_dir, label):
+def _assert_generative_scored(history, eval_rows, out_dir, label):
     """The generative post-condition: EvalScope really ran and wrote a benchmark report."""
     _assert_trained(history)
-    eval_history = evaluator.eval_history
+    eval_history = eval_rows
     assert eval_history, f'{label}: no generative eval ran'
     # _evaluate_generate stores the raw EvalScope summary under 'eval_report' on rank 0 / the driver.
     assert any('eval_report' in e for e in eval_history), f'{label}: eval_history carries no EvalScope report'

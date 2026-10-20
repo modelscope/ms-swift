@@ -24,25 +24,24 @@ def _run(data_path, out_dir):
     """run_sft with a val-loss eval on the transformers backend; return this rank's train + eval losses."""
     from modelscope import snapshot_download
 
-    import swift.dev.recipe.common.evaluator as evaluator_mod
+    import swift.dev.recipe.sft.run_sft as run_sft_mod
     from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                   TrainConfig, TunerConfig)
-    from swift.dev.recipe import run_sft
+    run_sft = run_sft_mod.run_sft
 
-    # run_sft discards the assembly (and the Evaluator run_offline built), returning only the training
-    # history. Capture that Evaluator to read eval_history -- observing the real object, not stubbing
-    # evaluate(). run_offline imports Evaluator from its module at call time, so patching the module
-    # attribute is picked up.
-    captured = {}
-    orig_evaluator = evaluator_mod.Evaluator
+    # run_sft returns only the training history; the eval rows its evaluate() appends to a local
+    # eval_history are observed by wrapping the module-level _evaluate_loss it calls (the Evaluator
+    # class this runner used to capture now lives in twinkle_agentic and only backs generative eval).
+    captured = []
+    orig_evaluate_loss = run_sft_mod._evaluate_loss
 
-    class CapturingEvaluator(orig_evaluator):
+    def _capturing_evaluate_loss(*args, **kwargs):
+        result = orig_evaluate_loss(*args, **kwargs)
+        if result is not None:
+            captured.append(result)
+        return result
 
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            captured['evaluator'] = self
-
-    evaluator_mod.Evaluator = CapturingEvaluator
+    run_sft_mod._evaluate_loss = _capturing_evaluate_loss
     try:
         history = run_sft(
             ModelConfig(model=snapshot_download(MODEL), torch_dtype='bfloat16'),
@@ -66,13 +65,12 @@ def _run(data_path, out_dir):
             output_dir=out_dir,
             _save_final=False)
     finally:
-        evaluator_mod.Evaluator = orig_evaluator
+        run_sft_mod._evaluate_loss = orig_evaluate_loss
 
-    evaluator = captured['evaluator']
     return {
         'rank': int(os.environ.get('RANK', '0')),
         'train_losses': [r['loss'] for r in history],
-        'eval_losses': [e.get('eval_loss') for e in evaluator.eval_history],
+        'eval_losses': [e.get('eval_loss') for e in captured],
     }
 
 
