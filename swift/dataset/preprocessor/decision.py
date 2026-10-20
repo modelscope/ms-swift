@@ -541,6 +541,57 @@ class ClefPreprocessor(ScoringPreprocessor):
         raise ValueError(f'Clef gold {gold!r} for question {qid!r} matches no option id {option_ids}.')
 
 
+class Thx02Preprocessor(ClefPreprocessor):
+    """THX-02 preprocessor: ONE record -> ONE row carrying ALL its questions (joint inline readout).
+
+    Same native schema as the Decisions API: `{state, questions: {qid: {type, instructions, criteria}},
+    images?, answers?}`. `criteria` is `{option: description}` for `choice` (kept in the given order),
+    a list of level descriptions for `score`, and optional for `noul` (options false/true).
+
+    Gold answers (a record-level `answers` map or a per-question `answer`/`gold`) may be an option key,
+    an index, a bool (`noul`), or a full distribution in option order. A record-level `targets` map of
+    distributions (e.g. teacher probabilities for distillation) is accepted as well.
+    """
+
+    ANSWERS_KEYS = ('answers', 'labels', 'golds', 'targets')
+
+    def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
+        from swift.model.decision_head import thx02_option_ids
+        state = self._first(row, self.STATE_KEYS, default='')
+        answers = self._first(row, self.ANSWERS_KEYS, default=None)
+        questions: List[Dict[str, Any]] = []
+        for qid, q in self._question_items(self._first(row, self.QUESTIONS_KEYS, default=None)):
+            if not isinstance(q, dict):
+                raise ValueError(f'THX-02 question {qid!r} must be a dict of type/instructions/criteria; got {q!r}')
+            kind = self._normalize_kind(self._first(q, self.KIND_KEYS, default=None))
+            criteria = self._normalize_criteria(kind, self._first(q, self.CRITERIA_KEYS, default=None))
+            option_ids = thx02_option_ids(kind, criteria)
+            question = {
+                'kind': kind,
+                'question': self._first(q, self.INSTRUCTION_KEYS, default=None),
+                'options': option_ids,
+                'question_id': str(qid),
+                'criteria': criteria,
+            }
+            gold = self._resolve_gold(q, answers, qid, option_ids)
+            if gold is not None:
+                question['gold'] = gold
+            questions.append(question)
+        return state, questions
+
+    def _build_row(self, row: Dict[str, Any], state: Any, questions: List[Dict[str, Any]]) -> Dict[str, Any]:
+        out = ScoringPreprocessor._build_row(self, row, state, questions)
+        out['messages'] = [{'role': 'user', 'content': self._state_to_text(state)}]
+        out['state_is_json'] = not isinstance(state, str) and state is not None
+        out['state'] = json.dumps(state, ensure_ascii=False) if out['state_is_json'] else (state or '')
+        out['question_ids'] = [q['question_id'] for q in questions]
+        out['criteria'] = [
+            json.dumps(c, ensure_ascii=False) if c is not None and not isinstance(c, str) else c
+            for c in [q.get('criteria') for q in questions]
+        ]
+        return out
+
+
 def _omnijev_render_option(o: Dict[str, Any]) -> str:
     """How one option block is written into the prompt. An abstain option renders as
     'none of the above'; a region option as its integer box; otherwise the option text

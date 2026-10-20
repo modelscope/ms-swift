@@ -1,11 +1,14 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import os
+import torch
 from contextlib import contextmanager
 from functools import wraps
 from transformers import PretrainedConfig, PreTrainedModel
 from typing import Optional
 
-from swift.model.decision_head import ClefJointSchemaHead, JevVerbalizerHead, KevPointerHead, OmniJevHead, ScoringHead
+from swift.model.decision_head import (ClefJointSchemaHead, JevVerbalizerHead, KevPointerHead, OmniJevHead,
+                                         ScoringHead, Thx02ReadoutHead)
 from swift.model.omnijev_branch import (OPT_CLOSE, OPT_OPEN, add_option_tokens, branch_questions, find_rope_owner,
                                         is_hybrid, prefix_inputs, rope_positions, rows_from_ids)
 from swift.model.patcher import patch_module_forward
@@ -323,6 +326,111 @@ register_model(
         architectures=[],
         requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['decision']))
+
+def enable_thx02_noncausal_attention(language_model) -> None:
+    """THX-02 reads every question at its own marker inside ONE sequence, so its full-attention layers
+    attend bidirectionally over the non-padding tokens; the gated-deltanet (linear-attention) layers stay
+    causal. Installed as a forward pre-hook on the text model, converting the 2D padding mask into the
+    per-layer-type mask mapping that Qwen3.5 accepts."""
+    from transformers.masking_utils import create_recurrent_attention_mask
+
+    def mask_inputs(module, args, kwargs):
+        if kwargs.get('past_key_values') is not None or kwargs.get('use_cache'):
+            raise ValueError('THX-02 noncausal decision forward does not support a KV cache.')
+        attention_mask = kwargs.get('attention_mask')
+        if isinstance(attention_mask, dict):
+            return args, kwargs
+        embeddings = kwargs.get('inputs_embeds')
+        if embeddings is None:
+            embeddings = module.embed_tokens(kwargs['input_ids'])
+        if attention_mask is None:
+            attention_mask = torch.ones(embeddings.shape[:2], device=embeddings.device, dtype=torch.bool)
+        kwargs['attention_mask'] = {
+            'full_attention':
+            attention_mask[:, None, None, :].bool(),
+            'linear_attention':
+            create_recurrent_attention_mask(
+                config=module.config, inputs_embeds=embeddings, attention_mask=attention_mask),
+        }
+        return args, kwargs
+
+    language_model.register_forward_pre_hook(mask_inputs, with_kwargs=True)
+
+
+class Thx02ModelLoader(ScoringModelLoader, Qwen3_5Loader):
+    """THX-02: a Qwen3.5 hybrid backbone (vision + gated-deltanet/full attention) with noncausal full
+    attention and an inline readout head. The repo's top-level `config.json` is THX-02's own
+    (`model_type: thx02`) and carries the backbone configuration under `backbone_config`; the backbone
+    weights (`model.safetensors`) are stored without the `model.` prefix and without an lm_head."""
+    head_cls = Thx02ReadoutHead
+
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        config_file = os.path.join(model_dir, 'config.json')
+        with open(config_file, 'r') as f:
+            top = json.load(f)
+        if top.get('model_type') != 'thx02' or 'backbone_config' not in top:
+            return super().get_config(model_dir)
+        from transformers import Qwen3_5Config
+        config = Qwen3_5Config(**top['backbone_config'])
+        config.thx02 = {k: v for k, v in top.items() if k != 'backbone_config'}
+        return config
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        processor = super().get_processor(model_dir, config)
+        with open(os.path.join(model_dir, 'decision_config.json'), 'r') as f:
+            decision_config = json.load(f)
+        # Answer codes (A, B, ..., one token each) and the image pixel bounds THX-02 was trained with.
+        processor.thx02_codes = list(decision_config['codes'])
+        max_pixels = int(decision_config.get('max_pixels') or 262144)
+        processor.image_processor.size = {'shortest_edge': 65536, 'longest_edge': max_pixels}
+        return processor
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        model = Qwen3_5Loader.get_model(self, model_dir, config, processor, model_kwargs)
+        enable_thx02_noncausal_attention(model.model.language_model)
+        head = self.build_head(model, model_dir, config)
+        self.attach_scoring_head(model, head)
+        from swift.model.decision_head import maybe_load_trained_scoring_head
+        maybe_load_trained_scoring_head(model, model_dir)
+        return model
+
+    def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
+        head = self._match_head_dtype_device(model, head)
+        model.scoring_head = head
+        origin_forward = model.forward
+
+        @wraps(origin_forward.__func__ if hasattr(origin_forward, '__func__') else origin_forward)
+        def new_forward(self, *args, **kwargs):
+            return Thx02ModelLoader._thx02_forward(self, *args, head=head, **kwargs)
+
+        patch_module_forward(model, new_forward)
+
+    @staticmethod
+    def _thx02_forward(self, *args, head: ScoringHead, **kwargs):
+        meta = kwargs.pop('decision_meta', None)
+        if meta is None:
+            raise ValueError('THX-02 forward requires decision_meta from Thx02Template._encode.')
+        for key in ('labels', 'logits_to_keep', 'output_hidden_states', 'return_dict', 'text_position_ids'):
+            kwargs.pop(key, None)
+        kwargs['use_cache'] = False
+        # The readout reads the normalized last hidden state at each marker; the base model's lm_head is
+        # never applied (THX-02 ships none), so call the Qwen3.5 backbone directly.
+        output = self.model(*args, **kwargs)
+        return head(output.last_hidden_state, None, meta)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.thx02, [ModelGroup([
+            Model('HAL-X/THX-02', 'doofz/THX-02'),
+        ], TemplateType.thx02)],
+        Thx02ModelLoader,
+        model_arch=ModelArch.qwen2_vl,
+        task_type='decision',
+        architectures=['THXDecisionModel'],
+        requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14'],
+        tags=['vision', 'decision']))
 
 
 class GenericDecisionLoader(ScoringModelLoader):

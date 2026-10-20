@@ -23,6 +23,8 @@ pip install "ms-swift>=4.6.0"
   - [ModelScope](https://modelscope.cn/models/AI-ModelScope/OmniJev)
 4. Kev：Qwen3.5-{0.8,4,9}B-Base（hybrid gated-deltanet）+ PEFT adapter，纯文本
   - [kev-0.8b](https://www.modelscope.cn/models/jaredpalmer/kev-0.8b) / [kev-4b](https://www.modelscope.cn/models/jaredpalmer/kev-4b) / [kev-9b](https://www.modelscope.cn/models/jaredpalmer/kev-9b)
+5. THX-02：Qwen3.5 hybrid 底座（已合并，full attention 层为非因果注意力）+ 内联 readout 头
+  - [ModelScope](https://modelscope.ai/models/HAL-X/THX-02)
 
 
 | 模型         | `--model_type` | 底座                               | 头制品                                                                            | `--loss_type`  |
@@ -31,6 +33,7 @@ pip install "ms-swift>=4.6.0"
 | Clef       | `clef`         | 已合并 LoRA 的 Qwen3-VL              | `joint_head.safetensors` + `joint_head_config.json`                            | `smooth_brier` |
 | OmniJev    | `omnijev`      | Qwen3.5-4B hybrid + PEFT adapter | `head.pt`（FiLM）+ `ord.pt`（有序回归）+ `new_tok_emb.pt`（2 新 token）+ `head_meta.json` | `ce_rps`       |
 | Kev        | `kev`          | Qwen3.5-{0.8,4,9}B-Base hybrid + PEFT adapter | `head.pt`（pointer head，fp32）+ 拟合 `temperature`（仅 eval 生效）                 | `scoring`      |
+| THX-02     | `thx02`        | 已合并的 Qwen3.5 hybrid（非因果 full attention） | `readout.safetensors`（255 个答案码上的线性 readout）+ `decision_config.json`（标定温度） | `distill_rps`  |
 
 
 开发者可以将任意 CausalLM 转为决策模型，只需指定：
@@ -306,6 +309,22 @@ swift sft --task_type decision ... --split_dataset_ratio 0.1
 
 
 
+### THX-02
+
+THX-02 在**单次非因果前向中联合读取一条记录的全部问题**，输入格式与 Decisions API 请求一致。图像为可选项，可与任意问题类型组合。
+
+```json lines
+{"state": "I was charged twice, please refund the extra payment!", "questions": {"team": {"type": "choice", "instructions": "Which team should handle this?", "criteria": {"billing": "Charges and refunds", "support": "Technical problems"}}, "refund": {"type": "noul", "instructions": "Does the customer ask for a refund?"}, "anger": {"type": "score", "instructions": "How frustrated is the customer?", "criteria": ["calm", "annoyed", "angry"]}}, "answers": {"team": "billing", "refund": true, "anger": 1}}
+{"state": {"order": 48213, "status": "delivered"}, "questions": {"route": {"type": "choice", "criteria": {"shipping": "Lost or late deliveries", "billing": "Payments"}}}, "answers": {"route": "shipping"}}
+{"state": "A cafe raised the latte price from $4 to $5; daily sales fell from 300 to 200 cups.", "questions": {"revenue": {"type": "choice", "instructions": "What happened to daily revenue?", "criteria": {"up": "Increased", "same": "Unchanged", "down": "Decreased"}}}, "targets": {"revenue": [0.02, 0.08, 0.9]}}
+{"state": "Look at the image.", "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png"], "questions": {"kind": {"type": "choice", "instructions": "What is in the image?", "criteria": {"cat": "a cat", "dog": "a dog"}}}, "answers": {"kind": "cat"}}
+```
+
+- `state`：字符串或任意 JSON 值。
+- `questions`：以问题 ID 为键的字典；每项包含 `type`（`noul`/`choice`/`score`）、可选的 `instructions` 和 `criteria`（`choice` 为 `{选项: 描述}`，保持给定顺序；`score` 为档位描述列表；`noul` 可选 `{"false": ..., "true": ...}` 描述）。
+- `answers`：每个问题 ID 的 gold：选项 key、选项下标、`noul` 的 bool，或按选项顺序给出的完整分布。也可用 `targets` 给出软分布（例如蒸馏时教师模型的概率）。
+- `images`：可选，图像路径、URL 或 data URI 列表。
+
 ## 训练
 
 ms-swift 为每个已接入模型提供训练脚本 `examples/train/decision/<model_type>.sh`（使用**本地 mini 数据集**，无需联网下载），通过 `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision` 加载本地数据；同时支持使用**远程数据集**（`--dataset open_jev_<model_type>:all`，需在线下载 Open-Jev 语料）。两种方式仅数据来源不同，其余参数完全一致，详见[数据集](#数据集)章节。各模型的完整可运行命令（含 `--adapters` 路径获取、头制品环境变量导出等）见对应脚本。
@@ -346,6 +365,49 @@ swift sft \
 - 头制品不在底座目录的模型（adapter-only 仓库）需先导出环境变量指向头制品，见[头制品环境变量覆盖](#头制品环境变量覆盖)
 - 使用 branch 缓存机制的模型还需 `export MSO_BRANCH_CKPT=1` 且 `--gradient_checkpointing false`，见[下方说明](#omnijev-msol_branch_ckpt-与-gradient_checkpointing-互斥说明)
 - `--split_dataset_ratio 0` — 示例脚本默认关闭验证集切分；如需训练后温度校准，改为 `0.1` 或显式传 `--val_dataset`
+
+### THX-02
+
+THX-02 在同一个仓库中发布已合并的底座与 readout 头，因此在其上训练新的 LoRA，readout 联合训练：
+
+```bash
+MODELSCOPE_ENDPOINT=https://www.modelscope.ai \
+USE_HF=0 \
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --external_plugins examples/train/decision/dataset.py \
+    --model HAL-X/THX-02 \
+    --model_type thx02 \
+    --task_type decision \
+    --loss_type distill_rps \
+    --dataset thx02_decision \
+    --tuner_type lora \
+    --target_modules all-linear \
+    --freeze_vit true \
+    --torch_dtype bfloat16 \
+    --attn_impl sdpa \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 1 \
+    --learning_rate 1e-4 \
+    --lora_rank 16 \
+    --lora_alpha 32 \
+    --gradient_accumulation_steps 4 \
+    --gradient_checkpointing true \
+    --logging_steps 1 \
+    --save_steps 50 \
+    --save_total_limit 2 \
+    --max_length 8192 \
+    --split_dataset_ratio 0 \
+    --output_dir output \
+    --dataloader_num_workers 1
+```
+
+关键参数：
+
+- `--model_type thx02` — 从 THX-02 自带的 `config.json`（`backbone_config`）读取底座配置，将 full attention 层切换为对非 padding token 的双向注意力，并把 readout 挂载为 `scoring_head`
+- `--loss_type distill_rps` — 对目标分布（one-hot gold 或教师软概率）的 KL + `score` 问题上的 RPS
+- `--target_modules all-linear` — 仅匹配语言模型的投影层；readout 直接训练（不经 LoRA），保存为 `scoring_head.safetensors`
+- 不支持 packing / `--padding_free`：非因果注意力会让打包在一起的记录互相可见
 
 
 
@@ -645,6 +707,8 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 | `CLEF_JOINT_HEAD_CONFIG`  | `clef` | `joint_head_config.json` | 覆盖头配置加载路径                     |
 | `CLEF_JOINT_HEAD_WEIGHTS` | `clef` | `joint_head.safetensors` | 覆盖头权重加载路径                     |
 | `KEV_HEAD`                | `kev`  | `head.pt`                | 指向 adapter 目录下的 pointer head 权重（kev 仓库为 adapter-only，必设） |
+| `THX02_READOUT`           | `thx02` | `readout.safetensors`  | 覆盖 readout 权重加载路径              |
+| `THX02_DECISION_CONFIG`   | `thx02` | `decision_config.json` | 覆盖温度 / 答案码配置加载路径           |
 
 
 未设置时，加载器会自动在 `model_dir`（及 `jev` 的 `adapter_vllm/` 子目录）下查找对应文件。文件缺失时报错信息中会提示设置对应环境变量。
@@ -655,6 +719,7 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 - `--target_modules all-linear` **注入 head**：`clef` / `omnijev` 的 head 含 Linear，all-linear 可能叠加 LoRA。
 - **`jev` choice > 16 选项**：仅支持 `single` 模式（≤16 一次前向）。
 - **`omnijev` 音频频谱图**：不在推理路径内，需用户自备转换器。
+- **`thx02` packing**：会拒绝 `--packing` / `--padding_free`，因为非因果注意力会让打包的记录互相可见。
 - `tie_word_embeddings=True` **adapter 合并**：仅影响合并/转格式，训练与推理不受影响。
 
 
@@ -677,6 +742,9 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 | 2   | Clef             | 0.5000     | **0.8333** | +0.3333 | 0.9712          | 0.9311         | ✅ +67%  |
 | 3   | OmniJev          | 0.5500     | 0.7500     | +0.2884 | 0.8465          | 0.8196         | ✅ +37%  |
 | 4   | Generic Decision | 0.1667     | **0.6667** | +0.5000 | 0.5682          | 0.9363         | ✅ +300% |
+| 5   | THX-02           | 0.7143     | **1.0000** | +0.2857 | 0.8827          | **0.9154**     | ✅ +40%  |
+
+> THX-02（第 5 行）在 transformers 5.17.0、1× RTX 4090 上测得，使用 `examples/train/decision/thx02.sh` 在 `thx02_decision` 上训练 3 个 epoch。
 
 ### 温度模块消融实验：同 checkpoint 有/无温度后处理
 

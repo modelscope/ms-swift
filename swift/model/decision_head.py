@@ -129,6 +129,16 @@ def omnijev_column_keys(kind: str, keys: Sequence[Any]) -> List[str]:
     return [str(k) for k in keys]
 
 
+def thx02_option_ids(kind: str, criteria: Any) -> List[str]:
+    """THX-02 answer keys in prompt order: `choice` keeps the criteria order, `noul` is false/true,
+    `score` is the level index."""
+    if kind == 'noul':
+        return ['false', 'true']
+    if kind == 'choice':
+        return [str(key) for key in (criteria or {})]
+    return [str(index) for index in range(len(criteria or []))]
+
+
 class ScoringHead(nn.Module):
     """Abstract base for the three decision heads (JEV / Clef / OmniJev).
 
@@ -739,6 +749,85 @@ class ClefJointSchemaHead(ScoringHead):
         missing, unexpected = head.load_state_dict(state, strict=False)
         if missing or unexpected:
             raise RuntimeError(f'Clef joint head strict load failed: missing={missing}, unexpected={unexpected}')
+        return head
+
+
+class Thx02ReadoutHead(ScoringHead):
+    """THX-02 inline readout: one linear readout over the answer codes at each question's marker.
+
+    THX-02 renders all questions of a record in ONE noncausal sequence; every question ends with a
+    readout marker token, and the last hidden state at that marker is projected onto the answer codes
+    (A, B, ..., up to 255). The first `n_options` code logits are the question's option logits, divided
+    by the calibrated temperature saved in `decision_config.json`.
+    """
+    needs_output_embeddings = False
+    needs_lm_logits = False
+    keep_fp32 = False
+
+    def __init__(self, hidden_size: int, num_codes: int = 255, temperature: float = 1.0) -> None:
+        super().__init__()
+        self.readout = nn.Linear(hidden_size, num_codes, bias=False)
+        self.temperature = float(temperature)
+
+    def forward(self, hidden_states: torch.Tensor, lm_logits: Optional[torch.Tensor], meta: Dict[str,
+                                                                                                 Any]) -> ScoringOutput:
+        device = hidden_states.device
+        n_options = [int(n) for n in meta['n_options']]
+        counts = meta.get('counts')
+        counts_t = torch.as_tensor([int(c) for c in counts], dtype=torch.long, device=device) if counts else None
+        max_opt = int(meta.get('max_opt') or max(n_options, default=0))
+        if not n_options:
+            return ScoringOutput(
+                logits=torch.zeros((0, max_opt), device=device, dtype=hidden_states.dtype),
+                option_mask=torch.zeros((0, max_opt), dtype=torch.bool, device=device),
+                kinds=torch.zeros((0, ), dtype=torch.long, device=device),
+                counts=counts_t)
+        padded_len = int(hidden_states.shape[1])
+        seq_lens = meta.get('seq_lens') or [padded_len] * int(hidden_states.shape[0])
+        left_padding = bool(meta.get('left_padding', False))
+        rows, cols = [], []
+        for record, position in zip(meta['record_index'], meta['readout_positions']):
+            offset = padded_len - int(seq_lens[int(record)]) if left_padding else 0
+            rows.append(int(record))
+            cols.append(offset + int(position))
+        rows_t = torch.as_tensor(rows, dtype=torch.long, device=device)
+        cols_t = torch.as_tensor(cols, dtype=torch.long, device=device)
+        code_logits = self.readout(hidden_states[rows_t, cols_t]).float() / self.temperature
+        per_question = [code_logits[i, :n] for i, n in enumerate(n_options)]
+        logits, option_mask = pad_option_logits(per_question, width=max_opt)
+        return ScoringOutput(
+            logits=logits,
+            option_mask=option_mask,
+            kinds=torch.as_tensor([int(k) for k in meta['kinds']], dtype=torch.long, device=device),
+            counts=counts_t)
+
+    def extra_state_for_save(self) -> Dict[str, Any]:
+        return {
+            'hidden_size': self.readout.in_features,
+            'num_codes': self.readout.out_features,
+            'temperature': self.temperature,
+        }
+
+    @classmethod
+    def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'Thx02ReadoutHead':
+        from safetensors.torch import load_file
+        weights_file = cls._locate(model_dir, 'readout.safetensors', 'THX02_READOUT')
+        config_file = cls._locate(model_dir, 'decision_config.json', 'THX02_DECISION_CONFIG')
+        if weights_file is None or config_file is None:
+            raise FileNotFoundError(f'THX-02 readout.safetensors / decision_config.json not found under {model_dir!r}.')
+        with open(config_file, 'r') as f:
+            decision_config = json.load(f)
+        if decision_config.get('attention_mode') != 'noncausal_full_attention':
+            raise ValueError(f'THX-02 expects attention_mode=noncausal_full_attention in {config_file!r}.')
+        state = load_file(weights_file)
+        num_codes, hidden_size = state['weight'].shape
+        if num_codes != len(decision_config['codes']):
+            raise ValueError(f'THX-02 readout has {num_codes} codes, decision_config.json lists '
+                             f'{len(decision_config["codes"])}.')
+        head = cls(hidden_size=hidden_size, num_codes=num_codes, temperature=float(decision_config['temperature']))
+        missing, unexpected = head.readout.load_state_dict(state, strict=False)
+        if missing or unexpected:
+            raise RuntimeError(f'THX-02 readout strict load failed: missing={missing}, unexpected={unexpected}')
         return head
 
 
