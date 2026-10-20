@@ -1,25 +1,35 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # Shared recipe utilities: save / resume / step cadence (all families) + per-family assembly pieces.
 from __future__ import annotations
-
-import json
 import math
 import os
 import time
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
+import json
+
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
-    from swift.dev.config.rollout_config import WeightSyncStrategyName
-
-    from swift.dev.model import TrainableModel
-
     from swift.dev.config import (
-        CheckpointConfig, DatasetConfig, DistributedConfig, LoggingConfig, MegatronConfig, ModelConfig,
-        MoEConfig, QuantizeConfig, RLConfig, RewardConfig, RolloutConfig, TemplateConfig, TrainConfig,
-        TunerConfig)
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        LoggingConfig,
+        MegatronConfig,
+        ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
+        RewardConfig,
+        RLConfig,
+        RolloutConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
+    from swift.dev.config.rollout_config import WeightSyncStrategyName
+    from swift.dev.model import TrainableModel
 
 logger = get_logger()
 
@@ -354,7 +364,14 @@ def _log_line(record: dict, loss: float) -> str:
     mtp = record.get('mtp_loss')
     mtp_str = f'  mtp_loss={mtp:.4f}' if mtp is not None else ''
     channel_str = ''.join(f'  {key}={value:.4f}' for key, value in record.items() if key.startswith('loss_'))
-    return f"step {record.get('step')}  loss={loss:.4f}{gn_str}{mtp_str}{channel_str}"
+    # The legacy rollout_correction diagnostics, when the loop computed them: the signed KL is
+    # the acceptance number for a freshly synced sampler (target < 1e-2).
+    correction_str = ''.join(
+        f'  {label}={record[key]:.3g}'
+        for label, key in (('rollout_kl', 'rollout_correction/kl'), ('rollout_k3_kl', 'rollout_correction/k3_kl'),
+                           ('rollout_logp_absdiff', 'rollout_correction/log_ppl_abs_diff'))
+        if isinstance(record.get(key), (int, float)))
+    return f"step {record.get('step')}  loss={loss:.4f}{gn_str}{mtp_str}{channel_str}{correction_str}"
 
 
 def _mtp_metrics(model: Any) -> Dict[str, float]:
@@ -622,10 +639,10 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     import twinkle
     from twinkle import DeviceGroup, DeviceMesh
     from twinkle.perf import Perf
-
-    from swift.dev.config import process_configs, validate_configs
-    from swift.dev.builders import build_dp_mesh, build_template, load_model_processor
     from twinkle_agentic.async_rl import REF_ONLY_REMOTE_GROUP, estimate_plan, resource_device_groups
+
+    from swift.dev.builders import build_dp_mesh, build_template, load_model_processor
+    from swift.dev.config import process_configs, validate_configs
 
     process_configs(
         model_config, template_config, dataset_config, train_config, distributed_config,
@@ -719,6 +736,12 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
 
     backend = rollout_config.rollout_sampler
     sampler_engine_args = build_engine_args(backend, None, rollout_config)
+    if backend == 'vllm':
+        # Every RL weight sync lands through twinkle's vLLM worker extension. Install the
+        # quant-aware subclass so an FP8 / MXFP4 engine can absorb the trainer's BF16 stream;
+        # it is a pass-through when the engine is not quantized. An explicit engine arg wins.
+        from swift.dev.weight_sync import QUANT_SYNC_WORKER_EXTENSION
+        sampler_engine_args.setdefault('worker_extension_cls', QUANT_SYNC_WORKER_EXTENSION)
     if colocate:
         sampler_engine_args['enable_sleep_mode' if backend == 'vllm' else 'enable_memory_saver'] = True
     if (backend == 'vllm' and tuner_config is not None and tuner_config.tuner == 'lora'
@@ -726,7 +749,11 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
         sampler_engine_args.setdefault('enable_lora', True)
         sampler_engine_args.setdefault('max_lora_rank', tuner_config.lora_rank)
         sampler_engine_args.setdefault('max_loras', 2)
-    if rollout_config.enable_sampling_replay:
+    # Sampling replay is an RLConfig field (the sampler only receives RolloutConfig), so read
+    # it defensively: this line previously assumed the flag lived on RolloutConfig and crashed
+    # every recipe at sampler build (AttributeError). Wire it through the callers when the flag
+    # has a consumer on the sampler side.
+    if getattr(rollout_config, 'enable_sampling_replay', False):
         sampler_engine_args['enable_sampling_replay'] = True
     if resource_plan is not None:
         return build_sampler(

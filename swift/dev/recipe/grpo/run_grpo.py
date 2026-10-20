@@ -1,25 +1,51 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # GRPO's visible training main: five segments, then ONE loop body picked by placement.
 from __future__ import annotations
-
 import math
 import os
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-from swift.dev.utils.logger import get_logger
 from swift.dev.recipe.grpo.assembly import (
-    greedy_params, grpo_group_requests, group_variance, initialize_cluster, weighted_reward)
+    greedy_params,
+    group_variance,
+    grpo_group_requests,
+    initialize_cluster,
+    weighted_reward,
+)
 from swift.dev.recipe.utils import (
-    REF_GROUP, TEACHER_GROUP, StepState, build_save_knobs, initialize_rl_devices,
-    prompt_rows_from_dataset, resolve_rollout_max_steps, resume_training, rollout_step_budget,
-    save_training_step, snapshot_initial_adapter)
+    REF_GROUP,
+    TEACHER_GROUP,
+    StepState,
+    build_save_knobs,
+    initialize_rl_devices,
+    prompt_rows_from_dataset,
+    resolve_rollout_max_steps,
+    resume_training,
+    rollout_step_budget,
+    save_training_step,
+    snapshot_initial_adapter,
+)
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
-        CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig, LoggingConfig, MegatronConfig,
-        ModelConfig, MoEConfig, QuantizeConfig, RLConfig, RewardConfig, RolloutConfig, TemplateConfig,
-        TrainConfig, TunerConfig)
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        GenerationConfig,
+        LoggingConfig,
+        MegatronConfig,
+        ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
+        RewardConfig,
+        RLConfig,
+        RolloutConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
 logger = get_logger()
 
@@ -51,8 +77,64 @@ def _response_logps(scorer_model: Any, features: List[Any], *, train_batch_size:
         forward_kwargs=forward_kwargs)
 
 
+def _rollout_correction_metrics(training_logps: List[Any], rollout_logps: List[Any]) -> Dict[str, float]:
+    """Legacy ``rollout_correction/*`` diagnostics: how far the sampler is from the trainer.
+
+    Ported from ``swift/rlhf_trainers/grpo_trainer.py::_compute_rollout_offpolicy_metrics`` so the
+    dev stack reports the same numbers under the same names. ``training_logps`` are the policy's own
+    forward log-probs (``old_logps`` in this loop), ``rollout_logps`` the sampler's. Both are
+    per-sample completion-token lists; only the overlap is scored (a truncated tail is skipped).
+
+    ``kl`` is the direct estimator of ``KL(pi_rollout || pi_training)`` = mean(log pi_rollout -
+    log pi_training). A freshly synced rollout should sit near 0; the DSv4 recipe's acceptance
+    bound is 0.01.
+    """
+    import torch
+
+    train_rows: List[Any] = []
+    rollout_rows: List[Any] = []
+    for train, rollout in zip(training_logps, rollout_logps):
+        if train is None or rollout is None:
+            continue
+        length = min(len(train), len(rollout))
+        if length == 0:
+            continue
+        train_rows.append(torch.tensor(list(train[:length]), dtype=torch.float32))
+        rollout_rows.append(torch.tensor(list(rollout[:length]), dtype=torch.float32))
+    if not train_rows:
+        return {}
+
+    train = torch.cat(train_rows)
+    rollout = torch.cat(rollout_rows)
+    log_ratio = train - rollout
+    metrics: Dict[str, float] = {
+        'kl': float((-log_ratio).mean()),
+        'k3_kl': float((torch.exp(torch.clamp(log_ratio, -20.0, 20.0)) - torch.clamp(log_ratio, -20.0, 20.0)
+                        - 1.0).clamp(-10.0, 10.0).mean()),
+        'chi2_token': float(torch.exp(torch.clamp(log_ratio, -20.0, 20.0)).square().mean() - 1.0),
+    }
+
+    train_seq_mean = torch.stack([row.mean() for row in train_rows])
+    rollout_seq_mean = torch.stack([row.mean() for row in rollout_rows])
+    metrics['training_log_ppl'] = float(-train_seq_mean.mean())
+    metrics['rollout_log_ppl'] = float(-rollout_seq_mean.mean())
+    metrics['training_ppl'] = float(torch.exp(-train_seq_mean).mean())
+    metrics['rollout_ppl'] = float(torch.exp(-rollout_seq_mean).mean())
+    log_ppl_diff = rollout_seq_mean - train_seq_mean
+    metrics['log_ppl_diff'] = float(log_ppl_diff.mean())
+    metrics['log_ppl_abs_diff'] = float(log_ppl_diff.abs().mean())
+    metrics['log_ppl_diff_max'] = float(log_ppl_diff.max())
+    metrics['log_ppl_diff_min'] = float(log_ppl_diff.min())
+    metrics['ppl_ratio'] = float(torch.exp(log_ppl_diff).mean())
+    # Sequence-level chi2: rho_geo = exp(mean over the sequence of log(training/rollout)).
+    rho_geo = torch.exp(torch.clamp(train_seq_mean - rollout_seq_mean, -20.0, 20.0))
+    metrics['chi2_seq'] = float(rho_geo.square().mean() - 1.0)
+    return metrics
+
+
 def _advantage_pipeline(cluster: Any, rl_config: 'RLConfig', reward_config: 'RewardConfig',
-                        samples: List[Any], train_batch_size: int, global_step: int) -> Tuple[Any, ...]:
+                        samples: List[Any], train_batch_size: int, global_step: int,
+                        correction_out: Optional[Dict[str, float]] = None) -> Tuple[Any, ...]:
     """The shared advantage pipeline: logps forwards, KL, group-relative advantage, PRM / teacher fusion.
 
     Reads the scoring results off the samples (``orm_reward`` / ``baseline`` / ``prm_process``, written
@@ -63,9 +145,8 @@ def _advantage_pipeline(cluster: Any, rl_config: 'RLConfig', reward_config: 'Rew
     """
     import torch
 
-    from swift.dev.utils.scoring import overlap_by_placement
-
     from swift.dev.rewards.advantage import compute_advantages
+    from swift.dev.utils.scoring import overlap_by_placement
 
     rewards = [sample.orm_reward for sample in samples]
     baselines = ([sample.baseline for sample in samples]
@@ -104,6 +185,11 @@ def _advantage_pipeline(cluster: Any, rl_config: 'RLConfig', reward_config: 'Rew
     teacher_logps = scored.get('teacher')
     if preserve:
         old_logps = scored['old']
+    if preserve and correction_out is not None:
+        # The legacy-compatible off-policy diagnostics, computed from the training-side forward and
+        # the sampler's own log-probs BEFORE any optimizer step this pull.
+        correction_out.update(
+            _rollout_correction_metrics(old_logps, [sample.rollout_logps for sample in samples]))
     kl_in_reward = bool(rl_config.kl_in_reward and rl_config.beta)
     if kl_in_reward and ref_logps is None:
         raise ValueError('kl_in_reward=True requires an active reference model.')
@@ -206,13 +292,13 @@ def _forward_kwargs(rl_config: 'RLConfig', ga: int, mini: Any, advantages: Any, 
     from swift.dev.utils.scoring import copy_inputs
 
     kwargs: Dict[str, Any] = {
-        'inputs': copy_inputs([sample.encoded for sample in mini.samples]),
+        'inputs': copy_inputs([sample.encoded for sample in mini]),
         'gradient_accumulation_steps': ga,
         'advantages': advantages,
         'old_logps': old_logps,
-        'rollout_logps': [list(sample.rollout_logps) for sample in mini.samples],
+        'rollout_logps': [list(sample.rollout_logps) for sample in mini],
         'truncated': [bool(rl_config.overlong_filter and getattr(sample, 'truncated', False))
-                      for sample in mini.samples],
+                      for sample in mini],
     }
     if ref_logps is not None:
         kwargs['ref_logps'] = ref_logps
@@ -221,7 +307,7 @@ def _forward_kwargs(rl_config: 'RLConfig', ga: int, mini: Any, advantages: Any, 
     if rl_config.router_replay_mode != 'disabled':
         kwargs['router_replay_mode'] = rl_config.router_replay_mode
     if rl_config.enable_sampling_replay:
-        kwargs['sampling_masks'] = [sample.sampling_mask for sample in mini.samples]
+        kwargs['sampling_masks'] = [sample.sampling_mask for sample in mini]
     return kwargs
 
 
@@ -295,7 +381,8 @@ def _train_mini_batches(state: StepState, rl_config: 'RLConfig', samples: List[A
 def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
                    reward_config: 'RewardConfig', dataloader: Any, state: StepState, *,
                    train_batch_size: int, chord_fn: Optional[Callable[[], List[Any]]] = None,
-                   ema_manager: Any = None, save: Optional[Callable[[str], Any]] = None) -> None:
+                   ema_manager: Any = None, save: Optional[Callable[[str], Any]] = None,
+                   correction_out: Optional[Dict[str, float]] = None) -> None:
     """The colocate branch (deep_refactor.md 71-81): a plain loop, no driver, no version face.
 
     The sampler time-shares one device with the trainer, so each round brackets generation with the
@@ -364,7 +451,8 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
                     for sample in samples[start:start + num_generations]:
                         sample.baseline = baseline
             advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
-                cluster, rl_config, reward_config, samples, train_batch_size, state.global_step)
+                cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
+                correction_out=correction_out)
             _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size)
             # return the device to the trainer: sleep the sampler, then reload the trainer's weights.
             cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
@@ -390,7 +478,8 @@ def _disaggregated_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Ro
                         num_train_epochs: float, output_dir: str,
                         chord_fn: Optional[Callable[[], List[Any]]] = None, ema_manager: Any = None,
                         save: Optional[Callable[[str], Any]] = None,
-                        metrics_cells: Optional[Tuple[List[Any], List[List[int]]]] = None) -> None:
+                        metrics_cells: Optional[Tuple[List[Any], List[List[int]]]] = None,
+                        correction_out: Optional[Dict[str, float]] = None) -> None:
     """The disaggregated branch (deep_refactor.md 63-70): the StreamingDriver streams, the body trains.
 
     Per pull: the visible advantage pipeline, routing replay, the mini-batch training rounds, then
@@ -425,7 +514,8 @@ def _disaggregated_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Ro
             else:
                 metrics_cells[1].append(versions)
         advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
-            cluster, rl_config, reward_config, samples, train_batch_size, state.global_step)
+            cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
+            correction_out=correction_out)
         _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size)
         optimizer_steps = _train_mini_batches(
             state, rl_config, samples, train_batch_size=train_batch_size, advantages=advantages,
@@ -531,9 +621,12 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     # _extra_metrics reads the driver handle and the batch's version spans through these cells.
     _driver_cell: List[Any] = []
     _last_batch_versions: List[List[int]] = []
+    # The last pull's legacy rollout_correction/* diagnostics (signed KL, ppl, chi2).
+    rollout_correction: Dict[str, float] = {}
 
     def _extra_metrics() -> Dict[str, Any]:
         extra: Dict[str, Any] = {}
+        extra.update({f'rollout_correction/{key}': value for key, value in rollout_correction.items()})
         if _driver_cell:
             # Straight reads of the driver's own counters; the idle ratio is folded BY the driver
             # at each pull boundary (stats.last_pull_idle_ratio) -- the recipe does no timing math.
@@ -616,13 +709,14 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         if cluster.colocate:
             _colocate_loop(cluster, rl_config, rollout_config, reward_config, dataloader, state,
                            train_batch_size=train_batch_size, chord_fn=chord_fn,
-                           ema_manager=ema_manager, save=save)
+                           ema_manager=ema_manager, save=save, correction_out=rollout_correction)
         else:
             _disaggregated_loop(cluster, rl_config, rollout_config, reward_config, tuner_config,
                                 dataloader, state, train_batch_size=train_batch_size,
                                 num_train_epochs=train_config.num_train_epochs, output_dir=output_dir,
                                 chord_fn=chord_fn, ema_manager=ema_manager, save=save,
-                                metrics_cells=(_driver_cell, _last_batch_versions))
+                                metrics_cells=(_driver_cell, _last_batch_versions),
+                                correction_out=rollout_correction)
     finally:
         Perf.shutdown()
         # MultiTurnRollout owns only the sandbox env pool; the sampler's GPU memory is the

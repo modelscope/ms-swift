@@ -2,8 +2,8 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, get_args
 
-from .rl_config import F_DIVERGENCE_TYPE
 from swift.dev.utils.logger import get_logger
+from .rl_config import F_DIVERGENCE_TYPE
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -17,8 +17,8 @@ if TYPE_CHECKING:
         ModelConfig,
         MoEConfig,
         QuantizeConfig,
-        RLConfig,
         RewardConfig,
+        RLConfig,
         RolloutConfig,
         TemplateConfig,
         TrainConfig,
@@ -251,7 +251,7 @@ def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: O
     }
     changed = _changed_fields(rollout_config)
     if mode == 'manual':
-        inert = sorted(resource_fields & changed)
+        inert = sorted(resource_fields & set(changed))
         if inert:
             raise ValueError(f'resource_mode="manual" does not read {inert}; select resource_mode="estimate" '
                              'or "adaptive", or remove these resource settings.')

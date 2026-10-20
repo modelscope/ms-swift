@@ -7,9 +7,9 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
+from twinkle.dataloader.random_state import derive_seed
 
 from swift.dev.utils import get_logger
-from twinkle.dataloader.random_state import derive_seed
 from .._diagnostics import note_row_error
 
 __all__ = ['MessagesRepairPreprocessor', 'Preprocessor']
@@ -124,7 +124,7 @@ class Preprocessor:
         map_kwargs: Dict[str, Any] = {'batched': True}
         if isinstance(dataset, HfDataset):
             map_kwargs['batch_size'] = batch_size if batch_size is not None else 1000
-            map_kwargs['num_proc'] = num_proc
+            map_kwargs['num_proc'] = num_proc if num_proc and num_proc > 1 else None
             map_kwargs['load_from_cache_file'] = load_from_cache_file
             if not dataset.cache_files:
                 map_kwargs['cache_file_name'] = self.map_cache_path(dataset)

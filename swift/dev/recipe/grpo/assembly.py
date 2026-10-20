@@ -138,6 +138,12 @@ def initialize_cluster(*, model_config: 'ModelConfig', template_config: 'Templat
 
     sp = template_config.sequence_parallel_size
     sp_mesh = build_dp_mesh(distributed_config, sp) if sp > 1 else None
+    # Refuse the engine/training combinations a quantized refit cannot serve
+    # (DeepSeek-V4 MXFP4 experts): cheaper now than after the engine is built.
+    from swift.dev.weight_sync import check_quantized_weight_sync
+    model_info = getattr(template, 'model_info', None)
+    check_quantized_weight_sync(
+        getattr(model_info, 'config', None), model_config.model_type, tuner_config, rollout_config)
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     policy_config = model_config
     if resume_dir and tuner_config is None:
