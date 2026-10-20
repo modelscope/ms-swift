@@ -216,9 +216,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             # packing, multiple pairs may be packed into a single row, so the alignment with
             # `num_examples` (derived from `cu_seqlens`) no longer holds; margin is not supported there.
             if self.template.packing:
-                warnings.warn(
-                    'Per-pair `margin` is not supported together with sequence packing and will be ignored.',
-                    UserWarning)
+                warnings.warn('Per-pair `margin` is not supported together with sequence packing and will be ignored.',
+                              UserWarning)
             elif margin.shape[0] == num_examples:
                 output['margin'] = margin
         return output
@@ -284,9 +283,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             shifted_logits = self.beta * logits
             if margin is not None:
                 if self.reference_free:
-                    warnings.warn(
-                        'margin is ignored because reference_free=True (margin requires a reference model).',
-                        UserWarning)
+                    warnings.warn('margin is ignored because reference_free=True (margin requires a reference model).',
+                                  UserWarning)
                 else:
                     shifted_logits = shifted_logits - margin
             losses = (-F.logsigmoid(shifted_logits) *
