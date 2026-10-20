@@ -221,7 +221,7 @@ def test_val_loss_eval_under_torchrun(tmp_path):
     """The val-loss path completes ``evaluate()`` on EVERY rank of a real 2-GPU torchrun launch.
 
     Under torchrun each rank drives its own loop over its shard of the eval dataloader (the
-    ``DeviceMeshSampler`` split), so this is the launch mode the in-process single-card test and the
+    ``ShardedBatchSampler`` split), so this is the launch mode the in-process single-card test and the
     Ray-driver test (loop runs once on the driver) structurally cannot reach. Both ranks must report a
     finite ``eval_loss``.
     """

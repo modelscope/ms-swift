@@ -2,7 +2,7 @@
 
 Launched by ``test_eval_sampler.py::test_val_loss_eval_under_torchrun`` under ``torchrun
 --nproc_per_node=2``. Each rank drives its own copy of the loop over its shard of the eval dataloader
-(the ``DeviceMeshSampler`` split), so a green run means the offline ``Evaluator.evaluate`` completed on
+(the ``ShardedBatchSampler`` split), so a green run means the offline ``Evaluator.evaluate`` completed on
 EVERY rank of a real distributed launch -- the launch mode the in-process single-card / Ray-driver eval
 tests cannot reach (under Ray the loop runs once on the driver; under torchrun it runs per rank).
 

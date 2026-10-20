@@ -76,7 +76,12 @@ def _select_megatron_tuner(tuner: 'TunerConfig') -> Optional['TunerConfig']:
     if tuner.tuner == 'full':
         return None
     if tuner.tuner == 'lora':
-        return tuner if 'tuner' in getattr(tuner, '_explicit_fields', ()) else None
+        # _explicit_fields is set by parse_configs on every CLI-parsed Config (to the flags present in
+        # argv); it is ABSENT on a programmatically built TunerConfig, where tuner='lora' is already an
+        # explicit choice. So: no attribute -> honour lora; attribute present -> only an explicit
+        # --tuner/--tuner_type keeps lora, the untouched base default falls back to full.
+        explicit = getattr(tuner, '_explicit_fields', None)
+        return tuner if explicit is None or 'tuner' in explicit else None
     raise NotImplementedError(f'dev Megatron training supports tuner in {{full, lora}}, got {tuner.tuner!r}.')
 
 

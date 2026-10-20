@@ -267,7 +267,7 @@ class CodeExecutionReward(ORM):
         ``test_cases`` and ``language`` ride each trajectory row (the packed ``user_data`` label or
         the flat column); ``language`` may be absent to take ``code_language`` from the config.
         """
-        from twinkle.reward.base import ground_truth, last_assistant_text
+        from twinkle.data_format import ground_truth, last_assistant_text
 
         completions = [last_assistant_text(t) for t in trajectories]
         cases_raw = [ground_truth(t, 'test_cases') for t in trajectories]

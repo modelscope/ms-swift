@@ -7,7 +7,11 @@ import inspect
 from typing import Any, Callable, List, Optional, Sequence, Tuple
 
 from swift.dev.utils.plugin import PluginRegistry, SwiftPlugin
-from twinkle.reward.base import Reward, ground_truth, last_assistant_text
+# ground_truth/last_assistant_text moved out of twinkle.reward.base into twinkle.data_format
+# (twinkle now keeps the trajectory helpers with the data-format types, mirroring its own
+# reward modules); Reward stays the protocol identity in reward.base.
+from twinkle.data_format import ground_truth, last_assistant_text
+from twinkle.reward.base import Reward
 
 # A reward rule: (trajectories, **kwargs) -> one score per trajectory.
 RewardFunc = Callable[..., List[float]]

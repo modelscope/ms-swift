@@ -82,7 +82,7 @@ def test_rows_match_lazy_llm_dataset(processor, dataset):
 
 
 def test_unencodable_row_raises_rather_than_substitutes(processor, dataset):
-    """Neither class picks a replacement any more -- twinkle's ``RetryDataset`` does, above them.
+    """Neither class picks a replacement any more -- twinkle's ``MapRetryDataset`` does, above them.
 
     48 is chosen against the real distribution (40-60 tokens): tight enough that some rows are rejected.
     The contract is that the rejection propagates, because a substitute drawn here would be invisible to

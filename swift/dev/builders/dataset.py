@@ -218,7 +218,7 @@ def _build_split_loader(raw: Any,
         group_by_length=group_by_length,
         lengths=lengths,
         data_sharding=data_sharding,
-        # RetryDataset substitutes an unencodable row, seeded so every rank and every resume pick the
+        # MapRetryDataset substitutes an unencodable row, seeded so every rank and every resume pick the
         # same replacement; strict (max_retries=0) stops the run on the first failure instead
         retry_seed=dataset_config.data_seed,
         max_retries=0 if dataset_config.strict else 20,
@@ -240,7 +240,7 @@ def _twinkle_loader_layout(distributed_config: DistributedConfig,
                            per_device_batch_size: int,
                            device_mesh: Optional['DeviceMesh'] = None) -> tuple:
     """``(global_batch_size, loader_device_mesh)``: twinkle's DataLoader takes the GLOBAL batch and its
-    DeviceMeshSampler slices it per DP rank, so the batch is scaled by the DP width.
+    ShardedBatchSampler slices it per DP rank, so the batch is scaled by the DP width.
     """
     if device_mesh is not None:
         # HF Ulysses SP: the sampler slices by data_world_size (world/ulysses), so SP peers get

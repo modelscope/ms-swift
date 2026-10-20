@@ -189,7 +189,10 @@ class RewardWorker(ScoreWorker):
         mask = torch.zeros((len(advantages), max((len(row) for row in old), default=1)), dtype=torch.bool)
         for index, row in enumerate(old):
             mask[index, :len(row)] = True
-        base = torch.tensor([[a] for a in advantages], dtype=torch.float32)
+        # The twinkle teacher-signal estimators take the per-sequence base advantage as [B] (1-D) and
+        # broadcast it to [B, T] themselves (advantages.unsqueeze(1).expand_as(mask)); building [B, 1]
+        # here would make unsqueeze(1) a [B, 1, 1] tensor that cannot expand_as the [B, T] mask.
+        base = torch.tensor(list(advantages), dtype=torch.float32)
         if mode == 'rlsd':
             out = apply_rlsd_reweight(base, mask, torch.tensor(teacher, dtype=torch.float32),
                                       torch.tensor(old, dtype=torch.float32), lam=lam,

@@ -378,10 +378,11 @@ class InferComponent(RecipeComponent):
                           cache: '_CandidateCache', writer: Any, recorder: Any, emit: Any,
                           num_return: int, multi_turn_enabled: bool, adapter_path: Optional[str],
                           sampling_params: Dict[str, Any], seed: int) -> Tuple[List[Dict[str, Any]], int, int]:
-        """The async dataset route: the SAME per-sample StreamingDriver online RL rides, null ledger.
+        """The async dataset route: the SAME per-sample StreamingDriver online RL rides, infer regime.
 
         Each prompt's ``num_return`` candidates are admitted independently and emitted the instant
-        its group completes -- no batch lock-step; ``ctx_mgr=None`` pins the version at 0. Groups
+        its group completes -- no batch lock-step; the infer regime (no ``run_id``) pins the
+        version at 0. Groups
         are emitted in DRAW order (see ``_assembly_ready``), so a resume skips exactly the emitted
         prefix; torchrun drives one shard per rank (gather merges), ray one process.
         """
@@ -508,8 +509,8 @@ class InferComponent(RecipeComponent):
                 prompt_stream=prompt_dataloader, num_train_epochs=1.0, max_staleness=0,
                 num_generations=num_return, groups_per_partition=1,
                 buffer_depth=max(num_return * 4, 8),
-                rollout=rollout, submit=_submit, assembly_ready=_assembly_ready, consume=_consume,
-                ctx_mgr=None).run()
+                rollout=rollout, submit=_submit, assembly_ready=_assembly_ready,
+                consume=_consume).run()
         return results, state['prompts'], state['tokens']
 
     def _forward_pass(self, task_type: str) -> List[Dict[str, Any]]:

@@ -368,7 +368,7 @@ class TestTwinkleLoaderLayout:
     would be wrong: on the driver TWINKLE_MODE is unset even in ray mode, so it would misreport
     'local' and double-shard against slice_dp.
 
-    twinkle's DataLoader takes the GLOBAL batch and its DeviceMeshSampler slices each batch across DP
+    twinkle's DataLoader takes the GLOBAL batch and its ShardedBatchSampler slices each batch across DP
     ranks, which is the opposite convention from legacy (per-device batch, sharded internally). Getting
     the width wrong is silent: too narrow trains on a fraction of the intended batch.
     """
@@ -482,10 +482,10 @@ class TestDropLast:
                 f'backend={backend} should pass drop_last={expected}'
 
 
-# === TestDeviceMeshSampler (DP semantics of the twinkle dataloader's per-rank slicing) ===
+# === TestShardedBatchSampler (DP semantics of the twinkle dataloader's per-rank slicing) ===
 
 
-class DeviceMeshSamplerCase:
+class ShardedBatchSamplerCase:
     """Shared construction for the DP-slicing tests: one real DeviceMesh per rank coordinate.
 
     Not named Test* on purpose -- pytest would re-collect the shared helpers as a case of their own.
@@ -503,17 +503,17 @@ class DeviceMeshSamplerCase:
     def indices(mesh, *, total, global_batch, shuffle=False, **kw):
         """The indices one rank reads, through the same sampler stack twinkle's DataLoader builds."""
         from torch.utils.data import BatchSampler
-        from twinkle.dataloader.device_mesh_sampler import DeviceMeshSampler
+        from twinkle.dataloader.sharded_batch_sampler import ShardedBatchSampler
         from twinkle.dataloader.epoch_sampler import EpochSampler
         base = BatchSampler(
             EpochSampler(total, shuffle=shuffle, data_seed=0), batch_size=global_batch, drop_last=False)
-        sampler = DeviceMeshSampler(base, mesh, dataset_length=total, batch_size=global_batch, data_seed=0, **kw)
+        sampler = ShardedBatchSampler(base, mesh, dataset_length=total, batch_size=global_batch, data_seed=0, **kw)
         # the sampler yields SampleIndex(index, epoch) now; these assertions are index arithmetic
         return [getattr(idx, 'index', idx) for batch in sampler for idx in batch]
 
 
-class TestDeviceMeshSampler(DeviceMeshSamplerCase):
-    """twinkle's DeviceMeshSampler must shard the data across DP ranks with NO overlap and NO gap --
+class TestShardedBatchSampler(ShardedBatchSamplerCase):
+    """twinkle's ShardedBatchSampler must shard the data across DP ranks with NO overlap and NO gap --
     the DP-semantics gate for the mode='local' path.
 
     dev hands twinkle the GLOBAL batch and each rank takes its own slice of every batch, so a
@@ -603,10 +603,10 @@ class TestGroupByLength:
             TwinkleDataLoader(SimpleMapDataset(8), batch_size=4, shuffle=True, group_by_length=True, lengths=None)
 
 
-class TestDataSharding(DeviceMeshSamplerCase):
+class TestDataSharding(ShardedBatchSamplerCase):
     """data_sharding (Megatron-only): shuffle WITHIN a DP shard instead of globally-then-slice.
 
-    Ported into twinkle's DeviceMeshSampler from legacy MegatronPretrainingRandomSampler
+    Ported into twinkle's ShardedBatchSampler from legacy MegatronPretrainingRandomSampler
     (batch_sampler.py:121-129) so existing Megatron user scripts that set --data_sharding keep working
     after the dev refactor. Opt-in: the default path keeps the global permutation.
     """
@@ -645,9 +645,9 @@ class TestDataSharding(DeviceMeshSamplerCase):
 
     def test_data_sharding_needs_the_dp_layout(self):
         """Without a device_mesh there are no buckets to shard into -> fail, never silently ignore."""
-        from twinkle.dataloader.device_mesh_sampler import DeviceMeshSampler
+        from twinkle.dataloader.sharded_batch_sampler import ShardedBatchSampler
         with pytest.raises(ValueError, match='data_sharding needs'):
-            DeviceMeshSampler(None, None, data_sharding=True, dataset_length=40, batch_size=4)
+            ShardedBatchSampler(None, None, data_sharding=True, dataset_length=40, batch_size=4)
 
     @patch('swift.dev.builders.dataset._encode', return_value='E')
     @patch('swift.dev.dataset.load_dataset')

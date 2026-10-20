@@ -93,7 +93,7 @@ class SwiftDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         """Return one collator-ready row, letting a row that cannot be encoded fail.
 
-        Nothing here substitutes another row: the read goes through twinkle's ``RetryDataset``, which
+        Nothing here substitutes another row: the read goes through twinkle's ``MapRetryDataset``, which
         stands in a replacement drawn from ``(seed, index)`` -- reproducible across ranks and resume,
         independent of how many failures came before. The failure is logged before it propagates
         (except a merely too-long row); a string subscript is not a column read.

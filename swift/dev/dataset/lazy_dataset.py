@@ -15,7 +15,7 @@ class LazyLLMDataset(Dataset):
 
     Encoding late avoids a startup pass tied to one tokenizer/template/``max_length``, and rejects
     a too-long row at access time -- one substitution, not a pass re-run. Substitution is not this
-    class's: the read goes through twinkle's ``RetryDataset``, which stands in a replacement drawn
+    class's: the read goes through twinkle's ``MapRetryDataset``, which stands in a replacement drawn
     from ``(seed, index)``; what it owes the loop is a fixed ``len(dataset)``.
     """
 

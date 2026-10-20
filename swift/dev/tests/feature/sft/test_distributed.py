@@ -23,7 +23,7 @@ transformers multi-GPU run there is torchrun (``mode='local'``). The transformer
 distinct on both ends: ``initialize_twinkle`` builds a 'model' DeviceGroup the workers join while the
 driver only orchestrates (``assembly.py``), ``build_model`` places the model there through
 ``_apply_ray_placement`` (a pure-DP mesh, since the transformers backend has no TP/PP weight
-sharding), and the DP scatter moves OUT of the dataloader's ``DeviceMeshSampler`` INTO
+sharding), and the DP scatter moves OUT of the dataloader's ``ShardedBatchSampler`` INTO
 ``forward_backward``'s ``dispatch='slice_dp'`` on the driver (``train_loop.py``). A torchrun-local
 test cannot reach any of that, so it is driven here.
 """

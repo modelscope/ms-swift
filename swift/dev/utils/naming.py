@@ -31,15 +31,25 @@ from __future__ import annotations
 
 from typing import Any, Callable, Mapping, Optional, Type
 
-# FlashAttention version pinning is implemented in twinkle: it flips transformer_engine module
-# globals, so it must run in the process that builds the model (the Ray worker, not the driver).
-# Re-exported here so resolve_megatron_attn_backend below and the component tests keep importing
-# these names from swift.dev.utils.naming.
-from twinkle.model.megatron._flash_attn import (
-    FLASH_PIN_SUPPORTED_VERSIONS,
-    apply_flash_version_pin,
-    flash_version_pin,
-)
+
+_FLASH_PIN_FLAGS = {2: 'is_installed', 3: 'v3_is_installed', 4: 'v4_is_installed'}
+FLASH_PIN_SUPPORTED_VERSIONS = frozenset(_FLASH_PIN_FLAGS)
+_FLASH_PIN_PREFIXES = ('flash_attention_', 'flash_')
+
+
+def flash_version_pin(attn_impl: Optional[str]) -> Optional[int]:
+    """The FlashAttention major version ``attn_impl`` pins, or None when it pins nothing.
+
+    Accepts both spellings (flash_N / flash_attention_N); prefix matching rather than an explicit
+    name list so a future FA5 falls into the caller's supported-version check, not a silent pass.
+    """
+    if attn_impl is None:
+        return None
+    key = str(attn_impl).lower()
+    for prefix in _FLASH_PIN_PREFIXES:
+        if key.startswith(prefix) and key[len(prefix):].isdigit():
+            return int(key[len(prefix):])
+    return None
 
 # --- optimizer: swift optim name -> torch.optim class name (twinkle-resolvable) ---
 # Value is either a name string resolved against torch.optim, or a (type, extra_kwargs) pair when
@@ -400,9 +410,9 @@ def resolve_megatron_attn_backend(attn_impl: Optional[str]):
             f'{sorted(_HF_TO_MEGATRON_ATTN)}.')
     if flash_version_pin(key) is not None:
         # A version pin selects the flash KERNEL; the version itself is enforced separately by
-        # apply_flash_version_pin (TE module globals), exactly as legacy collapses its own flash_N to
-        # 'flash' after mutating those globals (megatron_args.py:917). Both spellings land here so the
-        # same intent behaves identically.
+        # twinkle's MegatronStrategy (it flips the TE module globals), exactly as legacy collapses
+        # its own flash_N to 'flash' after mutating those globals (megatron_args.py:917). Both
+        # spellings land here so the same intent behaves identically.
         if flash_version_pin(key) not in FLASH_PIN_SUPPORTED_VERSIONS:
             raise NotImplementedError(
                 f'attn_impl={attn_impl!r} pins a FlashAttention version transformer_engine has no '
