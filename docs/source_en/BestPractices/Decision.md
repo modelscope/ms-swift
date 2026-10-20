@@ -179,6 +179,10 @@ temperature_calibration: written to ['output/scoring_head.json', ...]
 
 The fitted temperatures are written into the head's non-persistent buffers and serialised via `save_pretrained` to **`scoring_head.json`** in `output_dir` and the last checkpoint directory (not into safetensors — the JSON stays human-readable). Loading a checkpoint restores them automatically via `maybe_load_trained_scoring_head` → `_load_calibration_meta`; the probabilities served by `swift infer` are therefore already **calibrated**, with no extra deployment step.
 
+For THX-02 the fitted `head_temperature` × per-kind temperatures are applied **on top of** the model's own
+calibrated temperature from `decision_config.json`; with no eval set they stay 1.0 and the served probabilities
+are exactly those of the released calibration.
+
 ### Multi-GPU (DDP) behavior
 
 Under DDP training the eval set is sharded across ranks (each rank sees only about 1/world_size of the questions); the callback handles this in two layers:
@@ -387,7 +391,13 @@ Key parameters:
 - `--target_modules all-linear` — matches only the language-model projections; the readout is trained
   directly (not through LoRA) and saved as `scoring_head.safetensors`
 - Packing / `--padding_free` is not supported: records would attend to each other through the noncausal
-  attention
+  attention. Both are rejected while the arguments are parsed, before the model is loaded
+- Records are never truncated: a record longer than `--max_length` raises `MaxLengthError` (skipped like any
+  over-long row under the default `--truncation_strategy raise`), whatever `--truncation_strategy` is set to,
+  because cutting tokens would drop questions or image patches and shift every readout position
+- Image resolution: images are bounded by `max_pixels` from `decision_config.json` (the bound THX-02 was
+  trained with) and at least 65536 px. `--max_pixels` is applied first, so it can lower the resolution down to
+  that minimum but not raise it above the bound
 
 ### Train Any CausalLM from Scratch
 
@@ -677,6 +687,8 @@ When unset, the loader searches `model_dir` (and the `adapter_vllm/` subdirector
 - **`omnijev` audio spectrogram**: Not in the inference path. Users must provide their own converter.
 - **`thx02` packing**: `--packing` / `--padding_free` are rejected, because the noncausal attention would let
   packed records attend to each other.
+- **`thx02` truncation**: over-long records raise `MaxLengthError` instead of being truncated; `--max_pixels`
+  only lowers image resolution within [65536 px, `max_pixels` in `decision_config.json`].
 - **`tie_word_embeddings=True` adapter merge**: Only affects "merge adapter / convert format"; training and inference are unaffected.
 
 ## Verification Report

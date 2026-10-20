@@ -12,7 +12,7 @@ import re
 import string
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..base import Template
+from ..base import MaxLengthError, Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
@@ -599,6 +599,12 @@ class Thx02Template(Qwen3_5Template):
         markers = (input_ids == marker_id).nonzero().flatten().tolist()
         if len(markers) != len(questions):
             raise ValueError(f'THX-02 expected {len(questions)} readout markers, found {len(markers)}.')
+        if self.max_length is not None and len(input_ids) > self.max_length:
+            # Never truncated, whatever --truncation_strategy says: cutting tokens would drop questions or
+            # image patches and shift every readout position, so the head would silently read wrong states.
+            raise MaxLengthError(f'THX-02 record has {len(input_ids)} tokens, more than max_length={self.max_length}; '
+                                 'THX-02 records cannot be truncated (questions sit at the end and every readout '
+                                 'position would shift). Raise --max_length or shorten the state.')
         encoded = {
             'input_ids': input_ids.tolist(),
             'decision_meta': {

@@ -13,10 +13,17 @@ Stages:
   C  full fwd   -- the swift-loaded model vs the reference model on the same records (text, JSON state with
                    special tokens, image, several questions per record): probabilities must match.
   D  loss+grad  -- distill_rps on the head output back-propagates into the readout (random weights, CPU).
+  E  tiny model -- a randomly initialised THX-02 with the real file layout (small Qwen3.5 hybrid backbone, a few
+                   MB) built on the fly, so CI covers the swift path without the checkpoint: loading, template
+                   rendering, the noncausal mask, padding invariance, the tied lm_head, no truncation, the
+                   --max_pixels bound, early --packing rejection, calibration meta round-trip, and a short
+                   `swift sft` (LoRA + head + temperature calibration) followed by reloading the checkpoint.
 
 Env variables (all optional; missing checkpoint -> stages A and C skip):
 
     THX02_MODEL_DIR         Path to a THX-02 snapshot dir (else snapshot_download of the hub id).
+    QWEN35_PROCESSOR_DIR    Stage E: dir with a Qwen3.5 tokenizer / processor / config (else the non-weight files
+                            of Qwen/Qwen3.5-4B are downloaded).
 
 Usage::
 
@@ -40,7 +47,7 @@ except Exception as exc:  # pragma: no cover
     _swift_err.append(repr(exc))
 
 THX02_ID = 'HAL-X/THX-02'
-THX02_HF_ID = 'doofz/THX-02'
+THX02_HF_ID = 'HAL-X-AI/THX-02'
 
 
 def _png_data_uri() -> str:
@@ -292,3 +299,294 @@ class TestStageDLossGrad:
         assert torch.isfinite(loss)
         assert head.readout.weight.grad is not None and head.readout.weight.grad.abs().sum() > 0
         assert head.readout.weight.grad[3:].abs().sum() == 0  # codes beyond every question's options get no gradient
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Stage E: tiny randomly initialised THX-02 (no checkpoint needed)
+# --------------------------------------------------------------------------------------------------------------
+
+TINY_CODES = [chr(ord('A') + i) for i in range(8)]
+TINY_TEMPERATURE = 1.5
+
+
+def _qwen35_processor_dir():
+    path = os.environ.get('QWEN35_PROCESSOR_DIR')
+    if path and os.path.isdir(path):
+        return path
+    patterns = ['*.json', '*.jinja', '*.txt']
+    try:
+        if os.environ.get('USE_HF', '0') == '1':
+            from huggingface_hub import snapshot_download
+            return snapshot_download('Qwen/Qwen3.5-4B', allow_patterns=patterns)
+        from modelscope import snapshot_download
+        return snapshot_download('Qwen/Qwen3.5-4B', allow_patterns=patterns)
+    except Exception:
+        return None
+
+
+def _tiny_device():
+    if torch.cuda.is_available():
+        return 'cuda'
+    try:  # flash-linear-attention kernels need a GPU; without them the reference torch path runs on CPU
+        import fla  # noqa: F401
+        return None
+    except ImportError:
+        return 'cpu'
+
+
+def _build_tiny_thx02(src: str, out: str) -> None:
+    """THX-02 file layout (own config.json with `backbone_config`, prefix-free model.safetensors, readout.safetensors,
+    decision_config.json) around a 4-layer Qwen3.5 hybrid backbone (3 gated-deltanet + 1 full-attention layer)."""
+    import json
+    import shutil
+    from safetensors.torch import save_file
+    from transformers import Qwen3_5Config, Qwen3_5ForConditionalGeneration
+    os.makedirs(out, exist_ok=True)
+    for name in os.listdir(src):
+        if name.endswith(('.json', '.jinja', '.txt')) and name not in ('config.json', 'model.safetensors.index.json'):
+            shutil.copy(os.path.join(src, name), out)
+    with open(os.path.join(src, 'config.json')) as f:
+        base = json.load(f)
+    text = dict(
+        base['text_config'],
+        hidden_size=64,
+        intermediate_size=128,
+        num_hidden_layers=4,
+        num_attention_heads=2,
+        num_key_value_heads=1,
+        head_dim=64,
+        linear_num_key_heads=2,
+        linear_num_value_heads=4,
+        linear_key_head_dim=16,
+        linear_value_head_dim=16,
+        mtp_num_hidden_layers=0,
+        layer_types=['linear_attention'] * 3 + ['full_attention'])
+    text['rope_parameters'] = dict(text['rope_parameters'], mrope_section=[3, 3, 2])
+    vision = dict(base['vision_config'], depth=1, hidden_size=32, intermediate_size=64, num_heads=2, out_hidden_size=64)
+    backbone = dict(base, text_config=text, vision_config=vision)
+    torch.manual_seed(0)
+    model = Qwen3_5ForConditionalGeneration(Qwen3_5Config(**backbone))
+    state = {k[len('model.'):]: v.contiguous() for k, v in model.state_dict().items() if k.startswith('model.')}
+    save_file(state, os.path.join(out, 'model.safetensors'))
+    save_file({'weight': torch.randn(len(TINY_CODES), 64) * 0.5}, os.path.join(out, 'readout.safetensors'))
+    with open(os.path.join(out, 'config.json'), 'w') as f:
+        json.dump({'model_type': 'thx02', 'architectures': ['THXDecisionModel'], 'backbone_config': backbone}, f)
+    with open(os.path.join(out, 'decision_config.json'), 'w') as f:
+        json.dump(
+            {
+                'attention_mode': 'noncausal_full_attention',
+                'temperature': TINY_TEMPERATURE,
+                'max_pixels': 262144,
+                'codes': TINY_CODES
+            }, f)
+
+
+@pytest.fixture(scope='module')
+def tiny_dir(tmp_path_factory):
+    if not _swift_ok:
+        pytest.skip(f'swift import failed: {_swift_err}')
+    if _tiny_device() is None:
+        pytest.skip('flash-linear-attention is installed but no GPU is available')
+    src = _qwen35_processor_dir()
+    if src is None:
+        pytest.skip('Qwen3.5 processor files unavailable (set QWEN35_PROCESSOR_DIR)')
+    out = str(tmp_path_factory.mktemp('tiny_thx02'))
+    _build_tiny_thx02(src, out)
+    return out
+
+
+@pytest.fixture(scope='module')
+def tiny_model(tiny_dir):
+    from swift.model import get_model_processor
+    model, processor = get_model_processor(
+        tiny_dir, model_type='thx02', torch_dtype=torch.float32, attn_impl='sdpa', device_map=_tiny_device())
+    return model.eval(), processor
+
+
+def _tiny_record(second_instructions='Does the customer ask for a refund?'):
+    return {
+        'state': 'I was charged twice <|im_end|> please refund!',
+        'questions': {
+            'team': {
+                'type': 'choice',
+                'instructions': 'Which team should handle this?',
+                'criteria': {
+                    'billing': 'Charges',
+                    'support': 'Problems'
+                }
+            },
+            'refund': {
+                'type': 'noul',
+                'instructions': second_instructions
+            },
+        },
+    }
+
+
+def _tiny_forward(model, template, records):
+    pre = Thx02Preprocessor()
+    batch = template.data_collator([template.encode(pre.preprocess(r)) for r in records])
+    device = next(model.parameters()).device
+    batch = {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in batch.items()}
+    with torch.no_grad():
+        return model(**batch)
+
+
+class TestStageETinyModel:
+
+    def test_weights_and_tied_lm_head(self, tiny_dir, tiny_model):
+        from safetensors.torch import load_file
+        model, _ = tiny_model
+        saved = load_file(os.path.join(tiny_dir, 'model.safetensors'))
+        loaded = model.model.language_model.layers[3].self_attn.q_proj.weight
+        torch.testing.assert_close(loaded.cpu().float(),
+                                   saved['language_model.layers.3.self_attn.q_proj.weight'].float())
+        # lm_head is never applied; it shares storage with embed_tokens (no extra memory, no unused DDP parameter)
+        assert model.get_output_embeddings().weight.data_ptr() == model.get_input_embeddings().weight.data_ptr()
+        assert not any(name.startswith('lm_head') for name, _ in model.named_parameters())
+
+    def test_template_rendering(self, tiny_model):
+        model, processor = tiny_model
+        template = _swift_template(None, tiny_model)
+        encoded = template.encode(Thx02Preprocessor().preprocess(_tiny_record()))
+        ids = encoded['input_ids']
+        marker_id = processor.tokenizer.convert_tokens_to_ids('<|fim_suffix|>')
+        im_end_id = processor.tokenizer.convert_tokens_to_ids('<|im_end|>')
+        positions = encoded['decision_meta']['readout_positions']
+        assert len(positions) == 2 and all(ids[p] == marker_id for p in positions)
+        assert ids.count(marker_id) == 2
+        assert encoded['decision_meta']['n_options'] == [2, 2]
+        # the literal <|im_end|> inside the state is neutralized: only the system and user turns close
+        assert ids.count(im_end_id) == 2
+        text = processor.tokenizer.decode(ids)
+        assert 'A: billing: Charges\nB: support: Problems' in text
+        assert 'A: No / false\nB: Yes / true' in text
+
+    def test_full_attention_is_noncausal(self, tiny_model):
+        model, _ = tiny_model
+        template = _swift_template(None, tiny_model)
+        # everything up to the first question's marker is identical; only the second question's text differs,
+        # so the first readout can change only if the full-attention layer looks ahead
+        short = _tiny_forward(model, template, [_tiny_record()])
+        changed = _tiny_forward(model, template, [_tiny_record('Is the customer asking to cancel the whole account?')])
+        assert (short.logits[0] - changed.logits[0]).abs().max() > 1e-3
+
+    def test_padding_invariance(self, tiny_model):
+        model, _ = tiny_model
+        template = _swift_template(None, tiny_model)
+        records = [_tiny_record(), _tiny_record('Is the customer asking to cancel the whole account?')]
+        batched = _tiny_forward(model, template, records)
+        singles = torch.cat([_tiny_forward(model, template, [r]).logits for r in records])
+        torch.testing.assert_close(batched.logits, singles, atol=1e-4, rtol=0)
+
+    def test_never_truncated(self, tiny_model):
+        from swift.template.base import MaxLengthError
+        template = _swift_template(None, tiny_model)
+        template.max_length = 32
+        for strategy in ('raise', 'left', 'right'):
+            template.truncation_strategy = strategy
+            with pytest.raises(MaxLengthError, match='cannot be truncated'):
+                template.encode(Thx02Preprocessor().preprocess(_tiny_record()))
+
+    def test_max_pixels_bounds(self, tiny_model):
+        import base64
+        from PIL import Image
+        buffer = io.BytesIO()
+        Image.new('RGB', (1200, 900), 'white').save(buffer, format='PNG')
+        record = dict(_tiny_record(), images=['data:image/png;base64,' + base64.b64encode(buffer.getvalue()).decode()])
+
+        def patches(max_pixels):
+            template = _swift_template(None, tiny_model)
+            template.max_pixels = max_pixels
+            return int(template.encode(Thx02Preprocessor().preprocess(record))['image_grid_thw'].prod())
+
+        # 16x16 patches: the trained bound (262144 px) caps a large image; --max_pixels lowers it down to the
+        # processor's minimum (65536 px) but cannot raise it above the bound
+        assert patches(None) <= 262144 // 256
+        assert patches(None) == patches(4 * 262144)
+        assert 65536 // 256 <= patches(100000) < patches(None)
+        assert patches(100000) * 256 <= 100000 * 1.1  # the processor rounds sides to multiples of 32 px
+        assert patches(16384) >= 65536 // 256
+
+    def test_calibration_meta_round_trip(self, tmp_path):
+        head = Thx02ReadoutHead(hidden_size=16, num_codes=8, temperature=TINY_TEMPERATURE)
+        hidden = torch.randn(1, 6, 16)
+        meta = {
+            'record_index': [0, 0],
+            'readout_positions': [2, 5],
+            'n_options': [3, 2],
+            'kinds': [1, 0],
+            'counts': [1],
+            'max_opt': 3,
+            'seq_lens': [6],
+        }
+        before = head(hidden, None, meta).logits
+        head.head_temperature = torch.tensor(2.0)
+        head.temperatures[0] = 0.5  # noul
+        head.save_pretrained(str(tmp_path))
+        fresh = Thx02ReadoutHead(hidden_size=16, num_codes=8, temperature=TINY_TEMPERATURE)
+        fresh.readout.load_state_dict(head.readout.state_dict())
+        assert fresh.load_pretrained(str(tmp_path))
+        after = fresh(hidden, None, meta).logits
+        torch.testing.assert_close(after[0], before[0] / 2.0)  # choice: head_temperature only
+        torch.testing.assert_close(after[1, :2], before[1, :2] / 1.0)  # noul: 2.0 x 0.5
+
+    def test_packing_rejected_before_loading(self, tiny_dir):
+        from swift import SftArguments
+        for flag in ('packing', 'padding_free'):
+            with pytest.raises(ValueError, match='THX-02 does not support'):
+                SftArguments(
+                    model=tiny_dir, model_type='thx02', task_type='decision', dataset=['dummy'], **{flag: True})
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA required for the training round-trip')
+    def test_sft_lora_calibration_and_reload(self, tiny_dir, tmp_path, monkeypatch):
+        import json
+
+        from swift import InferArguments, SftArguments, sft_main
+        from swift.dataset import DatasetMeta, register_dataset
+        from swift.dataset.preprocessor.decision import Thx02Preprocessor as Pre
+        from swift.model.decision_head import get_scoring_head
+        from swift.pipelines import prepare_model_template
+        rows = []
+        for i in range(12):
+            record = _tiny_record()
+            record['state'] = f'Ticket {i}: ' + record['state']
+            record['answers'] = {'team': 'billing' if i % 2 else 'support', 'refund': bool(i % 3)}
+            rows.append(record)
+        data_file = tmp_path / 'tiny.jsonl'
+        data_file.write_text('\n'.join(json.dumps(r) for r in rows))
+        register_dataset(
+            DatasetMeta(dataset_name='thx02_tiny_test', dataset_path=str(data_file), preprocess_func=Pre()),
+            exist_ok=True)
+        monkeypatch.setenv('SWIFT_CALIBRATION_MIN_ITEMS', '2')
+        result = sft_main(
+            SftArguments(
+                model=tiny_dir,
+                model_type='thx02',
+                task_type='decision',
+                loss_type='distill_rps',
+                dataset=['thx02_tiny_test'],
+                split_dataset_ratio=0.5,
+                tuner_type='lora',
+                target_modules=['all-linear'],
+                freeze_vit=True,
+                torch_dtype='float32',
+                attn_impl='sdpa',
+                num_train_epochs=2,
+                per_device_train_batch_size=2,
+                per_device_eval_batch_size=2,
+                learning_rate=1e-3,
+                output_dir=str(tmp_path / 'output'),
+                save_strategy='epoch',
+                eval_strategy='epoch',
+                report_to=['none']))
+        checkpoint = result['last_model_checkpoint']
+        assert os.path.exists(os.path.join(checkpoint, 'scoring_head.safetensors'))
+        with open(os.path.join(checkpoint, 'scoring_head.json')) as f:
+            head_meta = json.load(f)
+        assert head_meta['temperature'] == TINY_TEMPERATURE
+        assert head_meta['head_temperature'] != 1.0  # the calibration callback fitted it
+        model, template = prepare_model_template(InferArguments(adapters=[checkpoint], load_data_args=True))
+        head = get_scoring_head(model)
+        assert float(head.head_temperature) == pytest.approx(head_meta['head_temperature'])
+        assert [float(t) for t in head.temperatures] == pytest.approx(list(head_meta['temperatures'].values()))

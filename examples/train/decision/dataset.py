@@ -22,8 +22,8 @@ dataset by its registered name (`clef_decision` / `jev_decision` / `omnijev_deci
 import os
 
 from swift.dataset import DatasetMeta, register_dataset
-from swift.dataset.preprocessor.decision import (ClefPreprocessor, JevPreprocessor, KevPreprocessor, OmniJevPreprocessor,
-                                                 Thx02Preprocessor)
+from swift.dataset.preprocessor.decision import (ClefPreprocessor, JevPreprocessor, KevPreprocessor,
+                                                 OmniJevPreprocessor, Thx02Preprocessor)
 
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 

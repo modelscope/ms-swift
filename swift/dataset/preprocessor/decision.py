@@ -445,6 +445,7 @@ class ClefPreprocessor(ScoringPreprocessor):
     GOLD_KEYS = ('answer', 'gold', 'label', 'target', 'value')
     ANSWERS_KEYS = ('answers', 'labels', 'golds', 'targets')
     ID_KEYS = ('id', 'record_id')
+    MODEL_NAME = 'Clef'  # used in error messages (subclasses reuse the gold resolution)
 
     def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
         state = self._first(row, self.STATE_KEYS, default='')
@@ -538,7 +539,7 @@ class ClefPreprocessor(ScoringPreprocessor):
                 return index
         if text.lstrip('-').isdigit():
             return int(text)
-        raise ValueError(f'Clef gold {gold!r} for question {qid!r} matches no option id {option_ids}.')
+        raise ValueError(f'{self.MODEL_NAME} gold {gold!r} for question {qid!r} matches no option id {option_ids}.')
 
 
 class Thx02Preprocessor(ClefPreprocessor):
@@ -554,6 +555,7 @@ class Thx02Preprocessor(ClefPreprocessor):
     """
 
     ANSWERS_KEYS = ('answers', 'labels', 'golds', 'targets')
+    MODEL_NAME = 'THX-02'
 
     def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
         from swift.model.decision_head import thx02_option_ids

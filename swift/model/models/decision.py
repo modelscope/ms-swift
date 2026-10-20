@@ -7,8 +7,8 @@ from functools import wraps
 from transformers import PretrainedConfig, PreTrainedModel
 from typing import Optional
 
-from swift.model.decision_head import (ClefJointSchemaHead, JevVerbalizerHead, KevPointerHead, OmniJevHead,
-                                         ScoringHead, Thx02ReadoutHead)
+from swift.model.decision_head import (ClefJointSchemaHead, JevVerbalizerHead, KevPointerHead, OmniJevHead, ScoringHead,
+                                       Thx02ReadoutHead, load_thx02_decision_config)
 from swift.model.omnijev_branch import (OPT_CLOSE, OPT_OPEN, add_option_tokens, branch_questions, find_rope_owner,
                                         is_hybrid, prefix_inputs, rope_positions, rows_from_ids)
 from swift.model.patcher import patch_module_forward
@@ -327,6 +327,7 @@ register_model(
         requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['decision']))
 
+
 def enable_thx02_noncausal_attention(language_model) -> None:
     """THX-02 reads every question at its own marker inside ONE sequence, so its full-attention layers
     attend bidirectionally over the non-padding tokens; the gated-deltanet (linear-attention) layers stay
@@ -371,15 +372,14 @@ class Thx02ModelLoader(ScoringModelLoader, Qwen3_5Loader):
         if top.get('model_type') != 'thx02' or 'backbone_config' not in top:
             return super().get_config(model_dir)
         from transformers import Qwen3_5Config
-        config = Qwen3_5Config(**top['backbone_config'])
-        config.thx02 = {k: v for k, v in top.items() if k != 'backbone_config'}
-        return config
+        return Qwen3_5Config(**top['backbone_config'])
 
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
         processor = super().get_processor(model_dir, config)
-        with open(os.path.join(model_dir, 'decision_config.json'), 'r') as f:
-            decision_config = json.load(f)
-        # Answer codes (A, B, ..., one token each) and the image pixel bounds THX-02 was trained with.
+        decision_config = load_thx02_decision_config(model_dir)
+        # Answer codes (A, B, ..., one token each) and the image pixel bounds THX-02 was trained with. These
+        # bounds are the model's own; `--max_pixels` still applies first (the template rescales larger images
+        # before the processor), so it can lower the resolution down to 65536 px but not raise it above the bound.
         processor.thx02_codes = list(decision_config['codes'])
         max_pixels = int(decision_config.get('max_pixels') or 262144)
         processor.image_processor.size = {'shortest_edge': 65536, 'longest_edge': max_pixels}
@@ -389,6 +389,12 @@ class Thx02ModelLoader(ScoringModelLoader, Qwen3_5Loader):
                   model_kwargs) -> PreTrainedModel:
         model = Qwen3_5Loader.get_model(self, model_dir, config, processor, model_kwargs)
         enable_thx02_noncausal_attention(model.model.language_model)
+        # The forward never applies lm_head. THX-02 ties it to embed_tokens (no extra memory, gets gradients
+        # through the embeddings); should a config ever untie it, freeze the copy so full fine-tuning under DDP
+        # does not see a parameter without gradients.
+        lm_head, embeddings = model.get_output_embeddings(), model.get_input_embeddings()
+        if lm_head is not None and lm_head.weight.data_ptr() != embeddings.weight.data_ptr():
+            lm_head.weight.requires_grad_(False)
         head = self.build_head(model, model_dir, config)
         self.attach_scoring_head(model, head)
         from swift.model.decision_head import maybe_load_trained_scoring_head
@@ -423,13 +429,13 @@ class Thx02ModelLoader(ScoringModelLoader, Qwen3_5Loader):
 register_model(
     ModelMeta(
         MLLMModelType.thx02, [ModelGroup([
-            Model('HAL-X/THX-02', 'doofz/THX-02'),
+            Model('HAL-X/THX-02', 'HAL-X-AI/THX-02'),
         ], TemplateType.thx02)],
         Thx02ModelLoader,
         model_arch=ModelArch.qwen2_vl,
         task_type='decision',
         architectures=['THXDecisionModel'],
-        requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14'],
+        requires=['transformers>=5.13.0', 'qwen_vl_utils>=0.0.14'],
         tags=['vision', 'decision']))
 
 

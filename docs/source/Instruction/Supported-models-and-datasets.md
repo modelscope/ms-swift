@@ -865,7 +865,7 @@
 |[jaredpalmer/kev-0.8b](https://modelscope.cn/models/jaredpalmer/kev-0.8b)|kev|kev|hermes|transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2718;|decision|[jaredpalmer/kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b)|
 |[jaredpalmer/kev-4b](https://modelscope.cn/models/jaredpalmer/kev-4b)|kev|kev|hermes|transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2718;|decision|[jaredpalmer/kev-4b](https://huggingface.co/jaredpalmer/kev-4b)|
 |[jaredpalmer/kev-9b](https://modelscope.cn/models/jaredpalmer/kev-9b)|kev|kev|hermes|transformers>=5.2.0, qwen_vl_utils>=0.0.14, decord|&#x2718;|decision|[jaredpalmer/kev-9b](https://huggingface.co/jaredpalmer/kev-9b)|
-|[HAL-X/THX-02](https://modelscope.ai/models/HAL-X/THX-02)|thx02|thx02|hermes|transformers>=5.2.0, qwen_vl_utils>=0.0.14|&#x2718;|vision, decision|[doofz/THX-02](https://huggingface.co/doofz/THX-02)|
+|[HAL-X/THX-02](https://modelscope.ai/models/HAL-X/THX-02)|thx02|thx02|hermes|transformers>=5.13.0, qwen_vl_utils>=0.0.14|&#x2718;|vision, decision|[HAL-X-AI/THX-02](https://huggingface.co/HAL-X-AI/THX-02)|
 |[iic/gme-Qwen2-VL-2B-Instruct](https://modelscope.cn/models/iic/gme-Qwen2-VL-2B-Instruct)|qwen2_gme|qwen2_gme|hermes|-|&#x2718;|vision|[Alibaba-NLP/gme-Qwen2-VL-2B-Instruct](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-2B-Instruct)|
 |[iic/gme-Qwen2-VL-7B-Instruct](https://modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct)|qwen2_gme|qwen2_gme|hermes|-|&#x2718;|vision|[Alibaba-NLP/gme-Qwen2-VL-7B-Instruct](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-7B-Instruct)|
 |[AIDC-AI/Ovis1.6-Gemma2-9B](https://modelscope.cn/models/AIDC-AI/Ovis1.6-Gemma2-9B)|ovis1_6|ovis1_6||transformers>=4.42|&#x2718;|vision|[AIDC-AI/Ovis1.6-Gemma2-9B](https://huggingface.co/AIDC-AI/Ovis1.6-Gemma2-9B)|

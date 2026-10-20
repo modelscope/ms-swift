@@ -205,6 +205,8 @@ temperature_calibration: written to ['output/scoring_head.json', ...]
 
 拟合好的温度写入 head 的非持久化 buffer，并通过 `save_pretrained` 序列化到 `output_dir` 和最后 checkpoint 目录的 **`scoring_head.json`**（不进 safetensors，JSON 人类可读）。加载 checkpoint 时由 `maybe_load_trained_scoring_head` → `_load_calibration_meta` 自动恢复，线上推理的概率即为**校准后**温度下的输出，无需任何额外部署步骤。
 
+对 THX-02，拟合出的 `head_temperature` × 各题型温度作用在模型自带的 `decision_config.json` 校准温度**之上**；没有 eval 集时二者保持 1.0，推理概率与发布版的校准完全一致。
+
 ### 多卡（DDP）下的行为
 
 DDP 训练时验证集会被分片到各 rank（每个 rank 只看到约 1/world_size 的题），回调对此做了两层处理：
@@ -407,7 +409,9 @@ swift sft \
 - `--model_type thx02` — 从 THX-02 自带的 `config.json`（`backbone_config`）读取底座配置，将 full attention 层切换为对非 padding token 的双向注意力，并把 readout 挂载为 `scoring_head`
 - `--loss_type distill_rps` — 对目标分布（one-hot gold 或教师软概率）的 KL + `score` 问题上的 RPS
 - `--target_modules all-linear` — 仅匹配语言模型的投影层；readout 直接训练（不经 LoRA），保存为 `scoring_head.safetensors`
-- 不支持 packing / `--padding_free`：非因果注意力会让打包在一起的记录互相可见
+- 不支持 packing / `--padding_free`：非因果注意力会让打包在一起的记录互相可见。二者在解析参数阶段（加载模型之前）即被拒绝
+- 记录永不截断：超过 `--max_length` 的记录会抛出 `MaxLengthError`（与默认 `--truncation_strategy raise` 下其他超长样本一样被跳过），无论 `--truncation_strategy` 设为何值，因为截断会丢失问题或图像 patch 并使所有 readout 位置错位
+- 图像分辨率：图像上限为 `decision_config.json` 中的 `max_pixels`（THX-02 训练时的上限），下限为 65536 像素。`--max_pixels` 先生效，因此可以把分辨率降低到该下限，但不能超过上限
 
 
 
@@ -720,6 +724,7 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 - **`jev` choice > 16 选项**：仅支持 `single` 模式（≤16 一次前向）。
 - **`omnijev` 音频频谱图**：不在推理路径内，需用户自备转换器。
 - **`thx02` packing**：会拒绝 `--packing` / `--padding_free`，因为非因果注意力会让打包的记录互相可见。
+- **`thx02` 截断**：超长记录抛出 `MaxLengthError` 而不是被截断；`--max_pixels` 只能在 [65536 像素, `decision_config.json` 的 `max_pixels`] 范围内降低图像分辨率。
 - `tie_word_embeddings=True` **adapter 合并**：仅影响合并/转格式，训练与推理不受影响。
 
 
