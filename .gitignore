@@ -8,7 +8,7 @@ __pycache__/
 test.py
 # C extensions
 *.so
-
+unsloth_compiled*
 # Distribution / packaging
 .Python
 build/
