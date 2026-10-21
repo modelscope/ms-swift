@@ -133,6 +133,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         text_position_ids = batch.pop('text_position_ids', None)
         if text_position_ids is None:
             text_position_ids = batch.get('position_ids')
+        # `margin` is a per-pair DPO loss margin (see `_rlhf_data_collator`), it must never be
+        # forwarded to the model, otherwise `model(**batch)` raises `unexpected keyword argument 'margin'`.
+        margin = batch.pop('margin', None)
         outputs = model(**batch, use_cache=False)
         all_logits = outputs.logits
 
@@ -208,6 +211,15 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         output['rejected_completion_token_counts'] = completion_token_counts[num_examples:]
         if self.aux_loss_enabled:
             output['aux_loss'] = outputs.aux_loss
+        if not is_ref_model and margin is not None:
+            # `margin` has shape [num_examples], one value per chosen/rejected pair. With sequence
+            # packing, multiple pairs may be packed into a single row, so the alignment with
+            # `num_examples` (derived from `cu_seqlens`) no longer holds; margin is not supported there.
+            if self.template.packing:
+                warnings.warn('Per-pair `margin` is not supported together with sequence packing and will be ignored.',
+                              UserWarning)
+            elif margin.shape[0] == num_examples:
+                output['margin'] = margin
         return output
 
     def compute_ref_log_probs(self, batch):
@@ -234,8 +246,11 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         loss_type: str = 'sigmoid',
         model_output: Optional[Dict[str, torch.FloatTensor]] = None,
         train_eval: Literal['train', 'eval'] = 'train',
+        margin: Optional[torch.FloatTensor] = None,
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         device = self.accelerator.device
+        if margin is not None:
+            margin = margin.to(device)
 
         chosen_logratios = chosen_logps.to(device) - (not self.reference_free) * ref_chosen_logps.to(device)
         rejected_logratios = rejected_logps.to(device) - (not self.reference_free) * ref_rejected_logps.to(device)
@@ -261,8 +276,19 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                 logits -= F.softplus(chosen_logratios) - F.softplus(rejected_logratios)
 
         if loss_type == 'sigmoid':
-            losses = (-F.logsigmoid(self.beta * logits) *
-                      (1 - self.label_smoothing) - F.logsigmoid(-self.beta * logits) * self.label_smoothing)
+            # Per-pair margin (reward space): L = -logsigmoid(beta * logits - margin).
+            # `margin` defaults to 0 for pairs without an explicit margin, which recovers the
+            # original DPO loss unchanged. Only supported for `reference_free=False`, matching
+            # the semantics of `rewards/margins` (chosen_reward - rejected_reward).
+            shifted_logits = self.beta * logits
+            if margin is not None:
+                if self.reference_free:
+                    warnings.warn('margin is ignored because reference_free=True (margin requires a reference model).',
+                                  UserWarning)
+                else:
+                    shifted_logits = shifted_logits - margin
+            losses = (-F.logsigmoid(shifted_logits) *
+                      (1 - self.label_smoothing) - F.logsigmoid(-shifted_logits) * self.label_smoothing)
 
         elif loss_type == 'robust':
             losses = (-F.logsigmoid(self.beta * logits) * (1 - self.label_smoothing)
@@ -405,6 +431,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                 loss_type,
                 model_output,
                 train_eval=train_eval,
+                margin=model_output.get('margin'),
             )
             if pair_loss_scale is not None and loss_type != 'sft':
                 # Preserve the existing reduction of SFT/RPO and router losses.
