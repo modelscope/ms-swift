@@ -38,7 +38,7 @@ try:
     from transformers.trainer_utils import sort_checkpoints
 except ImportError:
     sort_checkpoints = None
-from transformers.utils import is_torch_musa_available
+from transformers.utils import is_torch_musa_available, is_torch_npu_available
 from types import MethodType
 from typing import Callable, Dict, List, Optional
 
@@ -624,6 +624,40 @@ class SwiftMixin:
         if checkpoint_dir:
             update_last_checkpoint_symlink(checkpoint_dir)
 
+    def _build_rng_states(self) -> Dict:
+        """Collect the RNG states to checkpoint, including the active accelerator's.
+
+        `Trainer._load_rng_state` (and its `set_rng_state_for_device` helper) restores the
+        accelerator state from the 'cuda' / 'npu' / 'musa' entries, so every accelerator the base
+        implementation covers has to be saved here as well.
+        """
+        # Save RNG state in non-distributed training
+        rng_states = {
+            'python': random.getstate(),
+            'numpy': np.random.get_state(),
+            'cpu': torch.random.get_rng_state(),
+        }
+        if torch.cuda.is_available():
+            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
+                # In non distributed, we save the global
+                # CUDA RNG state (will take care of DataParallel)
+                rng_states['cuda'] = torch.cuda.random.get_rng_state_all()
+            else:
+                rng_states['cuda'] = torch.cuda.random.get_rng_state()
+        if is_torch_npu_available():
+            # Restored by `Trainer._load_rng_state` from the 'npu' key.
+            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
+                rng_states['npu'] = torch.npu.random.get_rng_state_all()
+            else:
+                rng_states['npu'] = torch.npu.random.get_rng_state()
+        if is_torch_musa_available():
+            # Restored by `Trainer._load_rng_state` from the 'musa' key.
+            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
+                rng_states['musa'] = torch.musa.get_rng_state_all()
+            else:
+                rng_states['musa'] = torch.musa.get_rng_state()
+        return rng_states
+
     def _save_flash_checkpoint(self, model, trial, metrics=None):
         from dlrover.trainer.torch.flash_checkpoint.hf_trainer import HfDdpCheckpointer, HfDeepSpeedCheckpointer
         from transformers.trainer import DeepSpeedSchedulerWrapper
@@ -690,25 +724,7 @@ class SwiftMixin:
                 else:
                     self.state.stateful_callbacks[cb_name] = cb_state
             self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
-        # Save RNG state in non-distributed training
-        rng_states = {
-            'python': random.getstate(),
-            'numpy': np.random.get_state(),
-            'cpu': torch.random.get_rng_state(),
-        }
-        if torch.cuda.is_available():
-            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
-                # In non distributed, we save the global
-                # CUDA RNG state (will take care of DataParallel)
-                rng_states['cuda'] = torch.cuda.random.get_rng_state_all()
-            else:
-                rng_states['cuda'] = torch.cuda.random.get_rng_state()
-        if is_torch_musa_available():
-            # Restored by `Trainer._load_rng_state` from the 'musa' key.
-            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
-                rng_states['musa'] = torch.musa.get_rng_state_all()
-            else:
-                rng_states['musa'] = torch.musa.get_rng_state()
+        rng_states = self._build_rng_states()
 
         # A process can arrive here before the process 0 has a chance to
         # save the model, in which case output_dir may not yet exist.

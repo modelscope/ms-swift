@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -30,9 +31,8 @@ logger = get_logger()
 
 
 def _get_exp_cap(value, decimal=4):
-    vdtype_max = torch.zeros([1]).to(value.dtype) + torch.finfo(value.dtype).max
-    vdtype_log_max = torch.log(vdtype_max).to(value.device)
-    return torch.floor(vdtype_log_max * 10**decimal) / 10**decimal if decimal > 0 else vdtype_log_max
+    vdtype_log_max = math.log(torch.finfo(value.dtype).max)
+    return math.floor(vdtype_log_max * 10**decimal) / 10**decimal if decimal > 0 else vdtype_log_max
 
 
 def _cap_exp(value, cap=-1):
@@ -237,6 +237,11 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         device = self.accelerator.device
 
+        if self.f_divergence_type == 'alpha_divergence':
+            chosen_logps, rejected_logps, ref_chosen_logps, ref_rejected_logps = (
+                logps.float() if logps.dtype in (torch.float16, torch.bfloat16) else logps
+                for logps in (chosen_logps, rejected_logps, ref_chosen_logps, ref_rejected_logps))
+
         chosen_logratios = chosen_logps.to(device) - (not self.reference_free) * ref_chosen_logps.to(device)
         rejected_logratios = rejected_logps.to(device) - (not self.reference_free) * ref_rejected_logps.to(device)
 
@@ -244,8 +249,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             alpha_coef = _ALPHA_DIVERGENCE_COEF_DEFAULT
             if self.f_divergence_params and _ALPHA_DIVERGENCE_COEF_KEY in self.f_divergence_params:
                 alpha_coef = float(self.f_divergence_params[_ALPHA_DIVERGENCE_COEF_KEY])
-            logits = (_cap_exp(rejected_logratios * -alpha_coef)
-                      - _cap_exp(chosen_logratios * -alpha_coef)) / alpha_coef
+            exp_diff = _cap_exp(rejected_logratios * -alpha_coef) - _cap_exp(chosen_logratios * -alpha_coef)
+            scaled_logits = exp_diff * (self.beta / alpha_coef)
+            if loss_type == 'ipo':
+                logits = exp_diff / alpha_coef
         else:
             logratios = chosen_logps - rejected_logps
             if self.reference_free:
@@ -259,26 +266,25 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
             if self.f_divergence_type == 'js_divergence':
                 logits -= F.softplus(chosen_logratios) - F.softplus(rejected_logratios)
+            scaled_logits = self.beta * logits
 
         if loss_type == 'sigmoid':
-            losses = (-F.logsigmoid(self.beta * logits) *
-                      (1 - self.label_smoothing) - F.logsigmoid(-self.beta * logits) * self.label_smoothing)
+            losses = (-F.logsigmoid(scaled_logits) *
+                      (1 - self.label_smoothing) - F.logsigmoid(-scaled_logits) * self.label_smoothing)
 
         elif loss_type == 'robust':
-            losses = (-F.logsigmoid(self.beta * logits) * (1 - self.label_smoothing)
-                      + F.logsigmoid(-self.beta * logits) * self.label_smoothing) / (1 - 2 * self.label_smoothing)
+            losses = (-F.logsigmoid(scaled_logits) * (1 - self.label_smoothing)
+                      + F.logsigmoid(-scaled_logits) * self.label_smoothing) / (1 - 2 * self.label_smoothing)
 
         elif loss_type == 'exo_pair':
-            import math
-
             # EXO needs positive smoothing without changing the other losses in a mixture.
             label_smoothing = self.label_smoothing if self.label_smoothing != 0 else 1e-3
-            losses = (self.beta * logits).sigmoid() * (
-                F.logsigmoid(self.beta * logits) - math.log(1 - label_smoothing)) + (-self.beta * logits).sigmoid() * (
-                    F.logsigmoid(-self.beta * logits) - math.log(label_smoothing))
+            losses = scaled_logits.sigmoid() * (F.logsigmoid(scaled_logits)
+                                                - math.log(1 - label_smoothing)) + (-scaled_logits).sigmoid() * (
+                                                    F.logsigmoid(-scaled_logits) - math.log(label_smoothing))
 
         elif loss_type == 'hinge':
-            losses = torch.relu(1 - self.beta * logits)
+            losses = torch.relu(1 - scaled_logits)
 
         elif loss_type == 'ipo':
             losses = (logits - 1 / (2 * self.beta))**2
@@ -341,8 +347,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             logits = logits * self.beta
             log_ratio_modulation = torch.sigmoid(logits / self.args.discopop_tau)
             logistic_component = -F.logsigmoid(logits)
-            exp_component = torch.exp(-logits)
-            losses = logistic_component * (1 - log_ratio_modulation) + exp_component * log_ratio_modulation
+            # Combine the exponential and its modulation in log space to avoid inf * 0.
+            modulated_exp_component = torch.exp(F.logsigmoid(logits / self.args.discopop_tau) - logits)
+            losses = logistic_component * (1 - log_ratio_modulation) + modulated_exp_component
 
         elif loss_type == 'sft':
             sft_loss = model_output['nll_loss']

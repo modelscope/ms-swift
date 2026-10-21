@@ -113,6 +113,7 @@ class LLMModelType:
     ernie4_5 = 'ernie4_5'
     ernie4_5_moe = 'ernie4_5_moe'
     gemma_emb = 'gemma_emb'
+    gemma2_emb = 'gemma2_emb'
     longchat = 'longchat'
     iquestcoder = 'iquestcoder'
     youtu_llm = 'youtu_llm'
@@ -166,6 +167,7 @@ class MLLMModelType:
     jev = 'jev'
     clef = 'clef'
     omnijev = 'omnijev'
+    kev = 'kev'
 
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
