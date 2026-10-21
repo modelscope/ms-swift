@@ -66,224 +66,49 @@ def _score_group(cluster: Any, samples: List[Any], with_prm: bool = False) -> Li
     return cluster.worker.score_group(samples) if cluster.orm_scorers else [[] for _ in samples]
 
 
-def _response_logps(scorer_model: Any, features: List[Any], *, train_batch_size: int,
-                    disable_lora: bool = False) -> List[List[float]]:
-    """One response-token logp list per feature (chunked forward_only, DP>1-correct)."""
-    from swift.dev.utils.scoring import batched_response_scores
-
-    forward_kwargs = {'disable_lora': True} if disable_lora else None
-    return batched_response_scores(
-        scorer_model, features, train_batch_size=train_batch_size, output_key='logps',
-        forward_kwargs=forward_kwargs)
-
-
-def _rollout_correction_metrics(training_logps: List[Any], rollout_logps: List[Any]) -> Dict[str, float]:
-    """Legacy ``rollout_correction/*`` diagnostics: how far the sampler is from the trainer.
-
-    Ported from ``swift/rlhf_trainers/grpo_trainer.py::_compute_rollout_offpolicy_metrics`` so the
-    dev stack reports the same numbers under the same names. ``training_logps`` are the policy's own
-    forward log-probs (``old_logps`` in this loop), ``rollout_logps`` the sampler's. Both are
-    per-sample completion-token lists; only the overlap is scored (a truncated tail is skipped).
-
-    ``kl`` is the direct estimator of ``KL(pi_rollout || pi_training)`` = mean(log pi_rollout -
-    log pi_training). A freshly synced rollout should sit near 0; the DSv4 recipe's acceptance
-    bound is 0.01.
-    """
-    import torch
-
-    train_rows: List[Any] = []
-    rollout_rows: List[Any] = []
-    for train, rollout in zip(training_logps, rollout_logps):
-        if train is None or rollout is None:
-            continue
-        length = min(len(train), len(rollout))
-        if length == 0:
-            continue
-        train_rows.append(torch.tensor(list(train[:length]), dtype=torch.float32))
-        rollout_rows.append(torch.tensor(list(rollout[:length]), dtype=torch.float32))
-    if not train_rows:
-        return {}
-
-    train = torch.cat(train_rows)
-    rollout = torch.cat(rollout_rows)
-    log_ratio = train - rollout
-    metrics: Dict[str, float] = {
-        'kl': float((-log_ratio).mean()),
-        'k3_kl': float((torch.exp(torch.clamp(log_ratio, -20.0, 20.0)) - torch.clamp(log_ratio, -20.0, 20.0)
-                        - 1.0).clamp(-10.0, 10.0).mean()),
-        'chi2_token': float(torch.exp(torch.clamp(log_ratio, -20.0, 20.0)).square().mean() - 1.0),
-    }
-
-    train_seq_mean = torch.stack([row.mean() for row in train_rows])
-    rollout_seq_mean = torch.stack([row.mean() for row in rollout_rows])
-    metrics['training_log_ppl'] = float(-train_seq_mean.mean())
-    metrics['rollout_log_ppl'] = float(-rollout_seq_mean.mean())
-    metrics['training_ppl'] = float(torch.exp(-train_seq_mean).mean())
-    metrics['rollout_ppl'] = float(torch.exp(-rollout_seq_mean).mean())
-    log_ppl_diff = rollout_seq_mean - train_seq_mean
-    metrics['log_ppl_diff'] = float(log_ppl_diff.mean())
-    metrics['log_ppl_abs_diff'] = float(log_ppl_diff.abs().mean())
-    metrics['log_ppl_diff_max'] = float(log_ppl_diff.max())
-    metrics['log_ppl_diff_min'] = float(log_ppl_diff.min())
-    metrics['ppl_ratio'] = float(torch.exp(log_ppl_diff).mean())
-    # Sequence-level chi2: rho_geo = exp(mean over the sequence of log(training/rollout)).
-    rho_geo = torch.exp(torch.clamp(train_seq_mean - rollout_seq_mean, -20.0, 20.0))
-    metrics['chi2_seq'] = float(rho_geo.square().mean() - 1.0)
-    return metrics
-
-
 def _advantage_pipeline(cluster: Any, rl_config: 'RLConfig', reward_config: 'RewardConfig',
                         samples: List[Any], train_batch_size: int, global_step: int,
                         correction_out: Optional[Dict[str, float]] = None) -> Tuple[Any, ...]:
-    """The shared advantage pipeline: logps forwards, KL, group-relative advantage, PRM / teacher fusion.
-
-    Reads the scoring results off the samples (``orm_reward`` / ``baseline`` / ``prm_process``, written
-    by the group-completion hook or the colocate loop). Returns ``(advantages, old_logps, ref_logps,
-    teacher_logps)``. The reference / teacher / policy-old forwards run on their own DeviceGroups
-    (disjoint ones overlap, same-group ones chain); PRM fusion and teacher-signal reweighting are
-    mutually exclusive per-token sources, and PRM wins (validate rejects enabling both).
-    """
-    import torch
-
-    from swift.dev.rewards.advantage import compute_advantages
-    from swift.dev.utils.scoring import overlap_by_placement
-
-    rewards = [sample.orm_reward for sample in samples]
-    baselines = ([sample.baseline for sample in samples]
-                 if any(sample.baseline is not None for sample in samples) else None)
-    prm_process = ([sample.prm_process for sample in samples]
-                   if any(sample.prm_process is not None for sample in samples) else None)
-    old_logps: List[Any] = [list(sample.rollout_logps) for sample in samples]
+    """recipe 编排多路信号前向，优势计算消费分数引用。"""
+    features = [sample.encoded for sample in samples]
+    ref_shared = cluster.reference is cluster.model
+    teacher_shared = cluster.teacher is cluster.model
     preserve = bool(rl_config.rollout_importance_sampling_mode or rl_config.log_rollout_offpolicy_metrics)
-    # ref / teacher / policy-old each forward on their own group; a disable_adapter auxiliary IS the
-    # policy object itself (identity derives disable_lora AND the policy-group placement).
-    tasks: List[Tuple[Any, Callable[[], Any]]] = []
-    slots: List[str] = []
+    tasks, slots = [], []
     if cluster.reference is not None:
-        reference = cluster.reference
-        ref_shared = reference is cluster.model
-        tasks.append((None if ref_shared else REF_GROUP, lambda: _response_logps(
-            reference, [sample.encoded for sample in samples], train_batch_size=train_batch_size,
-            disable_lora=ref_shared)))
+        tasks.append((None if ref_shared else REF_GROUP, cluster.reference, features, dict(
+            train_batch_size=train_batch_size,
+            forward_kwargs={'disable_lora': True} if ref_shared else None)))
         slots.append('ref')
-    if cluster.teacher is not None or any((s.extra or {}).get('teacher_prompt') for s in samples):
-        if cluster.teacher is not None:
-            t_shared = cluster.teacher is cluster.model
-            t_key, t_model, t_disable = (None if t_shared else TEACHER_GROUP), cluster.teacher, t_shared
-        else:
-            t_key, t_model, t_disable = None, cluster.model, False
+    if cluster.teacher is not None or cluster.worker.has_teacher_prompt(samples):
         privileged = cluster.worker.privileged_features(samples)
-        tasks.append((t_key, lambda: _response_logps(
-            t_model, privileged, train_batch_size=train_batch_size, disable_lora=t_disable)))
+        teacher = cluster.teacher if cluster.teacher is not None else cluster.model
+        tasks.append((None if cluster.teacher is None or teacher_shared else TEACHER_GROUP,
+                      teacher, privileged, dict(
+                          train_batch_size=train_batch_size,
+                          forward_kwargs={'disable_lora': True} if teacher_shared else None)))
         slots.append('teacher')
     if preserve:
-        tasks.append((None, lambda: _response_logps(
-            cluster.model, [sample.encoded for sample in samples], train_batch_size=train_batch_size)))
+        tasks.append((None, cluster.model, features, dict(train_batch_size=train_batch_size)))
         slots.append('old')
-    scored = dict(zip(slots, overlap_by_placement(tasks)))
-    ref_logps = scored.get('ref')
-    teacher_logps = scored.get('teacher')
-    if preserve:
-        old_logps = scored['old']
-    if preserve and correction_out is not None:
-        # The legacy-compatible off-policy diagnostics, computed from the training-side forward and
-        # the sampler's own log-probs BEFORE any optimizer step this pull.
-        correction_out.update(
-            _rollout_correction_metrics(old_logps, [sample.rollout_logps for sample in samples]))
-    kl_in_reward = bool(rl_config.kl_in_reward and rl_config.beta)
-    if kl_in_reward and ref_logps is None:
-        raise ValueError('kl_in_reward=True requires an active reference model.')
-    kl_values = (torch.tensor(cluster.worker.sequence_kl(old_logps, ref_logps), dtype=torch.float32)
-                 if kl_in_reward else None)
-    # None (an unparseable judge verdict) rides as nan, exactly as dev recorded it; a no-scorer row
-    # (no --orm wired) stays [nan] -- a zero-column tensor cannot carry a group mean.
-    reward_matrix = torch.tensor(
-        [[float('nan') if value is None or value != value else float(value) for value in row]
-         or [float('nan')] for row in rewards], dtype=torch.float32)
-    estimator = rl_config.advantage_estimator
-    advantages = compute_advantages(
-        reward_matrix,
-        rl_config.num_generations,
-        reward_weights=reward_config.orm_weights,
-        advantage_estimator=estimator,
-        scale_rewards=rl_config.scale_rewards or 'group',
-        kl_in_reward=kl_in_reward,
-        beta=float(rl_config.beta or 0.0),
-        kl_values=kl_values,
-        response_lengths=([len(sample.response_token_ids) for sample in samples]
-                          if estimator == 'opo' else None),
-        f_norm=(float(rl_config.f_norm) if estimator == 'gpg' else 1.0),
-        reward_baselines=(torch.tensor(baselines, dtype=torch.float32) if baselines is not None else None))
-    if prm_process is not None:
-        advantages = cluster.worker.fuse_prm(advantages, prm_process, float(cluster.prm_orm_mix))
-    elif teacher_logps is not None:
-        # teacher-signal per-token reweighting; sdar keeps the scalar advantage (the loss reads
-        # teacher_logps itself), rlsd / expand turn it per-token on the worker.
-        if rl_config.advantage_reweight == 'rlsd':
-            if rl_config.rlsd_lambda_warmup_steps > 0 and global_step < rl_config.rlsd_lambda_warmup_steps:
-                lam = rl_config.rlsd_lambda * global_step / rl_config.rlsd_lambda_warmup_steps
-            elif rl_config.rlsd_lambda_decay_steps > 0 and global_step >= rl_config.rlsd_lambda_warmup_steps:
-                progress = ((global_step - rl_config.rlsd_lambda_warmup_steps)
-                            / rl_config.rlsd_lambda_decay_steps)
-                lam = rl_config.rlsd_lambda * max(1.0 - progress, 0.0)
-            else:
-                lam = rl_config.rlsd_lambda
-            advantages = cluster.worker.reweight_advantages(
-                advantages, old_logps, teacher_logps, mode='rlsd', lam=lam,
-                clip_range=rl_config.rlsd_reweight_clip_range, negative_only=rl_config.rlsd_negative_only)
-        elif rl_config.sdar_loss_coef <= 0:
-            advantages = cluster.worker.reweight_advantages(
-                advantages, old_logps, teacher_logps, mode='expand',
-                teacher_kl_coef=rl_config.teacher_kl_coef)
-    return advantages, old_logps, ref_logps, teacher_logps
+    scored = cluster.worker.response_scores(tasks)
+    signals = dict(zip(slots, (scored[index] for index in range(len(tasks)))))
+    result = cluster.worker.grpo_advantages(
+        samples, rl_config, reward_config, global_step, cluster.prm_orm_mix,
+        old_logps=signals.get('old'), ref_logps=signals.get('ref'),
+        teacher_logps=signals.get('teacher'))
+    if correction_out is not None and preserve:
+        correction_out.update(cluster.worker.correction_metrics(signals.get('old'), samples))
+    return (result['advantages'], result['old_logps'], signals.get('ref'), signals.get('teacher'))
 
 
-def _prepare_routing_replay(model: Any, rl_config: 'RLConfig', samples: List[Any], train_batch_size: int) -> None:
-    """Establish each sample's MoE expert routing BEFORE the training forward replays it, in place.
-
-    ``R3`` requires the sampler-exported routing (fail loudly when the engine exported none);
-    ``R2`` RECORDS the training model's own routing under the just-synced weights, chunked the same
-    way a scoring pass is (slice_dp needs >= dp_size rows per forward).
-    """
-    from swift.dev.utils.scoring import copy_inputs, score_chunks
-
-    mode = rl_config.router_replay_mode
-    if mode == 'disabled':
+def _prepare_routing_replay(cluster: Any, rl_config: 'RLConfig', samples: List[Any], train_batch_size: int) -> None:
+    if rl_config.router_replay_mode == 'disabled':
         return
-    if mode == 'R3':
-        missing = sum(1 for sample in samples if sample.encoded.get('routed_experts') is None)
-        if missing:
-            raise RuntimeError(
-                f'router_replay_mode="R3" replays the sampler-reported MoE routing, but {missing} of '
-                f'{len(samples)} rollout samples carry none: the sampling engine did not export '
-                'routed_experts. Use router_replay_mode="R2" to RECORD the routing on the training '
-                'model instead, or "disabled" to recompute it.')
-        return
-    if mode != 'R2':
-        raise ValueError(f'Unknown router_replay_mode {mode!r}; expected one of disabled/R2/R3.')
-    features = [sample.encoded for sample in samples]
-    rows: List[Any] = []
-    for chunk in score_chunks(features, train_batch_size):
-        out = model.forward_only(inputs=copy_inputs(chunk), router_replay_mode='R2')
-        recorded = out.get('routed_experts') if isinstance(out, dict) else None
-        if recorded is None:
-            raise RuntimeError(
-                'router_replay_mode="R2" asked the training model to RECORD its MoE routing, but the '
-                'forward returned none. The policy must be an MoE model built with routing replay '
-                'enabled; a dense policy has no expert routing to record (use "disabled").')
-        for tensor in (recorded if isinstance(recorded, (list, tuple)) else [recorded]):
-            for index in range(tensor.shape[0]):
-                rows.append(tensor[index])
-    if len(rows) != len(samples):
-        raise RuntimeError(f'R2 routing RECORD returned {len(rows)} rows for {len(samples)} samples; '
-                           'per-row routing alignment is impossible.')
-    for sample, routed in zip(samples, rows):
-        length = len(sample.encoded['input_ids'])
-        if routed.shape[0] < length:
-            raise RuntimeError(f'R2 recorded routing covers {routed.shape[0]} tokens for a {length}-token '
-                               'sequence; the RECORD forward must route the whole sequence.')
-        sample.encoded['routed_experts'] = routed[:length]
-        sample.encoded['replay_mask'] = sample.encoded['completion_mask']
+    features = cluster.worker.prepare_routing_replay(
+        cluster.model, samples, rl_config.router_replay_mode, train_batch_size)
+    for index, sample in enumerate(samples):
+        sample.encoded = features[index]
 
 
 def _forward_kwargs(rl_config: 'RLConfig', ga: int, mini: Any, advantages: Any, old_logps: Any,
@@ -296,7 +121,7 @@ def _forward_kwargs(rl_config: 'RLConfig', ga: int, mini: Any, advantages: Any, 
         'gradient_accumulation_steps': ga,
         'advantages': advantages,
         'old_logps': old_logps,
-        'rollout_logps': [list(sample.rollout_logps) for sample in mini],
+        'rollout_logps': [sample.rollout_logprobs for sample in mini],
         'truncated': [bool(rl_config.overlong_filter and getattr(sample, 'truncated', False))
                       for sample in mini],
     }
@@ -453,7 +278,7 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
             advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
                 cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
                 correction_out=correction_out)
-            _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size)
+            _prepare_routing_replay(cluster, rl_config, samples, train_batch_size)
             # return the device to the trainer: sleep the sampler, then reload the trainer's weights.
             cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
             cluster.model.reload_to_gpu()
@@ -484,7 +309,7 @@ def _disaggregated_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Ro
 
     Per pull: the visible advantage pipeline, routing replay, the mini-batch training rounds, then
     the visible publish -- the cadence counter is inline, ``in_place`` overwrites the sampler's live
-    copy (abort in-flight generations first, then sync), ``adapter_snapshot`` hands the driver the
+    copy after driver pause/drain, ``adapter_snapshot`` hands the driver the
     next version's save.
     """
     from swift.dev.recipe.grpo.assembly import build_driver
@@ -498,52 +323,45 @@ def _disaggregated_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Ro
         metrics_cells[0].append(driver)
     strategy = rollout_config.weight_sync_strategy
     steps_since_publish = 0
-    total_steps = 0
-    for samples in driver:
-        if rl_config.log_completions:
-            cluster.worker.log_completions(
-                samples, [sample.orm_reward for sample in samples], state.global_step + 1,
-                os.path.join(output_dir, 'completions.jsonl'))
-        state.tracker.log_prompts([sample.prompt for sample in samples], samples,
-                                  state.global_step + 1, 1)
-        if metrics_cells is not None:
-            # This batch's version-span aggregate, reported on every step it feeds (see the cells).
-            versions = [sample.policy_version for sample in samples]
-            if metrics_cells[1]:
-                metrics_cells[1][0] = versions
-            else:
-                metrics_cells[1].append(versions)
-        advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
-            cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
-            correction_out=correction_out)
-        _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size)
-        optimizer_steps = _train_mini_batches(
-            state, rl_config, samples, train_batch_size=train_batch_size, advantages=advantages,
-            old_logps=old_logps, ref_logps=ref_logps, teacher_logps=teacher_logps, chord_fn=chord_fn,
-            ema_manager=ema_manager, save=save)
-        # the visible publish: cadence inline, then one request; the driver brackets the push with
-        # its version accounting and the adapter's decide/register (commit releases its thread).
-        steps_since_publish += optimizer_steps
-        publish_due = steps_since_publish >= rollout_config.parameter_sync_step
-        if publish_due:
-            if strategy == 'in_place':
-                # in_place overwrites the sampler's single live weight copy, so the visible half of
-                # the publish runs here: abort every in-flight generation, then push the weights.
-                def _visible_sync(window: Any) -> None:
-                    cluster.rollout.abort_all_inflight()
-                    if cluster.adapter is not None:
-                        cluster.adapter.publish()
-                    else:
-                        cluster.engine.sync_weights()
-
-                driver.request_publish(_visible_sync)
-            else:
-                # adapter_snapshot: the default push (snapshot_model) saves the next version's adapter.
-                driver.request_publish()
-            steps_since_publish = 0
-        driver.commit(optimizer_steps)
-        if state.reached_max() or state.should_stop():
-            break
+    try:
+        for samples in driver:
+            if rl_config.log_completions:
+                cluster.worker.log_completions(
+                    samples, [sample.orm_reward for sample in samples], state.global_step + 1,
+                    os.path.join(output_dir, 'completions.jsonl'))
+            state.tracker.log_prompts([sample.prompt for sample in samples], samples,
+                                      state.global_step + 1, 1)
+            if metrics_cells is not None:
+                versions = [sample.policy_version for sample in samples]
+                if metrics_cells[1]:
+                    metrics_cells[1][0] = versions
+                else:
+                    metrics_cells[1].append(versions)
+            advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
+                cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
+                correction_out=correction_out)
+            _prepare_routing_replay(cluster, rl_config, samples, train_batch_size)
+            optimizer_steps = _train_mini_batches(
+                state, rl_config, samples, train_batch_size=train_batch_size, advantages=advantages,
+                old_logps=old_logps, ref_logps=ref_logps, teacher_logps=teacher_logps, chord_fn=chord_fn,
+                ema_manager=ema_manager, save=save)
+            steps_since_publish += optimizer_steps
+            if steps_since_publish >= rollout_config.parameter_sync_step:
+                if strategy == 'in_place':
+                    def _visible_sync(window: Any) -> None:
+                        if cluster.adapter is not None:
+                            cluster.adapter.publish()
+                        else:
+                            cluster.engine.sync_weights()
+                    driver.request_publish(_visible_sync)
+                else:
+                    driver.request_publish()
+                steps_since_publish = 0
+            driver.commit(optimizer_steps)
+            if state.reached_max() or state.should_stop():
+                break
+    finally:
+        driver.close()
 
 
 def _load_chord_features(rl_config: 'RLConfig', dataset_config: 'DatasetConfig', template: Any) -> List[dict]:
