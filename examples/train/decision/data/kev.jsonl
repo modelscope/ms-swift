@@ -1,0 +1,4 @@
+{"state": "The sky is blue.", "questions": [{"kind": "noul", "question": "Is the sky blue?", "gold": 1}]}
+{"state": "A review: the product arrived late and was damaged.", "questions": [{"kind": "choice", "question": "Classify the sentiment.", "options": ["positive", "negative", "neutral"], "gold": 1}]}
+{"state": "some text to rate", "questions": [{"kind": "score", "question": "Rate quality.", "gold": 4}]}
+{"state": "A record mixing the unified and kev-native question shapes; one row per question.", "questions": [{"instr": "Pick a topic.", "options": ["Technology", "Sports", "Food"], "label": 0}, {"instr": "Is this spam?", "options": ["false", "true"], "label": 1}, {"kind": "score", "question": "Politeness level.", "gold": [0.05, 0.1, 0.15, 0.4, 0.2, 0.1]}]}

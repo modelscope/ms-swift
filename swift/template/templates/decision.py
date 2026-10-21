@@ -8,6 +8,7 @@ GenericDecision; Clef and OmniJev override `_encode`/`_post_encode` entirely bec
 assembly and head-meta contracts are fundamentally different.
 """
 import json
+import re
 import string
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -424,3 +425,80 @@ class OmniJevTemplate(Qwen3_5Template):
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.omnijev, template_cls=OmniJevTemplate, default_system=None))
+
+_KEV_SPECIAL = ('<|fim_prefix|>', '<|fim_middle|>', '<|box_start|>', '<|box_end|>', '<|fim_suffix|>')
+_KEV_SPECIAL_RE = re.compile(r'<\|([A-Za-z0-9_]+)\|>')
+
+
+class KevTemplate(DecisionTemplate, Qwen3_5Template):
+
+    _error_prefix = 'Kev'
+
+    @staticmethod
+    def _kev_escape(text: Any) -> str:
+        return _KEV_SPECIAL_RE.sub(r'<¦\1¦>', str(text))
+
+    def _render_s1_prompt(self, fields: Dict[str, Any]) -> str:
+        """The same layout as `_encode`, as a plain string (the vLLM/CLI completion path)."""
+        esc = self._kev_escape
+        return (_KEV_SPECIAL[0] + esc(fields['state']) + _KEV_SPECIAL[1] + esc(fields['question'])
+                + ''.join(f'{_KEV_SPECIAL[2]}{esc(opt)}{_KEV_SPECIAL[3]}'
+                          for opt in fields['options']) + _KEV_SPECIAL[4])
+
+    def _kev_token_id(self, token: str) -> int:
+        token_id = self.tokenizer.convert_tokens_to_ids(token)
+        unk_id = getattr(self.tokenizer, 'unk_token_id', None)
+        if token_id is None or token_id < 0 or (unk_id is not None and token_id == unk_id):
+            raise ValueError(f'Kev delimiter {token!r} does not resolve to a single token in the checkpoint '
+                             'tokenizer; Kev reuses Qwen special tokens, so point --model at a '
+                             'Qwen/Qwen3.5-*-Base checkpoint whose tokenizer carries them.')
+        return int(token_id)
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        fields = self._decision_fields(inputs)
+        state_ids: List[int] = self._tokenize(self._kev_escape(fields['state']))
+        s_id = self._kev_token_id(_KEV_SPECIAL[0])
+        q_id = self._kev_token_id(_KEV_SPECIAL[1])
+        o_id = self._kev_token_id(_KEV_SPECIAL[2])
+        c_id = self._kev_token_id(_KEV_SPECIAL[3])
+        d_id = self._kev_token_id(_KEV_SPECIAL[4])
+
+        # branch = <q> instr (<opt> option </opt>)* <decide>, recording each </opt> position.
+        branch: List[int] = [q_id] + self._tokenize(self._kev_escape(fields['question']))
+        opt_ends: List[int] = []
+        for opt in fields['options']:
+            branch.append(o_id)
+            branch += self._tokenize(self._kev_escape(opt))
+            branch.append(c_id)
+            opt_ends.append(len(branch) - 1)
+        branch.append(d_id)
+
+        if self.max_length is not None:
+            fixed = 1 + len(branch)
+            if fixed > self.max_length:
+                raise ValueError(f'Kev branch alone is {fixed} tokens (state token + branch), over '
+                                 f'max_length={self.max_length}.')
+            state_ids = state_ids[:self.max_length - fixed]
+
+        input_ids = [s_id] + state_ids + branch
+        decide_idx = len(input_ids) - 1
+        opt_idx = [[1 + len(state_ids) + end for end in opt_ends]]  # per-question, per-option
+        from swift.model.decision_head import QUESTION_TYPES
+        return {
+            'input_ids': input_ids,
+            'decision_meta': {
+                'n_options': [len(fields['options'])],
+                'kinds': [QUESTION_TYPES[fields['kind']]],
+                'decide_idx': [decide_idx],
+                'opt_idx': opt_idx,
+            },
+        }
+
+    def _extract_extra_decision_meta(self, meta: Optional[Dict[str, Any]], rec_i: int, flat: Dict[str, Any]) -> None:
+        if meta is None:
+            return
+        flat.setdefault('decide_idx', []).extend(meta.get('decide_idx') or [])
+        flat.setdefault('opt_idx', []).extend(meta.get('opt_idx') or [])
+
+
+register_template(QwenTemplateMeta(MLLMTemplateType.kev, template_cls=KevTemplate, default_system=None))
