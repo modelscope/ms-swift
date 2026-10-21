@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from swift.template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                             ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
-from ..preprocessor.decision import (ClefPreprocessor, DecisionAugmentConfig, JevPreprocessor, OmniJevPreprocessor,
-                                     ScoringPreprocessor)
+from ..preprocessor.decision import (ClefPreprocessor, DecisionAugmentConfig, JevPreprocessor, KevPreprocessor,
+                                     OmniJevPreprocessor, ScoringPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 
@@ -1126,6 +1126,15 @@ register_dataset(
         preprocess_func=OpenJevPreprocessor(OmniJevPreprocessor()),
         tags=['decision', 'omnijev']))
 
+register_dataset(
+    DatasetMeta(
+        dataset_name='open_jev_kev',
+        ms_dataset_id='ZefanCai/Open-Jev',
+        subsets=_open_jev_subsets,
+        split=['train'],
+        preprocess_func=OpenJevPreprocessor(KevPreprocessor()),
+        tags=['decision', 'kev']))
+
 # Open-Jev-v1.1
 register_dataset(
     DatasetMeta(
@@ -1153,3 +1162,12 @@ register_dataset(
         split=['train'],
         preprocess_func=OpenJevPreprocessor(OmniJevPreprocessor()),
         tags=['decision', 'omnijev']))
+
+register_dataset(
+    DatasetMeta(
+        dataset_name='open_jev_kev_v11',
+        ms_dataset_id='ZefanCai/Open-Jev-v1.1',
+        subsets=['community-hard-mix-v2-redistributable'],
+        split=['train'],
+        preprocess_func=OpenJevPreprocessor(KevPreprocessor()),
+        tags=['decision', 'kev']))

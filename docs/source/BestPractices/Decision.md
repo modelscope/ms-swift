@@ -11,7 +11,7 @@ pip install "transformers>=5.2.0" "qwen_vl_utils>=0.0.14" decord
 pip install "ms-swift>=4.6.0"
 ```
 
-如需使用 OmniJev 视频功能，还需安装系统依赖 `ffmpeg` 和 `ffprobe`。
+如需使用视频功能（多模态决策模型），还需安装系统依赖 `ffmpeg` 和 `ffprobe`。
 
 ## 支持模型
 
@@ -21,6 +21,8 @@ pip install "ms-swift>=4.6.0"
   - [ModelScope](https://www.modelscope.cn/models/Cloudflare/clef)
 3. OmniJev：Qwen3.5-4B（hybrid gated-deltanet + VL）+ PEFT adapter
   - [ModelScope](https://modelscope.cn/models/AI-ModelScope/OmniJev)
+4. Kev：Qwen3.5-{0.8,4,9}B-Base（hybrid gated-deltanet）+ PEFT adapter，纯文本
+  - [kev-0.8b](https://www.modelscope.cn/models/jaredpalmer/kev-0.8b) / [kev-4b](https://www.modelscope.cn/models/jaredpalmer/kev-4b) / [kev-9b](https://www.modelscope.cn/models/jaredpalmer/kev-9b)
 
 
 | 模型         | `--model_type` | 底座                               | 头制品                                                                            | `--loss_type`  |
@@ -28,9 +30,10 @@ pip install "ms-swift>=4.6.0"
 | JEV-27B-VL | `jev`          | Qwen3-VL + PEFT adapter          | `decision_head.json` + `calibration.json`（24 槽 verbalizer bias）                | `distill_rps`  |
 | Clef       | `clef`         | 已合并 LoRA 的 Qwen3-VL              | `joint_head.safetensors` + `joint_head_config.json`                            | `smooth_brier` |
 | OmniJev    | `omnijev`      | Qwen3.5-4B hybrid + PEFT adapter | `head.pt`（FiLM）+ `ord.pt`（有序回归）+ `new_tok_emb.pt`（2 新 token）+ `head_meta.json` | `ce_rps`       |
+| Kev        | `kev`          | Qwen3.5-{0.8,4,9}B-Base hybrid + PEFT adapter | `head.pt`（pointer head，fp32）+ 拟合 `temperature`（仅 eval 生效）                 | `scoring`      |
 
 
-开发者可以将任意 CausalLM 转为 JEV 风格的决策模型，只需指定：
+开发者可以将任意 CausalLM 转为决策模型，只需指定：
 
 ```shell
 swift sft --task_type decision
@@ -40,7 +43,7 @@ swift sft --task_type decision
 
 ## 损失函数
 
-所有 decision 损失都是 **proper scoring rule**，按问题在各问题自己的选项集上计算。
+所有 decision 损失都是 **proper scoring rule**，按问题在各问题自己的选项集上计算。各模型默认使用的 `--loss_type` 见[支持模型](#支持模型)表格。
 
 ### 符号约定
 
@@ -67,7 +70,7 @@ $$
 
 ### 各损失详解
 
-**distill_rps**（JEV）：
+**distill_rps**：
 
 $$
 \mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}
@@ -80,7 +83,7 @@ $$
 \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \frac{1}{K_q - 1} \sum_{k=1}^{K_q-1} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2
 $$
 
-**smooth_brier**（Clef）：
+**smooth_brier**：
 
 $$
 \mathcal{L} = \mathcal{L}_{\mathrm{CE}}^{\mathrm{LS}} + \lambda_b \cdot \mathcal{L}_{\mathrm{Brier}}
@@ -93,7 +96,7 @@ $$
 \mathcal{L}_{\mathrm{Brier}} = \frac{1}{|Q|} \sum_{q \in Q} \frac{1}{K_q} \sum_{k=1}^{K_q} (p_q^{(k)} - \tilde{t}_q^{(k)})^2
 $$
 
-**ce_rps**（OmniJev）：
+**ce_rps**：
 
 $$
 \mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}
@@ -122,7 +125,7 @@ $$
 `ScoringTrainer` 在训练和验证期间自动计算两个 accuracy 指标，均记录在训练日志中，无需额外配置：
 
 - `acc`**（per-question）**：对每个问题的选项集做 masked argmax 得到预测，与 gold（`target_probs` 的 argmax）比对——每个问题独立计分。
-- `record_acc`**（per-record）**：全对才算对的 record 级 accuracy——一个 record 的所有问题均预测正确时该 record 才计为正确，否则计为错误。对多问题联合解码模型（如 Clef）尤其有意义。
+- `record_acc`**（per-record）**：全对才算对的 record 级 accuracy——一个 record 的所有问题均预测正确时该 record 才计为正确，否则计为错误。对多问题联合解码的模型尤其有意义。
 
 
 
@@ -144,12 +147,12 @@ $$
 
 **静默跳过**（温度保持出厂/加载值，不报错）：
 
-- head 不携带温度 buffer（如 Clef 的 `ClefJointSchemaHead`）；
+- head 不携带温度 buffer（如 joint schema 类头）；
 - 训练器没有 eval_dataset；
 - 验证集收集到的总题数 < 10（`SWIFT_CALIBRATION_MIN_ITEMS` 可调）；
 - logits 收集阶段抛出异常。
 
-**前提**：需要验证集。三个示例脚本的 `--split_dataset_ratio 0` 关闭了自动切分，如需校准请改为 `--split_dataset_ratio 0.1`（从训练集按整 record 切 10% 做验证），或显式传 `--val_dataset`。
+**前提**：需要验证集。各示例脚本的 `--split_dataset_ratio 0` 关闭了自动切分，如需校准请改为 `--split_dataset_ratio 0.1`（从训练集按整 record 切 10% 做验证），或显式传 `--val_dataset`。
 
 ### 校准原理（两阶段拟合）
 
@@ -228,9 +231,11 @@ swift sft --task_type decision ... --split_dataset_ratio 0.1
 
 每个模型有自己的原始 JSONL schema，预处理器将其归一化为统一内部契约。
 
-### JEV
+### 单问题逐行 schema
 
-JEV **每个前向只评分一个问题**。含多个问题的 record 会被展开为每问题一行。
+**适用 `--model_type`：`jev`、`generic_decision`（`kev` 为其纯文本变体，见下文「变体」）**
+
+此类模型**每个前向只评分一个问题**。含多个问题的 record 会被展开为每问题一行。
 
 ```json lines
 {"state": "The sky is blue.", "questions": [{"kind": "noul", "question": "Is the sky blue?", "gold": 1}]}
@@ -244,11 +249,27 @@ JEV **每个前向只评分一个问题**。含多个问题的 record 会被展�
 
 > **Canonical 选项**：JEV 对 `noul`/`score` 强制固定 canonical 选项并忽略调用方传入的选项文本，只有 `choice` 使用调用方选项。预处理器完整遵循此行为。
 
+#### `kev` 变体
+
+`kev` 使用同一结构（每前向一题、逐行展开，每行 = 状态 + 该问题的分支，普通因果序列，无需 branch mask），但为**纯文本**模型（`state` 不支持图像/视频），问题字段有原生别名：
+
+```json lines
+{"state": "The sky is blue.", "questions": [{"instr": "Is the sky blue?", "options": ["false", "true"], "label": 1}]}
+{"state": "A review: late and damaged.", "questions": [{"instr": "Sentiment?", "options": ["positive", "negative", "neutral"], "label": 1}]}
+{"state": "some text to rate", "questions": [{"instr": "Rate quality.", "options": ["0", "1", "2", "3", "4", "5"], "label": 4}]}
+```
+
+- `questions`：问题 dict 列表。原生字段为 `instr`（问题文本）、`options`（选项文本列表）、`label`（正确选项的**索引**）；统一 schema 的 `kind`/`question`/`gold` 也被接受。
+- 未提供 `kind` 时按选项集推断：true/false 风格二元 → `noul`；全数字选项 → `score`；其余 → `choice`。
+- **adapter-only 仓库**：仓库不含 config.json / 底座权重，`--model` 传底座、`--adapters` 传该仓库，并通过 `KEV_HEAD` 指向 adapter 目录下的 `head.pt`（见 `examples/train/decision/kev.sh`）。
 
 
-### Clef
 
-Clef **在单次前向中联合解码一个 record 的所有问题**——三者中唯一的多问题单前向模型。
+### 多问题联合 schema
+
+**适用 `--model_type`：`clef`**（全部 decision 模型中唯一的多问题单前向路径）
+
+此类模型在**单次前向中联合解码一个 record 的所有问题**。
 
 ```json lines
 {"id": "clef_noul", "state": {"text": "The sky is blue.", "lang": "en"}, "questions": {"is_blue": {"type": "noul", "instructions": "Is the sky blue?"}}, "answers": {"is_blue": true}}
@@ -262,9 +283,11 @@ Clef **在单次前向中联合解码一个 record 的所有问题**——三者
 
 
 
-### OmniJev
+### 多模态 schema
 
-OmniJev **每个前向只评分一个问题**，在**多模态**状态（图像或预合成的视频 mosaic）上进行。
+**适用 `--model_type`：`omnijev`**
+
+此类模型**每个前向只评分一个问题**，在**多模态**状态（图像或预合成的视频 mosaic）上进行。
 
 ```json lines
 {"state": "Look at the image.", "images": ["http://example.com/animal.png"], "questions": [{"type": "noul", "instructions": "Is there an animal?", "gold": true}]}
@@ -285,33 +308,22 @@ OmniJev **每个前向只评分一个问题**，在**多模态**状态（图像�
 
 ## 训练
 
-ms-swift 提供的训练脚本（使用**本地 mini 数据集**，无需联网下载）：
+ms-swift 为每个已接入模型提供训练脚本 `examples/train/decision/<model_type>.sh`（使用**本地 mini 数据集**，无需联网下载），通过 `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision` 加载本地数据；同时支持使用**远程数据集**（`--dataset open_jev_<model_type>:all`，需在线下载 Open-Jev 语料）。两种方式仅数据来源不同，其余参数完全一致，详见[数据集](#数据集)章节。各模型的完整可运行命令（含 `--adapters` 路径获取、头制品环境变量导出等）见对应脚本。
 
-- [JEV](https://github.com/modelscope/ms-swift/blob/main/examples/train/decision/jev.sh) — `--external_plugins examples/train/decision/dataset.py --dataset jev_decision`
-- [Clef](https://github.com/modelscope/ms-swift/blob/main/examples/train/decision/clef.sh) — `--external_plugins examples/train/decision/dataset.py --dataset clef_decision`
-- [OmniJev](https://github.com/modelscope/ms-swift/blob/main/examples/train/decision/omnijev.sh) — `--external_plugins examples/train/decision/dataset.py --dataset omnijev_decision`
+### 命令骨架
 
-同时支持使用**远程数据集**（如下所示 `--dataset open_jev_jev`，需在线下载 Open-Jev 语料）。两种方式仅数据来源不同，其余参数完全一致。详见[数据集](#数据集)章节。
-
-### JEV
-
-JEV 的决策能力存在于**发布 adapter**（`adapter_vllm/`）中，因此训练是续训该 adapter：
+所有 decision 模型共用同一条命令骨架——`--model` / `--model_type` / `--loss_type` 的取值见[支持模型](#支持模型)表格：
 
 ```bash
-SWIFT_PY="$(sed -n '1s/^#!//p' "$(command -v swift)")"
-JEV_ADAPTER="$("$SWIFT_PY" -c "import os; from modelscope import snapshot_download; print(os.path.join(snapshot_download('autotrust/JEV-27B-VL'), 'adapter_vllm'))")"
-
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model autotrust/JEV-27B-VL \
-    --model_type jev \
+    --model <模型或底座，见支持模型表格> \
+    --model_type <model_type> \
     --task_type decision \
-    --adapters "$JEV_ADAPTER" \
-    --loss_type distill_rps \
-    --dataset open_jev_jev:all \
+    --loss_type <损失，默认值见支持模型表格> \
+    --dataset open_jev_<model_type>:all \
     --torch_dtype bfloat16 \
-    --attn_impl eager \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --learning_rate 1e-4 \
@@ -328,106 +340,18 @@ swift sft \
 
 关键参数：
 
-- `--model_type jev` — 解析 JEV 底座和头制品
+- `--model` / `--model_type` / `--loss_type` — 取值及各模型默认损失见[支持模型](#支持模型)表格
 - `--task_type decision` — 路由到 `ScoringTrainer` + decision data collator
-- `--adapters "$JEV_ADAPTER"` — 续训发布 adapter（is_trainable=True）
-- `--loss_type distill_rps` — KL(target‖model) + 0.5 × RPS（`score`）
-
-
-
-### Clef
-
-Clef 发布为**已合并 backbone**，因此创建新 LoRA：
-
-```bash
-USE_HF=0 \
-CUDA_VISIBLE_DEVICES=0 \
-swift sft \
-    --model Cloudflare/clef \
-    --model_type clef \
-    --task_type decision \
-    --loss_type smooth_brier \
-    --dataset open_jev_clef:all \
-    --tuner_type lora \
-    --target_modules all-linear \
-    --torch_dtype bfloat16 \
-    --attn_impl eager \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --learning_rate 1e-4 \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --gradient_accumulation_steps 4 \
-    --gradient_checkpointing true \
-    --logging_steps 1 \
-    --save_steps 50 \
-    --save_total_limit 2 \
-    --max_length 4096 \
-    --split_dataset_ratio 0 \
-    --output_dir output \
-    --dataloader_num_workers 1
-```
-
-关键参数：
-
-- `--model_type clef`
-- `--loss_type smooth_brier` — 标签平滑 CE + Brier
-- `--tuner_type lora --target_modules all-linear` — 在已合并 backbone 上创建新 LoRA
-
-
-
-### OmniJev
-
-OmniJev 发布为**仅 adapter**（底座权重需单独获取），头制品位于 adapter 目录中：
-
-```bash
-SWIFT_PY="$(sed -n '1s/^#!//p' "$(command -v swift)")"
-OMNIJEV_CKPT="$("$SWIFT_PY" -c "from modelscope import snapshot_download; print(snapshot_download('AI-ModelScope/OmniJev'))")"
-export OMNIJEV_HEAD="$OMNIJEV_CKPT/head.pt"
-export OMNIJEV_ORD="$OMNIJEV_CKPT/ord.pt"
-export OMNIJEV_HEAD_META="$OMNIJEV_CKPT/head_meta.json"
-export OMNIJEV_NEW_TOK_EMB="$OMNIJEV_CKPT/new_tok_emb.pt"
-export MSO_BRANCH_CKPT=1
-
-USE_HF=0 \
-CUDA_VISIBLE_DEVICES=0 \
-swift sft \
-    --model Qwen/Qwen3.5-4B \
-    --model_type omnijev \
-    --task_type decision \
-    --adapters "$OMNIJEV_CKPT" \
-    --loss_type ce_rps \
-    --dataset open_jev_omnijev:all \
-    --torch_dtype bfloat16 \
-    --attn_impl eager \
-    --freeze_vit true \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --learning_rate 1e-4 \
-    --gradient_accumulation_steps 4 \
-    --gradient_checkpointing false \
-    --logging_steps 1 \
-    --save_steps 50 \
-    --save_total_limit 2 \
-    --max_length 4096 \
-    --split_dataset_ratio 0 \
-    --output_dir output \
-    --dataloader_num_workers 1
-```
-
-关键参数：
-
-- `--model Qwen/Qwen3.5-4B` — 提供 hybrid 底座
-- `--model_type omnijev`
-- `--adapters "$OMNIJEV_CKPT"` — 续训出厂 adapter
-- `--loss_type ce_rps` — 仅 proper scoring rules（log_score + RPS on `score`）
-- `--gradient_checkpointing false` — 见[下方说明](#omnijev-msol_branch_ckpt-与-gradient_checkpointing-互斥说明)
+- `--adapters` — 发布为 adapter 的模型传该 adapter 路径以续训（is_trainable=True）
+- 头制品不在底座目录的模型（adapter-only 仓库）需先导出环境变量指向头制品，见[头制品环境变量覆盖](#头制品环境变量覆盖)
+- 使用 branch 缓存机制的模型还需 `export MSO_BRANCH_CKPT=1` 且 `--gradient_checkpointing false`，见[下方说明](#omnijev-msol_branch_ckpt-与-gradient_checkpointing-互斥说明)
+- `--split_dataset_ratio 0` — 示例脚本默认关闭验证集切分；如需训练后温度校准，改为 `0.1` 或显式传 `--val_dataset`
 
 
 
 ### 从零训练任意 CausalLM
 
-`generic_decision` 模型类型允许将任意文本 CausalLM 转为 JEV 风格的决策模型。与三个模型专属路径不同，此路径从 tokenizer 构建随机初始化的 `JevVerbalizerHead`，无需预置头权重：
+`generic_decision` 模型类型允许将任意文本 CausalLM 转为决策模型。与各模型专属路径不同，此路径从 tokenizer 构建随机初始化的 `JevVerbalizerHead`，无需预置头权重：
 
 > `JevVerbalizerHead` **工作原理**：该头是一种轻量级 verbalizer 打分头，不引入额外的神经网络层，而是直接复用底座 CausalLM 的 `lm_logits`。它在每个问题 prompt 的最后一个 token 位置读取 `lm_logits`，做 `log_softmax` 后，按 `kind` 从中抽取对应 verbalizer token 的 log-probability。三种 kind 对应 **24 个固定 verbalizer token**：
 >
@@ -481,7 +405,7 @@ swift infer \
     --adapters output/checkpoint-xxx
 ```
 
-数据格式与 JEV 相同。
+数据格式使用单问题逐行 schema（见[数据集格式](#数据集格式)）。
 
 ## 数据集
 
@@ -496,17 +420,7 @@ Decision 模型的数据集有两种来源：**本地数据集**（通过 `--ext
 SWIFT 将 [Open-Jev](https://www.modelscope.cn/datasets/ZefanCai/Open-Jev) 和 [Open-Jev-v1.1](https://modelscope.cn/datasets/ZefanCai/Open-Jev-v1.1)语料注册为内置远程数据集。无需 `--external_plugins`，直接用 `--dataset <名称>` 即可。
 
 
-| 数据集名称                  | 来源                       | 模型适配器                 |
-| ---------------------- | ------------------------ | --------------------- |
-| `open_jev_jev`         | `ZefanCai/Open-Jev` (v1) | `JevPreprocessor`     |
-| `open_jev_clef`        | `ZefanCai/Open-Jev` (v1) | `ClefPreprocessor`    |
-| `open_jev_omnijev`     | `ZefanCai/Open-Jev` (v1) | `OmniJevPreprocessor` |
-| `open_jev_jev_v11`     | `ZefanCai/Open-Jev-v1.1` | `JevPreprocessor`     |
-| `open_jev_clef_v11`    | `ZefanCai/Open-Jev-v1.1` | `ClefPreprocessor`    |
-| `open_jev_omnijev_v11` | `ZefanCai/Open-Jev-v1.1` | `OmniJevPreprocessor` |
-
-
-使用 v1.1 语料时替换为带 `_v11` 后缀的名称（如 `--dataset open_jev_jev_v11`）。
+数据集名按 **`open_jev_<model_type>`** 规则命名——每个已接入模型（见[支持模型](#支持模型)表格）都按此约定注册了对应的远程数据集，预处理使用该模型专属的 `ScoringPreprocessor` 子类。使用 v1.1 语料时替换为带 `_v11` 后缀的名称（如 `--dataset open_jev_<model_type>_v11`）。
 
 本文档训练命令中的 `--dataset` 使用远程数据集名称（如 `open_jev_jev`），需要在线下载 `ZefanCai/Open-Jev` 语料。
 
@@ -550,7 +464,7 @@ score（`options` 被强制设为标准 `["0", "1", "2", "3", "4", "5"]`）：
 {"messages": [{"role": "user", "content": "The response is mostly accurate but lacks detail."}], "questions": ["Rate the quality of this response."], "kinds": ["score"], "options": [["0", "1", "2", "3", "4", "5"]], "target_probs": [[0.0, 0.0, 0.2, 0.5, 0.2, 0.1]]}
 ```
 
-> **注意**：JEV 每行只渲染一个问题（`JevPreprocessor` 将记录拆为每问题一行），`noul`/`score` 的选项被强制设为标准 verbalizer 集合，`target` 被重映射到与标准选项对齐。
+> **注意**：每行只渲染一个问题（`JevPreprocessor` 将记录拆为每问题一行），`noul`/`score` 的选项被强制设为标准 verbalizer 集合，`target` 被重映射到与标准选项对齐。
 
 
 
@@ -560,25 +474,16 @@ score（`options` 被强制设为标准 `["0", "1", "2", "3", "4", "5"]`）：
 
 #### 现成示例
 
-仓库提供了一套完整可用的本地 mini 数据集，位于 `examples/train/decision/`：
-
-
-| 文件                                  | 说明                                                                  |
-| ----------------------------------- | ------------------------------------------------------------------- |
-| `dataset.py`                        | 插件注册文件，注册了 `jev_decision`、`clef_decision`、`omnijev_decision` 三个数据集名 |
-| `data/jev.jsonl`                    | JEV 风格 mini 示例（4 行，含 noul / choice / score / 多问题联合展开）               |
-| `data/clef.jsonl`                   | Clef 风格 mini 示例（4 行，含 noul / choice / score / 多问题联合解码）              |
-| `data/omnijev.jsonl`                | OmniJev 风格 mini 示例（4 行，含 noul / choice / score / region+abstain）    |
-| `jev.sh` / `clef.sh` / `omnijev.sh` | 训练脚本，使用本地数据集                                                        |
+仓库提供了一套完整可用的本地 mini 数据集，位于 `examples/train/decision/`：`dataset.py` 为插件注册文件，按 **`<model_type>_decision`** 规则为各模型注册本地数据集名；`data/<model_type>.jsonl` 为各 schema 的 mini 示例（4 行）；`<model_type>.sh` 为对应的训练脚本。
 
 
 直接运行训练脚本即可：
 
 ```bash
-sh examples/train/decision/jev.sh
+sh examples/train/decision/<model_type>.sh
 ```
 
-脚本内部通过 `--external_plugins examples/train/decision/dataset.py --dataset jev_decision` 加载本地数据，无需下载远程数据集。而本文档正文训练命令用的是远程数据集（如 `--dataset open_jev_jev`），两者仅数据来源不同，其余参数完全一致。
+脚本内部通过 `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision` 加载本地数据，无需下载远程数据集。而本文档正文训练命令用的是远程数据集（如 `--dataset open_jev_jev`），两者仅数据来源不同，其余参数完全一致。
 
 #### 编写自定义插件
 
@@ -604,11 +509,12 @@ register_dataset(
 swift sft --external_plugins my_decision_dataset.py --dataset my_jev_decision ...
 ```
 
-根据数据 schema 选择预处理器：
+根据数据 schema 选择预处理器（与[数据集格式](#数据集格式)的三类 schema 一一对应）：
 
-- `JevPreprocessor` — JEV 风格 `{state, questions: [{kind, question, options, gold}]}` 记录（每问题一行）
-- `ClefPreprocessor` — Clef 风格 `{state, questions: {qid: {type, instructions, criteria}}, answers}` 记录（全部问题一行）
-- `OmniJevPreprocessor` — OmniJev 风格多模态记录（含 `images`/`videos` 和选项块）
+- `JevPreprocessor` — 单问题逐行 schema（`{state, questions: [{kind, question, options, gold}]}`，每问题一行）
+- `KevPreprocessor` — 单问题逐行 schema 的纯文本变体（`{state, questions: [{instr, options, label}]}`）
+- `ClefPreprocessor` — 多问题联合 schema（`{state, questions: {qid: {type, instructions, criteria}}, answers}`，全部问题一行）
+- `OmniJevPreprocessor` — 多模态 schema（含 `images`/`videos` 和选项块）
 - `GenericDecisionPreprocessor` — 与 `JevPreprocessor` 行为相同，配套 `generic_decision` 模型类型
 
 
@@ -628,7 +534,7 @@ swift sft --external_plugins my_decision_dataset.py --dataset my_jev_decision ..
 
 > 增强随机种子复用 `--data_seed`，无需单独指定。
 
-示例——训练 JEV 时启用 30% 指令丢弃、选项采样至 8、字段打乱：
+示例——启用 30% 指令丢弃、选项采样至 8、字段打乱：
 
 ```bash
 swift sft \
@@ -653,39 +559,18 @@ Decision 模型仅使用 transformers 后端（`decision` task_type 不支持 vL
 
 ### 命令行
 
+所有 decision 模型共用同一条命令骨架——`--model` / `--model_type` 的取值见[支持模型](#支持模型)表格：
+
 ```bash
-# JEV
 swift infer \
-    --model autotrust/JEV-27B-VL \
-    --model_type jev \
-    --adapters output/checkpoint-xxx
-
-# Clef
-swift infer \
-    --model Cloudflare/clef \
-    --model_type clef \
-    --adapters output/checkpoint-xxx
-
-# OmniJev
-SWIFT_PY="$(sed -n '1s/^#!//p' "$(command -v swift)")"
-OMNIJEV_CKPT="$("$SWIFT_PY" -c "from modelscope import snapshot_download; print(snapshot_download('AI-ModelScope/OmniJev'))")"
-export OMNIJEV_HEAD="$OMNIJEV_CKPT/head.pt"
-export OMNIJEV_ORD="$OMNIJEV_CKPT/ord.pt"
-export OMNIJEV_HEAD_META="$OMNIJEV_CKPT/head_meta.json"
-export OMNIJEV_NEW_TOK_EMB="$OMNIJEV_CKPT/new_tok_emb.pt"
-export MSO_BRANCH_CKPT=1
-
-swift infer \
-    --model Qwen/Qwen3.5-4B \
-    --model_type omnijev \
-    --adapters output/checkpoint-xxx
-
-# Generic Decision
-swift infer \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --model_type generic_decision \
+    --model <模型或底座，见支持模型表格> \
+    --model_type <model_type> \
     --adapters output/checkpoint-xxx
 ```
+
+- 头制品不在底座目录的模型（adapter-only 仓库）需先导出环境变量指向头制品，见[头制品环境变量覆盖](#头制品环境变量覆盖)；
+- 使用 branch 缓存机制的模型还需 `export MSO_BRANCH_CKPT=1`，见[下方说明](#omnijev-msol_branch_ckpt-与-gradient_checkpointing-互斥说明)；
+- 各模型完整可运行推理命令见 `examples/train/decision/` 下的对应示例脚本。
 
 模型返回 per-option 概率（在各问题自己的选项集上 softmax），而非生成文本。每条记录的推理输出是一个列表，每问题一项：
 
@@ -701,8 +586,8 @@ swift infer \
 
 ```bash
 swift infer \
-    --model autotrust/JEV-27B-VL \
-    --model_type jev \
+    --model <模型或底座，见支持模型表格> \
+    --model_type <model_type> \
     --adapters output/checkpoint-xxx \
     --metric acc
 ```
@@ -748,27 +633,28 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 
 
 
-### JEV / Clef 头制品环境变量覆盖
+### 头制品环境变量覆盖
 
-当头制品与底座不在同一目录时（如自定义部署路径），JEV 和 Clef 各有两个环境变量可覆盖头配置/权重的加载路径：
+当头制品与底座不在同一目录时（adapter-only 仓库、自定义部署路径），各模型通过环境变量覆盖头制品的加载路径，命名遵循 `<MODEL>_<制品>` 约定。已接入模型的环境变量：
 
 
-| 环境变量                      | 适用模型 | 覆盖文件                     | 用途                            |
+| 环境变量                      | 适用 `--model_type` | 覆盖文件                     | 用途                            |
 | ------------------------- | ---- | ------------------------ | ----------------------------- |
-| `JEV_DECISION_HEAD`       | JEV  | `decision_head.json`     | 覆盖 verbalizer bias / ids 加载路径 |
-| `JEV_DECIDE_CALIBRATION`  | JEV  | `calibration.json`       | 覆盖 per-kind 温度标定路径            |
-| `CLEF_JOINT_HEAD_CONFIG`  | Clef | `joint_head_config.json` | 覆盖头配置加载路径                     |
-| `CLEF_JOINT_HEAD_WEIGHTS` | Clef | `joint_head.safetensors` | 覆盖头权重加载路径                     |
+| `JEV_DECISION_HEAD`       | `jev`  | `decision_head.json`     | 覆盖 verbalizer bias / ids 加载路径 |
+| `JEV_DECIDE_CALIBRATION`  | `jev`  | `calibration.json`       | 覆盖 per-kind 温度标定路径            |
+| `CLEF_JOINT_HEAD_CONFIG`  | `clef` | `joint_head_config.json` | 覆盖头配置加载路径                     |
+| `CLEF_JOINT_HEAD_WEIGHTS` | `clef` | `joint_head.safetensors` | 覆盖头权重加载路径                     |
+| `KEV_HEAD`                | `kev`  | `head.pt`                | 指向 adapter 目录下的 pointer head 权重（kev 仓库为 adapter-only，必设） |
 
 
-未设置时，加载器会自动在 `model_dir`（及 JEV 的 `adapter_vllm/` 子目录）下查找对应文件。文件缺失时报错信息中会提示设置对应环境变量。
+未设置时，加载器会自动在 `model_dir`（及 `jev` 的 `adapter_vllm/` 子目录）下查找对应文件。文件缺失时报错信息中会提示设置对应环境变量。
 
 ## 已知限制
 
 - **多卡 FSDP / DeepSpeed-zero3 头存盘**：单卡正确，分片下 rank0 可能只拿到分片。
-- `--target_modules all-linear` **注入 head**：Clef/OmniJev head 含 Linear，all-linear 可能叠加 LoRA。
-- **JEV choice > 16 选项**：仅支持 `single` 模式（≤16 一次前向）。
-- **OmniJev 音频频谱图**：不在推理路径内，需用户自备转换器。
+- `--target_modules all-linear` **注入 head**：`clef` / `omnijev` 的 head 含 Linear，all-linear 可能叠加 LoRA。
+- **`jev` choice > 16 选项**：仅支持 `single` 模式（≤16 一次前向）。
+- **`omnijev` 音频频谱图**：不在推理路径内，需用户自备转换器。
 - `tie_word_embeddings=True` **adapter 合并**：仅影响合并/转格式，训练与推理不受影响。
 
 

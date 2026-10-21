@@ -11,7 +11,7 @@ pip install "transformers>=5.2.0" "qwen_vl_utils>=0.0.14" decord
 pip install "ms-swift>=4.6.0"
 ```
 
-For OmniJev video support, `ffmpeg` and `ffprobe` must also be installed on the system.
+For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also be installed on the system.
 
 ## Supported Models
 
@@ -21,14 +21,17 @@ For OmniJev video support, `ffmpeg` and `ffprobe` must also be installed on the 
    - [ModelScope](https://www.modelscope.cn/models/Cloudflare/clef)
 3. OmniJev: Qwen3.5-4B (hybrid gated-deltanet + VL) + PEFT adapter
    - [ModelScope](https://modelscope.cn/models/AI-ModelScope/OmniJev)
+4. Kev: Qwen3.5-{0.8,4,9}B-Base (hybrid gated-deltanet) + PEFT adapter, text-only
+   - [kev-0.8b](https://www.modelscope.cn/models/jaredpalmer/kev-0.8b) / [kev-4b](https://www.modelscope.cn/models/jaredpalmer/kev-4b) / [kev-9b](https://www.modelscope.cn/models/jaredpalmer/kev-9b)
 
 | Model | `--model_type` | Base | Head Artifacts | `--loss_type` |
 |-------|----------------|------|----------------|----------------|
 | JEV-27B-VL | `jev` | Qwen3-VL + PEFT adapter | `decision_head.json` + `calibration.json` (24-slot verbalizer bias) | `distill_rps` |
 | Clef | `clef` | Merged Qwen3-VL (LoRA already merged) | `joint_head.safetensors` + `joint_head_config.json` | `smooth_brier` |
 | OmniJev | `omnijev` | Qwen3.5-4B hybrid + PEFT adapter | `head.pt` (FiLM) + `ord.pt` (ordinal regression) + `new_tok_emb.pt` (2 new tokens) + `head_meta.json` | `ce_rps` |
+| Kev | `kev` | Qwen3.5-{0.8,4,9}B-Base hybrid + PEFT adapter | `head.pt` (pointer head, fp32) + fitted `temperature` (eval-time only) | `scoring` |
 
-Developers can convert any CausalLM into a JEV-style decision model by specifying:
+Developers can convert any CausalLM into a decision model by specifying:
 
 ```shell
 swift sft --task_type decision
@@ -36,7 +39,7 @@ swift sft --task_type decision
 
 ## Loss Functions
 
-All decision losses are **proper scoring rules** computed per-question over each question's own option set.
+All decision losses are **proper scoring rules** computed per-question over each question's own option set. The default `--loss_type` per model is listed in the [Supported Models](#supported-models) table.
 
 ### Notation
 
@@ -59,7 +62,7 @@ The shared cross-entropy is computed with FP32 masked `log_softmax`, without cli
 
 ### Loss Details
 
-**distill_rps** (JEV):
+**distill_rps**:
 
 $$\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}$$
 
@@ -68,7 +71,7 @@ $$\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm
 
 $$\mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}} = \frac{1}{|Q|} \sum_{q \in Q_{\mathrm{score}}} \frac{1}{K_q - 1} \sum_{k=1}^{K_q-1} (\hat{p}_q^{(k)} - \hat{t}_q^{(k)})^2$$
 
-**smooth_brier** (Clef):
+**smooth_brier**:
 
 $$\mathcal{L} = \mathcal{L}_{\mathrm{CE}}^{\mathrm{LS}} + \lambda_b \cdot \mathcal{L}_{\mathrm{Brier}}$$
 
@@ -77,7 +80,7 @@ $$\mathcal{L} = \mathcal{L}_{\mathrm{CE}}^{\mathrm{LS}} + \lambda_b \cdot \mathc
 
 $$\mathcal{L}_{\mathrm{Brier}} = \frac{1}{|Q|} \sum_{q \in Q} \frac{1}{K_q} \sum_{k=1}^{K_q} (p_q^{(k)} - \tilde{t}_q^{(k)})^2$$
 
-**ce_rps** (OmniJev):
+**ce_rps**:
 
 $$\mathcal{L} = \mathcal{L}_{\mathrm{CE}} + \lambda_r \cdot \mathcal{L}_{\mathrm{RPS}}^{\mathrm{score}}$$
 
@@ -98,7 +101,7 @@ $$\mathcal{L} = \mathcal{L}_{\mathrm{CE}}$$
 `ScoringTrainer` automatically computes two accuracy metrics during training and validation, both logged in the training log — no extra configuration needed:
 
 - `acc` **(per-question)**: masked argmax over each question's option set gives the prediction, compared to the gold (argmax of `target_probs`) — each question is scored independently.
-- `record_acc` **(per-record)**: record-level accuracy where all must be correct — a record is counted as correct only when all of its questions are predicted correctly, otherwise it is counted as incorrect. Especially meaningful for multi-question joint-decode models (e.g. Clef).
+- `record_acc` **(per-record)**: record-level accuracy where all must be correct — a record is counted as correct only when all of its questions are predicted correctly, otherwise it is counted as incorrect. Especially meaningful for multi-question joint-decode models.
 
 ## Temperature Calibration
 
@@ -118,7 +121,7 @@ Fine-tuned models are systematically **overconfident** (or underconfident): the 
 
 **Silently skipped** (temperatures stay at their loaded/factory values, no error):
 
-- the head carries no temperature buffer (e.g. Clef's `ClefJointSchemaHead`);
+- the head carries no temperature buffer (e.g. joint schema heads);
 - the trainer has no eval_dataset;
 - fewer than 10 questions are collected from the eval set (tunable via `SWIFT_CALIBRATION_MIN_ITEMS`);
 - an exception is raised during logits collection.
@@ -198,11 +201,13 @@ swift sft --task_type decision ... --split_dataset_ratio 0.1
 
 ## Dataset Format
 
-Each model has its own raw JSONL schema. The preprocessor normalizes them into the unified internal contract.
+Each model has its own raw JSONL schema, normalized by that model's dedicated `ScoringPreprocessor` subclass into the unified internal contract. The schemas fall into three structural families; which `--model_type` uses which family is listed in the [Supported Models](#supported-models) table.
 
-### JEV
+### One-Question-Per-Row Schema
 
-JEV scores **one question per forward**. A record with multiple questions is fanned out into one row per question.
+**Applies to `--model_type`: `jev`, `generic_decision` (`kev` is its text-only variant, see below)**
+
+Models in this family score **one question per forward**. A record with multiple questions is fanned out into one row per question.
 
 ```json lines
 {"state": "The sky is blue.", "questions": [{"kind": "noul", "question": "Is the sky blue?", "gold": 1}]}
@@ -214,11 +219,29 @@ JEV scores **one question per forward**. A record with multiple questions is fan
 - `questions`: list of question dicts. Each has `kind`, `question` (text), `options` (for `choice` only; `noul` and `score` use canonical fixed options), and `gold`.
 - `gold`: for `noul` — int (0 = no, 1 = yes); for `choice` — int option index; for `score` — either int level index or a full soft distribution (list of floats for distillation).
 
-> **Canonical options**: JEV forces fixed canonical options for `noul` (yes/no) and `score` (levels 0–5) and ignores caller-supplied option text for those kinds. Only `choice` uses caller-supplied options. The preprocessor follows this behavior.
+> **Canonical options**: `jev` forces fixed canonical options for `noul` (yes/no) and `score` (levels 0–5) and ignores caller-supplied option text for those kinds. Only `choice` uses caller-supplied options. The preprocessor follows this behavior.
 
-### Clef
+#### The `kev` Variant
 
-Clef decodes **all questions of a record jointly in a single forward** — the only multi-question-per-forward model of the three.
+`kev` uses the same structure (one question per forward, fan-out to per-question rows, each row = state + that question's branch, a plain causal sequence — no branch mask needed) but is **text-only** (`state` takes no images/videos) and has native field aliases:
+
+```json lines
+{"state": "The sky is blue.", "questions": [{"instr": "Is the sky blue?", "options": ["false", "true"], "label": 1}]}
+{"state": "A review: late and damaged.", "questions": [{"instr": "Sentiment?", "options": ["positive", "negative", "neutral"], "label": 1}]}
+{"state": "some text to rate", "questions": [{"instr": "Rate quality.", "options": ["0", "1", "2", "3", "4", "5"], "label": 4}]}
+```
+
+- `questions`: list of question dicts. Native fields are `instr` (question text), `options` (list of option texts), and `label` (the **index** of the correct option); the unified schema's `kind`/`question`/`gold` is also accepted.
+- When `kind` is omitted it is inferred from the option set: a true/false-style pair → `noul`; all-digit options → `score`; anything else → `choice`.
+- **Adapter-only repos**: the repo ships no config.json / base weights. Pass the base via `--model`, the repo via `--adapters`, and point `KEV_HEAD` at the adapter dir's `head.pt` (see `examples/train/decision/kev.sh`).
+
+
+
+### Multi-Question Joint Schema
+
+**Applies to `--model_type`: `clef`** (the only multi-question-per-forward path among decision models)
+
+Models in this family decode **all questions of a record jointly in a single forward**.
 
 ```json lines
 {"id": "clef_noul", "state": {"text": "The sky is blue.", "lang": "en"}, "questions": {"is_blue": {"type": "noul", "instructions": "Is the sky blue?"}}, "answers": {"is_blue": true}}
@@ -230,9 +253,13 @@ Clef decodes **all questions of a record jointly in a single forward** — the o
 - `questions`: a dict keyed by question ID. Each value has `type` (`noul`/`choice`/`score`), `instructions`, and `criteria` (option definitions: dict for `choice`, list for `score`).
 - `answers`: a dict keyed by question ID, giving the gold answer (bool for `noul`, key string for `choice`, int index for `score`).
 
-### OmniJev
 
-OmniJev scores **one question per forward** over a **multimodal** state (image, or a video pre-composed into a mosaic).
+
+### Multimodal Schema
+
+**Applies to `--model_type`: `omnijev`**
+
+Models in this family score **one question per forward** over a **multimodal** state (image, or a video pre-composed into a mosaic).
 
 ```json lines
 {"state": "Look at the image.", "images": ["http://example.com/animal.png"], "questions": [{"type": "noul", "instructions": "Is there an animal?", "gold": true}]}
@@ -251,33 +278,22 @@ OmniJev scores **one question per forward** over a **multimodal** state (image, 
 
 ## Training
 
-Training scripts provided by ms-swift (using **local mini datasets** — no download needed):
+ms-swift ships a training script per integrated model at `examples/train/decision/<model_type>.sh` (using **local mini datasets** — no download needed), loading local data via `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision`; **remote datasets** (`--dataset open_jev_<model_type>:all`, requiring online download of the Open-Jev corpus) are also supported. The two methods differ only in data source; all other parameters are identical. See the [Datasets](#datasets) section for details. Each model's complete runnable command (including `--adapters` path resolution and head-artifact env exports) is in its script.
 
-- [JEV](https://github.com/modelscope/ms-swift/blob/main/examples/train/decision/jev.sh) — `--external_plugins examples/train/decision/dataset.py --dataset jev_decision`
-- [Clef](https://github.com/modelscope/ms-swift/blob/main/examples/train/decision/clef.sh) — `--external_plugins examples/train/decision/dataset.py --dataset clef_decision`
-- [OmniJev](https://github.com/modelscope/ms-swift/blob/main/examples/train/decision/omnijev.sh) — `--external_plugins examples/train/decision/dataset.py --dataset omnijev_decision`
+### Command Skeleton
 
-It also supports **remote datasets** (e.g. `--dataset open_jev_jev` as shown below, requiring online download of the Open-Jev corpus). The two methods differ only in data source; all other parameters are identical. See the [Datasets](#datasets) section for details.
-
-### JEV
-
-JEV's decision ability lives in a **shipped adapter** (`adapter_vllm/`), so training continues that adapter:
+All decision models share the same command skeleton — the values of `--model` / `--model_type` / `--loss_type` are listed in the [Supported Models](#supported-models) table:
 
 ```bash
-SWIFT_PY="$(sed -n '1s/^#!//p' "$(command -v swift)")"
-JEV_ADAPTER="$("$SWIFT_PY" -c "import os; from modelscope import snapshot_download; print(os.path.join(snapshot_download('autotrust/JEV-27B-VL'), 'adapter_vllm'))")"
-
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model autotrust/JEV-27B-VL \
-    --model_type jev \
+    --model <model or base, see the Supported Models table> \
+    --model_type <model_type> \
     --task_type decision \
-    --adapters "$JEV_ADAPTER" \
-    --loss_type distill_rps \
-    --dataset open_jev_jev:all \
+    --loss_type <loss, default per the Supported Models table> \
+    --dataset open_jev_<model_type>:all \
     --torch_dtype bfloat16 \
-    --attn_impl eager \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --learning_rate 1e-4 \
@@ -293,98 +309,17 @@ swift sft \
 ```
 
 Key parameters:
-- `--model_type jev` — resolves JEV's base model and head artifacts
+
+- `--model` / `--model_type` / `--loss_type` — values and per-model default losses are in the [Supported Models](#supported-models) table
 - `--task_type decision` — routes to `ScoringTrainer` + decision data collator
-- `--adapters "$JEV_ADAPTER"` — continue-trains the shipped adapter (is_trainable=True)
-- `--loss_type distill_rps` — KL(target‖model) + 0.5 × RPS on `score`
-
-### Clef
-
-Clef ships a **merged backbone**, so a fresh LoRA is created:
-
-```bash
-USE_HF=0 \
-CUDA_VISIBLE_DEVICES=0 \
-swift sft \
-    --model Cloudflare/clef \
-    --model_type clef \
-    --task_type decision \
-    --loss_type smooth_brier \
-    --dataset open_jev_clef:all \
-    --tuner_type lora \
-    --target_modules all-linear \
-    --torch_dtype bfloat16 \
-    --attn_impl eager \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --learning_rate 1e-4 \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --gradient_accumulation_steps 4 \
-    --gradient_checkpointing true \
-    --logging_steps 1 \
-    --save_steps 50 \
-    --save_total_limit 2 \
-    --max_length 4096 \
-    --split_dataset_ratio 0 \
-    --output_dir output \
-    --dataloader_num_workers 1
-```
-
-Key parameters:
-- `--model_type clef`
-- `--loss_type smooth_brier` — label-smoothing CE + Brier
-- `--tuner_type lora --target_modules all-linear` — fresh LoRA on the merged backbone
-
-### OmniJev
-
-OmniJev ships **adapter-only** (base weights are separate), with head artifacts that live in the adapter directory:
-
-```bash
-SWIFT_PY="$(sed -n '1s/^#!//p' "$(command -v swift)")"
-OMNIJEV_CKPT="$("$SWIFT_PY" -c "from modelscope import snapshot_download; print(snapshot_download('AI-ModelScope/OmniJev'))")"
-export OMNIJEV_HEAD="$OMNIJEV_CKPT/head.pt"
-export OMNIJEV_ORD="$OMNIJEV_CKPT/ord.pt"
-export OMNIJEV_HEAD_META="$OMNIJEV_CKPT/head_meta.json"
-export OMNIJEV_NEW_TOK_EMB="$OMNIJEV_CKPT/new_tok_emb.pt"
-export MSO_BRANCH_CKPT=1
-
-USE_HF=0 \
-CUDA_VISIBLE_DEVICES=0 \
-swift sft \
-    --model Qwen/Qwen3.5-4B \
-    --model_type omnijev \
-    --task_type decision \
-    --adapters "$OMNIJEV_CKPT" \
-    --loss_type ce_rps \
-    --dataset open_jev_omnijev:all \
-    --torch_dtype bfloat16 \
-    --attn_impl eager \
-    --freeze_vit true \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --learning_rate 1e-4 \
-    --gradient_accumulation_steps 4 \
-    --gradient_checkpointing false \
-    --logging_steps 1 \
-    --save_steps 50 \
-    --save_total_limit 2 \
-    --max_length 4096 \
-    --split_dataset_ratio 0 \
-    --output_dir output \
-    --dataloader_num_workers 1
-```
-
-Key parameters:
-- `--model Qwen/Qwen3.5-4B` — supplies the hybrid base
-- `--model_type omnijev`
-- `--adapters "$OMNIJEV_CKPT"` — continue-trains the shipped adapter
-- `--loss_type ce_rps` — proper scoring rules only (log_score + RPS on `score`)
-- `--gradient_checkpointing false` — see [OmniJev Notes](#omnijev-msol_branch_ckpt-and-gradient-checkpointing)
+- `--adapters` — for models shipped as adapters, pass the adapter path to continue-train it (is_trainable=True)
+- models whose head artifacts are not in the base directory (adapter-only repos) must export environment variables pointing at the head artifacts first — see [Head Artifact Env Overrides](#head-artifact-env-overrides)
+- models using the branch-cache mechanism additionally need `export MSO_BRANCH_CKPT=1` and `--gradient_checkpointing false` — see [the notes below](#omnijev-msol_branch_ckpt-and-gradient_checkpointing)
+- `--split_dataset_ratio 0` — example scripts disable the eval split by default; for post-training temperature calibration, change it to `0.1` or pass `--val_dataset` explicitly
 
 ### Train Any CausalLM from Scratch
 
-The `generic_decision` model type lets you convert **any text CausalLM** into a JEV-style decision model. Unlike the three model-specific paths, this builds a randomly-initialized `JevVerbalizerHead` from the tokenizer — no factory weights required:
+The `generic_decision` model type lets you convert **any text CausalLM** into a decision model. Unlike the model-specific paths, this builds a randomly-initialized `JevVerbalizerHead` from the tokenizer — no factory weights required:
 
 > **How `JevVerbalizerHead` works**: This is a lightweight verbalizer scoring head that introduces no additional neural network layers — it directly reuses the base CausalLM's `lm_logits`. At the last token position of each question's prompt, it applies `log_softmax` to `lm_logits`, then gathers the log-probabilities of the verbalizer tokens corresponding to the question's `kind`. The three kinds map to **24 fixed verbalizer tokens**:
 > - `noul` (2): `false`, `true`
@@ -436,7 +371,7 @@ swift infer \
     --adapters output/checkpoint-xxx
 ```
 
-The data format is the same as JEV's.
+The data format uses the one-question-per-row schema (see [Dataset Format](#dataset-format)).
 
 ## Datasets
 
@@ -448,16 +383,7 @@ Decision model datasets come in two forms: **local datasets** (registered via `-
 
 SWIFT registers the [Open-Jev](https://www.modelscope.cn/datasets/ZefanCai/Open-Jev) and [Open-Jev-v1.1](https://modelscope.cn/datasets/ZefanCai/Open-Jev-v1.1) corpora as built-in remote datasets. No `--external_plugins` is needed — use `--dataset <name>` directly.
 
-| Dataset Name | Source | Model Adapter |
-|---|---|---|
-| `open_jev_jev` | `ZefanCai/Open-Jev` (v1) | `JevPreprocessor` |
-| `open_jev_clef` | `ZefanCai/Open-Jev` (v1) | `ClefPreprocessor` |
-| `open_jev_omnijev` | `ZefanCai/Open-Jev` (v1) | `OmniJevPreprocessor` |
-| `open_jev_jev_v11` | `ZefanCai/Open-Jev-v1.1` | `JevPreprocessor` |
-| `open_jev_clef_v11` | `ZefanCai/Open-Jev-v1.1` | `ClefPreprocessor` |
-| `open_jev_omnijev_v11` | `ZefanCai/Open-Jev-v1.1` | `OmniJevPreprocessor` |
-
-To use the v1.1 corpus, replace the dataset name (e.g. `--dataset open_jev_jev_v11`).
+Dataset names follow the **`open_jev_<model_type>`** rule — every integrated model (see the [Supported Models](#supported-models) table) has its remote dataset registered under this convention, preprocessed by that model's dedicated `ScoringPreprocessor` subclass. To use the v1.1 corpus, switch to the `_v11`-suffixed name (e.g. `--dataset open_jev_<model_type>_v11`).
 
 The `--dataset` in the training commands shown in this document uses remote dataset names (e.g. `open_jev_jev`), which require downloading the `ZefanCai/Open-Jev` corpus online.
 
@@ -496,7 +422,7 @@ score (`options` forced to canonical `["0", "1", "2", "3", "4", "5"]`):
 {"messages": [{"role": "user", "content": "The response is mostly accurate but lacks detail."}], "questions": ["Rate the quality of this response."], "kinds": ["score"], "options": [["0", "1", "2", "3", "4", "5"]], "target_probs": [[0.0, 0.0, 0.2, 0.5, 0.2, 0.1]]}
 ```
 
-> **Note**: JEV renders one question per row (`JevPreprocessor` fans a record out into per-question rows), `noul`/`score` options are forced to the canonical verbalizer set, and `target` is remapped to align with canonical options.
+> **Note**: one question is rendered per row (`JevPreprocessor` fans a record out into per-question rows), `noul`/`score` options are forced to the canonical verbalizer set, and `target` is remapped to align with canonical options.
 
 ### Local Datasets
 
@@ -504,23 +430,16 @@ Local datasets require a Python plugin file passed via `--external_plugins`. The
 
 #### Ready-Made Examples
 
-The repository ships a complete set of local mini datasets in `examples/train/decision/`:
+The repository ships a complete set of local mini datasets in `examples/train/decision/`: `dataset.py` is the plugin registration file, registering local dataset names per model under the **`<model_type>_decision`** rule; `data/<model_type>.jsonl` are 4-row mini examples for each schema; `<model_type>.sh` are the corresponding training scripts.
 
-| File | Description |
-| --- | --- |
-| `dataset.py` | Plugin registration file; registers `jev_decision`, `clef_decision`, `omnijev_decision` dataset names |
-| `data/jev.jsonl` | JEV-style mini example (4 rows: noul / choice / score / multi-question fan-out) |
-| `data/clef.jsonl` | Clef-style mini example (4 rows: noul / choice / score / multi-question joint decode) |
-| `data/omnijev.jsonl` | OmniJev-style mini example (4 rows: noul / choice / score / region+abstain) |
-| `jev.sh` / `clef.sh` / `omnijev.sh` | Training scripts that use the local datasets |
 
 Run a training script directly:
 
 ```bash
-sh examples/train/decision/jev.sh
+sh examples/train/decision/<model_type>.sh
 ```
 
-The scripts load local data via `--external_plugins examples/train/decision/dataset.py --dataset jev_decision` — no remote download needed. The training commands in this document use remote datasets (e.g. `--dataset open_jev_jev`); the only difference is the data source — all other parameters are identical.
+The scripts load local data via `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision` — no remote download needed. The training commands in this document use remote datasets (e.g. `--dataset open_jev_jev`); the only difference is the data source — all other parameters are identical.
 
 #### Writing a Custom Plugin
 
@@ -546,10 +465,12 @@ Then use it in training:
 swift sft --external_plugins my_decision_dataset.py --dataset my_jev_decision ...
 ```
 
-Choose the preprocessor based on your data schema:
-- `JevPreprocessor` — for JEV-style `{state, questions: [{kind, question, options, gold}]}` records (one question per row after fan-out)
-- `ClefPreprocessor` — for Clef-style `{state, questions: {qid: {type, instructions, criteria}}, answers}` records (all questions per row, joint decode)
-- `OmniJevPreprocessor` — for OmniJev-style multimodal records with `images`/`videos` and option blocks
+Choose the preprocessor based on your data schema (one-to-one with the three schema families in [Dataset Format](#dataset-format)):
+
+- `JevPreprocessor` — one-question-per-row schema (`{state, questions: [{kind, question, options, gold}]}`, one question per row)
+- `KevPreprocessor` — the text-only variant of the one-question-per-row schema (`{state, questions: [{instr, options, label}]}`)
+- `ClefPreprocessor` — multi-question joint schema (`{state, questions: {qid: {type, instructions, criteria}}, answers}`, all questions per row)
+- `OmniJevPreprocessor` — multimodal schema (with `images`/`videos` and option blocks)
 - `GenericDecisionPreprocessor` — identical behavior to `JevPreprocessor`; pairs with the `generic_decision` model type
 
 ## Data Augmentation
@@ -565,7 +486,7 @@ Decision datasets support training-time schema augmentation via CLI parameters. 
 
 > Augmentation random seed reuses `--data_seed`; no separate flag needed.
 
-Example — train JEV with 30% instruction dropout, option subsampling to 8, and field shuffling:
+Example — 30% instruction dropout, option subsampling to 8, and field shuffling:
 
 ```bash
 swift sft \
@@ -590,39 +511,18 @@ Decision models use the transformers backend only (vLLM is not supported for the
 
 ### Command Line
 
+All decision models share the same command skeleton — the values of `--model` / `--model_type` are listed in the [Supported Models](#supported-models) table:
+
 ```bash
-# JEV
 swift infer \
-    --model autotrust/JEV-27B-VL \
-    --model_type jev \
-    --adapters output/checkpoint-xxx
-
-# Clef
-swift infer \
-    --model Cloudflare/clef \
-    --model_type clef \
-    --adapters output/checkpoint-xxx
-
-# OmniJev
-SWIFT_PY="$(sed -n '1s/^#!//p' "$(command -v swift)")"
-OMNIJEV_CKPT="$("$SWIFT_PY" -c "from modelscope import snapshot_download; print(snapshot_download('AI-ModelScope/OmniJev'))")"
-export OMNIJEV_HEAD="$OMNIJEV_CKPT/head.pt"
-export OMNIJEV_ORD="$OMNIJEV_CKPT/ord.pt"
-export OMNIJEV_HEAD_META="$OMNIJEV_CKPT/head_meta.json"
-export OMNIJEV_NEW_TOK_EMB="$OMNIJEV_CKPT/new_tok_emb.pt"
-export MSO_BRANCH_CKPT=1
-
-swift infer \
-    --model Qwen/Qwen3.5-4B \
-    --model_type omnijev \
-    --adapters output/checkpoint-xxx
-
-# Generic Decision
-swift infer \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --model_type generic_decision \
+    --model <model or base, see the Supported Models table> \
+    --model_type <model_type> \
     --adapters output/checkpoint-xxx
 ```
+
+- models whose head artifacts are not in the base directory (adapter-only repos) must export environment variables pointing at the head artifacts first — see [Head Artifact Env Overrides](#head-artifact-env-overrides);
+- models using the branch-cache mechanism additionally need `export MSO_BRANCH_CKPT=1` — see [the notes below](#omnijev-msol_branch_ckpt-and-gradient_checkpointing);
+- each model's complete runnable inference command is in its example script under `examples/train/decision/`.
 
 The model returns per-option probabilities (softmaxed within each question's option set) rather than generated text. Each record's inference output is a list with one entry per question:
 
@@ -638,8 +538,8 @@ Pass `--metric acc` during inference to automatically compute per-question accur
 
 ```bash
 swift infer \
-    --model autotrust/JEV-27B-VL \
-    --model_type jev \
+    --model <model or base, see the Supported Models table> \
+    --model_type <model_type> \
     --adapters output/checkpoint-xxx \
     --metric acc
 ```
@@ -681,25 +581,26 @@ The OmniJev adapter also requires four head artifacts pointed to via environment
 | `OMNIJEV_HEAD_META` | `head_meta.json` | Head metadata (kind temperatures, etc.) |
 | `OMNIJEV_NEW_TOK_EMB` | `new_tok_emb.pt` | Embeddings for 2 new tokens (`<|opt|>`/`<|/opt|>`) |
 
-### JEV / Clef Head Artifact Environment Overrides
+### Head Artifact Env Overrides
 
-When head artifacts are not in the same directory as the base model (e.g. custom deployment paths), JEV and Clef each have two environment variables to override head config/weight loading paths:
+When head artifacts are not in the same directory as the base model (adapter-only repos, custom deployment paths), each model overrides the head-artifact load paths via environment variables, named after the `<MODEL>_<artifact>` convention. Variables for the integrated models:
 
-| Env Var | Model | Overrides File | Purpose |
+| Env Var | Applies to `--model_type` | Overrides File | Purpose |
 |---|---|---|---|
-| `JEV_DECISION_HEAD` | JEV | `decision_head.json` | Override verbalizer bias / ids load path |
-| `JEV_DECIDE_CALIBRATION` | JEV | `calibration.json` | Override per-kind temperature calibration path |
-| `CLEF_JOINT_HEAD_CONFIG` | Clef | `joint_head_config.json` | Override head config load path |
-| `CLEF_JOINT_HEAD_WEIGHTS` | Clef | `joint_head.safetensors` | Override head weights load path |
+| `JEV_DECISION_HEAD` | `jev` | `decision_head.json` | Override verbalizer bias / ids load path |
+| `JEV_DECIDE_CALIBRATION` | `jev` | `calibration.json` | Override per-kind temperature calibration path |
+| `CLEF_JOINT_HEAD_CONFIG` | `clef` | `joint_head_config.json` | Override head config load path |
+| `CLEF_JOINT_HEAD_WEIGHTS` | `clef` | `joint_head.safetensors` | Override head weights load path |
+| `KEV_HEAD` | `kev` | `head.pt` | Points at the pointer-head weights in the adapter dir (kev repos are adapter-only; required) |
 
-When unset, the loader searches `model_dir` (and `adapter_vllm/` subdirectory for JEV) automatically. On file-missing errors, the message instructs the user to set the corresponding env var.
+When unset, the loader searches `model_dir` (and the `adapter_vllm/` subdirectory for `jev`) automatically. On file-missing errors, the message instructs the user to set the corresponding env var.
 
 ## Known Limitations
 
 - **Multi-GPU FSDP / DeepSpeed-zero3 head save**: Single-GPU works correctly; under sharding, rank 0 may only get a shard.
-- **`--target_modules all-linear` injects LoRA into the head**: Clef's and OmniJev's heads contain `Linear` layers; `all-linear` may attach LoRA to the head.
-- **JEV choice > 16 options**: Only `single` mode (≤16 options in one forward) is supported.
-- **OmniJev audio spectrogram**: Not in the inference path. Users must provide their own converter.
+- **`--target_modules all-linear` injects LoRA into the head**: the `clef` / `omnijev` heads contain `Linear` layers; `all-linear` may attach LoRA to the head.
+- **`jev` choice > 16 options**: Only `single` mode (≤16 options in one forward) is supported.
+- **`omnijev` audio spectrogram**: Not in the inference path. Users must provide their own converter.
 - **`tie_word_embeddings=True` adapter merge**: Only affects "merge adapter / convert format"; training and inference are unaffected.
 
 ## Verification Report

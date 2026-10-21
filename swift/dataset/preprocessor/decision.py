@@ -764,6 +764,92 @@ class OmniJevPreprocessor(ScoringPreprocessor):
         raise ValueError(f'OmniJev gold {gold!r} for question {qid!r} matches no column key {column_keys}.')
 
 
+class KevPreprocessor(ScoringPreprocessor):
+
+    STATE_KEYS = ('state', 'context', 'passage', 'text', 'input')
+    QUESTIONS_KEYS = ('questions', )
+    KIND_KEYS = ('kind', 'type', 'question_type')
+    INSTR_KEYS = ('instr', 'instruction', 'instructions', 'question', 'prompt', 'query')
+    OPTIONS_KEYS = ('options', 'opts', 'choices')
+    GOLD_KEYS = ('label', 'gold', 'answer', 'target', 'value')
+    ANSWERS_KEYS = ('answers', 'labels', 'golds', 'targets')
+
+    _NOUL_TEXTS = {'true', 'false', 'yes', 'no', 'y', 'n'}
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+        state, questions = self.parse_record(row)
+        if not questions:
+            return None
+        state, questions = self._augment(state, questions)
+        # One row per question (Kev renders and scores a single question per causal row).
+        return [self._build_row(row, state, [q]) for q in questions]
+
+    def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
+        state = self._first(row, self.STATE_KEYS, default='')
+        answers = self._first(row, self.ANSWERS_KEYS, default=None)
+        items = self._question_items(self._first(row, self.QUESTIONS_KEYS, default=None))
+        if not items:
+            # Flat unified row: kind/question/options at the record level. Without a kind-ish or
+            # question-ish column there is no question to score -> drop the row (like JevPreprocessor).
+            if self._first(row, self.KIND_KEYS, default=None) is None \
+                    and self._first(row, self.INSTR_KEYS, default=None) is None:
+                return state, []
+            items = [(None, row)]
+        questions: List[Dict[str, Any]] = []
+        for qid, q in items:
+            if not isinstance(q, dict):
+                q = {'question': str(q)}
+            options = self._first(q, self.OPTIONS_KEYS, default=None)
+            options = [str(o) for o in options] if options is not None else None
+            kind = self._first(q, self.KIND_KEYS, default=None)
+            if kind is None:
+                kind = self._infer_kind(options)
+            kind = self._normalize_kind(kind)
+            if options is None:
+                options = self.default_options(kind)
+                if options is None:
+                    raise ValueError(f"A 'choice' question must provide its options: {q}")
+            instr = self._first(q, self.INSTR_KEYS, default=None)
+            if instr is None:
+                instr = str(qid)
+            item: Dict[str, Any] = {'kind': kind, 'question': instr, 'options': options}
+            gold = self._resolve_gold(self._first(q, self.GOLD_KEYS, default=None), answers, qid, kind, options)
+            if gold is not None:
+                item['gold'] = gold
+            questions.append(item)
+        return state, questions
+
+    @classmethod
+    def _infer_kind(cls, options: Optional[List[str]]) -> str:
+        if options and len(options) == 2 and {str(o).strip().lower() for o in options} <= cls._NOUL_TEXTS:
+            return 'noul'
+        if options and all(str(o).strip().lstrip('-').isdigit() for o in options):
+            return 'score'
+        return 'choice'
+
+    @staticmethod
+    def _resolve_gold(gold: Any, answers: Any, qid: Any, kind: str, options: List[str]) -> Optional[Any]:
+        if gold is None and isinstance(answers, dict):
+            gold = answers.get(str(qid), answers.get(qid))
+        if gold is None:
+            return None
+        if isinstance(gold, (list, tuple)):
+            return [float(x) for x in gold]
+        if isinstance(gold, bool):
+            if kind != 'noul':
+                raise ValueError(f'Kev boolean gold {gold!r} for non-noul question {qid!r} (kind={kind}).')
+            return 1 if gold else 0  # default noul options are ['false', 'true']
+        if isinstance(gold, int):
+            return gold
+        text = str(gold).strip()
+        for index, option in enumerate(options):
+            if text == option or text.lower() == option.lower():
+                return index
+        if text.lstrip('-').isdigit():
+            return int(text)
+        raise ValueError(f'Kev gold {gold!r} for question {qid!r} matches no option {options}.')
+
+
 class GenericDecisionPreprocessor(JevPreprocessor):
     """Generic decision preprocessor: same layout as ``JevPreprocessor``, for any CausalLM.
 
