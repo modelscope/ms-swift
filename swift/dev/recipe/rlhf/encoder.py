@@ -140,7 +140,7 @@ class PreferenceBatchEncoder:
         if not self.calculate_kl or not kl_features:
             return None
         policy_out = self.model.forward_only(inputs=kl_features, compute_loss=False)
-        policy_logps = policy_out.get('logps') if isinstance(policy_out, dict) else None
+        policy_logps = policy_out.get('logps')
         ref_logps = self._ref_logps(kl_features)
         if policy_logps is None or ref_logps is None:
             return None
