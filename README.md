@@ -33,7 +33,6 @@
 - [Groups](#-Groups)
 - [Introduction](#-introduction)
 - [News](#-news)
-- [Twinkle Kernel Integration](#-twinkle-kernel-integration)
 - [Installation](#%EF%B8%8F-installation)
 - [Quick Start](#-quick-Start)
 - [Usage](#-Usage)
