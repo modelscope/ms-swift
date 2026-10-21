@@ -654,11 +654,12 @@ register_template(
 
 class MiniCPMV4_6Template(Template):
     support_padding_free = True
+    default_downsample_mode = '16x'
     placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
 
     def init_env_args(self):
         super().init_env_args()
-        self.downsample_mode = get_env_args('downsample_mode', str, '16x')
+        self.downsample_mode = get_env_args('downsample_mode', str, self.default_downsample_mode)
         self.max_slice_nums = get_env_args('max_slice_nums', int, 9)
         self.video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)
         self.max_num_frames = get_env_args('max_num_frames', int, 128)
@@ -777,6 +778,20 @@ register_template(
     ChatmlTemplateMeta(
         MLLMTemplateType.minicpmv4_7,
         template_cls=MiniCPMV4_7Template,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+    ))
+
+
+class MiniCPMOcrTemplate(MiniCPMV4_6Template):
+    default_downsample_mode = '4x'
+
+
+register_template(
+    ChatmlTemplateMeta(
+        MLLMTemplateType.minicpm_ocr,
+        template_cls=MiniCPMOcrTemplate,
         is_thinking=True,
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think>\n\n</think>\n\n',

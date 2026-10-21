@@ -266,6 +266,22 @@ register_model(
 
 register_model(
     ModelMeta(
+        MLLMModelType.minicpm_ocr,
+        [
+            ModelGroup([
+                Model('OpenBMB/MiniCPM-OCR-1.0', 'openbmb/MiniCPM-OCR-1.0'),
+            ]),
+        ],
+        MiniCPMV4_6Loader,
+        template=TemplateType.minicpm_ocr,
+        architectures=['MiniCPMOcrForConditionalGeneration'],
+        model_arch=ModelArch.minicpmv4_6,
+        requires=['transformers>=5.19.0.dev0'],
+        tags=['vision', 'video'],
+    ))
+
+register_model(
+    ModelMeta(
         LLMModelType.minicpm,
         [
             ModelGroup([
