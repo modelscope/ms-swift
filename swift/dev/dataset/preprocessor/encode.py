@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""An eager preprocessing pass that runs ``template.encode`` on every row via HF ``map``."""
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -14,15 +13,13 @@ __all__ = ['EncodePreprocessor']
 class EncodePreprocessor(Preprocessor):
     """Run ``template.encode`` on each row, producing ``input_ids`` / ``labels`` / ``attention_mask``.
 
-    The pass that materialises an encoding, as opposed to :class:`~swift.dev.dataset.EncodedDataset`,
-    which is the view over what this leaves behind. Needed where a row cannot be encoded on access:
-    ``truncation_strategy='split'`` turns one long text into several samples, so the row count itself
-    depends on encoding and has to be settled before anything counts steps or plans packs. A stream has
-    no separate pass to put encoding in either, so it runs this one inline.
+    The materialising pass, as opposed to ``EncodedDataset`` (the view over what it leaves behind):
+    needed where the row count itself depends on encoding (``truncation_strategy='split'``), or on a
+    stream, which has no separate pass to put encoding in.
     """
 
-    def __init__(self, template: 'Template'):
-        super().__init__()
+    def __init__(self, template: 'Template', *, seed: int = 42):
+        super().__init__(seed=seed)
         self.template = template
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:

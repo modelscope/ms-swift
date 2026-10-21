@@ -60,8 +60,12 @@ def _dense_argv(model, datasets, out_dir, steps):
     argv += [
         '--save_safetensors',
         'true',
-        '--merge_lora',
-        'false',
+        # dense.sh also passes `--merge_lora false`; it is dropped here on purpose. merge_lora is a
+        # save/export-time concern the dev CLI intentionally removed for the training commands (dev
+        # merges the adapter implicitly and classifies --merge_lora as unsupported), while legacy's
+        # own default is already False -- so omitting it is a no-op for legacy, unblocks the dev CLI,
+        # and touches neither the lr schedule nor the loss this test measures. Both sides still parse
+        # the SAME argv.
         '--tuner_type',
         'lora',
         '--lora_rank',
@@ -130,23 +134,23 @@ def _dense_argv(model, datasets, out_dir, steps):
 
 
 def _run_dev_cli(model, datasets, out_dir, steps):
-    """dev via swift.dev.cli.megatron.megatron_sft_main (the argv -> Config mapping under test).
+    """dev via swift.dev.cli.sft.sft_main --backend megatron (the argv -> Config mapping under test).
 
-    lr is read straight off the Megatron optimizer after each step: dev's SFTLoop history carries
+    lr is read straight off the Megatron optimizer after each step: dev's StepState history carries
     loss/grad_norm but no lr (twinkle exposes lr only through TrainMetric, which also emits
-    iters/time/speed noise). Patching _record_step here keeps the lr probe in the test scaffold
+    iters/time/speed noise). Patching record_step here keeps the lr probe in the test scaffold
     rather than changing dev's logging format for a test's benefit.
 
     Set DENSE_RUNNER_TRACE_SCHED=1 to also dump the scheduler's own state (num_steps / decay /
     warmup / min_lr) next to each sampled lr -- that is what distinguishes "the schedule is wrong"
     from "the probe samples at a different moment than legacy does".
     """
-    from swift.dev.cli.megatron import megatron_sft_main as dev_megatron_sft_main
-    from swift.dev.recipe.train_loop import SFTLoop
+    from swift.dev.cli.sft import sft_main as dev_megatron_sft_main
+    from swift.dev.recipe.utils import StepState
 
     trace = os.environ.get('DENSE_RUNNER_TRACE_SCHED') == '1'
     lrs, sched_states = [], []
-    orig_record = SFTLoop._record_step
+    orig_record = StepState.record
 
     def patched_record(self):
         orig_record(self)
@@ -154,11 +158,11 @@ def _run_dev_cli(model, datasets, out_dir, steps):
         if trace:
             sched_states.append(_read_sched_state(self.model))
 
-    SFTLoop._record_step = patched_record
+    StepState.record = patched_record
     try:
-        history = dev_megatron_sft_main(_dense_argv(model, datasets, out_dir, steps))
+        history = dev_megatron_sft_main([*_dense_argv(model, datasets, out_dir, steps), '--backend', 'megatron'])
     finally:
-        SFTLoop._record_step = orig_record
+        StepState.record = orig_record
     if trace and int(os.environ.get('RANK', '0')) == 0:
         print(f'SCHED_STATES(first3)={sched_states[:3]}', flush=True)
         print(f'SCHED_STATES(last2)={sched_states[-2:]}', flush=True)

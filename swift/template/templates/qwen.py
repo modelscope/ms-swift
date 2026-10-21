@@ -440,11 +440,18 @@ class Qwen2VLTemplate(Template):
             return inputs
         input_ids = inputs['input_ids']
         base_model = self.get_base_model(model)
+        # transformers restructured the VL classes: pre-5.x keeps the text model (carrying embed_tokens)
+        # and the vision tower as sibling top-level attributes (base_model.model / base_model.visual);
+        # 5.x nests both under base_model.model -- a Qwen2_5_VLModel holding .language_model and .visual.
+        # Resolve the text embedding and the vision tower off the SAME branch so the layout difference is
+        # decided once; reading `model.visual` unconditionally (the pre-5.x spelling) AttributeErrors on 5.x.
         if hasattr(base_model.model, 'embed_tokens'):
             inputs_embeds = base_model.model.embed_tokens(input_ids)
+            visual = base_model.visual
         else:
             inputs_embeds = base_model.model.language_model.embed_tokens(input_ids)
-        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
+            visual = base_model.model.visual
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, visual, self.processor, model.config)
         return {'inputs_embeds': inputs_embeds}
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:

@@ -17,6 +17,7 @@ import pytest
 import torch
 
 from swift.dev.tests._runners import Runners
+from swift.dev.tests._twinkle_runtime import reset_twinkle_runtime
 
 MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
 
@@ -52,15 +53,15 @@ def test_write_ckpt_args_json_includes_force_load_keys(tmp_path):
     are force_load_keys; omitting them leaves infer on its default. Pure function, no model.
     """
     from swift.dev.config import ModelConfig, TemplateConfig, TunerConfig
-    from swift.dev.recipe.assembly import TrainAssembly
+    from swift.dev.recipe.utils import write_ckpt_args_json
 
     ckpt = str(tmp_path)
-    TrainAssembly.write_ckpt_args_json(
+    write_ckpt_args_json(
         ckpt,
         _FakeProcessor('qwen2_5'),
         ModelConfig(model='/m', task_type='seq_cls', torch_dtype='bfloat16', attn_impl='flash_attn'),
         TemplateConfig(template='qwen2_5', system='sys', truncation_strategy='left'),
-        TunerConfig(tuner_type='lora'),
+        TunerConfig(tuner='lora'),
     )
     with open(os.path.join(ckpt, 'args.json')) as f:
         args = json.load(f)
@@ -74,13 +75,14 @@ def test_write_ckpt_args_json_includes_force_load_keys(tmp_path):
 
 
 def test_write_ckpt_args_json_omits_none_full_param(tmp_path):
-    """Full-param causal_lm run: task_type/tuner_type stay None -> filtered out (infer's own
-    defaults stand), so we don't write misleading keys."""
+    """Full-param causal_lm run: a None task_type is filtered out (infer's own default stands),
+    while tuner_type is ALWAYS written -- it is a force_load key, so 'full' must reach infer
+    explicitly rather than be inferred from absence."""
     from swift.dev.config import ModelConfig, TemplateConfig
-    from swift.dev.recipe.assembly import TrainAssembly
+    from swift.dev.recipe.utils import write_ckpt_args_json
 
     ckpt = str(tmp_path)
-    TrainAssembly.write_ckpt_args_json(
+    write_ckpt_args_json(
         ckpt,
         _FakeProcessor('qwen2_5'),
         ModelConfig(model='/m', torch_dtype='bfloat16'),
@@ -90,7 +92,7 @@ def test_write_ckpt_args_json_omits_none_full_param(tmp_path):
     with open(os.path.join(ckpt, 'args.json')) as f:
         args = json.load(f)
     assert 'task_type' not in args
-    assert 'tuner_type' not in args
+    assert args['tuner_type'] == 'full'
     assert args['model_type'] == 'qwen2_5'
 
 
@@ -109,7 +111,7 @@ def test_initialize_twinkle_sets_a_device_group_on_every_backend():
     import twinkle.infra as infra
 
     from swift.dev.config import DistributedConfig
-    from swift.dev.recipe.assembly import TrainAssembly
+    from swift.dev.recipe.utils import initialize_supervised_twinkle
 
     saved = (infra._mode, infra._device_group, infra._device_mesh)
     try:
@@ -118,12 +120,52 @@ def test_initialize_twinkle_sets_a_device_group_on_every_backend():
         for dist_config in (DistributedConfig(), DistributedConfig(mode='local'),
                             DistributedConfig(backend='megatron', mode='local', nproc_per_node=1)):
             infra._mode, infra._device_group, infra._device_mesh = None, None, None
-            TrainAssembly.initialize_twinkle(dist_config)
+            initialize_supervised_twinkle(dist_config, seed=42, full_determinism=False, tf32=None)
             assert infra._device_group is not None, f'no device group for {dist_config}'
             assert infra._device_mesh is not None, f'no device mesh for {dist_config}'
             assert infra._mode == 'local', f'unexpected mode {infra._mode} for {dist_config}'
     finally:
         infra._mode, infra._device_group, infra._device_mesh = saved
+
+
+def test_initialize_twinkle_forwards_seed_and_full_determinism(monkeypatch):
+    """TrainConfig.seed / full_determinism must reach twinkle.initialize on BOTH the local and ray branch.
+
+    Companion to the device-group guard above: twinkle.initialize seeds the driver and re-seeds each
+    Ray worker from these values (infra/__init__.py), so dropping them silently reverts the run to
+    twinkle's own default (seed=42) and overwrites the user's seed -- and seed also drives the Megatron
+    modelling RNG, so it is a reproducibility load-bearer, not a transformers-only knob. The ray branch
+    matters most (workers re-seed from the EXTRA_TORCH_KWARGS env) yet the guard above skips it to avoid
+    booting a cluster.
+
+    twinkle.initialize is captured rather than executed: the contract under test is *what dev passes*,
+    and executing it with full_determinism=True would flip process-global torch state
+    (use_deterministic_algorithms, CUDA_LAUNCH_BLOCKING, cudnn flags) that leaks into every later test
+    in the session. Capture covers both branches cheaply and side-effect-free.
+    """
+    import twinkle
+
+    from swift.dev.config import DistributedConfig
+    from swift.dev.recipe.utils import initialize_supervised_twinkle
+
+    captured = {}
+
+    def _fake_initialize(**kwargs):
+        captured.clear()
+        captured.update(kwargs)
+
+    monkeypatch.setattr(twinkle, 'initialize', _fake_initialize)
+
+    initialize_supervised_twinkle(DistributedConfig(mode='local'), seed=1234, full_determinism=True, tf32=None)
+    assert captured['mode'] == 'local'
+    assert captured['extra_torch_kwargs']['seed'] == 1234, 'local branch dropped the user seed'
+    assert captured['extra_torch_kwargs']['full_determinism'] is True, 'local branch dropped full_determinism'
+
+    initialize_supervised_twinkle(
+        DistributedConfig(mode='ray', nproc_per_node=2), seed=7, full_determinism=False, tf32=None)
+    assert captured['mode'] == 'ray'
+    assert captured['extra_torch_kwargs']['seed'] == 7, 'ray branch dropped the user seed'
+    assert captured['extra_torch_kwargs']['full_determinism'] is False, 'ray branch dropped full_determinism'
 
 
 def _write_toy_dataset(path):
@@ -203,7 +245,7 @@ def test_run_sft_end_to_end_happy_path(tmp_path):
         TemplateConfig,
         TrainConfig,
     )
-    from swift.dev.recipe import run_sft
+    from swift.dev.recipe.sft.run_sft import run_sft
 
     model_path = snapshot_download(MODEL)
     data_path = str(tmp_path / 'toy_sft.jsonl')
@@ -217,7 +259,7 @@ def test_run_sft_end_to_end_happy_path(tmp_path):
         TrainConfig(
             learning_rate=1e-4,
             optim='adamw',
-            lr_scheduler_type='cosine',
+            lr_scheduler='cosine',
             warmup_ratio=0.0,
             per_device_train_batch_size=2,
             gradient_accumulation_steps=1,
@@ -266,7 +308,7 @@ def test_run_sft_zero_opt_steps_raises(tmp_path):
         TemplateConfig,
         TrainConfig,
     )
-    from swift.dev.recipe import run_sft
+    from swift.dev.recipe.sft.run_sft import run_sft
 
     model_path = snapshot_download(MODEL)
     data_path = str(tmp_path / 'tiny_sft.jsonl')
@@ -343,7 +385,8 @@ def test_run_sft_megatron_two_bridges_bit_identical(tmp_path):
 
     Both build the same mcore GPTModel (only the construction library differs), so any per-step
     loss divergence means a real construction/normalization mismatch between the bridges. Each
-    backend runs sequentially in its OWN twinkle Ray session (run_sft wraps initialize/shutdown).
+    backend runs sequentially in its OWN twinkle Ray session (this test resets the runtime between
+    the two -- run_sft initializes but production is one-shot, so it has no shutdown counterpart).
     """
     if torch.cuda.device_count() < 2:
         pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
@@ -356,6 +399,10 @@ def test_run_sft_megatron_two_bridges_bit_identical(tmp_path):
     _write_toy_dataset(data_path)
 
     mcore = _run_megatron_sft('mcore-bridge', data_path, str(tmp_path / 'out_mcore'))
+    # Each run_sft(mode='ray') is its own twinkle Ray session; the autouse fixture only resets
+    # BETWEEN tests, so tear the first session down here or the second collides on twinkle's
+    # deterministic worker-actor name (see reset_twinkle_runtime).
+    reset_twinkle_runtime()
     mbridge = _run_megatron_sft('megatron-bridge', data_path, str(tmp_path / 'out_mbridge'))
 
     mcore_losses = [r['loss'] for r in mcore]
@@ -369,23 +416,32 @@ def test_run_sft_megatron_two_bridges_bit_identical(tmp_path):
 
 @pytest.mark.slow
 def test_run_sft_megatron_ga_equivalence(tmp_path):
-    """GA>1 gate: Megatron ga=2/bs=2 must match ga=1/bs=4 (same 4 samples per optimizer step).
+    """GA>1 gate: Megatron ga=2/bs=2 must match ga=1/bs=4 (same 8 samples per optimizer step).
 
     Megatron accumulates gradients across the microbatch LIST inside one forward_backward, so
-    grouping ga=2 dataloader batches of 2 into one 4-microbatch step must be gradient-equivalent to
-    a single ga=1 step over a batch of 4. At step 1 both see identical initial weights over the
-    identical first 4 samples (dataset_shuffle=False), so the step-1 loss is bit-identical; the
-    grad_norm equality is the real accumulation check (it reflects the summed/normalized gradient).
-    Runs mcore-bridge only; max_steps=1 keeps the data window aligned without a larger dataset.
+    grouping ga=2 dataloader batches into one step must be gradient-equivalent to a single ga=1 step
+    over a proportionally larger batch. The dataloader batch is the GLOBAL batch
+    (per_device_train_batch_size * dp = per_device * 2 here), so the effective samples per optimizer
+    step are per_device * dp * ga = 8 for BOTH configs (2*2*2 and 4*2*1). At step 1 both see identical
+    initial weights over identical rows, so the step-1 loss is bit-identical; the grad_norm equality is
+    the real accumulation check (it reflects the summed/normalized gradient).
+
+    8 IDENTICAL rows: enough for both a global batch of 4 (ga=2 -> 2 batches/step) and of 8 (ga=1 ->
+    1 batch/step) to form complete groups under drop_last, and identical content so DP-rank slicing
+    order cannot perturb the equality. Runs mcore-bridge only; max_steps=1 keeps the data window
+    aligned to exactly one step.
     """
     if torch.cuda.device_count() < 2:
         pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
 
     data_path = str(tmp_path / 'toy_sft.jsonl')
-    _write_toy_dataset(data_path)  # 4 rows == one optimizer step at effective batch 4
+    _write_identical_dataset(data_path, n=8)  # 8 rows == one optimizer step at effective batch 8
 
     ga_hist = _run_megatron_sft(
         'mcore-bridge', data_path, str(tmp_path / 'out_ga2'), per_device_batch=2, ga=2, max_steps=1)
+    # Two run_sft(mode='ray') sessions in one test: reset the first before the second initializes,
+    # or it collides on twinkle's deterministic worker-actor name (see reset_twinkle_runtime).
+    reset_twinkle_runtime()
     big_hist = _run_megatron_sft(
         'mcore-bridge', data_path, str(tmp_path / 'out_bs4'), per_device_batch=4, ga=1, max_steps=1)
 
@@ -410,13 +466,16 @@ def _run_megatron_sft(bridge_backend: str,
                       ga: int = 1,
                       max_steps: int = 2,
                       eval_steps: int = 0,
-                      split_dataset_ratio: float = 0.0):
+                      split_dataset_ratio: float = 0.0,
+                      context_parallel_size: int = 1):
     """Run one Megatron run_sft (DP=2, fp32) and return its loss/grad_norm history.
 
     per_device_batch/ga are parametrized so a GA>1 run can be compared against a GA=1 run with a
     proportionally larger batch (same effective samples per optimizer step -> same trajectory).
-    eval_steps>0 (with split_dataset_ratio>0 to carve a val split) exercises SFTLoop.evaluate on
+    eval_steps>0 (with split_dataset_ratio>0 to carve a val split) exercises the offline Evaluator on
     the Megatron backend -- its forward_only + calculate_loss(NotImplementedError) fallback path.
+    context_parallel_size>1 spends the world on CP instead of DP (world=2 -> cp=2, dp=1): twinkle
+    splits each sequence across the CP ranks and runs ring attention over the CP group.
     """
     from modelscope import snapshot_download
 
@@ -428,7 +487,7 @@ def _run_megatron_sft(bridge_backend: str,
         TemplateConfig,
         TrainConfig,
     )
-    from swift.dev.recipe import run_sft
+    from swift.dev.recipe.sft.run_sft import run_sft
 
     model_path = snapshot_download(MODEL)
     return run_sft(
@@ -442,7 +501,7 @@ def _run_megatron_sft(bridge_backend: str,
         # guard on the Megatron backend, which always uses Adam).
         TrainConfig(
             learning_rate=1e-5,
-            lr_scheduler_type='constant',
+            lr_scheduler='constant',
             warmup_ratio=0.0,
             per_device_train_batch_size=per_device_batch,
             per_device_eval_batch_size=2,
@@ -454,7 +513,12 @@ def _run_megatron_sft(bridge_backend: str,
         # driver batch across the 2 DP ranks -- see the per_device_train_batch_size note above), and
         # DistributedConfig.mode defaults to 'local', where slice_dp no-ops and the dataloader shards
         # instead.
-        DistributedConfig(backend='megatron', bridge_backend=bridge_backend, nproc_per_node=2, mode='ray'),
+        DistributedConfig(
+            backend='megatron',
+            bridge_backend=bridge_backend,
+            nproc_per_node=2,
+            context_parallel_size=context_parallel_size,
+            mode='ray'),
         CheckpointConfig(),
         output_dir=out_dir,
     )
@@ -462,7 +526,7 @@ def _run_megatron_sft(bridge_backend: str,
 
 @pytest.mark.slow
 def test_run_sft_megatron_evaluate_returns_metrics(tmp_path):
-    """SFTLoop.evaluate() must work on the Megatron backend (contract 9): eval goes through
+    """Evaluator.evaluate() must work on the Megatron backend (contract 9): eval goes through
     forward_only, and Megatron's calculate_loss raises NotImplementedError (pipeline scheduler
     fuses loss into forward), which evaluate() swallows because the loss is already populated.
 
@@ -492,6 +556,38 @@ def test_run_sft_megatron_evaluate_returns_metrics(tmp_path):
     losses = [r['loss'] for r in history]
     assert all(loss == loss and abs(loss) != float('inf') for loss in losses), \
         f'non-finite loss: {losses}'
+
+
+@pytest.mark.slow
+def test_run_sft_megatron_context_parallel_end_to_end(tmp_path):
+    """Megatron SFT with context parallelism (cp=2) must train end-to-end.
+
+    CP splits every sequence across the CP ranks: twinkle pads the sequence to a multiple of
+    2*cp_size and runs ring attention over the CP group, and the Megatron strategy normalizes the
+    gradient token-count by cp_size so the loss stays per-token. This is the ONLY feature-level guard
+    that the ``context_parallel_size`` knob drives a working CP training run -- config validation
+    (test_fsdp) and the packing pad_cp unit (test_packing) check the plumbing, but nothing else
+    actually trains with cp>1, and no example exercises it. world=2 -> cp=2, dp=1.
+    """
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_toy_dataset(data_path)
+    history = _run_megatron_sft('mcore-bridge', data_path, str(tmp_path / 'out_cp'), context_parallel_size=2)
+
+    assert history, 'run_sft (megatron cp=2) produced no optimizer steps'
+    losses = [r['loss'] for r in history]
+    assert all(loss == loss and abs(loss) != float('inf') for loss in losses), \
+        f'non-finite loss: {losses}'
+    assert losses[0] < 20, f'first loss {losses[0]:.2f} too large -> not normalized (raw sum?)'
+
+    ckpt = os.path.join(str(tmp_path / 'out_cp'), 'checkpoint-final')
+    assert os.path.isdir(ckpt), f'no checkpoint dir at {ckpt}'
+    files = set(os.listdir(ckpt))
+    assert any(f.endswith('.safetensors') for f in files), \
+        f'no model weights in checkpoint: {sorted(files)}'
+    print(f'\nrun_sft megatron cp=2: steps={len(history)} losses={losses}')
 
 
 def _run_torchrun(cmd, *, timeout=1800):
@@ -1113,7 +1209,7 @@ def test_run_sft_hf_sp_matches_single(tmp_path, padding_free):
     for r in sp2:
         assert r['ulysses_size'] == 2, (
             f'rank {r["rank"]}: mesh ulysses_size={r["ulysses_size"]}, not 2 -- the SP mesh did not '
-            'reach TransformersModel (build_hf_device_mesh / device_mesh kwarg broken)')
+            'reach TransformersModel (build_dp_mesh / device_mesh kwarg broken)')
         assert r['data_world_size'] == 1, (
             f'rank {r["rank"]}: data_world_size={r["data_world_size"]}, not world/ulysses=1 -- the '
             'loader would hand SP peers different samples')

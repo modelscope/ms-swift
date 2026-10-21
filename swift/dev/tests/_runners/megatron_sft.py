@@ -30,7 +30,7 @@ def _run_dev(data_path, out_dir, steps, lr):
 
     from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig)
-    from swift.dev.recipe import run_sft
+    from swift.dev.recipe.sft.run_sft import run_sft
 
     model_path = snapshot_download(MODEL)
     history = run_sft(
@@ -45,7 +45,7 @@ def _run_dev(data_path, out_dir, steps, lr):
         # change what this test trains -- it just stops the run from failing validation.
         TrainConfig(
             learning_rate=lr,
-            lr_scheduler_type='constant',
+            lr_scheduler='constant',
             warmup_ratio=0.0,
             per_device_train_batch_size=1,
             gradient_accumulation_steps=1,
@@ -117,7 +117,7 @@ def _dev_cli_argv(data_path, out_dir, steps, lr):
 
 
 def _run_dev_cli(data_path, out_dir, steps, lr):
-    """dev-Megatron driven through the CLI (swift.dev.cli.megatron.megatron_sft_main).
+    """dev-Megatron driven through the CLI (swift.dev.cli.sft.sft_main --backend megatron).
 
     Distinct from _run_dev, which builds Configs directly: this exercises the argv -> Config mapping
     (renames lr/train_iters/micro_batch_size, the GA derivation from global_batch_size, and the
@@ -127,9 +127,9 @@ def _run_dev_cli(data_path, out_dir, steps, lr):
     Named `dev_cli` rather than replacing `dev` so the two remain separable: if only this one moves,
     the mapping is at fault; if both move, the Megatron path itself is.
     """
-    from swift.dev.cli.megatron import megatron_sft_main as dev_megatron_sft_main
+    from swift.dev.cli.sft import sft_main as dev_megatron_sft_main
 
-    history = dev_megatron_sft_main(_dev_cli_argv(data_path, out_dir, steps, lr))
+    history = dev_megatron_sft_main([*_dev_cli_argv(data_path, out_dir, steps, lr), '--backend', 'megatron'])
     return [r['loss'] for r in history]
 
 

@@ -1,0 +1,177 @@
+# v5 server: twinkle-server config for a swift-loaded, multi-LoRA trainable model.
+#
+# v5 has no `swift server` command. Serving a *trainable* model (attach LoRA adapters,
+# run optimizer steps over HTTP) is done by driving twinkle-server directly; this file
+# is the single source of truth for what gets deployed. serve.sh starts Ray and launches
+# it; client.py (via train.sh) attaches adapters, trains and samples against it.
+#
+# Four applications are deployed on one Ray Serve cluster:
+#   1. server    - the Tinker-compatible gateway clients talk to (route_prefix /api/v1).
+#   2. model     - the trainable base model. `model_loader` names swift's family-loader
+#                  factory, imported *inside the model actor* at startup, so the checkpoint
+#                  is built by swift.dev.model.loader (correct model_cls / remote-code /
+#                  quant knobs) instead of twinkle's generic AutoModel path. max_loras=4
+#                  is what makes this a MULTI-LoRA host: several named adapters can be
+#                  attached and trained concurrently against one resident base model.
+#   3. sampler   - a vLLM engine (enable_lora) for generation, so a just-trained adapter
+#                  can be sampled over HTTP without leaving the server.
+#   4. processor - CPU workers that tokenize/encode datasets.
+#
+# Model choice: Qwen2.5-0.5B-Instruct keeps this smokeable on 2 GPUs (1 for the model app,
+# 1 for the sampler). Swap model_id + supported_models + the two route_prefixes together to
+# serve a larger family (e.g. ms://Qwen/Qwen3.5-4B, which also has a dedicated
+# Qwen3_5Template on the client side).
+
+proxy_location: EveryNode
+
+http_options:
+  host: 0.0.0.0
+  port: 8000
+
+telemetry:
+  enabled: false
+  otlp_endpoint: http://localhost:4317
+
+# ServerState (sessions, models, futures) persists to a local file so training runs and
+# checkpoints survive across client reconnects within the same server lifetime.
+persistence:
+  mode: file
+  file_path: /tmp/twinkle_server_examples_state.json
+
+applications:
+
+  # 1. Gateway / API server. supported_models is the public name clients address; it must
+  #    match the model app's route_prefix tail and the sampler's model_id.
+  - name: server
+    route_prefix: /api/v1
+    import_path: server
+    args:
+      server_config:
+        per_token_model_limit: 3
+      supported_models:
+        - Qwen/Qwen2.5-0.5B-Instruct
+    deployments:
+      - name: TinkerCompatServer
+        max_ongoing_requests: 50
+        autoscaling_config:
+          min_replicas: 1
+          max_replicas: 1
+          target_ongoing_requests: 128
+        ray_actor_options:
+          num_cpus: 0.1
+          runtime_env:
+            env_vars:
+              TWINKLE_FAIL_FAST: "0"
+
+  # 2. Trainable model, built through swift's family loader. Single GPU (dp_size 1) is
+  #    enough for a 0.5B checkpoint; raise device_group.ranks + device_mesh.fsdp_size
+  #    together to shard a larger model.
+  - name: models-Qwen2.5-0.5B-Instruct
+    route_prefix: /api/v1/model/Qwen/Qwen2.5-0.5B-Instruct
+    import_path: model
+    args:
+      backend: transformers
+      model_id: "ms://Qwen/Qwen2.5-0.5B-Instruct"
+      # The swift family-loader factory: `module:callable`, imported inside the actor and
+      # called with model_id. Remove this line to fall back to twinkle's generic AutoModel
+      # path (which loses swift's per-family config/quant corrections).
+      model_loader: swift.dev.model.loader:build_model_loader
+      # `model_cls: module:attr` names the class the model app serves, resolved inside the actor
+      # and layered with twinkle's tinker/twinkle compat methods; unset, it is twinkle's
+      # multi-LoRA transformers wrapper. A sentence-transformers embedding model needs
+      #   model_cls: swift.dev.model.multi_lora_sentence_transformer_model:MultiLoraSentenceTransformerModel
+      # because its pipeline (Transformer -> Pooling -> Normalize) pools inside the model and cannot
+      # be built by the AutoModel path. That deployment also needs the `sentence-transformers`
+      # package in the model workers; `max_length` caps each sample before a forward (default 8192
+      # for that class), so raise it for longer sequences.
+      # Only allowed for backend: transformers with train_mode: lora and no `hybrid` block.
+      max_loras: 4
+      max_length: 2048
+      nproc_per_node: 1
+      device_group:
+        name: model
+        ranks: 1
+        device_type: cuda
+      device_mesh:
+        device_type: cuda
+        dp_size: 1
+      queue_config:
+        rps_limit: 100
+        tps_limit: 100000
+      adapter_config:
+        adapter_timeout: 30
+    deployments:
+      - name: ModelManagement
+        autoscaling_config:
+          min_replicas: 1
+          max_replicas: 1
+          target_ongoing_requests: 16
+        ray_actor_options:
+          num_cpus: 0.1
+          runtime_env:
+            env_vars:
+              TWINKLE_TRUST_REMOTE_CODE: "1"
+              TWINKLE_FAIL_FAST: "0"
+
+  # 3. Sampler service - vLLM engine for generation. enable_lora lets a trained adapter be
+  #    sampled by URI (see client.py's sampler.sample(adapter_uri=...)).
+  - name: sampler-Qwen2.5-0.5B-Instruct
+    route_prefix: /api/v1/sampler/Qwen/Qwen2.5-0.5B-Instruct
+    import_path: sampler
+    args:
+      model_id: "ms://Qwen/Qwen2.5-0.5B-Instruct"
+      nproc_per_node: 1
+      sampler_type: vllm
+      engine_args:
+        max_model_len: 2048
+        gpu_memory_utilization: 0.5
+        enable_lora: true
+        enforce_eager: true
+        logprobs_mode: processed_logprobs
+      device_group:
+        name: sampler
+        ranks: 1
+        device_type: cuda
+      device_mesh:
+        device_type: cuda
+        dp_size: 1
+      queue_config:
+        rps_limit: 100
+        tps_limit: 100000
+    deployments:
+      - name: SamplerManagement
+        autoscaling_config:
+          min_replicas: 1
+          max_replicas: 1
+          target_ongoing_requests: 16
+        ray_actor_options:
+          num_cpus: 0.1
+          runtime_env:
+            env_vars:
+              TWINKLE_TRUST_REMOTE_CODE: "1"
+              TWINKLE_FAIL_FAST: "0"
+
+  # 4. Processor service - tokenizes/encodes datasets on CPU workers.
+  - name: processor
+    route_prefix: /api/v1/processor
+    import_path: processor
+    args:
+      ncpu_proc_per_node: 2
+      device_group:
+        name: model
+        ranks: 2
+        device_type: CPU
+      device_mesh:
+        device_type: CPU
+        dp_size: 2
+    deployments:
+      - name: ProcessorManagement
+        autoscaling_config:
+          min_replicas: 1
+          max_replicas: 1
+          target_ongoing_requests: 128
+        ray_actor_options:
+          num_cpus: 0.1
+          runtime_env:
+            env_vars:
+              TWINKLE_FAIL_FAST: "0"

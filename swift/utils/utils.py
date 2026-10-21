@@ -174,10 +174,7 @@ def _patch_get_type_hints():
 def parse_args(class_type: Type[_T], argv: Optional[List[str]] = None) -> Tuple[_T, List[str]]:
     with _patch_get_type_hints():
         parser = HfArgumentParser([class_type])
-    _ray_args = os.environ.get('RAY_SWIFT_ARGS')
-    if _ray_args:
-        argv = json.loads(_ray_args)
-    elif argv is None:
+    if argv is None:
         argv = sys.argv[1:]
     args, remaining_args = parser.parse_args_into_dataclasses(argv, return_remaining_strings=True)
     return args, remaining_args

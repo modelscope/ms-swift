@@ -1,11 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the CodeFuse families.
-
-Ported from ``swift/model/models/codefuse.py``. Only ``codefuse_codellama`` is migrated. Dropped
-(see MODEL_MIGRATION.md): ``codefuse_qwen`` reused the un-migrated Qwen1 ``QWenLMHeadModel`` loader,
-and ``codefuse_codegeex2`` reused ``ChatGLMLoader`` pinned to ``transformers<4.34`` -- both old,
-trust-remote-code constructions.
-"""
+# Only codefuse_codellama migrated (codefuse_qwen/codegeex2: old trust-remote-code reuses).
 from __future__ import annotations
 
 from transformers import AutoTokenizer

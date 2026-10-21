@@ -2,7 +2,7 @@
 
 Why these guards exist. The knob was accepted by the config and forwarded to the template
 (builders/template.py) long before any training-path consumer existed: an sp>1 run SILENTLY trained
-with SP=1. Now that run_sft wires a real mesh (build_hf_device_mesh), validate_configs must reject
+with SP=1. Now that run_sft wires a real mesh (build_dp_mesh), validate_configs must reject
 every combination where the mesh would be meaningless or the twinkle SP strategy would crash at the
 first forward -- failing at validation in milliseconds instead of after the weights load.
 
@@ -19,10 +19,24 @@ import json
 import pytest
 
 from ..._runners import Runners
-from ...feature.sft.test_e2e import _master_port, _run_torchrun
+
+# Local copies of the feature-suite launcher helpers: this file must not import from a suite
+# that arrives later in the plan. Port bases are pid-seeded so two concurrent invocations of
+# this file cannot join each other's rendezvous (kept below the ephemeral range).
+_PORT_BASE = 20000 + (os.getpid() % 500) * 20
 
 
-def _configs(*, rlhf_type=None, **overrides):
+def _master_port(offset: int) -> int:
+    return _PORT_BASE + offset
+
+
+def _run_torchrun(cmd, *, timeout=1800):
+    """(stdout, stderr) from a bounded torchrun launch -- see ``Runners.launch`` for why it is bounded."""
+    proc = Runners.launch(cmd, timeout=timeout)
+    return proc.stdout, proc.stderr
+
+
+def _configs(*, rl_type=None, **overrides):
     """HF-backend config dict for validate_configs; overrides key on 'field=value' via setattrs."""
     from swift.dev.config import (
         CheckpointConfig,
@@ -41,10 +55,10 @@ def _configs(*, rlhf_type=None, **overrides):
         "distributed_config": DistributedConfig(),
         "checkpoint_config": CheckpointConfig(),
     }
-    if rlhf_type is not None:
-        from swift.dev.config import RLHFConfig
+    if rl_type is not None:
+        from swift.dev.config import RLConfig
 
-        configs["rlhf_config"] = RLHFConfig(rlhf_type=rlhf_type)
+        configs["rl_config"] = RLConfig(rl_type=rl_type)
     for dotted, value in overrides.items():
         holder_name, _, attr = dotted.partition(".")
         setattr(configs[holder_name], attr, value)
@@ -74,11 +88,44 @@ def test_sp_on_megatron_backend_is_rejected():
         )
 
 
-@pytest.mark.parametrize("rlhf_type", ["dpo", "grpo", "kto"])
-def test_sp_with_any_rlhf_type_is_rejected(rlhf_type):
-    """dev wires no RLHF SP mesh; legacy's grpo/dpo allowance would silently train without SP."""
+@pytest.mark.parametrize("rl_type", ["dpo", "kto"])
+def test_sp_with_unwired_rl_type_is_rejected(rl_type):
+    """Only the online-RL recipes (grpo/rft) wire the Ulysses SP mesh; other RLHF types must fail
+    fast instead of silently training with SP=1 (legacy's grpo/dpo allowance did exactly that)."""
     with pytest.raises(ValueError, match="does not support sequence_parallel_size"):
-        _validate(rlhf_type=rlhf_type, **{"template_config.sequence_parallel_size": 2})
+        _validate(
+            rl_type=rl_type,
+            **{
+                "template_config.sequence_parallel_size": 2,
+                "distributed_config.nproc_per_node": 2,
+            },
+        )
+
+
+def test_sp_with_ppo_is_rejected_for_the_critic_slicing_reason():
+    """PPO is singled out with its own message: the SP policy would slice_dp each forward at a
+    different data_world_size than the SP=1 value-head critic and starve the critic's ranks."""
+    with pytest.raises(ValueError, match="value-head critic"):
+        _validate(
+            rl_type="ppo",
+            **{
+                "template_config.sequence_parallel_size": 2,
+                "distributed_config.nproc_per_node": 2,
+            },
+        )
+
+
+@pytest.mark.parametrize("rl_type", ["grpo", "rft"])
+def test_sp_with_wired_online_rl_types_is_accepted(rl_type):
+    """grpo/rft ARE wired for Ulysses SP (plan_sp_mesh + ray dp x ulysses mesh): with nproc>=2
+    the validation passes and the run reaches the real SP path."""
+    _validate(
+        rl_type=rl_type,
+        **{
+            "template_config.sequence_parallel_size": 2,
+            "distributed_config.nproc_per_node": 2,
+        },
+    )
 
 
 def test_sp_in_ray_mode_is_rejected():
@@ -157,21 +204,23 @@ def test_sp_without_torchrun_is_rejected():
 
 def test_mesh_builder_returns_none_when_sp_is_off():
     """sp=1 must reach TransformersModel with NO mesh -- the deliberate default-mesh local path."""
-    from swift.dev.builders import build_hf_device_mesh
+    from swift.dev.builders import build_dp_mesh
     from swift.dev.config import DistributedConfig
 
-    assert build_hf_device_mesh(DistributedConfig(), 1) is None
-    # Non-local mode never builds this mesh either (validate rejects ray+sp>1 before this runs).
-    assert build_hf_device_mesh(DistributedConfig(mode="ray"), 2) is None
+    assert build_dp_mesh(DistributedConfig(), 1) is None
+    # Ray mode now BUILDS the dp x ulysses mesh (the online-RL SP path reads it), with dp
+    # spanning all nproc_per_node ranks and ulysses at the requested sp size.
+    mesh = build_dp_mesh(DistributedConfig(mode="ray", nproc_per_node=4), 2)
+    assert mesh is not None and mesh.ulysses_size == 2
 
 
 def test_mesh_builder_without_torchrun_raises():
-    """Plain pytest process: WORLD_SIZE unset -> world=1 -> the torchrun requirement fires."""
-    from swift.dev.builders import build_hf_device_mesh
+    """Plain pytest process: WORLD_SIZE unset -> world=1 -> the world-size requirement fires."""
+    from swift.dev.builders import build_dp_mesh
     from swift.dev.config import DistributedConfig
 
-    with pytest.raises(ValueError, match="torchrun"):
-        build_hf_device_mesh(DistributedConfig(), 2)
+    with pytest.raises(ValueError, match="WORLD_SIZE>=2"):
+        build_dp_mesh(DistributedConfig(), 2)
 
 
 @pytest.mark.slow

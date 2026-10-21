@@ -1,0 +1,4 @@
+{"messages": [{"role": "user", "content": "What is the capital of China?"}, {"role": "assistant", "content": "The capital of China is Beijing."}]}
+{"messages": [{"role": "user", "content": "What is the capital of China?"}, {"role": "assistant", "content": "Paris is a city known for the Eiffel Tower and its fashion industry."}]}
+{"messages": [{"role": "user", "content": "How do I reset my password?"}, {"role": "assistant", "content": "Click 'Forgot password' on the login page, then follow the email link to set a new one."}]}
+{"messages": [{"role": "user", "content": "How do I reset my password?"}, {"role": "assistant", "content": "The weather today is sunny with a high of 25 degrees Celsius."}]}

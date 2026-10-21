@@ -1,0 +1,8 @@
+{"messages": [{"role": "user", "content": "这个包装很差，容易被调包。"}], "positive_messages": [[{"role": "user", "content": "这是一条负面评价，表示不满意。"}]], "negative_messages": [[{"role": "user", "content": "这是一条正面评价，表示满意。"}]]}
+{"messages": [{"role": "user", "content": "质量很好，物流也快，满意。"}], "positive_messages": [[{"role": "user", "content": "这是一条正面评价，表示满意。"}]], "negative_messages": [[{"role": "user", "content": "这是一条负面评价，表示不满意。"}]]}
+{"messages": [{"role": "user", "content": "收到就是坏的，客服还不理人。"}], "positive_messages": [[{"role": "user", "content": "这是一条负面评价，表示不满意。"}]], "negative_messages": [[{"role": "user", "content": "这是一条正面评价，表示满意。"}]]}
+{"messages": [{"role": "user", "content": "物超所值，会回购。"}], "positive_messages": [[{"role": "user", "content": "这是一条正面评价，表示满意。"}]], "negative_messages": [[{"role": "user", "content": "这是一条负面评价，表示不满意。"}]]}
+{"messages": [{"role": "user", "content": "味道不对，像是过期了。"}], "positive_messages": [[{"role": "user", "content": "这是一条负面评价，表示不满意。"}]], "negative_messages": [[{"role": "user", "content": "这是一条正面评价，表示满意。"}]]}
+{"messages": [{"role": "user", "content": "和描述一致，推荐购买。"}], "positive_messages": [[{"role": "user", "content": "这是一条正面评价，表示满意。"}]], "negative_messages": [[{"role": "user", "content": "这是一条负面评价，表示不满意。"}]]}
+{"messages": [{"role": "user", "content": "用了两天就坏了。"}], "positive_messages": [[{"role": "user", "content": "这是一条负面评价，表示不满意。"}]], "negative_messages": [[{"role": "user", "content": "这是一条正面评价，表示满意。"}]]}
+{"messages": [{"role": "user", "content": "非常棒，五星好评。"}], "positive_messages": [[{"role": "user", "content": "这是一条正面评价，表示满意。"}]], "negative_messages": [[{"role": "user", "content": "这是一条负面评价，表示不满意。"}]]}

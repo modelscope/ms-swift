@@ -1,20 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Datasets with one example per row spread across flat columns.
-
-``system`` / ``query`` / ``response`` (and their many aliases), optionally with a ``history`` column
-holding earlier turns, and optionally a ``rejected_response`` for flat preference data. This is
-old-ms-swift's own format and the shape most single-turn datasets take once you look past the column
-names.
-
-:class:`ResponseConverter` is the registered fallback: when a dataset carries no dialogue column and
-matches no more specific format, treating some column as the response is the last reasonable guess.
-Legacy made the same choice -- ``AutoPreprocessor`` ended its if-chain with ``ResponsePreprocessor``.
-The Alpaca variant, which only differs by joining two columns into the user turn, lives in
-``alpaca.py`` next to this class rather than inside it.
-"""
 from __future__ import annotations
 
-import os
 from typing import Any, Collection, Dict, Optional
 
 from .base import FormatConverter, register_format
@@ -27,9 +13,6 @@ class ResponseConverter(FormatConverter):
     """Flat ``query``/``response`` rows, with optional multi-turn ``history`` and preference pair."""
 
     format_name = 'response'
-    # Last: this is the fallback, so every more specific format must be asked before it. Its own
-    # `detect` is never the deciding call (the fallback pass in the factory is), but the high number
-    # keeps it last should someone make its detect return True.
     priority = 1000
     is_fallback = True
     aliases = {
@@ -53,8 +36,8 @@ class ResponseConverter(FormatConverter):
 
     @classmethod
     def detect(cls, columns: Collection[str]) -> bool:
-        # A positive detect is offered for the common explicit case, but correctness does not rely on
-        # it: even if this returns False, the factory's fallback pass routes here.
+        # Detection runs on alias-normalised names, so a column spelled `output`/`answer`/`text` is
+        # recognised as `response` -- an alias never hides the format.
         standardised = {cls.aliases.get(column, column) for column in columns}
         return 'response' in standardised
 
@@ -71,12 +54,6 @@ class ResponseConverter(FormatConverter):
         if not messages:
             return None
         row['messages'] = messages
-
-        # Flat preference data: the rejected answer is kept flat, as a `rejected_response` string,
-        # and is deliberately *not* expanded into `rejected_messages` here. The template owns that
-        # expansion, and it does more than reshape -- it rejects a `user` role in the rejected turn
-        # and asserts the rejected answer differs from the chosen one. Expanding early would satisfy
-        # its "already expanded" branch and silently skip both checks.
         rejected = self.pick_response(row.pop('rejected_response', None))
         if rejected is not None:
             row['rejected_response'] = rejected
@@ -85,16 +62,16 @@ class ResponseConverter(FormatConverter):
     def pick_response(self, response: Any) -> Any:
         """Collapse a multi-answer response column to a single answer.
 
-        Some datasets store several reference answers in a list. Default to the first for
-        reproducibility; ``RANDOM_DATASET_RESPONSE=1`` picks one at random, matching legacy's env
-        switch (used when the extra answers are meant as augmentation, not alternatives).
+        Some datasets store several reference answers in a list: default to the first for
+        reproducibility; ``RANDOM_DATASET_RESPONSE`` picks one at random, for when the extra
+        answers are augmentation rather than alternatives. The import is local because
+        ``swift.dev.utils`` pulls in torch on init.
         """
         if not isinstance(response, (list, tuple)):
             return response
         if not response:
             return None
-        from transformers.utils import strtobool
-        if strtobool(os.environ.get('RANDOM_DATASET_RESPONSE', 'False')):
-            import random
-            return random.choice(response)
+        from swift.dev.utils.env import random_dataset_response
+        if random_dataset_response() and self.random_state is not None:
+            return response[int(self.random_state.randint(len(response)))]
         return response[0]

@@ -1,0 +1,24 @@
+{"text": "SWIFT is a training and inference framework for large language models and multimodal models. It supports supervised fine-tuning, pretraining, and reinforcement learning from human feedback."}
+{"text": "Pretraining continues to train a language model on raw text with the causal language modeling objective. Every token in the sequence contributes to the loss, and no chat template is applied."}
+{"text": "The causal language modeling objective predicts the next token given all previous tokens. The model learns the statistical structure of the corpus by minimizing the cross-entropy loss over the sequence."}
+{"text": "A learning rate schedule warms up from zero and then decays, often following a cosine curve. Warmup stabilizes the early updates while the optimizer state is still being estimated."}
+{"text": "Gradient accumulation splits a large logical batch into several micro-batches. The gradients of the micro-batches are summed before a single optimizer step, which emulates a larger batch on limited memory."}
+{"text": "BF16 mixed precision stores weights and activations in the bfloat16 format. It keeps the exponent range of float32 while halving the memory footprint, which is stable for training."}
+{"text": "Sequence packing concatenates several short documents into one fixed-length sequence. Packing raises the fraction of useful tokens per batch and avoids wasting compute on padding."}
+{"text": "Data parallelism replicates the model across devices and splits the batch. Each replica computes gradients on its shard, and the replicas average the gradients before the optimizer step."}
+{"text": "The tokenizer converts text into token identifiers. A byte pair encoding tokenizer merges frequent character sequences into subword units, which balances vocabulary size and sequence length."}
+{"text": "Checkpointing saves the model weights and the optimizer state during training. A saved checkpoint lets training resume after an interruption and provides snapshots for evaluation."}
+{"text": "Full-parameter training updates every weight of the model. It needs more memory than an adapter method but can fit new knowledge more thoroughly than a low-rank update."}
+{"text": "The validation loss measures how well the model generalizes to data it did not train on. A widening gap between training and validation loss signals overfitting."}
+{"text": "SWIFT is a training and inference framework for large language models and multimodal models. It supports supervised fine-tuning, pretraining, and reinforcement learning from human feedback."}
+{"text": "Pretraining continues to train a language model on raw text with the causal language modeling objective. Every token in the sequence contributes to the loss, and no chat template is applied."}
+{"text": "The causal language modeling objective predicts the next token given all previous tokens. The model learns the statistical structure of the corpus by minimizing the cross-entropy loss over the sequence."}
+{"text": "A learning rate schedule warms up from zero and then decays, often following a cosine curve. Warmup stabilizes the early updates while the optimizer state is still being estimated."}
+{"text": "Gradient accumulation splits a large logical batch into several micro-batches. The gradients of the micro-batches are summed before a single optimizer step, which emulates a larger batch on limited memory."}
+{"text": "BF16 mixed precision stores weights and activations in the bfloat16 format. It keeps the exponent range of float32 while halving the memory footprint, which is stable for training."}
+{"text": "Sequence packing concatenates several short documents into one fixed-length sequence. Packing raises the fraction of useful tokens per batch and avoids wasting compute on padding."}
+{"text": "Data parallelism replicates the model across devices and splits the batch. Each replica computes gradients on its shard, and the replicas average the gradients before the optimizer step."}
+{"text": "The tokenizer converts text into token identifiers. A byte pair encoding tokenizer merges frequent character sequences into subword units, which balances vocabulary size and sequence length."}
+{"text": "Checkpointing saves the model weights and the optimizer state during training. A saved checkpoint lets training resume after an interruption and provides snapshots for evaluation."}
+{"text": "Full-parameter training updates every weight of the model. It needs more memory than an adapter method but can fit new knowledge more thoroughly than a low-rank update."}
+{"text": "The validation loss measures how well the model generalizes to data it did not train on. A widening gap between training and validation loss signals overfitting."}

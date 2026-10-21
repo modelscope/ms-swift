@@ -73,7 +73,10 @@ def test_derived_class_keeps_family_methods_and_survives_pickling():
     assert shifted_template_class(_Family) is cls
 
     obj = cls()
-    assert obj.encode({})['labels'] == [2, 3, -100]
+    # DevMixin.encode now validates the standard row schema before delegating, so the stand-in
+    # must be handed a well-formed row (its own encode ignores the content).
+    row = {'messages': [{'role': 'user', 'content': 'hi'}, {'role': 'assistant', 'content': 'ok'}]}
+    assert obj.encode(row)['labels'] == [2, 3, -100]
     assert obj.replace_tag() == ['family-placeholder']
     # _Family is local to this test so the instance cannot be pickled; the CLASS being resolvable is
     # what pickle needs from us, and it is the part that a plain type() call breaks.

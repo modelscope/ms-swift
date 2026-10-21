@@ -2,6 +2,7 @@
 """General-purpose helpers, copied from ``swift.utils.utils`` so the dev stack is self-contained."""
 import json
 import os
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
@@ -84,6 +85,54 @@ def split_list(ori_list: List[_T], num_shards: int, contiguous=True) -> List[Lis
     return shard
 
 
+# Copied verbatim from swift.template.utils (the not-yet-migrated legacy template module) so dev's
+# dataset loaders stay off it; reconcile with the legacy original once that layer is migrated.
+def _split_str_by_regex(text: str, regex_delimiters: List[str]) -> List[str]:
+    """Split ``text`` on any ``regex_delimiters``, returning an even-length alternating list.
+
+    The result is ``[prefix, delim1, body1, delim2, body2, ...]`` (``prefix`` is '' when the text
+    opens with a delimiter), so a caller can zip ``[::2]`` against ``[1::2]`` to pair each body with
+    the delimiter preceding it.
+    """
+    combined_pattern = '|'.join(f'({pattern})' for pattern in regex_delimiters)
+    parts = re.split(combined_pattern, text, flags=re.DOTALL)
+    parts = [part for part in parts if part is not None]
+    if parts[0] == '':
+        parts.pop(0)
+    else:
+        parts.insert(0, '')
+    assert len(parts) % 2 == 0, f'result: {parts}'
+    assert ''.join(parts) == text, f'split_result: {parts}, text: {text}'
+    return parts
+
+
+def split_str_parts_by(text: str, delimiters: List[str], regex_mode: bool = False) -> List[Dict[str, str]]:
+    """Split ``text`` into ``{'key': delimiter, 'content': body}`` parts on ``delimiters``.
+
+    ``delimiters`` are literal prefixes unless ``regex_mode``, in which case each is a pattern matched
+    against the part following it.
+    """
+    assert isinstance(text, str), f'text: {text}'
+    delimiters_origin = delimiters
+    if not regex_mode:
+        delimiters = [re.escape(delimiter) for delimiter in delimiters]
+    parts = _split_str_by_regex(text, delimiters) if delimiters else ['', text]
+    res = []
+    if regex_mode:
+        parts = [part for part in parts if part]
+        for part in parts:
+            for delimiter, delimiter_origin in zip(delimiters, delimiters_origin):
+                if re.match(delimiter, part, re.DOTALL):
+                    break
+            else:
+                delimiter_origin = ''
+            res.append({'key': delimiter_origin, 'content': part})
+    else:
+        for key, content in zip(parts[::2], parts[1::2]):
+            res.append({'key': key, 'content': content})
+    return res
+
+
 def json_parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:
     """Convert a JSON string or JSON file into a dict"""
     # If the value could potentially be a string, it is generally advisable to set strict to False.
@@ -110,6 +159,43 @@ def json_parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Un
                         logger.error(f"Unable to parse json string: '{value}', and try to repair failed")
                         raise
     return value
+
+
+# DeepSpeed preset names map to the bundled JSON configs (swift/config/<name>.json), exactly like the
+# legacy CLI; anything else is read as a JSON file path or an inline JSON string. Shared by the model
+# builder (which resolves the full config) and config validation (which reads the ZeRO stage), so the
+# two never disagree on what a spec means.
+_DEEPSPEED_PRESETS = ('zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload')
+
+
+def resolve_deepspeed_config(spec: Union[str, Dict, None]) -> Optional[Dict]:
+    """Resolve a ``DistributedConfig.deepspeed`` spec (preset name / JSON path / inline JSON) to a dict.
+
+    Returns None when DeepSpeed is not requested. This is the single source of the preset-name ->
+    bundled-JSON mapping; the ZeRO++ ``zero_hpz_partition_size`` injection stays in the builder that
+    needs it, since it is a strategy-construction concern rather than a spec-reading one.
+    """
+    if not spec:
+        return None
+    if isinstance(spec, str) and spec in _DEEPSPEED_PRESETS:
+        import swift
+        spec = os.path.join(os.path.dirname(swift.__file__), 'config', f'{spec}.json')
+    config = json_parse_to_dict(spec)
+    return config if isinstance(config, dict) else None
+
+
+def deepspeed_zero_stage(spec: Union[str, Dict, None]) -> Optional[int]:
+    """The ZeRO stage a ``DistributedConfig.deepspeed`` spec selects (None if DeepSpeed is off / unset).
+
+    Stage 3 is the only one that shards parameters across ranks; stages 0-2 replicate them and keep the
+    forward rank-local. Config validation keys on this to tell a hang-prone generative-eval setup apart
+    from a merely slower one.
+    """
+    config = resolve_deepspeed_config(spec)
+    if not config:
+        return None
+    stage = (config.get('zero_optimization') or {}).get('stage')
+    return int(stage) if stage is not None else None
 
 
 def deep_getattr(obj, attr: str, default=None):
@@ -147,10 +233,7 @@ def _patch_get_type_hints():
 def parse_args(class_type: Type[_T], argv: Optional[List[str]] = None) -> Tuple[_T, List[str]]:
     with _patch_get_type_hints():
         parser = HfArgumentParser([class_type])
-    _ray_args = os.environ.get('RAY_SWIFT_ARGS')
-    if _ray_args:
-        argv = json.loads(_ray_args)
-    elif argv is None:
+    if argv is None:
         argv = sys.argv[1:]
     args, remaining_args = parser.parse_args_into_dataclasses(argv, return_remaining_strings=True)
     return args, remaining_args

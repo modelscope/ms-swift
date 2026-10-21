@@ -1,11 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Rule-based outcome reward models (ORMs) for swift.dev -- the built-in ``reward`` plugins.
+# Reward plugins: outcome rewards (ORM) and process-reward step scorers (PRM). The scoring API lives
+# in reward.py / scorer.py / advantage.py, the remote scoring boundary in worker.py (submodule imports).
+from __future__ import annotations
 
-Internalized from ``swift.rewards`` so swift.dev carries no runtime dependency on legacy swift
-packages. ``ORM`` / ``AsyncORM`` are the historical names of swift's reward plugin bases (see
-:mod:`swift.dev.plugin`); ``orms`` is the registry the ``reward`` extension point adopts, and
-:data:`REWARD` is that point. Consumed by :mod:`swift.dev.reward`.
-"""
-from .orm import ORM, REWARD, AsyncORM, orms
+from .code_reward import CodeExecutionReward
+from .orm import ORM, REWARD, orms
+from .prm import PRM_STEP_SCORER, DelimiterPRMScorer, MultiTurnContext, PRMScorer, TurnPRMScorer, prm_scorers
 
-__all__ = ['ORM', 'AsyncORM', 'REWARD', 'orms']
+__all__ = [
+    'ORM', 'REWARD', 'orms', 'CodeExecutionReward', 'PRMScorer', 'DelimiterPRMScorer', 'TurnPRMScorer',
+    'MultiTurnContext', 'prm_scorers', 'PRM_STEP_SCORER'
+]

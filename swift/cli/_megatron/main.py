@@ -6,6 +6,8 @@ from ..main import cli_main as swift_cli_main
 ROUTE_MAPPING: Dict[str, str] = {
     'pt': 'swift.cli._megatron.pt',
     'sft': 'swift.cli._megatron.sft',
+    # `rl` is the canonical name; `rlhf` is kept as a compatible alias for the same entry point.
+    'rl': 'swift.cli._megatron.rlhf',
     'rlhf': 'swift.cli._megatron.rlhf',
     'export': 'swift.cli._megatron.export',
 }

@@ -1,10 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the Tencent Hunyuan multimodal families.
-
-Ported from ``swift/model/models/tencent.py`` -- ``hunyuan_ocr`` (HunyuanOCR). The Hunyuan *text*
-checkpoints (``HunYuanMoEV1ForCausalLM`` / ``HunYuanDenseV1ForCausalLM``) live in the generic
-``llm.py`` grab-bag, not here.
-"""
+# Hunyuan multimodal families (hunyuan_ocr); the Hunyuan *text* checkpoints live in llm.py.
 from __future__ import annotations
 
 from .base import ModelArch, ModelLoader, register_model
@@ -13,9 +8,7 @@ from .base import ModelArch, ModelLoader, register_model
 @register_model
 class HunyuanOcrLoader(ModelLoader):
     """HunyuanOCR vision-language. Defaults the attention kernel to ``eager`` when the user did not
-    pass ``--attn_impl`` (legacy set this in ``get_config``). A user choice still wins: dev only puts
-    ``attn_implementation`` in the load kwargs when it was explicitly requested, so ``setdefault``
-    never overrides it."""
+    pass ``--attn_impl`` (legacy set this in ``get_config``); an explicit choice still wins."""
 
     model_type = 'hunyuan_ocr'
     model_cls = 'transformers:HunYuanVLForConditionalGeneration'

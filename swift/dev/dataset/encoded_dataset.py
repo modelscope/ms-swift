@@ -1,33 +1,19 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""A dataset whose rows were encoded by an earlier pass, not on access."""
 from __future__ import annotations
 from typing import Any, Dict, List
 
-from swift.dev.utils import get_logger
-from .swift_dataset import SwiftDataset
+from .base import SwiftDataset
 
 __all__ = ['EncodedDataset']
 
-logger = get_logger()
-
 
 class EncodedDataset(SwiftDataset):
-    """Rows that already hold ``input_ids``, so there is nothing left to do when one is indexed.
+    """Rows that already hold ``input_ids``: nothing left to do when one is indexed.
 
-    The case that needs this is ``truncation_strategy='split'``, where one long text becomes several
-    samples: the row count itself changes, so the encoding has to be materialised before anything can
-    count steps or plan packs. Loading a dataset that was stored already-encoded lands here too.
-
-    All of it is the two overrides below, and that is the point of putting the encode/measure pair on the
-    base class as methods rather than deciding between them from outside. The arrangement this replaces
-    expressed the same difference twice -- a conditional preprocessor choice in one place
-    (``sft.py:323``) and a conditional wrapper in another (``sft.py:136``) -- two expressions of one
-    decision that had to be kept in agreement by hand. Pairing them wrongly raised
-    ``KeyError: 'messages'`` one way and ``TypeError`` the other.
-
-    Note what is *not* here: no substitution, and no permutation of every index built to drive it. A row
-    that could not be encoded is not in this dataset -- the pass that built it already resolved that --
-    so :meth:`encode_row` cannot raise and the base class never reaches that branch.
+    Needed where the row count itself depends on encoding (``truncation_strategy='split'``) or the
+    dataset was stored already-encoded. The old arrangement expressed this difference twice
+    (conditional preprocessor choice + conditional wrapper) and drifted into ``KeyError``/
+    ``TypeError`` when paired wrongly. No substitution: the building pass resolved it already.
     """
 
     def __init__(self, dataset, template, **kwargs) -> None:
@@ -45,8 +31,7 @@ class EncodedDataset(SwiftDataset):
     def _measure(self) -> List[int]:
         """Read the counts the encoding pass recorded, rather than encoding everything again.
 
-        Overridden together with :meth:`encode_row`, which is the pairing the class docstring describes:
-        the base implementation would hand an already-encoded row to ``template.encode`` and fail on the
-        ``messages`` it no longer has.
+        The base would hand an already-encoded row to ``template.encode`` and fail on the
+        ``messages`` it no longer has -- the pairing the class docstring describes.
         """
         return [sum(length) if isinstance(length, (list, tuple)) else length for length in self.dataset['lengths']]

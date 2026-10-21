@@ -1,34 +1,17 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Pure-text dataset registrations, mirroring the model side's ``loader/llm.py``.
-
-The families here are grouped by *how much they have to declare*, which is also the order to read
-them in and the order to add a new dataset in:
-
-1. Declaration only -- ids, subsets, splits. No preprocessor at all: the format layer detects the
-   row shape and the base :class:`Preprocessor` runs it.
-2. Declaration plus :attr:`Preprocessor.columns` -- the row shape is standard but the fields are
-   named oddly, so a rename is all that is needed.
-3. A :class:`Preprocessor` subclass -- the row needs real work: fields merged into one turn, rows
-   filtered out, text cleaned.
-
-A preprocessor is always declared as a *class*, never an instance: the loader's ``preprocessor``
-attribute is shared by every load, and a preprocessor carries per-load state.
-"""
 from __future__ import annotations
 
 import json
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from swift.template.utils import split_str_parts_by
+from swift.dev.utils import split_str_parts_by
 
 from .base import DatasetLoader, SubsetMeta, register_dataset
 from ..preprocessor import MessagesRepairPreprocessor, Preprocessor
 
 
-# ============================================================================================
 # 1. Declaration only -- no preprocessor; the format layer detects the row shape.
-# ============================================================================================
 
 
 @register_dataset
@@ -110,9 +93,7 @@ class ZhihuKolFilteredLoader(DatasetLoader):
     tags = ['zhihu', 'qa']
 
 
-# ============================================================================================
 # 2. Declaration plus a column rename -- standard row shape, non-standard field names.
-# ============================================================================================
 
 
 class SqlCreateContextPreprocessor(Preprocessor):
@@ -145,9 +126,7 @@ class CodeExerciseLoader(DatasetLoader):
     tags = ['chat', 'coding', '🔥']
 
 
-# ============================================================================================
 # 3. A preprocessor subclass -- fields merged, rows filtered, text cleaned.
-# ============================================================================================
 
 
 class AlpacaZhPreprocessor(Preprocessor):
@@ -184,7 +163,7 @@ class LongAlpacaLoader(DatasetLoader):
     dataset_type = 'long-alpaca-12k'
     datasets = [('AI-ModelScope/LongAlpaca-12k', 'Yukang/LongAlpaca-12k')]
     preprocessor = LongAlpacaPreprocessor
-    tags = ['long-sequence', 'QA']
+    tags = ['long-sequence', 'qa']
 
 
 class RuozhibaPreprocessor(Preprocessor):
@@ -336,7 +315,7 @@ class TigerBotLawLoader(DatasetLoader):
     dataset_type = 'tigerbot-law-zh'
     datasets = [('AI-ModelScope/tigerbot-law-plugin', 'TigerResearch/tigerbot-law-plugin')]
     preprocessor = TigerBotLawPreprocessor
-    tags = ['text-generation', 'law', 'pretrained']
+    tags = ['text-generation', 'law', 'pretrain']
 
 
 class Dolly15kPreprocessor(Preprocessor):
@@ -403,10 +382,8 @@ class OrpoDpoMix40kLoader(DatasetLoader):
     tags = ['dpo', 'orpo', 'en', 'quality']
 
 
-# ============================================================================================
 # 4. Dialogue datasets whose `messages` column needs repairing first -- see
-#    `MessagesRepairPreprocessor`. Each `repair` runs before any conversion, and may drop the row.
-# ============================================================================================
+#    `MessagesRepairPreprocessor`; each `repair` runs before conversion and may drop the row.
 
 
 class MsBenchPreprocessor(MessagesRepairPreprocessor):
@@ -530,10 +507,8 @@ class MSAgentBenchLoader(DatasetLoader):
     tags = ['chat', 'agent', 'multi-round']
 
 
-# ============================================================================================
 # 5. Datasets built from scratch or from several columns at once: transcripts to split, prompts to
 #    template, one row fanning out into several.
-# ============================================================================================
 
 
 class MultiRoleAgentPreprocessor(Preprocessor):
@@ -842,9 +817,8 @@ class CountdownTaskPreprocessor(Preprocessor):
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         row = self.standardise(row)
         target = row.pop('response', None)
-        # `target` is itself an alias of `response`, so it must not go back on the row before
-        # conversion -- the alias pass would promote it and invent an assistant turn out of the answer.
-        # The row is deliberately left without one: the model has to produce the equation.
+        # `target` is itself an alias of `response`: setting it pre-conversion would make the alias
+        # pass invent a turn. The row deliberately has no assistant message.
         converted = super().preprocess({'query': self.prompt.format(numbers=row['nums'], target=target)})
         if converted is None:
             return None
@@ -935,32 +909,16 @@ class XlamFunctionCallingLoader(DatasetLoader):
     tags = ['agent', 'grpo', '🔥']
 
 
-# ============================================================================================
-# 4. Rows that are not a dialogue at all -- a label, a score, or a set of candidate answers.
-#
-# What these have in common is that the standard row they produce is *not* the usual
-# ``messages``-and-nothing-else: a classification row carries an integer ``label`` and no assistant
-# turn, an embedding row carries ``positive_messages`` / ``negative_messages`` beside ``messages``.
-# Every one of those columns is in :attr:`Preprocessor.MESSAGE_COLUMNS`, so they survive Arrow as
-# they are; nothing about the shape needs special handling below this file.
-#
-# Each also comes in several views of the same rows -- generation, classification, regression -- which
-# is why they are registered as sibling subsets with different preprocessors rather than as separate
-# datasets: the choice is a task decision, not a data one.
-# ============================================================================================
+# 4. Rows that are not a dialogue at all: a label, a score, candidate answers -- rows carrying
+# label / positive/negative_messages beside messages, in gen/cls/reg sibling-subset views.
 
 
 class ClsGenerationPreprocessor(Preprocessor):
     """A classification dump posed as generation: the label set is stated in the prompt, its name is
-    the answer.
-
-    The alternative view -- keep the integer and let a classification head read it -- is
-    :class:`JdClsPreprocessor` below. Both are offered for the datasets that have them, because which
-    one is right depends on the ``task_type`` of the run and not on the dataset.
-
-    Legacy passed ``labels`` / ``task`` / ``is_pair_seq`` to a constructor and stored a pre-formatted
-    prompt on the instance. Here they are class attributes and the prompt is built per row: the number
-    of sentence columns is what ``is_pair_seq`` really encoded, so naming them says it directly.
+    the answer. The alternative view (keep the integer for a head) is a sibling preprocessor; which
+    is right depends on the run's ``task_type``, so both are offered. Legacy passed ``labels`` /
+    ``task`` / ``is_pair_seq`` to a constructor; here they are class attributes and the prompt is
+    built per row -- ``sentence_keys`` names what ``is_pair_seq`` encoded.
     """
 
     labels: Sequence[str] = ()
@@ -1169,14 +1127,10 @@ class StackoverflowRerankingLoader(DatasetLoader):
 class SelfCognitionPreprocessor(Preprocessor):
     """Rows that teach a model who it is, with the identity left as a placeholder to fill in.
 
-    The dataset ships ``{{NAME}}`` and ``{{AUTHOR}}`` in both the question and the answer, so the
-    substituted values come from the *run* (``--model_name`` / ``--model_author``) rather than from the
-    data. That makes this the one preprocessor here that cannot be configured by declaration alone:
-    :meth:`SelfCognitionLoader.build_preprocessor` passes them in.
-
-    A row's ``tag`` says which language it is written in, which is what picks between the Chinese and
-    English form of a name. An unset name is left as-is rather than blanked: the placeholder surviving
-    into the training text is at least visible, whereas an empty string is not.
+    The dataset ships ``{{NAME}}``/``{{AUTHOR}}`` in question and answer, filled from the *run*
+    (``--model_name``/``--model_author``) -- the one preprocessor not configurable by declaration,
+    hence ``SelfCognitionLoader.build_preprocessor`` passing them in. A row's ``tag`` picks the
+    language form; an unset name stays as-is (a visible placeholder beats an invisible blank).
     """
 
     # Appended / prepended to shape the answer for a specific thinking convention; see the subsets.
@@ -1254,12 +1208,8 @@ class SelfCognitionLoader(DatasetLoader):
 
     def build_preprocessor(self, subset: SubsetMeta) -> Any:
         """Hand the run's model identity to the preprocessor -- the one thing this dataset cannot
-        declare.
-
-        Legacy reached the other way: its loader walked every ``preprocess_func`` of every dataset
-        looking for instances of this class and called a setter on them, so a dataset-specific need
-        was implemented in the shared load path. Overriding this hook keeps it in the one family that
-        has it.
+        declare. Legacy walked every dataset's ``preprocess_func`` looking for instances of this
+        class; overriding this hook keeps the need in the one family that has it.
         """
         preprocessor = super().build_preprocessor(subset)
         preprocessor.set_name_author(self._kwargs.get('model_name'), self._kwargs.get('model_author'))

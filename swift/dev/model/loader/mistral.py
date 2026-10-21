@@ -1,14 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the Mistral families.
-
-Ported from ``swift/model/models/mistral.py`` against the ``ModelLoader`` seams in ``.base``.
-
-The plain-text families declare only ``model_cls = 'transformers:AutoModelForCausalLM'`` and lean on
-the base happy path: ``AutoConfig``, tokenizer detection in ``build_processor`` (a text checkpoint
-ships no ``preprocessor_config.json``, so it resolves to ``AutoTokenizer``), and an empty
-``ModelArch``. A *template variant* -- same checkpoint loading, different chat format -- is a thin
-subclass with ``architectures=[]`` so reverse-lookup never lands on it.
-"""
+# Mistral text families + the Mistral3 multimodal chain (AQLM checkpoint dropped).
 from __future__ import annotations
 
 from transformers import AutoProcessor, AutoTokenizer
@@ -37,9 +28,8 @@ class MistralLoader(ModelLoader):
 
 @register_model
 class MixtralLoader(ModelLoader):
-    # The legacy `Mixtral-8x7b-AQLM-2Bit-1x16-hf` checkpoint is dropped: it is a niche 2-bit AQLM
-    # variant that needed its own `aqlm` + `torch>=2.2` requires group, which no longer fits the
-    # one-requires-per-family shape. See MODEL_MIGRATION.md.
+    # The legacy AQLM-2Bit checkpoint is dropped (its own aqlm + torch>=2.2 requires group no longer
+    # fits the one-requires-per-family shape, MODEL_MIGRATION.md).
     model_type = 'mixtral'
     model_cls = 'transformers:AutoModelForCausalLM'
     architectures = ['MixtralForCausalLM']
@@ -53,15 +43,15 @@ class MixtralLoader(ModelLoader):
 
     @property
     def model_arch(self) -> ModelArch:
-        # A dense LLM otherwise, but its `MixtralSparseMoeBlock` must be a ZeRO-3 leaf (see
-        # `apply_z3_leaf_modules`). Replaces legacy's hardcoded `hf_model_type -> class` z3 map entry.
+        # `MixtralSparseMoeBlock` must be a ZeRO-3 leaf (see `apply_z3_leaf_modules`); replaces
+        # legacy's hardcoded hf_model_type -> class z3 map entry.
         return ModelArch(moe_block='MixtralSparseMoeBlock')
 
 
 @register_model
 class MistralNemoLoader(ModelLoader):
-    # Two legacy groups differed only by transformers version (Nemo >=4.43, Ministral-8B >=4.46);
-    # collapsed to the higher bound so neither loads on an unsupported transformers.
+    # Two legacy groups differed only by transformers version; collapsed to the higher bound so
+    # neither loads on an unsupported transformers.
     model_type = 'mistral_nemo'
     model_cls = 'transformers:AutoModelForCausalLM'
     architectures = ['MistralForCausalLM']
@@ -170,7 +160,7 @@ class Mistral3Loader(ModelLoader):
 
 @register_model
 class Ministral3Loader(Mistral3Loader):
-    # Split from the legacy `mistral3` group: Ministral-3 needs its own `mistral-common>=1.8.6` +
+    # Split from the legacy `mistral3` group: Ministral-3 needs its own mistral-common>=1.8.6 +
     # transformers>=5 requires, which cannot share a single family-level requires.
     model_type = 'ministral3'
     template = 'mistral_2512'

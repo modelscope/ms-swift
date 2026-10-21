@@ -1,168 +1,225 @@
-"""export CLI: legacy ExportArguments -> dev Configs -> the export recipes.
-
-dev counterpart of legacy ``swift export`` (swift/pipelines/export/export.py::SwiftExport). Same
-shape as ``swift.dev.cli.sft``: parse the legacy argument surface, translate it into dev's atomic
-Configs, then hand off to a recipe. No export logic lives here -- the work is in
-``swift.dev.recipe`` (run_merge_lora / run_quantize / run_convert / export_cached_dataset).
-
-Two behaviours of legacy's ``run()`` are load-bearing and reproduced deliberately:
-
-1. ORDER. merge_lora runs FIRST and then CHAINS: it rewrites args.model to the merged directory and
-   clears args.adapters, so a following --quant_method operates on the merged weights rather than on
-   the base model plus a dangling adapter. Everything after it is an if/elif chain, so at most one of
-   quantize / ollama / cached_dataset / convert / push_to_hub runs.
-2. output_dir OWNERSHIP. When merge_lora is combined with a later step, the merged weights must NOT
-   land in the user's --output_dir (that belongs to the final artifact); legacy passes output_dir=None
-   for the merge so it falls back to '{adapter}-merged'.
-"""
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
+import os
+from typing import Any, Dict, List, Optional
 
-import dataclasses
-from typing import TYPE_CHECKING, Any, Optional
+from swift.dev.utils.logger import get_logger
 
-if TYPE_CHECKING:
-    from swift.arguments import ExportArguments
-
-
-def _dtype_name(value: object) -> Optional[str]:
-    """torch.bfloat16 -> 'bfloat16'; dev Configs carry the string form."""
-    if value is None:
-        return None
-    name = str(value)
-    return name.split('.')[-1] if name.startswith('torch.') else name
+logger = get_logger()
 
 
-def _fill_from_args(config, args: 'ExportArguments'):
-    """Copy same-named, non-None attributes off the legacy args onto a dev Config."""
-    for f in dataclasses.fields(config):
-        if not hasattr(args, f.name):
-            continue
-        value = getattr(args, f.name)
-        if value is not None:
-            setattr(config, f.name, value)
-    return config
+def parse_export_configs(argv: Optional[List[str]] = None, *, command: str = 'export') -> Dict[str, Any]:
+    """Parse argv directly into the Configs consumed by export recipes."""
+    from swift.dev.cli.legacy_coverage import reject_legacy_only_flags
+    from swift.dev.cli.parser import flag_names, parse_configs, resolve_argv
+    from swift.dev.config import (
+        CheckpointConfig,
+        ConvertConfig,
+        DatasetConfig,
+        DistributedConfig,
+        MegatronConfig,
+        ModelConfig,
+        MoEConfig,
+        PluginConfig,
+        QuantizeConfig,
+        RuntimeConfig,
+        TemplateConfig,
+        TunerConfig,
+    )
+
+    effective_argv = resolve_argv(argv)
+    reject_legacy_only_flags(command, effective_argv)
+    classes = [ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, DistributedConfig, CheckpointConfig,
+               QuantizeConfig, ConvertConfig, TunerConfig, RuntimeConfig, MegatronConfig, MoEConfig]
+    configs, remaining = parse_configs(classes, effective_argv, load_args_default=True)
+    if remaining:
+        raise ValueError(f'Unrecognized arguments: {remaining}. The dev export CLI parses the Config surface '
+                         'directly; a flag with no matching Config field is refused rather than dropped.')
+    names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'distributed_config',
+             'checkpoint_config', 'quantize_config', 'convert_config', 'tuner_config', 'runtime_config',
+             'megatron_config', 'moe_config')
+    result = dict(zip(names, configs))
+    # `swift export --backend megatron` is the single Megatron export entry (there is no separate
+    # `megatron export` command): pin the runtime prerequisites the mcore convert path needs.
+    if result['distributed_config'].backend == 'megatron':
+        from swift.dev.cli._megatron_compat import enter_megatron_backend
+        enter_megatron_backend(result['distributed_config'])
+    result['checkpoint_config']._output_dir_explicit = 'output_dir' in flag_names(effective_argv)
+    return result
 
 
-def export_args_to_configs(args: 'ExportArguments') -> dict:
-    """ExportArguments -> the dev Configs the export recipes consume.
-
-    Returned as a dict rather than a fixed tuple because each export path needs a different subset
-    (quantize wants QuantizeConfig + DatasetConfig, convert wants ConvertConfig + DistributedConfig,
-    merge_lora wants TunerConfig), and a 8-tuple at every call site would be unreadable.
-    """
-    from swift.dev.config import (CheckpointConfig, ConvertConfig, DatasetConfig, DistributedConfig, ModelConfig,
-                                   QuantizeConfig, TemplateConfig, TunerConfig)
-
-    model_config = _fill_from_args(ModelConfig(), args)
-    model_config.torch_dtype = _dtype_name(args.torch_dtype)
-
-    template_config = _fill_from_args(TemplateConfig(), args)
-    dataset_config = _fill_from_args(DatasetConfig(), args)
-    distributed_config = _fill_from_args(DistributedConfig(), args)
-    checkpoint_config = _fill_from_args(CheckpointConfig(), args)
-    quantize_config = _fill_from_args(QuantizeConfig(), args)
-    convert_config = _fill_from_args(ConvertConfig(), args)
-    convert_config.test_convert_dtype = _dtype_name(args.test_convert_dtype) or 'float32'
-
-    tuner_config = _fill_from_args(TunerConfig(), args)
-    tuner_config.adapters = list(args.adapters or [])
-
-    return {
-        'model_config': model_config,
-        'template_config': template_config,
-        'dataset_config': dataset_config,
-        'distributed_config': distributed_config,
-        'checkpoint_config': checkpoint_config,
-        'quantize_config': quantize_config,
-        'convert_config': convert_config,
-        'tuner_config': tuner_config,
-    }
+def _derive_output_dir(configs: Dict[str, Any]) -> None:  # noqa: C901
+    """Derive the default output as ``{source}-{operation}``; the dir belongs to the final step only,
+    so a merge chained into quantization writes to its own ``{adapter}-merged`` directory."""
+    checkpoint = configs['checkpoint_config']
+    if checkpoint._output_dir_explicit:
+        return
+    convert = configs['convert_config']
+    quantize = configs['quantize_config']
+    tuner = configs['tuner_config']
+    source = tuner.adapters[0] if tuner.adapters else configs['model_config'].model
+    if not source:
+        return
+    suffix = None
+    if convert.to_peft_format:
+        suffix = 'peft'
+    elif quantize.quant_method:
+        suffix = quantize.quant_method
+        if quantize.quant_bits is not None:
+            suffix += f'-int{quantize.quant_bits}'
+    elif convert.merge_lora:
+        suffix = 'merged'
+    elif convert.to_mcore:
+        suffix = 'mcore'
+    elif convert.to_hf:
+        suffix = 'hf'
+    elif convert.to_cached_dataset:
+        suffix = 'cached_dataset'
+    if suffix:
+        parent, name = os.path.split(source.rstrip('/'))
+        checkpoint.output_dir = os.path.join(parent, f'{name}-{suffix}')
 
 
-def _reject_unwired(args: 'ExportArguments') -> None:
-    """Refuse the legacy export paths that have no dev recipe yet.
-
-    These would otherwise parse fine and then silently do nothing, which is worse than failing: the
-    user gets an exit code 0 and an empty output directory.
-    """
-    if getattr(args, 'to_ollama', False):
-        raise NotImplementedError('`--to_ollama` is not wired into the dev export pipeline: there is no ollama recipe '
-                                  'in swift.dev.recipe yet. Use legacy `swift export --to_ollama`.')
-    if getattr(args, 'push_to_hub', False):
-        raise NotImplementedError('`--push_to_hub` is not wired into the dev export pipeline: pushing is a hub '
-                                  'operation with no dev recipe. Use legacy `swift export --push_to_hub`.')
-    if getattr(args, 'to_peft_format', False):
-        raise NotImplementedError('`--to_peft_format` is not wired into the dev export pipeline. Use legacy '
-                                  '`swift export --to_peft_format`.')
+def _force_eager_encoding_for_cached_dataset(configs: Dict[str, Any]) -> None:
+    """Pin ``lazy_tokenize=False`` for ``--to_cached_dataset``: a cached dataset must be materialised
+    and saved, which lazy tokenisation cannot do; warn when overriding an explicit True."""
+    convert_config = configs['convert_config']
+    dataset_config = configs['dataset_config']
+    if not convert_config.to_cached_dataset or dataset_config.lazy_tokenize is False:
+        return
+    if dataset_config.lazy_tokenize:
+        logger.warning('--to_cached_dataset overrides lazy_tokenize=True to False: a cached dataset must be '
+                       'encoded eagerly to be materialised and saved.')
+    dataset_config.lazy_tokenize = False
 
 
-def export_main(args: Optional[Any] = None) -> Optional[str]:
-    """dev entry point for ``swift export``; returns the output path of the step that ran.
+def _validate_export(configs: Dict[str, Any]) -> None:
+    quantize_config = configs['quantize_config']
+    convert_config = configs['convert_config']
+    dataset_config = configs['dataset_config']
+    checkpoint_config = configs['checkpoint_config']
+    distributed_config = configs['distributed_config']
 
-    Returns None when no export flag was given (legacy's run() likewise falls through silently).
-    """
-    from swift.arguments import ExportArguments
-    from swift.dev.recipe import export_cached_dataset, run_convert, run_merge_lora, run_quantize
-    from swift.dev.utils import parse_args
+    if quantize_config.quant_bits is not None and quantize_config.quant_method is None:
+        raise ValueError('Please specify the quantization method using `--quant_method`.')
+    if (quantize_config.quant_method and quantize_config.quant_method != 'fp8'
+            and quantize_config.quant_bits is None):
+        raise ValueError('Please specify `--quant_bits`.')
+    if quantize_config.quant_method in {'gptq', 'gptq_v2', 'awq'} and not dataset_config.dataset:
+        raise ValueError(f'quant_method={quantize_config.quant_method!r} needs a calibration dataset.')
+    if (convert_config.to_mcore or convert_config.to_hf) and convert_config.merge_lora:
+        raise ValueError('`--merge_lora` cannot be combined with `--to_mcore`/`--to_hf` in the dev export CLI. '
+                         'Run the merge and conversion as separate commands.')
+    if convert_config.to_mcore and convert_config.to_hf:
+        raise ValueError('Choose exactly one conversion direction: --to_mcore or --to_hf.')
 
-    if isinstance(args, ExportArguments):
-        export_args = args
-    else:
-        export_args, remaining = parse_args(ExportArguments, args)
-        if remaining:
-            raise ValueError(f'Unrecognized arguments: {remaining}')
+    requested_save_options = {'safe_serialization', 'max_shard_size'}.intersection(
+        getattr(checkpoint_config, '_explicit_fields', ()))
+    chained_merge = bool(convert_config.merge_lora
+                         and (quantize_config.quant_method or checkpoint_config.push_to_hub))
+    if requested_save_options and not ((convert_config.merge_lora and not chained_merge) or convert_config.to_hf
+                                       or quantize_config.quant_method):
+        raise NotImplementedError(
+            f'{sorted(requested_save_options)} do not configure the selected export operation. They are supported '
+            'for a standalone LoRA merge, for quantization, or for mcore-to-HF conversion where applicable.')
+    if convert_config.to_hf and not checkpoint_config.safe_serialization:
+        raise NotImplementedError('mcore-to-HF conversion always writes safetensors; use --safe_serialization true.')
+    if (convert_config.to_hf and distributed_config.bridge_backend == 'megatron-bridge'
+            and 'max_shard_size' in requested_save_options):
+        raise NotImplementedError(
+            'megatron-bridge AutoBridge does not expose max_shard_size. Use --bridge_backend mcore-bridge or '
+            'remove the option.')
 
-    _reject_unwired(export_args)
-    configs = export_args_to_configs(export_args)
-    output_dir = configs['checkpoint_config'].output_dir
+
+def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
+    """Execute an already parsed export Config set."""
+    from swift.dev.config import process_and_validate_configs
+    from swift.dev.recipe.export import (
+        export_cached_dataset,
+        run_convert,
+        run_merge_lora,
+        run_push_to_hub,
+        run_quantize,
+        run_to_peft_format,
+    )
+
+    _validate_export(configs)
+    _derive_output_dir(configs)
+    # Pin lazy_tokenize before the shared process/validate pass: _check_lazy_tokenize and
+    # builders/dataset._encode_mode would otherwise resolve it to lazy (the multimodal default) and refuse.
+    _force_eager_encoding_for_cached_dataset(configs)
+    # Export output is a final artifact, not a training work directory. Recipes own directory creation
+    # and their replace/overwrite policy, so run initialization only normalizes the path.
+    process_and_validate_configs(configs, add_version=False, create_output_dir=False)
+
+    model_config = configs['model_config']
+    template_config = configs['template_config']
+    dataset_config = configs['dataset_config']
+    distributed_config = configs['distributed_config']
+    checkpoint_config = configs['checkpoint_config']
+    quantize_config = configs['quantize_config']
+    convert_config = configs['convert_config']
+    tuner_config = configs['tuner_config']
+
+    output_dir = checkpoint_config.output_dir
     result: Optional[str] = None
 
-    if export_args.merge_lora:
-        # Only --quant_method can actually follow a merge: ExportArguments.__post_init__ force-clears
-        # merge_lora when to_mcore/to_hf is set (an mcore LoRA is merged in Megatron format instead,
-        # see ConvertConfig.mcore_adapter), so that combination never reaches here.
-        chains = bool(export_args.quant_method)
+    if convert_config.to_peft_format:
+        if not tuner_config.adapters:
+            raise ValueError('--to_peft_format requires at least one --adapters path.')
+        converted = run_to_peft_format(tuner_config.adapters[0], output_dir)
+        tuner_config.adapters[0] = converted
+        result = converted
+
+    if convert_config.merge_lora:
+        chains = bool(quantize_config.quant_method or checkpoint_config.push_to_hub)
         merged = run_merge_lora(
-            configs['model_config'],
-            configs['tuner_config'],
-            template_config=configs['template_config'],
-            # When chaining, checkpoint_config is withheld too: run_merge_lora resolves
-            # output_dir -> checkpoint_config.output_dir -> '{adapter}-merged', so passing it would
-            # still drop the intermediate merge into the FINAL artifact's directory.
-            checkpoint_config=None if chains else configs['checkpoint_config'],
+            model_config,
+            tuner_config,
+            template_config=template_config,
+            checkpoint_config=None if chains else checkpoint_config,
             output_dir=None if chains else output_dir,
-            # legacy's --exist_ok governs whether an existing output dir may be overwritten; the
-            # recipe spells the same thing as replace_if_exists.
-            replace_if_exists=export_args.exist_ok)
-        # Chain: the merged weights become the input model, and the adapters are spent.
-        configs['model_config'].model = merged
-        configs['tuner_config'].adapters = []
+            replace_if_exists=convert_config.exist_ok,
+            parallel_size=configs['runtime_config'].weight_transform_parallel_size)
+        model_config.model = merged
+        tuner_config.adapters = []
         result = merged
 
-    # if/elif: legacy runs at most ONE of these per invocation.
-    if export_args.quant_method:
+    # Keep legacy's if/elif contract: at most one post-merge action per invocation.
+    if quantize_config.quant_method:
         result = run_quantize(
-            configs['model_config'],
-            configs['template_config'],
-            configs['quantize_config'],
-            configs['dataset_config'],
+            model_config,
+            template_config,
+            quantize_config,
+            dataset_config,
             output_dir=output_dir,
-            quant_n_samples=export_args.quant_n_samples,
-            batch_size=export_args.quant_batch_size or 1,
-            group_size=export_args.group_size)
-    elif export_args.to_cached_dataset:
+            safe_serialization=checkpoint_config.safe_serialization,
+            max_shard_size=checkpoint_config.max_shard_size)
+    elif convert_config.to_cached_dataset:
         train_dir, _ = export_cached_dataset(
-            configs['model_config'], configs['template_config'], configs['dataset_config'], output_dir=output_dir)
+            model_config, template_config, dataset_config, output_dir=output_dir,
+            template_mode=convert_config.template_mode, store_format=convert_config.store_format,
+            store_encoded=convert_config.store_encoded, store_fields=convert_config.store_fields)
         result = train_dir
-    elif export_args.to_hf or export_args.to_mcore:
+    elif convert_config.to_hf or convert_config.to_mcore:
         result = run_convert(
-            configs['model_config'],
-            configs['convert_config'],
-            template_config=configs['template_config'],
-            distributed_config=configs['distributed_config'],
-            checkpoint_config=configs['checkpoint_config'],
+            model_config,
+            convert_config,
+            template_config=template_config,
+            distributed_config=distributed_config,
+            checkpoint_config=checkpoint_config,
+            megatron_config=configs['megatron_config'],
+            moe_config=configs['moe_config'],
             output_dir=output_dir)
+    if checkpoint_config.push_to_hub:
+        source = result or (tuner_config.adapters[0] if tuner_config.adapters else model_config.model)
+        result = run_push_to_hub(source, checkpoint_config, dataset_config, convert_config.commit_message)
     return result
+
+
+def export_main(argv: Optional[List[str]] = None) -> Optional[str]:
+    """dev entry point for ``swift export``; return the output path of the step that ran."""
+    return run_export_configs(parse_export_configs(argv))
 
 
 if __name__ == '__main__':

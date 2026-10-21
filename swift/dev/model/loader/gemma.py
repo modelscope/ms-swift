@@ -1,17 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the Google Gemma families (text + vision), from ``swift/model/models/gemma.py``.
-
-Migrated: the plain causal-LM ``gemma`` / ``gemma2`` / ``gemma3_text`` and the transformers-native
-multimodal ``paligemma`` / ``gemma3_vision`` / ``gemma3n``. Gemma-3 trains best with eager attention
-(legacy set it in ``get_config``); ``_EagerAttnDefault`` defaults it while still honouring a user
-``--attn_impl`` (dev only puts ``attn_implementation`` in the load kwargs when explicitly requested).
-
-Also migrated: ``gemma_emb`` (EmbeddingGemma), ``gemma4`` / ``gemma4_unified`` and
-``diffusion_gemma`` -- see the classes at the bottom. Legacy's ``_patch_gemma4_forward`` (a 200-line
-fork of ``forward`` that injects dummy image/audio features so the vision path stays alive under
-DeepSpeed ZeRO-3) is NOT ported: dev keeps the vision path alive without forking forward, via the
-data-side dummy + ``apply_vision_keep_alive`` aligner hooks (same mechanism as the Qwen-VL loaders).
-"""
+# Google Gemma families; legacy's gemma4 forward-fork is replaced by keep-alive aligner hooks.
 from __future__ import annotations
 
 from ..keep_alive import apply_vision_keep_alive
@@ -147,9 +135,8 @@ class Gemma3VisionLoader(_EagerAttnDefault, ModelLoader):
 
 @register_model
 class Gemma3nLoader(ModelLoader):
-    """Gemma-3n (vision + audio). Legacy also ran ``patch_output_to_input_device`` on the vision/audio
-    embedders for HF ``device_map`` multi-GPU; dev uses twinkle strategies (no HF device_map, see
-    PATCH_INVENTORY.md), so that patch is obsolete and dropped."""
+    """Gemma-3n (vision + audio). Legacy's ``patch_output_to_input_device`` on the embedders patched
+    HF ``device_map`` multi-GPU; dev uses twinkle strategies, so it is dropped."""
 
     model_type = 'gemma3n'
     model_cls = 'transformers:Gemma3nForConditionalGeneration'
@@ -176,18 +163,16 @@ class Gemma3nLoader(ModelLoader):
 @register_model
 class GemmaEmbLoader(ModelLoader):
     """EmbeddingGemma: a ``Gemma3TextModel`` backbone served as a sentence embedder. Legacy loaded it
-    through ``SentenceTransformersLoader`` (``SentenceTransformer(model_dir)``); on dev that pipeline
-    construction lives at the model layer (``swift/dev/model/sentence_transformer_model.py``), so the
-    loader only carries registration facts and pins the intrinsic embedding task. ``Gemma3TextModel``
-    is its own architecture (distinct from ``gemma3_text``'s ``Gemma3ForCausalLM``), so declaring it
-    does not collide with any other family on reverse-lookup.
-    """
+    through ``SentenceTransformersLoader``; on dev that pipeline construction lives at the model
+    layer (sentence_transformer_model.py), so the loader only carries registration facts, pins the
+    embedding task, and marks the framework. Its own architecture, so no reverse-lookup collision."""
 
     model_type = 'gemma_emb'
     model_cls = 'transformers:Gemma3TextModel'
     architectures = ['Gemma3TextModel']
     template = 'dummy'
     task_type = 'embedding'
+    model_framework = 'sentence_transformers'
     models = [('google/embeddinggemma-300m', 'google/embeddinggemma-300m')]
 
 
@@ -205,9 +190,9 @@ class _Gemma4KeepAlive:
 
 @register_model
 class Gemma4Loader(_Gemma4KeepAlive, ModelLoader):
-    """Gemma-4 (vision + audio, MoE). Reverse-lookup owner for ``Gemma4ForConditionalGeneration``; its
-    base group is the ``gemma4_nothinking`` (E2B/E4B) template. MoE sparse block is ``Gemma4TextExperts``
-    (the z3 leaf legacy set by hand). Shares the ``gemma3n`` module layout."""
+    """Gemma-4 (vision + audio, MoE). Reverse-lookup owner for ``Gemma4ForConditionalGeneration``;
+    base group is the ``gemma4_nothinking`` template. MoE sparse block is ``Gemma4TextExperts`` (the
+    z3 leaf legacy set by hand). Shares the ``gemma3n`` module layout."""
 
     model_type = 'gemma4'
     model_cls = 'transformers:Gemma4ForConditionalGeneration'
@@ -251,10 +236,9 @@ class Gemma4ThinkingLoader(Gemma4Loader):
 
 @register_model
 class Gemma4UnifiedLoader(_Gemma4KeepAlive, ModelLoader):
-    """Gemma-4 Unified: a text+vision variant whose module layout drops the separate vision_tower part
-    (``gemma4_unified`` arch: LLM + embed_vision/embed_audio aligners only). ``Gemma4Unified*`` is not
-    in transformers 5.5 (needs >=5.10.1); the ``model_cls`` string is resolved lazily so the absent
-    class costs nothing until a new-enough transformers is installed."""
+    """Gemma-4 Unified: a text+vision variant whose layout drops the separate vision_tower part
+    (LLM + embed_vision/embed_audio aligners only). ``Gemma4Unified*`` needs transformers >=5.10.1;
+    the ``model_cls`` string is resolved lazily so the absent class costs nothing."""
 
     model_type = 'gemma4_unified'
     model_cls = 'transformers:Gemma4UnifiedForConditionalGeneration'
@@ -280,11 +264,10 @@ class Gemma4UnifiedLoader(_Gemma4KeepAlive, ModelLoader):
 @register_model
 class DiffusionGemmaLoader(ModelLoader):
     """DiffusionGemma: block-diffusion generation (encoder LLM + decoder), not autoregressive.
-    ``DiffusionGemmaForBlockDiffusion`` is not in transformers 5.5 (needs >=5.11); ``model_cls`` is
-    resolved lazily. ``process_model`` keeps legacy's two generation-time settings: block diffusion
-    does not use the AR ``prepare_inputs_for_generation`` path (cleared) and relies on a KV cache
-    (``use_cache=True``). No vision keep-alive: its forward does not branch on media presence.
-    """
+    ``DiffusionGemmaForBlockDiffusion`` needs transformers >=5.11 (lazy ``model_cls``).
+    ``process_model`` keeps legacy's two generation-time settings: block diffusion does not use the
+    AR ``prepare_inputs_for_generation`` path (cleared) and relies on a KV cache. No keep-alive: its
+    forward does not branch on media presence."""
 
     model_type = 'diffusion_gemma'
     model_cls = 'transformers:DiffusionGemmaForBlockDiffusion'

@@ -1,14 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the Yi families.
-
-Ported from ``swift/model/models/yi.py``. Yi is a Llama-architecture text model; the legacy single
-``yi`` model_type carried several per-group chat templates, which become thin template-variant
-subclasses here (``architectures=[]`` so reverse-lookup only ever lands on the base ``yi``).
-
-``yi_vl`` is intentionally not migrated: it git-clones the upstream 01-ai/Yi repo, appends it to
-``sys.path`` and loads an external ``llava`` package to build the vision tower -- a 2024-01
-construction too complex to carry forward. See MODEL_MIGRATION.md.
-"""
+# Yi (Llama-arch) + template-variant subclasses; yi_vl dropped (git-clone construction, MODEL_MIGRATION.md).
 from __future__ import annotations
 
 from .base import ModelLoader, register_model

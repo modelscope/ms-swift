@@ -73,32 +73,32 @@ def test_lengths_match_add_length_preprocessor(processor, dataset):
 
 def test_rows_match_lazy_llm_dataset(processor, dataset):
     from swift.dev.dataset import LazyLLMDataset, SwiftDataset
-    lazy = LazyLLMDataset(dataset, build_template(processor).encode, random_state=42)
-    ds = SwiftDataset(dataset, build_template(processor), load_from_cache_file=False, random_state=42)
+    lazy = LazyLLMDataset(dataset, build_template(processor).encode)
+    ds = SwiftDataset(dataset, build_template(processor), load_from_cache_file=False)
     for i in range(len(dataset)):
         got, want = ds[i], lazy[i]
         assert got.keys() == want.keys()
         assert all(got[k] == want[k] for k in got)
 
 
-def test_substitution_matches_lazy_llm_dataset(processor, dataset):
-    """The same test at a length that rejects *some* rows, so the substitution path is compared too.
+def test_unencodable_row_raises_rather_than_substitutes(processor, dataset):
+    """Neither class picks a replacement any more -- twinkle's ``MapRetryDataset`` does, above them.
 
-    Both walk one permutation of the same seed with the same cursor, so a substituted row has to be the
-    same substituted row -- and building the permutation on first failure rather than up front must not
-    change which one it is. 48 is chosen against the real distribution (40-60 tokens): tight enough that
-    rows are rejected, loose enough that a substitute can be found.
+    48 is chosen against the real distribution (40-60 tokens): tight enough that some rows are rejected.
+    The contract is that the rejection propagates, because a substitute drawn here would be invisible to
+    the reader that owns the reproducible draw.
     """
     from swift.dev.dataset import LazyLLMDataset, SwiftDataset
-    lazy = LazyLLMDataset(dataset, build_template(processor, max_length=48).encode, random_state=42)
-    ds = SwiftDataset(dataset, build_template(processor, max_length=48), load_from_cache_file=False, random_state=42)
+    lazy = LazyLLMDataset(dataset, build_template(processor, max_length=48).encode)
+    ds = SwiftDataset(dataset, build_template(processor, max_length=48), load_from_cache_file=False)
 
-    assert ds._idx_list is None, 'nothing should be permuted before a failure happens'
-    served = [(ds[i], lazy[i]) for i in range(len(dataset))]
-    assert ds._idx_list is not None, 'this length must reject some rows, or the test proves nothing'
-    for got, want in served:
-        assert got.keys() == want.keys()
-        assert all(got[k] == want[k] for k in got)
+    assert any(length == 0 for length in ds.lengths), 'this max_length must reject some rows'
+    rejected = [i for i, length in enumerate(ds.lengths) if not length]
+    for i in rejected:
+        with pytest.raises(Exception):
+            ds[i]
+        with pytest.raises(Exception):
+            lazy[i]
 
 
 def test_getitem_returns_one_dict(processor, dataset):
@@ -111,12 +111,10 @@ def test_nothing_is_measured_until_asked(processor, dataset):
     from swift.dev.dataset import SwiftDataset
     ds = SwiftDataset(dataset, build_template(processor), load_from_cache_file=False)
     assert ds._lengths is None, 'constructing should not measure'
-    assert ds._idx_list is None, 'constructing should not permute'
 
     for i in range(len(dataset)):
         ds[i]
     assert ds._lengths is None, 'serving rows should not measure'
-    assert ds._idx_list is None, 'serving rows that all encode should not permute'
 
     measured = ds.lengths
     assert ds._lengths is not None

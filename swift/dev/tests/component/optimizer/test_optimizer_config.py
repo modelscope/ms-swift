@@ -22,7 +22,7 @@ def _recording_megatron_model():
     Subclassed rather than mocked so ``_is_megatron_model``'s isinstance check picks the Megatron
     branch for real. Megatron's own __init__ is skipped: nothing here touches the model.
     """
-    from swift.dev.model.megatron.model import MegatronModel
+    from twinkle.model.megatron import MegatronModel
 
     class _Recorder(MegatronModel):
 
@@ -40,18 +40,20 @@ def _recording_megatron_model():
 
 def _configure(**cfg_kwargs):
     """Run configure_optimizer against a recording Megatron model; return the recorded calls."""
-    from swift.dev.config import TrainConfig
-    from swift.dev.optimizer import configure_optimizer
+    from swift.dev.config import DistributedConfig, TrainConfig
+    from swift.dev.builders.optimizer import configure_optimizer
 
     cfg = TrainConfig(**cfg_kwargs)
     model = _recording_megatron_model()
-    configure_optimizer(model, cfg, num_training_steps=10)
+    # the megatron branch is selected by DistributedConfig now, not by the model's class
+    configure_optimizer(model, cfg, num_training_steps=10,
+                        distributed_config=DistributedConfig(backend='megatron'))
     return model.calls
 
 
 def test_megatron_forwards_weight_decay_clip_grad_and_decay_style():
     calls = _configure(
-        learning_rate=3e-5, weight_decay=0.123, clip_grad=0.456, lr_scheduler_type='linear', warmup_ratio=0.1)
+        learning_rate=3e-5, weight_decay=0.123, clip_grad=0.456, lr_scheduler='linear', warmup_ratio=0.1)
 
     _, opt_kwargs = calls['optimizer']
     assert opt_kwargs['weight_decay'] == 0.123
@@ -82,9 +84,9 @@ def test_megatron_weight_decay_survives_a_scheduler_step():
     """
     import torch
 
-    from swift.dev.model.megatron.model import MegatronModel
+    from twinkle.model.megatron import MegatronModel
 
-    calls = _configure(learning_rate=3e-5, weight_decay=0.123, lr_scheduler_type='cosine')
+    calls = _configure(learning_rate=3e-5, weight_decay=0.123, lr_scheduler='cosine')
     _, opt_kwargs = calls['optimizer']
     _, sched_kwargs = calls['scheduler']
 
@@ -161,7 +163,7 @@ def test_grad_clipping_threshold_is_one_knob_on_both_backends():
         TrainConfig,
         validate_configs,
     )
-    from swift.dev.optimizer import resolve_max_grad_norm
+    from swift.dev.builders.optimizer import resolve_max_grad_norm
 
     # Neither name is backend-restricted any more.
     _validate(max_grad_norm=0.5)
@@ -290,7 +292,7 @@ def test_hf_backed_schedules_reproduce_hf_lr_curve(swift_name, specific):
     """
     import torch
 
-    from swift.dev.naming import resolve_scheduler
+    from swift.dev.utils.naming import resolve_scheduler
     from transformers import get_scheduler
 
     def curve(build):
@@ -325,7 +327,7 @@ def test_twinkle_can_construct_the_adapter_classes():
     from torch.optim.lr_scheduler import LRScheduler
     from twinkle.utils.loader import construct_class
 
-    from swift.dev.naming import resolve_scheduler
+    from swift.dev.utils.naming import resolve_scheduler
 
     param = torch.nn.Parameter(torch.zeros(2))
     optimizer = torch.optim.AdamW([param], lr=1e-4)
@@ -372,12 +374,12 @@ def _recording_hf_model():
 def _hf_warmup_steps(warmup_ratio, num_training_steps):
     """The warmup step count dev actually hands to the HF scheduler."""
     from swift.dev.config import TrainConfig
-    from swift.dev.optimizer import configure_optimizer
+    from swift.dev.builders.optimizer import configure_optimizer
 
     model = _recording_hf_model()
     configure_optimizer(
         model,
-        TrainConfig(learning_rate=1e-4, lr_scheduler_type='linear', warmup_ratio=warmup_ratio),
+        TrainConfig(learning_rate=1e-4, lr_scheduler='linear', warmup_ratio=warmup_ratio),
         num_training_steps=num_training_steps)
     return model.calls['scheduler'][1]['num_warmup_steps']
 
@@ -448,7 +450,7 @@ def test_megatron_warmup_stays_fractional_while_hf_rounds():
     compare the step index against an integer boundary, where 2.5 is meaningless. Asserting both in
     one place keeps a future 'simplification' from unifying them.
     """
-    megatron_calls = _configure(learning_rate=1e-4, lr_scheduler_type='linear', warmup_ratio=0.05)
+    megatron_calls = _configure(learning_rate=1e-4, lr_scheduler='linear', warmup_ratio=0.05)
     _, sched_kwargs = megatron_calls['scheduler']
     megatron_warmup = sched_kwargs['lr_warmup_steps']
     assert megatron_warmup == pytest.approx(0.05 * 10), \
@@ -483,7 +485,7 @@ def test_hf_lr_curve_matches_transformers_with_nonzero_warmup(sched_type, warmup
 
     import torch
 
-    from swift.dev.naming import resolve_scheduler
+    from swift.dev.utils.naming import resolve_scheduler
     from transformers import TrainingArguments, get_scheduler
 
     # resolve_scheduler returns a CLASS for dev's own adapters but a twinkle NAME for cosine/linear
@@ -543,7 +545,7 @@ def test_constant_with_warmup_holds_instead_of_decaying():
     """
     import torch
 
-    from swift.dev.naming import resolve_scheduler
+    from swift.dev.utils.naming import resolve_scheduler
 
     param = torch.nn.Parameter(torch.zeros(2))
     optimizer = torch.optim.AdamW([param], lr=1e-4)
@@ -559,7 +561,7 @@ def test_constant_with_warmup_holds_instead_of_decaying():
 
 def test_megatron_cosine_with_min_lr_needs_no_extra_schedule():
     """On Megatron the floor is a first-class scheduler arg, so 'cosine' + min_lr is the whole story."""
-    calls = _configure(learning_rate=3e-5, lr_scheduler_type='cosine_with_min_lr', min_lr=1e-6)
+    calls = _configure(learning_rate=3e-5, lr_scheduler='cosine_with_min_lr', min_lr=1e-6)
 
     _, sched_kwargs = calls['scheduler']
     assert sched_kwargs['lr_decay_style'] == 'cosine'
@@ -569,21 +571,8 @@ def test_megatron_cosine_with_min_lr_needs_no_extra_schedule():
 def test_megatron_cosine_with_min_lr_requires_a_floor():
     """Accepting the name without min_lr would run plain cosine -- the name silently not honoured."""
     with pytest.raises(ValueError, match='needs TrainConfig.min_lr'):
-        _validate(lr_scheduler_type='cosine_with_min_lr')
-    _validate(lr_scheduler_type='cosine_with_min_lr', min_lr=1e-6)
-
-
-def test_scheduler_kwargs_accepts_cli_json_and_rejects_garbage():
-    """The CLI can only deliver a string, so JSON must be parsed here rather than forwarded."""
-    from swift.dev.naming import parse_scheduler_kwargs
-
-    assert parse_scheduler_kwargs('{"min_lr": 1e-6}') == {'min_lr': 1e-6}
-    assert parse_scheduler_kwargs({'min_lr': 2e-6}) == {'min_lr': 2e-6}
-    assert parse_scheduler_kwargs(None) == {}
-    with pytest.raises(ValueError, match='not valid JSON'):
-        parse_scheduler_kwargs('min_lr=1e-6')
-    with pytest.raises(ValueError, match='must be a JSON object'):
-        parse_scheduler_kwargs('[1, 2]')
+        _validate(lr_scheduler='cosine_with_min_lr')
+    _validate(lr_scheduler='cosine_with_min_lr', min_lr=1e-6)
 
 
 def test_unsupported_lr_scheduler_type_fails_fast_on_both_backends():
@@ -594,14 +583,14 @@ def test_unsupported_lr_scheduler_type_fails_fast_on_both_backends():
     metric rather than a step count, which is not what configure_optimizer wires up. That makes it
     the right shape of config to fail loudly rather than train a different schedule.
     """
-    from swift.dev.naming import resolve_megatron_decay_style, resolve_scheduler
+    from swift.dev.utils.naming import resolve_megatron_decay_style, resolve_scheduler
 
     with pytest.raises(NotImplementedError, match='Megatron'):
         resolve_megatron_decay_style('reduce_lr_on_plateau')
     with pytest.raises(NotImplementedError, match='Transformers'):
         resolve_scheduler('reduce_lr_on_plateau')
     with pytest.raises(NotImplementedError):
-        _configure(lr_scheduler_type='reduce_lr_on_plateau')
+        _configure(lr_scheduler='reduce_lr_on_plateau')
 
 
 def test_backends_may_support_different_scheduler_sets():
@@ -612,7 +601,7 @@ def test_backends_may_support_different_scheduler_sets():
     OptimizerParamScheduler's decay styles. 'polynomial' is the asymmetry -- and the message has to
     name the refusing backend, or "not supported" reads like a dev-wide limitation.
     """
-    from swift.dev.naming import resolve_megatron_decay_style, resolve_scheduler
+    from swift.dev.utils.naming import resolve_megatron_decay_style, resolve_scheduler
 
     assert resolve_scheduler('polynomial') is not None
     with pytest.raises(NotImplementedError, match='not supported on the Megatron backend'):
@@ -626,7 +615,7 @@ def test_megatron_decay_styles_are_values_megatron_accepts():
     (e.g. HF's 'inverse_sqrt' spelling instead of Megatron's 'inverse-square-root') would only
     surface deep inside OptimizerParamScheduler.get_lr as a silently skipped decay branch.
     """
-    from swift.dev.naming import _MEGATRON_DECAY_STYLE_MAP, resolve_megatron_decay_style
+    from swift.dev.utils.naming import _MEGATRON_DECAY_STYLE_MAP, resolve_megatron_decay_style
 
     legal = {'constant', 'linear', 'cosine', 'inverse-square-root', 'WSD'}
     assert set(_MEGATRON_DECAY_STYLE_MAP.values()) <= legal

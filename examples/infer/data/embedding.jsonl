@@ -1,0 +1,4 @@
+{"messages": [{"role": "user", "content": "What is the capital of China?"}]}
+{"messages": [{"role": "user", "content": "The capital of China is Beijing."}]}
+{"messages": [{"role": "user", "content": "How do I reset my password?"}]}
+{"messages": [{"role": "user", "content": "Click 'Forgot password' on the login page, then follow the email link."}]}

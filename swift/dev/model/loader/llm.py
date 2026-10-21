@@ -1,25 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the assorted single-family text LLMs (from ``swift/model/models/llm.py``).
-
-These are the "one register_model each" text models that do not warrant their own file. Almost all are
-plain ``AutoModelForCausalLM`` with no legacy loader at all; the three that had one keep only its real
-behaviour (a processor tweak), see ``GrokLoader`` / ``PolyLMLoader`` / ``Yuan2Loader`` below. Text
-models keep the default empty ``ModelArch``; MoE families are flagged ``is_moe`` (no ``moe_block``
-yet -- same call as qwen3_moe / deepseek: z3 is unwired and the leaf class name is not guessed).
-
-Architectures absent from transformers 5.5 (``BailingMoe*``, ``BlueLM``, ``Orion``, ``Xverse``,
-``Yuan``, ``Grok1Model``, ``HYV3``, ``MiMo``) are remote-code checkpoints loaded through the g7
-``trust_remote_code`` flag; the in-tree ones (GptOss/Dbrx/Olmoe/Dots1/HunYuan*/Cohere/Longcat/Youtu/
-Bloom/GPT2) leave it False.
-
-Legacy per-``ModelGroup`` template differences become ``architectures=[]`` template-variant subclasses
-(the llama/qwen pattern): olmoe/olmoe_0924, ling2/ring2, ling2/ring2_5, hy_v3_preview/hy_v3, qwen/mimo_rl.
-
-Not migrated here (see MODEL_MIGRATION.md):
-  * ``iquestcoder`` -- pinned ``transformers==4.52.4`` (dead on dev's 5.5).
-  * ``qwen2_gte`` -- a ``SentenceTransformersLoader`` (embedding backbone via sentence-transformers),
-    which is a different load path than ``ModelLoader``; belongs with the task-head/embedding pass.
-"""
+# Single-family text LLMs: plain declarations (iquestcoder/qwen2_gte dropped, MODEL_MIGRATION.md).
 from __future__ import annotations
 
 from .base import ModelLoader, register_model

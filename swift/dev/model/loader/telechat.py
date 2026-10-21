@@ -1,10 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the TeleChat families.
-
-Ported from ``swift/model/models/telechat.py``. ``telechat`` copies a handful of special-token ids
-off the checkpoint's ``generation_config`` onto the processor (legacy did this in ``get_model``;
-here it rides ``build_processor``, which already has ``model_dir``). ``telechat2`` is a plain LLM.
-"""
+# telechat copies special-token ids off generation_config onto the processor (via build_processor).
 from __future__ import annotations
 
 from transformers import GenerationConfig

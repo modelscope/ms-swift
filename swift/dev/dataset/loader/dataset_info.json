@@ -68,7 +68,7 @@
             "system_prompt": "system",
             "question": "query"
         },
-        "tags": ["QA", "zh", "general", "quality"],
+        "tags": ["qa", "zh", "general", "quality"],
         "hf_dataset_id": "yys/OpenOrca-Chinese",
         "huge_dataset": true
     },
@@ -92,7 +92,7 @@
     },
     {
         "ms_dataset_id": "AI-ModelScope/guanaco_belle_merge_v1.0",
-        "tags": ["QA", "zh"],
+        "tags": ["qa", "zh"],
         "hf_dataset_id": "Chinese-Vicuna/guanaco_belle_merge_v1.0"
     },
     {
@@ -118,7 +118,7 @@
             "inputs": "query",
             "targets": "response"
         },
-        "tags": ["multi-lingual", "qa"]
+        "tags": ["multilingual", "qa"]
     },
     {
         "ms_dataset_id": "swift/WebInstructSub",
@@ -148,7 +148,7 @@
     {
         "ms_dataset_id": "swift/tagengo-gpt4",
         "hf_dataset_id": "lightblue/tagengo-gpt4",
-        "tags": ["chat", "multi-lingual", "quality"]
+        "tags": ["chat", "multilingual", "quality"]
     },
     {
         "tags": ["pretrain", "quality"],
@@ -223,12 +223,12 @@
             "rewritten_question": "query",
             "rewritten_answer": "response"
         },
-        "tags": ["CoT", "en"]
+        "tags": ["cot", "en"]
     },
     {
         "ms_dataset_id": "AI-ModelScope/CodeAlpaca-20k",
         "hf_dataset_id": "HuggingFaceH4/CodeAlpaca_20K",
-        "tags": ["code", "en"]
+        "tags": ["coding", "en"]
     },
     {
         "ms_dataset_id": "AI-ModelScope/zhihu_rlhf_3k",
@@ -686,7 +686,7 @@
     {
         "ms_dataset_id": "open-r1/verifiable-coding-problems-python-10k",
         "hf_dataset_id": "open-r1/verifiable-coding-problems-python-10k",
-        "tags": ["grpo", "code"]
+        "tags": ["grpo", "coding"]
     },
     {
         "ms_dataset_id": "open-r1/verifiable-coding-problems-python",
@@ -694,12 +694,12 @@
         "columns": {
             "problem_statement": "query"
         },
-        "tags": ["grpo", "code"]
+        "tags": ["grpo", "coding"]
     },
     {
         "ms_dataset_id": "open-r1/verifiable-coding-problems-python-10k_decontaminated",
         "hf_dataset_id": "open-r1/verifiable-coding-problems-python-10k_decontaminated",
-        "tags": ["grpo", "code"]
+        "tags": ["grpo", "coding"]
     },
     {
         "ms_dataset_id": "open-r1/verifiable-coding-problems-python_decontaminated",
@@ -707,7 +707,7 @@
         "columns": {
             "problem_statement": "query"
         },
-        "tags": ["grpo", "code"]
+        "tags": ["grpo", "coding"]
     },
     {
         "ms_dataset_id": "iic/DocQA-RL-1.6K",

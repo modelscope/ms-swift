@@ -1,12 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loader for Baichuan-M1.
-
-Ported from ``swift/model/models/baichuan.py``. Only ``baichuan_m1`` (2025) is migrated.
-
-Dropped (see MODEL_MIGRATION.md):
-  * ``baichuan`` / ``baichuan2`` -- 2023 checkpoints pinned to ``transformers<4.34``; ``baichuan2``
-    further depends on ``patch_baichuan2_lm_head_forward``, which PATCH_INVENTORY.md marks 不迁移.
-"""
+# Only baichuan_m1 migrated (baichuan/baichuan2: pinned transformers<4.34, MODEL_MIGRATION.md).
 from __future__ import annotations
 
 from .base import ModelLoader, register_model

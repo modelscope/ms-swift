@@ -30,8 +30,8 @@ pytest.importorskip('megatron.core', reason='needs megatron-core for OptimizerPa
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler  # noqa: E402
 
 from swift.dev.config import TrainConfig  # noqa: E402
-from swift.dev.naming import resolve_megatron_decay_style  # noqa: E402
-from swift.dev.optimizer import megatron_weight_decay_bounds  # noqa: E402
+from swift.dev.utils.naming import resolve_megatron_decay_style  # noqa: E402
+from swift.dev.builders.optimizer import megatron_weight_decay_bounds  # noqa: E402
 
 # dense.sh's schedule knobs (examples/megatron/lora/dense.sh).
 LR = 1e-4
@@ -114,7 +114,7 @@ def _dense_cfg(**overrides) -> TrainConfig:
         learning_rate=LR,
         min_lr=MIN_LR,
         warmup_ratio=WARMUP_FRACTION,
-        lr_scheduler_type='cosine',
+        lr_scheduler='cosine',
         weight_decay=0.1,
         weight_decay_incr_style='constant',
         clip_grad=1.0)
@@ -192,7 +192,7 @@ def test_configure_optimizer_passes_min_lr_and_fractional_warmup():
 
     Uses a recording stub instead of a real model: what matters is WHICH kwargs reach twinkle.
     """
-    from swift.dev.optimizer import configure_optimizer
+    from swift.dev.builders.optimizer import configure_optimizer
 
     calls = {}
 
@@ -204,13 +204,11 @@ def test_configure_optimizer_passes_min_lr_and_fractional_warmup():
         def set_lr_scheduler(self, name, **kwargs):
             calls['scheduler'] = (name, kwargs)
 
-    import swift.dev.optimizer as optimizer_module
-    original = optimizer_module._is_megatron_model
-    optimizer_module._is_megatron_model = lambda _model: True
-    try:
-        configure_optimizer(_StubMegatronModel(), _dense_cfg(), num_training_steps=STEPS)
-    finally:
-        optimizer_module._is_megatron_model = original
+    # backend identity is read off DistributedConfig now (the model may be a Ray proxy), not off
+    # an isinstance check on the model object
+    from swift.dev.config import DistributedConfig
+    configure_optimizer(_StubMegatronModel(), _dense_cfg(), num_training_steps=STEPS,
+                        distributed_config=DistributedConfig(backend='megatron'))
 
     assert calls['optimizer'][1]['min_lr'] == MIN_LR, 'min_lr must reach the OPTIMIZER'
     assert calls['scheduler'][1]['min_lr'] == MIN_LR, 'min_lr must reach the scheduler too'
@@ -222,7 +220,7 @@ def test_configure_optimizer_passes_min_lr_and_fractional_warmup():
 def test_decay_style_and_wd_bounds_match_the_config():
     """The remaining schedule knobs the Megatron branch forwards."""
     cfg = _dense_cfg()
-    assert resolve_megatron_decay_style(cfg.lr_scheduler_type) == 'cosine'
+    assert resolve_megatron_decay_style(cfg.lr_scheduler) == 'cosine'
     assert megatron_weight_decay_bounds(cfg) == (cfg.weight_decay, cfg.weight_decay)
 
 

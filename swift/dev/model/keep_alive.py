@@ -1,37 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Keep a multimodal model's vision path *used* on text-only batches, without forking ``forward``.
-
-Under DeepSpeed ZeRO-3 every partitioned parameter must take part in each forward pass, or the
-all-gather / reduce-scatter collectives across ranks fall out of step and training hangs. On a
-text-only micro-batch the stock ``forward`` skips the vision tower entirely, so its parameters --
-and, for models like Qwen3-VL, the deepstack mergers wired into intermediate layers -- go dark on
-that rank while other ranks still gather them.
-
-Legacy swift solved this by *copying the whole ``forward``* into ``swift/model/models`` and
-splicing an ``image_features.mean() * 0`` term in the middle. That fork pins a dozen transformers
-internals (``get_rope_index`` signature, ``Qwen3VLModelOutputWithPast`` fields, the
-``_deepstack_process`` method name, ...) and rots on every transformers release.
-
-This module keeps the same *maths* -- "run the vision path, contribute exactly zero" -- but moves
-it entirely outside transformers internals:
-
-  * the **data side** feeds a tiny dummy image plus matching placeholder tokens (masked out of the
-    loss), so the *stock* forward runs the whole vision path exactly as it would for a real image,
-    and every vision parameter is therefore used;
-  * this module zeroes the **output of the aligner family** -- the single chokepoint every vision
-    feature passes through on its way into the LLM (image embeds *and* deepstack embeds). The dummy
-    then contributes nothing to the hidden states, so the loss is uncontaminated.
-
-Because the aligner sits downstream of the vision tower and upstream of the LLM, zeroing it keeps
-the tower alive (it still ran) while blocking all contamination. The only model-specific knowledge
-required is the aligner module names -- and those are already declared on :class:`ModelArch`, so
-one mechanism covers every multimodal family instead of a per-model forward fork.
-
-The zeroing must be *conditional*: the aligner is shared, so a blanket ``* 0`` would also wipe the
-features of real images in a mixed micro-batch. The hang only occurs when an entire micro-batch is
-text-only (``pixel_values is None``), which is also the only case the collator injects a dummy, so
-the collator flips :attr:`VisionKeepAlive.active` for exactly those forwards.
-"""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -74,9 +41,9 @@ def _leaf_modules(root: nn.Module, prefix: str) -> Iterator[nn.Module]:
 def _zero(output):
     """Multiply an output by zero while *keeping it in the autograd graph*.
 
-    ``output * 0`` is deliberate: it must not be ``torch.zeros_like`` (which detaches), because the
-    whole point is to leave the vision parameters connected to the loss so their ZeRO-3 backward
-    hooks still fire (with a zero gradient) and the collectives stay in step.
+    ``output * 0`` is deliberate (``torch.zeros_like`` detaches): the point is to leave the vision
+    parameters connected to the loss so their ZeRO-3 backward hooks still fire (with a zero
+    gradient) and the collectives stay in step.
     """
     if isinstance(output, torch.Tensor):
         return output * 0
@@ -86,11 +53,10 @@ def _zero(output):
 
 
 class VisionKeepAlive:
-    """A toggle over a set of forward hooks that zero the aligner outputs when :attr:`active`.
+    """A toggle over forward hooks that zero the aligner outputs when :attr:`active`.
 
-    Created by :func:`apply_vision_keep_alive`; the collator (or the training step) sets
-    ``active = True`` for a text-only-plus-dummy forward and restores it afterwards, e.g. via the
-    :meth:`activated` context manager.
+    Created by :func:`apply_vision_keep_alive`; the collator sets ``active = True`` for a
+    text-only-plus-dummy forward (or the loop drives :meth:`activated` manually).
     """
 
     def __init__(self) -> None:
@@ -103,8 +69,7 @@ class VisionKeepAlive:
 
     def _pre_hook(self, module: nn.Module, args, kwargs):
         # Runs once at the top model, before any aligner sub-module. Reads (and removes) the data
-        # side's marker so the model never sees an unexpected kwarg, and arms the zeroing for this
-        # forward only.
+        # side's marker so the model never sees an unexpected kwarg, and arms the zeroing.
         self.active = bool(kwargs.pop(self._flag_key, False))
         return args, kwargs
 
@@ -133,18 +98,9 @@ def apply_vision_keep_alive(model: nn.Module,
                             flag_key: str = DUMMY_FLAG) -> VisionKeepAlive:
     """Hook every aligner module of ``model`` so its output can be zeroed on demand.
 
-    Also installs one pre-hook / post-hook on ``model`` itself so the zeroing is driven entirely by
-    the data side: :func:`inject_dummy_media` marks a batch with ``flag_key`` and the pre-hook arms
-    the zeroing for that forward, the post-hook disarms it. No manual toggling in the training loop.
-
-    Args:
-        model: The loaded multimodal model.
-        aligner: The aligner module-name prefix(es), i.e. ``ModelArch.aligner``.
-        flag_key: The batch key the data side sets to request zeroing.
-
-    Returns:
-        A :class:`VisionKeepAlive` handle (also usable manually via
-        :meth:`VisionKeepAlive.activated`).
+    One pre-hook / post-hook on ``model`` itself drives the zeroing entirely from the data side:
+    :func:`inject_dummy_media` marks a batch with ``flag_key``, the pre-hook arms the zeroing for
+    that forward, the post-hook disarms it -- no manual toggling in the training loop.
     """
     if isinstance(aligner, str):
         aligner = [aligner]
@@ -165,30 +121,17 @@ def inject_dummy_media(batch: Dict,
                        flag_key: str = DUMMY_FLAG) -> Dict:
     """Data side of the keep-alive: give a text-only batch a dummy image so the stock forward runs.
 
-    A batch that already carries images is returned untouched -- the vision path runs naturally and
-    no keep-alive is needed. Otherwise a single dummy image is spliced into the first sample: its
-    ``N`` placeholder tokens (``N`` == the dummy's feature count, to satisfy the stock forward's
-    ``n_image_tokens == n_features`` assertion) are appended with ``attention_mask=1`` and
-    ``labels=-100``; the other rows get ``N`` padding positions with ``attention_mask=0`` so the
-    batch stays rectangular. The batch is marked with ``flag_key`` for the model-side pre-hook.
-
-    Args:
-        batch: A collated batch dict (``input_ids`` required; ``attention_mask`` / ``labels``
-            extended when present).
-        make_dummy: Builds one dummy image; returns ``{'pixel_values', 'image_grid_thw',
-            'num_tokens'}`` (extra keys are copied through, e.g. ``pixel_values_videos``).
-        image_token_id: The id of the image placeholder token for this model.
-        flag_key: The batch key to set so the model side arms zeroing.
-
-    Returns:
-        The same ``batch`` dict, mutated in place.
+    A batch that already carries images is returned untouched. Otherwise a single dummy image is
+    spliced into the first sample: its ``N`` placeholder tokens (``N`` == the dummy's feature count,
+    satisfying the stock forward's ``n_image_tokens == n_features`` assertion) are appended with
+    ``attention_mask=1`` / ``labels=-100``; the other rows get ``N`` inert padding positions. The
+    batch is marked with ``flag_key`` for the model-side pre-hook.
     """
     if batch.get('pixel_values') is not None or batch.get('pixel_values_videos') is not None:
         return batch
     input_ids = batch['input_ids']
-    # Invariant the model-side blanket `*0` relies on: a flagged batch is *wholly* dummy. A batch
-    # with no pixel_values must therefore carry no image placeholders either -- otherwise arming the
-    # zeroing would silently wipe features the stock forward still expects. Fail loudly instead.
+    # Invariant the blanket `*0` relies on: a flagged batch is *wholly* dummy, so a batch with no
+    # pixel_values must carry no image placeholders either. Fail loudly instead of wiping features.
     if bool((input_ids == image_token_id).any()):
         raise ValueError('inject_dummy_media: batch has image placeholder tokens but no pixel_values; '
                          'the wholly-text-only invariant is violated.')

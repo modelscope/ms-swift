@@ -1,13 +1,58 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Distributed-setting and hub-endpoint helpers, copied from ``swift.utils.env``."""
+"""Central place to design and read swift/dev's environment variables.
+
+Every env var dev reads is exposed here as a named accessor, so the full set is visible in one file.
+This module only *reads* flags; the business logic that acts on a flag stays with its caller (e.g. the
+multi-answer picking that consumes ``random_dataset_response()`` lives in the response converter).
+"""
 import os
 from typing import Tuple
 
-from transformers.utils import strtobool
+
+def _strtobool(val: str) -> int:
+    """Parse a boolean env value: ``y/yes/t/true/on/1`` -> 1, ``n/no/f/false/off/0`` -> 0, else ValueError.
+
+    Inlined rather than imported from ``transformers.utils`` so reading an env flag never pulls in
+    transformers. Kept private: it is the parsing primitive for the readers below, not a general util.
+    """
+    val = val.lower()
+    if val in ('y', 'yes', 't', 'true', 'on', '1'):
+        return 1
+    if val in ('n', 'no', 'f', 'false', 'off', '0'):
+        return 0
+    raise ValueError(f'invalid truth value {val!r}')
 
 
 def use_hf_hub():
-    return strtobool(os.environ.get('USE_HF', '0'))
+    """``USE_HF``: resolve models/datasets from HuggingFace Hub instead of ModelScope."""
+    return _strtobool(os.environ.get('USE_HF', '0'))
+
+
+def random_dataset_response() -> bool:
+    """``RANDOM_DATASET_RESPONSE``: pick a random answer from a multi-answer response column."""
+    return bool(_strtobool(os.environ.get('RANDOM_DATASET_RESPONSE', 'False')))
+
+
+def dataset_offline() -> bool:
+    """``HF_DATASETS_OFFLINE`` (falling back to ``HF_HUB_OFFLINE``): load datasets from the local cache
+    only, never opening a socket to the hub.
+
+    dev reads the ecosystem-standard offline flags here so the hub layer can branch on them uniformly;
+    ``datasets`` / ``huggingface_hub`` / ``modelscope`` each read the same env vars on their own, so this
+    accessor is a *decision input* for dev's fast path, not the only reader. ``HF_DATASETS_OFFLINE`` takes
+    precedence and, once set to a parseable value, ``HF_HUB_OFFLINE`` is not consulted (matching
+    ``datasets.config``). Parsing is lenient on purpose: unset/empty -> False, and a malformed value is
+    treated as False rather than raising, so a stray typo in the shell never aborts a run.
+    """
+    for key in ('HF_DATASETS_OFFLINE', 'HF_HUB_OFFLINE'):
+        val = os.environ.get(key)
+        if val is None or val == '':
+            continue
+        try:
+            return bool(_strtobool(val))
+        except ValueError:
+            return False
+    return False
 
 
 def get_hf_endpoint():
@@ -36,3 +81,17 @@ def is_dist():
     """Determine if the training is distributed"""
     rank, local_rank, _, _ = get_dist_setting()
     return rank >= 0 and local_rank >= 0
+
+
+def log_level() -> str:
+    """``LOG_LEVEL``: the level name dev's logger emits at (default ``INFO``)."""
+    return os.environ.get('LOG_LEVEL', 'INFO').upper()
+
+
+def log_only_master() -> bool:
+    """``LOG_ONLY_MASTER``: quiet non-master ranks to ERROR (default true).
+
+    Set false to let every rank emit at ``LOG_LEVEL`` -- useful when a failure only reproduces on a
+    non-zero rank whose logs are otherwise suppressed.
+    """
+    return bool(_strtobool(os.environ.get('LOG_ONLY_MASTER', 'True')))

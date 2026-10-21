@@ -1,0 +1,4 @@
+{"messages": [{"role": "system", "content": "Solve the problem step by step, and put your final answer within \\boxed{}."}, {"role": "user", "content": "What is 7 * 6?"}]}
+{"messages": [{"role": "system", "content": "Solve the problem step by step, and put your final answer within \\boxed{}."}, {"role": "user", "content": "What is 100 - 37?"}]}
+{"messages": [{"role": "system", "content": "Solve the problem step by step, and put your final answer within \\boxed{}."}, {"role": "user", "content": "A ribbon 12 cm long is cut into 4 equal pieces. How long is each piece?"}]}
+{"messages": [{"role": "system", "content": "Solve the problem step by step, and put your final answer within \\boxed{}."}, {"role": "user", "content": "What is 9 squared?"}]}

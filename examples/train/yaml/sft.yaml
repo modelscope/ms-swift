@@ -1,0 +1,37 @@
+# v5 YAML config: the entire argument set for `swift sft`, as a file instead of a flag list.
+#
+# Consumed by `swift sft examples/train/yaml/sft.yaml` (see train.sh next to this file). swift/cli/main.py
+# parse_yaml_args loads the FIRST positional arg when it ends in .yaml/.yml/.json, then rewrites it into the
+# equivalent `--key value` flags before the dev CLI ever sees argv:
+#   - a scalar  (model: X)        -> --model X
+#   - a list    (dataset: [a, b]) -> --dataset a b        (each item appended)
+#   - a dict                      -> --key '<json blob>'  (json.dumps)
+# So this file is exactly the lora/train.sh flag set, in YAML. Nothing is YAML-only; it is the same Config.
+#
+# An optional top-level `ENV:` mapping is popped and written into os.environ (existing vars win). NOTE the one
+# thing it CANNOT do: enable v5 itself. resolve_route() reads USE_SWIFT_V5 BEFORE parse_yaml_args runs, so
+# putting USE_SWIFT_V5 under ENV here is too late -- the run would route to the legacy CLI. That is why
+# train.sh exports USE_SWIFT_V5=1 (and CUDA_VISIBLE_DEVICES) in the shell, and this file stays pure config.
+model: Qwen/Qwen2.5-0.5B-Instruct
+task_type: causal_lm
+torch_dtype: bfloat16
+dataset:
+  - 'swift/self-cognition#600'
+tuner: lora
+lora_rank: 8
+lora_alpha: 32
+target_modules:
+  - all-linear
+num_train_epochs: 3
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 0.0001
+lr_scheduler: cosine
+warmup_ratio: 0.05
+max_length: 2048
+logging_steps: 5
+save_steps: 100
+save_total_limit: 2
+split_dataset_ratio: 0.01
+output_dir: output
+report_to: tensorboard

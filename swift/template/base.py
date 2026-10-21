@@ -1807,9 +1807,6 @@ class Template(ProcessorMixin):
                                 *,
                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
         if self.is_training:
-            if not hasattr(self, 'random_state'):
-                # TODO: Move to `__init__`; kept here to avoid cache invalidation caused by template hash changes.
-                self.random_state = np.random.RandomState(42)
             max_positive_samples = int(os.environ.get('MAX_POSITIVE_SAMPLES', 1))
             max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
             labels_list = []
@@ -1820,12 +1817,12 @@ class Template(ProcessorMixin):
                 negative_num = len(labels) - positive_num
                 max_positive = min(positive_num, max_positive_samples)
                 max_negative = min(negative_num, max_negative_samples)
-                for i in self.random_state.choice(positive_num, max_positive, replace=False):
+                for i in np.random.choice(positive_num, max_positive, replace=False):
                     new_batch.append(
                         {key: b[key][i]
                          for key in b.keys() if isinstance(b[key], list) and b[key][i] is not None})
                     labels_list.append(1)
-                    for j in self.random_state.choice(negative_num, max_negative, replace=False):
+                    for j in np.random.choice(negative_num, max_negative, replace=False):
                         new_batch.append({
                             key: b[key][j + positive_num]
                             for key in b.keys() if isinstance(b[key], list) and b[key][j + positive_num] is not None

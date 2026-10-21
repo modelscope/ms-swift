@@ -3,7 +3,7 @@
 The dev Model classes now inherit twinkle's concrete Model implementations
 directly, so tests focus on:
 - the shared data-format / loss / InputProcessor contracts (lightweight), and
-- the inheritance wiring (TransformersModel/MegatronModel subclass twinkle,
+- the inheritance wiring (TransformersModel subclasses twinkle,
   TrainableModel == twinkle base).
 
 Constructing a real twinkle Model needs a downloadable model + process group, so
@@ -15,11 +15,9 @@ import torch
 import torch.nn as nn
 from twinkle.utils import selective_log_softmax
 
-from swift.dev.data_format import InputFeature, LossOutput, ModelOutput
+from twinkle.data_format import InputFeature, LossOutput, ModelOutput
 from swift.dev.loss import CrossEntropyLoss, GRPOLoss, Loss
 from swift.dev.model.base import TrainableModel
-from swift.dev.model.megatron.model import MegatronModel
-from swift.dev.model.strategy import AccelerateStrategy, NativeFSDPStrategy
 from swift.dev.model.transformers_model import TransformersModel
 from swift.dev.processor import InputProcessor
 from swift.dev.utils import to_device
@@ -196,25 +194,6 @@ class TestGRPOLoss:
 
 
 # ======================================================================
-# Strategy — now re-exported from twinkle (dev no longer owns a Strategy layer)
-# ======================================================================
-
-
-class TestStrategyReexport:
-
-    def test_reexported_from_twinkle(self):
-        from twinkle.model.transformers.strategy import AccelerateStrategy as TwAccelerate
-        from twinkle.model.transformers.strategy import NativeFSDPStrategy as TwNativeFSDP
-        assert AccelerateStrategy is TwAccelerate
-        assert NativeFSDPStrategy is TwNativeFSDP
-
-    def test_deepspeed_strategy_absent(self):
-        """DeepSpeedStrategy is a future item and must not be exported yet."""
-        import swift.dev.model.strategy as strategy_mod
-        assert not hasattr(strategy_mod, 'DeepSpeedStrategy')
-
-
-# ======================================================================
 # InputProcessor — swift extension over twinkle (template collate hooks)
 # ======================================================================
 
@@ -308,9 +287,9 @@ class TestInputProcessor:
 class TestTrainableModelContract:
 
     def test_is_twinkle_base(self):
-        """TrainableModel is twinkle's TwinkleModel (design: twinkle is the contract)."""
-        from twinkle.model.base import TwinkleModel
-        assert TrainableModel is TwinkleModel
+        """swift's TrainableModel is twinkle's base TrainableModel (design: twinkle is the contract)."""
+        from twinkle.model.base import TrainableModel as TwinkleTrainableModel
+        assert TrainableModel is TwinkleTrainableModel
 
     def test_contract_methods_present(self):
         """The twinkle contract exposes the atomic training method set."""
@@ -351,14 +330,6 @@ class TestTransformersModelInheritance:
         assert TransformersModel.forward is not None
         assert TransformersModel.forward_backward is not None
         assert TransformersModel.save is not None
-
-
-class TestMegatronModelInheritance:
-
-    def test_inherits_twinkle(self):
-        from twinkle.model.megatron import MegatronModel as TwinkleMegatronModel
-        assert issubclass(MegatronModel, TwinkleMegatronModel)
-        assert issubclass(MegatronModel, TrainableModel)
 
 
 # ======================================================================

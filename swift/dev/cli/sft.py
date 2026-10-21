@@ -1,109 +1,112 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
-
-import dataclasses
-from typing import TYPE_CHECKING, List, Optional, Tuple
-
-if TYPE_CHECKING:
-    from swift.arguments import SftArguments
-    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                   TrainConfig, TunerConfig)
+from typing import Any, Dict, List, Optional
 
 
-def _dtype_name(value: object) -> Optional[str]:
-    if value is None:
-        return None
-    name = str(value)
-    return name.split('.')[-1] if name.startswith('torch.') else name
+def parse_sft_configs(
+    argv: Optional[List[str]] = None,
+    *,
+    command: str = 'sft',
+) -> Dict[str, Any]:
+    """Parse argv into the Configs run_sft/run_pt consume; dispatch the tuner by ``tuner``.
 
+    ``--backend megatron`` selects the Megatron path (legacy contract keyed ``megatron_<command>``);
+    MegatronConfig/MoEConfig are always parsed, and the Transformers path rejects any actually set.
+    """
+    from swift.dev.cli._megatron_compat import configure_megatron, is_megatron_argv
+    from swift.dev.cli.parser import parse_configs, resolve_argv, select_tuner
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        LoggingConfig,
+        MegatronConfig,
+        ModelConfig,
+        MoEConfig,
+        PluginConfig,
+        QuantizeConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
-def _fill_from_args(config, args: 'SftArguments'):
-    for f in dataclasses.fields(config):
-        if not hasattr(args, f.name):
-            continue
-        value = getattr(args, f.name)
-        if value is not None:
-            setattr(config, f.name, value)
-    return config
+    effective_argv = resolve_argv(argv)
+    is_megatron = is_megatron_argv(effective_argv)
+    from swift.dev.cli.legacy_coverage import reject_legacy_only_flags
+    reject_legacy_only_flags(f'megatron_{command}' if is_megatron else command, effective_argv)
 
+    classes = [
+        ModelConfig, PluginConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig,
+        LoggingConfig, TunerConfig, QuantizeConfig, MegatronConfig, MoEConfig
+    ]
+    configs, remaining = parse_configs(classes, effective_argv)
+    if remaining:
+        raise ValueError(f'Unrecognized arguments: {remaining}. The dev SFT CLI parses the Config surface '
+                         'directly; a flag with no matching Config field is refused rather than dropped.')
+    (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,
+     checkpoint_config, logging_config, tuner, quantize_config, megatron_config, moe_config) = configs[:12]
 
-def args_to_configs(
-    args: 'SftArguments',
-) -> Tuple['ModelConfig', 'TemplateConfig', 'DatasetConfig', 'TrainConfig', 'DistributedConfig', 'CheckpointConfig',
-           Optional['TunerConfig']]:
-    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                   TrainConfig, TunerConfig)
-
-    # This mapping is HF-surface only. MegatronSftArguments is a SEPARATE hierarchy (not an
-    # SftArguments subclass) that names the same hyperparameters differently -- lr, train_iters,
-    # micro_batch_size, lr_decay_style, lr_warmup_fraction, adam_eps -- so the name-based copy below
-    # would silently leave 34 of TrainConfig's 58 fields at their dev defaults, and DistributedConfig
-    # has no `backend` on that surface either, so the run would build a TransformersModel. Fail here
-    # instead: a Megatron CLI needs its own mapping with those renames spelled out.
-    if hasattr(args, 'train_iters'):
-        raise NotImplementedError(
-            'args_to_configs maps the HF-surface SftArguments only; got what looks like Megatron '
-            'arguments (has train_iters). The Megatron CLI is not wired yet -- drive the Megatron '
-            'backend through run_sft with explicit Configs (DistributedConfig(backend="megatron")).')
-
-    model_config = _fill_from_args(ModelConfig(), args)
-    model_config.torch_dtype = _dtype_name(args.torch_dtype)
-
-    template_config = _fill_from_args(TemplateConfig(), args)
-    dataset_config = _fill_from_args(DatasetConfig(), args)
-    train_config = _fill_from_args(TrainConfig(), args)
-    distributed_config = _fill_from_args(DistributedConfig(), args)
-    checkpoint_config = _fill_from_args(CheckpointConfig(), args)
-
-    checkpoint_config.save_steps = int(checkpoint_config.save_steps)
-    if train_config.eval_steps is not None:
-        train_config.eval_steps = int(train_config.eval_steps)
-
-    # `--optimizer` selects one of legacy's optimizer plugins (galore / lorap / muon / muonclip /
-    # multimodal) through optimizers_map, and those callbacks are built on HfTrainer's
-    # create_optimizer, which dev does not use. It stays on legacy SftArguments, so it would parse
-    # fine and then be dropped on the floor; refuse it instead.
-    if getattr(args, 'optimizer', None) is not None:
-        raise NotImplementedError(f'--optimizer {args.optimizer!r} is not supported by the dev SFT pipeline: legacy '
-                                  'dispatches it to an HfTrainer-based optimizer callback, which dev has no equivalent '
-                                  'of. Use --optim for the optimizer itself, and drop --optimizer.')
-
-    tuner_type = args.tuner_type
-    if tuner_type == 'full':
-        tuner_config = None
-    elif tuner_type == 'lora':
-        tuner_config = _fill_from_args(TunerConfig(), args)
-        tuner_config.tuner_type = 'lora'
+    if is_megatron:
+        tuner = configure_megatron(model_config, train_config, distributed_config, tuner)
     else:
-        raise NotImplementedError(f'dev SFT CLI supports tuner_type in {{full, lora}}, got {tuner_type!r}.')
+        tuner = select_tuner(tuner)
 
-    return (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-            tuner_config)
+    return {
+        'model_config': model_config,
+        'plugin_config': plugin_config,
+        'template_config': template_config,
+        'dataset_config': dataset_config,
+        'train_config': train_config,
+        'distributed_config': distributed_config,
+        'checkpoint_config': checkpoint_config,
+        'logging_config': logging_config,
+        'tuner_config': tuner,
+        'quantize_config': quantize_config,
+        'megatron_config': megatron_config,
+        'moe_config': moe_config,
+    }
 
 
-def sft_main(args: Optional[List[str]] = None) -> List[dict]:
-    from swift import SftArguments
-    from swift.dev.recipe import run_sft
-    from swift.dev.utils import parse_args
+def sft_main(argv: Optional[List[str]] = None) -> List[dict]:
+    from swift.dev.config import process_and_validate_configs
+    from swift.dev.recipe.sft import run_embedding, run_reranker, run_seq_cls, run_sft
 
-    if isinstance(args, SftArguments):
-        sft_args = args
-    else:
-        sft_args, remaining = parse_args(SftArguments, args)
-        if remaining:
-            raise ValueError(f'Unrecognized arguments: {remaining}')
+    configs = parse_sft_configs(argv)
+    process_and_validate_configs(configs)
 
-    (model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,
-     tuner_config) = args_to_configs(sft_args)
-
-    return run_sft(
+    model_config = configs['model_config']
+    distributed_config = configs['distributed_config']
+    is_megatron = distributed_config.backend == 'megatron'
+    task_type = model_config.task_type or 'causal_lm'
+    recipes = {
+        'causal_lm': run_sft,
+        'seq_cls': run_seq_cls,
+        'embedding': run_embedding,
+        'reranker': run_reranker,
+        'generative_reranker': run_reranker,
+    }
+    if task_type not in recipes:
+        raise ValueError(f'Unsupported SFT task_type: {task_type!r}.')
+    if is_megatron and task_type != 'causal_lm':
+        raise ValueError(f'--backend megatron supports only causal_lm SFT, got task_type={task_type!r}. '
+                         'Drop --backend to train seq_cls/embedding/reranker on the transformers backend.')
+    # Only run_sft/run_pt/run_rl accept the Megatron Configs; the other task types are HF-only.
+    megatron_kwargs = ({
+        'megatron_config': configs['megatron_config'],
+        'moe_config': configs['moe_config']
+    } if is_megatron else {})
+    return recipes[task_type](
         model_config,
-        template_config,
-        dataset_config,
-        train_config,
+        configs['template_config'],
+        configs['dataset_config'],
+        configs['train_config'],
         distributed_config=distributed_config,
-        checkpoint_config=checkpoint_config,
-        tuner_config=tuner_config,
-        output_dir=checkpoint_config.output_dir,
+        checkpoint_config=configs['checkpoint_config'],
+        tuner_config=configs['tuner_config'],
+        logging_config=configs['logging_config'],
+        quantize_config=configs['quantize_config'],
+        output_dir=configs['checkpoint_config'].output_dir,
+        **megatron_kwargs,
     )
 
 

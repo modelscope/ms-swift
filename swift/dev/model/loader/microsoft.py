@@ -1,15 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the Microsoft Phi text families.
-
-Ported from ``swift/model/models/microsoft.py`` -- the plain causal-LM Phi checkpoints plus the
-remote-code ``phi3_vision`` (``Phi3VForCausalLM`` via ``AutoModelForCausalLM`` + ``trust_remote_code``).
-
-Not migrated here (see MODEL_MIGRATION.md): ``florence`` (moved to ``mllm.py``) and ``phi3_small``
-(a per-layer ``rotary_emb.forward`` dtype patch over a hardcoded 32 layers).
-
-``phi4_multimodal`` *is* migrated (bottom of this file), but re-based onto transformers' own
-implementation rather than the checkpoint's remote code -- see that class for what changes.
-"""
+# Phi text families + phi3_vision + phi4_multimodal (phi3_small dropped, MODEL_MIGRATION.md).
 from __future__ import annotations
 
 from .base import ModelArch, ModelLoader, register_model
@@ -102,31 +92,12 @@ class Phi3VisionLoader(ModelLoader):
 
 @register_model
 class Phi4MultimodalLoader(ModelLoader):
-    """Phi-4-multimodal, loaded through **transformers' own** ``Phi4MultimodalForCausalLM`` rather than
-    the checkpoint's remote code. That re-basing is the whole point of this loader and it changes three
-    things relative to legacy:
+    """Phi-4-multimodal via **transformers' own** class, not the checkpoint's remote code.
 
-    * **Version.** Legacy pinned ``transformers>=4.36,<4.49`` because it drove the remote-code
-      ``Phi4MMForCausalLM``. transformers ships its own port (``transformers.models.phi4_multimodal``),
-      so the ceiling disappears and no ``trust_remote_code`` is needed.
-    * **Processor.** Legacy rewrote six attributes on ``processor.audio_processor``
-      (``compression_rate`` -> ``audio_compression_rate`` etc.), deleted three more, and nulled the
-      class-level ``chat_template``. The in-tree ``Phi4MultimodalProcessor`` already uses the settled
-      field names, so all of that is dropped.
-    * **Modality LoRA is gone.** Legacy called ``model.set_lora_adapter(['vision', 'speech'])``: the
-      remote-code model carried *built-in* vision/speech LoRA adapters that had to be activated.
-      transformers' port has no LoRA machinery at all (verified: ``set_lora_adapter`` is absent and the
-      module source contains zero ``lora`` references) -- the modality weights are plain dense layers.
-      **Fine-tuning semantics therefore differ from legacy**: what used to be adapter activation is now
-      ordinary full/LoRA tuning over ``embed_tokens_extend``, chosen by the usual tuner arguments.
-
-    ``model_arch`` follows the in-tree layout, which also renamed the projections: the single
-    ``img_projection`` / ``audio_projection`` became up/down pairs.
-
-    Unverified: whether the published checkpoint's ``config.architectures`` already reads
-    ``Phi4MultimodalForCausalLM`` (post-port) or still the remote-code ``Phi4MMForCausalLM``. If a
-    download resolves to the old name, reverse-lookup will miss and ``--model_type phi4_multimodal``
-    is needed explicitly.
+    Re-basing drops the transformers<4.49 ceiling, the six audio_processor rewrites (in-tree uses
+    settled names) and set_lora_adapter (no LoRA machinery here; modality tuning becomes ordinary
+    full/LoRA tuning over ``embed_tokens_extend``). Unverified: whether the checkpoint's
+    ``config.architectures`` reads the new name; if not, ``--model_type``.
     """
 
     model_type = 'phi4_multimodal'

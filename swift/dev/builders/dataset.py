@@ -1,15 +1,16 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
-import logging
-import numpy as np
-from typing import TYPE_CHECKING, Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
+
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from twinkle import DeviceMesh
 
     from swift.dev.config import DatasetConfig, DistributedConfig, TemplateConfig, TrainConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def build_dataset(dataset_config: DatasetConfig,
@@ -22,131 +23,59 @@ def build_dataset(dataset_config: DatasetConfig,
                   device_mesh: Optional['DeviceMesh'] = None) -> Any:
     """Load train (+val) once and return ``(train_loader, val_loader)`` (either may be None).
 
-    A single call mirrors legacy ``BaseArguments.load_dataset`` (base_args.py): one ``load_dataset``
-    yields both the train split and the split-off val split
-
-    encode: whether to pre-tokenize now (SFT: True) or keep the raw messages and defer tokenization
-      to the training/rollout phase (RL such as GRPO/GKD: False). Mirrors legacy
-      ``SwiftSft._get_dataset``'s ``pre_process = not (rlhf_type in {grpo, gkd})``.
-
-    ``device_mesh``: the HF-local Ulysses SP mesh from ``build_hf_device_mesh`` (None when SP is
-    off). When set, the loader slices by ``mesh.data_world_size`` (world/ulysses), so SP peers get
-    identical samples and DP groups get distinct ones -- see _twinkle_loader_layout.
-
-    ``DatasetConfig.cached_dataset`` / ``cached_val_dataset`` point at directories written by
-    ``swift export --to_cached_dataset`` (see swift/pipelines/export/cached_dataset.py). Those rows
-    went through the SAME preprocessing chain and already carry a ``lengths`` column, so they are
-    concatenated in AFTER encoding and never re-encoded -- mirroring legacy
-    ``SwiftSft._prepare_dataset``, which appends get_cached_dataset()'s splits alongside the freshly
-    encoded ones.
+    ``encode`` pre-tokenizes now (SFT) or defers to train/rollout time (GRPO/GKD: False);
+    ``cached_dataset`` splits join after encoding and are never re-encoded (legacy SwiftSft).
     """
-    from swift.dev.dataset import load_dataset
+    from swift.dev.dataset import load_dataset, register_dataset_info
+    # legacy base_args.py: a nonzero split ratio alongside val_dataset would carve a slice out of
+    # --dataset that is neither trained on (train keeps only its remainder) nor evaluated.
+    if dataset_config.val_dataset and dataset_config.split_dataset_ratio:
+        raise ValueError(
+            f'split_dataset_ratio={dataset_config.split_dataset_ratio} cannot be combined with '
+            'val_dataset: the ratio carves a val slice out of --dataset that is then neither trained '
+            'on (train keeps only its remainder) nor evaluated (val_dataset overrides it). Drop '
+            'split_dataset_ratio, or drop val_dataset to eval on the split-off slice instead.')
+    for info_path in dataset_config.custom_dataset_info:
+        register_dataset_info(info_path, exist_ok=True)
 
     load_kwargs = _load_kwargs(dataset_config)
 
     train_raw, val_raw = (None, None)
     if dataset_config.dataset:
-        # load-time shuffle uses dataset_shuffle (whole-dataset shuffle at load, legacy semantics).
+        # load-time shuffle is dataset_shuffle (whole-dataset shuffle at load, legacy semantics)
         train_raw, val_raw = load_dataset(
             dataset_config.dataset,
             split_dataset_ratio=dataset_config.split_dataset_ratio,
             shuffle=dataset_config.dataset_shuffle,
             **load_kwargs)
     if dataset_config.val_dataset:
-        # A separate val_dataset overrides any split-off val, loaded with split_ratio=1.0 and its own
-        # val_dataset_shuffle -- legacy base_args.py:364.
+        # legacy base_args.py: val_dataset replaces any split-off val; interleave_prob is a
+        # train-mixing knob and must not sample the val set.
+        load_kwargs.pop('interleave_prob', None)
         _, val_raw = load_dataset(
             dataset_config.val_dataset,
             split_dataset_ratio=1.0,
             shuffle=dataset_config.val_dataset_shuffle,
             **load_kwargs)
 
-    # Pre-encoded splits from disk. Loaded here (before the per-split builders) so each split can be
-    # merged with its freshly-encoded counterpart, and so a run with ONLY cached_dataset still
-    # produces a loader.
     cached_train, cached_val = _load_cached_datasets(dataset_config, template_config)
-
     encode_mode = _encode_mode(dataset_config, template) if encode else None
     train_loader = _build_split_loader(
-        train_raw,
-        template,
-        dataset_config,
-        train_config,
-        distributed_config,
-        encode=encode,
-        encode_mode=encode_mode,
-        is_val=False,
-        cached=cached_train,
+        train_raw, template, dataset_config, train_config, distributed_config,
+        encode=encode, encode_mode=encode_mode, is_val=False, cached=cached_train,
         device_mesh=device_mesh)
     val_loader = _build_split_loader(
-        val_raw,
-        template,
-        dataset_config,
-        train_config,
-        distributed_config,
-        encode=encode,
-        encode_mode=encode_mode,
-        is_val=True,
-        cached=cached_val,
+        val_raw, template, dataset_config, train_config, distributed_config,
+        encode=encode, encode_mode=encode_mode, is_val=True, cached=cached_val,
         device_mesh=device_mesh)
     return train_loader, val_loader
 
 
-def _load_cached_datasets(dataset_config: DatasetConfig, template_config: Any) -> tuple:
-    """Load ``cached_dataset`` / ``cached_val_dataset`` from disk via the dev loader.
-
-    Delegates to ``DatasetLoader.load_cached_datasets`` (dev), which owns the 3.x
-    ``length``->``lengths`` rename, the ``truncation_strategy='delete'`` length filter and the
-    ``path#sample_count`` subsampling syntax -- so the dev dataset path no longer reaches into
-    ``swift.pipelines``. ``max_length`` / ``truncation_strategy`` live on TemplateConfig, which is
-    optional here: a caller with no template config still loads caches, and no length filter is then
-    applied (``truncation_strategy=None``).
-
-    Returns ``(train_datasets, val_datasets)`` as lists (possibly empty), not concatenated -- the
-    per-split builder merges them with the encoded split.
-    """
-    if not dataset_config.cached_dataset and not dataset_config.cached_val_dataset:
-        return [], []
-    from swift.dev.dataset import DatasetLoader
-
-    train_datasets, val_datasets = DatasetLoader.load_cached_datasets(
-        dataset_config.cached_dataset,
-        dataset_config.cached_val_dataset,
-        max_length=getattr(template_config, 'max_length', None),
-        truncation_strategy=getattr(template_config, 'truncation_strategy', None),
-        data_seed=dataset_config.data_seed,
-        shuffle=dataset_config.dataset_shuffle,
-    )
-    logger.info(f'cached_dataset: {len(train_datasets)} train split(s), {len(val_datasets)} val split(s)')
-    return train_datasets, val_datasets
-
-
-def _encode_mode(dataset_config: DatasetConfig, template: Any) -> Literal['stream', 'eager', 'lazy']:
-    if dataset_config.streaming:
-        return 'stream'
-    lazy = dataset_config.lazy_tokenize
-    # legacy default: dataset/utils.py:125-130
-    if lazy is None:
-        lazy = (
-            template.model_meta.is_multimodal and not dataset_config.cached_dataset
-            and not dataset_config.cached_val_dataset and not dataset_config.packing
-            and not dataset_config.group_by_length)
-        logger.info(f'Setting lazy_tokenize: {lazy}')
-    return 'lazy' if lazy else 'eager'
-
-
 def _load_kwargs(dataset_config: DatasetConfig) -> dict:
-    """Full load_dataset kwargs, mirroring legacy DataArguments.get_dataset_kwargs (data_args.py).
+    """Full load_dataset kwargs, mirroring legacy DataArguments.get_dataset_kwargs.
 
-    The previous build_dataset passed only 6 of these; interleave_prob / stopping_strategy /
-    shuffle_buffer_size / columns / use_hf / hub_token / download_mode / model_name / model_author
-    were silently dropped.
-
-    ``remove_unused_columns`` / ``disable_auto_column_mapping`` are NOT forwarded: the dev dataset
-    framework has no switch for either because it already behaves the way both DEFAULTS ask for -- its
-    preprocessors always drop the source columns they consumed (dataset/preprocessor/base.py), and the
-    declared plus user ``columns`` renames are always applied (dataset/loader/base.py). A non-default
-    request cannot be honored, so it is refused rather than accepted and ignored.
+    remove_unused_columns / disable_auto_column_mapping are refused rather than forwarded: the dev
+    dataset framework always drops consumed source columns and always applies declared renames.
     """
     if not dataset_config.remove_unused_columns:
         raise ValueError('remove_unused_columns=False is not supported by the dev dataset framework: its '
@@ -174,6 +103,42 @@ def _load_kwargs(dataset_config: DatasetConfig) -> dict:
     )
 
 
+def _load_cached_datasets(dataset_config: DatasetConfig, template_config: Any) -> tuple:
+    """Load ``cached_dataset`` / ``cached_val_dataset`` from disk as ``(train_splits, val_splits)`` lists.
+
+    DatasetLoader.load_cached_datasets owns the length->lengths rename, the delete-strategy length filter
+    and the ``path#N`` subsampling; template_config is optional (None = no length filter applied).
+    """
+    if not dataset_config.cached_dataset and not dataset_config.cached_val_dataset:
+        return [], []
+    from swift.dev.dataset import DatasetLoader
+
+    train_datasets, val_datasets = DatasetLoader.load_cached_datasets(
+        dataset_config.cached_dataset,
+        dataset_config.cached_val_dataset,
+        max_length=getattr(template_config, 'max_length', None),
+        truncation_strategy=getattr(template_config, 'truncation_strategy', None),
+        data_seed=dataset_config.data_seed,
+        shuffle=dataset_config.dataset_shuffle,
+    )
+    logger.info(f'cached_dataset: {len(train_datasets)} train split(s), {len(val_datasets)} val split(s)')
+    return train_datasets, val_datasets
+
+
+def _encode_mode(dataset_config: DatasetConfig, template: Any) -> Literal['stream', 'eager', 'lazy']:
+    if dataset_config.streaming:
+        return 'stream'
+    lazy = dataset_config.lazy_tokenize
+    # legacy default (dataset/utils.py): multimodal without cache/packing/length-grouping
+    if lazy is None:
+        lazy = (
+            template.model_meta.is_multimodal and not dataset_config.cached_dataset
+            and not dataset_config.cached_val_dataset and not dataset_config.packing
+            and not dataset_config.group_by_length)
+        logger.info(f'Setting lazy_tokenize: {lazy}')
+    return 'lazy' if lazy else 'eager'
+
+
 def _build_split_loader(raw: Any,
                         template: Any,
                         dataset_config: DatasetConfig,
@@ -189,80 +154,62 @@ def _build_split_loader(raw: Any,
     if raw is None and not cached:
         return None
 
-    # 1. encode. encode=False keeps raw rows; otherwise use the mode resolved by build_dataset.
     if raw is None:
         enc = None
     elif not encode:
         enc = raw
     else:
         enc = _encode(
-            raw,
-            template,
-            mode=encode_mode,
-            num_proc=dataset_config.dataset_num_proc,
-            strict=dataset_config.strict,
-            data_seed=dataset_config.data_seed)
+            raw, template, mode=encode_mode, num_proc=dataset_config.dataset_num_proc,
+            strict=dataset_config.strict, data_seed=dataset_config.data_seed)
 
-    # 1.5 merge the pre-encoded splits from disk. They are appended AFTER encoding because they were
-    #     already encoded when exported -- re-running the preprocessor would either waste the work
-    #     (AddLengthPreprocessor) or corrupt rows (EncodePreprocessor on already-tokenized input).
-    #     Legacy does the same in SwiftSft._prepare_dataset: cached splits join the freshly encoded
-    #     ones in one concat_datasets.
+    # cached splits are pre-encoded: merging AFTER encoding avoids re-running the preprocessor
+    # (AddLengthPreprocessor would waste it; EncodePreprocessor would corrupt already-tokenized rows)
     if cached:
         enc = _concat_with_cached(enc, cached, encode_mode=encode_mode)
 
-    # 2. optional packing. Dependency on encode is asymmetric:
-    #    - map-style PackingDataset reads a `lengths` column at construction (packing.py:78), which
-    #      only the eager AddLengthPreprocessor writes -- so it REQUIRES encode having run. Legacy
-    #      also forbids packing+lazy (base_args.py), so encode=False + non-streaming packing is an
-    #      illegal combo -> fail fast rather than KeyError('lengths') deep inside packing.
-    #    - IterablePackingDataset (streaming) tokenizes raw rows itself (packing.py:176), so it does
-    #      NOT need a prior encode and works on the raw dataset.
+    # map-style packing reads a `lengths` column only eager encoding writes; the iterable packer
+    # tokenizes raw rows itself, so packing+encode=False requires streaming (legacy forbids packing+lazy)
     if dataset_config.packing:
         if not encode and not dataset_config.streaming:
             raise ValueError('packing=True with encode=False requires streaming=True: map-style packing needs '
                              'the `lengths` column produced by encoding, which is skipped when encode=False.')
         enc = _pack(
-            enc,
-            template,
-            streaming=dataset_config.streaming,
+            enc, template, streaming=dataset_config.streaming,
             packing_length=dataset_config.packing_length,
             packing_strategy=dataset_config.packing_strategy,
             num_proc=dataset_config.packing_num_proc,
-            strict=dataset_config.strict)
+            strict=dataset_config.strict,
+            data_seed=dataset_config.data_seed)
 
-    # 3. dataloader (list[InputFeature]; processor collates in forward). The dataloader-sampler
-    #    shuffle is the per-epoch reshuffle (train_dataloader_shuffle); it is distinct from the
-    #    load-time dataset shuffle applied above. Eval never reshuffles.
     batch_size = (train_config.per_device_eval_batch_size if is_val else train_config.per_device_train_batch_size)
     dl_shuffle = (not is_val) and dataset_config.train_dataloader_shuffle
-    # group_by_length: batch similar-length samples to cut padding. Mirrors legacy swift
-    # (trainers/mixin.py:1306-1309): only applied on the map-style TRAIN loader, and it reads a
-    # `lengths` column off the (eagerly-encoded) dataset. Legacy also DISABLES it for eval
-    # (_disable_group_by_length, mixin.py:1327-1345), so we gate it to the train split. The
-    # BatchSamplerShard then feeds `lengths` to transformers get_length_grouped_indices to build
-    # length-grouped, still-shuffled batches. We must pass `lengths` explicitly -- BatchSamplerShard
-    # raises if group_by_length=True without them. (streaming is rejected up front by
-    # validate_configs, so the map-style path is the only one that reaches here with it on.)
+    # group_by_length: train split only (legacy disables it for eval); needs the eager `lengths` column
     group_by_length = dataset_config.group_by_length and (not is_val)
     lengths = _extract_lengths(enc) if group_by_length else None
-    # data_sharding only affects the shuffled TRAIN order (eval uses a sequential sampler), and it
-    # is mutually exclusive with group_by_length -- legacy downgrades it with a warning rather than
-    # failing, so existing Megatron scripts that set both keep running (batch_sampler.py:86-90).
+    # data_sharding reshuffles the TRAIN order only; legacy downgrades it (with a warning) rather than
+    # failing when group_by_length is also on, so those Megatron scripts keep running
     data_sharding = dataset_config.data_sharding and (not is_val)
     if data_sharding and group_by_length:
         logger.warning('`group_by_length=True` is incompatible with `data_sharding=True`. '
                        'Setting `data_sharding=False` to enable length grouping.')
         data_sharding = False
 
-    # twinkle's DataLoader is handed the GLOBAL batch and slices it per DP rank (its DeviceMeshSampler),
-    # unlike legacy which received the per-device batch and sharded internally. So it gets
-    # per_device * dp and the mesh does the split (worker-fetcher). See _twinkle_loader_layout.
     global_batch_size, device_mesh = _twinkle_loader_layout(distributed_config, batch_size, device_mesh)
 
     from twinkle.dataloader import DataLoader
-    # twinkle's DataLoader is inherently resumable (skip_consumed_samples / get_state); the training
-    # loop decides whether to skip, so there is no separate resumable flag. Eval simply never resumes.
+    # the loader is inherently resumable (skip_consumed_samples / get_state); the training loop decides
+    # whether to skip -- eval never resumes
+    num_workers = dataset_config.dataloader_num_workers or 0
+    if dataset_config.streaming and dataset_config.packing and num_workers > 0:
+        logger.warning('Streaming packing uses one dataset reader; setting `dataloader_num_workers=0`. '
+                       '`packing_num_proc` still controls parallel encoding.')
+        num_workers = 0
+    worker_kwargs = {}
+    if num_workers > 0:
+        worker_kwargs['persistent_workers'] = dataset_config.dataloader_persistent_workers
+        if dataset_config.dataloader_prefetch_factor is not None:
+            worker_kwargs['prefetch_factor'] = dataset_config.dataloader_prefetch_factor
     return DataLoader(
         enc,
         batch_size=global_batch_size,
@@ -271,11 +218,16 @@ def _build_split_loader(raw: Any,
         group_by_length=group_by_length,
         lengths=lengths,
         data_sharding=data_sharding,
+        # MapRetryDataset substitutes an unencodable row, seeded so every rank and every resume pick the
+        # same replacement; strict (max_retries=0) stops the run on the first failure instead
+        retry_seed=dataset_config.data_seed,
+        max_retries=0 if dataset_config.strict else 20,
         collate_fn=_identity_collate,
         shuffle=dl_shuffle and not dataset_config.streaming,
-        drop_last=_drop_last(distributed_config, is_val=is_val),
-        num_workers=(dataset_config.dataloader_num_workers or 0),
+        drop_last=_drop_last(distributed_config),
+        num_workers=num_workers,
         pin_memory=dataset_config.dataloader_pin_memory,
+        **worker_kwargs,
     )
 
 
@@ -287,51 +239,30 @@ def _identity_collate(batch):
 def _twinkle_loader_layout(distributed_config: DistributedConfig,
                            per_device_batch_size: int,
                            device_mesh: Optional['DeviceMesh'] = None) -> tuple:
-    """``(global_batch_size, loader_device_mesh)`` for twinkle's ``DataLoader``.
-
-    twinkle's DataLoader takes the GLOBAL batch and slices it across DP ranks (its DeviceMeshSampler),
-    so it is given ``per_device * dp_world_size`` and the mesh does the per-rank split. The DP layout
-    is a pure function of the config (``build_device_mesh``):
-
-      - HF Ulysses SP (``device_mesh`` given, from ``build_hf_device_mesh``): the sampler slices by
-        ``mesh.data_world_size`` (= world/ulysses), so SP peers receive IDENTICAL samples and only DP
-        groups differ -- exactly what Ulysses needs, since each SP rank re-splits the same sequence.
-        The global batch is scaled by data_world_size so twinkle's divisibility assert holds.
-      - local mode: the loader owns DP sharding, so it is given the DeviceMesh and each rank takes its
-        own slice (worker-fetcher). ``nproc_per_node`` MUST be set for a multi-GPU local run -- it
-        sizes the DP layout; without it dp defaults to 1 (single process) and no sharding happens.
-      - ray mode: the loader is a bare driver loader (``device_mesh=None``); the DP scatter happens
-        later in ``model.forward_backward(dispatch='slice_dp')``, so only the global batch WIDTH is
-        needed here.
+    """``(global_batch_size, loader_device_mesh)``: twinkle's DataLoader takes the GLOBAL batch and its
+    ShardedBatchSampler slices it per DP rank, so the batch is scaled by the DP width.
     """
     if device_mesh is not None:
+        # HF Ulysses SP: the sampler slices by data_world_size (world/ulysses), so SP peers get
+        # identical samples and only DP groups differ
         return per_device_batch_size * device_mesh.data_world_size, device_mesh
     if distributed_config.nproc_per_node is None:
-        return per_device_batch_size, None
-    from swift.dev.builders.model import build_device_mesh
-    mesh = build_device_mesh(distributed_config)
-    global_batch_size = per_device_batch_size * mesh.data_world_size
-    device_mesh = None if distributed_config.mode == 'ray' else mesh
-    return global_batch_size, device_mesh
+        # plain transformers torchrun (world size lives in the env, not the config): scale by the same
+        # source twinkle's local initialize reads; mesh stays None to inherit twinkle's global DP mesh
+        from twinkle.utils import Platform
+        return per_device_batch_size * Platform.get_world_size(), None
+    # Megatron path: build_parallel_mesh sizes the DP layout off nproc_per_node; under ray the loader is
+    # a bare driver loader and the DP scatter happens later in model.forward_backward('slice_dp')
+    from swift.dev.builders.model import build_parallel_mesh
+    mesh = build_parallel_mesh(distributed_config)
+    return per_device_batch_size * mesh.data_world_size, (None if distributed_config.mode == 'ray' else mesh)
 
 
 def _concat_with_cached(enc: Any, cached: list, *, encode_mode: Optional[str]) -> Any:
     """Concatenate the freshly-encoded split with pre-encoded splits loaded from disk.
 
-    Both sides must be map-style HF datasets for ``concatenate_datasets`` to work. That holds for
-    the eager path (AddLengthPreprocessor returns a Dataset) but NOT for:
-      - lazy mode, where ``enc`` is a ``LazyLLMDataset`` wrapper, and
-      - streaming, an IterableDataset,
-    neither of which can be concatenated with a Dataset. Mixing `dataset` with `cached_dataset` is
-    therefore rejected in those modes instead of failing obscurely inside datasets. Using
-    cached_dataset ALONE is fine in any mode -- the cache is already map-style and encoded.
-
-    The two sides can also disagree on Arrow FEATURES even when the columns match: a `messages`
-    column round-tripped through save_to_disk keeps the schema it was written with, while a freshly
-    loaded one is re-inferred (typed struct vs List(Json)), and concatenate_datasets refuses to align
-    those. So the cached splits are cast to the fresh split's features first, and a genuinely
-    incompatible cache (different columns / dtypes -- e.g. exported with another template) is
-    reported as such instead of surfacing a raw pyarrow error.
+    lazy/stream wrappers cannot be concatenated with the map-style cache, so mixing `dataset` with
+    `cached_dataset` is refused in those modes; a cache ALONE is fine in any mode.
     """
     from swift.dev.dataset import DatasetLoader
 
@@ -351,16 +282,8 @@ def _concat_with_cached(enc: Any, cached: list, *, encode_mode: Optional[str]) -
 def _align_features(enc: Any, cached: list) -> tuple:
     """Make ``enc`` and the cached splits share one Arrow schema, returning both sides aligned.
 
-    ``messages`` is the hard case. datasets represents a list-of-dicts column either as a plain Arrow
-    struct (``list<struct<role,content>>``) or as the ``arrow.json`` EXTENSION type (the ``Json``
-    feature), and which one you get depends on how the split was produced -- a fresh
-    ``AddLengthPreprocessor`` map yields the struct, while the same data round-tripped through
-    ``save_to_disk`` comes back as arrow.json. ``concatenate_datasets`` refuses to align the two.
-
-    The asymmetry that decides the direction: pyarrow CAN cast struct -> arrow.json (it serializes),
-    but NOT arrow.json -> struct (it sees an opaque string). So when the two disagree, both sides are
-    cast to the CACHED (Json) schema rather than to the fresh one. Columns that genuinely differ
-    (a cache exported under another template) are reported instead of raising a raw pyarrow error.
+    list-of-dict columns come back struct or arrow.json depending on how the split was produced and
+    cannot be concatenated mixed; pyarrow casts struct -> Json but not back, so both sides go CACHED.
     """
     cached = list(cached)
     if not cached:
@@ -398,37 +321,17 @@ def _extract_lengths(enc: Any) -> list:
                      'requirement (it reads train_dataset[\'lengths\']).')
 
 
-def _drop_last(distributed_config: DistributedConfig, *, is_val: bool) -> bool:
-    """Drop a trailing partial batch? megatron yes, hf no -- matching legacy on both.
-
-    Megatron needs it: global_batch_size is an exact invariant, and a remainder batch shifts every
-    later step once an epoch boundary falls mid-run. legacy drops on both splits too, by two
-    different mechanisms -- the train sampler has no drop_last knob and floors unconditionally
-    (batch_sampler.py), the val one defaults to drop_last=True.
-
-    hf keeps the remainder: legacy defers to TrainingArguments.dataloader_drop_last (default False),
-    so dropping here would discard real samples and diverge from legacy on that path.
-    """
-    from swift.dev.builders.model import is_megatron_backend
-    if not is_megatron_backend(distributed_config):
-        return False
-    # is_val stays in the signature: both splits drop today, but for different reasons, so a future
-    # change may split them again.
-    del is_val
-    return True
+def _drop_last(distributed_config: DistributedConfig) -> bool:
+    """Megatron drops a trailing partial batch (exact global_batch_size invariant); hf keeps it (legacy)."""
+    return distributed_config.backend == 'megatron'
 
 
 def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream'], num_proc: int, strict: bool,
-            data_seed: int) -> Any:
+            materialize: bool = False, data_seed: Optional[int] = None) -> Any:
     """Encode a raw messages split into trainable samples.
 
-    Routes:
-      - lazy   -> LazyLLMDataset (encode on the fly at __getitem__).
-      - stream -> EncodePreprocessor.map (streaming pre-tokenize).
-      - eager  -> pre-tokenize via map. The 'split' truncation strategy expands one sample into
-                  many, so it must fully encode with EncodePreprocessor; otherwise use
-                  MeasurePreprocessor, which keeps the raw row and only adds a `lengths` column
-                  (rows are encoded later by the lazy/collate path).
+    lazy -> LazyLLMDataset (encode at __getitem__); 'split' truncation / an explicit ``materialize``
+    need the full EncodePreprocessor; otherwise MeasurePreprocessor only adds `lengths`, rows stay raw.
     """
     from swift.dev.dataset import EncodePreprocessor, LazyLLMDataset, MeasurePreprocessor
 
@@ -438,24 +341,135 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
                          "The 'split' strategy may produce multiple samples per input.")
 
     if mode == 'lazy':
-        random_state = np.random.RandomState(data_seed)
-        return LazyLLMDataset(raw, template.encode, strict=strict, random_state=random_state)
+        return LazyLLMDataset(raw, template.encode)
 
-    # eager / stream: 'split' needs a full encode (emits multiple samples per input); otherwise
-    # MeasurePreprocessor only writes `lengths` and leaves rows raw.
-    if truncation_strategy == 'split':
-        preprocessor = EncodePreprocessor(template)
+    # 'split' emits multiple samples per input; materialize (only the cached-dataset exporter sets it)
+    # forces input_ids/labels into the rows. data_seed pins build-time random preprocessing per row.
+    preprocessor_kwargs = {} if data_seed is None else {'seed': data_seed}
+    if truncation_strategy == 'split' or materialize:
+        preprocessor = EncodePreprocessor(template, **preprocessor_kwargs)
     else:
-        preprocessor = MeasurePreprocessor(template)
+        preprocessor = MeasurePreprocessor(template, **preprocessor_kwargs)
     return preprocessor(raw, num_proc=num_proc, strict=strict)
 
 
 def _pack(dataset: Any, template: Any, *, streaming: bool, packing_length: Optional[int], packing_strategy: str,
-          num_proc: int, strict: bool) -> Any:
+          num_proc: int, strict: bool, data_seed: int = 0) -> Any:
     """Pack an encoded dataset for efficient training (map-style or iterable)."""
     from swift.dev.dataset import IterablePackingDataset, PackingDataset
 
     length = packing_length or template.max_length
     cls = IterablePackingDataset if streaming else PackingDataset
+    # data_seed is the streaming protocol's (set_data_seed on a state restore); the map-style
+    # PackingDataset forwards **kwargs to SwiftDataset, whose signature is closed, so it must
+    # not receive it -- map-style resume rides SampleIndex.epoch instead.
+    seed_kwargs = {'data_seed': data_seed} if streaming else {}
     return cls(
-        template, dataset, num_proc=num_proc, packing_length=length, packing_strategy=packing_strategy, strict=strict)
+        template,
+        dataset,
+        num_proc=num_proc,
+        packing_length=length,
+        packing_strategy=packing_strategy,
+        strict=strict,
+        **seed_kwargs)
+
+
+def load_prompt_only_rows(dataset_config: DatasetConfig, max_rows: Optional[int],
+                          split_dataset_ratio: float) -> List[Dict[str, Any]]:
+    """Load the raw prompt rows the rollout/sampling recipes (infer/gkd/grpo) drive generation from.
+
+    ``val_dataset`` wins outright; otherwise only the eval slice of ``dataset`` is used (ratio=0 runs
+    all) -- legacy infer's ``_prepare_val_dataset`` semantics.
+    """
+    from swift.dev.dataset import load_dataset
+
+    kwargs = _load_kwargs(dataset_config)
+    # legacy infer: val_dataset loads whole (its own shuffle flag; interleave_prob -- a train-mixing
+    # knob -- popped); the eval slice of --dataset uses dataset_shuffle, before the max_rows cut
+    if dataset_config.val_dataset:
+        kwargs.pop('interleave_prob', None)
+        _, rows = load_dataset(
+            datasets=list(dataset_config.val_dataset), split_dataset_ratio=1.0,
+            shuffle=dataset_config.val_dataset_shuffle, **kwargs)
+    elif split_dataset_ratio:
+        _, rows = load_dataset(
+            datasets=list(dataset_config.dataset), split_dataset_ratio=split_dataset_ratio,
+            shuffle=dataset_config.dataset_shuffle, **kwargs)
+        logger.info(f'load_prompt_only_rows: using the eval split of --dataset (split_dataset_ratio='
+                    f'{split_dataset_ratio}); pass split_dataset_ratio=0 to run over all of it.')
+    else:
+        rows, _ = load_dataset(
+            datasets=list(dataset_config.dataset), split_dataset_ratio=0.0,
+            shuffle=dataset_config.dataset_shuffle, **kwargs)
+
+    rows = list(rows or [])
+    if max_rows is not None:
+        rows = rows[:max_rows]
+    return rows
+
+
+def build_prompt_dataloader(prompts: List[List[dict]],
+                            prompt_extras: Optional[List[Dict[str, Any]]],
+                            *,
+                            seed: int,
+                            batch_size: int = 256) -> Any:
+    """A twinkle ``DataLoader`` over the online-RL prompt rows (the prompt-side build_dataset).
+
+    No encoding -- the rollout encodes each prompt itself; seeded reshuffle per pass, one pass per
+    ``iter()``; drop_last stays off so a partial batch is never a dropped prompt.
+    """
+    from twinkle.dataset import Dataset, DatasetMeta
+    from twinkle.dataloader import DataLoader
+
+    if not prompts:
+        raise ValueError('build_prompt_dataloader needs at least one prompt, got an empty sequence.')
+    if batch_size <= 0:
+        raise ValueError(f'batch_size must be > 0, got {batch_size}.')
+    if prompt_extras is not None and len(prompt_extras) != len(prompts):
+        raise ValueError(
+            f'prompt_extras must align with prompts ({len(prompts)} rows), got {len(prompt_extras)}.')
+    extras = prompt_extras if prompt_extras is not None else [{} for _ in prompts]
+    rows = [{'messages': messages, **extra} for messages, extra in zip(prompts, extras)]
+    dataset = Dataset(DatasetMeta(data=rows))
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        data_seed=seed,
+        num_workers=0,
+        collate_fn=_identity_collate,
+        shuffle=True)
+
+
+def to_trajectory(row: Dict[str, Any], messages: List[Dict[str, Any]],
+                  template_config: 'TemplateConfig') -> Dict[str, Any]:
+    """Build the twinkle Trajectory for one row.
+
+    ``TemplateConfig.system`` REPLACES a system turn the row already has rather than stacking a second
+    one, matching legacy: two system messages is not a supported prompt shape for most templates.
+    """
+    trajectory: Dict[str, Any] = {'messages': messages}
+    system = getattr(template_config, 'system', None)
+    if system:
+        without_system = [message for message in messages if message.get('role') != 'system']
+        trajectory['messages'] = [{'role': 'system', 'content': system}] + without_system
+    for key in ('images', 'audios', 'videos', 'objects', 'tools'):
+        if row.get(key):
+            trajectory[key] = row[key]
+    return trajectory
+
+
+def split_prompt_and_reference(rows: List[Dict[str, Any]],
+                               template_config: 'TemplateConfig') -> Tuple[List[Dict[str, Any]], List[Optional[str]]]:
+    """rows -> ``(trajectories, references)``, with each row's trailing assistant turn moved aside.
+
+    Generation must see a prompt that stops before the reference answer, and the answer itself is
+    needed afterwards (metric label / reward ground truth); one place keeps "what the model saw"
+    identical across every consumer.
+    """
+    trajectories, references = [], []
+    for row in rows:
+        messages = list(row['messages'])
+        reference = messages.pop()['content'] if messages and messages[-1]['role'] == 'assistant' else None
+        references.append(reference)
+        trajectories.append(to_trajectory(row, messages, template_config))
+    return trajectories, references

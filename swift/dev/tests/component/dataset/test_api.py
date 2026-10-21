@@ -1,12 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Tests for dev dataset/dataloader APIs."""
+import sys
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pytest
-import sys
 import torch
 from datasets import Dataset as HfDataset
 from torch.utils.data import DataLoader, Dataset, IterableDataset
-from unittest.mock import MagicMock, patch
 
 
 def make_mock_template(max_length=2048, truncation_strategy='delete'):
@@ -61,7 +62,7 @@ class TestEncode:
         from swift.dev.builders.dataset import _encode
         dataset = make_mock_dataset(10)
         template = make_mock_template()
-        result = _encode(dataset, template, mode='lazy', num_proc=1, strict=False, data_seed=42)
+        result = _encode(dataset, template, mode='lazy', num_proc=1, strict=False)
         MockLazy.assert_called_once()
         assert result == MockLazy.return_value
 
@@ -74,7 +75,7 @@ class TestEncode:
         MockAddLength.return_value = mock_instance
         dataset = make_mock_dataset(10)
         template = make_mock_template()
-        _encode(dataset, template, mode='eager', num_proc=1, strict=False, data_seed=42)
+        _encode(dataset, template, mode='eager', num_proc=1, strict=False)
         MockAddLength.assert_called_once_with(template)
 
     @patch('swift.dev.dataset.MeasurePreprocessor')
@@ -86,7 +87,7 @@ class TestEncode:
         MockAddLength.return_value = mock_instance
         dataset = MagicMock()
         template = make_mock_template()
-        result = _encode(dataset, template, mode='stream', num_proc=1, strict=False, data_seed=42)
+        result = _encode(dataset, template, mode='stream', num_proc=1, strict=False)
         MockAddLength.assert_called_once_with(template)
         assert result == mock_result
 
@@ -95,9 +96,9 @@ class TestEncode:
         dataset = make_mock_dataset(10)
         template = make_mock_template(truncation_strategy='split')
         with pytest.raises(ValueError, match="truncation_strategy='split' requires mode='eager'"):
-            _encode(dataset, template, mode='lazy', num_proc=1, strict=False, data_seed=42)
+            _encode(dataset, template, mode='lazy', num_proc=1, strict=False)
         with pytest.raises(ValueError, match="truncation_strategy='split' requires mode='eager'"):
-            _encode(dataset, template, mode='stream', num_proc=1, strict=False, data_seed=42)
+            _encode(dataset, template, mode='stream', num_proc=1, strict=False)
 
     @patch('swift.dev.dataset.EncodePreprocessor')
     def test_split_strategy_with_eager_uses_full_encode(self, MockPreprocessor):
@@ -108,8 +109,34 @@ class TestEncode:
         MockPreprocessor.return_value = mock_instance
         dataset = make_mock_dataset(10)
         template = make_mock_template(truncation_strategy='split')
-        _encode(dataset, template, mode='eager', num_proc=1, strict=False, data_seed=42)
+        _encode(dataset, template, mode='eager', num_proc=1, strict=False)
         MockPreprocessor.assert_called_once_with(template)
+
+    @patch('swift.dev.dataset.EncodePreprocessor')
+    def test_materialize_uses_full_encode(self, MockPreprocessor):
+        """``materialize=True`` (the cached-dataset exporter's ``store_encoded``) fully encodes even without
+        'split', so the store carries ``input_ids``/``labels`` and trains with no re-encoding."""
+        from swift.dev.builders.dataset import _encode
+        mock_instance = MagicMock()
+        mock_instance.return_value = make_mock_dataset(5)
+        MockPreprocessor.return_value = mock_instance
+        dataset = make_mock_dataset(10)
+        template = make_mock_template()  # default truncation_strategy, NOT 'split'
+        _encode(dataset, template, mode='eager', num_proc=1, strict=False, materialize=True)
+        MockPreprocessor.assert_called_once_with(template)
+
+    @patch('swift.dev.dataset.MeasurePreprocessor')
+    def test_materialize_false_keeps_measure(self, MockMeasure):
+        """The training path passes ``materialize=False`` (the default): rows stay raw + ``lengths`` and the
+        tokens are still produced per batch at train time. Pins that an explicit False does not materialize."""
+        from swift.dev.builders.dataset import _encode
+        mock_instance = MagicMock()
+        mock_instance.return_value = make_mock_dataset(5)
+        MockMeasure.return_value = mock_instance
+        dataset = make_mock_dataset(10)
+        template = make_mock_template()
+        _encode(dataset, template, mode='eager', num_proc=1, strict=False, materialize=False)
+        MockMeasure.assert_called_once_with(template)
 
 
 # === TestPack (build_dataset's private pack helper) ===
@@ -341,7 +368,7 @@ class TestTwinkleLoaderLayout:
     would be wrong: on the driver TWINKLE_MODE is unset even in ray mode, so it would misreport
     'local' and double-shard against slice_dp.
 
-    twinkle's DataLoader takes the GLOBAL batch and its DeviceMeshSampler slices each batch across DP
+    twinkle's DataLoader takes the GLOBAL batch and its ShardedBatchSampler slices each batch across DP
     ranks, which is the opposite convention from legacy (per-device batch, sharded internally). Getting
     the width wrong is silent: too narrow trains on a fraction of the intended batch.
     """
@@ -400,21 +427,21 @@ class TestDropLast:
 
     def test_megatron_train_drops_remainder(self):
         from swift.dev.builders.dataset import _drop_last
-        assert _drop_last(self._dc(backend='megatron', mode='local'), is_val=False) is True
+        assert _drop_last(self._dc(backend='megatron', mode='local'), ) is True
 
     def test_megatron_ray_also_drops_remainder(self):
         from swift.dev.builders.dataset import _drop_last
 
         # The global-batch invariant holds regardless of who performs the DP scatter, so ray mode
         # must not differ from local here (unlike _twinkle_loader_layout, which does).
-        assert _drop_last(self._dc(backend='megatron', mode='ray'), is_val=False) is True
+        assert _drop_last(self._dc(backend='megatron', mode='ray'), ) is True
 
     def test_hf_train_keeps_remainder(self):
         from swift.dev.builders.dataset import _drop_last
 
         # legacy defers to TrainingArguments.dataloader_drop_last, whose default is False. Flipping
         # this globally would silently discard training samples on the transformers path.
-        assert _drop_last(self._dc(backend='hf', mode='local'), is_val=False) is False
+        assert _drop_last(self._dc(backend='hf', mode='local'), ) is False
 
     def test_megatron_eval_also_drops_matching_legacy(self):
         from swift.dev.builders.dataset import _drop_last
@@ -424,13 +451,14 @@ class TestDropLast:
         # dev matched the opposite ('never drop for eval') until this was checked: with a val set that
         # is not a multiple of micro_batch_size*dp_size, the two pipelines would score DIFFERENT
         # sample sets, which is worse than legacy's known habit of scoring slightly fewer samples.
-        assert _drop_last(self._dc(backend='megatron', mode='local'), is_val=True) is True
+        # The split knob has since been absorbed: _drop_last is a pure backend decision now.
+        assert _drop_last(self._dc(backend='megatron', mode='local')) is True
 
     def test_hf_eval_keeps_remainder(self):
         from swift.dev.builders.dataset import _drop_last
 
         # Unchanged on the transformers path: legacy defers to dataloader_drop_last (default False).
-        assert _drop_last(self._dc(backend='hf', mode='local'), is_val=True) is False
+        assert _drop_last(self._dc(backend='hf', mode='local'), ) is False  # eval keeps the remainder too
 
     @patch('twinkle.dataloader.DataLoader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')
@@ -454,10 +482,10 @@ class TestDropLast:
                 f'backend={backend} should pass drop_last={expected}'
 
 
-# === TestDeviceMeshSampler (DP semantics of the twinkle dataloader's per-rank slicing) ===
+# === TestShardedBatchSampler (DP semantics of the twinkle dataloader's per-rank slicing) ===
 
 
-class DeviceMeshSamplerCase:
+class ShardedBatchSamplerCase:
     """Shared construction for the DP-slicing tests: one real DeviceMesh per rank coordinate.
 
     Not named Test* on purpose -- pytest would re-collect the shared helpers as a case of their own.
@@ -465,26 +493,27 @@ class DeviceMeshSamplerCase:
 
     @staticmethod
     def mesh(rank, world, monkeypatch):
-        from swift.dev.builders import build_device_mesh
+        from swift.dev.builders import build_parallel_mesh
         from swift.dev.config import DistributedConfig
         monkeypatch.setenv('RANK', str(rank))
         monkeypatch.setenv('WORLD_SIZE', str(world))
-        return build_device_mesh(DistributedConfig(backend='megatron', mode='local', nproc_per_node=world))
+        return build_parallel_mesh(DistributedConfig(backend='megatron', mode='local', nproc_per_node=world))
 
     @staticmethod
     def indices(mesh, *, total, global_batch, shuffle=False, **kw):
         """The indices one rank reads, through the same sampler stack twinkle's DataLoader builds."""
         from torch.utils.data import BatchSampler
-        from twinkle.dataloader.device_mesh_sampler import DeviceMeshSampler
+        from twinkle.dataloader.sharded_batch_sampler import ShardedBatchSampler
         from twinkle.dataloader.epoch_sampler import EpochSampler
         base = BatchSampler(
             EpochSampler(total, shuffle=shuffle, data_seed=0), batch_size=global_batch, drop_last=False)
-        sampler = DeviceMeshSampler(base, mesh, dataset_length=total, batch_size=global_batch, data_seed=0, **kw)
-        return [idx for batch in sampler for idx in batch]
+        sampler = ShardedBatchSampler(base, mesh, dataset_length=total, batch_size=global_batch, data_seed=0, **kw)
+        # the sampler yields SampleIndex(index, epoch) now; these assertions are index arithmetic
+        return [getattr(idx, 'index', idx) for batch in sampler for idx in batch]
 
 
-class TestDeviceMeshSampler(DeviceMeshSamplerCase):
-    """twinkle's DeviceMeshSampler must shard the data across DP ranks with NO overlap and NO gap --
+class TestShardedBatchSampler(ShardedBatchSamplerCase):
+    """twinkle's ShardedBatchSampler must shard the data across DP ranks with NO overlap and NO gap --
     the DP-semantics gate for the mode='local' path.
 
     dev hands twinkle the GLOBAL batch and each rank takes its own slice of every batch, so a
@@ -574,10 +603,10 @@ class TestGroupByLength:
             TwinkleDataLoader(SimpleMapDataset(8), batch_size=4, shuffle=True, group_by_length=True, lengths=None)
 
 
-class TestDataSharding(DeviceMeshSamplerCase):
+class TestDataSharding(ShardedBatchSamplerCase):
     """data_sharding (Megatron-only): shuffle WITHIN a DP shard instead of globally-then-slice.
 
-    Ported into twinkle's DeviceMeshSampler from legacy MegatronPretrainingRandomSampler
+    Ported into twinkle's ShardedBatchSampler from legacy MegatronPretrainingRandomSampler
     (batch_sampler.py:121-129) so existing Megatron user scripts that set --data_sharding keep working
     after the dev refactor. Opt-in: the default path keeps the global permutation.
     """
@@ -616,9 +645,9 @@ class TestDataSharding(DeviceMeshSamplerCase):
 
     def test_data_sharding_needs_the_dp_layout(self):
         """Without a device_mesh there are no buckets to shard into -> fail, never silently ignore."""
-        from twinkle.dataloader.device_mesh_sampler import DeviceMeshSampler
+        from twinkle.dataloader.sharded_batch_sampler import ShardedBatchSampler
         with pytest.raises(ValueError, match='data_sharding needs'):
-            DeviceMeshSampler(None, None, data_sharding=True, dataset_length=40, batch_size=4)
+            ShardedBatchSampler(None, None, data_sharding=True, dataset_length=40, batch_size=4)
 
     @patch('swift.dev.builders.dataset._encode', return_value='E')
     @patch('swift.dev.dataset.load_dataset')
@@ -646,9 +675,10 @@ class TestDataSharding(DeviceMeshSamplerCase):
 
 
 class TestDataLoaderResumeContract:
-    """The resume contract dev's SFTLoop drives twinkle's DataLoader through (see recipe/train_loop.py
-    save/resume): ``get_state()`` reports consumed_train_samples + resume_epoch, and
-    ``skip_consumed_samples()`` makes the NEXT pass continue from exactly there.
+    """The resume contract dev's offline training loop drives twinkle's DataLoader through (see
+    ``swift.dev.recipe.common.checkpoint.CheckpointSaver`` save/resume): ``get_state()`` reports
+    consumed_train_samples + resume_epoch, and ``skip_consumed_samples()`` makes the NEXT pass
+    continue from exactly there.
 
     Read through get_state() rather than off an attribute on purpose: the DataLoader is a twinkle
     remote_class, so in ray mode the driver holds a handle whose attributes live in the worker and only
@@ -660,7 +690,8 @@ class TestDataLoaderResumeContract:
         return TwinkleDataLoader(SimpleMapDataset(size), batch_size=batch_size, shuffle=False)
 
     def test_fresh_state_is_zero(self):
-        assert self._loader().get_state() == {'consumed_train_samples': 0, 'resume_epoch': 0}
+        state = self._loader().get_state()
+        assert state['consumed_train_samples'] == 0 and state['epoch'] == 0 and state['offset'] == 0
 
     def test_iterating_counts_consumed_samples(self):
         loader = self._loader(20, 4)
@@ -671,7 +702,8 @@ class TestDataLoaderResumeContract:
         """8 of 20 samples consumed -> the next pass reads the remaining 12 (3 batches of 4)."""
         loader = self._loader(20, 4)
         loader.skip_consumed_samples(8)
-        assert loader.get_state() == {'consumed_train_samples': 8, 'resume_epoch': 0}
+        state = loader.get_state()
+        assert state['consumed_train_samples'] == 8 and state['epoch'] == 0
         assert len(list(loader)) == 3
         assert loader.get_state()['consumed_train_samples'] == 20
 
@@ -681,7 +713,7 @@ class TestDataLoaderResumeContract:
         epochs nor -- as a linear index skip would -- reads nothing at all."""
         loader = self._loader(20, 4)
         loader.skip_consumed_samples(48)  # two full epochs + 8
-        assert loader.get_state()['resume_epoch'] == 2
+        assert loader.get_state()['epoch'] == 2  # was 'resume_epoch' before the v2 state
         assert len(list(loader)) == 3
 
     def test_skip_applies_to_the_next_pass_only(self):
@@ -698,9 +730,9 @@ class TestDataLoaderResumeContract:
 class TestEpochReshuffle:
     """Guards the per-epoch reshuffle contract: shuffle order must change per epoch.
 
-    SFTLoop.fit calls dataloader.set_epoch(epoch) each epoch; twinkle's EpochSampler derives
+    The offline loop calls dataloader.set_epoch(epoch) each epoch; twinkle's EpochSampler derives
     its shuffle seed as base_seed + epoch. A regression where set_epoch is dropped (the
-    original SFTLoop bug) would make every epoch train on the identical order — silent
+    original bug in the old offline loop) would make every epoch train on the identical order — silent
     training-quality loss. These assertions freeze the correct reshuffle behavior.
     """
 
@@ -748,7 +780,7 @@ class TestEpochReshuffle:
         """The DeviceMesh's DP coordinate must equal the DP rank Megatron itself would assign.
 
         This is the load-bearing assumption of the mode='local' data path: the dataloader shards by
-        DP rank taken from the mesh (build_device_mesh) because mpu does not exist yet, while the
+        DP rank taken from the mesh (build_parallel_mesh) because mpu does not exist yet, while the
         model later initializes mpu from that same mesh. If the two disagreed under TP/PP/CP, ranks
         that must see IDENTICAL data would silently get different data -- corrupt training, no
         error. Compared against Megatron's own RankGenerator with the mesh's order, so it needs no
@@ -756,7 +788,7 @@ class TestEpochReshuffle:
         """
         from megatron.core.parallel_state import RankGenerator
 
-        from swift.dev.builders import build_device_mesh
+        from swift.dev.builders import build_parallel_mesh
         from swift.dev.config import DistributedConfig
 
         dc = DistributedConfig(
@@ -770,7 +802,7 @@ class TestEpochReshuffle:
         for rank in range(world):
             monkeypatch.setenv('RANK', str(rank))
             monkeypatch.setenv('WORLD_SIZE', str(world))
-            mesh = build_device_mesh(dc)
+            mesh = build_parallel_mesh(dc)
             mesh_rank[rank] = mesh.dp_rank
             order, dp_size = mesh.order, mesh.dp_world_size
 
@@ -785,24 +817,40 @@ class TestEpochReshuffle:
 
 class TestResumeGuards:
 
-    def test_streaming_resume_raises(self):
-        """Resume + streaming/iterable must be refused (no deterministic epoch-aware skip).
+    def test_streaming_resume_skips_by_reading(self):
+        """Streaming resume is SUPPORTED now: skip_consumed_samples fast-forwards an iterable by
+        reading past the consumed rows, so a resumed stream continues at the right offset (the
+        epoch count alone is unrestorable -- _check_streaming's docstring pins the same line).
 
-        Iterable datasets can't reproduce the shuffle order for a cross-epoch skip, so run_sft
-        raises rather than silently mis-skipping.
+        The earlier contract refused this (no deterministic epoch-aware skip); it was reversed by
+        design when the loader grew an explicit iterable fast-forward.
         """
-        from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                       TrainConfig)
-        from swift.dev.recipe import run_sft
-        with pytest.raises(NotImplementedError, match='streaming/iterable'):
-            run_sft(
-                ModelConfig(model='dummy'),
-                TemplateConfig(template='qwen2_5'),
-                DatasetConfig(dataset=['dummy'], streaming=True),
-                TrainConfig(max_steps=1),
-                DistributedConfig(),
-                CheckpointConfig(resume_from_checkpoint='/nonexistent/ckpt'),
-            )
+        from torch.utils.data import IterableDataset
+        from twinkle.dataloader import DataLoader as TwinkleDataLoader
+
+        class Counting(IterableDataset):
+
+            def __init__(self, size):
+                self.size = size
+
+            def __iter__(self):
+                for i in range(self.size):
+                    yield {'i': i}
+
+        loader = TwinkleDataLoader(Counting(20), batch_size=4, shuffle=False)
+        loader.skip_consumed_samples(8)
+        assert loader.get_state()['consumed_train_samples'] == 8
+        remaining = [row['i'] for batch in loader for row in batch]
+        assert remaining == [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19], \
+            'the resumed stream must continue at the consumed offset, not replay or skip past it'
+
+    def test_streaming_still_refuses_a_cached_dataset(self):
+        """The streaming guard that REMAINS: a save_to_disk cache is map-style and cannot enter the
+        streaming pipeline (legacy asserts the same in SwiftSft._prepare_dataset)."""
+        from swift.dev.config import DatasetConfig
+        from swift.dev.config.validate import _check_streaming
+        with pytest.raises(ValueError, match='cached_dataset does not support streaming'):
+            _check_streaming(DatasetConfig(streaming=True, cached_dataset=['c']))
 
 
 # === TestValidateConfigs (cross-config rules; pure function of the Configs, no I/O) ===
@@ -907,13 +955,14 @@ class TestValidateConfigs:
         with pytest.raises(ValueError, match='only implemented by the transformers backend'):
             self._validate(distributed_config=DistributedConfig(backend='megatron', deepspeed='zero2'))
 
-    def test_hf_only_tuner_knob_on_megatron_backend_raises(self):
-        """use_galore lives on TunerConfig (it drives the optimizer branch), so the backend check
-        must read it from there -- a stale 'train_config' holder would AttributeError instead."""
-        from swift.dev.config import DistributedConfig, TunerConfig
+    def test_hf_only_galore_knob_on_megatron_backend_raises(self):
+        """use_galore lives on TrainConfig (it is an optimizer technique consumed by configure_optimizer),
+        so the backend check reads it from there -- Megatron has no GaLore path and must refuse the knob
+        rather than silently ignore it."""
+        from swift.dev.config import DistributedConfig, TrainConfig
         with pytest.raises(ValueError, match='only implemented by the transformers backend'):
             self._validate(
-                distributed_config=DistributedConfig(backend='megatron'), tuner_config=TunerConfig(use_galore=True))
+                distributed_config=DistributedConfig(backend='megatron'), train_config=TrainConfig(use_galore=True))
 
     def test_tuner_only_knobs_skipped_when_tuner_config_is_none(self):
         """tuner_config=None is full-param training: its knobs cannot be set, so the check must
@@ -934,13 +983,16 @@ class TestValidateConfigs:
         with pytest.raises(ValueError, match='only implemented by the transformers backend'):
             self._validate(distributed_config=DistributedConfig(backend='megatron', fsdp='fsdp2'))
 
-    def test_lisa_knob_is_backend_checked_from_tuner_config(self):
-        """LISA moved to TunerConfig with it; the backend check must follow the field."""
-        from swift.dev.config import DistributedConfig, TunerConfig
-        with pytest.raises(ValueError, match='only implemented by the transformers backend'):
-            self._validate(
-                distributed_config=DistributedConfig(backend='megatron'),
-                tuner_config=TunerConfig(lisa_activated_layers=4))
+    def test_lisa_knob_is_not_claimed_by_the_dev_config(self):
+        """LISA stays on the explicitly unsupported legacy CLI surface, not in dev Configs."""
+        import dataclasses
+
+        from swift.dev.config import TunerConfig
+        from swift.dev.config.validate import _HF_ONLY
+
+        assert 'lisa_activated_layers' not in {field.name for field in dataclasses.fields(TunerConfig)}
+        assert not any(holder == 'tuner_config' and field == 'lisa_activated_layers'
+                       for holder, field, _ in _HF_ONLY)
 
     def test_parallel_size_gt_1_on_hf_backend_raises(self):
         """TP/PP/CP/EP > 1 needs Megatron; the transformers path cannot provide that layout.
@@ -986,6 +1038,7 @@ class TestValidateConfigs:
 
         from swift.dev.config import validate as validate_module
         holders = {
+            'model_config': 'ModelConfig',
             'dataset_config': 'DatasetConfig',
             'train_config': 'TrainConfig',
             'distributed_config': 'DistributedConfig',

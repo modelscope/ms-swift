@@ -1,16 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the Qwen families that need more than the plain transformers path.
-
-Ported from ``swift/model/models/qwen.py`` against the ``ModelLoader`` seams in ``.base``.
-Every ``PORT`` comment marks a place where the current seams did not fit; they are collected
-in one list at the bottom of this file rather than being silently worked around.
-
-A *template variant* -- a checkpoint that loads exactly like its parent but speaks a different chat
-format (QVQ, MiMo-VL, gme, OvisOCR2) -- is its own thin subclass, not a nested ``ModelGroup``. It
-declares ``model_type`` + ``template`` + ``models`` and, crucially, leaves ``architectures`` empty:
-reverse-lookup from a HuggingFace class name must land on the one base family, never on a variant,
-so variants are reachable only by id match or an explicit ``--model_type``.
-"""
+# Qwen families beyond the plain transformers path; PORT comments mark seams that did not fit.
 from __future__ import annotations
 import importlib.metadata
 import os
@@ -63,11 +52,9 @@ class Qwen2VLLoader(ModelLoader):
         ('OpenDataLab/MinerU2.5-Pro-2604-1.2B', 'opendatalab/MinerU2.5-Pro-2604-1.2B'),
     ]
 
-    # PORT-3: `is_moe` was `getattr(self, 'is_moe', False)` in legacy -- the author wanted a
-    # declaration but had nowhere to put it, so it was read defensively off the instance.
+    # PORT-3: legacy read this defensively off the instance (`getattr(self, 'is_moe', False)`).
     is_moe = False
-    # PORT-4: the patch_size a *third-party library* must be configured with. Not config, not
-    # processor, not model -- there is no seam for "configure the outside world".
+    # PORT-4: the patch_size a *third-party library* must be configured with -- no seam for it.
     image_patch_size = 14
     # PORT-5: env defaults that only exist to steer qwen_vl_utils. Qwen3VLEmb/Reranker set three.
     env_defaults: Dict[str, str] = {}
@@ -83,10 +70,9 @@ class Qwen2VLLoader(ModelLoader):
     def setup_environment(self) -> None:
         """PORT-6: a fourth seam the design is missing.
 
-        Legacy called this ``_check_qwen_vl_utils`` and four classes in the chain override it.
-        It must run *before* the processor is built, does version gating, sets env defaults and
-        reaches into ``qwen_vl_utils.vision_process`` module globals. It is neither a ``build``
-        nor a ``process`` of config/tokenizer/model.
+        Legacy called this ``_check_qwen_vl_utils``; it must run *before* the processor is built,
+        does version gating, sets env defaults and reaches into ``qwen_vl_utils.vision_process``
+        module globals -- neither a ``build`` nor a ``process`` of config/tokenizer/model.
         """
         for key, value in self.env_defaults.items():
             os.environ.setdefault(key, value)
@@ -102,12 +88,11 @@ class Qwen2VLLoader(ModelLoader):
 
     @staticmethod
     def _compat_qwen_vl_utils(image_patch_size: int) -> None:
-        """Translate the pixel-count env vars into the token-count ones qwen_vl_utils>=0.0.14 reads.
+        """Translate pixel-count env vars into the token-count ones qwen_vl_utils>=0.0.14 reads.
 
         The library switched its knobs from pixels to visual tokens; users (and every example
-        script) still export ``MAX_PIXELS``. One visual token covers
-        ``(patch_size * spatial_merge_size)**2`` pixels, so the conversion is a plain divide. An
-        already-set token var always wins -- the pixel var is only a fallback.
+        script) still export ``MAX_PIXELS``. One token covers ``(patch_size * merge)**2`` pixels,
+        so the conversion is a plain divide; an already-set token var always wins.
         """
         spatial_merge_size = int(os.getenv('SPATIAL_MERGE_SIZE', '2'))
         image_factor = image_patch_size * spatial_merge_size
@@ -123,9 +108,8 @@ class Qwen2VLLoader(ModelLoader):
                 os.environ[target_var] = str(int(value) // image_factor**2)
 
     def build_processor(self, model_dir: str, config: PretrainedConfig, **kwargs):
-        # PORT-6 fallout: with no dedicated seam, the environment setup has to be smuggled into
-        # the front of build_processor, where a subclass that overrides build_processor without
-        # calling super() silently loses it -- exactly the failure mode we set out to remove.
+        # PORT-6 fallout: no dedicated seam, so the environment setup rides the front of
+        # build_processor -- a subclass overriding build_processor without super() loses it.
         self.setup_environment()
         return super().build_processor(model_dir, config, **kwargs)
 
@@ -138,16 +122,8 @@ class Qwen2VLLoader(ModelLoader):
         return processor
 
     def process_model(self, model):
-        # DeepSpeed ZeRO-3 keep-alive, driven entirely by `ModelArch.aligner` -- no forward fork.
-        # On a text-only micro-batch the stock forward would skip the vision tower, so its params go
-        # dark on that rank and the cross-rank all-gather / reduce-scatter deadlocks. The data side
-        # feeds a minimal dummy image so the *stock* forward runs the whole vision path; these hooks
-        # zero the aligner output so the dummy contributes exactly nothing. Because the aligner is
-        # the single chokepoint between vision tower and LLM, this keeps the tower alive while
-        # blocking all contamination -- and it reads the aligner names off `model_arch`, so every VL
-        # subclass gets the right modules automatically (Qwen3-VL's deepstack mergers included,
-        # Qwen3.5's qwen2_vl-style single merger too). Replaces legacy `_compat_qwen3_vl_mixed_data`,
-        # a verbatim forward fork pinned to a dozen transformers internals.
+        # DeepSpeed ZeRO-3 keep-alive, driven by `ModelArch.aligner`: a text-only micro-batch
+        # skips the vision tower and deadlocks the all-gather; see keep_alive.py for the design.
         model._vision_keep_alive = apply_vision_keep_alive(model, self.model_arch.aligner)
         return model
 
@@ -216,9 +192,7 @@ class Qwen3VLLoader(Qwen2VLLoader):
     template = 'qwen3_vl'
     requires = ['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord']
     image_patch_size = 16
-    # PORT-7: Qwen3-VL requires qwen_vl_utils>=0.0.14 unconditionally, while Qwen2-VL tolerates
-    # <0.0.12. A declared `requires` cannot express "and therefore skip the version fork", so
-    # the fork stays imperative below.
+    # PORT-7: requires cannot express "and therefore skip the version fork", so it stays imperative.
     min_qwen_vl_utils = '0.0.14'
     models = [
         'Qwen/Qwen3-VL-2B-Instruct',
@@ -247,8 +221,8 @@ class Qwen3VLLoader(Qwen2VLLoader):
 
     @property
     def model_arch(self) -> ModelArch:
-        # Qwen3-VL adds the deepstack mergers, so the aligner is no longer a single prefix. The base
-        # `process_model` reads this and hooks all of them for the keep-alive, so no override here.
+        # Qwen3-VL adds the deepstack mergers, so the aligner is no longer a single prefix; the
+        # base `process_model` reads this and hooks all of them -- no override here.
         return ModelArch(
             language_model=['model.language_model', 'lm_head'],
             vision_tower='model.visual',
@@ -300,11 +274,8 @@ class Qwen3_5Loader(Qwen3VLLoader):
 
     @property
     def model_arch(self) -> ModelArch:
-        # PORT-9: qwen3_5 uses the qwen2_vl partition, not qwen3_vl, even though the loader inherits
-        # from Qwen3VLLoader. This is also what makes the keep-alive correct for free: the base
-        # `process_model` hooks exactly `model_arch.aligner`, which here is the single merger with no
-        # deepstack -- so qwen3_5 skips deepstack zeroing without any process_model override (the old
-        # PORT-10 "reach past super to skip it" hack is gone).
+        # PORT-9: qwen3_5 uses the qwen2_vl partition (single merger, no deepstack) even though
+        # the loader inherits from Qwen3VLLoader -- this is also what keeps the keep-alive correct.
         return Qwen2VLLoader.model_arch.fget(self)
 
 
@@ -346,9 +317,8 @@ class Qwen3VLEmbLoader(Qwen3VLLoader):
 
     model_type = 'qwen3_vl_emb'
     template = 'qwen3_vl_emb'
-    # Unlike the template variants above, embedding is a different *task*: falling through to
-    # `qwen3_vl` (generation) would be wrong, so we keep the architecture declared. Reverse-lookup
-    # then returns qwen3_vl / qwen3_vl_emb / qwen3_vl_reranker together and the caller must pick.
+    # Embedding is a different *task* (falling through to `qwen3_vl` generation would be wrong), so
+    # the architecture stays declared; reverse-lookup returns qwen3_vl/emb/reranker, caller picks.
     architectures = ['Qwen3VLForConditionalGeneration']
     mcore_model_type = 'qwen3_vl'
     env_defaults = {'IMAGE_MAX_TOKEN_NUM': '1800', 'FPS': '1', 'FPS_MAX_FRAMES': '64'}
@@ -394,19 +364,17 @@ class Qwen2AudioLoader(ModelLoader):
         )
 
 
-# --------------------------------------------------------------------------------------------------
-# AIDC-AI Ovis family (remote-code ``Ovis`` / ``Ovis2_5``). Unrelated to ``OvisOcr2Loader`` above,
-# which is a Qwen3.5 template variant that merely shares the "ovis" brand.
-# --------------------------------------------------------------------------------------------------
+# AIDC-AI Ovis family (remote-code ``Ovis`` / ``Ovis2_5``); unrelated to OvisOcr2Loader above,
+# which is a Qwen3.5 template variant sharing only the "ovis" brand.
+
+
 @register_model
 class OvisLoader(ModelLoader):
     """Ovis1.6 / Ovis2: a thin wrapper whose real LLM is ``model.llm``, so top-level calls are
-    delegated there (``delegate_to_submodel``). Legacy also cloned the embedding output and forced
-    the vit's input embeddings -- both obsolete per PATCH_INVENTORY, dropped. The remaining seams are
-    real: the visual tokenizer / VTE must match the model dtype, and Ovis's static KV cache is
-    disabled. Legacy's ``attn_impl_keys=['llm_attn_implementation']`` (Ovis routes attn_implementation
-    to the inner LLM via a custom config key) is a known difference not wired here -- attn_impl
-    threading through ``build_model`` is itself not yet on the live path."""
+    delegated there. Legacy also cloned the embedding output and forced the vit's input embeddings
+    -- both obsolete per PATCH_INVENTORY, dropped. The remaining seams are real: the visual
+    tokenizer / VTE must match the model dtype, and Ovis's static KV cache is disabled. Legacy's
+    ``attn_impl_keys=['llm_attn_implementation']`` routing is a known difference not wired here."""
 
     model_type = 'ovis1_6'
     model_cls = 'transformers:AutoModelForCausalLM'
@@ -494,18 +462,8 @@ class Ovis2_5Loader(ModelLoader):
         return model
 
 
-# ============================ Qwen text families ============================
-# Ported from the text `register_model` blocks of ``swift/model/models/qwen.py``. Legacy lumped many
-# chat formats under a few model_types (``qwen2``/``qwen3``/...), one template per ModelGroup. dev is
-# one-template-per-loader: each template becomes its own model_type -- a per-architecture base (the
-# reverse-lookup owner, ``architectures`` declared) plus ``architectures=[]`` template-variant
-# subclasses that load identically (same pattern as llama.py). Text models keep the default empty
-# ``ModelArch``. The ``qwen3_thinking``/``qwen3_nothinking``/``qwen3_coder`` templates recur across the
-# dense/moe/next architectures; since model_type must be unique, the dense Qwen3 owns the bare names
-# and the moe/next variants are family-qualified (``qwen3_moe_*`` / ``qwen3_next_*``).
-# Deferred (routed to a future deepseek.py, as llama.py did): the ``deepseek_r1`` distill groups
-# (DeepSeek-R1-Distill-Qwen / DeepSeek-R1-0528-Qwen3) -- Qwen arch but DeepSeek-branded, they
-# reverse-lookup to the qwen2/qwen3 base (known accepted fall-through).
+# Qwen text families: one-template-per-loader like llama.py (reverse-lookup owner + architectures=[]
+# template variants). thinking/nothinking/coder recur across dense/moe/next; dense owns bare names.
 
 
 @register_model
@@ -634,8 +592,8 @@ class Qwen2MoeLoader(ModelLoader):
 
 @register_model
 class Qwen3Loader(ModelLoader):
-    """Qwen3 dense; reverse-lookup owner for ``Qwen3ForCausalLM``. Owns the bare thinking/nothinking
-    template names (moe/next reuse the templates under family-qualified model_types)."""
+    """Qwen3 dense; reverse-lookup owner for ``Qwen3ForCausalLM``. Owns the bare thinking template
+    names (moe/next reuse the templates under family-qualified model_types)."""
 
     model_type = 'qwen3'
     model_cls = 'transformers:AutoModelForCausalLM'
@@ -790,16 +748,11 @@ class Qwen3NextCoderLoader(Qwen3NextLoader):
 @register_model
 class Qwen3EmbLoader(Qwen3Loader):
     """Qwen3-Embedding: a plain ``Qwen3ForCausalLM`` checkpoint (legacy declared no loader at all),
-    distinguished only by its template and its mcore counterpart.
-
-    Unlike the ``qwen3_thinking``/``qwen3_nothinking`` template variants above, embedding is a different
-    *task*, so the architecture stays declared (falling through to ``qwen3`` generation would be wrong);
-    reverse-lookup then returns qwen3 / qwen3_emb / qwen3_reranker together and the caller picks by id.
-    Same call as ``Qwen3VLEmbLoader``. ``task_type`` is deliberately left unpinned, exactly as legacy:
-    the head is the user's ``--task_type`` choice. Legacy's ``additional_saved_files``
-    (``config_sentence_transformers.json`` / ``1_Pooling`` / ``modules.json``) is an export-time
-    concern that dev's loader does not model, so it is dropped here.
-    """
+    distinguished only by its template and its mcore counterpart. Embedding is a different *task*,
+    so the architecture stays declared (falling through to ``qwen3`` generation would be wrong);
+    reverse-lookup returns qwen3 / qwen3_emb / qwen3_reranker together and the caller picks by id.
+    ``task_type`` is deliberately unpinned, exactly as legacy (the head is the user's choice);
+    legacy's ``additional_saved_files`` is an export-time concern dev's loader does not model."""
 
     model_type = 'qwen3_emb'
     architectures = ['Qwen3ForCausalLM']
@@ -823,13 +776,9 @@ class Qwen3RerankerLoader(Qwen3Loader):
 @register_model
 class MidashengLMLoader(ModelLoader):
     """MiDashengLM: an audio LM (Dasheng encoder + Qwen2.5 decoder), remote-code ``MiDashengLMModel``
-    (absent from transformers 5.5) so it rides ``AutoModel`` + the ``trust_remote_code`` flag.
-
-    ``audio_encoder.float()`` is kept: the Dasheng encoder is numerically unstable in bf16/fp16, so
-    legacy pins it to fp32 -- a real requirement, not a placement patch. Legacy's companion
-    ``patch_output_clone(decoder.model.embed_tokens)`` is dropped (PATCH_INVENTORY marks it obsolete:
-    it worked around an in-place write under reentrant gradient checkpointing).
-    """
+    (absent from transformers 5.5) so it rides ``AutoModel`` + ``trust_remote_code``. The Dasheng
+    encoder is numerically unstable in bf16/fp16, so ``audio_encoder.float()`` is kept (a real
+    requirement, not a placement patch); legacy's ``patch_output_clone`` is dropped."""
 
     model_type = 'midashenglm'
     model_cls = 'transformers:AutoModel'
@@ -854,25 +803,23 @@ class MidashengLMLoader(ModelLoader):
         return model
 
 
-# ---------------------------- task variants: embedding / reward / PRM ----------------------------
+# Task variants: embedding / reward / PRM.
 
 
 @register_model
 class Qwen2GteLoader(Qwen2Loader):
     """gte-Qwen2: a ``Qwen2ForCausalLM`` checkpoint served as a sentence embedder. Legacy loaded it
-    through ``SentenceTransformersLoader`` (``SentenceTransformer(model_dir)``); on dev that pipeline
-    construction lives at the model layer (``swift/dev/model/sentence_transformer_model.py``), not in
-    the loader -- so the loader only carries registration facts and pins the intrinsic embedding task.
-
-    Architecture stays declared (a task variant, like ``Qwen3EmbLoader``, not a template variant): a
-    gte checkpoint is always embedding, so reverse-lookup returns qwen2 / qwen2_gte together and the
-    caller disambiguates by id. ``trust_remote_code`` mirrors legacy passing it into SentenceTransformer.
-    """
+    through ``SentenceTransformersLoader``; on dev that pipeline construction lives at the model
+    layer (sentence_transformer_model.py), so the loader only carries registration facts, pins the
+    embedding task, and marks the framework. Architecture stays declared (a task variant, like
+    ``Qwen3EmbLoader``): a gte checkpoint is always embedding, so reverse-lookup returns qwen2 /
+    qwen2_gte together and the caller disambiguates by id."""
 
     model_type = 'qwen2_gte'
     architectures = ['Qwen2ForCausalLM']
     template = 'dummy'
     task_type = 'embedding'
+    model_framework = 'sentence_transformers'
     trust_remote_code = True
     models = [
         ('iic/gte_Qwen2-1.5B-instruct', 'Alibaba-NLP/gte-Qwen2-1.5B-instruct'),
@@ -884,11 +831,8 @@ class Qwen2GteLoader(Qwen2Loader):
 class Qwen2RewardLoader(ModelLoader):
     """Qwen2-Math-RM: a reward model. ``Qwen2ForRewardModel`` is not in transformers 5.5 -- the
     checkpoint ships the class via remote code and its ``auto_map`` maps ``AutoModel`` to it, so it
-    loads with ``AutoModel`` + ``trust_remote_code`` (this is legacy ``RewardModelLoader``'s
-    ``'AutoModel' in config.auto_map`` branch, made unconditional since every RM checkpoint here does).
-    ``is_reward`` marks the num_labels=1 reward head; task resolution still lands on seq_cls.
-    Reverse-lookup owner for ``Qwen2ForRewardModel``.
-    """
+    loads with ``AutoModel`` + ``trust_remote_code``. ``is_reward`` marks the num_labels=1 reward
+    head; task resolution still lands on seq_cls. Reverse-lookup owner for ``Qwen2ForRewardModel``."""
 
     model_type = 'qwen2_reward'
     model_cls = 'transformers:AutoModel'
@@ -912,19 +856,12 @@ class Qwen2_5MathRewardLoader(Qwen2RewardLoader):
 
 @register_model
 class Qwen2_5PRMLoader(ModelLoader):
-    """Qwen2.5-Math-PRM: a *process* reward model that scores each reasoning step (a per-token 2-class
-    head), distinct from a sequence-level reward model. ``Qwen2ForProcessRewardModel`` is not in
-    transformers 5.5, so like the RM it loads through remote code (``AutoModel`` + ``trust_remote_code``,
-    the checkpoint's ``auto_map`` resolving its own PRM class).
-
-    On how to train PRM: dev's builders have no ``prm`` task branch (their intrinsic tasks are
-    seq_cls / reranker / embedding / generative_reranker), and a PRM's per-step head is neither a
-    causal-LM head nor a single seq_cls head -- so the head must come from the checkpoint's own
-    remote-code class rather than be swapped in by the builder. Hence we load it natively via
-    ``AutoModel`` and keep ``is_reward`` for the num_labels handling, but do NOT pin
-    ``task_type='prm'`` (there is no such builder path yet); wiring a dedicated PRM step-level loss is
-    a separate builder-side task. Reverse-lookup owner for ``Qwen2ForProcessRewardModel``.
-    """
+    """Qwen2.5-Math-PRM: a *process* reward model scoring each reasoning step (a per-token 2-class
+    head), distinct from a sequence-level reward model; not in transformers 5.5, so it loads through
+    remote code like the RM. dev's builders have no ``prm`` task branch (a PRM's per-step head is
+    neither a causal-LM head nor a single seq_cls head), so it loads natively via ``AutoModel``,
+    keeps ``is_reward`` for the num_labels handling, but does NOT pin ``task_type='prm``';
+    a dedicated PRM step-level loss is a separate builder-side task."""
 
     model_type = 'qwen2_5_prm'
     model_cls = 'transformers:AutoModel'
@@ -940,21 +877,16 @@ class Qwen2_5PRMLoader(ModelLoader):
     ]
 
 
-# ---------------------------- Qwen-Omni (thinker + talker) ----------------------------
+# Qwen-Omni (thinker + talker).
 
 
 class _QwenOmniLoader(Qwen2VLLoader):
     """Shared plumbing for the Qwen-Omni families (thinker LM + talker/token2wav generator).
 
-    Reuses Qwen2-VL's env setup (``qwen_omni_utils`` depends on ``qwen_vl_utils``, so the presence
-    check holds) but points ``process_tokenizer`` at ``qwen_omni_utils.vision_process``. The outer
-    model is a thin wrapper whose real language model is ``.thinker``, so ``process_model`` proxies
-    the top-level methods to it via ``delegate_to_submodel`` (legacy ``use_submodel_func(_, 'thinker')``).
-
-    Dropped from legacy, per PATCH_INVENTORY: ``_no_split_modules`` (HF device_map) and
-    ``patch_get_input_embeddings`` on the visual / audio towers (only needed under reentrant gradient
-    checkpointing). The AWQ ``base_model = model.model`` special-case is gone too -- dev does not
-    build a quantized base through this path.
+    Reuses Qwen2-VL's env setup but points ``process_tokenizer`` at ``qwen_omni_utils.vision_process``;
+    the thin wrapper's real LM is ``.thinker``, so ``process_model`` proxies there. Dropped, per
+    PATCH_INVENTORY: ``_no_split_modules`` / ``patch_get_input_embeddings`` (in-tree Omni declares
+    its own leaves) and the AWQ base_model special-case.
     """
 
     def process_config(self, config):
@@ -1009,11 +941,9 @@ class Qwen2_5OmniLoader(_QwenOmniLoader):
 @register_model
 class Qwen3OmniMoeLoader(_QwenOmniLoader):
     """Qwen3-Omni-MoE. Legacy forked ``forward`` (``_compat_qwen3_omni_mixed_data``) to inject dummy
-    media under DeepSpeed so the vision/audio towers stay alive on text-only micro-batches; dev does
-    that without forking forward, via the data-side dummy + ``apply_vision_keep_alive`` aligner hooks.
-    The audio-pad token id, which legacy set on the config from the tokenizer, is set in
-    ``build_processor`` (the one hook holding both config and processor).
-    """
+    media under DeepSpeed; dev does that without forking forward, via the data-side dummy +
+    ``apply_vision_keep_alive`` aligner hooks. The audio-pad token id, which legacy set on the
+    config from the tokenizer, is set in ``build_processor`` (the hook holding both objects)."""
 
     model_type = 'qwen3_omni_moe'
     model_cls = 'transformers:Qwen3OmniMoeForConditionalGeneration'
@@ -1052,33 +982,18 @@ class Qwen3OmniMoeLoader(_QwenOmniLoader):
         return model
 
 
-# ---------------------------- Qwen3 speech (external packages) ----------------------------
-# These two do not live in transformers at all: the model classes are shipped by the `qwen-asr` /
-# `qwen-tts` pip packages, which is why legacy pinned exact transformers versions -- the pins guard
-# *the package's* compatibility, not the checkpoint's.
+# Qwen3 speech (external packages): the classes ship in the `qwen-asr` / `qwen-tts` pip packages;
+# legacy's transformers pins guard *the package's* compatibility, not the checkpoint's.
 
 
 @register_model
 class Qwen3ASRLoader(ModelLoader):
     """Qwen3-ASR. ``Qwen3ASRForConditionalGeneration`` comes from the ``qwen-asr`` package, whose
-    ``auto_map`` wiring makes ``AutoModel`` resolve it once the package is imported -- hence the import
-    in ``build_config`` (legacy did the same, purely for its import side effect).
-
-    **The ``transformers==4.57.6`` pin is relaxed here via a narrow shim.** Root cause of the pin:
-    ``modeling_qwen3_asr.py`` decorates with ``@check_model_inputs()`` (called, then applied), but
-    transformers 5.x turned ``check_model_inputs`` into a bare decorator, so merely importing the
-    package raises ``TypeError: check_model_inputs() missing 1 required positional argument: 'func'``.
-    ``compat_check_model_inputs`` makes the symbol accept both spellings, after which the package
-    imports cleanly and ``Qwen3ASRForConditionalGeneration`` / ``Config`` / ``Processor`` are all
-    reachable (verified on transformers 5.5.0).
-
-    Caveat worth knowing before trusting a training run: the shim only restores the *calling
-    convention*. In transformers 5.x ``check_model_inputs`` is what collects ``output_attentions`` /
-    ``output_hidden_states`` into the returned dataclass, and this model's own forward was written
-    against the 4.57 behaviour. Loading and shape-level forward work; whether every auxiliary output
-    lands where the package expects has not been verified against a real checkpoint.
-
-    ``process_model`` proxies the wrapper's calls to ``thinker`` (legacy ``use_submodel_func``).
+    ``auto_map`` wiring makes ``AutoModel`` resolve it once imported -- hence the import in
+    ``build_config``. The ``transformers==4.57.6`` pin is relaxed via ``compat_check_model_inputs``:
+    5.x turned ``@check_model_inputs()`` (factory) into a bare decorator, breaking the package
+    import; the shim accepts both spellings (verified on 5.5.0, calling convention only; auxiliary
+    outputs unverified). ``process_model`` delegates to ``thinker``.
     """
 
     model_type = 'qwen3_asr'
@@ -1102,13 +1017,10 @@ class Qwen3ASRLoader(ModelLoader):
     def compat_check_model_inputs():
         """Let ``check_model_inputs`` accept the transformers 4.x ``@deco()`` spelling.
 
-        transformers 4.57 exposed a decorator *factory*; 5.x exposes a plain decorator. Third-party
-        model code written for 4.57 therefore fails at import. Wrapping the symbol so it dispatches on
-        "was I handed the function or not" keeps both spellings working. Idempotent.
-
-        Patching ``transformers.utils.generic`` alone is sufficient: on 5.5 that is the only module
-        holding the symbol (neither the package root nor ``modeling_utils`` re-exports it), and this runs
-        before ``qwen_asr`` is imported, so its ``from ... import check_model_inputs`` binds the wrapper.
+        4.57 exposed a decorator *factory*; 5.x a plain decorator, so 4.57-era third-party model
+        code fails at import. The wrapper dispatches on "was I handed the function or not"
+        (idempotent). Patching ``transformers.utils.generic`` suffices on 5.5, and it runs before
+        ``qwen_asr`` imports the symbol, so the package binds the wrapper.
         """
         import transformers.utils.generic as generic
         origin = getattr(generic, 'check_model_inputs', None)
@@ -1135,26 +1047,12 @@ class Qwen3ASRLoader(ModelLoader):
 
 @register_model
 class Qwen3TTSLoader(ModelLoader):
-    """Qwen3-TTS. Unlike ASR, the ``qwen-tts`` package does *not* self-register: legacy explicitly wired
-    its three classes into ``AutoConfig`` / ``AutoModel`` / ``AutoProcessor`` under the ``qwen3_tts``
-    key, which ``build_config`` reproduces here (registration is idempotent per key).
-
-    Real behaviour kept from legacy:
-      * twinkle's ``Qwen3TTSTrainingPatch`` -- **not** an obsolete patch but the dual-channel training
-        step itself: it splits ``input_ids`` into text/codec channels, sums their embeddings, injects the
-        speaker embedding at codec position 6, folds in the 15 sub-talker codec embeddings, and adds a
-        sub-talker cross-entropy term on top of the talker loss. Applied from ``twinkle.patch`` (the
-        componentized equivalent of legacy ``_patch_qwen3_tts_forward``).
-      * ``speaker_encoder`` is frozen -- only the talker trains.
-      * the external ``Qwen3TTSTokenizer`` (a separate checkpoint, ``tts_tokenizer_path`` env knob) is
-        downloaded and attached to the processor as ``tts_tokenizer``.
-      * ``get_input_embeddings`` / ``gradient_checkpointing_enable`` are delegated to ``talker``.
-
-    **Not verified: the ``qwen-tts`` package is not installed in this environment**, so neither the
-    Auto* registration nor the forward patch has been exercised on transformers 5.5. Legacy pinned
-    ``transformers<5``; that ceiling is dropped here on the same reasoning as ``qwen3_asr`` (the pin
-    guards the package, not the weights), but unlike ASR there is no import-level evidence yet. Expect
-    to need a compat shim similar to ``compat_check_model_inputs`` when the package is first installed.
+    """Qwen3-TTS. Unlike ASR, ``qwen-tts`` does *not* self-register: ``build_config`` wires its
+    three classes into the Auto* maps under ``qwen3_tts`` (idempotent per key), as legacy did.
+    Training runs through twinkle's ``Qwen3TTSTrainingPatch`` (dual-channel step, speaker embedding
+    at codec position 6, 15 sub-talker embeddings + cross-entropy), applied persistently to match
+    legacy's forward swap; ``speaker_encoder`` frozen; embeddings/gc delegated to ``talker``. The
+    ``<5`` ceiling is dropped; **package not installed here**, expect an ASR-like compat shim.
     """
 
     model_type = 'qwen3_tts'
@@ -1197,7 +1095,8 @@ class Qwen3TTSLoader(ModelLoader):
 
     def process_model(self, model):
         from twinkle.patch import apply_patch
-        from twinkle.patch.transformers_qwen3_tts import Qwen3TTSTrainingPatch
+
+        from swift.dev.patch.transformers_qwen3_tts import Qwen3TTSTrainingPatch
         self.delegate_to_submodel(model, 'talker', ['get_input_embeddings', 'gradient_checkpointing_enable'])
         if model.speaker_encoder is not None:
             for param in model.speaker_encoder.parameters():

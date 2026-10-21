@@ -1,2 +1,0 @@
-worker-0 slots=2
-worker-1 slots=2

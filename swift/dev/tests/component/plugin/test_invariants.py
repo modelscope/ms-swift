@@ -18,9 +18,11 @@ import re
 from pathlib import Path
 
 import swift.dev
+import swift.dev.callbacks  # noqa: F401 -- registers the `callback` kind, whose config_field is TrainConfig.callbacks
 import swift.dev.config as configs
+import swift.dev.builders.optimizer_plugins  # noqa: F401 -- registers the `param_groups` kind (TrainConfig.param_groups_plugins)
 import swift.dev.rewards  # noqa: F401 -- importing the declaring module is what registers its kind
-from swift.dev.plugin import PluginRegistry
+from swift.dev.utils.plugin import PluginRegistry
 
 DEV = Path(swift.dev.__file__).parent
 
@@ -30,40 +32,20 @@ DEV = Path(swift.dev.__file__).parent
 _LOOKS_LIKE_A_PLUGIN = re.compile(r'(^|_)(plugins?|funcs?|callbacks|metric)$')
 
 #: Candidates whose names do not follow that shape but which do name an implementation.
-_ALSO_CANDIDATES = {
-    ('ModelConfig', 'custom_register_path'),
-    ('TemplateConfig', 'agent_template'),
-    ('RLHFConfig', 'multi_turn_scheduler'),
-    ('RLHFConfig', 'loss_scale'),
-}
+_ALSO_CANDIDATES = set()
 
 #: Consumed, but not through PluginRegistry -- with the consumer named, so the claim is checkable.
 WIRED_ELSEWHERE = {
-    ('ModelConfig', 'external_plugins'): 'PluginRegistry.load_configured, via TrainAssembly.prepare',
-    ('ModelConfig', 'custom_register_path'): 'PluginRegistry.load_configured (joined to external_plugins)',
+    ('PluginConfig', 'external_plugins'): 'PluginRegistry.load_configured imports every source it names',
     ('TemplateConfig', 'loss_scale'): "builders/template.py passes it to legacy get_template, whose own "
     'loss_scale registry resolves the name',
-    ('SamplingConfig', 'prm_funcs'): 'swift.dev.reward.get_reward_funcs -> the reward kind',
+    ('InferConfig', 'metric'): "run_infer reads infer_config.metric and hands it to compute_metric (a closed "
+    "'acc' / 'rouge' choice, not a registry lookup)",
 }
 
 #: Declared and reaching NOTHING. Allowed, but each row states why -- an ignored knob must be a
 #: decision, not a surprise. Deleting the field is what removes the row.
-UNWIRED = {
-    ('TrainConfig', 'callbacks'): 'legacy callbacks are HfTrainer TrainerCallbacks; twinkle drives its own '
-    'loop, so there is no object for them to attach to. A dev callback point would be a new design.',
-    ('TrainConfig', 'eval_metric'): 'metrics are twinkle Metric objects added to the optimizer status; dev '
-    'never reads this name. Wiring it means a metric kind whose base is twinkle Metric.',
-    ('TemplateConfig', 'agent_template'): 'agent templates format tool calls inside the legacy template; the '
-    'dev template inherits the legacy behavior and exposes no selector.',
-    ('RLHFConfig', 'multi_turn_scheduler'): 'multi-turn rollout is not implemented in dev GRPO -- a scheduler '
-    'has no loop to schedule.',
-    ('RLHFConfig', 'reward_model_plugin'): 'dev PPO scores with reward MODELS built by _build_reward_models; '
-    'the legacy per-model plugin hook has no equivalent.',
-    ('RLHFConfig', 'loss_scale'): 'the RLHF losses come from twinkle and take no loss_scale; the template-side '
-    'loss_scale (TemplateConfig) is the one that is honoured.',
-    ('InferConfig', 'metric'): 'InferConfig is not threaded into run_infer at all yet (it takes metric as a '
-    "parameter, and the value is a closed 'acc' / 'rouge' choice rather than a registry lookup).",
-}
+UNWIRED = {}
 
 
 def config_classes():
@@ -83,9 +65,9 @@ def readers_of(field, *, owner=None, skip=('config', )):
     """Files that read this Config field, excluding the Config declarations themselves.
 
     ``owner`` qualifies the search with the Config's conventional variable name
-    (``RLHFConfig`` -> ``rlhf_config.loss_scale``), which is what tells two same-named fields on
-    different Configs apart -- ``loss_scale`` exists on both TemplateConfig (honoured) and RLHFConfig
-    (ignored), and an unqualified search credits the second with the first's consumer.
+    (``RuntimeConfig`` -> ``runtime_config.seed``), which is what tells two same-named fields on
+    different Configs apart -- ``seed`` exists on both RuntimeConfig and TrainConfig, and an
+    unqualified search credits one with the other's consumer.
     """
     prefix = rf'\b{re.escape(_config_variable(owner))}\.' if owner else r'\.'
     pattern = re.compile(prefix + re.escape(field) + r'\b')
@@ -99,7 +81,7 @@ def readers_of(field, *, owner=None, skip=('config', )):
 
 
 def _config_variable(config_name):
-    """``RLHFConfig`` -> ``rlhf_config``: the name every recipe gives that Config."""
+    """``RLConfig`` -> ``rl_config``: the name every recipe gives that Config."""
     return re.sub(r'(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])', '_', config_name).lower()
 
 

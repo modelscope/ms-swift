@@ -1,29 +1,18 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the transformers-native LLaVA families (the ``*_hf`` checkpoints).
-
-Ported from ``swift/model/models/llava.py`` -- only the checkpoints that load through a real
-transformers ``Llava*ForConditionalGeneration`` class. They all share the ``llava_hf`` architecture
-partition (``llava_next_video_hf`` is identical to it in transformers 5.x), so a single
-``_LlavaHfBase`` carries ``model_arch``; each family declares its own ``model_cls`` / template /
-version floor. Several families legitimately report the same ``architectures`` (six map to
-``LlavaNextForConditionalGeneration``): that many-to-many reverse-lookup is intentional and matches
-how llama/yi/codefuse already share ``LlamaForCausalLM`` -- id-match resolves them, and an unknown
-checkpoint returns all candidates for the caller to disambiguate.
-
-Not migrated here (bucket C -- see MODEL_MIGRATION.md): ``llama3_llava_next`` / ``llava1_6_mistral``
-/ ``llava1_6_yi`` / ``llava_next_qwen`` (``LlavaLoader`` ``git_clone``s the haotian-liu/LLaVA-VL
-repos, force-loads a CLIP vision tower, resizes embeddings and monkeypatches forward/generate).
-
-``llava_onevision1_5`` *is* migrated (bottom of this file) -- unlike its older siblings it needs no
-external repo, only the checkpoint's own remote code.
-"""
+# Transformers-native LLaVA families (the *_hf checkpoints); repo-clone families dropped.
 from __future__ import annotations
 
 from .base import ModelArch, ModelLoader, register_model
 
 
 class _LlavaHfBase(ModelLoader):
-    """Shared ``llava_hf`` partition + multimodal flag; subclasses pin ``model_cls`` and template."""
+    """Shared ``llava_hf`` partition + multimodal flag; subclasses pin ``model_cls`` and template.
+
+    Several families legitimately report the same ``architectures`` (six map to
+    ``LlavaNextForConditionalGeneration``): that many-to-many reverse-lookup is intentional and
+    matches how llama/yi/codefuse already share ``LlamaForCausalLM`` -- id-match resolves them, and
+    an unknown checkpoint returns all candidates for the caller to disambiguate.
+    """
 
     is_multimodal = True
     tags = ['vision']
@@ -158,22 +147,11 @@ class LlavaNextVideoYiHfLoader(LlavaNextVideoHfLoader):
 
 @register_model
 class LlavaOnevision1_5Loader(ModelLoader):
-    """LLaVA-OneVision-1.5: a Qwen2.5-VL-style stack whose model code ships *in the checkpoint*
-    (``modeling_llavaonevision1_5.py``), so it loads via ``AutoModelForCausalLM`` + the g7
-    ``trust_remote_code`` flag. Legacy reached the class through ``get_class_from_dynamic_module``
-    only so it could set ``_no_split_modules`` on it -- with that dropped, plain remote-code loading
-    is enough.
-
-    ``process_config`` keeps the one real fixup: ``vision_start_token_id = 151652``, which the shipped
-    config omits and the template needs to locate image spans.
-
-    Dropped, per PATCH_INVENTORY: ``_no_split_modules`` (an HF ``device_map`` hint -- twinkle owns
-    placement) and ``patch_get_input_embeddings(model.visual, 'patch_embed')`` (only needed under
-    reentrant gradient checkpointing).
-
-    Note ``requires`` is a *floor* (``transformers>=4.53.0``) plus the ``qwen_vl_utils`` package, both
-    satisfied on transformers 5.5 -- this family was never version-dead, unlike the older
-    ``llava1_6_*`` / ``llava_next_qwen`` siblings that need an external repo clone.
+    """LLaVA-OneVision-1.5: a Qwen2.5-VL-style stack whose model code ships *in the checkpoint* --
+    ``AutoModelForCausalLM`` + ``trust_remote_code``. ``process_config`` keeps the one fixup,
+    ``vision_start_token_id = 151652`` (omitted by the shipped config; the template needs it).
+    ``_no_split_modules`` stays (instance-level): twinkle FSDP2 reads it for the wrap boundary and
+    this stack has no ``model.model.layers`` fallback. Dropped: ``patch_get_input_embeddings``.
     """
 
     model_type = 'llava_onevision1_5'
@@ -202,3 +180,7 @@ class LlavaOnevision1_5Loader(ModelLoader):
     def process_config(self, config):
         config.vision_start_token_id = 151652
         return config
+
+    def process_model(self, model):
+        model._no_split_modules = ['LLaVAOneVision1_5_DecoderLayer', 'RiceBlock']
+        return model

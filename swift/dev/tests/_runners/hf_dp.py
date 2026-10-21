@@ -24,14 +24,14 @@ def _run(shape, data_path, out_dir):
 
     build_model is wrapped rather than reimplemented so this measures the real run_sft path: the
     model it built is the only place the mesh/dp-group facts can be read, and run_sft does not return
-    it. The patch targets the module attribute because _run_sft_body imports build_model at call time.
+    it. The patch targets the module attribute because run_sft imports build_model at call time.
     """
     from modelscope import snapshot_download
 
     import swift.dev.builders as builders
     from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig, TunerConfig)
-    from swift.dev.recipe import run_sft
+    from swift.dev.recipe.sft.run_sft import run_sft
 
     captured = {}
     orig_build_model = builders.build_model
@@ -53,7 +53,7 @@ def _run(shape, data_path, out_dir):
             # same two samples per step either way.
             TrainConfig(
                 learning_rate=1e-5,
-                lr_scheduler_type='constant',
+                lr_scheduler='constant',
                 warmup_ratio=0.0,
                 per_device_train_batch_size=(1 if shape == 'dp2' else 2),
                 gradient_accumulation_steps=1,
@@ -63,7 +63,7 @@ def _run(shape, data_path, out_dir):
             # LoRA on purpose: it is the DDP shape that used to crash outright without
             # ddp_find_unused_parameters, and it exercises the adapter's own OptimizerGroup (a second
             # group, built after __init__) rather than only the default one.
-            tuner_config=TunerConfig(tuner_type='lora'),
+            tuner_config=TunerConfig(tuner='lora'),
             output_dir=out_dir,
             _save_final=False)
     finally:
