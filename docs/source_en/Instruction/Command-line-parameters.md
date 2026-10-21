@@ -649,6 +649,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - dataset_shuffle: Whether to shuffle the dataset randomly. Default is True.
 - truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. With the delete strategy, over-long or encoding-failed samples are discarded, and new samples are resampled from the original dataset to maintain the intended batch size.
 - loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo', 'real', 'fipo'], default is 'grpo'. For details, refer to this [doc](./GRPO/DeveloperGuide/loss_types.md)
+  - With dynamic-sample chunking, `bnpo` normalizes by the effective completion-token count after filtering, matching the full batch; auxiliary losses retain their existing sample weighting.
 - fipo_decay_rate: Half-life parameter for FIPO Future-KL. The actual discount is `2 ** (-1 / fipo_decay_rate)`. Default is 32.0.
 - fipo_clip_range: Clipping range for the FIPO influence weight. Default is 0.2; set to None or 0 to disable clipping.
 - fipo_clip_high_only: Whether to clip the FIPO influence weight to `[1.0, 1.0 + fipo_clip_range]` only. Default is True.
