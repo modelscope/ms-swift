@@ -241,9 +241,9 @@ def build_sampler(
             sampler.set_template(template)
     except BaseException:
         try:
-            sampler.shutdown()
+            sampler.close_workers()
         except Exception:
-            logger.warning('Failed to shut down sampler after template init failed.', exc_info=True)
+            logger.warning('Failed to close sampler workers after template init failed.', exc_info=True)
         raise
     return sampler
 

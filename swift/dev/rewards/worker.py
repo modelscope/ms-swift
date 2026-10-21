@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import torch
 from twinkle import remote_class, remote_function
-from twinkle_agentic.async_rl.score_worker import ScoreWorker
+from twinkle_agentic.async_rl.score_worker import ScoreWorker, _resolve
 
 
 def _prm_plugin(plugin: Any):
@@ -103,183 +103,6 @@ class RewardWorker(ScoreWorker):
                                           else _prm_plugin(prm_step_scorer)),
                          prm_weights=prm_weights, template=template)
 
-    @remote_function(dispatch='all', collect='first', lazy_collect=False)
-    def response_indices(self, samples):
-        """返回有响应 token 的样本索引，encoded 保留在 worker。"""
-        from swift.dev.utils.scoring import response_positions
-
-        indices = [index for index, sample in enumerate(samples) if response_positions(sample.encoded)]
-        if not indices:
-            raise RuntimeError('the pulled batch has no response tokens to train on.')
-        return indices
-
-    @remote_function(dispatch='all', collect='first', lazy_collect=False)
-    def has_teacher_prompt(self, samples):
-        """仅返回特权视角是否存在，不把样本 extra 传回 driver。"""
-        return any((sample.extra or {}).get('teacher_prompt') for sample in samples)
-
-    @remote_function(dispatch='all', collect='first', lazy_collect=True)
-    def response_scores(self, tasks):
-        """多路响应前向：同 placement 串行、不同 placement 线程重叠，返回按任务序的分数。
-
-        每个任务是 ``(placement_key, scorer, features, scoring_kwargs)``，其中 ``scoring_kwargs``
-        直接透传给 ``batched_response_scores``（``train_batch_size`` / ``output_key`` /
-        ``forward_kwargs`` / ``allow_missing``）。优势方法只消费这里的输出引用，不再接模型句柄。
-        """
-        from swift.dev.utils.scoring import batched_response_scores
-        from twinkle_agentic.async_rl.score_worker import _run_grouped
-
-        return _run_grouped([
-            (placement, lambda scorer=scorer, features=features, kwargs=dict(kwargs):
-             batched_response_scores(scorer, features, **kwargs))
-            for placement, scorer, features, kwargs in tasks])
-
-    @staticmethod
-    def _token_rewards(samples, ref_logps, rl_config, reward_config):
-        """含 KL 惩罚的逐 token 奖励（GAE 与批内 reward 指标共用同一构造）。"""
-        from swift.dev.utils.scoring import build_reward_weights
-        from twinkle.advantage import GAEAdvantage
-
-        matrix = torch.tensor([list(sample.orm_reward) for sample in samples], dtype=torch.float32)
-        weights = build_reward_weights(reward_config.orm_weights, matrix.shape[1])
-        rewards = (matrix * weights.unsqueeze(0)).nansum(dim=1).tolist()
-        old = [list(sample.rollout_logps) for sample in samples]
-        refs = [list(ref) if ref is not None else prev for ref, prev in zip(ref_logps, old)]
-        token_rewards = GAEAdvantage.build_token_rewards(
-            rewards, [len(row) for row in old], old_logps=old, ref_logps=refs, kl_coef=rl_config.kl_coef)
-        return token_rewards, old
-
-    @remote_function(dispatch='all', collect='first', lazy_collect=True)
-    def gae(self, samples, values, ref_logps, rl_config, reward_config):
-        """在已筛选样本及其数值信号上计算 token 级 GAE，返回纯训练信号引用。"""
-        from twinkle.advantage import GAEAdvantage
-
-        if len(values) != len(samples) or len(ref_logps) != len(samples):
-            raise ValueError('values、ref_logps 必须与已筛选样本按行对齐。')
-        token_rewards, old = self._token_rewards(samples, ref_logps, rl_config, reward_config)
-        advantages, returns = GAEAdvantage(gamma=rl_config.gamma, gae_lambda=rl_config.lam,
-                                           normalize=rl_config.whiten_rewards)(token_rewards, values)
-        return {'advantages': advantages.tolist(), 'returns': returns.tolist(), 'old_logps': old}
-
-    @remote_function(dispatch='all', collect='first', lazy_collect=False)
-    def reward_metrics(self, samples, ref_logps, rl_config, reward_config):
-        """批内 reward 总和与 completion 长度（小控制量，直接返回真实 dict）。"""
-        token_rewards, old = self._token_rewards(samples, ref_logps, rl_config, reward_config)
-        return {'rewards': {'total': [float(sum(row)) for row in token_rewards]},
-                'completion_lengths': [len(row) for row in old]}
-
-    @staticmethod
-    def _rollout_correction_metrics(training_logps, rollout_logps):
-        """保持 legacy 的逐 token 与逐序列 off-policy 诊断公式。"""
-        train_rows, rollout_rows = [], []
-        for train, rollout in zip(training_logps, rollout_logps):
-            if train is None or rollout is None:
-                continue
-            length = min(len(train), len(rollout))
-            if length:
-                train_rows.append(torch.tensor(train[:length], dtype=torch.float32))
-                rollout_rows.append(torch.tensor(rollout[:length], dtype=torch.float32))
-        if not train_rows:
-            return {}
-        ratio = torch.cat(train_rows) - torch.cat(rollout_rows)
-        clipped = torch.clamp(ratio, -20.0, 20.0)
-        train_mean = torch.stack([row.mean() for row in train_rows])
-        rollout_mean = torch.stack([row.mean() for row in rollout_rows])
-        diff = rollout_mean - train_mean
-        return {'kl': float((-ratio).mean()),
-                'k3_kl': float((torch.exp(clipped) - clipped - 1.0).clamp(-10.0, 10.0).mean()),
-                'chi2_token': float(torch.exp(clipped).square().mean() - 1.0),
-                'training_log_ppl': float(-train_mean.mean()), 'rollout_log_ppl': float(-rollout_mean.mean()),
-                'training_ppl': float(torch.exp(-train_mean).mean()),
-                'rollout_ppl': float(torch.exp(-rollout_mean).mean()),
-                'log_ppl_diff': float(diff.mean()), 'log_ppl_abs_diff': float(diff.abs().mean()),
-                'log_ppl_diff_max': float(diff.max()), 'log_ppl_diff_min': float(diff.min()),
-                'ppl_ratio': float(torch.exp(diff).mean()),
-                'chi2_seq': float(torch.exp(torch.clamp(-diff, -20.0, 20.0)).square().mean() - 1.0)}
-
-    @remote_function(dispatch='all', collect='first', lazy_collect=True)
-    def grpo_advantages(self, samples, rl_config, reward_config, global_step, prm_orm_mix,
-                        *, old_logps=None, ref_logps=None, teacher_logps=None):
-        """消费数值信号引用，完成优势估计及 PRM/teacher 融合，返回纯训练信号。"""
-        from swift.dev.rewards.advantage import compute_advantages
-
-        rewards = [sample.orm_reward for sample in samples]
-        baselines = [sample.baseline for sample in samples]
-        if all(value is None for value in baselines):
-            baselines = None
-        processes = [sample.prm_process for sample in samples]
-        if all(value is None for value in processes):
-            processes = None
-        old = [list(sample.rollout_logps) for sample in samples] if old_logps is None else old_logps
-        if len(old) != len(samples):
-            raise ValueError('old_logps 必须与样本按行对齐。')
-        kl_in_reward = bool(rl_config.kl_in_reward and rl_config.beta)
-        if kl_in_reward and ref_logps is None:
-            raise ValueError('kl_in_reward=True requires reference logps.')
-        kl = torch.tensor(self.sequence_kl(old, ref_logps), dtype=torch.float32) if kl_in_reward else None
-        matrix = torch.tensor([[float('nan') if value is None or value != value else float(value)
-                                for value in row] or [float('nan')] for row in rewards], dtype=torch.float32)
-        estimator = rl_config.advantage_estimator
-        advantages = compute_advantages(
-            matrix, rl_config.num_generations, reward_weights=reward_config.orm_weights,
-            advantage_estimator=estimator, scale_rewards=rl_config.scale_rewards or 'group',
-            kl_in_reward=kl_in_reward, beta=float(rl_config.beta or 0.0), kl_values=kl,
-            response_lengths=[len(s.response_token_ids) for s in samples] if estimator == 'opo' else None,
-            f_norm=float(rl_config.f_norm) if estimator == 'gpg' else 1.0,
-            reward_baselines=torch.tensor(baselines, dtype=torch.float32) if baselines is not None else None)
-        if processes is not None:
-            advantages = self.fuse_prm(advantages, processes, float(prm_orm_mix))
-        elif teacher_logps is not None:
-            if rl_config.advantage_reweight == 'rlsd':
-                lam = rl_config.rlsd_lambda
-                if rl_config.rlsd_lambda_warmup_steps > 0 and global_step < rl_config.rlsd_lambda_warmup_steps:
-                    lam *= global_step / rl_config.rlsd_lambda_warmup_steps
-                elif rl_config.rlsd_lambda_decay_steps > 0 and global_step >= rl_config.rlsd_lambda_warmup_steps:
-                    lam *= max(1.0 - (global_step - rl_config.rlsd_lambda_warmup_steps)
-                               / rl_config.rlsd_lambda_decay_steps, 0.0)
-                advantages = self.reweight_advantages(
-                    advantages, old, teacher_logps, mode='rlsd', lam=lam,
-                    clip_range=rl_config.rlsd_reweight_clip_range, negative_only=rl_config.rlsd_negative_only)
-            elif rl_config.sdar_loss_coef <= 0:
-                advantages = self.reweight_advantages(advantages, old, teacher_logps, mode='expand',
-                                                      teacher_kl_coef=rl_config.teacher_kl_coef)
-        return {'advantages': advantages, 'old_logps': old}
-
-    @remote_function(dispatch='all', collect='first', lazy_collect=False)
-    def correction_metrics(self, old_logps, samples):
-        """重算 training logps 与 rollout logps 的 off-policy 诊断（小控制量，直接返回真实 dict）。"""
-        return self._rollout_correction_metrics(old_logps, [s.rollout_logps for s in samples])
-
-    @remote_function(dispatch='all', collect='first', lazy_collect=True)
-    def prepare_routing_replay(self, model, samples, mode, train_batch_size):
-        """校验 R3 或记录 R2，返回带 routing replay 的 feature 引用。"""
-        from swift.dev.utils.scoring import copy_inputs, score_chunks
-        features = [sample.encoded for sample in samples]
-        if mode == 'R3':
-            missing = sum(feature.get('routed_experts') is None for feature in features)
-            if missing:
-                raise RuntimeError(f'R3 缺少 {missing} 条样本的 routed_experts；使用 R2 记录或 disabled。')
-            return features
-        if mode != 'R2':
-            raise ValueError(f'Unknown router_replay_mode {mode!r}; expected R2/R3.')
-        rows = []
-        for chunk in score_chunks(features, train_batch_size):
-            out = model.forward_only(inputs=copy_inputs(chunk), router_replay_mode='R2')
-            recorded = out.get('routed_experts') if isinstance(out, dict) else None
-            if recorded is None:
-                raise RuntimeError('R2 未返回 routed_experts；请使用启用 routing replay 的 MoE 模型。')
-            for tensor in recorded if isinstance(recorded, (list, tuple)) else [recorded]:
-                rows.extend(tensor[index] for index in range(tensor.shape[0]))
-        if len(rows) != len(features):
-            raise RuntimeError('R2 routing 行数与样本数不一致。')
-        for feature, routed in zip(features, rows):
-            length = len(feature['input_ids'])
-            if routed.shape[0] < length:
-                raise RuntimeError('R2 routing 未覆盖整个输入序列。')
-            feature['routed_experts'] = routed[:length]
-            feature['replay_mask'] = feature['completion_mask']
-        return features
-
     @remote_function(dispatch='all', collect='first', lazy_collect=True)
     def fuse_prm(self, orm_advantages: List[float], prm_process: Any, mix: float) -> List[List[float]]:
         """Convex-blend the per-token process reward with the scalar ORM advantage (per token).
@@ -288,9 +111,7 @@ class RewardWorker(ScoreWorker):
         ``mix=0`` is standard GRPO byte-for-byte, ``mix=1`` pure PRM. The output is token-scale, so
         it stays a ref and is handed to ``forward_backward`` as the ``advantages`` kwarg.
         """
-        process = prm_process
-        if len(process) != len(orm_advantages):
-            raise ValueError('PRM 和 ORM 必须按样本等长对齐。')
+        process = _resolve(prm_process)
         fused: List[List[float]] = []
         for per_token, orm in zip(process, orm_advantages):
             if per_token is None:
@@ -311,6 +132,7 @@ class RewardWorker(ScoreWorker):
 
         features = []
         for sample in samples:
+            sample = _resolve(sample)
             teacher_prompt = (getattr(sample, 'extra', None) or {}).get('teacher_prompt')
             if not teacher_prompt:
                 features.append(sample.input_feature)
@@ -362,19 +184,12 @@ class RewardWorker(ScoreWorker):
         """
         from twinkle.advantage.teacher_signal import apply_rlsd_reweight, expand_advantage_to_per_token
 
-        old = old_logps
-        teacher = teacher_logps
-        if len(old) != len(advantages) or len(teacher) != len(old):
-            raise ValueError('advantages、old_logps 和 teacher_logps 必须按样本等长对齐。')
-        if any(len(left) != len(right) for left, right in zip(old, teacher)):
-            raise ValueError('teacher_logps 必须与每条响应的 old_logps 等长。')
+        old = _resolve(old_logps)
+        teacher = _resolve(teacher_logps)
         mask = torch.zeros((len(advantages), max((len(row) for row in old), default=1)), dtype=torch.bool)
         for index, row in enumerate(old):
             mask[index, :len(row)] = True
-        # The twinkle teacher-signal estimators take the per-sequence base advantage as [B] (1-D) and
-        # broadcast it to [B, T] themselves (advantages.unsqueeze(1).expand_as(mask)); building [B, 1]
-        # here would make unsqueeze(1) a [B, 1, 1] tensor that cannot expand_as the [B, T] mask.
-        base = torch.tensor(list(advantages), dtype=torch.float32)
+        base = torch.tensor([[a] for a in advantages], dtype=torch.float32)
         if mode == 'rlsd':
             out = apply_rlsd_reweight(base, mask, torch.tensor(teacher, dtype=torch.float32),
                                       torch.tensor(old, dtype=torch.float32), lam=lam,
@@ -388,10 +203,8 @@ class RewardWorker(ScoreWorker):
     @remote_function(dispatch='all', collect='first', lazy_collect=False)
     def sequence_kl(self, old_logps: Any, ref_logps: Any) -> List[float]:
         """Per-sample sequence KL ``mean(exp(d) - d - 1)`` over resolved logp lists -> ``[N]`` floats."""
-        old = old_logps
-        ref = ref_logps
-        if len(old) != len(ref):
-            raise ValueError('reference logps 必须按样本等长对齐。')
+        old = _resolve(old_logps)
+        ref = _resolve(ref_logps)
         values = []
         for prev, reference in zip(old, ref):
             if len(prev) != len(reference):

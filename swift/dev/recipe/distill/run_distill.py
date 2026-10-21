@@ -55,8 +55,8 @@ def _rows_from_samples(samples: List[Any]) -> List[DistillRow]:
     """
     return [
         DistillRow(sample.encoded,
-                   sample.messages if sample.messages is not None else sample.prompt,
-                   sample.extra if sample.extra is not None else {}) for sample in samples
+                   sample.messages if sample.messages is not None else list(sample.prompt or []),
+                   sample.extra or {}) for sample in samples
     ]
 
 
@@ -71,8 +71,7 @@ def _train_rows(cluster: Cluster, state: StepState, rows: List[DistillRow],
         state.micro_step += 1
         # The worker builds the kwargs where the teacher forward runs -- the driver never sees the
         # full-vocab logits or the logps, only the light kwargs carrying them as refs.
-        payload = cluster.worker.forward_kwargs(mini, use_student)
-        cluster.model.forward_backward(**{name: payload[name] for name in cluster.forward_fields})
+        cluster.model.forward_backward(**cluster.worker.forward_kwargs(mini, use_student))
         boundary = state.is_grad_sync_boundary()
         cluster.model.clip_grad_and_step(
             max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=state.ga)
@@ -150,7 +149,7 @@ def _distill_streaming_loop(cluster: Cluster, rl_config: 'RLConfig', rollout_con
     """The purely on-policy disaggregated loop (lmbda == 1): the StreamingDriver streams, body trains.
 
     Per pull: lift the samples into rows, train the mini-batches through the remote worker, then the
-    visible publish -- ``in_place`` pushes live weights after driver pause/drain,
+    visible publish -- ``in_place`` aborts in-flight generations and pushes the live weights,
     ``adapter_snapshot`` hands the driver the next version's save.
     """
     driver = build_distill_driver(
@@ -160,28 +159,32 @@ def _distill_streaming_loop(cluster: Cluster, rl_config: 'RLConfig', rollout_con
         output_dir=output_dir)
     strategy = rollout_config.weight_sync_strategy
     steps_since_publish = 0
-    try:
-        for samples in driver:
-            optimizer_steps = _train_rows(
-                cluster, state, _rows_from_samples(samples), True,
-                train_batch_size=train_batch_size, save=save)
-            steps_since_publish += optimizer_steps
-            if steps_since_publish >= rollout_config.parameter_sync_step:
-                if strategy == 'in_place':
-                    def _visible_sync(window: Any) -> None:
-                        if cluster.adapter is not None:
-                            cluster.adapter.publish()
-                        else:
-                            cluster.engine.sync_weights()
-                    driver.request_publish(_visible_sync)
-                else:
-                    driver.request_publish()
-                steps_since_publish = 0
-            driver.commit(optimizer_steps)
-            if state.reached_max() or state.should_stop():
-                break
-    finally:
-        driver.close()
+    for samples in driver:
+        optimizer_steps = _train_rows(
+            cluster, state, _rows_from_samples(samples), True,
+            train_batch_size=train_batch_size, save=save)
+        # the visible publish: cadence inline, then one request; the driver brackets the push with
+        # its version accounting and the adapter's decide/register (commit releases its thread).
+        steps_since_publish += optimizer_steps
+        if steps_since_publish >= rollout_config.parameter_sync_step:
+            if strategy == 'in_place':
+                # in_place overwrites the sampler's single live weight copy, so the visible half of
+                # the publish runs here: abort every in-flight generation, then push the weights.
+                def _visible_sync(window: Any) -> None:
+                    cluster.rollout.abort_all_inflight()
+                    if cluster.adapter is not None:
+                        cluster.adapter.publish()
+                    else:
+                        cluster.engine.sync_weights()
+
+                driver.request_publish(_visible_sync)
+            else:
+                # adapter_snapshot: the default push (snapshot_model) saves the next version's adapter.
+                driver.request_publish()
+            steps_since_publish = 0
+        driver.commit(optimizer_steps)
+        if state.reached_max() or state.should_stop():
+            break
 
 
 def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',

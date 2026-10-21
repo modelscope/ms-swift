@@ -28,24 +28,61 @@ logger = get_logger()
 def _gae_pipeline(cluster: Cluster, reward_config: 'RewardConfig', rl_config: 'RLConfig',
                   samples: List[Any], train_batch_size: int, reward_metric: Any
                   ) -> Tuple[List[Any], List[List[float]], List[List[float]], List[List[float]], List[List[float]]]:
-    """先筛选并两路前向，再把 values/ref_logps 引用交给 GAE。"""
-    kept = [samples[index] for index in cluster.worker.response_indices(samples)]
-    features = [sample.encoded for sample in kept]
+    """The shared GAE anchors: two overlapped forwards, then per-token rewards and GAE.
+
+    The critic's values and the reference's logps run as TWO batched passes overlapped via
+    ``_run_grouped``; ``build_token_rewards`` + ``GAEAdvantage`` then fix the anchors for the
+    whole ``num_ppo_epochs`` replay set. Returns ``(kept, advantages, returns, values, old_logps)``.
+    """
+    from swift.dev.utils.scoring import batched_response_scores, response_positions
+
+    from twinkle.advantage import GAEAdvantage
+    from twinkle_agentic.async_rl.score_worker import _run_grouped
+
+    kept = [sample for sample in samples if response_positions(sample.encoded)]
+    if not kept:
+        raise RuntimeError('the pulled batch has no response tokens to train on.')
+    kept_features = [sample.encoded for sample in kept]
     ref_shared = cluster.reference is cluster.model
-    scored = cluster.worker.response_scores([
-        (None, cluster.value_model, features, dict(
-            train_batch_size=train_batch_size, output_key='logits',
-            forward_kwargs={'return_logits': True, 'task': 'value'})),
-        (None if ref_shared else REF_GROUP, cluster.reference, features, dict(
-            train_batch_size=train_batch_size,
-            forward_kwargs={'disable_lora': True} if ref_shared else None, allow_missing=True)),
-    ])
-    values, ref_logps = scored[0], scored[1]
-    result = cluster.worker.gae(kept, values, ref_logps, rl_config, reward_config)
+    # critic values on the policy group (None key), reference logps on its own -- disjoint groups
+    # overlap; the policy actor chains its own disable_lora pass.
+    tasks = [
+        (None, lambda: batched_response_scores(
+            cluster.value_model, kept_features, train_batch_size=train_batch_size,
+            output_key='logits', forward_kwargs={'return_logits': True, 'task': 'value'})),
+        (None if ref_shared else REF_GROUP, lambda: batched_response_scores(
+            cluster.reference, kept_features, train_batch_size=train_batch_size,
+            output_key='logps', forward_kwargs=({'disable_lora': True} if ref_shared else {}),
+            allow_missing=True)),
+    ]
+    values_all, ref_all = _run_grouped(tasks)
+    # the weighted outcome scalar per sample (an unparseable judge verdict never poisons the sum;
+    # a no-scorer channel is a zero column, so the reward is the KL penalty alone)
+    matrix = torch.tensor([list(sample.orm_reward) for sample in kept], dtype=torch.float32)
+    if matrix.shape[1] == 0:
+        rm_scores = [0.0] * len(kept)
+    else:
+        from swift.dev.rewards.advantage import build_reward_weights
+
+        weight = build_reward_weights(reward_config.orm_weights, matrix.shape[1])
+        rm_scores = (matrix * weight.unsqueeze(0)).nansum(dim=1).tolist()
+    old_logps = [[float(x) for x in sample.rollout_logps] for sample in kept]
+    # a missing reference logps means "no KL penalty": reusing the old logps zeroes every
+    # per-token KL term for that sample (the kernel requires the two columns together).
+    ref_rows = [[float(x) for x in ref] if ref is not None else old
+                for ref, old in zip(ref_all, old_logps)]
+    token_rewards = GAEAdvantage.build_token_rewards(
+        rm_scores, [len(old) for old in old_logps],
+        old_logps=old_logps, ref_logps=ref_rows, kl_coef=rl_config.kl_coef)
+    advantages, returns = GAEAdvantage(
+        gamma=rl_config.gamma, gae_lambda=rl_config.lam,
+        normalize=rl_config.whiten_rewards)(token_rewards, values_all)
+    # the reward telemetry reflects exactly the batch the upcoming optimizer steps train on
     reward_metric.reset()
     reward_metric.accumulate(
-        **cluster.worker.reward_metrics(kept, ref_logps, rl_config, reward_config))
-    return (kept, result['advantages'], result['returns'], values, result['old_logps'])
+        rewards={'total': [float(sum(row)) for row in token_rewards]},
+        completion_lengths=[len(old) for old in old_logps])
+    return kept, advantages.tolist(), returns.tolist(), values_all, old_logps
 
 
 def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', samples: List[Any],
@@ -150,8 +187,10 @@ def _streaming_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'Rew
                     versions_cell: List[List[int]]) -> None:
     """The disaggregated branch: the StreamingDriver streams scored samples, the body trains.
 
-    driver 按完成顺序提交 ORM 评分；调用方对已评分样本执行 GAE 和训练。
-    发布先由 driver pause/drain，再由调用方同步权重或保存 adapter snapshot。
+    Per pull (the driver has ALREADY batched the ORM scoring at the pull boundary): lift the
+    samples through the GAE pipeline, train both models, then the visible publish --
+    ``in_place`` aborts in-flight generations and pushes the live weights, ``adapter_snapshot``
+    hands the driver the next version's save.
     """
     driver = build_ppo_driver(
         cluster=cluster, rl_config=rl_config, rollout_config=rollout_config, tuner_config=tuner_config,
@@ -160,31 +199,35 @@ def _streaming_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'Rew
         output_dir=output_dir)
     strategy = rollout_config.weight_sync_strategy
     steps_since_publish = 0
-    try:
-        for samples in driver:
-            versions_cell[:] = [getattr(sample, 'version_span', 0) for sample in samples]
-            kept, advantages, returns, values, old_logps = _gae_pipeline(
-                cluster, reward_config, rl_config, samples, train_batch_size, reward_metric)
-            optimizer_steps = _train_ppo_batch(
-                cluster, state, rl_config, kept, advantages, returns, values, old_logps,
-                train_batch_size=train_batch_size, ema_manager=ema_manager, save=save)
-            steps_since_publish += optimizer_steps
-            if steps_since_publish >= rollout_config.parameter_sync_step:
-                if strategy == 'in_place':
-                    def _visible_sync(window: Any) -> None:
-                        if cluster.adapter is not None:
-                            cluster.adapter.publish()
-                        else:
-                            cluster.engine.sync_weights()
-                    driver.request_publish(_visible_sync)
-                else:
-                    driver.request_publish()
-                steps_since_publish = 0
-            driver.commit(optimizer_steps)
-            if state.reached_max() or state.should_stop():
-                break
-    finally:
-        driver.close()
+    for samples in driver:
+        versions_cell[:] = [getattr(sample, 'version_span', 0) for sample in samples]
+        kept, advantages, returns, values, old_logps = _gae_pipeline(
+            cluster, reward_config, rl_config, samples, train_batch_size, reward_metric)
+        optimizer_steps = _train_ppo_batch(
+            cluster, state, rl_config, kept, advantages, returns, values, old_logps,
+            train_batch_size=train_batch_size, ema_manager=ema_manager, save=save)
+        # the visible publish: cadence inline, then one request; the driver brackets the push with
+        # its version accounting and the adapter's decide/register (commit releases its thread).
+        steps_since_publish += optimizer_steps
+        if steps_since_publish >= rollout_config.parameter_sync_step:
+            if strategy == 'in_place':
+                # in_place overwrites the sampler's single live weight copy, so the visible half of
+                # the publish runs here: abort every in-flight generation, then push the weights.
+                def _visible_sync(window: Any) -> None:
+                    cluster.rollout.abort_all_inflight()
+                    if cluster.adapter is not None:
+                        cluster.adapter.publish()
+                    else:
+                        cluster.engine.sync_weights()
+
+                driver.request_publish(_visible_sync)
+            else:
+                # adapter_snapshot: the default push (snapshot_model) saves the next version's adapter.
+                driver.request_publish()
+            steps_since_publish = 0
+        driver.commit(optimizer_steps)
+        if state.reached_max() or state.should_stop():
+            break
 
 
 def _save_value_checkpoint(value_model: Any, checkpoint_dir: str, checkpoint_config: Any,

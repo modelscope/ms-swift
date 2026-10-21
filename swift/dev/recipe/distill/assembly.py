@@ -93,7 +93,6 @@ class Cluster(NamedTuple):
     worker: Any
     sampling_params: Dict[str, Any]
     colocate: bool
-    forward_fields: Tuple[str, ...]
 
 
 def initialize_distill_cluster(*, model_config: 'ModelConfig', template_config: 'TemplateConfig',
@@ -172,6 +171,7 @@ def initialize_distill_cluster(*, model_config: 'ModelConfig', template_config: 
     # places it on the CPU payload group; colocate keeps it local for the visible loop's generate.
     rollout = MultiTurnRollout(
         sampler, template, sampling_params=SamplingParams(**params),
+        allow_partial_rollout=rollout_config.allow_partial_rollout,
         max_turns=1,
         max_trajectory_tokens=rollout_config.max_trajectory_tokens,
         remote_group=(None if colocate else REF_ONLY_REMOTE_GROUP))
@@ -186,18 +186,10 @@ def initialize_distill_cluster(*, model_config: 'ModelConfig', template_config: 
         teachers=teachers, signal=signal, template=template,
         gkd_logits_topk=rl_config.gkd_logits_topk, sft_alpha=rl_config.sft_alpha,
         train_batch_size=train_batch_size, gradient_accumulation_steps=gradient_accumulation_steps,
-        remote_group=REF_ONLY_REMOTE_GROUP, **teacher_options)
-    forward_fields = ['inputs', 'gradient_accumulation_steps']
-    if signal == 'logits':
-        forward_fields.extend(('teacher_logits', 'topk', 'apply_sft_loss'))
-    else:
-        forward_fields.append('teacher_logps')
-        if signal == 'multi_logps' and teacher_options.get('teacher_weights') is not None:
-            forward_fields.append('teacher_weights')
+        **teacher_options)
     return Cluster(
         model=model, sampler=sampler, rollout=rollout, engine=engine, adapter=adapter,
-        teachers=teachers, worker=worker, sampling_params=params, colocate=colocate,
-        forward_fields=tuple(forward_fields))
+        teachers=teachers, worker=worker, sampling_params=params, colocate=colocate)
 
 
 def _build_teachers(*, model: Any, model_config: 'ModelConfig', template: Any, rl_config: 'RLConfig',
@@ -292,7 +284,12 @@ def build_distill_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_con
                          gradient_accumulation_steps: int, prompt_dataloader: Any,
                          num_train_epochs: float, max_steps: int,
                          output_dir: str, run_id: str = 'run_distill') -> Any:
-    """完成样本在 DistillWorker 转换后按 prefix 交付；teacher 按训练 mini-batch 计算。"""
+    """Assemble twinkle's StreamingDriver over the cluster for a purely on-policy run (lmbda == 1).
+
+    Distillation scores no outcome channel, so no score_worker rides the barrier and no group
+    verdict exists -- the driver streams samples one by one (``unit_size=1``), the recipe lifts each
+    pull into rows, and the teacher scoring happens in the DistillWorker per mini-batch.
+    """
     import os
 
     from twinkle_agentic.async_rl import StreamingDriver
@@ -335,9 +332,8 @@ def build_distill_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_con
         max_steps=max_steps,
         consume=None,
         score=None,
-        score_worker=cluster.worker,
+        score_worker=None,
         resource_adapter=cluster.adapter,
-        allow_partial_rollout=rollout_config.allow_partial_rollout,
         regenerate=None,
         baseline_fn=None,
         max_group_regenerations=0)

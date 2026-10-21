@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, NamedTuple, Optional, Sequence
 
 from twinkle import remote_class, remote_function
-from twinkle_agentic.async_rl.score_worker import ScoreWorker, _run_grouped
+from twinkle_agentic.async_rl.score_worker import _run_grouped, _stash
 
 from swift.dev.utils.scoring import encode_privileged_feature
 
@@ -39,10 +39,13 @@ def response_ids_from_feature(feature: Dict[str, Any]) -> List[int]:
 
 
 @remote_class(execute='first')
-class DistillWorker(ScoreWorker):
-    """在同一 worker 转换完成样本，并构造 teacher forward 的训练参数。
+class DistillWorker:
+    """Build one mini-batch's ``forward_backward`` kwargs where the teacher signal is produced.
 
-    teacher 输出通过通用远程结果投影传给训练组件，不经过 driver 物化。
+    The teacher forward runs HERE (a CPU actor) so its heavy output never materialises in the
+    driver: GKD's full-vocab logits and OPSD / MOPD's response-only logps are stashed
+    (:func:`_stash`) and ride the kwargs as refs Ray derefs at the training actor. ``teachers`` is
+    always a list of bare frozen models, described by the plain parameters below.
     """
 
     def __init__(self, *, teachers: Sequence[Any], signal: str, template: Any = None,
@@ -53,15 +56,6 @@ class DistillWorker(ScoreWorker):
         if signal not in ('logits', 'logps', 'multi_logps'):
             raise ValueError(f"distillation signal must be one of 'logits'/'logps'/'multi_logps', got {signal!r}.")
         self.teachers = list(teachers)
-        if not self.teachers:
-            raise ValueError('蒸馏必须提供至少一个 teacher。')
-        if signal != 'multi_logps' and len(self.teachers) != 1:
-            raise ValueError('logits/logps 信号必须提供一个 teacher。')
-        if placements is not None and len(placements) != len(self.teachers):
-            raise ValueError('placements 必须与 teachers 等长。')
-        if teacher_weights is not None and len(teacher_weights) != len(self.teachers):
-            raise ValueError('teacher_weights 必须与 teachers 等长。')
-        super().__init__(orm_scorers=[], template=template)
         self.signal = signal
         self.template = template
         self.disable_lora = disable_lora
@@ -90,7 +84,7 @@ class DistillWorker(ScoreWorker):
         return encode_privileged_feature(
             self.template, row.messages, teacher_prompt, response_ids_from_feature(row.feature), row.extra)
 
-    @remote_function(dispatch='all', collect='first', lazy_collect=True)
+    @remote_function(dispatch='all', collect='none', lazy_collect=False)
     def forward_kwargs(self, rows: List[DistillRow], use_student: bool) -> Dict[str, Any]:
         """One mini-batch's kwargs: student inputs plus the teacher signal in the ``signal`` form.
 
@@ -113,22 +107,22 @@ class DistillWorker(ScoreWorker):
                 if self.offload:
                     teacher.offload_to_cpu()
             signal_kwargs = {
-                'teacher_logits': logits,
+                'teacher_logits': _stash(logits),
                 'topk': self.gkd_logits_topk,
                 'apply_sft_loss': bool(self.sft_alpha > 0 and not use_student),
             }
         elif self.signal == 'logps':
             privileged = [self._privileged_feature(row) for row in rows]
             signal_kwargs = {
-                'teacher_logps': self._response_logps(
-                    self.teachers[0], privileged, disable_lora=self.disable_lora),
+                'teacher_logps': _stash(
+                    self._response_logps(self.teachers[0], privileged, disable_lora=self.disable_lora)),
             }
         else:
             # K response-only channels, overlapped across disjoint placements, plus the mixture weights.
-            tasks = [(self.placements[index] if self.placements is not None else None,
+            tasks = [(self.placements[index],
                       lambda index=index: self._response_logps(self.teachers[index], features))
                      for index in range(len(self.teachers))]
-            signal_kwargs = {'teacher_logps': _run_grouped(tasks)}
+            signal_kwargs = {'teacher_logps': _stash(_run_grouped(tasks))}
             if self.teacher_weights is not None:
                 signal_kwargs['teacher_weights'] = self.teacher_weights
         return {

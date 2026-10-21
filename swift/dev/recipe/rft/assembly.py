@@ -123,6 +123,7 @@ def initialize_rft_cluster(*, model_config: 'ModelConfig', template_config: 'Tem
     # places it on the CPU payload group; colocate keeps it local for the visible loop's generate.
     rollout = MultiTurnRollout(
         sampler, template, sampling_params=SamplingParams(**params),
+        allow_partial_rollout=rollout_config.allow_partial_rollout,
         max_turns=(rollout_config.max_turns or 1),
         max_trajectory_tokens=rollout_config.max_trajectory_tokens,
         tools_factory=tools_factory, tools_config=rollout_config,

@@ -196,6 +196,7 @@ def initialize_cluster(*, model_config: 'ModelConfig', template_config: 'Templat
     # places it on the CPU payload group; colocate keeps it local for the visible loop's generate.
     rollout = MultiTurnRollout(
         sampler, template, sampling_params=SamplingParams(**params),
+        allow_partial_rollout=rollout_config.allow_partial_rollout,
         max_turns=(rollout_config.max_turns or 1),
         max_trajectory_tokens=rollout_config.max_trajectory_tokens,
         tools_factory=tools_factory, tools_config=rollout_config,
@@ -244,8 +245,7 @@ def initialize_cluster(*, model_config: 'ModelConfig', template_config: 'Templat
         prm_scorer = PluginRegistry.resolve(PRM_STEP_SCORER, plugin_name, config=reward_config)
     worker = RewardWorker(orm_scorers=orm_scorers, prm_scorers=prm_scorers,
                           prm_step_scorer=prm_scorer,
-                          prm_weights=reward_config.prm_weights, template=template,
-                          remote_group=(None if colocate else REF_ONLY_REMOTE_GROUP))
+                          prm_weights=reward_config.prm_weights, template=template)
     # Register the GPU-resident frozen RM handles for elastic scaling; a role without a handle
     # (rules-only channel, judge, local mode) stays static and the adapter can never address it.
     elastic_models = {}
@@ -310,23 +310,17 @@ def build_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'Ro
 
     baseline_fn = None
     if rl_config.advantage_estimator == 'remax':
-        baseline_sampling_params = greedy_params(cluster.sampling_params)
-        has_orm = bool(cluster.orm_scorers)
         def baseline_fn(group_key: str, samples: List[Any]) -> float:
             """The greedy completion's weighted reward, generated on the PUBLISHED weights (remax)."""
             greedy = rollout.generate(
                 [list(samples[0].prompt or [])], num_samples=1,
-                sampling_params=baseline_sampling_params,
+                sampling_params=greedy_params(cluster.sampling_params),
                 prompt_extras=[dict(samples[0].extra)] if samples[0].extra else None)
-            if callable(getattr(greedy, 'result', None)):
-                greedy = greedy.result()
             if len(greedy) != 1:
                 raise RuntimeError(f'remax greedy baseline returned {len(greedy)} samples, expected 1.')
             greedy[0].prompt = list(samples[0].prompt or [])
-            rewards = worker.score_group([greedy[0]]) if has_orm else [[]]
-            if callable(getattr(rewards, 'result', None)):
-                rewards = rewards.result()
-            return weighted_reward(rewards[0], orm_weights)
+            values = (worker.score_group([greedy[0]])[0] if cluster.orm_scorers else [])
+            return weighted_reward(values, orm_weights)
 
     # Stream geometry: a publish cycle trains ``parameter_sync_step`` groups, and the buffer must
     # hold one full pull quantum -- lcm(need_rows, num_generations) rows -- or assembly deadlocks.
@@ -352,7 +346,6 @@ def build_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'Ro
         score=None,
         score_worker=worker,
         resource_adapter=cluster.adapter,
-        allow_partial_rollout=rollout_config.allow_partial_rollout,
         regenerate=regenerate,
         baseline_fn=baseline_fn,
         max_group_regenerations=(rl_config.max_resample_times if rl_config.dynamic_sample else 0))

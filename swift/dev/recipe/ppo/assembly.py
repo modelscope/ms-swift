@@ -167,6 +167,7 @@ def initialize_ppo_cluster(*, model_config: 'ModelConfig', template_config: 'Tem
     # on the CPU payload group; colocate keeps it local for the visible loop's generate.
     rollout = MultiTurnRollout(
         sampler, template, sampling_params=SamplingParams(**params),
+        allow_partial_rollout=rollout_config.allow_partial_rollout,
         max_turns=1,
         max_trajectory_tokens=rollout_config.max_trajectory_tokens,
         remote_group=(None if colocate else REF_ONLY_REMOTE_GROUP))
@@ -193,8 +194,7 @@ def initialize_ppo_cluster(*, model_config: 'ModelConfig', template_config: 'Tem
         'orm', reward_config=reward_config, model_config=model_config, template_config=template_config,
         distributed_config=distributed_config, rollout_config=rollout_config, backend=backend,
         sampler=sampler, quantize_config=quantize_config)
-    worker = RewardWorker(orm_scorers=orm_scorers, template=template,
-                          remote_group=(None if colocate else REF_ONLY_REMOTE_GROUP))
+    worker = RewardWorker(orm_scorers=orm_scorers, template=template)
     return Cluster(
         model=model, value_model=value_model, sampler=sampler, rollout=rollout, engine=engine,
         adapter=adapter, reference=reference, worker=worker, sampling_params=params,
@@ -206,7 +206,13 @@ def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config:
                      gradient_accumulation_steps: int, prompt_dataloader: Any,
                      num_train_epochs: float, max_steps: int,
                      output_dir: str, run_id: str = 'run_ppo') -> Any:
-    """PPO 按完成顺序提交评分；已评分样本按 prefix 组装后进入 GAE 训练。"""
+    """Assemble twinkle's StreamingDriver for PPO: the per-sample prefix stream, batch-scored.
+
+    PPO has no group contract (per-token GAE scores each trajectory on its own), so the pull rule
+    is 'prefix' with no group-completion verdict -- the driver batches the ORM scoring at the pull
+    boundary via ``score_worker``, and the recipe lifts each pull through the GAE pipeline. No
+    sync-only feature exists either: every async_mode rides this one stream.
+    """
     from twinkle_agentic.async_rl import StreamingDriver
 
     from swift.dev.recipe.utils import check_streaming_config
@@ -249,7 +255,6 @@ def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config:
         score=None,
         score_worker=cluster.worker,
         resource_adapter=cluster.adapter,
-        allow_partial_rollout=rollout_config.allow_partial_rollout,
         regenerate=None,
         baseline_fn=None,
         max_group_regenerations=0)
