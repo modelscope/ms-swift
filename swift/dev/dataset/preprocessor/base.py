@@ -12,7 +12,7 @@ from twinkle.dataloader.random_state import derive_seed
 from swift.dev.utils import get_logger
 from .._diagnostics import note_row_error
 
-__all__ = ['MessagesRepairPreprocessor', 'Preprocessor']
+__all__ = ["MessagesRepairPreprocessor", "Preprocessor"]
 
 logger = get_logger()
 
@@ -33,23 +33,25 @@ class Preprocessor:
 
     # Columns whose Arrow type must be pinned rather than inferred: inference sees only the rows in
     # hand, so two shards of one dataset can infer types that only fail to align at concatenation.
-    MESSAGE_COLUMNS = ('messages', 'rejected_messages', 'positive_messages', 'negative_messages')
+    MESSAGE_COLUMNS = ("messages", "rejected_messages", "positive_messages", "negative_messages")
     # Media as {bytes, path} structs, the shape cast_mm_data normalises images to: an all-None-bytes
     # shard infers a different type than one with real bytes.
-    MEDIA_COLUMNS = ('images', 'rejected_images')
+    MEDIA_COLUMNS = ("images", "rejected_images")
     # Videos/audios stay plain path-string lists; pinned for the same reason. No rejected_* variant:
     # the preference schema carries rejected_images only (the four keys cast_mm_data handles).
-    MEDIA_PATH_COLUMNS = ('videos', 'audios')
-    FREEFORM_COLUMNS = ('objects', 'chat_template_kwargs')
+    MEDIA_PATH_COLUMNS = ("videos", "audios")
+    FREEFORM_COLUMNS = ("objects", "chat_template_kwargs")
 
-    def __init__(self,
-                 *,
-                 format_name: Optional[str] = None,
-                 columns: Optional[Dict[str, str]] = None,
-                 converter_kwargs: Optional[Dict[str, Any]] = None,
-                 strict: bool = False,
-                 traceback_limit: int = 10,
-                 seed: int = 42) -> None:
+    def __init__(
+        self,
+        *,
+        format_name: Optional[str] = None,
+        columns: Optional[Dict[str, str]] = None,
+        converter_kwargs: Optional[Dict[str, Any]] = None,
+        strict: bool = False,
+        traceback_limit: int = 10,
+        seed: int = 42,
+    ) -> None:
         """Build one transform; ``format_name``/``columns``/``converter_kwargs`` merge over the class
         attributes and win on conflict, and respectively pin a converter, rename columns before
         detection (legacy ``--columns``) and reach the converter's constructor. ``strict`` re-raises
@@ -79,12 +81,14 @@ class Preprocessor:
         """
         if self._converter is None:
             from ..format_converter import get_converter
+
             self._converter = get_converter(
                 self._feature_columns,
                 format_name=self.format_name,
                 aliases=self.columns,
                 random_state=self.random_state,
-                **self.converter_kwargs)
+                **self.converter_kwargs,
+            )
         return self._converter
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Union[Dict[str, Any], List[Dict[str, Any]]]]:
@@ -107,13 +111,15 @@ class Preprocessor:
         """
         return self.converter.apply_aliases(row)
 
-    def __call__(self,
-                 dataset,
-                 *,
-                 num_proc: int = 1,
-                 load_from_cache_file: bool = True,
-                 strict: Optional[bool] = None,
-                 batch_size: Optional[int] = None):
+    def __call__(
+        self,
+        dataset,
+        *,
+        num_proc: int = 1,
+        load_from_cache_file: bool = True,
+        strict: Optional[bool] = None,
+        batch_size: Optional[int] = None,
+    ):
         """Map :meth:`preprocess` over ``dataset``, returning only successfully converted rows."""
         if strict is None:
             strict = self.strict
@@ -121,30 +127,31 @@ class Preprocessor:
         dataset = self.resolve_features(dataset)
         self._feature_columns = list(dataset.features)
 
-        map_kwargs: Dict[str, Any] = {'batched': True}
+        map_kwargs: Dict[str, Any] = {"batched": True}
         if isinstance(dataset, HfDataset):
-            map_kwargs['batch_size'] = batch_size if batch_size is not None else 1000
+            map_kwargs["batch_size"] = batch_size if batch_size is not None else 1000
             # num_proc <= 1 maps in-process: a one-worker pool is pure spawn overhead, and a spawned
             # worker rebuilds an UNPATCHED ArrowWriter (see _pin_message_columns_for_pool), which
             # fails to serialise mixed-type message content (a tool_call dict beside plain text).
-            map_kwargs['num_proc'] = num_proc if num_proc >= 2 else None
+            map_kwargs["num_proc"] = num_proc if num_proc >= 2 else None
             if num_proc >= 2:
                 dataset = self._pin_message_columns_for_pool(dataset)
-            map_kwargs['load_from_cache_file'] = load_from_cache_file
+            map_kwargs["load_from_cache_file"] = load_from_cache_file
             if not dataset.cache_files:
-                map_kwargs['cache_file_name'] = self.map_cache_path(dataset)
+                map_kwargs["cache_file_name"] = self.map_cache_path(dataset)
         else:
-            map_kwargs['batch_size'] = batch_size if batch_size is not None else 16
+            map_kwargs["batch_size"] = batch_size if batch_size is not None else 16
 
         with self.pin_features(), self.serialised():
             mapped = dataset.map(
                 self.batched_preprocess,
-                fn_kwargs={'strict': strict},
+                fn_kwargs={"strict": strict},
                 remove_columns=self._feature_columns,
                 with_indices=True,
-                **map_kwargs)
+                **map_kwargs,
+            )
         if isinstance(mapped, HfDataset) and len(mapped) != len(dataset):
-            logger.info(f'Dataset filtered, origin length: {len(dataset)}, filtered length: {len(mapped)}')
+            logger.info(f"Dataset filtered, origin length: {len(dataset)}, filtered length: {len(mapped)}")
         return mapped
 
     def prepare_dataset(self, dataset):
@@ -168,6 +175,7 @@ class Preprocessor:
         """
         from datasets import Value
         from datasets.arrow_writer import ArrowWriter
+
         try:
             from datasets.features import Json
             from datasets.features import List as ListFeature
@@ -177,12 +185,8 @@ class Preprocessor:
 
         pinned = {
             **{name: ListFeature(Json()) for name in self.MESSAGE_COLUMNS},
-            **{name: ListFeature({
-                'bytes': Value('binary'),
-                'path': Value('string')
-            })
-               for name in self.MEDIA_COLUMNS},
-            **{name: ListFeature(Value('string')) for name in self.MEDIA_PATH_COLUMNS},
+            **{name: ListFeature({"bytes": Value("binary"), "path": Value("string")}) for name in self.MEDIA_COLUMNS},
+            **{name: ListFeature(Value("string")) for name in self.MEDIA_PATH_COLUMNS},
             **{name: Json() for name in self.FREEFORM_COLUMNS},
         }
         original_init = ArrowWriter.__init__
@@ -218,7 +222,8 @@ class Preprocessor:
         except ImportError:  # datasets < 4 inferred these columns from a fixed schema already
             return dataset
         import multiprocess
-        if multiprocess.get_start_method() == 'fork':
+
+        if multiprocess.get_start_method() == "fork":
             return dataset
         features = dataset.features.copy()  # Features.copy() keeps the class (a plain dict breaks cast)
         changed = False
@@ -230,8 +235,9 @@ class Preprocessor:
             changed = True
         return dataset.cast(features) if changed else dataset
 
-    def batched_preprocess(self, batch: Dict[str, List[Any]], indices: List[int], *,
-                           strict: bool) -> Dict[str, List[Any]]:
+    def batched_preprocess(
+        self, batch: Dict[str, List[Any]], indices: List[int], *, strict: bool
+    ) -> Dict[str, List[Any]]:
         """The function handed to ``dataset.map``: transform a column-batch, isolating per-row errors."""
         new_rows: List[Dict[str, Any]] = []
         rows = self.batched_to_rows(batch)
@@ -247,24 +253,26 @@ class Preprocessor:
                 new_rows += out
             except Exception as e:  # noqa
                 if strict:
-                    logger.warning('Encountered a malformed row; pass `strict=False` to skip such rows.')
+                    logger.warning("Encountered a malformed row; pass `strict=False` to skip such rows.")
                     raise
-                from swift.template import MaxLengthError
+                from swift.dev.template import MaxLengthError
+
                 if isinstance(e, MaxLengthError):
                     # It encoded fine, it just does not fit: dropping it is the intended outcome, so
                     # it spends no traceback budget that real data errors need.
                     continue
-                note_row_error(self, '👆 There are errors in the dataset. This row will be dropped.')
+                note_row_error(self, "👆 There are errors in the dataset. This row will be dropped.")
         return self.rows_to_batched(new_rows)
 
     @staticmethod
-    def serialised(key: str = 'dataset_preprocess'):
+    def serialised(key: str = "dataset_preprocess"):
         """Let one rank run the pass and write its cache first, then the rest read it.
 
         Not ``sticky``: the same key is used once per dataset per run, so each round needs its own
         ordering. See :meth:`DatasetLoader.serialised` for why this is not ``safe_ddp_context``.
         """
         from twinkle.utils import processing_lock
+
         return processing_lock(key)
 
     @staticmethod
@@ -276,9 +284,10 @@ class Preprocessor:
         already computes (rows + transform) and reused on a second launch.
         """
         from modelscope.hub.utils.utils import get_cache_dir
-        directory = os.path.join(get_cache_dir(), 'datasets', 'map_cache')
+
+        directory = os.path.join(get_cache_dir(), "datasets", "map_cache")
         os.makedirs(directory, exist_ok=True)
-        return os.path.join(directory, f'{dataset._fingerprint}.arrow')
+        return os.path.join(directory, f"{dataset._fingerprint}.arrow")
 
     @staticmethod
     def resolve_features(dataset):
@@ -304,7 +313,7 @@ class Preprocessor:
         ``messages`` column.
         """
         if not rows:
-            return {'messages': []}
+            return {"messages": []}
         keys: List[str] = []
         for row in rows:
             for key in row:
@@ -327,17 +336,17 @@ class Preprocessor:
     @staticmethod
     def check_messages(row: Dict[str, Any]) -> None:
         """Validate a standard row's ``messages``: known roles, non-null content, no stray keys."""
-        messages = row.get('messages')
+        messages = row.get("messages")
         if messages is None:
             return
-        assert len(messages) > 0, f'messages: {messages}'
-        allowed_message_keys = {'role', 'content', 'loss', 'loss_scale'}
-        allowed_roles = {'system', 'user', 'assistant', 'tool_call', 'tool_response', 'tool'}
+        assert len(messages) > 0, f"messages: {messages}"
+        allowed_message_keys = {"role", "content", "loss", "loss_scale"}
+        allowed_roles = {"system", "user", "assistant", "tool_call", "tool_response", "tool"}
         for message in messages:
             for key in set(message.keys()) - allowed_message_keys:
                 message.pop(key)
-            assert message['role'] in allowed_roles, f'message: {message}'
-            assert message['content'] is not None, f'message: {message}'
+            assert message["role"] in allowed_roles, f"message: {message}"
+            assert message["content"] is not None, f"message: {message}"
 
     @staticmethod
     def check_objects(row: Dict[str, Any]) -> None:
@@ -347,11 +356,11 @@ class Preprocessor:
         coordinates, and swapped corners (``x1 > x2``) normalise into a negative-area region. Legacy
         also pinned the key order of ``objects``, unneeded now the column is pinned as ``Json()``.
         """
-        objects = row.get('objects')
+        objects = row.get("objects")
         if not objects:
             return
-        for bbox in objects.get('bbox') or []:
-            assert len(bbox) in {2, 4}, f'bbox must hold a point or a box, got len {len(bbox)}: {bbox}'
+        for bbox in objects.get("bbox") or []:
+            assert len(bbox) in {2, 4}, f"bbox must hold a point or a box, got len {len(bbox)}: {bbox}"
             if len(bbox) == 2:
                 continue
             if bbox[0] > bbox[2]:
@@ -362,16 +371,16 @@ class Preprocessor:
     @staticmethod
     def cast_mm_data(row: Dict[str, Any]) -> None:
         """Normalise multimodal columns to the list-of-dict / list-of-str layout the encoder expects."""
-        for key in ['images', 'rejected_images']:
+        for key in ["images", "rejected_images"]:
             images = row.get(key)
             if images is None:
                 continue
             if isinstance(images, str) or (isinstance(images, list) and images and isinstance(images[0], str)):
                 images = [images] if isinstance(images, str) else images
-                row[key] = [{'bytes': None, 'path': image} for image in images]
+                row[key] = [{"bytes": None, "path": image} for image in images]
             elif isinstance(images, dict):
                 row[key] = [images]
-        for key in ['videos', 'audios']:
+        for key in ["videos", "audios"]:
             mm_data = row.get(key)
             if isinstance(mm_data, str):
                 row[key] = [mm_data]
@@ -395,8 +404,8 @@ class MessagesRepairPreprocessor(Preprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         row = self.standardise(row)
-        messages = self.converter.parse_literal(self.repair(row.get('messages')))
+        messages = self.converter.parse_literal(self.repair(row.get("messages")))
         if not messages:
             return None
-        row['messages'] = messages
+        row["messages"] = messages
         return super().preprocess(row)

@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 from ._diagnostics import note_row_error
 
-__all__ = ['LazyLLMDataset']
+__all__ = ["LazyLLMDataset"]
 
 
 class LazyLLMDataset(Dataset):
@@ -19,11 +19,9 @@ class LazyLLMDataset(Dataset):
     from ``(seed, index)``; what it owes the loop is a fixed ``len(dataset)``.
     """
 
-    def __init__(self,
-                 dataset: HfDataset,
-                 encode_func: Callable[[Dict[str, Any]], Dict[str, Any]],
-                 *,
-                 traceback_limit: int = 10) -> None:
+    def __init__(
+        self, dataset: HfDataset, encode_func: Callable[[Dict[str, Any]], Dict[str, Any]], *, traceback_limit: int = 10
+    ) -> None:
         self.dataset = dataset
         self.encode_func = encode_func
         self.traceback_limit = traceback_limit
@@ -37,11 +35,15 @@ class LazyLLMDataset(Dataset):
         try:
             return self.encode_func(self.dataset[idx], return_length=True)
         except Exception as e:
-            from swift.template import MaxLengthError
+            from swift.dev.template import MaxLengthError
+
             # Too long is an expected property of public data, not a defect worth a traceback.
             if not isinstance(e, MaxLengthError):
-                note_row_error(self, '👆👆👆There are errors in the template.encode, so this row is '
-                               'unusable and the reader will serve another in its place.')
+                note_row_error(
+                    self,
+                    "👆👆👆There are errors in the template.encode, so this row is "
+                    "unusable and the reader will serve another in its place.",
+                )
             raise
 
     def __len__(self) -> int:

@@ -6,7 +6,7 @@ import json
 
 from .base import FormatConverter, Messages, register_format
 
-__all__ = ['OpenAIConverter']
+__all__ = ["OpenAIConverter"]
 
 
 @register_format
@@ -18,87 +18,89 @@ class OpenAIConverter(FormatConverter):
     messages format; ``normalize_content`` rewrites each message per its own content.
     """
 
-    format_name = 'openai'
+    format_name = "openai"
     priority = 10
     aliases = {
-        'conversation': 'messages',
-        'conversations': 'messages',
-        'system_prompt': 'system',
+        "conversation": "messages",
+        "conversations": "messages",
+        "system_prompt": "system",
     }
 
-    ROLE_KEYS = ('role', 'from')
-    CONTENT_KEYS = ('content', 'value')
+    ROLE_KEYS = ("role", "from")
+    CONTENT_KEYS = ("content", "value")
     ROLE_ALIASES = {
-        'user': 'user',
-        'human': 'user',
-        'assistant': 'assistant',
-        'gpt': 'assistant',
-        'bot': 'assistant',
-        'chatgpt': 'assistant',
-        'function_call': 'tool_call',
-        'tool_call': 'tool_call',
-        'function_response': 'tool_response',
-        'observation': 'tool_response',
-        'observations': 'tool_response',
-        'tool_response': 'tool_response',
-        'tool': 'tool_response',
-        'system': 'system',
+        "user": "user",
+        "human": "user",
+        "assistant": "assistant",
+        "gpt": "assistant",
+        "bot": "assistant",
+        "chatgpt": "assistant",
+        "function_call": "tool_call",
+        "tool_call": "tool_call",
+        "function_response": "tool_response",
+        "observation": "tool_response",
+        "observations": "tool_response",
+        "tool_response": "tool_response",
+        "tool": "tool_response",
+        "system": "system",
     }
 
-    def __init__(self,
-                 *,
-                 role_key: Optional[str] = None,
-                 content_key: Optional[str] = None,
-                 user_role: Optional[str] = None,
-                 assistant_role: Optional[str] = None,
-                 system_role: str = 'system',
-                 inner_key: Optional[str] = None,
-                 **kwargs):
+    def __init__(
+        self,
+        *,
+        role_key: Optional[str] = None,
+        content_key: Optional[str] = None,
+        user_role: Optional[str] = None,
+        assistant_role: Optional[str] = None,
+        system_role: str = "system",
+        inner_key: Optional[str] = None,
+        **kwargs,
+    ):
         """Args: ``role_key``/``content_key`` pin the message's role/content keys; ``user_role``/
         ``assistant_role`` pin the role values meaning user/assistant (a pin replaces the whole
         alias family); ``system_role`` names the system role value; ``inner_key`` reaches through
         when the dialogue nests one level deeper (``{'inner': [...]}``)."""
         super().__init__(**kwargs)
-        self.role_keys = (role_key, ) if role_key else self.ROLE_KEYS
-        self.content_keys = (content_key, ) if content_key else self.CONTENT_KEYS
+        self.role_keys = (role_key,) if role_key else self.ROLE_KEYS
+        self.content_keys = (content_key,) if content_key else self.CONTENT_KEYS
         self.system_role = system_role
         self.inner_key = inner_key
 
         role_map = dict(self.ROLE_ALIASES)
         if user_role:
-            role_map = {k: v for k, v in role_map.items() if v != 'user'}
-            role_map[user_role] = 'user'
+            role_map = {k: v for k, v in role_map.items() if v != "user"}
+            role_map[user_role] = "user"
         if assistant_role:
-            role_map = {k: v for k, v in role_map.items() if v != 'assistant'}
-            role_map[assistant_role] = 'assistant'
-        role_map[system_role] = 'system'
+            role_map = {k: v for k, v in role_map.items() if v != "assistant"}
+            role_map[assistant_role] = "assistant"
+        role_map[system_role] = "system"
         self.role_map = role_map
 
     @classmethod
     def detect(cls, columns: Collection[str]) -> bool:
-        return any(column in columns for column in ('messages', 'conversation', 'conversations'))
+        return any(column in columns for column in ("messages", "conversation", "conversations"))
 
     def convert(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         row = self.apply_aliases(row)
-        system = row.pop('system', None)
+        system = row.pop("system", None)
 
-        built = self.build_messages(row.get('messages'), system)
+        built = self.build_messages(row.get("messages"), system)
         if not built:
             return None
         messages, media = built
-        row['messages'] = messages
+        row["messages"] = messages
         # Anthropic image blocks are lifted out of the dialogue into the top-level media columns,
         # like every other multimodal dataset; mixing both representations is rejected.
         for key, values in media.items():
             if values:
-                assert not row.get(key), f'Cannot mix Anthropic content blocks with the top-level `{key}` field.'
+                assert not row.get(key), f"Cannot mix Anthropic content blocks with the top-level `{key}` field."
                 row[key] = values
 
-        if row.get('rejected_messages') is not None:
-            rejected = self.build_messages(row['rejected_messages'], system)
+        if row.get("rejected_messages") is not None:
+            rejected = self.build_messages(row["rejected_messages"], system)
             if not rejected:
                 return None
-            row['rejected_messages'] = rejected[0]
+            row["rejected_messages"] = rejected[0]
         return row
 
     def build_messages(self, raw: Any, system: Optional[str] = None) -> Optional[Tuple[Messages, Dict[str, List]]]:
@@ -115,7 +117,7 @@ class OpenAIConverter(FormatConverter):
         if not all(isinstance(turn, dict) for turn in raw):
             return None
 
-        media: Dict[str, List] = {'images': []}
+        media: Dict[str, List] = {"images": []}
         raw = self.normalize_content(list(raw), media)
         if not raw:
             return None
@@ -138,36 +140,38 @@ class OpenAIConverter(FormatConverter):
         """
         normalized: Messages = []
         for message in messages:
-            content = message.get('content')
+            content = message.get("content")
             if isinstance(content, list) and self._has_anthropic_blocks(content):
                 self._expand_anthropic_message(message, normalized, media)
                 continue
             # Resolve the role through ``role_map`` (not the literal ``role`` key): a sharegpt turn
             # keeps its role under ``from`` with an alias value, and its tool_calls must expand too.
             role = self.first_present(message, self.role_keys)
-            is_assistant = (role is not None
-                            and self.role_map.get(str(role).replace('-', '_')) == 'assistant')
-            tool_calls = message.get('tool_calls') if is_assistant else None
+            is_assistant = role is not None and self.role_map.get(str(role).replace("-", "_")) == "assistant"
+            tool_calls = message.get("tool_calls") if is_assistant else None
             if not tool_calls:
                 normalized.append(message)
                 continue
             if content:
                 normalized.append(
-                    {key: value
-                     for key, value in message.items() if key in {'role', 'content', 'loss', 'loss_scale'}})
+                    {key: value for key, value in message.items() if key in {"role", "content", "loss", "loss_scale"}}
+                )
             for tool_call in tool_calls:
-                function = tool_call.get('function', tool_call)
-                arguments = function.get('arguments', {})
+                function = tool_call.get("function", tool_call)
+                arguments = function.get("arguments", {})
                 if isinstance(arguments, str):
                     try:
                         arguments = json.loads(arguments)
                     except json.JSONDecodeError:
                         pass
-                tool_message: Dict[str, Any] = {'role': 'tool_call', 'content': {
-                    'name': function['name'],
-                    'arguments': arguments,
-                }}
-                for key in ('loss', 'loss_scale'):
+                tool_message: Dict[str, Any] = {
+                    "role": "tool_call",
+                    "content": {
+                        "name": function["name"],
+                        "arguments": arguments,
+                    },
+                }
+                for key in ("loss", "loss_scale"):
                     if key in message:
                         tool_message[key] = message[key]
                 normalized.append(tool_message)
@@ -181,17 +185,17 @@ class OpenAIConverter(FormatConverter):
         first = raw[0]
         if any(key in first for key in self.role_keys):
             return False
-        return 'user' in first or 'assistant' in first
+        return "user" in first or "assistant" in first
 
     @staticmethod
     def expand_turn_pairs(raw: List[Dict[str, Any]]) -> Messages:
         """Expand ``[{'user': q, 'assistant': a}, ...]`` into one message per party."""
         messages: Messages = []
         for turn in raw:
-            for role in ('user', 'assistant'):
+            for role in ("user", "assistant"):
                 content = turn.get(role)
                 if content is not None:
-                    messages.append({'role': role, 'content': content})
+                    messages.append({"role": role, "content": content})
         return messages
 
     def normalise_messages(self, raw: List[Dict[str, Any]]) -> Messages:
@@ -206,9 +210,9 @@ class OpenAIConverter(FormatConverter):
             content = self.first_present(turn, self.content_keys)
             if role is None:
                 continue
-            role = self.role_map.get(str(role).replace('-', '_'), role)
-            message = {'role': role, 'content': content}
-            for key in ('loss', 'loss_scale'):
+            role = self.role_map.get(str(role).replace("-", "_"), role)
+            message = {"role": role, "content": content}
+            for key in ("loss", "loss_scale", "reasoning_content"):
                 if key in turn:
                     message[key] = turn[key]
             messages.append(message)
@@ -238,9 +242,12 @@ class OpenAIConverter(FormatConverter):
         / an ``image`` carrying a ``source`` count.
         """
         return any(
-            isinstance(block, dict) and (block.get('type') in {'tool_use', 'tool_result'}
-                                         or (block.get('type') == 'image' and 'source' in block))
-            for block in content)
+            isinstance(block, dict)
+            and (
+                block.get("type") in {"tool_use", "tool_result"} or (block.get("type") == "image" and "source" in block)
+            )
+            for block in content
+        )
 
     @staticmethod
     def _expand_anthropic_message(message: Dict[str, Any], new_messages: Messages, media: Dict[str, List]) -> None:
@@ -250,42 +257,46 @@ class OpenAIConverter(FormatConverter):
         first flushes that accumulated text, then emits its own message, preserving order. Images
         are lifted into ``media`` for ``convert`` to place in the top-level media columns.
         """
-        metadata = {key: message[key] for key in ('loss', 'loss_scale') if key in message}
-        role = message['role']
+        metadata = {key: message[key] for key in ("loss", "loss_scale") if key in message}
+        role = message["role"]
         pending: List[str] = []
-        for block in message['content']:
-            block_type = block.get('type')
-            if block_type == 'text':
-                pending.append(block.get('text', ''))
-            elif block_type == 'image':
-                pending.append('<image>')
-                media['images'].append(OpenAIConverter._image_source(block))
-            elif block_type == 'tool_use':
+        for block in message["content"]:
+            block_type = block.get("type")
+            if block_type == "text":
+                pending.append(block.get("text", ""))
+            elif block_type == "image":
+                pending.append("<image>")
+                media["images"].append(OpenAIConverter._image_source(block))
+            elif block_type == "tool_use":
                 OpenAIConverter._flush_text(new_messages, pending, role, metadata)
-                new_messages.append({
-                    'role': 'tool_call',
-                    'content': {
-                        'name': block['name'],
-                        'arguments': block.get('input', {}),
-                    },
-                    **metadata,
-                })
-            elif block_type == 'tool_result':
+                new_messages.append(
+                    {
+                        "role": "tool_call",
+                        "content": {
+                            "name": block["name"],
+                            "arguments": block.get("input", {}),
+                        },
+                        **metadata,
+                    }
+                )
+            elif block_type == "tool_result":
                 OpenAIConverter._flush_text(new_messages, pending, role, metadata)
-                new_messages.append({
-                    'role': 'tool_response',
-                    'content': OpenAIConverter._block_content(block.get('content', ''), media),
-                    **metadata,
-                })
+                new_messages.append(
+                    {
+                        "role": "tool_response",
+                        "content": OpenAIConverter._block_content(block.get("content", ""), media),
+                        **metadata,
+                    }
+                )
             else:
-                raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
+                raise ValueError(f"Unsupported Anthropic content block type: {block_type}")
         OpenAIConverter._flush_text(new_messages, pending, role, metadata)
 
     @staticmethod
     def _flush_text(new_messages: Messages, pending: List[str], role: str, metadata: Dict[str, Any]) -> None:
         """Emit the accumulated text as one message and clear the buffer; a no-op when empty."""
         if pending:
-            new_messages.append({'role': role, 'content': ''.join(pending), **metadata})
+            new_messages.append({"role": role, "content": "".join(pending), **metadata})
             pending.clear()
 
     @staticmethod
@@ -295,20 +306,20 @@ class OpenAIConverter(FormatConverter):
         Base64 blocks become a ``data:`` URI (one string carries both media type and bytes); URL
         blocks yield the plain URL. Anything else is malformed and raises.
         """
-        source = block.get('source', {})
-        source_type = source.get('type')
-        if source_type == 'base64':
-            media_type = source.get('media_type')
-            data = source.get('data')
+        source = block.get("source", {})
+        source_type = source.get("type")
+        if source_type == "base64":
+            media_type = source.get("media_type")
+            data = source.get("data")
             if not media_type or not data:
-                raise ValueError(f'Invalid Anthropic base64 image block: {block}')
-            return f'data:{media_type};base64,{data}'
-        if source_type == 'url':
-            url = source.get('url')
+                raise ValueError(f"Invalid Anthropic base64 image block: {block}")
+            return f"data:{media_type};base64,{data}"
+        if source_type == "url":
+            url = source.get("url")
             if not url:
-                raise ValueError(f'Invalid Anthropic URL image block: {block}')
+                raise ValueError(f"Invalid Anthropic URL image block: {block}")
             return url
-        raise ValueError(f'Unsupported Anthropic image source type: {source_type}')
+        raise ValueError(f"Unsupported Anthropic image source type: {source_type}")
 
     @staticmethod
     def _block_content(content: Any, media: Dict[str, List]) -> Any:
@@ -322,12 +333,12 @@ class OpenAIConverter(FormatConverter):
             return content
         parts: List[str] = []
         for block in content:
-            block_type = block.get('type')
-            if block_type == 'text':
-                parts.append(block.get('text', ''))
-            elif block_type == 'image':
-                parts.append('<image>')
-                media['images'].append(OpenAIConverter._image_source(block))
+            block_type = block.get("type")
+            if block_type == "text":
+                parts.append(block.get("text", ""))
+            elif block_type == "image":
+                parts.append("<image>")
+                media["images"].append(OpenAIConverter._image_source(block))
             else:
-                raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
-        return ''.join(parts)
+                raise ValueError(f"Unsupported Anthropic content block type: {block_type}")
+        return "".join(parts)
