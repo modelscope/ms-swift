@@ -86,7 +86,20 @@ def get_torchrun_args() -> Optional[List[str]]:
 def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool = False) -> None:
     route_mapping = route_mapping or ROUTE_MAPPING
     argv = sys.argv[1:]
+
+    if not argv or argv[0] in {'-h', '--help'}:
+        print("Usage: swift <command> [options]\n\nAvailable commands:")
+        for cmd in route_mapping.keys():
+            print(f"  {cmd}")
+        sys.exit(0)
+
     method_name = argv[0].replace('_', '-')
+    if method_name not in route_mapping:
+        print(f"Unknown command: {argv[0]}\n\nUsage: swift <command> [options]\nAvailable commands:")
+        for cmd in route_mapping.keys():
+            print(f"  {cmd}")
+        sys.exit(1)
+
     argv = argv[1:]
     file_path = importlib.util.find_spec(route_mapping[method_name]).origin
     parse_yaml_args(argv)
