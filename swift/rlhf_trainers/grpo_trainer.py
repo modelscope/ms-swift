@@ -852,9 +852,19 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         origin_data = inputs.get('_origin_data')
         if self.use_liger_loss:
             unwrapped_model = self.accelerator.unwrap_model(model)
-            loss = self._forward_redirection(
-                model, unwrapped_model,
-                lambda *_, **__: self.compute_liger_loss(unwrapped_model, model_inputs, grpo_batch), **model_inputs)
+
+            def liger_loss(*_, **encoded_inputs):
+                # For multimodal models, the template's pre-forward hook has already turned `input_ids` and
+                # `pixel_values` into `inputs_embeds`, running the vision encoder once on every rank (with a
+                # dummy image for text-only samples). Use its output: running the vision encoder again only on
+                # the ranks that hold images desyncs the ZeRO-3 parameter all-gathers on mixed text/image data.
+                if self.is_multimodal and 'inputs_embeds' in encoded_inputs:
+                    # `input_ids` is still needed to select the completion tokens.
+                    encoded_inputs['input_ids'] = model_inputs['input_ids']
+                    return self.compute_liger_loss(unwrapped_model, encoded_inputs, grpo_batch)
+                return self.compute_liger_loss(unwrapped_model, model_inputs, grpo_batch)
+
+            loss = self._forward_redirection(model, unwrapped_model, liger_loss, **model_inputs)
             if self.model.training and self.chord_sft_iterator is not None:
                 loss = compute_chord_loss(self, grpo_loss=loss)
             return loss
@@ -1748,6 +1758,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 input_ids=model_inputs['input_ids'], attention_mask=model_inputs['attention_mask']).last_hidden_state
         else:
             forward_inputs = dict(model_inputs)
+            if 'inputs_embeds' in forward_inputs:
+                # The model accepts either `input_ids` or `inputs_embeds`, not both.
+                forward_inputs.pop('input_ids', None)
             if 'logits_to_keep' in self.model_kwarg_keys:
                 forward_inputs['logits_to_keep'] = logits_to_keep + 1
 
