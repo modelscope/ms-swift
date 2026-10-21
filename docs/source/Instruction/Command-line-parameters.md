@@ -689,6 +689,7 @@ reward模型参数将在PPO、GRPO中使用；teacher模型参数在GKD与GRPO�
 - rlsd_lambda_decay_steps: 在 warmup 之后，将 λ 从 `rlsd_lambda` 线性衰减到 0 的步数。默认为 0（不衰减，λ 保持恒定）。
 - rlsd_negative_only: 是否仅对优势为负（`A < 0`，即错误回答）的序列进行重加权；优势非负的序列保留普通 GRPO 优势。默认为 False。
 - sdar_loss_coef: SDAR（[Self-Distilled Agentic RL](https://arxiv.org/abs/2605.15155)）置信度门控 teacher 蒸馏辅助损失的系数，叠加到 GRPO 策略损失上：`loss = policy_loss + sdar_loss_coef * L_SDAR`，其中 `L_SDAR = token-mean(sigmoid(sdar_gate_beta * delta_t) * delta_t)`、`delta_t = logP_T(y_t) - logP_S(y_t)`。门控与 teacher 对数概率均 detach，梯度只经由 student 回传。复用 OPSD 自蒸馏 teacher（teacher = 当前策略在特权 `teacher_prompt` 列上打分）得到逐 token 的 teacher 对数概率；与 RLSD 不同，它不修改 GRPO 优势。`> 0` 时启用；与 `use_liger_kernel`、`advantage_reweight=rlsd`、`teacher_model_server` 不兼容。默认为 0.0（不启用）；参考实现使用 0.1（ALFWorld 为 0.01）。
+  - 使用 `dynamic_num_samples` 将批次分块计算损失时，每个分块均保留对应样本的 teacher 对数概率，SDAR 辅助损失继续参与训练。
 - sdar_gate_beta: SDAR sigmoid 门控 `sigmoid(sdar_gate_beta * delta_t)` 的温度系数，值越大门控越尖锐。需 > 0，默认为 5.0。
 - sync_ref_model: 是否定期同步ref_model，默认为False。
   - ref_model_mixup_alpha: 控制在更新过程中model和先前ref_model之间的混合。更新公式为 $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$。默认为0.6。
