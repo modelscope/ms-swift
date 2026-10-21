@@ -931,7 +931,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         }
         return influence_weight, metrics
 
-    def _compute_loss_and_metrics(self, model, model_inputs: Dict[str, Any], grpo_batch: GRPOBatch):
+    def _compute_loss_and_metrics(self,
+                                  model,
+                                  model_inputs: Dict[str, Any],
+                                  grpo_batch: GRPOBatch,
+                                  policy_loss_scale: float = 1.0):
         """Core loss computation without metrics recording."""
         mode = 'train' if self.model.training else 'eval'
         completion_mask = grpo_batch.completion_mask
@@ -1129,7 +1133,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             loss = (per_token_loss * completion_mask).sum() / normalizer
             # Compensate here, before the auxiliary losses below: `num_items_in_batch` already covers the whole
             # accumulation window, while SDAR/CHORD are micro-batch means that still need the Trainer division.
-            loss = self._undo_gradient_accumulation_scaling(loss)
+            loss = self._undo_gradient_accumulation_scaling(loss) * policy_loss_scale
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
@@ -1320,8 +1324,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 is_dummy = True
                 chunk_weight = 0
 
-            # Compute loss and metrics for this chunk
-            chunk_loss, chunk_metrics_data = self._compute_loss_and_metrics(model, chunk_model_inputs, chunk_grpo_batch)
+            # Cancel the outer sample weighting only for the window-normalized policy loss, before auxiliary losses.
+            chunk_loss, chunk_metrics_data = self._compute_loss_and_metrics(
+                model,
+                chunk_model_inputs,
+                chunk_grpo_batch,
+                policy_loss_scale=batch_size / chunk_weight if not is_dummy else 1.0)
 
             if not is_dummy:
                 losses.append(chunk_loss * chunk_weight)
@@ -1779,6 +1787,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         logits_to_keep = grpo_batch.logits_to_keep
         completion_ids = input_ids[:, -logits_to_keep:]
         completion_mask = grpo_batch.completion_mask
+        if self.overlong_filter:
+            completion_mask = completion_mask & ~grpo_batch.truncated_mask.unsqueeze(-1)
 
         last_hidden_state = self._get_last_hidden_state(unwrapped_model, model_inputs, logits_to_keep)
 

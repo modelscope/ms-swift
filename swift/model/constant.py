@@ -167,6 +167,7 @@ class MLLMModelType:
     jev = 'jev'
     clef = 'clef'
     omnijev = 'omnijev'
+    kev = 'kev'
 
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'

@@ -1,10 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import os
 from contextlib import contextmanager
 from functools import wraps
 from transformers import PretrainedConfig, PreTrainedModel
 from typing import Optional
 
-from swift.model.decision_head import ClefJointSchemaHead, JevVerbalizerHead, OmniJevHead, ScoringHead
+from swift.model.decision_head import ClefJointSchemaHead, JevVerbalizerHead, KevPointerHead, OmniJevHead, ScoringHead
 from swift.model.omnijev_branch import (OPT_CLOSE, OPT_OPEN, add_option_tokens, branch_questions, find_rope_owner,
                                         is_hybrid, prefix_inputs, rope_positions, rows_from_ids)
 from swift.model.patcher import patch_module_forward
@@ -283,6 +284,45 @@ register_model(
         architectures=[],
         requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'decision']))
+
+
+class KevModelLoader(ScoringModelLoader, Qwen3_5Loader):
+
+    head_cls = KevPointerHead
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        # Adapter-only footgun: a kev repo passed directly to --model has no config.json / base weights.
+        if not os.path.isfile(os.path.join(model_dir, 'config.json')):
+            raise ValueError(f'{model_dir!r} is an adapter-only Kev checkpoint (no config.json, no base weights). Use '
+                             '--model Qwen/Qwen3.5-{0.8,4,9}B-Base --model_type kev --adapters <kev adapter dir>, and '
+                             'export KEV_HEAD=<adapter dir>/head.pt (see examples/train/decision/kev.sh).')
+        model = super().get_model(model_dir, config, processor, model_kwargs)
+        mapping = {r'^layers\.(?=\d)': r'model.language_model.layers.'}
+        mapping.update(getattr(model, '_checkpoint_conversion_mapping', None) or {})
+        model._checkpoint_conversion_mapping = mapping
+        if not is_hybrid(model):
+            raise ValueError('Kev requires the hybrid (gated-deltanet linear-attention) Qwen3.5 backbone '
+                             '(config.text_config.layer_types); point --model at a Qwen3.5-*-Base '
+                             'checkpoint.')
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.kev, [
+            ModelGroup([
+                Model('jaredpalmer/kev-0.8b', 'jaredpalmer/kev-0.8b'),
+                Model('jaredpalmer/kev-4b', 'jaredpalmer/kev-4b'),
+                Model('jaredpalmer/kev-9b', 'jaredpalmer/kev-9b'),
+            ], TemplateType.kev)
+        ],
+        KevModelLoader,
+        model_arch=ModelArch.qwen2_vl,
+        task_type='decision',
+        architectures=[],
+        requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['decision']))
 
 
 class GenericDecisionLoader(ScoringModelLoader):
