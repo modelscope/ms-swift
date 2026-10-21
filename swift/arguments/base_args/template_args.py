@@ -90,6 +90,10 @@ class TemplateArguments:
             - 'react', 'hermes', 'qwen': Adjust the loss weight of the `tool_call` part to 2.
         sequence_parallel_size (int): The size of sequence parallelism. Defaults to 1. Currently supported for CPT,
             SFT, DPO, and GRPO.
+        expert_parallel_size (int): The size of expert parallelism. Defaults to 1. Currently supported for SFT only,
+            and not compatible with `sequence_parallel_size`.
+        context_parallel_size (int): The size of context parallelism. Defaults to 1. Currently supported for CPT
+            and SFT, and not compatible with `sequence_parallel_size`.
         template_backend (Literal['swift', 'jinja']): The backend to use for templating. Options are 'swift' or
             'jinja'. Defaults to 'swift'. If 'jinja' is used, it will leverage `transformers.apply_chat_template`.
             Note: The 'jinja' backend is only supported for inference, not for training, as it cannot determine the
@@ -139,6 +143,8 @@ class TemplateArguments:
     padding_free: bool = False
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
+    expert_parallel_size: int = field(default=1, metadata={'aliases': ['--ep_size']})
+    context_parallel_size: int = field(default=1, metadata={'aliases': ['--cp_size']})
     is_binary_loss_scale: Optional[bool] = None
     # infer/deploy
     template_backend: Literal['swift', 'jinja'] = 'swift'
@@ -150,6 +156,17 @@ class TemplateArguments:
     disable_ignore_empty_think: bool = False
 
     def __post_init__(self):
+        if self.expert_parallel_size > 1 and self.sequence_parallel_size > 1:
+            raise ValueError('expert_parallel_size and sequence_parallel_size cannot be both > 1 '
+                             'since they are not compatible now')
+        if self.context_parallel_size > 1 and self.sequence_parallel_size > 1:
+            raise ValueError('context_parallel_size and sequence_parallel_size cannot be both > 1 '
+                             'since they are not compatible now')
+        if self.expert_parallel_size > 1:
+            from swift.expert_parallel import set_expert_parallel_env
+            set_expert_parallel_env(self.expert_parallel_size)
+        if self.context_parallel_size > 1:
+            os.environ['SWIFT_CONTEXT_PARALLEL'] = str(self.context_parallel_size)
         if getattr(self, 'model_meta', None) is not None:
             self.template_meta = get_template_meta(self.model_info, self.model_meta, template_type=self.template)
             self.template = self.template_meta.template_type
