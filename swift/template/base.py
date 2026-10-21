@@ -2448,11 +2448,14 @@ class Template(ProcessorMixin):
         video_grid_thw = inputs.get('video_grid_thw')
         dtype = visual.dtype
         if pixel_values is None and pixel_values_videos is None:  # plain-text
-            if not (torch.is_grad_enabled() and any(p.requires_grad for p in visual.parameters())):
-                # The dummy image below only exists so that the vision tower stays in the autograd
-                # graph. With the tower frozen there is no graph to keep and no embedding to
-                # scatter, so the image processor call and the vision tower forward are dead
-                # weight -- `patch_frozen_module` already keeps them out of the graph for us.
+            # The dummy image is not only about the autograd graph: it also keeps this rank in the
+            # collective that gathers the sharded vision parameters (#5938). A rank that skips the
+            # tower while another one runs it leaves the second rank waiting inside the all-gather.
+            sharded = is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False').lower() == 'true'
+            if not sharded and not (torch.is_grad_enabled() and any(p.requires_grad for p in visual.parameters())):
+                # With the tower frozen there is no graph to keep and no embedding to scatter, so
+                # the image processor call and the vision tower forward are dead weight --
+                # `patch_frozen_module` already keeps them out of the graph for us.
                 return inputs_embeds
             images = [Image.new('RGB', (32, 32), (0, 0, 0))]
             media_inputs = processor.image_processor(images=images, return_tensors='pt')
