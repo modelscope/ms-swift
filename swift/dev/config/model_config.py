@@ -16,6 +16,7 @@ class ModelConfig:
     torch_dtype: Literal['bfloat16', 'float16', 'float32', None] = None
     attn_impl: Optional[str] = None
     experts_impl: Optional[str] = None
+    enable_kernel: bool = False
     new_special_tokens: List[str] = field(default_factory=list)
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification', None] = None

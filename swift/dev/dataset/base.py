@@ -12,7 +12,7 @@ from .preprocessor import MeasurePreprocessor
 if TYPE_CHECKING:
     from swift.template import Template
 
-__all__ = ['SwiftDataset']
+__all__ = ["SwiftDataset"]
 
 logger = get_logger()
 
@@ -26,15 +26,17 @@ class SwiftDataset(Dataset):
     for :attr:`lengths`: a packing run pays exactly one pass, one that measures nothing pays none.
     """
 
-    def __init__(self,
-                 dataset: HfDataset,
-                 template: 'Template',
-                 *,
-                 num_proc: int = 1,
-                 load_from_cache_file: bool = True,
-                 batch_size: Optional[int] = None,
-                 strict: bool = False,
-                 traceback_limit: int = 10) -> None:
+    def __init__(
+        self,
+        dataset: HfDataset,
+        template: "Template",
+        *,
+        num_proc: int = 1,
+        load_from_cache_file: bool = True,
+        batch_size: Optional[int] = None,
+        strict: bool = False,
+        traceback_limit: int = 10,
+    ) -> None:
         self.dataset = dataset
         self.template = template
         self.num_proc = num_proc
@@ -72,14 +74,17 @@ class SwiftDataset(Dataset):
             num_proc=self.num_proc,
             load_from_cache_file=self.load_from_cache_file,
             batch_size=self.batch_size,
-            strict=self.strict)
+            strict=self.strict,
+        )
         # A row the template splits into several sequences carries one length per sequence; the row
         # travels as a unit, so what a consumer wants is the total.
-        lengths = [sum(length) if isinstance(length, (list, tuple)) else length for length in measured['lengths']]
+        lengths = [sum(length) if isinstance(length, (list, tuple)) else length for length in measured["lengths"]]
         unusable = sum(1 for length in lengths if not length)
         if unusable:
-            logger.info(f'{unusable} of {len(lengths)} rows could not be encoded and are marked unusable. '
-                        'Raise `max_length` or change `truncation_strategy` to keep them.')
+            logger.info(
+                f"{unusable} of {len(lengths)} rows could not be encoded and are marked unusable. "
+                "Raise `max_length` or change `truncation_strategy` to keep them."
+            )
         return lengths
 
     def encode_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
@@ -101,10 +106,14 @@ class SwiftDataset(Dataset):
         try:
             return self.encode_row(self.dataset[idx])
         except Exception as e:
-            from swift.template import MaxLengthError
+            from swift.dev.template import MaxLengthError
+
             if not isinstance(e, MaxLengthError):
-                note_row_error(self, '👆👆👆There are errors in the template.encode, so this row is '
-                               'unusable and the reader will serve another in its place.')
+                note_row_error(
+                    self,
+                    "👆👆👆There are errors in the template.encode, so this row is "
+                    "unusable and the reader will serve another in its place.",
+                )
             raise
 
     def __len__(self) -> int:

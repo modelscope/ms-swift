@@ -12,12 +12,13 @@ from tqdm import tqdm
 from swift.dev.utils import get_logger, is_dist, is_master, split_list
 from .base import SwiftDataset
 
-__all__ = ['IterablePackingDataset', 'PackingDataset']
+__all__ = ["IterablePackingDataset", "PackingDataset"]
 
 logger = get_logger()
 
 # One sample as packing sees it: its index (or the encoded row itself, when streaming) and its length.
 Weighted = Tuple[Any, int]
+
 
 class PackingDataset(SwiftDataset):
     """A map-style dataset whose items are *groups* of samples that together fill ``packing_length``.
@@ -42,7 +43,7 @@ class PackingDataset(SwiftDataset):
         load_from_cache_file: bool = True,
         packing_length: Optional[int] = None,
         packing_num_proc: int = 1,
-        packing_strategy: str = 'binpack',
+        packing_strategy: str = "binpack",
         **kwargs,
     ):
         # The template has to know it is packing: it builds the attention mask that keeps the packed
@@ -50,12 +51,8 @@ class PackingDataset(SwiftDataset):
         template.packing = True
         template.padding_free = True  # TODO: remove
         super().__init__(
-            dataset,
-            template,
-            num_proc=num_proc,
-            load_from_cache_file=load_from_cache_file,
-            strict=strict,
-            **kwargs)
+            dataset, template, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict, **kwargs
+        )
         self.packing_strategy = packing_strategy
         self.packing_length = packing_length or self.template.max_length
         # More workers than batches would leave workers with nothing to do, and `split_list` would
@@ -83,14 +80,13 @@ class PackingDataset(SwiftDataset):
         offset = 0
         chunked_lengths = split_list(lengths, self.packing_num_proc)
         for rank in range(self.packing_num_proc):
-            worker = mp.Process(
-                target=self.create_packed_idx, args=(rank, offset, chunked_lengths[rank]), daemon=True)
+            worker = mp.Process(target=self.create_packed_idx, args=(rank, offset, chunked_lengths[rank]), daemon=True)
             worker.start()
             offset += len(chunked_lengths[rank])
 
         packed_idx: List[List[List[int]]] = [[] for _ in range(self.packing_num_proc)]
         packed_length: List[List[int]] = [[] for _ in range(self.packing_num_proc)]
-        desc = 'Packing: ' if self.packing_num_proc == 1 else f'Packing (num_proc={self.packing_num_proc}): '
+        desc = "Packing: " if self.packing_num_proc == 1 else f"Packing (num_proc={self.packing_num_proc}): "
         with tqdm(total=len(lengths), dynamic_ncols=True, desc=desc) as prog_bar:
             finished_workers = 0
             while finished_workers < self.packing_num_proc:
@@ -110,13 +106,15 @@ class PackingDataset(SwiftDataset):
         """Pack one worker's slice, putting each batch's groups on the queue as they are formed."""
         # A list length belongs to a row the template splits into several sequences; the whole row
         # still travels together, so its lengths sum. A row that reads 0 could not be encoded at all.
-        data = [(i + offset, sum(length) if isinstance(length, list) else length)
-                for i, length in enumerate(lengths)
-                if (sum(length) if isinstance(length, list) else length)]
+        data = [
+            (i + offset, sum(length) if isinstance(length, list) else length)
+            for i, length in enumerate(lengths)
+            if (sum(length) if isinstance(length, list) else length)
+        ]
         i = 0
         input_data: List[Weighted] = []
         while True:
-            new_data = data[i:i + self.PACKING_BATCH_SIZE]
+            new_data = data[i : i + self.PACKING_BATCH_SIZE]
             input_data += new_data
             if not input_data:
                 break
@@ -125,15 +123,15 @@ class PackingDataset(SwiftDataset):
             # Whatever did not fill a pack comes back as `input_data` and joins the next batch,
             # rather than being flushed as a short pack.
             sequences, input_data = self.calculate_matched_group(
-                input_data, self.packing_length, is_finished=is_finished, strategy=self.packing_strategy)
+                input_data, self.packing_length, is_finished=is_finished, strategy=self.packing_strategy
+            )
             self._out_queue.put((rank, sequences, len(new_data)))
         self._out_queue.put((rank, [], -1))
 
     @staticmethod
-    def calculate_matched_group(sequences: Sequence[Weighted],
-                                packing_length: int,
-                                is_finished: bool = True,
-                                strategy: str = 'binpack') -> Tuple[List[List[Weighted]], List[Weighted]]:
+    def calculate_matched_group(
+        sequences: Sequence[Weighted], packing_length: int, is_finished: bool = True, strategy: str = "binpack"
+    ) -> Tuple[List[List[Weighted]], List[Weighted]]:
         """Group ``(item, length)`` pairs into packs of at most ``packing_length``.
 
         Returns ``(packs, leftover)``; a false ``is_finished`` carries the last still-fillable pack
@@ -143,7 +141,7 @@ class PackingDataset(SwiftDataset):
         """
         if len(sequences) == 0:
             return [], []
-        if strategy == 'sequential':
+        if strategy == "sequential":
             packs: List[List[Weighted]] = []
             cur: List[Weighted] = []
             cur_len = 0
@@ -164,6 +162,7 @@ class PackingDataset(SwiftDataset):
             return packs, cur
 
         import binpacking
+
         grouped = binpacking.to_constant_volume(sequences, packing_length, weight_pos=1)
         if grouped and not is_finished:
             grouped, leftover = grouped[:-1], grouped[-1]
@@ -203,7 +202,7 @@ class IterablePackingDataset(IterableDataset):
         packing_length: Optional[int] = None,
         strict: bool = False,
         cyclic: bool = False,
-        packing_strategy: str = 'binpack',
+        packing_strategy: str = "binpack",
         data_seed: int = 0,
         **kwargs,
     ):
@@ -231,7 +230,7 @@ class IterablePackingDataset(IterableDataset):
 
     def set_epoch(self, epoch: int) -> None:
         """Forward to the underlying stream, whose shuffle buffer seeds by epoch (twinkle calls this)."""
-        set_epoch = getattr(self.dataset, 'set_epoch', None)
+        set_epoch = getattr(self.dataset, "set_epoch", None)
         if set_epoch is not None:
             set_epoch(epoch)
 
@@ -246,7 +245,8 @@ class IterablePackingDataset(IterableDataset):
         row in a stream costs that row and not the run. ``strict`` re-raises -- except for a sample
         that is merely too long, which is a property of the data and not a defect to stop for.
         """
-        from swift.template import MaxLengthError
+        from swift.dev.template import MaxLengthError
+
         while True:
             i, data = self._in_queue.get()
             encoded_data = {}
@@ -276,7 +276,7 @@ class IterablePackingDataset(IterableDataset):
             if not data:
                 continue
             res[i] = data if isinstance(data, list) else [data]
-        res = [(item, len(item['input_ids'])) for group in res if group for item in group]
+        res = [(item, len(item["input_ids"])) for group in res if group for item in group]
         return last_res + res
 
     @staticmethod
@@ -299,7 +299,8 @@ class IterablePackingDataset(IterableDataset):
             finished = num_samples != self.packing_interval
             data = self._fetch_data_out_queue(data, num_samples)
             sequences, data = PackingDataset.calculate_matched_group(
-                data, self.packing_length, is_finished=finished, strategy=self.packing_strategy)
+                data, self.packing_length, is_finished=finished, strategy=self.packing_strategy
+            )
             yield from ([r[0] for r in row] for row in sequences)
             if finished:
                 break

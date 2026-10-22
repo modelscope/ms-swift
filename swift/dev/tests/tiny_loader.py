@@ -13,12 +13,13 @@ checkpoint stays as the family ships it, which is why this is a *subclass* of th
 rather than a re-implementation of it -- a family that overrides ``build_config`` /
 ``build_processor`` / ``process_model`` keeps doing so under the tiny sizes.
 """
+
 from __future__ import annotations
 from typing import Any, Dict, Optional, Type
 
 from transformers import PretrainedConfig
 
-from swift.dev.model.loader import ModelInfo, ModelLoader, get_model_loader
+from swift.dev.model.loader import LoaderModelInfo, ModelLoader, get_model_loader
 from swift.dev.tests.tiny import Builder
 
 
@@ -46,11 +47,11 @@ def shrink(config: PretrainedConfig, dims: Dict[str, Any]) -> PretrainedConfig:
     layer count in ``text_config`` / ``vision_config``, so stopping at the top level would leave a
     full-size tower behind and defeat the whole point of building tiny.
     """
-    old_layers = getattr(config, 'num_hidden_layers', None)
+    old_layers = getattr(config, "num_hidden_layers", None)
     for key, value in dims.items():
         if hasattr(config, key):
             setattr(config, key, value)
-    new_layers = getattr(config, 'num_hidden_layers', None)
+    new_layers = getattr(config, "num_hidden_layers", None)
     if old_layers and new_layers and new_layers < old_layers:
         _truncate_per_layer(config, old_layers, new_layers)
     for value in vars(config).values():
@@ -69,7 +70,6 @@ def tiny_loader_cls(model_type: str, dims: Dict[str, Any]) -> Type[ModelLoader]:
     base = get_model_loader(model_type)
 
     class TinyLoader(base):
-
         def build_config(self, model_dir: str, **kwargs) -> PretrainedConfig:
             return shrink(super().build_config(model_dir, **kwargs), dims)
 
@@ -79,10 +79,10 @@ def tiny_loader_cls(model_type: str, dims: Dict[str, Any]) -> Type[ModelLoader]:
             # ``...ForConditionalGeneration`` only exposes the private ``_from_config``); fall back to
             # it, mirroring the same hasattr check twinkle's own empty-init path uses. An Auto class
             # that still carries ``from_config`` is unaffected.
-            factory = model_cls.from_config if hasattr(model_cls, 'from_config') else model_cls._from_config
+            factory = model_cls.from_config if hasattr(model_cls, "from_config") else model_cls._from_config
             return factory(config, **kwargs)
 
-    TinyLoader.__name__ = f'Tiny{base.__name__}'
+    TinyLoader.__name__ = f"Tiny{base.__name__}"
     TinyLoader.__qualname__ = TinyLoader.__name__
     return TinyLoader
 
@@ -96,7 +96,7 @@ def loader_builder(model_type: str) -> Builder:
     """
 
     def _build(snapshot_dir: str, dims: Dict[str, Any]):
-        model_info = ModelInfo(model_type=model_type, model_dir=snapshot_dir, torch_dtype=dims.get('dtype'))
+        model_info = LoaderModelInfo(model_type=model_type, model_dir=snapshot_dir, torch_dtype=dims.get("dtype"))
         loader = tiny_loader_cls(model_type, dims)(model_info)
         config = loader.process_config(loader.build_config(snapshot_dir))
         processor = loader.build_processor(snapshot_dir, config)
@@ -108,7 +108,7 @@ def loader_builder(model_type: str) -> Builder:
 #: Layer counts only -- a VL tower wires ``out_hidden_size`` to the text ``hidden_size`` and its
 #: mrope / merger geometry to ``head_dim``, so shrinking anything but the depth desyncs the two
 #: sub-configs. Two layers is enough to prove the vision path is wired without the weight cost.
-_VL_DIMS: Dict[str, Any] = {'num_hidden_layers': 2, 'depth': 2, 'fullatt_block_indexes': [1]}
+_VL_DIMS: Dict[str, Any] = {"num_hidden_layers": 2, "depth": 2, "fullatt_block_indexes": [1]}
 
 
 def _copy_additional_saved_files(model_type: str, model_id: str, dest: str) -> None:
@@ -125,7 +125,7 @@ def _copy_additional_saved_files(model_type: str, model_id: str, dest: str) -> N
 
     from modelscope import snapshot_download
 
-    extras = list(getattr(get_model_loader(model_type), 'additional_saved_files', []) or [])
+    extras = list(getattr(get_model_loader(model_type), "additional_saved_files", []) or [])
     if not extras:
         return
     src = snapshot_download(model_id, allow_patterns=extras)
@@ -135,10 +135,12 @@ def _copy_additional_saved_files(model_type: str, model_id: str, dest: str) -> N
             shutil.copy(found, os.path.join(dest, name))
 
 
-def build_tiny_multimodal(dest: str,
-                          model_type: str = 'qwen2_5_vl',
-                          model_id: str = 'Qwen/Qwen2.5-VL-3B-Instruct',
-                          dims: Optional[Dict[str, Any]] = None) -> str:
+def build_tiny_multimodal(
+    dest: str,
+    model_type: str = "qwen2_5_vl",
+    model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct",
+    dims: Optional[Dict[str, Any]] = None,
+) -> str:
     """Build a tiny vision-language checkpoint (random weights) and save model *and* processor to ``dest``.
 
     :meth:`~swift.dev.tests.tiny.TinyModel.build` is text-shaped: it saves an ``AutoTokenizer`` and
@@ -151,10 +153,11 @@ def build_tiny_multimodal(dest: str,
 
     from swift.dev.tests.tiny import TinyModel
 
-    _dims = {'dtype': torch.bfloat16, **_VL_DIMS, **(dims or {})}
+    _dims = {"dtype": torch.bfloat16, **_VL_DIMS, **(dims or {})}
     snapshot = TinyModel.tokenizer_dir(model_id)
     loader = tiny_loader_cls(model_type, _dims)(
-        ModelInfo(model_type=model_type, model_dir=snapshot, torch_dtype=torch.bfloat16))
+        ModelInfo(model_type=model_type, model_dir=snapshot, torch_dtype=torch.bfloat16)
+    )
     config = loader.process_config(loader.build_config(snapshot))
     processor = loader.build_processor(snapshot, config)
     model = loader.process_model(loader.build_model(snapshot, config, processor, torch_dtype=torch.bfloat16))
