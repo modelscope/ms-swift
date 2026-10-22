@@ -268,8 +268,7 @@ def initialize_cluster(*, model_config: 'ModelConfig', template_config: 'Templat
 def build_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
                  reward_config: 'RewardConfig', tuner_config: Optional['TunerConfig'],
                  train_batch_size: int, gradient_accumulation_steps: int, prompt_dataloader: Any,
-                 num_train_epochs: float, max_steps: int, output_dir: str,
-                 run_id: str = 'run_grpo') -> Any:
+                 num_train_epochs: float, max_steps: int, output_dir: str) -> Any:
     """Assemble twinkle's StreamingDriver over the cluster (algorithm seams as closures, no wrapper class).
 
     Every defaulted knob (engine seams, pull rule, snapshot lifecycle, step budget, the version
@@ -299,12 +298,12 @@ def build_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'Ro
     need_rows = train_batch_size * gradient_accumulation_steps
 
     # The weighted-orm variance test's weight vector (the only group-completion state left: the
-    # ORM scoring itself runs in the kernel via score_worker and lands on the samples).
+    # ORM scoring itself runs in the kernel via the remote ``score`` shape and lands on the samples).
     orm_weights = (build_reward_weights(reward_config.orm_weights, len(cluster.orm_scorers))
                    if cluster.orm_scorers else None)
 
     # The two algorithm verdicts stay closures (dynamic_sample, the greedy remax generation, the
-    # weight vectors are GRPO's own); PRM scoring is the score_worker collaborator's channel now.
+    # weight vectors are GRPO's own); PRM scoring is the remote ``score`` shape's channel now.
     regenerate = None
     if rl_config.dynamic_sample:
         def regenerate(group_key: str, samples: List[Any]) -> bool:
@@ -330,7 +329,7 @@ def build_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'Ro
     pull_rows = need_rows * num_generations // math.gcd(need_rows, num_generations)
     buffer_depth = max((max_staleness + 1) * groups_per_partition * num_generations, pull_rows)
     driver = StreamingDriver(
-        run_id=run_id,
+        version_control=True,
         prompt_stream=prompt_dataloader,
         num_train_epochs=num_train_epochs,
         max_staleness=max_staleness,
@@ -338,15 +337,14 @@ def build_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'Ro
         groups_per_partition=groups_per_partition,
         buffer_depth=buffer_depth,
         rollout=rollout,
-        pull_rule='group',
+        group_pull=True,
         need_rows=need_rows,
         snapshot_model=(cluster.model if strategy == 'adapter_snapshot' else None),
         snapshot_dir=os.path.join(output_dir, 'async_adapters'),
         adapter_name=adapter_name,
         max_steps=max_steps,
         consume=None,
-        score=None,
-        score_worker=worker,
+        score=worker,
         resource_adapter=cluster.adapter,
         regenerate=regenerate,
         baseline_fn=baseline_fn,

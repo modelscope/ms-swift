@@ -283,10 +283,10 @@ def build_distill_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_con
                          tuner_config: Optional['TunerConfig'], train_batch_size: int,
                          gradient_accumulation_steps: int, prompt_dataloader: Any,
                          num_train_epochs: float, max_steps: int,
-                         output_dir: str, run_id: str = 'run_distill') -> Any:
+                         output_dir: str) -> Any:
     """Assemble twinkle's StreamingDriver over the cluster for a purely on-policy run (lmbda == 1).
 
-    Distillation scores no outcome channel, so no score_worker rides the barrier and no group
+    Distillation scores no outcome channel, so no remote score shape rides the barrier and no group
     verdict exists -- the driver streams samples one by one (``unit_size=1``), the recipe lifts each
     pull into rows, and the teacher scoring happens in the DistillWorker per mini-batch.
     """
@@ -316,7 +316,7 @@ def build_distill_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_con
     pull_rows = need_rows * num_generations // math.gcd(need_rows, num_generations)
     buffer_depth = max((max_staleness + 1) * groups_per_partition * num_generations, pull_rows)
     return StreamingDriver(
-        run_id=run_id,
+        version_control=True,
         prompt_stream=prompt_dataloader,
         num_train_epochs=num_train_epochs,
         max_staleness=max_staleness,
@@ -324,7 +324,7 @@ def build_distill_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_con
         groups_per_partition=groups_per_partition,
         buffer_depth=buffer_depth,
         rollout=cluster.rollout,
-        pull_rule='prefix',
+        group_pull=False,
         need_rows=need_rows,
         snapshot_model=(cluster.model if strategy == 'adapter_snapshot' else None),
         snapshot_dir=os.path.join(output_dir, 'async_adapters'),
@@ -332,7 +332,6 @@ def build_distill_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_con
         max_steps=max_steps,
         consume=None,
         score=None,
-        score_worker=None,
         resource_adapter=cluster.adapter,
         regenerate=None,
         baseline_fn=None,

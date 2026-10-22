@@ -382,7 +382,7 @@ class InferComponent(RecipeComponent):
         """The async dataset route: the SAME per-sample StreamingDriver online RL rides, infer regime.
 
         Each prompt's ``num_return`` candidates are admitted independently and emitted the instant
-        its group completes -- no batch lock-step; the infer regime (no ``run_id``) pins the
+        its group completes -- no batch lock-step; the infer regime (no version control) pins the
         version at 0. Groups
         are emitted in DRAW order (see ``_assembly_ready``), so a resume skips exactly the emitted
         prefix; torchrun drives one shard per rank (gather merges), ray one process.

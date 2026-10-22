@@ -205,13 +205,13 @@ def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config:
                      tuner_config: Optional['TunerConfig'], train_batch_size: int,
                      gradient_accumulation_steps: int, prompt_dataloader: Any,
                      num_train_epochs: float, max_steps: int,
-                     output_dir: str, run_id: str = 'run_ppo') -> Any:
-    """Assemble twinkle's StreamingDriver for PPO: the per-sample prefix stream, batch-scored.
+                     output_dir: str) -> Any:
+    """Assemble twinkle's StreamingDriver for PPO: the per-sample pull stream, batch-scored.
 
     PPO has no group contract (per-token GAE scores each trajectory on its own), so the pull rule
-    is 'prefix' with no group-completion verdict -- the driver batches the ORM scoring at the pull
-    boundary via ``score_worker``, and the recipe lifts each pull through the GAE pipeline. No
-    sync-only feature exists either: every async_mode rides this one stream.
+    is group_pull=False with no group-completion verdict -- the driver batches the ORM scoring at
+    the pull boundary via the remote ``score`` shape, and the recipe lifts each pull through the GAE
+    pipeline. No sync-only feature exists either: every async_mode rides this one stream.
     """
     from twinkle_agentic.async_rl import StreamingDriver
 
@@ -237,7 +237,7 @@ def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config:
     pull_rows = need_rows * num_generations // math.gcd(need_rows, num_generations)
     buffer_depth = max((max_staleness + 1) * groups_per_partition * num_generations, pull_rows)
     return StreamingDriver(
-        run_id=run_id,
+        version_control=True,
         prompt_stream=prompt_dataloader,
         num_train_epochs=num_train_epochs,
         max_staleness=max_staleness,
@@ -245,15 +245,14 @@ def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config:
         groups_per_partition=groups_per_partition,
         buffer_depth=buffer_depth,
         rollout=cluster.rollout,
-        pull_rule='prefix',
+        group_pull=False,
         need_rows=need_rows,
         snapshot_model=(cluster.model if strategy == 'adapter_snapshot' else None),
         snapshot_dir=os.path.join(output_dir, 'async_adapters'),
         adapter_name=adapter_name,
         max_steps=max_steps,
         consume=None,
-        score=None,
-        score_worker=cluster.worker,
+        score=cluster.worker,
         resource_adapter=cluster.adapter,
         regenerate=None,
         baseline_fn=None,
