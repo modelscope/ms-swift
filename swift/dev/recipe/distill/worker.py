@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, NamedTuple, Optional, Sequence
 
 from twinkle import remote_class, remote_function
-from twinkle_agentic.async_rl.score_worker import _run_grouped, _stash
+from twinkle_agentic.async_rl.score_worker import _run_grouped
 
 from swift.dev.utils.scoring import encode_privileged_feature
 
@@ -43,8 +43,8 @@ class DistillWorker:
     """Build one mini-batch's ``forward_backward`` kwargs where the teacher signal is produced.
 
     The teacher forward runs HERE (a CPU actor) so its heavy output never materialises in the
-    driver: GKD's full-vocab logits and OPSD / MOPD's response-only logps are stashed
-    (:func:`_stash`) and ride the kwargs as refs Ray derefs at the training actor. ``teachers`` is
+    driver: GKD's full-vocab logits and OPSD / MOPD's response-only logps are declared ``stash``
+    channels and ride the kwargs as refs Ray derefs at the training actor. ``teachers`` is
     always a list of bare frozen models, described by the plain parameters below.
     """
 
@@ -88,7 +88,8 @@ class DistillWorker:
         return encode_privileged_feature(
             self.template, row.messages, teacher_prompt, response_ids_from_feature(row.feature), row.extra)
 
-    @remote_function(dispatch='all', collect='none', lazy_collect=False)
+    @remote_function(dispatch='all', collect='none', lazy_collect=False,
+                     stash=('teacher_logits', 'teacher_logps'))
     def forward_kwargs(self, rows: List[DistillRow], use_student: bool) -> Dict[str, Any]:
         """One mini-batch's kwargs: student inputs plus the teacher signal in the ``signal`` form.
 
@@ -111,22 +112,22 @@ class DistillWorker:
                 if self.offload:
                     teacher.offload_to_cpu()
             signal_kwargs = {
-                'teacher_logits': _stash(logits),
+                'teacher_logits': logits,
                 'topk': self.gkd_logits_topk,
                 'apply_sft_loss': bool(self.sft_alpha > 0 and not use_student),
             }
         elif self.signal == 'logps':
             privileged = [self._privileged_feature(row) for row in rows]
             signal_kwargs = {
-                'teacher_logps': _stash(
-                    self._response_logps(self.teachers[0], privileged, disable_lora=self.disable_lora)),
+                'teacher_logps': self._response_logps(
+                    self.teachers[0], privileged, disable_lora=self.disable_lora),
             }
         else:
             # K response-only channels, overlapped across disjoint placements, plus the mixture weights.
             tasks = [(self.placements[index],
                       lambda index=index: self._response_logps(self.teachers[index], features))
                      for index in range(len(self.teachers))]
-            signal_kwargs = {'teacher_logps': _stash(_run_grouped(tasks))}
+            signal_kwargs = {'teacher_logps': _run_grouped(tasks)}
             if self.teacher_weights is not None:
                 signal_kwargs['teacher_weights'] = self.teacher_weights
         return {
