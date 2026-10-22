@@ -250,6 +250,9 @@ register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma
 class Gemma4Template(Template):
     placeholder_tokens = ['<|image|>', '<|audio|>', '<|video|>']
     non_thinking_prefix_only_after_user = True
+    # packing / padding_free: text-only data (checked in `packing_row`). Packed media inputs would need the
+    # bidirectional vision mask, which the packed (THD) attention path does not build.
+    support_padding_free = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -335,6 +338,16 @@ class Gemma4Template(Template):
         encoded['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids, mm_mask)
         return encoded
 
+    def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
+        if not self.use_megatron:
+            # Gemma 4 full-attention layers use head_dim 512, which flash-attention does not support.
+            raise ValueError('Gemma 4 supports packing/padding_free only with Megatron (`megatron pt/sft`).')
+        media_keys = ['pixel_values', 'pixel_values_videos', 'input_features']
+        if any(r.get(key) is not None for r in row for key in media_keys):
+            raise ValueError('Gemma 4 supports packing/padding_free only for text-only data. '
+                             'Please remove images/videos/audios or set `--packing false --padding_free false`.')
+        return super().packing_row(row)
+
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         res = super()._data_collator_mm_data(batch)
         for key in ['image_position_ids', 'video_position_ids']:
@@ -376,6 +389,7 @@ register_template(
 class DiffusionGemmaTemplate(Gemma4Template):
     is_encoder_decoder = True
     skip_prompt = True
+    support_padding_free = False
 
     @property
     def loss_scale(self):
