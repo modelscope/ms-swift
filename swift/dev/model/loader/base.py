@@ -13,6 +13,15 @@ from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple
 import torch
 from transformers import AutoConfig, AutoProcessor, AutoTokenizer, PretrainedConfig, PreTrainedModel
 
+from swift.dev.utils import get_logger
+from swift.dev.utils.tags import validate_tags
+
+logger = get_logger(__name__)
+
+#: Families already warned about trust_remote_code this process: the warning states a
+#: per-family fact, so once per family is the right cadence -- not once per checkpoint.
+_TRC_WARNED_FAMILIES: set = set()
+
 __all__ = [
     "ModelArch",
     "LoaderModelInfo",
@@ -477,15 +486,32 @@ class ModelLoader:
     def model_info(self) -> LoaderModelInfo:
         return self._model_info
 
+    def _apply_trust_remote_code(self, kwargs: Dict[str, Any]) -> None:
+        """Default ``trust_remote_code`` on for remote-code families, warning once per family.
+
+        "Trusting" executes the checkpoint's own Python (modeling_*.py) inside this
+        process before any validation runs -- the exact attack path the upstream
+        security advisories describe -- so the default stays loud, never silent.
+        An explicit ``trust_remote_code=False`` from the caller is preserved (the
+        load then fails loudly inside transformers instead).
+        """
+        if not self.trust_remote_code:
+            return
+        if kwargs.setdefault("trust_remote_code", True) and type(self) not in _TRC_WARNED_FAMILIES:
+            _TRC_WARNED_FAMILIES.add(type(self))
+            logger.warning(
+                "%s loads checkpoints with trust_remote_code=True: the checkpoint's own Python "
+                "code will execute inside this process. Only use checkpoints you trust.",
+                type(self).__name__,
+            )
+
     def build_config(self, model_dir: str, **kwargs) -> PretrainedConfig:
-        if self.trust_remote_code:
-            kwargs.setdefault("trust_remote_code", True)
+        self._apply_trust_remote_code(kwargs)
         config_cls = _import_cls(self.config_cls) if self.config_cls else AutoConfig
         return config_cls.from_pretrained(model_dir, **kwargs)
 
     def build_processor(self, model_dir: str, config: PretrainedConfig, **kwargs):
-        if self.trust_remote_code:
-            kwargs.setdefault("trust_remote_code", True)
+        self._apply_trust_remote_code(kwargs)
         if self.processor_cls:
             processor_cls = _import_cls(self.processor_cls)
         elif os.path.exists(os.path.join(model_dir, "preprocessor_config.json")) or os.path.exists(
@@ -511,8 +537,7 @@ class ModelLoader:
         return _import_cls(cls.model_cls)
 
     def build_model(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
-        if self.trust_remote_code:
-            kwargs.setdefault("trust_remote_code", True)
+        self._apply_trust_remote_code(kwargs)
         model = self.resolve_model_cls().from_pretrained(model_dir, config=config, **kwargs)
         if self.is_multimodal:
             expose_nested_multimodal_attrs(model)

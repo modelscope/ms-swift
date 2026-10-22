@@ -136,8 +136,8 @@ def resolve_twinkle_template(
 def _derive_sampler_type(backend: str, enable_data_plane: bool = False) -> str:
     """Map a dev backend (+ the data-plane flag) to a twinkle-server ``sampler_type``.
 
-    The async variants add the non-blocking submit_generation that sample_to_data_plane needs to
-    hand a rollout a DataRef, so enable_data_plane selects them; transformers has none and refuses.
+    The async variants give the data plane a non-blocking engine to ride (its rollout submit hands
+    back a Future), so enable_data_plane selects them; transformers has none and refuses.
     """
     if backend == "pt":
         backend = "transformers"
@@ -149,7 +149,7 @@ def _derive_sampler_type(backend: str, enable_data_plane: bool = False) -> str:
         if enable_data_plane:
             raise ValueError(
                 'backend="transformers" cannot serve the data plane: sample_to_data_plane needs '
-                "the sampler's non-blocking submit_generation, which only the vllm_async / "
+                "the sampler's non-blocking submit, which only the vllm_async / "
                 'sglang_async backends provide. Use backend="vllm" or "sglang" with '
                 "enable_data_plane, or drop enable_data_plane."
             )
