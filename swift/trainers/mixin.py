@@ -1460,8 +1460,21 @@ class DataLoaderMixin:
                 if args.group_by_length:
                     batch_sampler_params['group_by_length'] = args.group_by_length
                     batch_sampler_params['lengths'] = train_dataset['lengths']
-                batch_sampler = BatchSamplerShard(
-                    len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
+                group_dataset = getattr(train_dataset, 'dataset', train_dataset)
+                columns = getattr(group_dataset, 'column_names', [])
+                if self.task_type == 'embedding' and '_dataset_group' in columns:
+                    from swift.dataloader.dataset_sampler import DatasetBatchSamplerShard
+                    if self.template.sequence_parallel_size > 1:
+                        raise ValueError('Dataset-specific InfoNCE does not support sequence parallelism.')
+                    if hasattr(train_dataset, 'strict'):
+                        # Lazy tokenization retries could otherwise substitute a different dataset.
+                        train_dataset.strict = True
+                        train_dataset.n_try_fetch = 1
+                    batch_sampler = DatasetBatchSamplerShard(
+                        train_dataset['_dataset_group'], batch_size=self._train_batch_size, **batch_sampler_params)
+                else:
+                    batch_sampler = BatchSamplerShard(
+                        len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
                 dataloader_params['worker_init_fn'] = partial(
                     seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
                 if skip_batches > 0:

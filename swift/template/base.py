@@ -603,6 +603,9 @@ class Template(ProcessorMixin):
                 labels.append(0.0)
 
             _encoded['labels'] = labels
+            for key in ['_dataset_group', '_infonce_config']:
+                if key in anchor.extra_kwargs:
+                    _encoded[key] = anchor.extra_kwargs[key]
         else:
             anchor = inputs.chosen
             _encoded = self._encode_truncated(anchor)
@@ -1911,11 +1914,15 @@ class Template(ProcessorMixin):
                                  padding_to: Optional[int] = None) -> Dict[str, Any]:
         labels = []
         new_batch = []
+        metadata = [(b.get('_dataset_group'), b.get('_infonce_config')) for b in batch]
+        configured = any(config is not None for _, config in metadata)
+        if configured and (len(set(metadata)) != 1 or metadata[0][0] is None):
+            raise ValueError('InfoNCE batches must contain exactly one dataset and one configuration.')
         for b in batch:
             if 'input_ids' in b:
                 new_batch += [b]
             else:
-                keys = [key for key in b.keys() if 'negative' in key]
+                keys = [key for key in b.keys() if 'negative' in key and b[key] is not None]
                 max_neg = None  # number of negative samples
                 for key in keys:
                     value_list = b[key]
@@ -1935,6 +1942,8 @@ class Template(ProcessorMixin):
         res = self._data_collator(new_batch, padding_to=padding_to)
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)
+        if configured:
+            res['_dataset_group'], res['_infonce_config'] = metadata[0]
         return res
 
     def _reranker_data_collator(self,
