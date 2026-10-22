@@ -701,6 +701,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     mtp_decoder_input_detach: bool = False
     mtp_shared_weights: bool = False
 
+    # Full-finetune checkpoints without MTP keys fail loud unless this is set.
+    mtp_allow_random_init: bool = False
+
     # mcore-bridge / megatron-bridge
     bridge_backend: Literal['mcore-bridge', 'megatron-bridge'] = 'mcore-bridge'
     model: Optional[str] = None
