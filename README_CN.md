@@ -73,6 +73,7 @@
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速。
 
 ## 🎉 新闻
+- 🔥 2026.10.22: 支持 [EntroPack](https://github.com/modelscope/entropack) 灵活码率模型量化，可根据显存预算精细控制模型码率，支持 Transformers 推理和 LoRA 训练。参考[最佳实践](docs/source/BestPractices/Flexble-Quantization-With-Entropack.md)和 [QLoRA 示例](examples/train/qlora/entropack.sh)。
 - 🔥 2026.10.19: 支持 [EmbeddingGemma-2](https://www.modelscope.cn/models/google/embeddinggemma-2)（740M，多模态嵌入模型，支持文本/图像/视频/音频统一向量空间），支持 infonce loss 微调。
 - 🔥 2026.10.13: 支持Decision模型（类型化决策System-1打分模型）的训练与推理，使用 `--task_type decision`，通过单次前向传播输出每个问题选项集上的校准概率。支持 [JEV-27B-VL](https://www.modelscope.cn/models/autotrust/JEV-27B-VL)、[Clef](https://www.modelscope.cn/models/Cloudflare/clef)、[OmniJev](https://modelscope.cn/models/AI-ModelScope/OmniJev) 和 [Kev](https://www.modelscope.cn/models/jaredpalmer/kev-4b)（0.8b/4b/9b），内置 distill_rps、smooth_brier、ce_rps 等proper scoring rule损失函数。文档参考[这里](docs/source/BestPractices/Decision.md)，训练示例参考[这里](examples/train/decision)。
 - 🔥 2026.10.15: Day-0 支持 [NVIDIA-Nemotron-3.5-Super-VL-120B-A12B](https://www.modelscope.cn/models/nv-community/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16)，训练示例参考 [SFT示例](examples/models/nemotron_super_vl).

@@ -225,6 +225,52 @@ swift sft \
 
 EntroPack 当前不支持 DeepSpeed ZeRO。FSDP2 需要 PyTorch 2.7 或更高版本。
 
+## 实际训练效果对比
+
+### 训练设置
+
+我们使用 Qwen3.8-27B 在 `AI-ModelScope/LaTeX_OCR:human_handwrite` 上进行 LoRA 对比。训练集 1200 条，验证集 50 条；使用两张 NVIDIA H20，单卡 batch size 为 8，全局 batch size 为 16，训练 1 个 epoch（75 optimizer steps）。LoRA rank 为 8，alpha 为 32，学习率为 1e-4。除量化配置外，其余参数完全相同。
+
+对比以下配置：
+
+- EntroPack 2.0 bpp；
+- EntroPack 3.0 bpp；
+- EntroPack 4.0 bpp；
+- BitsAndBytes NF4 4-bit，BF16 compute，double quant。
+
+### 结果对比
+
+#### Loss 与精度曲线
+
+<p align="center">
+  <img src="../../resources/entropack/latex_ocr_train_loss.png" width="49%" alt="LaTeX OCR train loss">
+  <img src="../../resources/entropack/latex_ocr_train_token_acc.png" width="49%" alt="LaTeX OCR train token accuracy">
+</p>
+
+四组都能稳定收敛，validation token accuracy 均高于 99.5%。
+
+#### 指标对比
+
+权重重建误差在全部 606 个量化线性层、24.806B 权重上计算。量化模型大小为 `state_dict` 中全部 tensor 的总字节数。
+
+| 配置 | 权重相对误差 | 量化模型大小 | 稳定每 step 时间 | 单卡显存峰值 |
+|---|---:|---:|---:|---:|
+| EntroPack 2.0 bpp | 28.69% | **10.57 GiB** | 3.125 s | **19.43 GiB** |
+| EntroPack 3.0 bpp | 14.37% | 13.49 GiB | 3.125 s | 22.26 GiB |
+| EntroPack 4.0 bpp | **7.19%** | 16.40 GiB | 3.156 s | 25.43 GiB |
+| BNB NF4 | 9.29% | 16.67 GiB | **3.063 s** | 25.26 GiB |
+
+EntroPack 4.0 bpp 与 BNB NF4 模型大小接近，但权重重建误差更低。降低 target bpp 可以连续减少模型大小和训练显存；2.0 bpp 相比 BNB NF4 少约 5.8 GiB/卡，但重建误差也明显增大。
+
+#### LoRA 推理结果
+
+训练结束后，四组 adapter 在相同的两条 OCR 样例上使用 `temperature=0` 推理。四组都输出了正确公式。
+
+| 图片 | Ground truth | EntroPack 2.0 bpp | EntroPack 3.0 bpp | EntroPack 4.0 bpp | BNB NF4 |
+|---|---|---|---|---|---|
+| ![](../../resources/entropack/latex_ocr_sample_1.png) | `\frac { \tan \alpha - \tan \beta } { 1 + \tan \alpha \tan \beta }` | 正确 | 正确 | 正确 | 正确 |
+| ![](../../resources/entropack/latex_ocr_sample_2.png) | `\sqrt { b ^ { 2 } - 4 a c }` | 正确 | 正确 | 正确 | 正确 |
+
 ## 使用限制
 
 当前 EntroPack 的 ms-swift 接入仅支持 CUDA 生态设备。

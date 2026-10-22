@@ -225,6 +225,52 @@ swift sft \
 
 EntroPack does not currently support DeepSpeed ZeRO. FSDP2 requires PyTorch 2.7 or later.
 
+## Training results
+
+### Setup
+
+We fine-tuned Qwen3.8-27B on `AI-ModelScope/LaTeX_OCR:human_handwrite` with LoRA. The experiment used 1,200 training samples and 50 validation samples on two NVIDIA H20 GPUs. The per-device batch size was 8, the global batch size was 16, and training ran for one epoch (75 optimizer steps). LoRA rank was 8, alpha was 32, and the learning rate was 1e-4. All settings except quantization were identical.
+
+The compared configurations were:
+
+- EntroPack 2.0 bpp;
+- EntroPack 3.0 bpp;
+- EntroPack 4.0 bpp;
+- BitsAndBytes NF4 4-bit with BF16 compute and double quantization.
+
+### Results
+
+#### Loss and accuracy curves
+
+<p align="center">
+  <img src="../../resources/entropack/latex_ocr_train_loss.png" width="49%" alt="LaTeX OCR train loss">
+  <img src="../../resources/entropack/latex_ocr_train_token_acc.png" width="49%" alt="LaTeX OCR train token accuracy">
+</p>
+
+All four runs converged, with validation token accuracy above 99.5% for every run.
+
+#### Metrics
+
+Weight reconstruction error was computed across all 606 quantized linear layers and 24.806B weights. Quantized model size is the total byte size of every tensor in the model `state_dict`.
+
+| Configuration | Weight relative error | Quantized model size | Stable time per step | Peak memory per GPU |
+|---|---:|---:|---:|---:|
+| EntroPack 2.0 bpp | 28.69% | **10.57 GiB** | 3.125 s | **19.43 GiB** |
+| EntroPack 3.0 bpp | 14.37% | 13.49 GiB | 3.125 s | 22.26 GiB |
+| EntroPack 4.0 bpp | **7.19%** | 16.40 GiB | 3.156 s | 25.43 GiB |
+| BNB NF4 | 9.29% | 16.67 GiB | **3.063 s** | 25.26 GiB |
+
+EntroPack 4.0 bpp has a similar model size to BNB NF4 with lower weight reconstruction error. Lowering target bpp continuously reduces model size and training memory. EntroPack 2.0 bpp uses about 5.8 GiB less memory per GPU than BNB NF4, at the cost of higher reconstruction error.
+
+#### LoRA inference
+
+After training, all four adapters were evaluated on the same two OCR examples with `temperature=0`. Every configuration produced the correct formula.
+
+| Image | Ground truth | EntroPack 2.0 bpp | EntroPack 3.0 bpp | EntroPack 4.0 bpp | BNB NF4 |
+|---|---|---|---|---|---|
+| ![](../../resources/entropack/latex_ocr_sample_1.png) | `\frac { \tan \alpha - \tan \beta } { 1 + \tan \alpha \tan \beta }` | Correct | Correct | Correct | Correct |
+| ![](../../resources/entropack/latex_ocr_sample_2.png) | `\sqrt { b ^ { 2 } - 4 a c }` | Correct | Correct | Correct | Correct |
+
 ## Limitations
 
 The current EntroPack integration in ms-swift supports CUDA devices only.
