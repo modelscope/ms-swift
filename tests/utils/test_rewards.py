@@ -270,5 +270,29 @@ class TestMathORM(unittest.TestCase):
             self.assertTrue(MathORM.compare_consecutive('{42}', '42'))
 
 
+class TestMathORMCompletions(unittest.TestCase):
+    """`orms['math']` runs through the GRPO reward dispatch, which passes the completion texts and the
+    dataset `solution` column, like every other ORM does."""
+
+    def setUp(self):
+        from swift.rewards.orm import MathORM
+        with patch.dict('os.environ', {'USE_OPENCOMPASS_EVALUATOR': 'False'}):
+            self.reward = MathORM()
+
+    def test_completion_strings(self):
+        completions = ['The answer is \\boxed{3}', 'The answer is 4']
+        self.assertEqual(self.reward(completions, ['\\boxed{3}', '\\boxed{3}']), [1.0, 0.0])
+
+    def test_solution_keyword(self):
+        # `RowPreprocessor.rows_to_batched` hands the dataset column over as the `solution` keyword.
+        rewards = self.reward(['\\boxed{1}', '\\boxed{2}'], solution=['\\boxed{1}', '\\boxed{9}'])
+        self.assertEqual(rewards, [1.0, 0.0])
+
+    def test_infer_requests(self):
+        from swift.infer_engine import InferRequest
+        requests = [InferRequest(messages=[{'role': 'assistant', 'content': '\\boxed{3}'}])]
+        self.assertEqual(self.reward(requests, ['\\boxed{3}']), [1.0])
+
+
 if __name__ == '__main__':
     unittest.main()
