@@ -12,7 +12,7 @@ from swift.dev.utils.logger import get_logger
 from swift.dev.recipe.ppo.assembly import (
     Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests)
 from swift.dev.recipe.utils import (
-    REF_GROUP, StepState, build_save_knobs, initialize_rl_devices, prompt_rows_from_dataset,
+    StepState, build_save_knobs, initialize_rl_devices, prompt_rows_from_dataset,
     resolve_rollout_max_steps, resume_training, rollout_step_budget, save_training_step,
     snapshot_initial_adapter)
 
@@ -28,61 +28,40 @@ logger = get_logger()
 def _gae_pipeline(cluster: Cluster, reward_config: 'RewardConfig', rl_config: 'RLConfig',
                   samples: List[Any], train_batch_size: int, reward_metric: Any
                   ) -> Tuple[List[Any], List[List[float]], List[List[float]], List[List[float]], List[List[float]]]:
-    """The shared GAE anchors: two overlapped forwards, then per-token rewards and GAE.
+    """The shared GAE anchors: forwards called HERE, handles consumed on the worker.
 
-    The critic's values and the reference's logps run as TWO batched passes overlapped via
-    ``_run_grouped``; ``build_token_rewards`` + ``GAEAdvantage`` then fix the anchors for the
-    whole ``num_ppo_epochs`` replay set. Returns ``(kept, advantages, returns, values, old_logps)``.
+    The critic's values and the reference's logps are two whole-batch ``forward_only`` calls made
+    in this loop (the dispatch splits each per rank; ``micro_batch_size`` keeps each rank's forward
+    at one per-device block); the handles are handed to ``gae`` / ``reward_metrics`` -- key-read,
+    row-aligned and folded on the worker, so the per-token rewards and the GAE anchors never touch
+    the driver. Returns ``(kept, advantages, returns, values, old_logps)``.
     """
-    from swift.dev.utils.scoring import batched_response_scores, response_positions
-
-    from twinkle.advantage import GAEAdvantage
-    from twinkle_agentic.async_rl.score_worker import _run_grouped
-
-    kept = [sample for sample in samples if response_positions(sample.encoded)]
-    if not kept:
+    features = [sample.encoded for sample in samples]
+    if not features:
         raise RuntimeError('the pulled batch has no response tokens to train on.')
-    kept_features = [sample.encoded for sample in kept]
+    # one per-device block per rank: train_batch_size (per_device x dp) spread over the dp ranks
+    micro_batch_size = max(1, train_batch_size // cluster.model.device_mesh.data_world_size)
     ref_shared = cluster.reference is cluster.model
-    # critic values on the policy group (None key), reference logps on its own -- disjoint groups
-    # overlap; the policy actor chains its own disable_lora pass.
-    tasks = [
-        (None, lambda: batched_response_scores(
-            cluster.value_model, kept_features, train_batch_size=train_batch_size,
-            output_key='logits', forward_kwargs={'return_logits': True, 'task': 'value'})),
-        (None if ref_shared else REF_GROUP, lambda: batched_response_scores(
-            cluster.reference, kept_features, train_batch_size=train_batch_size,
-            output_key='logps', forward_kwargs=({'disable_lora': True} if ref_shared else {}),
-            allow_missing=True)),
-    ]
-    values_all, ref_all = _run_grouped(tasks)
-    # the weighted outcome scalar per sample (an unparseable judge verdict never poisons the sum;
-    # a no-scorer channel is a zero column, so the reward is the KL penalty alone)
-    matrix = torch.tensor([list(sample.orm_reward) for sample in kept], dtype=torch.float32)
-    if matrix.shape[1] == 0:
-        rm_scores = [0.0] * len(kept)
-    else:
-        from swift.dev.rewards.advantage import build_reward_weights
-
-        weight = build_reward_weights(reward_config.orm_weights, matrix.shape[1])
-        rm_scores = (matrix * weight.unsqueeze(0)).nansum(dim=1).tolist()
-    old_logps = [[float(x) for x in sample.rollout_logps] for sample in kept]
-    # a missing reference logps means "no KL penalty": reusing the old logps zeroes every
-    # per-token KL term for that sample (the kernel requires the two columns together).
-    ref_rows = [[float(x) for x in ref] if ref is not None else old
-                for ref, old in zip(ref_all, old_logps)]
-    token_rewards = GAEAdvantage.build_token_rewards(
-        rm_scores, [len(old) for old in old_logps],
-        old_logps=old_logps, ref_logps=ref_rows, kl_coef=rl_config.kl_coef)
-    advantages, returns = GAEAdvantage(
-        gamma=rl_config.gamma, gae_lambda=rl_config.lam,
-        normalize=rl_config.whiten_rewards)(token_rewards, values_all)
+    # the critic's values (the value head via task='value') and the reference's logps; the policy
+    # actor chains its own disable_lora pass when the reference IS the policy object.
+    scored = {
+        'values': cluster.value_model.forward_only(
+            inputs=features, micro_batch_size=micro_batch_size,
+            task='value', return_logits=True),
+        'ref': cluster.reference.forward_only(
+            inputs=features, micro_batch_size=micro_batch_size,
+            **({'disable_lora': True} if ref_shared else {})),
+    }
+    # collect once at the training consumption point; the lanes crossed driver->worker as references
+    indices, advantages, returns, values, old_logps = cluster.worker.gae(
+        samples, scored, reward_config, rl_config)()
+    kept = [samples[i] for i in indices]
     # the reward telemetry reflects exactly the batch the upcoming optimizer steps train on
+    metrics = cluster.worker.reward_metrics(samples, scored, reward_config, rl_config)
     reward_metric.reset()
     reward_metric.accumulate(
-        rewards={'total': [float(sum(row)) for row in token_rewards]},
-        completion_lengths=[len(old) for old in old_logps])
-    return kept, advantages.tolist(), returns.tolist(), values_all, old_logps
+        rewards={'total': metrics['total']}, completion_lengths=metrics['completion_lengths'])
+    return kept, advantages, returns, values, old_logps
 
 
 def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', samples: List[Any],

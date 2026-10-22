@@ -221,26 +221,17 @@ def _ensure_ray(distributed_config: DistributedConfig, deploy_config: DeployConf
 
     ``launch_server._init_ray`` only attaches (``address='auto'``) to an existing cluster, so
     ``mode='ray'`` / ``ray_address='auto'`` are left alone; the single-command default starts a
-    local Ray head here, seeding workers with the same runtime_env the launcher would.
+    local Ray head via the launcher's own ``ensure_ray_cluster``, so worker seeding (runtime_env,
+    namespace) stays single-sourced with the launcher.
     """
-    import ray
-
-    if ray.is_initialized():
-        return
     if distributed_config.mode == 'ray' or deploy_config.ray_address == 'auto':
         return
+    from twinkle.server.launcher import ensure_ray_cluster
 
-    from twinkle.server.launcher import build_ray_runtime_env
-
-    init_kwargs: Dict[str, Any] = {
-        'namespace': deploy_config.ray_namespace,
-        'runtime_env': build_ray_runtime_env(),
-        'ignore_reinit_error': True,
-    }
     address = deploy_config.ray_address
-    if address and address != 'local':
-        init_kwargs['address'] = address
-    ray.init(**init_kwargs)
+    if not address or address == 'local':
+        address = None
+    ensure_ray_cluster(namespace=deploy_config.ray_namespace, address=address)
     logger.info(f'run_deploy started a local Ray head (namespace={deploy_config.ray_namespace}).')
 
 

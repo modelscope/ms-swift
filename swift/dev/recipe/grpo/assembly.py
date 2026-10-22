@@ -116,7 +116,6 @@ class Cluster(NamedTuple):
     teacher: Any
     worker: Any
     prm_scorer: Any
-    prm_orm_mix: float
     sampling_params: Dict[str, Any]
     colocate: bool
     orm_scorers: List[Any]
@@ -252,7 +251,6 @@ def initialize_cluster(
         sampler,
         template,
         sampling_params=SamplingParams(**params),
-        allow_partial_rollout=rollout_config.allow_partial_rollout,
         max_turns=(rollout_config.max_turns or 1),
         max_trajectory_tokens=rollout_config.max_trajectory_tokens,
         tools_factory=tools_factory,
@@ -332,14 +330,17 @@ def initialize_cluster(
     )
     # Register the GPU-resident frozen RM handles for elastic scaling; a role without a handle
     # (rules-only channel, judge, local mode) stays static and the adapter can never address it.
+    # The factory lives on the model proxy (recorded by remote_class under mode=ray), so the
+    # registration reads it off the proxy the adapter will actually drive.
     elastic_models = {}
     if adapter is not None:
         for scorer in (*orm_scorers, *prm_scorers):
+            scorer_model = scorer.model
             if (
                 getattr(scorer, "placement_key", None) is not None
-                and getattr(scorer, "_worker_factory", None) is not None
+                and getattr(scorer_model, "_worker_factory", None) is not None
             ):
-                elastic_models[scorer.placement_key] = scorer
+                elastic_models[scorer.placement_key] = scorer_model
         adapter.elastic_models = elastic_models
 
     return Cluster(
@@ -352,7 +353,6 @@ def initialize_cluster(
         teacher=teacher,
         worker=worker,
         prm_scorer=prm_scorer,
-        prm_orm_mix=reward_config.prm_orm_mix,
         sampling_params=params,
         colocate=colocate,
         orm_scorers=orm_scorers,

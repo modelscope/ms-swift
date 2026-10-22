@@ -1408,7 +1408,11 @@ def _per_row_outputs(outputs: Any, num_rows: int) -> List[Any]:
 
     The shape depends on the head: seq_cls gives logits per row, embedding gives a vector. Both are
     returned as lists so the result is jsonl-serialisable, which is the whole point of this path.
+    A lazy remote return is collected here, so the local-mode dict and the ray handle feed the
+    same unpacking.
     """
+    if callable(outputs) and getattr(outputs, '_is_lazy_collect', False):
+        outputs = outputs()
     tensor = outputs
     if isinstance(outputs, dict):
         # forward_only(task='embedding') returns the pooled vectors under 'embeddings' (plural),

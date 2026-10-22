@@ -173,6 +173,10 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
                     defer_trainer_state=async_save,
                 )
 
+            # Snapshot the deferred writes into the closure: the next save() resets the shared
+            # list while this tail may still be running on the background writer.
+            deferred = list(self._deferred_trainer_state_writes)
+
             def _write_weights():
                 if Platform.is_master():
                     tenant_peft_config.save_pretrained(checkpoint_dir)
@@ -187,7 +191,7 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
                 self._save_tokenizer(checkpoint_dir, adapter_name=adapter_name)
                 copy_checkpoint_args(output_dir, checkpoint_dir)
                 rotate_checkpoints(output_dir, checkpoint_dir, save_total_limit)
-                for write in self._deferred_trainer_state_writes:
+                for write in deferred:
                     write()
 
             if async_save:

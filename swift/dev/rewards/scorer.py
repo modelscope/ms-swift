@@ -209,8 +209,7 @@ class RewardModel:
     """
 
     def __init__(self, model: Any, template: Any = None, *, placement_key: Any = None,
-                 disable_adapter: bool = False, worker_factory: Any = None,
-                 device_mesh: Any = None, display_name: Optional[str] = None):
+                 disable_adapter: bool = False, display_name: Optional[str] = None):
         self.model = model
         self.template = template
         #: The DeviceGroup identity this handle forwards on; None means the policy actor itself.
@@ -218,101 +217,6 @@ class RewardModel:
         #: The metric-column label (the RewardSpec's display name); rules carry the registry's.
         self.display_name = display_name or 'reward'
         self.disable_adapter = disable_adapter
-        #: The actor-native elasticity inputs, recorded by ``remote_class`` at construction: the
-        #: (cls, args, kwargs, torch_kwargs) worker factory and the mesh the frozen model sharded
-        #: onto. Present only under mode='ray' (a local model needs neither).
-        self._worker_factory = worker_factory
-        self._device_mesh = device_mesh
-
-    def worker_ids(self) -> Tuple[Any, ...]:
-        """The live actor ids of the wrapped proxy (the elasticity bookkeeping key)."""
-        from twinkle.infra import get_worker_id
-
-        return tuple(get_worker_id(actor) for actor in getattr(self.model, '_actors', ()) or ())
-
-    def add_workers(self, group: str, ranks: List[int]) -> Tuple[Any, ...]:
-        """Grow the frozen forward service by one replica from a pre-reserved flex slot.
-
-        A frozen RM is stateless: the new actors load the checkpoint straight from the factory's
-        construction args (no weight sync), so this is the whole scale-up. The proxy's actor list and
-        the cross-replica device mesh grow together -- ``forward_only``'s slice_dp dispatch and
-        collect both read them, so new replicas start taking shards immediately.
-        """
-        cls, args, kwargs, torch_kwargs = self._require_factory()
-        from twinkle.infra._ray import RayHelper
-        from twinkle.infra import get_worker_id
-
-        actors = RayHelper.create_workers(
-            cls, group, 'all', *args, extra_torch_kwargs=torch_kwargs, **dict(kwargs))
-        with self._model_lock():
-            mesh = getattr(self.model, 'device_mesh', None) or self._device_mesh
-            replicas = (len(getattr(self.model, '_actors', ()) or ()) + len(actors)) // max(
-                1, (mesh.tp_world_size if mesh is not None and hasattr(mesh, 'tp_world_size') else 1))
-            self.model._actors = tuple(getattr(self.model, '_actors', ()) or ()) + tuple(actors)
-            self._grow_mesh(replicas)
-        return tuple(get_worker_id(actor) for actor in actors)
-
-    def remove_workers(self, worker_ids) -> bool:
-        """Retire replica actors by id (shutdown + kill, mirroring the sampler's teardown)."""
-        import ray
-        from twinkle.infra import get_worker_id
-
-        worker_ids = tuple(worker_ids)
-        with self._model_lock():
-            by_id = {get_worker_id(actor): actor for actor in getattr(self.model, '_actors', ()) or ()}
-            unknown = set(worker_ids) - set(by_id)
-            if unknown:
-                raise ValueError(f'Unknown RM actor ids: {sorted(unknown)}')
-            actors = [by_id[wid] for wid in worker_ids]
-            self.model._actors = tuple(
-                actor for actor in getattr(self.model, '_actors', ()) or ()
-                if get_worker_id(actor) not in set(worker_ids))
-            self._shrink_mesh(len(self.model._actors))
-        error = None
-        for actor in actors:
-            try:
-                ray.kill(actor, no_restart=True)
-            except BaseException as exc:
-                error = error or exc
-        if error is not None:
-            raise error
-        return True
-
-    def _require_factory(self):
-        if self._worker_factory is None:
-            raise RuntimeError('RM elasticity needs a ray-placed model (worker_factory is recorded '
-                               'only under mode=ray).')
-        return self._worker_factory
-
-    def _model_lock(self):
-        import threading
-
-        lock = getattr(self, '_lock', None)
-        if lock is None:
-            lock = threading.RLock()
-            self._lock = lock
-        return lock
-
-    def _grow_mesh(self, replicas: int) -> None:
-        """Rebuild the cross-replica mesh after ``add_workers`` (dp = replica count, tp kept)."""
-        mesh = getattr(self.model, 'device_mesh', None) or self._device_mesh
-        if mesh is None:
-            return
-        from twinkle import DeviceMesh
-
-        tp = getattr(mesh, 'tp_world_size', 1) or 1
-        dp = max(1, replicas)
-        new_mesh = DeviceMesh.from_sizes(world_size=dp * tp, dp_size=dp, tp_size=tp)
-        self.model.device_mesh = new_mesh
-        self._device_mesh = new_mesh
-
-    def _shrink_mesh(self, n_actors: int) -> None:
-        mesh = getattr(self.model, 'device_mesh', None) or self._device_mesh
-        if mesh is None:
-            return
-        tp = getattr(mesh, 'tp_world_size', 1) or 1
-        dp = max(1, n_actors // tp)
-        self._grow_mesh(dp)
 
     def score(self, rows: List[Dict[str, Any]]) -> List[float]:
         """Score message rows with the scalar head -> one float per row.
@@ -323,7 +227,7 @@ class RewardModel:
         """
         features = [self.template.encode(copy.deepcopy(row)) for row in rows]
         outputs = self.model.forward_only(inputs=features, return_logits=True, task='seq_cls')
-        logits = outputs.get('logits') if isinstance(outputs, dict) else None
+        logits = outputs.get('logits')
         if logits is None:
             raise RuntimeError('reward model forward returned no logits.')
         return torch.as_tensor(logits).reshape(-1).tolist()

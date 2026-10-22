@@ -53,12 +53,10 @@ def build_reward_model(spec: 'RewardSpec', *, model_config: 'ModelConfig',
     frozen, template = _build_frozen_reward_model(
         spec, model_config, template_config, distributed_config=distributed_config,
         remote_group=remote_group)
-    # placement_key carries the group name out (the elastic registration reads it); the other two
-    # are the actor-native elasticity inputs remote_class recorded at construction.
+    # placement_key carries the group name out (the elastic registration reads it); replica
+    # elasticity (add_replicas/remove_replicas) is the mounted worker-pool contract on the proxy.
     return RewardModel(
-        frozen, template, placement_key=remote_group,
-        worker_factory=getattr(frozen, '_worker_factory', None),
-        device_mesh=getattr(frozen, 'device_mesh', None), display_name=spec.display_name)
+        frozen, template, placement_key=remote_group, display_name=spec.display_name)
 
 
 def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',

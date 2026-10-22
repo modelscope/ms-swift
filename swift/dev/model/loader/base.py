@@ -326,7 +326,7 @@ def resolve_loader_cls(model_type: Optional[str], model_id: str) -> Optional[Typ
     matches, so the caller falls back to the generic transformers load path instead of guessing a
     different family from the checkpoint name.
     """
-    from swift.dev.naming import resolve_plugin_class
+    from swift.dev.utils.naming import resolve_plugin_class
 
     if model_type:
         if model_type in MODEL_MAPPING or model_type in MODEL_ALIASES:

@@ -68,12 +68,16 @@ class DistillWorker:
         self.ga = max(1, gradient_accumulation_steps)
 
     def _response_logps(self, scorer: Any, features: List[dict], *, disable_lora: bool = False) -> List[List[float]]:
-        """Score ``features`` with chunked ``forward_only`` -> one response-token logp list per feature."""
-        from swift.dev.utils.scoring import batched_response_scores
+        """Score ``features`` with ``forward_only`` -> one response-token logp list per feature.
 
-        return batched_response_scores(
-            scorer, features, train_batch_size=self.train_batch_size, output_key='logps',
-            forward_kwargs=({'disable_lora': True} if disable_lora else None))
+        The features ARE one mini-batch (``forward_kwargs`` builds the signal per mini), so one
+        whole-batch call -- the dispatch splits it per rank -- is the whole story.
+        """
+        from swift.dev.utils.scoring import response_token_scores
+
+        frame = scorer.forward_only(
+            inputs=features, **({'disable_lora': True} if disable_lora else {}))
+        return response_token_scores(frame, features)
 
     def _privileged_feature(self, row: DistillRow) -> dict:
         """Encode this row's privileged teacher view (``teacher_prompt`` + the shared response tokens)."""
