@@ -26,13 +26,21 @@ jobs:
 
       - name: Build Arguments
         id: build_args
+        env:
+          # Comment text is attacker-controlled: passed as an env VALUE (the shell sees
+          # $COMMENT_BODY as data) instead of ${{ }} interpolation into the script body,
+          # so a comment containing quotes/semicolons can never become script text.
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
+          # Random delimiter: a fixed "EOF" would let a comment containing that string
+          # forge the content of $GITHUB_OUTPUT.
+          DELIM="EOF_$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
           ARGS="REPO: ${{ github.repository }}
           REQUEST_SOURCE: ${{ github.event_name }}
           THREAD_ID: ${{ github.event.comment.node_id }}
           COMMENT_ID: ${{ github.event.comment.id }}
           AUTHOR: ${{ github.event.comment.user.login }}
-          BODY: ${{ github.event.comment.body }}
+          BODY: $COMMENT_BODY
           URL: ${{ github.event.comment.html_url }}
           IS_PR: ${{ github.event.issue.pull_request != null || github.event_name == 'pull_request_review_comment' }}
           ISSUE_OR_PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}"
@@ -47,9 +55,9 @@ jobs:
           REPLY_TO_COMMENT_ID: ${{ github.event.comment.in_reply_to_id }}"
           fi
 
-          echo "args<<EOF" >> $GITHUB_OUTPUT
+          echo "args<<$DELIM" >> $GITHUB_OUTPUT
           echo "$ARGS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "$DELIM" >> $GITHUB_OUTPUT
 
       - name: Run Qoder Assistant
         uses: QoderAI/qoder-action@v0

@@ -40,6 +40,9 @@ class DatasetConfig:
     # === Hub ===
     use_hf: bool = False
     hub_token: Optional[str] = None
+    # Dataset loaders execute the repo's own .py script when True (the dataset-script /
+    # trust_remote_code path); the default matches legacy swift, the warning fires per dataset.
+    trust_remote_code: bool = True
 
     # === Packing ===
     packing: bool = False

@@ -184,11 +184,11 @@ def _validate(deploy_config: DeployConfig, quantize_config: Optional[QuantizeCon
     if bool(deploy_config.ssl_keyfile) != bool(deploy_config.ssl_certfile):
         raise ValueError('HTTPS needs both ssl_keyfile and ssl_certfile; one alone would start a plain HTTP '
                          'server while the operator believed it was encrypted.')
-    # A pinned sampler_type bypasses _derive_sampler_type: the data plane needs the non-blocking
-    # submit_generation only *_async provides -- guard here or every token-in-token-out call 503s.
+    # A pinned sampler_type bypasses _derive_sampler_type: the data plane rides the non-blocking
+    # submit on the async engine backends -- guard here or every token-in-token-out call 503s.
     if deploy_config.enable_data_plane and deploy_config.sampler_type not in (None, 'vllm_async', 'sglang_async'):
         raise ValueError(f'sampler_type={deploy_config.sampler_type!r} cannot serve the data plane: '
-                         'sample_to_data_plane needs the sampler\'s non-blocking submit_generation, which '
+                         'sample_to_data_plane needs the sampler\'s non-blocking submit, which '
                          'only "vllm_async" and "sglang_async" provide. Use one of those, or leave '
                          'sampler_type=None to derive it from the backend, or drop enable_data_plane.')
     quant_method = getattr(quantize_config, 'quant_method', None)

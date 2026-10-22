@@ -95,6 +95,7 @@ def _load_kwargs(dataset_config: DatasetConfig) -> dict:
         shuffle_buffer_size=dataset_config.shuffle_buffer_size,
         use_hf=dataset_config.use_hf,
         hub_token=dataset_config.hub_token,
+        trust_remote_code=dataset_config.trust_remote_code,
         download_mode=dataset_config.download_mode,
         columns=dataset_config.columns,
         strict=dataset_config.strict,

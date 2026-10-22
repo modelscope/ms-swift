@@ -268,10 +268,11 @@ class InferComponent(RecipeComponent):
         num_generated_tokens = 0
         start_time = time.perf_counter()
         emit = {'dpo': _emit_dpo, 'grpo': _emit_grpo}.get(output_format, _emit_all)
-        # Two dataset routes, chosen by SAMPLER CAPABILITY (not backend name): vLLM/SGLang expose
-        # the non-blocking submit_generation and ride the SAME per-sample StreamingDriver online RL
-        # uses (null ledger); transformers or the cache-only 'no' backend keeps the batch loop.
-        async_route = sampler is not None and callable(getattr(sampler, 'submit_generation', None))
+        # Two dataset routes, chosen by SAMPLER CAPABILITY (not backend name): vLLM/SGLang run a
+        # background engine loop (PartialRolloutMixin, marked by pause_generation) and ride the SAME
+        # per-sample StreamingDriver online RL uses (null ledger); transformers or the cache-only 'no'
+        # backend keeps the batch loop.
+        async_route = sampler is not None and callable(getattr(sampler, 'pause_generation', None))
         try:
             if async_route:
                 # A deterministic seed makes the dataloader's shuffle replayable, which is what

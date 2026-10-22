@@ -223,16 +223,21 @@ class MSHub:
                      revision: Optional[str] = None,
                      download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
                      token: Optional[str] = None,
+                     trust_remote_code: bool = True,
                      **kwargs):
         import modelscope
         from modelscope import MsDataset
         from packaging import version
+        if trust_remote_code:
+            logger.warning('loading dataset %s with trust_remote_code=True: the dataset repo\'s own Python '
+                           'script will execute inside this process. Only use dataset sources you trust.',
+                           dataset_id)
         cls.try_login(token)
         if revision is None or revision == 'main':
             revision = 'master'
         load_kwargs = {}
         if version.parse(modelscope.__version__) >= version.parse('1.29.1'):
-            load_kwargs['trust_remote_code'] = True
+            load_kwargs['trust_remote_code'] = trust_remote_code
 
         def online_fn():
             with _ms_logger_context(logging.ERROR):
@@ -297,8 +302,13 @@ class HFHub:
                      revision: Optional[str] = None,
                      download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
                      num_proc: Optional[int] = None,
+                     trust_remote_code: bool = True,
                      **kwargs):
         from datasets import load_dataset
+        if trust_remote_code:
+            logger.warning('loading dataset %s with trust_remote_code=True: the dataset repo\'s own Python '
+                           'script will execute inside this process. Only use dataset sources you trust.',
+                           dataset_id)
         if revision is None or revision == 'master':
             revision = 'main'
 
@@ -311,7 +321,7 @@ class HFHub:
                 revision=revision,
                 download_mode=download_mode,
                 num_proc=num_proc,
-                trust_remote_code=True)
+                trust_remote_code=trust_remote_code)
 
         def offline_fn():
             # Same loader as online, but the forced-offline mode set by the fallback wrapper makes
@@ -324,7 +334,7 @@ class HFHub:
                 split=split,
                 streaming=streaming,
                 num_proc=num_proc,
-                trust_remote_code=True)
+                trust_remote_code=trust_remote_code)
 
         return _load_with_cache_fallback(
             online_fn, offline_fn, describe=f'hf://{dataset_id}:{subset_name}#{split}')
