@@ -654,6 +654,20 @@ def _build_transformers_model(model_config: ModelConfig,
             kwargs['liger_kernel_config'] = train_config.liger_kernel_config
         model = TransformersModel(**kwargs)
 
+        if model_config.enable_kernel:
+            from twinkle.kernel import kernelize
+            kernelize(model.model)
+
+    # twinkle's TransformersModel.__init__ calls gradient_checkpointing_enable() unconditionally
+    # (model/transformers/transformers.py), so the user's --gradient_checkpointing false was silently
+    # ignored -- and the find_unused_parameters derivation above already assumes the flag is honored,
+    # so the two disagreed. Turn it back off here when the config says so.
+    # NOTE: this is a post-hoc undo, not the right shape. The fix belongs upstream as a twinkle
+    # constructor argument (gradient_checkpointing=...); switch to passing it once that lands, so the
+    # model is never built in a state the caller did not ask for.
+    if train_config is not None and not train_config.gradient_checkpointing:
+        model.model.gradient_checkpointing_disable()
+
     return model
 
 
