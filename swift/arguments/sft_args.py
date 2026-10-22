@@ -173,6 +173,9 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
     temperature: float = 0.
     load_args: bool = False
 
+    # twinkle kernel
+    enable_kernel: bool = False
+
     # zero++
     zero_hpz_partition_size: Optional[int] = None
 
