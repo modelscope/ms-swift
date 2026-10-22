@@ -4,8 +4,8 @@
 Under ZeRO-3 the ranks all-gather parameters module by module, so a rank holding an image sample that runs
 the vision encoder one extra time desyncs the collectives and hangs training on mixed text/image data.
 """
-import pytest
 import torch
+import unittest
 from torch import nn
 from types import SimpleNamespace
 
@@ -116,20 +116,31 @@ def make_trainer(model):
     return trainer
 
 
-@pytest.mark.parametrize('with_image', [False, True])
-def test_liger_loss_runs_the_vision_encoder_once_per_forward(with_image):
-    model = MultimodalModel()
-    trainer = make_trainer(model)
-    model_inputs = {'input_ids': torch.tensor([[1, 2, 3]]), 'attention_mask': torch.ones(1, 3, dtype=torch.long)}
-    if with_image:
-        model_inputs['pixel_values'] = torch.ones(2, HIDDEN)
+class TestGRPOLigerMultimodalForward(unittest.TestCase):
 
-    loss = trainer.compute_loss(trainer.model, {'model_inputs': model_inputs, 'grpo_batch': None})
+    def test_liger_loss_runs_the_vision_encoder_once_per_forward(self):
+        for with_image in (False, True):
+            with self.subTest(with_image=with_image):
+                model = MultimodalModel()
+                trainer = make_trainer(model)
+                model_inputs = {
+                    'input_ids': torch.tensor([[1, 2, 3]]),
+                    'attention_mask': torch.ones(1, 3, dtype=torch.long)
+                }
+                if with_image:
+                    model_inputs['pixel_values'] = torch.ones(2, HIDDEN)
 
-    assert torch.is_tensor(loss)
-    # The same count with and without an image keeps the ZeRO-3 all-gathers aligned across ranks.
-    assert model.visual.calls == 1
-    received = model.model.received
-    assert received['inputs_embeds'] is not None
-    assert received['input_ids'] is None and received['pixel_values'] is None
-    assert torch.equal(trainer.liger_inputs[0]['input_ids'], model_inputs['input_ids'])
+                loss = trainer.compute_loss(trainer.model, {'model_inputs': model_inputs, 'grpo_batch': None})
+
+                self.assertTrue(torch.is_tensor(loss))
+                # The same count with and without an image keeps the ZeRO-3 all-gathers aligned across ranks.
+                self.assertEqual(model.visual.calls, 1)
+                received = model.model.received
+                self.assertIsNotNone(received['inputs_embeds'])
+                self.assertIsNone(received['input_ids'])
+                self.assertIsNone(received['pixel_values'])
+                self.assertTrue(torch.equal(trainer.liger_inputs[0]['input_ids'], model_inputs['input_ids']))
+
+
+if __name__ == '__main__':
+    unittest.main()
