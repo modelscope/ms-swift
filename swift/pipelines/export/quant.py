@@ -35,7 +35,7 @@ class QuantEngine(ProcessorMixin):
 
     def quantize(self):
         args = self.args
-        if args.quant_bits is None and args.quant_method != 'fp8':
+        if args.quant_bits is None and args.quant_method not in {'fp8', 'entropack'}:
             raise ValueError(f'Please set the quant_bits. args.quant_bits: {args.quant_bits}')
         if args.quant_method == 'awq':
             self.template.model = self.model.model
@@ -54,7 +54,7 @@ class QuantEngine(ProcessorMixin):
                 args.output_dir,
                 safe_serialization=args.safe_serialization,
                 max_shard_size=args.max_shard_size)
-        elif args.quant_method in {'bnb', 'fp8'}:
+        elif args.quant_method in {'bnb', 'fp8', 'entropack'}:
             self.model.save_pretrained(
                 args.output_dir, safe_serialization=args.safe_serialization, max_shard_size=args.max_shard_size)
         else:

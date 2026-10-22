@@ -11,7 +11,7 @@ from typing import List, Union
 
 from swift.arguments import SftArguments
 from swift.trainers import calculate_max_steps
-from swift.tuner_plugin import Tuner, tuners_map
+from swift.tuner_plugin import Tuner, apply_model_prepare_hooks, tuners_map
 from swift.tuners import Swift
 from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
                          get_logger, get_multimodal_target_regex)
@@ -423,4 +423,5 @@ class TunerMixin:
                 args.galore_target_modules += find_embedding(model)
         if is_deepspeed_zero3_enabled():
             _patch_modules_to_save_zero3()
+        model = apply_model_prepare_hooks(args, model)
         return model
