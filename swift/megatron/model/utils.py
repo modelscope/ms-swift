@@ -2,6 +2,7 @@
 from dataclasses import fields
 from mcore_bridge import get_mcore_model as _get_mcore_model
 from mcore_bridge import hf_to_mcore_config
+
 try:
     from mcore_bridge import resolve_mtp_config
 except ImportError:  # mcore-bridge without the MTP auto-resolution API
@@ -93,8 +94,10 @@ def get_mcore_model_config(args, hf_config):
         kwargs['moe_enable_routing_replay'] = True
     if args.megatron_extra_kwargs:
         kwargs.update(args.megatron_extra_kwargs)
-    kwargs['mtp_num_layers'], kwargs['mtp_shared_weights'] = _resolve_mtp_values(
-        kwargs['mtp_num_layers'], kwargs['mtp_shared_weights'], args.megatron_model_meta, args.model_dir, hf_config)
+    kwargs['mtp_num_layers'], kwargs['mtp_shared_weights'] = _resolve_mtp_values(kwargs['mtp_num_layers'],
+                                                                                 kwargs['mtp_shared_weights'],
+                                                                                 args.megatron_model_meta,
+                                                                                 args.model_dir, hf_config)
     config = config_cls(**kwargs)
     args.mtp_num_layers = config.mtp_num_layers
     args.mtp_shared_weights = config.mtp_shared_weights
