@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from swift.dataset import (AnthropicMessagesPreprocessor, EncodePreprocessor, MessagesPreprocessor,
@@ -157,6 +158,8 @@ class TestDataPreprocess(unittest.TestCase):
         }
         tool_row = OpenAIMessagesPreprocessor().preprocess(tool_row)
         arguments = tool_row['messages'][-1]['content']['arguments']
+        self.assertEqual(arguments, '{"cities":["Beijing","Shanghai"],"options":{"units":["celsius","fahrenheit"]}}')
+        arguments = json.loads(arguments)
         self.assertEqual(arguments['cities'], ['Beijing', 'Shanghai'])
         self.assertEqual(arguments['options'], {'units': ['celsius', 'fahrenheit']})
 
@@ -277,7 +280,7 @@ class TestProviderMessagesPreprocess(unittest.TestCase):
         }
         result = OpenAIMessagesPreprocessor().preprocess(row)
         self.assertEqual([message['role'] for message in result['messages']], ['tool_call', 'tool_call', 'tool'])
-        self.assertEqual(result['messages'][0]['content'], {'name': 'get_weather', 'arguments': {'city': 'Beijing'}})
+        self.assertEqual(result['messages'][0]['content'], {'name': 'get_weather', 'arguments': '{"city": "Beijing"}'})
         self.assertTrue(result['messages'][0]['loss'])
 
     def test_openai_is_auto_detected(self):
@@ -343,7 +346,10 @@ class TestProviderMessagesPreprocess(unittest.TestCase):
         }
         result = OpenAIMessagesPreprocessor().preprocess(row)
         self.assertEqual([message['role'] for message in result['messages']], ['user', 'assistant', 'tool_call'])
-        self.assertEqual(result['messages'][-1]['content'], {'name': 'inspect_images', 'arguments': {'detail': 'high'}})
+        self.assertEqual(result['messages'][-1]['content'], {
+            'name': 'inspect_images',
+            'arguments': '{"detail":"high"}'
+        })
 
         template_inputs = StdTemplateInputs.from_dict(result)
         self.assertEqual(template_inputs.messages[0]['content'], 'Compare these images: <image><image>')
