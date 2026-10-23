@@ -666,7 +666,7 @@ def _initialize_for_sampling(distributed_config: 'DistributedConfig',
     initializes plainly.
     """
     import twinkle
-    from twinkle import DeviceGroup
+    from twinkle import DeviceGroup, Platform
 
     if distributed_config.mode != 'ray':
         twinkle.initialize(mode='local')
@@ -684,7 +684,8 @@ def _initialize_for_sampling(distributed_config: 'DistributedConfig',
         mode='ray',
         nproc_per_node=start,
         groups=[
-            DeviceGroup(name=name, ranks=ranks, device_type='GPU', gpus_per_worker=gpus_per_worker)
+            DeviceGroup(name=name, ranks=ranks,
+                        device_type=Platform.get_platform().__name__, gpus_per_worker=gpus_per_worker)
             for name, ranks, gpus_per_worker in groups])
 
 
@@ -1202,7 +1203,7 @@ def _initialize_for_forward(distributed_config: 'DistributedConfig') -> None:
     exist before either is built; a local (torchrun) run has no group to declare.
     """
     import twinkle
-    from twinkle import DeviceGroup
+    from twinkle import DeviceGroup, Platform
 
     extra_torch_kwargs = {'seed': 42, 'full_determinism': False, 'tf32': None}
     if distributed_config.mode != 'ray':
@@ -1217,7 +1218,8 @@ def _initialize_for_forward(distributed_config: 'DistributedConfig') -> None:
         nproc_per_node=nproc,
         extra_torch_kwargs=extra_torch_kwargs,
         name=distributed_config.ray_exp_name,
-        groups=[DeviceGroup(name='model', ranks=list(range(nproc)), device_type='GPU', gpus_per_worker=1)])
+        groups=[DeviceGroup(name='model', ranks=list(range(nproc)),
+                            device_type=Platform.get_platform().__name__, gpus_per_worker=1)])
 
 
 def _forward_rows(dataset_config: 'DatasetConfig', max_rows: Optional[int], split_dataset_ratio: float,

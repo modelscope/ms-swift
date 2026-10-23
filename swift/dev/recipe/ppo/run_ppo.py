@@ -354,7 +354,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         from twinkle.checkpoint_engine import CheckpointEngineManager
 
         ema_manager = CheckpointEngineManager(
-            model=cluster.model, sampler=cluster.reference, platform='GPU', mode='standalone',
+            model=cluster.model, sampler=cluster.reference, mode='standalone',
             channel='ema:reference')
 
     if checkpoint_config.resume_from_checkpoint:

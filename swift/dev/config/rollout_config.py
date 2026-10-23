@@ -77,6 +77,12 @@ class RolloutConfig:
     # How a trained policy is published: 'adapter_snapshot' saves each version as a LoRA adapter
     # path; 'in_place' overwrites the live copy (full-param ok; partial rollout at overlap).
     weight_sync_strategy: WeightSyncStrategyName = 'adapter_snapshot'
+    # Transport backend for every weight sync into the rollout sampler: 'full' ships the whole
+    # weight set; 'delta_sharded' ships only the changed elements as bit-exact sparse patches
+    # (first sync still seeds densely). Needs disjoint-GPU placement (sampler_mode
+    # disaggregated/server) and a vllm rollout sampler; the sync stays `sync_weights`, so the
+    # training loop itself is unchanged.
+    weight_sync_backend: Literal['full', 'delta_sharded'] = 'full'
     # One weight publication every K recorded steps; 1 = every step (historical cadence), K > 1
     # publishes sparsely (verl's trigger_parameter_sync_step). Inert on the sync fallback.
     parameter_sync_step: int = 1

@@ -641,7 +641,7 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     (empty under an estimate plan). ``group_requests`` supplies this recipe's own frozen-model groups.
     """
     import twinkle
-    from twinkle import DeviceGroup, DeviceMesh
+    from twinkle import DeviceGroup, DeviceMesh, Platform
     from twinkle.perf import Perf
     from twinkle_agentic.async_rl import REF_ONLY_REMOTE_GROUP, estimate_plan, resource_device_groups
 
@@ -708,7 +708,8 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
                          or group_name.startswith('shared_sampler_') or group_name.startswith('flex_sampler_'))
         width = sampler_width if sampler_group else 1
         device_groups.append(
-            DeviceGroup(name=group_name, ranks=ranks, device_type='GPU', gpus_per_worker=width, shared=shared))
+            DeviceGroup(name=group_name, ranks=ranks,
+                        device_type=Platform.get_platform().__name__, gpus_per_worker=width, shared=shared))
         if not shared:
             allocated.update(rank_set)
     total = max(allocated) + 1 if allocated else 0
@@ -884,7 +885,7 @@ def initialize_supervised_twinkle(distributed_config: 'DistributedConfig', *, se
     a disjoint group appended after the 'model' ranks. The seed bundle re-seeds every ray worker.
     """
     import twinkle
-    from twinkle import DeviceGroup
+    from twinkle import DeviceGroup, Platform
 
     extra_torch_kwargs = {'seed': seed, 'full_determinism': full_determinism, 'tf32': tf32}
     if distributed_config.mode == 'ray':
@@ -892,7 +893,8 @@ def initialize_supervised_twinkle(distributed_config: 'DistributedConfig', *, se
         if nproc is None:
             raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the Ray "
                              "'model' DeviceGroup). Pass it explicitly -- there is no default.")
-        groups = [DeviceGroup(name='model', ranks=list(range(nproc)), device_type='GPU', gpus_per_worker=1)]
+        groups = [DeviceGroup(name='model', ranks=list(range(nproc)),
+                              device_type=Platform.get_platform().__name__, gpus_per_worker=1)]
         next_rank = nproc
         planned = ['model']
         for name, world_size in auxiliary_groups:
@@ -904,7 +906,7 @@ def initialize_supervised_twinkle(distributed_config: 'DistributedConfig', *, se
                 raise ValueError(f'auxiliary DeviceGroup name {name!r} collides with a reserved or already-planned '
                                  f'group ({planned}); each frozen model needs a unique name.')
             groups.append(DeviceGroup(name=name, ranks=list(range(next_rank, next_rank + world_size)),
-                                      device_type='GPU', gpus_per_worker=1))
+                                      device_type=Platform.get_platform().__name__, gpus_per_worker=1))
             planned.append(name)
             next_rank += world_size
         twinkle.initialize(
@@ -1064,7 +1066,7 @@ def build_generative_eval(*, model: Any, template: Any, model_config: 'ModelConf
         # model was placed with: an engine slicing inputs on another rank layout would be wrong.
         device_mesh=build_dp_mesh(distributed_config, template_config.sequence_parallel_size),
         remote_group='model')
-    manager = CheckpointEngineManager(model=model, sampler=sampler, platform='GPU', mode='colocate')
+    manager = CheckpointEngineManager(model=model, sampler=sampler, mode='colocate')
     # The eval hand-over is ColocateHandover's (the RL rollout's own sequence, so it cannot drift).
 
     handover = ColocateHandover(model, sampler, manager, colocate=True)

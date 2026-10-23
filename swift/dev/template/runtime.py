@@ -122,4 +122,11 @@ def is_deepspeed_zero3_enabled() -> bool:
 
 
 def get_device() -> str:
-    return "cuda" if torch.cuda.is_available() else "cpu"
+    from twinkle import Platform
+
+    # Platform-probed accelerator prefix (cuda/npu/mps); CPU only when a probed CUDA host has no
+    # usable card, preserving the old no-accelerator fallback.
+    prefix = Platform.device_prefix()
+    if prefix == 'cuda' and not torch.cuda.is_available():
+        return 'cpu'
+    return prefix

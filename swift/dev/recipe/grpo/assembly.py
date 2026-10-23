@@ -261,7 +261,8 @@ def initialize_cluster(
         adapter.dedicated_manager
         if adapter is not None
         else CheckpointEngineManager(
-            model=model, sampler=sampler, platform="GPU", mode=("colocate" if colocate else "standalone")
+            model=model, sampler=sampler, mode=("colocate" if colocate else "standalone"),
+            sync_backend=rollout_config.weight_sync_backend,
         )
     )
 

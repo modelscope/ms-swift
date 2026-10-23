@@ -558,7 +558,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         from twinkle.checkpoint_engine import CheckpointEngineManager
 
         ema_manager = CheckpointEngineManager(
-            model=cluster.model, sampler=cluster.reference, platform='GPU', mode='standalone')
+            model=cluster.model, sampler=cluster.reference, mode='standalone')
     chord_fn = None
     if rl_config.chord_sft_dataset:
         chord_features = _load_chord_features(rl_config, dataset_config, template)

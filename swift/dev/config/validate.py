@@ -236,6 +236,38 @@ def validate_rollout_config(rollout_config: Optional['RolloutConfig'],
     _check_offload_knobs(rollout_config)
     _check_resource_mode(rollout_config, rl_config)
     _check_async_mode(rollout_config, rl_config, tuner_config)
+    _check_weight_sync_backend(rollout_config, rl_config)
+
+
+# Recipes whose training loop pushes the policy into the rollout sampler through a checkpoint
+# engine: only these read weight_sync_backend.
+_ROLLOUT_SYNC_TYPES = frozenset({'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'})
+
+
+def _check_weight_sync_backend(rollout_config: Optional['RolloutConfig'],
+                                rl_config: Optional['RLConfig']) -> None:
+    """Fail loudly on weight_sync_backend combinations that would not run or not be read."""
+    if rollout_config is None or rollout_config.weight_sync_backend == 'full':
+        return
+    rl_type = None if rl_config is None else rl_config.rl_type
+    if rl_type not in _ROLLOUT_SYNC_TYPES:
+        raise ValueError(
+            '--weight_sync_backend is read only by the online recipes that push trained weights into a '
+            f'rollout sampler (grpo/ppo/rft/gkd/opsd/mopd); got rl_type={rl_type!r}, which trains without a '
+            'checkpoint-engine weight sync, so the setting would silently do nothing.')
+    if rollout_config.sampler_mode == 'colocate':
+        raise ValueError(
+            '--weight_sync_backend delta_sharded needs disjoint trainer/rollout GPUs: a colocated sampler '
+            'time-shares one device group with the trainer, while the delta transport addresses the rollout '
+            'ranks as their own worker set. Set --sampler_mode disaggregated (or server) instead.')
+    if rollout_config.rollout_sampler != 'vllm':
+        raise ValueError(
+            f"--weight_sync_backend delta_sharded currently reaches only vllm rollout samplers; got "
+            f"rollout_sampler={rollout_config.rollout_sampler!r}. Keep the full backend or switch to vllm.")
+    if rollout_config.resource_mode == 'adaptive':
+        raise ValueError(
+            '--weight_sync_backend delta_sharded is not wired through the adaptive resource controller\'s '
+            'weight-sync channels; use resource_mode manual or estimate.')
 
 
 def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: Optional['RLConfig']) -> None:
@@ -464,6 +496,12 @@ def _check_streaming_publication(rollout_config: 'RolloutConfig', rl_config: 'RL
             "--weight_sync_strategy in_place (what dev derives for a colocated run); a colocated run is "
             "synchronous (--async_mode none), so in_place needs no --allow_partial_rollout there.")
     if strategy == 'adapter_snapshot':
+        if rollout_config.weight_sync_backend == 'delta_sharded':
+            raise ValueError(
+                '--weight_sync_strategy adapter_snapshot publishes by writing adapter paths and performs '
+                'no weight sync at all, so --weight_sync_backend delta_sharded would never be read on this '
+                'path. Publish with --weight_sync_strategy in_place to overwrite the live weights (the '
+                'delta backend then ships only the changed elements), or drop the backend setting.')
         # Per-version LoRA pinning needs an adapter to pin; a full-parameter policy has none. The sound
         # full-parameter stream is in_place (below), so point the user there.
         if tuner == 'full':

@@ -182,7 +182,8 @@ def initialize_rft_cluster(
         remote_group=(None if colocate else REF_ONLY_REMOTE_GROUP),
     )
     engine = CheckpointEngineManager(
-        model=model, sampler=sampler, platform="GPU", mode=("colocate" if colocate else "standalone")
+        model=model, sampler=sampler, mode=("colocate" if colocate else "standalone"),
+        sync_backend=rollout_config.weight_sync_backend,
     )
     orm_scorers = resolve_reward_scorers(
         "orm",

@@ -258,15 +258,19 @@ def _device_spec(distributed_config: DistributedConfig) -> tuple:
 
     ``ranks=nproc`` gives tensor parallelism across all allocated GPUs by default (Ray sets
     CUDA_VISIBLE_DEVICES from it, which a vLLM engine without explicit TP falls back to); ``dp_size``
-    comes from the shared DP-mesh builder, 1 unless data parallelism was requested.
+    comes from the shared DP-mesh builder, 1 unless data parallelism was requested. The device types
+    come from the platform probe (NPU clusters address ``npu`` devices); the mesh dict needs none --
+    DeviceMesh fills its own device_type the same way on the worker side.
     """
+    from twinkle import Platform
+
     nproc = distributed_config.nproc_per_node or 1
     from swift.dev.builders import build_parallel_mesh
 
     mesh = build_parallel_mesh(distributed_config, none_if_single_rank=True)
     dp_size = int(getattr(mesh, 'data_world_size', 1)) if mesh is not None else 1
-    device_group = {'name': 'sampler', 'ranks': nproc, 'device_type': 'cuda'}
-    device_mesh = {'device_type': 'cuda', 'dp_size': dp_size}
+    device_group = {'name': 'sampler', 'ranks': nproc, 'device_type': Platform.get_platform().__name__}
+    device_mesh = {'dp_size': dp_size}
     return device_group, device_mesh, nproc
 
 
