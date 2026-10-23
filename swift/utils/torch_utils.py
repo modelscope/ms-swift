@@ -63,13 +63,23 @@ def _find_local_mac() -> str:
 
 
 def synchronize(device: Union[torch.device, str, int, None] = None):
+    device_type = None
+    if isinstance(device, (torch.device, str)):
+        device_type = torch.device(device).type
+        if device_type == 'cpu':
+            return
+        if device_type == 'mps':
+            torch.mps.synchronize()
+            return
     if is_torch_npu_available():
         torch.npu.synchronize(device)
     elif is_torch_musa_available():
         torch.musa.synchronize(device)
     elif is_torch_cuda_available():
         torch.cuda.synchronize(device)
-    else:
+    elif device_type != 'cuda' and is_torch_mps_available():
+        torch.mps.synchronize()
+    elif device is not None:
         torch.cuda.synchronize(device)
 
 
