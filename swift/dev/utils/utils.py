@@ -1,7 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """General-purpose helpers, copied from ``swift.utils.utils`` so the dev stack is self-contained."""
+import datetime as dt
 import json
 import os
+import random
 import re
 import sys
 from collections.abc import Mapping, Sequence
@@ -10,7 +12,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Un
 
 import numpy as np
 import torch
-from transformers import HfArgumentParser
+import torch.distributed as dist
+from transformers import HfArgumentParser, enable_full_determinism, set_seed
 from transformers.utils import strtobool
 
 from .logger import get_logger
@@ -18,6 +21,60 @@ from .logger import get_logger
 logger = get_logger()
 
 _T = TypeVar('_T')
+
+
+def seed_everything(seed: Optional[int] = None, full_determinism: bool = False) -> int:
+    """Seed python/numpy/torch (verbatim copy of the legacy helper; transformers does the seeding)."""
+    if seed is None:
+        seed = random.randint(0, np.iinfo(np.int32).max)
+    if full_determinism:
+        enable_full_determinism(seed)
+    else:
+        set_seed(seed)
+    return seed
+
+
+def _next_output_version(work_dir: str) -> int:
+    if os.path.isdir(work_dir):
+        fnames = os.listdir(work_dir)
+    else:
+        fnames = []
+    v_list = [-1]
+    for fname in fnames:
+        m = re.match(r'v(\d+)', fname)
+        if m is None:
+            continue
+        v_list.append(int(m.group(1)))
+    return max(v_list) + 1
+
+
+def add_version_to_work_dir(work_dir: str) -> str:
+    """``work_dir/v{version}-{timestamp}`` so repeated runs nest instead of overwriting.
+
+    The broadcast keeps every rank on the same sub-folder when a torchrun process group exists
+    (only the rank-0 listing decides); single-process callers fall straight through.
+    """
+    version = _next_output_version(work_dir)
+    timestamp = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
+    sub_folder = f'v{version}-{timestamp}'
+    if dist.is_initialized() and dist.get_world_size() > 1:
+        obj_list = [sub_folder]
+        dist.broadcast_object_list(obj_list)
+        sub_folder = obj_list[0]
+    return os.path.join(work_dir, sub_folder)
+
+
+def append_to_jsonl(fpath: str, obj: Union[Dict, List[Dict]], *, encoding: str = 'utf-8') -> None:
+    """Append one row (or a list of rows) to a jsonl file (driver-side writer, no rank gating).
+
+    Lighter than the legacy ``JsonlWriter`` on purpose: its strict-mode checks and master/last
+    rank gating serve distributed training writers, while the dev callers (eval result sinks)
+    run single-process on the driver.
+    """
+    rows = obj if isinstance(obj, list) else [obj]
+    with open(fpath, 'a', encoding=encoding) as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + '\n')
 
 
 def check_json_format(obj: Any, token_safe: bool = True) -> Any:  # noqa: C901  # verbatim copy of legacy
@@ -85,8 +142,8 @@ def split_list(ori_list: List[_T], num_shards: int, contiguous=True) -> List[Lis
     return shard
 
 
-# Copied verbatim from swift.template.utils (the not-yet-migrated legacy template module) so dev's
-# dataset loaders stay off it; reconcile with the legacy original once that layer is migrated.
+# Copied verbatim from the legacy swift.template.utils so dev's dataset loaders stay off the
+# legacy import; the dev template layer has its own registry and does not re-export this helper.
 def _split_str_by_regex(text: str, regex_delimiters: List[str]) -> List[str]:
     """Split ``text`` on any ``regex_delimiters``, returning an even-length alternating list.
 

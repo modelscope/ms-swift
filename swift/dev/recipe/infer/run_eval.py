@@ -30,7 +30,7 @@ def run_eval(model_config, template_config, eval_config, *, backend: str = 'vllm
     import twinkle
 
     from swift.dev.builders import build_sampler, build_template, load_model_processor
-    from swift.utils import append_to_jsonl
+    from swift.dev.utils import append_to_jsonl
 
     if not eval_config.eval_dataset:
         raise ValueError('At least one --eval_dataset is required.')

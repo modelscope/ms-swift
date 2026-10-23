@@ -3,7 +3,7 @@
 
 import json
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from swift.dev.utils.plugin import PluginRegistry
 
@@ -11,9 +11,6 @@ from .code_reward import CodeExecutionReward
 from .reward import ORM
 from twinkle.reward import FormatReward, MathReward
 from twinkle.reward.gsm8k import MathVerifyAccuracyReward as _MathVerifyAccuracyReward
-
-if TYPE_CHECKING:
-    from swift.infer_engine import InferRequest
 
 
 class MathAccuracy(_MathVerifyAccuracyReward):
@@ -204,7 +201,7 @@ class ReactORM(ORM):
         action, action_input = ReactORM.parse_action(text)
         return action, action_input
 
-    def __call__(self, trajectories: List[Union['InferRequest', Dict]], **kwargs) -> List[float]:
+    def __call__(self, trajectories: List[Dict], **kwargs) -> List[float]:
         rewards = []
         for trajectory in trajectories:
             prediction = self.completion(trajectory)

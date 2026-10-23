@@ -10,7 +10,7 @@ from ._diagnostics import note_row_error
 from .preprocessor import MeasurePreprocessor
 
 if TYPE_CHECKING:
-    from swift.template import Template
+    from swift.dev.template import Template
 
 __all__ = ["SwiftDataset"]
 

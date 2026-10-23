@@ -171,7 +171,7 @@ def bootstrap_run(
 ) -> None:
     """Apply CLI runtime side effects after processing and validation."""
     if seed is not None:
-        from swift.utils import seed_everything
+        from swift.dev.utils import seed_everything
         rank = max(int(os.environ.get('RANK', '-1')), 0)
         seed_everything(seed + rank)
     if dataset_config is not None and dataset_config.use_hf:
@@ -186,7 +186,7 @@ def bootstrap_run(
 
 def _prepare_output_dir(checkpoint_config: 'CheckpointConfig', *, add_version: Optional[bool],
                         create_output_dir: bool) -> None:
-    from swift.utils import add_version_to_work_dir
+    from swift.dev.utils import add_version_to_work_dir
 
     checkpoint_config.output_dir = os.path.abspath(os.path.expanduser(checkpoint_config.output_dir))
     use_version = checkpoint_config.add_version if add_version is None else add_version

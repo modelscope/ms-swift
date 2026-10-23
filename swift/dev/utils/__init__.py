@@ -26,8 +26,9 @@ if TYPE_CHECKING:
     from .hub import get_hub, safe_snapshot_download
     from .logger import get_logger
     from .torch_utils import get_n_params_grads, to_device
-    from .utils import (check_json_format, deep_getattr, deepspeed_zero_stage, get_env_args,
-                        json_parse_to_dict, parse_args, resolve_deepspeed_config, split_list,
+    from .utils import (add_version_to_work_dir, append_to_jsonl, check_json_format, deep_getattr,
+                        deepspeed_zero_stage, get_env_args, json_parse_to_dict, parse_args,
+                        resolve_deepspeed_config, seed_everything, split_list,
                         split_str_parts_by)
 
 # Public name -> the submodule that defines it. Imports are deferred (PEP 562 ``__getattr__``) so

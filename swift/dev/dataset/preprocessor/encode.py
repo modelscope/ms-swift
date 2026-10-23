@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from .base import Preprocessor
 
 if TYPE_CHECKING:
-    from swift.template import Template
+    from swift.dev.template import Template
 
 __all__ = ['EncodePreprocessor']
 
