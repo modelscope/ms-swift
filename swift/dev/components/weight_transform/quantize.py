@@ -86,7 +86,13 @@ class QuantizeComponent(BaseWeightTransform):
         from swift.dev.model import save_checkpoint
 
         quant_config = get_quantizer(quant_method, **kwargs).get_quantization_config()
-        model, processor = load_model_processor(self.model_config, load_model=True, quantization_config=quant_config)
+        # Load-time quantization runs its kernels while transformers materializes the weights,
+        # and they are GPU-bound; the raw load has no device_map default anymore, so place the
+        # load on the accelerators unless model_kwargs says otherwise.
+        overrides: Dict[str, Any] = {"quantization_config": quant_config}
+        if "device_map" not in (self.model_config.model_kwargs or {}):
+            overrides["device_map"] = "auto"
+        model, processor = load_model_processor(self.model_config, load_model=True, **overrides)
         os.makedirs(output_dir, exist_ok=True)
         model.save_pretrained(
             output_dir, safe_serialization=self.safe_serialization, max_shard_size=self.max_shard_size

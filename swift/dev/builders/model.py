@@ -5,7 +5,8 @@ import copy
 import dataclasses
 import math
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any, List, Optional, Sequence
 
 from swift.dev.utils.logger import get_logger
 
@@ -35,14 +36,19 @@ apply_patch(None, TorchConv3dPatch())
 
 
 def load_model_processor(model_config: ModelConfig, *, load_model: bool = False, **overrides):
-    """Load a legacy-compatible processor/model with every relevant ``ModelConfig`` option.
+    """Load a plain HF model and its processor with every relevant ``ModelConfig`` option.
 
-    Template/export paths still use ``swift.model``'s mature processor catalogue; keeping this
-    translation here stops call sites from each forwarding a different subset of the contract.
+    The dev-registry twin of the training build path: a matching family loader owns
+    config/processor/model construction, the plain ``Auto*`` classes cover everything else.
+    Template, export and weight-transform paths share this one seam so call sites cannot each
+    forward a different subset of the contract. Returns ``(model_or_None, processor)`` with
+    ``model.model_dir`` / ``model.model_info`` / ``model.model_meta`` / ``processor.model_info``
+    / ``processor.model_meta`` attached -- the attributes the consumers read.
     """
     import torch
 
-    from swift.model import get_model_processor
+    from swift.dev.model.loader import resolve_loader_cls, resolve_model_info
+    from swift.dev.utils import HfConfigFactory
 
     # Vision preprocessing overrides go through env so the loader's patch_qwen_vl_utils (read via
     # get_env_args) picks them up inside the worker's process_tokenizer across the Ray boundary.
@@ -50,38 +56,330 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
         for key, value in model_config.vision_process_kwargs.items():
             os.environ[key.upper()] = str(value)
 
-    kwargs = dict(model_config.model_kwargs or {})
-    values = {
-        "model_type": model_config.model_type,
-        "revision": model_config.model_revision,
-        "experts_impl": model_config.experts_impl,
-        "new_special_tokens": model_config.new_special_tokens,
-        "rope_scaling": model_config.rope_scaling,
-        "max_model_len": model_config.max_model_len,
-        "max_memory": model_config.max_memory,
-        "local_repo_path": model_config.local_repo_path,
-        "task_type": model_config.task_type,
-        "num_labels": model_config.num_labels,
-        "problem_type": model_config.problem_type,
-        "init_strategy": model_config.init_strategy,
-    }
-    if model_config.torch_dtype:
-        values["torch_dtype"] = getattr(torch, model_config.torch_dtype)
-    if model_config.attn_impl:
-        values["attn_impl"] = model_config.attn_impl
-    for name, value in values.items():
-        if value is not None and value != []:
-            _set_load_kwarg(kwargs, name, value)
-    for name, value in overrides.items():
-        _set_load_kwarg(kwargs, name, value)
-    # trust_remote_code loads make every rank race on the same dynamic-module cache write; the
-    # patch serializes the first writer while the rest wait (legacy register.py applies the same).
+    return_dummy_model = bool(overrides.pop("return_dummy_model", False))
+    download_model = overrides.pop("download_model", None)
+    if download_model is None:
+        download_model = load_model and not return_dummy_model
+    device_map = overrides.pop("device_map", None)
+    quantization_config = overrides.pop("quantization_config", None)
+    auto_model_cls = overrides.pop("auto_model_cls", None)
+
+    info = resolve_model_info(
+        model_config.model,
+        revision=model_config.model_revision,
+        download_model=download_model,
+        model_type=model_config.model_type,
+        task_type=model_config.task_type,
+        num_labels=model_config.num_labels,
+        problem_type=model_config.problem_type,
+        torch_dtype=(getattr(torch, model_config.torch_dtype) if model_config.torch_dtype else None),
+    )
+    model_dir = info.model_dir
+    loader_cls = resolve_loader_cls(model_config.model_type or info.model_type, model_config.model)
+    loader = loader_cls(info) if loader_cls is not None else None
+
     from twinkle.patch import apply_context
 
     from swift.dev.patch.transformers_dynamic_module import TransformersDynamicModulePatch
 
     with apply_context(None, TransformersDynamicModulePatch()):
-        return get_model_processor(model_config.model, load_model=load_model, **kwargs)
+        # A copy of ModelConfig pointed at the resolved local directory keeps _build_hf_config's
+        # reads off the (possibly remote) original id.
+        load_config = copy.copy(model_config)
+        load_config.model = model_dir
+        config = _build_hf_config(load_config, loader)
+        _postprocess_load_config(config, info, model_config.attn_impl)
+        info.config = config
+
+        if loader is not None:
+            processor = loader.process_tokenizer(loader.build_processor(model_dir, config))
+        elif os.path.exists(os.path.join(model_dir, "preprocessor_config.json")) or os.path.exists(
+            os.path.join(model_dir, "processor_config.json")
+        ):
+            # A multimodal checkpoint ships a (pre)processor config; a plain LLM ships only a
+            # tokenizer. The generic path trusts remote code, as legacy's default loader did.
+            from transformers import AutoProcessor
+
+            processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+        else:
+            from transformers import AutoTokenizer
+
+            processor = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+        pad_token_id = _normalize_pad_eos(processor)
+        processor.model_info = info
+        candidate_templates = [template for template in (info.template,) if template]
+        if not candidate_templates:
+            # Unregistered checkpoint: the plain chat-template fallback (legacy's dummy ModelMeta).
+            candidate_templates = ["dummy"]
+        from types import SimpleNamespace
+
+        processor.model_meta = SimpleNamespace(
+            template=info.template or "dummy",
+            candidate_templates=candidate_templates,
+            model_type=info.model_type,
+            is_multimodal=info.is_multimodal,
+            tags=info.tags,
+        )
+
+        model = None
+        if load_model:
+            if info.task_type in ("seq_cls", "reranker"):
+                _prepare_seq_cls_config(config, model_config, info, pad_token_id)
+            load_kwargs = dict(model_config.model_kwargs or {})
+            # device_map has no default: it reaches from_pretrained only when a caller passes it
+            # explicitly (merge's CPU load, quantize's 'auto' guard) or via model_kwargs.
+            if device_map is not None:
+                _set_load_kwarg(load_kwargs, "device_map", device_map)
+            if quantization_config is not None:
+                _set_load_kwarg(load_kwargs, "quantization_config", quantization_config)
+            if model_config.max_memory:
+                _set_load_kwarg(load_kwargs, "max_memory", model_config.max_memory)
+            # Legacy always forwards a resolved dtype; an fp8 checkpoint wants transformers' 'auto'.
+            _set_load_kwarg(load_kwargs, _dtype_kwarg_name(), "auto" if info.quant_method == "fp8" else info.torch_dtype)
+            _forward_experts_impl(load_kwargs, model_config.experts_impl)
+            for name, value in overrides.items():
+                _set_load_kwarg(load_kwargs, name, value)
+
+            if auto_model_cls is not None:
+                model_cls = auto_model_cls
+            elif info.task_type in ("seq_cls", "reranker"):
+                from transformers import AutoModelForSequenceClassification
+
+                model_cls = AutoModelForSequenceClassification
+            elif loader is not None:
+                model_cls = loader.resolve_model_cls()
+            else:
+                from transformers import AutoModelForCausalLM
+
+                model_cls = AutoModelForCausalLM
+            if hasattr(model_cls, "_tp_plan"):  # a None tp_plan breaks from_pretrained (legacy fix)
+                model_cls._tp_plan = model_cls._tp_plan or {}
+            if return_dummy_model:
+                # cls(config) without reading the checkpoint; the caller's init_empty_weights
+                # context (merge's streaming path) lands every parameter on meta. The default-dtype
+                # dance keeps fresh parameters in the checkpoint's dtype.
+                origin_dtype = torch.get_default_dtype()
+                torch.set_default_dtype(getattr(config, "torch_dtype", None) or torch.float32)
+                model = model_cls(copy.deepcopy(config))
+                torch.set_default_dtype(origin_dtype)
+            elif loader is not None and auto_model_cls is None and info.task_type not in ("seq_cls", "reranker"):
+                # Full family takeover: model_cls, trust_remote_code warning and the transformers-5
+                # multimodal attribute re-exposure all live in the loader's build_model.
+                with _patch_tp_plan():
+                    model = loader.build_model(model_dir, config, processor, **load_kwargs)
+            else:
+                with _patch_tp_plan():
+                    trust = {} if auto_model_cls is not None else {"trust_remote_code": True}
+                    model = model_cls.from_pretrained(model_dir, config=config, **trust, **load_kwargs)
+            if loader is not None:
+                model = loader.process_model(model)
+            if model_config.init_strategy is not None:
+                _apply_raw_init_strategy(model, model_config.init_strategy)
+            model.model_info = info
+            model.model_meta = info
+            model.model_dir = model_dir
+            _init_generation_config(model, model_dir)
+            HfConfigFactory.set_config_attr(model.config, "pad_token_id", pad_token_id)
+        return model, processor
+
+
+def _postprocess_load_config(config, info, attn_impl) -> None:
+    """The raw-load half of legacy ``ModelLoader._postprocess_config`` that ``_build_hf_config``
+    does not already cover: inference-ignore keys, the resolved dtype (vision sub-configs
+    included, so a tower built from the config picks it up), ZeRO-3 compat and the attention
+    implementation write."""
+    from swift.dev.utils import HfConfigFactory
+
+    if not hasattr(config, "keys_to_ignore_at_inference"):
+        config.keys_to_ignore_at_inference = []
+    if "past_key_values" not in config.keys_to_ignore_at_inference:
+        config.keys_to_ignore_at_inference.append("past_key_values")
+    HfConfigFactory.set_config_attr(config, "torch_dtype", info.torch_dtype, include_vit=True)
+    HfConfigFactory.compat_zero3(config)
+    if attn_impl:
+        use_flash_attn = attn_impl in {"flash_attn", "flash_attention_2"}
+        resolved = "flash_attention_2" if use_flash_attn else attn_impl
+        for key in ("_attn_implementation", "attn_implementation", "llm_attn_implementation"):
+            HfConfigFactory.set_config_attr(config, key, resolved, include_vit=True, ensure_set=False)
+        for key in ("_flash_attn_2_enabled", "use_flash_attn", "_use_flash_attention_2"):
+            HfConfigFactory.set_config_attr(config, key, use_flash_attn, include_vit=True, ensure_set=False)
+
+
+def _normalize_pad_eos(processor) -> int:
+    """Make pad and eos ids both exist (pad defaults to eos and vice versa); returns the pad id.
+
+    The fixed-format batch contract needs a pad id; a tokenizer declaring neither cannot produce
+    one, which is a hard error rather than a silent ``None`` written into every batch.
+    """
+    tokenizer = processor if not hasattr(processor, "tokenizer") else processor.tokenizer
+    pad_token_id = tokenizer.pad_token_id
+    if pad_token_id is None:
+        pad_token_id = tokenizer.eos_token_id
+    if tokenizer.eos_token_id is None:
+        tokenizer.eos_token_id = pad_token_id
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = pad_token_id
+    if tokenizer.eos_token_id is None or tokenizer.pad_token_id is None:
+        raise ValueError(
+            "the tokenizer declares neither pad_token_id nor eos_token_id; every fixed-format batch "
+            "needs a pad id. Register the special tokens on the checkpoint or pass a tokenizer that "
+            "declares them."
+        )
+    return pad_token_id
+
+
+def _prepare_seq_cls_config(config, model_config: ModelConfig, info, pad_token_id) -> None:
+    """Route a seq_cls/reranker load onto a num_labels-wide SequenceClassification head.
+
+    Classification attrs live ON the config (HF only auto-parses num_labels when config is None);
+    the head needs a pad id (eos fallback) to find the last token.
+    """
+    num_labels = model_config.num_labels if model_config.num_labels is not None else info.num_labels
+    if num_labels is None:
+        if info.task_type == "reranker":
+            num_labels = 1
+        else:
+            raise ValueError('ModelConfig.num_labels is required for task_type="seq_cls".')
+    config.num_labels = num_labels
+    if model_config.problem_type is not None:
+        config.problem_type = model_config.problem_type
+    elif info.problem_type is not None:
+        config.problem_type = info.problem_type
+    config.tie_word_embeddings = False
+    if getattr(config, "pad_token_id", None) is None:
+        config.pad_token_id = pad_token_id
+
+
+def _dtype_kwarg_name() -> str:
+    """from_pretrained's dtype kwarg name for the installed transformers (``dtype`` since 4.56)."""
+    import transformers
+    from packaging import version
+
+    return "dtype" if version.parse(transformers.__version__) >= version.parse("4.56") else "torch_dtype"
+
+
+def _forward_experts_impl(load_kwargs: dict, experts_impl) -> None:
+    """Forward experts_impl as from_pretrained's ``experts_implementation`` (transformers>=5 only)."""
+    if experts_impl is None:
+        return
+    import transformers
+    from packaging import version
+
+    if version.parse(transformers.__version__) < version.parse("5.0.0"):
+        if experts_impl != "eager":
+            raise ValueError('experts_impl is only supported in "transformers>=5.0.0".')
+        return
+    _set_load_kwarg(load_kwargs, "experts_implementation", experts_impl)
+
+
+@contextmanager
+def _patch_tp_plan():
+    """Hide ``WORLD_SIZE`` from transformers for the duration of a from_pretrained call.
+
+    Under torchrun with several devices per process, transformers infers a tp_plan from
+    ``WORLD_SIZE`` and fails the load; swapping the variable for the duration avoids the
+    inference. dev's ``get_dist_setting`` reads the swapped name, so rank detection is unaffected.
+    """
+    import transformers
+    from packaging import version
+
+    world_size = os.environ.get("WORLD_SIZE")
+    if (world_size is None or not _is_multi_gpu_per_process()
+            or version.parse(transformers.__version__) < version.parse("4.50")):
+        yield
+        return
+    logger.info("Patch tp_plan.")
+    os.environ["_PATCH_WORLD_SIZE"] = world_size
+    os.environ.pop("WORLD_SIZE")
+    try:
+        yield
+    finally:
+        os.environ["WORLD_SIZE"] = world_size
+
+
+def _visible_device_count() -> int:
+    """How many accelerator devices this process sees (cuda > npu > mps > 0)."""
+    import torch
+    from transformers.utils import is_torch_mps_available, is_torch_npu_available
+
+    if is_torch_npu_available():
+        return torch.npu.device_count()
+    if torch.cuda.is_available():
+        return torch.cuda.device_count()
+    if is_torch_mps_available():
+        return 1
+    return 0
+
+
+def _is_multi_gpu_per_process() -> bool:
+    """Whether each process sees more than one device -- the shape that makes transformers
+    infer a tp_plan from ``WORLD_SIZE`` during from_pretrained (legacy ``is_mp``)."""
+    if os.environ.get("SWIFT_SINGLE_DEVICE_MODE", "0") == "1":
+        return False
+    from swift.dev.utils import get_dist_setting
+
+    _, _, _, local_world_size = get_dist_setting()
+    return _visible_device_count() // max(local_world_size, 1) >= 2
+
+
+def _apply_raw_init_strategy(model, init_strategy: str) -> None:
+    """Re-initialize the weights a blank / partially-loaded config left uninitialized.
+
+    Only parameters whose scale is non-finite or absurdly large (> 1e7) are touched, so a properly
+    loaded checkpoint is left intact. The training path applies the same kernel inside twinkle's
+    TransformersModel; this is the raw-HF twin for the transform loads.
+    """
+    import torch
+    from torch import nn
+
+    def high_dim(param, init):
+        if param.dim() > 1:
+            init(param)
+        elif param.dim() == 1 and param.numel() > 0:
+            nn.init.zeros_(param)
+
+    initializers = {
+        "zero": nn.init.zeros_,
+        "uniform": lambda param: nn.init.uniform_(param, -0.1, 0.1),
+        "normal": lambda param: nn.init.normal_(param, 0.0, 0.01),
+        "xavier_uniform": lambda param: high_dim(param, nn.init.xavier_uniform_),
+        "xavier_normal": lambda param: high_dim(param, nn.init.xavier_normal_),
+        "kaiming_uniform": lambda param: high_dim(
+            param, lambda value: nn.init.kaiming_uniform_(value, mode="fan_out", nonlinearity="leaky_relu", a=0.1)),
+        "kaiming_normal": lambda param: high_dim(
+            param, lambda value: nn.init.kaiming_normal_(value, mode="fan_in", nonlinearity="relu")),
+        "orthogonal": lambda param: high_dim(param, nn.init.orthogonal_),
+    }
+    if init_strategy not in initializers:
+        raise ValueError(f"Unknown init_strategy={init_strategy!r}; expected one of {sorted(initializers)}.")
+    initialize = initializers[init_strategy]
+    with torch.no_grad():
+        for param in model.parameters():
+            if param.numel() == 0:
+                continue
+            mean_abs = param.abs().mean()
+            std = param.std()
+            if not torch.isfinite(mean_abs) or not torch.isfinite(std) or mean_abs > 1e7 or std > 1e7:
+                initialize(param)
+
+
+def _init_generation_config(model, model_dir: str) -> None:
+    """Load generation_config.json when the model has none; fix the do_sample/temperature clash."""
+    from transformers import GenerationConfig
+
+    path = os.path.join(model_dir, "generation_config.json")
+    if getattr(model, "generation_config", None) is None:
+        model.generation_config = GenerationConfig.from_pretrained(model_dir) if os.path.isfile(path) else None
+    generation_config = getattr(model, "generation_config", None)
+    if generation_config is not None and hasattr(generation_config, "do_sample"):
+        # A zero temperature with do_sample=True is contradictory; align the trio the way legacy's
+        # fix_do_sample_warning did so greedy decoding does not warn on every generate call.
+        if generation_config.temperature == 0:
+            generation_config.do_sample = False
+        if generation_config.do_sample is False:
+            generation_config.temperature = 1.0
+            generation_config.top_p = 1.0
+            generation_config.top_k = 50
 
 
 def build_dp_mesh(distributed_config: DistributedConfig, sequence_parallel_size: int = 1) -> Optional["DeviceMesh"]:
@@ -538,7 +836,7 @@ def _set_load_kwarg(kwargs: dict, name: str, value) -> None:
     kwargs[name] = value
 
 
-def _resolve_new_special_tokens(model_config: ModelConfig) -> List[str]:
+def resolve_new_special_tokens(model_config: ModelConfig) -> List[str]:
     """Expand ``new_special_tokens`` into a flat token list on the driver.
 
     A ``.txt`` entry is a file of whitespace-separated tokens; any other entry is a literal --
@@ -554,6 +852,32 @@ def _resolve_new_special_tokens(model_config: ModelConfig) -> List[str]:
         else:
             special_tokens.append(token)
     return special_tokens
+
+
+def apply_new_special_tokens(model, processor, config, new_special_tokens: List[str]) -> None:
+    """Grow the tokenizer's special set and resize a raw-loaded model's embeddings to match.
+
+    The training side owns the canonical application (twinkle's TransformersModel / MegatronModel
+    take ``new_special_tokens`` as a constructor argument); this is the twin for models loaded
+    outside those constructors (weight transforms), called explicitly by whoever needs it --
+    ``load_model_processor`` deliberately does not apply it on its own.
+    """
+    from swift.dev.utils import HfConfigFactory
+
+    if not new_special_tokens:
+        return
+    tokenizer = processor if not hasattr(processor, "tokenizer") else processor.tokenizer
+    num_new = tokenizer.add_special_tokens({"additional_special_tokens": list(new_special_tokens)})
+    if num_new <= 0:
+        return
+    logger.info("Added %s new special tokens.", num_new)
+    origin_vocab_size = HfConfigFactory.get_config_attr(config, "vocab_size")
+    if origin_vocab_size is None or origin_vocab_size >= len(tokenizer):
+        return
+    # 128-alignment matches the checkpoint's embedding stride; the head must cover every token.
+    vocab_size = math.ceil(len(tokenizer) / 128) * 128
+    HfConfigFactory.set_config_attr(config, "vocab_size", vocab_size)
+    model.resize_token_embeddings(vocab_size)
 
 
 def _build_transformers_model(
@@ -704,7 +1028,7 @@ def _build_transformers_model(
         # Post-load module surgery rides the constructor too (applied worker-side; a driver-side
         # reach into model.model only touches the Ray proxy stub and silently no-ops).
         if model_config.new_special_tokens:
-            kwargs["new_special_tokens"] = _resolve_new_special_tokens(model_config)
+            kwargs["new_special_tokens"] = resolve_new_special_tokens(model_config)
         if model_config.init_strategy is not None:
             kwargs["init_strategy"] = model_config.init_strategy
         if train_config is not None and train_config.use_liger_kernel:
@@ -1176,7 +1500,7 @@ def _build_megatron_model(
     # new_special_tokens: resolved driver-side (serializable strings only), consumed worker-side by
     # MegatronModel (extend tokenizer, raise vocab_size, re-init the new embedding rows).
     if model_config.new_special_tokens:
-        extra_kwargs["new_special_tokens"] = _resolve_new_special_tokens(model_config)
+        extra_kwargs["new_special_tokens"] = resolve_new_special_tokens(model_config)
     # MoE routing replay: MegatronModel.__init__ pops enable_router_replay and translates it to the
     # mcore moe_enable_routing_replay field -- the counterpart of the transformers flag.
     if enable_router_replay:

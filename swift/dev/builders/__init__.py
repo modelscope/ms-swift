@@ -11,6 +11,7 @@ from .dataset import (
 )
 from .model import (
     apply_full_param_freeze,
+    apply_new_special_tokens,
     build_dp_mesh,
     build_model,
     build_parallel_mesh,
@@ -18,6 +19,7 @@ from .model import (
     frozen_auxiliary_distributed_config,
     is_megatron_backend,
     load_model_processor,
+    resolve_new_special_tokens,
 )
 from .reward import build_reward_model
 from .sampler import (
@@ -43,6 +45,7 @@ __all__ = [
     "split_prompt_and_reference",
     "to_trajectory",
     "apply_full_param_freeze",
+    "apply_new_special_tokens",
     "build_dp_mesh",
     "build_model",
     "build_parallel_mesh",
@@ -50,6 +53,7 @@ __all__ = [
     "frozen_auxiliary_distributed_config",
     "is_megatron_backend",
     "load_model_processor",
+    "resolve_new_special_tokens",
     "build_reward_model",
     "build_engine_args",
     "build_sampler",

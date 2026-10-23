@@ -128,9 +128,9 @@ def resolve_reward_model(value: Optional[str], adapter: Optional[str], sampler_m
         return RewardSpec('generative_reuse', model_id=sampler_model, adapter=adapter, task_type='causal_lm')
     if value.startswith('http://') or value.startswith('https://'):
         return RewardSpec('api', model_id=value, adapter=adapter)
-    from swift.model import get_model_info_meta
+    from swift.dev.model.loader import resolve_model_info
 
-    model_info, _ = get_model_info_meta(value)
+    model_info = resolve_model_info(value)
     task_type = model_info.task_type or 'causal_lm'
     if task_type in SCALAR_TASK_TYPES:
         return RewardSpec('scalar', model_id=value, adapter=adapter, task_type=task_type)

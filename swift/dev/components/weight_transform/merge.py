@@ -124,11 +124,22 @@ class MergeComponent(BaseWeightTransform):
         merge CLI parses no load-time quantization, so the base is full-precision by construction.
         ``device_map`` rides in as a load override because ``ModelConfig`` no longer carries it.
         """
-        from swift.dev.builders import load_model_processor
+        from swift.dev.builders import apply_new_special_tokens, load_model_processor, resolve_new_special_tokens
 
         logger.info(f'merge_device_map: {self.device_map}')
         overrides = {} if self.device_map is None else {'device_map': self.device_map}
-        return load_model_processor(self.model_config, load_model=True, **overrides)
+        # Legacy's loader derived a default placement unconditionally ('auto' whenever no explicit
+        # map was given); without it a raw load materializes the whole base in host RAM. The
+        # streaming path never loads weights, so this only shapes the materialized fallback.
+        # An explicit map (infer/deploy pin 'cpu') or model_kwargs entry wins.
+        if 'device_map' not in overrides and 'device_map' not in (self.model_config.model_kwargs or {}):
+            overrides['device_map'] = 'auto'
+        model, processor = load_model_processor(self.model_config, load_model=True, **overrides)
+        # The base must carry the adapter's vocabulary before peft injects against it: a
+        # new-special-token run trained with a resized embedding, and the shapes only line up
+        # after the same resize here.
+        apply_new_special_tokens(model, processor, model.config, resolve_new_special_tokens(self.model_config))
+        return model, processor
 
     def _build_template(self, processor, model):
         """Build the template and attach the model when the template needs it.
@@ -217,6 +228,10 @@ class StreamingMerge(StreamingWeightTransform):
             # The streaming saver only writes safetensors; pickle ``.bin`` output needs the
             # materialized path.
             return False
+        if self.model_config.new_special_tokens:
+            # The merge needs the base embedding resized to the adapter's vocabulary; the meta
+            # base streams the checkpoint's own row count, so the shapes would not line up.
+            return False
         for adapter in self.adapters:
             config = PeftConfig.from_pretrained(adapter)
             if config.peft_type != PeftType.LORA:
@@ -255,10 +270,7 @@ class StreamingMerge(StreamingWeightTransform):
                 self.model_config,
                 load_model=True,
                 return_dummy_model=True,
-                download_model=True,
-                # The dummy build ignores device_map, but pinning 'cpu' keeps
-                # get_default_device_map from resolving to a GPU/'auto' dispatch we never use.
-                device_map='cpu')
+                download_model=True)
         self._base_model = base
         self._base_dir = base.model_dir
 

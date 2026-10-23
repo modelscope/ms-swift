@@ -23,6 +23,7 @@ from .base import (
     match_model_types_by_architectures,
     register_model,
     resolve_loader_cls,
+    resolve_model_info,
     resolve_template,
 )
 
@@ -45,5 +46,6 @@ __all__ = [
     "match_model_types_by_architectures",
     "register_model",
     "resolve_loader_cls",
+    "resolve_model_info",
     "resolve_template",
 ]

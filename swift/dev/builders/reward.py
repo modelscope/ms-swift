@@ -73,9 +73,9 @@ def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
     from swift.dev.builders.model import frozen_auxiliary_distributed_config
     from swift.dev.config import DistributedConfig
     from swift.dev.builders.adapter import configure_frozen_adapter
-    from swift.model import get_model_info_meta
+    from swift.dev.model.loader import resolve_model_info
 
-    model_info, _ = get_model_info_meta(spec.model_id, model_type=spec.model_type, revision=spec.revision)
+    model_info = resolve_model_info(spec.model_id, model_type=spec.model_type, revision=spec.revision)
     reward_model_config = copy.copy(model_config)
     reward_model_config.model = spec.model_id
     reward_model_config.model_type = spec.model_type or model_info.model_type

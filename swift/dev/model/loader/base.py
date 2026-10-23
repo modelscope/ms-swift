@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 import importlib
+import json
 import os
 import platform
 import re
@@ -32,6 +33,8 @@ __all__ = [
     "match_model_type",
     "match_model_types_by_architectures",
     "register_model",
+    "resolve_loader_cls",
+    "resolve_model_info",
     "resolve_template",
 ]
 
@@ -362,6 +365,194 @@ def build_model_loader(model_id: str, model_type: Optional[str] = None, **kwargs
         return None
     model_info = LoaderModelInfo(model_type=loader_cls.model_type or model_type, model_dir=model_id, **kwargs)
     return loader_cls(model_info)
+
+
+def _read_args_json_model_type(model_dir: str) -> Optional[str]:
+    """The ``model_type`` a checkpoint's own args.json declares, if any.
+
+    A checkpoint saved by swift records the family it was trained with; trusting it beats the
+    ``architectures`` reverse lookup, whose class names genuinely cover several families.
+    """
+    path = os.path.join(model_dir, "args.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as file:
+        return json.load(file).get("model_type")
+
+
+def _check_requires(requires: Sequence[str], quant_method: Optional[str]) -> None:
+    """Warn (not raise) when a declared version constraint or quant backend is missing.
+
+    A missing dependency degrades one optional feature, so legacy warned and continued; the
+    eventual failure names the feature at its own use site. A quantized checkpoint adds its
+    dequantization backend to the check.
+    """
+    from transformers.utils.versions import require_version
+
+    extra_requires = {"bnb": ["bitsandbytes"], "awq": ["autoawq"], "gptq": ["auto_gptq"], "aqlm": ["aqlm"]}
+    missing = []
+    for require in list(requires) + extra_requires.get(quant_method, []):
+        try:
+            require_version(require)
+        except ImportError:
+            missing.append(f'"{require}"')
+    if missing:
+        logger.warning("Please install the package: `pip install %s -U`.", " ".join(missing))
+
+
+def _default_torch_dtype(checkpoint_dtype: Optional[torch.dtype]) -> torch.dtype:
+    """The compute dtype when neither the caller nor the checkpoint chose one (legacy semantics).
+
+    bf16 on accelerators that support it, else fp16 on accelerators, fp32 on CPU.
+    """
+    from transformers.utils import is_torch_npu_available
+
+    if checkpoint_dtype is not None:
+        return checkpoint_dtype
+    try:
+        bf16_available = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+        if is_torch_npu_available():
+            bf16_available = bf16_available or torch.npu.is_bf16_supported()
+    except Exception:  # noqa: BLE001 -- probing unsupported devices must not fail the load
+        bf16_available = False
+    if torch.cuda.is_available() or is_torch_npu_available():
+        return torch.bfloat16 if bf16_available else torch.float16
+    return torch.float32
+
+
+def resolve_model_info(
+    model_id_or_path: str,
+    *,
+    revision: Optional[str] = None,
+    download_model: bool = False,
+    model_type: Optional[str] = None,
+    task_type: Optional[str] = None,
+    num_labels: Optional[int] = None,
+    problem_type: Optional[str] = None,
+    torch_dtype: Optional[torch.dtype] = None,
+) -> LoaderModelInfo:
+    """Resolve one checkpoint id into a fully-populated :class:`LoaderModelInfo`.
+
+    The resolution half of legacy ``swift.model.get_model_info_meta``, on dev's own registry: the
+    family is matched from the id (else the checkpoint's args.json, else ``architectures``), the
+    config is read once, and the task shape (task_type / num_labels / problem_type) follows the
+    family declaration with the caller's explicit values winning. ``download_model=False`` fetches
+    only the auxiliary files (config / tokenizer / args.json), not the weights.
+
+    The returned ``config`` is the raw ``AutoConfig`` read used for matching; a caller that builds a
+    real model should overwrite it with the family loader's processed config (see
+    ``builders/model.py::load_model_processor``), exactly as legacy's ``ModelLoader`` did.
+    """
+    from swift.dev.utils import HfConfigFactory, safe_snapshot_download
+
+    if not isinstance(model_id_or_path, str):
+        raise TypeError(f"model_id_or_path must be a str, got {model_id_or_path!r}")
+    loader_cls = resolve_loader_cls(model_type, model_id_or_path)
+    model_dir = safe_snapshot_download(
+        model_id_or_path,
+        revision=revision,
+        download_model=download_model,
+        ignore_patterns=getattr(loader_cls, "ignore_patterns", None),
+    )
+    try:
+        config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    except Exception:  # noqa: BLE001 -- a remote-code config that only ships a dict still matches
+        config = PretrainedConfig.get_config_dict(model_dir)[0]
+
+    if loader_cls is None and model_type is None:
+        # No family matched the name. The checkpoint's own args.json comes before the (ambiguous)
+        # architectures reverse lookup -- it records the family the checkpoint was trained with.
+        from_args = _read_args_json_model_type(model_dir)
+        if from_args is not None:
+            loader_cls = resolve_loader_cls(from_args, model_id_or_path)
+    if loader_cls is None and model_type is None:
+        candidates = match_model_types_by_architectures(getattr(config, "architectures", None))
+        if len(candidates) > 1:
+            raise ValueError(
+                f"Failed to automatically match `model_type` for `{model_id_or_path}`. "
+                f"Multiple possible types found: {candidates}. "
+                "Please specify `model_type` manually. See documentation: "
+                "https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html"
+            )
+        if len(candidates) == 1:
+            loader_cls = get_model_loader(candidates[0])
+
+    quant_info = HfConfigFactory.get_quant_info(config) or {}
+    is_multimodal = bool(HfConfigFactory.is_multimodal(config)) or bool(
+        getattr(loader_cls, "is_multimodal", False)
+    )
+    if loader_cls is None and is_multimodal:
+        # An unregistered multimodal checkpoint has no family to drive its vision encoding; guessing
+        # a plain-LLM load would fail far away from the cause.
+        raise ValueError(
+            f'Model "{model_id_or_path}" is not supported because no suitable `model_type` was found. '
+            "Please refer to the documentation and specify an appropriate `model_type` manually: "
+            "https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html"
+        )
+
+    resolved_model_type = getattr(loader_cls, "model_type", None) or model_type
+    if model_type is None and resolved_model_type is not None:
+        logger.info("Setting model_type: %s", resolved_model_type)
+    resolved_torch_dtype = torch_dtype or _default_torch_dtype(HfConfigFactory.get_torch_dtype(config, quant_info))
+    if torch_dtype is None:
+        logger.info("Setting torch_dtype: %s", resolved_torch_dtype)
+
+    # The task chain mirrors legacy get_model_info_meta: a reward family defaults num_labels=1
+    # (hence seq_cls); a family-pinned task_type wins over the num_labels-derived one but never
+    # over the caller's explicit choice.
+    is_reward = bool(getattr(loader_cls, "is_reward", False))
+    if task_type is None:
+        if is_reward:
+            num_labels = 1
+        if num_labels is None:
+            task_type = "causal_lm"
+        else:
+            task_type = "seq_cls"
+        pinned = getattr(loader_cls, "task_type", None)
+        if pinned is not None:
+            task_type = pinned
+    if task_type == "reranker":
+        if num_labels is None:
+            num_labels = 1
+            logger.info("Setting reranker task with num_labels=%s", num_labels)
+    elif task_type == "generative_reranker":
+        num_labels = None
+        logger.info("Setting generative_reranker task (no num_labels needed)")
+    elif task_type == "seq_cls":
+        if num_labels is None:
+            raise ValueError(
+                "task_type='seq_cls' requires num_labels (or an is_reward family / a num_labels-bearing "
+                "checkpoint) to size the classification head."
+            )
+        if problem_type is None:
+            problem_type = "regression" if num_labels == 1 else "single_label_classification"
+
+    info = LoaderModelInfo(
+        model_type=resolved_model_type,
+        model_dir=model_dir,
+        config=config,
+        architectures=list(getattr(config, "architectures", None) or []),
+        torch_dtype=resolved_torch_dtype,
+        max_model_len=HfConfigFactory.get_max_model_len(config),
+        quant_method=quant_info.get("quant_method"),
+        quant_bits=quant_info.get("quant_bits"),
+        rope_scaling=HfConfigFactory.get_config_attr(config, "rope_scaling"),
+        is_moe_model=bool(HfConfigFactory.is_moe_model(config)),
+        is_multimodal=is_multimodal,
+        is_reward=is_reward,
+        task_type=task_type,
+        num_labels=num_labels,
+        problem_type=problem_type,
+        # Direct attribute, not resolve_template(): a plugin-resolved loader may carry no
+        # registry key, and the roundtrip through get_model_loader would refuse it.
+        template=(loader_cls.template if loader_cls is not None else None),
+        mcore_model_type=(getattr(loader_cls, "mcore_model_type", None) if loader_cls is not None else None),
+        requires=list(getattr(loader_cls, "requires", None) or []),
+        additional_saved_files=list(getattr(loader_cls, "additional_saved_files", None) or []),
+        tags=list(getattr(loader_cls, "tags", None) or []),
+    )
+    _check_requires(info.requires, info.quant_method)
+    return info
 
 
 def _import_cls(spec: str) -> type:
