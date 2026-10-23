@@ -1,4 +1,7 @@
 # Pre-training and Fine-tuning
+
+To collect training performance data, see [Training Profiling (GPU/NPU)](Profiling.md).
+
 Training Capability:
 
 | Method                                                       | Full-Parameter                                               | LoRA | QLoRA                                                        | Deepspeed                                                    | Multi-Machine                                                | Multimodal                                                   |
