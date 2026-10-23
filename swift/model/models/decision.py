@@ -338,13 +338,6 @@ class GenericDecisionLoader(ScoringModelLoader):
         maybe_load_trained_scoring_head(model, model_dir)
         return model
 
-    @staticmethod
-    def _get_tokenizer(processor: Processor):
-        from transformers import PreTrainedTokenizerBase
-        if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
-            return processor.tokenizer
-        return processor
-
 
 register_model(
     ModelMeta(

@@ -106,7 +106,13 @@ class ModelMeta:
     def check_requires(self, model_info=None):
         extra_requires = []
         if model_info and model_info.quant_method:
-            mapping = {'bnb': ['bitsandbytes'], 'awq': ['autoawq'], 'gptq': ['gptqmodel'], 'aqlm': ['aqlm']}
+            mapping = {
+                'bnb': ['bitsandbytes'],
+                'awq': ['autoawq'],
+                'gptq': ['gptqmodel'],
+                'aqlm': ['aqlm'],
+                'entropack': ['entropack']
+            }
             extra_requires += mapping.get(model_info.quant_method, [])
         requires = []
         for require in self.requires + extra_requires:
@@ -128,7 +134,7 @@ class ModelInfo:
     model_dir: str
     torch_dtype: torch.dtype
     max_model_len: int
-    quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', 'hqq', None]
+    quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', 'hqq', 'entropack', None]
     quant_bits: int
 
     # extra
