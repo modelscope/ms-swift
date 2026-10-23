@@ -35,14 +35,8 @@ from swift.utils import check_json_format, get_logger, init_process_group, is_ma
 from . import megatron_fsdp_checkpoint as fsdp_checkpoint
 from .patcher import patch_merge_fn
 
-# Placed after the import block on purpose: isort splits the module's imports otherwise.
-# `--async_save` is the only consumer of this module:
-#   * megatron-core <= 0.19 ships `dist_checkpointing/strategies/async_utils.py`;
-#   * megatron-core >= 0.20 drops it and re-implements async checkpointing on top of
-#     nvidia-resiliency-ext (`megatron/training/async_utils.py`), which is not guaranteed to be
-#     installed; this swift release is validated against megatron-core < 0.20.
-# A missing module therefore degrades to synchronous saves instead of failing every entry point at
-# `import swift.megatron` time.
+# async checkpoint is removed in https://github.com/NVIDIA/Megatron-LM/pull/7052
+
 try:
     _async_utils = importlib.import_module('megatron.core.dist_checkpointing.strategies.async_utils')
     AsyncCallsQueue, AsyncRequest = _async_utils.AsyncCallsQueue, _async_utils.AsyncRequest

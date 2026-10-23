@@ -316,6 +316,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             'quant_bits',
             'hqq_axis',
             'bnb_4bit_compute_dtype',
+            'entropack_target_bpp',
+            'entropack_linear_type',
             # template_args
             'template',
             'system',

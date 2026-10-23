@@ -5,7 +5,7 @@ pip install "vllm>=0.5.1" -U
 pip install "transformers<5.20" "trl<1.0" "peft<0.21" "datasets>=4.0,<4.8.5" -U
 pip install optimum bitsandbytes "gradio<5.33" mcore-bridge -U
 pip install "ms-swift[all]@git+https://github.com/modelscope/ms-swift.git"
-pip install timm "deepspeed<0.19" ray -U
+pip install timm "deepspeed>=0.19.3,<0.20" ray -U
 pip install qwen_vl_utils qwen_omni_utils keye_vl_utils -U
 pip install decord librosa icecream soundfile -U
 pip install pybind11 liger_kernel nvitop pre-commit math_verify py-spy wandb swanlab -U
