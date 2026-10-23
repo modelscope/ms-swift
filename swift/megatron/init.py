@@ -13,6 +13,7 @@ from transformers.modeling_utils import custom_object_save
 from transformers.utils import is_torch_npu_available
 from typing import Union
 
+from swift.megatron.utils import get_hf_mtp_num_layers
 from swift.model import get_model_processor, save_checkpoint
 from swift.utils import (HfConfigFactory, disable_safe_ddp_context_use_barrier, get_logger, get_modules_to_not_convert,
                          get_multimodal_target_regex, is_master, split_list)
@@ -312,12 +313,14 @@ def _patch_mcore_bridge():
                 config = self.config
                 llm_config = HfConfigFactory.get_text_config(hf_config)
                 if config.mtp_num_layers:
+                    mtp_config_layers = get_hf_mtp_num_layers(config.mtp_num_layers,
+                                                              getattr(config, 'mtp_use_repeated_layer', False))
                     for key in ['num_nextn_predict_layers', 'mtp_num_hidden_layers']:
                         if hasattr(llm_config, key):
-                            setattr(llm_config, key, config.mtp_num_layers)
+                            setattr(llm_config, key, mtp_config_layers)
                             break
                     else:
-                        llm_config.num_nextn_predict_layers = config.mtp_num_layers
+                        llm_config.num_nextn_predict_layers = mtp_config_layers
                 HfConfigFactory.del_config_attr(hf_config, 'quantization_config')
                 expert_dtype = None
                 if config.fp8 is not None and config.fp8_recipe == 'blockwise' and config.fp8_param:

@@ -246,16 +246,12 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - mhc_recompute_layer_num: Number of layers per MHC recompute block. When set, every `mhc_recompute_layer_num` layers form a recompute block. If `None`, all layers in the transformer block share a single recompute block. Defaults to `None`.
 
 **MTP Parameters**
-- mtp_num_layers: Number of Multi-Token Prediction (MTP) layers. MTP extends the prediction scope at each position to multiple future tokens. This MTP implementation uses D sequential modules to sequentially predict D additional tokens. Default is None.
-  - Relationship to the model's own MTP layers: `mtp_num_layers` is the **logical** prediction depth D (depth i predicts the token i positions ahead), not necessarily the number of physical layers.
-    - Default (independent, `mtp_shared_weights=false`): D logical depths map to **D physical MTP layers**, with one saved weight set per depth.
-    - Shared weights (`mtp_shared_weights=true`): D logical depths share **one physical MTP layer** applied D times; the weight file stores one set.
-    - The model's config declares the MTP depth: set D according to `num_nextn_predict_layers` / `mtp_num_hidden_layers`.
-  - `mtp_num_layers` is not read from the model config automatically. If the model's weight file contains **no MTP weights** (for example a plain Llama/Qwen model), the framework still creates MTP heads on top of the backbone, but loading now stops with `MTP weights not found ...` instead of silently starting from random weights. Only add `--mtp_allow_random_init true` when you intentionally train new MTP heads from scratch; LoRA/adapter loads are not affected because adapters never contain the base MTP weights.
-- mtp_loss_scaling_factor: Scaling factor of Multi-Token Prediction (MTP) loss. We compute the average of MTP losses across all depths, then multiply it by this scaling factor to obtain the overall MTP loss, which serves as an additional training objective. Default is 0.1.
-- mtp_decoder_input_detach: Controls whether to stop gradients through decoder_input in the MTP branch. Defaults to False. When enabled, the MTP loss will not back-propagate directly through decoder_input to the embedding/ViT, but will still update the backbone via the hidden_states pathway.
-- mtp_shared_weights: Share weights across MTP layers, following the MTP scheme proposed in GLM-5. Defaults to False. For example, you can set `--mtp_num_layers 3 --mtp_shared_weights true`.
-- mtp_allow_random_init: Allow a full-finetune model whose weight file has no MTP weights to initialize them randomly. Defaults to False. When False, missing MTP weights stop loading with an error instead of silently training randomly initialized heads. LoRA/adapter loads are unaffected. Enable it only when you intentionally add MTP to a model that has no MTP weights.
+- mtp_num_layers: Number of draft tokens to predict per step D (MTP depth). Defaults to `auto` and follows the model checkpoint; set it to `None` to not load MTP weights.
+  - Version note: in 4.6.0 and earlier the default is `None`.
+- mtp_loss_scaling_factor: Scaling factor for the MTP loss. Default is 0.1.
+- mtp_decoder_input_detach: Whether to stop gradients through decoder_input in the MTP branch. Defaults to False.
+- mtp_shared_weights: Share weights across MTP layers. Defaults to None(automatic): enabled when the number of MTP layers in the checkpoint is less than mtp_num_layers. Explicitly setting it to true/false overrides this. Usually no manual setting is needed.
+- mtp_allow_random_init: When the checkpoint lacks MTP weights, whether to allow random initialization to add MTP layers. Defaults to False.
 
 **Tuner Parameters**:
 

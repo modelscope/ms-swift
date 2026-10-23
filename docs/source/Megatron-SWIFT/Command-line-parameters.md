@@ -235,16 +235,12 @@ mHC 模块以在支持的 GPU 上获得更好的性能。需要安装 cuTile；�
 - mhc_recompute_layer_num: 每个 MHC 重计算块的层数。设置后，每 `mhc_recompute_layer_num` 层构成一个重计算块。若为 None，Transformer 块中的所有层共享单个重计算块。默认为None。
 
 **MTP参数**
-- mtp_num_layers: 多token预测（MTP）层的数量。MTP将每个位置的预测范围扩展到多个未来token。此MTP实现使用D个顺序模块依次预测D个额外的token。默认为None。
-  - 与模型自身 MTP 层的关系：`mtp_num_layers` 是**逻辑**预测深度 D（第 i 个深度预测向后第 i 个 token），不一定等于物理层数。
-    - 默认（独立模式，`mtp_shared_weights=false`）：D 个逻辑深度对应 **D 个物理 MTP 层**，每个深度各有一套权重。
-    - 共享权重（`mtp_shared_weights=true`）：D 个逻辑深度共享 **1 个物理 MTP 层**，重复应用 D 次；权重文件只存一套。
-    - 模型配置声明了 MTP 深度：请按 `num_nextn_predict_layers` / `mtp_num_hidden_layers` 设置 D。
-  - `mtp_num_layers` 不会自动从模型配置读取。如果模型权重中**没有 MTP 权重**（例如普通的 Llama/Qwen 模型），框架仍会在主干之上创建 MTP 头，但加载时会直接报 `MTP weights not found ...`，而不是静默地从随机权重开始训练。只有当你明确要从零训练新的 MTP 头时，才需要加 `--mtp_allow_random_init true`；LoRA/adapter 加载不受影响，因为 adapter 里本来就不包含基座 MTP 权重。
-- mtp_loss_scaling_factor: 多token预测（MTP）损失的缩放因子。我们计算所有深度上MTP损失的平均值，然后乘以该缩放因子得到总体MTP损失，它将作为一个额外的训练目标。默认为0.1。
-- mtp_decoder_input_detach: 用来控制 MTP 分支里的 decoder_input 是否停止梯度。默认为False。开启后，MTP loss 不会直接通过 decoder_input 回传到 embedding/vit，但仍会通过 hidden_states 路径更新主干。
-- mtp_shared_weights: MTP层之间共享权重，采用GLM-5使用的mtp方案。默认为False。例如你可以设置`--mtp_num_layers 3 --mtp_shared_weights true`。
-- mtp_allow_random_init: 允许在全参微调时对权重文件中缺失的 MTP 权重进行随机初始化。默认为 False。为 False 时，缺少 MTP 权重会直接报错，而不是静默地用随机权重训练。LoRA/adapter 加载不受影响。仅当你明确要给一个没有 MTP 权重的模型新增 MTP 时才需要开启。
+- mtp_num_layers: 每一步要预测的 draft token 数 D（MTP 深度）。默认为 `auto`，自动跟随模型 checkpoint；设为 `None` 时不加载 MTP 权重。
+  - 版本说明：4.6.0 及更早版本默认为 `None`。
+- mtp_loss_scaling_factor: MTP 损失缩放因子。默认为 0.1。
+- mtp_decoder_input_detach: MTP 分支的 decoder_input 是否停止梯度。默认为 False。
+- mtp_shared_weights: MTP 层之间共享权重。默认为 None，进行自动解析：当 checkpoint mtp 层数小于 mtp_num_layers 时开启。显式设为 true/false 可覆盖。通常无需手动设置。
+- mtp_allow_random_init: checkpoint 缺少 MTP 权重时，是否允许随机初始化来新增MTP层。默认为 False。
 
 **Tuner参数**:
 - tuner_type: 可选为'lora', 'full'和'lora_llm'。默认为'full'。
