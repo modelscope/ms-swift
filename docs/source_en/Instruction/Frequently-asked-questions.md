@@ -241,7 +241,7 @@ For LoRA breakpoint resume training, you need to additionally set `--mcore_adapt
 - Megatron-SWIFT does not support QLoRA training.
 
 ### Q32: MTP Related Issues
-- From 4.7.0, `--mtp_num_layers` defaults to `auto` and follows the model checkpoint; no manual setting is needed. In 4.6.0 and earlier the default is `None` (MTP is not loaded), so set it manually (for example from `num_nextn_predict_layers` / `mtp_num_hidden_layers`).
+- From https://github.com/modelscope/ms-swift/pull/10416, `--mtp_num_layers` defaults to `auto` and follows the model checkpoint; no manual setting is needed. In 4.6.0 and earlier the default is `None` (MTP is not loaded), so set it manually (for example from `num_nextn_predict_layers` / `mtp_num_hidden_layers`).
 - If the base model has no MTP structure, set `--mtp_num_layers N --mtp_allow_random_init true` to train MTP from scratch.
 - Multimodal MTP is not currently supported.
 

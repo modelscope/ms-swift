@@ -242,7 +242,7 @@ all-router不是通配符匹配模块名，而是一个特殊关键字，告诉�
 - Megatron-SWIFT不支持QLoRA训练。
 
 ### Q32: mtp相关问题
-- 4.7.0 起 `--mtp_num_layers` 默认 `auto`，会自动跟随模型 checkpoint，无需手动设置；4.6.0 及更早版本默认 `None`（不加载 MTP），需手动设置（可参考 `num_nextn_predict_layers` / `mtp_num_hidden_layers`）。
+- https://github.com/modelscope/ms-swift/pull/10416 起 `--mtp_num_layers` 默认 `auto`，会自动跟随模型 checkpoint，无需手动设置；4.6.0 及更早版本默认 `None`（不加载 MTP），需手动设置（可参考 `num_nextn_predict_layers` / `mtp_num_hidden_layers`）。
 - 如果base模型不附带MTP结构，需要显式设置 `--mtp_num_layers N --mtp_allow_random_init true` 从头训练MTP。
 - 多模态的MTP目前还没支持。
 
