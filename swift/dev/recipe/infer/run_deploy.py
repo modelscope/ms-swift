@@ -109,6 +109,13 @@ def build_server_config(
 
     public_name = deploy_config.served_model_name or os.path.basename(str(model_config.model).rstrip('/'))
     sampler_type = deploy_config.sampler_type or _derive_sampler_type(backend, deploy_config.enable_data_plane)
+    if sampler_type == 'torch':
+        # The terminal-value guard (not a backend flag): a pinned sampler_type='torch' or a direct
+        # build_server_config call with the transformers backend would otherwise skip run_deploy's
+        # _validate and assemble a server the transformers sampler cannot serve.
+        raise ValueError('deploy with the transformers (pt) sampler backend is not supported yet: the '
+                         'server needs the vLLM/SGLang engines. Use --backend vllm or sglang, or leave '
+                         'sampler_type unset to derive it from the backend.')
 
     sampler_engine_args = _sampler_engine_args(backend, engine_args, adapter_mapping, deploy_config, _enable_lora)
     device_group, device_mesh, nproc = _device_spec(distributed_config)

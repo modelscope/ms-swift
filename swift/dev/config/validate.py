@@ -687,6 +687,10 @@ def _check_grpo_controls(cfg: 'RLConfig') -> None:
                          'group-relative, so one completion per prompt has no group baseline and degenerates '
                          'to raw-reward REINFORCE. Raise --num_generations, or use a teacher (OPD-RL) / '
                          '--rl_type rft for a single-sample objective.')
+    if cfg.num_generations < 2:
+        logger.warning('num_generations == 1 with a teacher (OPD-RL): the GRPO group-relative advantage is '
+                       'identically zero, so only the teacher-KL term drives the policy. This is the expected '
+                       'behaviour, not a fallback.')
     positive = {
         'num_iterations': cfg.num_iterations,
         'rollout_importance_sampling_threshold': cfg.rollout_importance_sampling_threshold,

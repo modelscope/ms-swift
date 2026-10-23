@@ -74,7 +74,9 @@ class QuantSyncWorkerExtension(TwinkleWorkerExtension):
         # happens after this worker is constructed and before any sync. This is
         # the earliest in-process point that reaches every worker subprocess.
         apply_vllm_quant_patches()
-        return super().__new__(cls)
+        # Forward the construction kwargs: the base __new__ reads ``vllm_config`` off them to
+        # register the delta transfer engines -- swallowing them here disabled that registration.
+        return super().__new__(cls, *args, **kwargs)
 
     # -----------------------------------------------------------------
     # Quantized-refit plumbing

@@ -183,37 +183,42 @@ def _streaming_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'Rew
         output_dir=output_dir)
     strategy = rollout_config.weight_sync_strategy
     steps_since_publish = 0
-    for samples in driver:
-        versions_cell[:] = [getattr(sample, 'version_span', 0) for sample in samples]
-        kept, advantages, returns, values, old_logps = _gae_pipeline(
-            cluster, reward_config, rl_config, samples, train_batch_size, reward_metric)
-        optimizer_steps = _train_ppo_batch(
-            cluster, state, rl_config, kept, advantages, returns, values, old_logps,
-            train_batch_size=train_batch_size,
-            temperature=float(cluster.sampling_params.get('temperature', 1.0)),
-            ema_manager=ema_manager, save=save)
-        # the visible publish: cadence inline, then one request; the driver brackets the push with
-        # its version accounting and the adapter's decide/register (commit releases its thread).
-        steps_since_publish += optimizer_steps
-        if steps_since_publish >= rollout_config.parameter_sync_step:
-            if strategy == 'in_place':
-                # in_place overwrites the sampler's single live weight copy, so the visible half of
-                # the publish runs here: abort every in-flight generation, then push the weights.
-                def _visible_sync(window: Any) -> None:
-                    cluster.rollout.abort_all_inflight()
-                    if cluster.adapter is not None:
-                        cluster.adapter.publish()
-                    else:
-                        cluster.engine.sync_weights()
+    try:
+        for samples in driver:
+            versions_cell[:] = [getattr(sample, 'version_span', 0) for sample in samples]
+            kept, advantages, returns, values, old_logps = _gae_pipeline(
+                cluster, reward_config, rl_config, samples, train_batch_size, reward_metric)
+            optimizer_steps = _train_ppo_batch(
+                cluster, state, rl_config, kept, advantages, returns, values, old_logps,
+                train_batch_size=train_batch_size,
+                temperature=float(cluster.sampling_params.get('temperature', 1.0)),
+                ema_manager=ema_manager, save=save)
+            # the visible publish: cadence inline, then one request; the driver brackets the push with
+            # its version accounting and the adapter's decide/register (commit releases its thread).
+            steps_since_publish += optimizer_steps
+            if steps_since_publish >= rollout_config.parameter_sync_step:
+                if strategy == 'in_place':
+                    # in_place overwrites the sampler's single live weight copy, so the visible half of
+                    # the publish runs here: abort every in-flight generation, then push the weights.
+                    def _visible_sync(window: Any) -> None:
+                        cluster.rollout.abort_all_inflight()
+                        if cluster.adapter is not None:
+                            cluster.adapter.publish()
+                        else:
+                            cluster.engine.sync_weights()
 
-                driver.request_publish(_visible_sync)
-            else:
-                # adapter_snapshot: the default push (snapshot_model) saves the next version's adapter.
-                driver.request_publish()
-            steps_since_publish = 0
-        driver.commit(optimizer_steps)
-        if state.reached_max() or state.should_stop():
-            break
+                    driver.request_publish(_visible_sync)
+                else:
+                    # adapter_snapshot: the default push (snapshot_model) saves the next version's adapter.
+                    driver.request_publish()
+                steps_since_publish = 0
+            driver.commit(optimizer_steps)
+            if state.reached_max() or state.should_stop():
+                break
+    finally:
+        # Release the driver thread before the caller's teardown shuts the rollout/sampler:
+        # an exception on the recipe thread otherwise leaves it blocked on the bridge ack.
+        driver.abort()
 
 
 def _save_value_checkpoint(value_model: Any, checkpoint_dir: str, checkpoint_config: Any,

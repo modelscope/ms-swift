@@ -386,52 +386,58 @@ def _disaggregated_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Ro
     strategy = rollout_config.weight_sync_strategy
     steps_since_publish = 0
     total_steps = 0
-    for samples in driver:
-        if rl_config.log_completions:
-            cluster.worker.log_completions(
-                samples, [sample.orm_reward for sample in samples], state.global_step + 1,
-                os.path.join(output_dir, 'completions.jsonl'))
-        state.tracker.log_prompts([sample.prompt for sample in samples], samples,
-                                  state.global_step + 1, 1)
-        if metrics_cells is not None:
-            # This batch's version-span aggregate, reported on every step it feeds (see the cells).
-            versions = [sample.policy_version for sample in samples]
-            if metrics_cells[1]:
-                metrics_cells[1][0] = versions
-            else:
-                metrics_cells[1].append(versions)
-        advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
-            cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
-            correction_out=correction_out)
-        _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size)
-        optimizer_steps = _train_mini_batches(
-            state, rl_config, samples, train_batch_size=train_batch_size, advantages=advantages,
-            old_logps=old_logps, ref_logps=ref_logps, teacher_logps=teacher_logps,
-            temperature=float(cluster.sampling_params.get('temperature', 1.0)),
-            chord_fn=chord_fn, ema_manager=ema_manager, save=save)
-        # the visible publish: cadence inline, then one request; the driver brackets the push with
-        # its version accounting and the adapter's decide/register (commit releases its thread).
-        steps_since_publish += optimizer_steps
-        publish_due = steps_since_publish >= rollout_config.parameter_sync_step
-        if publish_due:
-            if strategy == 'in_place':
-                # in_place overwrites the sampler's single live weight copy, so the visible half of
-                # the publish runs here: abort every in-flight generation, then push the weights.
-                def _visible_sync(window: Any) -> None:
-                    cluster.rollout.abort_all_inflight()
-                    if cluster.adapter is not None:
-                        cluster.adapter.publish()
-                    else:
-                        cluster.engine.sync_weights()
+    try:
+        for samples in driver:
+            if rl_config.log_completions:
+                cluster.worker.log_completions(
+                    samples, [sample.orm_reward for sample in samples], state.global_step + 1,
+                    os.path.join(output_dir, 'completions.jsonl'))
+            state.tracker.log_prompts([sample.prompt for sample in samples], samples,
+                                      state.global_step + 1, 1)
+            if metrics_cells is not None:
+                # This batch's version-span aggregate, reported on every step it feeds (see the cells).
+                versions = [sample.policy_version for sample in samples]
+                if metrics_cells[1]:
+                    metrics_cells[1][0] = versions
+                else:
+                    metrics_cells[1].append(versions)
+            advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
+                cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
+                correction_out=correction_out)
+            _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size)
+            optimizer_steps = _train_mini_batches(
+                state, rl_config, samples, train_batch_size=train_batch_size, advantages=advantages,
+                old_logps=old_logps, ref_logps=ref_logps, teacher_logps=teacher_logps,
+                temperature=float(cluster.sampling_params.get('temperature', 1.0)),
+                chord_fn=chord_fn, ema_manager=ema_manager, save=save)
+            # the visible publish: cadence inline, then one request; the driver brackets the push with
+            # its version accounting and the adapter's decide/register (commit releases its thread).
+            steps_since_publish += optimizer_steps
+            publish_due = steps_since_publish >= rollout_config.parameter_sync_step
+            if publish_due:
+                if strategy == 'in_place':
+                    # in_place overwrites the sampler's single live weight copy, so the visible half of
+                    # the publish runs here: abort every in-flight generation, then push the weights.
+                    def _visible_sync(window: Any) -> None:
+                        cluster.rollout.abort_all_inflight()
+                        if cluster.adapter is not None:
+                            cluster.adapter.publish()
+                        else:
+                            cluster.engine.sync_weights()
 
-                driver.request_publish(_visible_sync)
-            else:
-                # adapter_snapshot: the default push (snapshot_model) saves the next version's adapter.
-                driver.request_publish()
-            steps_since_publish = 0
-        driver.commit(optimizer_steps)
-        if state.reached_max() or state.should_stop():
-            break
+                    driver.request_publish(_visible_sync)
+                else:
+                    # adapter_snapshot: the default push (snapshot_model) saves the next version's adapter.
+                    driver.request_publish()
+                steps_since_publish = 0
+            driver.commit(optimizer_steps)
+            if state.reached_max() or state.should_stop():
+                break
+
+    finally:
+        # Release the driver thread before the caller's teardown shuts the rollout/sampler:
+        # an exception on the recipe thread otherwise leaves it blocked on the bridge ack.
+        driver.abort()
 
 
 def _load_chord_features(rl_config: 'RLConfig', dataset_config: 'DatasetConfig', template: Any) -> List[dict]:
