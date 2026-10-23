@@ -246,11 +246,12 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - mhc_recompute_layer_num: Number of layers per MHC recompute block. When set, every `mhc_recompute_layer_num` layers form a recompute block. If `None`, all layers in the transformer block share a single recompute block. Defaults to `None`.
 
 **MTP Parameters**
-- mtp_num_layers: Number of Multi-Token Prediction (MTP) layers. MTP extends the prediction scope at each position to multiple future tokens. This MTP implementation uses D sequential modules to sequentially predict D additional tokens. Default is None.
-  - Note: The value of mtp_num_layers will not be automatically retrieved from config.json and must be set manually. You can refer to the `num_nextn_predict_layers`, `mtp_num_hidden_layers` field in config.json to fill in this value. When using mcore-bridge, MTP weights will be loaded from safetensors files first. If not found, random initialization will be performed.
-- mtp_loss_scaling_factor: Scaling factor of Multi-Token Prediction (MTP) loss. We compute the average of MTP losses across all depths, then multiply it by this scaling factor to obtain the overall MTP loss, which serves as an additional training objective. Default is 0.1.
-- mtp_decoder_input_detach: Controls whether to stop gradients through decoder_input in the MTP branch. Defaults to False. When enabled, the MTP loss will not back-propagate directly through decoder_input to the embedding/ViT, but will still update the backbone via the hidden_states pathway.
-- mtp_shared_weights: Share weights across MTP layers, following the MTP scheme proposed in GLM-5. Defaults to False. For example, you can set `--mtp_num_layers 3 --mtp_shared_weights true`.
+- mtp_num_layers: Number of draft tokens to predict per step D (MTP depth). Defaults to `auto` and follows the model checkpoint; set it to `None` to not load MTP weights.
+  - Version note: in 4.6.0 and earlier the default is `None`.
+- mtp_loss_scaling_factor: Scaling factor for the MTP loss. Default is 0.1.
+- mtp_decoder_input_detach: Whether to stop gradients through decoder_input in the MTP branch. Defaults to False.
+- mtp_shared_weights: Share weights across MTP layers. Defaults to None(automatic): enabled when the number of MTP layers in the checkpoint is less than mtp_num_layers. Explicitly setting it to true/false overrides this. Usually no manual setting is needed.
+- mtp_allow_random_init: When the checkpoint lacks MTP weights, whether to allow random initialization to add MTP layers. Defaults to False.
 
 **Tuner Parameters**:
 

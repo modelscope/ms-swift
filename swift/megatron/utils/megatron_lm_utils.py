@@ -36,6 +36,7 @@ from . import megatron_fsdp_checkpoint as fsdp_checkpoint
 from .patcher import patch_merge_fn
 
 # async checkpoint is removed in https://github.com/NVIDIA/Megatron-LM/pull/7052
+
 try:
     _async_utils = importlib.import_module('megatron.core.dist_checkpointing.strategies.async_utils')
     AsyncCallsQueue, AsyncRequest = _async_utils.AsyncCallsQueue, _async_utils.AsyncRequest

@@ -1,11 +1,16 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from dataclasses import fields
-from mcore_bridge import ModelConfig
 from mcore_bridge import get_mcore_model as _get_mcore_model
 from mcore_bridge import hf_to_mcore_config
+
+try:
+    from mcore_bridge import resolve_mtp_config
+except ImportError:  # mcore-bridge without the MTP auto-resolution API
+    resolve_mtp_config = None
 from transformers.utils import is_torch_npu_available
 from typing import Any, Generator, Optional, Tuple
 
+from swift.megatron.utils import get_hf_mtp_num_layers
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -34,11 +39,28 @@ def _check_padding_free(args, config):
         args.padding_free = False
 
 
+def _resolve_mtp_values(mtp_num_layers, mtp_shared_weights, model_meta, model_dir, hf_config):
+    if resolve_mtp_config is not None:
+        return resolve_mtp_config(model_meta, hf_config, model_dir, mtp_num_layers, mtp_shared_weights)
+    # Older mcore-bridge has no auto resolution: keep its legacy defaults.
+    if mtp_num_layers == 'auto':
+        logger.warning('mcore-bridge does not provide MTP auto resolution; falling back to the legacy default '
+                       '`mtp_num_layers=None`.')
+        mtp_num_layers = None
+    if mtp_shared_weights is None:
+        mtp_shared_weights = False
+    if mtp_num_layers is None and mtp_shared_weights:
+        logger.warning('`mtp_shared_weights` requires a positive `mtp_num_layers`; disabling it.')
+        mtp_shared_weights = False
+    return mtp_num_layers, mtp_shared_weights
+
+
 def get_mcore_model_config(args, hf_config):
     kwargs = hf_to_mcore_config(hf_config)
     kwargs['mcore_model_type'] = args.megatron_model_meta.model_type
     kwargs['hf_config'] = hf_config
-    config_cls = getattr(args.megatron_model_meta, 'config_cls', ModelConfig)
+    kwargs.update(mtp_num_layers=args.mtp_num_layers, mtp_shared_weights=args.mtp_shared_weights)
+    config_cls = args.megatron_model_meta.config_cls
     for f in fields(config_cls):
         key, value = f.name, getattr(args, f.name, None)
         if value is None or isinstance(value, (list, tuple)) and len(value) == 0:
@@ -72,7 +94,13 @@ def get_mcore_model_config(args, hf_config):
         kwargs['moe_enable_routing_replay'] = True
     if args.megatron_extra_kwargs:
         kwargs.update(args.megatron_extra_kwargs)
+    kwargs['mtp_num_layers'], kwargs['mtp_shared_weights'] = _resolve_mtp_values(kwargs['mtp_num_layers'],
+                                                                                 kwargs['mtp_shared_weights'],
+                                                                                 args.megatron_model_meta,
+                                                                                 args.model_dir, hf_config)
     config = config_cls(**kwargs)
+    args.mtp_num_layers = config.mtp_num_layers
+    args.mtp_shared_weights = config.mtp_shared_weights
     if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
         setattr(config, 'use_flash_attn', True)
     _check_attention_backend(args, config)
@@ -166,12 +194,13 @@ class MegatronBridgeBackend:
             # MTP: write back num_nextn_predict_layers
             mtp_num_layers = getattr(args, 'mtp_num_layers', None)
             if mtp_num_layers:
+                mtp_config_layers = get_hf_mtp_num_layers(mtp_num_layers, getattr(args, 'mtp_shared_weights', False))
                 for key in ['num_nextn_predict_layers', 'mtp_num_hidden_layers']:
                     if hasattr(llm_config, key):
-                        setattr(llm_config, key, mtp_num_layers)
+                        setattr(llm_config, key, mtp_config_layers)
                         break
                 else:
-                    llm_config.num_nextn_predict_layers = mtp_num_layers
+                    llm_config.num_nextn_predict_layers = mtp_config_layers
 
             HfConfigFactory.del_config_attr(hf_config, 'quantization_config')
 

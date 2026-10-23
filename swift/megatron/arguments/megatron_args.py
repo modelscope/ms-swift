@@ -496,6 +496,21 @@ class MegatronTunerMixin:
             self.target_modules = self.target_regex
 
 
+def _normalize_mtp_num_layers(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if value == 'auto':
+            return 'auto'
+        try:
+            value = int(value)
+        except ValueError:
+            raise ValueError("`mtp_num_layers` must be an integer or 'auto'.")
+    else:
+        value = int(value)
+    return value
+
+
 @dataclass
 class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # training
@@ -696,10 +711,15 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     engram_tokenizer_map: Optional[str] = None
 
     # mtp
-    mtp_num_layers: Optional[int] = None
+    # int, 'auto' (default), or None (disabled).
+    mtp_num_layers: Optional[Union[int, str]] = 'auto'
     mtp_loss_scaling_factor: float = 0.1
     mtp_decoder_input_detach: bool = False
-    mtp_shared_weights: bool = False
+    # None = auto: reuse one physical set when the requested depth exceeds the checkpoint's sets.
+    mtp_shared_weights: Optional[bool] = None
+
+    # Full-finetune checkpoints without MTP keys fail loud unless this is set.
+    mtp_allow_random_init: bool = False
 
     # mcore-bridge / megatron-bridge
     bridge_backend: Literal['mcore-bridge', 'megatron-bridge'] = 'mcore-bridge'
@@ -838,12 +858,17 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                              'switch to tuner_type="full" to keep selective recomputation.')
 
     def __post_init__(self):
+        self.mtp_num_layers = _normalize_mtp_num_layers(self.mtp_num_layers)
         if self.tuner_type != 'full':
             require_version('peft>=0.15', 'Please install peft>=0.15 to use LoRA in Megatron-SWIFT.')
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
         self._check_bridge_backend()
+        if self.bridge_backend == 'megatron-bridge' and self.mtp_num_layers == 'auto':
+            logger.warning("`mtp_num_layers='auto'` is not supported with bridge_backend='megatron-bridge'; "
+                           'MTP is disabled.')
+            self.mtp_num_layers = None
         if self.recompute_granularity == 'none':
             self.recompute_granularity = None
         if self.recompute_granularity == 'selective' and self.recompute_method is not None:

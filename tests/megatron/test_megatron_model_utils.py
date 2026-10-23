@@ -39,6 +39,124 @@ class _FakeAutoBridge:
 @unittest.skipUnless(utils is not None, f'Megatron dependencies not available: {_IMPORT_ERROR}')
 class TestMegatronModelUtils(unittest.TestCase):
 
+    def test_mcore_mtp_preserves_extra_kwargs_priority(self):
+        from mcore_bridge.model.register import ModelMeta
+
+        hf_config = SimpleNamespace(num_hidden_layers=2)
+        meta = ModelMeta(
+            'test', ['test'], config_cls=lambda **kwargs: SimpleNamespace(**kwargs), mtp_prefix='model.layers')
+        cases = (
+            ('auto', None, {}, 1, False),
+            (3, True, {
+                'mtp_num_layers': 0,
+                'mtp_shared_weights': False
+            }, 0, False),
+            (3, True, {
+                'mtp_num_layers': None,
+                'mtp_shared_weights': False
+            }, None, False),
+            (1, False, {
+                'mtp_num_layers': 3,
+                'mtp_shared_weights': None
+            }, 3, True),
+        )
+        for depth, shared, extra, expected_depth, expected_shared in cases:
+            with self.subTest(depth=depth, shared=shared, extra=extra):
+                args = SimpleNamespace(
+                    megatron_model_meta=meta,
+                    model_dir='student',
+                    mtp_num_layers=depth,
+                    mtp_shared_weights=shared,
+                    task_type='causal_lm',
+                    torch_dtype=None,
+                    decoder_first_pipeline_num_layers=None,
+                    decoder_last_pipeline_num_layers=None,
+                    fp4_param_gather=False,
+                    fp8_param_gather=False,
+                    router_replay_mode='disabled',
+                    megatron_extra_kwargs=extra,
+                    padding_free=False,
+                )
+                with patch.object(
+                        utils, 'hf_to_mcore_config', return_value={'hf_config': hf_config}), patch.object(
+                            utils,
+                            'fields',
+                            return_value=[
+                                SimpleNamespace(name='mtp_num_layers'),
+                                SimpleNamespace(name='mtp_shared_weights')
+                            ]), patch(
+                                'mcore_bridge.model.mtp_detect._read_weight_keys',
+                                return_value=['model.layers.2.eh_proj.weight']), patch.object(
+                                    utils, 'is_torch_npu_available', return_value=False), patch.object(
+                                        utils, '_check_attention_backend'), patch.object(utils, '_check_padding_free'):
+                    config = utils.get_mcore_model_config(args, hf_config)
+                self.assertEqual(config.mtp_num_layers, expected_depth)
+                self.assertEqual(config.mtp_shared_weights, expected_shared)
+                self.assertEqual(args.mtp_num_layers, expected_depth)
+                self.assertEqual(args.mtp_shared_weights, expected_shared)
+                self.assertIs(config.hf_config, hf_config)
+                self.assertEqual(config.mcore_model_type, meta.model_type)
+                self.assertEqual(args.megatron_extra_kwargs, extra)
+
+    def test_teacher_mtp_does_not_mutate_student(self):
+        from swift.megatron.trainers import rollout_mixin
+
+        student_meta, teacher_meta = object(), object()
+        extra = {'mtp_num_layers': 4, 'mtp_shared_weights': True, 'mtp_use_repeated_layer': True, 'other': 7}
+        args = SimpleNamespace(
+            model_dir='student',
+            teacher_model_dir='teacher',
+            megatron_model_meta=student_meta,
+            teacher_megatron_model_meta=teacher_meta,
+            mtp_num_layers=3,
+            mtp_shared_weights=True,
+            megatron_extra_kwargs=extra,
+            use_cpu_initialization=True,
+        )
+        trainer = SimpleNamespace(
+            args=args,
+            use_teacher_api=False,
+            _is_self_distillation=False,
+            _teacher_use_disable_adapter=False,
+            offload_teacher_model=False)
+        model = unittest.mock.Mock(config=SimpleNamespace(bridge=unittest.mock.Mock()))
+        with patch.object(
+                rollout_mixin.AutoConfig, 'from_pretrained', return_value=object()), patch.object(
+                    rollout_mixin, 'get_mcore_model', return_value=[model]) as build:
+            rollout_mixin.MegatronRolloutMixin._load_teacher_model(trainer)
+        teacher_args = build.call_args.args[0]
+        self.assertIsNot(teacher_args, args)
+        self.assertEqual(teacher_args.model_dir, 'teacher')
+        self.assertIs(teacher_args.megatron_model_meta, teacher_meta)
+        self.assertFalse(teacher_args.mtp_num_layers)
+        self.assertFalse(teacher_args.mtp_shared_weights)
+        self.assertEqual(teacher_args.megatron_extra_kwargs, {'other': 7})
+        self.assertEqual((args.mtp_num_layers, args.mtp_shared_weights), (3, True))
+        self.assertIs(args.megatron_model_meta, student_meta)
+        self.assertEqual(args.model_dir, 'student')
+        self.assertEqual(extra, {
+            'mtp_num_layers': 4,
+            'mtp_shared_weights': True,
+            'mtp_use_repeated_layer': True,
+            'other': 7
+        })
+        model.config.bridge.load_weights.assert_called_once_with([model], 'teacher')
+
+    def test_hf_mtp_num_layers_records_physical_sets(self):
+        from swift.megatron.utils import get_hf_mtp_num_layers
+
+        self.assertEqual(get_hf_mtp_num_layers(3, repeated=True), 1)
+        self.assertEqual(get_hf_mtp_num_layers(3, repeated=False), 3)
+        self.assertEqual(get_hf_mtp_num_layers(1, repeated=True), 1)
+        self.assertIsNone(get_hf_mtp_num_layers(None, repeated=True))
+        self.assertEqual(get_hf_mtp_num_layers(0, repeated=False), 0)
+
+    def test_mtp_fallback_without_resolver(self):
+        with patch.object(utils, 'resolve_mtp_config', None):
+            self.assertEqual(utils._resolve_mtp_values('auto', None, None, 'unused', None), (None, False))
+            self.assertEqual(utils._resolve_mtp_values(3, None, None, 'unused', None), (3, False))
+            self.assertEqual(utils._resolve_mtp_values(3, True, None, 'unused', None), (3, True))
+
     def test_mtp_shared_weights_maps_to_megatron_bridge_field(self):
         auto_bridge_module = types.ModuleType('megatron.bridge.models.conversion.auto_bridge')
         auto_bridge_module.AutoBridge = _FakeAutoBridge

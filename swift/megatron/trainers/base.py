@@ -166,7 +166,7 @@ class BaseMegatronTrainer(ABC):
                 num_layers=config.num_layers,
                 moe_layer_freq=config.moe_layer_freq,
                 mtp_num_layers=args.mtp_num_layers)
-        if args.mtp_num_layers is not None:
+        if args.mtp_num_layers:
             mtp_loss_scale = 1 / args.num_microbatches / n_steps
             mtp_logs = {}
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, self.state.iteration, None, None, mtp_logs)
