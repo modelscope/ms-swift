@@ -1,7 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from dataclasses import fields
 from mcore_bridge import get_mcore_model as _get_mcore_model
-from mcore_bridge import hf_to_mcore_config, resolve_mtp_config
+from mcore_bridge import hf_to_mcore_config
+try:
+    from mcore_bridge import resolve_mtp_config
+except ImportError:  # mcore-bridge without the MTP auto-resolution API
+    resolve_mtp_config = None
 from transformers.utils import is_torch_npu_available
 from typing import Any, Generator, Optional, Tuple
 
@@ -32,6 +36,22 @@ def _check_padding_free(args, config):
     if message:
         logger.warning(f'{message}. Setting args.padding_free to False.')
         args.padding_free = False
+
+
+def _resolve_mtp_values(mtp_num_layers, mtp_shared_weights, model_meta, model_dir, hf_config):
+    if resolve_mtp_config is not None:
+        return resolve_mtp_config(model_meta, hf_config, model_dir, mtp_num_layers, mtp_shared_weights)
+    # Older mcore-bridge has no auto resolution: keep its legacy defaults.
+    if mtp_num_layers == 'auto':
+        logger.warning('mcore-bridge does not provide MTP auto resolution; falling back to the legacy default '
+                       '`mtp_num_layers=None`.')
+        mtp_num_layers = None
+    if mtp_shared_weights is None:
+        mtp_shared_weights = False
+    if mtp_num_layers is None and mtp_shared_weights:
+        logger.warning('`mtp_shared_weights` requires a positive `mtp_num_layers`; disabling it.')
+        mtp_shared_weights = False
+    return mtp_num_layers, mtp_shared_weights
 
 
 def get_mcore_model_config(args, hf_config):
@@ -73,10 +93,8 @@ def get_mcore_model_config(args, hf_config):
         kwargs['moe_enable_routing_replay'] = True
     if args.megatron_extra_kwargs:
         kwargs.update(args.megatron_extra_kwargs)
-    kwargs['mtp_num_layers'], kwargs['mtp_shared_weights'] = resolve_mtp_config(args.megatron_model_meta, hf_config,
-                                                                                args.model_dir,
-                                                                                kwargs['mtp_num_layers'],
-                                                                                kwargs['mtp_shared_weights'])
+    kwargs['mtp_num_layers'], kwargs['mtp_shared_weights'] = _resolve_mtp_values(
+        kwargs['mtp_num_layers'], kwargs['mtp_shared_weights'], args.megatron_model_meta, args.model_dir, hf_config)
     config = config_cls(**kwargs)
     args.mtp_num_layers = config.mtp_num_layers
     args.mtp_shared_weights = config.mtp_shared_weights

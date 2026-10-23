@@ -151,6 +151,12 @@ class TestMegatronModelUtils(unittest.TestCase):
         self.assertIsNone(get_hf_mtp_num_layers(None, repeated=True))
         self.assertEqual(get_hf_mtp_num_layers(0, repeated=False), 0)
 
+    def test_mtp_fallback_without_resolver(self):
+        with patch.object(utils, 'resolve_mtp_config', None):
+            self.assertEqual(utils._resolve_mtp_values('auto', None, None, 'unused', None), (None, False))
+            self.assertEqual(utils._resolve_mtp_values(3, None, None, 'unused', None), (3, False))
+            self.assertEqual(utils._resolve_mtp_values(3, True, None, 'unused', None), (3, True))
+
     def test_mtp_shared_weights_maps_to_megatron_bridge_field(self):
         auto_bridge_module = types.ModuleType('megatron.bridge.models.conversion.auto_bridge')
         auto_bridge_module.AutoBridge = _FakeAutoBridge
