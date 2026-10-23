@@ -124,7 +124,7 @@ def initialize_ppo_cluster(
     if resume_dir and tuner_config is None:
         # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
         # a tuned policy keeps the original base and reloads its adapter via resume (run_ppo).
-        policy_config = copy(model_config)
+        policy_config = copy.deepcopy(model_config)
         policy_config.model = resume_dir
     model = build_model(
         policy_config,
@@ -164,11 +164,16 @@ def initialize_ppo_cluster(
         tuner_config=tuner_config,
         plugin_config=None,
     )
-    configure_rl_metrics(model, rl_config)
+    # The metric's temperature knob must be the SAMPLING temperature (1.0 unless the user set one):
+    # it recovers the T=1 report scale from the sampler-temperature logps the forwards produce.
+    sampling_temperature = 1.0
+    if generation_config is not None and generation_config.temperature is not None:
+        sampling_temperature = float(generation_config.temperature)
+    configure_rl_metrics(model, rl_config, sampling_temperature=sampling_temperature)
 
     # The critic: a trainable seq_cls num_labels=1 value model, initialized from the first ORM
     # reward MODEL (TRL's choice) or the policy base; full-param, so no tuner_config reaches it.
-    value_config = copy(model_config)
+    value_config = copy.deepcopy(model_config)
     value_config.task_type = "seq_cls"
     value_config.num_labels = 1
     from swift.dev.rewards.scorer import split_channel
@@ -189,6 +194,7 @@ def initialize_ppo_cluster(
         padding_free=template_config.padding_free,
         padding_side=template_config.padding_side,
         cp_partition_mode=distributed_config.cp_partition_mode,
+        **processor_kwargs(template),
     )
     value_model.set_template(template)
     configure_ppo_value_loss(value_model, rl_config)

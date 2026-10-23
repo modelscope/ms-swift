@@ -136,8 +136,7 @@ def test_classified_legacy_fields_fail_with_explicit_reason(parser, argv, error)
 def test_rlhf_response_length_alias_and_removed_seq_kd():
     configs = parse_rl_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--response_length', '128'])
     assert configs['rl_config'].max_completion_length == 128
-    # seq_kd is a removed option, refused by reject_legacy_only_flags before parsing reaches the
-    # (now unreachable) RlCliCompatConfig.seq_kd branch.
+    # seq_kd is a removed option, refused by reject_legacy_only_flags before parsing starts.
     with pytest.raises(ValueError, match='unsupported'):
         parse_rl_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--seq_kd', 'true'])
 

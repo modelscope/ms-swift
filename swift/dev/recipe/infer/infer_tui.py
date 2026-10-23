@@ -45,7 +45,8 @@ def infer_cli(
     chat turn (streamed when ``generation_config.stream``). A multimodal template prompts for media
     paths first, matching legacy's ``input_mm_data``.
     """
-    from swift.dev.builders import build_sampler, build_template, load_model_processor, to_sampling_params
+    from swift.dev.builders import (apply_generation_baseline, build_sampler, build_template, load_model_processor,
+                                    to_sampling_params)
     from swift.dev.builders.sandbox import tools_factory
 
     _, processor = load_model_processor(model_config)
@@ -59,6 +60,7 @@ def infer_cli(
         adapters=adapters,
         quantize_config=quantize_config)
     adapter_path = adapters[0] if adapters else None
+    apply_generation_baseline(generation_config, model_config.model)
     params = to_sampling_params(generation_config)
     stream = bool(generation_config is not None and generation_config.stream)
 

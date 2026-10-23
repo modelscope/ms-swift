@@ -66,6 +66,13 @@ def _resolve_sampler(spec: Any) -> Tuple[type, Optional[str]]:
     """
     if spec == "pt":
         spec = "transformers"
+    if spec in ("client", "no"):
+        # legacy's remote-generation sampler; without this guard it falls into plugin resolution
+        # and dies with an unrelated "plugin not found" error.
+        raise ValueError(
+            f"sampler={spec!r} (legacy remote generation) is not migrated: v5 samples with the local "
+            "vllm/sglang/transformers backends. Serve the remote side with `swift deploy` and point an "
+            "http(s) URL at it (an API-judge reward channel) instead of a client sampler.")
     kind = _sampler_kind()
     sampler_cls = resolve_plugin_class(spec, kind.base, kind.entries, kind="sampler")
     engine = next((name for name, cls in kind.entries.items() if cls is sampler_cls), None)
@@ -92,15 +99,22 @@ def build_engine_args(backend: str, infer_config: "InferConfig", rollout_config:
     if backend == "transformers":
         return {"max_batch_size": infer_config.max_batch_size}
     prefix = f"{backend}_"
-    result = {}
     #: Not engine args: ``engine_kwargs`` is merged verbatim below, and the LoRA knobs are owned by
     #: _enable_lora/_max_adapter_rank -- a config default here would squat the key and defeat them.
     excluded = {"engine_kwargs"}
+    # sglang spells its parallel sizes tp_size/dp_size on sglang.Engine, but SGLangEngine takes them
+    # as tensor_parallel_size/data_parallel_size; forwarding the short names would collide with the
+    # engine's own explicit keywords (``dict(tp_size=..., **engine_kwargs)`` -> TypeError).
+    sglang_rename = {"tp_size": "tensor_parallel_size", "dp_size": "data_parallel_size"}
+    result = {}
     for name, value in asdict(rollout_config).items():
         if name.startswith(prefix) and value is not None:
             key = name[len(prefix) :]
-            if key not in excluded:
-                result[key] = value
+            if key in excluded:
+                continue
+            if backend == "sglang":
+                key = sglang_rename.get(key, key)
+            result[key] = value
     result.update(getattr(rollout_config, f"{prefix}engine_kwargs", None) or {})
     return result
 
@@ -301,6 +315,40 @@ def _max_adapter_rank(adapters: List[str], default: int = 16) -> int:
         with open(config_path, encoding="utf-8") as f:
             ranks.append(int(json.load(f).get("r", default)))
     return max(ranks) if ranks else default
+
+
+def apply_generation_baseline(generation_config: Optional[GenerationConfig], model_id: Optional[str]) -> None:
+    """Fill unset sampling knobs from the model's own ``generation_config.json``; explicit knobs win.
+
+    legacy loaded the model-side file as the sampling baseline, so a model's declared defaults (a low
+    temperature, gemma's top_k/top_p) survive when the caller sets nothing; without this the samplers'
+    own defaults (temperature=1.0) silently replace them. ``GenerationConfig.generation_config`` -- a
+    path, directory, or HF GenerationConfig instance -- overrides the model id as the source.
+    """
+    if generation_config is None:
+        return
+    source = generation_config.generation_config
+    try:
+        if source is None:
+            if not model_id:
+                return
+            from transformers import GenerationConfig as HfGenerationConfig
+
+            source = HfGenerationConfig.from_pretrained(model_id)
+        elif isinstance(source, str):
+            from transformers import GenerationConfig as HfGenerationConfig
+
+            source = HfGenerationConfig.from_pretrained(source)
+    except OSError:
+        # No generation_config.json beside the model -- the common case for a plain LLM.
+        return
+    for name in ("max_new_tokens", "temperature", "top_k", "top_p", "repetition_penalty"):
+        value = getattr(source, name, None)
+        if value is None or getattr(generation_config, name, None) is not None:
+            continue
+        if name == "top_k" and value == 0:
+            value = -1  # HF spells "disabled" as 0; the sampler side spells it -1 (legacy mapping)
+        setattr(generation_config, name, value)
 
 
 def to_sampling_params(generation_config: Optional[GenerationConfig] = None, **overrides) -> Any:

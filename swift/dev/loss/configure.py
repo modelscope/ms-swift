@@ -182,7 +182,8 @@ def configure_ppo_value_loss(value_model: TrainableModel, rl_config: 'RLConfig')
     value_model.set_loss(loss_cls(cliprange_value=rl_config.cliprange_value, vf_coef=rl_config.vf_coef))
 
 
-def configure_rl_metrics(model: TrainableModel, rl_config: 'RLConfig') -> None:
+def configure_rl_metrics(model: TrainableModel, rl_config: 'RLConfig',
+                         sampling_temperature: float = 1.0) -> None:
     """Register the algorithm-specific twinkle.metric component on ``model`` for this rl_type.
 
     Adds ONLY the component the default ``LossMetric`` cannot express (GRPO family's
@@ -198,7 +199,9 @@ def configure_rl_metrics(model: TrainableModel, rl_config: 'RLConfig') -> None:
         # loss's (GSPO clips a per-sequence geometric-mean ratio; CISPO clips unconditionally).
         grpo_loss_type = rl_config.loss_type[0] if rl_config.loss_type else 'grpo'
         metric_cls = {'gspo': GSPOMetric, 'cispo': CISPOMetric}.get(grpo_loss_type, GRPOMetric)
-        kwargs: Dict[str, Any] = {'epsilon': rl_config.epsilon, 'temperature': rl_config.distill_temperature}
+        # ``temperature`` recovers the T=1 report scale from sampler-temperature logps, so it must be
+        # the SAMPLING temperature -- NOT RLConfig.distill_temperature, which is the GKD-only knob.
+        kwargs: Dict[str, Any] = {'epsilon': rl_config.epsilon, 'temperature': sampling_temperature}
         if rl_config.epsilon_high is not None:
             kwargs['epsilon_high'] = rl_config.epsilon_high
         if rl_config.chord_sft_dataset:
@@ -208,7 +211,7 @@ def configure_rl_metrics(model: TrainableModel, rl_config: 'RLConfig') -> None:
         # PPO's policy loss is the shared clipped surrogate with clip range ``cliprange``; PPOMetric
         # reports the same token-level ratio/clip stats.
         model.add_metric(
-            PPOMetric, is_training=True, epsilon=rl_config.cliprange, temperature=rl_config.distill_temperature)
+            PPOMetric, is_training=True, epsilon=rl_config.cliprange, temperature=sampling_temperature)
     elif rl_type in ('dpo', 'cpo', 'orpo', 'simpo'):
         # Paired preference objectives: forward beta only when set so twinkle's default stands.
         kwargs = {'beta': rl_config.beta} if rl_config.beta is not None else {}

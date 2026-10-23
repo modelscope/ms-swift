@@ -82,6 +82,10 @@ def _advantage_pipeline(cluster: Any, rl_config: 'RLConfig', reward_config: 'Rew
     teacher_logps)``.
     """
     features = [sample.encoded for sample in samples]
+    # Every logps-bearing forward must divide logits by the SAMPLING temperature: the sampler's
+    # logps are taken at that temperature, and a T=1 training forward against T-scaled rollout
+    # logps skews every importance ratio by (T-1)·logp (legacy aligned this with ``logits / T``).
+    temperature = float(cluster.sampling_params.get('temperature', 1.0))
     # one per-device block per rank: train_batch_size (per_device x dp) spread over the dp ranks
     micro_batch_size = max(1, train_batch_size // cluster.model.device_mesh.data_world_size)
     scored: Dict[str, Any] = {}
@@ -90,7 +94,7 @@ def _advantage_pipeline(cluster: Any, rl_config: 'RLConfig', reward_config: 'Rew
         # a disable_adapter auxiliary IS the policy object itself (identity derives disable_lora AND
         # the policy-group placement).
         scored['ref'] = cluster.reference.forward_only(
-            inputs=features, micro_batch_size=micro_batch_size,
+            inputs=features, micro_batch_size=micro_batch_size, temperature=temperature,
             **({'disable_lora': True} if ref_shared else {}))
     if cluster.teacher is not None or any((s.extra or {}).get('teacher_prompt') for s in samples):
         if cluster.teacher is not None:
@@ -101,11 +105,12 @@ def _advantage_pipeline(cluster: Any, rl_config: 'RLConfig', reward_config: 'Rew
             t_model, t_disable = cluster.model, False
         privileged = cluster.worker.privileged_features(samples)
         scored['teacher'] = t_model.forward_only(
-            inputs=privileged, micro_batch_size=micro_batch_size,
+            inputs=privileged, micro_batch_size=micro_batch_size, temperature=temperature,
             **({'disable_lora': True} if t_disable else {}))
     preserve = bool(rl_config.rollout_importance_sampling_mode or rl_config.log_rollout_offpolicy_metrics)
     if preserve:
-        scored['old'] = cluster.model.forward_only(inputs=features, micro_batch_size=micro_batch_size)
+        scored['old'] = cluster.model.forward_only(
+            inputs=features, micro_batch_size=micro_batch_size, temperature=temperature)
     if preserve and correction_out is not None:
         # The legacy-compatible off-policy diagnostics, computed from the training-side forward and
         # the sampler's own log-probs BEFORE any optimizer step this pull.
@@ -166,7 +171,7 @@ def _prepare_routing_replay(model: Any, rl_config: 'RLConfig', samples: List[Any
 
 
 def _forward_kwargs(rl_config: 'RLConfig', ga: int, mini: Any, advantages: Any, old_logps: Any,
-                    ref_logps: Any, teacher_logps: Any) -> Dict[str, Any]:
+                    ref_logps: Any, teacher_logps: Any, temperature: float) -> Dict[str, Any]:
     """One mini-batch's parallel-list ``forward_backward`` kwargs (CHORD's explicit loss controls excluded)."""
     from swift.dev.utils.scoring import copy_inputs
 
@@ -178,6 +183,7 @@ def _forward_kwargs(rl_config: 'RLConfig', ga: int, mini: Any, advantages: Any, 
         'rollout_logps': [list(sample.rollout_logps) for sample in mini],
         'truncated': [bool(rl_config.overlong_filter and getattr(sample, 'truncated', False))
                       for sample in mini],
+        'temperature': temperature,
     }
     if ref_logps is not None:
         kwargs['ref_logps'] = ref_logps
@@ -192,7 +198,7 @@ def _forward_kwargs(rl_config: 'RLConfig', ga: int, mini: Any, advantages: Any, 
 
 def _train_mini_batches(state: StepState, rl_config: 'RLConfig', samples: List[Any], *,
                         train_batch_size: int, advantages: Any, old_logps: Any, ref_logps: Any,
-                        teacher_logps: Any, chord_fn: Optional[Callable[[], List[Any]]] = None,
+                        teacher_logps: Any, temperature: float, chord_fn: Optional[Callable[[], List[Any]]] = None,
                         ema_manager: Any = None, save: Optional[Callable[[str], Any]] = None) -> int:
     """Train one pull's mini-batches (replays x chunks); returns the optimizer steps actually run."""
     model = state.model
@@ -217,7 +223,7 @@ def _train_mini_batches(state: StepState, rl_config: 'RLConfig', samples: List[A
             kwargs = _forward_kwargs(
                 rl_config, ga, mini, advantages[lo:hi], old_logps[lo:hi],
                 ref_logps[lo:hi] if ref_logps is not None else None,
-                teacher_logps[lo:hi] if teacher_logps is not None else None)
+                teacher_logps[lo:hi] if teacher_logps is not None else None, temperature)
             if chord_fn is not None:
                 # CHORD's dual RPC: the two losses accumulate on ONE gradient (weights sum to 1),
                 # so only the second RPC finalizes; the overlap guard below is the collision backstop.
@@ -339,7 +345,9 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
             entered = False
             _train_mini_batches(state, rl_config, samples, train_batch_size=train_batch_size,
                                 advantages=advantages, old_logps=old_logps, ref_logps=ref_logps,
-                                teacher_logps=teacher_logps, chord_fn=chord_fn, ema_manager=ema_manager,
+                                teacher_logps=teacher_logps,
+                                temperature=float(cluster.sampling_params.get('temperature', 1.0)),
+                                chord_fn=chord_fn, ema_manager=ema_manager,
                                 save=save)
             if state.reached_max() or state.should_stop():
                 break
@@ -398,8 +406,9 @@ def _disaggregated_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Ro
         _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size)
         optimizer_steps = _train_mini_batches(
             state, rl_config, samples, train_batch_size=train_batch_size, advantages=advantages,
-            old_logps=old_logps, ref_logps=ref_logps, teacher_logps=teacher_logps, chord_fn=chord_fn,
-            ema_manager=ema_manager, save=save)
+            old_logps=old_logps, ref_logps=ref_logps, teacher_logps=teacher_logps,
+            temperature=float(cluster.sampling_params.get('temperature', 1.0)),
+            chord_fn=chord_fn, ema_manager=ema_manager, save=save)
         # the visible publish: cadence inline, then one request; the driver brackets the push with
         # its version accounting and the adapter's decide/register (commit releases its thread).
         steps_since_publish += optimizer_steps

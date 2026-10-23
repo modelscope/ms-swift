@@ -11,7 +11,7 @@ class MergeCliConfig:
 
 def parse_merge_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     from swift.dev.cli.legacy_coverage import reject_legacy_only_flags
-    from swift.dev.cli.parser import parse_configs_strict, resolve_argv
+    from swift.dev.cli.parser import flag_names, parse_configs_strict, resolve_argv
     from swift.dev.config import (
         CheckpointConfig,
         DatasetConfig,
@@ -31,7 +31,9 @@ def parse_merge_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     configs = parse_configs_strict(classes, effective_argv, command='swift merge', load_args_default=True)
     names = ('model_config', 'plugin_config', 'template_config', 'dataset_config', 'checkpoint_config',
              'tuner_config', 'cli_config', 'runtime_config')
-    return dict(zip(names, configs))
+    result = dict(zip(names, configs))
+    result['checkpoint_config']._output_dir_explicit = 'output_dir' in flag_names(effective_argv)
+    return result
 
 
 def merge_main(argv: Optional[List[str]] = None) -> str:
@@ -40,6 +42,9 @@ def merge_main(argv: Optional[List[str]] = None) -> str:
 
     configs = parse_merge_configs(argv)
     process_and_validate_configs(configs, add_version=False, create_output_dir=False)
+    checkpoint = configs['checkpoint_config']
+    if not checkpoint._output_dir_explicit and configs['tuner_config'].adapters:
+        checkpoint.output_dir = f"{configs['tuner_config'].adapters[0]}-merged"
     return run_merge_lora(
         configs['model_config'],
         configs['tuner_config'],

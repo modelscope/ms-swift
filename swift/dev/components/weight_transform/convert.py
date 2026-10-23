@@ -77,6 +77,17 @@ class ConvertComponent(BaseWeightTransform):
             raise ValueError('ModelConfig.model is required: the HF model/config is what defines the '
                              'target architecture for both conversion directions.')
 
+    def skip(self, output_dir: str) -> bool:
+        """Refuse to overwrite an existing export unless ``exist_ok`` (legacy FileExistsError guard).
+
+        A conversion writes a fresh file set; re-running into a stale directory would mix the
+        previous run's shards and sidecar files with the new ones.
+        """
+        if os.path.exists(output_dir) and not self.convert_config.exist_ok:
+            raise FileExistsError(
+                f'The output directory already exists: {output_dir}. Pass --exist_ok true to overwrite it.')
+        return False
+
     def run(self, output_dir: str) -> str:
         """Route to the mcore-reading worker when a mcore source is involved, else HF -> mcore."""
         if self.convert_config.to_hf or self.convert_config.mcore_model or self.convert_config.mcore_adapter:

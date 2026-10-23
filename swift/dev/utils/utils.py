@@ -72,6 +72,9 @@ def append_to_jsonl(fpath: str, obj: Union[Dict, List[Dict]], *, encoding: str =
     run single-process on the driver.
     """
     rows = obj if isinstance(obj, list) else [obj]
+    parent = os.path.dirname(fpath)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     with open(fpath, 'a', encoding=encoding) as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + '\n')

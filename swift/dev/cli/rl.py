@@ -9,11 +9,12 @@ class RlCliCompatConfig:
     """Deprecated RLHF aliases retained for command-line compatibility.
 
     ``response_length`` owning its spelling here suppresses the parser-level alias fold, so the
-    value lands on this config and ``_apply_rl_compat`` folds it manually.
+    value lands on this config and ``_apply_rl_compat`` folds it manually. ``--seq_kd`` is refused
+    up front by ``reject_legacy_only_flags`` (its removal note lives in legacy_coverage), so it has
+    no compat field here.
     """
 
     response_length: Optional[int] = None
-    seq_kd: bool = False
 
 
 def _apply_rl_compat(passed, generation_config, rl_config, rlhf_compat) -> None:
@@ -21,8 +22,6 @@ def _apply_rl_compat(passed, generation_config, rl_config, rlhf_compat) -> None:
         rl_config.max_completion_length = generation_config.max_new_tokens
     if rlhf_compat.response_length is not None:
         rl_config.max_completion_length = rlhf_compat.response_length
-    if rlhf_compat.seq_kd:
-        raise ValueError('`--seq_kd` is deprecated and was never implemented; use the GKD objective directly.')
 
 
 def parse_rl_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:

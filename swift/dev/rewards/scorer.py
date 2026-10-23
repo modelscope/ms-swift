@@ -338,7 +338,7 @@ class ApiJudgeReward:
 
     Same judge template and score parser as :class:`GenerativeJudgeReward`, but generation happens on
     a remote server. Chosen when the channel's model id is an http(s) URL; the judge model name is
-    taken from ``engine_args['model']``, as the 'client' sampler backend does.
+    taken from ``engine_args['model']``.
     """
 
     def __init__(self,
@@ -355,7 +355,7 @@ class ApiJudgeReward:
 
         if not model:
             raise ValueError('an API judge reward needs the judge model name; put it in engine_args '
-                             "({'model': ..., 'base_url': ...}) the way the 'client' sampler backend does.")
+                             "({'model': ..., 'base_url': ...}).")
         self.model = model
         self.client = OpenAI(
             base_url=base_url, api_key=api_key or os.environ.get('OPENAI_API_KEY'), timeout=timeout)

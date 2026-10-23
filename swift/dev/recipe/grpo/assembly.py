@@ -220,7 +220,12 @@ def initialize_cluster(
         tuner_config=tuner_config,
         plugin_config=None,
     )
-    configure_rl_metrics(model, rl_config)
+    # The metric's temperature knob must be the SAMPLING temperature (1.0 unless the user set one):
+    # it recovers the T=1 report scale from the sampler-temperature logps the forwards produce.
+    sampling_temperature = 1.0
+    if generation_config is not None and generation_config.temperature is not None:
+        sampling_temperature = float(generation_config.temperature)
+    configure_rl_metrics(model, rl_config, sampling_temperature=sampling_temperature)
 
     colocate = rollout_config.sampler_mode == "colocate"
     sampler = build_rl_sampler(
@@ -255,6 +260,9 @@ def initialize_cluster(
         max_trajectory_tokens=rollout_config.max_trajectory_tokens,
         tools_factory=tools_factory,
         tools_config=rollout_config,
+        # PPO and distill pass this through; the validate layer demands it for async + in_place,
+        # where publish aborts in-flight generation and each resumes from its own tokens.
+        allow_partial_rollout=rollout_config.allow_partial_rollout,
         remote_group=(None if colocate else REF_ONLY_REMOTE_GROUP),
     )
     engine = (

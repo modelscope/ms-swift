@@ -41,7 +41,7 @@ def run_deploy(
     deploy_config = deploy_config or _DeployConfig()
     distributed_config = distributed_config or _DistributedConfig()
 
-    _validate(deploy_config, quantize_config)
+    _validate(deploy_config, quantize_config, backend)
     _warn_unapplied_generation_defaults(generation_config)
     if deploy_config.api_key is None:
         logger.warning('run_deploy is starting WITHOUT api_key: anyone who can reach the port can use the '
@@ -95,6 +95,15 @@ def build_server_config(
 
     if deploy_config.merge_lora and adapter_mapping:
         model_config, adapter_mapping = _merge_single_adapter(model_config, template_config, adapter_mapping)
+    if adapter_mapping:
+        # Multi-adapter serving is not wired through yet: the gateway registers the adapter names,
+        # but requests carry only ``adapter_name`` while the sampler resolves LoRA from ``adapter_uri``
+        # -- the mapping's paths never reach the engine, so every request would silently answer from
+        # the BASE model. Fail loudly instead (single adapter: use merge_lora; several: one deploy each).
+        raise ValueError(
+            f'Deploying {len(adapter_mapping)} adapters with per-request routing is not supported yet: the '
+            'adapter paths cannot reach the sampler engine. Use --merge_lora true to fold a single '
+            'adapter into the weights, or start one deployment per adapter.')
     if model_config.model is None:
         raise ValueError('ModelConfig.model is required to deploy (it is the model id/path the sampler loads).')
 
@@ -179,7 +188,7 @@ def _url_scheme(deploy_config: DeployConfig) -> str:
     return 'https' if deploy_config.ssl_certfile else 'http'
 
 
-def _validate(deploy_config: DeployConfig, quantize_config: Optional[QuantizeConfig]) -> None:
+def _validate(deploy_config: DeployConfig, quantize_config: Optional[QuantizeConfig], backend: str) -> None:
     """Fail loudly on knob combinations the twinkle-server path cannot honour, before anything starts."""
     if bool(deploy_config.ssl_keyfile) != bool(deploy_config.ssl_certfile):
         raise ValueError('HTTPS needs both ssl_keyfile and ssl_certfile; one alone would start a plain HTTP '
@@ -196,6 +205,11 @@ def _validate(deploy_config: DeployConfig, quantize_config: Optional[QuantizeCon
         raise ValueError(f'quant_method={quant_method!r} is a transformers load-time setting and cannot be '
                          'applied by the Ray Serve sampler. Deploy a pre-quantized checkpoint, or pass the '
                          "engine's own quantization arg via engine_args (e.g. vllm_quantization).")
+    if backend in ('pt', 'transformers'):
+        # The server rides the vLLM/SGLang engines (async submit, LoRA slots, sleep/wake); the
+        # transformers sampler has none of that plumbing. Fail loudly instead of mis-serving.
+        raise ValueError('deploy with the transformers (pt) sampler backend is not supported yet: the '
+                         'server needs the vLLM/SGLang engines. Use --backend vllm or sglang.')
 
 
 def _warn_unapplied_generation_defaults(generation_config: Optional[GenerationConfig]) -> None:

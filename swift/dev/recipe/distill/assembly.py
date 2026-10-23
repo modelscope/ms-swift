@@ -158,7 +158,7 @@ def initialize_distill_cluster(
     if resume_dir and tuner_config is None:
         # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
         # a tuned policy keeps the original base and reloads its adapter via resume (run_distill).
-        policy_config = copy(model_config)
+        policy_config = copy.deepcopy(model_config)
         policy_config.model = resume_dir
     model = build_model(
         policy_config,

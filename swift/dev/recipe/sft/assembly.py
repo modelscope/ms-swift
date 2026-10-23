@@ -133,7 +133,8 @@ def build_supervised_objects(
     # Match legacy save_args: keep one run-level args.json that every periodic/final checkpoint
     # copies, so --load_args works for a checkpoint produced before training reaches checkpoint-final.
     write_ckpt_args_json(
-        output_dir, processor, model_config, template_config, tuner_config, quantize_config, task_type=task_type
+        output_dir, processor, model_config, template_config, tuner_config, quantize_config,
+        dataset_config=dataset_config, task_type=task_type
     )
     dataloader, eval_dataloader = build_dataset(
         dataset_config, template, train_config, distributed_config, template_config=template_config, device_mesh=sp_mesh

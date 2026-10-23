@@ -16,6 +16,7 @@ def run_quantize(
     quant_n_samples: Optional[int] = None,
     safe_serialization: bool = True,
     max_shard_size: str = '5GB',
+    exist_ok: bool = False,
     **quantizer_kwargs,
 ) -> str:
     """Quantize ``model_config`` and write the result to ``output_dir``; returns that path.
@@ -36,5 +37,6 @@ def run_quantize(
         quant_n_samples=quant_n_samples,
         safe_serialization=safe_serialization,
         max_shard_size=max_shard_size,
+        exist_ok=exist_ok,
         **quantizer_kwargs)
     return component().path

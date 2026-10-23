@@ -89,6 +89,7 @@ def validate_configs(
     _check_logging(logging_config)
     _check_rlhf_ref_model(model_config, tuner_config, rl_config)
     _check_rlhf_advanced(train_config, rl_config, reward_config, rollout_config, distributed_config)
+    _check_online_rl_val_dataset(dataset_config, rl_config)
     _check_grpo_truncation_strategy(template_config, rl_config)
     _check_grpo_cached_dataset(dataset_config, rl_config)
     _check_rlhf_padding_free(template_config, dataset_config, rl_config)
@@ -165,6 +166,14 @@ def _check_rlhf_advanced(train_config: 'TrainConfig', rl_config: Optional['RLCon
         raise ValueError('CHORD, RLSD, SDAR, and dynamic sampling are GRPO-only.')
     if cfg.sync_ref_model and cfg.rl_type not in ('grpo', 'ppo'):
         raise ValueError('sync_ref_model requires rl_type grpo or ppo (only they have a reference model).')
+    # Without a reward channel there is nothing to reinforce: GRPO would fold NaN rows into every
+    # group's advantage, PPO would train on all-zero rewards. legacy fails this loudly too.
+    if cfg.rl_type == 'grpo' and not (reward_config and (reward_config.orm or reward_config.prm)):
+        raise ValueError('rl_type=grpo needs at least one reward channel: pass --orm (models or rule '
+                         'plugins) or --prm. Without one every group folds NaN into its advantage.')
+    if cfg.rl_type == 'ppo' and not (reward_config and reward_config.orm):
+        raise ValueError('rl_type=ppo needs the --orm reward channel (PRM is GRPO\'s per-token path); '
+                         'without rewards the GAE anchors are all zero.')
     _check_dynamic_sampling(cfg, reward_config)
     _check_grpo_controls(cfg)
     _check_reference_sync(cfg, train_config, distributed_config)
@@ -640,6 +649,17 @@ _GRPO_LOSS_TYPES = frozenset({
     'grpo', 'dapo', 'fipo', 'gspo', 'sapo', 'cispo', 'bnpo', 'dr_grpo', 'real', 'gpg', 'dro', 'dppo_tv',
     'dppo_kl', 'geo_mean', 'clip_cov', 'kl_cov'
 })
+
+
+def _check_online_rl_val_dataset(dataset_config: 'DatasetConfig', rl_config: Optional['RLConfig']) -> None:
+    """Refuse a val split for the online-RL recipes: they have no eval loop, so it would be dropped."""
+    if rl_config is None or dataset_config is None:
+        return
+    if rl_config.rl_type in {'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'} and dataset_config.val_dataset:
+        raise ValueError(
+            f'rl_type={rl_config.rl_type!r} has no in-training eval loop yet, so val_dataset would be '
+            'silently ignored. Drop --val_dataset, or evaluate the saved checkpoints with `swift eval` '
+            'after training.')
 
 
 def _check_grpo_controls(cfg: 'RLConfig') -> None:

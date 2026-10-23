@@ -172,7 +172,11 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
         result = converted
 
     if convert_config.merge_lora:
-        chains = bool(quantize_config.quant_method or checkpoint_config.push_to_hub)
+        # to_peft_format chains like quant/push: the derived `{adapter}-peft` dir is where to_peft
+        # itself just wrote, so merge must fall back to its own `{converted}-merged` default
+        # (legacy clears output_dir for `to_peft_format or quant_method or to_ollama or push_to_hub`).
+        chains = bool(quantize_config.quant_method or checkpoint_config.push_to_hub
+                      or convert_config.to_peft_format)
         merged = run_merge_lora(
             model_config,
             tuner_config,
@@ -194,7 +198,8 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
             dataset_config,
             output_dir=output_dir,
             safe_serialization=checkpoint_config.safe_serialization,
-            max_shard_size=checkpoint_config.max_shard_size)
+            max_shard_size=checkpoint_config.max_shard_size,
+            exist_ok=convert_config.exist_ok)
     elif convert_config.to_cached_dataset:
         train_dir, _ = export_cached_dataset(
             model_config, template_config, dataset_config, output_dir=output_dir,

@@ -174,11 +174,16 @@ def build_hub_pusher(checkpoint_config: Optional['CheckpointConfig'],
 def write_ckpt_args_json(ckpt_dir: str, processor: Any, model_config: 'ModelConfig',
                          template_config: 'TemplateConfig', tuner_config: Optional['TunerConfig'] = None,
                          quantize_config: Optional['QuantizeConfig'] = None,
+                         dataset_config: Optional['DatasetConfig'] = None,
                          *, task_type: Optional[str] = None) -> None:
     """Write the self-describing args.json ``swift infer`` reads back from the checkpoint.
 
-    Legacy dumped the full argument dict; infer's read side consumes only force_load_keys (always
-    applied) and load_keys (applied when the reader's value is empty) -- that subset is written.
+    Legacy dumped the full argument dict; the read side (cli/parser.py) consumes only force-load
+    keys (always applied), load keys (applied when the reader's value is empty) and --load_data_args
+    fields. Those key sets live once in config/checkpoint_config.py and this writer iterates them,
+    so a key the reader expects is written here the day it is declared. ``plugin_config`` is not
+    threaded into the recipes (plugins load at the CLI layer), so ``external_plugins`` is the one
+    read-side key this writer never emits.
     """
     import json
     import torch.distributed as dist
@@ -189,36 +194,58 @@ def write_ckpt_args_json(ckpt_dir: str, processor: Any, model_config: 'ModelConf
         return
     os.makedirs(ckpt_dir, exist_ok=True)
 
+    from swift.dev.config.checkpoint_config import (
+        CHECKPOINT_DATA_FIELDS, CHECKPOINT_FORCE_LOAD_FIELDS, CHECKPOINT_LOAD_FIELDS)
     from swift.dev.utils.version import __version__ as swift_version
     model_meta = getattr(processor, 'model_meta', None)
-    args = {
+    configs = {
+        'model_config': model_config,
+        'quantize_config': quantize_config,
+        'tuner_config': tuner_config,
+        'template_config': template_config,
+    }
+    args: Dict[str, Any] = {
         # swift_version gates model_type loading in BaseArguments.load_args_from_ckpt
         # (model_type is only honored when swift_version >= 4.0.0.dev); must be present.
         'swift_version': swift_version,
-        # force_load_keys: infer applies these regardless of its current value.
-        'task_type': model_config.task_type or task_type,
-        'tuner_type': tuner_config.tuner if tuner_config is not None else 'full',
-        'quant_method': quantize_config.quant_method if quantize_config is not None else None,
-        'quant_bits': quantize_config.quant_bits if quantize_config is not None else None,
-        'bnb_4bit_compute_dtype': (
-            quantize_config.bnb_4bit_compute_dtype if quantize_config is not None else None),
-        'bnb_4bit_quant_type': quantize_config.bnb_4bit_quant_type if quantize_config is not None else None,
-        'bnb_4bit_use_double_quant': (
-            quantize_config.bnb_4bit_use_double_quant if quantize_config is not None else None),
-        'bnb_4bit_quant_storage': (
-            quantize_config.bnb_4bit_quant_storage if quantize_config is not None else None),
-        # load_keys: infer applies these only when its own value is None/empty. Record the portable
-        # id/path the user passed (legacy saves the id; infer re-resolves it on any machine).
-        'model': getattr(model_config, '_model_id_or_path', None) or model_config.model,
-        'model_type': getattr(model_meta, 'model_type', None),
-        'model_revision': model_config.model_revision,
-        'torch_dtype': model_config.torch_dtype,
-        'attn_impl': model_config.attn_impl,
-        'template': template_config.template or getattr(model_meta, 'template', None),
-        'system': template_config.system,
-        'truncation_strategy': template_config.truncation_strategy,
-        'max_length': template_config.max_length,
     }
+    # force-load keys: the reader applies these regardless of its current value.
+    for config_name, names in CHECKPOINT_FORCE_LOAD_FIELDS.items():
+        config = configs.get(config_name)
+        if config is None:
+            continue
+        for entry in names:
+            key, field_name = entry if isinstance(entry, tuple) else (entry, entry)
+            value = getattr(config, field_name, None)
+            if value is not None:
+                args[key] = value
+    # load keys: the reader applies these only when its own value is None/empty.
+    for config_name, names in CHECKPOINT_LOAD_FIELDS.items():
+        config = configs.get(config_name)
+        if config is None:
+            continue
+        for name in names:
+            value = getattr(config, name, None)
+            if value is not None:
+                args[name] = value
+    # --load_data_args fields (restored onto the reader's DatasetConfig verbatim).
+    if dataset_config is not None:
+        for name in CHECKPOINT_DATA_FIELDS:
+            value = getattr(dataset_config, name, None)
+            if value is not None:
+                args[name] = value
+    # Resolved metadata and portable ids win over the CLI spellings captured above: the model id
+    # re-resolves on any machine, and the template the run actually built (possibly the meta default
+    # rather than the user's) is what reproduces this checkpoint.
+    args['model'] = getattr(model_config, '_model_id_or_path', None) or model_config.model
+    if getattr(model_meta, 'model_type', None) is not None:
+        args['model_type'] = model_meta.model_type
+    args['template'] = template_config.template or getattr(model_meta, 'template', None)
+    args['task_type'] = model_config.task_type or task_type
+    if 'tuner_type' not in args:
+        # tuner_config is absent exactly on full-parameter runs, whose checkpoints infer must read
+        # back as full too (the reader force-loads tuner_type over its own default 'lora').
+        args['tuner_type'] = 'full'
     args = {key: value for key, value in args.items() if value is not None}
     with open(os.path.join(ckpt_dir, 'args.json'), 'w', encoding='utf-8') as f:
         json.dump(args, f, ensure_ascii=False, indent=2)
@@ -662,7 +689,7 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     template = build_template(template_config, processor, task_type=task_type)
     write_ckpt_args_json(
         output_dir, processor, model_config, template_config, tuner_config, quantize_config,
-        task_type=task_type)
+        dataset_config=dataset_config, task_type=task_type)
 
     backend = rollout_config.rollout_sampler
     if backend not in ('vllm', 'sglang'):
@@ -1144,6 +1171,122 @@ def flatten_evalscope_report(summary: Any) -> Dict[str, float]:
             if isinstance(metric, dict) and metric.get('name') is not None and metric.get('score') is not None:
                 flat[str(metric['name'])] = float(metric['score'])
     return flat
+
+
+def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_gc: bool,
+                  manual_gc_eval: bool, micro_step_kwargs: Callable[..., Dict[str, Any]],
+                  global_step: int) -> Optional[dict]:
+    """Val-loss eval: the normalized per-token loss over eval_dataloader (None if there is none).
+
+    Mirrors the train metric path on the eval side: each val batch runs ``forward_only`` (no grad)
+    then ``calculate_loss`` (fills this batch's loss); a final ``calculate_metric(False)`` aggregates
+    and resets. Megatron already produced the loss inside forward_only -- its ``calculate_loss``
+    raises NotImplementedError, treated as already populated.
+    """
+    if eval_dataloader is None:
+        return None
+    if manual_gc and manual_gc_eval:
+        import gc
+        gc.collect()
+    for index, batch in enumerate(eval_dataloader):
+        if eval_iters > 0 and index >= eval_iters:
+            break
+        model.forward_only(**micro_step_kwargs(batch, owns_ga=True))
+        try:
+            model.calculate_loss()
+        except NotImplementedError:
+            pass
+    metrics = model.calculate_metric(is_training=False)
+    result = {'step': global_step}
+    if metrics.get('loss') is not None:
+        result['eval_loss'] = float(metrics['loss'])
+    for key, value in metrics.items():
+        if key.startswith('loss_'):
+            result[f'eval_{key}'] = float(value)
+    if manual_gc and manual_gc_eval:
+        import gc
+        gc.collect(0)
+    return result
+
+
+def evaluate_generate(generative: Optional[GenerativeEval], *, global_step: int) -> Optional[dict]:
+    """Generative eval: run an EvalScope benchmark over the resident sampler (None if unwired).
+
+    Only rank 0 drives EvalScope (a single process owns the report files); the other ranks wait at a
+    barrier so the next training step stays collective-safe. ``enter``/``exit`` bracket the run with
+    the weight-sync + memory schedule for a co-resident vllm/sglang engine; they run on every rank
+    (under ray the driver drives the remote workers, under torchrun they are collective).
+    """
+    if generative is None:
+        return None
+    import torch.distributed as dist
+
+    from swift.dev.eval import run_evaluator
+
+    distributed = dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1
+    is_main = (not distributed) or dist.get_rank() == 0
+    result: Dict[str, Any] = {'step': global_step}
+    if generative.enter is not None:
+        generative.enter()
+    try:
+        if is_main:
+            summary = run_evaluator(
+                generative.sampler,
+                generative.template,
+                datasets=generative.datasets,
+                model_id=generative.model_id,
+                task_config=generative.task_config)
+            result.update(flatten_evalscope_report(summary))
+            result['eval_report'] = summary
+        if distributed:
+            dist.barrier()
+    finally:
+        if generative.exit is not None:
+            generative.exit()
+    return result
+
+
+def track_best(metrics: dict, best: Tuple[Optional[float], int, Optional[str]], *,
+               metric_for_best_model: Optional[str], greater_is_better: bool, global_step: int,
+               output_dir: str) -> Tuple[Optional[float], int, Optional[str]]:
+    """Update the ``(best_metric, best_step, best_ckpt)`` triple when the watched metric improves."""
+    best_metric, best_step, best_ckpt = best
+    if not metric_for_best_model:
+        return best
+    value = metrics.get(metric_for_best_model)
+    if value is None:
+        logger.warning(f'metric_for_best_model={metric_for_best_model!r} was not produced by this eval '
+                       f'(got {sorted(key for key in metrics if key != "step")}); best-model tracking '
+                       'skipped for this pass.')
+        return best
+    value = float(value)
+    improved = (best_metric is None
+                or (value > best_metric if greater_is_better else value < best_metric))
+    if improved:
+        return value, global_step, os.path.join(output_dir, f'checkpoint-{global_step}')
+    return best
+
+
+def load_best_model(model: Any, best_ckpt: Optional[str], *, metric_for_best_model: Optional[str],
+                    best_metric: Optional[float], best_step: int,
+                    adapter_name: Optional[str]) -> None:
+    """Reload the best checkpoint at train end (the caller gates on load_best_model_at_end)."""
+    if not best_ckpt:
+        logger.warning('load_best_model_at_end is set but no eval produced metric_for_best_model; '
+                       'keeping the final weights.')
+        return
+    if not os.path.isdir(best_ckpt):
+        raise FileNotFoundError(
+            f'load_best_model_at_end wants {best_ckpt} (best {metric_for_best_model}='
+            f'{best_metric} at step {best_step}), but it does not exist: save_steps must align '
+            'with eval_steps so the best step is checkpointed, and save_total_limit must not have '
+            'pruned it.')
+    logger.info(f'load_best_model_at_end: reloading best checkpoint {best_ckpt} '
+                f'({metric_for_best_model}={best_metric} at step {best_step}).')
+    # LoRA checkpoints reload through their adapter group, so load() targets it rather than the
+    # full-parameter weights.
+    kwargs = {'adapter_name': adapter_name} if adapter_name else {}
+    model.load(best_ckpt, **kwargs)
 
 
 def num_optimizer_steps(num_micro_batches: int, gradient_accumulation_steps: int) -> int:

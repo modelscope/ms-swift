@@ -33,10 +33,10 @@ def _run(data_path, out_dir):
     run_sft = run_sft_mod.run_sft
 
     # run_sft returns only the training history; the eval rows its evaluate() appends to a local
-    # eval_history are observed by wrapping the module-level _evaluate_loss it calls (the Evaluator
-    # class this runner used to capture now lives in twinkle_agentic and only backs generative eval).
+    # eval_history are observed by wrapping the module-level evaluate_loss it calls (the helper lives
+    # in recipe.utils; run_sft binds it by name, so patching the module attribute is seen by the loop).
     captured = []
-    orig_evaluate_loss = run_sft_mod._evaluate_loss
+    orig_evaluate_loss = run_sft_mod.evaluate_loss
 
     def _capturing_evaluate_loss(*args, **kwargs):
         result = orig_evaluate_loss(*args, **kwargs)
@@ -44,7 +44,7 @@ def _run(data_path, out_dir):
             captured.append(result)
         return result
 
-    run_sft_mod._evaluate_loss = _capturing_evaluate_loss
+    run_sft_mod.evaluate_loss = _capturing_evaluate_loss
     try:
         history = run_sft(
             ModelConfig(model=snapshot_download(MODEL), torch_dtype='bfloat16'),
@@ -68,7 +68,7 @@ def _run(data_path, out_dir):
             output_dir=out_dir,
             _save_final=False)
     finally:
-        run_sft_mod._evaluate_loss = orig_evaluate_loss
+        run_sft_mod.evaluate_loss = orig_evaluate_loss
 
     return {
         'rank': int(os.environ.get('RANK', '0')),

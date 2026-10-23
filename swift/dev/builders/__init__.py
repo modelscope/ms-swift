@@ -23,6 +23,7 @@ from .model import (
 )
 from .reward import build_reward_model
 from .sampler import (
+    apply_generation_baseline,
     build_engine_args,
     build_sampler,
     is_pooling_task,
@@ -63,6 +64,7 @@ __all__ = [
     "resolve_twinkle_template",
     "sampled_texts",
     "to_pooling_params",
+    "apply_generation_baseline",
     "to_sampling_params",
     "build_template",
     "build_template_from_spec",

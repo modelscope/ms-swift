@@ -8,10 +8,10 @@ UNSUPPORTED_SAMPLER_FIELDS: Tuple[str, ...] = (
     'lmdeploy_cache_max_entry_count', 'lmdeploy_quant_policy', 'lmdeploy_session_len', 'lmdeploy_tp',
     'lmdeploy_vision_batch_size')
 # v4-only knobs: write_batch_size/to_ollama were superseded, the rest were removed from the Configs
-# (reward selectors merged into --orm/--prm, plugins onto --external_plugins, agent_template unused).
+# (reward selectors merged into --orm/--prm, plugins onto --external_plugins, tuner_backend onto --backend).
 REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
     'ignore_args_error', 'use_swift_lora', 'write_batch_size', 'to_ollama', 'orm_model', 'prm_model',
-    'reward_model_plugin', 'custom_register_path', 'agent_template', 'tuner_backend',
+    'reward_model_plugin', 'custom_register_path', 'tuner_backend',
     # device_map is retired: the runtime places the model through its own parallel/accelerate strategy.
     'device_map',
     # use_vllm is retired: a rollout always rides a weight-syncable sampler engine (--rollout_sampler).
@@ -43,7 +43,6 @@ REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
     'reward_template': 'pass the template through --orm_template (one entry per model id) instead',
     'reward_model_plugin': 'reward-model scoring is built in now; configure --orm/--prm directly',
     'custom_register_path': 'use --external_plugins (local file | local folder | hub id)',
-    'agent_template': 'express the agent format through --template and the template registry',
     'tuner_backend': 'select unsloth with --backend unsloth instead (it covers LoRA and full-parameter runs)',
     'device_map': 'the runtime places the model across devices on its own; drop --device_map',
     'use_vllm': 'an online-RL rollout always uses a weight-syncable sampler engine; select it with '
@@ -51,7 +50,7 @@ REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
     'generation_max_length': 'use --max_new_tokens, or --eval_generation_config for in-training eval',
     'generation_num_beams': 'use --num_beams, or --eval_generation_config for in-training eval',
     'norm_bbox': 'bounding-box coordinate normalization follows the template; drop --norm_bbox',
-    'log_interval': 'throughput summaries follow the server builtin cadence; drop --log_interval',
+    'log_interval': 'log and throughput cadence is builtin and not configurable; drop --log_interval',
     'adalora_target_r': 'adaptive-rank LoRA is retired; use plain --tuner lora (its rank is fixed by --lora_rank)',
     'merge_lora': 'this command merges the adapter implicitly; drop --merge_lora',
     'exist_ok': 'use --replace_if_exists to overwrite an existing output directory',
@@ -70,9 +69,10 @@ REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
     'average_tokens_across_devices': 'the loss is already averaged over real tokens across the whole global batch',
     'use_logits_to_keep': 'memory-efficient loss computation is always enabled',
     'is_binary_loss_scale': 'the loss scale is configured through --loss_scale; drop --is_binary_loss_scale',
-    'template_backend': 'only the built-in template backend is used; drop --template_backend',
+    'template_backend': 'the template backend is picked automatically (jinja only as a fallback); drop --template_backend',
     'preserve_thinking': 'thinking-block handling is configured through --enable_thinking; drop --preserve_thinking',
     'disable_ignore_empty_think': 'empty-think handling is not configurable; drop --disable_ignore_empty_think',
+    'seq_kd': 'sequence-level knowledge distillation is expressed through the GKD objective; drop --seq_kd',
 }
 # eval scores a local sampler through the native runner, so the remote URL/backend and the
 # OpenCompass-only local-data toggle are obsolete.

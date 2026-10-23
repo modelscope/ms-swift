@@ -128,10 +128,12 @@ def _distill_round_loop(cluster: Cluster, rl_config: 'RLConfig', rollout_config:
                         entered = False
                 else:
                     # A rolling window over the dataset completions, so successive off-policy rounds
-                    # cover new rows (run_distill already rejected lmbda<1 without completions).
+                    # cover new rows (run_distill already rejected lmbda<1 without completions). The
+                    # window matches the offset step (train_batch_size), so one off-policy round
+                    # costs the same budget as one on-policy round instead of a whole epoch.
                     count = len(dataset_rows)
                     offset = ((round_index - 1) * train_batch_size) % count
-                    rows = [dataset_rows[(offset + i) % count] for i in range(count)]
+                    rows = [dataset_rows[(offset + i) % count] for i in range(train_batch_size)]
                     _train_rows(cluster, state, rows, False,
                                 train_batch_size=train_batch_size, save=save)
     finally:

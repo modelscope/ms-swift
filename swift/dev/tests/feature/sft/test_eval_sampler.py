@@ -4,11 +4,11 @@
 ``run_sft`` scores a run two ways, chosen by ``TrainConfig.predict_with_generate`` and dispatched in
 ``Evaluator.evaluate`` (``swift/dev/recipe/common/evaluator.py``):
 
-  - **validation-loss** (``predict_with_generate=False``, the default): ``_evaluate_loss`` runs
+  - **validation-loss** (``predict_with_generate=False``, the default): ``evaluate_loss`` runs
     ``forward_only`` over the ``eval_dataloader`` that ``split_dataset_ratio`` / ``val_dataset`` carved
     out, and records ``eval_loss``. No sampler, no engine, no network -- pure scoring on the weights
     being trained.
-  - **generative** (``predict_with_generate=True``): ``_evaluate_generate`` runs an EvalScope benchmark
+  - **generative** (``predict_with_generate=True``): ``evaluate_generate`` runs an EvalScope benchmark
     (``eval_dataset``) through a resident sampler the assembly built in ``_build_eval_sampler``, and
     folds the report into ``eval_history``. Two sampler backends:
       * ``transformers`` -- a facade over the LIVE training module (``TransformersSampler(model=..)``):
@@ -31,7 +31,7 @@ Coverage map (this file adds to it, never re-runs it):
     ``test_generative_eval_vllm_sampler_ray`` below.
 
 The generative-under-torchrun combination is deliberately NOT gated here: with the transformers-live
-sampler it is correct but rank0-only (peers idle at the eval barrier -- ``_evaluate_generate`` warns
+sampler it is correct but rank0-only (peers idle at the eval barrier -- ``evaluate_generate`` warns
 about the 1/N throughput), and ``validate._check_eval_generation`` REFUSES it outright under a
 param-sharding strategy (FSDP / DeepSpeed ZeRO-3) because rank0's all-gather would deadlock against
 peers parked at the barrier. The efficient multi-GPU generative path is Ray, which is what the Ray
@@ -112,17 +112,16 @@ def _captured_evaluator():
     """Capture every eval-pass result row run_sft produces, so a test can read them afterwards.
 
     ``run_sft`` returns only the training loss history; its ``evaluate()`` appends each pass to a local
-    ``eval_history``. The ``Evaluator`` class this used to wrap now lives in twinkle_agentic and only
-    backs the generative path, so both module-level evaluators run_sft calls (``_evaluate_loss`` /
-    ``_evaluate_generate``) are wrapped instead -- observing the REAL return values rather than
-    stubbing ``evaluate``. Yields the list of result dicts.
+    ``eval_history``. Both module-level evaluators run_sft calls (``evaluate_loss`` / ``evaluate_generate``,
+    helpers of recipe.utils that run_sft binds by name) are wrapped instead -- observing the REAL return
+    values rather than stubbing ``evaluate``. Yields the list of result dicts.
     """
     import importlib
     # `import ... as` would bind the FUNCTION the package __init__ re-exports under the
     # same name, not the module; importlib is explicit about wanting the module object.
     run_sft_mod = importlib.import_module('swift.dev.recipe.sft.run_sft')
     captured = []
-    originals = (run_sft_mod._evaluate_loss, run_sft_mod._evaluate_generate)
+    originals = (run_sft_mod.evaluate_loss, run_sft_mod.evaluate_generate)
 
     def _wrap(orig):
 
@@ -134,11 +133,11 @@ def _captured_evaluator():
 
         return wrapped
 
-    run_sft_mod._evaluate_loss, run_sft_mod._evaluate_generate = _wrap(originals[0]), _wrap(originals[1])
+    run_sft_mod.evaluate_loss, run_sft_mod.evaluate_generate = _wrap(originals[0]), _wrap(originals[1])
     try:
         yield captured
     finally:
-        run_sft_mod._evaluate_loss, run_sft_mod._evaluate_generate = originals
+        run_sft_mod.evaluate_loss, run_sft_mod.evaluate_generate = originals
 
 
 def _evalscope_reports(out_dir):
@@ -171,7 +170,7 @@ def test_val_loss_eval_single_card(tmp_path, text_model_path):
     Single card, transformers backend. ``split_dataset_ratio=0.25`` carves 2 of the 8 rows into a val
     set; ``eval_steps=1`` makes ``evaluate()`` run every optimizer step plus a final pass. The assertion
     reads ``eval_loss`` off the captured evaluator's ``eval_history`` -- a real number produced by
-    ``_evaluate_loss``'s ``forward_only`` + ``calculate_metric`` over the eval dataloader, not merely a
+    ``evaluate_loss``'s ``forward_only`` + ``calculate_metric`` over the eval dataloader, not merely a
     green run.
     """
     if not torch.cuda.is_available():
@@ -305,7 +304,7 @@ def _assert_generative_scored(history, eval_rows, out_dir, label):
     _assert_trained(history)
     eval_history = eval_rows
     assert eval_history, f'{label}: no generative eval ran'
-    # _evaluate_generate stores the raw EvalScope summary under 'eval_report' on rank 0 / the driver.
+    # evaluate_generate stores the raw EvalScope summary under 'eval_report' on rank 0 / the driver.
     assert any('eval_report' in e for e in eval_history), f'{label}: eval_history carries no EvalScope report'
     reports = _evalscope_reports(out_dir)
     assert reports, f'{label}: EvalScope wrote no benchmark report under {os.path.join(out_dir, "eval")}'
@@ -322,7 +321,7 @@ def test_generative_eval_transformers_sampler_single_card(tmp_path, text_model_p
 
     The sampler is a facade over the live LoRA module (``TransformersSampler(model=..)``): generation runs
     in-place on the weights being trained, no second copy. This is the end-to-end gate for the whole
-    generative wiring -- ``_generative_eval_kwargs`` -> ``_build_eval_sampler`` -> ``_evaluate_generate``
+    generative wiring -- ``_generative_eval_kwargs`` -> ``_build_eval_sampler`` -> ``evaluate_generate``
     -> ``run_evaluator`` -> EvalScope Native -- which builds a TaskConfig from TrainConfig. A green run
     with a real report on disk means that chain is intact.
     """

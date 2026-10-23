@@ -88,6 +88,7 @@ class InferComponent(RecipeComponent):
 
     def __call__(self) -> List[Dict[str, Any]]:
         from swift.dev.builders import (
+            apply_generation_baseline,
             build_parallel_mesh,
             build_sampler,
             build_template,
@@ -122,6 +123,9 @@ class InferComponent(RecipeComponent):
         output_format = infer_config.output_format
         multi_turn_enabled = bool(self.rollout_config and self.rollout_config.max_turns is not None)
         self._validate_sampling(num_return, output_format, multi_turn_enabled)
+        # The model's own generation_config.json is the sampling baseline: fill knobs the caller
+        # left unset from it, so a model's declared temperature/top_k survives (legacy parity).
+        apply_generation_baseline(self.generation_config, model_config.model)
 
         # Resolve the reward channels BEFORE twinkle init and the sampler build: a channel's model
         # spec decides whether an RM needs its own GPU DeviceGroup (declared at init) and whether a

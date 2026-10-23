@@ -36,6 +36,7 @@ class QuantizeComponent(BaseWeightTransform):
         quant_n_samples: Optional[int] = None,
         safe_serialization: bool = True,
         max_shard_size: str = "5GB",
+        exist_ok: bool = False,
         **quantizer_kwargs,
     ):
         super().__init__(model_config, output_dir=output_dir)
@@ -48,6 +49,8 @@ class QuantizeComponent(BaseWeightTransform):
         self.quant_n_samples = quant_n_samples if quant_n_samples is not None else quantize_config.quant_n_samples
         self.safe_serialization = safe_serialization
         self.max_shard_size = max_shard_size
+        #: Allow writing into an existing output directory (legacy ``ExportArguments.exist_ok``).
+        self.exist_ok = exist_ok
         #: Backend knobs (group_size / zero_point / v2 / bnb_4bit_* ...) forwarded verbatim to the
         #: twinkle quantizer -- NOT mirrored onto QuantizeConfig, where they would drift.
         self.quantizer_kwargs = quantizer_kwargs
@@ -65,14 +68,26 @@ class QuantizeComponent(BaseWeightTransform):
         from swift.dev.builders.quantization import quantizer_kwargs
 
         quant_method = self.quantize_config.quant_method
+        if quant_method not in CALIBRATION_METHODS:
+            return self._run_load_time(quant_method, output_dir)
         kwargs = quantizer_kwargs(
             self.quantize_config, self.quantizer_kwargs, torch_dtype=self.model_config.torch_dtype
         )
-        if quant_method not in CALIBRATION_METHODS:
-            return self._run_load_time(quant_method, kwargs, output_dir)
         return self._run_calibration(quant_method, kwargs, output_dir)
 
-    def _run_load_time(self, quant_method: str, kwargs: Dict[str, Any], output_dir: str) -> str:
+    def skip(self, output_dir: str) -> bool:
+        """Refuse to overwrite an existing export unless ``exist_ok`` (legacy FileExistsError guard).
+
+        Both savers re-shard by the new tensor set, so re-running into a stale directory would
+        leave the previous run's shards mixed with the new ones.
+        """
+        if os.path.exists(output_dir) and not self.exist_ok:
+            raise FileExistsError(
+                f"The output directory already exists: {output_dir}. Pass --exist_ok true to overwrite it."
+            )
+        return False
+
+    def _run_load_time(self, quant_method: str, output_dir: str) -> str:
         """bnb / fp8 / hqq / quanto / eetq: load the model quantized, then save the full directory.
 
         These schemes quantize WHILE transformers materializes the weights (``ConfigQuantizer.
@@ -80,12 +95,25 @@ class QuantizeComponent(BaseWeightTransform):
         to the loader and the result is persisted with ``save_pretrained`` + ``save_checkpoint``.
         Not streaming on purpose: the op is model-bound; backends expose no per-tensor writer.
         """
-        from twinkle.quantizer import get_quantizer
-
         from swift.dev.builders import load_model_processor
+        from swift.dev.builders.quantization import build_load_quantization_config
         from swift.dev.model import save_checkpoint
+        from swift.dev.model.loader import resolve_loader_cls, resolve_model_info
 
-        quant_config = get_quantizer(quant_method, **kwargs).get_quantization_config()
+        # The exclusion set (MoE gates, vision tower, aligner, lm_head) is architecture knowledge:
+        # resolve the family loader WITHOUT loading weights -- the same family resolution the load
+        # below performs internally -- so load-time quantization gets the protection calibration has.
+        info = resolve_model_info(
+            self.model_config.model,
+            model_type=self.model_config.model_type,
+            revision=self.model_config.model_revision)
+        loader_cls = resolve_loader_cls(self.model_config.model_type or info.model_type, self.model_config.model)
+        model_loader = loader_cls(info) if loader_cls is not None else None
+        quant_config = build_load_quantization_config(
+            self.quantize_config,
+            model_loader=model_loader,
+            torch_dtype=self.model_config.torch_dtype,
+            overrides=self.quantizer_kwargs)
         # Load-time quantization runs its kernels while transformers materializes the weights,
         # and they are GPU-bound; the raw load has no device_map default anymore, so place the
         # load on the accelerators unless model_kwargs says otherwise.
@@ -117,6 +145,11 @@ class QuantizeComponent(BaseWeightTransform):
 
         from swift.dev.model import save_checkpoint
         from swift.dev.utils import HfConfigFactory
+
+        if quant_method in ("awq", "gptq") and self.model_config.torch_dtype is None:
+            # Legacy ExportArguments pins fp16 for these backends: their scale search and kernels
+            # assume fp16 ranges, and loading the checkpoint's bf16 instead degrades or breaks them.
+            self.model_config.torch_dtype = "float16"
 
         dataset_config = self.dataset_config
         if dataset_config is None or not dataset_config.dataset:
@@ -333,7 +366,9 @@ class QuantizeComponent(BaseWeightTransform):
         if keep_per_sample:
             return samples
 
-        block_size = max_length or len(samples)
+        # max_length arrives as the raw config value (None when unset); the built template carries
+        # the resolved one (config value or model_info.max_model_len), which is legacy's block size.
+        block_size = max_length or getattr(template, "max_length", None) or len(samples)
         n_split = max(len(samples) // block_size, 1)
         logger.info(f"Split into {n_split} blocks")
         res: List[Any] = []

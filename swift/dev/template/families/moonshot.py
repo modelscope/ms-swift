@@ -297,7 +297,7 @@ class KimiK3Template(Template):
             preserve_thinking = self.preserve_thinking
         if preserve_thinking is None:
             # K3 was trained in preserved-thinking-history mode: keep historical
-            # reasoning by default (pass `--preserve_thinking false` to drop it).
+            # reasoning by default (per-request chat_template_kwargs can drop it).
             preserve_thinking = True
         return preserve_thinking
 

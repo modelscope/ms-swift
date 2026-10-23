@@ -589,6 +589,16 @@ def _derive_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['
         rl_config.ref_model = rl_config.ref_model or model_config.model
         rl_config.ref_model_type = rl_config.ref_model_type or model_config.model_type
         rl_config.ref_model_revision = rl_config.ref_model_revision or model_config.model_revision
+    if (getattr(rl_config, 'sync_ref_model', False) and rl_type in ('grpo', 'ppo')
+            and tuner != 'full' and not rl_config.ref_adapters and not rl_config.ref_model):
+        # A LoRA run's default reference is the policy actor itself (disable_adapter), but that
+        # lane is suppressed under sync_ref_model -- so neither the EMA nor the KL anchor would
+        # exist, silently. Fail loudly instead.
+        raise ValueError(
+            'sync_ref_model on a LoRA run needs an explicit --ref_model (or --ref_adapters) for a '
+            'separate frozen reference: without one, the in-actor disable_adapter reference is '
+            'suppressed and neither the EMA sync nor the KL anchor would happen. Pass one, or drop '
+            '--sync_ref_model.')
 
 
 def _derive_rlhf_teacher(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],

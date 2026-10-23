@@ -13,6 +13,11 @@ from transformers import HfArgumentParser
 from swift.dev.utils.logger import get_logger
 
 from .legacy_coverage import LEGACY_ALIASES
+from swift.dev.config.checkpoint_config import (
+    CHECKPOINT_DATA_FIELDS as _CHECKPOINT_DATA_FIELDS,
+    CHECKPOINT_FORCE_LOAD_FIELDS as _CHECKPOINT_FORCE_LOAD_FIELDS,
+    CHECKPOINT_LOAD_FIELDS as _CHECKPOINT_LOAD_FIELDS,
+)
 
 logger = get_logger()
 
@@ -350,30 +355,6 @@ def _merged_parse_class(config_classes: Sequence[Type],
     return merged, first_owner, owner_of
 
 
-# Checkpoint args.json keys applied regardless of the current value. An entry is a plain field name,
-# or a (json_key, field_name) pair when a persisted key kept its historical spelling (tuner_type).
-_CHECKPOINT_FORCE_LOAD_FIELDS = {
-    'model_config': ('task_type',),
-    'quantize_config': ('bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'),
-    'tuner_config': (('tuner_type', 'tuner'),),
-}
-_CHECKPOINT_DATA_FIELDS = (
-    'dataset', 'val_dataset', 'cached_dataset', 'cached_val_dataset', 'split_dataset_ratio', 'data_seed',
-    'dataset_num_proc', 'load_from_cache_file', 'dataset_shuffle', 'val_dataset_shuffle', 'streaming', 'interleave_prob',
-    'stopping_strategy', 'shuffle_buffer_size', 'download_mode', 'columns', 'strict', 'remove_unused_columns',
-    'disable_auto_column_mapping', 'model_name', 'model_author', 'custom_dataset_info')
-_CHECKPOINT_LOAD_FIELDS = {
-    'model_config': (
-        'model', 'model_type', 'model_revision', 'torch_dtype', 'attn_impl', 'experts_impl',
-        'new_special_tokens', 'num_labels', 'problem_type', 'rope_scaling', 'max_model_len'),
-    'plugin_config': ('external_plugins', ),
-    'quantize_config': (
-        'quant_method', 'quant_bits', 'hqq_axis', 'bnb_4bit_compute_dtype', 'bnb_4bit_quant_storage'),
-    'template_config': (
-        'template', 'system', 'truncation_strategy', 'use_chat_template', 'response_prefix'),
-}
-
-
 def _config_mapping(configs: Sequence[Any]) -> Dict[str, Any]:
     """Index parsed Config instances by their conventional CLI mapping names."""
     result = {}
@@ -509,8 +490,10 @@ def parse_configs(
         config._explicit_fields = {config_field.name for config_field in fields(config_class)
                                    if config_field.name in explicit_fields}
         configs.append(config)
-    if not remaining:
-        _restore_checkpoint_args(configs, default_load_args=load_args_default)
+    # The checkpoint restore runs even with unrecognized args left over: they are either about to be
+    # refused (strict) or deliberately tolerated (--allow_unknown_args), and neither case changes what
+    # a checkpoint's args.json should fill back in.
+    _restore_checkpoint_args(configs, default_load_args=load_args_default)
     for config in configs:
         _restore_config_types(config)
     return configs, remaining

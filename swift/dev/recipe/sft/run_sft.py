@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import math
-import os
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from swift.dev.utils.logger import get_logger
 
 from swift.dev.recipe.sft.assembly import SupervisedCluster, build_supervised_objects
 from swift.dev.recipe.utils import (
-    GenerativeEval, StepState, build_generative_eval, build_save_knobs,
-    resume_training, save_training_step, snapshot_initial_adapter, write_ckpt_args_json)
+    StepState, build_generative_eval, build_save_knobs, evaluate_generate,
+    evaluate_loss, load_best_model, resume_training, save_training_step, snapshot_initial_adapter,
+    track_best, write_ckpt_args_json)
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -66,123 +66,6 @@ def _guard_nonempty_epoch(reached_max: bool, should_stop: bool, epoch: int, batc
         'gradient_accumulation_steps * data_parallel_size) exceeds the dataset size, and drop_last '
         'discards the remainder. Enlarge the dataset or lower the batch size; otherwise training '
         'would loop empty epochs forever.')
-
-
-def _evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_gc: bool,
-                   manual_gc_eval: bool, micro_step_kwargs: Callable[..., Dict[str, Any]],
-                   global_step: int) -> Optional[dict]:
-    """Val-loss eval: the normalized per-token loss over eval_dataloader (None if there is none).
-
-    Mirrors the train metric path on the eval side: each val batch runs ``forward_only`` (no grad)
-    then ``calculate_loss`` (fills this batch's loss); a final ``calculate_metric(False)`` aggregates
-    and resets. Megatron already produced the loss inside forward_only -- its ``calculate_loss``
-    raises NotImplementedError, treated as already populated.
-    """
-    if eval_dataloader is None:
-        return None
-    if manual_gc and manual_gc_eval:
-        import gc
-        gc.collect()
-    for index, batch in enumerate(eval_dataloader):
-        if eval_iters > 0 and index >= eval_iters:
-            break
-        model.forward_only(**micro_step_kwargs(batch, owns_ga=True))
-        try:
-            model.calculate_loss()
-        except NotImplementedError:
-            pass
-    metrics = model.calculate_metric(is_training=False)
-    result = {'step': global_step}
-    if metrics.get('loss') is not None:
-        result['eval_loss'] = float(metrics['loss'])
-    for key, value in metrics.items():
-        if key.startswith('loss_'):
-            result[f'eval_{key}'] = float(value)
-    if manual_gc and manual_gc_eval:
-        import gc
-        gc.collect(0)
-    return result
-
-
-def _evaluate_generate(generative: Optional[GenerativeEval], *, global_step: int) -> Optional[dict]:
-    """Generative eval: run an EvalScope benchmark over the resident sampler (None if unwired).
-
-    Only rank 0 drives EvalScope (a single process owns the report files); the other ranks wait at a
-    barrier so the next training step stays collective-safe. ``enter``/``exit`` bracket the run with
-    the weight-sync + memory schedule for a co-resident vllm/sglang engine; they run on every rank
-    (under ray the driver drives the remote workers, under torchrun they are collective).
-    """
-    if generative is None:
-        return None
-    import torch.distributed as dist
-
-    from swift.dev.eval import run_evaluator
-    from swift.dev.recipe.utils import flatten_evalscope_report
-
-    distributed = dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1
-    is_main = (not distributed) or dist.get_rank() == 0
-    result: Dict[str, Any] = {'step': global_step}
-    if generative.enter is not None:
-        generative.enter()
-    try:
-        if is_main:
-            summary = run_evaluator(
-                generative.sampler,
-                generative.template,
-                datasets=generative.datasets,
-                model_id=generative.model_id,
-                task_config=generative.task_config)
-            result.update(flatten_evalscope_report(summary))
-            result['eval_report'] = summary
-        if distributed:
-            dist.barrier()
-    finally:
-        if generative.exit is not None:
-            generative.exit()
-    return result
-
-
-def _track_best(metrics: dict, best: Tuple[Optional[float], int, Optional[str]], *,
-                metric_for_best_model: Optional[str], greater_is_better: bool, global_step: int,
-                output_dir: str) -> Tuple[Optional[float], int, Optional[str]]:
-    """Update the ``(best_metric, best_step, best_ckpt)`` triple when the watched metric improves."""
-    best_metric, best_step, best_ckpt = best
-    if not metric_for_best_model:
-        return best
-    value = metrics.get(metric_for_best_model)
-    if value is None:
-        logger.warning(f'metric_for_best_model={metric_for_best_model!r} was not produced by this eval '
-                       f'(got {sorted(key for key in metrics if key != "step")}); best-model tracking '
-                       'skipped for this pass.')
-        return best
-    value = float(value)
-    improved = (best_metric is None
-                or (value > best_metric if greater_is_better else value < best_metric))
-    if improved:
-        return value, global_step, os.path.join(output_dir, f'checkpoint-{global_step}')
-    return best
-
-
-def _load_best_model(model: Any, best_ckpt: Optional[str], *, metric_for_best_model: Optional[str],
-                     best_metric: Optional[float], best_step: int,
-                     adapter_name: Optional[str]) -> None:
-    """Reload the best checkpoint at train end (the caller gates on load_best_model_at_end)."""
-    if not best_ckpt:
-        logger.warning('load_best_model_at_end is set but no eval produced metric_for_best_model; '
-                       'keeping the final weights.')
-        return
-    if not os.path.isdir(best_ckpt):
-        raise FileNotFoundError(
-            f'load_best_model_at_end wants {best_ckpt} (best {metric_for_best_model}='
-            f'{best_metric} at step {best_step}), but it does not exist: save_steps must align '
-            'with eval_steps so the best step is checkpointed, and save_total_limit must not have '
-            'pruned it.')
-    logger.info(f'load_best_model_at_end: reloading best checkpoint {best_ckpt} '
-                f'({metric_for_best_model}={best_metric} at step {best_step}).')
-    # LoRA checkpoints reload through their adapter group, so load() targets it rather than the
-    # full-parameter weights.
-    kwargs = {'adapter_name': adapter_name} if adapter_name else {}
-    model.load(best_ckpt, **kwargs)
 
 
 def _run_supervised(cluster: SupervisedCluster, model_config: 'ModelConfig',
@@ -271,9 +154,9 @@ def _run_supervised(cluster: SupervisedCluster, model_config: 'ModelConfig',
                     'while the rest wait at the eval barrier. For full-throughput generative eval, '
                     'run under --mode ray with --eval_sampler_backend vllm|sglang.')
                 warned_eval_dp = True
-            result = _evaluate_generate(generative, global_step=state.global_step)
+            result = evaluate_generate(generative, global_step=state.global_step)
         else:
-            result = _evaluate_loss(
+            result = evaluate_loss(
                 model, cluster.eval_dataloader, eval_iters=eval_iters, manual_gc=manual_gc,
                 manual_gc_eval=manual_gc_eval, micro_step_kwargs=micro_step_fn,
                 global_step=state.global_step)
@@ -281,7 +164,7 @@ def _run_supervised(cluster: SupervisedCluster, model_config: 'ModelConfig',
             return None
         eval_history.append(result)
         state.tracker.log(result, state.global_step)
-        state.best_metric, best_step, best_ckpt = _track_best(
+        state.best_metric, best_step, best_ckpt = track_best(
             result, (state.best_metric, best_step, best_ckpt), metric_for_best_model=metric_for_best_model,
             greater_is_better=greater_is_better, global_step=state.global_step, output_dir=output_dir)
         state.publish_state(metrics=result)
@@ -455,7 +338,7 @@ def _run_supervised(cluster: SupervisedCluster, model_config: 'ModelConfig',
         else:
             fit_transformers()
         if load_best_model_at_end:
-            _load_best_model(
+            load_best_model(
                 model, best_ckpt, metric_for_best_model=metric_for_best_model,
                 best_metric=state.best_metric, best_step=best_step,
                 adapter_name=best_model_adapter_name)
@@ -476,7 +359,7 @@ def _run_supervised(cluster: SupervisedCluster, model_config: 'ModelConfig',
         ckpt_dir = save('checkpoint-final', is_final=True)
         write_ckpt_args_json(
             ckpt_dir, cluster.processor, model_config, template_config, tuner_config,
-            quantize_config, task_type=cluster.task_type)
+            quantize_config, dataset_config=dataset_config, task_type=cluster.task_type)
     return state.history
 
 

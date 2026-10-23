@@ -65,7 +65,8 @@ def modules_to_not_convert(model_loader: Any) -> Optional[List[str]]:
 def build_load_quantization_config(quantize_config: Optional[QuantizeConfig],
                                    *,
                                    model_loader: Any = None,
-                                   torch_dtype: Optional[str] = None):
+                                   torch_dtype: Optional[str] = None,
+                                   overrides: Optional[Dict[str, Any]] = None):
     """Build the Transformers ``quantization_config`` requested for model loading."""
     if quantize_config is None or quantize_config.quant_method is None:
         return None
@@ -79,6 +80,7 @@ def build_load_quantization_config(quantize_config: Optional[QuantizeConfig],
     from twinkle.quantizer import get_quantizer
     kwargs = quantizer_kwargs(
         quantize_config,
+        overrides,
         modules_to_not_convert=modules_to_not_convert(model_loader),
         torch_dtype=torch_dtype)
     return get_quantizer(method, **kwargs).get_quantization_config()

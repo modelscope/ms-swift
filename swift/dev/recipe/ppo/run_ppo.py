@@ -41,6 +41,9 @@ def _gae_pipeline(cluster: Cluster, reward_config: 'RewardConfig', rl_config: 'R
         raise RuntimeError('the pulled batch has no response tokens to train on.')
     # one per-device block per rank: train_batch_size (per_device x dp) spread over the dp ranks
     micro_batch_size = max(1, train_batch_size // cluster.model.device_mesh.data_world_size)
+    # The reference's logps must be taken at the SAMPLING temperature, like every logps the ratio
+    # math compares against (the sampler's own logps are T-scaled; a T=1 forward skews them).
+    temperature = float(cluster.sampling_params.get('temperature', 1.0))
     ref_shared = cluster.reference is cluster.model
     # the critic's values (the value head via task='value') and the reference's logps; the policy
     # actor chains its own disable_lora pass when the reference IS the policy object.
@@ -49,7 +52,7 @@ def _gae_pipeline(cluster: Cluster, reward_config: 'RewardConfig', rl_config: 'R
             inputs=features, micro_batch_size=micro_batch_size,
             task='value', return_logits=True),
         'ref': cluster.reference.forward_only(
-            inputs=features, micro_batch_size=micro_batch_size,
+            inputs=features, micro_batch_size=micro_batch_size, temperature=temperature,
             **({'disable_lora': True} if ref_shared else {})),
     }
     # collect once at the training consumption point; the lanes crossed driver->worker as references
@@ -67,7 +70,7 @@ def _gae_pipeline(cluster: Cluster, reward_config: 'RewardConfig', rl_config: 'R
 def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', samples: List[Any],
                      advantages: List[List[float]], returns: List[List[float]],
                      values: List[List[float]], old_logps: List[List[float]], *,
-                     train_batch_size: int, ema_manager: Any,
+                     train_batch_size: int, temperature: float, ema_manager: Any,
                      save: Callable[[str], Any]) -> int:
     """Train one pull on BOTH models over the mini-batches x ``num_ppo_epochs`` replays.
 
@@ -85,7 +88,7 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
             mini = [sample.encoded for sample in samples[lo:hi]]
             state.micro_step += 1
             model.forward_backward(
-                inputs=mini, gradient_accumulation_steps=state.ga,
+                inputs=mini, gradient_accumulation_steps=state.ga, temperature=temperature,
                 advantages=advantages[lo:hi], old_logps=old_logps[lo:hi])
             boundary = state.is_grad_sync_boundary()
             model.clip_grad_and_step(
@@ -146,7 +149,9 @@ def _colocate_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'Rewa
             kept, advantages, returns, values, old_logps = _gae_pipeline(
                 cluster, reward_config, rl_config, samples, train_batch_size, reward_metric)
             _train_ppo_batch(cluster, state, rl_config, kept, advantages, returns, values, old_logps,
-                             train_batch_size=train_batch_size, ema_manager=ema_manager, save=save)
+                             train_batch_size=train_batch_size,
+                             temperature=float(cluster.sampling_params.get('temperature', 1.0)),
+                             ema_manager=ema_manager, save=save)
             if state.reached_max() or state.should_stop():
                 break
     finally:
@@ -184,7 +189,9 @@ def _streaming_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'Rew
             cluster, reward_config, rl_config, samples, train_batch_size, reward_metric)
         optimizer_steps = _train_ppo_batch(
             cluster, state, rl_config, kept, advantages, returns, values, old_logps,
-            train_batch_size=train_batch_size, ema_manager=ema_manager, save=save)
+            train_batch_size=train_batch_size,
+            temperature=float(cluster.sampling_params.get('temperature', 1.0)),
+            ema_manager=ema_manager, save=save)
         # the visible publish: cadence inline, then one request; the driver brackets the push with
         # its version accounting and the adapter's decide/register (commit releases its thread).
         steps_since_publish += optimizer_steps

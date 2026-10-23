@@ -42,6 +42,13 @@ DEV_ROUTE_MAPPING: Dict[str, str] = {
     'eval': 'swift.dev.cli.eval',
 }
 
+# v4 command names with no v5 route because the command was renamed or folded into another one;
+# the error for these names the v5 spelling instead of a bare "no dev route exists".
+DEV_ROUTE_REDIRECTS: Dict[str, str] = {
+    'merge-lora': 'merge',
+    'sample': 'infer',
+}
+
 
 def _use_dev_cli() -> bool:
     return os.environ.get('USE_SWIFT_V5', '').strip().lower() in {'1', 'true', 'yes', 'on'}
@@ -58,6 +65,10 @@ def resolve_route(method_name: str, route_mapping: Dict[str, str], is_megatron: 
     if method_name == 'web-ui':
         return route_mapping[method_name]
     if method_name not in DEV_ROUTE_MAPPING:
+        redirect = DEV_ROUTE_REDIRECTS.get(method_name)
+        if redirect is not None:
+            raise RuntimeError(f'USE_SWIFT_V5 is enabled: the {method_name!r} command no longer exists; '
+                               f'use `swift {redirect}` instead.')
         raise RuntimeError(f'USE_SWIFT_V5 is enabled but no dev route exists for {method_name!r}.')
     return DEV_ROUTE_MAPPING[method_name]
 
