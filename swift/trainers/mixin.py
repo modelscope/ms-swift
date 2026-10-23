@@ -953,6 +953,14 @@ class SwiftMixin:
 
                         model.forward = MethodType(reranker_forward, model)
 
+    @staticmethod
+    def _is_deepspeed_version_at_least(min_version: str) -> bool:
+        try:
+            import deepspeed
+            return version.parse(deepspeed.__version__.strip()) >= version.parse(min_version)
+        except (ImportError, AttributeError, TypeError, ValueError):
+            return False
+
     def _fix_gradient_checkpointing(self):
         # fix use_reentrant
         if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
@@ -963,7 +971,16 @@ class SwiftMixin:
         else:
             use_reentrant_ = None
         if use_reentrant_ is None:
-            if is_dist() and not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
+            ds_plugin = getattr(getattr(self, 'accelerator', None), 'state', None)
+            ds_plugin = getattr(ds_plugin, 'deepspeed_plugin', None)
+            zero3 = getattr(ds_plugin, 'zero_stage', None) == 3
+            if (self.is_deepspeed_enabled and zero3 and self._is_deepspeed_version_at_least('0.19.3')):
+                # Reentrant checkpointing + ZeRO-3 leaks the gathered parameters of
+                # recomputed layers during backward (deepspeedai/DeepSpeed#8481).
+                # Non-reentrant is only safe here with the ZeRO-3 fixes in >=0.19.3
+                # (deepspeedai/DeepSpeed#8130, #8144, #8148).
+                use_reentrant_ = False
+            elif is_dist() and not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
                 use_reentrant_ = False
             else:
                 use_reentrant_ = True
