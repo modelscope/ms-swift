@@ -98,6 +98,7 @@ def jsd_loss(
     log_softmax_fn: Callable = default_log_softmax,
     kl_div_fn: Callable = default_kl_div,
     chunk_size: int = 512,
+    align_vocab_fn: Optional[Callable] = None,
 ) -> torch.Tensor:
     """Chunked JSD between student and teacher.
 
@@ -111,6 +112,7 @@ def jsd_loss(
         log_softmax_fn: (logits [C, D]) -> log_probs [C, D]
         kl_div_fn: (input_log [C, D], target_log [C, D]) -> per_position [C]
         chunk_size: chunk size for memory efficiency
+        align_vocab_fn: optional alignment on each logits chunk, before normalization
 
     Returns:
         Scalar — unnormalized total JSD (caller normalizes by num_valid).
@@ -121,6 +123,8 @@ def jsd_loss(
     if N == 0:
         return s_logits.sum()  # Keep the empty partition connected to the student graph.
 
+    if s_logits.shape[-1] == t_logits.shape[-1]:
+        align_vocab_fn = None
     total = s_logits.new_zeros(())
 
     if beta != 0 and beta != 1:
@@ -132,8 +136,11 @@ def jsd_loss(
 
     for start in range(0, N, chunk_size):
         end = min(start + chunk_size, N)
-        s_log = log_softmax_fn(s_logits[start:end])
-        t_log = log_softmax_fn(t_logits[start:end])
+        s_chunk, t_chunk = s_logits[start:end], t_logits[start:end]
+        if align_vocab_fn is not None:
+            s_chunk, t_chunk = align_vocab_fn(s_chunk, t_chunk)
+        s_log = log_softmax_fn(s_chunk)
+        t_log = log_softmax_fn(t_chunk)
 
         if beta == 0:
             jsd = kl_div_fn(s_log, t_log)
@@ -154,17 +161,9 @@ def jsd_loss(
 
 
 def _align_vocab(student_logits: torch.Tensor, teacher_logits: torch.Tensor):
-    stu_vocab = student_logits.shape[-1]
-    tea_vocab = teacher_logits.shape[-1]
-    if stu_vocab == tea_vocab:
-        return student_logits, teacher_logits
-    if stu_vocab < tea_vocab:
-        student_logits = F.pad(student_logits, (0, tea_vocab - stu_vocab), 'constant', 0)
-        student_logits[..., stu_vocab:] = teacher_logits[..., stu_vocab:]
-    else:
-        teacher_logits = F.pad(teacher_logits, (0, stu_vocab - tea_vocab), 'constant', 0)
-        teacher_logits[..., tea_vocab:] = student_logits[..., tea_vocab:]
-    return student_logits, teacher_logits
+    """Compare the shared token-ID prefix; each side is normalized independently."""
+    shared_vocab = min(student_logits.shape[-1], teacher_logits.shape[-1])
+    return student_logits[..., :shared_vocab], teacher_logits[..., :shared_vocab]
 
 
 # ---------------------------------------------------------------------------
@@ -231,11 +230,15 @@ def gkd_loss(
     log_softmax_fn: Callable = default_log_softmax,
     kl_div_fn: Callable = default_kl_div,
     chunk_size: int = 512,
+    align_vocab_fn: Callable = _align_vocab,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Full GKD loss pipeline. Returns (total_loss, num_valid).
 
     Caller is responsible for normalization (e.g. simple division for HF,
     CP all-reduce + division for Megatron).
+    Full-vocab inputs must use the same token-ID mapping on their shared prefix.
+    Unequal vocabularies are compared after conditioning each distribution on that
+    prefix. TP callers must provide an alignment function that preserves global IDs.
 
     Args:
         student_logits: [B, S, V] student model logits
@@ -247,6 +250,7 @@ def gkd_loss(
         log_softmax_fn: logits -> log_probs (may be TP-aware for full-vocab)
         kl_div_fn: (input_log, target_log) -> per_position KL (may be TP-aware)
         chunk_size: chunk size for memory efficiency
+        align_vocab_fn: align full-vocab logits chunks before normalization (may be TP-aware)
 
     Returns:
         (total_loss, num_valid) — unnormalized total and count of valid positions.
@@ -258,14 +262,14 @@ def gkd_loss(
         s_logits = gather_fn(s_active, t_active.topk_indices)
         t_logits = t_active.topk_logprobs
         lsf, kdf = default_log_softmax, default_kl_div
+        align_vocab_fn = None
     else:
         s_logits = s_active
         t_logits = t_active.full_logits
-        s_logits, t_logits = _align_vocab(s_logits, t_logits)
         lsf, kdf = log_softmax_fn, kl_div_fn
 
     s_logits = s_logits / temperature
     t_logits = t_logits / temperature
 
-    total = jsd_loss(s_logits, t_logits, beta, lsf, kdf, chunk_size)
+    total = jsd_loss(s_logits, t_logits, beta, lsf, kdf, chunk_size, align_vocab_fn)
     return total, num_valid
