@@ -215,7 +215,6 @@ def _preprocess_common_before_consistancy_check(common_state_dict):
 
 
 def get_sharded_sd_metadata(args):
-    ## 这个函数干什么用的，各个参数的含义
     sharded_sd_metadata = {'singleton_local_shards': False, 'chained_optim_avoid_prefix': True}
     if getattr(args, 'use_megatron_fsdp', False):
         # Megatron-FSDP shards the distributed optimizer state as DTensors.
