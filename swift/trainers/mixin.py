@@ -971,11 +971,9 @@ class SwiftMixin:
         else:
             use_reentrant_ = None
         if use_reentrant_ is None:
-            ds_config = getattr(args, 'deepspeed', None)
-            if isinstance(ds_config, dict):
-                zero3 = ds_config.get('zero_optimization', {}).get('stage') == 3
-            else:
-                zero3 = is_deepspeed_zero3_enabled()
+            ds_plugin = getattr(getattr(self, 'accelerator', None), 'state', None)
+            ds_plugin = getattr(ds_plugin, 'deepspeed_plugin', None)
+            zero3 = getattr(ds_plugin, 'zero_stage', None) == 3
             if (self.is_deepspeed_enabled and zero3 and self._is_deepspeed_version_at_least('0.19.3')):
                 # Reentrant checkpointing + ZeRO-3 leaks the gathered parameters of
                 # recomputed layers during backward (deepspeedai/DeepSpeed#8481).
