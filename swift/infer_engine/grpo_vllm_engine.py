@@ -82,6 +82,11 @@ class GRPOVllmEngine(VllmEngine):
             request_config = RequestConfig()
         assert request_config.n == 1
 
+        if not infer_requests:
+            return []
+        # Resolve once per batch, including when no adapter is loaded.
+        kwargs['adapter_request'] = await self._get_grpo_lora_request_async(kwargs.get('adapter_request'))
+        kwargs['_lora_request_resolved'] = True
         tasks = [self.infer_async(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
             use_tqdm = len(infer_requests) > 1
@@ -102,8 +107,10 @@ class GRPOVllmEngine(VllmEngine):
         *,
         adapter_request: Optional[AdapterRequest] = None,
         pre_infer_hook=None,
+        _lora_request_resolved: bool = False,
     ):
-        adapter_request = await self._get_grpo_lora_request_async(adapter_request)
+        if not _lora_request_resolved:
+            adapter_request = await self._get_grpo_lora_request_async(adapter_request)
         return await super().infer_async(
             infer_request,
             request_config,
