@@ -577,8 +577,8 @@ class VllmEngine(InferEngine):
 
         res = SamplingParams(**kwargs)
 
-        if hasattr(res, 'output_kind') and res.n > 1:
-            # fix n > 1 in V1 Engine
+        if hasattr(res, 'output_kind') and (res.n > 1 or not request_config.stream):
+            # Skip intermediate outputs for non-streaming requests; retain the V1 n > 1 workaround.
             from vllm.sampling_params import RequestOutputKind
             res.output_kind = RequestOutputKind.FINAL_ONLY
         return res
