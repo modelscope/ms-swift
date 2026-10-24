@@ -35,7 +35,6 @@ from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
 from trl.trainer import grpo_trainer
 from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin
-from trl.trainer.utils import selective_log_softmax
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from swift.dataset import RowPreprocessor
@@ -59,7 +58,7 @@ from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
 from .utils import (_ForwardRedirection, collate_to_grpo_micro_batch, compute_chord_loss, encode_sample,
                     get_even_process_data, identity_data_collator, load_pil_img, make_chord_sft_dataset,
                     pad_logps_back_to_batch, patch_save_last_checkpoint, profiling_context, profiling_decorator,
-                    replace_assistant_response_with_ids, swanlab_get_run)
+                    replace_assistant_response_with_ids, selective_log_softmax, swanlab_get_run)
 
 try:
     from trl.trainer.utils import entropy_from_logits
