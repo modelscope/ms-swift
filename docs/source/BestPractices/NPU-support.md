@@ -246,6 +246,20 @@ pip install vllm-ascend==0.23.0 \
   --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi
 ```
 
+### 环境信息自查
+
+训练前，在仓库根目录使用训练所用的 Python 环境运行：
+
+```shell
+python examples/ascend/check_env.py
+```
+
+脚本按基础环境、软件组件、Ascend 安装信息和 NPU 状态四组输出表格。软件组件包括 PyTorch、torch-npu、ms-swift、Megatron Core、MindSpeed、mcore-bridge 和 triton-ascend，未检测到的组件会逐项提示。Note 列显示组件安装位置、Python 解释器路径或驱动/CANN 版本文件所在目录，长路径自动换行。取得设备信息时附上 `npu-smi` 自带的状态表格。
+
+`FOUND` 表示取得信息，`MISSING` 表示未找到包元数据或工具，`UNKNOWN` 表示未能确定版本或设备信息，`UNAVAILABLE` 表示查询失败。可选组件缺失不代表基础训练环境不可用，版本未知也不代表未安装。脚本不判断兼容性，不初始化 Megatron，不执行 NPU 运算；单项失败不会中断报告。以下可用性检查可按需继续执行。
+
+`triton-ascend` 按其分发元数据查询版本，不用普通 `triton` 的版本代替。
+
 ### NPU 可用性检查
 
 测试环境是否安装正确，NPU能否被正常加载：
