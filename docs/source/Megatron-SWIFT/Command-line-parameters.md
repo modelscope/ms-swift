@@ -41,6 +41,7 @@
 - 🔥optimizer_offload_fraction: 卸载到 CPU 的优化器状态所占比例。默认为1.。
 - optimizer_cuda_graph: 是否为优化器步骤启用 CUDA 计算图，传递给 Megatron 的 `--optimizer-cuda-graph`。默认为False。该参数需要"megatron-core>=0.17"。
 - use_precision_aware_optimizer: 使用 TransformerEngine 中的精度感知优化器，该优化器允许将主参数和优化器状态设置为较低精度，例如 fp16 和 fp8。
+  - 与 Megatron-FSDP v1 同时使用时，会自动对齐梯度配置，确保优化器读取正确的梯度字段。若已安装的 Megatron-Core 不支持所需的 `megatron_fsdp_use_decoupled_grad` 配置字段，则会明确报错；请使用支持该字段的版本或关闭精度感知优化器。
 - main_grads_dtype: 启用 use_precision_aware_optimizer 时主梯度的 dtype。可选为'fp32', 'bf16'。默认为'fp32'。
 - main_params_dtype: 启用 use_precision_aware_optimizer 时主参数的 dtype。可选为'fp32', 'fp16'。默认为'fp32'。
 - exp_avg_dtype: 启用 use_precision_aware_optimizer 时，adam 优化器中 exp_avg（即一阶矩）的 dtype。该 dtype 用于在训练过程中将优化器状态存储在内存中，但不会影响内核计算时的精度。可选为'fp32', 'fp16', 'bf16', 'fp8'。默认为'fp32'。
