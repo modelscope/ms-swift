@@ -70,6 +70,36 @@ del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
 grpo_trainer.seed_worker = seed_worker  # fix transformers 4.51.3
 
+
+def _should_skip_pre_update_policy_forward(
+    *,
+    num_iterations: int,
+    has_teacher: bool,
+    kl_in_reward: bool,
+    rollout_is_mode: Optional[str],
+    log_rollout_offpolicy_metrics: bool,
+) -> bool:
+    """Decide whether the GRPO pre-update policy forward is redundant (#10358).
+
+    When ``num_iterations == 1`` the rollout batch is consumed within a single
+    optimizer step, so the pre-update policy and the current policy are the
+    same weights and the pre-update logps are bit-for-bit identical to
+    ``per_token_logps``. The PPO clip term then collapses to a no-op and the
+    forward is pure overhead.
+
+    Skip the forward only when no downstream consumer depends on the real
+    pre-update logps:
+
+    - OPD-RL (teacher KL reads ``old_per_token_logps``),
+    - ``kl_in_reward`` (loss-site reader falls back to ``per_token_logps.detach()``,
+      but the ref forward also runs through this same block),
+    - the rollout importance-sampling correction,
+    - the rollout off-policy diagnostic metrics.
+    """
+    return (num_iterations == 1 and not has_teacher and not kl_in_reward and rollout_is_mode is None
+            and not log_rollout_offpolicy_metrics)
+
+
 logger = get_logger()
 if is_wandb_available():
     import wandb
@@ -758,9 +788,16 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             origin_data = batch if (self.dynamic_num_samples and self.is_multimodal) else None
 
             with torch.no_grad(), disable_gradient_checkpointing(self.model, self.args.gradient_checkpointing_kwargs):
-                grpo_batch.old_per_token_logps = (
-                    self._get_per_token_logps_and_entropies(
-                        self.model, model_inputs, grpo_batch, origin_data=origin_data)[0])
+                if not _should_skip_pre_update_policy_forward(
+                        num_iterations=self.num_iterations,
+                        has_teacher=self._has_teacher,
+                        kl_in_reward=self.kl_in_reward,
+                        rollout_is_mode=self.rollout_importance_sampling_mode,
+                        log_rollout_offpolicy_metrics=self.log_rollout_offpolicy_metrics,
+                ):
+                    grpo_batch.old_per_token_logps = (
+                        self._get_per_token_logps_and_entropies(
+                            self.model, model_inputs, grpo_batch, origin_data=origin_data)[0])
                 if self.beta == 0.0:
                     ref_per_token_logps = None
                 elif self.ref_model is not None:
