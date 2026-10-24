@@ -4,8 +4,8 @@ import inspect
 import os
 import pickle
 import torch
-from collections import Counter
 from copy import deepcopy
+from dataclasses import asdict
 from PIL import Image
 from tqdm.asyncio import tqdm_asyncio
 from typing import Any, Dict, List, Optional, Union
@@ -30,7 +30,7 @@ except Exception:
 class GRPOVllmEngine(VllmEngine):
 
     def _get_encode_indices(self, infer_requests):
-        indices = list(range(len(infer_requests)))
+        indices = {}
         template = self.template
         # Reuse only deterministic text encoding with the standard Swift template.
         if (type(template) is not Template or template.template_backend != 'swift'
@@ -45,12 +45,15 @@ class GRPOVllmEngine(VllmEngine):
             if request.images or request.audios or request.videos or request.objects or request.tools:
                 continue
             if any(message['role'] not in ('system', 'user', 'assistant')
-                   or not isinstance(message['content'], (str, type(None))) or message.get('tool_calls')
+                   or not isinstance(message.get('content'), (str, type(None))) or message.get('tool_calls')
                    for message in request.messages):
                 continue
-            # Preserve nested values, their types and field order; UUID is restored per request.
-            key = pickle.dumps({k: v for k, v in vars(request).items() if k != 'uuid'})
-            indices[i] = seen.setdefault(key, i)
+            # UUID and data_dict are passthrough metadata in the standard template.
+            data = {k: v for k, v in asdict(request).items() if k not in ('uuid', 'data_dict')}
+            key = (type(request), pickle.dumps(data))
+            first = seen.setdefault(key, i)
+            if first != i:
+                indices[i] = indices[first] = first
         return indices
 
     def _get_grpo_lora_request(self, adapter_request: Optional[AdapterRequest] = None):
@@ -117,7 +120,6 @@ class GRPOVllmEngine(VllmEngine):
         kwargs['adapter_request'] = await self._get_grpo_lora_request_async(kwargs.get('adapter_request'))
         kwargs['_lora_request_resolved'] = True
         indices = self._get_encode_indices(infer_requests)
-        counts = Counter(indices)
         encodings = {}
 
         async def infer_shared(infer_request, index):
@@ -127,13 +129,15 @@ class GRPOVllmEngine(VllmEngine):
                 encodings[index] = loop.run_in_executor(None, self.template.encode, infer_requests[index], True)
             # Cancellation of one generation must not cancel its siblings' encoding.
             inputs = deepcopy(await asyncio.shield(encodings[index]))
-            if 'uuid' in vars(infer_request):
-                inputs['template_inputs'].extra_kwargs['uuid'] = infer_request.uuid
+            inputs['template_inputs'].extra_kwargs.update({
+                k: v
+                for k, v in asdict(infer_request).items() if k in ('uuid', 'data_dict')
+            })
             return await self.infer_async(infer_request, request_config, _inputs=inputs, **kwargs)
 
         tasks = [
-            infer_shared(request, index) if counts[index] > 1 else self.infer_async(request, request_config, **kwargs)
-            for request, index in zip(infer_requests, indices)
+            infer_shared(request, indices[i]) if i in indices else self.infer_async(request, request_config, **kwargs)
+            for i, request in enumerate(infer_requests)
         ]
         if use_tqdm is None:
             use_tqdm = len(infer_requests) > 1
