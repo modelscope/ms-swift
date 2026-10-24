@@ -1020,9 +1020,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             # Sequence-level: compute mean log ratio per sequence
             seq_level_log_weights = ((log_ratio * completion_mask).sum(-1)
                                      / completion_mask.sum(-1).clamp(min=1.0)).unsqueeze(-1)
-            if self.importance_sampling_level == 'sequence':
+            entropy_mask_enabled = (
+                self.compute_entropy and per_token_entropy is not None and self.top_entropy_quantile < 1.0)
+            if self.importance_sampling_level == 'sequence' and not entropy_mask_enabled:
                 log_importance_weights = seq_level_log_weights
             else:
+                # Entropy masking needs token-local gradients while retaining the sequence ratio.
                 seq_level_log_weight = seq_level_log_weights.detach()
                 log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
         else:
