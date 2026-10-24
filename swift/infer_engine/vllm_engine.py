@@ -922,14 +922,17 @@ class VllmEngine(InferEngine):
         *,
         adapter_request: Optional[AdapterRequest] = None,
         pre_infer_hook=None,
+        _inputs=None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         if not self.use_async_engine:
             raise ValueError('If you want to use `infer_async`, you need to pass `use_async_engine` as True.')
         request_config = deepcopy(request_config or RequestConfig())
         self.template.set_mode('vllm')
-        loop = asyncio.get_running_loop()
-        with torch.inference_mode():
-            inputs = await loop.run_in_executor(None, self.template.encode, infer_request, True)
+        inputs = _inputs
+        if inputs is None:
+            loop = asyncio.get_running_loop()
+            with torch.inference_mode():
+                inputs = await loop.run_in_executor(None, self.template.encode, infer_request, True)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config)
