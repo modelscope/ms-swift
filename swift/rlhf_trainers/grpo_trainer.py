@@ -322,22 +322,18 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self._logs['completion'].extend(valid_completions)
 
             # Example: if you want to log extra data in the wandb / swanlab table,
-            #          add them to metrics_to_gather
-            # NOTE: every key you register must appear in ALL rollout outputs
-            #       to avoid potential communication / synchronization issues
-            metrics_for_logs_to_gather = {}
+            #          add them to metrics_for_logs_to_gather.
+            # Gather optional fields together, retaining a placeholder for every missing value.
+            metrics_for_logs_to_gather = {
+                'solution': [s.extra.get('solution') for s in samples],
+                'num_turns': [(s.rollout_infos or {}).get('num_turns') for s in samples],
+            }
 
-            if all('solution' in s.extra for s in samples):
-                metrics_for_logs_to_gather['solution'] = [s.extra['solution'] for s in samples]
-
-            if all(s.rollout_infos and 'num_turns' in s.rollout_infos for s in samples):
-                metrics_for_logs_to_gather['num_turns'] = [s.rollout_infos['num_turns'] for s in samples]
-
-            if metrics_for_logs_to_gather:
-                for key, value in metrics_for_logs_to_gather.items():
-                    if key not in self._logs:
-                        self._logs[key] = deque(maxlen=self.args.generation_batch_size)
-                    self._logs[key].extend(self._gather_and_flatten(value, flatten_level=0))
+            gathered_metrics = self._gather_and_flatten([metrics_for_logs_to_gather], flatten_level=0)
+            for key in metrics_for_logs_to_gather:
+                if key not in self._logs:
+                    self._logs[key] = deque(maxlen=self.args.generation_batch_size)
+                self._logs[key].extend(value for metrics in gathered_metrics for value in metrics[key])
 
     @profiling_decorator
     def _compute_rewards_per_func(self, samples: List[GRPOSample]) -> torch.Tensor:
