@@ -41,6 +41,8 @@ We provide a series of scripts to demonstrate SWIFT's quantization export capabi
 - Models exported with SWIFT's quantization support inference acceleration using vllm/sglang/lmdeploy; they also support further SFT/RLHF using QLoRA.
 
 
+GPTQ backends may save symmetric weights in GPTQ v1 format even when GPTQ v2 is used during quantization. The exported configuration records the saved format so the model reloads correctly.
+
 ## Push Model
 
 SWIFT supports re-pushing trained/quantized models to ModelScope/Hugging Face. By default, it pushes to ModelScope, but you can specify `--use_hf true` to push to Hugging Face.
