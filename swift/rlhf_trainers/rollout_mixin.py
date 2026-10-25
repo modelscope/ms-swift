@@ -1362,13 +1362,14 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         use_tqdm: Optional[bool] = False,
     ) -> List[RolloutOutput]:
         """Perform inference using configured engine"""
-        with profiling_context(self, 'generate'), self._disable_sp_context():
+        with profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
                 res = self.vllm_client.infer([asdict(req) for req in infer_requests],
                                              asdict(request_config),
                                              use_tqdm=use_tqdm)
             else:
-                res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+                with self._disable_sp_context():
+                    res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
             if all(isinstance(r, RolloutOutput) for r in res):
                 return res
             else:
