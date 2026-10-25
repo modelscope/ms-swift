@@ -22,14 +22,20 @@ def make_candidate(text: str, *, multi_turn: bool = False, messages: Optional[Li
                    rollout_infos: Optional[Dict[str, Any]] = None, truncated: bool = False,
                    response_token_ids: Optional[List[int]] = None,
                    rollout_logprobs: Optional[List[float]] = None) -> Any:
-    """Build a real ``run_infer._Candidate`` so emit tests exercise the production dataclass."""
-    from swift.dev.recipe.infer.run_infer import _Candidate
-    return _Candidate(
-        text,
+    """Build a real ``RolloutSample`` so emit tests exercise the production dataclass.
+
+    (The old ``run_infer._Candidate`` folded into the rollout sample type with the InferComponent
+    refactor; ``multi_turn`` stopped being a candidate field -- the caller passes it to emit.)
+    """
+    from twinkle_agentic.rollout import RolloutSample
+    if messages is None:  # the old _Candidate(text) shape: prompt + one assistant turn
+        messages = [{'role': 'user', 'content': 'q'},
+                    {'role': 'assistant', 'content': text}]
+    return RolloutSample(
+        decoded=text,
         messages=messages,
-        rollout_infos=rollout_infos,
+        rollout_infos=rollout_infos or {},
         truncated=truncated,
-        multi_turn=multi_turn,
         response_token_ids=list(response_token_ids or []),
         rollout_logprobs=list(rollout_logprobs or []))
 

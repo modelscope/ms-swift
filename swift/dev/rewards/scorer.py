@@ -52,6 +52,9 @@ class RewardSpec:
     model_id: Optional[str] = None
     adapter: Optional[str] = None
     task_type: Optional[str] = None
+    #: Classification-head size for a SCALAR reward model (1 for a seq_cls score head). Carried so the
+    #: frozen build re-resolves the SAME head instead of re-inferring causal_lm from the checkpoint.
+    num_labels: Optional[int] = None
     #: Identity overrides for a SCALAR reward model, aligned with the channel's model subsequence.
     model_type: Optional[str] = None
     revision: Optional[str] = None
@@ -73,6 +76,7 @@ class ChannelCompanions:
 
     adapters: Optional[List[str]] = None
     model_types: Optional[List[str]] = None
+    task_types: Optional[List[str]] = None
     model_revisions: Optional[List[str]] = None
     template_names: Optional[List[str]] = None
     parallel_spec: Optional[str] = None
@@ -108,13 +112,24 @@ def split_channel(items: List[Any]) -> Tuple[List[Any], List[str]]:
 
 
 def resolve_reward_model(value: Optional[str], adapter: Optional[str], sampler_model: Optional[str],
-                         backend: str) -> Optional[RewardSpec]:
+                         backend: str, model_type: Optional[str] = None,
+                         task_type: Optional[str] = None) -> Optional[RewardSpec]:
     """Decide HOW a model reward is served, from its value plus the sampling backend.
 
     An http(s) URL is an API judge (checked FIRST -- get_model_info_meta would try to download it);
     otherwise the checkpoint's real ``task_type`` decides scalar vs generative; ``value=None`` with an
     ``adapter`` reuses the sampler's own model as a generative judge wearing that LoRA (only when its
     base IS the sampler's model and the sampler is local); a scalar RM always builds locally.
+
+    ``model_type`` is the caller's explicit ``--orm_model_type`` / ``--prm_model_type`` for this slot: it
+    is threaded INTO ``resolve_model_info`` because that resolution auto-matches the family from the
+    checkpoint and raises on an ambiguous id (a shrunk/tiny checkpoint can match BOTH ``qwen2`` and
+    ``qwen2_gte``) -- attaching the type only onto the returned spec afterwards would be too late.
+
+    ``task_type`` is the caller's explicit ``--orm_task_type`` / ``--prm_task_type`` for this slot, also
+    threaded INTO ``resolve_model_info``: it overrides the checkpoint's inferred head so a plain causal-LM
+    id forced to ``'seq_cls'`` resolves as a SCALAR reward model instead of falling through to the
+    generative-judge branch below (which is what a causal_lm task_type selects).
     """
     local_backend = backend not in {'client', 'no'}
     if value is None:
@@ -130,15 +145,22 @@ def resolve_reward_model(value: Optional[str], adapter: Optional[str], sampler_m
         return RewardSpec('api', model_id=value, adapter=adapter)
     from swift.dev.model.loader import resolve_model_info
 
-    model_info = resolve_model_info(value)
-    task_type = model_info.task_type or 'causal_lm'
-    if task_type in SCALAR_TASK_TYPES:
-        return RewardSpec('scalar', model_id=value, adapter=adapter, task_type=task_type)
-    if task_type in GENERATIVE_TASK_TYPES:
+    # A scalar reward model's head emits ONE score, so an explicitly forced seq_cls carries num_labels=1
+    # by definition: resolve_model_info requires num_labels to size a seq_cls head and a plain checkpoint
+    # (e.g. a causal LM reused as an RM) bears none, so supply it here -- the layer that knows this model
+    # is a reward model.
+    info_num_labels = 1 if task_type == 'seq_cls' else None
+    model_info = resolve_model_info(
+        value, model_type=model_type, task_type=task_type, num_labels=info_num_labels)
+    resolved_task = model_info.task_type or 'causal_lm'
+    if resolved_task in SCALAR_TASK_TYPES:
+        return RewardSpec('scalar', model_id=value, adapter=adapter, task_type=resolved_task,
+                          num_labels=model_info.num_labels)
+    if resolved_task in GENERATIVE_TASK_TYPES:
         if local_backend and value == sampler_model:
-            return RewardSpec('generative_reuse', model_id=value, adapter=adapter, task_type=task_type)
-        return RewardSpec('generative_independent', model_id=value, adapter=adapter, task_type=task_type)
-    raise ValueError(f'reward model {value!r} resolved to task_type={task_type!r}, which is neither a scalar '
+            return RewardSpec('generative_reuse', model_id=value, adapter=adapter, task_type=resolved_task)
+        return RewardSpec('generative_independent', model_id=value, adapter=adapter, task_type=resolved_task)
+    raise ValueError(f'reward model {value!r} resolved to task_type={resolved_task!r}, which is neither a scalar '
                      f'RM {sorted(SCALAR_TASK_TYPES)} nor a generative judge {sorted(GENERATIVE_TASK_TYPES)}.')
 
 
@@ -171,16 +193,24 @@ def resolve_channel(items: List[Any], companions: ChannelCompanions, *, channel:
 
     adapter_list = aligned(companions.adapters, 'adapters', solo_ok=True)
     model_type_list = aligned(companions.model_types, 'model_type')
+    task_type_list = aligned(companions.task_types, 'task_type')
     revision_list = aligned(companions.model_revisions, 'model_revision')
     template_list = aligned(companions.template_names, 'template')
 
     def model_spec(model_id: str, adapter: Optional[str]) -> Optional[RewardSpec]:
-        spec = resolve_reward_model(model_id, adapter, sampler_model, backend)
+        index = model_ids.index(model_id) if model_id in model_ids else None
+        # Resolve the slot's explicit model_type/task_type/revision/template BEFORE the call:
+        # resolve_reward_model needs model_type + task_type up front (resolve_model_info auto-matches the
+        # family and raises on an ambiguous id, and infers the head that decides scalar-vs-generative), so
+        # they cannot wait until the spec is built.
+        model_type = model_type_list[index] if (model_type_list and index is not None) else None
+        task_type = task_type_list[index] if (task_type_list and index is not None) else None
+        spec = resolve_reward_model(
+            model_id, adapter, sampler_model, backend, model_type=model_type, task_type=task_type)
         if spec is not None:
             spec.parallel_spec = companions.parallel_spec
-            if model_id in model_ids:
-                index = model_ids.index(model_id)
-                spec.model_type = model_type_list[index] if model_type_list else None
+            if index is not None:
+                spec.model_type = model_type
                 spec.revision = revision_list[index] if revision_list else None
                 spec.template_name = template_list[index] if template_list else None
         return spec

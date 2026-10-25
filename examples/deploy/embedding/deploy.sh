@@ -1,3 +1,10 @@
+# v5 deploy: serve an embedding model with vLLM's pooling runner behind a single gateway.
+#
+# `swift deploy` under USE_SWIFT_V5=1 routes to the dev CLI (swift.dev.cli.deploy), which builds a
+# twinkle-server ServerConfig -- a gateway app plus sampler apps on Ray Serve, no hand-rolled
+# FastAPI. --task_type embedding selects the embedding (pooling) forward: the server exposes the
+# OpenAI /embeddings surface; vLLM auto-detects the pooling runner from the checkpoint. The 300M
+# model keeps the example light; swap in a larger embedding model for a real deployment.
 CUDA_VISIBLE_DEVICES=0 \
 USE_SWIFT_V5=1 \
 swift deploy \

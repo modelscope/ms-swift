@@ -23,6 +23,10 @@ class RewardConfig:
     orm_adapters: Optional[List[str]] = None
     # model_type / model_revision / chat template per MODEL id in orm (positional, subsequence).
     orm_model_type: Optional[List[str]] = None
+    # Task head to load each orm MODEL id as (positional, subsequence). Overrides the checkpoint's own
+    # task_type inference -- set 'seq_cls' to load a plain causal-LM checkpoint as a scalar (num_labels=1)
+    # reward model; without it a causal-LM id resolves to a generative judge, not a scalar RM.
+    orm_task_type: Optional[List[str]] = None
     orm_model_revision: Optional[List[str]] = None
     # A reward model often trains under a different template than the policy; wrong one = silent drift.
     orm_template: Optional[List[str]] = None
@@ -37,6 +41,8 @@ class RewardConfig:
     prm_adapters: Optional[List[str]] = None
     # model_type / model_revision / chat template for the MODEL id in prm (positional, as orm's).
     prm_model_type: Optional[List[str]] = None
+    # Task head for the prm MODEL id, as orm_task_type (online RL places only a SCALAR frozen PRM).
+    prm_task_type: Optional[List[str]] = None
     prm_model_revision: Optional[List[str]] = None
     prm_template: Optional[List[str]] = None
     prm_parallel_spec: Optional[str] = None

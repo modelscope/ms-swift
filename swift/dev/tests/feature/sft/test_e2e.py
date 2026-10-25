@@ -467,7 +467,9 @@ def _run_megatron_sft(bridge_backend: str,
                       max_steps: int = 2,
                       eval_steps: int = 0,
                       split_dataset_ratio: float = 0.0,
-                      context_parallel_size: int = 1):
+                      context_parallel_size: int = 1,
+                      pipeline_model_parallel_size: int = 1,
+                      model_overrides: dict = None):
     """Run one Megatron run_sft (DP=2, fp32) and return its loss/grad_norm history.
 
     per_device_batch/ga are parametrized so a GA>1 run can be compared against a GA=1 run with a
@@ -492,7 +494,10 @@ def _run_megatron_sft(bridge_backend: str,
     model_path = snapshot_download(MODEL)
     return run_sft(
         # fp32 (float32) so the loss is comparable across bridges without a wide bf16 band.
-        ModelConfig(model=model_path, torch_dtype='float32'),
+        # model_type is explicit: the snapshot dir's basename ('master') matches no family and the
+        # architectures reverse lookup is ambiguous (qwen2 vs qwen2_gte) -- a local directory must
+        # name its family, exactly as resolve_model_info's error asks.
+        ModelConfig(model=model_path, model_type='qwen2', torch_dtype='float32', **(model_overrides or {})),
         TemplateConfig(template='qwen2_5', max_length=512),
         DatasetConfig(dataset=[data_path], dataset_shuffle=False, split_dataset_ratio=split_dataset_ratio),
         # per_device_train_batch_size must be >= dp_size (2): twinkle slice_dp splits each driver
@@ -518,6 +523,7 @@ def _run_megatron_sft(bridge_backend: str,
             bridge_backend=bridge_backend,
             nproc_per_node=2,
             context_parallel_size=context_parallel_size,
+            pipeline_model_parallel_size=pipeline_model_parallel_size,
             mode='ray'),
         CheckpointConfig(),
         output_dir=out_dir,
@@ -1286,3 +1292,66 @@ def test_run_sft_hf_sp_hybrid_dp(tmp_path, padding_free):
         assert rel < 0.02, (
             f'hybrid rank{h_rank} loss {got:.6f} != dp2 rank{d_rank} loss {ref:.6f} (rel={rel:.2e}, '
             'limit 2e-2): same data slice, SP a pure re-partition -- a real gap is a split/gather bug')
+
+
+@pytest.mark.slow
+def test_run_sft_megatron_mtp_end_to_end(tmp_path):
+    """S13-28: joint MTP training on the megatron backend (mcore-bridge, DP=2, fp32).
+
+    mtp_num_layers=1 + enable_mtp_training builds one MTP head, feeds it on every backward'ed pass,
+    and drains the per-depth mtp_loss into the step record -- the three breaks this feature guards
+    against (heads built but never trained, no error, no mtp_loss) all fail QUIETLY, so the record
+    keys and a finite, non-zero mtp loss are the whole assertion.
+    """
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_toy_dataset(data_path)
+    history = _run_megatron_sft(
+        'mcore-bridge', data_path, str(tmp_path / 'out_mtp'),
+        # 'unfused': this box's CUDA-13 driver disables TE's flash/fused kernels outright, and the
+        # builder pins flash as the default kernel -- the run would die inside
+        # dot_product_attention before the first step, unrelated to MTP.
+        model_overrides={'mtp_num_layers': 1, 'enable_mtp_training': True,
+                         'mtp_loss_scaling_factor': 0.2, 'attn_impl': 'unfused'})
+
+    assert history, 'run_sft (megatron mtp) produced no optimizer steps'
+    for record in history:
+        assert record['loss'] == record['loss'] and abs(record['loss']) != float('inf'), record
+        mtp = record.get('mtp_loss')
+        assert mtp is not None, f'step {record.get("step")} carries no mtp_loss: the heads were built but never fed'
+        assert mtp == mtp and 0.0 < mtp < 20.0, f'mtp_loss not a sane finite loss: {mtp}'
+        assert 'mtp_1_loss' in record, 'per-depth mtp_1_loss missing from the step record'
+
+
+@pytest.mark.slow
+def test_run_sft_megatron_pp2_step1_loss_matches_dp1(tmp_path):
+    """S13-29: splitting the world into a PP=2 pipeline must not change the math.
+
+    PP=2 with world=2 means DP=1: each rank holds half the layers and activations travel the
+    pipeline. Same model/data/hparams as the DP=2 run, fp32, so the step-1 loss must agree to
+    reduction-order noise -- a pipeline split that changed the loss would be a layer-boundary or
+    normalization bug, not noise.
+    """
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+
+    data_path = str(tmp_path / 'toy_sft.jsonl')
+    _write_toy_dataset(data_path)
+    # Same 4 samples per optimizer step on both layouts: DP=2 x per-device 2 == PP=2 (DP=1) x 4
+    # (the global batch is per_device * data_world_size, and drop_last keeps whole groups only).
+    dp2 = _run_megatron_sft('mcore-bridge', data_path, str(tmp_path / 'out_dp2'), per_device_batch=2,
+                            model_overrides={'attn_impl': 'unfused'})
+    reset_twinkle_runtime()
+    pp2 = _run_megatron_sft('mcore-bridge', data_path, str(tmp_path / 'out_pp2'),
+                            per_device_batch=4, pipeline_model_parallel_size=2,
+                            model_overrides={'attn_impl': 'unfused'})
+
+    dp2_losses = [r['loss'] for r in dp2]
+    pp2_losses = [r['loss'] for r in pp2]
+    print(f'\npp split: dp2={dp2_losses} pp2={pp2_losses}')
+    assert dp2_losses and pp2_losses, f'empty history: dp2={dp2_losses} pp2={pp2_losses}'
+    diff = abs(dp2_losses[0] - pp2_losses[0])
+    assert diff < 1e-3, (f'PP=2 step-1 loss {pp2_losses[0]:.6f} vs DP=2 {dp2_losses[0]:.6f} '
+                         f'diff {diff:.2e} -> the pipeline split changed the math, not just reduction order')

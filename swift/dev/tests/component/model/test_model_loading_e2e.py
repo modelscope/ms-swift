@@ -241,8 +241,11 @@ def test_qwen2_5_vl_loads_multimodal_processor_and_installs_keep_alive(tmp_path)
     assert model.model.__class__.__name__ == 'Qwen2_5_VLForConditionalGeneration'
     # A (pre)processor config on disk makes build_processor pick AutoProcessor -> the VL processor.
     assert model._default_tokenizer.__class__.__name__ == 'Qwen2_5_VLProcessor'
-    # process_model installed the ZeRO-3 vision keep-alive, driven by model_arch.aligner.
-    assert getattr(model.model, '_vision_keep_alive', None) is not None
+    # The ZeRO-3 vision keep-alive now lives on the data side: the family loader builds a
+    # MultimodalGraphAdapter (InputProcessor consumes it at collate time), driven by
+    # model_arch.vision_tower / aligner.
+    adapter = loader.build_multimodal_graph_adapter(model._default_tokenizer, model.model.config)
+    assert adapter is not None
     assert loader.model_arch.vision_tower == ['model.visual']
     assert loader.model_arch.aligner == ['model.visual.merger']
 

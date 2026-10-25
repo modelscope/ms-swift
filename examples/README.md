@@ -29,8 +29,8 @@ Notes on the v5 surface that differ from 4.x:
 
 - **No `app` command** (removed) and **no `lmdeploy`** sampler.
 - **No separate `megatron` command** — Megatron is a backend flag: `swift sft --backend megatron`.
-- **Tuners** are exactly `lora`, `adalora`, `trainable_tokens` (plus `full`). There is **no qlora / dora /
-  rslora / boft / ...**. GaLore, Liger and Muon are optimizer / kernel knobs on the training config, not tuners.
+- **Tuners** are exactly `lora`, `trainable_tokens` (plus `full`). There is **no qlora / dora / rslora /
+  adalora / boft / ...**. GaLore, Liger and Muon are optimizer / kernel knobs on the training config, not tuners.
 - **Task types** are `causal_lm`, `seq_cls`, `embedding`, `reranker`, `generative_reranker`.
 - **Quant methods** are `awq`, `gptq`, `gptq_v2`, `bnb`, `hqq`, `eetq`, `quanto`, `fp8`.
 - **`rlhf_type`** set is `dpo / orpo / simpo / kto / cpo / rm / ppo / grpo / gkd / opsd / mopd / rft`.
@@ -49,7 +49,7 @@ examples/
   eval/      eval.sh  eval_lora.sh  eval_url/  vlm/  train_eval/
   export/    awq/ gptq/ gptq_v2/ bnb/ hqq/ eetq/ quanto/ fp8/  merge/  push_to_hub/
              convert/ (mcore <-> hf)  cached_dataset/
-  train/     lora/ full/ adalora/ trainable_tokens/ pretrain/ embedding/ reranker/ seq_cls/
+  train/     lora/ full/ trainable_tokens/ pretrain/ embedding/ reranker/ seq_cls/
              reward_model/ multi-modal/ multimodal_embedding/ liger/ muon/ galore/ packing/
              padding_free/ flash_attention_3/ early_stop/ think_model/ base_to_chat/ streaming/
              agentic/ sequence_parallel/ plugins/ custom/ cached_dataset/ megatron/ code/ yaml/
@@ -67,7 +67,7 @@ The v5 target tree is now fully authored. Every directory below ships real, head
 the ones marked *(smoke-verified)* were run end-to-end on this box, the rest are *reference-only* with the
 exact reason (large / gated / uncached model, missing engine, or hardware) stated in their script header.
 
-- **train** *(32 v5 scripts)*: `lora`, `full`, `adalora`, `trainable_tokens`, `pretrain`, `embedding`,
+- **train** *(31 v5 scripts)*: `lora`, `full`, `trainable_tokens`, `pretrain`, `embedding`,
   `reranker`, `seq_cls`, `reward_model`, `multi-modal`, `multimodal_embedding`, `liger`, `muon`, `galore`,
   `packing`, `padding_free`, `flash_attention_3`, `early_stop`, `think_model`, `base_to_chat`, `streaming`,
   `agentic`, `sequence_parallel`, `plugins`, `custom`, `cached_dataset`, `megatron/{tp_pp,moe}`,

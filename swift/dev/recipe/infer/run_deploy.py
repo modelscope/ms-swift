@@ -355,7 +355,8 @@ def run_deploy_process(*args, port: int = 8000, timeout: float = 300.0, **kwargs
             target=run_deploy, args=args, kwargs=kwargs, daemon=True)
         process.start()
         try:
-            _wait_until_accessible(port, timeout, process, deploy_config.route_prefix, scheme)
+            _wait_until_accessible(
+                port, timeout, process, deploy_config.route_prefix, scheme, api_key=deploy_config.api_key)
             yield f'{scheme}://127.0.0.1:{port}{deploy_config.route_prefix}'
         finally:
             process.terminate()
@@ -366,12 +367,17 @@ def run_deploy_process(*args, port: int = 8000, timeout: float = 300.0, **kwargs
     return _manager()
 
 
-def _wait_until_accessible(port: int, timeout: float, process, route_prefix: str, scheme: str = 'http') -> None:
+def _wait_until_accessible(port: int, timeout: float, process, route_prefix: str, scheme: str = 'http',
+                           api_key: Optional[str] = None) -> None:
     """Poll ``{route_prefix}/models`` until it answers 200, failing fast if the child dies first.
 
     An HTTP probe, not a bare socket connect: the port opens when Ray Serve's proxy is up, but the
     gateway is ready a little later -- yielding before that hands the caller a URL that 404s. For
     HTTPS the cert is typically self-signed, so verification is off for this probe only.
+
+    ``api_key`` rides along as a Bearer header: when auth is on the gateway answers an unauthenticated
+    probe with 401 FOREVER (the server is healthy but the probe can never see it), so the readiness
+    handshake must present the same credential the caller will use.
     """
     import ssl
     import time
@@ -379,6 +385,7 @@ def _wait_until_accessible(port: int, timeout: float, process, route_prefix: str
     import urllib.request
 
     url = f'{scheme}://127.0.0.1:{port}{route_prefix}/models'
+    headers = {'Authorization': f'Bearer {api_key}'} if api_key else {}
     context = ssl._create_unverified_context() if scheme == 'https' else None
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -386,7 +393,8 @@ def _wait_until_accessible(port: int, timeout: float, process, route_prefix: str
             raise RuntimeError(f'deploy subprocess exited with code {process.exitcode} before the endpoint '
                                "opened; its traceback is on this process's stderr.")
         try:
-            with urllib.request.urlopen(url, timeout=2.0, context=context) as response:
+            request = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(request, timeout=2.0, context=context) as response:
                 if response.status == 200:
                     return
         except (urllib.error.URLError, OSError, ValueError):

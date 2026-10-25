@@ -396,6 +396,11 @@ def _resolve_checkpoint_args_source(configs: Dict[str, Any]) -> Optional[str]:
                 revision=revision,
                 use_hf=getattr(dataset, 'use_hf', None),
                 hub_token=getattr(dataset, 'hub_token', None))
+            # Keep the portable id alongside the resolved local dir: the swap happens even when the
+            # snapshot turns out to carry no args.json, and model family matching reads the id's
+            # basename (a snapshot dir's basename -- 'master', a hash -- matches nothing).
+            if not isinstance(owner, list) and key == 'model' and resolved != source:
+                setattr(owner, '_model_id_or_path', source)
             if isinstance(owner, list):
                 owner[key] = resolved
             else:

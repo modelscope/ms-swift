@@ -49,6 +49,8 @@ _LAZY_ATTRS = {
     'safe_snapshot_download': 'hub',
     'get_n_params_grads': 'torch_utils',
     'to_device': 'torch_utils',
+    'add_version_to_work_dir': 'utils',
+    'append_to_jsonl': 'utils',
     'check_json_format': 'utils',
     'deep_getattr': 'utils',
     'deepspeed_zero_stage': 'utils',
@@ -56,6 +58,7 @@ _LAZY_ATTRS = {
     'json_parse_to_dict': 'utils',
     'parse_args': 'utils',
     'resolve_deepspeed_config': 'utils',
+    'seed_everything': 'utils',
     'split_list': 'utils',
     'split_str_parts_by': 'utils',
 }

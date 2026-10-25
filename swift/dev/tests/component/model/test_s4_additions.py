@@ -87,7 +87,7 @@ def test_telechat_copies_special_token_ids_from_generation_config(monkeypatch):
     """The TeleChat processor does not expose the chat control ids; the loader copies
     bos/eos/pad/user/bot off generation_config onto the processor after the base build."""
     import swift.dev.model.loader.telechat as telechat_module
-    from swift.dev.model.loader.base import ModelInfo, ModelLoader
+    from swift.dev.model.loader.base import LoaderModelInfo, ModelLoader
 
     token_ids = {'bos_token_id': 1, 'eos_token_id': 2, 'pad_token_id': 3,
                  'user_token_id': 100001, 'bot_token_id': 100002}
@@ -97,7 +97,7 @@ def test_telechat_copies_special_token_ids_from_generation_config(monkeypatch):
     monkeypatch.setattr(
         telechat_module, 'GenerationConfig',
         SimpleNamespace(from_pretrained=lambda model_dir: SimpleNamespace(**token_ids)))
-    loader = get_model_loader('telechat')(ModelInfo(model_type='telechat', model_dir='m'))
+    loader = get_model_loader('telechat')(LoaderModelInfo(model_type='telechat', model_dir='m'))
     processor = loader.build_processor('m', config=SimpleNamespace())
     for key, value in token_ids.items():
         assert getattr(processor, key) == value, key

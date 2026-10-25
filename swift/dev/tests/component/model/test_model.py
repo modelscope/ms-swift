@@ -257,9 +257,9 @@ class TestInputProcessor:
 
     def test_template_wiring(self):
         proc = InputProcessor()
-        assert proc._template is None
-        proc._template = 'test'
-        assert proc._template == 'test'
+        assert proc.template is None
+        proc.template = 'test'
+        assert proc.template == 'test'
 
     def test_is_packed_position_ids(self):
         single = torch.arange(6).unsqueeze(0)

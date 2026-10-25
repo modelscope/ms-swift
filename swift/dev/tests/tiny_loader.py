@@ -78,8 +78,12 @@ def tiny_loader_cls(model_type: str, dims: Dict[str, Any]) -> Type[ModelLoader]:
             # transformers 5.x dropped the public ``from_config`` on concrete model classes (a VL
             # ``...ForConditionalGeneration`` only exposes the private ``_from_config``); fall back to
             # it, mirroring the same hasattr check twinkle's own empty-init path uses. An Auto class
-            # that still carries ``from_config`` is unaffected.
+            # that still carries ``from_config`` is unaffected. trust_remote_code is passed ONLY when
+            # the config actually carries an auto_map (MiniCPM-V & co): those families prompt or
+            # fail without it, while concrete native classes (Qwen2.5-VL & co) reject the kwarg.
             factory = model_cls.from_config if hasattr(model_cls, "from_config") else model_cls._from_config
+            if getattr(config, "auto_map", None):
+                kwargs.setdefault("trust_remote_code", True)
             return factory(config, **kwargs)
 
     TinyLoader.__name__ = f"Tiny{base.__name__}"
@@ -156,7 +160,7 @@ def build_tiny_multimodal(
     _dims = {"dtype": torch.bfloat16, **_VL_DIMS, **(dims or {})}
     snapshot = TinyModel.tokenizer_dir(model_id)
     loader = tiny_loader_cls(model_type, _dims)(
-        ModelInfo(model_type=model_type, model_dir=snapshot, torch_dtype=torch.bfloat16)
+        LoaderModelInfo(model_type=model_type, model_dir=snapshot, torch_dtype=torch.bfloat16)
     )
     config = loader.process_config(loader.build_config(snapshot))
     processor = loader.build_processor(snapshot, config)

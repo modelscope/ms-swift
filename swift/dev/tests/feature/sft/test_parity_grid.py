@@ -287,3 +287,56 @@ def test_embedding_contrastive_parity_excluded_data_format():
                 'shared embedding fixture is InfoNCE multi-negative (anchor+pos+neg=3 sentences). dev '
                 'raises on the shape mismatch, legacy silently broadcasts into a meaningless loss, so '
                 'there is no valid common reference. InfoNCE parity is covered and restores exactly.')
+
+
+# ----------------------------------------------------------------------
+# S15: the dual-metric hard requirement -- grad_norm rides along with loss
+# ----------------------------------------------------------------------
+
+
+def _run_pair_records(tmp_path, overrides):
+    """Both pipelines' FULL per-step records (loss AND grad_norm), read back from what each side
+    actually logged -- legacy's ``log_history`` and dev's returned history, never stdout."""
+    from swift import sft_main as legacy_sft_main
+    from swift.dev.cli.sft import sft_main as dev_sft_main
+
+    legacy = legacy_sft_main(_build_sft_args(tmp_path / 'legacy', **overrides))
+    legacy_records = [rec for rec in legacy['log_history'] if 'loss' in rec]
+    dev_records = dev_sft_main(_build_dev_argv(tmp_path / 'dev', **overrides))
+    return legacy_records, dev_records
+
+
+@pytest.mark.parametrize('cell', ['causal_full_adamw', 'causal_lora_adamw'])
+def test_grad_norm_trajectory_parity(tmp_path, write_jsonl, cell):
+    """S15 hard requirement: parity is not only the loss -- the gradient norm the optimizer clipped
+    must restore legacy's too, read back from each side's logged records.
+
+    grad_norm is the sharper oracle of the two: it is a norm over the WHOLE gradient vector, so a
+    single mis-masked token or a wrong loss normalization moves it even on a step where the loss
+    happens to agree. Bands are wider than loss's (both pipelines clip at max_grad_norm=1 in legacy
+    defaults, so the raw norms surface only before the first clip); step-1 is the RNG-free anchor.
+    """
+    if not torch.cuda.is_available():
+        pytest.skip('CUDA not available')
+
+    dataset_kind, overrides, n_steps, _, _ = _GRID[cell]
+    rows = _CAUSAL_ROWS
+    data = _write_rows(tmp_path / f'{cell}_gn.jsonl', rows)
+    settings = dict(overrides, dataset=[data], max_length=256, max_steps=n_steps)
+
+    legacy, dev = _run_pair_records(tmp_path, settings)
+
+    legacy_gn = [rec['grad_norm'] for rec in legacy if 'grad_norm' in rec]
+    dev_gn = [rec['grad_norm'] for rec in dev if 'grad_norm' in rec]
+    assert len(legacy_gn) >= 1 and len(dev_gn) >= 1, (
+        f'{cell}: a side logged no grad_norm (legacy {len(legacy_gn)}, dev {len(dev_gn)}) -- the '
+        'dual-metric parity contract cannot even be evaluated')
+
+    # step-1: the RNG-independent anchor (identity adapter / untouched weights).
+    rel1 = abs(dev_gn[0] - legacy_gn[0]) / max(abs(legacy_gn[0]), 1e-8)
+    assert rel1 < 0.05, (
+        f'{cell} step-1 grad_norm mismatch: dev={dev_gn[0]:.6f} legacy={legacy_gn[0]:.6f} '
+        f'rel={rel1:.2e} -- the gradient itself (masking / normalization / labels) diverges')
+    # later steps: both sides must stay finite (a NaN/inf grad explodes the norm first).
+    assert all(g == g and abs(g) != float('inf') for g in dev_gn + legacy_gn), \
+        f'{cell}: non-finite grad_norm dev={dev_gn} legacy={legacy_gn}'

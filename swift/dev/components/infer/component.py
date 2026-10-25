@@ -626,6 +626,7 @@ def _resolve_channel(reward_config: Optional['RewardConfig'], channel: str, samp
         ChannelCompanions(
             adapters=getattr(reward_config, f'{channel}_adapters', None),
             model_types=getattr(reward_config, f'{channel}_model_type', None),
+            task_types=getattr(reward_config, f'{channel}_task_type', None),
             model_revisions=getattr(reward_config, f'{channel}_model_revision', None),
             template_names=getattr(reward_config, f'{channel}_template', None),
             parallel_spec=getattr(reward_config, f'{channel}_parallel_spec', None)),
@@ -672,7 +673,9 @@ def _initialize_for_sampling(distributed_config: 'DistributedConfig',
     import twinkle
     from twinkle import DeviceGroup, Platform
 
-    if distributed_config.mode != 'ray':
+    if distributed_config is None or distributed_config.mode != 'ray':
+        # None is the run-wide default (single process, no ray): the sampler builds plainly, and
+        # the caller has already refused any GPU-resident reward channel that would need a group.
         twinkle.initialize(mode='local')
         return
     sampler_ranks = distributed_config.nproc_per_node

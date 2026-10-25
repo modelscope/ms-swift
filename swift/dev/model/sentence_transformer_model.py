@@ -75,6 +75,9 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         self._fsdp_config = dict(fsdp_config or {})
         self._ddp_config = ddp_config or {}
         self._memory_efficient_init = memory_efficient_init
+        # The inherited _construct_default_optimizer_group reads this (same contract as the parent's
+        # ctor arg); a sentence encoder accumulates per token like any causal-LM-shaped model.
+        self._acc_strategy = kwargs.pop("acc_strategy", "token")
         # Router replay is a MoE-causal-LM concept; irrelevant to sentence encoders.
         self._router_replay_enabled = False
         self._router_replay_applied = False

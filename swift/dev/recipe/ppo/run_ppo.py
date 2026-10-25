@@ -12,7 +12,7 @@ from swift.dev.utils.logger import get_logger
 from swift.dev.recipe.ppo.assembly import (
     Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests)
 from swift.dev.recipe.utils import (
-    StepState, build_save_knobs, initialize_rl_devices, prompt_rows_from_dataset,
+    StepState, build_save_knobs, collect, initialize_rl_devices, prompt_rows_from_dataset,
     resolve_rollout_max_steps, resume_training, rollout_step_budget, save_training_step,
     snapshot_initial_adapter)
 
@@ -23,6 +23,20 @@ if TYPE_CHECKING:
         TrainConfig, TunerConfig)
 
 logger = get_logger()
+
+
+def _check_policy_value_step_alignment(global_step: int, value_state: Optional[Dict]) -> None:
+    """Refuse a PPO resume whose policy and critic checkpoints completed DIFFERENT step counts.
+
+    PPO saves the policy and the value model as two components under one checkpoint dir; a crash between
+    the two writes leaves them a step apart, and resuming such a pair would train a policy whose rollout
+    history no longer matches its critic's value baseline. ``global_step`` is the count restored from the
+    policy state, ``value_state`` the critic's reloaded state -- None when there is no value component to
+    cross-check (a policy-only resume), so the guard is skipped then. Pure and dependency-free so the
+    invariant stays testable without a GPU / Ray build.
+    """
+    if value_state is not None and int(value_state.get('consumed_train_samples', 0)) != global_step:
+        raise ValueError('PPO policy and value checkpoints contain different completed-step counts.')
 
 
 def _gae_pipeline(cluster: Cluster, reward_config: 'RewardConfig', rl_config: 'RLConfig',
@@ -56,8 +70,8 @@ def _gae_pipeline(cluster: Cluster, reward_config: 'RewardConfig', rl_config: 'R
             **({'disable_lora': True} if ref_shared else {})),
     }
     # collect once at the training consumption point; the lanes crossed driver->worker as references
-    indices, advantages, returns, values, old_logps = cluster.worker.gae(
-        samples, scored, reward_config, rl_config)()
+    indices, advantages, returns, values, old_logps = collect(
+        cluster.worker.gae(samples, scored, reward_config, rl_config))
     kept = [samples[i] for i in indices]
     # the reward telemetry reflects exactly the batch the upcoming optimizer steps train on
     metrics = cluster.worker.reward_metrics(samples, scored, reward_config, rl_config)
@@ -248,7 +262,13 @@ def _ppo_log_line(record: Dict[str, Any], loss: float) -> str:
                        ('train/explained_variance', 'explained_variance')):
         value = record.get(key)
         if value is not None:
-            parts.append(f'{label}={value:.4f}')
+            # The tracker.log pass hands ``record`` back with its scalars already display-formatted into
+            # numeric strings (e.g. '5.000000e-05'), so coerce before the :.4f; a raw float passes too.
+            # A console head must never crash the training loop, so fall back to the value as-is.
+            try:
+                parts.append(f'{label}={float(value):.4f}')
+            except (TypeError, ValueError):
+                parts.append(f'{label}={value}')
     return '  '.join(parts)
 
 
@@ -383,8 +403,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                 data_parallel_random_init=bool(megatron_config and megatron_config.data_parallel_random_init))
         value_state = cluster.value_model.resume_from_checkpoint(
             os.path.join(checkpoint_config.resume_from_checkpoint, 'value_model'), **value_kwargs)
-        if value_state is not None and int(value_state.get('consumed_train_samples', 0)) != state.global_step:
-            raise ValueError('PPO policy and value checkpoints contain different completed-step counts.')
+        _check_policy_value_step_alignment(state.global_step, value_state)
     from twinkle.perf import Perf
 
     from swift.dev.recipe.utils import filter_perf_actors

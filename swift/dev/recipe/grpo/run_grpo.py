@@ -16,6 +16,7 @@ from swift.dev.recipe.grpo.assembly import (
 from swift.dev.recipe.utils import (
     StepState,
     build_save_knobs,
+    collect,
     initialize_rl_devices,
     prompt_rows_from_dataset,
     resolve_rollout_max_steps,
@@ -116,7 +117,7 @@ def _advantage_pipeline(cluster: Any, rl_config: 'RLConfig', reward_config: 'Rew
         # the sampler's own log-probs BEFORE any optimizer step this pull.
         correction_out.update(cluster.worker.correction_metrics(samples, scored))
     # collect once at the training consumption point; the lanes crossed driver->worker as references
-    return cluster.worker.grpo_advantages(samples, scored, rl_config, reward_config, global_step)()
+    return collect(cluster.worker.grpo_advantages(samples, scored, rl_config, reward_config, global_step))
 
 
 def _prepare_routing_replay(model: Any, rl_config: 'RLConfig', samples: List[Any], train_batch_size: int) -> None:
@@ -335,14 +336,18 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
                     baseline = weighted_reward(row[0] if row else [], weights)
                     for sample in samples[start:start + num_generations]:
                         sample.baseline = baseline
+            # return the device to the trainer NOW -- before the advantage/replay forwards: the reference,
+            # old-lane and routing-replay forward_only calls below run on the TRAINER's weights, so they
+            # must not fire while those weights are still offloaded to CPU (the borrow window covers only
+            # the sampler's generate + scoring, which megatron's cuda-side inputs cannot survive against
+            # CPU-resident weights).
+            cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
+            cluster.model.reload_to_gpu()
+            entered = False
             advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
                 cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
                 correction_out=correction_out)
             _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size)
-            # return the device to the trainer: sleep the sampler, then reload the trainer's weights.
-            cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
-            cluster.model.reload_to_gpu()
-            entered = False
             _train_mini_batches(state, rl_config, samples, train_batch_size=train_batch_size,
                                 advantages=advantages, old_logps=old_logps, ref_logps=ref_logps,
                                 teacher_logps=teacher_logps,
@@ -396,7 +401,10 @@ def _disaggregated_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Ro
                                       state.global_step + 1, 1)
             if metrics_cells is not None:
                 # This batch's version-span aggregate, reported on every step it feeds (see the cells).
-                versions = [sample.policy_version for sample in samples]
+                # version_span is the per-sample lag the driver stamps at collect (current - policy_version,
+                # 0 for adapter_snapshot which spans nothing) -- NOT policy_version, the absolute admission
+                # version, which climbs every publish and would report a synchronous run as off-policy.
+                versions = [sample.version_span for sample in samples]
                 if metrics_cells[1]:
                     metrics_cells[1][0] = versions
                 else:

@@ -197,7 +197,16 @@ def run_eval_cli(args: Sequence[str], *, timeout: float = EVAL_TIMEOUT,
     run_env = dict(os.environ)
     run_env['USE_SWIFT_V5'] = '1'
     run_env.update(env or {})
-    swift_bin = shutil.which('swift')
+    # Prefer THIS interpreter's console script: a bare `swift` on PATH may belong to a foreign
+    # environment (a different conda without ray/evalscope), which then fails on its own imports.
+    bindir = os.path.dirname(sys.executable)
+    swift_bin = os.path.join(bindir, 'swift')
+    if not os.path.isfile(swift_bin) or not os.access(swift_bin, os.X_OK):
+        found = shutil.which('swift')
+        if found and os.path.dirname(found) == bindir:
+            swift_bin = found
+        else:
+            swift_bin = None
     if swift_bin:
         cmd = [swift_bin, 'eval', *args]
     else:

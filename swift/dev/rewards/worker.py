@@ -114,6 +114,7 @@ class RewardWorker(ScoreWorker):
         (reuses the old logps so every per-token KL term zeroes).
         """
         from swift.dev.utils.scoring import response_positions, response_token_scores
+        from twinkle.advantage import GAEAdvantage
 
         features = [sample.encoded for sample in samples]
         kept = [i for i, sample in enumerate(samples) if response_positions(sample.encoded)]
@@ -231,6 +232,14 @@ class RewardWorker(ScoreWorker):
                               if estimator == 'opo' else None),
             f_norm=(float(rl_config.f_norm) if estimator == 'gpg' else 1.0),
             reward_baselines=(torch.tensor(baselines, dtype=torch.float32) if baselines is not None else None))
+        # Fail-loudly on the dead-parameter trap: RLSD/SDAR consume the teacher signal per token, so
+        # enabling either without a teacher lane (no --teacher_model, no teacher_prompt column, no
+        # adapter-disabled self-teacher) would silently degrade the run to plain GRPO.
+        if teacher_logps is None and (rl_config.advantage_reweight == 'rlsd' or rl_config.sdar_loss_coef > 0):
+            raise ValueError(
+                'advantage_reweight=rlsd / sdar_loss_coef>0 requires a teacher signal (a --teacher_model, a '
+                'teacher_prompt column, or the adapter-disabled self-teacher); without one the reweighting '
+                'would silently degrade to plain GRPO. Add a teacher, or drop the flag.')
         if prm_process is not None:
             advantages = self.fuse_prm(advantages, prm_process, float(reward_config.prm_orm_mix))
         elif teacher_logps is not None:
@@ -393,7 +402,10 @@ class RewardWorker(ScoreWorker):
         mask = torch.zeros((len(advantages), max((len(row) for row in old), default=1)), dtype=torch.bool)
         for index, row in enumerate(old):
             mask[index, :len(row)] = True
-        base = torch.tensor([[a] for a in advantages], dtype=torch.float32)
+        # The twinkle teacher-signal estimators take the per-sequence base advantage as [B] (1-D) and
+        # broadcast it to [B, T] themselves (advantages.unsqueeze(1).expand_as(mask)); building [B, 1]
+        # here would make unsqueeze(1) a [B, 1, 1] tensor that cannot expand_as the [B, T] mask.
+        base = torch.tensor(list(advantages), dtype=torch.float32)
         if mode == 'rlsd':
             out = apply_rlsd_reweight(base, mask, torch.tensor(teacher, dtype=torch.float32),
                                       torch.tensor(old, dtype=torch.float32), lam=lam,

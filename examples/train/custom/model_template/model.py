@@ -13,14 +13,18 @@
 #      swift.model.get_model_processor, which validates `--model_type` against the legacy MODEL_MAPPING;
 #      a custom family is a register_model(ModelMeta(...)) entry listing the same ids and template.
 #
-# The chat TEMPLATE is registered once, into swift.template's registry (dev resolves templates through
-# the legacy get_template). TemplateMeta requires template_type / prefix / prompt / chat_sep; {{SYSTEM}}
-# / {{QUERY}} are the placeholders dev fills. Select it with --template custom_im.
+# The chat TEMPLATE follows the same two-registry rule: the v5 CLI resolves `--template` through
+# swift.dev.template's registry (get_template_meta consults it directly, with NO legacy fallback),
+# while template-consuming legacy paths still look in swift.template's registry -- so a custom
+# template registers in BOTH. TemplateMeta requires template_type / prefix / prompt / chat_sep;
+# {{SYSTEM}} / {{QUERY}} are the placeholders dev fills. Select it with --template custom_im.
 #
 # Here the family just re-points at a stock Qwen2.5 checkpoint with our own template, which is enough to
 # exercise both registries end to end; a real custom family lists its own `models`, and overrides the
 # loader's build_config / build_processor / build_model hooks when the plain AutoModel path is not enough.
 from swift.dev.model.loader import ModelLoader, register_model
+from swift.dev.template import TemplateMeta as DevTemplateMeta
+from swift.dev.template import register_template as register_dev_template
 from swift.model import Model, ModelGroup, ModelMeta
 from swift.model import register_model as register_legacy_model
 from swift.template import TemplateMeta, register_template
@@ -47,6 +51,14 @@ register_legacy_model(
 
 register_template(
     TemplateMeta(
+        template_type='custom_im',
+        prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
+        prompt=['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        chat_sep=['<|im_end|>\n'],
+        default_system='You are a helpful assistant.'))
+
+register_dev_template(
+    DevTemplateMeta(
         template_type='custom_im',
         prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
         prompt=['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],

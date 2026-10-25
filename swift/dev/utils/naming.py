@@ -368,7 +368,7 @@ def resolve_megatron_decay_style(swift_name: str) -> str:
     return _MEGATRON_DECAY_STYLE_MAP[key]
 
 
-def resolve_megatron_attn_backend(attn_impl: Optional[str]):
+def resolve_megatron_attn_backend(attn_impl: Optional[str], mixed_precision: Optional[str] = None):
     """ModelConfig.attn_impl -> a Megatron AttnBackend ENUM member (never a string).
 
     Returns the ENUM deliberately. mcore stores this on TransformerConfig.attention_backend and tests
@@ -400,6 +400,21 @@ def resolve_megatron_attn_backend(attn_impl: Optional[str]):
     from megatron.core.transformer.enums import AttnBackend
 
     if attn_impl is None:
+        # The DEFAULT (flash) exists only as a legacy-parity kernel choice for bf16. Under fp32
+        # (mixed_precision='no') TE's dtype filter kills every flash kernel -- and mcore's flash branch
+        # hard-disables the fused AND unfused backends via NVTE_* env, leaving ZERO usable backends and a
+        # 'No dot product attention backend is available' crash at the first forward. An UNREQUESTED
+        # default must never crash the run: fall back to auto (TE picks the native unfused kernel under
+        # fp32). An EXPLICIT --attn_impl flash keeps its fail-fast semantics.
+        if mixed_precision == 'no':
+            import logging
+
+            logging.getLogger(__name__).warning(
+                'attn_impl unset with fp32 weights: the legacy-parity default (flash) is killed by '
+                "transformer_engine's fp32 dtype filter, and mcore's flash branch disables the fused and "
+                'unfused backends too -- falling back to attention_backend=auto (TE picks the native '
+                'unfused kernel). Set --attn_impl explicitly to pin a backend.')
+            return AttnBackend.auto
         return AttnBackend.flash
     key = str(attn_impl).lower()
     if key in _HF_ONLY_ATTN_NAMES:

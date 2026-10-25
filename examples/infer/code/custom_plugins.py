@@ -43,7 +43,10 @@ from swift.dev.dataset.loader import DatasetLoader, register_dataset
 from swift.dev.model.loader import ModelLoader, register_model
 from swift.dev.rewards.reward import ORM
 from swift.dev.utils.plugin import PluginRegistry, ToolPlugin
-from swift.template import TemplateMeta, register_template
+# The v5 dev stack resolves --template against swift.dev.template's registry, not legacy
+# swift.template's; registering into the legacy table would leave the name unresolvable.
+from swift.dev.template.meta import TemplateMeta
+from swift.dev.template.register import register_template
 from twinkle.data_format.message import Tool as ToolInfo
 
 # --- reward: a sync rule and an async rule, one extension point ---------------------------

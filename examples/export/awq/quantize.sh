@@ -6,15 +6,15 @@
 # inside twinkle's AwqQuantizer, so no extra flags are needed for them here.
 #
 # --quant_n_samples calibration rows, --quant_batch_size rows per forward, --max_length the truncation
-# length, --group_size weights per scale. --device_map cpu keeps a large model off the GPU during the
-# (slow) calibration pass, as legacy does. Requires autoawq installed.
-CUDA_VISIBLE_DEVICES=0 \
+# length, --group_size weights per scale. Device placement is the runtime's business (--device_map is
+# retired); to keep a large model off the GPU during the (slow) calibration pass, run with
+# CUDA_VISIBLE_DEVICES='' as below. Requires autoawq installed.
+CUDA_VISIBLE_DEVICES='' \
 USE_SWIFT_V5=1 \
 swift export \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
-    --device_map cpu \
     --quant_n_samples 256 \
     --quant_batch_size 1 \
     --max_length 2048 \

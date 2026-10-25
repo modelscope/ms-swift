@@ -65,8 +65,9 @@ def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
                                remote_group: Optional[str] = None):
     """One frozen forward model plus its own template -> ``(model, template)`` (the scalar-RM pair).
 
-    The real ``task_type`` / ``num_labels`` come from the checkpoint's metadata rather than a
-    hard-coded head; ``template_name`` overrides the policy's template and ``max_length`` is cleared
+    The head is sized by the SPEC's ``task_type`` / ``num_labels`` (which ``resolve_reward_model`` forced
+    for a plain checkpoint reused as a scalar RM), falling back to the checkpoint's metadata for a real
+    seq_cls/reranker RM; ``template_name`` overrides the policy's template and ``max_length`` is cleared
     so the frozen model is not truncated to the policy's budget; an optional frozen LoRA is attached.
     """
     from swift.dev.builders import build_model, build_template, load_model_processor
@@ -75,7 +76,12 @@ def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
     from swift.dev.builders.adapter import configure_frozen_adapter
     from swift.dev.model.loader import resolve_model_info
 
-    model_info = resolve_model_info(spec.model_id, model_type=spec.model_type, revision=spec.revision)
+    # Re-resolve with the spec's OWN task_type/num_labels: a plain checkpoint reused as a scalar RM was
+    # forced to seq_cls at resolve time (RewardSpec.task_type/num_labels), and re-inferring from the
+    # checkpoint metadata alone would rebuild it as causal_lm -- no classification head, no scalar score.
+    model_info = resolve_model_info(
+        spec.model_id, model_type=spec.model_type, revision=spec.revision,
+        task_type=spec.task_type, num_labels=spec.num_labels)
     reward_model_config = copy.copy(model_config)
     reward_model_config.model = spec.model_id
     reward_model_config.model_type = spec.model_type or model_info.model_type

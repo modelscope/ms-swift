@@ -55,23 +55,23 @@ def test_derive_sampler_type_unknown_backend():
 
 def test_validate_rejects_one_sided_tls():
     with pytest.raises(ValueError, match='both ssl_keyfile and ssl_certfile'):
-        _validate(DeployConfig(ssl_certfile='/tmp/c.pem'), None)
+        _validate(DeployConfig(ssl_certfile='/tmp/c.pem'), None, 'vllm')
 
 
 def test_validate_rejects_non_async_sampler_with_data_plane():
     for sampler_type in ('vllm', 'sglang', 'torch', 'mock'):
         with pytest.raises(ValueError, match='cannot serve the data plane'):
-            _validate(DeployConfig(enable_data_plane=True, sampler_type=sampler_type), None)
+            _validate(DeployConfig(enable_data_plane=True, sampler_type=sampler_type), None, 'vllm')
 
 
 def test_validate_allows_async_samplers_with_data_plane():
     for sampler_type in (None, 'vllm_async', 'sglang_async'):
-        _validate(DeployConfig(enable_data_plane=True, sampler_type=sampler_type), None)  # must not raise
+        _validate(DeployConfig(enable_data_plane=True, sampler_type=sampler_type), None, 'vllm')  # must not raise
 
 
 def test_validate_rejects_load_time_quant_method():
     with pytest.raises(ValueError, match='quant_method'):
-        _validate(DeployConfig(), QuantizeConfig(quant_method='gptq'))
+        _validate(DeployConfig(), QuantizeConfig(quant_method='gptq'), 'vllm')
 
 
 # --- url scheme -----------------------------------------------------------------------
@@ -151,17 +151,19 @@ def test_build_server_config_sglang_data_plane_derives_async():
     assert _apps_by_name(cfg)['sampler-policy'].args.sampler_type == 'sglang_async'
 
 
-def test_build_server_config_lists_adapters_as_supported_models():
-    cfg = build_server_config(
-        _model_config(),
-        TemplateConfig(template='qwen3_5'),
-        backend='vllm',
-        adapter_mapping={'adapter-1': '/tmp/lora1'},
-        deploy_config=DeployConfig(served_model_name='policy'),
-    )
-    gateway = _apps_by_name(cfg)['server']
-    assert 'policy' in gateway.args.supported_models
-    assert 'adapter-1' in gateway.args.supported_models
+def test_build_server_config_refuses_per_request_adapter_routing():
+    """A name->path adapter mapping is refused loudly: the gateway would register the adapter names,
+    but the sampler resolves LoRA from ``adapter_uri`` while requests carry only ``adapter_name`` --
+    the paths never reach the engine, so every request would silently answer from the BASE model.
+    (Single adapter: --merge_lora; several: one deployment per adapter.)"""
+    with pytest.raises(ValueError, match='not supported yet'):
+        build_server_config(
+            _model_config(),
+            TemplateConfig(template='qwen3_5'),
+            backend='vllm',
+            adapter_mapping={'adapter-1': '/tmp/lora1'},
+            deploy_config=DeployConfig(served_model_name='policy'),
+        )
 
 
 def test_build_server_config_requires_model():
@@ -234,10 +236,16 @@ def test_deployment_autoscaling():
     assert 'num_replicas' not in opts
 
 
-def test_persistence_is_always_twinkle_default():
-    # the deploy surface carries no persistence knob any more (twinkle rejects 'file' and
-    # extra keys outright); ServerConfig must get the in-memory default
-    from twinkle.server.config import PersistenceConfig
-    assert not hasattr(DeployConfig(), 'persistence_mode')
-    assert not hasattr(DeployConfig(), 'persistence_file_path')
-    assert PersistenceConfig().mode == 'memory'
+def test_persistence_is_the_server_default():
+    """The persistence knobs moved to the server config file; the assembled config carries twinkle's
+    own in-memory default (memory mode), not a deploy-side persistence mapping."""
+    from twinkle.server.config.persistence import PersistenceConfig
+
+    cfg = build_server_config(
+        _model_config(),
+        TemplateConfig(template='qwen3_5'),
+        backend='vllm',
+        deploy_config=DeployConfig(served_model_name='policy'),
+    )
+    assert isinstance(cfg.persistence, PersistenceConfig)
+    assert cfg.persistence.mode == 'memory'

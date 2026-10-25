@@ -42,6 +42,20 @@ TEACHER_GROUP = 'teacher'
 #: disable_adapter reference reuses the policy's base and plans no group.
 REF_GROUP = 'ref'
 
+
+def collect(result: Any) -> Any:
+    """Resolve a maybe-lazy remote result to its value.
+
+    A worker method declared ``lazy_collect=True`` hands the ray driver a ``LazyCollect`` future (collect
+    on demand), but the SAME handle can resolve eagerly -- a CPU-payload worker (the reward/scoring actor)
+    materialises at the call, so ``grpo_advantages``/``gae`` come back as the plain tuple, not a future.
+    Recipes that consume the VALUE route through here so they are correct under both, mirroring the
+    resolve-if-lazy seam in :func:`swift.dev.utils.scoring.response_token_scores`. Calling ``()`` blindly
+    assumes the lazy form and raises ``'tuple' object is not callable`` on the eager one.
+    """
+    return result() if callable(result) and getattr(result, '_is_lazy_collect', False) else result
+
+
 #: The console cadence when no LoggingConfig was supplied (legacy logging_steps=1: every step).
 _FALLBACK_LOGGING_STEPS = 1
 
@@ -818,6 +832,7 @@ def resolve_reward_scorers(channel: str, *, reward_config: Any, model_config: 'M
         ChannelCompanions(
             adapters=getattr(reward_config, f'{channel}_adapters'),
             model_types=getattr(reward_config, f'{channel}_model_type'),
+            task_types=getattr(reward_config, f'{channel}_task_type', None),
             model_revisions=getattr(reward_config, f'{channel}_model_revision'),
             template_names=getattr(reward_config, f'{channel}_template'),
             parallel_spec=getattr(reward_config, f'{channel}_parallel_spec')),

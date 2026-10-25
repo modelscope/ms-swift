@@ -216,7 +216,10 @@ def _resolve_model(model_config: 'ModelConfig', dataset_config: Optional['Datase
     hub_token = dataset_config.hub_token if dataset_config is not None else None
     # Preserve the user-passed id before overwriting with the local dir: args.json records the
     # portable id (`swift infer <ckpt>` re-resolves it anywhere); transient attr, not a CLI field.
-    model_config._model_id_or_path = model_config.model
+    # The parse-time checkpoint scan may already have stored one (and resolved .model to the local
+    # dir in the same breath) -- the FIRST id wins: it is the one actually typed by the user.
+    model_config._model_id_or_path = getattr(
+        model_config, '_model_id_or_path', None) or model_config.model
     model_config.model = safe_snapshot_download(
         model_config.model, revision=model_config.model_revision, use_hf=use_hf, hub_token=hub_token)
 
@@ -503,18 +506,26 @@ def _derive_weight_sync_strategy(rollout_config: 'RolloutConfig', rl_config: Opt
                                  tuner_config: Optional['TunerConfig']) -> None:
     """Default a run that rides the streaming driver to the only publication its placement/tuner allow.
 
-    A full-param or colocated run derives in_place; an overlapping regime adds partial rollout.
+    A full-param or colocated run derives in_place; an overlapping regime adds partial rollout. A
+    merge-only round loop (RFT, sync-only distillation) has no adapter-snapshot publication path at all,
+    so it derives in_place at every placement/tuner.
     """
-    from .validate import _changed_fields, _streams_under_none
-    mode = rollout_config.async_mode
-    # Under 'none' the publication knob is read only if the config actually rides the streaming
-    # driver; an overlapping mode always does. Skip the sync-only / non-online fallback.
-    if mode == 'none' and not _streams_under_none(rl_config):
-        return
+    from .validate import _changed_fields, _merges_every_round, _streams_under_none
     changed = _changed_fields(rollout_config)
     if 'weight_sync_strategy' in changed:
         # An explicit choice is left alone, so an adapter_snapshot on a full-param/colocated run
         # still reaches validate._check_streaming_publication and is rejected there.
+        return
+    if _merges_every_round(rl_config):
+        # The loop ships the full LoRA-merged base every round (sync_weights(merge_and_sync=True)); an
+        # enable_lora sampler would park the base under .base_layer and the canonical-name merge would
+        # miss it. in_place is the only sound publication, independent of placement/tuner.
+        rollout_config.weight_sync_strategy = 'in_place'
+        return
+    mode = rollout_config.async_mode
+    # Under 'none' the publication knob is read only if the config actually rides the streaming
+    # driver; an overlapping mode always does. Skip the sync-only / non-online fallback.
+    if mode == 'none' and not _streams_under_none(rl_config):
         return
     tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
     colocate = rollout_config.sampler_mode == 'colocate'

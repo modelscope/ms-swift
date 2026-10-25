@@ -8,8 +8,8 @@
 # issue (https://github.com/AutoGPTQ/AutoGPTQ/issues/439).
 #
 # REFERENCE-ONLY: gptqmodel is not installed on this box, so this script was not smoke-run here. Install
-# gptqmodel, then run it as-is (a single GPU is enough for a 1.5B model; --device_map cpu keeps calibration
-# off the GPU at the cost of speed).
+# gptqmodel, then run it as-is (a single GPU is enough for a 1.5B model; --device_map is retired -- to
+# keep calibration off the GPU at the cost of speed, run with CUDA_VISIBLE_DEVICES='').
 OMP_NUM_THREADS=14 \
 CUDA_VISIBLE_DEVICES=0 \
 USE_SWIFT_V5=1 \

@@ -64,8 +64,12 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
     quantization_config = overrides.pop("quantization_config", None)
     auto_model_cls = overrides.pop("auto_model_cls", None)
 
+    # _resolve_model overwrites ModelConfig.model with the LOCAL snapshot dir; the original hub id
+    # rides on _model_id_or_path. Family matching is by the id's basename (a snapshot dir's basename
+    # is 'master' or a hash and matches nothing), so prefer the portable id when the process kept one.
+    model_ref = getattr(model_config, '_model_id_or_path', None) or model_config.model
     info = resolve_model_info(
-        model_config.model,
+        model_ref,
         revision=model_config.model_revision,
         download_model=download_model,
         model_type=model_config.model_type,
@@ -75,7 +79,7 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
         torch_dtype=(getattr(torch, model_config.torch_dtype) if model_config.torch_dtype else None),
     )
     model_dir = info.model_dir
-    loader_cls = resolve_loader_cls(model_config.model_type or info.model_type, model_config.model)
+    loader_cls = resolve_loader_cls(model_config.model_type or info.model_type, model_ref)
     loader = loader_cls(info) if loader_cls is not None else None
 
     from twinkle.patch import apply_context
@@ -157,10 +161,15 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
             if return_dummy_model:
                 # cls(config) without reading the checkpoint; the caller's init_empty_weights
                 # context (merge's streaming path) lands every parameter on meta. The default-dtype
-                # dance keeps fresh parameters in the checkpoint's dtype.
+                # dance keeps fresh parameters in the checkpoint's dtype. transformers 5.x forbids
+                # instantiating the Auto* classes directly -- from_config is the supported
+                # weightless construction, and concrete PreTrainedModel classes carry it too.
                 origin_dtype = torch.get_default_dtype()
                 torch.set_default_dtype(getattr(config, "torch_dtype", None) or torch.float32)
-                model = model_cls(copy.deepcopy(config))
+                if hasattr(model_cls, "from_config"):
+                    model = model_cls.from_config(copy.deepcopy(config))
+                else:
+                    model = model_cls(copy.deepcopy(config))
                 torch.set_default_dtype(origin_dtype)
             elif loader is not None and auto_model_cls is None and info.task_type not in ("seq_cls", "reranker"):
                 # Full family takeover: model_cls, trust_remote_code warning and the transformers-5
@@ -730,12 +739,12 @@ def _resolve_model_loader(model_config: ModelConfig):
     ``model_type`` may be a family key, a ModelLoader subclass, or a plugin source; a resolved
     loader is authoritative and an unknown explicit value fails instead of re-matching the name.
     """
-    from swift.dev.model.loader import ModelInfo, resolve_loader_cls
+    from swift.dev.model.loader import LoaderModelInfo, resolve_loader_cls
 
     loader_cls = resolve_loader_cls(model_config.model_type, model_config.model)
     if loader_cls is None:
         return None
-    model_info = ModelInfo(
+    model_info = LoaderModelInfo(
         model_type=loader_cls.model_type or model_config.model_type,
         model_dir=model_config.model,
         max_model_len=model_config.max_model_len,
@@ -1137,6 +1146,8 @@ def _build_sentence_transformer_model(
         st_kwargs["gradient_checkpointing"] = train_config.gradient_checkpointing
         if train_config.gradient_checkpointing_kwargs:
             st_kwargs["gradient_checkpointing_kwargs"] = train_config.gradient_checkpointing_kwargs
+        # Same acc_strategy plumbing as the plain transformers path (the optimizer group reads it).
+        st_kwargs["acc_strategy"] = train_config.acc_strategy
     # init_strategy re-initializes uninitialized weights worker-side via the inherited
     # TransformersModel._apply_init_strategy (ST's pipeline is an nn.Module, so parameters() reaches it).
     if model_config.init_strategy is not None:
@@ -1467,7 +1478,8 @@ def _build_megatron_model(
     # mcore's auto (which picks a different kernel for a Qwen2.5 bf16 causal THD forward).
     from swift.dev.utils.naming import resolve_megatron_attn_backend
 
-    extra_kwargs["attention_backend"] = resolve_megatron_attn_backend(model_config.attn_impl)
+    extra_kwargs["attention_backend"] = resolve_megatron_attn_backend(
+        model_config.attn_impl, mixed_precision=mixed_precision)
     if _field_was_requested(model_config, "attn_impl"):
         strict_model_kwargs.add("attention_backend")
     # A flash_N value also pins the FA VERSION by mutating transformer_engine module globals -- a

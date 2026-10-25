@@ -12,17 +12,17 @@ from unittest.mock import MagicMock
 
 
 class TestTemplateCollateHook:
-    """swift InputProcessor.collate_fn invokes the template collate_mm_data hook."""
+    """swift InputProcessor.collate_fn invokes the template media hooks (collate_media / finalize_batch)."""
 
     def test_collate_stage_calls_template_hook(self):
         from swift.dev.processor import InputProcessor
 
         template = MagicMock()
-        template.collate_mm_data.return_value = {'pixel_values': torch.randn(1, 3, 224, 224)}
-        template.post_collate.side_effect = lambda x: x
+        template.collate_media.return_value = {'pixel_values': torch.randn(1, 3, 224, 224)}
+        template.finalize_batch.side_effect = lambda x: x
 
         processor = InputProcessor()
-        processor._template = template
+        processor.template = template
 
         inputs = [
             {
@@ -36,8 +36,9 @@ class TestTemplateCollateHook:
         ]
 
         result = processor.collate_fn(inputs)
-        template.collate_mm_data.assert_called()
+        template.collate_media.assert_called()
         assert 'pixel_values' in result[0]
+        template.finalize_batch.assert_called()
 
     def test_external_collate_fn_takes_priority(self):
         """An explicit collate_fn short-circuits the template hook."""
@@ -51,10 +52,10 @@ class TestTemplateCollateHook:
             return inputs[0]
 
         processor = InputProcessor(collate_fn=external)
-        processor._template = template
+        processor.template = template
 
         inputs = [{'input_ids': torch.tensor([1, 2, 3])}]
         processor.collate_fn(inputs)
 
         assert called['external'] is True
-        template.collate_mm_data.assert_not_called()
+        template.collate_media.assert_not_called()
