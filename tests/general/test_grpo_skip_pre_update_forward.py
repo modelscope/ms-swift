@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 from typing import Optional
 
-ROOT = Path('/tmp/opencode/msswift-10358')
+ROOT = Path(__file__).resolve().parents[2]
 TRAINER_SOURCE = (ROOT / 'swift' / 'rlhf_trainers' / 'grpo_trainer.py').read_text()
 
 
