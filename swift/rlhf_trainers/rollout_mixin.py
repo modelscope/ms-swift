@@ -36,8 +36,8 @@ from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, ru
 from swift.sequence_parallel import sequence_parallel
 from swift.template import Template
 from swift.tuners import Swift
-from swift.utils import (get_current_device, get_logger, is_deepspeed_enabled, is_vllm_available, remove_response,
-                         to_device, unwrap_model_for_generation)
+from swift.utils import (empty_cache, get_current_device, get_logger, is_deepspeed_enabled, is_vllm_available,
+                         remove_response, to_device, unwrap_model_for_generation)
 from .arguments import GKDConfig, GRPOConfig, RolloutTrainerArgumentsMixin
 from .base_rollout_mixin import BaseRolloutTrainerMixin
 from .gkd_helpers import TeacherServerConfig, parse_teacher_model_server, resolve_dynamic_opd_self_distillation
@@ -1437,7 +1437,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 moved = any(buf is not None and buf.device.type != 'cpu' for buf in model.buffers())
             if moved:
                 model.cpu()
-                torch.cuda.empty_cache()
+                empty_cache()
             return moved
 
         # Default: iterate over parameters AND buffers.
@@ -1457,7 +1457,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 buf.data = buf.data.to(torch.device('cpu'), non_blocking=True)
                 moved = True
         if moved:
-            torch.cuda.empty_cache()
+            empty_cache()
         return moved
 
     @torch.no_grad()
