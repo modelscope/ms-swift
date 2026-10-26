@@ -305,8 +305,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _log_rollout(self, samples: List[GRPOSample]) -> None:
         """Log prompts/completions and extra gathered metrics (solution, num_turns)."""
         with profiling_context(self, 'log_metrics'):
-            # --- logs (prompts + completions) ---
-            messages = [s.messages[:-1] for s in samples]
             completions = [deepcopy(s.messages[-1]['content']) for s in samples]
             for i, completion in enumerate(completions):
                 if isinstance(completion, str):
@@ -316,28 +314,18 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 elif isinstance(completion, dict):
                     token_ids = completion['token_ids']
                 completions[i] = self.processing_class.decode(token_ids)
-            valid_messages = self._gather_and_flatten(messages, flatten_level=0)
-            valid_completions = self._gather_and_flatten(completions, flatten_level=0)
-            self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
-            self._logs['completion'].extend(valid_completions)
-
-            # Example: if you want to log extra data in the wandb / swanlab table,
-            #          add them to metrics_to_gather
-            # NOTE: every key you register must appear in ALL rollout outputs
-            #       to avoid potential communication / synchronization issues
-            metrics_for_logs_to_gather = {}
-
-            if all('solution' in s.extra for s in samples):
-                metrics_for_logs_to_gather['solution'] = [s.extra['solution'] for s in samples]
-
-            if all(s.rollout_infos and 'num_turns' in s.rollout_infos for s in samples):
-                metrics_for_logs_to_gather['num_turns'] = [s.rollout_infos['num_turns'] for s in samples]
-
-            if metrics_for_logs_to_gather:
-                for key, value in metrics_for_logs_to_gather.items():
-                    if key not in self._logs:
-                        self._logs[key] = deque(maxlen=self.args.generation_batch_size)
-                    self._logs[key].extend(self._gather_and_flatten(value, flatten_level=0))
+            # Gather complete records once so optional fields cannot change the collective sequence.
+            records = [{
+                'prompt': s.messages[:-1],
+                'completion': completion,
+                'solution': s.extra.get('solution'),
+                'num_turns': (s.rollout_infos or {}).get('num_turns'),
+            } for s, completion in zip(samples, completions)]
+            records = self._gather_and_flatten(records, flatten_level=0)
+            prompts = self._apply_chat_template_to_messages_list([record['prompt'] for record in records])
+            for record, prompt in zip(records, prompts):
+                record['prompt'] = prompt
+            self._rollout_logs.extend(records)
 
     @profiling_decorator
     def _compute_rewards_per_func(self, samples: List[GRPOSample]) -> torch.Tensor:
@@ -1898,18 +1886,24 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Therefore, if entropy exists, to ensure length consistency across fields,
         # we align all data based on the number of samples in entropy.
         seen_nums = len(self._logs['entropy']) \
-            if 'entropy' in self._logs else len(self._logs['prompt'])
+            if 'entropy' in self._logs else len(self._rollout_logs)
         if self.accelerator.is_main_process and self.log_completions:
+            rollout_logs = list(self._rollout_logs)[:seen_nums]
             table = {
                 'step': [str(self.state.global_step)] * seen_nums,
-                'prompt': list(self._logs['prompt'])[:seen_nums],
-                'completion': list(self._logs['completion'])[:seen_nums],
+                'prompt': [record['prompt'] for record in rollout_logs],
+                'completion': [record['completion'] for record in rollout_logs],
                 **{
                     k: list(v)[:seen_nums]
                     for k, v in self._logs['rewards'].items()
                 },
                 'advantages': list(self._logs['advantages'])[:seen_nums],
             }
+            for key in dict.fromkeys(key for record in rollout_logs for key in record):
+                if key not in table:
+                    values = [record.get(key) for record in rollout_logs]
+                    if any(value is not None for value in values):
+                        table[key] = values
             for key, value in self._logs.items():
                 if key not in table and key not in ['image', 'rewards']:
                     table[key] = list(value)[:seen_nums]
@@ -2112,9 +2106,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
         self.num_completions_to_print = args.num_completions_to_print
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
+        self._rollout_logs = deque(maxlen=args.generation_batch_size)
         self._logs = {
-            'prompt': deque(maxlen=args.generation_batch_size),
-            'completion': deque(maxlen=args.generation_batch_size),
             'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
             'advantages': deque(maxlen=args.generation_batch_size),
         }
