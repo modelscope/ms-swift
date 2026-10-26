@@ -142,8 +142,9 @@ def _colocate_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'Rewa
             # sync the trained policy in, step BOTH trainers aside, wake ONLY the kv cache.
             cluster.sampler.wake_up(tags=['weights'])
             cluster.engine.sync_weights(merge_and_sync=True)
-            cluster.model.offload_to_cpu()
-            cluster.value_model.offload_to_cpu()
+            from swift.dev.recipe.offload import offload_for_rollout
+            offload_for_rollout(cluster.model, rollout_config)
+            offload_for_rollout(cluster.value_model, rollout_config)
             cluster.sampler.wake_up(tags=['kv_cache'])
             entered = True
             prompts = [row['messages'] for row in batch_rows]

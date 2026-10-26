@@ -322,7 +322,8 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
             # to write, sync the trained policy in, step the trainer aside, wake ONLY the kv cache.
             cluster.sampler.wake_up(tags=['weights'])
             cluster.engine.sync_weights(merge_and_sync=True)
-            cluster.model.offload_to_cpu()
+            from swift.dev.recipe.offload import offload_for_rollout
+            offload_for_rollout(cluster.model, rollout_config)
             cluster.sampler.wake_up(tags=['kv_cache'])
             entered = True
             prompts = [row['messages'] for row in batch_rows]

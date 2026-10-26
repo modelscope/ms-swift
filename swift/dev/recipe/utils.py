@@ -1637,13 +1637,18 @@ class ColocateHandover:
                  *,
                  colocate: bool,
                  merge_and_sync: bool = True,
-                 sleep_level: int = 0):
+                 sleep_level: int = 0,
+                 offload_model: bool = True,
+                 offload_optimizer: bool = True):
         self.model = model
         self.sampler = sampler
         self.manager = manager
         self.colocate = colocate
         self.merge_and_sync = merge_and_sync
         self.sleep_level = sleep_level
+        # Eval handover has no RolloutConfig; default both on so the trainer still steps aside.
+        self.offload_model = offload_model
+        self.offload_optimizer = offload_optimizer
 
     def enter(self) -> None:
         """Give the sampler the device and the trained weights, ready to generate.
@@ -1661,7 +1666,8 @@ class ColocateHandover:
             self.sampler.wake_up(tags=['weights'])
         self.manager.sync_weights(merge_and_sync=self.merge_and_sync)
         if self.colocate:
-            self.model.offload_to_cpu()
+            self.model.offload_to_cpu(
+                offload_model=self.offload_model, offload_optimizer=self.offload_optimizer)
             self.sampler.wake_up(tags=['kv_cache'])  # weights already awake; ready to generate
 
     def exit(self) -> None:

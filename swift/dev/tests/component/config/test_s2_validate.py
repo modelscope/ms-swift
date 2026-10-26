@@ -413,19 +413,24 @@ def test_streaming_publication_pairs():
 
 
 def test_offload_knobs_and_rollout_sampler(caplog):
-    """S2-41: colocate offload is atomic (partial settings warn, never split); disaggregated
-    sleep_level warns as inert; a rollout engine without weight sync is refused."""
+    """S2-41: colocate honours offload_model on its own; disaggregated sleep_level warns as inert;
+    a rollout engine without weight sync is refused."""
     import logging
     with caplog.at_level(logging.WARNING, logger='swift.dev'):
         rollout = _explicit(RolloutConfig(sampler_mode='colocate'), 'offload_model')
         rollout.offload_model = False
-        validate_rollout_config(rollout)  # partial setting: warn only
-        assert any('atomic' in rec.message for rec in caplog.records)
+        validate_rollout_config(rollout)
+        assert not any('atomic' in rec.message or 'ignoring' in rec.message.lower() for rec in caplog.records)
 
         caplog.clear()
         rollout = _explicit(RolloutConfig(sampler_mode='disaggregated'), 'sleep_level')
         validate_rollout_config(rollout)
         assert any('sleep_level' in rec.message for rec in caplog.records)
+
+    with pytest.raises(ValueError, match='offload_model'):
+        validate_rollout_config(
+            RolloutConfig(resource_mode='adaptive', sampler_mode='disaggregated'),
+            RLConfig(rl_type='grpo'))
 
     with pytest.raises(ValueError, match='cannot back an online-RL rollout'):
         validate_rollout_config(RolloutConfig(rollout_sampler='transformers'))
