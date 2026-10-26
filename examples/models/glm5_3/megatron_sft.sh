@@ -6,6 +6,9 @@
 
 # mcore-bridge main
 # pip install git+https://github.com/modelscope/mcore-bridge.git
+#
+# To train the checkpoint's MTP head, change `--mtp_num_layers 0` below to
+# `--mtp_num_layers 1` and add `--mtp_loss_scaling_factor 0.1`.
 
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}
 

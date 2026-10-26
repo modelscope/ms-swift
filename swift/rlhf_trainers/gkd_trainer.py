@@ -24,7 +24,7 @@ from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
                          swanlab_get_run, to_device)
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import get_gather_if_zero3_context, identity_data_collator, profiling_decorator
+from .utils import _ForwardRedirection, get_gather_if_zero3_context, identity_data_collator, profiling_decorator
 
 try:
     from liger_kernel.chunked_loss import LigerFusedLinearJSDLoss
@@ -144,64 +144,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         teacher_fwd_inputs = {k: v for k, v in teacher_model_inputs.items() if k != 'labels'}
 
         if self.use_liger_gkd_loss:
-            # Liger fused JSD loss for memory efficiency
-            # Get base models (exclude lm_head to save memory)
             unwrapped_student = self.accelerator.unwrap_model(model)
-            if is_peft_model(unwrapped_student):
-                unwrapped_student = unwrapped_student.base_model.model
-            base_student = getattr(unwrapped_student, getattr(unwrapped_student, 'base_model_prefix', 'model'),
-                                   unwrapped_student)
-
-            unwrapped_teacher = self.accelerator.unwrap_model(self.teacher_model)
-            base_teacher = getattr(unwrapped_teacher, getattr(unwrapped_teacher, 'base_model_prefix', 'model'),
-                                   unwrapped_teacher)
-
-            # Forward through base models
-            student_outputs = base_student(**forward_inputs, use_cache=False)
-
-            load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
-            with load_context:
-                with torch.no_grad(), disable_gradient_checkpointing(self.teacher_model,
-                                                                     self.args.gradient_checkpointing_kwargs):
-                    teacher_outputs = base_teacher(**forward_inputs, use_cache=False)
-
-                # Get hidden states (shifted)
-                student_hidden = student_outputs.last_hidden_state[:, :-1]
-                teacher_hidden = teacher_outputs.last_hidden_state[:, :-1]
-
-                # Release full outputs to free memory
-                del student_outputs, teacher_outputs
-
-                # Prepare labels (shifted)
-                labels_mask = model_inputs['labels'] != -100
-                masked_input_ids = torch.where(labels_mask, model_inputs['input_ids'],
-                                               torch.full_like(model_inputs['input_ids'], -100))
-                true_labels = masked_input_ids[:, 1:].contiguous()
-
-                # Release intermediate tensors
-                del labels_mask, masked_input_ids
-
-                # Get output heads
-                student_head = unwrapped_student.get_output_embeddings()
-                teacher_head = unwrapped_teacher.get_output_embeddings()
-
-                # Prepare context managers for gathering parameters in zero3
-                teacher_context = get_gather_if_zero3_context(self, is_zero3=self.is_teacher_ds3)(teacher_head.weight)
-                student_context = get_gather_if_zero3_context(self)(student_head.weight)
-
-                with teacher_context, student_context:
-                    # Compute liger fused JSD loss
-                    loss = self.liger_jsd_loss(
-                        student_input=student_hidden,
-                        student_weight=student_head.weight,
-                        teacher_input=teacher_hidden,
-                        teacher_weight=teacher_head.weight,
-                        true_labels=true_labels,
-                        student_bias=getattr(student_head, 'bias', None),
-                        teacher_bias=getattr(teacher_head, 'bias', None),
-                    )
-                # Release hidden states after loss computation
-                del student_hidden, teacher_hidden, true_labels
+            loss = self._forward_redirection(
+                model, unwrapped_student,
+                lambda *_, **__: self._compute_liger_loss(unwrapped_student, model_inputs, forward_inputs),
+                **forward_inputs)
             outputs_student = None
         # Non-liger path: student forward + teacher output construction + JSD loss
         else:
@@ -249,6 +196,65 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             return (loss, outputs_student)
         else:
             return loss
+
+    def _compute_liger_loss(self, unwrapped_student, model_inputs, forward_inputs):
+        # Get base models (exclude lm_head to save memory)
+        if is_peft_model(unwrapped_student):
+            unwrapped_student = unwrapped_student.base_model.model
+        base_student = getattr(unwrapped_student, getattr(unwrapped_student, 'base_model_prefix', 'model'),
+                               unwrapped_student)
+
+        unwrapped_teacher = self.accelerator.unwrap_model(self.teacher_model)
+        base_teacher = getattr(unwrapped_teacher, getattr(unwrapped_teacher, 'base_model_prefix', 'model'),
+                               unwrapped_teacher)
+
+        # Forward through base models
+        student_outputs = base_student(**forward_inputs, use_cache=False)
+
+        load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
+        with load_context:
+            with torch.no_grad(), disable_gradient_checkpointing(self.teacher_model,
+                                                                 self.args.gradient_checkpointing_kwargs):
+                teacher_outputs = base_teacher(**forward_inputs, use_cache=False)
+
+            # Get hidden states (shifted)
+            student_hidden = student_outputs.last_hidden_state[:, :-1]
+            teacher_hidden = teacher_outputs.last_hidden_state[:, :-1]
+
+            # Release full outputs to free memory
+            del student_outputs, teacher_outputs
+
+            # Prepare labels (shifted)
+            labels_mask = model_inputs['labels'] != -100
+            masked_input_ids = torch.where(labels_mask, model_inputs['input_ids'],
+                                           torch.full_like(model_inputs['input_ids'], -100))
+            true_labels = masked_input_ids[:, 1:].contiguous()
+
+            # Release intermediate tensors
+            del labels_mask, masked_input_ids
+
+            # Get output heads
+            student_head = unwrapped_student.get_output_embeddings()
+            teacher_head = unwrapped_teacher.get_output_embeddings()
+
+            # The student head is an external parameter of the wrapped forward; ZeRO-3
+            # manages its lifetime through backward. Only gather the teacher head here.
+            teacher_context = get_gather_if_zero3_context(self, is_zero3=self.is_teacher_ds3)(teacher_head.weight)
+
+            with teacher_context:
+                # Compute liger fused JSD loss
+                loss = self.liger_jsd_loss(
+                    student_input=student_hidden,
+                    student_weight=student_head.weight,
+                    teacher_input=teacher_hidden,
+                    teacher_weight=teacher_head.weight,
+                    true_labels=true_labels,
+                    student_bias=getattr(student_head, 'bias', None),
+                    teacher_bias=getattr(teacher_head, 'bias', None),
+                )
+            # Release hidden states after loss computation
+            del student_hidden, teacher_hidden, true_labels
+        return loss
 
     def _log_student_completions(self, generated_samples) -> None:
         """Log student completions from generated GKDSample list."""
@@ -461,11 +467,14 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             assert self.args.sft_alpha == 0, 'SFT loss is not supported with liger loss'
             assert self.gkd_logits_topk is None, 'Top-k mode is not supported with liger loss'
             self.liger_jsd_loss = LigerFusedLinearJSDLoss(
+                weight_hard_loss=0.0,
+                weight_soft_loss=1.0,
                 beta=self.beta,
                 ignore_index=-100,
                 temperature=self.temperature,
                 compiled=False,
             )
+            self._forward_redirection = _ForwardRedirection()
             self.use_liger_gkd_loss = True
 
     def _prepare_logging(self):

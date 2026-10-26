@@ -7,6 +7,7 @@ import json
 import multiprocessing
 import os
 import re
+import secrets
 import tempfile
 import time
 import uvicorn
@@ -60,6 +61,22 @@ class SwiftDeploy(SwiftInfer):
         self.app.post('/v1/embeddings')(self.create_embedding)
         self.app.post('/infer/')(self.infer_handler)
 
+    # Endpoints exempt from API key authentication (monitoring / discovery).
+    # All other routes are authenticated by default, so new routes are protected automatically.
+    _AUTH_EXEMPT_PATHS = frozenset({'/health', '/health/', '/ping', '/v1/models'})
+
+    def _install_auth_middleware(self):
+        if not self.args.api_key:
+            return
+
+        @self.app.middleware('http')
+        async def _auth_middleware(request: Request, call_next):
+            if request.url.path not in self._AUTH_EXEMPT_PATHS:
+                error_msg = self._check_api_key(request)
+                if error_msg:
+                    return self.create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+            return await call_next(request)
+
     def __init__(self, args: Optional[Union[List[str], DeployArguments]] = None) -> None:
         super().__init__(args)
 
@@ -67,6 +84,7 @@ class SwiftDeploy(SwiftInfer):
         self.infer_stats = InferStats()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_app()
+        self._install_auth_middleware()
 
     async def _log_stats_hook(self):
         while True:
@@ -122,14 +140,14 @@ class SwiftDeploy(SwiftInfer):
 
     def _check_api_key(self, raw_request: Request) -> Optional[str]:
         api_key = self.args.api_key
-        if api_key is None:
+        if not api_key:
             return
         authorization = dict(raw_request.headers).get('authorization')
         error_msg = 'API key error'
         if authorization is None or not authorization.startswith('Bearer '):
             return error_msg
         request_api_key = authorization[7:]
-        if request_api_key != api_key:
+        if not secrets.compare_digest(request_api_key, api_key):
             return error_msg
 
     def _check_max_logprobs(self, request):
@@ -337,7 +355,7 @@ class SwiftDeploy(SwiftInfer):
         server to fetch a media URL on the caller's behalf, so it should not be exposed as-is.
         """
         args = self.args
-        if args.api_key is not None or args.host in {'127.0.0.1', 'localhost', '::1'}:
+        if args.api_key or args.host in {'127.0.0.1', 'localhost', '::1'}:
             return
         logger.warning(f'The server is listening on {args.host}:{args.port} without an API key, so anyone able '
                        'to reach this port can use it. Pass `--api_key` to require one, and `--host 127.0.0.1` '

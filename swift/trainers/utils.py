@@ -201,19 +201,29 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, return_labels
 
 def per_token_loss_func(outputs, labels, enable_dft_loss: bool = False, **kwargs):
     logits = outputs.logits
-    # Upcast to float if we need to compute the loss to avoid potential precision issues
-    logits = logits.float()
+    batch_size = labels.shape[0]
     labels = torch.roll(labels, shifts=-1, dims=-1).view(-1)
 
     # Flatten the tokens
-    logits = logits.view(-1, logits.shape[-1])
+    logits = logits.reshape(-1, logits.shape[-1])
     # Enable model parallelism
     labels = labels.to(logits.device)
-    loss = F.cross_entropy(logits, labels, ignore_index=-100, reduction='none')
+    valid_indices = (labels != -100).nonzero(as_tuple=True)[0]
+    if labels.numel() - valid_indices.numel() > batch_size:
+        # Select supervised rows before the vocabulary-sized FP32 cast and CE buffers.
+        logits = logits.index_select(0, valid_indices)
+        loss_labels = labels.index_select(0, valid_indices)
+    else:
+        # logits_to_keep may have already removed everything except the alignment padding.
+        valid_indices = None
+        loss_labels = labels
+    loss = F.cross_entropy(logits.float(), loss_labels, ignore_index=-100, reduction='none')
     if enable_dft_loss:
         with torch.no_grad():
             target_probs = torch.exp(-loss)
         loss *= target_probs
+    if valid_indices is not None:
+        loss = loss.new_zeros(labels.shape).index_copy_(0, valid_indices, loss)
     return loss
 
 

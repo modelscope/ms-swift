@@ -137,11 +137,31 @@ class MiniCPMVTemplate(Template):
         inputs_embeds, _ = model.get_vllm_embedding(inputs)
         return {'inputs_embeds': inputs_embeds}
 
+    def _adjust_bounds_for_padding(self, res: Dict[str, Any], seq_lens: List[int], bound_keys: List[str]) -> None:
+        padding_side = self.padding_side if self.is_training else 'left'
+        if self.padding_free or padding_side != 'left':
+            return
+
+        padded_seq_len = res['input_ids'].shape[-1]
+        padding_lengths = [padded_seq_len - seq_len for seq_len in seq_lens]
+        for key in bound_keys:
+            bounds_list = res.get(key)
+            if not bounds_list:
+                continue
+            assert len(bounds_list) == len(padding_lengths), (
+                f'len({key}): {len(bounds_list)}, len(padding_lengths): {len(padding_lengths)}')
+            res[key] = [
+                bounds + padding_length if isinstance(bounds, torch.Tensor) else bounds
+                for bounds, padding_length in zip(bounds_list, padding_lengths)
+            ]
+
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        seq_lens = [len(b['input_ids']) for b in batch]
         res = {}
         for k in ['pixel_values', 'image_bound', 'tgt_sizes']:
             res[k] = self.gather_list(batch, k)
         res.update(super()._data_collator(batch, padding_to=padding_to))
+        self._adjust_bounds_for_padding(res, seq_lens, ['image_bound'])
         return res
 
 
@@ -301,10 +321,12 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template):
         return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        seq_lens = [len(b['input_ids']) for b in batch]
         res = {}
         for k in ['pixel_values', 'image_bound', 'tgt_sizes', 'temporal_ids']:
             res[k] = self.gather_list(batch, k)
         res.update(Template._data_collator(self, batch, padding_to=padding_to))
+        self._adjust_bounds_for_padding(res, seq_lens, ['image_bound'])
         return res
 
 
@@ -576,6 +598,7 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
         return {'inputs_embeds': inputs_embeds}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        seq_lens = [len(b['input_ids']) for b in batch]
         res = {}
         # Vision data
         for k in ['pixel_values', 'image_bound', 'tgt_sizes']:
@@ -617,6 +640,7 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
         res['audio_bounds'] = audio_bounds_list if audio_bounds_list else []
 
         res.update(Template._data_collator(self, batch, padding_to=padding_to))
+        self._adjust_bounds_for_padding(res, seq_lens, ['image_bound', 'audio_bounds'])
         return res
 
 
@@ -669,8 +693,8 @@ class MiniCPMV4_6Template(Template):
             if mm_data:
                 media_inputs = self.processor(
                     text=self.tokenizer.eos_token.join([media_token] * len(mm_data)),
-                    images=inputs.images or None,
-                    videos=inputs.videos or None,
+                    images=mm_data if media_type == 'image' else None,
+                    videos=mm_data if media_type == 'video' else None,
                     return_tensors='pt',
                     add_special_tokens=False,
                     downsample_mode=self.downsample_mode,
@@ -728,6 +752,31 @@ register_template(
     ChatmlTemplateMeta(
         MLLMTemplateType.minicpmv4_6,
         template_cls=MiniCPMV4_6Template,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+    ))
+
+
+class MiniCPMV4_7Template(MiniCPMV4_6Template):
+    support_padding_free = False
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        encoded['mm_token_type_ids'] = torch.tensor(self.processor.create_mm_token_type_ids([encoded['input_ids']])[0])
+        return encoded
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        if self.is_training and self.padding_side == 'left':
+            res.pop('position_ids', None)
+        return res
+
+
+register_template(
+    ChatmlTemplateMeta(
+        MLLMTemplateType.minicpmv4_7,
+        template_cls=MiniCPMV4_7Template,
         is_thinking=True,
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think>\n\n</think>\n\n',

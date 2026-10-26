@@ -156,6 +156,8 @@ class RolloutInferRequest(InferRequest):
     images: List[str] = field(default_factory=list)
     data_dict: Dict = field(default_factory=dict)
     uuid: Optional[str] = None
+    # 'auto' uses the training suffix policy when scoring completed responses.
+    add_eos: Optional[Union[bool, Literal['auto']]] = None
 
 
 def random_uuid() -> str:
@@ -247,7 +249,7 @@ class ChatCompletionRequestMixin:
                 self.tools = None
             elif isinstance(self.tool_choice, dict):
                 name = self.tool_choice['function']['name']
-                tool = next(tool for tool in self.tools if tool['function']['name'] == name)
+                tool = next((tool for tool in self.tools if tool['function']['name'] == name), None)
                 if tool is None:
                     raise ValueError(f"Tool choice '{name}' not found in tools.")
                 self.tools = [tool]

@@ -162,6 +162,18 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
             res_tool.append(f'<tool_response>\n{tool_content}\n</tool_response>\n')
         return ''.join(res_tool)
 
+    def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
+        """Trim preceding assistant content and separate it from the first tool call."""
+        if not pre_message or pre_message.get('role') != 'assistant':
+            return tool_content
+        content = pre_message.get('content', '')
+        if not isinstance(content, str):
+            return tool_content
+        # Qwen3-Coder's jinja uses content|trim before '\n\n<tool_call>'. Normalize
+        # the message before Template merges it with the formatted tool calls.
+        pre_message['content'] = content.strip()
+        return ('\n\n' if pre_message['content'] else '') + tool_content
+
 
 class Qwen3_5AgentTemplate(Qwen3CoderAgentTemplate):
 

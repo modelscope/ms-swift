@@ -35,7 +35,6 @@ from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
 from trl.trainer import grpo_trainer
 from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin
-from trl.trainer.utils import selective_log_softmax
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from swift.dataset import RowPreprocessor
@@ -53,14 +52,13 @@ from swift.sequence_parallel import GatherLoss, sequence_parallel
 from swift.template import Template, TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logger, is_swanlab_available,
-                         is_wandb_available, nanstd, remove_response, seed_worker, to_device,
-                         unwrap_model_for_generation)
+                         is_wandb_available, remove_response, seed_worker, to_device, unwrap_model_for_generation)
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
 from .utils import (_ForwardRedirection, collate_to_grpo_micro_batch, compute_chord_loss, encode_sample,
                     get_even_process_data, identity_data_collator, load_pil_img, make_chord_sft_dataset,
                     pad_logps_back_to_batch, patch_save_last_checkpoint, profiling_context, profiling_decorator,
-                    replace_assistant_response_with_ids, swanlab_get_run)
+                    replace_assistant_response_with_ids, selective_log_softmax, swanlab_get_run)
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -306,8 +304,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _log_rollout(self, samples: List[GRPOSample]) -> None:
         """Log prompts/completions and extra gathered metrics (solution, num_turns)."""
         with profiling_context(self, 'log_metrics'):
-            # --- logs (prompts + completions) ---
-            messages = [s.messages[:-1] for s in samples]
             completions = [deepcopy(s.messages[-1]['content']) for s in samples]
             for i, completion in enumerate(completions):
                 if isinstance(completion, str):
@@ -317,28 +313,18 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 elif isinstance(completion, dict):
                     token_ids = completion['token_ids']
                 completions[i] = self.processing_class.decode(token_ids)
-            valid_messages = self._gather_and_flatten(messages, flatten_level=0)
-            valid_completions = self._gather_and_flatten(completions, flatten_level=0)
-            self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
-            self._logs['completion'].extend(valid_completions)
-
-            # Example: if you want to log extra data in the wandb / swanlab table,
-            #          add them to metrics_to_gather
-            # NOTE: every key you register must appear in ALL rollout outputs
-            #       to avoid potential communication / synchronization issues
-            metrics_for_logs_to_gather = {}
-
-            if all('solution' in s.extra for s in samples):
-                metrics_for_logs_to_gather['solution'] = [s.extra['solution'] for s in samples]
-
-            if all(s.rollout_infos and 'num_turns' in s.rollout_infos for s in samples):
-                metrics_for_logs_to_gather['num_turns'] = [s.rollout_infos['num_turns'] for s in samples]
-
-            if metrics_for_logs_to_gather:
-                for key, value in metrics_for_logs_to_gather.items():
-                    if key not in self._logs:
-                        self._logs[key] = deque(maxlen=self.args.generation_batch_size)
-                    self._logs[key].extend(self._gather_and_flatten(value, flatten_level=0))
+            # Gather complete records once so optional fields cannot change the collective sequence.
+            records = [{
+                'prompt': s.messages[:-1],
+                'completion': completion,
+                'solution': s.extra.get('solution'),
+                'num_turns': (s.rollout_infos or {}).get('num_turns'),
+            } for s, completion in zip(samples, completions)]
+            records = self._gather_and_flatten(records, flatten_level=0)
+            prompts = self._apply_chat_template_to_messages_list([record['prompt'] for record in records])
+            for record, prompt in zip(records, prompts):
+                record['prompt'] = prompt
+            self._rollout_logs.extend(records)
 
     @profiling_decorator
     def _compute_rewards_per_func(self, samples: List[GRPOSample]) -> torch.Tensor:
@@ -416,30 +402,19 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # rewards_per_func_for_metrics: [prompt_batch_size*num_generations, self.num_reward_funcs]
             mode = 'train' if self.model.training else 'eval'
             num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
-            group_rewards = rewards.view(-1, num_generations)
-            rewards_mean = group_rewards.mean(-1).mean().item()
-            if self.scale_rewards in ['group', 'none', 'gdpo']:
-                # Handle edge case when num_generations_eval=1
-                if num_generations > 1:
-                    rewards_std = group_rewards.std(-1).mean().item()
-                else:
-                    rewards_std = 0.0
-            elif self.scale_rewards == 'batch':
-                rewards_std = rewards.std().item() if rewards.numel() > 1 else 0.0
-            if num_generations > 1:
-                is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
-            else:
-                is_std_zero = torch.ones(group_rewards.size(0), dtype=torch.bool, device=group_rewards.device)
-
-            self._metrics[mode]['reward'].append(rewards_mean)
-            self._metrics[mode]['reward_std'].append(rewards_std)
-            self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
-
-            # Log per-reward-function statistics using deduplicated rewards_per_func
-            for i, name in enumerate(self.reward_func_names):
-                col = rewards_per_func_for_metrics[:, i]
-                self._metrics[mode][f'rewards/{name}/mean'].append(torch.nanmean(col).item())
-                self._metrics[mode][f'rewards/{name}/std'].append(nanstd(col).item())
+            reward_metrics = compute_reward_metrics(
+                rewards=rewards,
+                rewards_per_func=rewards_per_func_for_metrics,
+                reward_func_names=self.reward_func_names,
+                num_generations=num_generations,
+                scale_rewards=self.scale_rewards,
+            )
+            self._metrics[mode]['reward'].append(reward_metrics.reward_mean)
+            self._metrics[mode]['reward_std'].append(reward_metrics.reward_std)
+            self._metrics[mode]['frac_reward_zero_std'].append(reward_metrics.frac_reward_zero_std)
+            for name in reward_metrics.per_func_mean:
+                self._metrics[mode][f'rewards/{name}/mean'].append(reward_metrics.per_func_mean[name])
+                self._metrics[mode][f'rewards/{name}/std'].append(reward_metrics.per_func_std[name])
 
         def log_rewards_all(rewards_per_func: torch.Tensor):
             """Log all rewards for debugging."""
@@ -492,7 +467,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self._metrics[mode]['frac_reward_zero_std'].append(reward_metrics.frac_reward_zero_std)
             if kl_values is not None:
                 self._metrics[mode]['kl'].append(kl_values.nanmean().item())
-            for name in self.reward_func_names:
+            for name in reward_metrics.per_func_mean:
                 self._metrics[mode][f'rewards/{name}/mean'].append(reward_metrics.per_func_mean[name])
                 self._metrics[mode][f'rewards/{name}/std'].append(reward_metrics.per_func_std[name])
             log_rewards_all(rewards_per_func)
@@ -864,9 +839,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         origin_data = inputs.get('_origin_data')
         if self.use_liger_loss:
             unwrapped_model = self.accelerator.unwrap_model(model)
-            return self._forward_redirection(
+            loss = self._forward_redirection(
                 model, unwrapped_model,
                 lambda *_, **__: self.compute_liger_loss(unwrapped_model, model_inputs, grpo_batch), **model_inputs)
+            if self.model.training and self.chord_sft_iterator is not None:
+                loss = compute_chord_loss(self, grpo_loss=loss)
+            return loss
         else:
             return self._compute_loss(model, model_inputs, grpo_batch, origin_data)
 
@@ -940,7 +918,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         }
         return influence_weight, metrics
 
-    def _compute_loss_and_metrics(self, model, model_inputs: Dict[str, Any], grpo_batch: GRPOBatch):
+    def _compute_loss_and_metrics(self,
+                                  model,
+                                  model_inputs: Dict[str, Any],
+                                  grpo_batch: GRPOBatch,
+                                  policy_loss_scale: float = 1.0):
         """Core loss computation without metrics recording."""
         mode = 'train' if self.model.training else 'eval'
         completion_mask = grpo_batch.completion_mask
@@ -1138,7 +1120,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             loss = (per_token_loss * completion_mask).sum() / normalizer
             # Compensate here, before the auxiliary losses below: `num_items_in_batch` already covers the whole
             # accumulation window, while SDAR/CHORD are micro-batch means that still need the Trainer division.
-            loss = self._undo_gradient_accumulation_scaling(loss)
+            loss = self._undo_gradient_accumulation_scaling(loss) * policy_loss_scale
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
@@ -1329,8 +1311,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 is_dummy = True
                 chunk_weight = 0
 
-            # Compute loss and metrics for this chunk
-            chunk_loss, chunk_metrics_data = self._compute_loss_and_metrics(model, chunk_model_inputs, chunk_grpo_batch)
+            # Cancel the outer sample weighting only for the window-normalized policy loss, before auxiliary losses.
+            chunk_loss, chunk_metrics_data = self._compute_loss_and_metrics(
+                model,
+                chunk_model_inputs,
+                chunk_grpo_batch,
+                policy_loss_scale=batch_size / chunk_weight if not is_dummy else 1.0)
 
             if not is_dummy:
                 losses.append(chunk_loss * chunk_weight)
@@ -1788,6 +1774,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         logits_to_keep = grpo_batch.logits_to_keep
         completion_ids = input_ids[:, -logits_to_keep:]
         completion_mask = grpo_batch.completion_mask
+        if self.overlong_filter:
+            completion_mask = completion_mask & ~grpo_batch.truncated_mask.unsqueeze(-1)
 
         last_hidden_state = self._get_last_hidden_state(unwrapped_model, model_inputs, logits_to_keep)
 
@@ -1897,18 +1885,24 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Therefore, if entropy exists, to ensure length consistency across fields,
         # we align all data based on the number of samples in entropy.
         seen_nums = len(self._logs['entropy']) \
-            if 'entropy' in self._logs else len(self._logs['prompt'])
+            if 'entropy' in self._logs else len(self._rollout_logs)
         if self.accelerator.is_main_process and self.log_completions:
+            rollout_logs = list(self._rollout_logs)[:seen_nums]
             table = {
                 'step': [str(self.state.global_step)] * seen_nums,
-                'prompt': list(self._logs['prompt'])[:seen_nums],
-                'completion': list(self._logs['completion'])[:seen_nums],
+                'prompt': [record['prompt'] for record in rollout_logs],
+                'completion': [record['completion'] for record in rollout_logs],
                 **{
                     k: list(v)[:seen_nums]
                     for k, v in self._logs['rewards'].items()
                 },
                 'advantages': list(self._logs['advantages'])[:seen_nums],
             }
+            for key in dict.fromkeys(key for record in rollout_logs for key in record):
+                if key not in table:
+                    values = [record.get(key) for record in rollout_logs]
+                    if any(value is not None for value in values):
+                        table[key] = values
             for key, value in self._logs.items():
                 if key not in table and key not in ['image', 'rewards']:
                     table[key] = list(value)[:seen_nums]
@@ -2111,9 +2105,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
         self.num_completions_to_print = args.num_completions_to_print
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
+        self._rollout_logs = deque(maxlen=args.generation_batch_size)
         self._logs = {
-            'prompt': deque(maxlen=args.generation_batch_size),
-            'completion': deque(maxlen=args.generation_batch_size),
             'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
             'advantages': deque(maxlen=args.generation_batch_size),
         }

@@ -55,6 +55,12 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
                 model_dirs=args.adapters,
                 max_shard_size=args.max_shard_size,
                 additional_saved_files=model.model_meta.additional_saved_files)
+            if getattr(args, 'task_type', None) == 'decision':
+                from swift.model.decision_head import get_scoring_head
+                head = get_scoring_head(model)
+                if head is not None:
+                    head.save_pretrained(output_dir, save_weights=False)
+                    logger.info(f'decision: saved scoring_head meta ({head.HEAD_META_NAME}) to {output_dir}.')
             logger.info(f'Successfully merged LoRA and saved in `{output_dir}`.')
         finally:
             args.quant_method = origin_quant_method

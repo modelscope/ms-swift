@@ -35,10 +35,18 @@ def compute_acc(preds,
             for i in range(cu_seqlens.shape[0] - 1):
                 start, end = cu_seqlens[i], cu_seqlens[i + 1]
                 mask = masks[0, start:end]
+                # np.all() of an empty selection is True, so a sequence without any supervised label
+                # would be scored as a correct prediction.
+                if not mask.any():
+                    continue
                 acc_list.append(np.all(preds[0, start:end][mask] == labels[0, start:end][mask]))
         else:
             for i, m in enumerate(masks):
+                if not m.any():
+                    continue
                 acc_list.append(np.all(preds[i, m] == labels[i, m]))
+    if not acc_list:
+        return {}
     return {f'{acc_strategy}_acc' if preds.ndim >= 2 else 'acc': acc_list}
 
 

@@ -195,6 +195,8 @@ After entering the container, run `source /usr/local/Ascend/ascend-toolkit/set_e
 
 ### Local Environment Installation
 
+**Step 1: Prepare the environment**
+
 ```shell
 # Create a new conda virtual environment (optional)
 conda create -n swift-npu python=3.12 -y
@@ -205,13 +207,29 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 # Set the global pip mirror (optional, speeds up downloads)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-pip install ms-swift -U
+```
 
-# Install from source
+**Step 2: Install ms-swift (choose ONE of the following methods)**
+
+> Choose method A for regular use, or method B if you need the latest code from the main branch or want to modify the source. After completing either method, go directly to step 3. You do not need to run the other method.
+
+**Method A: Install the PyPI release (recommended for regular use)**
+
+```shell
+pip install ms-swift -U
+```
+
+**Method B: Install from source**
+
+```shell
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
+```
 
+**Step 3: Install the runtime and any optional components you need**
+
+```shell
 # Install the matching PyTorch/TorchNPU runtime
 pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0
 pip install torch_npu==2.10.0.post4 decorator \
@@ -265,6 +283,8 @@ cd $SWIFT_ROOT/mcore-bridge && git checkout c820ed47960e
 # without build isolation or dependency resolution. Qwen3.5's Transformers loader
 # needs FLA exports; its NPU backend is also provided by this checkout.
 python -m pip install 'packaging>=26.2' transformers==5.12.1 torchvision==0.25.0 torchaudio==2.10.0 nvdlfw-inspect 'qwen-vl-utils>=0.0.14'
+# Install Triton-Ascend for the optional FLA NPU backend.
+python -m pip install triton-ascend --extra-index-url=https://mirrors.huaweicloud.com/ascend/repos/pypi
 python -m pip install -e $SWIFT_ROOT/flash-linear-attention --no-build-isolation --no-deps
 python -m pip install -e $SWIFT_ROOT/Megatron-LM --no-build-isolation --no-deps
 python -m pip install -e $SWIFT_ROOT/MegatronAdaptor --no-build-isolation --no-deps

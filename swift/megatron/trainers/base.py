@@ -166,7 +166,7 @@ class BaseMegatronTrainer(ABC):
                 num_layers=config.num_layers,
                 moe_layer_freq=config.moe_layer_freq,
                 mtp_num_layers=args.mtp_num_layers)
-        if args.mtp_num_layers is not None:
+        if args.mtp_num_layers:
             mtp_loss_scale = 1 / args.num_microbatches / n_steps
             mtp_logs = {}
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, self.state.iteration, None, None, mtp_logs)
@@ -543,7 +543,8 @@ class BaseMegatronTrainer(ABC):
         if not os.path.exists(common_path):
             return iteration
 
-        state_dict = torch.load(common_path)
+        # Ensure there are no insecure deserialization vulnerabilities when PyTorch is version 2.6 or earlier.
+        state_dict = torch.load(common_path, weights_only=True)
         if 'args' not in state_dict:
             return iteration
         self.args.consumed_train_samples = getattr(state_dict['args'], 'consumed_train_samples', 0)

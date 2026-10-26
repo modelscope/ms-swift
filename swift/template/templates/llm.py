@@ -197,6 +197,36 @@ register_template(TeleChatTemplateMeta(LLMTemplateType.telechat))
 telechat_system = '你是中国电信星辰语义大模型，英文名是TeleChat，你是由中电信人工智能科技有限公司和中国电信人工智能研究院（TeleAI）研发的人工智能助手。'
 register_template(TeleChatTemplateMeta(LLMTemplateType.telechat2, default_system=telechat_system))
 
+
+class Xing4_0Template(Template):
+    """ref: https://modelscope.cn/models/XingChen-AGI/Xing4.0-29B-A4B (chat_template.jinja)"""
+
+    def __init__(self, *args, **kwargs):
+        # The jinja template turns thinking on unless `enable_thinking` is explicitly false, while the
+        # base class derives `is_thinking and not non_thinking_prefix` (i.e. False) for hybrid models.
+        if kwargs.get('enable_thinking') is None:
+            kwargs['enable_thinking'] = True
+        super().__init__(*args, **kwargs)
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.xing4_0,
+        prefix=['<_system>'],
+        system_prefix=['<_system>{{SYSTEM}}'],
+        prompt=['<_user>{{QUERY}}<_bot>'],
+        chat_sep=['<_end>\n'],
+        suffix=['<_end>\n'],
+        template_cls=Xing4_0Template,
+        agent_template='xing4_0',
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='</think>',
+        history_thinking_prefix='</think>',
+        # The official jinja template drops the reasoning of historical turns; match it so the
+        # rendered prompt is byte-for-byte identical to chat_template.jinja in every mode.
+        preserve_thinking=False))
+
 DBRX_SYSTEM = (
     'You are DBRX, created by Databricks. You were last updated in December 2023. '
     'You answer questions based on information available up to that point.\n'

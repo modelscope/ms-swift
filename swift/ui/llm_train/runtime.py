@@ -18,7 +18,7 @@ from typing import Dict, List, Tuple, Type
 
 from swift.utils import TB_COLOR, TB_COLOR_SMOOTH, format_time, get_logger, read_tensorboard_file, tensorboard_smoothing
 from ..base import BaseUI
-from .utils import close_loop, run_command_in_subprocess
+from .utils import close_loop, run_command_in_subprocess, validate_cmd
 
 logger = get_logger()
 
@@ -32,6 +32,10 @@ class Runtime(BaseUI):
     all_plots = None
 
     log_event = {}
+
+    # Artifact files that a legitimate swift output directory should contain.
+    # Used for validating log paths when the originating process has exited.
+    _ARTIFACT_FILES = ['args.json', 'run.log', 'logging']
 
     sft_plot = [
         {
@@ -374,8 +378,10 @@ class Runtime(BaseUI):
     def get_plot(cls, task):
         if not task or 'swift sft' in task or 'swift pt' in task:
             return cls.sft_plot
-
-        args: dict = cls.parse_info_from_cmdline(task)[1]
+        try:
+            args: dict = cls.parse_info_from_cmdline(task)[1]
+        except Exception:
+            return cls.sft_plot
         rlhf_type = args.get('rlhf_type', 'dpo')
         if rlhf_type in ('dpo', 'cpo', 'simpo'):
             return cls.dpo_plot
@@ -404,9 +410,90 @@ class Runtime(BaseUI):
         return None
 
     @classmethod
+    def _empty_plot(cls):
+        """Return empty plot values matching the expected output shape."""
+        return [None] * len(cls.sft_plot)
+
+    @classmethod
+    def _is_known_task(cls, task):
+        """Verify that the task string corresponds to a real server-side process,
+        or that the output_dir path points to a legitimate output location when
+        the process has already exited.
+        """
+        if not task or 'pid:' not in task:
+            return False
+        try:
+            pid, all_args = Runtime.parse_info_from_cmdline(task)
+            pid_int = int(pid)
+        except Exception:
+            return False
+        # Check if the process is still alive
+        try:
+            proc = psutil.Process(pid_int)
+            cmdlines = proc.cmdline()
+            process_name = 'swift'
+            negative_names = ['swift.exe', 'swift-script.py']
+            group = cls.group
+            if group == 'llm_train':
+                cmd_names = ['pt', 'sft']
+            elif group == 'llm_grpo':
+                cmd_names = ['rlhf', 'grpo']
+            else:
+                cmd_names = ['rlhf']
+            has_swift = any(process_name in c for c in cmdlines)
+            has_negative = any(neg in c for c in cmdlines for neg in negative_names)
+            has_cmd = any(c in cmd_names for c in cmdlines)
+            if group == 'llm_rlhf':
+                if any('grpo' in c for c in cmdlines):
+                    return False
+            if group == 'llm_grpo':
+                if not any('grpo' in c for c in cmdlines):
+                    return False
+            return has_swift and not has_negative and has_cmd
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+        # Process has exited — fall back to validating the output_dir path.
+        output_dir = all_args.get('output_dir', '')
+        if not output_dir:
+            return False
+        output_dir = os.path.realpath(os.path.expanduser(output_dir))
+        if not os.path.isdir(output_dir):
+            return False
+        return any(os.path.exists(os.path.join(output_dir, f)) for f in cls._ARTIFACT_FILES)
+
+    @classmethod
+    def _validate_logging_dir(cls, logging_dir):
+        """Validate that logging_dir points to a legitimate output directory.
+        """
+        if not logging_dir:
+            return None
+        logging_dir = logging_dir.strip()
+        logging_dir = logging_dir if not logging_dir.endswith(os.sep) else logging_dir[:-1]
+        resolved = os.path.realpath(os.path.expanduser(logging_dir))
+        if not os.path.isdir(resolved):
+            logger.warning(f'Rejected non-existent logging_dir: {logging_dir}')
+            return None
+        if not any(os.path.exists(os.path.join(resolved, f)) for f in cls._ARTIFACT_FILES):
+            logger.warning(f'Rejected logging_dir without training artifacts: {logging_dir}')
+            return None
+        return logging_dir
+
+    @classmethod
     def wait(cls, logging_dir, task):
         if not logging_dir:
-            return [None] + Runtime.plot(task)
+            # Preserve original behavior: if task is valid, show its plots
+            if task and cls._is_known_task(task):
+                return [None] + Runtime.plot(task)
+            return [None] + cls._empty_plot()
+        # Validate task if present
+        if task and not cls._is_known_task(task):
+            logger.warning(f'Rejected unknown task in wait: {task[:80]}')
+            return [None] + cls._empty_plot()
+        # Validate logging_dir to prevent arbitrary file read
+        validated_dir = cls._validate_logging_dir(logging_dir)
+        if validated_dir is None:
+            return [None] + cls._empty_plot()
+        logging_dir = validated_dir
         log_file = os.path.join(logging_dir, 'run.log')
         cls.log_event[logging_dir] = False
         offset = 0
@@ -458,12 +545,18 @@ class Runtime(BaseUI):
     def break_log_event(cls, task):
         if not task:
             return
+        if not cls._is_known_task(task):
+            logger.warning(f'Rejected unknown task in break_log_event: {task[:80]}')
+            return
         pid, all_args = Runtime.parse_info_from_cmdline(task)
-        cls.log_event[all_args['logging_dir']] = True
+        cls.log_event[all_args.get('logging_dir', '')] = True
 
     @classmethod
     def show_log(cls, logging_dir):
-        webbrowser.open('file://' + os.path.join(logging_dir, 'run.log'), new=2)
+        validated = cls._validate_logging_dir(logging_dir)
+        if validated is None:
+            return
+        webbrowser.open('file://' + os.path.join(validated, 'run.log'), new=2)
 
     @classmethod
     def start_tb(cls, logging_dir):
@@ -471,8 +564,10 @@ class Runtime(BaseUI):
             gr.Error(cls.locale('tb_not_found', cls.lang)['value'])
             return ''
 
-        logging_dir = logging_dir.strip()
-        logging_dir = logging_dir if not logging_dir.endswith(os.sep) else logging_dir[:-1]
+        validated = cls._validate_logging_dir(logging_dir)
+        if validated is None:
+            return ''
+        logging_dir = validated
         if logging_dir in cls.handlers:
             return cls.handlers[logging_dir][1]
 
@@ -578,6 +673,9 @@ class Runtime(BaseUI):
     @staticmethod
     def kill_task(task):
         if task:
+            if not Runtime._is_known_task(task):
+                logger.warning(f'Rejected unknown task in kill_task: {task[:80]}')
+                return [Runtime.refresh_tasks()] + Runtime._empty_plot() + [gr.update(value=None)]
             pid, all_args = Runtime.parse_info_from_cmdline(task)
             output_dir = all_args['output_dir']
             if sys.platform == 'win32':
@@ -590,7 +688,7 @@ class Runtime(BaseUI):
             except Exception as e:
                 raise e
             Runtime.break_log_event(task)
-        return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (len(Runtime.get_plot(task)) + 1)
+        return [Runtime.refresh_tasks()] + Runtime._empty_plot() + [gr.update(value=None)]
 
     @staticmethod
     def reset():
@@ -599,7 +697,10 @@ class Runtime(BaseUI):
     @staticmethod
     def task_changed(task, base_tab):
         if task:
-            _, all_args = Runtime.parse_info_from_cmdline(task)
+            try:
+                _, all_args = Runtime.parse_info_from_cmdline(task)
+            except Exception:
+                all_args = {}
         else:
             all_args = {}
         elements = list(base_tab.valid_elements().values())
@@ -620,7 +721,11 @@ class Runtime(BaseUI):
             else:
                 ret.append(gr.update())
         Runtime.break_log_event(task)
-        return ret + [gr.update(value=None)] * (len(Runtime.get_plot(task)) + 1)
+        try:
+            plot_count = len(Runtime.get_plot(task)) + 1
+        except Exception:
+            plot_count = len(Runtime._empty_plot()) + 1
+        return ret + [gr.update(value=None)] * plot_count
 
     @staticmethod
     def plot(task):
@@ -628,8 +733,8 @@ class Runtime(BaseUI):
         if not task:
             return [None] * len(plot)
         _, all_args = Runtime.parse_info_from_cmdline(task)
-        tb_dir = all_args['logging_dir']
-        if not os.path.exists(tb_dir):
+        tb_dir = all_args.get('logging_dir', '')
+        if not tb_dir or not os.path.exists(tb_dir):
             return [None] * len(plot)
         fname = [
             fname for fname in os.listdir(tb_dir)
@@ -684,6 +789,10 @@ class Runtime(BaseUI):
     @classmethod
     def save_cmd(cls, cmd):
         if len(cmd) > 0:
+            try:
+                validate_cmd(cmd)
+            except ValueError as e:
+                raise gr.Error(str(e))
             cmd_sh, output_dir = Runtime.cmd_to_sh_format(cmd)
             os.makedirs(output_dir, exist_ok=True)
             sh_file_path = os.path.join(output_dir, 'train.sh')

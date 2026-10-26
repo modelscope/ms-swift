@@ -5,6 +5,7 @@ import peft
 import shutil
 from dataclasses import dataclass, field, fields
 from packaging import version
+from transformers.utils import strtobool
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import swift
@@ -24,6 +25,33 @@ from .quant_args import QuantizeArguments
 from .template_args import TemplateArguments
 
 logger = get_logger()
+
+# Environment variable blacklist
+_BLOCKED_MODEL_KWARGS = {
+    # Python interpreter
+    'PYTHONPATH',  # module search path injection (used in RCE exploit chain)
+    'PYTHONHOME',  # Python installation redirect
+    'PYTHONSTARTUP',  # auto-executed on interpreter startup
+    'PYTHONBREAKPOINT',  # arbitrary callable for breakpoint()
+    'PYTHONINSPECT',  # force interactive mode after script
+    # Dynamic linker injection (Linux)
+    'LD_PRELOAD',  # shared library injection
+    'LD_AUDIT',  # audit library injection
+    # Dynamic linker injection (macOS)
+    'DYLD_INSERT_LIBRARIES',
+    'DYLD_LIBRARY_PATH',
+    'DYLD_FALLBACK_LIBRARY_PATH',
+    # Shell auto-execution
+    'BASH_ENV',  # auto-sourced by non-interactive bash
+    'ENV',  # auto-sourced by some shells (POSIX sh)
+    'ZDOTDIR',  # zsh config directory redirect
+    # Other interpreters
+    'PERL5OPT',
+    'PERL5LIB',
+    'PERLLIB',
+    'NODE_OPTIONS',
+    'NODE_PATH',
+}
 
 
 def get_supported_tuners():
@@ -61,6 +89,10 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             which also loads optimizer states. Default is [].
         external_plugins (List[str]): A list of external 'plugin.py' files to be registered and imported into
             the plugin module. Default is [].
+        trust_remote_plugins (bool): Whether to import the `external_plugins` declared in the checkpoint's
+            args.json. Disabled by default, since a malicious checkpoint would otherwise execute arbitrary
+            code without user consent. Can also be enabled with the SWIFT_TRUST_REMOTE_PLUGINS=1
+            environment variable. Default is False.
         seed (int): The global random seed for reproducibility. Note that this does not affect `data_seed`,
             which controls dataset randomization. Default is 42.
         model_kwargs (Optional[str]): Additional keyword arguments for specific models, passed as a JSON string
@@ -96,6 +128,13 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     external_plugins: List[str] = field(default_factory=list)
     # This parameter is kept for swift3.x compatibility. Please use `external_plugins` as a replacement.
     custom_register_path: List[str] = field(default_factory=list)
+    trust_remote_plugins: bool = field(
+        default=False,
+        metadata={
+            'help':
+            'Whether to import external plugins declared in the checkpoint args.json. Off by default: '
+            'Can also be enabled with the SWIFT_TRUST_REMOTE_PLUGINS=1 environment variable.'
+        })
 
     seed: int = 42
     model_kwargs: Optional[Union[dict, str]] = None
@@ -149,9 +188,20 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         if self.custom_register_path:
             self.external_plugins += self.custom_register_path
 
+        ckpt_external_plugins = getattr(self, 'ckpt_external_plugins', None) or []
+        if ckpt_external_plugins:
+            trust_remote_plugins = self.trust_remote_plugins or strtobool(
+                os.environ.get('SWIFT_TRUST_REMOTE_PLUGINS', 'False'))
+            if trust_remote_plugins:
+                logger.warning(f'Importing plugins declared by the checkpoint args.json (trust_remote_plugins=True): '
+                               f'{[os.path.realpath(p) for p in ckpt_external_plugins]}. '
+                               'Make sure the checkpoint comes from a source you trust.')
+                self.external_plugins += list(ckpt_external_plugins)
+
         if not self.external_plugins:
             return
         for external_plugin in self.external_plugins:
+            logger.warning(f'Importing external plugin: {os.path.realpath(external_plugin)}')
             import_external_file(external_plugin)
         # A plugin's effect is an import side effect, which a forkserver/spawn dataloader worker does not
         # inherit. Only patch when there is something to replay.
@@ -176,6 +226,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     def __post_init__(self):
         _patch_peft()
         self.swift_version = swift.__version__
+        self.ckpt_external_plugins = []
         if self.use_hf or use_hf_hub():
             self.use_hf = True
             os.environ['USE_HF'] = '1'
@@ -207,10 +258,18 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             logger.info('hub login successful!')
 
     def _init_model_kwargs(self):
-        """Prepare model kwargs and set them to the env"""
+        """Prepare model kwargs and set them to the env.
+
+        Blocks known-dangerous environment variables (PYTHONPATH, LD_PRELOAD,
+        etc.) that could enable arbitrary code execution via module/library
+        injection.
+        """
         self.model_kwargs: Dict[str, Any] = json_parse_to_dict(self.model_kwargs)
         for k, v in self.model_kwargs.items():
             k = k.upper()
+            if k in _BLOCKED_MODEL_KWARGS:
+                logger.warning(f'model_kwargs: `{k}` is blocked for security reasons, skipping')
+                continue
             os.environ[k] = str(v)
 
     @property
@@ -263,7 +322,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         ]
         # If the current value is None or an empty list and it is among the following keys
         load_keys = [
-            'external_plugins',
             # model_args
             'model',
             'model_type',
@@ -281,6 +339,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             'quant_bits',
             'hqq_axis',
             'bnb_4bit_compute_dtype',
+            'entropack_target_bpp',
+            'entropack_linear_type',
             # template_args
             'template',
             'system',
@@ -294,6 +354,19 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         swift_version = old_args.get('swift_version')
         if swift_version is None or version.parse(swift_version) < version.parse('4.0.0.dev'):
             load_keys.remove('model_type')
+        # Security: `external_plugins` is never restored from args.json, otherwise a malicious
+        # checkpoint published on a model hub could execute arbitrary code without user consent.
+        # The declared plugins are stashed in `ckpt_external_plugins` and only imported when the
+        # user opts in via `--trust_remote_plugins true` (or SWIFT_TRUST_REMOTE_PLUGINS=1).
+        ckpt_external_plugins = old_args.get('external_plugins')
+        if ckpt_external_plugins:
+            if isinstance(ckpt_external_plugins, str):
+                ckpt_external_plugins = [ckpt_external_plugins]
+            self.ckpt_external_plugins = list(ckpt_external_plugins)
+            logger.warning(f'args.json in {self.ckpt_dir} declares external_plugins: '
+                           f'{self.ckpt_external_plugins}, which is NOT imported for security. '
+                           'Pass --trust_remote_plugins true (or set SWIFT_TRUST_REMOTE_PLUGINS=1) to import them, '
+                           'or pass --external_plugins explicitly.')
         for key, old_value in old_args.items():
             if old_value is None:
                 continue

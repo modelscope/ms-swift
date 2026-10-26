@@ -8,8 +8,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import transformers
 from accelerate.utils import find_device
+from collections.abc import Mapping
 from contextlib import contextmanager
-from functools import wraps
+from functools import partial, wraps
 from packaging import version
 from peft import PeftModel
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
@@ -19,14 +20,45 @@ from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from types import MethodType
 from typing import Any, Dict, List, Optional, Union
 
-from swift.utils import (HfConfigFactory, deep_getattr, get_device_count, get_dist_setting, get_last_valid_indices,
-                         get_logger, get_position_ids_from_cu_seqlens, is_mp, is_mp_ddp, safe_ddp_context, to_device,
-                         to_float_dtype)
+from swift.utils import (HfConfigFactory, deep_getattr, get_device, get_device_count, get_dist_setting,
+                         get_last_valid_indices, get_logger, get_position_ids_from_cu_seqlens, get_torch_device, is_mp,
+                         is_mp_ddp, safe_ddp_context, to_device, to_float_dtype)
 
 logger = get_logger()
 
 transformers_version = version.parse(transformers.__version__)
 transformers_5 = transformers_version >= version.parse('5.0.0')
+
+
+def patch_frozen_module(module: nn.Module):
+    """Avoid input-grad hooks retaining a graph for a fully frozen encoder.
+
+    Keep autograd when any parameter or input needs gradients, including after
+    unfreezing the encoder. Do not remove hooks needed by trainable adapters.
+    """
+    if hasattr(module, '_swift_frozen_module_forward'):
+        return
+    module._swift_frozen_module_forward = module.forward
+
+    def needs_input_grad(value):
+        if isinstance(value, torch.Tensor):
+            return value.requires_grad
+        if isinstance(value, Mapping):
+            return any(needs_input_grad(v) for v in value.values())
+        if isinstance(value, (tuple, list)):
+            return any(needs_input_grad(v) for v in value)
+        # Unknown containers may carry differentiable tensors: leave them alone.
+        return not isinstance(value, (type(None), bool, int, float, str, torch.dtype, torch.device))
+
+    @wraps(module.forward)
+    def frozen_forward(self, *args, **kwargs):
+        requires_grad = torch.is_grad_enabled()
+        if requires_grad:
+            requires_grad = any(p.requires_grad for p in self.parameters()) or needs_input_grad((args, kwargs))
+        with torch.set_grad_enabled(requires_grad):
+            return self._swift_frozen_module_forward(*args, **kwargs)
+
+    module.forward = MethodType(frozen_forward, module)
 
 
 def patch_fixed_float_dtype(module: torch.nn.Module, dtype):
@@ -249,6 +281,65 @@ def transformers_seq_cls_forward(self, *args, origin_forward, padding_side=None,
     )
 
 
+def _seq_cls_architectures(arch_list):
+    """Rewrite architectures to the matching ``*ForSequenceClassification`` class.
+
+    Used by :func:`_patch_sequence_classification` so that the on-disk
+    ``config.json`` produced by ``PreTrainedModel.save_pretrained`` references
+    the seq_cls architecture (e.g. ``Qwen3VLForSequenceClassification``) instead
+    of the generation architecture that the model class is actually an instance
+    of. Without this, downstream vLLM deployment fails because the checkpoint
+    advertises ``Qwen3VLForConditionalGeneration`` while shipping a
+    ``score`` head and ``num_labels`` / ``problem_type`` fields — see #9704.
+    """
+    if not arch_list:
+        return arch_list
+    res = []
+    for arch in arch_list:
+        if arch.endswith('ForConditionalGeneration'):
+            arch = arch[:-len('ForConditionalGeneration')] + 'ForSequenceClassification'
+        elif arch.endswith('ForCausalLM'):
+            arch = arch[:-len('ForCausalLM')] + 'ForSequenceClassification'
+        res.append(arch)
+    return res
+
+
+def _seq_cls_save_pretrained(model, save_pretrained, *args, **kwargs):
+    """Preserve classifier metadata through Transformers' architecture reset."""
+    config = model.config
+    architectures = getattr(config, 'architectures', None)
+    architectures = list(architectures) if architectures else None
+    config_save_pretrained = config.save_pretrained
+
+    def save_config(*args, **kwargs):
+        # Config serialization includes instance attributes, so remove the temporary callable first.
+        config.__dict__.pop('save_pretrained', None)
+        if architectures is not None:
+            config.architectures = architectures
+        return config_save_pretrained(*args, **kwargs)
+
+    config.save_pretrained = save_config
+    try:
+        return save_pretrained(*args, **kwargs)
+    finally:
+        config.__dict__.pop('save_pretrained', None)
+        # Non-main saves skip save_config; failed saves must not leave the model's metadata changed either.
+        if architectures is not None:
+            config.architectures = architectures
+
+
+def _patch_save_pretrained_architectures(model):
+    """Bind a pickle-safe save wrapper without modifying other instances of the model class."""
+    save_pretrained = model.save_pretrained
+    if isinstance(save_pretrained, partial) and save_pretrained.func is _seq_cls_save_pretrained:
+        return
+    if isinstance(save_pretrained, MethodType):
+        # Pickling a bound method looks it up by name on the restored instance, where our wrapper
+        # will live. Bind the original function explicitly so it cannot resolve back to the wrapper.
+        save_pretrained = partial(save_pretrained.__func__, model)
+    model.save_pretrained = partial(_seq_cls_save_pretrained, model, save_pretrained)
+
+
 def _patch_sequence_classification(model, model_meta):
     hidden_size = HfConfigFactory.get_config_attr(model.config, 'hidden_size')
     initializer_range = HfConfigFactory.get_config_attr(model.config, 'initializer_range')
@@ -273,6 +364,13 @@ def _patch_sequence_classification(model, model_meta):
         return transformers_seq_cls_forward(self, *args, origin_forward=origin_forward, **kwargs)
 
     lm_head_model.forward = MethodType(new_forward, lm_head_model)
+
+    # Align the on-disk `architectures` with the task. PreTrainedModel.save_pretrained
+    # writes `model.__class__.__name__` for `architectures`, but the seq_cls patcher
+    # monkey-patches a `score` head onto the generation class without swapping it,
+    # so the saved checkpoint would otherwise advertise the wrong class (see #9704).
+    model.config.architectures = _seq_cls_architectures(getattr(model.config, 'architectures', None))
+    _patch_save_pretrained_architectures(model)
 
 
 @contextmanager
@@ -408,16 +506,17 @@ def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
     """add feat in accelerate to support MP + DDP"""
     import psutil
 
-    # Make sure CUDA is initialized on each GPU to have the right memory info.
+    torch_device = get_torch_device()
+    # Make sure the accelerator is initialized on each device to have the right memory info.
     for i in device_ids:
-        _ = torch.tensor([0], device=i)
+        _ = torch.tensor([0], device=get_device(i))
 
     device_ids_set = set(device_ids)
     max_memory = {}
     for i in range(get_device_count()):
         max_memory[i] = 0
         if i in device_ids_set:
-            max_memory[i] = torch.cuda.mem_get_info(i)[0]
+            max_memory[i] = torch_device.mem_get_info(i)[0]
     max_memory['cpu'] = psutil.virtual_memory().available
     return max_memory
 
@@ -595,6 +694,8 @@ def gather_sequence_parallel_outputs(
     for key in tensor_keys:
         if key in outputs:
             outputs[key] = GatherTensor.apply(outputs[key], 1, position_ids)
+            if position_ids is not None:
+                outputs[key] = outputs[key][:, position_ids[0] >= 0]
 
     return outputs
 

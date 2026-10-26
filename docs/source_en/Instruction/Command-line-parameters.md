@@ -165,7 +165,7 @@ Refer to the [generation_config](https://huggingface.co/docs/transformers/main_c
 
 The following are parameters for quantizing models upon loading. See the [quantization documentation](https://huggingface.co/docs/transformers/main/en/main_classes/quantization) for details. These do not include `gptq` or `awq` quantization parameters used in `swift export`.
 
-- 🔥quant_method: Quantization method used when loading the model. Options: `'bnb'`, `'hqq'`, `'eetq'`, `'quanto'`, `'fp8'`. Default is `None`.
+- 🔥quant_method: Quantization method used when loading the model. Options: `'bnb'`, `'hqq'`, `'eetq'`, `'quanto'`, `'fp8'`, `'entropack'`. Default is `None`.
   - If performing QLoRA training on already AWQ/GPTQ-quantized models, you do not need to set additional quantization parameters like `quant_method`.
 - 🔥quant_bits: Number of bits for quantization. Default is `None`.
 - hqq_axis: Axis for HQQ quantization. Default is `None`.
@@ -173,6 +173,8 @@ The following are parameters for quantizing models upon loading. See the [quanti
 - bnb_4bit_quant_type: Type for 4-bit BNB quantization. Options: `'fp4'`, `'nf4'`. Default is `'nf4'`.
 - bnb_4bit_use_double_quant: Whether to use double quantization. Default is `True`.
 - bnb_4bit_quant_storage: Data type used to store quantized weights. Default is `None`.
+- entropack_target_bpp: Target bits per parameter for EntroPack compression. Fractional values are supported. This parameter is required when using `quant_method=entropack`.
+- entropack_linear_type: EntroPack linear implementation. Options: `'default'`, `'fp8'`, `'int8'`. Default is `'default'`.
 
 ### RAY Arguments
 
@@ -526,6 +528,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - packing_num_proc: Number of processes for packing, default is 1. Note that different values of `packing_num_proc` will result in different packed datasets. (This parameter does not take effect during streaming packing). Usually there is no need to modify this value, as packing speed is much faster than tokenization speed.
 - packing_strategy: Packing algorithm, one of 'binpack' and 'sequential', default is 'binpack'. 'binpack' uses best-fit-decreasing bin packing (which reorders samples by length); 'sequential' uses order-preserving greedy packing (next-fit: a single open pack, flushed when the next sample doesn't fit), keeping samples in input order so the sample order and pack boundaries follow a sequential sampler (use `packing_num_proc=1` for a single global ordering).
 - lazy_tokenize: Whether to use lazy tokenization. If set to `False`, all dataset samples will be tokenized (and for multimodal models, images will be loaded from disk) before training begins. Default is `None`: in LLM training, it defaults to `False`; in MLLM training, it defaults to `True` to save memory.
+  - For non-streaming lazy datasets, encoding failures use replacement samples when `strict=False`. The candidate order depends on `data_seed` and the requested index, not previous accesses. With unchanged dataset order, seed, and encoding behavior, resuming does not change replacement selection. The same failing index also uses the same candidate order across epochs; different failing indices may still select the same replacement.
   - Note: If you want to perform image data augmentation, you need to set `lazy_tokenize` (or `streaming`) to True and modify the `encode` method in the Template class.
 - use_logits_to_keep: Pass `logits_to_keep` in the `forward` method based on labels to reduce the computation and storage of unnecessary logits, thereby reducing memory usage and accelerating training. The default is `None`, which enables automatic selection.
 - acc_strategy: Strategy for calculating accuracy during training and validation. Options are `seq`-level and `token`-level accuracy, with `token` as the default.
@@ -605,7 +608,7 @@ The reward model parameters will be used in PPO and GRPO. The teacher model para
 - reward_model_type: Default is None.
 - reward_model_revision: Default is None.
 - teacher_model: Default is None.
-- teacher_adapters: Default is `[]`.
+- teacher_adapters: Paths to LoRA weights loaded into `teacher_model`. Default is `[]`. When specified together with `teacher_model`, a separate frozen teacher is loaded even if `teacher_model` equals `model`, adding another copy of the base weights in memory instead of using the `disable_adapter()` optimization.
 - teacher_model_type: Default is None.
 - teacher_model_revision: Default is None.
 - teacher_model_server: Teacher model service URL. Deploy via `swift deploy` for logprobs. Single URL (e.g. `http://localhost:8000`) or multi-teacher JSON (e.g. `'[{"url":"http://t1:8000","tags":["data/math.jsonl"]},{"url":"http://t2:8001","tags":["data/code.jsonl"]}]'`). How `tags` map to datasets or sample fields: [distillation docs](./Distillation.md#multi-teacher-routing).
@@ -868,8 +871,8 @@ In addition to the parameters listed above, some models support additional model
 - Note: If you specify model-specific parameters during training, please also set the corresponding parameters during inference to achieve optimal performance.
 
 
-### deepseek_v4, deepseek_v4_flash, glm5_2, hy_v3_preview
-- 🔥REASONING_EFFORT: Thinking effort, effective only when thinking is enabled. The accepted values vary by model: `'high'`/`'max'` for `deepseek_v4` (default `'high'`); `'low'`/`'high'`/`'max'` for `deepseek_v4_flash` (default `'low'`); `'high'`/`'max'` for `glm5_2` (default `'max'`); `'no_think'`/`'low'`/`'high'` for `hy_v3_preview` (default `'high'`).
+### deepseek_v4, deepseek_v4_flash, glm5_2, glm5_3, hy_v3_preview
+- 🔥REASONING_EFFORT: Thinking effort, effective only when thinking is enabled (except for `glm5_3`, which has no non-thinking mode and always applies it). The accepted values vary by model: `'high'`/`'max'` for `deepseek_v4` (default `'high'`); `'low'`/`'high'`/`'max'` for `deepseek_v4_flash` (default `'low'`); `'high'`/`'max'` for `glm5_2` (default `'max'`); `'low'`/`'high'`/`'max'` for `glm5_3` (default `'max'`); `'no_think'`/`'low'`/`'high'` for `hy_v3_preview` (default `'high'`).
   - It can also be set per sample by passing `chat_template_kwargs` in the dataset or the inference request, e.g. `{"chat_template_kwargs": {"reasoning_effort": "max"}}`, which takes precedence over the environment variable.
 
 

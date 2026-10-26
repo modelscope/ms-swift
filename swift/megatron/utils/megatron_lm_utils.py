@@ -2,6 +2,7 @@
 # Parts of the functions in this file are code borrowed from NVIDIA/Megatron-LM
 import copy
 import dataclasses
+import importlib
 import inspect
 import megatron.core
 import numpy as np
@@ -14,7 +15,6 @@ from datetime import timedelta
 from mcore_bridge import set_random_seed, split_cp_inputs, unwrap_model
 from megatron.core import dist_checkpointing, mpu, parallel_state, tensor_parallel
 from megatron.core.dist_checkpointing.mapping import ShardedObject
-from megatron.core.dist_checkpointing.strategies.async_utils import AsyncCallsQueue, AsyncRequest
 from megatron.core.dist_checkpointing.strategies.fully_parallel import (FullyParallelLoadStrategyWrapper,
                                                                         FullyParallelSaveStrategyWrapper)
 from megatron.core.dist_checkpointing.strategies.torch import TorchDistLoadShardedStrategy, TorchDistSaveShardedStrategy
@@ -34,6 +34,17 @@ from typing import Any, Callable, Dict, Optional
 from swift.utils import check_json_format, get_logger, init_process_group, is_master, set_device
 from . import megatron_fsdp_checkpoint as fsdp_checkpoint
 from .patcher import patch_merge_fn
+
+# async checkpoint is removed in https://github.com/NVIDIA/Megatron-LM/pull/7052
+
+try:
+    _async_utils = importlib.import_module('megatron.core.dist_checkpointing.strategies.async_utils')
+    AsyncCallsQueue, AsyncRequest = _async_utils.AsyncCallsQueue, _async_utils.AsyncRequest
+    HAVE_ASYNC_UTILS = True
+except ImportError:
+    AsyncCallsQueue = None
+    AsyncRequest = None
+    HAVE_ASYNC_UTILS = False
 
 logger = get_logger()
 
@@ -285,6 +296,17 @@ def _get_async_strategy_kwargs(async_save: bool) -> Dict[str, Any]:
     return {'async_strategy': 'mcore'}
 
 
+def _resolve_async_save(async_save: bool) -> bool:
+    """Disable async save when the installed mcore has no async checkpointing subsystem."""
+    if async_save and not HAVE_ASYNC_UTILS:
+        logger.warning_once('async checkpointing is unavailable in this megatron-core build '
+                            '(`dist_checkpointing.strategies.async_utils` is gone in 0.20+, where it '
+                            'moved to the nvrx-backed `megatron.training.async_utils`); ignoring '
+                            '`--async_save` and saving synchronously.')
+        return False
+    return async_save
+
+
 def save_mcore_checkpoint(
     args,
     models,
@@ -327,8 +349,11 @@ def save_mcore_checkpoint(
         fsdp_dtensor=fsdp_dtensor,
     )
     _filter_adapter_state_dict(state_dict, peft_format)
-    kwargs = {'content_metadata': sharded_sd_metadata}
-    async_save = args.async_save
+    # sharded_state_dict() adds dp_cp_group (a ProcessGroup) to the metadata in-place, and it can't be pickled.
+    # Megatron-LM drops it the same way (_clean_metadata_for_serialization) before saving.
+    content_metadata = {k: v for k, v in sharded_sd_metadata.items() if k != 'dp_cp_group'}
+    kwargs = {'content_metadata': content_metadata}
+    async_save = _resolve_async_save(args.async_save)
     if not models:  # save GPU memory
         assert 'optimizer' not in state_dict
         async_save = False
@@ -412,22 +437,25 @@ def save_mcore_checkpoint(
 
 # Singleton manager of async calls
 # The default is `TemporalAsyncCaller`
-_async_calls_queue = AsyncCallsQueue()
+_async_calls_queue = AsyncCallsQueue() if HAVE_ASYNC_UTILS else None
 
 
 def init_persistent_async_worker():
     global _async_calls_queue
+    if not HAVE_ASYNC_UTILS:
+        return
     # Recreate the async_calls_queue for persistent worker
     # This duplicate step is for backward compatiblity
     _async_calls_queue = AsyncCallsQueue(persistent=True)
 
 
-def schedule_async_save(async_request: AsyncRequest):
+def schedule_async_save(async_request: 'AsyncRequest'):
     """Schedule the async save request.
 
     Args:
         async_request (AsyncRequest): the async save request.
     """
+    assert _async_calls_queue is not None, 'async save is disabled without async_utils'
     _async_calls_queue.schedule_async_request(async_request)
 
 
@@ -441,7 +469,7 @@ def maybe_finalize_async_save(args, blocking: bool = False, terminate=False):
         terminate (bool, optional): if True, the asynchronous queue will
                 be closed as the last action of this function.
     """
-    if not args.async_save:
+    if not args.async_save or not HAVE_ASYNC_UTILS:
         return
 
     _async_calls_queue.maybe_finalize_async_calls(blocking, no_dist=False)
@@ -452,6 +480,8 @@ def maybe_finalize_async_save(args, blocking: bool = False, terminate=False):
 
 def is_empty_async_queue() -> bool:
     """Check if async calls queue is empty. This result is consistent across ranks."""
+    if not HAVE_ASYNC_UTILS:
+        return True
     return _async_calls_queue.get_num_unfinalized_calls() == 0
 
 
