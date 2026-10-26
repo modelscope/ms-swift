@@ -15,7 +15,15 @@ from swift.dev.template.families.qwen import Ovis1_6Template
 
 def test_shift_calls_stay_on_the_nominal_row_boundaries():  # noqa: C901
     dev = Path(__file__).parents[3]
-    twinkle = Path(__file__).parents[6] / "twinkle" / "src" / "twinkle"
+    # The twinkle checkout may sit either nested inside ms-swift (<repo>/twinkle) or as a sibling
+    # checkout directory; walk up until a `twinkle/src/twinkle` tree is found.
+    twinkle = None
+    for ancestor in dev.parents:
+        candidate = ancestor / "twinkle" / "src" / "twinkle"
+        if candidate.is_dir():
+            twinkle = candidate
+            break
+    assert twinkle is not None, 'twinkle/src/twinkle not found above swift/dev'
     names = {"shift", "unshift", "shift_values", "unshift_values"}
     calls = Counter()
     for repository, root in (("swift", dev), ("twinkle", twinkle)):
