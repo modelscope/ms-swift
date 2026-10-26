@@ -108,7 +108,7 @@ class NCCLCheckpointEngine(CheckpointEngine):
         self.auth_key = generate_auth_key()  # 256-bit shared secret
 
         context = zmq.Context()
-        self.socket = context.socket(zmq.PUB)
+        self.socket = context.socket(zmq.XPUB)
         if _is_valid_ipv6_address(self.ip):
             address = f'tcp://[{self.ip}]:{self.listen_port}'
             self.socket.setsockopt(zmq.IPV6, 1)
@@ -128,6 +128,9 @@ class NCCLCheckpointEngine(CheckpointEngine):
             address = f'tcp://{metadata.zmq_ip}:{metadata.zmq_port}'
         self.socket.connect(address)
         self.socket.setsockopt_string(zmq.SUBSCRIBE, self.topic)
+        # A distinct subscription identifies each receiver. It follows the data
+        # subscription on the same connection, so observing it proves readiness.
+        self.socket.setsockopt_string(zmq.SUBSCRIBE, f'{self.topic}/ready/{self.rank}')
 
     def prepare(self) -> Optional[MasterMetadata]:
         """Allocate buffers and start ZMQ server (master only). Idempotent."""
@@ -255,11 +258,20 @@ class NCCLCheckpointEngine(CheckpointEngine):
         _pg_broadcast(self._pg, barrier_tensor, src=0)
         synchronize()
 
-        # ZMQ PUB/SUB "slow joiner" mitigation: after NCCL barrier confirms
-        # all participants are connected, give SUB sockets time to fully
-        # establish the subscription before PUB sends metadata.
+        # The NCCL barrier does not synchronize ZMQ's background subscription
+        # delivery. Wait for every receiver's subscription at the publisher.
         if self.rank == 0 and self.socket is not None:
-            time.sleep(0.1)
+            import zmq
+            pending = {f'{self.topic}/ready/{rank}'.encode() for rank in range(1, world_size)}
+            deadline = time.monotonic() + self._store.timeout.total_seconds()
+            while pending:
+                remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
+                if remaining_ms == 0 or not self.socket.poll(remaining_ms, zmq.POLLIN):
+                    missing = sorted(topic.decode() for topic in pending)
+                    raise TimeoutError(f'Timed out waiting for ZMQ metadata subscriptions: {missing}')
+                subscription = self.socket.recv()
+                if subscription[:1] == b'\x01':
+                    pending.discard(subscription[1:])
 
         self._group_initialized = True
 
