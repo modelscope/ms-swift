@@ -17,6 +17,7 @@ from functools import partial
 from io import BytesIO
 from msgspec import field
 from packaging import version
+from peft.tuners import tuners_utils as peft_tuners_utils
 from peft.tuners.lora import LoraLayer
 from PIL import Image
 from pydantic import BaseModel, field_validator
@@ -42,6 +43,9 @@ if is_swanlab_available():
 T = TypeVar('T')
 
 _ipv6_patch_applied = False
+_ADAPTER_CONTAINER_TYPES = (nn.ModuleDict, nn.ParameterDict)
+if hasattr(peft_tuners_utils, 'BufferDict'):
+    _ADAPTER_CONTAINER_TYPES += (peft_tuners_utils.BufferDict, )
 
 # Constants for the RL training LoRA adapter identity.
 VLLM_LORA_INT_ID = 111
@@ -480,6 +484,45 @@ def round_robin(num_reqs, num_workers):
     return distribution
 
 
+def _move_lora_adapter_to_base_device(layer, adapter_name):
+    """Align adapter devices for weight sync without changing optimizer parameter dtypes."""
+    base_layer = layer.get_base_layer()
+    if hasattr(layer, 'parameter_name'):  # ParamWrapper targets a parameter other than weight.
+        device = layer.get_param().device
+    else:
+        if isinstance(base_layer, nn.MultiheadAttention):
+            base_layer = base_layer.out_proj
+        device = None
+        for weight_name in ('weight', 'qweight'):
+            weight = getattr(base_layer, weight_name, None)
+            if weight is not None:
+                device = weight.device
+                break
+    if device is None or device.type == 'meta':
+        return
+
+    for name in layer.adapter_layer_names + layer.other_param_names:
+        container = getattr(layer, name, None)
+        if not isinstance(container, _ADAPTER_CONTAINER_TYPES):
+            continue
+        if adapter_name not in container or any(param.device.type == 'meta' for param in container.parameters()):
+            continue
+        adapter = container[adapter_name]
+        if isinstance(adapter, nn.Module):
+            # A same-device .to() can replace Parameter objects when PyTorch's
+            # overwrite_module_params_on_conversion flag is enabled.
+            if (any(param.device != device for param in adapter.parameters())
+                    or any(buffer.device != device for buffer in adapter.buffers())):
+                adapter.to(device=device)
+        elif isinstance(adapter, nn.Parameter):
+            if adapter.device.type != 'meta':
+                adapter.data = adapter.data.to(device=device)
+                if adapter.grad is not None:
+                    adapter.grad = adapter.grad.to(device=device)
+        elif isinstance(adapter, torch.Tensor) and adapter.device.type != 'meta':
+            container[adapter_name] = adapter.to(device=device)
+
+
 @contextmanager
 def patch_lora_merge(model, parameter_group=None):
     """Patch LoraLayer.merge to support selective merging by ``parameter_group``.
@@ -488,13 +531,10 @@ def patch_lora_merge(model, parameter_group=None):
     layers whose name is in ``parameter_group`` (used by the vLLM weight-sync, which merges
     one parameter group at a time within its DeepSpeed Zero3 gather context).
 
-    Before merging, each target adapter's sublayers (lora_A/B, and the DoRA
-    ``lora_magnitude_vector``) are aligned to the base-layer device via peft's
-    type-agnostic ``_move_adapter_to_device_of_base_layer``. This is correct for
-    Linear/Embedding/Conv as well as parameter-based ``ParamWrapper`` (MoE experts via
-    ``target_parameters``), whose base layer has no ``.weight`` and which overrides the
-    method to use ``get_param().device``. This replaces the previous hand-rolled,
-    Linear-only device handling that hard-coded ``base_layer.weight.device``.
+    Before merging, align adapter sublayers to the base-layer device without
+    changing trainable parameter dtype. PEFT's ``_move_adapter_to_device_of_base_layer``
+    also casts to the base dtype, which can invalidate optimizer state created
+    before the first online rollout.
 
     Args:
         model: The PEFT model to patch
@@ -509,9 +549,7 @@ def patch_lora_merge(model, parameter_group=None):
         if parameter_group and all(self.name not in pg for pg in parameter_group):
             return  # Skip if not in target parameter group
         for active_adapter in check_adapters_to_merge(self, adapter_names) or []:
-            # Align adapter sublayers (lora_A/B, DoRA magnitude, ...) to the base device.
-            # Type-agnostic: ParamWrapper overrides this to use get_param().device.
-            self._move_adapter_to_device_of_base_layer(active_adapter)
+            _move_lora_adapter_to_base_device(self, active_adapter)
         return self.merge_origin(safe_merge, adapter_names)
 
     # Patch all LoraLayer instances
@@ -536,9 +574,7 @@ def patch_lora_merge(model, parameter_group=None):
 def patch_lora_unmerge(model):
     """Patch LoraLayer.unmerge to align adapter sublayers to the base device first.
 
-    Mirrors ``patch_lora_merge``'s device handling (via peft's type-agnostic
-    ``_move_adapter_to_device_of_base_layer``) so unmerge works under DeepSpeed Zero3 /
-    offload and for parameter-based ``ParamWrapper`` layers.
+    Mirrors ``patch_lora_merge``'s device handling while preserving adapter dtype.
     """
 
     def unmerge_patched(self):
@@ -546,7 +582,7 @@ def patch_lora_unmerge(model):
             return
         # Move adapter sublayers (incl. DoRA magnitude) to the base device first
         for adapter in list(self.merged_adapters):
-            self._move_adapter_to_device_of_base_layer(adapter)
+            _move_lora_adapter_to_base_device(self, adapter)
         return self.unmerge_origin()
 
     for module in model.modules():
