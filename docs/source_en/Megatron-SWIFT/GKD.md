@@ -4,6 +4,8 @@ If you are new to GKD/OPD-RL, please refer to the [distillation documentation](.
 
 GKD (Generalized Knowledge Distillation) is a training method that transfers knowledge from a teacher model to a student model by computing the Jensen-Shannon Divergence (JSD) loss between their output distributions.
 
+Use `--loss_type abkd --abkd_alpha 0.2 --abkd_beta 0.7` to train with alpha-beta divergence instead. See [ABKD in GKD](../Instruction/Distillation.md#31-gkd-divergence-as-direct-loss) for details.
+
 ## Feature Support
 
 Megatron GKD currently supports the following features:
@@ -25,6 +27,9 @@ Megatron GKD currently supports the following features:
 | `--teacher_model_server` | str | None | Teacher API URL; single URL or multi-teacher JSON. See [distillation docs](../Instruction/Distillation.md#multi-teacher-routing) |
 | `--teacher_tag_key` | str | `"dataset"` | Column name for matching sample tags to teacher `tags` in multi-teacher routing |
 | `--gkd_logits_topk` | int | None | Number of Top-K logits; required when using external API |
+| `--loss_type` | str | jsd | GKD objective: `jsd` or `abkd` |
+| `--abkd_alpha` | float | 0.2 | Alpha parameter for ABKD |
+| `--abkd_beta` | float | 0.7 | Beta parameter for ABKD; separate from JSD `beta` |
 | `--beta` | float | 0.5 | JSD divergence interpolation coefficient:<br>• 0.0: Forward KL<br>• 0.5: Symmetric JSD<br>• 1.0: Reverse KL |
 | `--lmbda` | float | 0.5 | On-Policy learning probability:<br>• 0.0: Pure Off-Policy<br>• 1.0: Pure On-Policy |
 | `--temperature` | float | 0.9 | Temperature for sampling and loss computation |

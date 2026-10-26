@@ -102,13 +102,21 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             is_training=True,
         )
 
-    def _compute_jsd_loss(self, student_logits, teacher_output: TeacherOutput, labels):
-        """Compute JSD loss. teacher_output.labels is always set (equals student labels when non-OPSD)."""
+    def _compute_distillation_loss(self, student_logits, teacher_output: TeacherOutput, labels):
+        """Compute the selected loss over the student and teacher response tokens."""
         shifted_labels = torch.roll(labels, shifts=-1, dims=1)
         teacher_output.labels = torch.roll(teacher_output.labels, shifts=-1, dims=1)
         if self.gkd_logits_topk is not None:
             teacher_output = teacher_output.to_topk(self.gkd_logits_topk)
-        total, num_valid = gkd_loss(student_logits, teacher_output, shifted_labels, self.beta, self.temperature)
+        total, num_valid = gkd_loss(
+            student_logits,
+            teacher_output,
+            shifted_labels,
+            self.beta,
+            self.temperature,
+            loss_type=self.args.loss_type,
+            abkd_alpha=self.args.abkd_alpha,
+            abkd_beta=self.args.abkd_beta)
         if num_valid == 0:
             return total * 0
         return total / num_valid
@@ -150,7 +158,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 lambda *_, **__: self._compute_liger_loss(unwrapped_student, model_inputs, forward_inputs),
                 **forward_inputs)
             outputs_student = None
-        # Non-liger path: student forward + teacher output construction + JSD loss
+        # Non-liger path: student forward + teacher output construction + distillation loss
         else:
             if self.args.sft_alpha > 0:
                 forward_inputs['labels'] = model_inputs['labels']
@@ -186,7 +194,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                         outputs_teacher = self.teacher_model(**t_fwd)
                 teacher_out = TeacherOutput(full_logits=outputs_teacher.logits, labels=teacher_labels)
 
-            loss = self._compute_jsd_loss(outputs_student.logits, teacher_out, model_inputs['labels'])
+            loss = self._compute_distillation_loss(outputs_student.logits, teacher_out, model_inputs['labels'])
 
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
@@ -457,7 +465,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         """Initialize liger loss if enabled."""
         args = self.args
         self.use_liger_gkd_loss = False
-        if getattr(args, 'use_liger_kernel', False):
+        # Liger's fused linear loss implements JSD; ABKD uses the shared loss above.
+        if getattr(args, 'use_liger_kernel', False) and args.loss_type != 'abkd':
             if self.teacher_model is None:
                 raise ValueError('Liger GKD loss requires a local teacher model; teacher '
                                  'API and self-distillation are not supported.')

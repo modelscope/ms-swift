@@ -43,6 +43,8 @@ class RLHFMegatronArgumentsMixin:
     center_rewards_coefficient: Optional[float] = None
 
     # gkd
+    abkd_alpha: float = 0.2
+    abkd_beta: float = 0.7
     teacher_model: Optional[str] = field(default=None)
     teacher_model_type: Optional[str] = field(default=None)
     teacher_model_revision: Optional[str] = field(default=None)
@@ -212,7 +214,7 @@ class RLHFMegatronArgumentsMixin:
     def __post_init__(self):
         if self.rlhf_type is None:
             return
-        default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid', 'grpo': 'grpo'}
+        default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid', 'grpo': 'grpo', 'gkd': 'jsd'}
         default_beta = {'gkd': 0.5, 'grpo': 0.04}
         if self.beta is None:
             self.beta = default_beta.get(self.rlhf_type, 0.1)
