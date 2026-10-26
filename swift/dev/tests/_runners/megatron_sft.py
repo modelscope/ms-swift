@@ -35,7 +35,10 @@ def _run_dev(data_path, out_dir, steps, lr):
     model_path = snapshot_download(MODEL)
     history = run_sft(
         # bf16 to match legacy's production dtype (Qwen2.5 config dtype). See _run_legacy.
-        ModelConfig(model=model_path, torch_dtype='bfloat16'),
+        # model_type is explicit: the loader registry's reverse lookup is ambiguous for a local
+        # Qwen2.5 dense dir (qwen2 vs the qwen2_gte family), and a snapshot path carries no hub id
+        # to disambiguate.
+        ModelConfig(model=model_path, model_type='qwen2', torch_dtype='bfloat16'),
         TemplateConfig(template='qwen2_5', max_length=512),
         DatasetConfig(dataset=[data_path], dataset_shuffle=False),
         # bs=1/ga=1 mirrors the HF legacy-vs-dev comparison: no GA/scheduler compounding, so the
@@ -73,6 +76,8 @@ def _dev_cli_argv(data_path, out_dir, steps, lr):
     return [
         '--model',
         _model_path(),
+        '--model_type',
+        'qwen2',
         '--dataset',
         data_path,
         '--template',
@@ -155,6 +160,8 @@ def _run_legacy(data_path, out_dir, steps, lr):
         megatron_sft_main([
             '--model',
             model_path,
+            '--model_type',
+            'qwen2',
             '--dataset',
             data_path,
             '--template',

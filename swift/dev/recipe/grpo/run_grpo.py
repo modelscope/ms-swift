@@ -6,6 +6,8 @@ import os
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
+import torch
+
 from swift.dev.recipe.grpo.assembly import (
     greedy_params,
     group_variance,
@@ -268,7 +270,8 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
                    reward_config: 'RewardConfig', dataloader: Any, state: StepState, *,
                    train_batch_size: int, chord_fn: Optional[Callable[[], List[Any]]] = None,
                    ema_manager: Any = None, save: Optional[Callable[[str], Any]] = None,
-                   correction_out: Optional[Dict[str, float]] = None) -> None:
+                   correction_out: Optional[Dict[str, float]] = None,
+                   reward_metric: Any = None) -> None:
     """The colocate branch (deep_refactor.md 71-81): a plain loop, no driver, no version face.
 
     The sampler time-shares one device with the trainer, so each round brackets generation with the
@@ -283,6 +286,35 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
     # the orm channel's weight vector (None when no scorer is wired)
     weights = (build_reward_weights(reward_config.orm_weights, len(cluster.orm_scorers))
                if cluster.orm_scorers else None)
+
+    def _record_rewards(samples: List[Any]) -> None:
+        """Feed the per-sample ORM rewards into the step record's reward aggregate.
+
+        Mirrors PPO's loop: the metric resets per rollout window, so the train/<col>_reward keys
+        describe exactly the batch the upcoming optimizer steps train on. A no-scorer run (teacher-only
+        OPD-RL) accumulates nothing and the keys simply stay absent.
+        """
+        if not cluster.orm_scorers or not samples or reward_metric is None:
+            return
+        from swift.dev.rewards.advantage import build_reward_weights as _bwr
+        from swift.dev.utils.plugin import PluginRegistry
+
+        column_names = [PluginRegistry.display_name(scorer) for scorer in cluster.orm_scorers]
+        column_weights = _bwr(reward_config.orm_weights, len(cluster.orm_scorers))
+        matrix = torch.tensor(
+            [[float('nan') if r is None or r != r else float(r) for r in sample.orm_reward]
+             for sample in samples], dtype=torch.float32).T
+        rewards = {
+            name: [float(v) for v in column if v == v]
+            for name, column in zip(column_names, matrix)
+        }
+        total = (matrix * column_weights.view(-1, 1)).nansum(dim=0)
+        rewards['total'] = [float(v) for v in total if v == v]
+        reward_metric.reset()
+        reward_metric.accumulate(
+            rewards=rewards,
+            completion_lengths=[len(sample.response_token_ids) for sample in samples])
+
     entered = False
     try:
         for batch_rows in dataloader:
@@ -301,6 +333,7 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
             rewards = _score_group(cluster, samples, with_prm=True)
             for sample, reward in zip(samples, rewards):
                 sample.orm_reward = reward
+            _record_rewards(samples)
             if rl_config.dynamic_sample:
                 # dynamic_sample: regenerate a zero-variance group (its advantage is degenerate) on
                 # the same prompt, bounded by max_resample_times; the cap accept keeps the last try.
@@ -526,6 +559,12 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     # The last pull's legacy rollout_correction/* diagnostics (signed KL, ppl, chi2).
     rollout_correction: Dict[str, float] = {}
 
+    # The colocate branch feeds this from the per-sample orm_reward it scores (the same
+    # CompletionRewardMetric contract PPO's loop uses); the disaggregated branch leaves it empty.
+    from twinkle.metric import CompletionRewardMetric
+
+    _reward_metric = CompletionRewardMetric()
+
     def _extra_metrics() -> Dict[str, Any]:
         extra: Dict[str, Any] = {}
         extra.update({f'rollout_correction/{key}': value for key, value in rollout_correction.items()})
@@ -546,6 +585,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                     'max_partial_span': max(versions),
                     'version_span_mean': sum(versions) / len(versions),
                 })
+        extra.update(_reward_metric.calculate())
         return extra
 
     state = StepState(
@@ -617,7 +657,8 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         if cluster.colocate:
             _colocate_loop(cluster, rl_config, rollout_config, reward_config, dataloader, state,
                            train_batch_size=train_batch_size, chord_fn=chord_fn,
-                           ema_manager=ema_manager, save=save, correction_out=rollout_correction)
+                           ema_manager=ema_manager, save=save, correction_out=rollout_correction,
+                           reward_metric=_reward_metric)
         else:
             _disaggregated_loop(cluster, rl_config, rollout_config, reward_config, tuner_config,
                                 dataloader, state, train_batch_size=train_batch_size,

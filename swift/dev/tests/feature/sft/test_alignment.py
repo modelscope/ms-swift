@@ -40,7 +40,6 @@ def test_sft_loss_matches_legacy_hf_step1():
     if not torch.cuda.is_available():
         pytest.skip('CUDA not available')
 
-    from swift.dev.template import DevMixin
     from swift.model import get_model_processor
     from swift.template import get_template
 
@@ -52,7 +51,7 @@ def test_sft_loss_matches_legacy_hf_step1():
     legacy_feat = legacy_tpl.encode({'messages': MESSAGES})
 
     # dev template: next-token-shifted labels at encode
-    dev_tpl = _dev_template(get_template(proc, template_type='qwen2_5', max_length=512))
+    dev_tpl = _dev_template(proc, max_length=512)
     dev_tpl.set_mode('train')
     dev_feat = dev_tpl.encode({'messages': MESSAGES})
 
@@ -102,12 +101,10 @@ def test_ga_equivalence_sum_reduction():
     from swift.dev.loss import CrossEntropyLoss
     from swift.dev.model import TransformersModel
     from swift.dev.processor import InputProcessor
-    from swift.dev.template import DevMixin
     from swift.model import get_model_processor
-    from swift.template import get_template
 
     _, proc = get_model_processor(MODEL, load_model=False)
-    tpl = _dev_template(get_template(proc, template_type='qwen2_5', max_length=512))
+    tpl = _dev_template(proc, max_length=512)
     tpl.set_mode('train')
     # Use two samples (may differ in length; sum reduction handles it correctly)
     feats = [
@@ -458,15 +455,13 @@ def test_resume_param_trajectory_bit_identical_oddphase(tmp_path):
     from swift.dev.builders.optimizer import configure_optimizer
     from swift.dev.processor import InputProcessor
     from swift.dev.recipe.utils import num_optimizer_steps
-    from swift.dev.template import DevMixin
     from swift.model import get_model_processor
-    from swift.template import get_template
 
     _, proc = get_model_processor(MODEL, load_model=False)
     ga = 2
 
     def make_dl():
-        tpl = _dev_template(get_template(proc, template_type='qwen2_5', max_length=256))
+        tpl = _dev_template(proc, max_length=256)
         tpl.set_mode('train')
         raw = HfDataset.from_list([{
             'messages': [{
@@ -591,15 +586,13 @@ def test_lora_resume_param_trajectory_bit_identical_seed_independent(tmp_path):
     from swift.dev.builders.optimizer import configure_optimizer
     from swift.dev.processor import InputProcessor
     from swift.dev.recipe.utils import num_optimizer_steps
-    from swift.dev.template import DevMixin
     from swift.model import get_model_processor
-    from swift.template import get_template
 
     _, proc = get_model_processor(MODEL, load_model=False)
     ga = 2
 
     def make_dl():
-        tpl = _dev_template(get_template(proc, template_type='qwen2_5', max_length=256))
+        tpl = _dev_template(proc, max_length=256)
         tpl.set_mode('train')
         raw = HfDataset.from_list([{
             'messages': [{
@@ -747,8 +740,8 @@ def test_grpo_ga_equivalence_equal_seq_strong_signal():
         f'(ratio {max_diff / max_grad:.3e}) -> genuine GRPO GA non-equivalence (product bug)')
 
 
-def _dev_template(legacy):
-    """Derive dev's template from an already-built legacy one, exactly as build_template does."""
-    from swift.dev.template import shifted_template_class
-    legacy.__class__ = shifted_template_class(type(legacy))
-    return legacy
+def _dev_template(proc, *, max_length=512):
+    """The dev template for the same family, built exactly as the builders build it in production."""
+    from swift.dev.builders.template import build_template
+    from swift.dev.config import TemplateConfig
+    return build_template(TemplateConfig(template='qwen2_5', max_length=max_length), proc)
