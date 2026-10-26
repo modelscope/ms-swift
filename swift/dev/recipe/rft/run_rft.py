@@ -307,7 +307,8 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                 # rejection-sampling bootstrap.
                 cluster.sampler.wake_up(tags=['weights'])
                 cluster.engine.sync_weights(merge_and_sync=True)
-                cluster.model.offload_to_cpu()
+                from swift.dev.recipe.offload import offload_for_rollout
+                offload_for_rollout(cluster.model, rollout_config)
                 cluster.sampler.wake_up(tags=['kv_cache'])
                 entered = True
                 samples = cluster.rollout.generate(
