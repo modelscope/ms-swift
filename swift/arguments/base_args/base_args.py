@@ -5,6 +5,7 @@ import peft
 import shutil
 from dataclasses import dataclass, field, fields
 from packaging import version
+from transformers.utils import strtobool
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import swift
@@ -189,8 +190,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
 
         ckpt_external_plugins = getattr(self, 'ckpt_external_plugins', None) or []
         if ckpt_external_plugins:
-            trust_remote_plugins = self.trust_remote_plugins or os.getenv('SWIFT_TRUST_REMOTE_PLUGINS',
-                                                                          '').lower() in ('1', 'true', 'yes')
+            trust_remote_plugins = self.trust_remote_plugins or strtobool(
+                os.environ.get('SWIFT_TRUST_REMOTE_PLUGINS', 'False'))
             if trust_remote_plugins:
                 logger.warning(f'Importing plugins declared by the checkpoint args.json (trust_remote_plugins=True): '
                                f'{[os.path.realpath(p) for p in ckpt_external_plugins]}. '
