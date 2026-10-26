@@ -1250,7 +1250,8 @@ class SwiftMixin:
                 labels,
                 acc_strategy=args.acc_strategy,
                 is_encoder_decoder=self.template.is_encoder_decoder,
-                cu_seqlens=cu_seqlens)
+                cu_seqlens=cu_seqlens,
+                return_counts=True)
         elif task_type in {'generative_reranker', 'reranker'}:
             if logits.dim() == 2:
                 logits = logits.squeeze(-1)
@@ -1262,7 +1263,11 @@ class SwiftMixin:
         if metrics:
             mode = 'train' if self.model.training else 'eval'
             for k, v in metrics.items():
-                self.custom_metrics[mode][k].update(v)
+                metric = self.custom_metrics[mode][k]
+                if task_type == 'causal_lm':
+                    metric.update_counts(v)
+                else:
+                    metric.update(v)
 
     @torch.no_grad()
     def _evalscope_eval(self):
