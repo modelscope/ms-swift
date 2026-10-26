@@ -157,7 +157,7 @@ def test_bootstrap_seeds_each_rank(monkeypatch, tmp_path):
 
     seeds = []
     monkeypatch.setenv('RANK', '3')
-    monkeypatch.setattr('swift.utils.seed_everything', seeds.append)
+    monkeypatch.setattr('swift.dev.utils.seed_everything', seeds.append)
     bootstrap_run(ModelConfig(), CheckpointConfig(output_dir=str(tmp_path)), seed=7, resolve_model=False)
     assert seeds == [10]
 

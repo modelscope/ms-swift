@@ -56,9 +56,12 @@ def _configs(*, rl_type=None, **overrides):
         "checkpoint_config": CheckpointConfig(),
     }
     if rl_type is not None:
-        from swift.dev.config import RLConfig
+        from swift.dev.config import RLConfig, RewardConfig
 
         configs["rl_config"] = RLConfig(rl_type=rl_type)
+        # The ppo/grpo reward-channel guard runs before the SP checks; a dummy channel keeps these
+        # cases testing the SP surface (the guard itself has its own tests in test_s2_validate).
+        configs["reward_config"] = RewardConfig(orm=["dummy"])
     for dotted, value in overrides.items():
         holder_name, _, attr = dotted.partition(".")
         setattr(configs[holder_name], attr, value)

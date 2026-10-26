@@ -26,21 +26,31 @@ SWIFT_EPISODE = [
     {"role": "assistant", "content": "It is sunny."},
 ]
 
+# The normalized OpenAI form keeps the spec's str arguments: the model jinja renders a str via
+# tojson (an escaped string) and a dict inline, so folding str into dict here would fork training
+# and inference tokens (the parity oracle is test_template_parity_tools).
+OPENAI_NORMALIZED = [
+    {"role": "user", "content": "weather?"},
+    {"role": "tool_call", "content": {"name": "get_weather", "arguments": '{"city": "SF"}'}},
+    {"role": "tool", "tool_call_id": "c1", "content": "sunny"},
+    {"role": "assistant", "content": "It is sunny."},
+]
+
 # ---- normalize_messages ------------------------------------------------------------------------
 
 
 def test_tool_calls_become_tool_call_messages():
-    assert normalize_messages(OPENAI_EPISODE) == SWIFT_EPISODE
+    assert normalize_messages(OPENAI_EPISODE) == OPENAI_NORMALIZED
 
 
 def test_swift_dialect_passes_through_unchanged():
     assert normalize_messages(SWIFT_EPISODE) == SWIFT_EPISODE
-    assert normalize_messages(normalize_messages(OPENAI_EPISODE)) == SWIFT_EPISODE
+    assert normalize_messages(normalize_messages(OPENAI_EPISODE)) == OPENAI_NORMALIZED
 
 
 def test_turn_content_and_loss_fields_survive_the_split():
     turn = {"role": "assistant", "content": "Checking.", "loss": False, "tool_calls": [WEATHER_CALL, WEATHER_CALL]}
-    call = {"role": "tool_call", "content": {"name": "get_weather", "arguments": {"city": "SF"}}, "loss": False}
+    call = {"role": "tool_call", "content": {"name": "get_weather", "arguments": '{"city": "SF"}'}, "loss": False}
     assert normalize_messages([turn]) == [{"role": "assistant", "content": "Checking.", "loss": False}, call, call]
 
 
@@ -73,8 +83,9 @@ def test_input_messages_are_not_mutated():
 def test_template_inputs_accept_openai_messages():
     openai = StdTemplateInputs.from_dict({"messages": OPENAI_EPISODE})
     swift = StdTemplateInputs.from_dict({"messages": SWIFT_EPISODE})
-    assert openai.messages == swift.messages
-    assert json.loads(openai.messages[1]["content"]) == {"name": "get_weather", "arguments": {"city": "SF"}}
+    # from_dict str-dumps the payload; the argument form rides inside with tojson semantics.
+    assert json.loads(openai.messages[1]["content"]) == {"name": "get_weather", "arguments": '{"city": "SF"}'}
+    assert json.loads(swift.messages[1]["content"]) == {"name": "get_weather", "arguments": {"city": "SF"}}
 
 
 def test_dataset_converter_keeps_reasoning():

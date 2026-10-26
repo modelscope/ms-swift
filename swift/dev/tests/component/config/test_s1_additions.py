@@ -243,8 +243,10 @@ def test_export_rejects_unknown_flags(tmp_path):
     quant/convert/merge surface from silently dropping a mistyped knob."""
     from swift.dev.cli.export import parse_export_configs
     with pytest.raises(ValueError, match='Unrecognized'):
+        # The adapter path must be an existing local dir: the checkpoint-args restore in parse runs
+        # before the unknown-flag refusal and would otherwise hit the hub for a missing path.
         parse_export_configs(['--model', _fake_model(tmp_path), '--to_peft_format', 'true',
-                              '--adapters', 'a', '--quant_method_typo', 'gptq'])
+                              '--adapters', _fake_model(tmp_path, 'adapter'), '--quant_method_typo', 'gptq'])
 
 
 def test_export_output_dir_explicit_wins_and_default_falls_back(tmp_path):

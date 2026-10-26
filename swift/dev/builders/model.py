@@ -979,6 +979,14 @@ def _build_transformers_model(
     if enable_router_replay:
         kwargs["enable_router_replay"] = True
 
+    # NEFTune + acc_strategy are transformers-family ctor kwargs consumed by the twinkle base
+    # constructor (megatron rejects both in _HF_ONLY). Plain-HF and unsloth both reach that
+    # constructor; the ST branch threads acc_strategy itself and rejects neftune in its guard.
+    if train_config is not None:
+        if train_config.neftune_noise_alpha:
+            kwargs["neftune_noise_alpha"] = train_config.neftune_noise_alpha
+        kwargs["acc_strategy"] = train_config.acc_strategy
+
     # Three exclusive paths: sentence_transformers (its own pipeline) / unsloth (owns construction
     # + LoRA install) / plain TransformersModel with the family loader handed over.
     model_framework = _resolve_model_framework(model_config, model_loader)
@@ -1029,11 +1037,6 @@ def _build_transformers_model(
             kwargs["vit_gradient_checkpointing"] = train_config.vit_gradient_checkpointing
             if train_config.vit_gradient_checkpointing_kwargs:
                 kwargs["vit_gradient_checkpointing_kwargs"] = train_config.vit_gradient_checkpointing_kwargs
-        # NEFTune + acc_strategy are transformers-only ctor kwargs (megatron rejects both in _HF_ONLY).
-        if train_config is not None and train_config.neftune_noise_alpha:
-            kwargs["neftune_noise_alpha"] = train_config.neftune_noise_alpha
-        if train_config is not None:
-            kwargs["acc_strategy"] = train_config.acc_strategy
         # Post-load module surgery rides the constructor too (applied worker-side; a driver-side
         # reach into model.model only touches the Ray proxy stub and silently no-ops).
         if model_config.new_special_tokens:
@@ -1125,6 +1128,12 @@ def _build_sentence_transformer_model(
             "use_liger_kernel is not composed with a sentence-transformers embedding model: Liger replaces "
             "causal-LM decoder ops / the fused-linear-CE loss path, while this checkpoint trains an ST pooling "
             "pipeline with an embedding loss. Disable use_liger_kernel for this model."
+        )
+    if train_config is not None and train_config.neftune_noise_alpha:
+        raise NotImplementedError(
+            "neftune_noise_alpha is not composed with a sentence-transformers embedding model: the ST "
+            "constructor installs no embedding-noise hook on its module pipeline, so the request would "
+            "be silently ignored. Train this model on the plain transformers path if you need NEFTune."
         )
     if model_config.new_special_tokens:
         raise NotImplementedError(

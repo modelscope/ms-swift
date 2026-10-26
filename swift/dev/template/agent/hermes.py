@@ -82,7 +82,9 @@ For each function call, return a json object with function name and arguments wi
     def _format_tool_calls(self, tool_call_messages):
         tool_calls = []
         for message in tool_call_messages:
-            tool_call = self._parse_tool_call(message["content"])
+            # The raw payload is kept so json.dumps reproduces the model jinja's tojson for both
+            # argument forms: a spec-form str renders as an escaped JSON string, a dict inline.
+            tool_call = self._raw_tool_call(message["content"])
             tool_calls.append(f"<tool_call>\n{json.dumps(tool_call, ensure_ascii=False)}\n</tool_call>")
         return self._get_tool_calls(tool_calls)
 

@@ -123,15 +123,26 @@ class ReactCompatMixin:
         return assistant_content, res
 
     @staticmethod
-    def _parse_tool_call(content) -> Dict[str, Any]:
+    def _raw_tool_call(content) -> Dict[str, Any]:
+        """``{'name', 'arguments'}`` of one payload with the arguments form preserved (no JSON parse).
+
+        ``_parse_tool_call`` parses a str arguments into the dict the parameter-tag renderers
+        iterate; this variant keeps a str str for renderers that reproduce the model jinja's
+        ``tojson`` output (an OpenAI str-arguments call renders as an escaped JSON string).
+        """
         obj = BaseAgentTemplate._parse_json(content)
         name = obj["name"]
         arguments = obj.get("arguments")
         if arguments is None:
             arguments = obj.get("parameters")
-        arguments = BaseAgentTemplate._parse_json(arguments)
-        assert arguments is not None, f"content: {content}"
         return {"name": name, "arguments": arguments}
+
+    @staticmethod
+    def _parse_tool_call(content) -> Dict[str, Any]:
+        raw = BaseAgentTemplate._raw_tool_call(content)
+        arguments = BaseAgentTemplate._parse_json(raw["arguments"])
+        assert arguments is not None, f"content: {content}"
+        return {"name": raw["name"], "arguments": arguments}
 
     def _format_tool_calls(self, tool_call_messages) -> str:
         """

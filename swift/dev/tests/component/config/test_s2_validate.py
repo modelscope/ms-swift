@@ -93,8 +93,10 @@ def test_rlhf_advanced_grpo_only_gates():
         _check_rlhf_advanced(TrainConfig(), RLConfig(rl_type='dpo', dynamic_sample=True))
     with pytest.raises(ValueError, match='grpo or ppo'):
         _check_rlhf_advanced(TrainConfig(), RLConfig(rl_type='dpo', sync_ref_model=True))
-    # a GRPO run with none of the knobs passes the gate (deeper checks run on their own below)
-    _check_rlhf_advanced(TrainConfig(), RLConfig(rl_type='grpo', num_generations=4))
+    # a GRPO run with none of the knobs passes the gate (the later reward-channel guard needs a
+    # channel; the deeper checks run on their own below)
+    _check_rlhf_advanced(TrainConfig(), RLConfig(rl_type='grpo', num_generations=4),
+                         RewardConfig(orm=['accuracy']))
 
 
 def test_dpo_loss_validation():

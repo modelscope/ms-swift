@@ -537,6 +537,9 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
         labels = encoded["labels"]
         loss_scale = encoded.get("loss_scale", None)
         mm_mask = [False] * len(input_ids)
+        # Bound in the videos branch below; declared up front because ``_get_new_tokens`` binds it as a
+        # default argument, which is evaluated on every definition -- including the images-only pass.
+        splited_tokens = None
         for media_type in ["images", "videos"]:
             mm_data = getattr(inputs, media_type)
             if mm_data:

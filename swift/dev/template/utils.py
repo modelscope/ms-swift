@@ -2,7 +2,6 @@
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
-import json
 import torch
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
@@ -262,15 +261,14 @@ def normalize_messages(messages: "Messages") -> "Messages":
 
 
 def _call_payload(tool_call: Dict[str, Any]) -> Dict[str, Any]:
-    """``{'name', 'arguments'}`` of one call; OpenAI wraps it under ``function`` and JSON-encodes arguments."""
+    """``{'name', 'arguments'}`` of one call; OpenAI wraps it under ``function`` and JSON-encodes arguments.
+
+    The arguments form is preserved as given: the model jinja renders a str via ``tojson`` (an
+    escaped JSON string) and a dict inline, so parsing here would fork training and inference
+    tokens on spec-form messages. Renderers that want the parsed dict use ``_parse_tool_call``.
+    """
     function = tool_call.get("function", tool_call)
-    arguments = function.get("arguments", {})
-    if isinstance(arguments, str):
-        try:
-            arguments = json.loads(arguments)
-        except json.JSONDecodeError:
-            pass
-    return {"name": function["name"], "arguments": arguments}
+    return {"name": function["name"], "arguments": function.get("arguments", {})}
 
 
 def update_generation_config_eos_token(generation_config, template):
