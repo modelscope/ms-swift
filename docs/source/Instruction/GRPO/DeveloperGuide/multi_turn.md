@@ -143,6 +143,12 @@ ChatCompletionResponseChoice(
 
 完整的默认多轮 rollout 逻辑请参考该类的 `run` 方法，我们也可以通过重载`run` 方法来实现自定义多轮逻辑。
 
+在 server 模式中，默认 `run` 会使用刚完成轮次的响应前缀，统一处理 `step` 返回的
+`response_token_ids` 和可选的 `response_loss_mask`：缺少的前缀 token 会以损失掩码 `0`
+补入，已经显式屏蔽的前缀会保留，同一条 assistant 消息的续写不会重复补入前缀。
+`step` 修改的前缀用于下一轮。完全重载 `run` 的自定义实现需自行完成该处理，例如在
+修改请求的模板设置前调用 `get_response_token_data`。
+
 ## 设置多轮训练参数
 
 在 swift rollout 命令中，设置 multi_turn_scheduler 参数指定规划器

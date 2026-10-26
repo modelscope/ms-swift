@@ -147,6 +147,14 @@ The default `check_finished` logic stops inference in the following cases:
 For the full default multi-turn rollout logic, see the `run` method of the class.
 You can override `run` to implement a completely custom workflow.
 
+In server mode, the default `run` normalizes `step`'s `response_token_ids` and optional
+`response_loss_mask` using the response prefix from the completed turn. It inserts missing
+prefix tokens with loss mask `0`, preserves an explicitly masked prefix, and does not insert
+another prefix when continuing the same assistant message. A prefix change made by `step`
+applies to the next turn. Custom implementations that override `run` must perform this
+normalization themselves, for example with `get_response_token_data` before changing the
+request's template settings.
+
 ## Setting multi-turn parameters
 
 Specify the scheduler via `multi_turn_scheduler` in the `swift rollout` command:
