@@ -266,6 +266,40 @@ def _train_mini_batches(state: StepState, rl_config: 'RLConfig', samples: List[A
     return optimizer_steps
 
 
+def _record_reward_metric(samples: List[Any], *, orm_scorers: List[Any], orm_weights: Any,
+                          reward_metric: Any) -> None:
+    """Feed one consumed batch's per-sample ORM rewards into the driver-side reward aggregate.
+
+    Both online-RL loops (the colocate plain loop and the StreamingDriver pull loop) call this with
+    the batch they are about to train on -- samples arrive pre-scored (``orm_reward`` written by the
+    colocate loop's ``_score_group`` or the driver's built-in group-barrier scoring, the same
+    fixed-format contract). The metric resets per call, so the ``train/<col>_reward`` keys describe
+    exactly the batch the upcoming optimizer steps train on (the same CompletionRewardMetric
+    contract PPO's loop uses). A no-scorer run (teacher-only OPD-RL) accumulates nothing and the
+    keys simply stay absent.
+    """
+    if not orm_scorers or not samples or reward_metric is None:
+        return
+    from swift.dev.rewards.advantage import build_reward_weights
+    from swift.dev.utils.plugin import PluginRegistry
+
+    column_names = [PluginRegistry.display_name(scorer) for scorer in orm_scorers]
+    column_weights = build_reward_weights(orm_weights, len(orm_scorers))
+    matrix = torch.tensor(
+        [[float('nan') if r is None or r != r else float(r) for r in sample.orm_reward]
+         for sample in samples], dtype=torch.float32).T
+    rewards = {
+        name: [float(v) for v in column if v == v]
+        for name, column in zip(column_names, matrix)
+    }
+    total = (matrix * column_weights.view(-1, 1)).nansum(dim=0)
+    rewards['total'] = [float(v) for v in total if v == v]
+    reward_metric.reset()
+    reward_metric.accumulate(
+        rewards=rewards,
+        completion_lengths=[len(sample.response_token_ids) for sample in samples])
+
+
 def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
                    reward_config: 'RewardConfig', dataloader: Any, state: StepState, *,
                    train_batch_size: int, chord_fn: Optional[Callable[[], List[Any]]] = None,
@@ -288,32 +322,9 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
                if cluster.orm_scorers else None)
 
     def _record_rewards(samples: List[Any]) -> None:
-        """Feed the per-sample ORM rewards into the step record's reward aggregate.
-
-        Mirrors PPO's loop: the metric resets per rollout window, so the train/<col>_reward keys
-        describe exactly the batch the upcoming optimizer steps train on. A no-scorer run (teacher-only
-        OPD-RL) accumulates nothing and the keys simply stay absent.
-        """
-        if not cluster.orm_scorers or not samples or reward_metric is None:
-            return
-        from swift.dev.rewards.advantage import build_reward_weights as _bwr
-        from swift.dev.utils.plugin import PluginRegistry
-
-        column_names = [PluginRegistry.display_name(scorer) for scorer in cluster.orm_scorers]
-        column_weights = _bwr(reward_config.orm_weights, len(cluster.orm_scorers))
-        matrix = torch.tensor(
-            [[float('nan') if r is None or r != r else float(r) for r in sample.orm_reward]
-             for sample in samples], dtype=torch.float32).T
-        rewards = {
-            name: [float(v) for v in column if v == v]
-            for name, column in zip(column_names, matrix)
-        }
-        total = (matrix * column_weights.view(-1, 1)).nansum(dim=0)
-        rewards['total'] = [float(v) for v in total if v == v]
-        reward_metric.reset()
-        reward_metric.accumulate(
-            rewards=rewards,
-            completion_lengths=[len(sample.response_token_ids) for sample in samples])
+        _record_reward_metric(
+            samples, orm_scorers=cluster.orm_scorers, orm_weights=reward_config.orm_weights,
+            reward_metric=reward_metric)
 
     entered = False
     try:
@@ -404,7 +415,8 @@ def _disaggregated_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Ro
                         chord_fn: Optional[Callable[[], List[Any]]] = None, ema_manager: Any = None,
                         save: Optional[Callable[[str], Any]] = None,
                         metrics_cells: Optional[Tuple[List[Any], List[List[int]]]] = None,
-                        correction_out: Optional[Dict[str, float]] = None) -> None:
+                        correction_out: Optional[Dict[str, float]] = None,
+                        reward_metric: Any = None) -> None:
     """The disaggregated branch (deep_refactor.md 63-70): the StreamingDriver streams, the body trains.
 
     Per pull: the visible advantage pipeline, routing replay, the mini-batch training rounds, then
@@ -426,6 +438,13 @@ def _disaggregated_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Ro
     total_steps = 0
     try:
         for samples in driver:
+            # The driver's built-in group-barrier scoring has already written orm_reward onto every
+            # sample (the same contract the colocate loop's _score_group yields), so the reward
+            # aggregate can be recorded from the pull itself -- same metric, same reset-per-batch
+            # semantics as the colocate branch.
+            _record_reward_metric(
+                samples, orm_scorers=cluster.orm_scorers, orm_weights=reward_config.orm_weights,
+                reward_metric=reward_metric)
             if rl_config.log_completions:
                 cluster.worker.log_completions(
                     samples, [sample.orm_reward for sample in samples], state.global_step + 1,
@@ -559,8 +578,9 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     # The last pull's legacy rollout_correction/* diagnostics (signed KL, ppl, chi2).
     rollout_correction: Dict[str, float] = {}
 
-    # The colocate branch feeds this from the per-sample orm_reward it scores (the same
-    # CompletionRewardMetric contract PPO's loop uses); the disaggregated branch leaves it empty.
+    # BOTH online-RL branches feed this from the per-sample orm_reward their scoring writes
+    # (colocate: _score_group; disaggregated: the driver's built-in group-barrier scoring) -- the same
+    # CompletionRewardMetric contract PPO's loop uses.
     from twinkle.metric import CompletionRewardMetric
 
     _reward_metric = CompletionRewardMetric()
@@ -665,7 +685,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                                 num_train_epochs=train_config.num_train_epochs, output_dir=output_dir,
                                 chord_fn=chord_fn, ema_manager=ema_manager, save=save,
                                 metrics_cells=(_driver_cell, _last_batch_versions),
-                                correction_out=rollout_correction)
+                                correction_out=rollout_correction, reward_metric=_reward_metric)
     finally:
         Perf.shutdown()
         # MultiTurnRollout owns only the sandbox env pool; the sampler's GPU memory is the

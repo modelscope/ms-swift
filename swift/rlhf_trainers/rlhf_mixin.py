@@ -128,10 +128,21 @@ class RLHFTrainerMixin:
         return res
 
     def _get_train_sampler(self, train_dataset=None):
-        get_train_sampler = super()._get_train_sampler
-        parameters = inspect.signature(get_train_sampler).parameters
-        kwargs = {'train_dataset': train_dataset} if 'train_dataset' in parameters else {}
-        return get_train_sampler(**kwargs)
+        if train_dataset is None:
+            train_dataset = self.train_dataset
+        if getattr(self.args, 'train_dataloader_shuffle', True) or train_dataset is None:
+            # shuffle=True keeps HF Trainer's own sampler strategy untouched, so an existing run's
+            # read order is not silently changed by this override.
+            get_train_sampler = super()._get_train_sampler
+            parameters = inspect.signature(get_train_sampler).parameters
+            kwargs = {'train_dataset': train_dataset} if 'train_dataset' in parameters else {}
+            return get_train_sampler(**kwargs)
+        # `--train_dataloader_shuffle false` used to be silently DEAD on the RLHF path: the SFT
+        # trainers consume it in DataLoaderMixin's BatchSamplerShard, but this trainer family never
+        # reaches that mixin, so HF Trainer's default RandomSampler shuffled the data whatever the
+        # flag said. Honor the flag by reading the dataset in its own order, as SFT does.
+        from torch.utils.data import SequentialSampler
+        return SequentialSampler(train_dataset)
 
     def get_per_token_logps(
         self,
