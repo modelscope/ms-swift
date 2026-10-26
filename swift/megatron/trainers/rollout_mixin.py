@@ -35,7 +35,8 @@ from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LO
                                        check_vllm_version_ge, expand_vllm_param_name_aliases, finish_vllm_weight_reload,
                                        parse_prompt_logprobs, patch_vllm_load_adapter,
                                        patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
-                                       set_expandable_segments, sleep_vllm_engine, vllm_supports_lora_load_inplace)
+                                       set_expandable_segments, sleep_vllm_engine, vllm_sleep,
+                                       vllm_supports_lora_load_inplace)
 from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import (JsonlWriter, get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response,
@@ -219,7 +220,19 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         vp_size = getattr(args, 'virtual_pipeline_model_parallel_size', None)
         assert vp_size is None or vp_size == 1, 'Teacher distillation does not support VPP.'
         self.teacher_hf_config = AutoConfig.from_pretrained(args.teacher_model_dir, trust_remote_code=True)
-        self.teacher_models = get_mcore_model(args, self.teacher_hf_config)
+        teacher_args = copy(args)
+        teacher_args.model_dir = args.teacher_model_dir
+        teacher_args.megatron_model_meta = args.teacher_megatron_model_meta
+        # The teacher only provides logits and does not need the MTP.
+        teacher_args.mtp_num_layers = 0
+        teacher_args.mtp_shared_weights = False
+        teacher_args.mtp_use_repeated_layer = False
+        teacher_args.megatron_extra_kwargs = {
+            key: value
+            for key, value in (args.megatron_extra_kwargs or {}).items()
+            if key not in {'mtp_num_layers', 'mtp_shared_weights', 'mtp_use_repeated_layer'}
+        }
+        self.teacher_models = get_mcore_model(teacher_args, self.teacher_hf_config)
         self.teacher_config = self.teacher_models[0].config
         if not args.use_cpu_initialization:
             for teacher_model in self.teacher_models:
@@ -422,7 +435,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
                 self.engine = self._prepare_vllm_engine()
                 self.engine.engine.reset_mm_cache()
                 if args.sleep_level > 0:
-                    self.engine.engine.sleep(args.sleep_level)
+                    vllm_sleep(self.engine.engine, args.sleep_level)
                 set_expandable_segments(True)
         else:
             raise ValueError(f'Invalid vllm_mode: {self.vllm_mode}')

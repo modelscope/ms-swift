@@ -299,18 +299,14 @@ class MuonClip(Optimizer):
 
                 buf.mul_(momentum).add_(grad)
 
-                # build update
+                # Build the momentum update before orthogonalization, including Nesterov.
+                update = grad.add(buf, alpha=momentum) if nesterov else buf
                 if apply_muon and p.ndim >= 2:
-                    orth = self.newton_schulz(buf, steps=ns_steps)
+                    orth = self.newton_schulz(update, steps=ns_steps)
                     n, m = p.shape[0], p.shape[1]
                     rms_scale_factor = float(group.get('rms_scale_factor', 0.2))
                     rms_scale = math.sqrt(max(n, m)) * rms_scale_factor
                     update = orth * rms_scale
-                else:
-                    update = buf
-
-                if nesterov:
-                    update = grad.add(update, alpha=momentum)
 
                 # decoupled-ish weight decay
                 if weight_decay != 0:

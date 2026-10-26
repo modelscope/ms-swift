@@ -81,6 +81,8 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
             del logits_chunk
             del labels_chunk
         all_losses = torch.cat(losses)
+        # Autocast may compute CE in FP32 even when the saved logits are low precision.
+        ctx.loss_dtype = all_losses.dtype
         return all_losses
 
     @staticmethod
@@ -92,14 +94,18 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
         for i in range(math.ceil(logits.shape[0] / chunk_size)):
             l_start = i * chunk_size
             l_end = min((i + 1) * chunk_size, logits.shape[0])
-            logits_chunk = logits[l_start:l_end].detach().requires_grad_(True)
+            logits_chunk = logits[l_start:l_end].detach()
             labels_chunk = labels[l_start:l_end]
-            loss_fct = CrossEntropyLoss(reduction='none')
-            with torch.enable_grad():
-                loss_chunk = loss_fct(logits_chunk, labels_chunk)
-                grad_output_chunk = grad_outputs[0][l_start:l_end]
-                _loss_chunk = (loss_chunk * grad_output_chunk).sum()
-                grad_chunk = torch.autograd.grad(_loss_chunk, logits_chunk, retain_graph=False)[0]
+            grad_chunk = grad_logits[l_start:l_end]
+            if grad_chunk.dtype == ctx.loss_dtype:
+                torch.softmax(logits_chunk, dim=-1, out=grad_chunk)
+            else:
+                grad_chunk = torch.softmax(logits_chunk, dim=-1, dtype=ctx.loss_dtype)
+            targets = labels_chunk.clamp_min(0).unsqueeze(-1)
+            grad_output_chunk = grad_outputs[0][l_start:l_end].masked_fill(labels_chunk == -100, 0).unsqueeze(-1)
+            grad_chunk.mul_(grad_output_chunk)
+            grad_chunk.scatter_add_(1, targets, -grad_output_chunk)
+            if grad_chunk.dtype != grad_logits.dtype:
                 grad_logits[l_start:l_end] = grad_chunk
 
         return grad_logits, None, None

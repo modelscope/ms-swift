@@ -77,6 +77,11 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🔥 2026.10.22: Support [EntroPack](https://github.com/modelscope/entropack) flexible bitrate model quantization, enabling fine-grained control of the model's bitrate based on the VRAM budget, with support for Transformers inference and LoRA training. See the [best practices](docs/source_en/BestPractices/Flexble-Quantization-With-Entropack.md) and the [QLoRA example](examples/train/qlora/entropack.sh).
+- 🔥 2026.10.19: Support for [EmbeddingGemma-2](https://www.modelscope.cn/models/google/embeddinggemma-2) (740M, multimodal embedding model, unifying text/image/video/audio in a single 768d vector space). Inference and training verified with infonce loss fine-tuning.
+- 🔥 2026.10.15: Day-0 Support for [NVIDIA-Nemotron-3.5-Super-VL-120B-A12B](https://www.modelscope.cn/models/nv-community/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16), Refer to the [SFT examples](examples/models/nemotron_super_vl).
+- 🔥 2026.10.13: Support for training and inference of decision models (typed-decision System-1 scoring models) via `--task_type decision`, which performs a single forward pass and outputs calibrated probabilities over each question's option set. Supports [JEV-27B-VL](https://www.modelscope.cn/models/autotrust/JEV-27B-VL), [Clef](https://www.modelscope.cn/models/Cloudflare/clef), [OmniJev](https://modelscope.cn/models/AI-ModelScope/OmniJev) and [Kev](https://www.modelscope.cn/models/jaredpalmer/kev-4b) (0.8b/4b/9b), with proper scoring rule losses (distill_rps, smooth_brier, ce_rps). Refer to the [documentation](docs/source_en/BestPractices/Decision.md) and [examples](examples/train/decision).
+- 🔥 2026.10.01: Support for [Xing4.0-29B-A4B](https://www.modelscope.cn/models/XingChen-AGI/Xing4.0-29B-A4B): transformers-backend training and inference, with LoRA & full-parameter SFT on single/multi-GPU (DDP & DeepSpeed ZeRO-3) and grouped_mm expert acceleration (~3.7x). Refer to the [examples](examples/models/xing4_0).
 - 🔥 2026.09.21: Support for [DeepSeek-V4.1-Flash](https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V4.1-Flash): Megatron-SWIFT full-parameter training (SFT and GRPO) plus vLLM inference. Refer to the [examples](examples/models/deepseek_v41).
 - 🔥 2026.09.01: Support inference and training for the Tencent Hunyuan multimodal embedding model [WeMM-Embedding](https://www.modelscope.cn/models/Tencent-Hunyuan/WeMM-Embedding-2B) (2B/4B/9B), supporting image-text mixed input for vector representation. Refer to [embedding example](examples/train/embedding).
 - 🔥 2026.08.26: Day-0 Support for [Qwen3.8-Flash-Next](https://www.modelscope.cn/models/Qwen/Qwen3.8-Flash-Next), refer to [sft example](examples/models/qwen4_exp/megatron_sft.sh) for training.
@@ -154,7 +159,7 @@ Running Environment:
 | peft         | >=0.11,<0.21 |                     |                                           |
 | flash_attn   |              | 2.8.3/4.0.0b15 |                                           |
 | trl          | >=0.15,<1.0 | 0.29.1              | RLHF                                      |
-| deepspeed    | >=0.14       | 0.18.9              | Training                                  |
+| deepspeed    | >=0.19.3,<0.20 | 0.19.7            | Training                                  |
 | vllm         | >=0.5.1      | 0.11.0/0.23.0       | Inference/Deployment                      |
 | sglang       | >=0.4.6      |          | Inference/Deployment                      |
 | evalscope    | >=1.0       |                     | Evaluation                                |

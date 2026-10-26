@@ -49,7 +49,7 @@ from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedT
                     get_gather_if_zero3_context, parse_prompt_logprobs, patch_lora_merge, patch_lora_unmerge,
                     patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, prepare_deepspeed, prepare_fsdp,
                     profiling_context, profiling_decorator, revert_runtime_names_to_checkpoint, set_expandable_segments,
-                    sleep_vllm_engine, vllm_supports_lora_load_inplace)
+                    sleep_vllm_engine, vllm_sleep, vllm_supports_lora_load_inplace)
 from .vllm_client import VLLMInferClient
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
@@ -455,7 +455,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 self.engine = self._prepare_vllm_engine()
                 self.engine.engine.reset_mm_cache()
                 if args.sleep_level > 0:
-                    self.engine.engine.sleep(args.sleep_level)
+                    vllm_sleep(self.engine.engine, args.sleep_level)
 
     def _prepare_vllm_engine(self):
         """Create and configure vLLM engine for colocate mode"""
@@ -1362,13 +1362,14 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         use_tqdm: Optional[bool] = False,
     ) -> List[RolloutOutput]:
         """Perform inference using configured engine"""
-        with profiling_context(self, 'generate'), self._disable_sp_context():
+        with profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
                 res = self.vllm_client.infer([asdict(req) for req in infer_requests],
                                              asdict(request_config),
                                              use_tqdm=use_tqdm)
             else:
-                res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+                with self._disable_sp_context():
+                    res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
             if all(isinstance(r, RolloutOutput) for r in res):
                 return res
             else:

@@ -235,11 +235,12 @@ mHC 模块以在支持的 GPU 上获得更好的性能。需要安装 cuTile；�
 - mhc_recompute_layer_num: 每个 MHC 重计算块的层数。设置后，每 `mhc_recompute_layer_num` 层构成一个重计算块。若为 None，Transformer 块中的所有层共享单个重计算块。默认为None。
 
 **MTP参数**
-- mtp_num_layers: 多token预测（MTP）层的数量。MTP将每个位置的预测范围扩展到多个未来token。此MTP实现使用D个顺序模块依次预测D个额外的token。默认为None。
-  - 注意：mtp_num_layers的值，将不自动从config.json获取，需手动设置。你可以参考config.json中的`num_nextn_predict_layers`, `mtp_num_hidden_layers`字段填写该值。使用mcore-bridge时，将优先从safetensors文件中加载MTP权重，若无法找到，则进行随机初始化。
-- mtp_loss_scaling_factor: 多token预测（MTP）损失的缩放因子。我们计算所有深度上MTP损失的平均值，然后乘以该缩放因子得到总体MTP损失，它将作为一个额外的训练目标。默认为0.1。
-- mtp_decoder_input_detach: 用来控制 MTP 分支里的 decoder_input 是否停止梯度。默认为False。开启后，MTP loss 不会直接通过 decoder_input 回传到 embedding/vit，但仍会通过 hidden_states 路径更新主干。
-- mtp_shared_weights: MTP层之间共享权重，采用GLM-5使用的mtp方案。默认为False。例如你可以设置`--mtp_num_layers 3 --mtp_shared_weights true`。
+- mtp_num_layers: 每一步要预测的 draft token 数 D（MTP 深度）。默认为 `auto`，自动跟随模型 checkpoint；设为 `None` 时不加载 MTP 权重。
+  - 版本说明：4.6.0 及更早版本默认为 `None`。
+- mtp_loss_scaling_factor: MTP 损失缩放因子。默认为 0.1。
+- mtp_decoder_input_detach: MTP 分支的 decoder_input 是否停止梯度。默认为 False。
+- mtp_shared_weights: MTP 层之间共享权重。默认为 None，进行自动解析：当 checkpoint mtp 层数小于 mtp_num_layers 时开启。显式设为 true/false 可覆盖。通常无需手动设置。
+- mtp_allow_random_init: checkpoint 缺少 MTP 权重时，是否允许随机初始化来新增MTP层。默认为 False。
 
 **Tuner参数**:
 - tuner_type: 可选为'lora', 'full'和'lora_llm'。默认为'full'。

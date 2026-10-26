@@ -196,6 +196,9 @@ class TransformersEngine(InferEngine):
 
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
+        # `decision` task_type: overlay a trained scoring_head shipped beside the adapter
+        from swift.model.decision_head import maybe_load_trained_scoring_head
+        maybe_load_trained_scoring_head(self.model, adapter_path)
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> _GenerationConfig:
         generation_config = prepare_generation_config(self.generation_config, request_config, self.tokenizer)
@@ -347,7 +350,8 @@ class TransformersEngine(InferEngine):
                 toolcall = None
                 if is_finished[i]:
                     toolcall = self._get_toolcall(
-                        self.template.decode_generate_ids(generate_ids, template_inputs=template_inputs[i]))
+                        self.template.decode_generate_ids(generate_ids, template_inputs=template_inputs[i]),
+                        template_inputs=template_inputs[i])
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, usage_info.completion_tokens,
                                                         is_finished[i])
                 if stop_finished:
@@ -413,6 +417,8 @@ class TransformersEngine(InferEngine):
                 preds = F.sigmoid(preds)
             preds = preds.tolist()
             logprobs = [None] * len(preds)
+        elif task_type == 'decision':
+            preds, logprobs = self.template._decode_decision(output, top_logprobs)
         else:
             raise ValueError(f'Unsupported task_type: {task_type}')
 
@@ -474,7 +480,7 @@ class TransformersEngine(InferEngine):
                 usage_info = self._update_usage_info(usage_info, len(generate_ids))
                 response = self.template.decode_generate_ids(generate_ids, template_inputs=template_inputs[i])
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)
-                toolcall = self._get_toolcall(response)
+                toolcall = self._get_toolcall(response, template_inputs=template_inputs[i])
                 token_ids = generate_ids if request_config.return_details else None
                 choices.append(
                     ChatCompletionResponseChoice(
@@ -599,7 +605,7 @@ class TransformersEngine(InferEngine):
         else:
             if len(kwargs) > 0:
                 infer_func = self._infer_forward if self.template.task_type in {
-                    'seq_cls', 'prm', 'embedding', 'reranker', 'generative_reranker'
+                    'seq_cls', 'prm', 'embedding', 'reranker', 'generative_reranker', 'decision'
                 } else self._infer_full
                 res = infer_func(**kwargs)
             else:

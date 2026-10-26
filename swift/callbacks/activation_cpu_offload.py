@@ -19,7 +19,8 @@ is_musa_available = is_torch_musa_available()
 
 
 def _get_unique_tensor_key(tensor):
-    key = (tensor.untyped_storage().data_ptr() + tensor.storage_offset(), tensor.dtype)
+    # Views with the same starting address can contain different values or numbers of elements.
+    key = (tensor.device, tensor.data_ptr(), tensor.dtype, tensor.shape, tensor.stride())
     return key
 
 

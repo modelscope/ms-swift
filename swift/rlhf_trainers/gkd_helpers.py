@@ -117,6 +117,8 @@ def build_teacher_requests(samples: List[OnPolicySample], template: Optional[Tem
                                                            loss_mask,
                                                            non_thinking_prefix_ids=prefix_ids)
         req.messages = messages
+        if isinstance(s, GKDSample):
+            req.add_eos = 'auto' if s.add_eos is None else s.add_eos
         requests.append(req)
     return requests
 

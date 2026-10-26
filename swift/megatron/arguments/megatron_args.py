@@ -149,11 +149,11 @@ class RLHFMegatronArgumentsMixin:
 
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
     # GDPO: normalize each reward function separately
-    scale_rewards: Literal['none', 'group', 'batch', 'gdpo'] = 'group'
+    scale_rewards: Optional[Literal['none', 'group', 'batch', 'gdpo']] = None
 
     # RLOO / REINFORCE++
     advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
-    kl_in_reward: bool = False
+    kl_in_reward: Optional[bool] = None
 
     wandb_log_unique_prompts: Optional[bool] = None
     log_completions: bool = False
@@ -423,6 +423,26 @@ class RLHFMegatronArgumentsMixin:
                 f"[REAL] scale_rewards='{self.scale_rewards}' is ignored. "
                 "It will be forced to 'none' because 'loss_type = real' does not support reward normalization.")
 
+        # `kl_in_reward` / `scale_rewards` default to the value tied to `advantage_estimator`.
+        # Mirrors `RLHFArguments._init_grpo` and the Megatron command-line documentation.
+        if self.kl_in_reward is None:
+            if self.advantage_estimator == 'grpo':
+                self.kl_in_reward = False
+            elif self.advantage_estimator in ['rloo', 'reinforce_plus_plus']:
+                self.kl_in_reward = True
+            else:
+                raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
+
+        if self.scale_rewards is None:
+            if self.advantage_estimator == 'grpo':
+                self.scale_rewards = 'group'
+            elif self.advantage_estimator == 'rloo':
+                self.scale_rewards = 'none'
+            elif self.advantage_estimator == 'reinforce_plus_plus':
+                self.scale_rewards = 'batch'
+            else:
+                raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
+
         if self.beta is None:
             self.beta = 0.04  # https://arxiv.org/abs/2402.03300
         if self.async_generate:
@@ -474,6 +494,21 @@ class MegatronTunerMixin:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
         if self.target_regex:
             self.target_modules = self.target_regex
+
+
+def _normalize_mtp_num_layers(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if value == 'auto':
+            return 'auto'
+        try:
+            value = int(value)
+        except ValueError:
+            raise ValueError("`mtp_num_layers` must be an integer or 'auto'.")
+    else:
+        value = int(value)
+    return value
 
 
 @dataclass
@@ -676,10 +711,15 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     engram_tokenizer_map: Optional[str] = None
 
     # mtp
-    mtp_num_layers: Optional[int] = None
+    # int, 'auto' (default), or None (disabled).
+    mtp_num_layers: Optional[Union[int, str]] = 'auto'
     mtp_loss_scaling_factor: float = 0.1
     mtp_decoder_input_detach: bool = False
-    mtp_shared_weights: bool = False
+    # None = auto: reuse one physical set when the requested depth exceeds the checkpoint's sets.
+    mtp_shared_weights: Optional[bool] = None
+
+    # Full-finetune checkpoints without MTP keys fail loud unless this is set.
+    mtp_allow_random_init: bool = False
 
     # mcore-bridge / megatron-bridge
     bridge_backend: Literal['mcore-bridge', 'megatron-bridge'] = 'mcore-bridge'
@@ -818,12 +858,17 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                              'switch to tuner_type="full" to keep selective recomputation.')
 
     def __post_init__(self):
+        self.mtp_num_layers = _normalize_mtp_num_layers(self.mtp_num_layers)
         if self.tuner_type != 'full':
             require_version('peft>=0.15', 'Please install peft>=0.15 to use LoRA in Megatron-SWIFT.')
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
         self._check_bridge_backend()
+        if self.bridge_backend == 'megatron-bridge' and self.mtp_num_layers == 'auto':
+            logger.warning("`mtp_num_layers='auto'` is not supported with bridge_backend='megatron-bridge'; "
+                           'MTP is disabled.')
+            self.mtp_num_layers = None
         if self.recompute_granularity == 'none':
             self.recompute_granularity = None
         if self.recompute_granularity == 'selective' and self.recompute_method is not None:

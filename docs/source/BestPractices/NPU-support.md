@@ -193,6 +193,9 @@ docker run -it \
 进入容器后，建议先执行 `source /usr/local/Ascend/ascend-toolkit/set_env.sh`，再运行后文的 NPU 可用性检查脚本，确认容器内可以正确访问昇腾设备。如果容器内无法识别 NPU，请优先检查 `/dev/davinci*`、`/dev/davinci_manager`、驱动目录和 `npu-smi` 是否正确挂载。
 
 ### 本地环境安装
+
+**第 1 步：准备环境**
+
 ```shell
 # 创建新的 conda 虚拟环境（可选）
 conda create -n swift-npu python=3.12 -y
@@ -203,13 +206,29 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 # 设置 pip 全局镜像（可选，加速下载）
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-pip install ms-swift -U
+```
 
-# 使用源码安装
+**第 2 步：安装 ms-swift（以下两种方式二选一）**
+
+> 普通使用选择方式 A；需要 main 分支最新代码或修改源码时选择方式 B。执行其中一种后，直接进入第 3 步，无需执行另一种。
+
+**方式 A：安装 PyPI 发布版（普通使用推荐）**
+
+```shell
+pip install ms-swift -U
+```
+
+**方式 B：安装源码版**
+
+```shell
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
+```
 
+**第 3 步：安装运行时和按需安装可选组件**
+
+```shell
 # 安装匹配的 PyTorch/TorchNPU 运行时
 pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0
 pip install torch_npu==2.10.0.post4 decorator \
@@ -265,7 +284,7 @@ pip install -e .
 cd ..
 
 # 4. 获取并安装 triton-ascend
-pip install triton-ascend==3.2.1 --extra-index-url=https://triton-ascend.osinfra.cn/pypi/simple
+pip install triton-ascend --extra-index-url=https://mirrors.huaweicloud.com/ascend/repos/pypi
 
 # 5. 设置环境变量
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>

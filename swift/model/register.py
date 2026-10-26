@@ -463,6 +463,12 @@ class ModelLoader(BaseModelLoader):
                     if type(module).__name__ == 'BailingMoeV3SparseMoeBlock':
                         z3_leaf_modules = [type(module)]
                         break
+            elif hf_model_type == 'xing4_0':
+                # trust_remote_code model: Xing4_0MoE is not in transformers.models.*
+                for module in model.modules():
+                    if type(module).__name__ == 'Xing4_0MoE':
+                        z3_leaf_modules = [type(module)]
+                        break
 
         if z3_leaf_modules:
             from deepspeed.utils import set_z3_leaf_modules
@@ -553,7 +559,7 @@ def get_model_processor(
     max_model_len: Optional[int] = None,
     auto_model_cls=None,
     new_special_tokens: Optional[List[str]] = None,
-    task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'reranker', 'generative_reranker'] = None,
+    task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'reranker', 'generative_reranker', 'decision'] = None,
     num_labels: Optional[int] = None,
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None,
     return_dummy_model: bool = False,
@@ -659,7 +665,7 @@ def get_processor(
     download_model: Optional[bool] = None,
     # model kwargs
     model_type: Optional[str] = None,
-    task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'reranker', 'generative_reranker'] = None,
+    task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'reranker', 'generative_reranker', 'decision'] = None,
     num_labels: Optional[int] = None,
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None,
     **kwargs,

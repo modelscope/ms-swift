@@ -11,7 +11,7 @@ from typing import List, Union
 
 from swift.arguments import SftArguments
 from swift.trainers import calculate_max_steps
-from swift.tuner_plugin import Tuner, tuners_map
+from swift.tuner_plugin import Tuner, apply_model_prepare_hooks, tuners_map
 from swift.tuners import Swift
 from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
                          get_logger, get_multimodal_target_regex)
@@ -114,7 +114,8 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
 
 # PEFT >= 0.20 hard-rejects LoRA on these Mamba modules
 # (peft/tuners/tuners_utils.py::_check_lora_target_modules_mamba, set: {out_proj, conv1d}).
-_MAMBA_MODEL_TYPES = {'falcon_h1', 'mamba', 'mamba2', 'falcon_mamba', 'nemotron_h'}
+# `nemotron_h_omni` is not in PEFT's model-type set yet, so it is stripped here proactively.
+_MAMBA_MODEL_TYPES = {'falcon_h1', 'mamba', 'mamba2', 'falcon_mamba', 'nemotron_h', 'nemotron_h_omni'}
 _MAMBA_INCOMPATIBLE_MODULES = {'out_proj', 'conv1d'}
 
 
@@ -200,6 +201,8 @@ def prepare_adapter(args: SftArguments, model, *, template=None, train_dataset=N
             elif task_type == 'RERANKER':
                 task_type = 'SEQ_CLS'
             elif task_type == 'GENERATIVE_RERANKER':
+                task_type = 'CAUSAL_LM'
+            elif task_type == 'DECISION':
                 task_type = 'CAUSAL_LM'
             if args.target_parameters is not None:
                 lora_kwargs['target_parameters'] = args.target_parameters
@@ -387,6 +390,9 @@ class TunerMixin:
                     tuner = Swift
                 assert not args.adapters or len(args.adapters) == 1, f'args.adapters: {args.adapters}'
                 model = tuner.from_pretrained(model, args.resume_from_checkpoint or args.adapters[0], is_trainable=True)
+
+                from swift.model.decision_head import maybe_load_trained_scoring_head
+                maybe_load_trained_scoring_head(model, args.resume_from_checkpoint or args.adapters[0])
             else:
                 if args.tuner_type in tuners_map:
                     tuner: Tuner = tuners_map[args.tuner_type]
@@ -417,4 +423,5 @@ class TunerMixin:
                 args.galore_target_modules += find_embedding(model)
         if is_deepspeed_zero3_enabled():
             _patch_modules_to_save_zero3()
+        model = apply_model_prepare_hooks(args, model)
         return model
