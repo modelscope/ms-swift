@@ -87,6 +87,11 @@ class RolloutConfig:
     # publishes sparsely (verl's trigger_parameter_sync_step). Inert on the sync fallback.
     parameter_sync_step: int = 1
     sleep_level: int = 0
+    # Colocate only, and independent of each other. Move the trainer weights, the optimizer
+    # state, both, or neither between rollout and the update. Default False leaves them on the
+    # GPU. vLLM sleep (sleep_level) is a separate step and always runs. Ignored when the sampler
+    # is not colocated. resource_mode=adaptive still offloads while it borrows trainer GPUs and
+    # refuses to start when both of these are false.
     offload_optimizer: bool = False
     offload_model: bool = False
 

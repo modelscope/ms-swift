@@ -314,6 +314,11 @@ def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: O
         raise ValueError('resource_overrides must be a JSON object.')
     if mode != 'adaptive':
         return
+    if not rollout_config.offload_model and not rollout_config.offload_optimizer:
+        raise ValueError(
+            'resource_mode="adaptive" borrows the trainer GPUs for shared rollout engines and offloads '
+            'the trainer while those engines exist. Set --offload_model true or --offload_optimizer true; '
+            'both false leaves no room and is refused.')
     if rollout_config.sampler_mode != 'disaggregated':
         raise ValueError('resource_mode="adaptive" keeps dedicated sampler actors and optionally borrows the '
                          'complete trainer world; set sampler_mode="disaggregated" instead of configuring the '
@@ -588,39 +593,27 @@ def _check_streaming_publication(rollout_config: 'RolloutConfig', rl_config: 'RL
 
 
 def _check_offload_knobs(rollout_config: Optional['RolloutConfig']) -> None:
-    """Warn on offload/sleep knobs dev cannot honour exactly as set (non-fatal).
+    """Warn when offload/sleep knobs do not apply to this sampler placement (non-fatal).
 
-    Colocate offload is atomic; disaggregated has its own GPUs, so offload is moot and sleep inert.
+    Colocate honours ``offload_model`` and ``offload_optimizer`` independently. A sampler on its
+    own GPUs never shares the device, so those knobs and ``sleep_level`` do nothing there.
     """
     if rollout_config is None:
         return
     changed = _changed_fields(rollout_config)
-    model_set = 'offload_model' in changed
-    optim_set = 'offload_optimizer' in changed
-    offload_model = rollout_config.offload_model
-    offload_optimizer = rollout_config.offload_optimizer
     if rollout_config.sampler_mode == 'colocate':
-        if model_set and optim_set and not offload_model and not offload_optimizer:
-            logger.warning(
-                'colocate rollout offload is structural and atomic (twinkle offload_to_cpu bundles the '
-                'model and optimizer and is coupled to the wake/sleep handover), so it cannot be disabled: '
-                'ignoring --offload_model=false --offload_optimizer=false; both stay offloaded each step.')
-        elif (model_set or optim_set) and not (model_set and optim_set and offload_model and offload_optimizer):
-            logger.warning(
-                'colocate rollout offload is atomic: the model and optimizer are offloaded together and '
-                'cannot be controlled as two independent tiers. Ignoring the partial --offload_model/'
-                '--offload_optimizer setting; both stay offloaded each step.')
-    else:
-        if (model_set and offload_model) or (optim_set and offload_optimizer):
-            logger.warning(
-                'sampler_mode=%r places the sampler on its own GPUs, so offloading the trainer model/optimizer '
-                'to make room for it does not apply: ignoring --offload_model/--offload_optimizer.',
-                rollout_config.sampler_mode)
-        if 'sleep_level' in changed:
-            logger.warning(
-                'sampler_mode=%r does not share GPUs between trainer and sampler, so the sampler is never put '
-                'to sleep between steps: --sleep_level is inert here (it only takes effect under '
-                "--sampler_mode colocate).", rollout_config.sampler_mode)
+        return
+    if ('offload_model' in changed and rollout_config.offload_model) or (
+            'offload_optimizer' in changed and rollout_config.offload_optimizer):
+        logger.warning(
+            'sampler_mode=%r places the sampler on its own GPUs, so offloading the trainer model/optimizer '
+            'to make room for it does not apply: ignoring --offload_model/--offload_optimizer.',
+            rollout_config.sampler_mode)
+    if 'sleep_level' in changed:
+        logger.warning(
+            'sampler_mode=%r does not share GPUs between trainer and sampler, so the sampler is never put '
+            'to sleep between steps: --sleep_level is inert here (it only takes effect under '
+            "--sampler_mode colocate).", rollout_config.sampler_mode)
 
 
 def _check_rollout_sampler(rollout_config: Optional['RolloutConfig']) -> None:
