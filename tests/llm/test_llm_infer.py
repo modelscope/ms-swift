@@ -1,6 +1,11 @@
 import unittest
 
-from swift.ui.llm_infer.llm_infer import LLMInfer
+_IMPORT_ERROR = ''
+try:
+    from swift.ui.llm_infer.llm_infer import LLMInfer
+except ImportError as e:
+    LLMInfer = None
+    _IMPORT_ERROR = str(e)
 
 TOOLBENCH = 'I should use a search tool.\nAction: search\nAction Input: {"query": "berlin"}'
 
@@ -13,6 +18,7 @@ def _roles(messages):
     return [message['role'] for message in messages]
 
 
+@unittest.skipUnless(LLMInfer is not None, f'gradio is not available: {_IMPORT_ERROR}')
 class TestMarkToolbenchObservation(unittest.TestCase):
 
     def test_the_observation_after_a_toolbench_turn_becomes_a_tool_response(self):
