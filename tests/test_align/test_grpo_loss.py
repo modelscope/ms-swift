@@ -2,6 +2,7 @@ import pytest
 import torch
 from types import SimpleNamespace
 
+from swift.rl_core.data import GRPOBatch
 from swift.rlhf_trainers.grpo_trainer import GRPOTrainer
 
 WINDOW_NORMALIZED_LOSS_TYPES = ['dapo', 'cispo', 'fipo']
@@ -98,3 +99,42 @@ def test_auxiliary_loss_keeps_trainer_gradient_accumulation_scaling(gradient_acc
 
     # one micro-batch contributes 0.2 / gradient_accumulation_steps, the whole window contributes 0.2
     torch.testing.assert_close(parameter.grad * gradient_accumulation_steps, torch.tensor(0.2))
+
+
+def test_masked_completion_tokens_do_not_produce_nan_from_overflowed_log_ratio():
+    trainer = object.__new__(GRPOTrainer)
+    trainer.model = SimpleNamespace(training=True)
+    trainer.args = SimpleNamespace(delta=None)
+    trainer.accelerator = SimpleNamespace(device=torch.device('cpu'), gather_for_metrics=lambda x: x)
+    trainer.loss_type = 'grpo'
+    trainer.importance_sampling_level = 'token'
+    trainer.beta = 0.0
+    trainer.kl_in_reward = False
+    trainer.overlong_filter = False
+    trainer.compute_entropy = False
+    trainer.rollout_importance_sampling_mode = None
+    trainer.log_rollout_offpolicy_metrics = False
+    trainer.disable_rollout_importance_sampling = True
+    trainer.off_policy_sequence_mask_delta = None
+    trainer._has_teacher = False
+    trainer.sdar_loss_coef = 0.0
+    trainer.chord_sft_iterator = None
+    trainer.epsilon_low = 0.2
+    trainer.epsilon_high = 0.2
+
+    per_token_logps = torch.tensor([[-1., -1.]], requires_grad=True)
+    completion_mask = torch.tensor([[False, True]])
+    grpo_batch = GRPOBatch(
+        completion_mask=completion_mask,
+        truncated_mask=torch.zeros(1, dtype=torch.bool),
+        seq_lengths=torch.tensor([2]),
+        old_per_token_logps=torch.tensor([[-1001., -1.]]),
+        advantages=torch.tensor([[-1., 1.]]),
+    )
+    trainer._get_per_token_logps_and_entropies = lambda *args, **kwargs: (per_token_logps, None)
+
+    loss, _ = trainer._compute_loss_and_metrics(None, {}, grpo_batch)
+    loss.backward()
+
+    torch.testing.assert_close(loss, torch.tensor(-1.0))
+    torch.testing.assert_close(per_token_logps.grad, torch.tensor([[0., -1.]]))

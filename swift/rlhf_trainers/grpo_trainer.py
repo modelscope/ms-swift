@@ -996,7 +996,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             pass
         # rollout_is_weights is a local variable, initialized to None above
 
-        log_ratio = per_token_logps - old_per_token_logps
+        log_ratio = (per_token_logps - old_per_token_logps).masked_fill(completion_mask == 0, 0.0)
         if self.importance_sampling_level == 'token':
             log_importance_weights = log_ratio
         elif self.importance_sampling_level in ['sequence', 'sequence_token']:
