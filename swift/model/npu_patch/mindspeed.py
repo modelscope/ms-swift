@@ -530,6 +530,8 @@ def apply_mindspeed_patches(megatron_args: dict[str, Any]) -> None:
 
     patch_mindspeed_te_cp_implementation(megatron_args)
     repatch(megatron_args)
+    from swift.megatron.init import patch_megatron_compatibility
+    patch_megatron_compatibility()
     patch_mindspeed_megatron_fsdp_gradient_scaling(megatron_args)
     patch_mindspeed_gdn_cp_helpers(megatron_args)
     patch_mindspeed_te_layernorm_linear_frozen_weight()
