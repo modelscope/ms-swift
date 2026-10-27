@@ -124,7 +124,8 @@ def _distill_round_loop(cluster: Cluster, rl_config: 'RLConfig', rollout_config:
                                 train_batch_size=train_batch_size, save=save)
                     if colocate:
                         # return the device: sleep the sampler, then reload the trainer's weights.
-                        cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
+                        from swift.dev.recipe.offload import sleep_for_rollout
+                        sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
                         cluster.model.reload_to_gpu()
                         entered = False
                 else:
@@ -141,7 +142,8 @@ def _distill_round_loop(cluster: Cluster, rl_config: 'RLConfig', rollout_config:
         if entered:
             # ended mid-window (e.g. reached_max inside a generation round): give the device back so
             # the post-run final save finds the model resident.
-            cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
+            from swift.dev.recipe.offload import sleep_for_rollout
+            sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
 
 

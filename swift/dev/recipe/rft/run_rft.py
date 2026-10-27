@@ -335,14 +335,16 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                 rewards = weighted_rewards(rewards_matrix, reward_config.orm_weights).tolist()
                 selected = selector.select(samples, rewards)
                 # return the device to the trainer: sleep the sampler, then reload the weights.
-                cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
+                from swift.dev.recipe.offload import sleep_for_rollout
+                sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
                 cluster.model.reload_to_gpu()
                 entered = False
             finally:
                 if entered:
                     # ended mid-window (a count-contract failure during generation): give the device
                     # back so the final save finds the model resident.
-                    cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
+                    from swift.dev.recipe.offload import sleep_for_rollout
+                    sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
                     cluster.model.reload_to_gpu()
             round_save_due = False
             if len(selected) == 0:
