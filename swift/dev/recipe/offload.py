@@ -1,13 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Pass colocate trainer-offload and vLLM sleep switches through."""
+
 from typing import Any
 
 
 def offload_for_rollout(model: Any, rollout_config: Any) -> None:
-    """Move the trainer pieces ``rollout_config`` asked to move. Both false leaves it resident.
+    """Move the trainer pieces ``rollout_config`` asked to move.
 
-    vLLM sleep is :func:`sleep_for_rollout`. ``reload_to_gpu`` later restores only what this
-    call actually moved.
+    Both false leaves parameters and optimizer state resident, and still releases the trainer's
+    caching allocator so a colocated vLLM process can map its KV cache. vLLM sleep is
+    :func:`sleep_for_rollout`. ``reload_to_gpu`` later restores only what this call actually moved.
     """
     model.offload_to_cpu(
         offload_model=bool(rollout_config.offload_model),
