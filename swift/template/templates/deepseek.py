@@ -468,7 +468,21 @@ class UnlimitedOCR(DeepseekOCR):
 
     def init_env_args(self):
         super().init_env_args()
-        self._rswa_window = self.config.sliding_window_size
+        # Unlimited-OCR-2 ships SR-SWA (`sparse_attention_config`); v1 is a plain R-SWA model.
+        self.is_v2 = bool(getattr(self.config, 'sparse_attention_config', None))
+        if self.is_v2:
+            # Official v2 prompt: `'<PAGE><image>' * num_pages + instruction`, i.e. every page is preceded by a
+            # `<PAGE>` marker (used by the page-aware RoPE and the sparse indexer).
+            self.image_placeholder = ['<PAGE><image>']
+            # None == official auto policy: gundam tiles for a single page, a base-only view for a multi-page doc.
+            self.crop_mode = get_env_args('crop_mode', bool, None)
+            # SR-SWA is implemented inside the model (DASH block-sparse + local window), so the extra 4D R-SWA
+            # mask would only re-restrict the already sparse attention.
+            self._rswa_window = None
+            if not self.template_meta.suffix:
+                self.template_meta.suffix = [['eos_token_id']]
+        else:
+            self._rswa_window = self.config.sliding_window_size
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         # Official infer_multi uses a single <image> for all images.
@@ -480,6 +494,22 @@ class UnlimitedOCR(DeepseekOCR):
                 if isinstance(content, str) and content.count('<image>') == 1:
                     msg['content'] = content.replace('<image>', '<image>' * n_images, 1)
         return super()._encode(inputs)
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        if not self.is_v2:
+            return super()._data_collator_mm_data(batch)
+        # `concat_tensor` pops the key from the rows, so read the per-sample page counts first.
+        page_counts = [
+            len(b['images_spatial_crop']) for b in batch if b.get('images') and b.get('images_spatial_crop') is not None
+        ]
+        res = super()._data_collator_mm_data(batch)
+        if not res.get('images') or 'images_spatial_crop' not in res:
+            return res
+        # The v2 model reads the crop grid from the image entry itself (`image[2]`); without it a page is
+        # decoded as a global view only and `masked_scatter_` rejects the extra tile tokens.
+        spatial = torch.split(res['images_spatial_crop'], page_counts)
+        res['images'] = [(crops, ori, pages) for (crops, ori), pages in zip(res['images'], spatial)]
+        return res
 
     # ==================== R-SWA Training Mask (only train) ====================
     @staticmethod
@@ -537,23 +567,37 @@ class UnlimitedOCR(DeepseekOCR):
         base_model = self.get_base_model(model)
         config = base_model.config
 
+        if self.is_v2:
+            configure_dash_inference = get_class_from_dynamic_module('modeling_unlimitedocr.configure_dash_inference',
+                                                                     self.model_info.model_dir)
+            saved = (getattr(config, '_ring_window', None), getattr(config, 'sliding_window', None))
+            config._ring_window = None
+            config.sliding_window = None
+            state = configure_dash_inference(base_model.model, True, topm=get_env_args('dash_topm', int, 16))
+            try:
+                return self._generate(model, *args, **kwargs)
+            finally:
+                configure_dash_inference(base_model.model, False, state=state)
+                config._ring_window, config.sliding_window = saved
+
         _orig_sw = config.sliding_window_size
         config._ring_window = _orig_sw
         config.sliding_window = None
-
         try:
-            ngram_size = get_env_args('no_repeat_ngram_size', int, 0)
-            ngram_window = get_env_args('ngram_window', int, 256)
-            if ngram_size > 0 and ngram_window > 0:
-                ProcessorCls = get_class_from_dynamic_module(
-                    'modeling_unlimitedocr.SlidingWindowNoRepeatNgramProcessor', self.model_info.model_dir)
-                if ProcessorCls is not None:
-                    existing = kwargs.get('logits_processor', []) or []
-                    kwargs['logits_processor'] = list(existing) + [ProcessorCls(ngram_size, ngram_window)]
-
-            return super().generate(model, *args, **kwargs)
+            return self._generate(model, *args, **kwargs)
         finally:
             config.sliding_window = _orig_sw
+
+    def _generate(self, model, *args, **kwargs):
+        ngram_size = get_env_args('no_repeat_ngram_size', int, 0)
+        ngram_window = get_env_args('ngram_window', int, 256)
+        if ngram_size > 0 and ngram_window > 0:
+            ProcessorCls = get_class_from_dynamic_module('modeling_unlimitedocr.SlidingWindowNoRepeatNgramProcessor',
+                                                         self.model_info.model_dir)
+            if ProcessorCls is not None:
+                existing = kwargs.get('logits_processor', []) or []
+                kwargs['logits_processor'] = list(existing) + [ProcessorCls(ngram_size, ngram_window)]
+        return super().generate(model, *args, **kwargs)
 
     # ==================== Post-processing Hooks ====================
     def decode_generate_ids(self, generate_ids: List[int], **kwargs) -> str:
@@ -614,6 +658,47 @@ class UnlimitedOCR(DeepseekOCR):
                                                                       model_dir)
             self._dynamic_preprocess = get_class_from_dynamic_module('modeling_unlimitedocr.dynamic_preprocess',
                                                                      model_dir)
+
+    def _preprocess_image(self, images, image_token_id):
+        if not self.is_v2:
+            return super()._preprocess_image(images, image_token_id)
+        # Mirrors modeling_unlimitedocr._uocr_build_inputs (== vLLM UnlimitedOCRProcessor.tokenize_with_images):
+        # one 1024x1024 global view per page (`num_queries_base * (num_queries_base + 1) + 1` tokens), plus the
+        # gundam tiles of a single page as `num_queries * width + 1` tokens per crop row.
+        patch_size = 16
+        downsample_ratio = 4
+        base_size = self.base_size
+        image_size = self.image_size
+        num_queries = math.ceil((image_size // patch_size) / downsample_ratio)
+        num_queries_base = math.ceil((base_size // patch_size) / downsample_ratio)
+        cropping = (len(images) == 1) if self.crop_mode is None else self.crop_mode
+
+        image_transform = self.BasicImageTransform(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5), normalize=True)
+        pad_color = tuple(int(x * 255) for x in image_transform.mean)
+        tokenized_str, images_list, images_crop_list, images_spatial_crop = [], [], [], []
+        for image in images:
+            tiles, crop_ratio = [], [1, 1]
+            if image.size[0] > self.crop_threshold or image.size[1] > self.crop_threshold:
+                if cropping:
+                    tiles, crop_ratio = self.dynamic_preprocess(image, min_num=2, max_num=16, image_size=image_size)
+            global_view = ImageOps.pad(image, (base_size, base_size), color=pad_color)
+            images_list.append(image_transform(global_view).to(torch.bfloat16))
+            width_crop_num, height_crop_num = int(crop_ratio[0]), int(crop_ratio[1])
+            images_spatial_crop.append([width_crop_num, height_crop_num])
+            tokenized_image = [image_token_id] * (num_queries_base * (num_queries_base + 1)) + [image_token_id]
+            if width_crop_num > 1 or height_crop_num > 1:
+                images_crop_list += [image_transform(tile).to(torch.bfloat16) for tile in tiles]
+                tokenized_image += ([image_token_id] * (num_queries * width_crop_num + 1)) * (
+                    num_queries * height_crop_num)
+            tokenized_str.append(tokenized_image)
+
+        images_ori = torch.stack(images_list, dim=0)
+        images_spatial_crop = torch.tensor(images_spatial_crop, dtype=torch.long)
+        if images_crop_list:
+            images_crop = torch.stack(images_crop_list, dim=0)
+        else:
+            images_crop = torch.zeros((1, 3, base_size, base_size))
+        return tokenized_str, images_ori, images_crop, images_spatial_crop
 
 
 register_template(
