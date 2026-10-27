@@ -7,12 +7,13 @@ from PIL import Image
 from torch import nn as nn
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import is_deepspeed_enabled, to_device
+from swift.utils import get_env_args, is_deepspeed_enabled, to_device
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
+from ..vision_utils import load_video_kimi_vl
 
 
 @dataclass
@@ -39,10 +40,45 @@ class KimiVLTemplate(Template):
     support_padding_free = True
     skip_prompt = False
 
+    def init_env_args(self):
+        super().init_env_args()
+        self.video_fps = get_env_args('video_fps', float, 1.)
+        self.video_max_size = get_env_args('video_max_size', int, 448)
+
+    def _pre_tokenize_images(self, context_list, loss_scale_list, inputs):
+        if inputs.videos:
+            # The official cookbook represents each frame as a timestamp followed by an image.
+            # Expand videos before replacing images to preserve mixed image/video ordering.
+            contexts, loss_scales, images = [], [], []
+            image_idx = video_idx = 0
+            for context, loss_scale in zip(context_list, loss_scale_list):
+                if context == '<video>' and video_idx < len(inputs.videos):
+                    frames, timestamps = load_video_kimi_vl(
+                        inputs.videos[video_idx], sample_fps=self.video_fps, max_size=self.video_max_size)
+                    video_idx += 1
+                    images.extend(frames)
+                    media_loss_scale = 0. if self.template_backend == 'swift' else 1.
+                    for timestamp in timestamps:
+                        seconds = int(timestamp)
+                        contexts.extend(
+                            [f'{seconds // 3600:02d}:{seconds // 60 % 60:02d}:{seconds % 60:02d}', '<image>'])
+                        loss_scales.extend([media_loss_scale, media_loss_scale])
+                else:
+                    if context == '<image>' and image_idx < len(inputs.images):
+                        images.append(inputs.images[image_idx])
+                        image_idx += 1
+                    contexts.append(context)
+                    loss_scales.append(loss_scale)
+            inputs.images = images + inputs.images[image_idx:]
+            inputs.videos = inputs.videos[video_idx:]
+            context_list, loss_scale_list = contexts, loss_scales
+        return super()._pre_tokenize_images(context_list, loss_scale_list, inputs)
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
             return ['<|media_start|>image<|media_content|><|media_pad|><|media_end|>']
+        raise ValueError(f'KimiVLTemplate does not support {media_type} input.')
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)

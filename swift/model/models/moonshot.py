@@ -39,6 +39,7 @@ register_model(
         model_arch=ModelArch.llava_hf_legacy,
         architectures=['KimiVLForConditionalGeneration'],
         requires=['transformers<4.49'],
+        tags=['video'],
     ))
 
 register_model(
