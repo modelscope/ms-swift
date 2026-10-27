@@ -17,6 +17,9 @@ class _FakeTemplate:
 
     enable_thinking = None
 
+    def _get_response_prefix(self, inputs):
+        return None
+
     def encode(self, row, return_length=False):
         inputs = StdTemplateInputs.from_dict(row)
         images = list(inputs.images or [])
