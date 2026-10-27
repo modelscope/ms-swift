@@ -1111,7 +1111,9 @@ def build_generative_eval(*, model: Any, template: Any, model_config: 'ModelConf
     manager = CheckpointEngineManager(model=model, sampler=sampler, mode='colocate')
     # The eval hand-over is ColocateHandover's (the RL rollout's own sequence, so it cannot drift).
 
-    handover = ColocateHandover(model, sampler, manager, colocate=True)
+    # Eval has no RolloutConfig. Sleep at level 1 so the trainer still gets the device back;
+    # a training run uses RolloutConfig.sleep_level, where 0 means do not sleep.
+    handover = ColocateHandover(model, sampler, manager, colocate=True, sleep_level=1)
     return GenerativeEval(
         sampler=sampler, template=template, datasets=eval_datasets, model_id=eval_model_id,
         task_config=task_config, enter=handover.enter, exit=handover.exit)
@@ -1673,13 +1675,12 @@ class ColocateHandover:
     def exit(self) -> None:
         """Take the device back for the trainer: sleep the sampler, then reload the trainer's weights.
 
-        ``sleep_level`` selects how much the sampler releases: level 1 offloads only the KV cache (weights
-        stay resident, so the next ``enter`` re-syncs in place), level 2 also drops the weights. The
-        default ``0`` maps to twinkle's own default depth (level 1), keeping the previous behaviour
-        byte-for-byte; 1/2 are passed through unchanged.
+        ``sleep_level`` matches swift v4 and installed vLLM. 0 does not call sleep, so the engine
+        stays resident. 1 offloads vLLM weights to CPU and discards the KV cache. 2 discards both.
         """
         if self.colocate:
-            self.sampler.sleep(level=self.sleep_level or 1)
+            from swift.dev.recipe.offload import sleep_for_rollout
+            sleep_for_rollout(self.sampler, self.sleep_level)
             self.model.reload_to_gpu()
 
 
@@ -1705,7 +1706,7 @@ class AdaptiveColocateHandover:
         self.dedicated_manager = dedicated_manager
         self.shared_manager = shared_manager
         self.controller = None
-        self.sleep_level = sleep_level or 1
+        self.sleep_level = sleep_level
         self.in_generation = False
         self.enabled = False
         self.borrow_time = 0.0
@@ -1736,7 +1737,8 @@ class AdaptiveColocateHandover:
             worker_ids = self.sampler.add_workers(group, ranks, shared=True, engine_args=engine_args)
             self.sampler.pause_workers(worker_ids)
             self.sampler.pause_generation(_worker_ids=worker_ids)
-            self._wait(self.sampler.sleep(level=self.sleep_level, _worker_ids=worker_ids))
+            from swift.dev.recipe.offload import sleep_for_rollout
+            self._wait(sleep_for_rollout(self.sampler, self.sleep_level, _worker_ids=worker_ids))
         except BaseException as exc:
             initialization_error = exc
             try:
@@ -1836,7 +1838,8 @@ class AdaptiveColocateHandover:
         try:
             self.sampler.pause_workers(shared_ids)
             self.sampler.pause_generation(_worker_ids=shared_ids)
-            self._wait(self.sampler.sleep(level=self.sleep_level, _worker_ids=shared_ids))
+            from swift.dev.recipe.offload import sleep_for_rollout
+            self._wait(sleep_for_rollout(self.sampler, self.sleep_level, _worker_ids=shared_ids))
             # pause/sleep 失败时保留交接状态；终止 actors 后再恢复训练显存。
             self._reload_models()
             self.in_generation = False

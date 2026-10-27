@@ -386,7 +386,8 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
             # must not fire while those weights are still offloaded to CPU (the borrow window covers only
             # the sampler's generate + scoring, which megatron's cuda-side inputs cannot survive against
             # CPU-resident weights).
-            cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
+            from swift.dev.recipe.offload import sleep_for_rollout
+            sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
             entered = False
             advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
@@ -405,7 +406,8 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
         if entered:
             # ended mid-window (a budget hit during generation): give the device back so the final
             # save finds the model resident.
-            cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
+            from swift.dev.recipe.offload import sleep_for_rollout
+            sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
 
 

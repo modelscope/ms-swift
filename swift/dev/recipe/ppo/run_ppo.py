@@ -157,7 +157,8 @@ def _colocate_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'Rewa
             for sample, row in zip(samples, rows):
                 sample.orm_reward = row
             # return the device: sleep the sampler, then reload both trainers' weights.
-            cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
+            from swift.dev.recipe.offload import sleep_for_rollout
+            sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
             cluster.value_model.reload_to_gpu()
             entered = False
@@ -173,7 +174,8 @@ def _colocate_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'Rewa
         if entered:
             # ended mid-window (a budget hit during generation): give the device back so the
             # final save finds both models resident.
-            cluster.sampler.sleep(level=rollout_config.sleep_level or 1)
+            from swift.dev.recipe.offload import sleep_for_rollout
+            sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
             cluster.value_model.reload_to_gpu()
 
