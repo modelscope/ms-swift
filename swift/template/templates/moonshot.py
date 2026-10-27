@@ -69,7 +69,8 @@ class KimiVLTemplate(Template):
                         image_idx += 1
                     contexts.append(context)
                     loss_scales.append(loss_scale)
-            inputs.images = images + inputs.images[image_idx:]
+            images.extend(inputs.images[image_idx:])
+            inputs.images = images
             inputs.videos = inputs.videos[video_idx:]
             context_list, loss_scale_list = contexts, loss_scales
         return super()._pre_tokenize_images(context_list, loss_scale_list, inputs)
