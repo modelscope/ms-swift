@@ -1213,7 +1213,11 @@ class SwiftMixin:
         if task_type == 'embedding':
             return
         elif task_type == 'seq_cls':
-            if problem_type == 'regression':
+            heads = getattr(self.template.config, 'seq_cls_heads', None)
+            if heads:
+                from swift.model.seq_cls_head import multi_head_metrics
+                metrics = multi_head_metrics(logits, labels, heads)
+            elif problem_type == 'regression':
                 return
             elif problem_type == 'multi_label_classification':
                 preds = logits.sigmoid() > 0.5
