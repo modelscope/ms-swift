@@ -869,6 +869,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._update_metrics(metrics_data)
         return loss
 
+    @torch.no_grad()
     def _compute_fipo_influence(self, log_ratio: torch.Tensor, coef_1: torch.Tensor, advantages: torch.Tensor,
                                 completion_mask: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """Compute FIPO token-level influence weight from Future-KL divergence."""
@@ -880,18 +881,13 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             high_ratio_mask = coef_1 > delta
             future_kl_delta = torch.where(high_ratio_mask, torch.zeros_like(future_kl_delta), future_kl_delta)
 
-        seq_len = future_kl_delta.shape[1]
-        future_kl = torch.zeros_like(future_kl_delta)
-        positions = torch.arange(seq_len, device=log_ratio.device).unsqueeze(1)
+        # Discounted suffix scan; keep masked positions to preserve discount distances.
+        future_kl = future_kl_delta
         gamma = torch.as_tensor(self.fipo_gamma, dtype=log_ratio.dtype, device=log_ratio.device)
-        chunk_size = 128
-        for chunk_start in range(0, seq_len, chunk_size):
-            chunk_end = min(seq_len, chunk_start + chunk_size)
-            chunk_positions = torch.arange(chunk_start, chunk_end, device=log_ratio.device).unsqueeze(0)
-            distance = chunk_positions - positions
-            future_mask = distance >= 0
-            decay_block = torch.pow(gamma, distance.clamp(min=0)) * future_mask.to(log_ratio.dtype)
-            future_kl += torch.matmul(future_kl_delta[:, chunk_start:chunk_end], decay_block.t())
+        offset = 1
+        while offset < future_kl.shape[1]:
+            future_kl[:, :-offset] += gamma.pow(offset) * future_kl[:, offset:]
+            offset *= 2
         future_kl = future_kl.masked_fill(~completion_mask, 0.0)
 
         influence_weight = torch.exp(future_kl)
