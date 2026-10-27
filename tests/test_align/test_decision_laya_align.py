@@ -34,11 +34,11 @@ import torch
 os.environ.setdefault('HF_HUB_OFFLINE', '1')
 os.environ.setdefault('TRANSFORMERS_OFFLINE', '1')
 
-from swift.dataset.preprocessor.decision import LayaPreprocessor
-from swift.model import get_model_processor
-from swift.model.decision_head import QUESTION_TYPES
-from swift.template.template_inputs import StdTemplateInputs
-from swift.template.templates.decision import LayaTemplate
+from swift.dataset.preprocessor.decision import LayaPreprocessor  # noqa: E402
+from swift.model import get_model_processor  # noqa: E402
+from swift.model.decision_head import QUESTION_TYPES  # noqa: E402
+from swift.template.template_inputs import StdTemplateInputs  # noqa: E402
+from swift.template.templates.decision import LayaTemplate  # noqa: E402
 
 MAX_LEN = 512  # root checkpoint rl_agent_config.json: max_len=512
 HEAD_MAX_LEN = 192  # root checkpoint rl_agent_config.json: head_max_len=192

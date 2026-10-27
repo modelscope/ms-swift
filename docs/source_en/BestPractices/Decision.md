@@ -622,7 +622,7 @@ swift infer \
 
 - models whose head artifacts are not in the base directory (adapter-only repos) must export environment variables pointing at the head artifacts first — see [Head Artifact Env Overrides](#head-artifact-env-overrides);
 - models using the branch-cache mechanism additionally need `export MSO_BRANCH_CKPT=1` — see [the notes below](#omnijev-msol_branch_ckpt-and-gradient_checkpointing);
-- each model's complete runnable inference command is in its example script under `examples/train/decision/`.
+- each model's training command is at `examples/train/decision/<model_type>.sh`.
 
 The model returns per-option probabilities (softmaxed within each question's option set) rather than generated text. Each record's inference output is a list with one entry per question:
 

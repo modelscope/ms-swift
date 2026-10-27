@@ -654,7 +654,7 @@ swift infer \
 
 - 头制品不在底座目录的模型（adapter-only 仓库）需先导出环境变量指向头制品，见[头制品环境变量覆盖](#头制品环境变量覆盖)；
 - 使用 branch 缓存机制的模型还需 `export MSO_BRANCH_CKPT=1`，见[下方说明](#omnijev-msol_branch_ckpt-与-gradient_checkpointing-互斥说明)；
-- 各模型完整可运行推理命令见 `examples/train/decision/` 下的对应示例脚本。
+- 各模型的训练命令见 `examples/train/decision/<model_type>.sh`。
 
 模型返回 per-option 概率（在各问题自己的选项集上 softmax），而非生成文本。每条记录的推理输出是一个列表，每问题一项：
 
