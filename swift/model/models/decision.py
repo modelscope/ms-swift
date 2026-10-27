@@ -5,10 +5,10 @@ import torch
 from contextlib import contextmanager
 from functools import wraps
 from transformers import PretrainedConfig, PreTrainedModel
-from typing import Optional
+from typing import Dict, Optional
 
-from swift.model.decision_head import (ClefJointSchemaHead, JevVerbalizerHead, KevPointerHead, OmniJevHead, ScoringHead,
-                                       Thx02ReadoutHead, load_thx02_decision_config)
+from swift.model.decision_head import (ClefJointSchemaHead, JevVerbalizerHead, KevPointerHead, LayaHead, OmniJevHead,
+                                       ScoringHead, Thx02ReadoutHead, load_thx02_decision_config)
 from swift.model.omnijev_branch import (OPT_CLOSE, OPT_OPEN, add_option_tokens, branch_questions, find_rope_owner,
                                         is_hybrid, prefix_inputs, rope_positions, rows_from_ids)
 from swift.model.patcher import patch_module_forward
@@ -461,3 +461,147 @@ register_model(
         task_type='decision',
         architectures=[],
         tags=['decision']))
+
+
+class LayaModelLoader(ScoringModelLoader):
+
+    head_cls = LayaHead
+
+    @staticmethod
+    def _resolve_checkpoint(model_dir: str) -> str:
+        candidates = [
+            os.environ.get('LAYA_CHECKPOINT'), model_dir,
+            os.path.join(model_dir, 'typed-decisions'),
+            os.path.join(model_dir, 'multilingual')
+        ]
+        for cand in candidates:
+            if cand and (os.path.isfile(os.path.join(cand, 'model.safetensors'))
+                         or os.path.isfile(os.path.join(cand, 'model.safetensors.index.json'))):
+                return cand
+        raise FileNotFoundError(
+            f'Laya checkpoint not found under {model_dir!r} (checked the root and the typed-decisions / '
+            'multilingual subfolders, plus the LAYA_CHECKPOINT env override). Expected model.safetensors '
+            'with encoder.*-prefixed backbone weights; see convaiinnovations/laya on ModelScope.')
+
+    @classmethod
+    def _is_laya_stub_config(cls, path: str) -> bool:
+        try:
+            with open(path, 'r') as f:
+                raw = json.load(f)
+            return str(raw.get('model_type', '')).lower() == 'laya'
+        except (json.JSONDecodeError, OSError):
+            return False
+
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        from transformers import AutoConfig
+        ckpt = self._resolve_checkpoint(model_dir)
+        encoder_dir = os.path.join(ckpt, 'encoder')
+        if os.path.isfile(os.path.join(encoder_dir, 'config.json')):
+            config_dir = encoder_dir
+        else:
+            root_config = os.path.join(ckpt, 'config.json')
+            if not os.path.isfile(root_config) or self._is_laya_stub_config(root_config):
+                raise FileNotFoundError(
+                    f'Laya encoder config not found: no encoder/config.json under {ckpt!r} and the root '
+                    'config.json is the Hub-download stub.')
+            config_dir = ckpt
+        config = AutoConfig.from_pretrained(config_dir, trust_remote_code=self.default_trust_remote_code)
+        # Same as ModernBertLoader: disable the ModernBERT reference compile path.
+        config.reference_compile = False
+        return config
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from transformers import AutoTokenizer
+        ckpt = self._resolve_checkpoint(model_dir)
+        tok_dir = os.path.join(ckpt, 'tokenizer')
+        if not os.path.isfile(os.path.join(tok_dir, 'tokenizer_config.json')):
+            tok_dir = ckpt
+        return AutoTokenizer.from_pretrained(tok_dir, trust_remote_code=self.default_trust_remote_code)
+
+    @staticmethod
+    def _load_checkpoint_weights(ckpt: str) -> Dict:
+        from safetensors.torch import load_file
+        index_path = os.path.join(ckpt, 'model.safetensors.index.json')
+        weights: Dict = {}
+        if os.path.exists(index_path):
+            with open(index_path, 'r') as f:
+                index = json.load(f)
+            for shard in sorted(set(index.get('weight_map', {}).values())):
+                weights.update(load_file(os.path.join(ckpt, shard)))
+        else:
+            weights = load_file(os.path.join(ckpt, 'model.safetensors'))
+        if not weights:
+            raise ValueError(f'Laya checkpoint {ckpt!r} has no weights.')
+        return weights
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        from transformers import AutoModel
+        ckpt = self._resolve_checkpoint(model_dir)
+        weights = self._load_checkpoint_weights(ckpt)
+        factory_layout = any(k.startswith('encoder.') for k in weights)
+        if factory_layout:
+            enc_sd = {k[len('encoder.'):]: v for k, v in weights.items() if k.startswith('encoder.')}
+            head_sd = {
+                k: v
+                for k, v in weights.items() if not k.startswith('encoder.') and not k.startswith('act_head.')
+            }
+        else:
+            enc_sd = {k: v for k, v in weights.items() if not k.startswith('scoring_head.')}
+            head_sd = {k[len('scoring_head.'):]: v for k, v in weights.items() if k.startswith('scoring_head.')}
+        if not enc_sd:
+            raise ValueError(f'Laya checkpoint {ckpt!r} carries no backbone weights.')
+
+        model_kwargs = dict(model_kwargs or {})
+        model_kwargs.pop('dtype', None)
+        model_kwargs.pop('torch_dtype', None)
+        model = AutoModel.from_config(config)
+        missing, unexpected = model.load_state_dict(enc_sd, strict=False)
+        if missing or unexpected:
+            raise RuntimeError(f'Laya encoder strict load failed: missing={missing}, unexpected={unexpected}')
+        if self.torch_dtype is not None:
+            model = model.to(self.torch_dtype)
+
+        head = self.build_head(model, ckpt, config)
+        if head_sd:
+            missing_h, unexpected_h = head.load_state_dict(head_sd, strict=False)
+            if unexpected_h or missing_h:
+                raise RuntimeError(f'Laya head strict load failed: missing={missing_h}, unexpected={unexpected_h}')
+        self.attach_scoring_head(model, head)
+        from swift.model.decision_head import maybe_load_trained_scoring_head
+        maybe_load_trained_scoring_head(model, model_dir)
+        return model
+
+    def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
+        head = self._match_head_dtype_device(model, head)
+        model.scoring_head = head
+        origin_forward = model.forward
+
+        @wraps(origin_forward.__func__ if hasattr(origin_forward, '__func__') else origin_forward)
+        def new_forward(self, *args, **kwargs):
+            return LayaModelLoader._laya_head_forward(self, *args, head=head, origin_forward=origin_forward, **kwargs)
+
+        patch_module_forward(model, new_forward)
+
+    @staticmethod
+    def _laya_head_forward(self, *args, head: ScoringHead, origin_forward, **kwargs):
+        meta = kwargs.pop('decision_meta', None)
+        kwargs.pop('labels', None)
+        kwargs['return_dict'] = True
+        output = origin_forward(*args, **kwargs)
+        hidden = output.last_hidden_state
+        return head(hidden, None, meta)
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.laya,
+        [ModelGroup([
+            Model('convaiinnovations/laya', 'convaiinnovations/laya'),
+        ], TemplateType.laya)],
+        LayaModelLoader,
+        template=TemplateType.laya,
+        task_type='decision',
+        architectures=[],
+        requires=['transformers>=4.48'],
+        tags=['decision', 'bert']))

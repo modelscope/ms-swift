@@ -636,3 +636,80 @@ class Thx02Template(Qwen3_5Template):
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.thx02, template_cls=Thx02Template, default_system=None))
+
+
+class LayaTemplate(DecisionTemplate, Template):
+
+    _error_prefix = 'Laya'
+    _head_max_len = 192
+    _opt_text_max_len = 48
+
+    def _render_s1_prompt(self, fields: Dict[str, Any]) -> str:
+        return (f"{fields['kind']} question: {fields['question']}\n"
+                + '\n'.join(f'- {opt}' for opt in fields['options']) + f"\n{fields['state']}")
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        fields = self._decision_fields(inputs)
+        kind = fields['kind']
+        options: List[str] = [str(o) for o in fields['options']]
+        state = str(fields['state'])
+        tok = self.tokenizer
+        cls_id, sep_id, mask_id = tok.cls_token_id, tok.sep_token_id, tok.mask_token_id
+        if cls_id is None or sep_id is None or mask_id is None:
+            raise ValueError(f'{self._error_prefix}Template requires a tokenizer with cls/sep/mask tokens '
+                             f'(ModernBERT-style, as in the laya repo tokenizer/); got '
+                             f'cls={cls_id!r}, sep={sep_id!r}, mask={mask_id!r}.')
+
+        def clean(text: str) -> str:
+            return str(text).replace(tok.mask_token, ' ')
+
+        max_len = self.max_length or 512
+        head_ids = self._tokenize(f'{kind} question: {clean(fields["question"])}')
+        opt_ids = [[mask_id] + self._tokenize(' ' + clean(opt))[:self._opt_text_max_len] for opt in options]
+        # Budget from build_sequence: shrink options evenly, then the instruction, so all markers fit.
+        opt_budget = self._head_max_len - sum(len(o) for o in opt_ids)
+        if opt_budget < 16:
+            per = max(4, (self._head_max_len - 16) // max(1, len(opt_ids)))
+            opt_ids = [o[:per] for o in opt_ids]
+            opt_budget = self._head_max_len - sum(len(o) for o in opt_ids)
+        head_ids = head_ids[:max(8, opt_budget)]
+
+        ids: List[int] = [cls_id] + head_ids + [sep_id]
+        markers: List[int] = []
+        for o in opt_ids:
+            markers.append(len(ids))
+            ids.extend(o)
+        ids.append(sep_id)
+        room = max(0, max_len - len(ids) - 1)
+        state_ids = self._tokenize(clean(state))[:room]
+        ids = ids + state_ids + [sep_id]
+        ids = ids[:max_len]
+        markers = [m for m in markers if m < max_len]
+        if len(markers) != len(options):
+            raise ValueError(f'{self._error_prefix} options did not fit inside max_length={max_len} '
+                             f'({len(markers)}/{len(options)} markers survived); lower the option count '
+                             f'or raise --max_length.')
+        from swift.model.decision_head import QUESTION_TYPES
+        return {
+            'input_ids': ids,
+            'decision_meta': {
+                'n_options': [len(markers)],
+                'kinds': [QUESTION_TYPES[kind]],
+                'laya_markers': [markers],
+            },
+        }
+
+    def _extract_extra_decision_meta(self, meta: Optional[Dict[str, Any]], rec_i: int, flat: Dict[str, Any]) -> None:
+        if meta is None:
+            return
+        flat.setdefault('laya_markers', []).extend(meta.get('laya_markers') or [])
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.laya,
+        prefix=[],
+        prompt=['{{QUERY}}'],
+        chat_sep=None,
+        template_cls=LayaTemplate,
+        default_system=None))

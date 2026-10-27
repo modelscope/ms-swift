@@ -1343,3 +1343,209 @@ class KevPointerHead(ScoringHead):
             raise RuntimeError(f'Kev head.pt strict load failed: missing={missing}, unexpected={unexpected}')
         head.temperature = torch.tensor(float(state.get('temperature', 1.0)))
         return head
+
+
+class _LayaKindTemperatureView(torch.Tensor):
+
+    _head: Optional['LayaHead'] = None
+
+    @classmethod
+    def wrap(cls, head: 'LayaHead') -> '_LayaKindTemperatureView':
+        # swift kind id -> Laya qtype id: noul(0)->2, choice(1)->0, score(2)->1
+        view = head.temperature[[2, 0, 1]].detach().as_subclass(cls)
+        view._head = head
+        return view
+
+    def __setitem__(self, kind, value) -> None:
+        head = self._head
+        if head is not None and isinstance(kind, int) and int(kind) in head.LAYA_QTYPE_OF_KIND:
+            head.temperature[head.LAYA_QTYPE_OF_KIND[int(kind)]] = float(value)
+            head._clear_buckets_for_kind(int(kind))
+            return
+        super().__setitem__(kind, value)
+
+
+class LayaHead(ScoringHead):
+
+    needs_lm_logits = False
+    keep_fp32 = True
+
+    # swift kind id -> Laya question-type id
+    LAYA_QTYPE_OF_KIND = {0: 2, 1: 0, 2: 1}
+
+    def __init__(self,
+                 hidden_size: int,
+                 head_layers: int = 2,
+                 dropout: float = 0.1,
+                 temperatures: Optional[Sequence[float]] = None,
+                 temperature_by_options: Optional[Dict[str, float]] = None) -> None:
+        super().__init__()
+        d = hidden_size
+        nhead = max(1, d // 64)
+        layer = nn.TransformerEncoderLayer(d, nhead, 4 * d, dropout, batch_first=True, norm_first=True)
+        self.head = nn.TransformerEncoder(layer, head_layers, enable_nested_tensor=False) if head_layers > 0 else None
+        self.type_emb = nn.Embedding(3, d)
+        self.scorer = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, d), nn.GELU(), nn.Linear(d, 1))
+        self.register_buffer(
+            'temperature', torch.as_tensor([float(t) for t in (temperatures or (1.0, 1.0, 1.0))], dtype=torch.float32))
+        self.temperature_by_options: Dict[str, float] = {
+            str(k): float(v)
+            for k, v in (temperature_by_options or {}).items()
+        }
+
+    @property
+    def temperatures(self) -> torch.Tensor:
+        return _LayaKindTemperatureView.wrap(self)
+
+    def _clear_buckets_for_kind(self, kind: int) -> None:
+        prefix = f'{KIND_NAMES[kind]}:'
+        self.temperature_by_options = {k: v for k, v in self.temperature_by_options.items() if not k.startswith(prefix)}
+
+    @staticmethod
+    def _temp_bucket(n_options: int) -> str:
+        """Per-cardinality bucket key suffix (``temp_bucket`` in Laya's rl_common.py): a 2-option
+        noul and a 20-option choice need different calibration scaling."""
+        if n_options <= 2:
+            return '2'
+        if n_options <= 5:
+            return '3-5'
+        if n_options <= 10:
+            return '6-10'
+        return '11+'
+
+    def forward(self, hidden_states: torch.Tensor, lm_logits: Optional[torch.Tensor], meta: Dict[str,
+                                                                                                 Any]) -> ScoringOutput:
+        n_options = [int(n) for n in meta['n_options']]
+        kinds = [int(k) for k in meta.get('kinds') or []]
+        counts = meta.get('counts')
+        device = hidden_states.device
+        counts_t = torch.as_tensor([int(c) for c in counts], dtype=torch.long, device=device) if counts else None
+        total_q = len(n_options)
+        batch, padded_len, _ = hidden_states.shape
+        if total_q == 0:
+            max_opt = int(meta.get('max_opt') or 0)
+            return ScoringOutput(
+                logits=torch.zeros((0, max_opt), device=device, dtype=torch.float32),
+                option_mask=torch.zeros((0, max_opt), dtype=torch.bool, device=device),
+                kinds=torch.zeros((0, ), dtype=torch.long, device=device),
+                counts=counts_t)
+        if batch != total_q:
+            raise ValueError(f'LayaHead requires one question per row (batch={batch}, total_q={total_q}); '
+                             'LayaTemplate fans records out into one row per question.')
+        record_index = [int(r) for r in meta['record_index']]
+        if record_index != list(range(total_q)):
+            raise ValueError(f'LayaHead got record_index={record_index}, expected identity '
+                             f'{list(range(total_q))} (one question per row).')
+        markers = meta['laya_markers']  # per question, real-token-relative <mask> positions
+        if len(markers) != total_q or any(len(m) != n for m, n in zip(markers, n_options)):
+            raise ValueError(f'Laya meta mismatch: {len(markers)} marker lists vs {total_q} questions '
+                             f'(n_options={n_options}).')
+
+        left_padding = bool(meta.get('left_padding', False))
+        seq_lens = [int(s) for s in (meta.get('seq_lens') or [padded_len] * batch)]
+
+        h = hidden_states.float()
+        qtype_ids = torch.as_tensor([self.LAYA_QTYPE_OF_KIND.get(k, 0) for k in kinds], device=device)
+        h = h + self.type_emb(qtype_ids)[:, None, :]
+        if self.head is not None:
+            pad = torch.zeros((batch, padded_len), dtype=torch.bool, device=device)  # True = masked
+            for b in range(batch):
+                sl = min(seq_lens[b], padded_len)
+                if left_padding:
+                    pad[b, :padded_len - sl] = True
+                else:
+                    pad[b, sl:] = True
+            for layer in self.head.layers:
+                h = layer(h, src_key_padding_mask=pad)
+
+        kmax = max(1, max(n_options))
+        marker_pos = torch.zeros((total_q, kmax), dtype=torch.long, device=device)
+        marker_mask = torch.zeros((total_q, kmax), dtype=torch.bool, device=device)
+        for qi in range(total_q):
+            offset = (padded_len - seq_lens[qi]) if left_padding else 0
+            for j, m in enumerate(markers[qi]):
+                pos = offset + int(m)
+                if pos >= padded_len:
+                    raise ValueError(f'Laya marker {m} (padded pos {pos}) out of range '
+                                     f'(padded_len={padded_len}, left_padding={left_padding}).')
+                marker_pos[qi, j] = pos
+                marker_mask[qi, j] = True
+        idx = marker_pos[:, :, None].expand(-1, -1, h.size(-1))
+        m = torch.gather(h, 1, idx)
+        logits = self.scorer(m).squeeze(-1).float()
+        logits = logits.masked_fill(~marker_mask, -1e4)
+        if not self.training:
+            logits = self._calibrate(logits, kinds, n_options)
+        return ScoringOutput(
+            logits=logits,
+            option_mask=marker_mask,
+            kinds=torch.as_tensor(kinds, dtype=torch.long, device=device),
+            counts=counts_t)
+
+    def _calibrate(self, logits: torch.Tensor, kinds: List[int], n_options: List[int]) -> torch.Tensor:
+        temps = []
+        for kind, n in zip(kinds, n_options):
+            key = f'{KIND_NAMES[kind]}:{self._temp_bucket(n)}'
+            fitted = self.temperature_by_options.get(key)
+            if fitted is None:
+                fitted = float(self.temperature[self.LAYA_QTYPE_OF_KIND[kind]])
+            temps.append(float(fitted))
+        t = torch.as_tensor(temps, device=logits.device, dtype=torch.float32)[:, None]
+        return logits / t.clamp(min=1e-6)
+
+    def extra_state_for_save(self) -> Dict[str, Any]:
+        return {
+            'hidden_size': int(self.scorer[0].normalized_shape[0]),
+            'head_layers': 0 if self.head is None else len(self.head.layers),
+            'temperature': self.temperature.detach().float().tolist(),
+            'temperature_by_options': dict(self.temperature_by_options),
+        }
+
+    def _apply_calibration_meta(self, meta: Dict[str, Any]) -> None:
+        temps = meta.get('temperature')
+        if isinstance(temps, (list, tuple)) and len(temps) == 3:
+            self.temperature = torch.as_tensor([float(t) for t in temps], dtype=torch.float32)
+        buckets = meta.get('temperature_by_options')
+        if isinstance(buckets, dict):
+            self.temperature_by_options = {str(k): float(v) for k, v in buckets.items()}
+
+    @classmethod
+    def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'LayaHead':
+        head_config: Dict[str, Any] = {}
+        config_file = cls._locate(model_dir, 'rl_agent_config.json', 'LAYA_CONFIG')
+        if config_file is None:
+            for subdir in ('typed-decisions', 'multilingual'):
+                candidate = os.path.join(model_dir, subdir, 'rl_agent_config.json')
+                if os.path.exists(candidate):
+                    config_file = candidate
+                    break
+        if config_file is None:
+            meta_file = os.path.join(model_dir, cls.HEAD_META_NAME)
+            if os.path.isfile(meta_file):
+                with open(meta_file, 'r') as f:
+                    head_config = json.load(f)
+                hidden_size = int(
+                    head_config.get('hidden_size') or getattr(config, 'hidden_size', 0)
+                    or getattr(getattr(model, 'config', None), 'hidden_size', 0))
+                if not hidden_size:
+                    raise ValueError(f'LayaHead cannot resolve hidden_size from {meta_file!r} '
+                                     f'/ config {config!r} / model {model!r}.')
+                return cls(
+                    hidden_size=hidden_size,
+                    head_layers=int(head_config.get('head_layers', 2)),
+                    temperatures=head_config.get('temperature') or (1.0, 1.0, 1.0),
+                    temperature_by_options=head_config.get('temperature_by_options') or {})
+            raise FileNotFoundError(
+                f'Laya rl_agent_config.json not found under {model_dir!r} (or its typed-decisions / '
+                'multilingual subfolders). Set LAYA_CONFIG to its path.')
+        with open(config_file, 'r') as f:
+            head_config = json.load(f)
+        hidden_size = int(
+            getattr(config, 'hidden_size', None) or getattr(getattr(model, 'config', None), 'hidden_size', 0))
+        if not hidden_size:
+            raise ValueError(f'LayaHead cannot resolve hidden_size from config {config!r} / model {model!r}.')
+        return cls(
+            hidden_size=hidden_size,
+            head_layers=int(head_config.get('head_layers', 2)),
+            temperatures=head_config.get('temperature') or (1.0, 1.0, 1.0),
+            temperature_by_options=head_config.get('temperature_by_options') or {})
