@@ -86,11 +86,15 @@ class RolloutConfig:
     # One weight publication every K recorded steps; 1 = every step (historical cadence), K > 1
     # publishes sparsely (verl's trigger_parameter_sync_step). Inert on the sync fallback.
     parameter_sync_step: int = 1
+    # Colocate vLLM sleep, same meaning as swift v4. 0 leaves the engine resident, 1 offloads
+    # its weights and discards the KV cache, 2 discards both. Ignored when the sampler is not
+    # colocated. resource_mode=adaptive accepts 0 and 1 only; 2 would drop weights the shared
+    # sampler still needs.
     sleep_level: int = 0
     # Colocate only, and independent of each other. Move the trainer weights, the optimizer
     # state, both, or neither between rollout and the update. Default False leaves them on the
-    # GPU. vLLM sleep (sleep_level) is a separate step and always runs. Ignored when the sampler
-    # is not colocated. resource_mode=adaptive still offloads while it borrows trainer GPUs and
+    # GPU. Trainer offload is separate from vLLM sleep. Ignored when the sampler is not
+    # colocated. resource_mode=adaptive still offloads while it borrows trainer GPUs and
     # refuses to start when both of these are false.
     offload_optimizer: bool = False
     offload_model: bool = False

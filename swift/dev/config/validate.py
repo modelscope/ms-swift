@@ -335,8 +335,9 @@ def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: O
         raise ValueError('resource_mode="adaptive" requires weight_sync_strategy="in_place" and '
                          'allow_partial_rollout=true so shared generations can pause across handovers.')
     if rollout_config.sleep_level not in (0, 1):
-        raise ValueError('resource_mode="adaptive" supports only sleep_level 0 or 1; level 2 discards weights '
-                         'needed by the shared sampler handover.')
+        raise ValueError('resource_mode="adaptive" supports only sleep_level 0 or 1. 0 leaves the shared '
+                         'sampler resident; 1 offloads its weights. Level 2 discards weights the shared '
+                         'sampler handover still needs.')
 
 
 # Online recipes that roll out per prompt batch and train on the collected samples (overlap generation
@@ -602,6 +603,11 @@ def _check_offload_knobs(rollout_config: Optional['RolloutConfig']) -> None:
         return
     changed = _changed_fields(rollout_config)
     if rollout_config.sampler_mode == 'colocate':
+        if rollout_config.sleep_level not in (0, 1, 2):
+            raise ValueError(
+                'sleep_level must be 0, 1, or 2. 0 leaves the vLLM engine resident, 1 offloads its '
+                'weights and discards the KV cache, 2 discards both. '
+                f'Got {rollout_config.sleep_level!r}.')
         return
     if ('offload_model' in changed and rollout_config.offload_model) or (
             'offload_optimizer' in changed and rollout_config.offload_optimizer):
@@ -609,11 +615,11 @@ def _check_offload_knobs(rollout_config: Optional['RolloutConfig']) -> None:
             'sampler_mode=%r places the sampler on its own GPUs, so offloading the trainer model/optimizer '
             'to make room for it does not apply: ignoring --offload_model/--offload_optimizer.',
             rollout_config.sampler_mode)
-    if 'sleep_level' in changed:
+    if 'sleep_level' in changed and rollout_config.resource_mode != 'adaptive':
         logger.warning(
             'sampler_mode=%r does not share GPUs between trainer and sampler, so the sampler is never put '
             'to sleep between steps: --sleep_level is inert here (it only takes effect under '
-            "--sampler_mode colocate).", rollout_config.sampler_mode)
+            "--sampler_mode colocate, or resource_mode adaptive).", rollout_config.sampler_mode)
 
 
 def _check_rollout_sampler(rollout_config: Optional['RolloutConfig']) -> None:
