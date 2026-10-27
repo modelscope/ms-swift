@@ -83,3 +83,25 @@ def run_evaluator(sampler,
         task_config=task_config)
     evaluator.run()
     return summarize(evaluator.resolved_task_config)
+
+
+def run_evaluator_api(api,
+                      *,
+                      datasets: List[str],
+                      model_id: str,
+                      task_config: Dict[str, Any]) -> Any:
+    """Drive twinkle_agentic's Evaluator over an OpenAI-compatible API client.
+
+    The template lives server-side (the endpoint already renders chat templates), so none is
+    passed here -- the Evaluator rejects a template alongside an api. Returns the same Native
+    report-row shape as :func:`run_evaluator`.
+    """
+    from twinkle_agentic.evaluator import Evaluator
+
+    evaluator = Evaluator(
+        api=api,
+        datasets=datasets,
+        model_id=model_id,
+        task_config=task_config)
+    evaluator.run()
+    return summarize(evaluator.resolved_task_config)

@@ -46,6 +46,11 @@ def eval_main(argv: Optional[List[str]] = None):
     from swift.dev.recipe.infer import run_eval
 
     configs = parse_eval_configs(argv)
+    if configs['eval_config'].eval_url:
+        # api mode: the model lives behind the endpoint, so resolving the id (a hub download)
+        # and building local engine args are both wrong -- ``--model`` is a served model name.
+        process_and_validate_configs(configs, add_version=False, create_output_dir=False, resolve_model=False)
+        return run_eval(configs['model_config'], configs['template_config'], configs['eval_config'])
     process_and_validate_configs(configs, add_version=False, create_output_dir=False, resolve_model=True)
     adapters = configs['tuner_config'].adapters if configs['tuner_config'] is not None else None
     backend = configs['infer_config'].sampler

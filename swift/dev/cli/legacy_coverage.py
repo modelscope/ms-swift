@@ -74,9 +74,9 @@ REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
     'disable_ignore_empty_think': 'empty-think handling is not configurable; drop --disable_ignore_empty_think',
     'seq_kd': 'sequence-level knowledge distillation is expressed through the GKD objective; drop --seq_kd',
 }
-# eval scores a local sampler through the native runner, so the remote URL/backend and the
-# OpenCompass-only local-data toggle are obsolete.
-EVAL_REMOTE_EVAL_FIELDS: Tuple[str, ...] = ('eval_url', 'eval_backend', 'local_dataset')
+# eval scores a local sampler or a --eval_url endpoint through the native runner, so the remote
+# backend selector and the OpenCompass-only local-data toggle are obsolete.
+EVAL_REMOTE_EVAL_FIELDS: Tuple[str, ...] = ('eval_backend', 'local_dataset')
 # Commands that never decode text (export) or set decoding through one structured flag (eval's
 # --eval_generation_config) don't consume these per-flag generation options.
 GENERATION_OPTION_FIELDS: Tuple[str, ...] = (

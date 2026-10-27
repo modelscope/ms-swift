@@ -150,7 +150,6 @@ def test_eval_main_passes_no_adapters_when_unset(monkeypatch):
 
 # --------------------------------------------------------------------------- retired flags are refused
 @pytest.mark.parametrize('flag,value', [
-    ('--eval_url', 'http://127.0.0.1:8000/v1'),
     ('--eval_backend', 'opencompass'),
     ('--local_dataset', 'true'),
     ('--merge_lora', 'true'),
@@ -161,8 +160,8 @@ def test_eval_main_passes_no_adapters_when_unset(monkeypatch):
     ('--host', '0.0.0.0'),
 ])
 def test_retired_flags_are_refused_with_a_classified_reason(flag, value):
-    """eval is sampler-only/Native-only and starts no server, so its former remote/backend/serving/per-flag
-    decoding options must be refused with a reason and an alternative -- not silently ignored, not a bare
+    """eval is Native-only and starts no server, so its former backend/serving/per-flag decoding options
+    must be refused with a reason and an alternative -- not silently ignored, not a bare
     "Unrecognized arguments"."""
     with pytest.raises(ValueError) as exc:
         parse_eval_configs([*BASE, '--eval_dataset', 'gsm8k', flag, value])
