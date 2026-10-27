@@ -1,6 +1,6 @@
 # Pre-training and Fine-tuning
 
-To collect training performance data, see [Training Profiling (GPU/NPU)](Profiling.md).
+To collect training performance data, enable the built-in callback with `--callbacks profiler`. See [Training Profiling (GPU/NPU)](Profiling.md).
 
 Training Capability:
 

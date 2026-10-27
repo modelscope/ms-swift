@@ -3,53 +3,53 @@ import importlib.util
 import json
 import os
 import pytest
+import subprocess
 import sys
 import torch
 import types
 from pathlib import Path
-from transformers import TrainerCallback
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 
 @pytest.fixture
-def plugin(monkeypatch):
-    # Match the two callback constructors without requiring Megatron/CANN hardware.
-    class SwiftCallback(TrainerCallback):
+def profiler(monkeypatch):
+    from swift.utils import profiler
 
-        def __init__(self, args, trainer):
-            self.args, self.trainer = args, trainer
-
-    class MegatronCallback:
-
-        def __init__(self, trainer):
-            self.trainer, self.args, self.state = trainer, trainer.args, trainer.state
-
-    modules = {
-        'swift': types.ModuleType('swift'),
-        'swift.callbacks': types.ModuleType('swift.callbacks'),
-        'swift.megatron': types.ModuleType('swift.megatron'),
-        'swift.megatron.callbacks': types.ModuleType('swift.megatron.callbacks'),
-    }
-    modules['swift.callbacks'].TrainerCallback = SwiftCallback
-    modules['swift.callbacks'].callbacks_map = {}
-    modules['swift.megatron.callbacks'].MegatronCallback = MegatronCallback
-    modules['swift.megatron.callbacks'].megatron_callbacks_map = {}
-    for name, module in modules.items():
-        monkeypatch.setitem(sys.modules, name, module)
     for name in list(os.environ):
         if name.startswith('SWIFT_PROFILER_'):
             monkeypatch.delenv(name)
-    spec = importlib.util.spec_from_file_location('_swift_profiler_test_plugin',
-                                                  Path(__file__).resolve().parents[2] / 'examples/custom/profiler.py')
-    module = importlib.util.module_from_spec(spec)
-    monkeypatch.setitem(sys.modules, spec.name, module)
-    spec.loader.exec_module(module)
-    return module
+    return profiler
 
 
 @pytest.fixture
-def fake_api(plugin, monkeypatch):
+def megatron_callbacks(monkeypatch):
+    # Load the real callback package and registry without requiring Megatron/CANN.
+    # Only the backend package initializer and its distributed reduction helper are stubbed.
+    import swift
+
+    backend = types.ModuleType('swift.megatron')
+    utils = types.ModuleType('swift.megatron.utils')
+    utils.reduce_max_stat_across_model_parallel_group = Mock()
+    monkeypatch.setitem(sys.modules, 'swift.megatron', backend)
+    monkeypatch.setitem(sys.modules, 'swift.megatron.utils', utils)
+    name = '_swift_test_megatron_callbacks'
+    directory = Path(swift.__file__).resolve().parent / 'megatron' / 'callbacks'
+    spec = importlib.util.spec_from_file_location(
+        name, directory / '__init__.py', submodule_search_locations=[str(directory)])
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, module)
+    try:
+        spec.loader.exec_module(module)
+        yield module.megatron_callbacks_map
+    finally:
+        for loaded in list(sys.modules):
+            if loaded.startswith(name + '.'):
+                sys.modules.pop(loaded)
+
+
+@pytest.fixture
+def fake_api(profiler, monkeypatch):
     api = SimpleNamespace(
         ProfilerActivity=SimpleNamespace(CPU='cpu', CUDA='cuda', NPU='npu'),
         ProfilerLevel=SimpleNamespace(Level0=0, Level1=1, Level2=2),
@@ -57,19 +57,19 @@ def fake_api(plugin, monkeypatch):
         profile=Mock(),
         schedule=Mock(),
         tensorboard_trace_handler=Mock())
-    monkeypatch.setattr(plugin, '_resolve_device', lambda requested, args: (requested, api))
+    monkeypatch.setattr(profiler, '_resolve_device', lambda requested, args: (requested, api))
     return api
 
 
-def session(plugin, tmp_path, **kwargs):
+def session(profiler, tmp_path, **kwargs):
     args = SimpleNamespace(output_dir=str(tmp_path), process_index=0)
-    config = plugin.ProfilerConfig(**kwargs)
-    return plugin.ProfilerSession(args, 'test', config)
+    config = profiler.ProfilerConfig(**kwargs)
+    return profiler.ProfilerSession(args, 'test', config)
 
 
 @pytest.mark.parametrize('device', ['cuda', 'npu'])
-def test_exact_target_and_no_restart(plugin, fake_api, tmp_path, device):
-    capture = session(plugin, tmp_path, start_step=1000, device=device)
+def test_exact_target_and_no_restart(profiler, fake_api, tmp_path, device):
+    capture = session(profiler, tmp_path, start_step=1000, device=device)
     for completed in range(999):
         capture.begin_step(completed)
         capture.end_step()
@@ -92,8 +92,8 @@ def test_exact_target_and_no_restart(plugin, fake_api, tmp_path, device):
     assert metadata['first_active_step'] == 1000
 
 
-def test_warmup_and_multi_step_window(plugin, fake_api, tmp_path):
-    capture = session(plugin, tmp_path, start_step=1000, warmup_steps=1, active_steps=3)
+def test_warmup_and_multi_step_window(profiler, fake_api, tmp_path):
+    capture = session(profiler, tmp_path, start_step=1000, warmup_steps=1, active_steps=3)
     capture.begin_step(997)
     fake_api.profile.assert_not_called()
     for completed in range(998, 1002):
@@ -105,26 +105,26 @@ def test_warmup_and_multi_step_window(plugin, fake_api, tmp_path):
     fake_api.profile.return_value.stop.assert_called_once()
 
 
-def test_resume_missed_window_and_rank_filter(plugin, fake_api, tmp_path):
-    resumed = session(plugin, tmp_path, start_step=1000, warmup_steps=1)
+def test_resume_missed_window_and_rank_filter(profiler, fake_api, tmp_path):
+    resumed = session(profiler, tmp_path, start_step=1000, warmup_steps=1)
     resumed.begin_step(999)
     assert resumed.finished
-    unselected = session(plugin, tmp_path, start_step=1, ranks='1,8')
+    unselected = session(profiler, tmp_path, start_step=1, ranks='1,8')
     unselected.begin_step(0)
     unselected.train_end()
     fake_api.profile.assert_not_called()
     assert not list(tmp_path.iterdir())
 
 
-def test_early_end_and_exception_cleanup(plugin, fake_api, tmp_path):
-    capture = session(plugin, tmp_path, start_step=1, active_steps=3)
+def test_early_end_and_exception_cleanup(profiler, fake_api, tmp_path):
+    capture = session(profiler, tmp_path, start_step=1, active_steps=3)
     capture.begin_step(0)
     capture.end_step()
     capture.train_end()
     capture.close()
     fake_api.profile.return_value.stop.assert_called_once()
     fake_api.profile.return_value.stop.reset_mock()
-    failed = session(plugin, tmp_path, start_step=1)
+    failed = session(profiler, tmp_path, start_step=1)
     failed.begin_step(0)
     fake_api.profile.return_value.step.side_effect = RuntimeError('device error')
     with pytest.raises(RuntimeError, match='device error'):
@@ -134,15 +134,17 @@ def test_early_end_and_exception_cleanup(plugin, fake_api, tmp_path):
 
 
 @pytest.mark.parametrize('backend', ['transformers', 'megatron'])
-def test_callback_interfaces(plugin, fake_api, monkeypatch, tmp_path, backend):
+def test_callback_interfaces(profiler, fake_api, monkeypatch, tmp_path, backend, request):
     monkeypatch.setenv('SWIFT_PROFILER_START_STEP', '2')
     args = SimpleNamespace(output_dir=str(tmp_path), process_index=0)
     state = SimpleNamespace(global_step=0, iteration=0)
     trainer = SimpleNamespace(args=args, state=state)
     if backend == 'transformers':
-        callback = sys.modules['swift.callbacks'].callbacks_map['profiler'](args, trainer)
+        from swift.callbacks import callbacks_map
+        callback = callbacks_map['profiler'](args, trainer)
     else:
-        callback = sys.modules['swift.megatron.callbacks'].megatron_callbacks_map['profiler'](trainer)
+        callbacks_map = request.getfixturevalue('megatron_callbacks')
+        callback = callbacks_map['profiler'](trainer)
 
     def event(name):
         if backend == 'transformers':
@@ -165,32 +167,47 @@ def test_callback_interfaces(plugin, fake_api, monkeypatch, tmp_path, backend):
     fake_api.profile.return_value.stop.assert_called_once()
 
 
-def test_standard_backend_does_not_import_megatron(plugin, monkeypatch):
-    monkeypatch.delitem(sys.modules, 'swift.megatron')
-    monkeypatch.delitem(sys.modules, 'swift.megatron.callbacks')
-    plugin.register_callbacks()
-    assert 'swift.megatron' not in sys.modules
+def test_builtin_registration_is_inactive_and_does_not_import_optional_backends(tmp_path):
+    # A fresh process catches import-time registration/configuration regressions.
+    script = """
+import sys
+import torch
+from unittest.mock import patch
+with patch.object(torch.profiler, 'profile', side_effect=AssertionError('profiler started during import')):
+    from swift.callbacks import callbacks_map
+    from swift.callbacks.profiler import SwiftProfilerCallback
+    assert callbacks_map['profiler'] is SwiftProfilerCallback
+assert not any(name in sys.modules for name in ('swift.megatron', 'megatron', 'mindspeed', 'torch_npu'))
+"""
+    env = dict(os.environ, SWIFT_PROFILER_START_STEP='invalid-unless-enabled')
+    result = subprocess.run([sys.executable, '-c', script],
+                            cwd=tmp_path,
+                            env=env,
+                            capture_output=True,
+                            text=True,
+                            timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_cuda_does_not_import_torch_npu(plugin, monkeypatch):
+def test_cuda_does_not_import_torch_npu(profiler, monkeypatch):
     monkeypatch.setattr(torch.cuda, 'is_available', lambda: True)
     importer = Mock(side_effect=AssertionError('CUDA must not import torch_npu'))
-    monkeypatch.setattr(plugin.importlib, 'import_module', importer)
-    device, api = plugin._resolve_device('auto', SimpleNamespace(device=torch.device('cuda:0')))
+    monkeypatch.setattr(profiler.importlib, 'import_module', importer)
+    device, api = profiler._resolve_device('auto', SimpleNamespace(device=torch.device('cuda:0')))
     assert device == 'cuda' and api is torch.profiler
     importer.assert_not_called()
 
 
-def test_npu_auto_detection_and_global_rank(plugin, monkeypatch):
+def test_npu_auto_detection_and_global_rank(profiler, monkeypatch):
     npu = SimpleNamespace(is_available=lambda: True)
     monkeypatch.setattr(torch, 'npu', npu, raising=False)
     api = SimpleNamespace()
-    monkeypatch.setattr(plugin.importlib, 'import_module', lambda name: SimpleNamespace(profiler=api))
-    device, resolved_api = plugin._resolve_device('auto', SimpleNamespace())
+    monkeypatch.setattr(profiler.importlib, 'import_module', lambda name: SimpleNamespace(profiler=api))
+    device, resolved_api = profiler._resolve_device('auto', SimpleNamespace())
     assert device == 'npu' and resolved_api is api
     monkeypatch.setattr(torch.distributed, 'is_initialized', lambda: True)
     monkeypatch.setattr(torch.distributed, 'get_rank', lambda: 9)
-    assert plugin._global_rank(SimpleNamespace(process_index=0, rank=0)) == 9
+    assert profiler._global_rank(SimpleNamespace(process_index=0, rank=0)) == 9
 
 
 @pytest.mark.parametrize('kwargs', [
@@ -203,50 +220,50 @@ def test_npu_auto_detection_and_global_rank(plugin, monkeypatch):
     dict(device='gpu'),
     dict(npu_level='Level3')
 ])
-def test_invalid_configuration(plugin, kwargs):
+def test_invalid_configuration(profiler, kwargs):
     with pytest.raises(ValueError):
-        plugin.ProfilerConfig(**kwargs)
+        profiler.ProfilerConfig(**kwargs)
 
 
 @pytest.mark.parametrize('name,minimum', [('START_STEP', 1), ('ACTIVE_STEPS', 1), ('WARMUP_STEPS', 0)])
 @pytest.mark.parametrize('value', ['abc', '1.5', '1.0', '', 'true'])
-def test_integer_env_errors_identify_name_value_and_range(plugin, monkeypatch, name, minimum, value):
+def test_integer_env_errors_identify_name_value_and_range(profiler, monkeypatch, name, minimum, value):
     monkeypatch.setenv(f'SWIFT_PROFILER_{name}', value)
     with pytest.raises(ValueError) as exc:
-        plugin.ProfilerConfig.from_env()
+        profiler.ProfilerConfig.from_env()
     assert str(exc.value) == (f'SWIFT_PROFILER_{name} must be an integer >= {minimum}; got {value!r}')
     assert exc.value.__suppress_context__
 
 
 @pytest.mark.parametrize('name,value,minimum', [('START_STEP', '0', 1), ('ACTIVE_STEPS', '-1', 1),
                                                 ('WARMUP_STEPS', '-1', 0)])
-def test_integer_env_range_errors(plugin, monkeypatch, name, value, minimum):
+def test_integer_env_range_errors(profiler, monkeypatch, name, value, minimum):
     monkeypatch.setenv(f'SWIFT_PROFILER_{name}', value)
     with pytest.raises(ValueError) as exc:
-        plugin.ProfilerConfig.from_env()
+        profiler.ProfilerConfig.from_env()
     assert str(exc.value) == (f'SWIFT_PROFILER_{name} must be an integer >= {minimum}; got {int(value)!r}')
 
 
-def test_warmup_constraint_identifies_both_settings(plugin, monkeypatch):
+def test_warmup_constraint_identifies_both_settings(profiler, monkeypatch):
     monkeypatch.setenv('SWIFT_PROFILER_START_STEP', '10')
     monkeypatch.setenv('SWIFT_PROFILER_WARMUP_STEPS', '10')
     with pytest.raises(ValueError) as exc:
-        plugin.ProfilerConfig.from_env()
+        profiler.ProfilerConfig.from_env()
     assert str(exc.value) == ('SWIFT_PROFILER_WARMUP_STEPS (10) must be smaller than SWIFT_PROFILER_START_STEP (10)')
 
 
-def test_integer_env_defaults_and_valid_values(plugin, monkeypatch):
-    assert plugin.ProfilerConfig.from_env() == plugin.ProfilerConfig()
+def test_integer_env_defaults_and_valid_values(profiler, monkeypatch):
+    assert profiler.ProfilerConfig.from_env() == profiler.ProfilerConfig()
     monkeypatch.setenv('SWIFT_PROFILER_START_STEP', ' 20 ')
     monkeypatch.setenv('SWIFT_PROFILER_WARMUP_STEPS', '0')
     monkeypatch.setenv('SWIFT_PROFILER_ACTIVE_STEPS', '3')
-    cfg = plugin.ProfilerConfig.from_env()
+    cfg = profiler.ProfilerConfig.from_env()
     assert (cfg.start_step, cfg.warmup_steps, cfg.active_steps) == (20, 0, 3)
 
 
-def test_real_cpu_trace_has_only_requested_active_steps(plugin, tmp_path):
+def test_real_cpu_trace_has_only_requested_active_steps(profiler, tmp_path):
     capture = session(
-        plugin,
+        profiler,
         tmp_path,
         device='cpu',
         start_step=3,
@@ -268,3 +285,54 @@ def test_real_cpu_trace_has_only_requested_active_steps(plugin, tmp_path):
     names = {event['name'] for event in events}
     assert {'train_step_3', 'train_step_4', 'aten::mm'} <= names
     assert not {'train_step_1', 'train_step_2', 'train_step_5', 'train_step_6'} & names
+
+
+def test_transformers_training_uses_builtin_profiler(profiler, monkeypatch, tmp_path):
+    from transformers import Trainer
+
+    from swift.trainers import TrainingArguments
+    from swift.trainers.mixin import SwiftMixin
+
+    class TinyModel(torch.nn.Module):
+
+        def __init__(self):
+            super().__init__()
+            self.linear = torch.nn.Linear(4, 2)
+
+        def forward(self, input_ids, labels=None):
+            logits = self.linear(input_ids.float())
+            loss = torch.nn.functional.cross_entropy(logits, labels) if labels is not None else None
+            return {'loss': loss, 'logits': logits}
+
+    for name, value in {
+            'DEVICE': 'cpu',
+            'START_STEP': '2',
+            'ACTIVE_STEPS': '1',
+            'RECORD_SHAPES': 'false',
+            'PROFILE_MEMORY': 'false'
+    }.items():
+        monkeypatch.setenv(f'SWIFT_PROFILER_{name}', value)
+    args = TrainingArguments(
+        output_dir=str(tmp_path),
+        max_steps=3,
+        per_device_train_batch_size=1,
+        gradient_accumulation_steps=2,
+        gradient_checkpointing=False,
+        use_cpu=True,
+        report_to=[],
+        save_strategy='no',
+        disable_tqdm=True)
+    args.callbacks = ['profiler']
+    dataset = [{'input_ids': torch.ones(4), 'labels': torch.tensor(0)} for _ in range(6)]
+    trainer = Trainer(model=TinyModel(), args=args, train_dataset=dataset)
+    callbacks = SwiftMixin._get_callbacks(trainer, args)
+    for callback in callbacks:
+        trainer.add_callback(callback)
+    trainer.train()
+    capture = callbacks[0].session
+    assert trainer.state.global_step == 3
+    assert capture.finished and capture.steps == 1
+    assert len(list(capture.trace_dir.glob('*.pt.trace.json'))) == 1
+    metadata = json.loads((capture.trace_dir / 'config.json').read_text())
+    assert metadata['backend'] == 'transformers'
+    assert metadata['first_active_step'] == metadata['last_active_step'] == 2

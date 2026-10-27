@@ -1,13 +1,13 @@
 # 训练性能采集（Profiling）
 
-ms-swift 提供外部 callback 插件 [profiler.py](https://github.com/modelscope/ms-swift/blob/main/examples/custom/profiler.py)，用于在指定训练步采集性能数据。默认 Transformers 后端和 Megatron-SWIFT 使用相同的插件路径、callback 名称与环境变量，无需修改训练器源码。
+ms-swift 提供内置 `profiler` callback，用于在指定训练步采集性能数据。默认 Transformers 后端和 Megatron-SWIFT 使用相同的 callback 名称与环境变量，通过 `--callbacks profiler` 启用，无需额外加载插件脚本。
 
 | 训练后端 | CUDA GPU | Ascend NPU |
 | --- | --- | --- |
 | 默认 Transformers 后端（`swift sft/pt/rlhf`） | `torch.profiler` | `torch_npu.profiler` |
 | Megatron-SWIFT（`megatron sft/pt/rlhf`） | `torch.profiler` | `torch_npu.profiler` |
 
-插件只采集加载它的训练进程；RLHF 中独立部署的 vLLM 等 rollout 服务需要单独配置采集。Ray 等自定义启动方式也需要向实际训练进程传递插件路径和环境变量。
+callback 只采集启用它的训练进程；RLHF 中独立部署的 vLLM 等 rollout 服务需要单独配置采集。Ray 等自定义启动方式也需要向实际训练进程传递 callback 选择和环境变量。
 
 ## 环境准备
 
@@ -17,7 +17,9 @@ ms-swift 提供外部 callback 插件 [profiler.py](https://github.com/modelscop
 - Ascend NPU：需要版本匹配的 PyTorch、`torch_npu`、CANN 和设备驱动。
 - 默认训练后端不需要安装 Megatron。CUDA 采集路径不需要安装或导入 `torch_npu`。
 
-以下示例使用 Bash，并在包含此插件的 ms-swift 仓库根目录执行。也可以把 `examples/custom/profiler.py` 复制到训练机器，使用绝对路径加载；无需复制其他插件文件。
+请在每个训练节点安装包含内置 `profiler` callback 的 ms-swift 版本。该 callback 随标准 pip 包安装，以下 Bash 示例可在任意工作目录运行，无需复制脚本或获取源码仓库。
+
+如果从外部 profiler 示例迁移，请移除 `--external_plugins examples/custom/profiler.py`，保留 `--callbacks profiler` 和 `SWIFT_PROFILER_*` 配置。其他功能所需的外部插件应继续保留。
 
 ## 快速开始
 
@@ -34,17 +36,16 @@ export SWIFT_PROFILER_OUTPUT_DIR=output/profiling
 export SWIFT_PROFILER_RANKS=all
 ```
 
-然后在原有 `swift sft/pt/rlhf` 或 `megatron sft/pt/rlhf` 命令中增加以下两个参数，保留原来的模型、数据、并行和训练参数：
+然后在原有 `swift sft/pt/rlhf` 或 `megatron sft/pt/rlhf` 命令中增加以下参数，保留原来的模型、数据、并行和训练参数：
 
 ```bash
---external_plugins examples/custom/profiler.py \
 --callbacks profiler
 ```
 
-这两行是需要添加的参数，不是独立的 Shell 命令。已有其他插件或 callbacks 时，将本插件和 `profiler` 追加到对应列表中。例如：
+这是需要添加的命令参数，不是独立的 Shell 命令。已有其他 callbacks 时，将 `profiler` 追加到列表，并保留其他 callback 所需的外部插件。例如：
 
 ```bash
---external_plugins /path/to/my_plugin.py examples/custom/profiler.py \
+--external_plugins /path/to/my_plugin.py \
 --callbacks my_callback profiler
 ```
 
@@ -73,13 +74,12 @@ swift sft \
     --split_dataset_ratio 0 \
     --save_strategy no \
     --output_dir output/profiling-sft \
-    --external_plugins examples/custom/profiler.py \
     --callbacks profiler
 ```
 
 第 2 步预热，第 3～4 步正式采集，训练继续到第 6 步。模型和数据集需要下载，也可以换为本地路径。设备需支持示例中的 `bfloat16`，否则按已有训练配置调整精度。
 
-在 NPU 上使用相同的环境变量与插件参数，按已有 NPU 训练脚本设置 `ASCEND_RT_VISIBLE_DEVICES`，移除 `CUDA_VISIBLE_DEVICES`；也可显式设置 `SWIFT_PROFILER_DEVICE=npu`。Megatron 的模型加载、并行参数和环境依赖仍按 [Megatron-SWIFT 快速开始](../Megatron-SWIFT/Quick-start.md) 配置，仅追加上述两个插件参数即可。
+在 NPU 上使用相同的环境变量与 callback 参数，按已有 NPU 训练脚本设置 `ASCEND_RT_VISIBLE_DEVICES`，移除 `CUDA_VISIBLE_DEVICES`；也可显式设置 `SWIFT_PROFILER_DEVICE=npu`。Megatron 的模型加载、并行参数和环境依赖仍按 [Megatron-SWIFT 快速开始](../Megatron-SWIFT/Quick-start.md) 配置，追加 `--callbacks profiler` 即可。
 
 ## 配置项与默认值
 
@@ -98,7 +98,7 @@ swift sft \
 | `SWIFT_PROFILER_WITH_STACK` | `false` | 记录调用栈 |
 | `SWIFT_PROFILER_NPU_LEVEL` | `Level1` | NPU 专用，可选 `Level0`、`Level1`、`Level2` |
 
-`auto` 优先采用训练参数中的设备；没有设备提示时，检测可用 NPU/CUDA。未找到设备时会报错，可显式设置 `cpu` 进行本地调试。插件不会改变训练所用的设备。
+`auto` 优先采用训练参数中的设备；没有设备提示时，检测可用 NPU/CUDA。未找到设备时会报错，可显式设置 `cpu` 进行本地调试。callback 不会改变训练所用的设备。
 
 布尔配置接受 `true/false` 和 `1/0`，不区分大小写。整数配置不接受 `1.0`、`1.5`、`abc` 或空字符串；出错时直接终止初始化，不会悄悄改用默认值：
 
@@ -123,7 +123,7 @@ ValueError: SWIFT_PROFILER_WARMUP_STEPS (10) must be smaller than SWIFT_PROFILER
 
 ## 分布式采集
 
-多卡和多机训练时，插件在每个选中的全局 rank 独立运行，不添加额外分布式 barrier。
+多卡和多机训练时，callback 在每个选中的全局 rank 独立运行，不添加额外分布式 barrier。
 
 ```bash
 # 通信分析通常需要所有 rank 的数据。
@@ -133,7 +133,7 @@ export SWIFT_PROFILER_RANKS=all
 # export SWIFT_PROFILER_RANKS=0,1,8,9
 ```
 
-每个节点都需要提供相同的插件路径和配置，并确保启动器把环境变量传给所有训练进程。`RANKS` 使用全局 rank，不是每台机器重复的 local_rank。输出可放在共享存储，也可以采集完成后汇总各节点的本地文件。
+每个节点都需要启用 callback 并提供相同的配置，并确保启动器把环境变量传给所有训练进程。`RANKS` 使用全局 rank，不是每台机器重复的 local_rank。输出可放在共享存储，也可以采集完成后汇总各节点的本地文件。
 
 ## 输出和分析
 
@@ -153,13 +153,13 @@ rank、主机名、进程 ID 和时间戳用于避免多机或重跑覆盖。`co
 - GPU：使用 `torch.profiler.tensorboard_trace_handler` 导出，可用 TensorBoard 的 PyTorch Profiler 插件或 Perfetto 查看 `.pt.trace.json`。
 - NPU：使用 `torch_npu.profiler.tensorboard_trace_handler` 导出，使用与 CANN/torch_npu 版本匹配的 MindStudio/Ascend 分析工具。Level1 提供 HCCL 通信分析相关数据，具体文件与运行环境版本有关。
 
-GPU 和 NPU 的输出文件与分析工具不同；插件统一的是配置与 callback 生命周期。接口说明参考 [PyTorch profiler](https://docs.pytorch.org/docs/stable/profiler.html) 和 [Ascend profiler](https://www.hiascend.com/document/detail/zh/Pytorch/600/apiref/apilist/ptaoplist_000289.html)。
+GPU 和 NPU 的输出文件与分析工具不同；callback 统一的是配置与 callback 生命周期。接口说明参考 [PyTorch profiler](https://docs.pytorch.org/docs/stable/profiler.html) 和 [Ascend profiler](https://www.hiascend.com/document/detail/zh/Pytorch/600/apiref/apilist/ptaoplist_000289.html)。
 
 ## 常见问题
 
-- **没有 trace**：先确认训练命令中同时包含 `--external_plugins` 和 `--callbacks profiler`，再检查 `[SwiftProfiler]` 日志、rank 筛选、恢复的步数、输出目录及训练是否达到窗口。必须采集到正式阶段，不能仅预热。
+- **没有 trace**：先确认训练命令中包含 `--callbacks profiler`，再检查 `[SwiftProfiler]` 日志、rank 筛选、恢复的步数、输出目录及训练是否达到窗口。必须采集到正式阶段，不能仅预热。
 - **提示没有预热**：默认 `WARMUP_STEPS=0` 会触发 PyTorch 的无预热提示，这是预期行为。需要预热时，设置正数并保证小于 START_STEP。
-- **采集开销较高**：缩短 ACTIVE_STEPS，关闭 RECORD_SHAPES、PROFILE_MEMORY 或 WITH_STACK。内存事件采集不等于生成完整内存时间线，本插件没有额外导出内存时间线。
+- **采集开销较高**：缩短 ACTIVE_STEPS，关闭 RECORD_SHAPES、PROFILE_MEMORY 或 WITH_STACK。内存事件采集不等于生成完整内存时间线，本 callback 没有额外导出内存时间线。
 - **trace 混入评估或保存 checkpoint**：连续多步窗口可能包含两步之间的日志、评估和保存操作；可调整这些任务的间隔，让它们避开采集窗口。
 - **已有其他 profiler**：关闭原来的 profiling callback 或其他会话，避免同一进程同时启动多个 profiler。
-- **自定义 Python 启动器**：Megatron 适配依赖在正常 Megatron 入口初始化后加载插件。若先导入插件、再切换到 Megatron，需要在后端初始化完成后重新调用插件的 `register_callbacks()`。
+- **自定义 Python 启动器**：将 `profiler` 加入训练参数的 `callbacks` 列表，并把环境变量传给每个 worker。两种后端均通过各自的内置 callback 模块完成注册。

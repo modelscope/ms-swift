@@ -1,16 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""ms-swift external profiler plugin for Transformers and Megatron.
-
-Load with --external_plugins examples/custom/profiler.py --callbacks profiler.
-See docs/source_en/Instruction/Profiling.md for configuration and examples.
-"""
+"""Shared profiling session for the built-in Transformers and Megatron callbacks."""
 
 import atexit
 import importlib
 import json
 import os
 import socket
-import sys
 import time
 import torch
 from dataclasses import asdict, dataclass
@@ -38,8 +33,8 @@ def _bool_env(name, default):
 
 @dataclass(frozen=True)
 class ProfilerConfig:
-    # One-based optimizer step: step 100 begins with 99 completed updates.
-    start_step: int = 100
+    # One-based optimizer step: step 1000 begins with 999 completed updates.
+    start_step: int = 1000
     active_steps: int = 1
     warmup_steps: int = 0
     device: str = 'auto'
@@ -76,16 +71,16 @@ class ProfilerConfig:
     @classmethod
     def from_env(cls):
         return cls(
-            start_step=_int_env('START_STEP', 1000, 1),
-            active_steps=_int_env('ACTIVE_STEPS', 1, 1),
-            warmup_steps=_int_env('WARMUP_STEPS', 0, 0),
-            device=_env('DEVICE', 'auto').lower(),
-            output_dir=_env('OUTPUT_DIR', ''),
-            ranks=_env('RANKS', 'all').lower().strip(),
-            record_shapes=_bool_env('RECORD_SHAPES', True),
-            profile_memory=_bool_env('PROFILE_MEMORY', True),
-            with_stack=_bool_env('WITH_STACK', False),
-            npu_level=_env('NPU_LEVEL', 'Level1'),
+            start_step=_int_env('START_STEP', cls.start_step, 1),
+            active_steps=_int_env('ACTIVE_STEPS', cls.active_steps, 1),
+            warmup_steps=_int_env('WARMUP_STEPS', cls.warmup_steps, 0),
+            device=_env('DEVICE', cls.device).lower(),
+            output_dir=_env('OUTPUT_DIR', cls.output_dir),
+            ranks=_env('RANKS', cls.ranks).lower().strip(),
+            record_shapes=_bool_env('RECORD_SHAPES', cls.record_shapes),
+            profile_memory=_bool_env('PROFILE_MEMORY', cls.profile_memory),
+            with_stack=_bool_env('WITH_STACK', cls.with_stack),
+            npu_level=_env('NPU_LEVEL', cls.npu_level),
         )
 
 
@@ -243,49 +238,3 @@ class ProfilerSession:
             self.close()
         except Exception as exc:
             self._log(f'cleanup failed: {exc}')
-
-
-def register_callbacks():
-    from swift.callbacks import TrainerCallback, callbacks_map
-
-    class SwiftProfilerCallback(TrainerCallback):
-
-        def __init__(self, args, trainer):
-            super().__init__(args, trainer)
-            self.session = ProfilerSession(args, 'transformers')
-
-        def on_step_begin(self, args, state, control, **kwargs):
-            self.session.begin_step(state.global_step)
-
-        def on_step_end(self, args, state, control, **kwargs):
-            self.session.end_step()
-
-        def on_train_end(self, args, state, control, **kwargs):
-            self.session.train_end()
-
-    callbacks_map['profiler'] = SwiftProfilerCallback
-
-    # Importing swift.megatron initializes Megatron/MindSpeed. Only access it when
-    # the Megatron entry point has already loaded it, so normal swift needs neither.
-    if 'swift.megatron' in sys.modules:
-        from swift.megatron.callbacks import MegatronCallback, megatron_callbacks_map
-
-        class MegatronProfilerCallback(MegatronCallback):
-
-            def __init__(self, trainer):
-                super().__init__(trainer)
-                self.session = ProfilerSession(self.args, 'megatron')
-
-            def on_step_begin(self):
-                self.session.begin_step(self.trainer.state.iteration)
-
-            def on_step_end(self):
-                self.session.end_step()
-
-            def on_train_end(self):
-                self.session.train_end()
-
-        megatron_callbacks_map['profiler'] = MegatronProfilerCallback
-
-
-register_callbacks()

@@ -1,6 +1,6 @@
 # 预训练与微调
 
-如需采集训练性能数据，请参考 [训练性能采集（GPU/NPU）](Profiling.md)。
+通过 `--callbacks profiler` 可启用内置训练性能采集 callback，使用方法请参考 [训练性能采集（GPU/NPU）](Profiling.md)。
 
 训练能力：
 
