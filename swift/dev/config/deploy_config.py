@@ -50,3 +50,12 @@ class DeployConfig:
     # === Scaling (forwarded to each application's deployment) ===
     num_replicas: Optional[int] = None  # None keeps Ray Serve's single-replica default
     autoscaling: bool = False
+
+    # === Lifetime ===
+    # Detached: the driver returns once the apps are up; the deployment lives on the Ray cluster
+    # (Serve's controller is a detached actor) and survives this process. Attached (default):
+    # the command blocks and serve.shutdown() runs on SIGINT/SIGTERM.
+    detach: bool = False
+    # Remove the deployment for this model name (see stop_deployment); with --detach/--stop the
+    # command manages lifetime instead of serving.
+    stop: bool = False

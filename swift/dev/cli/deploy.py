@@ -94,9 +94,14 @@ def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 def deploy_main(argv: Optional[List[str]] = None) -> None:
     from swift.dev.builders import build_engine_args
     from swift.dev.config import process_and_validate_configs
-    from swift.dev.recipe.infer import run_deploy
+    from swift.dev.recipe.infer import run_deploy, stop_deployment
 
     configs = parse_deploy_configs(argv)
+    # --stop manages lifetime only: no model/template validation should stand between the
+    # operator and removing a deployment (the name alone identifies it on the Serve cluster).
+    if configs['deploy_config'].stop:
+        stop_deployment(configs['deploy_config'], configs['model_config'])
+        return
     process_and_validate_configs(configs, add_version=False, create_output_dir=False)
     tuner_config = configs['tuner_config']
     adapters = tuner_config.adapters if tuner_config is not None else []
