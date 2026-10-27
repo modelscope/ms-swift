@@ -262,38 +262,48 @@ print(torch.randn(10, device='npu:0'))
 
 ### Optional MegatronAdaptor + TransformerEngineNPU Installation
 
-The NPU Megatron path uses MCore 0.18, MegatronAdaptor, TransformerEngineNPU, and mcore-bridge. MindSpeed must not be installed or imported. The commands below describe the first admission environment: Python 3.12, CANN 9.1 beta, and torch/torch_npu 2.10.
+The NPU Megatron path uses MCore 0.18, MegatronAdaptor, TransformerEngineNPU, and mcore-bridge. MindSpeed must not be installed or imported. The installation example below uses: Python 3.12, CANN 9.1 beta, and torch/torch_npu 2.10.
+
+This section uses the ms-swift and PyTorch/TorchNPU environment installed above and adds only the components needed for Megatron training.
+
+The commands below place all repositories under `~/swift-npu`. To use another directory, change the paths in the first two commands. If a source directory already exists, skip its clone command and run `git checkout <branch>` in that repository. The companion [mcore-bridge PR #189](https://github.com/modelscope/mcore-bridge/pull/189) must be merged into the official `main` branch before using these commands.
 
 ```shell
-export SWIFT_ROOT=/home/zyh/code
-export MEGATRON_LM_PATH=$SWIFT_ROOT/Megatron-LM
-export PYTHONPATH=$SWIFT_ROOT/Megatron-LM:$SWIFT_ROOT/MegatronAdaptor:$SWIFT_ROOT/TransformerEngineNPU:$SWIFT_ROOT/mcore-bridge/src:$SWIFT_ROOT/ms-swift:$PYTHONPATH
-# Optional: set this to 0 for Transformers GDN; the default value 1 uses MCore GDN.
-# export USE_MCORE_GDN=0
+mkdir -p ~/swift-npu
+cd ~/swift-npu
 
-# Pinned checkouts: Megatron-LM core_v0.18.0 ba7b5ebce12a,
-# MegatronAdaptor core_r0.18.0 2a164d4548e2,
-# TransformerEngineNPU main 0a389a677586, mcore-bridge adapt_018_main c820ed47960e
-cd $SWIFT_ROOT/Megatron-LM && git checkout ba7b5ebce12a
-cd $SWIFT_ROOT/MegatronAdaptor && git checkout 2a164d4548e2
-cd $SWIFT_ROOT/TransformerEngineNPU && git checkout 0a389a677586
-cd $SWIFT_ROOT/mcore-bridge && git checkout c820ed47960e
+# 1. Install mcore-bridge from the official main branch.
+git clone https://github.com/modelscope/mcore-bridge.git
+cd mcore-bridge
+git checkout main
+pip install -e .
+cd ..
 
-# Install dependencies compatible with torch 2.10, then install each local checkout
-# without build isolation or dependency resolution. Qwen3.5's Transformers loader
-# needs FLA exports; its NPU backend is also provided by this checkout.
-python -m pip install 'packaging>=26.2' transformers==5.12.1 torchvision==0.25.0 torchaudio==2.10.0 nvdlfw-inspect 'qwen-vl-utils>=0.0.14'
-# Install Triton-Ascend for the optional FLA NPU backend.
-python -m pip install triton-ascend --extra-index-url=https://mirrors.huaweicloud.com/ascend/repos/pypi
-python -m pip install -e $SWIFT_ROOT/flash-linear-attention --no-build-isolation --no-deps
-python -m pip install -e $SWIFT_ROOT/Megatron-LM --no-build-isolation --no-deps
-python -m pip install -e $SWIFT_ROOT/MegatronAdaptor --no-build-isolation --no-deps
-python -m pip install -e $SWIFT_ROOT/TransformerEngineNPU --no-build-isolation --no-deps
-python -m pip install -e $SWIFT_ROOT/mcore-bridge --no-build-isolation --no-deps
-python -m pip install -e $SWIFT_ROOT/ms-swift --no-build-isolation --no-deps
+# 2. Install MegatronAdaptor and TransformerEngineNPU.
+git clone https://gitcode.com/Ascend/MegatronAdaptor.git
+cd MegatronAdaptor
+git checkout core_r0.18.0
+pip install -e .
+cd ..
+
+git clone https://gitcode.com/Ascend/TransformerEngineNPU.git
+cd TransformerEngineNPU
+git checkout main
+pip install -e . --no-build-isolation
+cd ..
+
+# 3. Get the matching Megatron-LM source and configure its path.
+git clone https://github.com/NVIDIA/Megatron-LM.git
+cd Megatron-LM
+git checkout core_r0.18.0
+cd ..
+export MEGATRON_LM_PATH="$(pwd)/Megatron-LM"
+export PYTHONPATH="$MEGATRON_LM_PATH:$PYTHONPATH"
 ```
 
-The pinned `mcore-bridge` commit contains the TransformerEngineNPU main adaptations for NPU LoRA `LayerNormLinear`, GroupedLinear/expert handling, and checkpoint mapping; it does not rely on an uncommitted working-tree patch.
+These commands follow the official [mcore-bridge source installation](https://github.com/modelscope/mcore-bridge/blob/main/README.md#%EF%B8%8F-installation), [MegatronAdaptor installation guide](https://gitcode.com/Ascend/MegatronAdaptor/blob/core_r0.18.0/docs/zh/install_guide.md), and [TENPU installation guide](https://gitcode.com/Ascend/TransformerEngineNPU/blob/main/docs/zh/install_guide.md). Only TENPU uses `--no-build-isolation`, as specified in its official command. Refer to the TENPU guide for its other prerequisites and compatible versions.
+
+After the companion integration is merged, the official `mcore-bridge` `main` branch provides the TransformerEngineNPU main adaptations for NPU LoRA `LayerNormLinear`, GroupedLinear/expert handling, and checkpoint mapping; it does not rely on an uncommitted working-tree patch.
 
 The companion bridge fix also removes the MindSpeed-defaults probe. Admission should check that `find_spec('mindspeed') is None`, `mindspeed` is absent from `sys.modules`, and the bridge runtime source contains no MindSpeed references.
 
@@ -304,16 +314,21 @@ Check both source ownership and the absence of MindSpeed; a successful import al
 ```shell
 python - <<'PY'
 import importlib.util
-import megatron_adaptor, megatron.core, transformer_engine, mcore_bridge, fla
+import os
+from pathlib import Path
+import megatron_adaptor, megatron.core, transformer_engine, mcore_bridge
 from swift.megatron.init import init_megatron_env
 init_megatron_env()
-for module in (megatron_adaptor, megatron.core, transformer_engine, mcore_bridge):
-    print(module.__name__, module.__file__)
-assert '/home/zyh/code/' in megatron_adaptor.__file__
-assert '/home/zyh/code/' in megatron.core.__file__
-assert '/home/zyh/code/' in transformer_engine.__file__
-assert '/home/zyh/code/' in mcore_bridge.__file__
-assert '/home/zyh/code/' in fla.__file__
+root = Path(os.environ['MEGATRON_LM_PATH']).expanduser().resolve().parent
+for module, directory in (
+    (megatron_adaptor, 'MegatronAdaptor'),
+    (megatron.core, 'Megatron-LM'),
+    (transformer_engine, 'TransformerEngineNPU'),
+    (mcore_bridge, 'mcore-bridge'),
+):
+    source = Path(module.__file__).resolve()
+    print(module.__name__, source)
+    assert source.is_relative_to((root / directory).resolve()), source
 assert importlib.util.find_spec('mindspeed') is None
 print('NPU MegatronAdaptor/MCore 0.18 environment verified')
 PY
@@ -324,6 +339,23 @@ PY
 The Qwen3.5 Megatron NPU path uses MCore 0.18's `GatedDeltaNet` (GDN, the gated DeltaNet state-space layer) by default. MegatronAdaptor provides the NPU Torch-native replacements for causal-conv, GDN, and normalization. `USE_MCORE_GDN` remains supported: `1` selects MCore GDN and `0` selects the Transformers GDN; it is a model-implementation choice independent of the 0.18 dependency migration.
 
 mcore-bridge connects Qwen3.5/Omni model parameters and packed/padding-free metadata to MCore; CP (context parallel, sequence-dimension parallelism) uses the MCore 0.18 implementation. Dense, GDN, and MoE forward/backward, optimizer, packing, CP, and save/resume must be validated independently; a successful environment install is not evidence of long-run stability or performance.
+
+#### Optional GDN Acceleration: FLA and Triton-Ascend
+
+When training models with GDN layers, such as Qwen3.5, optionally install FLA (Flash Linear Attention) and Triton-Ascend to accelerate GDN operators on supported devices and backends. The Triton-Ascend version must match the existing CANN, PyTorch, and TorchNPU environment. Skip its installation command if a compatible version is already installed. See the [official FLA installation guide](https://github.com/fla-org/flash-linear-attention/blob/main/INSTALL.md#ascend-npu) for version compatibility and NPU backend details.
+
+```shell
+cd ~/swift-npu
+pip install triton-ascend --extra-index-url=https://triton-ascend.osinfra.cn/pypi/simple
+
+git clone https://github.com/fla-org/flash-linear-attention.git
+cd flash-linear-attention
+git checkout main
+pip install -e .
+cd ..
+```
+
+> **Ascend 950 limitation:** FLA has not yet been adapted for Ascend 950. Compatibility or runtime issues may occur. Validate it on the target hardware and actual training configuration.
 
 ### Environment Viewing
 Check the P2P connections of the NPU, where we can see that each NPU is interconnected through 7 HCCS links with other NPUs.
@@ -843,11 +875,11 @@ Do not assume they can. Before downloading or loading a large model, check wheth
 
 ### Q14: How do I troubleshoot Megatron importing the wrong MCore/Adaptor?
 
-Before running Megatron, `PYTHONPATH`, `MEGATRON_LM_PATH`, and the local MegatronAdaptor/TransformerEngineNPU paths must point to the same `/home/zyh/code` checkouts. Otherwise Python may start successfully while importing a different MCore/Adaptor combination, which can make later errors look like model or argument issues.
+Before running Megatron, `PYTHONPATH`, `MEGATRON_LM_PATH`, and the local MegatronAdaptor/TransformerEngineNPU paths must point to the same source checkouts in the installation directory above. Otherwise Python may start successfully while importing a different MCore/Adaptor combination, which can make later errors look like model or argument issues.
 
 ```shell
-export MEGATRON_LM_PATH=/home/zyh/code/Megatron-LM
-export PYTHONPATH=/home/zyh/code/Megatron-LM:/home/zyh/code/MegatronAdaptor:/home/zyh/code/TransformerEngineNPU:/home/zyh/code/mcore-bridge/src:/home/zyh/code/ms-swift:$PYTHONPATH
+export MEGATRON_LM_PATH="$HOME/swift-npu/Megatron-LM"
+export PYTHONPATH="$MEGATRON_LM_PATH:$PYTHONPATH"
 python -c "import importlib.util, megatron_adaptor, megatron.core, transformer_engine, os; print(megatron_adaptor.__file__); print(megatron.core.__file__); print(transformer_engine.__file__); print(os.environ.get('MEGATRON_LM_PATH')); assert importlib.util.find_spec('mindspeed') is None"
 ```
 
