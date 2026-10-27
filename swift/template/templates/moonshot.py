@@ -78,7 +78,6 @@ class KimiVLTemplate(Template):
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
             return ['<|media_start|>image<|media_content|><|media_pad|><|media_end|>']
-        raise ValueError(f'KimiVLTemplate does not support {media_type} input.')
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
