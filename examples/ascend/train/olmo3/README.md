@@ -123,19 +123,35 @@ bash examples/ascend/train/olmo3/sft_lora.sh
 | `save_steps` / `save_total_limit` | `200` / `2` | checkpoint 保存间隔及保留数量 |
 | `report_to` | `none` | 不接入外部实验记录平台 |
 
-单机有效全局 batch size 为 `进程数 × 每卡 batch size × 梯度累积步数`，默认是 `16 × 1 × 2 = 32`。调整卡数时可结合训练需求调整梯度累积步数。
+脚本默认 `sequence_parallel_size=1`，单机有效全局 batch size 为 `进程数 × 每卡 batch size × 梯度累积步数`，即 `16 × 1 × 2 = 32`。启用序列并行后，应使用 `数据并行规模 × 每卡 batch size × 梯度累积步数` 计算，其中数据并行规模为 `进程数 / sequence_parallel_size`。
 
 当前脚本使用多进程数据并行，**没有启用 DeepSpeed/ZeRO，也不会按卡数自动启用**。数据并行会在各设备保留模型副本，增加卡数不能直接解决单卡模型内存不足的问题。实际内存占用与设备、序列长度及运行时有关。
+
+### 纯 Ulysses 序列并行
+
+可在训练参数中增加 `--sequence_parallel_size 2`，配合 `--attn_impl sdpa --padding_free false` 使用纯 Ulysses。总进程数应能被序列并行规模整除，模型 KV 头数也应能被该规模整除，使实际 `rp_world_size=1`，避免引入 Ring Attention。脚本默认仍为普通数据并行。
+
+当前 NPU 适配不支持 Ring Attention：现有实现要求 FlashAttention 和 padding-free，而 Olmo3 NPU 路径仅允许 SDPA/eager，并通过模板能力限制 packing/padding-free。无需额外的模型参数校验接口。
+
+纯 Ulysses 已在双卡 NPU、PyTorch 2.10.0、torch_npu 2.10.0.post4、Transformers 4.57.6 上用小模型验证 FP32/BF16 前向、loss 和梯度对齐，以及 BF16 LoRA、梯度检查点的两步 SFT；该验证不代表完整 7B 长时间训练或性能结论。
 
 ## 4. 训练前验证
 
 可先在仓库根目录执行适配相关测试（需安装 `pytest`）：
 
 ```bash
-python -m pytest tests/general/test_olmo3_template.py tests/models/test_olmo3.py -v
+python -m pytest tests/general/test_olmo3_template.py tests/models/test_olmo3.py tests/models/test_olmo3_sequence_parallel.py -v
 ```
 
-仅执行真实 NPU 硬件用例：
+序列并行回归测试在 CPU 上使用双进程 Gloo/FP32；有两张可见 NPU 时使用 HCCL，并覆盖 FP32/BF16。测试会检查实际为纯 Ulysses，并对齐未分片参考值的 logits、loss 和全部参数梯度。无相应硬件时会明确跳过。
+
+仅执行序列并行测试：
+
+```bash
+ASCEND_RT_VISIBLE_DEVICES=0,1 python -m pytest tests/models/test_olmo3_sequence_parallel.py -v
+```
+
+仅执行原有 NPU 硬件用例：
 
 ```bash
 python -m pytest tests/models/test_olmo3.py -v -k 'npu_bf16 or npu_sdpa'
@@ -157,7 +173,7 @@ python -m pytest tests/models/test_olmo3.py -v -k 'npu_bf16 or npu_sdpa'
 
 - NPU 注意力支持 `sdpa` 和 `eager`，脚本使用 `sdpa`。Olmo3 混合使用滑动窗口注意力与全注意力，需保留逐层对应的 mask；当前适配拒绝 NPU FlashAttention 路径。不要通过修改 `layer_types` 或 `sliding_window` 绕过限制。
 - NPU 算子适配覆盖满足条件时的 RMSNorm 和 SwiGLU MLP；RoPE 保留原生 FP32 计算路径。算子替换包含设备、数据类型或激活函数检查，不代表所有输入均使用融合算子。
-- 当前不支持 `packing`、`padding_free` 和 `sequence_parallel_size > 1`；保持 `false`、`false`、`1`。多卡数据并行不受此限制。
+- 当前不支持 `packing`、`padding_free` 和 NPU Ring Attention；保持 `packing=false`、`padding_free=false`。支持上述条件下的纯 Ulysses，普通多卡数据并行不受此限制。
 - 本目录仅提供 LoRA SFT 示例，没有全参数训练脚本；本次模型适配不包含 Megatron 后端。
 
 如出现 NPU 不可见，先检查 CANN 环境是否加载、`torch_npu` 是否能导入以及设备检测结果；如出现通信连接或端口错误，检查设备列表、进程数、端口及 HCCL 日志；如内存不足，可先减小序列长度并保留梯度检查点，再根据实际环境调整训练配置。

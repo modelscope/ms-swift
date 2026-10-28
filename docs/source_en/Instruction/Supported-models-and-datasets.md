@@ -13,6 +13,8 @@ The table below introduces the models integrated with ms-swift:
 - Tags: Tags associated with the model
 
 
+`allenai/Olmo-3-7B-Think` uses `olmo3` as both its model type and default template. On NPU, SDPA with pure Ulysses is supported with `padding_free=false` and `packing=false`. Choose a sequence-parallel size that divides the model's KV head count so that `rp_world_size=1`. The current NPU adaptation does not support FlashAttention, packing/padding-free, or Ring Attention.
+
 ### Large Language Models
 | Model ID | Model Type | Default Template | Default Agent Template | Requires | Support Megatron | Tags | HF Model ID |
 | -------- | -----------| ---------------- | ---------------------- | -------- | ---------------- | ---- | ----------- |

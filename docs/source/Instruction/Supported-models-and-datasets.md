@@ -12,6 +12,8 @@
 - Tags: 模型的tags
 
 
+`allenai/Olmo-3-7B-Think` 的模型类型和默认模板均为 `olmo3`。NPU 上支持 SDPA 配合纯 Ulysses，需保持 `padding_free=false`、`packing=false`，并选择能整除模型 KV 头数的序列并行规模，使 `rp_world_size=1`。当前 NPU 适配不支持 FlashAttention、packing/padding-free 或 Ring Attention。
+
 ### 大语言模型
 | Model ID | Model Type | Default Template | Default Agent Template | Requires | Support Megatron | Tags | HF Model ID |
 | -------- | -----------| ---------------- | ---------------------- | -------- | ---------------- | ---- | ----------- |

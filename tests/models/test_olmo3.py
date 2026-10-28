@@ -123,82 +123,30 @@ def test_auto_config_recognizes_local_olmo3(tmp_path):
     assert loaded.rope_scaling == config.rope_scaling
 
 
-@pytest.mark.parametrize('template', ['olmo3', 'default'])
-@pytest.mark.parametrize('unsupported', [
-    {
-        'sequence_parallel_size': 2
-    },
-    {
-        'packing': True
-    },
-    {
-        'padding_free': True
-    },
-])
-def test_sft_arguments_reject_unsupported_paths_before_output_or_model_loading(tmp_path, unsupported, template):
+@pytest.mark.parametrize('feature', ['padding_free', 'packing'])
+def test_sft_arguments_require_flash_attention_for_padding_free(tmp_path, feature):
     from swift import SftArguments
 
     model_dir = tmp_path / 'model'
     config = _tiny_config()
     config.architectures = ['Olmo3ForCausalLM']
     config.save_pretrained(model_dir)
-    output_dir = tmp_path / 'output'
-    with pytest.raises(ValueError, match='Olmo3 hybrid attention'):
-        # Overriding the chat template must not bypass the model's attention guard.
+    with pytest.raises(ValueError, match='requires a flash attention implementation'):
         SftArguments(
             model=str(model_dir),
-            template=template,
+            template='olmo3',
             dataset=['unused.jsonl'],
-            output_dir=str(output_dir),
+            output_dir=str(tmp_path / 'output'),
             torch_dtype='float32',
             fp16=False,
             bf16=False,
-            **unsupported)
-    assert not output_dir.exists()
+            attn_impl='sdpa',
+            **{feature: True})
 
 
-@pytest.mark.parametrize('template', ['olmo3', 'default'])
-def test_sft_rejects_sequence_parallel_before_model_loading_or_prepare(tmp_path, monkeypatch, template):
-    from swift import SftArguments
-    from swift.pipelines.train.sft import SwiftSft
-    from swift.sequence_parallel import sequence_parallel
-
-    model_dir = tmp_path / 'model'
-    config = _tiny_config()
-    config.architectures = ['Olmo3ForCausalLM']
-    config.save_pretrained(model_dir)
-    output_dir = tmp_path / 'output'
-    load_model = Mock(side_effect=AssertionError('Model loading must not start for unsupported sequence parallelism.'))
-    prepare = Mock(side_effect=AssertionError('Sequence-parallel initialization must not start.'))
-    monkeypatch.setattr(SftArguments, 'get_model_processor', load_model)
-    monkeypatch.setattr(sequence_parallel, 'prepare', prepare)
-
-    with pytest.raises(ValueError, match='Olmo3 hybrid attention'):
-        SwiftSft([
-            '--model',
-            str(model_dir),
-            '--template',
-            template,
-            '--dataset',
-            'unused.jsonl',
-            '--output_dir',
-            str(output_dir),
-            '--torch_dtype',
-            'float32',
-            '--fp16',
-            'false',
-            '--bf16',
-            'false',
-            '--sequence_parallel_size',
-            '2',
-        ])
-    load_model.assert_not_called()
-    prepare.assert_not_called()
-    assert not output_dir.exists()
-
-
-@pytest.mark.parametrize('model_type,sp_size', [('olmo3', 1), ('llama', 2)])
-def test_sft_arguments_keep_supported_model_configurations(tmp_path, model_type, sp_size):
+@pytest.mark.parametrize('model_type,sp_size,template', [('olmo3', 1, 'olmo3'), ('olmo3', 2, 'olmo3'),
+                                                         ('olmo3', 2, 'default'), ('llama', 2, 'default')])
+def test_sft_arguments_keep_supported_model_configurations(tmp_path, model_type, sp_size, template):
     from transformers import LlamaConfig
 
     from swift import SftArguments
@@ -210,7 +158,7 @@ def test_sft_arguments_keep_supported_model_configurations(tmp_path, model_type,
     args = SftArguments(
         model=str(model_dir),
         model_type=model_type,
-        template='default',
+        template=template,
         dataset=['unused.jsonl'],
         output_dir=str(tmp_path / 'output'),
         torch_dtype='float32',

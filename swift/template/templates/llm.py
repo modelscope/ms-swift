@@ -633,14 +633,9 @@ register_template(
 
 class Olmo3Template(Template):
 
-    # Packed/padding-free and sequence-parallel paths do not preserve Olmo3's
-    # separate sliding-window and full-attention masks.
+    # Packed/padding-free paths do not preserve Olmo3's separate
+    # sliding-window and full-attention masks.
     support_padding_free = False
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.sequence_parallel_size > 1:
-            raise ValueError('olmo3 does not support sequence_parallel_size > 1 with hybrid attention.')
 
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
         # The official Think template uses its own function_calls/environment

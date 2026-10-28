@@ -202,11 +202,11 @@ class TestOlmo3Template(unittest.TestCase):
                     media_type: ['does-not-exist'],
                 })
 
-    def test_disables_unsupported_hybrid_attention_training_paths(self):
-        # SFT checks this flag for both --padding_free and --packing.
-        self.assertFalse(self.make_template().support_padding_free)
-        with self.assertRaisesRegex(ValueError, 'sequence_parallel_size > 1'):
-            self.make_template(sequence_parallel_size=2)
+    def test_allows_sequence_parallel_without_padding_free(self):
+        template = self.make_template(sequence_parallel_size=2)
+        self.assertEqual(template.sequence_parallel_size, 2)
+        # SFT still checks this flag for both --padding_free and --packing.
+        self.assertFalse(template.support_padding_free)
 
 
 if __name__ == '__main__':
