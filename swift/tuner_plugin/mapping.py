@@ -3,6 +3,7 @@ from .dummy import DummyTuner
 from .entropack import prepare_entropack_model
 from .ia3 import IA3Tuner
 from .lora_llm import LoRALLMTuner
+from .minicpm_ocr import prepare_minicpm_ocr_model
 
 tuners_map = {
     'ia3': IA3Tuner,
@@ -11,6 +12,7 @@ tuners_map = {
 }
 model_prepare_hooks = {
     'entropack': prepare_entropack_model,
+    'minicpm_ocr': prepare_minicpm_ocr_model,
 }
 
 
