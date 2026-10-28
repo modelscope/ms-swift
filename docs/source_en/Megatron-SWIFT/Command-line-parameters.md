@@ -2,6 +2,18 @@
 
 ## Megatron Parameters
 
+### Basic parallel argument preflight
+
+Megatron training (`megatron sft/pt/rlhf`) brings forward Megatron's existing two divisibility checks at the Swift argument entry point, before process-group initialization in the output-directory flow. The default Transformers backend and Megatron export entry point are unchanged.
+
+- Omitted parameters retain the existing defaults: TP, PP, CP, EP, and ETP are 1. An explicit `ETP=None` uses TP for checking, matching Megatron Core's fallback, without modifying the original argument.
+- When the global world size is known, check `WORLD_SIZE % (TP * PP * CP) == 0` and `WORLD_SIZE % (ETP * EP * PP) == 0`. Errors include parameter values, products, remainders, and why equal-sized dense/expert groups cannot be formed.
+- No independent Python-type, sign, DP/Expert DP, or VPP policy is added. If the same arithmetic raises a type or zero-division error, provide context while preserving the original cause. Other type, value, and layout constraints remain with the existing parser and backend. An input not rejected here is not necessarily usable for training.
+- DP/Expert DP remain backend-derived. VPP follows existing pipeline-layout normalization, is not prevalidated here, and does not multiply the physical world size.
+- World size comes from an initialized default process group, otherwise from `WORLD_SIZE` and `_PATCH_WORLD_SIZE`, with empty strings treated as unset. With no launch markers it is 1. A Ray driver with `skip_megatron_init=True`, or a process with only local/launch information and no known global size, defers the preflight.
+
+This change improves the timing and explanation of existing checks. It does not replace complete Megatron/MindSpeed validation or add batch-size, model-structure, or topology constraints. Extra upstream axes not enabled by the current Swift initialization entry point are not assumed active.
+
 **Training Parameters**:
 
 - 🔥micro_batch_size: Batch size per DP group, default is 1.
