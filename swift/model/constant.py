@@ -231,6 +231,8 @@ class MLLMModelType:
     deepseek_ocr = 'deepseek_ocr'
     deepseek_ocr2 = 'deepseek_ocr2'
     unlimited_ocr = 'unlimited_ocr'
+    # NOTE: `unlimited-ocr` is not a typo: it is the model_type declared by v2's `config.json`.
+    unlimited_ocr2 = 'unlimited-ocr'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
