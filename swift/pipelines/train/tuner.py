@@ -416,10 +416,6 @@ class TunerMixin:
         else:
             raise ValueError(f'args.tuner_type: {args.tuner_type}')
 
-        prepare_model_for_training = getattr(template, 'prepare_model_for_training', None)
-        if prepare_model_for_training is not None:
-            prepare_model_for_training(model)
-
         if args.use_galore:
             if args.galore_target_modules is None:
                 args.galore_target_modules = find_all_linears(model)

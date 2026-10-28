@@ -19,9 +19,10 @@ def test_default_visual_compression(model_type, expected_mode, monkeypatch):
     assert template.downsample_mode == expected_mode
 
 
-@pytest.mark.parametrize('downsample_mode', ['4x', '16x'])
+@pytest.mark.parametrize('model_type', ['minicpm_ocr', 'minicpmv4_6'])
+@pytest.mark.parametrize('downsample_mode', [None, '4x', '16x'])
 @pytest.mark.parametrize('adapter', [False, True])
-def test_training_freezes_unused_vit_merger(downsample_mode, adapter, monkeypatch):
+def test_training_freezes_unused_vit_merger(model_type, downsample_mode, adapter, monkeypatch):
     from swift.pipelines.train import tuner
 
     model = torch.nn.Module()
@@ -38,10 +39,12 @@ def test_training_freezes_unused_vit_merger(downsample_mode, adapter, monkeypatc
 
     monkeypatch.setattr(tuner, 'prepare_adapter', prepare_adapter)
     monkeypatch.setattr(tuner, 'is_deepspeed_zero3_enabled', lambda: False)
-    template_meta = TEMPLATE_MAPPING['minicpm_ocr']
-    template = template_meta.template_cls(processor=None, template_meta=template_meta)
-    template.downsample_mode = downsample_mode
+    if downsample_mode is None:
+        monkeypatch.delenv('DOWNSAMPLE_MODE', raising=False)
+    else:
+        monkeypatch.setenv('DOWNSAMPLE_MODE', downsample_mode)
     args = SimpleNamespace(
+        model_type=model_type,
         use_liger_kernel=False,
         is_adapter=adapter,
         tuner_type='lora' if adapter else 'full',
@@ -54,14 +57,28 @@ def test_training_freezes_unused_vit_merger(downsample_mode, adapter, monkeypatc
         trainable_parameters=[],
         trainable_parameters_regex=None,
         use_galore=False)
-    prepared = tuner.TunerMixin.prepare_model(args, model, template=template)
+    prepared = tuner.TunerMixin.prepare_model(args, model)
     parameters = dict(prepared.named_parameters())
     merger_parameters = [p for n, p in parameters.items() if 'vision_tower.vit_merger' in n]
     assert merger_parameters
     if adapter:
         merger_parameters = [p for n, p in parameters.items() if 'vision_tower.vit_merger.lora' in n]
-    assert all(p.requires_grad == (downsample_mode == '16x') for p in merger_parameters)
+    should_freeze = model_type == 'minicpm_ocr' and downsample_mode != '16x'
+    assert all(p.requires_grad != should_freeze for p in merger_parameters)
     assert any(p.requires_grad for n, p in parameters.items() if 'language_model' in n)
+
+
+@pytest.mark.parametrize('template_type, frozen', [('minicpm_ocr', True), ('minicpmv4_6', False)])
+def test_ocr_hook_uses_selected_template_default(template_type, frozen, monkeypatch):
+    from swift.tuner_plugin.minicpm_ocr import prepare_minicpm_ocr_model
+
+    monkeypatch.delenv('DOWNSAMPLE_MODE', raising=False)
+    args = SimpleNamespace(model_type='minicpm_ocr', template_meta=TEMPLATE_MAPPING[template_type])
+    model = torch.nn.Module()
+    model.vision_tower = torch.nn.Module()
+    model.vision_tower.vit_merger = torch.nn.Linear(2, 2)
+    prepare_minicpm_ocr_model(args, model)
+    assert all(p.requires_grad != frozen for p in model.vision_tower.vit_merger.parameters())
 
 
 def test_native_ocr_prompt_and_supervision(monkeypatch):
