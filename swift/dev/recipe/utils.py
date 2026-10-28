@@ -291,11 +291,12 @@ def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
         # loop treats as "the checkpoint dir"), and every local-dir side effect below (converted
         # adapter, hub push, args.json copy) has no directory to act on. save is synchronous on
         # the client (_await_task blocks to the terminal state), so no wait_async_saves either.
+        # No component state rides the call: SaveRequest has no field for it, and the data
+        # position re-seeds from the server's own progress on resume (resume_from_checkpoint).
         response = model.save(
             name,
             save_optimizer=not knobs.no_save_optim,
-            consumed_train_samples=consumed_train_samples,
-            state=component_states or {})
+            consumed_train_samples=consumed_train_samples)
         return getattr(response, 'twinkle_path', name)
 
     save_training_checkpoint(

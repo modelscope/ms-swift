@@ -10,15 +10,19 @@ narrowed to "class name + serializable kwargs" -- the str branch of the local
 ``Union[instance, type, str]`` signatures. Loss and tuner therefore need remote variants
 (the local ones pass peft/Loss instances); configure_optimizer's transformers branch is
 already a description ("set_optimizer(name, scalar kwargs)") and is reused as is.
+
+The server-side processor is swift's own dev one, registered into ``twinkle.processor`` at
+worker startup via ``TWINKLE_WORKER_SETUP_HOOK``; the client asks for it by class NAME and
+ships a serialized ``TemplateSpec`` so the server rebuilds the dev Template itself.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
-    from swift.dev.config import DistributedConfig, ModelConfig, TrainConfig, TunerConfig
+    from swift.dev.config import DistributedConfig, ModelConfig, TemplateConfig, TrainConfig, TunerConfig
 
 logger = get_logger()
 
@@ -33,10 +37,36 @@ def build_remote_model(model_config: 'ModelConfig', distributed_config: 'Distrib
     from twinkle import init_twinkle_client
     from twinkle_client.model import MultiLoraTransformersModel
 
-    init_twinkle_client(base_url=distributed_config.server_base_url)
-    model = MultiLoraTransformersModel(model_config.model or '')
+    init_twinkle_client(base_url=distributed_config.server_base_url, api_key=distributed_config.server_api_key)
+    handle = MultiLoraTransformersModel(model_config.model or '')
     logger.info(f"[remote] driving server {distributed_config.server_base_url!r} model {model_config.model!r}")
-    return model
+    return RemoteModel(handle)
+
+
+class RemoteModel:
+    """Normalizes the twinkle_client handle's RESPONSES onto the local TrainableModel face.
+
+    The handle mirrors the local method signatures (narrowed to class-name + scalar kwargs), but
+    replies with protocol Response objects where the local model returns plain values:
+    ``calculate_metric`` / ``resume_from_checkpoint`` wrap their dict payload in a ``result``
+    field. The shared recipe code is mode-blind and reads those returns as dicts, so the unwrap
+    lives here with the other remote object sources instead of at every consumption point.
+    """
+
+    def __init__(self, handle: Any) -> None:
+        self._handle = handle
+
+    def __getattr__(self, name: str) -> Any:
+        # forward_backward / set_* / add_adapter_to_model / save / ... delegate unchanged.
+        return getattr(self.__dict__['_handle'], name)
+
+    def calculate_metric(self, is_training: bool = True, **kwargs: Any) -> Any:
+        response = self._handle.calculate_metric(is_training=is_training, **kwargs)
+        return getattr(response, 'result', response)
+
+    def resume_from_checkpoint(self, path: str, **kwargs: Any) -> Any:
+        response = self._handle.resume_from_checkpoint(path, **kwargs)
+        return getattr(response, 'result', response)
 
 
 def apply_remote_tuner(model: Any, tuner_config: Optional['TunerConfig'],
@@ -106,3 +136,35 @@ def _liger_fused_ce_enabled(train_config: 'TrainConfig') -> bool:
 #: pass loss instances; their remote story is untested. Refused here so the failure happens
 #: at assembly time, not deep inside a server request.
 REMOTE_UNSUPPORTED_TASKS = ('embedding', 'seq_cls', 'reranker', 'generative_reranker')
+
+
+#: The server-side processor class the remote path asks for by NAME. The server must have imported
+#: ``swift.dev.processor.server_plugin`` in every backend worker (``TWINKLE_WORKER_SETUP_HOOK`` in
+#: the model app's runtime env); ``register`` then exports this class into ``twinkle.processor``,
+#: so no client-supplied plugin path ever crosses the wire.
+REMOTE_PROCESSOR_CLS = 'DevInputProcessor'
+
+
+def configure_remote_processor(model: Any, template_config: 'TemplateConfig', model_config: 'ModelConfig',
+                               distributed_config: 'DistributedConfig') -> None:
+    """Set the server-side processor to swift's dev one, enabled at server startup.
+
+    The dev Template itself is rebuilt inside the worker from the serialized ``TemplateSpec``
+    below, so the per-row stages (position_ids/mrope, bookkeeping drops) run next to the batch
+    stages twinkle already owns, and the client no longer finishes rows before shipping them.
+    """
+    import json
+    from dataclasses import asdict
+
+    from swift.dev.builders.template import build_template_spec
+
+    spec = build_template_spec(template_config, model_config)
+    # JsonValue on the wire: tuples become lists; TemplateSpec.from_dict accepts either.
+    template_spec = json.loads(json.dumps(asdict(spec)))
+    model.set_processor(
+        REMOTE_PROCESSOR_CLS,
+        template_spec=template_spec,
+        padding_free=template_config.padding_free,
+        padding_side=template_config.padding_side,
+        cp_partition_mode=distributed_config.cp_partition_mode,
+    )

@@ -155,6 +155,7 @@ def process_and_validate_configs(
         add_version=add_version,
         create_output_dir=create_output_dir,
         resolve_model=resolve_model,
+        remote_mode=configs.get('distributed_config', DistributedConfig()).mode == 'remote',
     )
 
 
@@ -168,6 +169,7 @@ def bootstrap_run(
     add_version: Optional[bool] = None,
     create_output_dir: bool = True,
     resolve_model: bool = True,
+    remote_mode: bool = False,
 ) -> None:
     """Apply CLI runtime side effects after processing and validation."""
     if seed is not None:
@@ -179,7 +181,10 @@ def bootstrap_run(
     _prepare_output_dir(checkpoint_config, add_version=add_version, create_output_dir=create_output_dir)
     _export_model_kwargs(model_config)
     _login_hub(dataset_config)
-    if resolve_model:
+    if resolve_model and not remote_mode:
+        # remote: ModelConfig.model names the SERVER-side served model and must survive verbatim
+        # (a local snapshot dir would corrupt the client URL); the local tokenizer that the
+        # dataset encode needs is resolved separately by load_model_processor.
         _resolve_model(model_config, dataset_config)
     _resolve_adapters(tuner_config, dataset_config)
 

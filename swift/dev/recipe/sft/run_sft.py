@@ -333,7 +333,15 @@ def _run_supervised(cluster: SupervisedCluster, model_config: 'ModelConfig',
             evaluate()
         from swift.dev.recipe.utils import backend_owns_gradient_accumulation
 
-        if backend_owns_gradient_accumulation(model):
+        # Under mode='remote' the ENGINE type is invisible to the client handle (isinstance cannot
+        # cross HTTP), so the GA-ownership dispatch falls back to the config's backend: a remote
+        # megatron app internalizes GA exactly like the local one (one forward_backward over the
+        # ga-batch list per optimizer window, which also keeps every DP rank fed -- batch >= dp).
+        from swift.dev.builders import is_megatron_backend
+
+        remote_megatron = (distributed_config.mode == 'remote'
+                           and is_megatron_backend(distributed_config))
+        if backend_owns_gradient_accumulation(model) or remote_megatron:
             fit_megatron()
         else:
             fit_transformers()

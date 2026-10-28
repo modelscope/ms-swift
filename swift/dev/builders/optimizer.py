@@ -176,10 +176,12 @@ def configure_optimizer(model: TrainableModel,
         start_wd, end_wd = megatron_weight_decay_bounds(cfg)
         # clip_grad MUST ride here: Megatron clips inside step() and twinkle's clip_grad_and_step
         # ignores its max_grad_norm argument entirely.
-        import torch
         # min_lr must reach the OPTIMIZER too: the scheduler reads the bound off the param group
         # first, so leaving the group's 0.0 lets cosine decay past the floor all the way to 0.
-        dtype_map = {'fp32': torch.float32, 'fp16': torch.float16, 'bf16': torch.bfloat16, 'fp8': torch.uint8}
+        # Dtypes travel as NAME strings: the set_optimizer call is a description that must cross
+        # HTTP intact in mode='remote' (a torch.dtype object is not a JSON value); the model side
+        # normalizes the name back to a torch dtype.
+        dtype_map = {'fp32': 'float32', 'fp16': 'float16', 'bf16': 'bfloat16', 'fp8': 'uint8'}
         model.set_optimizer(
             'MegatronOptimizer',
             optimizer=cfg.optimizer,

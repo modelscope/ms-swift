@@ -22,8 +22,9 @@ class DistributedConfig:
     # === Launch ===
     # 'remote' = the training/inference processes live in a twinkle-server: this process is a
     # single-process twinkle_client driver (no torchrun, no local DeviceMesh); ModelConfig.model
-    # then names the server-side served model id (e.g. 'ms://Qwen/Qwen2.5-7B-Instruct'), not a
-    # local path. Transformers backend only; RL is refused until the StreamingDriver client port.
+    # then names the server-side served model id (e.g. 'Qwen/Qwen2.5-7B-Instruct'), not a local
+    # path. backend under remote names the SERVER-side model app's engine (hf or megatron).
+    # RL is refused until the StreamingDriver client port.
     mode: Literal['ray', 'local', 'remote'] = 'local'
     nproc_per_node: Optional[int] = None
     # Run name handed to twinkle.initialize(name=...); only read in mode='ray'.
@@ -31,6 +32,8 @@ class DistributedConfig:
     # Gateway root of the twinkle-server to drive in mode='remote' (required there, ignored
     # otherwise). twinkle_client appends '/api/v1' itself, so pass the gateway base WITHOUT it.
     server_base_url: Optional[str] = None
+    # Bearer token for the twinkle-server gateway in mode='remote'; None = unauthenticated.
+    server_api_key: Optional[str] = None
 
     # === DDP ===
     # Collective timeout (transformers backend); a long first step can trip the default.

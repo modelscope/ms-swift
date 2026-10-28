@@ -687,7 +687,7 @@ def _initialize_for_sampling(distributed_config: 'DistributedConfig',
         if not distributed_config.server_base_url:
             raise ValueError("--mode remote requires --server_base_url (the twinkle-server gateway "
                              'root).')
-        init_twinkle_client(base_url=distributed_config.server_base_url)
+        init_twinkle_client(base_url=distributed_config.server_base_url, api_key=distributed_config.server_api_key)
         return
     if distributed_config is None or distributed_config.mode != 'ray':
         # None is the run-wide default (single process, no ray): the sampler builds plainly, and

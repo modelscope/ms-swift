@@ -142,16 +142,14 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
         raise ValueError(
             "--mode remote requires --server_base_url (the twinkle-server gateway root; "
             "twinkle_client appends '/api/v1' itself).")
-    if is_megatron:
-        raise ValueError(
-            "--mode remote does not support the megatron backend: Megatron needs torchrun "
-            "ranks and a local DeviceMesh, which a single-process client driver cannot provide. "
-            "Drop --backend megatron, or run locally with mode=local/ray.")
     if rl_config is not None:
         raise ValueError(
             "--mode remote does not support RL yet: the rollout side needs the StreamingDriver "
             "client port (in progress). Train the supervised family remotely, or run RL with "
             "mode=ray as today.")
+    # backend under remote names the SERVER-side model app's engine (hf or megatron): both are
+    # legal, because configure_optimizer's two branches are already descriptions that cross HTTP
+    # ('AdamW' for the transformers app, 'MegatronOptimizer' + its kwargs for the megatron one).
     if tuner_config is not None and tuner_config.tuner not in ('full', 'lora'):
         raise ValueError(
             f"--mode remote does not support tuner={tuner_config.tuner!r}: the server-side "

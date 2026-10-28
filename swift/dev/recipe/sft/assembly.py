@@ -112,17 +112,13 @@ def build_supervised_objects(
             tf32=train_config.tf32,
         )
     # mode='remote' replaces only the OBJECT SOURCES that cannot cross HTTP: the model becomes a
-    # twinkle_client handle, and the loss/tuner/processor/template calls carry class names instead
-    # of instances. The dataset and template stay local (rows are encoded here and shipped as
-    # forward inputs), so build_dataset/plan_supervised_steps are shared by both modes.
+    # twinkle_client handle, and the loss/tuner/processor calls carry class names instead of
+    # instances. The dataset and template stay local (rows are encoded here and shipped as forward
+    # inputs), so build_dataset/plan_supervised_steps are shared by both modes.
     from swift.dev.builders.remote import (
         REMOTE_UNSUPPORTED_TASKS, apply_remote_tuner, build_remote_model, configure_remote_loss,
+        configure_remote_processor,
     )
-    if remote and (task_type or 'causal_lm') in REMOTE_UNSUPPORTED_TASKS:
-        raise ValueError(
-            f"--mode remote does not support task_type={(task_type or 'causal_lm')!r}: the "
-            'embedding/seq_cls/reranker loss families pass loss instances that cannot cross HTTP '
-            'and are untested remotely. Run them with mode=local/ray.')
     process_and_validate(
         model_config,
         template_config,
@@ -141,6 +137,11 @@ def build_supervised_objects(
     task_type = model_config.task_type
     if task is not None:
         task_type = _require_task_type(recipe, model_config, task)
+    if remote and (task_type or 'causal_lm') in REMOTE_UNSUPPORTED_TASKS:
+        raise ValueError(
+            f"--mode remote does not support task_type={(task_type or 'causal_lm')!r}: the "
+            'embedding/seq_cls/reranker loss families pass loss instances that cannot cross HTTP '
+            'and are untested remotely. Run them with mode=local/ray.')
     _, processor = load_model_processor(model_config)
     kwargs = {"task_type": task_type} if task_type else {}
     template = build_template(template_config, processor, **kwargs)
@@ -171,18 +172,9 @@ def build_supervised_objects(
         # Full-param remote: the server model trains all parameters by default. The local
         # freeze/trainable knobs read requires_grad in-process, which cannot cross HTTP; a
         # non-default freeze is refused by validate rather than silently ignored.
-        # Template/processor cross the wire as a class NAME plus scalar kwargs (the local DevMixin
-        # instance drives only the local dataset encode); resolve_twinkle_template picks the name.
-        from swift.dev.builders.sampler import resolve_twinkle_template
-
-        template_spec = resolve_twinkle_template(template_config, model_config)
-        template_kwargs = {key: value for key, value in template_spec.items() if key != 'template_cls'}
-        model.set_processor(
-            'InputProcessor',
-            padding_free=template_config.padding_free,
-            padding_side=template_config.padding_side,
-        )
-        model.set_template(template_spec['template_cls'], **template_kwargs)
+        # The processor is swift's own dev one, registered server-side at startup; the Template
+        # is rebuilt in the worker from the serialized spec, so rows ship unfinished.
+        configure_remote_processor(model, template_config, model_config, distributed_config)
         configure_remote_loss(model, train_config)
     else:
         model = build_model(
