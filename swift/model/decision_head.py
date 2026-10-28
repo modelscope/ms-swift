@@ -11,7 +11,6 @@ ragged and are stored padded:
         kinds:       LongTensor  [total_q]            0=noul, 1=choice, 2=score (per-kind temp)
         counts:      LongTensor  [num_records]        questions per record (regroup total_q at decode)
         loss:        Optional                         filled when labels are consumed
-        ordinal_logits: Optional                      OmniJev CORAL/CORN cumulative logits
 
     meta (assembled by Template._post_encode, consumed by ScoringHead.forward):
         n_options:      List[int]                 per-question option count (len == total_q)
@@ -49,7 +48,6 @@ class ScoringOutput(ModelOutput):
     kinds: Optional[torch.LongTensor] = None
     counts: Optional[torch.LongTensor] = None
     loss: Optional[torch.FloatTensor] = None
-    ordinal_logits: Optional[torch.FloatTensor] = None
 
 
 def pad_option_logits(per_question: List[torch.Tensor],
@@ -160,6 +158,11 @@ class ScoringHead(nn.Module):
     # skips passing lm_logits, so a Clef/OmniJev forward never pays for the full-seq vocab projection.
     needs_lm_logits: bool = False
     keep_fp32: bool = False
+    # Set by subclasses over an encoder-style backbone (AutoModel on a BERT-family config, e.g.
+    # LayaHead's ModernBERT): the backbone forward already returns `last_hidden_state` and computes
+    # no lm logits, so the loader's forward wrapper reads `last_hidden_state` directly instead of
+    # forcing `output_hidden_states=True` and slicing `hidden_states[-1]`.
+    encoder_backbone: bool = False
 
     def set_output_embeddings(self, output_embeddings: nn.Module) -> None:
         self._output_embeddings = output_embeddings
@@ -886,8 +889,6 @@ class OmniOptionScorer(nn.Module):
     names/shapes match `head.pt` exactly and a strict load has 0 missing / 0 unexpected.
     """
 
-    INIT_SCORE_BIAS = -3.0
-
     def __init__(self, d_model: int, d_hidden: int = 1024, n_types: int = 3, norm: str = 'sigmoid') -> None:
         super().__init__()
         self.opt = nn.Sequential(nn.Linear(d_model, d_hidden), nn.GELU(), nn.Linear(d_hidden, d_hidden))
@@ -898,12 +899,6 @@ class OmniOptionScorer(nn.Module):
         self.abstain = nn.Linear(d_hidden, 1)
         self.feat = nn.Linear(6, d_hidden)
         self.feat_lin = nn.Linear(6, 1)
-
-    def forward(self, u_opts: torch.Tensor, z_q: torch.Tensor, type_id: int = 0, feats=None) -> torch.Tensor:
-        lg = self.logits(u_opts, z_q, type_id, feats)
-        if self.norm == 'softmax' and type_id != 0:
-            return torch.softmax(lg, dim=0)[:-1]
-        return torch.sigmoid(lg[:-1])
 
     def logits(self, u_opts: torch.Tensor, z_q: torch.Tensor, type_id: int = 0, feats=None) -> torch.Tensor:
         """The vector the probabilities come from, abstain last: `[K option logits, abstain]` for a
@@ -1343,3 +1338,200 @@ class KevPointerHead(ScoringHead):
             raise RuntimeError(f'Kev head.pt strict load failed: missing={missing}, unexpected={unexpected}')
         head.temperature = torch.tensor(float(state.get('temperature', 1.0)))
         return head
+
+
+class LayaHead(ScoringHead):
+
+    needs_lm_logits = False
+    keep_fp32 = True
+    # ModernBERT encoder backbone: the loader's forward wrapper feeds us last_hidden_state directly.
+    encoder_backbone = True
+
+    # swift kind id -> Laya question-type id
+    LAYA_QTYPE_OF_KIND = {0: 2, 1: 0, 2: 1}
+
+    def __init__(self,
+                 hidden_size: int,
+                 head_layers: int = 2,
+                 dropout: float = 0.1,
+                 temperatures: Optional[Sequence[float]] = None,
+                 temperature_by_options: Optional[Dict[str, float]] = None) -> None:
+        super().__init__()
+        d = hidden_size
+        nhead = max(1, d // 64)
+        layer = nn.TransformerEncoderLayer(d, nhead, 4 * d, dropout, batch_first=True, norm_first=True)
+        self.head = nn.TransformerEncoder(layer, head_layers, enable_nested_tensor=False) if head_layers > 0 else None
+        self.type_emb = nn.Embedding(3, d)
+        self.scorer = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, d), nn.GELU(), nn.Linear(d, 1))
+        self.register_buffer(
+            'temperature', torch.as_tensor([float(t) for t in (temperatures or (1.0, 1.0, 1.0))], dtype=torch.float32))
+        self.temperature_by_options: Dict[str, float] = {
+            str(k): float(v)
+            for k, v in (temperature_by_options or {}).items()
+        }
+
+    def get_temperature(self, kind: int) -> float:
+        """Per-kind temperature in swift kind order (noul/choice/score).
+
+        The buffer itself stores Laya qtype order; this accessor hides the permutation."""
+        return float(self.temperature[self.LAYA_QTYPE_OF_KIND[int(kind)]])
+
+    def set_temperature(self, kind: int, value: float) -> None:
+        """Overwrite one kind's temperature (swift kind order) and drop its stale option-count
+        buckets, so the refit value wins over any loaded ``temperature_by_options`` entry."""
+        kind = int(kind)
+        self.temperature[self.LAYA_QTYPE_OF_KIND[kind]] = float(value)
+        self._clear_buckets_for_kind(kind)
+
+    def _clear_buckets_for_kind(self, kind: int) -> None:
+        prefix = f'{KIND_NAMES[kind]}:'
+        self.temperature_by_options = {k: v for k, v in self.temperature_by_options.items() if not k.startswith(prefix)}
+
+    @staticmethod
+    def _temp_bucket(n_options: int) -> str:
+        """Per-cardinality bucket key suffix (``temp_bucket`` in Laya's rl_common.py): a 2-option
+        noul and a 20-option choice need different calibration scaling."""
+        if n_options <= 2:
+            return '2'
+        if n_options <= 5:
+            return '3-5'
+        if n_options <= 10:
+            return '6-10'
+        return '11+'
+
+    def forward(self, hidden_states: torch.Tensor, lm_logits: Optional[torch.Tensor], meta: Dict[str,
+                                                                                                 Any]) -> ScoringOutput:
+        n_options = [int(n) for n in meta['n_options']]
+        kinds = [int(k) for k in meta.get('kinds') or []]
+        counts = meta.get('counts')
+        device = hidden_states.device
+        counts_t = torch.as_tensor([int(c) for c in counts], dtype=torch.long, device=device) if counts else None
+        total_q = len(n_options)
+        batch, padded_len, _ = hidden_states.shape
+        if total_q == 0:
+            max_opt = int(meta.get('max_opt') or 0)
+            return ScoringOutput(
+                logits=torch.zeros((0, max_opt), device=device, dtype=torch.float32),
+                option_mask=torch.zeros((0, max_opt), dtype=torch.bool, device=device),
+                kinds=torch.zeros((0, ), dtype=torch.long, device=device),
+                counts=counts_t)
+        if batch != total_q:
+            raise ValueError(f'LayaHead requires one question per row (batch={batch}, total_q={total_q}); '
+                             'LayaTemplate fans records out into one row per question.')
+        record_index = [int(r) for r in meta['record_index']]
+        if record_index != list(range(total_q)):
+            raise ValueError(f'LayaHead got record_index={record_index}, expected identity '
+                             f'{list(range(total_q))} (one question per row).')
+        markers = meta['laya_markers']  # per question, real-token-relative <mask> positions
+        if len(markers) != total_q or any(len(m) != n for m, n in zip(markers, n_options)):
+            raise ValueError(f'Laya meta mismatch: {len(markers)} marker lists vs {total_q} questions '
+                             f'(n_options={n_options}).')
+
+        left_padding = bool(meta.get('left_padding', False))
+        seq_lens = [int(s) for s in (meta.get('seq_lens') or [padded_len] * batch)]
+
+        h = hidden_states.float()
+        qtype_ids = torch.as_tensor([self.LAYA_QTYPE_OF_KIND.get(k, 0) for k in kinds], device=device)
+        h = h + self.type_emb(qtype_ids)[:, None, :]
+        if self.head is not None:
+            pad = torch.zeros((batch, padded_len), dtype=torch.bool, device=device)  # True = masked
+            for b in range(batch):
+                sl = min(seq_lens[b], padded_len)
+                if left_padding:
+                    pad[b, :padded_len - sl] = True
+                else:
+                    pad[b, sl:] = True
+            for layer in self.head.layers:
+                h = layer(h, src_key_padding_mask=pad)
+
+        kmax = max(1, max(n_options))
+        marker_pos = torch.zeros((total_q, kmax), dtype=torch.long, device=device)
+        marker_mask = torch.zeros((total_q, kmax), dtype=torch.bool, device=device)
+        for qi in range(total_q):
+            offset = (padded_len - seq_lens[qi]) if left_padding else 0
+            for j, m in enumerate(markers[qi]):
+                pos = offset + int(m)
+                if pos >= padded_len:
+                    raise ValueError(f'Laya marker {m} (padded pos {pos}) out of range '
+                                     f'(padded_len={padded_len}, left_padding={left_padding}).')
+                marker_pos[qi, j] = pos
+                marker_mask[qi, j] = True
+        idx = marker_pos[:, :, None].expand(-1, -1, h.size(-1))
+        m = torch.gather(h, 1, idx)
+        logits = self.scorer(m).squeeze(-1).float()
+        logits = logits.masked_fill(~marker_mask, -1e4)
+        if not self.training:
+            logits = self._calibrate(logits, kinds, n_options)
+        return ScoringOutput(
+            logits=logits,
+            option_mask=marker_mask,
+            kinds=torch.as_tensor(kinds, dtype=torch.long, device=device),
+            counts=counts_t)
+
+    def _calibrate(self, logits: torch.Tensor, kinds: List[int], n_options: List[int]) -> torch.Tensor:
+        temps = []
+        for kind, n in zip(kinds, n_options):
+            key = f'{KIND_NAMES[kind]}:{self._temp_bucket(n)}'
+            fitted = self.temperature_by_options.get(key)
+            if fitted is None:
+                fitted = float(self.temperature[self.LAYA_QTYPE_OF_KIND[kind]])
+            temps.append(float(fitted))
+        t = torch.as_tensor(temps, device=logits.device, dtype=torch.float32)[:, None]
+        return logits / t.clamp(min=1e-6)
+
+    def extra_state_for_save(self) -> Dict[str, Any]:
+        return {
+            'hidden_size': int(self.scorer[0].normalized_shape[0]),
+            'head_layers': 0 if self.head is None else len(self.head.layers),
+            'temperature': self.temperature.detach().float().tolist(),
+            'temperature_by_options': dict(self.temperature_by_options),
+        }
+
+    def _apply_calibration_meta(self, meta: Dict[str, Any]) -> None:
+        temps = meta.get('temperature')
+        if isinstance(temps, (list, tuple)) and len(temps) == 3:
+            self.temperature = torch.as_tensor([float(t) for t in temps], dtype=torch.float32)
+        buckets = meta.get('temperature_by_options')
+        if isinstance(buckets, dict):
+            self.temperature_by_options = {str(k): float(v) for k, v in buckets.items()}
+
+    @classmethod
+    def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'LayaHead':
+        head_config: Dict[str, Any] = {}
+        config_file = cls._locate(model_dir, 'rl_agent_config.json', 'LAYA_CONFIG')
+        if config_file is None:
+            for subdir in ('typed-decisions', 'multilingual'):
+                candidate = os.path.join(model_dir, subdir, 'rl_agent_config.json')
+                if os.path.exists(candidate):
+                    config_file = candidate
+                    break
+        if config_file is None:
+            meta_file = os.path.join(model_dir, cls.HEAD_META_NAME)
+            if os.path.isfile(meta_file):
+                with open(meta_file, 'r') as f:
+                    head_config = json.load(f)
+                hidden_size = int(
+                    head_config.get('hidden_size') or getattr(config, 'hidden_size', 0)
+                    or getattr(getattr(model, 'config', None), 'hidden_size', 0))
+                if not hidden_size:
+                    raise ValueError(f'LayaHead cannot resolve hidden_size from {meta_file!r} '
+                                     f'/ config {config!r} / model {model!r}.')
+                return cls(
+                    hidden_size=hidden_size,
+                    head_layers=int(head_config.get('head_layers', 2)),
+                    temperatures=head_config.get('temperature') or (1.0, 1.0, 1.0),
+                    temperature_by_options=head_config.get('temperature_by_options') or {})
+            raise FileNotFoundError(
+                f'Laya rl_agent_config.json not found under {model_dir!r} (or its typed-decisions / '
+                'multilingual subfolders). Set LAYA_CONFIG to its path.')
+        with open(config_file, 'r') as f:
+            head_config = json.load(f)
+        hidden_size = int(
+            getattr(config, 'hidden_size', None) or getattr(getattr(model, 'config', None), 'hidden_size', 0))
+        if not hidden_size:
+            raise ValueError(f'LayaHead cannot resolve hidden_size from config {config!r} / model {model!r}.')
+        return cls(
+            hidden_size=hidden_size,
+            head_layers=int(head_config.get('head_layers', 2)),
+            temperatures=head_config.get('temperature') or (1.0, 1.0, 1.0),
+            temperature_by_options=head_config.get('temperature_by_options') or {})

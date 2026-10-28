@@ -25,6 +25,8 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
    - [kev-0.8b](https://www.modelscope.cn/models/jaredpalmer/kev-0.8b) / [kev-4b](https://www.modelscope.cn/models/jaredpalmer/kev-4b) / [kev-9b](https://www.modelscope.cn/models/jaredpalmer/kev-9b)
 5. THX-02: Qwen3.5 hybrid backbone (merged, noncausal full attention) + inline readout head
    - [ModelScope](https://modelscope.ai/models/HAL-X/THX-02)
+6. Laya: ModernBERT-large bidirectional encoder + typed-decision head, text-only, non-autoregressive
+   - [ModelScope](https://modelscope.cn/models/convaiinnovations/laya) / [HuggingFace](https://huggingface.co/convaiinnovations/laya)
 
 | Model | `--model_type` | Base | Head Artifacts | `--loss_type` |
 |-------|----------------|------|----------------|----------------|
@@ -33,6 +35,7 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
 | OmniJev | `omnijev` | Qwen3.5-4B hybrid + PEFT adapter | `head.pt` (FiLM) + `ord.pt` (ordinal regression) + `new_tok_emb.pt` (2 new tokens) + `head_meta.json` | `ce_rps` |
 | Kev | `kev` | Qwen3.5-{0.8,4,9}B-Base hybrid + PEFT adapter | `head.pt` (pointer head, fp32) + fitted `temperature` (eval-time only) | `scoring` |
 | THX-02 | `thx02` | Merged Qwen3.5 hybrid (noncausal full attention) | `readout.safetensors` (linear readout over 255 answer codes) + `decision_config.json` (calibrated temperature) | `distill_rps` |
+| Laya | `laya` | ModernBERT-large (bidirectional, no adapter) | `model.safetensors` (encoder + head in one file) + `rl_agent_config.json` (architecture + per-kind/per-bucket temperatures) | `ce_rps` |
 
 Developers can convert any CausalLM into a decision model by specifying:
 
@@ -212,7 +215,7 @@ Each model has its own raw JSONL schema, normalized by that model's dedicated `S
 
 ### One-Question-Per-Row Schema
 
-**Applies to `--model_type`: `jev`, `generic_decision` (`kev` is its text-only variant, see below)**
+**Applies to `--model_type`: `jev`, `generic_decision` (`kev` is its text-only variant, `laya` its bidirectional-encoder variant, see below)**
 
 Models in this family score **one question per forward**. A record with multiple questions is fanned out into one row per question.
 
@@ -241,6 +244,20 @@ Models in this family score **one question per forward**. A record with multiple
 - `questions`: list of question dicts. Native fields are `instr` (question text), `options` (list of option texts), and `label` (the **index** of the correct option); the unified schema's `kind`/`question`/`gold` is also accepted.
 - When `kind` is omitted it is inferred from the option set: a true/false-style pair → `noul`; all-digit options → `score`; anything else → `choice`.
 - **Adapter-only repos**: the repo ships no config.json / base weights. Pass the base via `--model`, the repo via `--adapters`, and point `KEV_HEAD` at the adapter dir's `head.pt` (see `examples/train/decision/kev.sh`).
+
+#### The `laya` Variant
+
+`laya` scores one question per forward like `kev`, but on a **bidirectional encoder** (ModernBERT-large) instead of a causal LM: each row is `question + each option's <mask> marker + state`, the head reads the hidden state at each `<mask>` and scores it. It is **text-only** and **non-autoregressive** (no generation at all). It accepts the unified schema above plus the laya-native corpus format of `rl_common.encode_record` (option texts render byte-exact to the checkpoint's training distribution):
+
+```json lines
+{"state": "Hi, we were billed twice for March.", "qs": [{"t": "choice", "ins": "Which department?", "crit": {"billing": "invoices, payments, refunds", "technical": "bugs, outages", "other": "everything else"}, "y": 0}]}
+{"state": "The refund arrived.", "qs": [{"t": "noul", "ins": "Customer is satisfied?", "y": 1}]}
+{"state": "Urgent complaint.", "qs": [{"t": "score", "ins": "How urgent?", "crit": ["low", "high"], "soft": [0.25, 0.75]}]}
+```
+
+- `qs`: list of question dicts with native fields `t` (kind), `ins` (question text), `crit` (option definitions — `choice` renders `'id: criteria'`, `score` renders `'level i: criteria'`, `noul` uses canonical false/true texts), and `y` (gold index) or `soft` (soft distribution).
+- The unified schema (`questions` with `kind`/`question`/`options`/`gold`) is also accepted; option texts pass through unchanged.
+- The repo bundles three checkpoints (root English / `typed-decisions/` / `multilingual/`); `LAYA_CHECKPOINT` selects one. `--tuner_type full` is required — the encoder has no generation head for the LoRA/PeftModel wrap (see `examples/train/decision/laya.sh`).
 
 
 
@@ -551,6 +568,7 @@ Choose the preprocessor based on your data schema (one-to-one with the three sch
 
 - `JevPreprocessor` — one-question-per-row schema (`{state, questions: [{kind, question, options, gold}]}`, one question per row)
 - `KevPreprocessor` — the text-only variant of the one-question-per-row schema (`{state, questions: [{instr, options, label}]}`)
+- `LayaPreprocessor` — the bidirectional-encoder variant of the one-question-per-row schema (`{state, qs: [{t, ins, crit, y | soft}]}`, options rendered like `rl_common.render_options`)
 - `ClefPreprocessor` — multi-question joint schema (`{state, questions: {qid: {type, instructions, criteria}}, answers}`, all questions per row)
 - `OmniJevPreprocessor` — multimodal schema (with `images`/`videos` and option blocks)
 - `GenericDecisionPreprocessor` — identical behavior to `JevPreprocessor`; pairs with the `generic_decision` model type
@@ -604,7 +622,7 @@ swift infer \
 
 - models whose head artifacts are not in the base directory (adapter-only repos) must export environment variables pointing at the head artifacts first — see [Head Artifact Env Overrides](#head-artifact-env-overrides);
 - models using the branch-cache mechanism additionally need `export MSO_BRANCH_CKPT=1` — see [the notes below](#omnijev-msol_branch_ckpt-and-gradient_checkpointing);
-- each model's complete runnable inference command is in its example script under `examples/train/decision/`.
+- each model's training command is at `examples/train/decision/<model_type>.sh`.
 
 The model returns per-option probabilities (softmaxed within each question's option set) rather than generated text. Each record's inference output is a list with one entry per question:
 
@@ -676,6 +694,8 @@ When head artifacts are not in the same directory as the base model (adapter-onl
 | `KEV_HEAD` | `kev` | `head.pt` | Points at the pointer-head weights in the adapter dir (kev repos are adapter-only; required) |
 | `THX02_READOUT` | `thx02` | `readout.safetensors` | Override readout weights load path |
 | `THX02_DECISION_CONFIG` | `thx02` | `decision_config.json` | Override temperature / answer-code config load path |
+| `LAYA_CHECKPOINT` | `laya` | checkpoint dir | Points at one of the bundled checkpoints (root / `typed-decisions` / `multilingual`) |
+| `LAYA_CONFIG` | `laya` | `rl_agent_config.json` | Override the head architecture + temperature calibration config path |
 
 When unset, the loader searches `model_dir` (and the `adapter_vllm/` subdirectory for `jev`) automatically. On file-missing errors, the message instructs the user to set the corresponding env var.
 
@@ -689,6 +709,7 @@ When unset, the loader searches `model_dir` (and the `adapter_vllm/` subdirector
   packed records attend to each other.
 - **`thx02` truncation**: over-long records raise `MaxLengthError` instead of being truncated; `--max_pixels`
   only lowers image resolution within [65536 px, `max_pixels` in `decision_config.json`].
+- **`laya` requires `--tuner_type full`**: the bidirectional encoder has no generation head, so the default LoRA/PeftModel causal-LM wrap does not apply.
 - **`tie_word_embeddings=True` adapter merge**: Only affects "merge adapter / convert format"; training and inference are unaffected.
 
 ## Verification Report

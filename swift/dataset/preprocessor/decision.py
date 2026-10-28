@@ -444,7 +444,6 @@ class ClefPreprocessor(ScoringPreprocessor):
     CRITERIA_KEYS = ('criteria', 'options', 'choices', 'levels')
     GOLD_KEYS = ('answer', 'gold', 'label', 'target', 'value')
     ANSWERS_KEYS = ('answers', 'labels', 'golds', 'targets')
-    ID_KEYS = ('id', 'record_id')
     MODEL_NAME = 'Clef'  # used in error messages (subclasses reuse the gold resolution)
 
     def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
@@ -828,13 +827,14 @@ class KevPreprocessor(ScoringPreprocessor):
     ANSWERS_KEYS = ('answers', 'labels', 'golds', 'targets')
 
     _NOUL_TEXTS = {'true', 'false', 'yes', 'no', 'y', 'n'}
+    _error_prefix = 'Kev'
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
         state, questions = self.parse_record(row)
         if not questions:
             return None
         state, questions = self._augment(state, questions)
-        # One row per question (Kev renders and scores a single question per causal row).
+        # One row per question (this model family scores a single question per forward).
         return [self._build_row(row, state, [q]) for q in questions]
 
     def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
@@ -853,24 +853,33 @@ class KevPreprocessor(ScoringPreprocessor):
             if not isinstance(q, dict):
                 q = {'question': str(q)}
             options = self._first(q, self.OPTIONS_KEYS, default=None)
-            options = [str(o) for o in options] if options is not None else None
             kind = self._first(q, self.KIND_KEYS, default=None)
             if kind is None:
                 kind = self._infer_kind(options)
             kind = self._normalize_kind(kind)
-            if options is None:
-                options = self.default_options(kind)
-                if options is None:
-                    raise ValueError(f"A 'choice' question must provide its options: {q}")
+            options = self._finalize_options(q, kind, options)
             instr = self._first(q, self.INSTR_KEYS, default=None)
             if instr is None:
                 instr = str(qid)
             item: Dict[str, Any] = {'kind': kind, 'question': instr, 'options': options}
-            gold = self._resolve_gold(self._first(q, self.GOLD_KEYS, default=None), answers, qid, kind, options)
+            gold = self._question_gold(q, answers, qid, kind, options)
             if gold is not None:
                 item['gold'] = gold
             questions.append(item)
         return state, questions
+
+    def _finalize_options(self, q: Dict[str, Any], kind: str, options: Optional[List[str]]) -> List[str]:
+        """Final option texts: caller-supplied options, else the canonical noul/score defaults.
+        A `choice` question has no defaults and must carry its own options."""
+        if options is not None:
+            return [str(o) for o in options]
+        default = self.default_options(kind)
+        if default is None:
+            raise ValueError(f"A 'choice' question must provide its options: {q}")
+        return default
+
+    def _question_gold(self, q: Dict[str, Any], answers: Any, qid: Any, kind: str, options: List[str]) -> Optional[Any]:
+        return self._resolve_gold(self._first(q, self.GOLD_KEYS, default=None), answers, qid, kind, options)
 
     @classmethod
     def _infer_kind(cls, options: Optional[List[str]]) -> str:
@@ -880,8 +889,7 @@ class KevPreprocessor(ScoringPreprocessor):
             return 'score'
         return 'choice'
 
-    @staticmethod
-    def _resolve_gold(gold: Any, answers: Any, qid: Any, kind: str, options: List[str]) -> Optional[Any]:
+    def _resolve_gold(self, gold: Any, answers: Any, qid: Any, kind: str, options: List[str]) -> Optional[Any]:
         if gold is None and isinstance(answers, dict):
             gold = answers.get(str(qid), answers.get(qid))
         if gold is None:
@@ -890,8 +898,9 @@ class KevPreprocessor(ScoringPreprocessor):
             return [float(x) for x in gold]
         if isinstance(gold, bool):
             if kind != 'noul':
-                raise ValueError(f'Kev boolean gold {gold!r} for non-noul question {qid!r} (kind={kind}).')
-            return 1 if gold else 0  # default noul options are ['false', 'true']
+                raise ValueError(
+                    f'{self._error_prefix} boolean gold {gold!r} for non-noul question {qid!r} (kind={kind}).')
+            return 1 if gold else 0  # rendered noul options are [false, true]
         if isinstance(gold, int):
             return gold
         text = str(gold).strip()
@@ -900,7 +909,7 @@ class KevPreprocessor(ScoringPreprocessor):
                 return index
         if text.lstrip('-').isdigit():
             return int(text)
-        raise ValueError(f'Kev gold {gold!r} for question {qid!r} matches no option {options}.')
+        raise ValueError(f'{self._error_prefix} gold {gold!r} for question {qid!r} matches no option {options}.')
 
 
 class GenericDecisionPreprocessor(JevPreprocessor):
@@ -912,3 +921,52 @@ class GenericDecisionPreprocessor(JevPreprocessor):
     ``JevTemplate``), which renders the same bare prompt layout for any text CausalLM.
     """
     pass
+
+
+class LayaPreprocessor(KevPreprocessor):
+
+    # Laya-native aliases come first; the remaining entries are the Kev/unified names, inherited
+    # alongside STATE_KEYS / OPTIONS_KEYS / ANSWERS_KEYS / _NOUL_TEXTS.
+    QUESTIONS_KEYS = ('qs', 'questions', 'fields')
+    KIND_KEYS = ('t', 'kind', 'type', 'question_type')
+    INSTR_KEYS = ('ins', 'instr', 'instruction', 'instructions', 'question', 'prompt', 'query')
+    CRITERIA_KEYS = ('crit', 'criteria', 'levels')
+    GOLD_KEYS = ('y', 'gold', 'label', 'answer', 'target', 'value')
+    SOFT_KEYS = ('soft', 'target_probs', 'probs', 'dist')
+
+    _error_prefix = 'Laya'
+
+    def _finalize_options(self, q: Dict[str, Any], kind: str, options: Optional[List[str]]) -> List[str]:
+        return self._laya_options(kind, self._first(q, self.CRITERIA_KEYS, default=None), options)
+
+    def _question_gold(self, q: Dict[str, Any], answers: Any, qid: Any, kind: str, options: List[str]) -> Optional[Any]:
+        # wins over the hard gold when both are present.
+        gold = self._first(q, self.SOFT_KEYS, default=None)
+        if gold is None:
+            gold = self._resolve_gold(self._first(q, self.GOLD_KEYS, default=None), answers, qid, kind, options)
+        return gold
+
+    def _laya_options(self, kind: str, criteria: Any, options: Optional[List[str]]) -> List[str]:
+        if options:
+            return [str(o) for o in options]
+        if kind == 'noul':
+            crit = criteria if isinstance(criteria, dict) else {}
+            return [
+                'false: ' + str(crit.get('false') or 'no, the statement does not hold'),
+                'true: ' + str(crit.get('true') or 'yes, the statement holds')
+            ]
+        if kind == 'choice':
+            crit = criteria or {}
+            if not isinstance(crit, dict):
+                raise ValueError(f"Laya choice 'crit' must be a dict {{option_id: criteria}}; got {crit!r}")
+            return [str(k) if not v else f'{k}: {v}' for k, v in crit.items()]
+        crit = criteria if criteria is not None else list(range(6))
+        if not isinstance(crit, (list, tuple)):
+            raise ValueError(f"Laya score 'crit' must be a list of level descriptions; got {crit!r}")
+        return [f'level {i}: {c}' for i, c in enumerate(crit)]
+
+    @classmethod
+    def _infer_kind(cls, options: Optional[List[str]]) -> str:
+        if options and len(options) == 2 and {str(o).strip().lower() for o in options} <= cls._NOUL_TEXTS:
+            return 'noul'
+        return 'choice'
