@@ -12,6 +12,8 @@
 - Tags: 模型的tags
 
 
+`allenai/Olmo-3-7B-Think` 的模型类型和默认模板均为 `olmo3`。NPU 上支持 SDPA 配合纯 Ulysses，需保持 `padding_free=false`、`packing=false`，并选择能整除模型 KV 头数的序列并行规模，使 `rp_world_size=1`。当前 NPU 适配不支持 FlashAttention、packing/padding-free 或 Ring Attention。
+
 ### 大语言模型
 | Model ID | Model Type | Default Template | Default Agent Template | Requires | Support Megatron | Tags | HF Model ID |
 | -------- | -----------| ---------------- | ---------------------- | -------- | ---------------- | ---- | ----------- |
@@ -719,6 +721,7 @@
 |[BAAI/bge-reranker-base](https://modelscope.cn/models/BAAI/bge-reranker-base)|bge_reranker|bge_reranker||-|&#x2718;|-|[BAAI/bge-reranker-base](https://huggingface.co/BAAI/bge-reranker-base)|
 |[BAAI/bge-reranker-v2-m3](https://modelscope.cn/models/BAAI/bge-reranker-v2-m3)|bge_reranker|bge_reranker||-|&#x2718;|-|[BAAI/bge-reranker-v2-m3](https://huggingface.co/BAAI/bge-reranker-v2-m3)|
 |[BAAI/bge-reranker-large](https://modelscope.cn/models/BAAI/bge-reranker-large)|bge_reranker|bge_reranker||-|&#x2718;|-|[BAAI/bge-reranker-large](https://huggingface.co/BAAI/bge-reranker-large)|
+|[allenai/Olmo-3-7B-Think](https://modelscope.cn/models/allenai/Olmo-3-7B-Think)|olmo3|olmo3||transformers>=4.57|&#x2718;|-|[allenai/Olmo-3-7B-Think](https://huggingface.co/allenai/Olmo-3-7B-Think)|
 |[allenai/OLMoE-1B-7B-0125](https://modelscope.cn/models/allenai/OLMoE-1B-7B-0125)|olmoe|olmoe||-|&#x2714;|-|[allenai/OLMoE-1B-7B-0125](https://huggingface.co/allenai/OLMoE-1B-7B-0125)|
 |[allenai/OLMoE-1B-7B-0125-Instruct](https://modelscope.cn/models/allenai/OLMoE-1B-7B-0125-Instruct)|olmoe|olmoe||-|&#x2714;|-|[allenai/OLMoE-1B-7B-0125-Instruct](https://huggingface.co/allenai/OLMoE-1B-7B-0125-Instruct)|
 |[allenai/OLMoE-1B-7B-0924](https://modelscope.cn/models/allenai/OLMoE-1B-7B-0924)|olmoe|olmoe_0924||-|&#x2714;|-|[allenai/OLMoE-1B-7B-0924](https://huggingface.co/allenai/OLMoE-1B-7B-0924)|

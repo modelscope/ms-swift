@@ -208,6 +208,37 @@ QWEN3_PATCHES = {
 }
 
 # ---------------------------------------------------------------------------
+# OLMo 3 dense patch
+# ---------------------------------------------------------------------------
+
+# Keep native FP32 RoPE: OLMo 3's YaRN-scaled cos/sin also exceed npu_rotary_mul's
+# documented range. Attention keeps the native per-layer sliding/full masks.
+
+
+def npu_olmo3_rms_norm_forward(self, hidden_states):
+    input_dtype = hidden_states.dtype
+    if hidden_states.device.type == 'npu' and input_dtype == self.weight.dtype:
+        return torch_npu.npu_rms_norm(hidden_states, self.weight, epsilon=self.variance_epsilon)[0]
+    # Older CANN kernels require matching input/gamma dtypes. Keep FP32 norm weights
+    # used by PEFT/FSDP and preserve OLMo 3's cast-after-multiply semantics.
+    hidden_states = hidden_states.to(torch.float32)
+    variance = hidden_states.pow(2).mean(-1, keepdim=True)
+    hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+    return (self.weight * hidden_states).to(input_dtype)
+
+
+def npu_olmo3_mlp_forward(self, hidden_states):
+    if hidden_states.device.type == 'npu' and self.config.hidden_act == 'silu':
+        return npu_swiglu_forward(self, hidden_states)
+    return self.down_proj(self.act_fn(self.gate_proj(hidden_states)) * self.up_proj(hidden_states))
+
+
+OLMO3_PATCHES = {
+    'Olmo3RMSNorm.forward': npu_olmo3_rms_norm_forward,
+    'Olmo3MLP.forward': npu_olmo3_mlp_forward,
+}
+
+# ---------------------------------------------------------------------------
 # Qwen3-VL dense patch
 # ---------------------------------------------------------------------------
 
@@ -521,6 +552,10 @@ def apply_patch() -> None:
 
     modeling_qwen3_5 = import_optional_module('transformers.models.qwen3_5.modeling_qwen3_5')
     modeling_qwen3_5_moe = import_optional_module('transformers.models.qwen3_5_moe.modeling_qwen3_5_moe')
+    modeling_olmo3 = import_optional_module('transformers.models.olmo3.modeling_olmo3')
+
+    if modeling_olmo3 is not None:
+        patch_groups.append(('olmo3', modeling_olmo3, OLMO3_PATCHES, {}))
 
     # Transformers initializes FLA's fused norm with torch.cuda.current_device().
     # Keep only that operation on the native Qwen3.5 path; GDN comes from FLA.
