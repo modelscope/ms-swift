@@ -97,41 +97,74 @@ class TestAsyncSaveSymlink(unittest.TestCase):
 @unittest.skipIf(MEGATRON_UNAVAILABLE is not None, MEGATRON_UNAVAILABLE or '')
 class TestFsdpExportPreparation(unittest.TestCase):
 
-    def test_safetensors_export_prepares_parameters_on_both_backends(self):
-        M = megatron_lm_utils
-        for save_safetensors, npu in ((False, True), (True, True), (False, False), (True, False)):
-            with self.subTest(save_safetensors=save_safetensors, npu=npu), tempfile.TemporaryDirectory() as root:
-                args = types.SimpleNamespace(
-                    output_dir=root,
-                    async_save=False,
-                    use_megatron_fsdp=True,
-                    save_safetensors=save_safetensors,
-                    data_parallel_random_init=False)
-                model = mock.Mock()
-                events = mock.Mock()
-                events.attach_mock(model.start_param_sync, 'gather')
-                events.attach_mock(model._replace_param_with_raw_if_needed, 'restore')
-                save = mock.Mock()
-                events.attach_mock(save, 'save')
-                with mock.patch.object(M, 'unwrap_model', lambda models: models), \
-                     mock.patch.object(M, '_get_rng_state', dict), \
-                     mock.patch.object(M, 'get_sharded_sd_metadata', lambda args: {}), \
-                     mock.patch.object(M, '_generate_state_dict', return_value={'model': {}}), \
-                     mock.patch.object(M, '_filter_adapter_state_dict', lambda state_dict, peft_format: None), \
-                     mock.patch.object(M.fsdp_checkpoint, 'save_checkpoint', save), \
-                     mock.patch.object(M, 'is_torch_npu_available', return_value=npu), \
-                     mock.patch.object(M, 'is_master', return_value=True), \
-                     mock.patch.object(M.torch.distributed, 'is_initialized', return_value=False):
-                    deferred = M.save_mcore_checkpoint(args, [model], iteration=2)
+    def _save(self, root, *, fsdp=True, export=True, no_save_optim=False, merge=False, skip_adapter=False):
+        import swift.megatron.trainers.base as trainer_module
 
-                self.assertFalse(deferred)
-                save.assert_called_once_with(args, {'model': {}}, model, os.path.join(root, 'iter_0000002'))
-                expected = [mock.call.save(args, {'model': {}}, model, os.path.join(root, 'iter_0000002'))]
-                if save_safetensors:
-                    expected += [mock.call.gather(force_sync=True), mock.call.restore()]
-                self.assertEqual(events.mock_calls, expected)
-                with open(os.path.join(root, 'latest_checkpointed_iteration.txt')) as tracker:
-                    self.assertEqual(tracker.read(), '2')
+        args = types.SimpleNamespace(
+            output_dir=root,
+            use_megatron_fsdp=fsdp,
+            save_safetensors=export,
+            no_save_optim=no_save_optim,
+            tuner_type='lora' if merge or skip_adapter else 'full',
+            merge_lora=merge,
+            save_missing_weights=False)
+        wrapper = mock.Mock()
+        bare_model = mock.Mock()
+        bridge = mock.Mock(spec=['save_weights'])
+        events = mock.Mock()
+        events.attach_mock(wrapper.start_param_sync, 'gather')
+        events.attach_mock(wrapper.module._replace_param_with_raw_if_needed, 'restore')
+        events.attach_mock(bridge.save_weights, 'export')
+        trainer = types.SimpleNamespace(
+            args=args,
+            state=types.SimpleNamespace(consumed_train_samples=0, iteration=2, best_global_step=None),
+            wrapped_models=[wrapper],
+            unwrapped_models=[bare_model],
+            optimizer=None,
+            opt_param_scheduler=None,
+            bridge=bridge,
+            template=types.SimpleNamespace(processor=None),
+            copy_path=mock.Mock(),
+            merge_lora_adapters=events.merge,
+            unmerge_lora_adapters=events.unmerge)
+        if skip_adapter:
+            args.tuner_type = 'lora_llm'
+        save = mock.Mock(return_value=False)
+        events.attach_mock(save, 'checkpoint')
+        with mock.patch.object(trainer_module, 'save_mcore_checkpoint', save), \
+             mock.patch.object(trainer_module, 'gc_collect'), \
+             mock.patch.object(trainer_module, 'is_master', return_value=False):
+            trainer_module.BaseMegatronTrainer.save_checkpoint(trainer)
+        self.assertEqual(save.call_args.args[1], [] if export and no_save_optim else [wrapper])
+        bare_model.start_param_sync.assert_not_called()
+        return events
+
+    def test_export_preparation_is_independent_of_dcp_saving(self):
+        for fsdp in (False, True):
+            for export in (False, True):
+                for no_save_optim in (False, True):
+                    with self.subTest(fsdp=fsdp, export=export, no_save_optim=no_save_optim), \
+                         tempfile.TemporaryDirectory() as root:
+                        events = self._save(root, fsdp=fsdp, export=export, no_save_optim=no_save_optim)
+                        expected = ['checkpoint']
+                        if fsdp and export:
+                            expected += ['gather', 'restore']
+                            events.gather.assert_called_once_with(force_sync=True)
+                            events.restore.assert_called_once_with()
+                        if export:
+                            expected += ['export']
+                        self.assertEqual([call[0] for call in events.mock_calls], expected)
+
+    def test_merge_prepares_parameters_when_adapter_export_is_skipped(self):
+        with tempfile.TemporaryDirectory() as root:
+            events = self._save(root, no_save_optim=True, merge=True)
+            self.assertEqual([call[0] for call in events.mock_calls],
+                             ['checkpoint', 'gather', 'restore', 'merge', 'export', 'unmerge'])
+
+    def test_no_preparation_when_both_export_and_merge_are_skipped(self):
+        with tempfile.TemporaryDirectory() as root:
+            events = self._save(root, skip_adapter=True)
+            self.assertEqual([call[0] for call in events.mock_calls], ['checkpoint'])
 
 
 if __name__ == '__main__':

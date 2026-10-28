@@ -391,17 +391,6 @@ def save_mcore_checkpoint(
         if torch.distributed.is_initialized():
             torch.distributed.barrier()
 
-        if getattr(args, 'use_megatron_fsdp', False) and args.save_safetensors:
-            # HF export bypasses FSDP forward hooks, so gather full parameters
-            # before restoring raw views. DCP-only saves use the next forward.
-            for model in models:
-                start_param_sync = getattr(model, 'start_param_sync', None)
-                if start_param_sync is not None:
-                    start_param_sync(force_sync=True)
-                restore_raw_parameters = getattr(model, '_replace_param_with_raw_if_needed', None)
-                if restore_raw_parameters is not None:
-                    restore_raw_parameters()
-
     if is_master():
 
         tracker_path = os.path.join(output_dir, 'latest_checkpointed_iteration.txt')
