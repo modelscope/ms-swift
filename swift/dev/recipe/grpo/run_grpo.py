@@ -305,7 +305,7 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
                    train_batch_size: int, chord_fn: Optional[Callable[[], List[Any]]] = None,
                    ema_manager: Any = None, save: Optional[Callable[[str], Any]] = None,
                    correction_out: Optional[Dict[str, float]] = None,
-                   reward_metric: Any = None) -> None:
+                   reward_metric: Any = None, output_dir: str = 'output') -> None:
     """The colocate branch (deep_refactor.md 71-81): a plain loop, no driver, no version face.
 
     The sampler time-shares one device with the trainer, so each round brackets generation with the
@@ -381,6 +381,10 @@ def _colocate_loop(cluster: Any, rl_config: 'RLConfig', rollout_config: 'Rollout
                     baseline = weighted_reward(row[0] if row else [], weights)
                     for sample in samples[start:start + num_generations]:
                         sample.baseline = baseline
+            if rl_config.log_completions:
+                cluster.worker.log_completions(
+                    samples, [sample.orm_reward for sample in samples], state.global_step + 1,
+                    os.path.join(output_dir, 'completions.jsonl'))
             # return the device to the trainer NOW -- before the advantage/replay forwards: the reference,
             # old-lane and routing-replay forward_only calls below run on the TRAINER's weights, so they
             # must not fire while those weights are still offloaded to CPU (the borrow window covers only
@@ -681,7 +685,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
             _colocate_loop(cluster, rl_config, rollout_config, reward_config, dataloader, state,
                            train_batch_size=train_batch_size, chord_fn=chord_fn,
                            ema_manager=ema_manager, save=save, correction_out=rollout_correction,
-                           reward_metric=_reward_metric)
+                           reward_metric=_reward_metric, output_dir=output_dir)
         else:
             _disaggregated_loop(cluster, rl_config, rollout_config, reward_config, tuner_config,
                                 dataloader, state, train_batch_size=train_batch_size,
