@@ -2,6 +2,18 @@
 
 ## Megatron参数
 
+### 基础并行参数预检查
+
+Megatron 训练（`megatron sft/pt/rlhf`）在 Swift 参数入口前置 Megatron 已有的两项整除检查，早于输出目录流程中的进程组初始化；默认 Transformers 后端和 Megatron 导出入口不变。
+
+- 用户省略参数时，沿用现有参数类默认值：TP、PP、CP、EP、ETP 均为 1。显式 `ETP=None` 时按 Megatron Core 的规则使用 TP 参与检查，不改写参数对象中的 None。
+- World Size 可靠时，执行 `WORLD_SIZE % (TP * PP * CP) == 0` 和 `WORLD_SIZE % (ETP * EP * PP) == 0`。报错给出参数值、乘积、余数，以及无法将进程等分为普通/专家并行组的原因。
+- 不新增独立的 Python 类型、正负值、DP/Expert DP 或 VPP 限制。计算本身发生类型错误或除零时，在保留原异常原因的基础上补充说明；其余类型、取值和布局约束继续由现有参数解析及后端处理。不能据此认为某个未经前置拒绝的输入可以完成训练。
+- DP/Expert DP 仍由后端推导。VPP 保留既有流水线布局规范化流程，不在此处提前检查，也不乘入物理 World Size。
+- World Size 优先读取已初始化的默认进程组，否则读取 `WORLD_SIZE`、`_PATCH_WORLD_SIZE`，空字符串按未设置处理。无启动线索时按 1 处理；Ray 驱动 `skip_megatron_init=True`，或仅有本机/启动线索而全局规模未知时，暂缓预检查。
+
+本次只改善现有检查的报错时机和原因，不替代 Megatron/MindSpeed 的完整验证，不新增 batch size、模型结构或拓扑限制。当前 Swift 初始化入口未启用的上游额外维度不擅自乘入公式。
+
 **训练参数**:
 - 🔥micro_batch_size: 每个DP组的批次大小，默认为1。
 - 🔥global_batch_size: 总批次大小，等价于`micro_batch_size*数据并行大小*梯度累加步数`。默认为16。
@@ -235,11 +247,12 @@ mHC 模块以在支持的 GPU 上获得更好的性能。需要安装 cuTile；�
 - mhc_recompute_layer_num: 每个 MHC 重计算块的层数。设置后，每 `mhc_recompute_layer_num` 层构成一个重计算块。若为 None，Transformer 块中的所有层共享单个重计算块。默认为None。
 
 **MTP参数**
-- mtp_num_layers: 多token预测（MTP）层的数量。MTP将每个位置的预测范围扩展到多个未来token。此MTP实现使用D个顺序模块依次预测D个额外的token。默认为None。
-  - 注意：mtp_num_layers的值，将不自动从config.json获取，需手动设置。你可以参考config.json中的`num_nextn_predict_layers`, `mtp_num_hidden_layers`字段填写该值。使用mcore-bridge时，将优先从safetensors文件中加载MTP权重，若无法找到，则进行随机初始化。
-- mtp_loss_scaling_factor: 多token预测（MTP）损失的缩放因子。我们计算所有深度上MTP损失的平均值，然后乘以该缩放因子得到总体MTP损失，它将作为一个额外的训练目标。默认为0.1。
-- mtp_decoder_input_detach: 用来控制 MTP 分支里的 decoder_input 是否停止梯度。默认为False。开启后，MTP loss 不会直接通过 decoder_input 回传到 embedding/vit，但仍会通过 hidden_states 路径更新主干。
-- mtp_shared_weights: MTP层之间共享权重，采用GLM-5使用的mtp方案。默认为False。例如你可以设置`--mtp_num_layers 3 --mtp_shared_weights true`。
+- mtp_num_layers: 每一步要预测的 draft token 数 D（MTP 深度）。默认为 `auto`，自动跟随模型 checkpoint；设为 `None` 时不加载 MTP 权重。
+  - 版本说明：4.6.0 及更早版本默认为 `None`。
+- mtp_loss_scaling_factor: MTP 损失缩放因子。默认为 0.1。
+- mtp_decoder_input_detach: MTP 分支的 decoder_input 是否停止梯度。默认为 False。
+- mtp_shared_weights: MTP 层之间共享权重。默认为 None，进行自动解析：当 checkpoint mtp 层数小于 mtp_num_layers 时开启。显式设为 true/false 可覆盖。通常无需手动设置。
+- mtp_allow_random_init: checkpoint 缺少 MTP 权重时，是否允许随机初始化来新增MTP层。默认为 False。
 
 **Tuner参数**:
 - tuner_type: 可选为'lora', 'full'和'lora_llm'。默认为'full'。

@@ -10,7 +10,7 @@ from swift.template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                             ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
 from ..preprocessor.decision import (ClefPreprocessor, DecisionAugmentConfig, JevPreprocessor, KevPreprocessor,
-                                     OmniJevPreprocessor, ScoringPreprocessor)
+                                     LayaPreprocessor, OmniJevPreprocessor, ScoringPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 
@@ -1098,76 +1098,27 @@ _open_jev_subsets = [
     'mailroom-control-v1',
 ]
 
-# Open-Jev (v1)
-register_dataset(
-    DatasetMeta(
-        dataset_name='open_jev_jev',
-        ms_dataset_id='ZefanCai/Open-Jev',
-        subsets=_open_jev_subsets,
-        split=['train'],
-        preprocess_func=OpenJevPreprocessor(JevPreprocessor()),
-        tags=['decision', 'jev', '🔥']))
+_open_jev_corpora = [
+    ('', 'ZefanCai/Open-Jev', _open_jev_subsets),
+    ('_v11', 'ZefanCai/Open-Jev-v1.1', ['community-hard-mix-v2-redistributable']),
+]
 
-register_dataset(
-    DatasetMeta(
-        dataset_name='open_jev_clef',
-        ms_dataset_id='ZefanCai/Open-Jev',
-        subsets=_open_jev_subsets,
-        split=['train'],
-        preprocess_func=OpenJevPreprocessor(ClefPreprocessor()),
-        tags=['decision', 'clef', '🔥']))
+_open_jev_delegates = {
+    'jev': JevPreprocessor,
+    'clef': ClefPreprocessor,
+    'omnijev': OmniJevPreprocessor,
+    'kev': KevPreprocessor,
+    'laya': LayaPreprocessor,
+}
 
-register_dataset(
-    DatasetMeta(
-        dataset_name='open_jev_omnijev',
-        ms_dataset_id='ZefanCai/Open-Jev',
-        subsets=_open_jev_subsets,
-        split=['train'],
-        preprocess_func=OpenJevPreprocessor(OmniJevPreprocessor()),
-        tags=['decision', 'omnijev']))
-
-register_dataset(
-    DatasetMeta(
-        dataset_name='open_jev_kev',
-        ms_dataset_id='ZefanCai/Open-Jev',
-        subsets=_open_jev_subsets,
-        split=['train'],
-        preprocess_func=OpenJevPreprocessor(KevPreprocessor()),
-        tags=['decision', 'kev']))
-
-# Open-Jev-v1.1
-register_dataset(
-    DatasetMeta(
-        dataset_name='open_jev_jev_v11',
-        ms_dataset_id='ZefanCai/Open-Jev-v1.1',
-        subsets=['community-hard-mix-v2-redistributable'],
-        split=['train'],
-        preprocess_func=OpenJevPreprocessor(JevPreprocessor()),
-        tags=['decision', 'jev', '🔥']))
-
-register_dataset(
-    DatasetMeta(
-        dataset_name='open_jev_clef_v11',
-        ms_dataset_id='ZefanCai/Open-Jev-v1.1',
-        subsets=['community-hard-mix-v2-redistributable'],
-        split=['train'],
-        preprocess_func=OpenJevPreprocessor(ClefPreprocessor()),
-        tags=['decision', 'clef', '🔥']))
-
-register_dataset(
-    DatasetMeta(
-        dataset_name='open_jev_omnijev_v11',
-        ms_dataset_id='ZefanCai/Open-Jev-v1.1',
-        subsets=['community-hard-mix-v2-redistributable'],
-        split=['train'],
-        preprocess_func=OpenJevPreprocessor(OmniJevPreprocessor()),
-        tags=['decision', 'omnijev']))
-
-register_dataset(
-    DatasetMeta(
-        dataset_name='open_jev_kev_v11',
-        ms_dataset_id='ZefanCai/Open-Jev-v1.1',
-        subsets=['community-hard-mix-v2-redistributable'],
-        split=['train'],
-        preprocess_func=OpenJevPreprocessor(KevPreprocessor()),
-        tags=['decision', 'kev']))
+# Register every `open_jev_<model_type>` dataset
+for _model, _delegate in _open_jev_delegates.items():
+    for _suffix, _ms_id, _subsets in _open_jev_corpora:
+        register_dataset(
+            DatasetMeta(
+                dataset_name=f'open_jev_{_model}{_suffix}',
+                ms_dataset_id=_ms_id,
+                subsets=_subsets,
+                split=['train'],
+                preprocess_func=OpenJevPreprocessor(_delegate()),
+                tags=['decision', _model]))

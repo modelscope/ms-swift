@@ -1,11 +1,14 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import os
+import torch
 from contextlib import contextmanager
 from functools import wraps
 from transformers import PretrainedConfig, PreTrainedModel
-from typing import Optional
+from typing import Dict, Optional
 
-from swift.model.decision_head import ClefJointSchemaHead, JevVerbalizerHead, KevPointerHead, OmniJevHead, ScoringHead
+from swift.model.decision_head import (ClefJointSchemaHead, JevVerbalizerHead, KevPointerHead, LayaHead, OmniJevHead,
+                                       ScoringHead, Thx02ReadoutHead, load_thx02_decision_config)
 from swift.model.omnijev_branch import (OPT_CLOSE, OPT_OPEN, add_option_tokens, branch_questions, find_rope_owner,
                                         is_hybrid, prefix_inputs, rope_positions, rows_from_ids)
 from swift.model.patcher import patch_module_forward
@@ -56,11 +59,18 @@ class ScoringModelLoader(ModelLoader):
     @staticmethod
     def _scoring_head_forward(self, *args, head: ScoringHead, origin_forward, **kwargs):
         meta = kwargs.pop('decision_meta', None)
+        if meta is None:
+            raise ValueError("Decision forward requires decision_meta from the decision template's _encode "
+                             '(kinds / n_options / model-specific positions); got none.')
         kwargs.pop('labels', None)
-        kwargs['output_hidden_states'] = True
         kwargs['return_dict'] = True
-        output = origin_forward(*args, **kwargs)
-        hidden_states = output.hidden_states[-1]
+        if head.encoder_backbone:
+            output = origin_forward(*args, **kwargs)
+            hidden_states = output.last_hidden_state
+        else:
+            kwargs['output_hidden_states'] = True
+            output = origin_forward(*args, **kwargs)
+            hidden_states = output.hidden_states[-1]
         lm_logits = output.logits if head.needs_lm_logits else None
         return head(hidden_states, lm_logits, meta)
 
@@ -325,6 +335,117 @@ register_model(
         tags=['decision']))
 
 
+def enable_thx02_noncausal_attention(language_model) -> None:
+    """THX-02 reads every question at its own marker inside ONE sequence, so its full-attention layers
+    attend bidirectionally over the non-padding tokens; the gated-deltanet (linear-attention) layers stay
+    causal. Installed as a forward pre-hook on the text model, converting the 2D padding mask into the
+    per-layer-type mask mapping that Qwen3.5 accepts."""
+    from transformers.masking_utils import create_recurrent_attention_mask
+
+    def mask_inputs(module, args, kwargs):
+        if kwargs.get('past_key_values') is not None or kwargs.get('use_cache'):
+            raise ValueError('THX-02 noncausal decision forward does not support a KV cache.')
+        attention_mask = kwargs.get('attention_mask')
+        if isinstance(attention_mask, dict):
+            return args, kwargs
+        embeddings = kwargs.get('inputs_embeds')
+        if embeddings is None:
+            embeddings = module.embed_tokens(kwargs['input_ids'])
+        if attention_mask is None:
+            attention_mask = torch.ones(embeddings.shape[:2], device=embeddings.device, dtype=torch.bool)
+        kwargs['attention_mask'] = {
+            'full_attention':
+            attention_mask[:, None, None, :].bool(),
+            'linear_attention':
+            create_recurrent_attention_mask(
+                config=module.config, inputs_embeds=embeddings, attention_mask=attention_mask),
+        }
+        return args, kwargs
+
+    language_model.register_forward_pre_hook(mask_inputs, with_kwargs=True)
+
+
+class Thx02ModelLoader(ScoringModelLoader, Qwen3_5Loader):
+    """THX-02: a Qwen3.5 hybrid backbone (vision + gated-deltanet/full attention) with noncausal full
+    attention and an inline readout head. The repo's top-level `config.json` is THX-02's own
+    (`model_type: thx02`) and carries the backbone configuration under `backbone_config`; the backbone
+    weights (`model.safetensors`) are stored without the `model.` prefix and without an lm_head."""
+    head_cls = Thx02ReadoutHead
+
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        config_file = os.path.join(model_dir, 'config.json')
+        with open(config_file, 'r') as f:
+            top = json.load(f)
+        if top.get('model_type') != 'thx02' or 'backbone_config' not in top:
+            return super().get_config(model_dir)
+        from transformers import Qwen3_5Config
+        return Qwen3_5Config(**top['backbone_config'])
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        processor = super().get_processor(model_dir, config)
+        decision_config = load_thx02_decision_config(model_dir)
+        # Answer codes (A, B, ..., one token each) and the image pixel bounds THX-02 was trained with. These
+        # bounds are the model's own; `--max_pixels` still applies first (the template rescales larger images
+        # before the processor), so it can lower the resolution down to 65536 px but not raise it above the bound.
+        processor.thx02_codes = list(decision_config['codes'])
+        max_pixels = int(decision_config.get('max_pixels') or 262144)
+        processor.image_processor.size = {'shortest_edge': 65536, 'longest_edge': max_pixels}
+        return processor
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        model = Qwen3_5Loader.get_model(self, model_dir, config, processor, model_kwargs)
+        enable_thx02_noncausal_attention(model.model.language_model)
+        # The forward never applies lm_head. THX-02 ties it to embed_tokens (no extra memory, gets gradients
+        # through the embeddings); should a config ever untie it, freeze the copy so full fine-tuning under DDP
+        # does not see a parameter without gradients.
+        lm_head, embeddings = model.get_output_embeddings(), model.get_input_embeddings()
+        if lm_head is not None and lm_head.weight.data_ptr() != embeddings.weight.data_ptr():
+            lm_head.weight.requires_grad_(False)
+        head = self.build_head(model, model_dir, config)
+        self.attach_scoring_head(model, head)
+        from swift.model.decision_head import maybe_load_trained_scoring_head
+        maybe_load_trained_scoring_head(model, model_dir)
+        return model
+
+    def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
+        head = self._match_head_dtype_device(model, head)
+        model.scoring_head = head
+        origin_forward = model.forward
+
+        @wraps(origin_forward.__func__ if hasattr(origin_forward, '__func__') else origin_forward)
+        def new_forward(self, *args, **kwargs):
+            return Thx02ModelLoader._thx02_forward(self, *args, head=head, **kwargs)
+
+        patch_module_forward(model, new_forward)
+
+    @staticmethod
+    def _thx02_forward(self, *args, head: ScoringHead, **kwargs):
+        meta = kwargs.pop('decision_meta', None)
+        if meta is None:
+            raise ValueError('THX-02 forward requires decision_meta from Thx02Template._encode.')
+        for key in ('labels', 'logits_to_keep', 'output_hidden_states', 'return_dict', 'text_position_ids'):
+            kwargs.pop(key, None)
+        kwargs['use_cache'] = False
+        # The readout reads the normalized last hidden state at each marker; the base model's lm_head is
+        # never applied (THX-02 ships none), so call the Qwen3.5 backbone directly.
+        output = self.model(*args, **kwargs)
+        return head(output.last_hidden_state, None, meta)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.thx02, [ModelGroup([
+            Model('HAL-X/THX-02', 'HAL-X-AI/THX-02'),
+        ], TemplateType.thx02)],
+        Thx02ModelLoader,
+        model_arch=ModelArch.qwen2_vl,
+        task_type='decision',
+        architectures=['THXDecisionModel'],
+        requires=['transformers>=5.13.0', 'qwen_vl_utils>=0.0.14'],
+        tags=['vision', 'decision']))
+
+
 class GenericDecisionLoader(ScoringModelLoader):
     head_cls = JevVerbalizerHead
 
@@ -338,13 +459,6 @@ class GenericDecisionLoader(ScoringModelLoader):
         maybe_load_trained_scoring_head(model, model_dir)
         return model
 
-    @staticmethod
-    def _get_tokenizer(processor: Processor):
-        from transformers import PreTrainedTokenizerBase
-        if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
-            return processor.tokenizer
-        return processor
-
 
 register_model(
     ModelMeta(
@@ -354,3 +468,124 @@ register_model(
         task_type='decision',
         architectures=[],
         tags=['decision']))
+
+
+class LayaModelLoader(ScoringModelLoader):
+
+    head_cls = LayaHead
+
+    @staticmethod
+    def _resolve_checkpoint(model_dir: str) -> str:
+        candidates = [
+            os.environ.get('LAYA_CHECKPOINT'), model_dir,
+            os.path.join(model_dir, 'typed-decisions'),
+            os.path.join(model_dir, 'multilingual')
+        ]
+        for cand in candidates:
+            if cand and (os.path.isfile(os.path.join(cand, 'model.safetensors'))
+                         or os.path.isfile(os.path.join(cand, 'model.safetensors.index.json'))):
+                return cand
+        raise FileNotFoundError(
+            f'Laya checkpoint not found under {model_dir!r} (checked the root and the typed-decisions / '
+            'multilingual subfolders, plus the LAYA_CHECKPOINT env override). Expected model.safetensors '
+            'with encoder.*-prefixed backbone weights; see convaiinnovations/laya on ModelScope.')
+
+    @classmethod
+    def _is_laya_stub_config(cls, path: str) -> bool:
+        try:
+            with open(path, 'r') as f:
+                raw = json.load(f)
+            return str(raw.get('model_type', '')).lower() == 'laya'
+        except (json.JSONDecodeError, OSError):
+            return False
+
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        from transformers import AutoConfig
+        ckpt = self._resolve_checkpoint(model_dir)
+        encoder_dir = os.path.join(ckpt, 'encoder')
+        if os.path.isfile(os.path.join(encoder_dir, 'config.json')):
+            config_dir = encoder_dir
+        else:
+            root_config = os.path.join(ckpt, 'config.json')
+            if not os.path.isfile(root_config) or self._is_laya_stub_config(root_config):
+                raise FileNotFoundError(
+                    f'Laya encoder config not found: no encoder/config.json under {ckpt!r} and the root '
+                    'config.json is the Hub-download stub.')
+            config_dir = ckpt
+        config = AutoConfig.from_pretrained(config_dir, trust_remote_code=self.default_trust_remote_code)
+        # Same as ModernBertLoader: disable the ModernBERT reference compile path.
+        config.reference_compile = False
+        return config
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from transformers import AutoTokenizer
+        ckpt = self._resolve_checkpoint(model_dir)
+        tok_dir = os.path.join(ckpt, 'tokenizer')
+        if not os.path.isfile(os.path.join(tok_dir, 'tokenizer_config.json')):
+            tok_dir = ckpt
+        return AutoTokenizer.from_pretrained(tok_dir, trust_remote_code=self.default_trust_remote_code)
+
+    @staticmethod
+    def _load_checkpoint_weights(ckpt: str) -> Dict:
+        from safetensors.torch import load_file
+        index_path = os.path.join(ckpt, 'model.safetensors.index.json')
+        weights: Dict = {}
+        if os.path.exists(index_path):
+            with open(index_path, 'r') as f:
+                index = json.load(f)
+            for shard in sorted(set(index.get('weight_map', {}).values())):
+                weights.update(load_file(os.path.join(ckpt, shard)))
+        else:
+            weights = load_file(os.path.join(ckpt, 'model.safetensors'))
+        if not weights:
+            raise ValueError(f'Laya checkpoint {ckpt!r} has no weights.')
+        return weights
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        from transformers import AutoModel
+        ckpt = self._resolve_checkpoint(model_dir)
+        weights = self._load_checkpoint_weights(ckpt)
+        factory_layout = any(k.startswith('encoder.') for k in weights)
+        if factory_layout:
+            enc_sd = {k[len('encoder.'):]: v for k, v in weights.items() if k.startswith('encoder.')}
+            head_sd = {
+                k: v
+                for k, v in weights.items() if not k.startswith('encoder.') and not k.startswith('act_head.')
+            }
+        else:
+            enc_sd = {k: v for k, v in weights.items() if not k.startswith('scoring_head.')}
+            head_sd = {k[len('scoring_head.'):]: v for k, v in weights.items() if k.startswith('scoring_head.')}
+        if not enc_sd:
+            raise ValueError(f'Laya checkpoint {ckpt!r} carries no backbone weights.')
+
+        model = AutoModel.from_config(config)
+        missing, unexpected = model.load_state_dict(enc_sd, strict=False)
+        if missing or unexpected:
+            raise RuntimeError(f'Laya encoder strict load failed: missing={missing}, unexpected={unexpected}')
+        if self.torch_dtype is not None:
+            model = model.to(self.torch_dtype)
+
+        head = self.build_head(model, ckpt, config)
+        if head_sd:
+            missing_h, unexpected_h = head.load_state_dict(head_sd, strict=False)
+            if unexpected_h or missing_h:
+                raise RuntimeError(f'Laya head strict load failed: missing={missing_h}, unexpected={unexpected_h}')
+        self.attach_scoring_head(model, head)
+        from swift.model.decision_head import maybe_load_trained_scoring_head
+        maybe_load_trained_scoring_head(model, model_dir)
+        return model
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.laya,
+        [ModelGroup([
+            Model('convaiinnovations/laya', 'convaiinnovations/laya'),
+        ], TemplateType.laya)],
+        LayaModelLoader,
+        template=TemplateType.laya,
+        task_type='decision',
+        architectures=[],
+        requires=['transformers>=4.48'],
+        tags=['decision', 'bert']))

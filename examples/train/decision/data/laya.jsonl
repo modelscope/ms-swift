@@ -1,0 +1,5 @@
+{"state": "Hi, we were billed twice for March. Please refund the duplicate today or we will cancel our plan.", "qs": [{"t": "choice", "ins": "Which department should handle this?", "crit": {"billing": "invoices, payments, refunds", "technical": "bugs, outages, system errors", "other": "everything else"}, "y": 0}]}
+{"state": "The app crashes every time I open the settings page since the last update.", "qs": [{"t": "noul", "ins": "Does the user report a reproducible crash?", "y": 1}, {"t": "score", "ins": "How urgent is this?", "crit": ["not urgent", "soon", "blocking"], "y": 2}]}
+{"state": "some text to rate", "questions": [{"kind": "score", "question": "Rate quality.", "options": ["level 0: bad", "level 1: ok", "level 2: good"], "gold": 2}]}
+{"state": "A review: the product arrived late and was damaged.", "questions": [{"kind": "choice", "question": "Classify the sentiment.", "options": ["positive", "negative", "neutral"], "gold": 1}]}
+{"state": "A soft-label distillation row over the same option set as the teacher.", "questions": [{"kind": "choice", "question": "Pick a topic.", "options": ["Technology", "Sports", "Food"], "gold": [0.7, 0.2, 0.1]}]}
