@@ -266,6 +266,7 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=train_config.seed,
+        shuffle=dataset_config.train_dataloader_shuffle,
         batch_size=(rollout_config.generation_batch_size or len(prompts)))
 
     state = StepState(

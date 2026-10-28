@@ -577,6 +577,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=train_config.seed,
+        shuffle=dataset_config.train_dataloader_shuffle,
         batch_size=(rollout_config.generation_batch_size or len(prompts)))
     # Late-bound cells: StepState builds before the disaggregated loop creates the driver, so
     # _extra_metrics reads the driver handle and the batch's version spans through these cells.
