@@ -87,8 +87,7 @@ class TestMegatronModelUtils(unittest.TestCase):
                             ]), patch(
                                 'mcore_bridge.model.mtp_detect._read_weight_keys',
                                 return_value=['model.layers.2.eh_proj.weight']), patch.object(
-                                    utils, 'is_torch_npu_available', return_value=False), patch.object(
-                                        utils, '_check_attention_backend'), patch.object(utils, '_check_padding_free'):
+                                    utils, '_check_attention_backend'), patch.object(utils, '_check_padding_free'):
                     config = utils.get_mcore_model_config(args, hf_config)
                 self.assertEqual(config.mtp_num_layers, expected_depth)
                 self.assertEqual(config.mtp_shared_weights, expected_shared)

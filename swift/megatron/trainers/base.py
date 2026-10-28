@@ -862,6 +862,12 @@ class BaseMegatronTrainer(ABC):
                 args.tuner_type == 'lora' and args.merge_lora and not hasattr(self.bridge, '_support_hf_grouped_lora'))
             save_missing_weights = args.save_missing_weights and args.model_dir
 
+            if args.use_megatron_fsdp and (not skip_saving_adapter or args.merge_lora):
+                # HF export bypasses FSDP forward hooks, even when DCP saving is skipped.
+                for model in self.wrapped_models:
+                    model.start_param_sync(force_sync=True)
+                    model.module._replace_param_with_raw_if_needed()
+
             if not skip_saving_adapter:
                 self.bridge.save_weights(
                     self.unwrapped_models,

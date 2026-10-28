@@ -7,7 +7,6 @@ try:
     from mcore_bridge import resolve_mtp_config
 except ImportError:  # mcore-bridge without the MTP auto-resolution API
     resolve_mtp_config = None
-from transformers.utils import is_torch_npu_available
 from typing import Any, Generator, Optional, Tuple
 
 from swift.megatron.utils import get_hf_mtp_num_layers
@@ -101,8 +100,6 @@ def get_mcore_model_config(args, hf_config):
     config = config_cls(**kwargs)
     args.mtp_num_layers = config.mtp_num_layers
     args.mtp_shared_weights = config.mtp_shared_weights
-    if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
-        setattr(config, 'use_flash_attn', True)
     _check_attention_backend(args, config)
     _check_padding_free(args, config)
     return config
