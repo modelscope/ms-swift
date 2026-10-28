@@ -11,7 +11,6 @@ ragged and are stored padded:
         kinds:       LongTensor  [total_q]            0=noul, 1=choice, 2=score (per-kind temp)
         counts:      LongTensor  [num_records]        questions per record (regroup total_q at decode)
         loss:        Optional                         filled when labels are consumed
-        ordinal_logits: Optional                      OmniJev CORAL/CORN cumulative logits
 
     meta (assembled by Template._post_encode, consumed by ScoringHead.forward):
         n_options:      List[int]                 per-question option count (len == total_q)
@@ -49,7 +48,6 @@ class ScoringOutput(ModelOutput):
     kinds: Optional[torch.LongTensor] = None
     counts: Optional[torch.LongTensor] = None
     loss: Optional[torch.FloatTensor] = None
-    ordinal_logits: Optional[torch.FloatTensor] = None
 
 
 def pad_option_logits(per_question: List[torch.Tensor],
@@ -160,6 +158,11 @@ class ScoringHead(nn.Module):
     # skips passing lm_logits, so a Clef/OmniJev forward never pays for the full-seq vocab projection.
     needs_lm_logits: bool = False
     keep_fp32: bool = False
+    # Set by subclasses over an encoder-style backbone (AutoModel on a BERT-family config, e.g.
+    # LayaHead's ModernBERT): the backbone forward already returns `last_hidden_state` and computes
+    # no lm logits, so the loader's forward wrapper reads `last_hidden_state` directly instead of
+    # forcing `output_hidden_states=True` and slicing `hidden_states[-1]`.
+    encoder_backbone: bool = False
 
     def set_output_embeddings(self, output_embeddings: nn.Module) -> None:
         self._output_embeddings = output_embeddings
@@ -886,8 +889,6 @@ class OmniOptionScorer(nn.Module):
     names/shapes match `head.pt` exactly and a strict load has 0 missing / 0 unexpected.
     """
 
-    INIT_SCORE_BIAS = -3.0
-
     def __init__(self, d_model: int, d_hidden: int = 1024, n_types: int = 3, norm: str = 'sigmoid') -> None:
         super().__init__()
         self.opt = nn.Sequential(nn.Linear(d_model, d_hidden), nn.GELU(), nn.Linear(d_hidden, d_hidden))
@@ -898,12 +899,6 @@ class OmniOptionScorer(nn.Module):
         self.abstain = nn.Linear(d_hidden, 1)
         self.feat = nn.Linear(6, d_hidden)
         self.feat_lin = nn.Linear(6, 1)
-
-    def forward(self, u_opts: torch.Tensor, z_q: torch.Tensor, type_id: int = 0, feats=None) -> torch.Tensor:
-        lg = self.logits(u_opts, z_q, type_id, feats)
-        if self.norm == 'softmax' and type_id != 0:
-            return torch.softmax(lg, dim=0)[:-1]
-        return torch.sigmoid(lg[:-1])
 
     def logits(self, u_opts: torch.Tensor, z_q: torch.Tensor, type_id: int = 0, feats=None) -> torch.Tensor:
         """The vector the probabilities come from, abstain last: `[K option logits, abstain]` for a
@@ -1345,30 +1340,12 @@ class KevPointerHead(ScoringHead):
         return head
 
 
-class _LayaKindTemperatureView(torch.Tensor):
-
-    _head: Optional['LayaHead'] = None
-
-    @classmethod
-    def wrap(cls, head: 'LayaHead') -> '_LayaKindTemperatureView':
-        # swift kind id -> Laya qtype id: noul(0)->2, choice(1)->0, score(2)->1
-        view = head.temperature[[2, 0, 1]].detach().as_subclass(cls)
-        view._head = head
-        return view
-
-    def __setitem__(self, kind, value) -> None:
-        head = self._head
-        if head is not None and isinstance(kind, int) and int(kind) in head.LAYA_QTYPE_OF_KIND:
-            head.temperature[head.LAYA_QTYPE_OF_KIND[int(kind)]] = float(value)
-            head._clear_buckets_for_kind(int(kind))
-            return
-        super().__setitem__(kind, value)
-
-
 class LayaHead(ScoringHead):
 
     needs_lm_logits = False
     keep_fp32 = True
+    # ModernBERT encoder backbone: the loader's forward wrapper feeds us last_hidden_state directly.
+    encoder_backbone = True
 
     # swift kind id -> Laya question-type id
     LAYA_QTYPE_OF_KIND = {0: 2, 1: 0, 2: 1}
@@ -1393,9 +1370,18 @@ class LayaHead(ScoringHead):
             for k, v in (temperature_by_options or {}).items()
         }
 
-    @property
-    def temperatures(self) -> torch.Tensor:
-        return _LayaKindTemperatureView.wrap(self)
+    def get_temperature(self, kind: int) -> float:
+        """Per-kind temperature in swift kind order (noul/choice/score).
+
+        The buffer itself stores Laya qtype order; this accessor hides the permutation."""
+        return float(self.temperature[self.LAYA_QTYPE_OF_KIND[int(kind)]])
+
+    def set_temperature(self, kind: int, value: float) -> None:
+        """Overwrite one kind's temperature (swift kind order) and drop its stale option-count
+        buckets, so the refit value wins over any loaded ``temperature_by_options`` entry."""
+        kind = int(kind)
+        self.temperature[self.LAYA_QTYPE_OF_KIND[kind]] = float(value)
+        self._clear_buckets_for_kind(kind)
 
     def _clear_buckets_for_kind(self, kind: int) -> None:
         prefix = f'{KIND_NAMES[kind]}:'

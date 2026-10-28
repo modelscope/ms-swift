@@ -444,7 +444,6 @@ class ClefPreprocessor(ScoringPreprocessor):
     CRITERIA_KEYS = ('criteria', 'options', 'choices', 'levels')
     GOLD_KEYS = ('answer', 'gold', 'label', 'target', 'value')
     ANSWERS_KEYS = ('answers', 'labels', 'golds', 'targets')
-    ID_KEYS = ('id', 'record_id')
     MODEL_NAME = 'Clef'  # used in error messages (subclasses reuse the gold resolution)
 
     def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:

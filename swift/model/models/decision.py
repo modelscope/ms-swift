@@ -59,11 +59,18 @@ class ScoringModelLoader(ModelLoader):
     @staticmethod
     def _scoring_head_forward(self, *args, head: ScoringHead, origin_forward, **kwargs):
         meta = kwargs.pop('decision_meta', None)
+        if meta is None:
+            raise ValueError("Decision forward requires decision_meta from the decision template's _encode "
+                             '(kinds / n_options / model-specific positions); got none.')
         kwargs.pop('labels', None)
-        kwargs['output_hidden_states'] = True
         kwargs['return_dict'] = True
-        output = origin_forward(*args, **kwargs)
-        hidden_states = output.hidden_states[-1]
+        if head.encoder_backbone:
+            output = origin_forward(*args, **kwargs)
+            hidden_states = output.last_hidden_state
+        else:
+            kwargs['output_hidden_states'] = True
+            output = origin_forward(*args, **kwargs)
+            hidden_states = output.hidden_states[-1]
         lm_logits = output.logits if head.needs_lm_logits else None
         return head(hidden_states, lm_logits, meta)
 
@@ -552,9 +559,6 @@ class LayaModelLoader(ScoringModelLoader):
         if not enc_sd:
             raise ValueError(f'Laya checkpoint {ckpt!r} carries no backbone weights.')
 
-        model_kwargs = dict(model_kwargs or {})
-        model_kwargs.pop('dtype', None)
-        model_kwargs.pop('torch_dtype', None)
         model = AutoModel.from_config(config)
         missing, unexpected = model.load_state_dict(enc_sd, strict=False)
         if missing or unexpected:
@@ -571,26 +575,6 @@ class LayaModelLoader(ScoringModelLoader):
         from swift.model.decision_head import maybe_load_trained_scoring_head
         maybe_load_trained_scoring_head(model, model_dir)
         return model
-
-    def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
-        head = self._match_head_dtype_device(model, head)
-        model.scoring_head = head
-        origin_forward = model.forward
-
-        @wraps(origin_forward.__func__ if hasattr(origin_forward, '__func__') else origin_forward)
-        def new_forward(self, *args, **kwargs):
-            return LayaModelLoader._laya_head_forward(self, *args, head=head, origin_forward=origin_forward, **kwargs)
-
-        patch_module_forward(model, new_forward)
-
-    @staticmethod
-    def _laya_head_forward(self, *args, head: ScoringHead, origin_forward, **kwargs):
-        meta = kwargs.pop('decision_meta', None)
-        kwargs.pop('labels', None)
-        kwargs['return_dict'] = True
-        output = origin_forward(*args, **kwargs)
-        hidden = output.last_hidden_state
-        return head(hidden, None, meta)
 
 
 register_model(

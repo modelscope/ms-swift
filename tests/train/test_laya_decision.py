@@ -137,8 +137,8 @@ def test_laya_head_eval_temperature_calibration():
     torch.testing.assert_close(eval_logits, train_logits / 2.0)
 
 
-def test_laya_head_temperatures_view_write_through_and_bucket_clearing():
-    # Buffer order is Laya qtype (choice, score, noul); the view is swift-kind order (noul, choice, score).
+def test_laya_head_temperature_accessors_and_bucket_clearing():
+    # Buffer order is Laya qtype (choice, score, noul); accessors are swift-kind order (noul, choice, score).
     head = LayaHead(
         hidden_size=32,
         head_layers=1,
@@ -148,18 +148,19 @@ def test_laya_head_temperatures_view_write_through_and_bucket_clearing():
             'choice:6-10': 8.0,
             'noul:2': 5.0
         })
-    view = head.temperatures
-    assert view.tolist() == [4.0, 2.0, 3.0]
-    assert float(view[0]) == 4.0 and len(view) == 3
+    assert [head.get_temperature(k) for k in range(3)] == [4.0, 2.0, 3.0]
     # A callback refit of `choice` writes through to the Laya-order buffer slot and drops only
     # the choice buckets, so the refit value (not a stale factory bucket) wins at serving.
-    view[1] = 7.0
+    head.set_temperature(1, 7.0)
     assert head.temperature.tolist() == [7.0, 3.0, 4.0]
     assert head.temperature_by_options == {'noul:2': 5.0}
+    # Reads always reflect the latest write (no snapshot aliasing).
+    assert head.get_temperature(1) == 7.0
     # Unrelated kinds' buckets survive a different kind's refit.
-    view[0] = 1.5  # noul
+    head.set_temperature(0, 1.5)  # noul
     assert head.temperature.tolist() == [7.0, 3.0, 1.5]
     assert head.temperature_by_options == {}
+    assert head.get_temperature(0) == 1.5
 
 
 def _tiny_modernbert():

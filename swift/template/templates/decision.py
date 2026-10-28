@@ -644,10 +644,6 @@ class LayaTemplate(DecisionTemplate, Template):
     _head_max_len = 192
     _opt_text_max_len = 48
 
-    def _render_s1_prompt(self, fields: Dict[str, Any]) -> str:
-        return (f"{fields['kind']} question: {fields['question']}\n"
-                + '\n'.join(f'- {opt}' for opt in fields['options']) + f"\n{fields['state']}")
-
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         fields = self._decision_fields(inputs)
         kind = fields['kind']
