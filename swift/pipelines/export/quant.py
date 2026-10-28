@@ -54,6 +54,11 @@ class QuantEngine(ProcessorMixin):
                 args.output_dir,
                 safe_serialization=args.safe_serialization,
                 max_shard_size=args.max_shard_size)
+            # Optimum may convert the checkpoint format while saving the weights.
+            # Persist its final configuration so reloading uses the same format.
+            self.model.config.quantization_config = gptq_quantizer.to_dict()
+            self.model.config.quantization_config.pop('dataset', None)
+            self.model.config.save_pretrained(args.output_dir)
         elif args.quant_method in {'bnb', 'fp8', 'entropack'}:
             self.model.save_pretrained(
                 args.output_dir, safe_serialization=args.safe_serialization, max_shard_size=args.max_shard_size)

@@ -94,6 +94,21 @@ def _clamp_temperature(t: float) -> float:
     return max(HEAD_TEMPERATURE_RANGE[0], min(HEAD_TEMPERATURE_RANGE[1], t))
 
 
+def _set_kind_temperature(head, kind: int, value: float) -> None:
+    """Write one kind's fitted temperature. Heads with an explicit setter (LayaHead) take it --
+    it also drops their derived per-bucket caches; buffer-backed heads are written directly."""
+    if hasattr(head, 'set_temperature'):
+        head.set_temperature(kind, value)
+    else:
+        (head.temperatures if hasattr(head, 'temperatures') else head.temps)[kind] = value
+
+
+def _has_kind_temperatures(head) -> bool:
+    """Heads expose per-kind temperatures either via explicit accessors (LayaHead) or via a
+    kind-ordered ``temperatures``/``temps`` buffer."""
+    return hasattr(head, 'get_temperature') or hasattr(head, 'temperatures') or hasattr(head, 'temps')
+
+
 class TemperatureCalibrationCallback(TrainerCallback):
     """Uses two-stage fitting (global head T + per-kind relative T) and 2-fold
     cross-validation for honest metric reporting.
@@ -119,7 +134,7 @@ class TemperatureCalibrationCallback(TrainerCallback):
         head = get_scoring_head(self.trainer.model)
         if head is None:
             return
-        if not (hasattr(head, 'temperatures') or hasattr(head, 'temps')):
+        if not _has_kind_temperatures(head):
             return
         if getattr(self.trainer, 'eval_dataset', None) is None:
             return
@@ -158,7 +173,7 @@ class TemperatureCalibrationCallback(TrainerCallback):
         if head is None:
             return
 
-        has_temps = hasattr(head, 'temperatures') or hasattr(head, 'temps')
+        has_temps = _has_kind_temperatures(head)
         if not has_temps:
             logger.info('temperature_calibration: head has no temperature buffer, skipping.')
             return
@@ -187,11 +202,6 @@ class TemperatureCalibrationCallback(TrainerCallback):
         if not collected:
             logger.info('temperature_calibration: no questions collected from eval set, skipping.')
             return
-
-        if hasattr(head, 'temperatures'):
-            buf = head.temperatures
-        else:
-            buf = head.temps
 
         n_kinds = len(KIND_NAMES)
 
@@ -228,12 +238,12 @@ class TemperatureCalibrationCallback(TrainerCallback):
             rel = relative_ts.get(kind, 1.0)
             if has_head_t_buf:
                 # Store the relative part; head_temperature holds the global part.
-                buf[kind] = rel
+                _set_kind_temperature(head, kind, rel)
                 final_ts[kind] = _clamp_temperature(head_clamped * rel)
             else:
                 # Fallback: pack the product into the single buffer.
                 final_t = _clamp_temperature(head_clamped * rel)
-                buf[kind] = final_t
+                _set_kind_temperature(head, kind, final_t)
                 final_ts[kind] = final_t
 
         # --- 2-fold CV for honest out-of-fold metrics ---
@@ -363,9 +373,13 @@ class TemperatureCalibrationCallback(TrainerCallback):
 
     @staticmethod
     def _served_temperatures(head) -> Tuple[float, Dict[int, float]]:
-        buf = head.temperatures if hasattr(head, 'temperatures') else head.temps
         head_t = float(head.head_temperature) if hasattr(head, 'head_temperature') else 1.0
-        relative = {kind: float(buf[kind]) for kind in range(len(buf))}
+        if hasattr(head, 'get_temperature'):
+            from swift.model.decision_head import KIND_NAMES
+            relative = {kind: head.get_temperature(kind) for kind in range(len(KIND_NAMES))}
+        else:
+            buf = head.temperatures if hasattr(head, 'temperatures') else head.temps
+            relative = {kind: float(buf[kind]) for kind in range(len(buf))}
         return head_t, relative
 
     def _collect_logits_and_targets(self) -> Dict[int, Dict]:

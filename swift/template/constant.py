@@ -137,6 +137,7 @@ class LLMTemplateType:
     spark2_5 = 'spark2_5'
 
     generic_decision = 'generic_decision'
+    laya = 'laya'
 
 
 class RMTemplateType:
@@ -166,6 +167,7 @@ class MLLMTemplateType:
     clef = 'clef'
     omnijev = 'omnijev'
     kev = 'kev'
+    thx02 = 'thx02'
 
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'

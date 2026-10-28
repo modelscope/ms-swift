@@ -124,8 +124,8 @@ class LLMModelType:
 
     olmoe = 'olmoe'
 
-    # typed-decision (System-1 scoring) generic text-LLM path (loads AutoModelForCausalLM, not multimodal)
     generic_decision = 'generic_decision'
+    laya = 'laya'
 
 
 class BertModelType:
@@ -168,6 +168,7 @@ class MLLMModelType:
     clef = 'clef'
     omnijev = 'omnijev'
     kev = 'kev'
+    thx02 = 'thx02'
 
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
@@ -230,6 +231,8 @@ class MLLMModelType:
     deepseek_ocr = 'deepseek_ocr'
     deepseek_ocr2 = 'deepseek_ocr2'
     unlimited_ocr = 'unlimited_ocr'
+    # NOTE: `unlimited-ocr` is not a typo: it is the model_type declared by v2's `config.json`.
+    unlimited_ocr2 = 'unlimited-ocr'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'

@@ -23,6 +23,10 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
    - [ModelScope](https://modelscope.cn/models/AI-ModelScope/OmniJev)
 4. Kev: Qwen3.5-{0.8,4,9}B-Base (hybrid gated-deltanet) + PEFT adapter, text-only
    - [kev-0.8b](https://www.modelscope.cn/models/jaredpalmer/kev-0.8b) / [kev-4b](https://www.modelscope.cn/models/jaredpalmer/kev-4b) / [kev-9b](https://www.modelscope.cn/models/jaredpalmer/kev-9b)
+5. THX-02: Qwen3.5 hybrid backbone (merged, noncausal full attention) + inline readout head
+   - [ModelScope](https://modelscope.ai/models/HAL-X/THX-02)
+6. Laya: ModernBERT-large bidirectional encoder + typed-decision head, text-only, non-autoregressive
+   - [ModelScope](https://modelscope.cn/models/convaiinnovations/laya) / [HuggingFace](https://huggingface.co/convaiinnovations/laya)
 
 | Model | `--model_type` | Base | Head Artifacts | `--loss_type` |
 |-------|----------------|------|----------------|----------------|
@@ -30,6 +34,8 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
 | Clef | `clef` | Merged Qwen3-VL (LoRA already merged) | `joint_head.safetensors` + `joint_head_config.json` | `smooth_brier` |
 | OmniJev | `omnijev` | Qwen3.5-4B hybrid + PEFT adapter | `head.pt` (FiLM) + `ord.pt` (ordinal regression) + `new_tok_emb.pt` (2 new tokens) + `head_meta.json` | `ce_rps` |
 | Kev | `kev` | Qwen3.5-{0.8,4,9}B-Base hybrid + PEFT adapter | `head.pt` (pointer head, fp32) + fitted `temperature` (eval-time only) | `scoring` |
+| THX-02 | `thx02` | Merged Qwen3.5 hybrid (noncausal full attention) | `readout.safetensors` (linear readout over 255 answer codes) + `decision_config.json` (calibrated temperature) | `distill_rps` |
+| Laya | `laya` | ModernBERT-large (bidirectional, no adapter) | `model.safetensors` (encoder + head in one file) + `rl_agent_config.json` (architecture + per-kind/per-bucket temperatures) | `ce_rps` |
 
 Developers can convert any CausalLM into a decision model by specifying:
 
@@ -176,6 +182,10 @@ temperature_calibration: written to ['output/scoring_head.json', ...]
 
 The fitted temperatures are written into the head's non-persistent buffers and serialised via `save_pretrained` to **`scoring_head.json`** in `output_dir` and the last checkpoint directory (not into safetensors — the JSON stays human-readable). Loading a checkpoint restores them automatically via `maybe_load_trained_scoring_head` → `_load_calibration_meta`; the probabilities served by `swift infer` are therefore already **calibrated**, with no extra deployment step.
 
+For THX-02 the fitted `head_temperature` × per-kind temperatures are applied **on top of** the model's own
+calibrated temperature from `decision_config.json`; with no eval set they stay 1.0 and the served probabilities
+are exactly those of the released calibration.
+
 ### Multi-GPU (DDP) behavior
 
 Under DDP training the eval set is sharded across ranks (each rank sees only about 1/world_size of the questions); the callback handles this in two layers:
@@ -205,7 +215,7 @@ Each model has its own raw JSONL schema, normalized by that model's dedicated `S
 
 ### One-Question-Per-Row Schema
 
-**Applies to `--model_type`: `jev`, `generic_decision` (`kev` is its text-only variant, see below)**
+**Applies to `--model_type`: `jev`, `generic_decision` (`kev` is its text-only variant, `laya` its bidirectional-encoder variant, see below)**
 
 Models in this family score **one question per forward**. A record with multiple questions is fanned out into one row per question.
 
@@ -234,6 +244,20 @@ Models in this family score **one question per forward**. A record with multiple
 - `questions`: list of question dicts. Native fields are `instr` (question text), `options` (list of option texts), and `label` (the **index** of the correct option); the unified schema's `kind`/`question`/`gold` is also accepted.
 - When `kind` is omitted it is inferred from the option set: a true/false-style pair → `noul`; all-digit options → `score`; anything else → `choice`.
 - **Adapter-only repos**: the repo ships no config.json / base weights. Pass the base via `--model`, the repo via `--adapters`, and point `KEV_HEAD` at the adapter dir's `head.pt` (see `examples/train/decision/kev.sh`).
+
+#### The `laya` Variant
+
+`laya` scores one question per forward like `kev`, but on a **bidirectional encoder** (ModernBERT-large) instead of a causal LM: each row is `question + each option's <mask> marker + state`, the head reads the hidden state at each `<mask>` and scores it. It is **text-only** and **non-autoregressive** (no generation at all). It accepts the unified schema above plus the laya-native corpus format of `rl_common.encode_record` (option texts render byte-exact to the checkpoint's training distribution):
+
+```json lines
+{"state": "Hi, we were billed twice for March.", "qs": [{"t": "choice", "ins": "Which department?", "crit": {"billing": "invoices, payments, refunds", "technical": "bugs, outages", "other": "everything else"}, "y": 0}]}
+{"state": "The refund arrived.", "qs": [{"t": "noul", "ins": "Customer is satisfied?", "y": 1}]}
+{"state": "Urgent complaint.", "qs": [{"t": "score", "ins": "How urgent?", "crit": ["low", "high"], "soft": [0.25, 0.75]}]}
+```
+
+- `qs`: list of question dicts with native fields `t` (kind), `ins` (question text), `crit` (option definitions — `choice` renders `'id: criteria'`, `score` renders `'level i: criteria'`, `noul` uses canonical false/true texts), and `y` (gold index) or `soft` (soft distribution).
+- The unified schema (`questions` with `kind`/`question`/`options`/`gold`) is also accepted; option texts pass through unchanged.
+- The repo bundles three checkpoints (root English / `typed-decisions/` / `multilingual/`); `LAYA_CHECKPOINT` selects one. `--tuner_type full` is required — the encoder has no generation head for the LoRA/PeftModel wrap (see `examples/train/decision/laya.sh`).
 
 
 
@@ -276,6 +300,27 @@ Models in this family score **one question per forward** over a **multimodal** s
   - `score`: `levels` is a list of level labels. `gold` is the level label string.
 - `videos`: list of video paths. **Note**: the training/inference template does NOT decode raw video files inline. You must first call `swift.model.omnijev_media.video_state(path)` offline to convert a raw video into a `{"images": ["mosaic.jpg"], "video": {...}}` state, then pass that state in your data. `video_state` invokes `ffmpeg`/`ffprobe` to uniformly sample 16 frames, compose a 4×4 mosaic image, and attach timestamp metadata. Passing a raw video path directly will raise an error.
 
+### THX-02
+
+THX-02 reads **all questions of a record jointly in a single noncausal forward** and accepts the same
+schema as a Decisions API request. Images are optional and can be combined with any question type.
+
+```json lines
+{"state": "I was charged twice, please refund the extra payment!", "questions": {"team": {"type": "choice", "instructions": "Which team should handle this?", "criteria": {"billing": "Charges and refunds", "support": "Technical problems"}}, "refund": {"type": "noul", "instructions": "Does the customer ask for a refund?"}, "anger": {"type": "score", "instructions": "How frustrated is the customer?", "criteria": ["calm", "annoyed", "angry"]}}, "answers": {"team": "billing", "refund": true, "anger": 1}}
+{"state": {"order": 48213, "status": "delivered"}, "questions": {"route": {"type": "choice", "criteria": {"shipping": "Lost or late deliveries", "billing": "Payments"}}}, "answers": {"route": "shipping"}}
+{"state": "A cafe raised the latte price from $4 to $5; daily sales fell from 300 to 200 cups.", "questions": {"revenue": {"type": "choice", "instructions": "What happened to daily revenue?", "criteria": {"up": "Increased", "same": "Unchanged", "down": "Decreased"}}}, "targets": {"revenue": [0.02, 0.08, 0.9]}}
+{"state": "Look at the image.", "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png"], "questions": {"kind": {"type": "choice", "instructions": "What is in the image?", "criteria": {"cat": "a cat", "dog": "a dog"}}}, "answers": {"kind": "cat"}}
+```
+
+- `state`: string or any JSON value.
+- `questions`: a dict keyed by question ID; each value has `type` (`noul`/`choice`/`score`), optional
+  `instructions`, and `criteria` (`{option: description}` for `choice`, kept in the given order; a list of
+  level descriptions for `score`; optional `{"false": ..., "true": ...}` descriptions for `noul`).
+- `answers`: gold per question ID: an option key, an option index, a bool for `noul`, or a full
+  distribution in option order. `targets` may carry soft distributions instead (e.g. a teacher's
+  probabilities for distillation).
+- `images`: optional list of image paths, URLs or data URIs.
+
 ## Training
 
 ms-swift ships a training script per integrated model at `examples/train/decision/<model_type>.sh` (using **local mini datasets** — no download needed), loading local data via `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision`; **remote datasets** (`--dataset open_jev_<model_type>:all`, requiring online download of the Open-Jev corpus) are also supported. The two methods differ only in data source; all other parameters are identical. See the [Datasets](#datasets) section for details. Each model's complete runnable command (including `--adapters` path resolution and head-artifact env exports) is in its script.
@@ -316,6 +361,60 @@ Key parameters:
 - models whose head artifacts are not in the base directory (adapter-only repos) must export environment variables pointing at the head artifacts first — see [Head Artifact Env Overrides](#head-artifact-env-overrides)
 - models using the branch-cache mechanism additionally need `export MSO_BRANCH_CKPT=1` and `--gradient_checkpointing false` — see [the notes below](#omnijev-msol_branch_ckpt-and-gradient_checkpointing)
 - `--split_dataset_ratio 0` — example scripts disable the eval split by default; for post-training temperature calibration, change it to `0.1` or pass `--val_dataset` explicitly
+
+### THX-02
+
+THX-02 ships a merged backbone and its readout head in one repository, so a fresh LoRA is trained on top
+and the readout is trained jointly:
+
+```bash
+MODELSCOPE_ENDPOINT=https://www.modelscope.ai \
+USE_HF=0 \
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --external_plugins examples/train/decision/dataset.py \
+    --model HAL-X/THX-02 \
+    --model_type thx02 \
+    --task_type decision \
+    --loss_type distill_rps \
+    --dataset thx02_decision \
+    --tuner_type lora \
+    --target_modules all-linear \
+    --freeze_vit true \
+    --torch_dtype bfloat16 \
+    --attn_impl sdpa \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 1 \
+    --learning_rate 1e-4 \
+    --lora_rank 16 \
+    --lora_alpha 32 \
+    --gradient_accumulation_steps 4 \
+    --gradient_checkpointing true \
+    --logging_steps 1 \
+    --save_steps 50 \
+    --save_total_limit 2 \
+    --max_length 8192 \
+    --split_dataset_ratio 0 \
+    --output_dir output \
+    --dataloader_num_workers 1
+```
+
+Key parameters:
+- `--model_type thx02` — reads the backbone configuration from THX-02's own `config.json` (`backbone_config`),
+  switches the full-attention layers to bidirectional attention over the non-padding tokens and attaches the
+  readout as `scoring_head`
+- `--loss_type distill_rps` — KL to the target distribution (one-hot gold or soft teacher probabilities) +
+  RPS on `score` questions
+- `--target_modules all-linear` — matches only the language-model projections; the readout is trained
+  directly (not through LoRA) and saved as `scoring_head.safetensors`
+- Packing / `--padding_free` is not supported: records would attend to each other through the noncausal
+  attention. Both are rejected while the arguments are parsed, before the model is loaded
+- Records are never truncated: a record longer than `--max_length` raises `MaxLengthError` (skipped like any
+  over-long row under the default `--truncation_strategy raise`), whatever `--truncation_strategy` is set to,
+  because cutting tokens would drop questions or image patches and shift every readout position
+- Image resolution: images are bounded by `max_pixels` from `decision_config.json` (the bound THX-02 was
+  trained with) and at least 65536 px. `--max_pixels` is applied first, so it can lower the resolution down to
+  that minimum but not raise it above the bound
 
 ### Train Any CausalLM from Scratch
 
@@ -469,6 +568,7 @@ Choose the preprocessor based on your data schema (one-to-one with the three sch
 
 - `JevPreprocessor` — one-question-per-row schema (`{state, questions: [{kind, question, options, gold}]}`, one question per row)
 - `KevPreprocessor` — the text-only variant of the one-question-per-row schema (`{state, questions: [{instr, options, label}]}`)
+- `LayaPreprocessor` — the bidirectional-encoder variant of the one-question-per-row schema (`{state, qs: [{t, ins, crit, y | soft}]}`, options rendered like `rl_common.render_options`)
 - `ClefPreprocessor` — multi-question joint schema (`{state, questions: {qid: {type, instructions, criteria}}, answers}`, all questions per row)
 - `OmniJevPreprocessor` — multimodal schema (with `images`/`videos` and option blocks)
 - `GenericDecisionPreprocessor` — identical behavior to `JevPreprocessor`; pairs with the `generic_decision` model type
@@ -522,7 +622,7 @@ swift infer \
 
 - models whose head artifacts are not in the base directory (adapter-only repos) must export environment variables pointing at the head artifacts first — see [Head Artifact Env Overrides](#head-artifact-env-overrides);
 - models using the branch-cache mechanism additionally need `export MSO_BRANCH_CKPT=1` — see [the notes below](#omnijev-msol_branch_ckpt-and-gradient_checkpointing);
-- each model's complete runnable inference command is in its example script under `examples/train/decision/`.
+- each model's training command is at `examples/train/decision/<model_type>.sh`.
 
 The model returns per-option probabilities (softmaxed within each question's option set) rather than generated text. Each record's inference output is a list with one entry per question:
 
@@ -592,6 +692,10 @@ When head artifacts are not in the same directory as the base model (adapter-onl
 | `CLEF_JOINT_HEAD_CONFIG` | `clef` | `joint_head_config.json` | Override head config load path |
 | `CLEF_JOINT_HEAD_WEIGHTS` | `clef` | `joint_head.safetensors` | Override head weights load path |
 | `KEV_HEAD` | `kev` | `head.pt` | Points at the pointer-head weights in the adapter dir (kev repos are adapter-only; required) |
+| `THX02_READOUT` | `thx02` | `readout.safetensors` | Override readout weights load path |
+| `THX02_DECISION_CONFIG` | `thx02` | `decision_config.json` | Override temperature / answer-code config load path |
+| `LAYA_CHECKPOINT` | `laya` | checkpoint dir | Points at one of the bundled checkpoints (root / `typed-decisions` / `multilingual`) |
+| `LAYA_CONFIG` | `laya` | `rl_agent_config.json` | Override the head architecture + temperature calibration config path |
 
 When unset, the loader searches `model_dir` (and the `adapter_vllm/` subdirectory for `jev`) automatically. On file-missing errors, the message instructs the user to set the corresponding env var.
 
@@ -601,6 +705,11 @@ When unset, the loader searches `model_dir` (and the `adapter_vllm/` subdirector
 - **`--target_modules all-linear` injects LoRA into the head**: the `clef` / `omnijev` heads contain `Linear` layers; `all-linear` may attach LoRA to the head.
 - **`jev` choice > 16 options**: Only `single` mode (≤16 options in one forward) is supported.
 - **`omnijev` audio spectrogram**: Not in the inference path. Users must provide their own converter.
+- **`thx02` packing**: `--packing` / `--padding_free` are rejected, because the noncausal attention would let
+  packed records attend to each other.
+- **`thx02` truncation**: over-long records raise `MaxLengthError` instead of being truncated; `--max_pixels`
+  only lowers image resolution within [65536 px, `max_pixels` in `decision_config.json`].
+- **`laya` requires `--tuner_type full`**: the bidirectional encoder has no generation head, so the default LoRA/PeftModel causal-LM wrap does not apply.
 - **`tie_word_embeddings=True` adapter merge**: Only affects "merge adapter / convert format"; training and inference are unaffected.
 
 ## Verification Report
@@ -619,6 +728,9 @@ When unset, the loader searches `model_dir` (and the `adapter_vllm/` subdirector
 | 2 | Clef | 0.5000 | **0.8333** | +0.3333 | 0.9712 | 0.9311 | ✅ +67% |
 | 3 | OmniJev | 0.5500 | 0.7500 | +0.2884 | 0.8465 | 0.8196 | ✅ +37% |
 | 4 | Generic Decision | 0.1667 | **0.6667** | +0.5000 | 0.5682 | 0.9363 | ✅ +300% |
+| 5 | THX-02 | 0.7143 | **1.0000** | +0.2857 | 0.8827 | **0.9154** | ✅ +40% |
+
+> Row 5 (THX-02) was measured with transformers 5.17.0 on 1× RTX 4090, `examples/train/decision/thx02.sh` for 3 epochs on `thx02_decision`.
 
 ### Temperature Ablation: Same Checkpoint With/Without Temperature Post-Processing
 
