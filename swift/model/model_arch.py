@@ -106,6 +106,7 @@ class MLLMModelArch:
     monkeyocrv2 = 'monkeyocrv2'
 
     nemotron_h_omni = 'nemotron_h_omni'
+    nemo_speechlm = 'nemo_speechlm'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -614,6 +615,14 @@ register_model_arch(
         language_model='language_model',
         aligner='vision_projector',
         vision_tower='vision_model',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.nemo_speechlm,
+        language_model='llm',
+        vision_tower='perception.encoder',
+        aligner='perception.proj',
     ))
 
 register_model_arch(

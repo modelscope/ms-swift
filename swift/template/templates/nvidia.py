@@ -1,16 +1,84 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import numpy as np
 import torch
+import torch.nn.functional as F
 from copy import deepcopy
 from dataclasses import asdict
 from PIL import Image
 
+from swift.utils import get_env_args
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..utils import findall
-from ..vision_utils import load_image, load_video_hf
+from ..vision_utils import load_audio, load_image, load_video_hf
 from .qwen import QwenTemplateMeta
+
+
+def _nemo_speechlm_audio_tokens(num_samples, estimator_config):
+    preprocessor = estimator_config['preprocessor']
+    length = (num_samples + 2 * int(preprocessor['stft_pad_amount']) - int(preprocessor['n_fft']))
+    length //= int(preprocessor['hop_length'])
+    subsampling = estimator_config['subsampling']
+    if subsampling['type'] != 'feature_stacking':
+        raise ValueError(f'Unsupported NeMo SpeechLM subsampling type: {subsampling["type"]!r}.')
+    factor = int(subsampling['factor'])
+    return max(1, (length + factor - 1) // factor)
+
+
+class NemoSpeechLMTemplate(Template):
+    placeholder_tokens = ['<|audio|>']
+    support_padding_free = False
+
+    def init_env_args(self):
+        super().init_env_args()
+        self.sampling_rate = get_env_args('sampling_rate', int, 16000)
+
+    def replace_tag(self, media_type, index, inputs):
+        if media_type != 'audio':
+            raise ValueError(f'nemo_speechlm does not support {media_type}.')
+        return ['<|audio|>']
+
+    def _encode(self, inputs):
+        encoded = super()._encode(inputs)
+        sampling_rate = inputs.chat_template_kwargs.get('sampling_rate') or self.sampling_rate
+        if not inputs.audios:
+            return encoded
+        audios = [
+            audio if isinstance(audio, (np.ndarray, torch.Tensor)) else load_audio(audio, sampling_rate=sampling_rate)
+            for audio in inputs.audios
+        ]
+        audios = [torch.as_tensor(audio, dtype=torch.float32).squeeze() for audio in audios]
+        if any(audio.ndim != 1 or audio.numel() == 0 for audio in audios):
+            raise ValueError('NeMo SpeechLM expects non-empty mono audio waveforms.')
+        audio_token_id = self._tokenize('<|audio|>')
+        indices = findall(encoded['input_ids'], audio_token_id)
+        if len(indices) != len(audios):
+            raise ValueError(f'Audio placeholders ({len(indices)}) != audio items ({len(audios)}).')
+        estimator_config = self.processor.model_info.config.audio_token_estimator
+
+        def _get_new_audio_tokens(index):
+            return audio_token_id * _nemo_speechlm_audio_tokens(audios[index].shape[-1], estimator_config)
+
+        input_ids, labels, loss_scale = self._extend_tokens(encoded['input_ids'], encoded['labels'],
+                                                            encoded.get('loss_scale'), indices, _get_new_audio_tokens)
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
+        encoded['audio_signal'] = audios
+        if (inputs.is_multimodal and self.truncation_strategy == 'split' and self.max_length is not None
+                and len(input_ids) > self.max_length):
+            raise ValueError('NeMo SpeechLM audio cannot use truncation_strategy=split; use raise, left or right.')
+        return encoded
+
+    def _data_collator_mm_data(self, batch):
+        result = {}
+        audios = [audio for row in batch for audio in row.get('audio_signal', [])]
+        if audios:
+            max_length = max(audio.shape[-1] for audio in audios)
+            result['audio_signal'] = torch.stack([F.pad(audio, (0, max_length - audio.shape[-1])) for audio in audios])
+            result['audio_signal_length'] = torch.tensor([audio.shape[-1] for audio in audios], dtype=torch.long)
+        return result
 
 
 class NemotronHOmniTemplate(Template):
@@ -196,6 +264,19 @@ class NemotronHOmniTemplate(Template):
         result['video_token_mask'] = types == 2
         return result
 
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.nemo_speechlm,
+        template_cls=NemoSpeechLMTemplate,
+        default_system=None,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think></think>',
+        history_thinking_prefix='<think></think>',
+        stop_words=['<|im_end|>'],
+        agent_template='hermes',
+    ))
 
 register_template(
     QwenTemplateMeta(
