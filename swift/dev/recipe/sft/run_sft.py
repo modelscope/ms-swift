@@ -209,9 +209,8 @@ def _run_supervised(cluster: SupervisedCluster, model_config: 'ModelConfig',
     def fit_transformers() -> None:
         """transformers GA: one micro-batch per forward_backward, twinkle's gate steps the optimizer.
 
-        twinkle's grad-sync gate lags one micro-step, so an optimizer window here spans ga+1
-        micro-batches; ``on_step_begin`` fires at each window's first micro-batch (the
-        ``at_window_start`` flag, re-set after every boundary) rather than on a clean ga multiple.
+        Each optimizer window contains exactly ga micro-batches. The at_window_start
+        flag fires on_step_begin once and resets after each completed window.
         """
         at_window_start = True
         for epoch in range(start_epoch, _epochs(num_train_epochs, max_steps)):

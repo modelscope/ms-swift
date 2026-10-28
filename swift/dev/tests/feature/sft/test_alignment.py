@@ -371,15 +371,15 @@ def test_resolve_unified_entry_dispatch():
 # ----------------------------------------------------------------------
 # GA step-count contract: num_optimizer_steps() must match the number of
 # optimizer updates twinkle's do_grad_sync actually performs over N micro-batches.
-# Guards two contracts: (1) twinkle's GA boundary lags one micro-step, and
-# (2) small-data-under-large-GA yields ZERO optimizer steps (silent no-update).
+# Guards complete-window updates and zero updates for an incomplete window.
 # Lightweight: pure arithmetic, no GPU/model.
 # ----------------------------------------------------------------------
 
 
 def _do_grad_sync(cur_step: int, ga: int) -> bool:
-    """Exact copy of twinkle OptimizerGroup.do_grad_sync predicate."""
-    return ga == 1 or ((cur_step - 1) % ga == 0 and cur_step > 1)
+    """Use the worker implementation rather than duplicating its predicate."""
+    from twinkle.model.optimizer_group import BaseOptimizerGroup
+    return BaseOptimizerGroup(cur_step=cur_step, gradient_accumulation_steps=ga).do_grad_sync()
 
 
 def _actual_optimizer_steps(num_micro: int, ga: int) -> int:
@@ -400,9 +400,7 @@ def _actual_optimizer_steps(num_micro: int, ga: int) -> int:
 def test_num_optimizer_steps_matches_do_grad_sync():
     """num_optimizer_steps() must equal the actual do_grad_sync update count.
 
-    Freezes the twinkle-GA-lag arithmetic so a well-meaning simplification
-    (e.g. N // ga) can't silently desync the LR scheduler's num_training_steps
-    from the steps the loop actually takes.
+    Covers scheduler horizons on both sides of every accumulation boundary.
     """
     from swift.dev.recipe.utils import num_optimizer_steps
 
@@ -414,31 +412,25 @@ def test_num_optimizer_steps_matches_do_grad_sync():
 
 
 def test_small_data_large_ga_yields_zero_steps():
-    """Contract: N micro-batches <= ga produce ZERO optimizer steps under twinkle GA.
-
-    twinkle's boundary lags one micro-step (first step at cur_step=ga+1), so a dataset
-    that fits within a single GA window trains (forward/backward run) but NEVER updates
-    the model. run_sft fail-fasts on this (contract 5, see test_run_sft_zero_opt_steps_raises
-    in test_run_sft_e2e.py); here we freeze the arithmetic that detects it.
-    """
+    """An exact window updates once; an incomplete window does not update."""
     from swift.dev.recipe.utils import num_optimizer_steps
 
-    assert num_optimizer_steps(2, 2) == 0  # exactly one GA window -> no update
+    assert num_optimizer_steps(2, 2) == 1  # exactly one complete window
     assert num_optimizer_steps(1, 2) == 0
-    assert num_optimizer_steps(3, 2) == 1  # one micro-step past the window -> first update
+    assert num_optimizer_steps(3, 2) == 1  # a complete window plus an uncommitted microstep
     assert num_optimizer_steps(3, 4) == 0  # still inside the first (larger) window
 
 
 # ----------------------------------------------------------------------
-# End-to-end resume: stop@odd-phase (mid GA window) then resume must produce a
+# End-to-end resume: save at a completed GA window, then resume must produce a
 # BIT-IDENTICAL parameter trajectory to an uninterrupted run. This is the deepest
 # resume guarantee (GA phase + optimizer/scheduler/RNG + data-order all realigned).
-# Heavy: real weights + GPU; gated. Scenario b (odd-phase) is the hardest case.
+# Heavy: real weights + GPU; gated. Pending gradients are not checkpointed.
 # ----------------------------------------------------------------------
 
 
 @requires_model
-def test_resume_param_trajectory_bit_identical_oddphase(tmp_path):
+def test_resume_param_trajectory_bit_identical_at_boundary(tmp_path):
     import torch
 
     if not torch.cuda.is_available():
@@ -499,17 +491,17 @@ def test_resume_param_trajectory_bit_identical_oddphase(tmp_path):
         raw = m.strategy.unwrap_model(m.model)
         return {n: p.detach().float().cpu().clone() for n, p in raw.named_parameters()}
 
-    # --- uninterrupted reference: 6 micro-steps (=> 2 optimizer steps under GA lag) ---
+    # --- uninterrupted reference: 6 micro-steps (=> 3 optimizer steps) ---
     ref = fresh_model()
     _drive_micro(ref, make_dl(), n_micro=6, ga=ga)
     ref_params = params(ref)
 
-    # --- interrupted at odd phase (3 micro-steps => stop mid 2nd window), save, resume ---
+    # --- interrupted after two complete windows (4 micro-steps), save, resume ---
     a = fresh_model()
     dl_a = make_dl()
-    _drive_micro(a, dl_a, n_micro=3, ga=ga)
+    _drive_micro(a, dl_a, n_micro=4, ga=ga)
     ckpt = a.save(
-        'checkpoint-3',
+        'checkpoint-4',
         output_dir=str(tmp_path / 'a'),
         save_optimizer=True,
         consumed_train_samples=dl_a.get_state()['consumed_train_samples'])
@@ -520,7 +512,7 @@ def test_resume_param_trajectory_bit_identical_oddphase(tmp_path):
     state = b.resume_from_checkpoint(ckpt)
     dl_b = make_dl()
     dl_b.skip_consumed_samples(state['consumed_train_samples'])
-    _drive_micro(b, dl_b, n_micro=3, ga=ga)  # remaining 3 micro-steps -> total 6
+    _drive_micro(b, dl_b, n_micro=2, ga=ga)  # remaining 2 micro-steps -> total 6
     res_params = params(b)
 
     max_diff = max((ref_params[n] - res_params[n]).abs().max().item() for n in ref_params)
@@ -567,7 +559,7 @@ class _TinyTunerCfg:
 # irrelevant and the LoRA trajectory is still bit-identical. If it only aligned
 # when seeds matched, the adapter load would be incomplete (a real product bug).
 # Guards the twinkle LoRA resume contract (adapter_name='default', has_adapter
-# branch of resume_from_checkpoint). GA odd-phase (stop@3) is the hardest case.
+# branch of resume_from_checkpoint). Save after two complete GA windows.
 # ----------------------------------------------------------------------
 @requires_model
 def test_lora_resume_param_trajectory_bit_identical_seed_independent(tmp_path):
@@ -622,17 +614,17 @@ def test_lora_resume_param_trajectory_bit_identical_seed_independent(tmp_path):
         raw = m.strategy.unwrap_model(m.model)
         return {n: p.detach().float().cpu().clone() for n, p in raw.named_parameters() if 'lora_' in n}
 
-    # reference: seed A, uninterrupted 6 micro-steps (=> 2 optimizer steps under GA lag).
+    # reference: seed A, uninterrupted 6 micro-steps (=> 3 optimizer steps).
     ref = build_lora(MODEL, tuner_seed=0)
     _drive_micro(ref, make_dl(), n_micro=6, ga=ga)
     ref_p = lora_params(ref)
 
-    # phase1: seed A, 3 micro-steps (odd phase, mid 2nd GA window), save adapter.
+    # phase1: seed A, 4 micro-steps (two completed GA windows), save adapter.
     a = build_lora(MODEL, tuner_seed=0)
     dl_a = make_dl()
-    _drive_micro(a, dl_a, n_micro=3, ga=ga)
+    _drive_micro(a, dl_a, n_micro=4, ga=ga)
     ckpt = a.save(
-        'ckpt-lora-3',
+        'ckpt-lora-4',
         output_dir=str(tmp_path / 'a'),
         save_optimizer=True,
         consumed_train_samples=dl_a.get_state()['consumed_train_samples'])
@@ -643,7 +635,7 @@ def test_lora_resume_param_trajectory_bit_identical_seed_independent(tmp_path):
     state = b.resume_from_checkpoint(ckpt, adapter_name='default')
     dl_b = make_dl()
     dl_b.skip_consumed_samples(state['consumed_train_samples'])
-    _drive_micro(b, dl_b, n_micro=3, ga=ga)
+    _drive_micro(b, dl_b, n_micro=2, ga=ga)
     res_p = lora_params(b)
 
     common = [n for n in ref_p if n in res_p]

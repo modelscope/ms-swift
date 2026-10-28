@@ -1162,16 +1162,13 @@ def backend_owns_gradient_accumulation(model) -> bool:
 def is_grad_sync_boundary(micro_step: int, gradient_accumulation_steps: int) -> bool:
     """Whether ``micro_step`` is an optimizer-update boundary, computed driver-side.
 
-    Replicates twinkle's ``OptimizerGroup.do_grad_sync`` (a pure function of ``cur_step`` and the
-    accumulation size: boundary when ga==1, else one micro-step late at cur_step = ga+1, 2ga+1, ...) using
-    the loop's own ``micro_step`` as ``cur_step``, which the loops advance once per ``forward_backward`` and
-    ``resume()`` keeps aligned. It is a module-level helper rather than a read of ``model.optimizer_group``
-    because that group lives on the WORKERS: under Ray the driver-side model is a proxy with no such
-    attribute, so both the in-process transformers loop and the Ray-remote loops (SFT/GRPO/RFT) must derive
-    the boundary here instead of reaching into the proxy.
+    Mirrors twinkle's OptimizerGroup.do_grad_sync after backward has incremented
+    cur_step. Every complete GA window triggers exactly one update, including the first.
+    The driver uses its matching micro_step because Ray model proxies do not expose
+    optimizer_group directly.
     """
     ga = gradient_accumulation_steps
-    return ga == 1 or ((micro_step - 1) % ga == 0 and micro_step > 1)
+    return micro_step > 0 and micro_step % ga == 0
 
 
 def flatten_evalscope_report(summary: Any) -> Dict[str, float]:
@@ -1311,17 +1308,9 @@ def load_best_model(model: Any, best_ckpt: Optional[str], *, metric_for_best_mod
 
 
 def num_optimizer_steps(num_micro_batches: int, gradient_accumulation_steps: int) -> int:
-    """Optimizer-update count for a given number of micro-batches under twinkle GA.
-
-    twinkle's do_grad_sync fires at cur_step = ga+1, 2*ga+1, ... (one micro-step late),
-    so over N micro-batches the number of optimizer steps is floor((N-1)/ga) for ga>1,
-    and N for ga==1. Used to size the LR scheduler's num_training_steps so it matches the
-    actual number of steps taken.
-    """
+    """Count complete accumulation windows for scheduling and resumed loop counters."""
     ga = max(1, gradient_accumulation_steps)
-    if ga == 1:
-        return num_micro_batches
-    return max(0, (num_micro_batches - 1) // ga)
+    return max(0, num_micro_batches // ga)
 
 
 def start_manual_gc(enabled: bool) -> Optional[bool]:
