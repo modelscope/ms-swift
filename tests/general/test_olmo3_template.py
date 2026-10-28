@@ -23,7 +23,7 @@ CHAT_TEMPLATE = ("{% if messages[0]['role'] != 'system' %}"
                  "{% if add_generation_prompt %}{{ '<|im_start|>assistant\n<think>' }}{% endif %}")
 
 
-class TestOlmo3ThinkTemplate(unittest.TestCase):
+class TestOlmo3Template(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
@@ -45,7 +45,7 @@ class TestOlmo3ThinkTemplate(unittest.TestCase):
             model_meta=SimpleNamespace(is_multimodal=False))
 
     def make_template(self, mode='train', **kwargs):
-        template = get_template(self.processor, template_type='olmo3_think', **kwargs)
+        template = get_template(self.processor, template_type='olmo3', **kwargs)
         template.set_mode(mode)
         return template
 
@@ -57,6 +57,29 @@ class TestOlmo3ThinkTemplate(unittest.TestCase):
         self.assertEqual(self.tokenizer.decode(encoded['input_ids']), expected)
         self.assertEqual(messages, original)
         return encoded
+
+    def test_model_default_template_preserves_thinking(self):
+        from swift.model import MODEL_MAPPING, LLMModelType
+        from swift.template import TemplateType
+
+        processor = deepcopy(self.processor)
+        processor.model_info.model_dir = ''
+        processor.model_meta = MODEL_MAPPING[LLMModelType.olmo3]
+        template = get_template(processor)
+        self.assertEqual(template.template_meta.template_type, TemplateType.olmo3)
+        self.assertTrue(template.template_meta.is_thinking)
+        self.assertTrue(template.template_meta.preserve_thinking)
+        template.set_mode('train')
+        messages = [{
+            'role': 'user',
+            'content': 'Question?'
+        }, {
+            'role': 'assistant',
+            'content': '<think>reason</think>\nAnswer.'
+        }]
+        encoded = template.encode({'messages': messages})
+        expected = self.tokenizer.apply_chat_template(messages, tokenize=False)
+        self.assertEqual(self.tokenizer.decode(encoded['input_ids']), expected)
 
     def test_default_and_explicit_system(self):
         conversation = [{

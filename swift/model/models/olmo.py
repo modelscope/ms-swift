@@ -35,7 +35,7 @@ register_model(
         LLMModelType.olmo3,
         [ModelGroup([Model('allenai/Olmo-3-7B-Think', 'allenai/Olmo-3-7B-Think')])],
         Olmo3Loader,
-        template=TemplateType.olmo3_think,
+        template=TemplateType.olmo3,
         model_arch=ModelArch.llama,
         architectures=['Olmo3ForCausalLM'],
         requires=['transformers>=4.57'],

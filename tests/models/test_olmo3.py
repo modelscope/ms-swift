@@ -101,7 +101,7 @@ def _capture_attention_masks(model, batch):
 def test_olmo3_registration():
     meta = MODEL_MAPPING[LLMModelType.olmo3]
     assert meta.loader is Olmo3Loader
-    assert meta.template == 'olmo3_think'
+    assert meta.template == 'olmo3'
     assert meta.model_arch.arch_name == ModelArch.llama
     assert 'Olmo3ForCausalLM' in meta.architectures
     requirements = [Requirement(requirement) for requirement in meta.requires]
@@ -123,7 +123,7 @@ def test_auto_config_recognizes_local_olmo3(tmp_path):
     assert loaded.rope_scaling == config.rope_scaling
 
 
-@pytest.mark.parametrize('template', ['olmo3_think', 'default'])
+@pytest.mark.parametrize('template', ['olmo3', 'default'])
 @pytest.mark.parametrize('unsupported', [
     {
         'sequence_parallel_size': 2
@@ -157,7 +157,7 @@ def test_sft_arguments_reject_unsupported_paths_before_output_or_model_loading(t
     assert not output_dir.exists()
 
 
-@pytest.mark.parametrize('template', ['olmo3_think', 'default'])
+@pytest.mark.parametrize('template', ['olmo3', 'default'])
 def test_sft_rejects_sequence_parallel_before_model_loading_or_prepare(tmp_path, monkeypatch, template):
     from swift import SftArguments
     from swift.pipelines.train.sft import SwiftSft
@@ -223,7 +223,8 @@ def test_sft_arguments_keep_supported_model_configurations(tmp_path, model_type,
     assert not args.packing
 
 
-def test_swift_loads_local_tiny_olmo3_checkpoint(tmp_path):
+@pytest.mark.parametrize('source', ['local', 'modelscope', 'huggingface'])
+def test_swift_loads_tiny_olmo3_checkpoint(tmp_path, monkeypatch, source):
     from tokenizers import Tokenizer
     from tokenizers.models import WordLevel
     from transformers import PreTrainedTokenizerFast
@@ -240,13 +241,28 @@ def test_swift_loads_local_tiny_olmo3_checkpoint(tmp_path):
         eos_token='<eos>',
         unk_token='<unk>')
     tokenizer.save_pretrained(tmp_path)
+    model_id_or_path = str(tmp_path)
+    use_hf = source == 'huggingface'
+    if source != 'local':
+        # Exercise Hub selection and checkpoint loading without network downloads.
+        model_id_or_path = 'allenai/Olmo-3-7B-Think'
+        hub = Mock()
+        hub.download_model.return_value = str(tmp_path)
+        get_hub = Mock(return_value=hub)
+        monkeypatch.setattr('swift.hub.get_hub', get_hub)
     loaded, processor = get_model_processor(
-        str(tmp_path),
+        model_id_or_path,
+        use_hf=use_hf,
         torch_dtype=torch.float32,
         device_map='cpu',
         attn_impl='sdpa',
-        download_model=False,
+        download_model=source != 'local',
         model_kwargs={'local_files_only': True})
+    if source != 'local':
+        get_hub.assert_called_once_with(use_hf)
+        hub.download_model.assert_called_once()
+        assert hub.download_model.call_args.args[0] == model_id_or_path
+        assert '*.safetensors' not in hub.download_model.call_args.args[2]
     assert isinstance(loaded, Olmo3ForCausalLM)
     assert loaded.model_info.model_type == LLMModelType.olmo3
     assert loaded.config._attn_implementation == 'sdpa'
@@ -340,9 +356,10 @@ def test_native_masks_preserve_sliding_window_and_padding(attn_impl, length, pad
         assert sliding[0, 0, -1, length - 4]
 
 
-def test_sliding_attention_excludes_distant_tokens_but_full_attention_keeps_them():
+@pytest.mark.parametrize('attn_impl', ['eager', 'sdpa'])
+def test_sliding_attention_excludes_distant_tokens_but_full_attention_keeps_them(attn_impl):
     torch.manual_seed(7)
-    model = Olmo3ForCausalLM(_tiny_config()).eval()
+    model = Olmo3ForCausalLM(_tiny_config(attn_impl)).eval()
     batch = _batch(8)
     masks = _capture_attention_masks(model, batch)
     hidden_states = torch.randn(2, 8, model.config.hidden_size)
@@ -351,7 +368,10 @@ def test_sliding_attention_excludes_distant_tokens_but_full_attention_keeps_them
     perturbed[:, 3, :] += torch.randn_like(perturbed[:, 3, :]) * 3
     for layer_idx, attention_type in ((0, 'sliding_attention'), (3, 'full_attention')):
         attention = model.model.layers[layer_idx].self_attn
-        position_embeddings = model.model.rotary_embs[attention_type](hidden_states, batch['position_ids'])
+        if hasattr(model.model, 'rotary_embs'):
+            position_embeddings = model.model.rotary_embs[attention_type](hidden_states, batch['position_ids'])
+        else:
+            position_embeddings = model.model.rotary_emb(hidden_states, batch['position_ids'], attention_type)
         kwargs = {
             'position_embeddings': position_embeddings,
             'attention_mask': masks[layer_idx],

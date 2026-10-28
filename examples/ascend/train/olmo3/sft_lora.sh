@@ -7,14 +7,14 @@ export MASTER_ADDR=127.0.0.1
 export MASTER_PORT=29500
 export HCCL_CONNECT_TIMEOUT=600
 
-MODEL_PATH="your model path"
+MODEL_PATH="allenai/Olmo-3-7B-Think"
 DATASET_PATH="your dataset path"
 OUTPUT_DIR="your output dir"
 
 swift sft \
     --model "${MODEL_PATH}" \
     --model_type olmo3 \
-    --template olmo3_think \
+    --template olmo3 \
     --dataset "${DATASET_PATH}" \
     --tuner_type lora \
     --lora_rank 8 \

@@ -1,6 +1,6 @@
 # Olmo-3-7B-Think 在 Ascend NPU 上进行 LoRA SFT
 
-本示例基于 ms-swift 的原生 Transformers 训练流程，使用 `swift sft` 对 `allenai/Olmo-3-7B-Think` 进行 LoRA 监督微调。模型类型为 `olmo3`，对话模板为 `olmo3_think`。
+本示例基于 ms-swift 的原生 Transformers 训练流程，使用 `swift sft` 对 `allenai/Olmo-3-7B-Think` 进行 LoRA 监督微调。模型类型为 `olmo3`，对话模板为 `olmo3`。
 
 本目录包含：
 
@@ -54,9 +54,9 @@ npu-smi info
 
 ### 模型
 
-提前准备 `allenai/Olmo-3-7B-Think` 的完整 Hugging Face 格式模型目录，包括配置、tokenizer、对话模板及全部权重文件，例如 `config.json`、`tokenizer.json`、`tokenizer_config.json`、`chat_template.jinja`、`*.safetensors` 和分片索引（若有）。仅有配置文件无法进行完整模型训练。
+脚本默认使用模型 ID `allenai/Olmo-3-7B-Think`。ms-swift 会从所选 Hub 自动下载模型并使用本地缓存，无需提前手动准备模型目录。默认使用 ModelScope；如需从 Hugging Face 下载，在 `swift sft` 参数中增加 `--use_hf true`，并确保训练节点可以访问对应 Hub。
 
-将 `sft_lora.sh` 中的 `MODEL_PATH` 替换为该目录的绝对路径。本地完整模型目录适合离线运行，也能避免不同模型下载源带来的差异。
+离线运行时，也可以将 `MODEL_PATH` 替换为已下载完整模型目录的绝对路径。该目录需要包含配置、tokenizer 及全部权重文件；仅有配置文件无法进行完整模型训练。
 
 ### 数据
 
@@ -69,16 +69,16 @@ npu-smi info
 
 以上两条仅用于展示格式。用于 Think 风格训练时，assistant 内容应包含完整的 `<think>...</think>` 思考过程和最终答案。无需手动添加 `<|im_start|>`、`<|im_end|>`、EOS 或重复的思考前缀，模板会处理对话边界。
 
-可提供文本 `system` 消息或通过 `--system` 设置系统提示；默认系统提示和无工具声明由 `olmo3_think` 模板提供。支持多轮纯文本对话，当前不支持工具调用和多模态输入。原生 OLMo 的 `functions`、`function_calls`、`environment` 协议未适配，应在使用前转换为受支持的文本对话格式。
+可提供文本 `system` 消息或通过 `--system` 设置系统提示；默认系统提示和无工具声明由 `olmo3` 模板提供。支持多轮纯文本对话，当前不支持工具调用和多模态输入。原生 OLMo 的 `functions`、`function_calls`、`environment` 协议未适配，应在使用前转换为受支持的文本对话格式。
 
 将 `DATASET_PATH` 替换为训练 JSONL 文件的绝对路径。当前目录不附带样本数据文件。
 
 ## 3. 启动训练
 
-在运行前编辑 `sft_lora.sh` 中的三个路径：
+在运行前编辑 `sft_lora.sh` 中的数据集路径和输出目录；模型可保留默认 ID，也可改为本地完整模型目录：
 
 ```bash
-MODEL_PATH="/path/to/Olmo-3-7B-Think"
+MODEL_PATH="allenai/Olmo-3-7B-Think"
 DATASET_PATH="/path/to/train.jsonl"
 OUTPUT_DIR="/path/to/output/olmo3-lora"
 ```
@@ -90,7 +90,7 @@ export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
 export NPROC_PER_NODE=16
 ```
 
-请按实际可用设备修改**脚本内**的设备列表和进程数，保证二者匹配。例如单卡设为 `0` / `1`，八卡设为 `0,1,2,3,4,5,6,7` / `8`。脚本会直接赋值这些变量及三个路径变量，运行前在终端设置同名变量不能覆盖它们；脚本也未转发额外命令行参数，修改训练参数需直接编辑脚本。
+请按实际可用设备修改**脚本内**的设备列表和进程数，保证二者匹配。例如单卡设为 `0` / `1`，八卡设为 `0,1,2,3,4,5,6,7` / `8`。脚本会直接赋值这些变量及模型、数据集和输出目录变量，运行前在终端设置同名变量不能覆盖它们；脚本也未转发额外命令行参数，修改训练参数需直接编辑脚本。
 
 在仓库根目录执行：
 
@@ -104,7 +104,7 @@ bash examples/ascend/train/olmo3/sft_lora.sh
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `model_type` / `template` | `olmo3` / `olmo3_think` | 模型及 Think 对话模板 |
+| `model_type` / `template` | `olmo3` / `olmo3` | 模型及 Think 对话模板 |
 | `tuner_type` | `lora` | LoRA 微调 |
 | `lora_rank` / `lora_alpha` | `8` / `32` | LoRA 配置 |
 | `target_modules` | `all-linear` | 由 ms-swift 解析实际目标线性层 |

@@ -631,7 +631,7 @@ register_template(
     ))
 
 
-class Olmo3ThinkTemplate(Template):
+class Olmo3Template(Template):
 
     # Packed/padding-free and sequence-parallel paths do not preserve Olmo3's
     # separate sliding-window and full-attention masks.
@@ -640,19 +640,19 @@ class Olmo3ThinkTemplate(Template):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.sequence_parallel_size > 1:
-            raise ValueError('olmo3_think does not support sequence_parallel_size > 1 with hybrid attention.')
+            raise ValueError('olmo3 does not support sequence_parallel_size > 1 with hybrid attention.')
 
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
         # The official Think template uses its own function_calls/environment
         # protocol. Do not silently apply another model's agent format to it.
         if inputs.is_multimodal:
-            raise ValueError('olmo3_think only supports text conversations; '
+            raise ValueError('olmo3 only supports text conversations; '
                              'images, videos and audio are not supported.')
         if inputs.tools or inputs.extra_kwargs.get('functions') is not None or any(
                 message['role'] not in {'user', 'assistant'} or any(
                     message.get(key) is not None for key in ['functions', 'function_calls', 'tool_calls'])
                 for message in inputs.messages):
-            raise ValueError('olmo3_think currently supports text-only user/assistant conversations without tools.')
+            raise ValueError('olmo3 currently supports text-only user/assistant conversations without tools.')
         super()._preprocess_inputs(inputs)
 
 
@@ -660,8 +660,8 @@ class Olmo3ThinkTemplate(Template):
 _OLMO3_NO_TOOLS = ' You do not currently have access to any functions. <functions></functions>'
 register_template(
     ChatmlTemplateMeta(
-        LLMTemplateType.olmo3_think,
-        template_cls=Olmo3ThinkTemplate,
+        LLMTemplateType.olmo3,
+        template_cls=Olmo3Template,
         # An explicitly empty system still receives the official function notice.
         prefix=['<|im_start|>system\n' + _OLMO3_NO_TOOLS + '<|im_end|>\n'],
         system_prefix=['<|im_start|>system\n{{SYSTEM}}' + _OLMO3_NO_TOOLS + '<|im_end|>\n'],
