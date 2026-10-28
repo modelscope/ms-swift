@@ -64,6 +64,8 @@ rollout:
   gpus: 4    # 独立的 4 张卡
 ```
 
+CUDA IPC 权重同步仅为传输缓冲区关闭 expandable segments，分配后立即恢复训练的内存分配器设置。因此，即使容器限制 `pidfd_getfd`，训练仍可使用 `expandable_segments:True`。这适用于同卡部署和独立 rollout 的发送端。
+
 ### GKD Teacher 模式
 
 | 模式 | 配置方式 | top-k | full-vocab |

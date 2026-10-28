@@ -12,12 +12,34 @@ import asyncio
 import os
 import torch
 import uuid
+from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
-from swift.utils import get_current_device, synchronize
+from swift.utils import get_current_device, get_torch_device, synchronize
 from swift.utils.logger import get_logger
 
 logger = get_logger()
+
+
+@contextmanager
+def _regular_cuda_ipc():
+    if get_torch_device() is not torch.cuda or torch.cuda.memory.get_allocator_backend() != 'native':
+        yield
+        return
+    settings = torch.cuda.memory._snapshot()['allocator_settings']
+    if not settings['expandable_segments']:
+        yield
+        return
+    config = settings['PYTORCH_CUDA_ALLOC_CONF']
+    set_settings = getattr(torch._C, '_accelerator_setAllocatorSettings', torch.cuda.memory._set_allocator_settings)
+    try:
+        # Expandable IPC imports require pidfd_getfd, which containers may deny.
+        set_settings(f'{config.rstrip().rstrip(",")},expandable_segments:False'.lstrip(','))
+        yield
+    finally:
+        # The last config string can omit the still-active expandable flag.
+        set_settings('expandable_segments:True')
+        set_settings(config)
 
 
 class BucketedWeightSender:
@@ -72,7 +94,8 @@ class BucketedWeightSender:
                 self.buffer = self._external_buffer
                 self._owns_buffer = False
             else:
-                self.buffer = torch.empty(self.bucket_size, dtype=torch.uint8, device=get_current_device())
+                with _regular_cuda_ipc():
+                    self.buffer = torch.empty(self.bucket_size, dtype=torch.uint8, device=get_current_device())
                 self._owns_buffer = True
             self._pending_handshake = reduce_tensor(self.buffer)
         else:

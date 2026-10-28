@@ -76,7 +76,7 @@ class RolloutAdapter:
                 pass
             return
 
-        from ..rollout.weight_transfer import BucketedWeightSender
+        from ..rollout.weight_transfer import BucketedWeightSender, _regular_cuda_ipc
 
         start_time = time.time()
 
@@ -87,7 +87,8 @@ class RolloutAdapter:
             from swift.utils import get_current_device
             bucket_size = self.bucket_size_mb << 20
             if self._ipc_buffer is None or self._ipc_buffer.numel() < bucket_size:
-                self._ipc_buffer = torch.empty(bucket_size, dtype=torch.uint8, device=get_current_device())
+                with _regular_cuda_ipc():
+                    self._ipc_buffer = torch.empty(bucket_size, dtype=torch.uint8, device=get_current_device())
             external_buffer = self._ipc_buffer
 
         async def _do_ipc_sync():
