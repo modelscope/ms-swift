@@ -71,6 +71,13 @@ def parse_rl_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         tuner_config = select_tuner(tuner_config)
 
     _apply_rl_compat(passed, generation_config, rl_config, rlhf_compat)
+    # Refuse BEFORE the unconditional mode='ray' overrides below, which would otherwise silently
+    # turn a remote request into a local Ray run.
+    if distributed_config.mode == 'remote':
+        raise ValueError(
+            "--mode remote does not support RL yet: the rollout side needs the StreamingDriver "
+            'client port (in progress). Run RL with mode=ray as today, or train the supervised '
+            'family remotely.')
     # The online family rolls out on a separate vLLM/SGLang sampler over Ray and syncs weights into it;
     # on-policy generation must be backend-general (in-process ``model.generate`` is transformers-only).
     if rl_config.rl_type in {'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'}:

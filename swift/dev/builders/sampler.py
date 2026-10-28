@@ -24,7 +24,9 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 #: Built-in engine names a ``--sampler`` resolves to with no external source; anything else is a
-#: custom sampler, reached by class or by source (see :func:`_resolve_sampler`).
+#: custom sampler, reached by class or by source (see :func:`_resolve_sampler`). 'twinkle' is the
+#: client-side sampler over a twinkle-server (mode='remote'); it resolves in :func:`build_sampler`
+#: before the engine table, because it is not an engine at all.
 SamplerBackend = Literal["vllm", "sglang", "transformers"]
 
 #: ModelConfig knobs the engines accept, under the name each uses for them; everything else an
@@ -199,6 +201,8 @@ def build_sampler(
             f"build_sampler got task_type={task_type!r}; expected one of the generation tasks "
             f"{list(_GENERATIVE_TASK_TYPES)} or the pooling tasks {sorted(_POOLING_TASK_MAP)}."
         )
+    if backend == "twinkle":
+        return _build_client_sampler(model_config, template, adapters, is_pooling)
     sampler_cls, engine = _resolve_sampler(backend)
     if is_pooling and engine == "transformers":
         raise ValueError(
@@ -283,6 +287,36 @@ def build_sampler(
         except Exception:
             logger.warning("Failed to close sampler workers after template init failed.", exc_info=True)
         raise
+    return sampler
+
+
+def _build_client_sampler(model_config: "ModelConfig", template: Any,
+                          adapters: Optional[List[str]], is_pooling: bool) -> Any:
+    """backend='twinkle': a client-side vLLMSampler handle over a SERVED sampler.
+
+    The transport must already be bound (init_twinkle_client, done by the mode='remote'
+    initialization), and ``model`` names the server-side served model. Only the template travels
+    (as a class name, the same cross-boundary form Ray placement uses); pooling forwards ride the
+    sampler's ``encode`` face. Local adapters cannot attach to a remote engine -- a remote LoRA
+    rides ``adapter_uri`` (a twinkle:// checkpoint), whose infer wiring is future work.
+    """
+    from twinkle_client.sampler import vLLMSampler as ClientSampler
+
+    if is_pooling:
+        raise ValueError(
+            'backend="twinkle" cannot serve the pooling task: the client sampler face is '
+            'sample()/encode() over a served generation engine. Run pooling locally, or serve it '
+            'through the gateway\'s OpenAI-compatible /embeddings route.')
+    if adapters:
+        raise ValueError(
+            f'backend="twinkle" received local adapters {adapters!r}: a local adapter directory '
+            'cannot load into a remote engine. Merge the adapter first (`swift merge`), or wait '
+            'for the adapter_uri wiring (a twinkle:// checkpoint served as a sampler LoRA).')
+    sampler = ClientSampler(model_config.model)
+    if template is not None:
+        spec = resolve_twinkle_template(None, model_config)
+        template_kwargs = {key: value for key, value in spec.items() if key != "template_cls"}
+        sampler.set_template(spec["template_cls"], **template_kwargs)
     return sampler
 
 

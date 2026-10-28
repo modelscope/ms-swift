@@ -50,6 +50,8 @@ def validate_configs(
     from swift.dev.builders import is_megatron_backend
     is_megatron = is_megatron_backend(distributed_config)
 
+    _check_remote_mode(distributed_config, is_megatron, rl_config,
+                       train_config=train_config, tuner_config=tuner_config)
     _check_group_by_length(dataset_config, template_config)
     _check_lazy_tokenize(dataset_config)
     _check_data_sharding(dataset_config)
@@ -122,6 +124,66 @@ def _changed_fields(config) -> list:
         if getattr(config, config_field.name) != default:
             changed.append(config_field.name)
     return changed
+
+
+def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: bool,
+                       rl_config: Optional['RLConfig'],
+                       train_config: Optional['TrainConfig'] = None,
+                       tuner_config: Optional['TunerConfig'] = None) -> None:
+    """mode='remote' preconditions: a server to talk to, and a path the client port covers.
+
+    The remote mode drives a twinkle-server through twinkle_client, so everything that assumes
+    local processes (torchrun ranks, DeviceMesh, in-process engines) is off the table; refuse
+    loudly instead of letting the build fail somewhere deep with an unrelated error.
+    """
+    if distributed_config.mode != 'remote':
+        return
+    if not distributed_config.server_base_url:
+        raise ValueError(
+            "--mode remote requires --server_base_url (the twinkle-server gateway root; "
+            "twinkle_client appends '/api/v1' itself).")
+    if is_megatron:
+        raise ValueError(
+            "--mode remote does not support the megatron backend: Megatron needs torchrun "
+            "ranks and a local DeviceMesh, which a single-process client driver cannot provide. "
+            "Drop --backend megatron, or run locally with mode=local/ray.")
+    if rl_config is not None:
+        raise ValueError(
+            "--mode remote does not support RL yet: the rollout side needs the StreamingDriver "
+            "client port (in progress). Train the supervised family remotely, or run RL with "
+            "mode=ray as today.")
+    if tuner_config is not None and tuner_config.tuner not in ('full', 'lora'):
+        raise ValueError(
+            f"--mode remote does not support tuner={tuner_config.tuner!r}: the server-side "
+            "adapter mechanism is LoRA on the resident base. Use --tuner lora, or none for "
+            "full-parameter remote training.")
+    if tuner_config is not None and tuner_config.tuner == 'lora':
+        from swift.dev.builders.adapter import is_base_modifying_init
+
+        if is_base_modifying_init(tuner_config.init_weights):
+            # The initial-adapter snapshot (save_initial_adapter) has no client-side counterpart;
+            # skipping it would make every later checkpoint unrestorable.
+            raise ValueError(
+                f"--mode remote does not support the base-modifying LoRA init "
+                f"{tuner_config.init_weights!r}: its initial-adapter snapshot lives in-process. "
+                "Use a plain init remotely.")
+    if train_config is not None and tuner_config is None and (
+            train_config.freeze_parameters or train_config.freeze_parameters_regex
+            or train_config.freeze_parameters_ratio or train_config.trainable_parameters
+            or train_config.trainable_parameters_regex):
+        # The freeze knobs toggle requires_grad in-process, which cannot cross HTTP; a silently
+        # ignored freeze would train more parameters than the user asked for.
+        raise ValueError(
+            '--mode remote does not support the freeze/trainable_parameters knobs: they toggle '
+            'requires_grad in-process on the training side, which cannot cross HTTP. Keep the '
+            'remote run LoRA, or apply the freeze with mode=local/ray.')
+    if train_config is not None and train_config.predict_with_generate:
+        # Generative eval builds a LOCAL sampler; the remote client sampler for it is a separate
+        # wiring (the infer 'twinkle' backend) not yet threaded through build_generative_eval.
+        raise ValueError(
+            '--mode remote does not support --predict_with_generate yet: the generative-eval '
+            'sampler is built in-process. Evaluate the saved twinkle:// checkpoint with '
+            '`swift infer --sampler twinkle`, or use val-loss eval (the default) remotely.')
 
 
 def _check_megatron_runtime_configs(megatron_config: Optional['MegatronConfig'], moe_config: Optional['MoEConfig'],

@@ -12,7 +12,9 @@ class InferConfig:
     """
 
     # === Engine ===
-    # 'vllm'/'transformers'/'sglang' ('pt' alias), a Sampler subclass/plugin source, or 'no' (none).
+    # 'vllm'/'transformers'/'sglang' ('pt' alias), a Sampler subclass/plugin source, 'no' (none),
+    # or 'twinkle': the client-side sampler over a twinkle-server (needs --mode remote +
+    # --server_base_url; model names the SERVER-side served model).
     sampler: Any = 'transformers'
     # Requests batched into one engine call; transformers backend only (vLLM/SGLang self-batch).
     max_batch_size: int = 1

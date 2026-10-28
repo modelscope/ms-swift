@@ -103,12 +103,26 @@ def build_supervised_objects(
     from swift.dev.builders.optimizer import configure_optimizer
     from swift.dev.processor import InputProcessor, processor_kwargs
 
-    initialize_supervised_twinkle(
-        distributed_config,
-        seed=train_config.seed,
-        full_determinism=train_config.full_determinism,
-        tf32=train_config.tf32,
+    remote = distributed_config.mode == 'remote'
+    if not remote:
+        initialize_supervised_twinkle(
+            distributed_config,
+            seed=train_config.seed,
+            full_determinism=train_config.full_determinism,
+            tf32=train_config.tf32,
+        )
+    # mode='remote' replaces only the OBJECT SOURCES that cannot cross HTTP: the model becomes a
+    # twinkle_client handle, and the loss/tuner/processor/template calls carry class names instead
+    # of instances. The dataset and template stay local (rows are encoded here and shipped as
+    # forward inputs), so build_dataset/plan_supervised_steps are shared by both modes.
+    from swift.dev.builders.remote import (
+        REMOTE_UNSUPPORTED_TASKS, apply_remote_tuner, build_remote_model, configure_remote_loss,
     )
+    if remote and (task_type or 'causal_lm') in REMOTE_UNSUPPORTED_TASKS:
+        raise ValueError(
+            f"--mode remote does not support task_type={(task_type or 'causal_lm')!r}: the "
+            'embedding/seq_cls/reranker loss families pass loss instances that cannot cross HTTP '
+            'and are untested remotely. Run them with mode=local/ray.')
     process_and_validate(
         model_config,
         template_config,
@@ -143,45 +157,70 @@ def build_supervised_objects(
     resolve_step_intervals(train_config, checkpoint_config, total_opt_steps)
     # Full-param resume loads weights from the ckpt dir instead of the original model id, mirroring
     # legacy's ``_init_ckpt_dir``; LoRA keeps the original base and reloads the adapter via resume.
+    # Remote keeps the served model id either way: a twinkle:// URI is restored through
+    # resume_from_checkpoint on the handle, not by re-addressing the build.
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     build_config = model_config
-    if resume_dir and tuner_config is None:
+    if resume_dir and tuner_config is None and not remote:
         build_config = copy.copy(model_config)
         build_config.model = resume_dir
-    model = build_model(
-        build_config,
-        distributed_config,
-        train_config,
-        tuner_config,
-        device_mesh=sp_mesh,
-        quantize_config=quantize_config,
-        megatron_config=megatron_config,
-        moe_config=moe_config,
-    )
-    if tuner_config is not None:
-        # task_type threads the seq_cls/reranker head into modules_to_save: LoRA trains/saves
-        # target_modules only, so without it the head is neither trained nor persisted.
-        apply_tuner(
-            model,
-            tuner_config,
-            gradient_accumulation_steps=train_config.gradient_accumulation_steps,
-            task_type=task_type,
+    if remote:
+        model = build_remote_model(model_config, distributed_config)
+        if tuner_config is not None:
+            apply_remote_tuner(model, tuner_config, train_config.gradient_accumulation_steps)
+        # Full-param remote: the server model trains all parameters by default. The local
+        # freeze/trainable knobs read requires_grad in-process, which cannot cross HTTP; a
+        # non-default freeze is refused by validate rather than silently ignored.
+        # Template/processor cross the wire as a class NAME plus scalar kwargs (the local DevMixin
+        # instance drives only the local dataset encode); resolve_twinkle_template picks the name.
+        from swift.dev.builders.sampler import resolve_twinkle_template
+
+        template_spec = resolve_twinkle_template(template_config, model_config)
+        template_kwargs = {key: value for key, value in template_spec.items() if key != 'template_cls'}
+        model.set_processor(
+            'InputProcessor',
+            padding_free=template_config.padding_free,
+            padding_side=template_config.padding_side,
         )
+        model.set_template(template_spec['template_cls'], **template_kwargs)
+        configure_remote_loss(model, train_config)
     else:
-        # Full-parameter path: consume the freeze/trainable knobs BEFORE configure_optimizer reads
-        # requires_grad to build its param groups; an adapter run selects through target_modules.
-        apply_full_param_freeze(model, train_config)
-    model.set_processor(
-        InputProcessor,
-        padding_free=template_config.padding_free,
-        # The collator must pad on the same side as the Template (builders/template.py forwards
-        # padding_side to it), or a training-time --padding_side left reaches the Template only.
-        padding_side=template_config.padding_side,
-        cp_partition_mode=distributed_config.cp_partition_mode,
-        **processor_kwargs(template),
-    )
-    model.set_template(template)
-    configure_loss(model)
+        model = build_model(
+            build_config,
+            distributed_config,
+            train_config,
+            tuner_config,
+            device_mesh=sp_mesh,
+            quantize_config=quantize_config,
+            megatron_config=megatron_config,
+            moe_config=moe_config,
+        )
+        if tuner_config is not None:
+            # task_type threads the seq_cls/reranker head into modules_to_save: LoRA trains/saves
+            # target_modules only, so without it the head is neither trained nor persisted.
+            apply_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=train_config.gradient_accumulation_steps,
+                task_type=task_type,
+            )
+        else:
+            # Full-parameter path: consume the freeze/trainable knobs BEFORE configure_optimizer reads
+            # requires_grad to build its param groups; an adapter run selects through target_modules.
+            apply_full_param_freeze(model, train_config)
+        model.set_processor(
+            InputProcessor,
+            padding_free=template_config.padding_free,
+            # The collator must pad on the same side as the Template (builders/template.py forwards
+            # padding_side to it), or a training-time --padding_side left reaches the Template only.
+            padding_side=template_config.padding_side,
+            cp_partition_mode=distributed_config.cp_partition_mode,
+            **processor_kwargs(template),
+        )
+        model.set_template(template)
+        configure_loss(model)
+    # Shared by both modes: the transformers branch of configure_optimizer is already a
+    # description ("set_optimizer(name, scalar kwargs)"), which the client handle accepts verbatim.
     configure_optimizer(
         model,
         train_config,

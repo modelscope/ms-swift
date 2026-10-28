@@ -385,7 +385,10 @@ def _resolve_checkpoint_args_source(configs: Dict[str, Any]) -> Optional[str]:
         candidates.append((convert, 'mcore_model', convert.mcore_model, False, None))
 
     dataset = configs.get('dataset_config')
-    remote_only = bool(getattr(configs.get('eval_config'), 'eval_url', None))
+    # eval_url runs everything against a remote endpoint; mode='remote' NAMES a server-side model
+    # (the served id), which must not be probed as a local checkpoint / snapshot source.
+    remote_only = bool(getattr(configs.get('eval_config'), 'eval_url', None)
+                       or getattr(configs.get('distributed_config'), 'mode', None) == 'remote')
     for owner, key, source, downloadable, revision in candidates:
         resolved = source
         args_path = os.path.join(resolved, 'args.json')

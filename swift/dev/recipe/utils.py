@@ -76,6 +76,10 @@ class SaveKnobs(NamedTuple):
     #: Uploads one checkpoint dir to the hub (None when pushing is off); 'end' defers to the final.
     hub_pusher: Optional[Callable[[str], None]]
     hub_strategy: str
+    #: mode='remote': the server owns the checkpoint store (save returns a twinkle:// URI), so
+    #: the local-dir branches (converted adapter, hub push, async writer) are all off. Derived
+    #: from DistributedConfig.mode -- backend identity is read off the config, never the model.
+    remote: bool = False
 
 
 def build_save_knobs(checkpoint_config: Optional['CheckpointConfig'],
@@ -94,7 +98,8 @@ def build_save_knobs(checkpoint_config: Optional['CheckpointConfig'],
         async_save=bool(ckpt and ckpt.async_save),
         initial_adapter_dir=initial_adapter_dir(tuner_config, distributed_config, output_dir),
         hub_pusher=build_hub_pusher(ckpt, dataset_config),
-        hub_strategy=ckpt.hub_strategy if ckpt else 'every_save')
+        hub_strategy=ckpt.hub_strategy if ckpt else 'every_save',
+        remote=distributed_config.mode == 'remote')
 
 
 def is_main_process() -> bool:
@@ -119,6 +124,10 @@ def initial_adapter_dir(tuner_config: Optional['TunerConfig'], distributed_confi
     from swift.dev.builders.adapter import is_base_modifying_init
 
     if tuner_config is None or not is_base_modifying_init(tuner_config.init_weights):
+        return None
+    if distributed_config.mode == 'remote':
+        # The client handle has no save_initial_adapter (the snapshot lives in the server's
+        # store); a base-modifying init is refused at validate time rather than half-wired here.
         return None
     if is_megatron_backend(distributed_config):
         logger.warning('base-modifying LoRA init %r on the megatron backend: checkpoint conversion '
@@ -277,6 +286,17 @@ def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
     Returns the checkpoint dir (twinkle's save result is a deferred handle under ray, so the dir is
     the only portable return).
     """
+    if knobs.remote:
+        # The server owns the store: model.save returns a twinkle:// URI (the portable handle the
+        # loop treats as "the checkpoint dir"), and every local-dir side effect below (converted
+        # adapter, hub push, args.json copy) has no directory to act on. save is synchronous on
+        # the client (_await_task blocks to the terminal state), so no wait_async_saves either.
+        response = model.save(
+            name,
+            save_optimizer=not knobs.no_save_optim,
+            consumed_train_samples=consumed_train_samples,
+            state=component_states or {})
+        return getattr(response, 'twinkle_path', name)
 
     save_training_checkpoint(
         model, name, output_dir=knobs.output_dir,
@@ -323,6 +343,13 @@ def _restore_training(model: Any, checkpoint_config: Optional['CheckpointConfig'
     if not path:
         return {}
     resume_kwargs = {'resume_only_model': bool(checkpoint_config and checkpoint_config.resume_only_model)}
+    if distributed_config.mode == 'remote':
+        # A twinkle:// URI names a checkpoint in the SERVER's store; the handle restores weights,
+        # optimizer, scheduler and progress state in one call, so the local trainer_state.json
+        # probe below (and the megatron kwargs) do not apply.
+        if tuner_config is not None:
+            resume_kwargs['adapter_name'] = 'default'
+        return model.resume_from_checkpoint(path, **resume_kwargs)
     if checkpoint_config is not None and is_megatron_backend(distributed_config):
         resume_kwargs.update(
             no_load_optim=checkpoint_config.no_load_optim,

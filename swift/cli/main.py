@@ -129,6 +129,21 @@ def get_torchrun_args() -> Optional[List[str]]:
     return torchrun_args
 
 
+def _requests_remote_mode(argv: List[str]) -> bool:
+    """True when the command line itself asks for --mode remote.
+
+    remote is a single-process twinkle_client driver: the training/inference processes live in a
+    twinkle-server, so a leftover NPROC_PER_NODE/NNODES env (torchrun_args) must NOT relaunch this
+    command under torch.distributed.run.
+    """
+    for index, arg in enumerate(argv):
+        if arg == '--mode' and index + 1 < len(argv) and argv[index + 1] == 'remote':
+            return True
+        if arg == '--mode=remote':
+            return True
+    return False
+
+
 def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool = False) -> None:
     route_mapping = dict(route_mapping or ROUTE_MAPPING)
     argv = sys.argv[1:]
@@ -145,7 +160,8 @@ def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool =
         # `swift export --backend megatron` (mcore convert) is distributed as well, so the dev export
         # entry also relaunches under torchrun when NPROC_PER_NODE/NNODES is set.
         distributed_methods = distributed_methods | {'export'}
-    if torchrun_args is None or (not is_megatron and method_name not in distributed_methods):
+    if (torchrun_args is None or _requests_remote_mode(argv)
+            or (not is_megatron and method_name not in distributed_methods)):
         args = [python_cmd, '-m', route, *argv] if is_dev_route else [python_cmd, file_path, *argv]
     elif is_dev_route:
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, '--module', route, *argv]

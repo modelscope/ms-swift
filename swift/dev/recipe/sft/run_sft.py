@@ -354,12 +354,21 @@ def _run_supervised(cluster: SupervisedCluster, model_config: 'ModelConfig',
         state.tracker.close()
     if _save_final:
         # The final save is synchronous, and its args.json must land after every earlier
-        # checkpoint's background write finished.
-        model.wait_async_saves()
+        # checkpoint's background write finished. The remote handle has no background writer
+        # (each client save blocks to the terminal state), so the wait is a no-op there.
+        wait_async = getattr(model, 'wait_async_saves', None)
+        if callable(wait_async):
+            wait_async()
         ckpt_dir = save('checkpoint-final', is_final=True)
-        write_ckpt_args_json(
-            ckpt_dir, cluster.processor, model_config, template_config, tuner_config,
-            quantize_config, dataset_config=dataset_config, task_type=cluster.task_type)
+        if distributed_config.mode == 'remote':
+            # ckpt_dir is a twinkle:// URI in the SERVER's store: the server-side checkpoint has
+            # no local dir to copy args.json into, and the run-level args.json (written by the
+            # assembly into output_dir) already documents the run for --load_args.
+            pass
+        else:
+            write_ckpt_args_json(
+                ckpt_dir, cluster.processor, model_config, template_config, tuner_config,
+                quantize_config, dataset_config=dataset_config, task_type=cluster.task_type)
     return state.history
 
 

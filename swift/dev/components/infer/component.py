@@ -123,6 +123,11 @@ class InferComponent(RecipeComponent):
         output_format = infer_config.output_format
         multi_turn_enabled = bool(self.rollout_config and self.rollout_config.max_turns is not None)
         self._validate_sampling(num_return, output_format, multi_turn_enabled)
+        if self.backend == 'twinkle' and (distributed_config is None or distributed_config.mode != 'remote'):
+            raise ValueError(
+                'sampler="twinkle" (the client-side sampler over a twinkle-server) requires '
+                "--mode remote and --server_base_url: without it there is no transport to the "
+                'served sampler. The local backends are vllm/sglang/transformers.')
         # The model's own generation_config.json is the sampling baseline: fill knobs the caller
         # left unset from it, so a model's declared temperature/top_k survives (legacy parity).
         apply_generation_baseline(self.generation_config, model_config.model)
@@ -673,6 +678,17 @@ def _initialize_for_sampling(distributed_config: 'DistributedConfig',
     import twinkle
     from twinkle import DeviceGroup, Platform
 
+    if distributed_config is not None and distributed_config.mode == 'remote':
+        # No local twinkle runtime to initialize: this process is a single-process client and the
+        # sampler/model live in the twinkle-server. Only the client transport is bound (once; a
+        # re-init for a second component in the same process is a no-op on the session layer).
+        from twinkle import init_twinkle_client
+
+        if not distributed_config.server_base_url:
+            raise ValueError("--mode remote requires --server_base_url (the twinkle-server gateway "
+                             'root).')
+        init_twinkle_client(base_url=distributed_config.server_base_url)
+        return
     if distributed_config is None or distributed_config.mode != 'ray':
         # None is the run-wide default (single process, no ray): the sampler builds plainly, and
         # the caller has already refused any GPU-resident reward channel that would need a group.
