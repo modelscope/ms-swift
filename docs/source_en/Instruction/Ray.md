@@ -54,6 +54,9 @@ rollout:
   gpus: 4    # must match train
 ```
 
+Rollout sleep/wake transitions run concurrently across all servers and replicas. Each transition waits for all servers
+to finish before the next training or generation phase starts.
+
 **Separate (dedicated GPU)** — Training and inference occupy separate GPUs with no memory contention:
 
 ```yaml
