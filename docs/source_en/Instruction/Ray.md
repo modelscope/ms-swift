@@ -40,6 +40,10 @@ megatron rlhf --use_ray true --config examples/ray/grpo/ray_grpo_colocate.yaml
 
 ### GPU Allocation Modes
 
+`nnodes` is the number of distinct nodes each GPU pool spans. Separate pools may use different node sets; colocated roles
+share one pool. Per-node placement requires Ray 2.54 or later, which fixes
+`STRICT_PACK` placement groups ignoring node label selectors.
+
 **Colocate (shared GPU)** — Training and inference share the same GPUs, alternating usage via sleep/wake to free memory:
 
 ```yaml
