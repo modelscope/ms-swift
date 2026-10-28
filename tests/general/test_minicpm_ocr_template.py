@@ -3,6 +3,7 @@ import os
 import pytest
 import torch
 from PIL import Image
+from types import SimpleNamespace
 
 from swift.model import MODEL_MAPPING, get_model_processor
 from swift.template import TEMPLATE_MAPPING, get_template
@@ -16,6 +17,51 @@ def test_default_visual_compression(model_type, expected_mode, monkeypatch):
     template.model_meta = MODEL_MAPPING[model_type]
     template.init_env_args()
     assert template.downsample_mode == expected_mode
+
+
+@pytest.mark.parametrize('downsample_mode', ['4x', '16x'])
+@pytest.mark.parametrize('adapter', [False, True])
+def test_training_freezes_unused_vit_merger(downsample_mode, adapter, monkeypatch):
+    from swift.pipelines.train import tuner
+
+    model = torch.nn.Module()
+    model.vision_tower = torch.nn.Module()
+    model.vision_tower.vit_merger = torch.nn.Linear(2, 2)
+    model.language_model = torch.nn.Linear(2, 2)
+
+    def prepare_adapter(args, model, **kwargs):
+        model.vision_tower.vit_merger.lora = torch.nn.Linear(2, 2)
+        model.language_model.lora = torch.nn.Linear(2, 2)
+        wrapper = torch.nn.Module()
+        wrapper.base_model = model
+        return wrapper
+
+    monkeypatch.setattr(tuner, 'prepare_adapter', prepare_adapter)
+    monkeypatch.setattr(tuner, 'is_deepspeed_zero3_enabled', lambda: False)
+    template_meta = TEMPLATE_MAPPING['minicpm_ocr']
+    template = template_meta.template_cls(processor=None, template_meta=template_meta)
+    template.downsample_mode = downsample_mode
+    args = SimpleNamespace(
+        use_liger_kernel=False,
+        is_adapter=adapter,
+        tuner_type='lora' if adapter else 'full',
+        tuner_backend='peft',
+        resume_from_checkpoint=None,
+        adapters=[],
+        freeze_parameters_ratio=0,
+        freeze_parameters=[],
+        freeze_parameters_regex=None,
+        trainable_parameters=[],
+        trainable_parameters_regex=None,
+        use_galore=False)
+    prepared = tuner.TunerMixin.prepare_model(args, model, template=template)
+    parameters = dict(prepared.named_parameters())
+    merger_parameters = [p for n, p in parameters.items() if 'vision_tower.vit_merger' in n]
+    assert merger_parameters
+    if adapter:
+        merger_parameters = [p for n, p in parameters.items() if 'vision_tower.vit_merger.lora' in n]
+    assert all(p.requires_grad == (downsample_mode == '16x') for p in merger_parameters)
+    assert any(p.requires_grad for n, p in parameters.items() if 'language_model' in n)
 
 
 def test_native_ocr_prompt_and_supervision(monkeypatch):

@@ -787,6 +787,12 @@ register_template(
 class MiniCPMOcrTemplate(MiniCPMV4_6Template):
     default_downsample_mode = '4x'
 
+    def prepare_model_for_training(self, model):
+        if self.downsample_mode == '4x':
+            for name, module in model.named_modules():
+                if name.endswith('vision_tower.vit_merger'):
+                    module.requires_grad_(False)
+
 
 register_template(
     ChatmlTemplateMeta(

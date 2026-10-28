@@ -276,7 +276,7 @@ register_model(
         template=TemplateType.minicpm_ocr,
         architectures=['MiniCPMOcrForConditionalGeneration'],
         model_arch=ModelArch.minicpmv4_6,
-        requires=['transformers>=5.19.0.dev0'],
+        requires=['transformers>=5.21.0'],
         tags=['vision', 'video'],
     ))
 
