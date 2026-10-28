@@ -3,11 +3,11 @@ import argparse
 import json
 import os
 import re
-from itertools import islice
-
 import torch
+from itertools import islice
 from modelscope.msdatasets import MsDataset
 from safetensors import safe_open
+
 from swift.dataset.dataset.mllm import FleursCantonesePreprocessor
 
 

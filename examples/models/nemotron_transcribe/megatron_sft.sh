@@ -63,7 +63,7 @@ megatron sft \
     --merge_lora true \
     --no_save_optim true \
     --no_save_rng true \
-    --output_dir megatron_output/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B-yue
+    --output_dir ${OUTPUT_DIR:-megatron_output/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B-yue}
 
 # Keep --merge_lora true and --save_missing_weights true so the evaluation model
 # is complete and the original MTP, CTC and _extra_state tensors are preserved.

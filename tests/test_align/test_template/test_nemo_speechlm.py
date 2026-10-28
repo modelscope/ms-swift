@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import json
-import os
 import numpy as np
+import os
 import pytest
 import torch
 
