@@ -218,6 +218,24 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
                 tool_schemas[self._get_tool_name(function)] = parameters
         return tool_schemas
 
+    def _get_param_schemas(self, tools, func_name: str) -> Dict[str, Any]:
+        properties = self._get_tool_schemas(tools).get(func_name, {}).get('properties', {})
+        return properties if isinstance(properties, dict) else {}
+
+    @staticmethod
+    def _is_string_param(param_schema: Any, value: str) -> bool:
+        """True when the schema type includes ``string``, so the raw text must be kept.
+
+        Same rule as ``minicpm5`` / ``xing4_0``: a bare ``null`` on a nullable string
+        (``["string", "null"]``, any order) is still decoded as JSON null.
+        """
+        param_type = param_schema.get('type') if isinstance(param_schema, dict) else None
+        type_list = param_type if isinstance(param_type, list) else [param_type]
+        if 'string' not in type_list:
+            return False
+        # Bare null is ambiguous for ["string", "null"]; keep decoding it as JSON null.
+        return not ('null' in type_list and value.strip() == 'null')
+
     @staticmethod
     def _parse_tool(tool, lang: Literal['zh', 'en']) -> ToolDesc:
         tool = BaseAgentTemplate.unwrap_tool(tool)
