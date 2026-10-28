@@ -391,16 +391,9 @@ def save_mcore_checkpoint(
         if torch.distributed.is_initialized():
             torch.distributed.barrier()
 
-        if getattr(args, 'use_megatron_fsdp', False) and is_torch_npu_available():
-            # ``state_dict_for_save_checkpoint`` temporarily exposes the
-            # FSDP-managed DTensor parameters on the wrapped module.  The
-            # regular Megatron-FSDP loop restores raw module parameters before
-            # its next forward, but Swift immediately calls mcore-bridge's
-            # HF exporter after this function.  First complete the same
-            # parameter all-gather used by the GPU FSDP forward boundary, then
-            # expose those full raw parameters to bridge.  Restoring raw
-            # parameters without this gather would leave empty DP shards on
-            # non-zero ranks and can crash during bridge's reshape/copy path.
+        if getattr(args, 'use_megatron_fsdp', False) and args.save_safetensors:
+            # HF export bypasses FSDP forward hooks, so gather full parameters
+            # before restoring raw views. DCP-only saves use the next forward.
             for model in models:
                 start_param_sync = getattr(model, 'start_param_sync', None)
                 if start_param_sync is not None:
