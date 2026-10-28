@@ -697,20 +697,29 @@ def selective_log_softmax(logits, index, temperature: float = 1.0, row_mask=None
     if squeeze:
         index = index.unsqueeze(-1)
 
-    flat_logits = logits.reshape(-1, logits.shape[-1])
-    flat_index = index.reshape(-1, index.shape[-1])
-    if logits.dtype in (torch.float32, torch.float64):
-        # log_softmax(x)_i == x_i - logsumexp(x), which avoids expanding the whole tensor.
-        selected_logits = torch.gather(flat_logits, dim=-1, index=flat_index)
-        logsumexp_values = torch.cat([torch.logsumexp(chunk, dim=-1) for chunk in flat_logits.split(chunk_size, dim=0)])
-        # one logsumexp per row, broadcast over the K gathered positions
-        per_token_logps = selected_logits - logsumexp_values.unsqueeze(-1)
-    else:
-        # logsumexp is unstable in low precision, so materialise the log-softmax per chunk.
-        per_token_logps = torch.cat([
-            F.log_softmax(chunk, dim=-1).gather(dim=-1, index=chunk_index)
-            for chunk, chunk_index in zip(flat_logits.split(chunk_size, dim=0), flat_index.split(chunk_size, dim=0))
+    try:
+        flat_logits = logits.view(-1, logits.shape[-1])
+    except RuntimeError:
+        # GRPO's completion slice can leave gaps between batches. Avoid copying all logits to flatten it.
+        per_token_logps = torch.stack([
+            selective_log_softmax(batch_logits, batch_index, chunk_size=chunk_size)
+            for batch_logits, batch_index in zip(logits, index)
         ])
+    else:
+        flat_index = index.reshape(-1, index.shape[-1])
+        if logits.dtype in (torch.float32, torch.float64):
+            # log_softmax(x)_i == x_i - logsumexp(x), which avoids expanding the whole tensor.
+            selected_logits = torch.gather(flat_logits, dim=-1, index=flat_index)
+            logsumexp_values = torch.cat(
+                [torch.logsumexp(chunk, dim=-1) for chunk in flat_logits.split(chunk_size, dim=0)])
+            # one logsumexp per row, broadcast over the K gathered positions
+            per_token_logps = selected_logits - logsumexp_values.unsqueeze(-1)
+        else:
+            # logsumexp is unstable in low precision, so materialise the log-softmax per chunk.
+            per_token_logps = torch.cat([
+                F.log_softmax(chunk, dim=-1).gather(dim=-1, index=chunk_index) for chunk, chunk_index in zip(
+                    flat_logits.split(chunk_size, dim=0), flat_index.split(chunk_size, dim=0))
+            ])
     per_token_logps = per_token_logps.reshape(index.shape)
 
     if squeeze:
