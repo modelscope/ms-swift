@@ -76,6 +76,10 @@ rollout:
 - **top-k**：蒸馏损失仅在 teacher 概率最高的 k 个 token 上计算（通过 `gkd_logits_topk` 设置），显存占用更低，但会丢弃长尾分布信息。
 - **full-vocab**：蒸馏损失在完整词表上计算，保留完整分布信息，但显存占用较高。
 
+### GRPO 批次对齐
+
+`generation_batch_size` 表示 completion 数量。prompt 数量（`generation_batch_size / num_generations`）必须能被训练 DP 大小整除。在 Ray 训练中，completion 数量还必须能被 `dp_size * micro_batch_size` 整除。例如，512 个 completion、16 次生成和 32 个 DP rank 对应每个 rank 1 个 prompt、16 个 completion，可以组成 8 个大小为 2 的训练微批次。每个配置的训练 GPU 仍须至少分配到 1 个 completion。
+
 ### 相关文档
 
 更多文档请参考

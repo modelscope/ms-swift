@@ -183,8 +183,8 @@ class MegatronRayPipeline:
             cfg.get('generation_batch_size'), cfg.get('steps_per_generation'), global_batch_size, num_generations)
 
         dp_size = estimate_dp_size(cfg, train_gpus)
-        RLHFMegatronArgumentsMixin.validate_batch_dp_alignment(generation_batch_size, num_generations, dp_size,
-                                                               micro_batch_size, train_gpus)
+        RLHFMegatronArgumentsMixin.validate_batch_dp_alignment(
+            generation_batch_size, num_generations, dp_size, micro_batch_size, train_gpus, use_ray=True)
 
     def _spawn_train_group(self, role: str) -> None:
         from .megatron_worker import MegatronWorker
