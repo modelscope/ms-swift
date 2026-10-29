@@ -141,7 +141,7 @@ def initialize_ppo_cluster(
         apply_tuner(
             model,
             tuner_config,
-            gradient_accumulation_steps=train_config.gradient_accumulation_steps,
+            gradient_accumulation_steps=1,
             task_type=model_config.task_type,
         )
     else:
@@ -252,7 +252,9 @@ def initialize_ppo_cluster(
         adapter.dedicated_manager
         if adapter is not None
         else CheckpointEngineManager(
-            model=model, sampler=sampler, mode=("colocate" if colocate else "standalone"),
+            model=model,
+            sampler=sampler,
+            mode=("colocate" if colocate else "standalone"),
             sync_backend=rollout_config.weight_sync_backend,
         )
     )
@@ -313,11 +315,19 @@ def initialize_ppo_cluster(
     )
 
 
-def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
-                     tuner_config: Optional['TunerConfig'], train_batch_size: int,
-                     gradient_accumulation_steps: int, prompt_dataloader: Any,
-                     num_train_epochs: float, max_steps: int,
-                     output_dir: str) -> Any:
+def build_ppo_driver(
+    *,
+    cluster: Cluster,
+    rl_config: "RLConfig",
+    rollout_config: "RolloutConfig",
+    tuner_config: Optional["TunerConfig"],
+    train_batch_size: int,
+    gradient_accumulation_steps: int,
+    prompt_dataloader: Any,
+    num_train_epochs: float,
+    max_steps: int,
+    output_dir: str,
+) -> Any:
     """Assemble twinkle's StreamingDriver for PPO: the per-sample pull stream, batch-scored.
 
     PPO has no group contract (per-token GAE scores each trajectory on its own), so the pull rule

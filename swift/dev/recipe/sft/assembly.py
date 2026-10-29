@@ -103,7 +103,7 @@ def build_supervised_objects(
     from swift.dev.builders.optimizer import configure_optimizer
     from swift.dev.processor import InputProcessor, processor_kwargs
 
-    remote = distributed_config.mode == 'remote'
+    remote = distributed_config.mode == "remote"
     if not remote:
         initialize_supervised_twinkle(
             distributed_config,
@@ -116,9 +116,13 @@ def build_supervised_objects(
     # instances. The dataset and template stay local (rows are encoded here and shipped as forward
     # inputs), so build_dataset/plan_supervised_steps are shared by both modes.
     from swift.dev.builders.remote import (
-        REMOTE_UNSUPPORTED_TASKS, apply_remote_tuner, build_remote_model, configure_remote_loss,
+        REMOTE_UNSUPPORTED_TASKS,
+        apply_remote_tuner,
+        build_remote_model,
+        configure_remote_loss,
         configure_remote_processor,
     )
+
     process_and_validate(
         model_config,
         template_config,
@@ -137,19 +141,26 @@ def build_supervised_objects(
     task_type = model_config.task_type
     if task is not None:
         task_type = _require_task_type(recipe, model_config, task)
-    if remote and (task_type or 'causal_lm') in REMOTE_UNSUPPORTED_TASKS:
+    if remote and (task_type or "causal_lm") in REMOTE_UNSUPPORTED_TASKS:
         raise ValueError(
             f"--mode remote does not support task_type={(task_type or 'causal_lm')!r}: the "
-            'embedding/seq_cls/reranker loss families pass loss instances that cannot cross HTTP '
-            'and are untested remotely. Run them with mode=local/ray.')
+            "embedding/seq_cls/reranker loss families pass loss instances that cannot cross HTTP "
+            "and are untested remotely. Run them with mode=local/ray."
+        )
     _, processor = load_model_processor(model_config)
     kwargs = {"task_type": task_type} if task_type else {}
     template = build_template(template_config, processor, **kwargs)
     # Match legacy save_args: keep one run-level args.json that every periodic/final checkpoint
     # copies, so --load_args works for a checkpoint produced before training reaches checkpoint-final.
     write_ckpt_args_json(
-        output_dir, processor, model_config, template_config, tuner_config, quantize_config,
-        dataset_config=dataset_config, task_type=task_type
+        output_dir,
+        processor,
+        model_config,
+        template_config,
+        tuner_config,
+        quantize_config,
+        dataset_config=dataset_config,
+        task_type=task_type,
     )
     dataloader, eval_dataloader = build_dataset(
         dataset_config, template, train_config, distributed_config, template_config=template_config, device_mesh=sp_mesh
@@ -168,7 +179,7 @@ def build_supervised_objects(
     if remote:
         model = build_remote_model(model_config, distributed_config)
         if tuner_config is not None:
-            apply_remote_tuner(model, tuner_config, train_config.gradient_accumulation_steps)
+            apply_remote_tuner(model, tuner_config, 1)
         # Full-param remote: the server model trains all parameters by default. The local
         # freeze/trainable knobs read requires_grad in-process, which cannot cross HTTP; a
         # non-default freeze is refused by validate rather than silently ignored.
@@ -193,7 +204,7 @@ def build_supervised_objects(
             apply_tuner(
                 model,
                 tuner_config,
-                gradient_accumulation_steps=train_config.gradient_accumulation_steps,
+                gradient_accumulation_steps=1,
                 task_type=task_type,
             )
         else:

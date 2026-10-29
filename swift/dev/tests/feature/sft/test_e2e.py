@@ -10,6 +10,8 @@ and a self-describing checkpoint (weights + args.json) is written so `swift infe
 
 Marked slow: loads a real Qwen2.5-0.5B. Run with -m slow.
 """
+
+import math
 import os
 
 import json
@@ -19,7 +21,7 @@ import torch
 from swift.dev.tests._runners import Runners
 from swift.dev.tests._twinkle_runtime import reset_twinkle_runtime
 
-MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
+MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
 
 # Rendezvous ports, unique to THIS pytest process. The offsets are still hand-assigned per launch
 # below (a lingering rendezvous from an earlier phase of the SAME run must not be joinable); only the
@@ -34,14 +36,12 @@ def _master_port(offset: int) -> int:
 
 
 class _FakeMeta:
-
     def __init__(self, model_type):
         self.model_type = model_type
 
 
 class _FakeProcessor:
-
-    def __init__(self, model_type='qwen2_5'):
+    def __init__(self, model_type="qwen2_5"):
         self.model_meta = _FakeMeta(model_type)
 
 
@@ -58,20 +58,20 @@ def test_write_ckpt_args_json_includes_force_load_keys(tmp_path):
     ckpt = str(tmp_path)
     write_ckpt_args_json(
         ckpt,
-        _FakeProcessor('qwen2_5'),
-        ModelConfig(model='/m', task_type='seq_cls', torch_dtype='bfloat16', attn_impl='flash_attn'),
-        TemplateConfig(template='qwen2_5', system='sys', truncation_strategy='left'),
-        TunerConfig(tuner='lora'),
+        _FakeProcessor("qwen2_5"),
+        ModelConfig(model="/m", task_type="seq_cls", torch_dtype="bfloat16", attn_impl="flash_attn"),
+        TemplateConfig(template="qwen2_5", system="sys", truncation_strategy="left"),
+        TunerConfig(tuner="lora"),
     )
-    with open(os.path.join(ckpt, 'args.json')) as f:
+    with open(os.path.join(ckpt, "args.json")) as f:
         args = json.load(f)
     # force_load keys present (would otherwise silently degrade infer)
-    assert args['task_type'] == 'seq_cls'
-    assert args['tuner_type'] == 'lora'
+    assert args["task_type"] == "seq_cls"
+    assert args["tuner_type"] == "lora"
     # load_keys dev knows are carried too
-    assert args['model_type'] == 'qwen2_5'
-    assert args['attn_impl'] == 'flash_attn'
-    assert args['truncation_strategy'] == 'left'
+    assert args["model_type"] == "qwen2_5"
+    assert args["attn_impl"] == "flash_attn"
+    assert args["truncation_strategy"] == "left"
 
 
 def test_write_ckpt_args_json_omits_none_full_param(tmp_path):
@@ -84,16 +84,16 @@ def test_write_ckpt_args_json_omits_none_full_param(tmp_path):
     ckpt = str(tmp_path)
     write_ckpt_args_json(
         ckpt,
-        _FakeProcessor('qwen2_5'),
-        ModelConfig(model='/m', torch_dtype='bfloat16'),
-        TemplateConfig(template='qwen2_5'),
+        _FakeProcessor("qwen2_5"),
+        ModelConfig(model="/m", torch_dtype="bfloat16"),
+        TemplateConfig(template="qwen2_5"),
         None,
     )
-    with open(os.path.join(ckpt, 'args.json')) as f:
+    with open(os.path.join(ckpt, "args.json")) as f:
         args = json.load(f)
-    assert 'task_type' not in args
-    assert args['tuner_type'] == 'full'
-    assert args['model_type'] == 'qwen2_5'
+    assert "task_type" not in args
+    assert args["tuner_type"] == "full"
+    assert args["model_type"] == "qwen2_5"
 
 
 def test_initialize_twinkle_sets_a_device_group_on_every_backend():
@@ -117,13 +117,16 @@ def test_initialize_twinkle_sets_a_device_group_on_every_backend():
     try:
         # mode defaults to 'local' and the transformers backend has no Ray path at all, so a default
         # DistributedConfig (what every HF caller passes) must still init.
-        for dist_config in (DistributedConfig(), DistributedConfig(mode='local'),
-                            DistributedConfig(backend='megatron', mode='local', nproc_per_node=1)):
+        for dist_config in (
+            DistributedConfig(),
+            DistributedConfig(mode="local"),
+            DistributedConfig(backend="megatron", mode="local", nproc_per_node=1),
+        ):
             infra._mode, infra._device_group, infra._device_mesh = None, None, None
             initialize_supervised_twinkle(dist_config, seed=42, full_determinism=False, tf32=None)
-            assert infra._device_group is not None, f'no device group for {dist_config}'
-            assert infra._device_mesh is not None, f'no device mesh for {dist_config}'
-            assert infra._mode == 'local', f'unexpected mode {infra._mode} for {dist_config}'
+            assert infra._device_group is not None, f"no device group for {dist_config}"
+            assert infra._device_mesh is not None, f"no device mesh for {dist_config}"
+            assert infra._mode == "local", f"unexpected mode {infra._mode} for {dist_config}"
     finally:
         infra._mode, infra._device_group, infra._device_mesh = saved
 
@@ -154,86 +157,69 @@ def test_initialize_twinkle_forwards_seed_and_full_determinism(monkeypatch):
         captured.clear()
         captured.update(kwargs)
 
-    monkeypatch.setattr(twinkle, 'initialize', _fake_initialize)
+    monkeypatch.setattr(twinkle, "initialize", _fake_initialize)
 
-    initialize_supervised_twinkle(DistributedConfig(mode='local'), seed=1234, full_determinism=True, tf32=None)
-    assert captured['mode'] == 'local'
-    assert captured['extra_torch_kwargs']['seed'] == 1234, 'local branch dropped the user seed'
-    assert captured['extra_torch_kwargs']['full_determinism'] is True, 'local branch dropped full_determinism'
+    initialize_supervised_twinkle(DistributedConfig(mode="local"), seed=1234, full_determinism=True, tf32=None)
+    assert captured["mode"] == "local"
+    assert captured["extra_torch_kwargs"]["seed"] == 1234, "local branch dropped the user seed"
+    assert captured["extra_torch_kwargs"]["full_determinism"] is True, "local branch dropped full_determinism"
 
     initialize_supervised_twinkle(
-        DistributedConfig(mode='ray', nproc_per_node=2), seed=7, full_determinism=False, tf32=None)
-    assert captured['mode'] == 'ray'
-    assert captured['extra_torch_kwargs']['seed'] == 7, 'ray branch dropped the user seed'
-    assert captured['extra_torch_kwargs']['full_determinism'] is False, 'ray branch dropped full_determinism'
+        DistributedConfig(mode="ray", nproc_per_node=2), seed=7, full_determinism=False, tf32=None
+    )
+    assert captured["mode"] == "ray"
+    assert captured["extra_torch_kwargs"]["seed"] == 7, "ray branch dropped the user seed"
+    assert captured["extra_torch_kwargs"]["full_determinism"] is False, "ray branch dropped full_determinism"
 
 
 def _write_toy_dataset(path):
     rows = [
         {
-            'messages': [{
-                'role': 'user',
-                'content': 'What is 2+2?'
-            }, {
-                'role': 'assistant',
-                'content': '2 + 2 equals 4.'
-            }]
+            "messages": [
+                {"role": "user", "content": "What is 2+2?"},
+                {"role": "assistant", "content": "2 + 2 equals 4."},
+            ]
         },
         {
-            'messages': [{
-                'role': 'user',
-                'content': 'Say hello.'
-            }, {
-                'role': 'assistant',
-                'content': 'Hello! How can I help you today?'
-            }]
+            "messages": [
+                {"role": "user", "content": "Say hello."},
+                {"role": "assistant", "content": "Hello! How can I help you today?"},
+            ]
         },
         {
-            'messages': [{
-                'role': 'user',
-                'content': 'Capital of France?'
-            }, {
-                'role': 'assistant',
-                'content': 'The capital of France is Paris.'
-            }]
+            "messages": [
+                {"role": "user", "content": "Capital of France?"},
+                {"role": "assistant", "content": "The capital of France is Paris."},
+            ]
         },
         {
-            'messages': [{
-                'role': 'user',
-                'content': 'Name a color.'
-            }, {
-                'role': 'assistant',
-                'content': 'Blue is a color.'
-            }]
+            "messages": [
+                {"role": "user", "content": "Name a color."},
+                {"role": "assistant", "content": "Blue is a color."},
+            ]
         },
     ]
-    with open(path, 'w') as f:
+    with open(path, "w") as f:
         for r in rows:
-            f.write(json.dumps(r) + '\n')
+            f.write(json.dumps(r) + "\n")
 
 
 def _write_identical_dataset(path, n=4):
     """Write n IDENTICAL rows so every DP rank is fed the same sequence (isolates construction
     correctness from the two backends' differing dataloader sharding)."""
     row = {
-        'messages': [{
-            'role': 'user',
-            'content': 'What is 2+2?'
-        }, {
-            'role': 'assistant',
-            'content': '2 + 2 equals 4.'
-        }]
+        "messages": [{"role": "user", "content": "What is 2+2?"}, {"role": "assistant", "content": "2 + 2 equals 4."}]
     }
-    with open(path, 'w') as f:
+    with open(path, "w") as f:
         for _ in range(n):
-            f.write(json.dumps(row) + '\n')
+            f.write(json.dumps(row) + "\n")
 
 
 @pytest.mark.slow
 def test_run_sft_end_to_end_happy_path(tmp_path):
     """Full run_sft green-path: 4 atomic Configs -> trained checkpoint, from a real 0.5B model."""
     if not torch.cuda.is_available():
-        pytest.skip('CUDA not available')
+        pytest.skip("CUDA not available")
 
     from modelscope import snapshot_download
 
@@ -248,56 +234,50 @@ def test_run_sft_end_to_end_happy_path(tmp_path):
     from swift.dev.recipe.sft.run_sft import run_sft
 
     model_path = snapshot_download(MODEL)
-    data_path = str(tmp_path / 'toy_sft.jsonl')
-    out_dir = str(tmp_path / 'out')
+    data_path = str(tmp_path / "toy_sft.jsonl")
+    out_dir = str(tmp_path / "out")
     _write_toy_dataset(data_path)
 
     history = run_sft(
-        ModelConfig(model=model_path, torch_dtype='bfloat16'),
-        TemplateConfig(template='qwen2_5', max_length=512),
+        ModelConfig(model=model_path, torch_dtype="bfloat16"),
+        TemplateConfig(template="qwen2_5", max_length=512),
         DatasetConfig(dataset=[data_path], dataset_shuffle=True, data_seed=42),
         TrainConfig(
             learning_rate=1e-4,
-            optim='adamw',
-            lr_scheduler='cosine',
+            optim="adamw",
+            lr_scheduler="cosine",
             warmup_ratio=0.0,
             per_device_train_batch_size=2,
             gradient_accumulation_steps=1,
             max_steps=4,
-            max_grad_norm=1.0),
+            max_grad_norm=1.0,
+        ),
         DistributedConfig(),
         CheckpointConfig(),
         output_dir=out_dir,
     )
 
-    assert history, 'run_sft produced no optimizer steps'
-    losses = [r['loss'] for r in history]
-    assert all(loss == loss and abs(loss) != float('inf') for loss in losses), \
-        f'non-finite loss: {losses}'
-    assert losses[0] < 20, f'first loss {losses[0]:.2f} too large -> not normalized (raw sum?)'
+    assert history, "run_sft produced no optimizer steps"
+    losses = [r["loss"] for r in history]
+    assert all(loss == loss and abs(loss) != float("inf") for loss in losses), f"non-finite loss: {losses}"
+    assert losses[0] < 20, f"first loss {losses[0]:.2f} too large -> not normalized (raw sum?)"
 
-    ckpt = os.path.join(out_dir, 'checkpoint-final')
-    assert os.path.isdir(ckpt), f'no checkpoint dir at {ckpt}'
+    ckpt = os.path.join(out_dir, "checkpoint-final")
+    assert os.path.isdir(ckpt), f"no checkpoint dir at {ckpt}"
     files = set(os.listdir(ckpt))
-    assert any(f.endswith('.safetensors') or f == 'model.safetensors' for f in files), \
-        f'no model weights in checkpoint: {sorted(files)}'
-    assert 'args.json' in files, f'no args.json (checkpoint not self-describing): {sorted(files)}'
-    with open(os.path.join(ckpt, 'args.json')) as f:
+    assert any(f.endswith(".safetensors") or f == "model.safetensors" for f in files), (
+        f"no model weights in checkpoint: {sorted(files)}"
+    )
+    assert "args.json" in files, f"no args.json (checkpoint not self-describing): {sorted(files)}"
+    with open(os.path.join(ckpt, "args.json")) as f:
         args = json.load(f)
-    for k in ('model_type', 'template', 'swift_version'):
-        assert k in args, f'args.json missing {k!r} (swift infer would be ambiguous): {sorted(args)}'
+    for k in ("model_type", "template", "swift_version"):
+        assert k in args, f"args.json missing {k!r} (swift infer would be ambiguous): {sorted(args)}"
 
 
 @pytest.mark.slow
-def test_run_sft_zero_opt_steps_raises(tmp_path):
-    """Contract 5 (fail-fast): when N micro-batches <= ga the GA gate never fires, so run_sft
-    would train forward/backward but NEVER update the model (0 optimizer steps). run_sft must
-    raise ValueError rather than silently run a no-op "green" training.
-
-    Setup: 2-row dataset, per_device_train_batch_size=2 -> 1 micro-batch/epoch; ga=2, 1 epoch ->
-    num_optimizer_steps(1, 2) == 0 -> raise. The check runs BEFORE build_model, so this is cheap
-    (no weight loading); it only needs the processor + a dataset load, hence gated on the model.
-    """
+def test_run_sft_short_ga_window_updates(tmp_path):
+    """An epoch shorter than GA still performs one backend-owned optimizer update."""
     from modelscope import snapshot_download
 
     from swift.dev.config import (
@@ -311,36 +291,38 @@ def test_run_sft_zero_opt_steps_raises(tmp_path):
     from swift.dev.recipe.sft.run_sft import run_sft
 
     model_path = snapshot_download(MODEL)
-    data_path = str(tmp_path / 'tiny_sft.jsonl')
-    # exactly 2 rows -> with batch_size=2 that is a single micro-batch (one GA window)
-    with open(data_path, 'w') as f:
+    data_path = str(tmp_path / "tiny_sft.jsonl")
+    # One micro-batch, fewer than the configured two micro-batches per update.
+    with open(data_path, "w") as f:
         for _ in range(2):
             f.write(
-                json.dumps({
-                    'messages': [{
-                        'role': 'user',
-                        'content': 'What is 2+2?'
-                    }, {
-                        'role': 'assistant',
-                        'content': '2 + 2 equals 4.'
-                    }]
-                }) + '\n')
+                json.dumps(
+                    {
+                        "messages": [
+                            {"role": "user", "content": "What is 2+2?"},
+                            {"role": "assistant", "content": "2 + 2 equals 4."},
+                        ]
+                    }
+                )
+                + "\n"
+            )
 
-    with pytest.raises(ValueError, match='computed 0 optimizer steps'):
-        run_sft(
-            ModelConfig(model=model_path, torch_dtype='bfloat16'),
-            TemplateConfig(template='qwen2_5', max_length=512),
-            DatasetConfig(dataset=[data_path], dataset_shuffle=False, data_seed=42),
-            TrainConfig(
-                per_device_train_batch_size=2, gradient_accumulation_steps=2, num_train_epochs=1.0, max_steps=None),
-            DistributedConfig(),
-            CheckpointConfig(),
-            output_dir=str(tmp_path / 'out'),
-        )
+    history = run_sft(
+        ModelConfig(model=model_path, torch_dtype="bfloat16"),
+        TemplateConfig(template="qwen2_5", max_length=512),
+        DatasetConfig(dataset=[data_path], dataset_shuffle=False, data_seed=42),
+        TrainConfig(per_device_train_batch_size=2, gradient_accumulation_steps=2, num_train_epochs=1.0, max_steps=None),
+        DistributedConfig(),
+        CheckpointConfig(),
+        output_dir=str(tmp_path / "out"),
+        _save_final=False,
+    )
+    assert len(history) == 1 and history[0]["step"] == 1
+    assert math.isfinite(history[0]["loss"])
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize('bridge_backend', ['mcore-bridge', 'megatron-bridge'])
+@pytest.mark.parametrize("bridge_backend", ["mcore-bridge", "megatron-bridge"])
 def test_run_sft_megatron_end_to_end(tmp_path, bridge_backend):
     """Full run_sft on the Megatron backend (DP=2, Ray), for BOTH bridge backends.
 
@@ -351,31 +333,29 @@ def test_run_sft_megatron_end_to_end(tmp_path, bridge_backend):
     Scope: gradient_accumulation_steps=1 (larger GA is gated by test_run_sft_megatron_ga_equivalence).
     """
     if torch.cuda.device_count() < 2:
-        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+        pytest.skip("needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)")
     # Only the megatron-bridge parametrization needs the megatron.bridge package; the mcore-bridge
     # instance must NOT be skipped just because megatron.bridge is absent in this env.
     try:
-        if bridge_backend == 'megatron-bridge':
+        if bridge_backend == "megatron-bridge":
             from megatron.bridge.models.conversion.auto_bridge import AutoBridge  # noqa: F401
     except Exception:
-        pytest.skip('megatron.bridge (Megatron-Bridge) not importable in this env')
+        pytest.skip("megatron.bridge (Megatron-Bridge) not importable in this env")
 
-    data_path = str(tmp_path / 'toy_sft.jsonl')
+    data_path = str(tmp_path / "toy_sft.jsonl")
     _write_toy_dataset(data_path)
-    history = _run_megatron_sft(bridge_backend, data_path, str(tmp_path / f'out_{bridge_backend}'))
+    history = _run_megatron_sft(bridge_backend, data_path, str(tmp_path / f"out_{bridge_backend}"))
 
-    assert history, f'run_sft (megatron/{bridge_backend}) produced no optimizer steps'
-    losses = [r['loss'] for r in history]
-    assert all(loss == loss and abs(loss) != float('inf') for loss in losses), \
-        f'non-finite loss: {losses}'
-    assert losses[0] < 20, f'first loss {losses[0]:.2f} too large -> not normalized (raw sum?)'
+    assert history, f"run_sft (megatron/{bridge_backend}) produced no optimizer steps"
+    losses = [r["loss"] for r in history]
+    assert all(loss == loss and abs(loss) != float("inf") for loss in losses), f"non-finite loss: {losses}"
+    assert losses[0] < 20, f"first loss {losses[0]:.2f} too large -> not normalized (raw sum?)"
 
-    ckpt = os.path.join(str(tmp_path / f'out_{bridge_backend}'), 'checkpoint-final')
-    assert os.path.isdir(ckpt), f'no checkpoint dir at {ckpt}'
+    ckpt = os.path.join(str(tmp_path / f"out_{bridge_backend}"), "checkpoint-final")
+    assert os.path.isdir(ckpt), f"no checkpoint dir at {ckpt}"
     files = set(os.listdir(ckpt))
-    assert any(f.endswith('.safetensors') for f in files), \
-        f'no model weights in checkpoint: {sorted(files)}'
-    print(f'\nrun_sft megatron/{bridge_backend}: steps={len(history)} losses={losses}')
+    assert any(f.endswith(".safetensors") for f in files), f"no model weights in checkpoint: {sorted(files)}"
+    print(f"\nrun_sft megatron/{bridge_backend}: steps={len(history)} losses={losses}")
 
 
 @pytest.mark.slow
@@ -389,29 +369,32 @@ def test_run_sft_megatron_two_bridges_bit_identical(tmp_path):
     the two -- run_sft initializes but production is one-shot, so it has no shutdown counterpart).
     """
     if torch.cuda.device_count() < 2:
-        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+        pytest.skip("needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)")
     try:
         from megatron.bridge.models.conversion.auto_bridge import AutoBridge  # noqa: F401
     except Exception:
-        pytest.skip('megatron.bridge (Megatron-Bridge) not importable in this env')
+        pytest.skip("megatron.bridge (Megatron-Bridge) not importable in this env")
 
-    data_path = str(tmp_path / 'toy_sft.jsonl')
+    data_path = str(tmp_path / "toy_sft.jsonl")
     _write_toy_dataset(data_path)
 
-    mcore = _run_megatron_sft('mcore-bridge', data_path, str(tmp_path / 'out_mcore'))
+    mcore = _run_megatron_sft("mcore-bridge", data_path, str(tmp_path / "out_mcore"))
     # Each run_sft(mode='ray') is its own twinkle Ray session; the autouse fixture only resets
     # BETWEEN tests, so tear the first session down here or the second collides on twinkle's
     # deterministic worker-actor name (see reset_twinkle_runtime).
     reset_twinkle_runtime()
-    mbridge = _run_megatron_sft('megatron-bridge', data_path, str(tmp_path / 'out_mbridge'))
+    mbridge = _run_megatron_sft("megatron-bridge", data_path, str(tmp_path / "out_mbridge"))
 
-    mcore_losses = [r['loss'] for r in mcore]
-    mbridge_losses = [r['loss'] for r in mbridge]
-    print(f'\ntwo-bridge SFT: mcore={mcore_losses} megatron-bridge={mbridge_losses}')
-    assert len(mcore_losses) == len(mbridge_losses) and mcore_losses, \
-        f'step count mismatch: mcore={mcore_losses} mbridge={mbridge_losses}'
-    assert mcore_losses == mbridge_losses, (f'two bridges diverged (construction/normalization mismatch): '
-                                            f'mcore={mcore_losses} megatron-bridge={mbridge_losses}')
+    mcore_losses = [r["loss"] for r in mcore]
+    mbridge_losses = [r["loss"] for r in mbridge]
+    print(f"\ntwo-bridge SFT: mcore={mcore_losses} megatron-bridge={mbridge_losses}")
+    assert len(mcore_losses) == len(mbridge_losses) and mcore_losses, (
+        f"step count mismatch: mcore={mcore_losses} mbridge={mbridge_losses}"
+    )
+    assert mcore_losses == mbridge_losses, (
+        f"two bridges diverged (construction/normalization mismatch): "
+        f"mcore={mcore_losses} megatron-bridge={mbridge_losses}"
+    )
 
 
 @pytest.mark.slow
@@ -432,44 +415,50 @@ def test_run_sft_megatron_ga_equivalence(tmp_path):
     aligned to exactly one step.
     """
     if torch.cuda.device_count() < 2:
-        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+        pytest.skip("needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)")
 
-    data_path = str(tmp_path / 'toy_sft.jsonl')
+    data_path = str(tmp_path / "toy_sft.jsonl")
     _write_identical_dataset(data_path, n=8)  # 8 rows == one optimizer step at effective batch 8
 
     ga_hist = _run_megatron_sft(
-        'mcore-bridge', data_path, str(tmp_path / 'out_ga2'), per_device_batch=2, ga=2, max_steps=1)
+        "mcore-bridge", data_path, str(tmp_path / "out_ga2"), per_device_batch=2, ga=2, max_steps=1
+    )
     # Two run_sft(mode='ray') sessions in one test: reset the first before the second initializes,
     # or it collides on twinkle's deterministic worker-actor name (see reset_twinkle_runtime).
     reset_twinkle_runtime()
     big_hist = _run_megatron_sft(
-        'mcore-bridge', data_path, str(tmp_path / 'out_bs4'), per_device_batch=4, ga=1, max_steps=1)
+        "mcore-bridge", data_path, str(tmp_path / "out_bs4"), per_device_batch=4, ga=1, max_steps=1
+    )
 
-    ga_loss = [r['loss'] for r in ga_hist]
-    big_loss = [r['loss'] for r in big_hist]
-    ga_gn = [r.get('grad_norm') for r in ga_hist]
-    big_gn = [r.get('grad_norm') for r in big_hist]
-    print(f'\nGA equiv: ga2xbs2 loss={ga_loss} gn={ga_gn} | bs4 loss={big_loss} gn={big_gn}')
-    assert ga_loss and big_loss and len(ga_loss) == len(big_loss) == 1, \
-        f'expected 1 optimizer step each: ga2={ga_loss} bs4={big_loss}'
-    assert ga_loss == big_loss, (f'GA>1 diverged from equivalent large-batch loss: ga2xbs2={ga_loss} bs4={big_loss}')
+    ga_loss = [r["loss"] for r in ga_hist]
+    big_loss = [r["loss"] for r in big_hist]
+    ga_gn = [r.get("grad_norm") for r in ga_hist]
+    big_gn = [r.get("grad_norm") for r in big_hist]
+    print(f"\nGA equiv: ga2xbs2 loss={ga_loss} gn={ga_gn} | bs4 loss={big_loss} gn={big_gn}")
+    assert ga_loss and big_loss and len(ga_loss) == len(big_loss) == 1, (
+        f"expected 1 optimizer step each: ga2={ga_loss} bs4={big_loss}"
+    )
+    assert ga_loss == big_loss, f"GA>1 diverged from equivalent large-batch loss: ga2xbs2={ga_loss} bs4={big_loss}"
     if ga_gn[0] is not None and big_gn[0] is not None:
         assert abs(ga_gn[0] - big_gn[0]) < 1e-4, (
-            f'GA>1 grad_norm diverged (accumulation mismatch): ga2xbs2={ga_gn} bs4={big_gn}')
+            f"GA>1 grad_norm diverged (accumulation mismatch): ga2xbs2={ga_gn} bs4={big_gn}"
+        )
 
 
-def _run_megatron_sft(bridge_backend: str,
-                      data_path: str,
-                      out_dir: str,
-                      *,
-                      per_device_batch: int = 2,
-                      ga: int = 1,
-                      max_steps: int = 2,
-                      eval_steps: int = 0,
-                      split_dataset_ratio: float = 0.0,
-                      context_parallel_size: int = 1,
-                      pipeline_model_parallel_size: int = 1,
-                      model_overrides: dict = None):
+def _run_megatron_sft(
+    bridge_backend: str,
+    data_path: str,
+    out_dir: str,
+    *,
+    per_device_batch: int = 2,
+    ga: int = 1,
+    max_steps: int = 2,
+    eval_steps: int = 0,
+    split_dataset_ratio: float = 0.0,
+    context_parallel_size: int = 1,
+    pipeline_model_parallel_size: int = 1,
+    model_overrides: dict = None,
+):
     """Run one Megatron run_sft (DP=2, fp32) and return its loss/grad_norm history.
 
     per_device_batch/ga are parametrized so a GA>1 run can be compared against a GA=1 run with a
@@ -497,8 +486,8 @@ def _run_megatron_sft(bridge_backend: str,
         # model_type is explicit: the snapshot dir's basename ('master') matches no family and the
         # architectures reverse lookup is ambiguous (qwen2 vs qwen2_gte) -- a local directory must
         # name its family, exactly as resolve_model_info's error asks.
-        ModelConfig(model=model_path, model_type='qwen2', torch_dtype='float32', **(model_overrides or {})),
-        TemplateConfig(template='qwen2_5', max_length=512),
+        ModelConfig(model=model_path, model_type="qwen2", torch_dtype="float32", **(model_overrides or {})),
+        TemplateConfig(template="qwen2_5", max_length=512),
         DatasetConfig(dataset=[data_path], dataset_shuffle=False, split_dataset_ratio=split_dataset_ratio),
         # per_device_train_batch_size must be >= dp_size (2): twinkle slice_dp splits each driver
         # batch across the 2 DP ranks, so a batch of 1 would starve a rank. eval batch likewise >=2.
@@ -506,25 +495,27 @@ def _run_megatron_sft(bridge_backend: str,
         # guard on the Megatron backend, which always uses Adam).
         TrainConfig(
             learning_rate=1e-5,
-            lr_scheduler='constant',
+            lr_scheduler="constant",
             warmup_ratio=0.0,
             per_device_train_batch_size=per_device_batch,
             per_device_eval_batch_size=2,
             eval_steps=(eval_steps or None),
             gradient_accumulation_steps=ga,
             max_steps=max_steps,
-            max_grad_norm=1.0),
+            max_grad_norm=1.0,
+        ),
         # mode='ray' is explicit: this test relies on the Ray driver scatter (slice_dp splits each
         # driver batch across the 2 DP ranks -- see the per_device_train_batch_size note above), and
         # DistributedConfig.mode defaults to 'local', where slice_dp no-ops and the dataloader shards
         # instead.
         DistributedConfig(
-            backend='megatron',
+            backend="megatron",
             bridge_backend=bridge_backend,
             nproc_per_node=2,
             context_parallel_size=context_parallel_size,
             pipeline_model_parallel_size=pipeline_model_parallel_size,
-            mode='ray'),
+            mode="ray",
+        ),
         CheckpointConfig(),
         output_dir=out_dir,
     )
@@ -542,26 +533,26 @@ def test_run_sft_megatron_evaluate_returns_metrics(tmp_path):
     the two-bridge equality is gated elsewhere).
     """
     if torch.cuda.device_count() < 2:
-        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+        pytest.skip("needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)")
 
     # 8 rows so a 0.25 val split yields a non-empty eval set (>=2 for DP=2 eval batch).
-    data_path = str(tmp_path / 'toy_sft.jsonl')
+    data_path = str(tmp_path / "toy_sft.jsonl")
     _write_identical_dataset(data_path, n=8)
     # eval_steps=1 -> evaluate() runs every optimizer step (and a final eval), exercising the
     # Megatron forward_only + calculate_loss-NotImplementedError fallback repeatedly.
     history = _run_megatron_sft(
-        'mcore-bridge',
+        "mcore-bridge",
         data_path,
-        str(tmp_path / 'out'),
+        str(tmp_path / "out"),
         per_device_batch=2,
         max_steps=2,
         eval_steps=1,
-        split_dataset_ratio=0.25)
+        split_dataset_ratio=0.25,
+    )
     # A green run means evaluate() completed (no uncaught NotImplementedError from calculate_loss).
-    assert history, 'run_sft (megatron eval) produced no optimizer steps'
-    losses = [r['loss'] for r in history]
-    assert all(loss == loss and abs(loss) != float('inf') for loss in losses), \
-        f'non-finite loss: {losses}'
+    assert history, "run_sft (megatron eval) produced no optimizer steps"
+    losses = [r["loss"] for r in history]
+    assert all(loss == loss and abs(loss) != float("inf") for loss in losses), f"non-finite loss: {losses}"
 
 
 @pytest.mark.slow
@@ -576,24 +567,22 @@ def test_run_sft_megatron_context_parallel_end_to_end(tmp_path):
     actually trains with cp>1, and no example exercises it. world=2 -> cp=2, dp=1.
     """
     if torch.cuda.device_count() < 2:
-        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+        pytest.skip("needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)")
 
-    data_path = str(tmp_path / 'toy_sft.jsonl')
+    data_path = str(tmp_path / "toy_sft.jsonl")
     _write_toy_dataset(data_path)
-    history = _run_megatron_sft('mcore-bridge', data_path, str(tmp_path / 'out_cp'), context_parallel_size=2)
+    history = _run_megatron_sft("mcore-bridge", data_path, str(tmp_path / "out_cp"), context_parallel_size=2)
 
-    assert history, 'run_sft (megatron cp=2) produced no optimizer steps'
-    losses = [r['loss'] for r in history]
-    assert all(loss == loss and abs(loss) != float('inf') for loss in losses), \
-        f'non-finite loss: {losses}'
-    assert losses[0] < 20, f'first loss {losses[0]:.2f} too large -> not normalized (raw sum?)'
+    assert history, "run_sft (megatron cp=2) produced no optimizer steps"
+    losses = [r["loss"] for r in history]
+    assert all(loss == loss and abs(loss) != float("inf") for loss in losses), f"non-finite loss: {losses}"
+    assert losses[0] < 20, f"first loss {losses[0]:.2f} too large -> not normalized (raw sum?)"
 
-    ckpt = os.path.join(str(tmp_path / 'out_cp'), 'checkpoint-final')
-    assert os.path.isdir(ckpt), f'no checkpoint dir at {ckpt}'
+    ckpt = os.path.join(str(tmp_path / "out_cp"), "checkpoint-final")
+    assert os.path.isdir(ckpt), f"no checkpoint dir at {ckpt}"
     files = set(os.listdir(ckpt))
-    assert any(f.endswith('.safetensors') for f in files), \
-        f'no model weights in checkpoint: {sorted(files)}'
-    print(f'\nrun_sft megatron cp=2: steps={len(history)} losses={losses}')
+    assert any(f.endswith(".safetensors") for f in files), f"no model weights in checkpoint: {sorted(files)}"
+    print(f"\nrun_sft megatron cp=2: steps={len(history)} losses={losses}")
 
 
 def _run_torchrun(cmd, *, timeout=1800):
@@ -615,35 +604,36 @@ def _run_backend_subprocess(backend, data_path, out_dir, result_path, steps, lr)
     """
     import sys
 
-    runner = Runners.path('megatron_sft')
+    runner = Runners.path("megatron_sft")
     # Distinct port per backend so a lingering rendezvous from a previous backend cannot be joined.
-    port_offset = {'dev': 0, 'legacy': 1, 'dev_cli': 2}[backend]
+    port_offset = {"dev": 0, "legacy": 1, "dev_cli": 2}[backend]
     cmd = [
         sys.executable,
-        '-m',
-        'torch.distributed.run',
-        '--nproc_per_node=2',
-        f'--master_port={_master_port(port_offset)}',
+        "-m",
+        "torch.distributed.run",
+        "--nproc_per_node=2",
+        f"--master_port={_master_port(port_offset)}",
         runner,
-        '--backend',
+        "--backend",
         backend,
-        '--data',
+        "--data",
         data_path,
-        '--out',
+        "--out",
         result_path,
-        '--out_dir',
+        "--out_dir",
         out_dir,
-        '--steps',
+        "--steps",
         str(steps),
-        '--lr',
+        "--lr",
         str(lr),
     ]
     out, err = _run_torchrun(cmd)
     if not os.path.exists(result_path):
-        raise AssertionError(f'{backend} runner produced no result file. stdout tail:\n{out[-2000:]}\n'
-                             f'stderr tail:\n{err[-3000:]}')
+        raise AssertionError(
+            f"{backend} runner produced no result file. stdout tail:\n{out[-2000:]}\nstderr tail:\n{err[-3000:]}"
+        )
     with open(result_path) as f:
-        return json.load(f)['losses']
+        return json.load(f)["losses"]
 
 
 @pytest.mark.slow
@@ -676,34 +666,41 @@ def test_run_sft_megatron_vs_legacy_loss(tmp_path):
         strictly decreasing + small ABSOLUTE per-step gap.
     """
     if torch.cuda.device_count() < 2:
-        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+        pytest.skip("needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)")
 
-    data_path = str(tmp_path / 'toy_sft.jsonl')
+    data_path = str(tmp_path / "toy_sft.jsonl")
     _write_identical_dataset(data_path, n=4)
     steps, lr = 3, 1e-5
 
-    dev_losses = _run_backend_subprocess('dev', data_path, str(tmp_path / 'dev_out'), str(tmp_path / 'dev.json'), steps,
-                                         lr)
-    legacy_losses = _run_backend_subprocess('legacy', data_path, str(tmp_path / 'legacy_out'),
-                                            str(tmp_path / 'legacy.json'), steps, lr)
+    dev_losses = _run_backend_subprocess(
+        "dev", data_path, str(tmp_path / "dev_out"), str(tmp_path / "dev.json"), steps, lr
+    )
+    legacy_losses = _run_backend_subprocess(
+        "legacy", data_path, str(tmp_path / "legacy_out"), str(tmp_path / "legacy.json"), steps, lr
+    )
 
-    print(f'\nmegatron dev-vs-legacy: dev={dev_losses} legacy={legacy_losses}')
-    assert dev_losses and legacy_losses, f'empty losses: dev={dev_losses} legacy={legacy_losses}'
-    assert all(loss == loss for loss in dev_losses + legacy_losses), \
-        f'NaN loss: dev={dev_losses} legacy={legacy_losses}'
+    print(f"\nmegatron dev-vs-legacy: dev={dev_losses} legacy={legacy_losses}")
+    assert dev_losses and legacy_losses, f"empty losses: dev={dev_losses} legacy={legacy_losses}"
+    assert all(loss == loss for loss in dev_losses + legacy_losses), (
+        f"NaN loss: dev={dev_losses} legacy={legacy_losses}"
+    )
     n = min(len(dev_losses), len(legacy_losses))
-    assert n >= 1, f'no comparable steps: dev={dev_losses} legacy={legacy_losses}'
+    assert n >= 1, f"no comparable steps: dev={dev_losses} legacy={legacy_losses}"
 
     rel0 = abs(dev_losses[0] - legacy_losses[0]) / max(abs(legacy_losses[0]), 1e-8)
-    assert rel0 < 1e-2, (f'step-0 dev-vs-legacy construction mismatch: dev={dev_losses[0]:.6f} '
-                         f'legacy={legacy_losses[0]:.6f} rel={rel0:.2e} (limit 1e-2)')
+    assert rel0 < 1e-2, (
+        f"step-0 dev-vs-legacy construction mismatch: dev={dev_losses[0]:.6f} "
+        f"legacy={legacy_losses[0]:.6f} rel={rel0:.2e} (limit 1e-2)"
+    )
 
     for i in range(1, n):
-        assert dev_losses[i] < dev_losses[i - 1], f'dev loss not decreasing: {dev_losses}'
-        assert legacy_losses[i] < legacy_losses[i - 1], f'legacy loss not decreasing: {legacy_losses}'
+        assert dev_losses[i] < dev_losses[i - 1], f"dev loss not decreasing: {dev_losses}"
+        assert legacy_losses[i] < legacy_losses[i - 1], f"legacy loss not decreasing: {legacy_losses}"
         gap = abs(dev_losses[i] - legacy_losses[i])
-        assert gap < 0.05, (f'step {i} dev-vs-legacy absolute loss gap too large: dev={dev_losses[i]:.6f} '
-                            f'legacy={legacy_losses[i]:.6f} gap={gap:.4f} (limit 0.05)')
+        assert gap < 0.05, (
+            f"step {i} dev-vs-legacy absolute loss gap too large: dev={dev_losses[i]:.6f} "
+            f"legacy={legacy_losses[i]:.6f} gap={gap:.4f} (limit 0.05)"
+        )
 
 
 @pytest.mark.slow
@@ -728,35 +725,41 @@ def test_megatron_cli_vs_legacy_loss(tmp_path):
     then), step-0 rel < 1e-2 as the construction gate, later steps by trajectory + absolute gap.
     """
     if torch.cuda.device_count() < 2:
-        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+        pytest.skip("needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)")
 
-    data_path = str(tmp_path / 'toy_sft.jsonl')
+    data_path = str(tmp_path / "toy_sft.jsonl")
     _write_identical_dataset(data_path, n=4)
     steps, lr = 3, 1e-5
 
-    cli_losses = _run_backend_subprocess('dev_cli', data_path, str(tmp_path / 'cli_out'), str(tmp_path / 'cli.json'),
-                                         steps, lr)
-    legacy_losses = _run_backend_subprocess('legacy', data_path, str(tmp_path / 'legacy_out'),
-                                            str(tmp_path / 'legacy.json'), steps, lr)
+    cli_losses = _run_backend_subprocess(
+        "dev_cli", data_path, str(tmp_path / "cli_out"), str(tmp_path / "cli.json"), steps, lr
+    )
+    legacy_losses = _run_backend_subprocess(
+        "legacy", data_path, str(tmp_path / "legacy_out"), str(tmp_path / "legacy.json"), steps, lr
+    )
 
-    print(f'\nmegatron CLI-vs-legacy: cli={cli_losses} legacy={legacy_losses}')
-    assert cli_losses and legacy_losses, f'empty losses: cli={cli_losses} legacy={legacy_losses}'
-    assert all(loss == loss for loss in cli_losses + legacy_losses), \
-        f'NaN loss: cli={cli_losses} legacy={legacy_losses}'
+    print(f"\nmegatron CLI-vs-legacy: cli={cli_losses} legacy={legacy_losses}")
+    assert cli_losses and legacy_losses, f"empty losses: cli={cli_losses} legacy={legacy_losses}"
+    assert all(loss == loss for loss in cli_losses + legacy_losses), (
+        f"NaN loss: cli={cli_losses} legacy={legacy_losses}"
+    )
     n = min(len(cli_losses), len(legacy_losses))
-    assert n >= 1, f'no comparable steps: cli={cli_losses} legacy={legacy_losses}'
+    assert n >= 1, f"no comparable steps: cli={cli_losses} legacy={legacy_losses}"
 
     rel0 = abs(cli_losses[0] - legacy_losses[0]) / max(abs(legacy_losses[0]), 1e-8)
-    assert rel0 < 1e-2, (f'step-0 CLI-vs-legacy mismatch (argv mapped to different hyperparameters?): '
-                         f'cli={cli_losses[0]:.6f} legacy={legacy_losses[0]:.6f} rel={rel0:.2e} (limit 1e-2)')
+    assert rel0 < 1e-2, (
+        f"step-0 CLI-vs-legacy mismatch (argv mapped to different hyperparameters?): "
+        f"cli={cli_losses[0]:.6f} legacy={legacy_losses[0]:.6f} rel={rel0:.2e} (limit 1e-2)"
+    )
 
     for i in range(1, n):
-        assert cli_losses[i] < cli_losses[i - 1], f'cli loss not decreasing: {cli_losses}'
-        assert legacy_losses[i] < legacy_losses[i - 1], \
-            f'legacy loss not decreasing: {legacy_losses}'
+        assert cli_losses[i] < cli_losses[i - 1], f"cli loss not decreasing: {cli_losses}"
+        assert legacy_losses[i] < legacy_losses[i - 1], f"legacy loss not decreasing: {legacy_losses}"
         gap = abs(cli_losses[i] - legacy_losses[i])
-        assert gap < 0.05, (f'step {i} CLI-vs-legacy absolute loss gap too large: cli={cli_losses[i]:.6f} '
-                            f'legacy={legacy_losses[i]:.6f} gap={gap:.4f} (limit 0.05)')
+        assert gap < 0.05, (
+            f"step {i} CLI-vs-legacy absolute loss gap too large: cli={cli_losses[i]:.6f} "
+            f"legacy={legacy_losses[i]:.6f} gap={gap:.4f} (limit 0.05)"
+        )
 
 
 def _run_dense_backend(backend, out_dir, result_path, steps, *, model=None, dataset=None):
@@ -768,35 +771,36 @@ def _run_dense_backend(backend, out_dir, result_path, steps, *, model=None, data
     """
     import sys
 
-    runner = Runners.path('megatron_dense')
-    port = _master_port(3 + (1 if backend == 'legacy' else 0))
+    runner = Runners.path("megatron_dense")
+    port = _master_port(3 + (1 if backend == "legacy" else 0))
     cmd = [
         sys.executable,
-        '-m',
-        'torch.distributed.run',
-        '--nproc_per_node=2',
-        f'--master_port={port}',
+        "-m",
+        "torch.distributed.run",
+        "--nproc_per_node=2",
+        f"--master_port={port}",
         runner,
-        '--backend',
+        "--backend",
         backend,
-        '--out',
+        "--out",
         result_path,
-        '--out_dir',
+        "--out_dir",
         out_dir,
-        '--steps',
+        "--steps",
         str(steps),
     ]
     if model:
-        cmd += ['--model', model]
+        cmd += ["--model", model]
     if dataset:
-        cmd += ['--dataset'] + list(dataset)
+        cmd += ["--dataset"] + list(dataset)
     out, err = _run_torchrun(cmd, timeout=3600)
     if not os.path.exists(result_path):
-        raise AssertionError(f'{backend} dense runner produced no result file. stdout tail:\n{out[-2000:]}\n'
-                             f'stderr tail:\n{err[-3000:]}')
+        raise AssertionError(
+            f"{backend} dense runner produced no result file. stdout tail:\n{out[-2000:]}\nstderr tail:\n{err[-3000:]}"
+        )
     with open(result_path) as f:
         data = json.load(f)
-    return data['losses'], data['lrs']
+    return data["losses"], data["lrs"]
 
 
 @pytest.mark.slow
@@ -834,52 +838,59 @@ def test_megatron_dense_cli_vs_legacy_50_steps(tmp_path):
         i.e. the offset is genuinely gone rather than merely smaller.
     """
     if torch.cuda.device_count() < 2:
-        pytest.skip('needs >=2 GPUs (tp=2 in the dense.sh config)')
+        pytest.skip("needs >=2 GPUs (tp=2 in the dense.sh config)")
 
     steps = 50
-    cli_losses, cli_lrs = _run_dense_backend('dev_cli', str(tmp_path / 'cli_out'), str(tmp_path / 'cli.json'), steps)
-    legacy_losses, legacy_lrs = _run_dense_backend('legacy', str(tmp_path / 'legacy_out'),
-                                                   str(tmp_path / 'legacy.json'), steps)
+    cli_losses, cli_lrs = _run_dense_backend("dev_cli", str(tmp_path / "cli_out"), str(tmp_path / "cli.json"), steps)
+    legacy_losses, legacy_lrs = _run_dense_backend(
+        "legacy", str(tmp_path / "legacy_out"), str(tmp_path / "legacy.json"), steps
+    )
 
-    print(f'\ndense cli  lr[:3]={cli_lrs[:3]} loss[:3]={cli_losses[:3]}')
-    print(f'dense leg  lr[:3]={legacy_lrs[:3]} loss[:3]={legacy_losses[:3]}')
+    print(f"\ndense cli  lr[:3]={cli_lrs[:3]} loss[:3]={cli_losses[:3]}")
+    print(f"dense leg  lr[:3]={legacy_lrs[:3]} loss[:3]={legacy_losses[:3]}")
 
     # --- lr: bit-level ---
-    assert len(cli_lrs) == len(legacy_lrs) == steps, \
-        f'step count mismatch: cli={len(cli_lrs)} legacy={len(legacy_lrs)}'
+    assert len(cli_lrs) == len(legacy_lrs) == steps, f"step count mismatch: cli={len(cli_lrs)} legacy={len(legacy_lrs)}"
     lr_mismatch = [(i, cli_lrs[i], legacy_lrs[i]) for i in range(steps) if cli_lrs[i] != legacy_lrs[i]]
-    assert not lr_mismatch, (f'lr differs from legacy at {len(lr_mismatch)}/{steps} steps (the schedule mapping is '
-                             f'wrong, not a precision issue); first 3: {lr_mismatch[:3]}')
+    assert not lr_mismatch, (
+        f"lr differs from legacy at {len(lr_mismatch)}/{steps} steps (the schedule mapping is "
+        f"wrong, not a precision issue); first 3: {lr_mismatch[:3]}"
+    )
 
     # --- loss ---
     # Absolute gaps, not relative: loss dips toward ~0.1 in places, where a numerically tiny gap
     # reads as a huge percentage.
     n = min(len(cli_losses), len(legacy_losses))
-    assert all(x == x for x in cli_losses + legacy_losses), \
-        f'NaN loss: cli={cli_losses} legacy={legacy_losses}'
+    assert all(x == x for x in cli_losses + legacy_losses), f"NaN loss: cli={cli_losses} legacy={legacy_losses}"
 
     gaps = [abs(cli_losses[i] - legacy_losses[i]) for i in range(n)]
     for i in range(min(4, n)):
-        assert gaps[i] < 0.30, (f'step {i} (forward-dominated) absolute loss gap {gaps[i]:.4f} exceeds 0.30 '
-                                f'(cli={cli_losses[i]:.6f} legacy={legacy_losses[i]:.6f})')
+        assert gaps[i] < 0.30, (
+            f"step {i} (forward-dominated) absolute loss gap {gaps[i]:.4f} exceeds 0.30 "
+            f"(cli={cli_losses[i]:.6f} legacy={legacy_losses[i]:.6f})"
+        )
     for i in range(4, n):
-        assert gaps[i] < 0.08, (f'step {i} absolute loss gap {gaps[i]:.4f} exceeds 0.08 '
-                                f'(cli={cli_losses[i]:.6f} legacy={legacy_losses[i]:.6f})')
+        assert gaps[i] < 0.08, (
+            f"step {i} absolute loss gap {gaps[i]:.4f} exceeds 0.08 "
+            f"(cli={cli_losses[i]:.6f} legacy={legacy_losses[i]:.6f})"
+        )
 
     mean_gap = sum(gaps) / n
     assert mean_gap < 0.02, (
-        f'mean absolute loss gap over {n} steps is {mean_gap:.4f} (limit 0.02) -- the trajectories '
-        f'are drifting apart, not just jittering')
+        f"mean absolute loss gap over {n} steps is {mean_gap:.4f} (limit 0.02) -- the trajectories "
+        f"are drifting apart, not just jittering"
+    )
 
     # A step offset would make the shifted comparison the better one; assert it is NOT, so a
     # reintroduced partial-batch mismatch cannot hide inside the bands above.
     if n > 5:
         shifted = [abs(cli_losses[i] - legacy_losses[i - 1]) for i in range(1, n)]
         assert sum(shifted) / len(shifted) > mean_gap, (
-            'the one-step-shifted comparison fits better than the aligned one -- dev and legacy are '
-            'off by a step again (check drop_last / partial-batch handling)')
+            "the one-step-shifted comparison fits better than the aligned one -- dev and legacy are "
+            "off by a step again (check drop_last / partial-batch handling)"
+        )
 
-    assert max(cli_losses) < 20 and max(legacy_losses) < 20, 'a side diverged'
+    assert max(cli_losses) < 20 and max(legacy_losses) < 20, "a side diverged"
 
 
 def _run_resume_phase(phase, out_dir, result_path, *, resume_from=None, steps=3):
@@ -890,30 +901,31 @@ def _run_resume_phase(phase, out_dir, result_path, *, resume_from=None, steps=3)
     """
     import sys
 
-    runner = Runners.path('megatron_resume')
-    ports = {'A': _master_port(5), 'B': _master_port(6), 'cont': _master_port(7), 'resume_cont': _master_port(8)}
+    runner = Runners.path("megatron_resume")
+    ports = {"A": _master_port(5), "B": _master_port(6), "cont": _master_port(7), "resume_cont": _master_port(8)}
     cmd = [
         sys.executable,
-        '-m',
-        'torch.distributed.run',
-        '--nproc_per_node=2',
-        f'--master_port={ports[phase]}',
+        "-m",
+        "torch.distributed.run",
+        "--nproc_per_node=2",
+        f"--master_port={ports[phase]}",
         runner,
-        '--phase',
+        "--phase",
         phase,
-        '--out',
+        "--out",
         result_path,
-        '--out_dir',
+        "--out_dir",
         out_dir,
-        '--steps',
+        "--steps",
         str(steps),
     ]
     if resume_from is not None:
-        cmd += ['--resume_from', resume_from]
+        cmd += ["--resume_from", resume_from]
     out, err = _run_torchrun(cmd)
     if not os.path.exists(result_path):
-        raise AssertionError(f'resume phase {phase} produced no result file. stdout tail:\n{out[-2000:]}\n'
-                             f'stderr tail:\n{err[-3000:]}')
+        raise AssertionError(
+            f"resume phase {phase} produced no result file. stdout tail:\n{out[-2000:]}\nstderr tail:\n{err[-3000:]}"
+        )
     with open(result_path) as f:
         return json.load(f)
 
@@ -950,48 +962,57 @@ def test_run_sft_megatron_local_save_resume(tmp_path):
              from full-param momentum round-trip; still an order of magnitude below O(0.1)).
     """
     if torch.cuda.device_count() < 2:
-        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+        pytest.skip("needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)")
 
     from safetensors.torch import load_file
+
     steps = 3
-    out = str(tmp_path / 'rz')
+    out = str(tmp_path / "rz")
 
     # --- layers 1+2: seed-differentiated weight bit-exact + optimizer existence ---
-    a = _run_resume_phase('A', out, str(tmp_path / 'A.json'), steps=steps)
-    b = _run_resume_phase('B', out, str(tmp_path / 'B.json'), resume_from=os.path.join(out, 'ckpt-A'), steps=steps)
+    a = _run_resume_phase("A", out, str(tmp_path / "A.json"), steps=steps)
+    b = _run_resume_phase("B", out, str(tmp_path / "B.json"), resume_from=os.path.join(out, "ckpt-A"), steps=steps)
 
-    wa, wb = load_file(a['weights_path']), load_file(b['weights_path'])
+    wa, wb = load_file(a["weights_path"]), load_file(b["weights_path"])
     common = [k for k in wa if k in wb]
-    assert common and not [k for k in wa if k not in wb], \
-        f'weight key mismatch: A-only={[k for k in wa if k not in wb][:4]}'
+    assert common and not [k for k in wa if k not in wb], (
+        f"weight key mismatch: A-only={[k for k in wa if k not in wb][:4]}"
+    )
     max_diff = max((wa[k].float() - wb[k].float()).abs().max().item() for k in common)
-    print(f'\nresume MAIN: weights max|diff|={max_diff:.3e} over {len(common)} params')
-    assert max_diff == 0.0, (f'resume did NOT fully restore weights (strict=False silently dropped a shard?): '
-                             f'seed-999 phase B != seed-0 phase A, max|diff|={max_diff:.3e} over {len(common)} params')
+    print(f"\nresume MAIN: weights max|diff|={max_diff:.3e} over {len(common)} params")
+    assert max_diff == 0.0, (
+        f"resume did NOT fully restore weights (strict=False silently dropped a shard?): "
+        f"seed-999 phase B != seed-0 phase A, max|diff|={max_diff:.3e} over {len(common)} params"
+    )
 
-    a_optim = set(os.listdir(a['optim_dir']))
-    b_optim = set(os.listdir(b['optim_dir']))
-    print(f'resume SECONDARY: optim files A={sorted(a_optim)} B={sorted(b_optim)}')
-    assert a_optim == b_optim and any(f.endswith('.distcp') for f in a_optim), \
-        f'optimizer dist-ckpt file set differs / no shards: A={sorted(a_optim)} B={sorted(b_optim)}'
+    a_optim = set(os.listdir(a["optim_dir"]))
+    b_optim = set(os.listdir(b["optim_dir"]))
+    print(f"resume SECONDARY: optim files A={sorted(a_optim)} B={sorted(b_optim)}")
+    assert a_optim == b_optim and any(f.endswith(".distcp") for f in a_optim), (
+        f"optimizer dist-ckpt file set differs / no shards: A={sorted(a_optim)} B={sorted(b_optim)}"
+    )
 
     # --- layer 3 (must): interrupt-resume vs continuous trajectory ---
-    cont = _run_resume_phase('cont', out, str(tmp_path / 'cont.json'), steps=steps)['losses']
+    cont = _run_resume_phase("cont", out, str(tmp_path / "cont.json"), steps=steps)["losses"]
     # free cont's ckpt before resume_cont writes its own (each fp32+optim ckpt is ~7GB; /tmp is 30GB)
     import shutil
-    shutil.rmtree(os.path.join(out, 'ckpt-cont'), ignore_errors=True)
+
+    shutil.rmtree(os.path.join(out, "ckpt-cont"), ignore_errors=True)
     rc = _run_resume_phase(
-        'resume_cont', out, str(tmp_path / 'rc.json'), resume_from=os.path.join(out, 'ckpt-A'), steps=steps)['losses']
+        "resume_cont", out, str(tmp_path / "rc.json"), resume_from=os.path.join(out, "ckpt-A"), steps=steps
+    )["losses"]
 
     # cont = [s1..s2N]; resume_cont = [s(N+1)..s2N]. Overlap starts at cont[steps].
     overlap = [(cont[steps + i], rc[i]) for i in range(len(rc)) if steps + i < len(cont)]
-    print(f'\nresume TRAJECTORY: cont={cont} resume_cont={rc} overlap={overlap}')
-    assert overlap, f'no overlapping steps: cont={cont} resume_cont={rc}'
+    print(f"\nresume TRAJECTORY: cont={cont} resume_cont={rc} overlap={overlap}")
+    assert overlap, f"no overlapping steps: cont={cont} resume_cont={rc}"
     for i, (c, r) in enumerate(overlap):
         diff = abs(c - r)
         limit = 1e-3 if i == 0 else 1e-2  # i==0 is the resume-immediate step (momentum-most-sensitive)
-        assert diff < limit, (f'resume trajectory step {i} (cont={c:.6f} vs resume_cont={r:.6f}) diff={diff:.3e} '
-                              f'>= {limit} -> optimizer momentum not restored to saved values (loaded as zero?)')
+        assert diff < limit, (
+            f"resume trajectory step {i} (cont={c:.6f} vs resume_cont={r:.6f}) diff={diff:.3e} "
+            f">= {limit} -> optimizer momentum not restored to saved values (loaded as zero?)"
+        )
 
     # Release the remaining checkpoints (ckpt-A, ckpt-B, ckpt-resume_cont -- ~7GB each). Unlike the
     # other Megatron runners, this cleanup cannot live inside the runner: ckpt-A is phase B's and
@@ -1011,28 +1032,17 @@ def _write_imbalanced_dataset(path):
     noise, while equal-length or equally-surprising rows would let the broken path pass.
     """
     rows = [
+        {"messages": [{"role": "user", "content": "What is 2+2?"}, {"role": "assistant", "content": "4."}]},
         {
-            'messages': [{
-                'role': 'user',
-                'content': 'What is 2+2?'
-            }, {
-                'role': 'assistant',
-                'content': '4.'
-            }]
-        },
-        {
-            'messages': [{
-                'role': 'user',
-                'content': 'Repeat this code exactly.'
-            }, {
-                'role': 'assistant',
-                'content': ' '.join(['qx7', 'zzp', '44b', 'kkv', 'w9q'] * 12)
-            }]
+            "messages": [
+                {"role": "user", "content": "Repeat this code exactly."},
+                {"role": "assistant", "content": " ".join(["qx7", "zzp", "44b", "kkv", "w9q"] * 12)},
+            ]
         },
     ]
-    with open(path, 'w') as f:
+    with open(path, "w") as f:
         for r in rows:
-            f.write(json.dumps(r) + '\n')
+            f.write(json.dumps(r) + "\n")
 
 
 def _run_hf_shape(shape, data_path, out_dir, result_prefix):
@@ -1045,19 +1055,21 @@ def _run_hf_shape(shape, data_path, out_dir, result_prefix):
     """
     import sys
 
-    runner = Runners.path('hf_dp')
+    runner = Runners.path("hf_dp")
     cmd = [sys.executable]
-    if shape == 'dp2':
-        cmd += ['-m', 'torch.distributed.run', '--nproc_per_node=2', f'--master_port={_master_port(9)}']
-    cmd += [runner, '--shape', shape, '--data', data_path, '--out', result_prefix, '--out_dir', out_dir]
+    if shape == "dp2":
+        cmd += ["-m", "torch.distributed.run", "--nproc_per_node=2", f"--master_port={_master_port(9)}"]
+    cmd += [runner, "--shape", shape, "--data", data_path, "--out", result_prefix, "--out_dir", out_dir]
     out, err = _run_torchrun(cmd)
 
     results = []
-    for rank in range(2 if shape == 'dp2' else 1):
-        path = f'{result_prefix}.rank{rank}.json'
+    for rank in range(2 if shape == "dp2" else 1):
+        path = f"{result_prefix}.rank{rank}.json"
         if not os.path.exists(path):
-            raise AssertionError(f'{shape} runner produced no result for rank {rank}. stdout tail:\n{out[-2000:]}\n'
-                                 f'stderr tail:\n{err[-3000:]}')
+            raise AssertionError(
+                f"{shape} runner produced no result for rank {rank}. stdout tail:\n{out[-2000:]}\n"
+                f"stderr tail:\n{err[-3000:]}"
+            )
         with open(path) as f:
             results.append(json.load(f))
     return results
@@ -1093,35 +1105,41 @@ def test_run_sft_hf_dp_loss_is_globally_token_weighted(tmp_path):
     global value by 241%. All three assertion groups fire on that, which is the point of having them.
     """
     if torch.cuda.device_count() < 2:
-        pytest.skip('needs >=2 GPUs')
+        pytest.skip("needs >=2 GPUs")
 
-    data_path = str(tmp_path / 'imbalanced.jsonl')
+    data_path = str(tmp_path / "imbalanced.jsonl")
     _write_imbalanced_dataset(data_path)
 
-    dp2 = _run_hf_shape('dp2', data_path, str(tmp_path / 'dp2_out'), str(tmp_path / 'dp2'))
-    single = _run_hf_shape('single', data_path, str(tmp_path / 'single_out'), str(tmp_path / 'single'))
+    dp2 = _run_hf_shape("dp2", data_path, str(tmp_path / "dp2_out"), str(tmp_path / "dp2"))
+    single = _run_hf_shape("single", data_path, str(tmp_path / "single_out"), str(tmp_path / "single"))
 
-    print(f'\nHF dp aggregation: dp2={[r["losses"] for r in dp2]} single={single[0]["losses"]}')
+    print(f"\nHF dp aggregation: dp2={[r['losses'] for r in dp2]} single={single[0]['losses']}")
     for r in dp2:
-        assert r['device_mesh_present'], (
-            f'rank {r["rank"]}: device_mesh is None -- remote_class dropped it, so the gradient '
-            'divisor is 1 instead of the dp world size (call twinkle.initialize before build_model)')
-        assert r['dp_world_size'] == 2, (
-            f'rank {r["rank"]}: mesh reports dp world size {r["dp_world_size"]}, not 2 -- the token '
-            'count would be normalised by the wrong divisor')
-        assert r['dp_group_present'], (
-            f'rank {r["rank"]}: dp process group not built, so LossMetric skips its gather and this '
-            "rank only ever reports its own loss (see set_optimizer's _ensure_optimizer_dp_groups)")
+        assert r["device_mesh_present"], (
+            f"rank {r['rank']}: device_mesh is None -- remote_class dropped it, so the gradient "
+            "divisor is 1 instead of the dp world size (call twinkle.initialize before build_model)"
+        )
+        assert r["dp_world_size"] == 2, (
+            f"rank {r['rank']}: mesh reports dp world size {r['dp_world_size']}, not 2 -- the token "
+            "count would be normalised by the wrong divisor"
+        )
+        assert r["dp_group_present"], (
+            f"rank {r['rank']}: dp process group not built, so LossMetric skips its gather and this "
+            "rank only ever reports its own loss (see set_optimizer's _ensure_optimizer_dp_groups)"
+        )
 
-    assert dp2[0]['losses'] == dp2[1]['losses'], (
-        f'ranks disagree: rank0={dp2[0]["losses"]} rank1={dp2[1]["losses"]} -- each is reporting its '
-        'own loss instead of the dp-wide aggregate')
+    assert dp2[0]["losses"] == dp2[1]["losses"], (
+        f"ranks disagree: rank0={dp2[0]['losses']} rank1={dp2[1]['losses']} -- each is reporting its "
+        "own loss instead of the dp-wide aggregate"
+    )
 
-    ref, got = single[0]['losses'][0], dp2[0]['losses'][0]
+    ref, got = single[0]["losses"][0], dp2[0]["losses"][0]
     rel = abs(got - ref) / max(abs(ref), 1e-8)
-    assert rel < 0.02, (f'dp2 loss {got:.6f} is not the global token-weighted mean {ref:.6f} (rel={rel:.2e}, limit '
-                        '2e-2): the two shapes trained on the same two samples, so this gap is an aggregation '
-                        'convention difference, not noise')
+    assert rel < 0.02, (
+        f"dp2 loss {got:.6f} is not the global token-weighted mean {ref:.6f} (rel={rel:.2e}, limit "
+        "2e-2): the two shapes trained on the same two samples, so this gap is an aggregation "
+        "convention difference, not noise"
+    )
 
 
 def _accel_device_count() -> int:
@@ -1130,6 +1148,7 @@ def _accel_device_count() -> int:
         return torch.cuda.device_count()
     try:
         import torch_npu  # noqa: F401
+
         return torch.npu.device_count() if torch.npu.is_available() else 0
     except ImportError:
         return 0
@@ -1140,6 +1159,7 @@ def _flash_attn_available() -> bool:
     torch_npu/torch_xpu as flash-capable -- is_flash_attn_2_available alone would skip on Ascend)."""
     try:
         from transformers.modeling_flash_attention_utils import is_flash_attn_available
+
         return is_flash_attn_available()
     except Exception:
         return False
@@ -1152,33 +1172,38 @@ def _run_hf_sp_shape(shape, data_path, out_dir, result_prefix, padding_free, por
     import sys
 
     if nproc is None:
-        nproc = 2 if shape == 'sp2' else 1
-    runner = Runners.path('hf_sp')
+        nproc = 2 if shape == "sp2" else 1
+    runner = Runners.path("hf_sp")
     cmd = [sys.executable]
     if nproc > 1:
         cmd += [
-            '-m', 'torch.distributed.run', f'--nproc_per_node={nproc}', f'--master_port={_master_port(port_offset)}'
+            "-m",
+            "torch.distributed.run",
+            f"--nproc_per_node={nproc}",
+            f"--master_port={_master_port(port_offset)}",
         ]
-    cmd += [runner, '--shape', shape, '--data', data_path, '--out', result_prefix, '--out_dir', out_dir]
+    cmd += [runner, "--shape", shape, "--data", data_path, "--out", result_prefix, "--out_dir", out_dir]
     if padding_free:
-        cmd += ['--padding_free']
+        cmd += ["--padding_free"]
     if sp_size != 2:
-        cmd += ['--sp_size', str(sp_size)]
+        cmd += ["--sp_size", str(sp_size)]
     out, err = _run_torchrun(cmd)
 
     results = []
     for rank in range(nproc):
-        path = f'{result_prefix}.rank{rank}.json'
+        path = f"{result_prefix}.rank{rank}.json"
         if not os.path.exists(path):
-            raise AssertionError(f'{shape} runner produced no result for rank {rank}. stdout tail:\n{out[-2000:]}\n'
-                                 f'stderr tail:\n{err[-3000:]}')
+            raise AssertionError(
+                f"{shape} runner produced no result for rank {rank}. stdout tail:\n{out[-2000:]}\n"
+                f"stderr tail:\n{err[-3000:]}"
+            )
         with open(path) as f:
             results.append(json.load(f))
     return results
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize('padding_free', [False, True])
+@pytest.mark.parametrize("padding_free", [False, True])
 def test_run_sft_hf_sp_matches_single(tmp_path, padding_free):
     """sp=2 transformers SFT must report the SAME loss as a single-process run on the same batch.
 
@@ -1197,45 +1222,58 @@ def test_run_sft_hf_sp_matches_single(tmp_path, padding_free):
       - value: sp2 loss ~= single-process loss (rel < 2e-2 band, same as dp2).
     """
     if _accel_device_count() < 2:
-        pytest.skip('needs >=2 accelerators')
+        pytest.skip("needs >=2 accelerators")
     if padding_free and not _flash_attn_available():
-        pytest.skip('padding_free + SP requires flash attention (flash_attn/torch_npu), not available')
+        pytest.skip("padding_free + SP requires flash attention (flash_attn/torch_npu), not available")
 
-    data_path = str(tmp_path / 'toy_sft.jsonl')
+    data_path = str(tmp_path / "toy_sft.jsonl")
     _write_toy_dataset(data_path)
     port_offset = 12 if padding_free else 11
-    tag = 'pf' if padding_free else 'pad'
+    tag = "pf" if padding_free else "pad"
 
-    sp2 = _run_hf_sp_shape('sp2', data_path, str(tmp_path / f'sp2_{tag}_out'), str(tmp_path / f'sp2_{tag}'),
-                           padding_free, port_offset)
-    single = _run_hf_sp_shape('single', data_path, str(tmp_path / f'single_{tag}_out'),
-                              str(tmp_path / f'single_{tag}'), padding_free, port_offset + 2)
+    sp2 = _run_hf_sp_shape(
+        "sp2", data_path, str(tmp_path / f"sp2_{tag}_out"), str(tmp_path / f"sp2_{tag}"), padding_free, port_offset
+    )
+    single = _run_hf_sp_shape(
+        "single",
+        data_path,
+        str(tmp_path / f"single_{tag}_out"),
+        str(tmp_path / f"single_{tag}"),
+        padding_free,
+        port_offset + 2,
+    )
 
-    print(f'\nHF sp (padding_free={padding_free}): sp2={[r["losses"] for r in sp2]} single={single[0]["losses"]}')
+    print(f"\nHF sp (padding_free={padding_free}): sp2={[r['losses'] for r in sp2]} single={single[0]['losses']}")
     for r in sp2:
-        assert r['ulysses_size'] == 2, (
-            f'rank {r["rank"]}: mesh ulysses_size={r["ulysses_size"]}, not 2 -- the SP mesh did not '
-            'reach TransformersModel (build_dp_mesh / device_mesh kwarg broken)')
-        assert r['data_world_size'] == 1, (
-            f'rank {r["rank"]}: data_world_size={r["data_world_size"]}, not world/ulysses=1 -- the '
-            'loader would hand SP peers different samples')
-        assert r['enable_sp'], f'rank {r["rank"]}: model._enable_sp is False -- SP did not activate'
-        assert r['sp_strategy_present'], (
-            f'rank {r["rank"]}: sp_strategy never constructed -- the first-forward lazy init did not run')
+        assert r["ulysses_size"] == 2, (
+            f"rank {r['rank']}: mesh ulysses_size={r['ulysses_size']}, not 2 -- the SP mesh did not "
+            "reach TransformersModel (build_dp_mesh / device_mesh kwarg broken)"
+        )
+        assert r["data_world_size"] == 1, (
+            f"rank {r['rank']}: data_world_size={r['data_world_size']}, not world/ulysses=1 -- the "
+            "loader would hand SP peers different samples"
+        )
+        assert r["enable_sp"], f"rank {r['rank']}: model._enable_sp is False -- SP did not activate"
+        assert r["sp_strategy_present"], (
+            f"rank {r['rank']}: sp_strategy never constructed -- the first-forward lazy init did not run"
+        )
 
-    assert sp2[0]['losses'] == sp2[1]['losses'], (
-        f'SP ranks disagree: rank0={sp2[0]["losses"]} rank1={sp2[1]["losses"]} -- gather_loss_tensors '
-        'did not replicate the loss across the SP group')
+    assert sp2[0]["losses"] == sp2[1]["losses"], (
+        f"SP ranks disagree: rank0={sp2[0]['losses']} rank1={sp2[1]['losses']} -- gather_loss_tensors "
+        "did not replicate the loss across the SP group"
+    )
 
-    ref, got = single[0]['losses'][0], sp2[0]['losses'][0]
+    ref, got = single[0]["losses"][0], sp2[0]["losses"][0]
     rel = abs(got - ref) / max(abs(ref), 1e-8)
-    assert rel < 0.02, (f'sp2 loss {got:.6f} != single-process loss {ref:.6f} (rel={rel:.2e}, limit 2e-2): SP is '
-                        'a pure re-partition over the same global batch, so this gap is a real split/gather '
-                        'bug, not noise')
+    assert rel < 0.02, (
+        f"sp2 loss {got:.6f} != single-process loss {ref:.6f} (rel={rel:.2e}, limit 2e-2): SP is "
+        "a pure re-partition over the same global batch, so this gap is a real split/gather "
+        "bug, not noise"
+    )
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize('padding_free', [False, True])
+@pytest.mark.parametrize("padding_free", [False, True])
 def test_run_sft_hf_sp_hybrid_dp(tmp_path, padding_free):
     """Hybrid layout: torchrun x4 with sp=2 -- world=4, ulysses=2, so data_world_size=2 and the two
     SP groups train on DIFFERENT data slices (twinkle data_rank = dp_rank // ulysses_size: ranks
@@ -1250,48 +1288,68 @@ def test_run_sft_hf_sp_hybrid_dp(tmp_path, padding_free):
         sp2-vs-single and dp2 aggregation tests).
     """
     if _accel_device_count() < 4:
-        pytest.skip('needs >=4 accelerators for the world=4 / sp=2 hybrid layout')
+        pytest.skip("needs >=4 accelerators for the world=4 / sp=2 hybrid layout")
     if padding_free and not _flash_attn_available():
-        pytest.skip('padding_free + SP requires flash attention (flash_attn/torch_npu), not available')
+        pytest.skip("padding_free + SP requires flash attention (flash_attn/torch_npu), not available")
 
-    data_path = str(tmp_path / 'toy_sft.jsonl')
+    data_path = str(tmp_path / "toy_sft.jsonl")
     _write_toy_dataset(data_path)
     port_offset = 14 if padding_free else 13
-    tag = 'pf' if padding_free else 'pad'
+    tag = "pf" if padding_free else "pad"
 
     hybrid = _run_hf_sp_shape(
-        'sp2', data_path, str(tmp_path / f'hybrid_{tag}_out'), str(tmp_path / f'hybrid_{tag}'), padding_free,
-        port_offset, nproc=4)
+        "sp2",
+        data_path,
+        str(tmp_path / f"hybrid_{tag}_out"),
+        str(tmp_path / f"hybrid_{tag}"),
+        padding_free,
+        port_offset,
+        nproc=4,
+    )
     dp2 = _run_hf_sp_shape(
-        'single', data_path, str(tmp_path / f'dp2_{tag}_out'), str(tmp_path / f'dp2_{tag}'), padding_free,
-        port_offset + 2, nproc=2)
+        "single",
+        data_path,
+        str(tmp_path / f"dp2_{tag}_out"),
+        str(tmp_path / f"dp2_{tag}"),
+        padding_free,
+        port_offset + 2,
+        nproc=2,
+    )
 
-    print(f'\nHF sp hybrid (padding_free={padding_free}): '
-          f'hybrid={[r["losses"] for r in hybrid]} dp2={[r["losses"] for r in dp2]}')
+    print(
+        f"\nHF sp hybrid (padding_free={padding_free}): "
+        f"hybrid={[r['losses'] for r in hybrid]} dp2={[r['losses'] for r in dp2]}"
+    )
     for r in hybrid:
-        assert r['world_size'] == 4 and r['ulysses_size'] == 2, (
-            f'rank {r["rank"]}: world={r["world_size"]} ulysses={r["ulysses_size"]} -- expected the '
-            'world=4 / sp=2 hybrid mesh')
-        assert r['data_world_size'] == 2, (
-            f'rank {r["rank"]}: data_world_size={r["data_world_size"]}, not world/ulysses=2 -- the '
-            'loader layout did not switch to the hybrid mesh')
-        assert r['data_rank'] == r['rank'] // 2, (
-            f'rank {r["rank"]}: data_rank={r["data_rank"]}, expected rank//2={r["rank"] // 2} -- '
-            'data_rank = dp_rank // ulysses_size mapping broken; SP peers would see different samples')
-        assert r['enable_sp'] and r['sp_strategy_present'], (
-            f'rank {r["rank"]}: SP did not activate (enable_sp={r["enable_sp"]}, '
-            f'sp_strategy={r["sp_strategy_present"]})')
+        assert r["world_size"] == 4 and r["ulysses_size"] == 2, (
+            f"rank {r['rank']}: world={r['world_size']} ulysses={r['ulysses_size']} -- expected the "
+            "world=4 / sp=2 hybrid mesh"
+        )
+        assert r["data_world_size"] == 2, (
+            f"rank {r['rank']}: data_world_size={r['data_world_size']}, not world/ulysses=2 -- the "
+            "loader layout did not switch to the hybrid mesh"
+        )
+        assert r["data_rank"] == r["rank"] // 2, (
+            f"rank {r['rank']}: data_rank={r['data_rank']}, expected rank//2={r['rank'] // 2} -- "
+            "data_rank = dp_rank // ulysses_size mapping broken; SP peers would see different samples"
+        )
+        assert r["enable_sp"] and r["sp_strategy_present"], (
+            f"rank {r['rank']}: SP did not activate (enable_sp={r['enable_sp']}, "
+            f"sp_strategy={r['sp_strategy_present']})"
+        )
 
-    assert hybrid[0]['losses'] == hybrid[1]['losses'] and hybrid[2]['losses'] == hybrid[3]['losses'], (
-        f'SP pairs disagree: {[r["losses"] for r in hybrid]} -- gather_loss_tensors did not replicate '
-        'the loss within each SP group')
+    assert hybrid[0]["losses"] == hybrid[1]["losses"] and hybrid[2]["losses"] == hybrid[3]["losses"], (
+        f"SP pairs disagree: {[r['losses'] for r in hybrid]} -- gather_loss_tensors did not replicate "
+        "the loss within each SP group"
+    )
 
     for h_rank, d_rank in ((0, 0), (2, 1)):
-        ref, got = dp2[d_rank]['losses'][0], hybrid[h_rank]['losses'][0]
+        ref, got = dp2[d_rank]["losses"][0], hybrid[h_rank]["losses"][0]
         rel = abs(got - ref) / max(abs(ref), 1e-8)
         assert rel < 0.02, (
-            f'hybrid rank{h_rank} loss {got:.6f} != dp2 rank{d_rank} loss {ref:.6f} (rel={rel:.2e}, '
-            'limit 2e-2): same data slice, SP a pure re-partition -- a real gap is a split/gather bug')
+            f"hybrid rank{h_rank} loss {got:.6f} != dp2 rank{d_rank} loss {ref:.6f} (rel={rel:.2e}, "
+            "limit 2e-2): same data slice, SP a pure re-partition -- a real gap is a split/gather bug"
+        )
 
 
 @pytest.mark.slow
@@ -1304,25 +1362,32 @@ def test_run_sft_megatron_mtp_end_to_end(tmp_path):
     keys and a finite, non-zero mtp loss are the whole assertion.
     """
     if torch.cuda.device_count() < 2:
-        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+        pytest.skip("needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)")
 
-    data_path = str(tmp_path / 'toy_sft.jsonl')
+    data_path = str(tmp_path / "toy_sft.jsonl")
     _write_toy_dataset(data_path)
     history = _run_megatron_sft(
-        'mcore-bridge', data_path, str(tmp_path / 'out_mtp'),
+        "mcore-bridge",
+        data_path,
+        str(tmp_path / "out_mtp"),
         # 'unfused': this box's CUDA-13 driver disables TE's flash/fused kernels outright, and the
         # builder pins flash as the default kernel -- the run would die inside
         # dot_product_attention before the first step, unrelated to MTP.
-        model_overrides={'mtp_num_layers': 1, 'enable_mtp_training': True,
-                         'mtp_loss_scaling_factor': 0.2, 'attn_impl': 'unfused'})
+        model_overrides={
+            "mtp_num_layers": 1,
+            "enable_mtp_training": True,
+            "mtp_loss_scaling_factor": 0.2,
+            "attn_impl": "unfused",
+        },
+    )
 
-    assert history, 'run_sft (megatron mtp) produced no optimizer steps'
+    assert history, "run_sft (megatron mtp) produced no optimizer steps"
     for record in history:
-        assert record['loss'] == record['loss'] and abs(record['loss']) != float('inf'), record
-        mtp = record.get('mtp_loss')
-        assert mtp is not None, f'step {record.get("step")} carries no mtp_loss: the heads were built but never fed'
-        assert mtp == mtp and 0.0 < mtp < 20.0, f'mtp_loss not a sane finite loss: {mtp}'
-        assert 'mtp_1_loss' in record, 'per-depth mtp_1_loss missing from the step record'
+        assert record["loss"] == record["loss"] and abs(record["loss"]) != float("inf"), record
+        mtp = record.get("mtp_loss")
+        assert mtp is not None, f"step {record.get('step')} carries no mtp_loss: the heads were built but never fed"
+        assert mtp == mtp and 0.0 < mtp < 20.0, f"mtp_loss not a sane finite loss: {mtp}"
+        assert "mtp_1_loss" in record, "per-depth mtp_1_loss missing from the step record"
 
 
 @pytest.mark.slow
@@ -1335,23 +1400,35 @@ def test_run_sft_megatron_pp2_step1_loss_matches_dp1(tmp_path):
     normalization bug, not noise.
     """
     if torch.cuda.device_count() < 2:
-        pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
+        pytest.skip("needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)")
 
-    data_path = str(tmp_path / 'toy_sft.jsonl')
+    data_path = str(tmp_path / "toy_sft.jsonl")
     _write_toy_dataset(data_path)
     # Same 4 samples per optimizer step on both layouts: DP=2 x per-device 2 == PP=2 (DP=1) x 4
     # (the global batch is per_device * data_world_size, and drop_last keeps whole groups only).
-    dp2 = _run_megatron_sft('mcore-bridge', data_path, str(tmp_path / 'out_dp2'), per_device_batch=2,
-                            model_overrides={'attn_impl': 'unfused'})
+    dp2 = _run_megatron_sft(
+        "mcore-bridge",
+        data_path,
+        str(tmp_path / "out_dp2"),
+        per_device_batch=2,
+        model_overrides={"attn_impl": "unfused"},
+    )
     reset_twinkle_runtime()
-    pp2 = _run_megatron_sft('mcore-bridge', data_path, str(tmp_path / 'out_pp2'),
-                            per_device_batch=4, pipeline_model_parallel_size=2,
-                            model_overrides={'attn_impl': 'unfused'})
+    pp2 = _run_megatron_sft(
+        "mcore-bridge",
+        data_path,
+        str(tmp_path / "out_pp2"),
+        per_device_batch=4,
+        pipeline_model_parallel_size=2,
+        model_overrides={"attn_impl": "unfused"},
+    )
 
-    dp2_losses = [r['loss'] for r in dp2]
-    pp2_losses = [r['loss'] for r in pp2]
-    print(f'\npp split: dp2={dp2_losses} pp2={pp2_losses}')
-    assert dp2_losses and pp2_losses, f'empty history: dp2={dp2_losses} pp2={pp2_losses}'
+    dp2_losses = [r["loss"] for r in dp2]
+    pp2_losses = [r["loss"] for r in pp2]
+    print(f"\npp split: dp2={dp2_losses} pp2={pp2_losses}")
+    assert dp2_losses and pp2_losses, f"empty history: dp2={dp2_losses} pp2={pp2_losses}"
     diff = abs(dp2_losses[0] - pp2_losses[0])
-    assert diff < 1e-3, (f'PP=2 step-1 loss {pp2_losses[0]:.6f} vs DP=2 {dp2_losses[0]:.6f} '
-                         f'diff {diff:.2e} -> the pipeline split changed the math, not just reduction order')
+    assert diff < 1e-3, (
+        f"PP=2 step-1 loss {pp2_losses[0]:.6f} vs DP=2 {dp2_losses[0]:.6f} "
+        f"diff {diff:.2e} -> the pipeline split changed the math, not just reduction order"
+    )
