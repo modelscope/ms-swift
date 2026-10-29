@@ -6,7 +6,7 @@
 # Cantonese as a supported language, making held-out transcription a useful
 # before/after fine-tuning check. Keep the test split out of training.
 #
-# Evaluation uses the Transformers implementation (transformers>5.21, no NeMo).
+# Evaluation uses the Transformers implementation.
 # Before training, measure baseline CER and save predictions:
 # python examples/models/nemotron_transcribe/evaluate_fleurs.py \
 #   --model nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B --output baseline.jsonl

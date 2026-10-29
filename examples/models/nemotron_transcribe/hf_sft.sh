@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Transformers-only HF training for Nemotron 3.5 Transcribe. NeMo is not required.
+# Transformers training for Nemotron 3.5 Transcribe.
 # Requires transformers>5.21 (5.22 release pending).
 # pip install mamba-ssm causal-conv1d>=1.2.0
 #
