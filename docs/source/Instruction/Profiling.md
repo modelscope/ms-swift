@@ -97,6 +97,8 @@ swift sft \
 | `SWIFT_PROFILER_PROFILE_MEMORY` | `true` | 记录内存分配事件 |
 | `SWIFT_PROFILER_WITH_STACK` | `false` | 记录调用栈 |
 | `SWIFT_PROFILER_NPU_LEVEL` | `Level1` | NPU 专用，可选 `Level0`、`Level1`、`Level2` |
+| `SWIFT_PROFILER_NPU_ASYNC_MODE` | `false` | NPU 专用，开启自动解析时使用异步解析 |
+| `SWIFT_PROFILER_NPU_ANALYSE_FLAG` | `true` | NPU 专用，是否自动解析；设为 `false` 时保留原始数据供离线解析 |
 
 `auto` 优先采用训练参数中的设备；没有设备提示时，检测可用 NPU/CUDA。未找到设备时会报错，可显式设置 `cpu` 进行本地调试。callback 不会改变训练所用的设备。
 
@@ -154,6 +156,37 @@ rank、主机名、进程 ID 和时间戳用于避免多机或重跑覆盖。`co
 - NPU：使用 `torch_npu.profiler.tensorboard_trace_handler` 导出，使用与 CANN/torch_npu 版本匹配的 MindStudio/Ascend 分析工具。Level1 提供 HCCL 通信分析相关数据，具体文件与运行环境版本有关。
 
 GPU 和 NPU 的输出文件与分析工具不同；callback 统一的是配置与 callback 生命周期。接口说明参考 [PyTorch profiler](https://docs.pytorch.org/docs/stable/profiler.html) 和 [Ascend profiler](https://www.hiascend.com/document/detail/zh/Pytorch/600/apiref/apilist/ptaoplist_000289.html)。
+
+### NPU 解析模式
+
+NPU 默认在采集窗口结束后同步自动解析，保持 `torch_npu` 的默认行为。可以在启动训练前启用异步自动解析，使解析进程不阻塞训练主流程：
+
+```bash
+export SWIFT_PROFILER_NPU_ANALYSE_FLAG=true
+export SWIFT_PROFILER_NPU_ASYNC_MODE=true
+```
+
+大规模分布式训练也可以关闭自动解析，在采集完成后单独解析原始数据：
+
+```bash
+export SWIFT_PROFILER_NPU_ANALYSE_FLAG=false
+```
+
+`NPU_ANALYSE_FLAG=false` 时不会启动自动解析，即使 `NPU_ASYNC_MODE=true` 也不生效。异步选项只控制解析方式；采集、数据落盘和停止 profiler 仍可能产生开销。这两个参数仅传给 NPU 的 `tensorboard_trace_handler`，CUDA 和 CPU 的 handler 调用不使用它们。
+
+NPU 原始数据位于上述每次运行目录下的 `<worker_name>_<timestamp>_ascend_pt/` 子目录中。离线解析时，将包含该子目录的本次运行目录传给 `analyse`，例如保存并运行以下 Python 脚本（替换为实际路径）：
+
+```python
+from torch_npu.profiler.profiler import analyse
+
+if __name__ == '__main__':
+    analyse(
+        profiler_path='/path/to/profiling/profile_step_1000/rank_0/run_name',
+        max_process_number=4,
+    )
+```
+
+`max_process_number` 限制本次离线解析的最大进程数，应根据可用 CPU 和内存设置。解析多个 rank 的数据时，也应控制同时运行的解析任务数。自动解析关闭后，需完成离线解析才能查看解析结果。具体参数和输出格式参考 [Ascend Profiler 参数说明](https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/920beta1/devaids/Profiling/atlasprofiling_16_0033.html) 与 [离线解析说明](https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/920beta1/devaids/Profiling/atlasprofiling_16_0034.html)。
 
 ## 常见问题
 

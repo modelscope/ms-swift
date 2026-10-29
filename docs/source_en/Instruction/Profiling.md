@@ -97,6 +97,8 @@ All settings use environment variables, so neither backend requires additional C
 | `SWIFT_PROFILER_PROFILE_MEMORY` | `true` | Record memory allocation events |
 | `SWIFT_PROFILER_WITH_STACK` | `false` | Record call stacks |
 | `SWIFT_PROFILER_NPU_LEVEL` | `Level1` | NPU only: `Level0`, `Level1`, or `Level2` |
+| `SWIFT_PROFILER_NPU_ASYNC_MODE` | `false` | NPU only: use asynchronous analysis when automatic analysis is enabled |
+| `SWIFT_PROFILER_NPU_ANALYSE_FLAG` | `true` | NPU only: enable automatic analysis; set to `false` to retain raw data for offline analysis |
 
 `auto` follows the device in the training arguments when available. Otherwise, it detects an available NPU or CUDA device. If neither is available, it raises an error; set `cpu` explicitly for local debugging. The callback does not change the device used for training.
 
@@ -154,6 +156,37 @@ The global rank, hostname, process ID, and timestamp prevent collisions across m
 - NPU: `torch_npu.profiler.tensorboard_trace_handler` exports Ascend profiler results. Use MindStudio/Ascend analysis tools matched to your CANN and torch_npu versions. Level1 includes data used for HCCL communication analysis; the exact files depend on the runtime version.
 
 GPU and NPU outputs and analysis tools differ. The callback unifies configuration and the callback lifecycle. See the [PyTorch profiler API](https://docs.pytorch.org/docs/stable/profiler.html) and [Ascend profiler API](https://www.hiascend.com/document/detail/zh/Pytorch/600/apiref/apilist/ptaoplist_000289.html) for details.
+
+### NPU Analysis Modes
+
+By default, NPU traces are analysed synchronously after the collection window, preserving the `torch_npu` default. To run automatic analysis asynchronously, so the analysis process does not block the training flow, set these variables before training:
+
+```bash
+export SWIFT_PROFILER_NPU_ANALYSE_FLAG=true
+export SWIFT_PROFILER_NPU_ASYNC_MODE=true
+```
+
+For large distributed runs, you can also disable automatic analysis and analyse the raw data separately after collection:
+
+```bash
+export SWIFT_PROFILER_NPU_ANALYSE_FLAG=false
+```
+
+With `NPU_ANALYSE_FLAG=false`, automatic analysis does not start, even if `NPU_ASYNC_MODE=true`. The asynchronous option controls analysis only; collection, writing data, and stopping the profiler can still add overhead. These two parameters are passed only to the NPU `tensorboard_trace_handler`; CUDA and CPU handler calls do not use them.
+
+NPU raw data is stored in a `<worker_name>_<timestamp>_ascend_pt/` subdirectory of each run directory shown above. For offline analysis, pass the run directory containing that subdirectory to `analyse`. Save and run the following Python script, replacing the example path with the actual run directory:
+
+```python
+from torch_npu.profiler.profiler import analyse
+
+if __name__ == '__main__':
+    analyse(
+        profiler_path='/path/to/profiling/profile_step_1000/rank_0/run_name',
+        max_process_number=4,
+    )
+```
+
+`max_process_number` limits the number of processes used by this analysis task; choose a value based on available CPU and memory. When analysing data from multiple ranks, also limit the number of concurrent analysis tasks. With automatic analysis disabled, complete offline analysis before inspecting the parsed results. See the [Ascend Profiler parameter reference](https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/920beta1/devaids/Profiling/atlasprofiling_16_0033.html) and [offline analysis guide](https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/920beta1/devaids/Profiling/atlasprofiling_16_0034.html) for parameter and output details.
 
 ## Troubleshooting
 

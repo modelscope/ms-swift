@@ -44,6 +44,8 @@ class ProfilerConfig:
     profile_memory: bool = True
     with_stack: bool = False
     npu_level: str = 'Level1'
+    npu_async_mode: bool = False
+    npu_analyse_flag: bool = True
 
     def __post_init__(self):
         for name, value, minimum in (
@@ -81,6 +83,8 @@ class ProfilerConfig:
             profile_memory=_bool_env('PROFILE_MEMORY', cls.profile_memory),
             with_stack=_bool_env('WITH_STACK', cls.with_stack),
             npu_level=_env('NPU_LEVEL', cls.npu_level),
+            npu_async_mode=_bool_env('NPU_ASYNC_MODE', cls.npu_async_mode),
+            npu_analyse_flag=_bool_env('NPU_ANALYSE_FLAG', cls.npu_analyse_flag),
         )
 
 
@@ -184,13 +188,16 @@ class ProfilerSession:
         if device != 'cpu':
             activities.append(getattr(api.ProfilerActivity, 'NPU' if device == 'npu' else 'CUDA'))
         extra = {}
+        trace_options = {}
         if device == 'npu':
             extra['experimental_config'] = api._ExperimentalConfig(
                 profiler_level=getattr(api.ProfilerLevel, cfg.npu_level))
+            # These options belong to the NPU handler, not torch.profiler or profile().
+            trace_options.update(async_mode=cfg.npu_async_mode, analyse_flag=cfg.npu_analyse_flag)
         self.prof = api.profile(
             activities=activities,
             schedule=api.schedule(wait=0, warmup=cfg.warmup_steps, active=cfg.active_steps, repeat=1, skip_first=0),
-            on_trace_ready=api.tensorboard_trace_handler(str(self.trace_dir)),
+            on_trace_ready=api.tensorboard_trace_handler(str(self.trace_dir), **trace_options),
             record_shapes=cfg.record_shapes,
             profile_memory=cfg.profile_memory,
             with_stack=cfg.with_stack,

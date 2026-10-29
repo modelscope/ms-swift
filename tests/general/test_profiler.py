@@ -81,6 +81,10 @@ def test_exact_target_and_no_restart(profiler, fake_api, tmp_path, device):
     assert ('experimental_config' in options) == (device == 'npu')
     if device == 'npu':
         fake_api._ExperimentalConfig.assert_called_once_with(profiler_level=1)
+        fake_api.tensorboard_trace_handler.assert_called_once_with(
+            str(capture.trace_dir), async_mode=False, analyse_flag=True)
+    else:
+        fake_api.tensorboard_trace_handler.assert_called_once_with(str(capture.trace_dir))
     capture.end_step()
     for completed in range(1000, 1004):
         capture.begin_step(completed)
@@ -196,6 +200,112 @@ def test_cuda_does_not_import_torch_npu(profiler, monkeypatch):
     device, api = profiler._resolve_device('auto', SimpleNamespace(device=torch.device('cuda:0')))
     assert device == 'cuda' and api is torch.profiler
     importer.assert_not_called()
+
+
+@pytest.mark.parametrize('async_mode', [False, True])
+@pytest.mark.parametrize('analyse_flag', [False, True])
+def test_npu_trace_analysis_modes(profiler, fake_api, monkeypatch, tmp_path, async_mode, analyse_flag):
+    monkeypatch.setenv('SWIFT_PROFILER_DEVICE', 'npu')
+    monkeypatch.setenv('SWIFT_PROFILER_START_STEP', '1')
+    monkeypatch.setenv('SWIFT_PROFILER_NPU_ASYNC_MODE', str(async_mode))
+    monkeypatch.setenv('SWIFT_PROFILER_NPU_ANALYSE_FLAG', str(analyse_flag))
+    args = SimpleNamespace(output_dir=str(tmp_path), process_index=0)
+    capture = profiler.ProfilerSession(args, 'test')
+    try:
+        capture.begin_step(0)
+        fake_api.tensorboard_trace_handler.assert_called_once_with(
+            str(capture.trace_dir), async_mode=async_mode, analyse_flag=analyse_flag)
+        options = fake_api.profile.call_args.kwargs
+        assert options['on_trace_ready'] is fake_api.tensorboard_trace_handler.return_value
+        assert 'async_mode' not in options and 'analyse_flag' not in options
+        metadata = json.loads((capture.trace_dir / 'config.json').read_text())
+        assert metadata['config']['npu_async_mode'] is async_mode
+        assert metadata['config']['npu_analyse_flag'] is analyse_flag
+        capture.end_step()
+        fake_api.profile.return_value.stop.assert_called_once()
+    finally:
+        capture.close()
+
+
+@pytest.mark.parametrize('device', ['cuda', 'cpu'])
+@pytest.mark.parametrize('async_mode', [False, True])
+@pytest.mark.parametrize('analyse_flag', [False, True])
+def test_npu_analysis_settings_do_not_affect_other_devices(profiler, monkeypatch, tmp_path, device, async_mode,
+                                                           analyse_flag):
+    monkeypatch.setenv('SWIFT_PROFILER_START_STEP', '1')
+    monkeypatch.setenv('SWIFT_PROFILER_NPU_ASYNC_MODE', str(async_mode))
+    monkeypatch.setenv('SWIFT_PROFILER_NPU_ANALYSE_FLAG', str(analyse_flag))
+    monkeypatch.setattr(torch.cuda, 'is_available', lambda: True)
+    importer = Mock(side_effect=AssertionError('CUDA/CPU must not import torch_npu'))
+    monkeypatch.setattr(profiler.importlib, 'import_module', importer)
+    # Use the real handler signature so NPU-only kwargs would raise on CUDA/CPU.
+    trace_handler = Mock(wraps=torch.profiler.tensorboard_trace_handler)
+    profile = Mock()
+    schedule = Mock()
+    monkeypatch.setattr(torch.profiler, 'tensorboard_trace_handler', trace_handler)
+    monkeypatch.setattr(torch.profiler, 'profile', profile)
+    monkeypatch.setattr(torch.profiler, 'schedule', schedule)
+    args = SimpleNamespace(output_dir=str(tmp_path), process_index=0, device=torch.device(device))
+    capture = profiler.ProfilerSession(args, 'test')
+    try:
+        capture.begin_step(0)
+        trace_handler.assert_called_once_with(str(capture.trace_dir))
+        activities = [torch.profiler.ProfilerActivity.CPU]
+        if device == 'cuda':
+            activities.append(torch.profiler.ProfilerActivity.CUDA)
+        profile.assert_called_once_with(
+            activities=activities,
+            schedule=schedule.return_value,
+            on_trace_ready=profile.call_args.kwargs['on_trace_ready'],
+            record_shapes=True,
+            profile_memory=True,
+            with_stack=False)
+        assert callable(profile.call_args.kwargs['on_trace_ready'])
+        schedule.assert_called_once_with(wait=0, warmup=0, active=1, repeat=1, skip_first=0)
+        capture.end_step()
+        profile.return_value.stop.assert_called_once()
+        importer.assert_not_called()
+    finally:
+        capture.close()
+
+
+@pytest.mark.parametrize('backend', ['transformers', 'megatron'])
+def test_callbacks_forward_npu_analysis_settings(profiler, fake_api, monkeypatch, tmp_path, backend, request):
+    monkeypatch.setenv('SWIFT_PROFILER_DEVICE', 'npu')
+    monkeypatch.setenv('SWIFT_PROFILER_START_STEP', '1')
+    monkeypatch.setenv('SWIFT_PROFILER_NPU_ASYNC_MODE', '1')
+    monkeypatch.setenv('SWIFT_PROFILER_NPU_ANALYSE_FLAG', '0')
+    args = SimpleNamespace(output_dir=str(tmp_path), process_index=0)
+    state = SimpleNamespace(global_step=0, iteration=0)
+    trainer = SimpleNamespace(args=args, state=state)
+    if backend == 'transformers':
+        from swift.callbacks import callbacks_map
+        callback = callbacks_map['profiler'](args, trainer)
+        callback.on_step_begin(args, state, None)
+        callback.on_step_end(args, state, None)
+        callback.on_train_end(args, state, None)
+    else:
+        callback = request.getfixturevalue('megatron_callbacks')['profiler'](trainer)
+        callback.on_step_begin()
+        callback.on_step_end()
+        callback.on_train_end()
+    fake_api.tensorboard_trace_handler.assert_called_once_with(
+        str(callback.session.trace_dir), async_mode=True, analyse_flag=False)
+    fake_api.profile.return_value.stop.assert_called_once()
+
+
+@pytest.mark.parametrize('name', ['NPU_ASYNC_MODE', 'NPU_ANALYSE_FLAG'])
+@pytest.mark.parametrize('value,expected', [('true', True), ('FALSE', False), ('1', True), ('0', False)])
+def test_npu_boolean_env_values(profiler, monkeypatch, name, value, expected):
+    monkeypatch.setenv(f'SWIFT_PROFILER_{name}', value)
+    assert getattr(profiler.ProfilerConfig.from_env(), name.lower()) is expected
+
+
+@pytest.mark.parametrize('name', ['NPU_ASYNC_MODE', 'NPU_ANALYSE_FLAG'])
+def test_invalid_npu_boolean_env_values(profiler, monkeypatch, name):
+    monkeypatch.setenv(f'SWIFT_PROFILER_{name}', 'yes')
+    with pytest.raises(ValueError, match=f'SWIFT_PROFILER_{name} must be true/false or 1/0'):
+        profiler.ProfilerConfig.from_env()
 
 
 def test_npu_auto_detection_and_global_rank(profiler, monkeypatch):
