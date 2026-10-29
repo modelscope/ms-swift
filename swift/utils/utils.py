@@ -40,6 +40,10 @@ def check_json_format(obj: Any, token_safe: bool = True) -> Any:
     if isinstance(obj, (torch.dtype, torch.device)):
         obj = str(obj)
         return obj[len('torch.'):] if obj.startswith('torch.') else obj
+    if isinstance(obj, np.generic):  # numpy scalar, e.g. np.float32
+        return check_json_format(obj.item(), token_safe)
+    if isinstance(obj, np.ndarray):
+        return check_json_format(obj.tolist(), token_safe)
 
     if isinstance(obj, Sequence):
         res = []
@@ -53,7 +57,7 @@ def check_json_format(obj: Any, token_safe: bool = True) -> Any:
             else:
                 res[k] = check_json_format(v, token_safe)
     else:
-        if token_safe:
+        if token_safe and hasattr(obj, '__dict__'):
             unsafe_items = {}
             for k, v in obj.__dict__.items():
                 if '_token' in k:
