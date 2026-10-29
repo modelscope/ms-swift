@@ -55,6 +55,7 @@ This change improves the timing and explanation of existing checks. It does not 
 - 🔥optimizer_offload_fraction: The fraction of the optimizer state to offload to CPU. Default is `1.0`.
 - optimizer_cuda_graph: Whether to enable CUDA graph for the optimizer step, forwarded to Megatron's `--optimizer-cuda-graph`. Default is `False`. This parameter requires "megatron-core>=0.17".
 - use_precision_aware_optimizer: Use the precision-aware optimizer in TransformerEngine, which allows setting the main parameters and optimizer states to lower precision, such as fp16 and fp8.
+  - When used with Megatron-FSDP v1, the gradient configuration is aligned automatically so the optimizer reads the correct gradient field. If the installed Megatron-Core lacks the required `megatron_fsdp_use_decoupled_grad` configuration field, an explicit error is raised; use a version that supports this field or disable the precision-aware optimizer.
 - main_grads_dtype: The dtype of main gradients when use_precision_aware_optimizer is enabled. Options are 'fp32' and 'bf16'. Default is 'fp32'.
 - main_params_dtype: The dtype of main parameters when use_precision_aware_optimizer is enabled. Options are 'fp32' and 'fp16'. Default is 'fp32'.
 - exp_avg_dtype: The dtype of exp_avg (i.e., the first moment in the Adam optimizer) when use_precision_aware_optimizer is enabled. This dtype is used for storing the optimizer state in memory during training, but does not affect the precision in kernel computation. Options are 'fp32', 'fp16', 'bf16', and 'fp8'. Default is 'fp32'.

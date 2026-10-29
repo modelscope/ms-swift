@@ -666,6 +666,30 @@ def _ensure_fsdp_tensor_parallel_attributes(args, model) -> None:
                 _set_fsdp_tensor_parallel_attributes(param, 1)
 
 
+def _build_ddp_config(args):
+    """Build MCore DDP/FSDP config, including derived Megatron-LM arguments."""
+    fields = dataclasses.fields(DistributedDataParallelConfig)
+    field_names = {f.name for f in fields}
+    kwargs = {f.name: getattr(args, f.name) for f in fields if hasattr(args, f.name)}
+
+    # Swift uses the Megatron-LM CLI argument name for FP32 gradient reduction.
+    if hasattr(args, 'accumulate_allreduce_grads_in_fp32'):
+        kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
+
+    # Mirror Megatron-LM's get_megatron_ddp_config for Megatron-FSDP v1.
+    # Preserve other paths and reject unsupported legacy configurations explicitly.
+    if getattr(args, 'use_megatron_fsdp', False) and getattr(args, 'megatron_fsdp_version', 1) == 1:
+        use_decoupled_grad = bool(getattr(args, 'use_precision_aware_optimizer', False))
+        if 'megatron_fsdp_use_decoupled_grad' in field_names:
+            kwargs['megatron_fsdp_use_decoupled_grad'] = use_decoupled_grad
+        elif use_decoupled_grad:
+            raise ValueError('The installed megatron-core does not support '
+                             'megatron_fsdp_use_decoupled_grad, required for precision-aware Megatron-FSDP v1.')
+
+    kwargs['check_for_nan_in_grad'] = True
+    return DistributedDataParallelConfig(**kwargs)
+
+
 def wrap_model(args, models, wrap_with_ddp: bool = True):
     if getattr(args, 'use_megatron_fsdp', False) and is_torch_npu_available():
         from swift.model.npu_patch.megatron_fsdp import patch_megatron_fsdp_optimizer
@@ -690,17 +714,7 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
     if not wrap_with_ddp:
         return models
 
-    kwargs = {}
-    for f in dataclasses.fields(DistributedDataParallelConfig):
-        if hasattr(args, f.name):
-            kwargs[f.name] = getattr(args, f.name)
-
-    # compat: SWIFT keeps the user-facing Megatron-LM arg name, while MCore
-    # DistributedDataParallelConfig expects grad_reduce_in_fp32.
-    if hasattr(args, 'accumulate_allreduce_grads_in_fp32'):
-        kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
-    kwargs['check_for_nan_in_grad'] = True
-    ddp_config = DistributedDataParallelConfig(**kwargs)
+    ddp_config = _build_ddp_config(args)
 
     # In the Megatron FSDP and DDP use path, we need to initialize the bucket size.
     # If bucket_size is not provided as an input, use sane default.
