@@ -28,7 +28,7 @@ class HfConfigFactory:
     def get_text_config(config):
         for key in HfConfigFactory.llm_keys:
             value = getattr(config, key, None)
-            if value is not None:
+            if isinstance(value, PretrainedConfig):
                 return value
         return config
 

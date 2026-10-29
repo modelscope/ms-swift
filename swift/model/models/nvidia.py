@@ -1,7 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import os
 import torch
-from transformers import AutoConfig, PretrainedConfig, PreTrainedModel
 from types import MethodType
 
 from swift.template import TemplateType
@@ -127,50 +125,13 @@ def patch_nemotron_omni_media(model):
     return model
 
 
-class NemoSpeechLMConfig(PretrainedConfig):
-    model_type = 'nemo_speechlm'
-
-
 class NemoSpeechLMLoader(ModelLoader):
     default_trust_remote_code = False
 
-    def get_config(self, model_dir: str):
-        config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
-        llm_config = dict(config_dict['llm_config'])
-        model_type = llm_config.pop('model_type')
-        output_vocab_size = config_dict.get('speechlm_output_vocab_size', llm_config['vocab_size'])
-        config_dict['speechlm_output_vocab_size'] = output_vocab_size
-        config_dict['llm_config'] = AutoConfig.for_model(model_type, **llm_config)
-        return NemoSpeechLMConfig.from_dict(config_dict)
-
-    def _postprocess_processor(self, processor):
-        super()._postprocess_processor(processor)
-        tokenizer = self._get_tokenizer(processor)
-        audio_token = self.model_info.config.audio_locator_tag
-        audio_token_id = tokenizer.convert_tokens_to_ids(audio_token)
-        if audio_token_id is None or audio_token_id < 0:
-            raise ValueError(f'Tokenizer does not contain the audio token {audio_token!r}.')
-        self.model_info.config.audio_token_id = audio_token_id
-        self.model_info.config.llm_config.vocab_size = len(tokenizer)
-
-    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        from nemo.collections.speechlm2.models import SALMAutomodel
-
-        if self.return_dummy_model:
-            from omegaconf import OmegaConf
-            cfg = OmegaConf.to_container(OmegaConf.load(os.path.join(model_dir, 'config.json')))
-            cfg['pretrained_llm'] = os.path.join(model_dir, 'llm_backbone')
-            cfg['tokenizer_path'] = model_dir
-            cfg['pretrained_weights'] = False
-            cfg['init_configure_model'] = True
-            model = SALMAutomodel(cfg)
-        else:
-            kwargs = {'trust_remote_code': False}
-            if model_kwargs.get('torch_dtype') is not None:
-                kwargs['torch_dtype'] = model_kwargs['torch_dtype']
-            model = SALMAutomodel.from_pretrained(model_dir, **kwargs)
-        model.config = config
-        return model
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from transformers import AutoModelForMultimodalLM
+        self.auto_model_cls = self.auto_model_cls or AutoModelForMultimodalLM
 
 
 class NemotronHLoader(ModelLoader):
@@ -234,8 +195,7 @@ register_model(
         NemoSpeechLMLoader,
         template=TemplateType.nemo_speechlm,
         model_arch=ModelArch.nemo_speechlm,
-        architectures=['NeMoSpeechLMForConditionalGeneration'],
-        additional_saved_files=['llm_backbone'],
-        requires=['transformers>=5.5', 'nemo-toolkit', 'nemo-automodel', 'mamba-ssm', 'causal-conv1d>=1.2.0'],
+        architectures=['Nemotron3_5TranscribeForConditionalGeneration'],
+        requires=['transformers>5.21', 'mamba-ssm', 'causal-conv1d>=1.2.0'],
         tags=['audio'],
     ))

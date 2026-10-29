@@ -620,9 +620,9 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.nemo_speechlm,
-        language_model='llm',
-        vision_tower='perception.encoder',
-        aligner='perception.proj',
+        language_model=['model.language_model', 'lm_head'],
+        vision_tower='model.audio_tower',
+        aligner='model.multi_modal_projector',
     ))
 
 register_model_arch(
