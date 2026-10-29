@@ -38,6 +38,19 @@ ray start --address=<head_ip>:6379      # 其他节点
 megatron rlhf --use_ray true --config examples/ray/grpo/ray_grpo_colocate.yaml
 ```
 
+### CPU Tensor 传输
+
+Ray Megatron CLI 在导入 Ray 之前默认启用 Ray 原生的 CPU Tensor 零拷贝序列化，并将设置传递给任务及其 actor。
+Ray 2.53 及更新版本支持此功能；旧版本仍使用原有序列化方式。启动前设置
+`RAY_ENABLE_ZERO_COPY_TORCH_TENSORS=0` 可保留 Ray 默认的拷贝行为。
+
+接收的稠密 CPU Tensor 必须不带梯度，并按只读数据使用，因为多个消费者可能共享其存储。
+原生 worker 会先将输入 Tensor 移至加速设备再修改；自定义消费者若需在 CPU 上原地修改，必须先调用 `.clone()` 等进行拷贝，或关闭此设置。
+该功能不提供 GPU 之间的直接传输。
+
+Python API 调用方保持原有默认行为；如需启用，须在导入 Ray 之前设置 `RAY_ENABLE_ZERO_COPY_TORCH_TENSORS=1`。
+导入 Ray 后再修改环境变量不会更新序列化设置。
+
 ### GPU 分配模式
 
 **Colocate（共享 GPU）**— 训练和推理共享同一组 GPU，交替使用，通过 sleep/wake 释放显存：

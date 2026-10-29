@@ -70,7 +70,13 @@ class MegatronRayPipeline:
         # Initialize Ray, create resource pools, spawn workers and replicas.
         self._data_info = self._build_dataset()
         self._compute_train_iters()
-        ray.init(ignore_reinit_error=True)
+        ray.init(
+            ignore_reinit_error=True,
+            runtime_env={
+                'env_vars': {
+                    'RAY_ENABLE_ZERO_COPY_TORCH_TENSORS': os.environ.get('RAY_ENABLE_ZERO_COPY_TORCH_TENSORS', '0')
+                }
+            })
         self._create_pools()
         self._init_worker_groups()
         with self._colocate_offload_ctx():

@@ -16,6 +16,7 @@ def _use_ray() -> bool:
 
 if __name__ == '__main__':
     if _use_ray():
+        os.environ.setdefault('RAY_ENABLE_ZERO_COPY_TORCH_TENSORS', '1')
         from swift.ray.megatron.pipeline import main as ray_main
         ray_main()
     else:

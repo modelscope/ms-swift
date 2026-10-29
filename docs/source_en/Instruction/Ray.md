@@ -38,6 +38,19 @@ ray start --address=<head_ip>:6379      # worker nodes
 megatron rlhf --use_ray true --config examples/ray/grpo/ray_grpo_colocate.yaml
 ```
 
+### CPU Tensor Transport
+
+The Ray Megatron CLI enables Ray's native zero-copy CPU tensor serialization before importing Ray and propagates
+the setting to the job and its actors. Ray 2.53 or later supports this feature; older versions retain their serializer.
+Set `RAY_ENABLE_ZERO_COPY_TORCH_TENSORS=0` before launch to retain Ray's default copying behavior.
+
+Received dense CPU tensors must be detached and treated as read-only: their storage can be shared by multiple consumers.
+Native workers move input tensors to the accelerator before in-place tensor changes. Custom consumers must copy tensors before
+CPU mutation, for example with `.clone()`, or disable the setting. This does not provide direct GPU-to-GPU transport.
+
+Python API callers keep the existing default unless they set `RAY_ENABLE_ZERO_COPY_TORCH_TENSORS=1` before importing Ray.
+Changing the environment after importing Ray does not update its serializer setting.
+
 ### GPU Allocation Modes
 
 **Colocate (shared GPU)** — Training and inference share the same GPUs, alternating usage via sleep/wake to free memory:

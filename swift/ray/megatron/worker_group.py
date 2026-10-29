@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import os
 import ray
 import socket
 import torch
@@ -403,6 +404,7 @@ class WorkerGroup:
                     'RAY_EXPERIMENTAL_NOSET_ROCR_VISIBLE_DEVICES': '1',
                     'NCCL_CUMEM_ENABLE': '0',
                     'RAY_SWIFT_GROUP': f'default,{name}',
+                    'RAY_ENABLE_ZERO_COPY_TORCH_TENSORS': os.environ.get('RAY_ENABLE_ZERO_COPY_TORCH_TENSORS', '0'),
                 }
                 w = worker_cls.options(
                     num_gpus=0,

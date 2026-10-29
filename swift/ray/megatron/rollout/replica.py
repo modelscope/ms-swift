@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import os
 import ray
 from collections import defaultdict
 from dataclasses import dataclass
@@ -190,6 +191,7 @@ class RolloutReplica:
                 'RAY_EXPERIMENTAL_NOSET_ROCR_VISIBLE_DEVICES': '1',
                 'RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES': '1',
                 'NCCL_CUMEM_ENABLE': '0',
+                'RAY_ENABLE_ZERO_COPY_TORCH_TENSORS': os.environ.get('RAY_ENABLE_ZERO_COPY_TORCH_TENSORS', '0'),
                 visible_key: cvd,
             }
             handle = actor_cls.options(
