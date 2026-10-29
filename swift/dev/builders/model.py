@@ -449,8 +449,9 @@ def build_model(
 
     megatron -> MegatronModel (bridge), else TransformersModel; device_mesh is transformers-only.
     remote_group/instance_id name the ray group; enable_router_replay is the MoE replay flag.
-    ``torch_dtype`` overrides ModelConfig.torch_dtype on the transformers branch only (RL's
-    trainable actor pins float32 there; the megatron branch ignores it).
+    ``torch_dtype`` overrides parameter loading dtype on the transformers branch only (RL's
+    trainable actor pins float32 there; the megatron branch ignores it). Compute precision
+    continues to follow ModelConfig.torch_dtype, independently of parameter storage.
     """
     # Aux models (teacher/reference/reward) arrive as bare hub ids that never pass _resolve_model;
     # resolve here so callers may hand in either form -- a local path short-circuits the download.
@@ -469,6 +470,7 @@ def build_model(
             instance_id=instance_id,
             enable_router_replay=enable_router_replay,
         )
+    mixed_precision = _mixed_precision_for(model_config.torch_dtype)
     if torch_dtype is not None:
         model_config = copy.copy(model_config)
         model_config.torch_dtype = torch_dtype
@@ -482,6 +484,7 @@ def build_model(
         remote_group=remote_group,
         instance_id=instance_id,
         enable_router_replay=enable_router_replay,
+        mixed_precision=mixed_precision,
     )
 
 
@@ -899,6 +902,7 @@ def _build_transformers_model(
     remote_group: Optional[str] = None,
     instance_id: Optional[str] = None,
     enable_router_replay: bool = False,
+    mixed_precision: Optional[str] = None,
 ) -> TrainableModel:
     import torch
 
@@ -946,7 +950,9 @@ def _build_transformers_model(
     # so --ddp_timeout reaches them through it; None leaves twinkle's own default.
     if distributed_config.ddp_timeout is not None:
         os.environ["TWINKLE_DIST_TIMEOUT_SECONDS"] = str(distributed_config.ddp_timeout)
-    kwargs["mixed_precision"] = _mixed_precision_for(model_config.torch_dtype)
+    kwargs["mixed_precision"] = (
+        mixed_precision if mixed_precision is not None else _mixed_precision_for(model_config.torch_dtype)
+    )
 
     # DDP find_unused_parameters, mirroring HF Trainer: an adapter run needs it (unused-param grads);
     # a full run with gradient checkpointing turns it off.
