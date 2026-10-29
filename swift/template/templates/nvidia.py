@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import numpy as np
 import torch
+import torch.nn.functional as F
 from copy import deepcopy
 from dataclasses import asdict
 from PIL import Image
@@ -9,8 +10,85 @@ from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..utils import findall
-from ..vision_utils import load_image, load_video_hf
+from ..vision_utils import load_audio, load_image, load_video_hf
 from .qwen import QwenTemplateMeta
+
+
+def _nemotron_transcribe_audio_tokens(audio_mask, subsampling_factor):
+    # Matches Nemotron3_5TranscribeAudioModel._get_feat_extract_output_lengths.
+    return (audio_mask.sum(-1) + subsampling_factor - 1) // subsampling_factor
+
+
+class NemoSpeechLMTemplate(Template):
+    placeholder_tokens = ['<|audio|>']
+    support_padding_free = False
+
+    def replace_tag(self, media_type, index, inputs):
+        if media_type != 'audio':
+            raise ValueError(f'Nemotron Transcribe does not support {media_type}.')
+        return ['<|audio|>']
+
+    def _encode(self, inputs):
+        encoded = super()._encode(inputs)
+        if not inputs.audios:
+            return encoded
+        feature_extractor = self.processor.feature_extractor
+        sampling_rate = feature_extractor.sampling_rate
+        audios = [
+            audio if isinstance(audio, (np.ndarray, torch.Tensor)) else load_audio(audio, sampling_rate=sampling_rate)
+            for audio in inputs.audios
+        ]
+        audios = [torch.as_tensor(audio, dtype=torch.float32).squeeze() for audio in audios]
+        if any(audio.ndim != 1 or audio.numel() == 0 for audio in audios):
+            raise ValueError('Nemotron Transcribe expects non-empty mono audio waveforms.')
+
+        audio_inputs = feature_extractor(
+            audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt', padding=True)
+        input_features = audio_inputs['input_features']
+        input_features_mask = audio_inputs.get('attention_mask')
+        if input_features_mask is None:
+            input_features_mask = torch.ones(input_features.shape[:2], dtype=torch.bool)
+        input_features_mask = input_features_mask.bool()
+        subsampling_factor = int(self.processor.subsampling_factor)
+        padding = -input_features.shape[1] % subsampling_factor
+        if padding:
+            input_features = F.pad(input_features, (0, 0, 0, padding))
+            input_features_mask = F.pad(input_features_mask, (0, padding))
+        audio_token_counts = _nemotron_transcribe_audio_tokens(input_features_mask, subsampling_factor)
+
+        audio_token_id = self._tokenize('<|audio|>')
+        indices = findall(encoded['input_ids'], audio_token_id)
+        if len(indices) != len(audios):
+            raise ValueError(f'Audio placeholders ({len(indices)}) != audio items ({len(audios)}).')
+
+        def _get_new_audio_tokens(index):
+            return audio_token_id * int(audio_token_counts[index])
+
+        input_ids, labels, loss_scale = self._extend_tokens(encoded['input_ids'], encoded['labels'],
+                                                            encoded.get('loss_scale'), indices, _get_new_audio_tokens)
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
+        encoded['input_features'] = input_features
+        encoded['input_features_mask'] = input_features_mask
+        if (inputs.is_multimodal and self.truncation_strategy == 'split' and self.max_length is not None
+                and len(input_ids) > self.max_length):
+            raise ValueError('Nemotron Transcribe audio cannot use truncation_strategy=split; '
+                             'use raise, left or right.')
+        return encoded
+
+    def _data_collator_mm_data(self, batch):
+        input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
+        input_features_mask = [b['input_features_mask'] for b in batch if b.get('input_features_mask') is not None]
+        if not input_features:
+            return {}
+        max_frames = max(feature.shape[1] for feature in input_features)
+        input_features = [F.pad(feature, (0, 0, 0, max_frames - feature.shape[1])) for feature in input_features]
+        input_features_mask = [F.pad(mask, (0, max_frames - mask.shape[1])) for mask in input_features_mask]
+        return {
+            'input_features': torch.cat(input_features, dim=0),
+            'input_features_mask': torch.cat(input_features_mask, dim=0),
+        }
 
 
 class NemotronHOmniTemplate(Template):
@@ -196,6 +274,19 @@ class NemotronHOmniTemplate(Template):
         result['video_token_mask'] = types == 2
         return result
 
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.nemo_speechlm,
+        template_cls=NemoSpeechLMTemplate,
+        default_system=None,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think></think>',
+        history_thinking_prefix='<think></think>',
+        stop_words=['<|im_end|>'],
+        agent_template='hermes',
+    ))
 
 register_template(
     QwenTemplateMeta(

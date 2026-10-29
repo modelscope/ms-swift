@@ -15,6 +15,16 @@ if TYPE_CHECKING:
     from swift.arguments import SftArguments
 
 
+def _get_module(model, name: str):
+    # A nested multimodal model can place the audio/vision tower one level below
+    # the top-level conditional-generation model; PeftModel adds another wrapper.
+    for candidate in (name, f'base_model.model.{name}'):
+        module = deep_getattr(model, candidate)
+        if module is not None:
+            return module
+    raise ValueError(f'Cannot locate {name!r} in {type(model).__name__}.')
+
+
 def is_vit_aligner_param(model_arch, parameter_name: str) -> bool:
     for module_prefix in model_arch.vision_tower + model_arch.aligner:
         # An aligner entry may be a bare `nn.Parameter` (not a module), whose name
@@ -45,7 +55,7 @@ class LoRALLMTuner(Tuner):
             model.load_state_dict(state_dict, strict=False)
         model_arch = model.model_meta.model_arch
         for module_prefix in model_arch.vision_tower + model_arch.aligner:
-            deep_getattr(model, module_prefix).requires_grad_(True)
+            _get_module(model, module_prefix).requires_grad_(True)
         return model
 
     @staticmethod
@@ -77,5 +87,5 @@ class LoRALLMTuner(Tuner):
             task_type=args.task_type.upper(), r=args.lora_rank, lora_alpha=args.lora_alpha, target_modules=target_regex)
         model = get_peft_model(model, lora_config)
         for module_prefix in model_arch.vision_tower + model_arch.aligner:
-            deep_getattr(model, module_prefix).requires_grad_(True)
+            _get_module(model, module_prefix).requires_grad_(True)
         return model

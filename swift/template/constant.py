@@ -304,6 +304,7 @@ class MLLMTemplateType:
     monkeyocrv2 = 'monkeyocrv2'
 
     nemotron_h_omni = 'nemotron_h_omni'
+    nemo_speechlm = 'nemo_speechlm'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):
