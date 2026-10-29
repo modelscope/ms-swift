@@ -229,10 +229,6 @@ register_model(
             ModelGroup([
                 Model('nv-community/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B',
                       'nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B'),
-                Model('nv-community/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B-FP8',
-                      'nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B-FP8'),
-                Model('nv-community/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B-NVFP4',
-                      'nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B-NVFP4')
             ]),
         ],
         NemoSpeechLMLoader,
