@@ -157,6 +157,8 @@ $$
 
 **Reported metrics (2-fold cross-validation)**: to avoid the in-sample optimism of scoring the fitted data with the fitted temperature, the accuracy / ECE / Brier / NLL in the logs are **out-of-fold** — eval records are split into two halves by parity, each half's temperature is fitted on the opposite half, and used to score its own half. Note that **the temperature written into the checkpoint is still fitted on ALL eval data** (the production estimate); the CV only affects the reported numbers. All questions of one record always land in the same fold, preventing leakage.
 
+If there are fewer than two distinct records, or a training half has fewer than `SWIFT_CALIBRATION_MIN_ITEMS` questions, the affected metrics fall back to temperatures fitted on all eval data and are not strictly out-of-fold.
+
 ### Reading the logs
 
 A base baseline is logged at the start of training (`on_train_begin`, evaluated with the loaded/factory temperatures, report-only):
