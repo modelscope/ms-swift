@@ -73,7 +73,7 @@
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速。
 
 ## 🎉 新闻
-- 🔥 2026.10.28: Day-0 支持 [NVIDIA-Nemotron-3.5-Transcribe](nv-community/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B)，训练示例参考 [SFT示例](examples/models/nemotron_transcribe)。
+- 🔥 2026.10.29: Day-0 支持 [NVIDIA-Nemotron-3.5-Transcribe](nv-community/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B)，训练示例参考 [SFT示例](examples/models/nemotron_transcribe)。
 - 🔥 2026.10.22: 支持 [EntroPack](https://github.com/modelscope/entropack) 灵活码率模型量化，可根据显存预算精细控制模型码率，支持 Transformers 推理和 LoRA 训练。参考[最佳实践](docs/source/BestPractices/Flexble-Quantization-With-Entropack.md)和 [QLoRA 示例](examples/train/qlora/entropack.sh)。
 - 🔥 2026.10.19: 支持 [EmbeddingGemma-2](https://www.modelscope.cn/models/google/embeddinggemma-2)（740M，多模态嵌入模型，支持文本/图像/视频/音频统一向量空间），支持 infonce loss 微调。
 - 🔥 2026.10.15: Day-0 支持 [NVIDIA-Nemotron-3.5-Super-VL-120B-A12B](https://www.modelscope.cn/models/nv-community/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16)，训练示例参考 [SFT示例](examples/models/nemotron_super_vl)。
