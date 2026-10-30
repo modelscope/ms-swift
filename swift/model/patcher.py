@@ -715,6 +715,12 @@ def patch_attach_align_device_hook_on_blocks():
         big_modeling.attach_align_device_hook_on_blocks = origin_attach_align_device_hook_on_blocks
 
 
+def get_original_forward(module):
+    if hasattr(module, '_old_forward'):  # device_map + decision
+        return module._old_forward
+    return module.forward
+
+
 def patch_module_forward(module, new_forward):
     if getattr(module, '_patched', False):
         return

@@ -528,6 +528,58 @@ class JevVerbalizerHead(ScoringHead):
         return cls(bias, verbalizer_ids, ranges, temperatures, head_temperature=1.0)
 
 
+class StartLuxLetterHead(JevVerbalizerHead):
+
+    DEFAULT_RANGES = {'noul': (0, 2), 'choice': (0, 26), 'score': (0, 10)}
+
+    @classmethod
+    def from_pretrained(cls, model_dir: str, model=None, config=None, tokenizer=None) -> 'StartLuxLetterHead':
+        """model/config are accepted for signature parity with the other heads' loaders; `tokenizer`
+        is used only to resolve `letter_token_ids` when decision_config.json omits them."""
+        head_file = cls._locate(model_dir, 'decision_config.json', 'STARTLUX_DECISION_CONFIG')
+        if head_file is None:
+            raise FileNotFoundError(
+                f'StartLux decision_config.json not found under {model_dir!r}. The letter token ids and the '
+                'per-kind read-out temperatures ship in the model folder beside the weights; point --model at a '
+                'StartLuxAI/StartLux-Decision-v1.1-*-AutoThink checkpoint (or set STARTLUX_DECISION_CONFIG).')
+        with open(head_file, 'r') as f:
+            head = json.load(f)
+        config_file = os.path.join(os.path.dirname(head_file), 'config.json')
+        prompt_attention = head.get('prompt_attention')
+        if prompt_attention is None and os.path.isfile(config_file):
+            with open(config_file, 'r') as f:
+                prompt_attention = json.load(f).get('jev_prompt_attention')
+        if prompt_attention == 'bidirectional':
+            raise ValueError(f'{model_dir!r} is an Instant (prompt-bidirectional) StartLux-Decision folder: its '
+                             'prompt is read with bidirectional attention in the full-attention layers, which this '
+                             'loader does not implement. Use an AutoThink checkpoint (causal) or the official '
+                             'startlux-decide package for Instant models.')
+        temperatures = head.get('temperature_by_type') or {}
+        if any(k not in KIND_NAMES or not isinstance(v, (int, float)) or v <= 0 for k, v in temperatures.items()):
+            raise ValueError(f'{head_file}: temperature_by_type must map noul/choice/score to positive numbers.')
+        temperatures = {k: float(temperatures[k]) for k in KIND_NAMES if k in temperatures}
+        for kind, default in cls.DEFAULT_TEMPERATURES.items():
+            temperatures.setdefault(kind, default)
+        letters = head.get('letter_token_ids')
+        if letters is None:
+            if tokenizer is None:
+                raise ValueError(f'{head_file} has no letter_token_ids and no tokenizer was passed to resolve them.')
+            from swift.utils import get_logger
+            get_logger().warning(f'{head_file}: letter_token_ids missing; resolving A..Z from the tokenizer.')
+            letters = []
+            for letter in string.ascii_uppercase:
+                ids = tokenizer.encode(letter, add_special_tokens=False)
+                if len(ids) != 1:
+                    raise ValueError(f'The letter {letter!r} is not a single token ({ids}); the letter read-out '
+                                     'needs the 26 ids from decision_config.json.')
+                letters.append(ids[0])
+        if not isinstance(letters, (list, tuple)) or len(letters) != len(string.ascii_uppercase) \
+                or not all(isinstance(t, int) for t in letters) or len(set(letters)) != len(letters):
+            raise ValueError(f'{head_file}: letter_token_ids must be 26 distinct token ids (A to Z).')
+        bias = [0.0] * len(letters)
+        return cls(bias, list(letters), dict(cls.DEFAULT_RANGES), temperatures, head_temperature=1.0)
+
+
 class EvidenceRoutingLayer(nn.Module):
     """One cross-attention block of Clef's `JointSchemaHead`."""
 
