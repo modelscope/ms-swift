@@ -41,6 +41,8 @@ pip install bitsandbytes -U
 - 使用SWIFT量化导出的模型支持使用vllm/sglang/lmdeploy进行推理加速；也支持使用QLoRA继续进行SFT/RLHF。
 
 
+使用 GPTQ v2 量化时，后端可能将对称量化权重保存为 GPTQ v1 格式。导出配置会记录实际保存的格式，以便正确重新加载模型。
+
 ## 推送模型
 
 SWIFT支持将训练/量化的模型重新推送到ModelScope/HuggingFace。默认推送到ModelScope，你可以指定`--use_hf true`推送到HuggingFace。

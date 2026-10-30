@@ -6,7 +6,7 @@
 Deploy a K8S cluster and deploy [DLRover](https://github.com/intelligent-machine-learning/dlrover) in the cluster, and install the required packages using `pip install dlrover && pip install tornado && pip install kubernetes && pip install ms-swift`
 
 Other dependencies and versions verified through repeated testing in the training image:
-deepspeed 0.16.5 (refer to this [PR](https://github.com/deepspeedai/DeepSpeed/pull/7585/files) to fix issues related to universal checkpoint)
+deepspeed >=0.19.3 (recommended; 0.19.x already includes the universal checkpoint fixes)
 pytorch 2.6.0
 
 

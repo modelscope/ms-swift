@@ -169,7 +169,15 @@ def load_image(image: Union[str, bytes, Image.Image]) -> Image.Image:
     image = load_file(image)
     if isinstance(image, BytesIO):
         image = Image.open(image)
-    if image.mode != 'RGB':
+    if image.mode in ('RGBA', 'LA', 'PA') or 'transparency' in image.info:
+        # Composite onto white instead of dropping the alpha channel, which
+        # renders transparent areas as black. Same check as vllm's
+        # _has_transparency (vllm/multimodal/image.py).
+        image = image.convert('RGBA')
+        background = Image.new('RGB', image.size, (255, 255, 255))
+        background.paste(image, mask=image.getchannel('A'))
+        image = background
+    elif image.mode != 'RGB':
         image = image.convert('RGB')
     return image
 

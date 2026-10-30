@@ -186,10 +186,16 @@ class Gemma4AgentTemplate(BaseAgentTemplate):
 
     @classmethod
     def _gemma_to_json(cls, s: str) -> str:
-        # `<|"|>` -> `"`; bare keys preceded by `{` or `,` get JSON-quoted.
-        s = s.replace(QUOTE, '"')
-        s = re.sub(r'(?<=[\{,])([A-Za-z_][\w\-]*)(?=:)', r'"\1"', s)
-        return s
+        # String values are delimited by `<|"|>` and are not escaped, so they may contain `"`, newlines,
+        # `,` or `:`. Re-encode them as JSON strings, and JSON-quote only the bare keys (preceded by `{`
+        # or `,`) that appear outside of string values.
+        parts = s.split(QUOTE)
+        for i, part in enumerate(parts):
+            if i % 2 == 1:
+                parts[i] = json.dumps(part, ensure_ascii=False)
+            else:
+                parts[i] = re.sub(r'(?<=[\{,])([A-Za-z_][\w\-]*)(?=:)', r'"\1"', part)
+        return ''.join(parts)
 
     @classmethod
     def _parse_arguments(cls, args_body: str) -> Dict[str, Any]:
