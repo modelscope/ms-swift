@@ -27,6 +27,11 @@ Megatron 后端支持通过 Ray 进行 GRPO 和 GKD 训练：
 | 单机训练 | **非 Ray** — 更简单 |
 | 多节点集群 | **Ray** — 自动跨节点调度，一份 YAML 一键启动 |
 
+### Completion 日志
+
+启用 `log_completions: true` 时，同一批日志中重复且可由 JSON 无损表示的 prompt 只格式化一次。
+复用仅限当前调用；不支持的输入仍使用原有格式化逻辑，completion 顺序和日志内容保持一致。
+
 ### 快速开始
 
 ```bash

@@ -2,6 +2,7 @@
 """Base class for Ray-based Megatron trainers (driver-side)."""
 from __future__ import annotations
 
+import json
 import os
 import ray
 import torch
@@ -265,12 +266,26 @@ class BaseRayTrainer:
         if getattr(self, '_completions_writer', None) is None:
             self._completions_writer = JsonlWriter(os.path.join(args.output_dir, 'completions.jsonl'))
         table = []
+        prompt_cache = {}
         for i, item in enumerate(rollout_with_outputs):
             msgs = item.messages
             has_resp = bool(msgs) and msgs[-1].get('role') == 'assistant'
             completion = self._decode_log_content(msgs[-1].get('content')) if has_resp else ''
             prompt_msgs = msgs[:-1] if has_resp else msgs
-            row = {'gen_step': gen_step, 'prompt': self._format_log_prompt(prompt_msgs), 'completion': completion}
+            try:
+                prompt_key = json.dumps(prompt_msgs, ensure_ascii=False)
+                # JSON coercions can change the formatter's fallback rendering.
+                if json.loads(prompt_key) != prompt_msgs:
+                    prompt_key = None
+            except (TypeError, ValueError, RecursionError):
+                prompt_key = None
+            if prompt_key is None:
+                prompt = self._format_log_prompt(prompt_msgs)
+            else:
+                if prompt_key not in prompt_cache:
+                    prompt_cache[prompt_key] = self._format_log_prompt(prompt_msgs)
+                prompt = prompt_cache[prompt_key]
+            row = {'gen_step': gen_step, 'prompt': prompt, 'completion': completion}
             if rewards is not None and i < len(rewards):
                 row['reward'] = float(rewards[i])
             table.append(row)

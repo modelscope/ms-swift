@@ -27,6 +27,11 @@ Both support GPU isolation between training and inference (non-Ray via `vllm_mod
 | Single-node training | **Non-Ray** — simpler |
 | Multi-node cluster | **Ray** — automatic cross-node scheduling, one YAML to launch |
 
+### Completion Logging
+
+With `log_completions: true`, repeated JSON-compatible prompts are formatted once per logging batch.
+Reuse is local to that call; unsupported inputs use the existing formatter. Completion order and logged rows are preserved.
+
 ### Quick Start
 
 ```bash
