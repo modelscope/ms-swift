@@ -44,16 +44,17 @@ class Loader(importlib.abc.Loader):
 class Finder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         global first_ray_env
+        if fullname == 'swift':
+            # Dependencies may import Ray during Swift package initialization.
+            import ray
         if fullname == 'ray':
             first_ray_env = os.environ.get(flag)
-        if fullname == 'swift.cli._megatron.rlhf':
-            return importlib.util.spec_from_file_location(fullname, root + '/swift/cli/_megatron/rlhf.py')
         if fullname in ('swift.ray.megatron.pipeline', 'swift.megatron'):
             return importlib.util.spec_from_loader(fullname, Loader(), is_package=fullname == 'swift.megatron')
 
 sys.meta_path.insert(0, Finder())
 sys.argv = ['megatron rlhf', '--use_ray', sys.argv[1]]
-runpy.run_module('swift.cli._megatron.rlhf', run_name='__main__')
+runpy.run_path(root + '/swift/cli/_megatron/rlhf.py', run_name='__main__')
 '''
 
 
@@ -92,6 +93,17 @@ class TestRayTensorTransport(unittest.TestCase):
 
     def test_non_ray_cli_does_not_set_default(self):
         self.assertEqual(self.cli_probe(use_ray=False), {'route': 'native', 'value': None})
+
+    def test_cli_launcher_uses_script_path(self):
+        from swift.cli.main import cli_main
+
+        script = str(ROOT / 'swift/cli/_megatron/rlhf.py')
+        with patch.object(sys, 'argv', ['megatron', 'rlhf', '--use_ray', 'true']), \
+                patch('swift.cli.main.importlib.util.find_spec', return_value=SimpleNamespace(origin=script)), \
+                patch('swift.cli.main.get_torchrun_args', return_value=None), \
+                patch('swift.cli.main.subprocess.run', return_value=SimpleNamespace(returncode=0)) as run:
+            cli_main({'rlhf': 'swift.cli._megatron.rlhf'}, is_megatron=True)
+        run.assert_called_once_with([sys.executable, script, '--use_ray', 'true'])
 
     def test_pipeline_propagates_job_environment(self):
         from swift.ray.megatron.pipeline import MegatronRayPipeline
