@@ -700,7 +700,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     moe_aux_loss_coeff: List[float] = 0.
     moe_z_loss_coeff: Optional[float] = None
     moe_shared_expert_overlap: bool = False
-    moe_layer_recompute: bool = False  # forwarded to TransformerConfig
     moe_expert_capacity_factor: Optional[float] = None
     moe_pad_expert_input_to_capacity: bool = False
     moe_token_drop_policy: Literal['probs', 'position'] = 'probs'
