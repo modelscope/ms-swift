@@ -666,7 +666,7 @@ def plan_device_groups(nproc_per_node: int, sampler_mode: Optional[str], sampler
                        auxiliary: Sequence[Tuple[str, int]]) -> Tuple[List[Tuple[str, List[int]]], bool]:
     """Plan the twinkle DeviceGroups for an online-RL run (pure: no twinkle import).
 
-    Colocate overlays trainer + sampler in ONE group over the trainer's GPUs (independent rank
+    Colocate overlays separate trainer and sampler groups on the same GPUs (independent rank
     spaces); anything else appends a disjoint sampler group, and each auxiliary entry is appended
     last, disjoint, in order. Returns ``(groups, colocate)``.
     """
@@ -832,6 +832,10 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
     backend = rollout_config.rollout_sampler
     sampler_engine_args = build_engine_args(backend, None, rollout_config)
     if backend == 'vllm':
+        # RL implements DP with independently dispatched sampler actors. Each actor owns
+        # only one TP x PP replica; forwarding the outer DP size would make every vLLM
+        # engine launch that many replicas again, outside its assigned device range.
+        sampler_engine_args['data_parallel_size'] = 1
         # Every RL weight sync lands through twinkle's vLLM worker extension. Install the
         # quant-aware subclass so an FP8 / MXFP4 engine can absorb the trainer's BF16 stream;
         # it is a pass-through when the engine is not quantized. An explicit engine arg wins.
@@ -857,8 +861,8 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
         replicas = rollout_config.vllm_data_parallel_size
     return build_sampler(
         model_config, backend=backend, engine_args=sampler_engine_args,
-        device_mesh=(None if colocate else DeviceMesh.from_sizes(dp_size=replicas)), template=template,
-        remote_group=(MODEL_GROUP if colocate else SAMPLER_GROUP))
+        device_mesh=DeviceMesh.from_sizes(dp_size=replicas), template=template,
+        remote_group=SAMPLER_GROUP)
 
 
 def resolve_reward_scorers(channel: str, *, reward_config: Any, model_config: 'ModelConfig',

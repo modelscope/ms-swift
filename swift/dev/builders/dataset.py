@@ -412,11 +412,13 @@ def build_prompt_dataloader(prompts: List[List[dict]],
                             prompt_extras: Optional[List[Dict[str, Any]]],
                             *,
                             seed: int,
-                            batch_size: int = 256) -> Any:
+                            batch_size: int = 256,
+                            shuffle: bool = True) -> Any:
     """A twinkle ``DataLoader`` over the online-RL prompt rows (the prompt-side build_dataset).
 
-    No encoding -- the rollout encodes each prompt itself; seeded reshuffle per pass, one pass per
-    ``iter()``; drop_last stays off so a partial batch is never a dropped prompt.
+    No encoding -- the rollout encodes each prompt itself. ``shuffle=False`` preserves input order;
+    otherwise ordering follows the loader seed and epoch. One pass per ``iter()``; drop_last stays
+    off so a partial batch is never a dropped prompt.
     """
     from twinkle.dataset import Dataset, DatasetMeta
     from twinkle.dataloader import DataLoader
@@ -437,7 +439,7 @@ def build_prompt_dataloader(prompts: List[List[dict]],
         data_seed=seed,
         num_workers=0,
         collate_fn=_identity_collate,
-        shuffle=True)
+        shuffle=shuffle)
 
 
 def to_trajectory(row: Dict[str, Any], messages: List[Dict[str, Any]],
