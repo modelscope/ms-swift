@@ -29,6 +29,7 @@ from swift.dev.recipe.utils import (
     save_training_step,
     snapshot_initial_adapter,
 )
+from swift.dev.recipe.utils import _log_line
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -452,12 +453,15 @@ def _colocate_loop(
                 break
             # borrow the device for generation: wake the sampler's weights so the sync has somewhere
             # to write, sync the trained policy in, step the trainer aside, wake ONLY the kv cache.
-            cluster.sampler.wake_up(tags=["weights"])
+            # Both wakes are gated on sleep_level (wake_for_rollout): an engine that never slept
+            # is already awake, and an unpaired wake_up wedges the request path.
+            from swift.dev.recipe.offload import wake_for_rollout
+            wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ['weights'])
             cluster.engine.sync_weights(merge_and_sync=True)
             from swift.dev.recipe.offload import offload_for_rollout
 
             offload_for_rollout(cluster.model, rollout_config)
-            cluster.sampler.wake_up(tags=["kv_cache"])
+            wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ['kv_cache'])
             entered = True
             prompts = [row["messages"] for row in batch_rows]
             extras = [{key: value for key, value in row.items() if key != "messages"} for row in batch_rows]
@@ -830,6 +834,24 @@ def run_grpo(
     def _extra_metrics() -> Dict[str, Any]:
         return _grpo_extra_metrics(_driver_cell, _last_batch_versions, rollout_correction, _reward_metric)
 
+    def _grpo_log_line(record: dict, loss: float) -> str:
+        """GRPO's console head: the default line plus this round's mean total reward.
+
+        For RL the reward, not the policy loss, is the convergence signal (a healthy run's loss
+        wanders while the reward climbs), so the head line leads with it when one was computed.
+        """
+        line = _log_line(record, loss)
+        reward = record.get('train/total_reward')
+        if reward is not None:
+            # The tracker may have formatted the scalar into a display string; coerce with a
+            # guard -- a console head must never crash the training loop.
+            try:
+                reward = f'{float(reward):.4f}'
+            except (TypeError, ValueError):
+                reward = str(reward)
+            line = f'{line}  reward={reward}'
+        return line
+
     state = StepState(
         cluster.model,
         train_config,
@@ -843,6 +865,7 @@ def run_grpo(
         manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
         empty_cache_steps=train_config.torch_empty_cache_steps,
         extra_metrics_fn=_extra_metrics,
+        log_formatter=_grpo_log_line,
     )
 
     save_knobs = build_save_knobs(

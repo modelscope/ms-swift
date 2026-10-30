@@ -17,6 +17,20 @@ def offload_for_rollout(model: Any, rollout_config: Any) -> None:
     )
 
 
+def wake_for_rollout(sampler: Any, sleep_level: int, tags: Any) -> Any:
+    """Wake a colocated sampler's engine state, the symmetric half of :func:`sleep_for_rollout`.
+
+    ``0`` does not call ``wake_up``: with ``sleep_level`` 0 the engine never slept, so the
+    weights and KV cache are already resident. Waking an engine that is awake is not a
+    harmless no-op -- on vLLM 0.23 an unpaired ``wake_up(kv_cache)`` leaves the request
+    path wedged (every later ``generate`` parks forever while the engine core idles), so
+    the call must be gated on the same switch that gated ``sleep``.
+    """
+    if int(sleep_level) <= 0:
+        return None
+    return sampler.wake_up(tags=tags)
+
+
 def sleep_for_rollout(sampler: Any, sleep_level: int, **kwargs: Any) -> Any:
     """Sleep a colocated sampler the way swift v4 does.
 

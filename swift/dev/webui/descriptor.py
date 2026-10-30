@@ -16,15 +16,19 @@ from dataclasses import dataclass, field
 class PortSpec:
     """One port. ``role`` is the connection guidance shown on the canvas
     (what wiring this port means semantically); ``many`` marks a symmetric
-    collection port (e.g. teachers) that lawfully takes several in-edges."""
+    collection port (e.g. teachers) that lawfully takes several in-edges;
+    ``optional`` marks an input the component can run without (the wiring
+    decides: ref is only needed with KL, traj only for preference losses)."""
 
     key: str
     kind: str
     role: str
     many: bool = False
+    optional: bool = False
 
     def to_dict(self) -> dict:
-        return {'key': self.key, 'kind': self.kind, 'role': self.role, 'many': self.many}
+        return {'key': self.key, 'kind': self.kind, 'role': self.role, 'many': self.many,
+                'optional': self.optional}
 
 
 @dataclass(frozen=True)

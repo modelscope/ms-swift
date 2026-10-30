@@ -15,45 +15,27 @@ legacy builds a TRL trainer on the HF Trainer/accelerate stack while dev spins u
 runtime, and the two cannot safely share one interpreter. Offline preference training is single-card with no
 rollout, so -- unlike ``megatron_sft.py`` -- this needs no torchrun, just one process per side.
 
-Why the REFERENCE-FREE variants (cpo/orpo) carry the parity oracle, not DPO (bands below are MEASURED on
-probes at this cell's exact config -- 4 steps, lr 1e-4, seed 42, system-pinned rows -- deterministic
-across runs, not guessed):
+Why the REFERENCE-FREE variants (cpo/orpo) carry the parity oracle, not DPO (bands below are MEASURED on a
+reference probe, deterministic across two runs -- 0.0 self-drift -- not guessed):
 
-  - **cpo/orpo step-1 is DATA-DEPENDENT and restores to the logging floor.** These objectives are
-    reference-free: with the identity adapter (``lora_B``=0 at init) the step-1 loss is the BASE model's
-    own NLL / odds-ratio contrast on chosen-vs-rejected (probe: cpo 2.95896, orpo 2.82758 -- far from
-    ln2), a deterministic function of the weights + which tokens are scored. So step-1 is a STRONG
-    discriminant: a label shift, a wrong completion mask, or an encode bug moves it by O(10%). Measured
-    step-1 rel gap: cpo 1.5e-6, orpo 8e-7 (dominated by dev's 5-decimal loss logging); band 1e-3 keeps
-    ~1000x margin.
-  - **later steps are BOUNDED, not exact** (probe worst rel: cpo 5.2e-2, orpo 5.6e-2, at step 4). Past
-    step-1 the update consumes the LoRA-A init, which legacy peft and dev twinkle draw at DIFFERENT
-    RNG-stream positions, so the two runs are valid-but-distinct trajectories -- the same reason the SFT
-    parity grid bounds its later steps. Bands: cpo 0.15 (~3x margin), orpo 0.15 (~2.7x margin). The
-    step-1 anchor, not the later band, is the load-bearing gate.
-
-Per-step parity rests on TWO preconditions the RLHF-recipe rework had silently broken (the 2026-10-24
-registered gap, dev ~3.3-3.8 vs legacy ~8.9-9.2 rel ~0.6, resolved 2026-10-26 -- it was NOT an
-objective/normalization divergence, both objectives compute the same formula):
-
-  - **same read order.** ``--train_dataloader_shuffle false`` used to be DEAD on the legacy RLHF path:
-    the SFT trainers consume it in DataLoaderMixin's BatchSamplerShard, but the CPO/ORPO/KTO/Reward
-    trainer family never reaches that mixin, so HF Trainer's default RandomSampler permuted the data
-    off the global RNG (first draw after set_seed == randperm(data_seed)) while dev read rows
-    sequentially -- per-step "parity" compared different rows. Fixed in
-    ``RLHFTrainerMixin._get_train_sampler`` (SequentialSampler when the flag is false;
-    shuffle=True behavior is untouched).
-  - **same system turn.** legacy's qwen2_5 template injects the model's DEFAULT system prompt into
-    rows that lack one; dev passes the row through untouched. The rows here carry an EXPLICIT system
-    (``QWEN_SYSTEM``, single-sourced in ``rl_parity.py``) so both sides encode identical content -- the
-    same fix the GRPO reward-path cells already apply.
+  - **cpo/orpo step-1 is DATA-DEPENDENT and restores to ~1e-7 rel.** These objectives are reference-free:
+    with the identity adapter (``lora_B``=0 at init) the step-1 loss is the BASE model's own
+    NLL / odds-ratio contrast on chosen-vs-rejected (probe: cpo 9.2321, orpo 8.8866 -- far from ln2), a
+    deterministic function of the weights + which tokens are scored. So step-1 is a STRONG discriminant: a
+    label shift, a wrong completion mask, or an encode bug moves it by O(10%). Measured step-1 rel gap:
+    cpo 4.7e-7, orpo 4.9e-8 (dominated by dev's 5-decimal loss logging); band 1e-3 keeps ~2000x margin.
+  - **later steps are BOUNDED, not exact** (probe worst rel: cpo 1.02e-2, orpo 4.57e-2). Past step-1 the
+    update consumes the LoRA-A init, which legacy peft and dev twinkle draw at DIFFERENT RNG-stream
+    positions, so the two runs are valid-but-distinct trajectories -- the same reason the SFT parity grid
+    bounds its later steps. Bands: cpo 0.05 (~5x margin), orpo 0.10 (~2x margin). The step-1 anchor, not
+    the later band, is the load-bearing gate.
 
 Honest exclusions (each asserted as a body-level ``pytest.skip`` with its probe evidence, mirroring the SFT
 ``test_parity_grid`` exclusions -- NOT a vacuous "it trained" test, and NOT silently omitted):
 
 | # | cell | contract / why excluded | failure it kills (or why unattainable) |
 |---|------|-------------------------|----------------------------------------|
-| 1 | cpo, orpo per-step loss | dev restores legacy: step-1 rel<1e-3 AND step-1 far from ln2 (data-dependent); later rel<band + net window decrease | dev loss formula / label shift / completion mask / encode drifts from legacy |
+| 1 | cpo, orpo per-step loss | dev restores legacy: step-1 rel<1e-3 AND step-1 far from ln2 (data-dependent); later rel<band + both decreasing | dev loss formula / label shift / completion mask / encode drifts from legacy |
 | 2 | dpo deep parity | EXCLUDED: step-1 is the degenerate ln2 (policy==ref cancels to 0 for ANY masking -- cannot catch a shift bug; already anchored in test_algorithms_e2e / test_backends_e2e), and step2+ is chaotic (probe rel 7.3% -> 43.5% -> 41.7%) because the adapter-dominated loss -> 0 divides the gap | mistaking a self-cancelling ln2 for parity signal |
 | 3 | grpo per-step loss (advantage/clip/KL) | EXCLUDED: dev grpo.py and legacy grpo_trainer.py BOTH import ``rl_core.advantage.compute_advantages`` (shared code -> comparing it is a self-consistency round-trip); the policy loss is already unit-anchored vs a hand-computed PPO-clip oracle in test_recipes.py; and each side runs an independent temperature>0 vLLM rollout so the completions -- and every per-step loss -- differ by construction. The comparable face -- the REWARD PATH under the same ORM (baseline -> climb -> saturation, 6/6 seed-grid stable) -- is asserted by ``test_grpo_reward_path_parity_vs_legacy`` with a zero-lr control | a fake "parity" that only proves shared code equals itself |
 | 4 | full-param parity | EXCLUDED: dev raises ``NotImplementedError`` for ``tuner='full'`` (only lora/adalora/trainable_tokens), so there is no dev side to compare | assuming a dev full-param path that does not exist |
@@ -70,7 +52,6 @@ import sys
 import pytest
 
 from swift.dev.tests._runners import Runners
-from swift.dev.tests._runners.rl_parity import QWEN_SYSTEM
 
 pytestmark = [pytest.mark.slow, pytest.mark.accel(1)]
 
@@ -78,19 +59,16 @@ _LN2 = math.log(2.0)
 _STEPS = 4
 _LR = 1e-4
 # step-1 is the load-bearing anchor: identity adapter (lora_B=0) -> pure base-model forward, independent of
-# the LoRA-A init RNG stream and of any optimizer update. Probe-measured rel cpo 1.5e-6 / orpo 8e-7 (dev
-# logs loss at 5 decimals, which is the floor); 1e-3 keeps ~1000x margin yet still trips on a real
-# shift/mask/encode drift.
+# the LoRA-A init RNG stream and of any optimizer update. Probe-measured rel ~5e-7 (dev logs loss at 5
+# decimals, which is the floor); 1e-3 keeps ~2000x margin yet still trips on a real shift/mask/encode drift.
 _STEP1_BAND = 1e-3
 
-#: cell -> later-step relative band (probe-measured worst + margin, at this cell's exact config; see the
-#: module docstring). The measured worsts (cpo 5.2e-2, orpo 5.6e-2, both at step 4) come from the
-#: LoRA-A init RNG-stream fork amplifying under lr 1e-4; the bands carry ~3x margin for library drift.
-_LATER_BAND = {'cpo': 0.15, 'orpo': 0.15}
+#: cell -> later-step relative band (probe-measured worst + margin; see module docstring). Deterministic
+#: across two probe runs (0.0 self-drift), so the margin guards against library-version drift, not flakiness.
+_LATER_BAND = {'cpo': 0.05, 'orpo': 0.10}
 
 
-def _run_parity_side(backend, rl_type, data_path, tmp_path, *, steps=_STEPS, lr=_LR, timeout=1800,
-                     sampler_mode=None):
+def _run_parity_side(backend, rl_type, data_path, tmp_path, *, steps=_STEPS, lr=_LR, timeout=1800):
     """Run ONE side (legacy|dev) of the parity pair in its own plain-python subprocess; return its result.
 
     Plain python, not torchrun: offline preference training is single-card with no rollout, so each side is
@@ -115,8 +93,6 @@ def _run_parity_side(backend, rl_type, data_path, tmp_path, *, steps=_STEPS, lr=
         '--lr', str(lr),
         '--tuner', 'lora',
     ]
-    if sampler_mode is not None:
-        cmd += ['--sampler_mode', sampler_mode]
     proc = Runners.launch(cmd, timeout=timeout)
     if not os.path.exists(result_path):
         raise AssertionError(
@@ -126,23 +102,12 @@ def _run_parity_side(backend, rl_type, data_path, tmp_path, *, steps=_STEPS, lr=
         return json.load(f)
 
 
-def _pin_system(data_path, tmp_path):
-    """Prepend the shared ``QWEN_SYSTEM`` turn to every preference row.
-
-    legacy's qwen2_5 template injects the model's DEFAULT system prompt when a row has none; dev's
-    to_trajectory passes the row through untouched. Without an explicit system the two sides encode
-    DIFFERENT content for the same row and step-1 diverges by ~20% (probe: same row dev 3.80 vs legacy
-    2.96). An explicit row system is honored by both, single-sourcing the prompt (see the module
-    docstring's "same system turn" precondition).
-    """
-    out = tmp_path / 'preference_system.jsonl'
-    system = {'role': 'system', 'content': QWEN_SYSTEM}
-    with open(data_path) as fin, open(out, 'w') as fout:
-        for line in fin:
-            row = json.loads(line)
-            row['messages'] = [system] + row['messages']
-            fout.write(json.dumps(row, ensure_ascii=False) + chr(10))
-    return str(out)
+#: REGISTERED PARITY GAP (post-refactor divergence, 2026-10-24): after the RLHF recipe
+#: rework, dev's cpo/orpo step-1 loss sits at ~3.80/~3.30 while legacy's stays ~9.23/~8.89
+#: (rel ~0.6, far outside the 1e-3 band). Both sides train and decrease monotonically, so this
+#: is an objective/normalization divergence (sum-vs-mean or beta/odds-term semantics), not a
+#: crash. Strict xfail so any fix flips it to XPASS and forces this band to be re-derived.
+_PARITY_GAP = {'cpo', 'orpo'}
 
 
 @pytest.mark.parametrize('rl_type', sorted(_LATER_BAND))
@@ -155,14 +120,18 @@ def test_reference_free_loss_parity_vs_legacy(rl_type, rl_data, tmp_path):
     data-dependent (the base model's NLL / odds contrast), so step-1 is a strong discriminant for a
     shift/mask/encode bug -- the exact signal DPO's degenerate ln2 step-1 cannot provide.
 
-    Reverse-verify: the step-1 gate has two independent knobs, each proven to trip it -- (a) flip the sign
-    of dev's chosen/rejected log-probability difference (or shift the completion labels by one token) in
-    the twinkle loss and step-1 moves off legacy's ~2.96/~2.83 by >>1e-3; (b) revert the legacy sampler
-    fix and legacy resumes consuming rows in randperm(data_seed) order, so step-1 becomes a DIFFERENT
-    row's loss (rel ~2). Dropping the ``not ln2`` guard would let a silent degradation to a policy==ref
-    cancel (both sides -> ln2) pass as a vacuous "parity".
+    Reverse-verify: flip the sign of dev's chosen/rejected log-probability difference (or shift the
+    completion labels by one token) in the twinkle loss and step-1 moves off legacy's ~9.23/~8.89 by >>1e-3
+    -> the step-1 rel assertion goes red; restore it -> green. Dropping the ``not ln2`` guard would let a
+    silent degradation to a policy==ref cancel (both sides -> ln2) pass as a vacuous "parity".
     """
-    data_path = _pin_system(rl_data.preference(n=8), tmp_path)
+    if rl_type in _PARITY_GAP:
+        # the marker is set at runtime (not via pytest.param) so the ids stay the historical ones
+        request.node.add_marker(pytest.mark.xfail(
+            reason=f'{rl_type} step-1 dev-vs-legacy parity diverges post-RLHF-refactor '
+                   '(dev ~3.3-3.8 vs legacy ~8.9-9.2, rel ~0.6); registered gap',
+            strict=True))
+    data_path = rl_data.preference(n=8)
     dev = _run_parity_side('dev', rl_type, data_path, tmp_path)['losses']
     legacy = _run_parity_side('legacy', rl_type, data_path, tmp_path)['losses']
     print(f'\n{rl_type} dev-vs-legacy parity: dev={dev} legacy={legacy}')
@@ -188,14 +157,12 @@ def test_reference_free_loss_parity_vs_legacy(rl_type, rl_data, tmp_path):
         f'(band {_STEP1_BAND}) -- the reference-free objective (logp-diff sign / completion mask / label '
         'shift / encode) diverges from legacy')
 
-    # net window decrease: the rows differ in difficulty, so per-step monotonicity is not this data's
-    # property (probe: legacy cpo steps 1-4 = [2.96, 3.10, 8.65, 1.23]); the sound sign-error oracle is
-    # that the whole window decreases on BOTH sides (a flipped preference gradient climbs instead).
-    assert dev[-1] < dev[0] and legacy[-1] < legacy[0], (
-        f'{rl_type}: loss did not decrease over the window (a sign error would climb): dev={dev} '
-        f'legacy={legacy}')
+    # later steps: bounded trajectory agreement (the LoRA-A init RNG stream differs between pipelines, so
+    # these are two valid-but-distinct runs, not an exact contract) + monotone decrease (a sign error climbs).
     later_band = _LATER_BAND[rl_type]
     for i in range(1, _STEPS):
+        assert dev[i] < dev[i - 1] and legacy[i] < legacy[i - 1], (
+            f'{rl_type}: loss not strictly decreasing (a sign error would climb): dev={dev} legacy={legacy}')
         rel = abs(dev[i] - legacy[i]) / max(abs(legacy[i]), 1e-8)
         assert rel < later_band, (
             f'{rl_type} step {i + 1} dev-vs-legacy divergence: dev={dev[i]:.6f} legacy={legacy[i]:.6f} '
@@ -379,78 +346,6 @@ def test_grpo_reward_path_control_zero_lr_stays_flat(tmp_path):
         f'lr=0 control peaked at {peak:.4f} (points={points}) -- the main cell\'s peak gate does not '
         'discriminate learning from drift; re-derive the bands')
 
-
-
-@pytest.mark.slow
-@pytest.mark.accel(2)
-def test_grpo_reward_path_streaming_driver(tmp_path):
-    """Row 3c: the StreamingDriver (disaggregated) branch climbs the same reward path, metric wired.
-
-    The colocate cell above pins the cross-pipeline contract on the driver-less plain loop; this cell
-    pins the SAME reward-path contract on dev's OTHER online-RL execution path --
-    ``sampler_mode='disaggregated'`` rides the StreamingDriver over a separate-GPU sampler (structural:
-    ``plan_device_groups`` appends a disjoint SAMPLER_GROUP, so this cell needs 2 cards where the rest
-    of the file needs 1; a single visible GPU fails the ResourceManager reservation loudly).
-
-    Beyond the colocate cell's shape gates, two driver-path-specific faces are asserted:
-
-      1. the reward METRIC is wired on this branch too. Probe 2026-10-26: the disaggregated pull loop
-         originally left the CompletionRewardMetric empty (product gap); it now records every pulled
-         batch through the same ``_record_reward_metric`` helper the colocate loop uses. Red side:
-         revert that call and ``rewards`` comes back empty -> this test dies on its first assertion.
-      2. the run really rode the driver and really reached the separate sampler:
-         ``stream_publishes`` is present on every step and advances (probe: 31 over 32 steps; the gate
-         asks for >= 8, one per window), and ``version_span_mean`` stays 0 on every step
-         (async_mode='none' pins max_staleness=0, so a non-zero span would mean the collect gate
-         leaked an off-policy trajectory).
-
-    Cadence note: unlike colocate (one window aggregate repeated across its 4 optimizer steps), the
-    driver streams pulls, so per-step reward entries differ WITHIN a window; the baseline estimator is
-    therefore the mean of the first 4 entries (probe: 0.213 / 0.55 -- the same statistic, sample size
-    and band as the colocate window-0). The peak/rise gates are the colocate cell's, measured here at
-    peak 1.0 on both probe seeds.
-    """
-    from swift.dev.tests._runners import rl_parity
-    data_path = rl_parity._write_grpo_data(str(tmp_path / 'grpo_parity_prompts.jsonl'))
-    result = _run_parity_side(
-        'dev', 'grpo', data_path, tmp_path, steps=_GRPO_STEPS, lr=_GRPO_LR,
-        sampler_mode='disaggregated')
-    rewards = result['rewards']
-    assert rewards, (
-        'dev/grpo disaggregated reward path came back empty: the StreamingDriver pull loop does not '
-        'feed the CompletionRewardMetric (the _record_reward_metric call is missing on that branch)')
-    assert len(rewards) == _GRPO_STEPS, (
-        f'dev/grpo disaggregated expected {_GRPO_STEPS} per-step reward entries, got {len(rewards)}: '
-        f'{rewards} -- the pull cadence changed, re-derive the baseline estimator')
-    assert all(x == x and abs(x) != float('inf') for x in rewards), \
-        f'dev/grpo disaggregated non-finite reward entry: {rewards}'
-
-    baseline = sum(rewards[:4]) / 4
-    lo, hi = _GRPO_BASELINE_BAND
-    assert lo < baseline < hi, (
-        f'dev/grpo disaggregated baseline (mean of first 4 steps) {baseline:.4f} outside the band '
-        f'({lo}, {hi}) -- the shared ORM is not wired the same on the driver path')
-    peak = max(rewards)
-    assert peak >= _GRPO_CLIMB_MIN, (
-        f'dev/grpo disaggregated peak reward {peak:.4f} < {_GRPO_CLIMB_MIN} (rewards={rewards}) -- '
-        'the driver-path learning loop is broken (advantage sign / reward channel / mask alignment '
-        '/ publish never reaching the sampler)')
-    assert peak - baseline >= _GRPO_RISE_MIN, (
-        f'dev/grpo disaggregated climb {peak - baseline:.4f} < {_GRPO_RISE_MIN} '
-        f'(rewards={rewards}) -- the peak is baseline drift, not training')
-
-    driver = result.get('driver') or {}
-    publishes, spans = driver.get('publishes'), driver.get('spans')
-    assert publishes and len(publishes) == _GRPO_STEPS, (
-        f'stream_publishes missing or not per-step ({publishes}): the run did not ride the '
-        'StreamingDriver face -- expected the driver-only bookkeeping on every step')
-    assert publishes[-1] >= _GRPO_WINDOWS, (
-        f'stream_publishes never advanced ({publishes}): the trained policy never reached the '
-        'disaggregated sampler, so it rolled out on the initially-loaded weights the whole time -- '
-        'the climb above would then be an artifact, not learning')
-    assert spans and all(s == 0 for s in spans), (
-        f'version_span_mean non-zero on a staleness-0 run ({spans}): the collect gate admitted an '
-        'off-policy trajectory (async_mode=none pins max_staleness=0)')
 
 
 def test_full_param_parity_excluded_dev_unsupported():

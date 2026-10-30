@@ -456,24 +456,41 @@ def resume_training(
 
 
 def _log_line(record: dict, loss: float) -> str:
-    """The default console step line: loss plus grad_norm, the MTP channel and any loss_* channels."""
-    gn = record.get("grad_norm")
-    gn_str = f"  grad_norm={gn:.4f}" if gn is not None else ""
-    mtp = record.get("mtp_loss")
-    mtp_str = f"  mtp_loss={mtp:.4f}" if mtp is not None else ""
-    channel_str = "".join(f"  {key}={value:.4f}" for key, value in record.items() if key.startswith("loss_"))
+    """The default console step line: loss plus grad_norm, lr, the MTP channel and any loss_* channels.
+
+    ``lr`` is read from the TrainMetric key ``learning rate`` (a display string like '5.000000e-05'
+    once the tracker has formatted it, or a float before that); the webui parses this line into
+    per-step curves, and lr is one of the three signals it always expects.
+    """
+    def _fmt(value, spec='.4f'):
+        # A console head must never crash the training loop: coerce, fall back to the value as-is.
+        try:
+            return format(float(value), spec)
+        except (TypeError, ValueError):
+            return str(value)
+
+    gn = record.get('grad_norm')
+    gn_str = f'  grad_norm={_fmt(gn)}' if gn is not None else ''
+    # TrainMetric names single-group lr 'learning rate' and multi-group 'learning rate(param group N)'
+    # (LoRA runs have several optimizer groups); the head line shows the first group's lr.
+    lr = record.get('learning rate')
+    if lr is None:
+        for key in sorted(record):
+            if key.startswith('learning rate'):
+                lr = record[key]
+                break
+    lr_str = f'  lr={_fmt(lr, ".6e")}' if lr is not None else ''
+    mtp = record.get('mtp_loss')
+    mtp_str = f'  mtp_loss={_fmt(mtp)}' if mtp is not None else ''
+    channel_str = ''.join(f'  {key}={_fmt(value)}' for key, value in record.items() if key.startswith('loss_'))
     # The legacy rollout_correction diagnostics, when the loop computed them: the signed KL is
     # the acceptance number for a freshly synced sampler (target < 1e-2).
-    correction_str = "".join(
-        f"  {label}={record[key]:.3g}"
-        for label, key in (
-            ("rollout_kl", "rollout_correction/kl"),
-            ("rollout_k3_kl", "rollout_correction/k3_kl"),
-            ("rollout_logp_absdiff", "rollout_correction/log_ppl_abs_diff"),
-        )
-        if isinstance(record.get(key), (int, float))
-    )
-    return f"step {record.get('step')}  loss={loss:.4f}{gn_str}{mtp_str}{channel_str}{correction_str}"
+    correction_str = ''.join(
+        f'  {label}={_fmt(record[key], ".3g")}'
+        for label, key in (('rollout_kl', 'rollout_correction/kl'), ('rollout_k3_kl', 'rollout_correction/k3_kl'),
+                           ('rollout_logp_absdiff', 'rollout_correction/log_ppl_abs_diff'))
+        if isinstance(record.get(key), (int, float)))
+    return f"step {record.get('step')}  loss={loss:.4f}{lr_str}{gn_str}{mtp_str}{channel_str}{correction_str}"
 
 
 def _mtp_metrics(model: Any) -> Dict[str, float]:
