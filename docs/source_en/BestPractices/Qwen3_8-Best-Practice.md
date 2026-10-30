@@ -315,11 +315,9 @@ swift infer \
 
 Tips for training Qwen3.5 with Megatron-SWIFT:
 - Full parameter training: Refer to [this example](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/packing.sh).
-- TP Limitation Removed: Using `megatron-core>=0.18` removes the `num_query_groups` limitation on TP.
 - Regarding MTP training: `mcore-bridge>=1.1.0` supports multimodal MTP training. Please install the corresponding version.
 - CP support: "mcore-bridge>=1.1.0" supports CP training for GDN. Additionally, the megatron-core [main branch](https://github.com/NVIDIA/Megatron-LM) needs to be installed.
 - Transformers/FSDP packing validation: Qwen3.5-4B has completed 300 training steps on 8 Atlas 900 A2 cards with LoRA, BF16, `alpaca-gpt4-data-zh`, `packing=true`, `max_length=512`, per-device batch size 1, and gradient accumulation 1. Loss and grad norm remained finite throughout, and a checkpoint was saved successfully. Under the same configuration, the NPU loss trend aligned with the GPU reference.
-- By default, `GatedDeltaNet` uses the Megatron implementation, which requires "megatron-core>=0.18" (ms-swift>=4.1.0; previous versions defaulted to the transformers implementation). Set `USE_MCORE_GDN=0` to switch to the transformers model path; on Ascend NPU, this path can use FLA's native Triton-Ascend GDN.
 - Support for padding_free/packing: Packing can improve training speed. Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh).
   - Qwen3-Next Megatron GatedDeltaNet support refers to [this PR](https://github.com/modelscope/mcore-bridge/pull/76), requiring `mcore-bridge>=1.4.0`.
 - apply_wd_to_qk_layernorm: Apply weight decay to qk layernorm. Default is False.
