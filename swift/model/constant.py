@@ -170,6 +170,7 @@ class MLLMModelType:
     omnijev = 'omnijev'
     kev = 'kev'
     thx02 = 'thx02'
+    startlux = 'startlux'
 
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'

@@ -27,6 +27,8 @@ pip install "ms-swift>=4.6.0"
   - [ModelScope](https://modelscope.ai/models/HAL-X/THX-02)
 6. Laya：ModernBERT-large 双向编码器 + typed-decision 头，纯文本、非自回归
   - [ModelScope](https://modelscope.cn/models/convaiinnovations/laya) / [HuggingFace](https://huggingface.co/convaiinnovations/laya)
+7. StartLux-Decision v1.1 AutoThink：已合并的 Qwen3.5 hybrid（视觉 + 因果注意力），字母 read-out
+  - [ModelScope 4B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-4B-AutoThink) / [9B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-9B-AutoThink) / [27B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink)
 
 
 | 模型         | `--model_type` | 底座                               | 头制品                                                                            | `--loss_type`  |
@@ -37,6 +39,7 @@ pip install "ms-swift>=4.6.0"
 | Kev        | `kev`          | Qwen3.5-{0.8,4,9}B-Base hybrid + PEFT adapter | `head.pt`（pointer head，fp32）+ 拟合 `temperature`（仅 eval 生效）                 | `scoring`      |
 | THX-02     | `thx02`        | 已合并的 Qwen3.5 hybrid（非因果 full attention） | `readout.safetensors`（255 个答案码上的线性 readout）+ `decision_config.json`（标定温度） | `distill_rps`  |
 | Laya       | `laya`         | ModernBERT-large（双向，无 adapter）   | `model.safetensors`（编码器 + 头同文件）+ `rl_agent_config.json`（结构 + per-kind/per-bucket 温度） | `ce_rps`       |
+| StartLux   | `startlux`     | 已合并的 Qwen3.5 hybrid（视觉塔，因果） | `decision_config.json`（26 个字母 token id + per-kind read-out 温度）                 | `distill_rps`  |
 
 
 开发者可以将任意 CausalLM 转为决策模型，只需指定：
@@ -285,6 +288,23 @@ swift sft --task_type decision ... --split_dataset_ratio 0.1
 - 也接受统一 schema（`questions` + `kind`/`question`/`options`/`gold`），选项文案原样透传。
 - 仓库自带三个 checkpoint（根目录英文 / `typed-decisions/` / `multilingual/`），用 `LAYA_CHECKPOINT` 选择其一。训练须加 `--tuner_type full` —— 编码器无生成头，默认的 LoRA/PeftModel 因果封装不适用（见 `examples/train/decision/laya.sh`）。
 
+#### `startlux` 变体
+
+`startlux` 每个前向评分一个问题，多模态（state 文本 + 至多 8 张图），通过选项**字母** read-out 打分。接受**原生 System One `/v1/systemone` schema**（官方决策服务器的请求格式，形状与 THX-02 的 Decisions API 一致）以及统一 schema：
+
+```json lines
+{"state": {"ticket": "I was charged twice for order #4411."}, "questions": {"team": {"type": "choice", "instructions": "Which team should handle this ticket?", "criteria": {"billing": "Payments and refunds", "shipping": "Delivery", "technical": "App and login"}}, "urgent": {"type": "noul", "instructions": "Should this be answered today?"}, "severity": {"type": "score", "instructions": "How severe?", "criteria": ["cosmetic", "annoying", "blocks the customer"]}}, "answers": {"team": "billing", "urgent": true, "severity": 2}}
+{"state": "Look at the image.", "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png"], "questions": {"kind": {"type": "choice", "instructions": "What is in the image?", "criteria": {"cat": "a cat", "dog": "a dog"}}}, "answers": {"kind": "cat"}}
+{"state": "A review: late and damaged.", "questions": {"topic": {"type": "choice", "instructions": "Pick the topic.", "criteria": {"Technology": null, "Sports": null}}}, "targets": {"topic": [0.3, 0.7]}}
+```
+
+- `state`：字符串或任意 JSON 值（非字符串 state 渲染为 JSON，长数组带 `_index` 标注，与官方引擎逐字节一致）。
+- `questions`：以问题 ID 为键的 dict。每个值含 `type`（`noul`/`choice`/`score`）、`instructions`（`choice`/`score` 必填；`noul` 默认 "Which answer fits the evidence?"）与 `criteria` —— `choice` 为 `{选项: 描述或 null}`（按给出顺序，2–26 个选项），`score` 为由低到高的档位描述列表（2–10 档），`noul` 可选 `{"true": ..., "false": ...}` 描述（选项渲染为 yes/no）。
+- choice 问题上的 `"allow_none": true` 会追加官方服务器内部添加的额外 **"None of the above"** 选项（gold 写 `"none"` 即解析到它）。
+- `answers` / `targets`：按问题 ID 给 gold —— 选项 key、选项下标、`noul` 的 bool（`true` = yes），或按选项顺序的完整分布（`targets` 用于蒸馏）。
+- `images`：可选的图像路径/URL 列表（至多 8 张），放在 state 的 `<image>` 标记处，或置于无标记 state 之前。
+- AutoThink 的门控/思考循环（顶部概率低于门控时先生成一段思考再重读并混合）是官方 `startlux-decide` 包的推理编排；swift 集成覆盖**单遍 read-out**（官方 `think_mode: never`），这也是训练路径。
+
 
 
 ### 多问题联合 schema
@@ -429,6 +449,53 @@ swift sft \
 - 不支持 packing / `--padding_free`：非因果注意力会让打包在一起的记录互相可见。二者在解析参数阶段（加载模型之前）即被拒绝
 - 记录永不截断：超过 `--max_length` 的记录会抛出 `MaxLengthError`（与默认 `--truncation_strategy raise` 下其他超长样本一样被跳过），无论 `--truncation_strategy` 设为何值，因为截断会丢失问题或图像 patch 并使所有 readout 位置错位
 - 图像分辨率：图像上限为 `decision_config.json` 中的 `max_pixels`（THX-02 训练时的上限），下限为 65536 像素。`--max_pixels` 先生效，因此可以把分辨率降低到该下限，但不能超过上限
+
+
+
+### StartLux
+
+StartLux-Decision v1.1 AutoThink 自带已合并的底座，因此在其上训练全新 LoRA，字母 read-out 联合训练：
+
+```bash
+MODELSCOPE_ENDPOINT=https://www.modelscope.ai \
+USE_HF=0 \
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --external_plugins examples/train/decision/dataset.py \
+    --model StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink \
+    --model_type startlux \
+    --task_type decision \
+    --loss_type distill_rps \
+    --dataset startlux_decision \
+    --tuner_type lora \
+    --target_modules all-linear \
+    --freeze_vit true \
+    --torch_dtype bfloat16 \
+    --attn_impl sdpa \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 1 \
+    --learning_rate 1e-4 \
+    --lora_rank 16 \
+    --lora_alpha 32 \
+    --gradient_accumulation_steps 4 \
+    --gradient_checkpointing true \
+    --logging_steps 1 \
+    --save_steps 50 \
+    --save_total_limit 2 \
+    --max_length 8192 \
+    --split_dataset_ratio 0 \
+    --output_dir output \
+    --dataloader_num_workers 1
+```
+
+关键参数：
+
+- `--model StartLuxAI/StartLux-Decision-v1.1-{4,9,27}B-AutoThink` — ModelScope 上的 checkpoint（4B / 9B / 27B）；27B 需要多卡或 offload
+- `--model_type startlux` — 加载已合并的 Qwen3.5 hybrid 底座，并从目录中的 `decision_config.json`（26 个字母 token id + per-kind 温度）构建字母 read-out 挂载为 `scoring_head`
+- `--loss_type distill_rps` — 对目标分布（one-hot gold 或教师软概率）的 KL + `score` 问题上的 RPS
+- 记录永不截断：超过 `--max_length` 的记录抛出 `MaxLengthError` —— read-out 位于 prompt 最后一个 token、问题/选项位于尾部，截断会使 read-out 错位到错误的 state 上。请保持足够的 `--max_length`
+- 不支持 packing / `--padding_free`（记录会互相 attend）
+- **Instant**（prompt 双向注意力）StartLux 目录会被 loader 拒绝 —— 它需要本集成未实现的注意力模式；`--model` 请指向 AutoThink checkpoint
 
 
 
@@ -597,6 +664,7 @@ swift sft --external_plugins my_decision_dataset.py --dataset my_jev_decision ..
 - `JevPreprocessor` — 单问题逐行 schema（`{state, questions: [{kind, question, options, gold}]}`，每问题一行）
 - `KevPreprocessor` — 单问题逐行 schema 的纯文本变体（`{state, questions: [{instr, options, label}]}`）
 - `LayaPreprocessor` — 单问题逐行 schema 的双向编码器变体（`{state, qs: [{t, ins, crit, y | soft}]}`，选项文案按 `rl_common.render_options` 渲染）
+- `StartLuxPreprocessor` — 单问题逐行 schema 的字母 read-out 变体（原生 System One `/v1/systemone` 请求 `{state, questions: {qid: {type, instructions, criteria, allow_none?}}, answers | targets, images?}`；每问题一行）
 - `ClefPreprocessor` — 多问题联合 schema（`{state, questions: {qid: {type, instructions, criteria}}, answers}`，全部问题一行）
 - `OmniJevPreprocessor` — 多模态 schema（含 `images`/`videos` 和选项块）
 - `GenericDecisionPreprocessor` — 与 `JevPreprocessor` 行为相同，配套 `generic_decision` 模型类型
@@ -733,6 +801,7 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 | `THX02_DECISION_CONFIG`   | `thx02` | `decision_config.json` | 覆盖温度 / 答案码配置加载路径           |
 | `LAYA_CHECKPOINT`         | `laya` | checkpoint 目录           | 指向仓库自带三个 checkpoint（根目录 / `typed-decisions` / `multilingual）之一 |
 | `LAYA_CONFIG`             | `laya` | `rl_agent_config.json`   | 覆盖头结构 + 温度标定配置加载路径 |
+| `STARTLUX_DECISION_CONFIG` | `startlux` | `decision_config.json` | 覆盖字母 token id + per-kind read-out 温度配置加载路径 |
 
 
 未设置时，加载器会自动在 `model_dir`（及 `jev` 的 `adapter_vllm/` 子目录）下查找对应文件。文件缺失时报错信息中会提示设置对应环境变量。
@@ -746,6 +815,7 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 - **`thx02` packing**：会拒绝 `--packing` / `--padding_free`，因为非因果注意力会让打包的记录互相可见。
 - **`thx02` 截断**：超长记录抛出 `MaxLengthError` 而不是被截断；`--max_pixels` 只能在 [65536 像素, `decision_config.json` 的 `max_pixels`] 范围内降低图像分辨率。
 - **`laya` 须用 `--tuner_type full`**：双向编码器无生成头，默认 LoRA/PeftModel 因果封装不适用。
+- **`startlux` 仅单遍 read-out**：AutoThink 门控/思考循环不在范围内（需要时请用官方 `startlux-decide` 包）；choice 单次至多 26 个选项（官方服务器的淘汰赛轮次未实现）；Instant（prompt 双向）目录会被拒绝；记录永不截断（超长记录抛 `MaxLengthError`）。
 - `tie_word_embeddings=True` **adapter 合并**：仅影响合并/转格式，训练与推理不受影响。
 
 

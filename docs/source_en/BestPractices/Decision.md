@@ -27,6 +27,8 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
    - [ModelScope](https://modelscope.ai/models/HAL-X/THX-02)
 6. Laya: ModernBERT-large bidirectional encoder + typed-decision head, text-only, non-autoregressive
    - [ModelScope](https://modelscope.cn/models/convaiinnovations/laya) / [HuggingFace](https://huggingface.co/convaiinnovations/laya)
+7. StartLux-Decision v1.1 AutoThink: merged Qwen3.5 hybrid (vision + causal attention), letter read-out
+   - [ModelScope 4B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-4B-AutoThink) / [9B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-9B-AutoThink) / [27B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink)
 
 | Model | `--model_type` | Base | Head Artifacts | `--loss_type` |
 |-------|----------------|------|----------------|----------------|
@@ -36,6 +38,7 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
 | Kev | `kev` | Qwen3.5-{0.8,4,9}B-Base hybrid + PEFT adapter | `head.pt` (pointer head, fp32) + fitted `temperature` (eval-time only) | `scoring` |
 | THX-02 | `thx02` | Merged Qwen3.5 hybrid (noncausal full attention) | `readout.safetensors` (linear readout over 255 answer codes) + `decision_config.json` (calibrated temperature) | `distill_rps` |
 | Laya | `laya` | ModernBERT-large (bidirectional, no adapter) | `model.safetensors` (encoder + head in one file) + `rl_agent_config.json` (architecture + per-kind/per-bucket temperatures) | `ce_rps` |
+| StartLux | `startlux` | Merged Qwen3.5 hybrid (vision tower, causal) | `decision_config.json` (26 letter token ids + per-kind read-out temperatures) | `distill_rps` |
 
 Developers can convert any CausalLM into a decision model by specifying:
 
@@ -259,6 +262,23 @@ Models in this family score **one question per forward**. A record with multiple
 - The unified schema (`questions` with `kind`/`question`/`options`/`gold`) is also accepted; option texts pass through unchanged.
 - The repo bundles three checkpoints (root English / `typed-decisions/` / `multilingual/`); `LAYA_CHECKPOINT` selects one. `--tuner_type full` is required — the encoder has no generation head for the LoRA/PeftModel wrap (see `examples/train/decision/laya.sh`).
 
+#### The `startlux` Variant
+
+`startlux` scores one question per forward, multimodal (state text + up to 8 images), through the option-**letter** read-out: the question is rendered as its own prompt holding the whole state, and the head reads the lm_head logits of the letters (A, B, ...) at the last prompt position, normalized over the question's listed options with a per-kind temperature. It accepts the **native System One `/v1/systemone` schema** (the request format of the official decision server, shared in shape with THX-02's Decisions API) plus the unified schema:
+
+```json lines
+{"state": {"ticket": "I was charged twice for order #4411."}, "questions": {"team": {"type": "choice", "instructions": "Which team should handle this ticket?", "criteria": {"billing": "Payments and refunds", "shipping": "Delivery", "technical": "App and login"}}, "urgent": {"type": "noul", "instructions": "Should this be answered today?"}, "severity": {"type": "score", "instructions": "How severe?", "criteria": ["cosmetic", "annoying", "blocks the customer"]}}, "answers": {"team": "billing", "urgent": true, "severity": 2}}
+{"state": "Look at the image.", "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png"], "questions": {"kind": {"type": "choice", "instructions": "What is in the image?", "criteria": {"cat": "a cat", "dog": "a dog"}}}, "answers": {"kind": "cat"}}
+{"state": "A review: late and damaged.", "questions": {"topic": {"type": "choice", "instructions": "Pick the topic.", "criteria": {"Technology": null, "Sports": null}}}, "targets": {"topic": [0.3, 0.7]}}
+```
+
+- `state`: string or any JSON value (non-string states render as JSON, long arrays get `_index` annotations, byte-matching the official engine).
+- `questions`: a dict keyed by question ID; each value has `type` (`noul`/`choice`/`score`), `instructions` (required for `choice`/`score`; `noul` defaults to "Which answer fits the evidence?"), and `criteria` — `{option: description or null}` for `choice` (prompt order, 2–26 options), a list of level descriptions lowest-first for `score` (2–10 levels), optional `{"true": ..., "false": ...}` descriptions for `noul` (options render as yes/no).
+- `"allow_none": true` on a choice question appends the extra **"None of the above"** option the official server adds internally (gold `"none"` resolves to it).
+- `answers` / `targets`: gold per question ID — an option key, an option index, a bool for `noul` (`true` = yes), or a full distribution in option order (`targets` for distillation).
+- `images`: optional list of image paths/URLs (at most 8), placed at the state's `<image>` marks or in front of an unmarked state.
+- The AutoThink gate/thought loop (re-read after a thought when the top probability is below the gate) is inference orchestration in the official `startlux-decide` package; the swift integration covers the **one-pass read-out** (the official `think_mode: never`), which is also the training path.
+
 
 
 ### Multi-Question Joint Schema
@@ -416,6 +436,57 @@ Key parameters:
   trained with) and at least 65536 px. `--max_pixels` is applied first, so it can lower the resolution down to
   that minimum but not raise it above the bound
 
+### StartLux
+
+StartLux-Decision v1.1 AutoThink ships a merged backbone, so a fresh LoRA is trained on top and the letter
+read-out is trained jointly:
+
+```bash
+MODELSCOPE_ENDPOINT=https://www.modelscope.ai \
+USE_HF=0 \
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --external_plugins examples/train/decision/dataset.py \
+    --model StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink \
+    --model_type startlux \
+    --task_type decision \
+    --loss_type distill_rps \
+    --dataset startlux_decision \
+    --tuner_type lora \
+    --target_modules all-linear \
+    --freeze_vit true \
+    --torch_dtype bfloat16 \
+    --attn_impl sdpa \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 1 \
+    --learning_rate 1e-4 \
+    --lora_rank 16 \
+    --lora_alpha 32 \
+    --gradient_accumulation_steps 4 \
+    --gradient_checkpointing true \
+    --logging_steps 1 \
+    --save_steps 50 \
+    --save_total_limit 2 \
+    --max_length 8192 \
+    --split_dataset_ratio 0 \
+    --output_dir output \
+    --dataloader_num_workers 1
+```
+
+Key parameters:
+- `--model StartLuxAI/StartLux-Decision-v1.1-{4,9,27}B-AutoThink` — the ModelScope checkpoints (4B / 9B / 27B);
+  the 27B needs multiple GPUs or offload
+- `--model_type startlux` — loads the merged Qwen3.5 hybrid backbone and builds the letter read-out from the
+  folder's `decision_config.json` (26 letter token ids + per-kind temperatures) as `scoring_head`
+- `--loss_type distill_rps` — KL to the target distribution (one-hot gold or soft teacher probabilities) +
+  RPS on `score` questions
+- Records are never truncated: a record longer than `--max_length` raises `MaxLengthError` — the read-out
+  sits at the last prompt token and the question/options at the tail, so cutting tokens would shift the
+  read-out onto the wrong state. Keep `--max_length` generous
+- Packing / `--padding_free` is not supported (records would attend to each other)
+- The **Instant** (prompt-bidirectional) StartLux folders are rejected by the loader — they need a
+  different attention mode this integration does not implement; point `--model` at an AutoThink checkpoint
+
 ### Train Any CausalLM from Scratch
 
 The `generic_decision` model type lets you convert **any text CausalLM** into a decision model. Unlike the model-specific paths, this builds a randomly-initialized `JevVerbalizerHead` from the tokenizer — no factory weights required:
@@ -569,6 +640,7 @@ Choose the preprocessor based on your data schema (one-to-one with the three sch
 - `JevPreprocessor` — one-question-per-row schema (`{state, questions: [{kind, question, options, gold}]}`, one question per row)
 - `KevPreprocessor` — the text-only variant of the one-question-per-row schema (`{state, questions: [{instr, options, label}]}`)
 - `LayaPreprocessor` — the bidirectional-encoder variant of the one-question-per-row schema (`{state, qs: [{t, ins, crit, y | soft}]}`, options rendered like `rl_common.render_options`)
+- `StartLuxPreprocessor` — the letter read-out variant of the one-question-per-row schema (native System One `/v1/systemone` requests `{state, questions: {qid: {type, instructions, criteria, allow_none?}}, answers | targets, images?}`; one row per question)
 - `ClefPreprocessor` — multi-question joint schema (`{state, questions: {qid: {type, instructions, criteria}}, answers}`, all questions per row)
 - `OmniJevPreprocessor` — multimodal schema (with `images`/`videos` and option blocks)
 - `GenericDecisionPreprocessor` — identical behavior to `JevPreprocessor`; pairs with the `generic_decision` model type
@@ -696,6 +768,7 @@ When head artifacts are not in the same directory as the base model (adapter-onl
 | `THX02_DECISION_CONFIG` | `thx02` | `decision_config.json` | Override temperature / answer-code config load path |
 | `LAYA_CHECKPOINT` | `laya` | checkpoint dir | Points at one of the bundled checkpoints (root / `typed-decisions` / `multilingual`) |
 | `LAYA_CONFIG` | `laya` | `rl_agent_config.json` | Override the head architecture + temperature calibration config path |
+| `STARTLUX_DECISION_CONFIG` | `startlux` | `decision_config.json` | Override the letter token ids + per-kind read-out temperature config path |
 
 When unset, the loader searches `model_dir` (and the `adapter_vllm/` subdirectory for `jev`) automatically. On file-missing errors, the message instructs the user to set the corresponding env var.
 
@@ -710,6 +783,7 @@ When unset, the loader searches `model_dir` (and the `adapter_vllm/` subdirector
 - **`thx02` truncation**: over-long records raise `MaxLengthError` instead of being truncated; `--max_pixels`
   only lowers image resolution within [65536 px, `max_pixels` in `decision_config.json`].
 - **`laya` requires `--tuner_type full`**: the bidirectional encoder has no generation head, so the default LoRA/PeftModel causal-LM wrap does not apply.
+- **`startlux` one-pass read-out only**: the AutoThink gate/thought loop is out of scope (use the official `startlux-decide` package for it); choice lists are capped at 26 options in one pass (the official server's knockout rounds are not implemented); Instant (prompt-bidirectional) folders are rejected; records are never truncated (over-long records raise `MaxLengthError`).
 - **`tie_word_embeddings=True` adapter merge**: Only affects "merge adapter / convert format"; training and inference are unaffected.
 
 ## Verification Report
