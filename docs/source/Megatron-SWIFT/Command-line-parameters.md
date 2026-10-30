@@ -46,12 +46,11 @@ Megatron 训练（`megatron sft/pt/rlhf`）在 Swift 参数入口前置 Megatron
   - 有些模型可能不支持flash，你需要手动设置`--attention_backend unfused/fused --padding_free false`，例如：Llama4、GPT-OSS。
 - optimizer: 优化器类型，可选为'adam'、'sgd'、'muon'和'dist_muon'。默认为adam。
   - 注意：此'adam'为'adamw'，参考[这里](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70)。
-  - 其中'muon'和'dist_muon'需要"megatron-core>=0.16"。
-  - 注意：在 "megatron-core>=0.18" 上，'muon'和'dist_muon'不兼容`vit_lr`/`aligner_lr`，使用时会报错：这些参数会接管参数分组，而该版本的 Muon 正是靠参数分组将非矩阵参数路由给`muon_scalar_optimizer`的。较早的版本通过冻结参数完成该划分，不受影响。
+  - 其中'muon'和'dist_muon'不兼容`vit_lr`/`aligner_lr`，使用时会报错：这些参数会接管参数分组，而 Muon 正是靠参数分组将非矩阵参数路由给`muon_scalar_optimizer`的。
 - 🔥optimizer_cpu_offload: 将优化器状态卸载到 CPU，例如设置：`--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`。默认为False。
   - 该参数可以显著降低显存占用（但增加内存占用）。若global_batch_size较大，则对训练速度的影响不大。
 - 🔥optimizer_offload_fraction: 卸载到 CPU 的优化器状态所占比例。默认为1.。
-- optimizer_cuda_graph: 是否为优化器步骤启用 CUDA 计算图，传递给 Megatron 的 `--optimizer-cuda-graph`。默认为False。该参数需要"megatron-core>=0.17"。
+- optimizer_cuda_graph: 是否为优化器步骤启用 CUDA 计算图，传递给 Megatron 的 `--optimizer-cuda-graph`。默认为False。
 - use_precision_aware_optimizer: 使用 TransformerEngine 中的精度感知优化器，该优化器允许将主参数和优化器状态设置为较低精度，例如 fp16 和 fp8。
 - main_grads_dtype: 启用 use_precision_aware_optimizer 时主梯度的 dtype。可选为'fp32', 'bf16'。默认为'fp32'。
 - main_params_dtype: 启用 use_precision_aware_optimizer 时主参数的 dtype。可选为'fp32', 'fp16'。默认为'fp32'。

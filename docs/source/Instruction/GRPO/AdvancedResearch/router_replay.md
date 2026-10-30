@@ -87,7 +87,7 @@ R3 论文还提出路由掩码可以与 KV Cache 一起缓存：对于相同的�
 环境依赖:
 
 - R3 需要 vLLM ≥ 0.14.0 以支持返回 `routed_experts` 信息。
-- 当前 Router Replay 仅在 Megatron backend 下可用，需要 megatron-core ≥ 0.16.0。
+- 当前 Router Replay 仅在 Megatron backend 下可用。
 
 ### 与训推校正的关系
 
