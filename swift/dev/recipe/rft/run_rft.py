@@ -305,11 +305,12 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                 # borrow the device for generation (colocate) / push the trained policy into the
                 # sampler, so this round samples from the policy the previous round produced -- the
                 # rejection-sampling bootstrap.
-                cluster.sampler.wake_up(tags=['weights'])
+                from swift.dev.recipe.offload import wake_for_rollout
+                wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ['weights'])
                 cluster.engine.sync_weights(merge_and_sync=True)
                 from swift.dev.recipe.offload import offload_for_rollout
                 offload_for_rollout(cluster.model, rollout_config)
-                cluster.sampler.wake_up(tags=['kv_cache'])
+                wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ['kv_cache'])
                 entered = True
                 samples = cluster.rollout.generate(
                     prompts, num_samples=num_samples, sampling_params=cluster.sampling_params,

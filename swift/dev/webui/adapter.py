@@ -68,7 +68,16 @@ class GraphCompiler:
 
     def _validate_ports(self) -> None:
         """Every edge must land on a declared port of a declared node, with a
-        matching channel kind -- a bad wiring fails here, not at runtime."""
+        matching channel kind -- a bad wiring fails here, not at runtime.
+
+        A non-collection port takes ONE in-edge: two edges into the same port
+        would silently overwrite each other in the plan, so the duplicate is
+        rejected here (collection ports declared ``many=True`` stack freely).
+
+        A required input port (not ``many``, not ``optional``) must carry at
+        least one in-edge -- a dangling trainer.data would otherwise default
+        the dataset and quietly train on the wrong rows."""
+        fan_in: dict = {}
         for e in self._edges:
             for node_id, port_key, direction in (
                     (e.source, e.source_port, 'out'), (e.target, e.target_port, 'in')):
@@ -90,6 +99,24 @@ class GraphCompiler:
                 raise GraphValidationError(
                     f'{e.source}.{e.source_port} ({src}) cannot feed '
                     f'{e.target}.{e.target_port} ({dst})')
+            port = REGISTRY[self._nodes[e.target].type].port(e.target_port)
+            if not port.many:
+                key = (e.target, e.target_port)
+                if key in fan_in:
+                    raise GraphValidationError(
+                        f'{e.target}.{e.target_port} takes one in-edge, got several '
+                        f'(from {fan_in[key]!r} and {e.source!r})')
+                fan_in[key] = e.source
+        wired = {(e.target, e.target_port) for e in self._edges}
+        for node in self._nodes.values():
+            descriptor = REGISTRY[node.type]
+            for port in descriptor.ports_in:
+                if port.many or port.optional:
+                    continue
+                if (node.id, port.key) not in wired:
+                    raise GraphValidationError(
+                        f'{node.id}.{port.key} ({port.kind}) is required but unwired -- '
+                        f'{node.type} cannot run without it')
 
     def _port_kind(self, node_id: str, port_key: str, direction: str) -> str:
         node = self._nodes[node_id]
@@ -137,7 +164,16 @@ class GraphCompiler:
 
     def _step(self, node: NodeSpec) -> CompileStep:
         descriptor = REGISTRY[node.type]
-        inputs = {e.target_port: e.source for e in self._edges if e.target == node.id}
+        inputs: dict = {}
+        for e in self._edges:
+            if e.target != node.id:
+                continue
+            if REGISTRY[node.type].port(e.target_port).many:
+                # A symmetric collection port (e.g. several teachers): keep every
+                # source in wiring order -- collapsing to one would drop members.
+                inputs.setdefault(e.target_port, []).append(e.source)
+            else:
+                inputs[e.target_port] = e.source
         return CompileStep(
             node_id=node.id,
             type=node.type,

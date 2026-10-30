@@ -140,12 +140,13 @@ def _colocate_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'Rewa
         for batch_rows in dataloader:
             # borrow the device: wake the sampler's weights so the sync has somewhere to write,
             # sync the trained policy in, step BOTH trainers aside, wake ONLY the kv cache.
-            cluster.sampler.wake_up(tags=['weights'])
+            from swift.dev.recipe.offload import wake_for_rollout
+            wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ['weights'])
             cluster.engine.sync_weights(merge_and_sync=True)
             from swift.dev.recipe.offload import offload_for_rollout
             offload_for_rollout(cluster.model, rollout_config)
             offload_for_rollout(cluster.value_model, rollout_config)
-            cluster.sampler.wake_up(tags=['kv_cache'])
+            wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ['kv_cache'])
             entered = True
             prompts = [row['messages'] for row in batch_rows]
             extras = [{key: value for key, value in row.items() if key != 'messages'} for row in batch_rows]
