@@ -54,6 +54,8 @@ rollout:
   gpus: 4    # 必须和 train 相同
 ```
 
+Rollout 的 sleep/wake 切换会在所有服务器和副本上并发执行。每次切换都会等待所有服务器完成后，才进入下一个训练或生成阶段。
+
 **Separate（独立 GPU）**— 训练和推理各占独立 GPU，无显存竞争：
 
 ```yaml

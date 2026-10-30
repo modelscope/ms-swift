@@ -53,16 +53,18 @@ class CheckpointEngineManager:
     def sleep_rollout(self) -> None:
         if self._sleeping_tags:
             return
-        for replica in self._rollout_replicas:
-            replica.sleep(level=self.sleep_level)
+        refs = [
+            server.sleep.remote(self.sleep_level) for replica in self._rollout_replicas for server in replica.servers
+        ]
+        ray.get(refs)
         self._sleeping_tags = {'weights', 'kv_cache'}
         logger.debug('CheckpointEngineManager: rollout replicas sleeping (level=%d)', self.sleep_level)
 
     def wake_up_rollout(self, tags: Optional[List[str]] = None) -> None:
         if not self._sleeping_tags:
             return
-        for replica in self._rollout_replicas:
-            replica.wake_up(tags=tags)
+        refs = [server.wake_up.remote(tags=tags) for replica in self._rollout_replicas for server in replica.servers]
+        ray.get(refs)
         if tags is None:
             self._sleeping_tags.clear()
         else:
