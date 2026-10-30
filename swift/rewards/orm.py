@@ -438,11 +438,13 @@ class MathORM(ORM):
             value = False
         return value
 
-    def __call__(self, infer_requests: List[Union['InferRequest', Dict]], ground_truths: List[str],
-                 **kwargs) -> List[float]:
+    def __call__(self, completions: List[Union[str, 'InferRequest']], solution: List[str], **kwargs) -> List[float]:
         rewards = []
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
-        for prediction, ground_truth in zip(predictions, ground_truths):
+        if not isinstance(completions[0], str):
+            predictions = [request.messages[-1]['content'] for request in completions]
+        else:
+            predictions = completions
+        for prediction, ground_truth in zip(predictions, solution):
             if '# Answer' in prediction:
                 prediction = prediction.split('# Answer')[1]
             if '# Answer' in ground_truth:
