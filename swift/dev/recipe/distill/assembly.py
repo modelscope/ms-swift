@@ -125,7 +125,6 @@ def initialize_distill_cluster(
     max_steps: int,
     signal: str,
     train_batch_size: int,
-    gradient_accumulation_steps: int,
     quantize_config: Optional["QuantizeConfig"] = None,
     megatron_config: Optional["MegatronConfig"] = None,
     moe_config: Optional["MoEConfig"] = None,
@@ -175,7 +174,7 @@ def initialize_distill_cluster(
         apply_tuner(
             model,
             tuner_config,
-            gradient_accumulation_steps=train_config.gradient_accumulation_steps,
+            gradient_accumulation_steps=1,
             task_type=model_config.task_type,
         )
     else:
@@ -231,7 +230,9 @@ def initialize_distill_cluster(
         adapter.dedicated_manager
         if adapter is not None
         else CheckpointEngineManager(
-            model=model, sampler=sampler, mode=("colocate" if colocate else "standalone"),
+            model=model,
+            sampler=sampler,
+            mode=("colocate" if colocate else "standalone"),
             sync_backend=rollout_config.weight_sync_backend,
         )
     )
@@ -253,7 +254,6 @@ def initialize_distill_cluster(
         gkd_logits_topk=rl_config.gkd_logits_topk,
         sft_alpha=rl_config.sft_alpha,
         train_batch_size=train_batch_size,
-        gradient_accumulation_steps=gradient_accumulation_steps,
         **teacher_options,
     )
     return Cluster(
@@ -394,11 +394,19 @@ def _build_teachers(
     return [teacher], {"offload": offload}
 
 
-def build_distill_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
-                         tuner_config: Optional['TunerConfig'], train_batch_size: int,
-                         gradient_accumulation_steps: int, prompt_dataloader: Any,
-                         num_train_epochs: float, max_steps: int,
-                         output_dir: str) -> Any:
+def build_distill_driver(
+    *,
+    cluster: Cluster,
+    rl_config: "RLConfig",
+    rollout_config: "RolloutConfig",
+    tuner_config: Optional["TunerConfig"],
+    train_batch_size: int,
+    gradient_accumulation_steps: int,
+    prompt_dataloader: Any,
+    num_train_epochs: float,
+    max_steps: int,
+    output_dir: str,
+) -> Any:
     """Assemble twinkle's StreamingDriver over the cluster for a purely on-policy run (lmbda == 1).
 
     Distillation scores no outcome channel, so no remote score shape rides the barrier and no group

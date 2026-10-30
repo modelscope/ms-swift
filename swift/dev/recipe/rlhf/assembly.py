@@ -189,8 +189,14 @@ def build_preference_objects(
     # The preference encode mode: 'kto' allows a missing rejected turn, 'rlhf' pairs chosen/rejected.
     template.set_mode("kto" if rl_type == "kto" else "rlhf")
     write_ckpt_args_json(
-        output_dir, processor, model_config, template_config, tuner_config, quantize_config,
-        dataset_config=dataset_config, task_type=task_type
+        output_dir,
+        processor,
+        model_config,
+        template_config,
+        tuner_config,
+        quantize_config,
+        dataset_config=dataset_config,
+        task_type=task_type,
     )
     # RAW rows: encode=False keeps the chosen/rejected columns intact; the encoder encodes each
     # batch itself (the SFT encode path only knows single-sequence causal_lm).
@@ -224,7 +230,7 @@ def build_preference_objects(
         apply_tuner(
             model,
             tuner_config,
-            gradient_accumulation_steps=train_config.gradient_accumulation_steps,
+            gradient_accumulation_steps=1,
             task_type=task_type,
         )
     else:

@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 
 from swift.dev.utils.plugin import PluginRegistry, SwiftPlugin
 
-__all__ = ['CallbackState', 'CallbackControl', 'TrainCallback', 'CALLBACK']
+__all__ = ["CallbackState", "CallbackControl", "TrainCallback", "CALLBACK"]
 
 
 @dataclass
@@ -15,11 +15,11 @@ class CallbackState:
 
     global_step: int = 0  # completed optimizer steps
     epoch: int = 0  # zero-based epoch index currently running
-    micro_step: int = 0  # micro-batches consumed in the current optimizer window
+    micro_step: int = 0  # Cumulative micro-batch statistic; GRPO counts configured GA even under DBS.
     loss: Optional[float] = None  # most recent training loss
     metrics: Dict[str, Any] = field(default_factory=dict)  # last log record / eval metrics
     best_metric: Optional[float] = None  # best metric_for_best_model so far
-    output_dir: str = 'output'
+    output_dir: str = "output"
 
 
 @dataclass
@@ -71,19 +71,17 @@ class TrainCallback(SwiftPlugin):
     def on_log(self, state: CallbackState, control: CallbackControl, logs: Optional[Dict[str, Any]] = None) -> None:
         """When a training record is logged; ``logs`` is that record."""
 
-    def on_evaluate(self,
-                    state: CallbackState,
-                    control: CallbackControl,
-                    metrics: Optional[Dict[str, Any]] = None) -> None:
+    def on_evaluate(
+        self, state: CallbackState, control: CallbackControl, metrics: Optional[Dict[str, Any]] = None
+    ) -> None:
         """After an evaluation pass; ``metrics`` are the eval results."""
 
     def on_save(self, state: CallbackState, control: CallbackControl, checkpoint_dir: Optional[str] = None) -> None:
         """After a checkpoint is written; ``checkpoint_dir`` is where."""
 
-    def on_push_begin(self,
-                      state: CallbackState,
-                      control: CallbackControl,
-                      checkpoint_dir: Optional[str] = None) -> None:
+    def on_push_begin(
+        self, state: CallbackState, control: CallbackControl, checkpoint_dir: Optional[str] = None
+    ) -> None:
         """Before a checkpoint is uploaded to the hub."""
 
     def on_predict(self, state: CallbackState, control: CallbackControl) -> None:
@@ -91,4 +89,4 @@ class TrainCallback(SwiftPlugin):
 
 
 #: The ``callback`` extension point; ``config_field`` is ``TrainConfig.callbacks``.
-CALLBACK = PluginRegistry.register_kind('callback', TrainCallback, config_field='callbacks')
+CALLBACK = PluginRegistry.register_kind("callback", TrainCallback, config_field="callbacks")

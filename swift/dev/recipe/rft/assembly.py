@@ -129,7 +129,7 @@ def initialize_rft_cluster(
         apply_tuner(
             model,
             tuner_config,
-            gradient_accumulation_steps=train_config.gradient_accumulation_steps,
+            gradient_accumulation_steps=1,
             task_type=model_config.task_type,
         )
     else:
@@ -182,7 +182,9 @@ def initialize_rft_cluster(
         remote_group=(None if colocate else REF_ONLY_REMOTE_GROUP),
     )
     engine = CheckpointEngineManager(
-        model=model, sampler=sampler, mode=("colocate" if colocate else "standalone"),
+        model=model,
+        sampler=sampler,
+        mode=("colocate" if colocate else "standalone"),
         sync_backend=rollout_config.weight_sync_backend,
     )
     orm_scorers = resolve_reward_scorers(
