@@ -521,6 +521,7 @@ class Thx02Template(Qwen3_5Template):
     implementation exactly. Literal special tokens inside user content are neutralized (full-width
     brackets) so text can never forge a marker or a chat-template token.
     """
+    support_padding_free = False
 
     def _thx02_text(self, value: Any) -> str:
         text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
@@ -652,6 +653,9 @@ _STARTLUX_THINK_OFF_SUFFIX = '<think>\n\n</think>\n\n'
 
 
 class StartLuxTemplate(Qwen3_5Template):
+    # The AutoThink prompt is encoded bidirectionally (records packed together would attend to each other).
+    # The base ``Qwen3_5Template`` supports padding free; opt out explicitly. See Thx02Template.
+    support_padding_free = False
 
     def _startlux_fields(self, inputs: StdTemplateInputs) -> Tuple[str, str, List[str], List[Optional[str]], bool, str]:
         extra = inputs.extra_kwargs
