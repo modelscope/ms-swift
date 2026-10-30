@@ -63,6 +63,7 @@ class LLMModelType:
     telechat = 'telechat'
     telechat2 = 'telechat2'
     xing4_0 = 'xing4_0'
+    flint = 'flint'
 
     mistral = 'mistral'
     devstral = 'devstral'
