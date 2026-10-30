@@ -124,17 +124,21 @@ def test_auto_config_recognizes_local_olmo3(tmp_path):
 
 
 @pytest.mark.parametrize('feature', ['padding_free', 'packing'])
-def test_sft_arguments_require_flash_attention_for_padding_free(tmp_path, feature):
+@pytest.mark.parametrize('template, match', [
+    ('olmo3', 'does not support padding free or packing'),
+    ('default', 'requires a flash attention implementation'),
+])
+def test_sft_arguments_validate_padding_free(tmp_path, feature, template, match):
     from swift import SftArguments
 
     model_dir = tmp_path / 'model'
     config = _tiny_config()
     config.architectures = ['Olmo3ForCausalLM']
     config.save_pretrained(model_dir)
-    with pytest.raises(ValueError, match='requires a flash attention implementation'):
+    with pytest.raises(ValueError, match=match):
         SftArguments(
             model=str(model_dir),
-            template='olmo3',
+            template=template,
             dataset=['unused.jsonl'],
             output_dir=str(tmp_path / 'output'),
             torch_dtype='float32',
