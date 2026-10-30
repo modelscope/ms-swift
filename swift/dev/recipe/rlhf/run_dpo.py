@@ -1,12 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # The offline RLHF family: the run_dpo main plus the family's own training loop.
 from __future__ import annotations
-
 from typing import TYPE_CHECKING, List, Optional
 
-from swift.dev.utils.logger import get_logger
-
 from swift.dev.recipe.supervised import run_supervised
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -89,7 +87,6 @@ def run_dpo(
         rl_type=rl_type,
         reference=cluster.reference,
         calculate_kl=bool(rl_config.calculate_KL is not False),
-        micro_batch_size=train_config.per_device_train_batch_size,
         data_parallel_size=(cluster.model.device_mesh.data_world_size if distributed_config.mode == "ray" else 1),
     )
     return run_supervised(

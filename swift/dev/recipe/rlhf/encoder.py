@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # The offline RLHF family's batch encoder + console line: raw rows -> forward kwargs.
 from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from swift.dev.utils.logger import get_logger
@@ -26,7 +25,6 @@ class PreferenceBatchEncoder:
         rl_type: str,
         reference: Optional[Any] = None,
         calculate_kl: bool = True,
-        micro_batch_size: int = 1,
         data_parallel_size: int = 1,
     ):
         self.model = model
@@ -36,8 +34,6 @@ class PreferenceBatchEncoder:
         #: KTO only: whether to estimate the z_KL reference point from a mismatched KL batch. Off
         #: (``calculate_KL=False``) anchors the KTO loss at z_KL=0 and skips the two extra KL forwards.
         self.calculate_kl = calculate_kl
-        #: Cap the no-grad reference forwards as well as the trainable policy forward.
-        self.micro_batch_size = micro_batch_size
         self.data_parallel_size = data_parallel_size
         #: RM scores a num_labels=1 seq_cls head (no labels, no logps); the rest read per-token labels.
         self._is_reward = rl_type == "rm"
@@ -135,7 +131,7 @@ class PreferenceBatchEncoder:
             seq.append(row[positions].sum() if positions else row.new_zeros(()))
         return torch.stack(seq)
 
-    def _kto_kl_term(self, kl_features: List[dict]) -> Optional[float]:
+    def _kto_kl_term(self, kl_features: List[dict], *, micro_batch_size: int) -> Optional[float]:
         """z_KL: the detached, clamped KL(pi||pi_ref) estimate over the mismatched KL batch.
 
         Mirrors TRL/legacy KTO: ``z_KL = mean(seq_logp_pi - seq_logp_ref).clamp(min=0)``, detached
@@ -144,18 +140,16 @@ class PreferenceBatchEncoder:
         """
         if not self.calculate_kl or not kl_features:
             return None
-        policy_out = self.model.forward_only(
-            inputs=kl_features, compute_loss=False, micro_batch_size=self.micro_batch_size
-        )
+        policy_out = self.model.forward_only(inputs=kl_features, compute_loss=False, micro_batch_size=micro_batch_size)
         policy_logps = policy_out.get("logps")
-        ref_logps = self._ref_logps(kl_features)
+        ref_logps = self._ref_logps(kl_features, micro_batch_size=micro_batch_size)
         if policy_logps is None or ref_logps is None:
             return None
         policy_seq = self._sequence_logps(policy_logps, kl_features)
         ref_seq = self._sequence_logps(ref_logps, kl_features)
         return float((policy_seq - ref_seq).mean().clamp(min=0).detach())
 
-    def _kto_step_kwargs(self, rows: List[dict], kwargs: Dict[str, Any]) -> List[dict]:
+    def _kto_step_kwargs(self, rows: List[dict], kwargs: Dict[str, Any], *, micro_batch_size: int) -> List[dict]:
         """Assemble one KTO update: fill ``kwargs`` with its loss inputs, return the completions.
 
         The KTOLoss needs three extras threaded through ``kwargs``: the per-example binary ``label``,
@@ -163,16 +157,16 @@ class PreferenceBatchEncoder:
         ``z_kl`` reference point. z_KL is omitted when ``calculate_KL`` is off (KTOLoss reads 0).
         """
         completion_features, kl_features, labels = self._encode_kto_batch(rows)
-        ref_logps = self._ref_logps(completion_features)
+        ref_logps = self._ref_logps(completion_features, micro_batch_size=micro_batch_size)
         if ref_logps is not None:
             kwargs["ref_logps"] = ref_logps
-        z_kl = self._kto_kl_term(kl_features)
+        z_kl = self._kto_kl_term(kl_features, micro_batch_size=micro_batch_size)
         if z_kl is not None:
             kwargs["z_kl"] = z_kl
         kwargs["label"] = labels
         return completion_features
 
-    def _ref_logps(self, features: List[dict]) -> Optional[Any]:
+    def _ref_logps(self, features: List[dict], *, micro_batch_size: int) -> Optional[Any]:
         """Per-token reference logps for this batch, or None when the type is reference-free.
 
         The shared-weights LoRA view IS the policy with its adapter disabled (no second model); the
@@ -186,13 +180,13 @@ class PreferenceBatchEncoder:
                 inputs=features,
                 disable_lora=True,
                 compute_loss=False,
-                micro_batch_size=self.micro_batch_size * (1 if self.rl_type == "kto" else 2),
+                micro_batch_size=micro_batch_size,
             )
         else:
             outputs = self.reference.forward_only(
                 inputs=features,
                 compute_loss=False,
-                micro_batch_size=self.micro_batch_size * (1 if self.rl_type == "kto" else 2),
+                micro_batch_size=micro_batch_size,
             )
         return outputs.get("logps")
 
@@ -204,20 +198,22 @@ class PreferenceBatchEncoder:
                 f"Preference updates need a record count divisible by DP={self.data_parallel_size}; "
                 f"got {len(rows)} records. Each rank must receive whole chosen/rejected pairs."
             )
+        # Convert records to sequences once; every forward uses this call's micro-batch size.
+        micro_batch_size *= 1 if self.rl_type == "kto" else 2
         kwargs: Dict[str, Any] = {}
         if self.rl_type == "kto":
-            kwargs["inputs"] = self._kto_step_kwargs(rows, kwargs)
+            kwargs["inputs"] = self._kto_step_kwargs(rows, kwargs, micro_batch_size=micro_batch_size)
         else:
             features = self._interleave(rows)
             if not self._is_reward:
-                ref_logps = self._ref_logps(features)
+                ref_logps = self._ref_logps(features, micro_batch_size=micro_batch_size)
                 if ref_logps is not None:
                     kwargs["ref_logps"] = ref_logps
             kwargs["inputs"] = features
         if self._is_reward:
             kwargs["task"] = "seq_cls"
         kwargs["gradient_accumulation_steps"] = 1
-        kwargs["micro_batch_size"] = micro_batch_size * (1 if self.rl_type == "kto" else 2)
+        kwargs["micro_batch_size"] = micro_batch_size
         return kwargs
 
 

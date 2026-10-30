@@ -88,7 +88,7 @@ def test_offline_entry_submits_full_and_short_updates(tmp_path, preference, mode
                 "rejected_labels": row["labels"],
             }
         )
-        forward = PreferenceBatchEncoder(model, template, rl_type="dpo", micro_batch_size=2)
+        forward = PreferenceBatchEncoder(model, template, rl_type="dpo")
     else:
         forward = _supervised_micro_kwargs("causal_lm")
     history = run_supervised(
@@ -209,9 +209,58 @@ def test_public_resume_restores_update_micro_and_data_positions(tmp_path, ignore
 
 
 def test_preference_dispatch_rejects_a_tail_that_would_split_pairs():
-    encoder = PreferenceBatchEncoder(Model(2), None, rl_type="dpo", micro_batch_size=2, data_parallel_size=2)
+    encoder = PreferenceBatchEncoder(Model(2), None, rl_type="dpo", data_parallel_size=2)
     with pytest.raises(ValueError, match="whole chosen/rejected pairs"):
         encoder([{}, {}, {}], micro_batch_size=2)
+
+
+@pytest.mark.parametrize("rl_type", ["dpo", "kto"])
+@pytest.mark.parametrize("shared_reference", [False, True])
+def test_preference_auxiliary_forwards_use_per_call_micro_batch_size(rl_type, shared_reference):
+    import torch
+
+    from swift.dev.processor import InputProcessor
+
+    processor = InputProcessor(framework="megatron", padding_free=False)
+    calls = []
+
+    class Scorer:
+        def __init__(self, reference=False):
+            self.reference = reference
+
+        def forward_only(self, *, inputs, micro_batch_size, **kwargs):
+            # Exercise Megatron's actual collator, including its minimum input-size assertion.
+            processor.collate_fn(
+                processor.prepare_inputs(inputs), micro_batch_size=micro_batch_size, variable_seq_lengths=True
+            )
+            disabled = kwargs.get("disable_lora", False)
+            calls.append((len(inputs), micro_batch_size, disabled))
+            value = 0.0 if self.reference or disabled else 1.0
+            return {"logps": torch.full((len(inputs), 2), value)}
+
+    model = Scorer()
+    reference = model if shared_reference else Scorer(reference=True)
+    template = SimpleNamespace(
+        encode=lambda row: {
+            "chosen_input_ids": [int(row["messages"][-1]["content"]), 99],
+            "chosen_labels": [int(row["messages"][-1]["content"]), -100],
+            "rejected_input_ids": [int(row.get("rejected_response", "0")), 99],
+            "rejected_labels": [int(row.get("rejected_response", "0")), -100],
+            "label": True,
+        }
+    )
+    encoder = PreferenceBatchEncoder(model, template, rl_type=rl_type, reference=reference)
+    for batch_size in (4, 1, 4):  # Training -> evaluation -> training on the same encoder.
+        calls.clear()
+        rows = [{"messages": [{"role": "assistant", "content": str(i + 1)}]} for i in range(batch_size)]
+        kwargs = encoder(rows, micro_batch_size=batch_size)
+        sequence_batch_size = batch_size * (1 if rl_type == "kto" else 2)
+        assert kwargs["micro_batch_size"] == sequence_batch_size
+        expected = [(sequence_batch_size, sequence_batch_size, shared_reference)]
+        if rl_type == "kto":
+            expected += [(batch_size, batch_size, False), (batch_size, batch_size, shared_reference)]
+            assert kwargs["z_kl"] == pytest.approx(1.0)
+        assert calls == expected
 
 
 def test_ppo_updates_policy_and_critic_with_aligned_auxiliary_data():

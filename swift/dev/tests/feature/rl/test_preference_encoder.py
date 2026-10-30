@@ -28,18 +28,16 @@ class _PairedTemplate:
         return encoded
 
 
-def _encoder(rl_type="dpo", micro_batch_size=1):
+def _encoder(rl_type="dpo"):
     from swift.dev.recipe.rlhf.encoder import PreferenceBatchEncoder
 
-    return PreferenceBatchEncoder(
-        model=None, template=_PairedTemplate(), rl_type=rl_type, calculate_kl=False, micro_batch_size=micro_batch_size
-    )
+    return PreferenceBatchEncoder(model=None, template=_PairedTemplate(), rl_type=rl_type, calculate_kl=False)
 
 
 def test_paired_interleave_order_and_prefix_strip():
     """S8-04: rows encode to [chosen_1, rejected_1, chosen_2, rejected_2, ...] with the
     chosen_/rejected_ prefixes stripped into standalone input_ids/labels features."""
-    encoder = _encoder("dpo", micro_batch_size=2)
+    encoder = _encoder("dpo")
     kwargs = encoder(
         [
             {"chosen_ids": [1, 2], "rejected_ids": [3, 4]},
@@ -65,9 +63,7 @@ def test_rm_routes_seq_cls_without_labels():
 
     from swift.dev.recipe.rlhf.encoder import PreferenceBatchEncoder
 
-    encoder = PreferenceBatchEncoder(
-        model=None, template=_RmTemplate(), rl_type="rm", calculate_kl=False, micro_batch_size=1
-    )
+    encoder = PreferenceBatchEncoder(model=None, template=_RmTemplate(), rl_type="rm", calculate_kl=False)
     kwargs = encoder([{"chosen_ids": [1], "rejected_ids": [2]}], micro_batch_size=1)
     assert kwargs["task"] == "seq_cls"
     assert all("labels" not in f for f in kwargs["inputs"])
@@ -94,7 +90,7 @@ def test_missing_chosen_side_fails_loudly():
 @pytest.mark.parametrize("micro_batch_size", [1, 2])
 def test_update_uses_backend_micro_batches_without_cross_call_accumulation(rl_type, micro_batch_size):
     """Submit the whole update with backend GA=1 and 2B sequences per paired micro-batch."""
-    encoder = _encoder(rl_type, micro_batch_size=micro_batch_size)
+    encoder = _encoder(rl_type)
     rows = [{"chosen_ids": [2 * i], "rejected_ids": [2 * i + 1]} for i in range(4 * micro_batch_size)]
     kwargs = encoder(rows, micro_batch_size=micro_batch_size)
     assert kwargs["gradient_accumulation_steps"] == 1
