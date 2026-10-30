@@ -75,13 +75,9 @@ class CheckpointEngineManager:
         need_merge = not adapter_only and merge_and_sync
         if need_merge:
             tg.merge_lora()
-        if self.is_colocated:
-            tg.offload_to_cpu()
         try:
             tg.update_weights(adapter_only=adapter_only)
         finally:
-            if self.is_colocated:
-                tg.reload_to_gpu()
             if need_merge:
                 tg.unmerge_lora()
         if not self.base_sync_done:
