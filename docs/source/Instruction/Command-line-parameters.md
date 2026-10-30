@@ -162,7 +162,7 @@
 ### 量化参数
 以下为加载模型时量化的参数，具体含义可以查看[量化](https://huggingface.co/docs/transformers/main/en/main_classes/quantization)文档。这里不包含`swift export`中涉及的`gptq`、`awq`量化参数。
 
-- 🔥quant_method: 加载模型时采用的量化方法，可选项为'bnb'、'hqq'、'eetq'、'quanto'和'fp8'，默认为None。
+- 🔥quant_method: 加载模型时采用的量化方法，可选项为'bnb'、'hqq'、'eetq'、'quanto'、'fp8'和'entropack'，默认为None。
   - 若对awq/gptq量化模型进行qlora训练，则不需要设置额外`quant_method`等量化参数。
 - 🔥quant_bits: 量化bits数，默认为None。
 - hqq_axis: hqq量化axis，默认为None。
@@ -170,6 +170,8 @@
 - bnb_4bit_quant_type: bnb量化类型，支持`fp4`和`nf4`，默认为`nf4`。
 - bnb_4bit_use_double_quant: 是否使用双重量化，默认为`True`。
 - bnb_4bit_quant_storage: bnb量化存储类型，默认为None。
+- entropack_target_bpp: EntroPack压缩的目标bits per parameter，支持小数。使用`quant_method=entropack`时必须设置。
+- entropack_linear_type: EntroPack线性层实现，可选为`default`、`fp8`和`int8`，默认为`default`。
 
 ### RAY参数
 

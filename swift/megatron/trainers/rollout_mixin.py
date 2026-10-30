@@ -220,7 +220,19 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         vp_size = getattr(args, 'virtual_pipeline_model_parallel_size', None)
         assert vp_size is None or vp_size == 1, 'Teacher distillation does not support VPP.'
         self.teacher_hf_config = AutoConfig.from_pretrained(args.teacher_model_dir, trust_remote_code=True)
-        self.teacher_models = get_mcore_model(args, self.teacher_hf_config)
+        teacher_args = copy(args)
+        teacher_args.model_dir = args.teacher_model_dir
+        teacher_args.megatron_model_meta = args.teacher_megatron_model_meta
+        # The teacher only provides logits and does not need the MTP.
+        teacher_args.mtp_num_layers = 0
+        teacher_args.mtp_shared_weights = False
+        teacher_args.mtp_use_repeated_layer = False
+        teacher_args.megatron_extra_kwargs = {
+            key: value
+            for key, value in (args.megatron_extra_kwargs or {}).items()
+            if key not in {'mtp_num_layers', 'mtp_shared_weights', 'mtp_use_repeated_layer'}
+        }
+        self.teacher_models = get_mcore_model(teacher_args, self.teacher_hf_config)
         self.teacher_config = self.teacher_models[0].config
         if not args.use_cpu_initialization:
             for teacher_model in self.teacher_models:

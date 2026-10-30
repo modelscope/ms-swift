@@ -12,14 +12,21 @@ because the corpora differ in raw shape:
   * Kev     -- ONE record -> ONE row PER question (a Kev row is a plain causal sequence: state +
                that question's branch); unified schema plus kev-native
                `{'state', 'questions': [{'instr', 'options', 'label'}]}` rows.
+  * THX-02  -- ONE record -> ONE row carrying ALL its questions (joint inline readout); native
+               Decisions-API schema, optional images, gold `answers` or soft `targets`.
+  * Laya    -- ONE record -> ONE row PER question (a Laya row is a bidirectional encoder sequence:
+               question + that question's option markers + state); unified schema plus laya-native
+               `{'state', 'qs': [{'t', 'ins', 'crit', 'y'|'soft'}]}` rows.
 
 Pass this file to `swift sft --external_plugins examples/train/decision/dataset.py` and reference a
-dataset by its registered name (`clef_decision` / `jev_decision` / `omnijev_decision` / `kev_decision`).
+dataset by its registered name (`clef_decision` / `jev_decision` / `omnijev_decision` / `kev_decision` /
+`thx02_decision` / `laya_decision`).
 """
 import os
 
 from swift.dataset import DatasetMeta, register_dataset
-from swift.dataset.preprocessor.decision import ClefPreprocessor, JevPreprocessor, KevPreprocessor, OmniJevPreprocessor
+from swift.dataset.preprocessor.decision import (ClefPreprocessor, JevPreprocessor, KevPreprocessor, LayaPreprocessor,
+                                                 OmniJevPreprocessor, Thx02Preprocessor)
 
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 
@@ -55,10 +62,27 @@ register_dataset(
     ),
     exist_ok=True)
 
+register_dataset(
+    DatasetMeta(
+        dataset_name='thx02_decision',
+        dataset_path=os.path.join(_DATA_DIR, 'thx02.jsonl'),
+        preprocess_func=Thx02Preprocessor(),
+    ),
+    exist_ok=True)
+
+register_dataset(
+    DatasetMeta(
+        dataset_name='laya_decision',
+        dataset_path=os.path.join(_DATA_DIR, 'laya.jsonl'),
+        preprocess_func=LayaPreprocessor(),
+    ),
+    exist_ok=True)
+
 if __name__ == '__main__':
     # Quick self-check: load each dataset and print the normalized decision row contract.
     from swift.dataset import load_dataset
-    for name in ('clef_decision', 'jev_decision', 'omnijev_decision', 'kev_decision'):
+    for name in ('clef_decision', 'jev_decision', 'omnijev_decision', 'kev_decision', 'thx02_decision',
+                 'laya_decision'):
         ds = load_dataset([name], num_proc=1)[0]
         print(f'==== {name}: {len(ds)} rows ====')
         row = ds[0]

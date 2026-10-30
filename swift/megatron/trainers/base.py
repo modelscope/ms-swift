@@ -166,7 +166,7 @@ class BaseMegatronTrainer(ABC):
                 num_layers=config.num_layers,
                 moe_layer_freq=config.moe_layer_freq,
                 mtp_num_layers=args.mtp_num_layers)
-        if args.mtp_num_layers is not None:
+        if args.mtp_num_layers:
             mtp_loss_scale = 1 / args.num_microbatches / n_steps
             mtp_logs = {}
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, self.state.iteration, None, None, mtp_logs)
@@ -861,6 +861,12 @@ class BaseMegatronTrainer(ABC):
             skip_saving_adapter = args.tuner_type == 'lora_llm' or (
                 args.tuner_type == 'lora' and args.merge_lora and not hasattr(self.bridge, '_support_hf_grouped_lora'))
             save_missing_weights = args.save_missing_weights and args.model_dir
+
+            if args.use_megatron_fsdp and (not skip_saving_adapter or args.merge_lora):
+                # HF export bypasses FSDP forward hooks, even when DCP saving is skipped.
+                for model in self.wrapped_models:
+                    model.start_param_sync(force_sync=True)
+                    model.module._replace_param_with_raw_if_needed()
 
             if not skip_saving_adapter:
                 self.bridge.save_weights(

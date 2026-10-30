@@ -89,9 +89,9 @@ class ModelMeta:
             self.model_groups = [self.model_groups]
         self.candidate_templates = list(
             dict.fromkeys(t for t in [self.template] + [mg.template for mg in self.model_groups] if t is not None))
-        if self.model_type in MLLMModelType.__dict__:
+        if self.model_type in _get_model_type_values(MLLMModelType):
             self.is_multimodal = True
-        if self.model_type in RMModelType.__dict__:
+        if self.model_type in _get_model_type_values(RMModelType):
             self.is_reward = True
 
     def get_matched_model_group(self, model_name: str) -> Optional[ModelGroup]:
@@ -106,7 +106,13 @@ class ModelMeta:
     def check_requires(self, model_info=None):
         extra_requires = []
         if model_info and model_info.quant_method:
-            mapping = {'bnb': ['bitsandbytes'], 'awq': ['autoawq'], 'gptq': ['gptqmodel'], 'aqlm': ['aqlm']}
+            mapping = {
+                'bnb': ['bitsandbytes'],
+                'awq': ['autoawq'],
+                'gptq': ['gptqmodel'],
+                'aqlm': ['aqlm'],
+                'entropack': ['entropack']
+            }
             extra_requires += mapping.get(model_info.quant_method, [])
         requires = []
         for require in self.requires + extra_requires:
@@ -116,7 +122,12 @@ class ModelMeta:
                 requires.append(f'"{require}"')
         if requires:
             requires = ' '.join(requires)
-            logger.warning(f'Please install the package: `pip install {requires} -U`.')
+            logger.warning(f'Please install the package: `pip install {requires}`.')
+
+
+def _get_model_type_values(model_type_cls) -> set:
+    """Declared model types of a `*ModelType` container (the values, not the attribute names)."""
+    return {v for k, v in vars(model_type_cls).items() if not k.startswith('__') and isinstance(v, str)}
 
 
 MODEL_MAPPING: Dict[str, ModelMeta] = {}
@@ -128,7 +139,7 @@ class ModelInfo:
     model_dir: str
     torch_dtype: torch.dtype
     max_model_len: int
-    quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', 'hqq', None]
+    quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', 'hqq', 'entropack', None]
     quant_bits: int
 
     # extra

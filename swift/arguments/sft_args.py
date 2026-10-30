@@ -209,6 +209,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         self._init_decision_callbacks()
         self._init_override()
         TunerArguments.__post_init__(self)
+        self._check_decision_packing()
         self._check_padding_free()
         if self.vit_gradient_checkpointing is None:
             self.vit_gradient_checkpointing = self.gradient_checkpointing
@@ -238,6 +239,15 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
 
         if 'swanlab' in self.report_to:
             self._init_swanlab()
+
+    def _check_decision_packing(self):
+        # THX-02 reads every question bidirectionally inside its own sequence, so packed records would attend
+        # to each other. Rejected here, before the model is loaded.
+        if self.task_type == 'decision' and self.model_type == 'thx02' and (self.packing or self.padding_free):
+            feature = 'packing' if self.packing else 'padding_free'
+            raise ValueError(f'THX-02 does not support --{feature}: its full-attention layers are noncausal, so '
+                             'records in one packed sequence would attend to each other. Remove --packing / '
+                             '--padding_free.')
 
     def _init_decision_callbacks(self):
         if self.task_type == 'decision':

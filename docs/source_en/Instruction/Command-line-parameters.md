@@ -165,7 +165,7 @@ Refer to the [generation_config](https://huggingface.co/docs/transformers/main_c
 
 The following are parameters for quantizing models upon loading. See the [quantization documentation](https://huggingface.co/docs/transformers/main/en/main_classes/quantization) for details. These do not include `gptq` or `awq` quantization parameters used in `swift export`.
 
-- 🔥quant_method: Quantization method used when loading the model. Options: `'bnb'`, `'hqq'`, `'eetq'`, `'quanto'`, `'fp8'`. Default is `None`.
+- 🔥quant_method: Quantization method used when loading the model. Options: `'bnb'`, `'hqq'`, `'eetq'`, `'quanto'`, `'fp8'`, `'entropack'`. Default is `None`.
   - If performing QLoRA training on already AWQ/GPTQ-quantized models, you do not need to set additional quantization parameters like `quant_method`.
 - 🔥quant_bits: Number of bits for quantization. Default is `None`.
 - hqq_axis: Axis for HQQ quantization. Default is `None`.
@@ -173,6 +173,8 @@ The following are parameters for quantizing models upon loading. See the [quanti
 - bnb_4bit_quant_type: Type for 4-bit BNB quantization. Options: `'fp4'`, `'nf4'`. Default is `'nf4'`.
 - bnb_4bit_use_double_quant: Whether to use double quantization. Default is `True`.
 - bnb_4bit_quant_storage: Data type used to store quantized weights. Default is `None`.
+- entropack_target_bpp: Target bits per parameter for EntroPack compression. Fractional values are supported. This parameter is required when using `quant_method=entropack`.
+- entropack_linear_type: EntroPack linear implementation. Options: `'default'`, `'fp8'`, `'int8'`. Default is `'default'`.
 
 ### RAY Arguments
 

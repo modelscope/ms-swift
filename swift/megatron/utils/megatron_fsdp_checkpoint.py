@@ -86,8 +86,8 @@ def _validate_optimizer_state(state_dict):
 def _prepare_state_dict(args, state_dict, model, preserve_raw_state: bool = False):
     _validate_optimizer_state(state_dict)
     if is_torch_npu_available():
-        from swift.model.npu_patch.mindspeed import complete_mindspeed_fsdp_dtensor_optimizer_state
-        complete_mindspeed_fsdp_dtensor_optimizer_state(state_dict, model)
+        from swift.model.npu_patch.megatron_fsdp import complete_npu_fsdp_dtensor_optimizer_state
+        complete_npu_fsdp_dtensor_optimizer_state(state_dict, model)
 
     # Preprocessing rewrites the model and optimizer containers. Keep their original structure
     # for the wrapper and optimizer load_state_dict calls after DCP has populated the tensors.
