@@ -521,6 +521,7 @@ class Thx02Template(Qwen3_5Template):
     implementation exactly. Literal special tokens inside user content are neutralized (full-width
     brackets) so text can never forge a marker or a chat-template token.
     """
+    support_padding_free = False
 
     def _thx02_text(self, value: Any) -> str:
         text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
@@ -636,6 +637,140 @@ class Thx02Template(Qwen3_5Template):
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.thx02, template_cls=Thx02Template, default_system=None))
+
+
+# Mirror of startlux_decision/jevfmt.py::_norm (official package): keep byte-identical semantics --
+# it decides whether a criterion is a bare restatement of the option name, and the Stage A align
+# test asserts our prompt matches the official one exactly.
+def _startlux_norm(s: Any) -> str:
+    return re.sub(r'[\s_\-]+', ' ', str(s)).strip().lower()
+
+
+_STARTLUX_BARE = re.compile(r'^(?:\(?[A-Za-z][\).]?|\(?\d{1,3}[\).]?|option[_ ]?\d{1,3}|opt[_ ]?\d{1,3})$', re.I)
+
+_STARTLUX_SYSTEM = 'Apply the criterion to the evidence. Choose exactly one listed option. Answer with its letter only.'
+_STARTLUX_THINK_OFF_SUFFIX = '<think>\n\n</think>\n\n'
+
+
+class StartLuxTemplate(Qwen3_5Template):
+    # The AutoThink prompt is encoded bidirectionally (records packed together would attend to each other).
+    # The base ``Qwen3_5Template`` supports padding free; opt out explicitly. See Thx02Template.
+    support_padding_free = False
+
+    def _startlux_fields(self, inputs: StdTemplateInputs) -> Tuple[str, str, List[str], List[Optional[str]], bool, str]:
+        extra = inputs.extra_kwargs
+        kinds = extra.get('kinds')
+        questions = extra.get('questions')
+        options = extra.get('options')
+        if not kinds or not questions or not options:
+            raise ValueError('StartLuxTemplate requires `kinds` / `questions` / `options` in extra_kwargs (produced '
+                             f'by StartLuxPreprocessor); got kinds={kinds!r}, questions={questions!r}, '
+                             f'options={options!r}.')
+        kind = DecisionTemplate._normalize_kind(kinds[0])
+        ids = [str(i) for i in options[0]]
+        descriptions: List[Optional[str]] = [None] * len(ids)
+        criterias = extra.get('criterias')
+        if criterias:
+            descriptions = list(criterias[0])
+            if len(descriptions) != len(ids):
+                raise ValueError(f'StartLuxTemplate criterias has {len(descriptions)} descriptions for '
+                                 f'{len(ids)} options.')
+        none_option = bool((extra.get('none_options') or [False])[0])
+        state = extra.get('state')
+        if state is None:
+            state = DecisionTemplate._get_state(inputs)
+        return kind, str(questions[0]), ids, descriptions, none_option, str(state)
+
+    @staticmethod
+    def _startlux_option_lines(kind: str,
+                               ids: List[str],
+                               criteria: Dict[str, Any],
+                               none_option: bool = False) -> List[str]:
+        extra = len(ids) - 1 if none_option else None
+        listed = ids if extra is None else ids[:extra]
+        hide = kind == 'choice' and all(_STARTLUX_BARE.match(i) for i in listed) and all(criteria[i] for i in listed)
+        lines = []
+        for k, i in enumerate(ids):
+            name = ('yes' if i == 'true' else 'no') if kind == 'noul' else i
+            c = criteria[i]
+            c = c if isinstance(c, str) or c is None else json.dumps(c, ensure_ascii=False)
+            if hide and k != extra:
+                body = c
+            elif c is None or not c.strip() or _startlux_norm(c) == _startlux_norm(name):
+                body = name
+            else:
+                body = f'{name}: {c}'
+            lines.append(f'{_OPTION_LETTERS[k]}) {body}')
+        return lines
+
+    @staticmethod
+    def _startlux_evidence(state: str, n_images: int) -> str:
+        text = state if isinstance(state, str) else str(state)
+        marks = text.count('<image>')
+        if marks == n_images:
+            return text
+        if marks:
+            raise ValueError(f'the state has {marks} <image> marks for {n_images} images.')
+        if n_images == 0:
+            return text
+        head = '<image>' if n_images == 1 else '\n'.join(f'Image {k + 1}: <image>' for k in range(n_images))
+        return head + ('\n\n' + text if text.strip() else '')
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        from swift.model.decision_head import QUESTION_TYPES
+        from ..vision_utils import load_image
+        kind, instructions, ids, descriptions, none_option, state = self._startlux_fields(inputs)
+        option_lines = self._startlux_option_lines(kind, ids, dict(zip(ids, descriptions)), none_option=none_option)
+        images = [load_image(image) for image in (inputs.images or [])]
+        evidence = self._startlux_evidence(state, len(images))
+        if not evidence.strip():
+            evidence = '(none)'
+        content_text = ('Evidence:\n' + evidence + '\n\nQuestion: ' + instructions.strip() + '\nOptions:\n'
+                        + '\n'.join(option_lines))
+        # <image> marks -> content parts, the form the chat template renders images from.
+        parts: List[Dict[str, Any]] = []
+        for k, piece in enumerate(content_text.split('<image>')):
+            if k:
+                parts.append({'type': 'image'})
+            if piece:
+                parts.append({'type': 'text', 'text': piece})
+        content: Any = parts if images else content_text
+        messages = [{'role': 'system', 'content': _STARTLUX_SYSTEM}, {'role': 'user', 'content': content}]
+        text = self.processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True, enable_thinking=False)
+        if not text.endswith(_STARTLUX_THINK_OFF_SUFFIX):
+            raise ValueError("the tokenizer's chat template lacks the thinking-off assistant prefix "
+                             f'{_STARTLUX_THINK_OFF_SUFFIX!r}; this is not a StartLux-Decision tokenizer.')
+        processed = self.processor(text=[text], images=images or None, return_tensors='pt')
+        input_ids = processed['input_ids'][0]
+        if self.max_length is not None and len(input_ids) > self.max_length:
+            raise MaxLengthError(
+                f'StartLux record has {len(input_ids)} tokens, more than max_length={self.max_length}; StartLux '
+                'records cannot be truncated (the read-out sits at the last token and the question/options at the '
+                'tail). Raise --max_length or shorten the state.')
+        encoded = {
+            'input_ids': input_ids.tolist(),
+            'decision_meta': {
+                'n_options': [len(option_lines)],
+                'kinds': [QUESTION_TYPES[kind]],
+            },
+        }
+        if images:
+            encoded['pixel_values'] = processed['pixel_values']
+            encoded['image_grid_thw'] = processed['image_grid_thw']
+        if processed.get('mm_token_type_ids') is not None:
+            encoded['mm_token_type_ids'] = processed['mm_token_type_ids'][0]
+        return encoded
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        meta = inputs.get('decision_meta') if isinstance(inputs, dict) else None
+        res = super()._post_encode(model, inputs)
+        if meta is not None and isinstance(res, dict):
+            res['decision_meta'] = meta
+        return res
+
+
+register_template(QwenTemplateMeta(MLLMTemplateType.startlux, template_cls=StartLuxTemplate, default_system=None))
 
 
 class LayaTemplate(DecisionTemplate, Template):

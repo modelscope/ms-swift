@@ -10,7 +10,7 @@ from swift.template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                             ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
 from ..preprocessor.decision import (ClefPreprocessor, DecisionAugmentConfig, JevPreprocessor, KevPreprocessor,
-                                     LayaPreprocessor, OmniJevPreprocessor, ScoringPreprocessor)
+                                     LayaPreprocessor, OmniJevPreprocessor, ScoringPreprocessor, StartLuxPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 
@@ -1064,6 +1064,12 @@ class OpenJevPreprocessor(ScoringPreprocessor):
                 return list(target) + [0.0]
             return target
 
+        if isinstance(self.delegate, StartLuxPreprocessor):
+            # StartLux renders noul as [true(yes), false(no)]; choice/score keep the row's own order.
+            if kind == 'noul':
+                return self._reorder_target(options, target, ['true', 'false'])
+            return target
+
         return target
 
     @classmethod
@@ -1109,6 +1115,7 @@ _open_jev_delegates = {
     'omnijev': OmniJevPreprocessor,
     'kev': KevPreprocessor,
     'laya': LayaPreprocessor,
+    'startlux': StartLuxPreprocessor,
 }
 
 # Register every `open_jev_<model_type>` dataset

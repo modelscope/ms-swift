@@ -8,10 +8,10 @@ from transformers import PretrainedConfig, PreTrainedModel
 from typing import Dict, Optional
 
 from swift.model.decision_head import (ClefJointSchemaHead, JevVerbalizerHead, KevPointerHead, LayaHead, OmniJevHead,
-                                       ScoringHead, Thx02ReadoutHead, load_thx02_decision_config)
+                                       ScoringHead, StartLuxLetterHead, Thx02ReadoutHead, load_thx02_decision_config)
 from swift.model.omnijev_branch import (OPT_CLOSE, OPT_OPEN, add_option_tokens, branch_questions, find_rope_owner,
                                         is_hybrid, prefix_inputs, rope_positions, rows_from_ids)
-from swift.model.patcher import patch_module_forward
+from swift.model.patcher import get_original_forward, patch_module_forward
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger
 from ..constant import LLMModelType, MLLMModelType
@@ -47,7 +47,7 @@ class ScoringModelLoader(ModelLoader):
         if head.needs_output_embeddings:
             head.set_output_embeddings(model.get_output_embeddings())
 
-        origin_forward = model.forward
+        origin_forward = get_original_forward(model)
 
         @wraps(origin_forward.__func__ if hasattr(origin_forward, '__func__') else origin_forward)
         def new_forward(self, *args, **kwargs):
@@ -167,7 +167,7 @@ class OmniJevModelLoader(ScoringModelLoader, Qwen3_5Loader):
         if not open_ids or not close_ids or tokenizer is None:
             raise RuntimeError('OmniJevModelLoader.attach_scoring_head needs the option tokens registered first; go '
                                'through get_model (which runs add_option_tokens), not attach_scoring_head directly.')
-        origin_forward = model.forward
+        origin_forward = get_original_forward(model)
 
         @wraps(origin_forward.__func__ if hasattr(origin_forward, '__func__') else origin_forward)
         def new_forward(self, *args, **kwargs):
@@ -411,7 +411,7 @@ class Thx02ModelLoader(ScoringModelLoader, Qwen3_5Loader):
     def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
         head = self._match_head_dtype_device(model, head)
         model.scoring_head = head
-        origin_forward = model.forward
+        origin_forward = get_original_forward(model)
 
         @wraps(origin_forward.__func__ if hasattr(origin_forward, '__func__') else origin_forward)
         def new_forward(self, *args, **kwargs):
@@ -443,6 +443,40 @@ register_model(
         task_type='decision',
         architectures=['THXDecisionModel'],
         requires=['transformers>=5.13.0', 'qwen_vl_utils>=0.0.14'],
+        tags=['vision', 'decision']))
+
+
+class StartLuxModelLoader(ScoringModelLoader, Qwen3_5Loader):
+
+    head_cls = StartLuxLetterHead
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        self._startlux_tokenizer = self._get_tokenizer(processor)
+        return super().get_model(model_dir, config, processor, model_kwargs)
+
+    def build_head(self, model: PreTrainedModel, model_dir: str, config: PretrainedConfig) -> ScoringHead:
+        return self.head_cls.from_pretrained(
+            model_dir, model=model, config=config, tokenizer=getattr(self, '_startlux_tokenizer', None))
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.startlux, [
+            ModelGroup([
+                Model('StartLuxAI/StartLux-Decision-v1.1-4B-AutoThink',
+                      'startlux-models/StartLux-Decision-v1.1-4B-AutoThink'),
+                Model('StartLuxAI/StartLux-Decision-v1.1-9B-AutoThink',
+                      'startlux-models/StartLux-Decision-v1.1-9B-AutoThink'),
+                Model('StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink',
+                      'startlux-models/StartLux-Decision-v1.1-27B-AutoThink'),
+            ], TemplateType.startlux)
+        ],
+        StartLuxModelLoader,
+        model_arch=ModelArch.qwen2_vl,
+        task_type='decision',
+        architectures=[],
+        requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'decision']))
 
 

@@ -35,6 +35,7 @@ class LLMTemplateType:
     sus = 'sus'
     gpt_oss = 'gpt_oss'
     seed_oss = 'seed_oss'
+    flint = 'flint'
 
     minimax = 'minimax'
     minimax_m1 = 'minimax_m1'
@@ -169,6 +170,7 @@ class MLLMTemplateType:
     omnijev = 'omnijev'
     kev = 'kev'
     thx02 = 'thx02'
+    startlux = 'startlux'
 
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'
