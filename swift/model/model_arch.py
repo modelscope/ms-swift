@@ -105,6 +105,9 @@ class MLLMModelArch:
     muse_glimmer = 'muse_glimmer'
     monkeyocrv2 = 'monkeyocrv2'
 
+    nemotron_h_omni = 'nemotron_h_omni'
+    nemo_speechlm = 'nemo_speechlm'
+
 
 class ModelArch(LLMModelArch, MLLMModelArch):
     # Multimodal models typically require specifying model_arch,
@@ -605,6 +608,22 @@ else:
             vision_tower='visual',
             mlp='model.layers.{}.mlp',
         ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.nemotron_h_omni,
+        language_model='language_model',
+        aligner='vision_projector',
+        vision_tower='vision_model',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.nemo_speechlm,
+        language_model=['model.language_model', 'lm_head'],
+        vision_tower='model.audio_tower',
+        aligner='model.multi_modal_projector',
+    ))
 
 register_model_arch(
     MultiModelKeys(

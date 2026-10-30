@@ -7,10 +7,10 @@ This document describes how to prepare the environment, train models, save and m
 If this is your first time using ms-swift on NPUs, we recommend reading this document in the following order:
 
 1. Check "Support Scope at a Glance" first to confirm whether your model, algorithm, and backend have been verified.
-2. Use "Choose Your Usage Path" to decide whether you only need the base environment or also need MindSpeed/Megatron-SWIFT.
+2. Use "Choose Your Usage Path" to decide whether you only need the base environment or also need Megatron/MegatronAdaptor/TransformerEngineNPU.
 3. Choose "Local Environment Installation" or "Image/Container Environment Installation" according to your own environment management preference, then run "NPU Availability Check".
 4. Use "Quick Start" to complete one ModelScope model LoRA training, merge, inference, and deployment flow.
-5. For larger-scale training, continue reading the DDP, DeepSpeed, and MindSpeed/Megatron-SWIFT sections.
+5. For larger-scale training, continue reading the DDP, DeepSpeed, and Megatron sections.
 
 ## Hardware and Supported Operating Systems
 
@@ -44,7 +44,6 @@ Recommended base environment versions:
 | CANN      | >= 8.5.1        |
 | torch     | >= 2.7.1        |
 | torch_npu | >= 2.7.1.post4  |
-
 Install vLLM-Ascend together with CANN, torch, and torch_npu as one compatibility set. For details, see the [vLLM-Ascend 0.23.0 installation guide](https://docs.vllm.ai/projects/ascend/en/v0.23.0/installation.html).
 
 For base environment setup, see the [Ascend PyTorch installation guide](https://gitcode.com/Ascend/pytorch). The examples in this document were verified on 8 * Ascend 910B3 64G.
@@ -59,7 +58,7 @@ For base environment setup, see the [Ascend PyTorch installation guide](https://
 |                 | FSDP                  | Supported     |
 |                 | FSDP2                 | Supported     |
 |                 | DeepSpeed             | Supported     |
-|                 | MindSpeed(Megatron)   | Supported     |
+|                 | Megatron (MCore 0.18 + MegatronAdaptor) | Supported     |
 | PEFT            | FULL                  | Supported     |
 |                 | LoRA                  | Supported     |
 |                 | QLoRA                 | Not supported |
@@ -126,12 +125,12 @@ For regular Qwen3.5 GRPO/SFT LoRA training, avoid explicitly passing `--model_ty
 
 ## Choose Your Usage Path
 
-| Scenario                               | Recommended path                                      | Need MindSpeed |
-| -------------------------------------- | ----------------------------------------------------- | -------------- |
+| Scenario                               | Recommended path                                      | Need MegatronAdaptor |
+| -------------------------------------- | ----------------------------------------------------- | -------------------- |
 | Ordinary SFT/LoRA/inference            | Local environment installation or image/container installation | No             |
-| Megatron-SWIFT large-model training     | Install the base environment, then install MindSpeed/Megatron/mcore-bridge | Yes            |
-| GRPO/PPO/DPO and other RLHF workflows   | Base training environment + vLLM-Ascend rollout/deploy | Usually no     |
-| Only verifying whether NPUs are usable  | Run the NPU availability check script                 | No             |
+| Megatron large-model training          | Install the base environment, then install MCore 0.18, MegatronAdaptor, TransformerEngineNPU, and mcore-bridge | Yes |
+| GRPO/PPO/DPO and other RLHF workflows  | Base training environment + vLLM-Ascend rollout/deploy | Usually no     |
+| Only verifying whether NPUs are usable | Run the NPU availability check script                 | No             |
 
 ## Environment Preparation
 
@@ -248,6 +247,20 @@ pip install vllm-ascend==0.23.0 \
   --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi
 ```
 
+### Environment Information Report
+
+Before training, run from the repository root with the Python environment used for training:
+
+```shell
+python examples/ascend/check_env.py
+```
+
+The report contains four table sections: basic environment, software components, Ascend installation information, and NPU status. Software components include PyTorch, torch-npu, ms-swift, Megatron Core, MindSpeed, mcore-bridge, and triton-ascend, with missing components reported individually. Note shows the distribution location, Python executable, or driver/CANN version-file directory. Long paths wrap automatically. The native `npu-smi` table follows when device information is available.
+
+`FOUND` means information was detected, `MISSING` means package metadata or the tool was not found, `UNKNOWN` means the version or device information could not be determined, and `UNAVAILABLE` means a query failed. Missing optional packages do not imply an unusable basic training environment; an unknown version does not imply an absent installation. The script does not validate compatibility, initialize Megatron, or execute NPU operations. Individual failures do not interrupt the report. Run the availability checks below separately if needed.
+
+The triton-ascend version comes from its own distribution metadata, not from the ordinary triton package.
+
 ### NPU Availability Check
 
 Check whether the environment is installed correctly and whether NPUs can be loaded:
@@ -261,74 +274,102 @@ print(torch.npu.device_count())  # 8
 print(torch.randn(10, device='npu:0'))
 ```
 
-### Optional MindSpeed/Megatron-SWIFT Installation
+### Optional MegatronAdaptor + TransformerEngineNPU Installation
 
-If you need MindSpeed(Megatron-LM), install the required dependencies as follows.
+The NPU Megatron path uses MCore 0.18, MegatronAdaptor, TransformerEngineNPU, and mcore-bridge. MindSpeed must not be installed or imported. The installation example below uses: Python 3.12, CANN 9.1 beta, and torch/torch_npu 2.10.
+
+This section uses the ms-swift and PyTorch/TorchNPU environment installed above and adds only the components needed for Megatron training.
+
+The commands below place all repositories under `~/swift-npu`. To use another directory, change the paths in the first two commands. If a source directory already exists, skip its clone command and run `git checkout <branch>` in that repository. The companion [mcore-bridge PR #189](https://github.com/modelscope/mcore-bridge/pull/189) must be merged into the official `main` branch before using these commands.
 
 ```shell
-# 1. Clone Megatron-LM and switch to v0.16.0
-git clone https://github.com/NVIDIA/Megatron-LM.git
-cd Megatron-LM
-git checkout core_v0.16.0
-cd ..
+mkdir -p ~/swift-npu
+cd ~/swift-npu
 
-# 2. Clone and install MindSpeed
-git clone https://gitcode.com/Ascend/MindSpeed.git
-cd MindSpeed
-git checkout core_r0.16.0
-pip install -e .
-cd ..
-
-# 3. Clone and install mcore-bridge
+# 1. Install mcore-bridge from the official main branch.
 git clone https://github.com/modelscope/mcore-bridge.git
 cd mcore-bridge
+git checkout main
 pip install -e .
 cd ..
 
-# 4. Download and install triton-ascend
-pip install triton-ascend --extra-index-url=https://mirrors.huaweicloud.com/ascend/repos/pypi
+# 2. Install MegatronAdaptor and TransformerEngineNPU.
+git clone https://gitcode.com/Ascend/MegatronAdaptor.git
+cd MegatronAdaptor
+git checkout core_r0.18.0
+pip install -e .
+cd ..
 
-# 5. Set environment variables
-export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
-export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
+git clone https://gitcode.com/Ascend/TransformerEngineNPU.git
+cd TransformerEngineNPU
+git checkout main
+pip install -e . --no-build-isolation
+cd ..
 
-# 6. Disable Megatron GDN if you need to fall back to the transformers GatedDeltaNet implementation
-export USE_MCORE_GDN=0
+# 3. Get the matching Megatron-LM source and configure its path.
+git clone https://github.com/NVIDIA/Megatron-LM.git
+cd Megatron-LM
+git checkout core_r0.18.0
+cd ..
+export MEGATRON_LM_PATH="$(pwd)/Megatron-LM"
+export PYTHONPATH="$MEGATRON_LM_PATH:$PYTHONPATH"
 ```
 
-Run the following command to verify that MindSpeed(Megatron-LM) is configured correctly:
+These commands follow the official [mcore-bridge source installation](https://github.com/modelscope/mcore-bridge/blob/main/README.md#%EF%B8%8F-installation), [MegatronAdaptor installation guide](https://gitcode.com/Ascend/MegatronAdaptor/blob/core_r0.18.0/docs/zh/install_guide.md), and [TENPU installation guide](https://gitcode.com/Ascend/TransformerEngineNPU/blob/main/docs/zh/install_guide.md). Only TENPU uses `--no-build-isolation`, as specified in its official command. Refer to the TENPU guide for its other prerequisites and compatible versions.
+
+After the companion integration is merged, the official `mcore-bridge` `main` branch provides the TransformerEngineNPU main adaptations for NPU LoRA `LayerNormLinear`, GroupedLinear/expert handling, and checkpoint mapping; it does not rely on an uncommitted working-tree patch.
+
+The companion bridge fix also removes the MindSpeed-defaults probe. Admission should check that `find_spec('mindspeed') is None`, `mindspeed` is absent from `sys.modules`, and the bridge runtime source contains no MindSpeed references.
+
+For validation, record the complete command, source SHAs, versions, runtime topology, log, exit code, and pass/framework failure/environment failure/capacity failure classification for representative dense, GDN, and MoE topologies. Do not treat a two-step smoke or a unit-test result as long-run acceptance.
+
+Check both source ownership and the absence of MindSpeed; a successful import alone does not prove the runtime bindings:
 
 ```shell
-python -c "import mindspeed.megatron_adaptor; from swift.megatron.init import init_megatron_env; init_megatron_env(); print('✓ Megatron-SWIFT configuration verified successfully in the NPU environment!')"
+python - <<'PY'
+import importlib.util
+import os
+from pathlib import Path
+import megatron_adaptor, megatron.core, transformer_engine, mcore_bridge
+from swift.megatron.init import init_megatron_env
+init_megatron_env()
+root = Path(os.environ['MEGATRON_LM_PATH']).expanduser().resolve().parent
+for module, directory in (
+    (megatron_adaptor, 'MegatronAdaptor'),
+    (megatron.core, 'Megatron-LM'),
+    (transformer_engine, 'TransformerEngineNPU'),
+    (mcore_bridge, 'mcore-bridge'),
+):
+    source = Path(module.__file__).resolve()
+    print(module.__name__, source)
+    assert source.is_relative_to((root / directory).resolve()), source
+assert importlib.util.find_spec('mindspeed') is None
+print('NPU MegatronAdaptor/MCore 0.18 environment verified')
+PY
 ```
 
-### Qwen3.5 FLA Patch Notes
+### Qwen3.5 MCore GDN Notes
 
-Qwen3.5 on Ascend NPU now uses the native Triton-Ascend GDN backend from `flash-linear-attention` (FLA). ms-swift no longer embeds or maintains a copy of MindSpeed's `chunk_gated_delta_rule`.
+The Qwen3.5 Megatron NPU path uses MCore 0.18's `GatedDeltaNet` (GDN, the gated DeltaNet state-space layer) by default. MegatronAdaptor provides the NPU Torch-native replacements for causal-conv, GDN, and normalization. `USE_MCORE_GDN` remains supported: `1` selects MCore GDN and `0` selects the Transformers GDN; it is a model-implementation choice independent of the 0.18 dependency migration.
 
-ms-swift retains only two NPU compatibility adjustments:
+mcore-bridge connects Qwen3.5/Omni model parameters and packed/padding-free metadata to MCore; CP (context parallel, sequence-dimension parallelism) uses the MCore 0.18 implementation. Dense, GDN, and MoE forward/backward, optimizer, packing, CP, and save/resume must be validated independently; a successful environment install is not evidence of long-run stability or performance.
 
-1. Transformers' FLA availability check includes a CUDA condition. On NPU, ms-swift supplements it by checking FLA's public causal-conv and GDN entry points. FLA remains responsible for selecting and validating the concrete NPU backend.
-2. Transformers currently initializes `FusedRMSNormGated` with `torch.cuda.current_device()`, so NPU keeps Qwen3.5's native torch norm. This does not affect the FLA GDN path.
+#### Optional GDN Acceleration: FLA and Triton-Ascend
 
-The call chain can be understood as:
+When training models with GDN layers, such as Qwen3.5, optionally install FLA (Flash Linear Attention) and Triton-Ascend to accelerate GDN operators on supported devices and backends. The Triton-Ascend version must match the existing CANN, PyTorch, and TorchNPU environment. Skip its installation command if a compatible version is already installed. See the [official FLA installation guide](https://github.com/fla-org/flash-linear-attention/blob/main/INSTALL.md#ascend-npu) for version compatibility and NPU backend details.
 
-```text
-Qwen3.5 modeling.chunk_gated_delta_rule
-    -> fla.ops.gated_delta_rule.chunk_gated_delta_rule
-    -> fla.ops.gated_delta_rule.backends.triton_ascend
+```shell
+cd ~/swift-npu
+pip install triton-ascend --extra-index-url=https://triton-ascend.osinfra.cn/pypi/simple
+
+git clone https://github.com/fla-org/flash-linear-attention.git
+cd flash-linear-attention
+git checkout main
+pip install -e .
+cd ..
 ```
 
-- Install the latest FLA main branch to obtain NPU GDN support.
-- Current verification environment: torch 2.9.0+cpu, torch-npu 2.9.0.post2, FLA 0.5.2 main, triton-ascend 3.2.1, and transformers 5.12.1.
-
-When running Qwen3.5 on NPU with either the transformers backend or the Megatron-SWIFT backend, note the following version and feature constraints:
-
-1. The MindSpeed training combination currently pinned by the NPU documentation is `Megatron-LM v0.16.0 + MindSpeed core_r0.16.0`. `mcore-bridge` defaults to the Megatron-Core/MindSpeed GDN path with `USE_MCORE_GDN=1`. With `USE_MCORE_GDN=0`, it uses the transformers GDN. That path first attempts to use the FLA Triton-Ascend backend described above; when FLA is unavailable, it only logs a warning and preserves the currently selected MindSpeed/Megatron GDN implementation rather than proactively replacing it with Torch, so FLA is not a hard dependency for ordinary Megatron training.
-
-2. MindSpeed initialization and training-argument `repatch()` may replace FLA's public GDN entry point. Before building `mcore-bridge` and again after `repatch()`, ms-swift first tries to restore FLA's original callable from the `orig_func` saved by the MindSpeed patch manager. The `mcore-bridge` cached callable is refreshed only after FLA is restored successfully. If FLA is missing or restoration fails, the current GDN callable is not modified and a warning is recorded. Packed/varlen support depends on the retained implementation; if it does not support non-empty `cu_seqlens`, the actual GDN call fails and a working FLA installation is required.
-
-3. Qwen3.5-4B has completed a Transformers/FSDP LoRA validation on 8 Atlas 900 A2 cards: BF16, `alpaca-gpt4-data-zh`, `packing=true`, `max_length=512`, per-device batch size 1, gradient accumulation 1, and 300 training steps. Loss and grad norm remained finite throughout, and a checkpoint was saved successfully. Under the same configuration, the NPU loss trend aligned with the GPU reference.
+> **Ascend 950 limitation:** FLA has not yet been adapted for Ascend 950. Compatibility or runtime issues may occur. Validate it on the target hardware and actual training configuration.
 
 ### Environment Viewing
 Check the P2P connections of the NPU, where we can see that each NPU is interconnected through 7 HCCS links with other NPUs.
@@ -776,7 +817,7 @@ First confirm that you have run `source /usr/local/Ascend/ascend-toolkit/set_env
 
 ### Q2: How should I choose between FSDP, DeepSpeed, and Megatron-SWIFT?
 
-For ordinary SFT, first refer to the verified `FSDP1/FSDP2/deepspeed` combinations in this document. For larger models or higher parallelism requirements, use Megatron-SWIFT and install MindSpeed, Megatron-LM, and mcore-bridge as described in the installation section. DeepSpeed can reduce memory pressure but may reduce speed, so compare it with FSDP when tuning performance.
+For ordinary SFT, first refer to the verified `FSDP1/FSDP2/deepspeed` combinations in this document. For larger models or higher parallelism requirements, use Megatron and install MCore 0.18, MegatronAdaptor, TransformerEngineNPU, and mcore-bridge as described in the installation section. DeepSpeed can reduce memory pressure but may reduce speed, so compare it with FSDP when tuning performance.
 
 ### Q3: Do I need to manually disable the NPU model patch?
 
@@ -846,14 +887,14 @@ If the error message contains `Current device type ... does not match the instal
 
 Do not assume they can. Before downloading or loading a large model, check whether `config.json` contains `quantization_config`, and check the actual dtype in safetensors. Quantization/QLoRA is still listed as not supported or not fully verified in the NPU support scope. If model weights are FP8 block quantized and your NPU software stack does not support that FP8 path, use BF16 weights first, or convert the model offline to BF16 before training/loading.
 
-### Q14: How do I troubleshoot Megatron-SWIFT importing the wrong Megatron/MindSpeed?
+### Q14: How do I troubleshoot Megatron importing the wrong MCore/Adaptor?
 
-Before running Megatron-SWIFT, `PYTHONPATH` and `MEGATRON_LM_PATH` must point to the same Megatron-LM source tree. Otherwise Python may start successfully while importing a different Megatron/MindSpeed combination, which can make later errors look like model or argument issues.
+Before running Megatron, `PYTHONPATH`, `MEGATRON_LM_PATH`, and the local MegatronAdaptor/TransformerEngineNPU paths must point to the same source checkouts in the installation directory above. Otherwise Python may start successfully while importing a different MCore/Adaptor combination, which can make later errors look like model or argument issues.
 
 ```shell
-export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
-export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
-python -c "import megatron, os; print(megatron.__file__); print(os.environ.get('MEGATRON_LM_PATH'))"
+export MEGATRON_LM_PATH="$HOME/swift-npu/Megatron-LM"
+export PYTHONPATH="$MEGATRON_LM_PATH:$PYTHONPATH"
+python -c "import importlib.util, megatron_adaptor, megatron.core, transformer_engine, os; print(megatron_adaptor.__file__); print(megatron.core.__file__); print(transformer_engine.__file__); print(os.environ.get('MEGATRON_LM_PATH')); assert importlib.util.find_spec('mindspeed') is None"
 ```
 
 If they do not match, fix the environment variables before continuing with model construction, weight loading, or parallel configuration troubleshooting.

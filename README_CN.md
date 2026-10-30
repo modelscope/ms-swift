@@ -73,6 +73,11 @@
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速。
 
 ## 🎉 新闻
+- 🔥 2026.10.29: Day-0 支持 [NVIDIA-Nemotron-3.5-Transcribe](nv-community/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B)，训练示例参考 [SFT示例](examples/models/nemotron_transcribe)。
+- 🔥 2026.10.22: 支持 [EntroPack](https://github.com/modelscope/entropack) 灵活码率模型量化，可根据显存预算精细控制模型码率，支持 Transformers 推理和 LoRA 训练。参考[最佳实践](docs/source/BestPractices/Flexble-Quantization-With-Entropack.md)和 [QLoRA 示例](examples/train/qlora/entropack.sh)。
+- 🔥 2026.10.19: 支持 [EmbeddingGemma-2](https://www.modelscope.cn/models/google/embeddinggemma-2)（740M，多模态嵌入模型，支持文本/图像/视频/音频统一向量空间），支持 infonce loss 微调。
+- 🔥 2026.10.15: Day-0 支持 [NVIDIA-Nemotron-3.5-Super-VL-120B-A12B](https://www.modelscope.cn/models/nv-community/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16)，训练示例参考 [SFT示例](examples/models/nemotron_super_vl)。
+- 🔥 2026.10.13: 支持Decision模型（类型化决策System-1打分模型）的训练与推理，使用 `--task_type decision`，通过单次前向传播输出每个问题选项集上的校准概率。支持 [JEV-27B-VL](https://www.modelscope.cn/models/autotrust/JEV-27B-VL)、[Clef](https://www.modelscope.cn/models/Cloudflare/clef)、[OmniJev](https://modelscope.cn/models/AI-ModelScope/OmniJev) 和 [Kev](https://www.modelscope.cn/models/jaredpalmer/kev-4b)（0.8b/4b/9b），内置 distill_rps、smooth_brier、ce_rps 等proper scoring rule损失函数。文档参考[这里](docs/source/BestPractices/Decision.md)，训练示例参考[这里](examples/train/decision)。
 - 🔥 2026.10.01: 支持 [Xing4.0-29B-A4B](https://www.modelscope.cn/models/XingChen-AGI/Xing4.0-29B-A4B)：transformers 后端的训练与推理，支持单/多卡（DDP 与 DeepSpeed ZeRO-3）的 LoRA 与全参数 SFT，以及 grouped_mm 专家加速（~3.7x），示例参考 [这里](examples/models/xing4_0)。
 - 🔥 2026.09.21: 支持 [DeepSeek-V4.1-Flash](https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V4.1-Flash)：Megatron-SWIFT 全参数训练（SFT 与 GRPO）以及 vLLM 推理，示例参考 [这里](examples/models/deepseek_v41)。
 - 🔥 2026.09.01: 支持腾讯混元多模态嵌入模型 [WeMM-Embedding](https://www.modelscope.cn/models/Tencent-Hunyuan/WeMM-Embedding-2B)（2B/4B/9B）的推理与训练，支持图文混合输入的向量表征，训练示例参考 [embedding 示例](examples/train/embedding)。
@@ -82,6 +87,9 @@
 - 🎁 2026.07.22: 支持moonshotai多模态模型[Kimi-K3](https://modelscope.cn/models/moonshotai/Kimi-K3)的推理，包含XTML对话模板、思考通道（`reasoning_effort`）与工具调用（`--agent_template kimi_k3`）。
 - 🎁 2026.06.10: Megatron-Ray支持GRPO和GKD训练，查看[文档](docs/source/Instruction/Ray.md)和[示例](examples/ray)。
 - 🎁 2026.03.03: **ms-swift v4.0**大版本正式发布，release note参考[这里](https://github.com/modelscope/ms-swift/releases/tag/v4.0.0)，您的建议可以在[这个issue](https://github.com/modelscope/ms-swift/issues/7250)中反馈给我们，感谢您的支持。
+
+
+<details><summary>更多</summary>
 - 🎁 2025.11.14: Megatron GRPO现已支持！查看[文档](./docs/source/Megatron-SWIFT/GRPO.md)和[示例](examples/megatron/grpo)。
 - 🎁 2025.11.04: 支持[Mcore-Bridge](docs/source/Megatron-SWIFT/Mcore-Bridge.md)，使Megatron训练像transformers一样简单易用。
 - 🎁 2025.10.28: Ray [已支持](docs/source/Instruction/Ray.md)。
@@ -92,9 +100,6 @@
 - 🎁 2025.07.09: Megatron-SWIFT支持LoRA训练。相比ms-swift，在MoE模型提速显著。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/lora)。
 - 🎁 2025.06.23: 支持Reranker模型训练，训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh)。
 - 🎁 2025.06.15: 支持对纯文本大模型和多模态模型进行GKD训练。训练脚本参考这里：[纯文本](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/gkd), [多模态](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/gkd)。
-
-<details><summary>更多</summary>
-
 - 🎁 2025.06.11: 支持使用Megatron并行技术进行RLHF训练，训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf)。
 - 🎁 2025.05.29: 支持pt、sft、dpo、grpo的序列并行，具体请查看[脚本](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel)。
 - 🎁 2025.05.11: GRPO中的奖励模型支持自定义处理逻辑，GenRM的例子参考[这里](./docs/source/Instruction/GRPO/DeveloperGuide/reward_model.md)。
@@ -151,7 +156,7 @@ uv pip install -e . --torch-backend=auto
 | peft         | >=0.11,<0.21 |                     |                    |
 | flash_attn   |              | 2.8.3/4.0.0b15 |                    |
 | trl          | >=0.15,<1.0 | 0.29.1              | RLHF               |
-| deepspeed    | >=0.14       | 0.18.9              | 训练                 |
+| deepspeed    | >=0.19.3,<0.20 | 0.19.7            | 训练                 |
 | vllm         | >=0.5.1      | 0.11.0/0.23.0        | 推理/部署              |
 | sglang       | >=0.4.6      |          | 推理/部署              |
 | evalscope    | >=1.0       |                     | 评测                 |

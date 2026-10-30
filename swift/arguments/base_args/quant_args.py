@@ -13,8 +13,8 @@ class QuantizeArguments:
 
     Args:
         quant_method (Optional[str]): The quantization method to use when loading the model. Can be one of {'bnb',
-            'hqq', 'eetq', 'quanto', 'fp8'}. Note: This is not required for QLoRA training on pre-quantized AWQ/GPTQ
-            models. Defaults to None.
+            'hqq', 'eetq', 'quanto', 'fp8', 'entropack'}. Note: This is not required for QLoRA training on
+            pre-quantized AWQ/GPTQ models. Defaults to None.
         quant_bits (Optional[Union[int, str]]): The number of bits for quantization, e.g., {1, 2, 3, 4, 8, 'float8'}.
             Defaults to None.
         hqq_axis (Optional[int]): The quantization axis for HQQ quantization. Defaults to None.
@@ -26,11 +26,15 @@ class QuantizeArguments:
             Defaults to True.
         bnb_4bit_quant_storage (Optional[str]): The storage type for packing quantized 4-bit parameters in BNB.
             Defaults to None.
+        entropack_target_bpp (Optional[float]): Target bits per parameter for EntroPack compression. Supports
+            fractional rates and is required when `quant_method` is `entropack`. Defaults to None.
+        entropack_linear_type (Optional[str]): The EntroPack linear implementation. Can be one of {'default', 'fp8',
+            'int8'}. Defaults to None, which uses 'default'.
     """
     # awq, gptq, and aqlm need to be pre-quantized models.
     #   It can be detected automatically, without the need to pass in.
-    # while bnb, hqq, and eetq can be quantized during SFT using the original models.
-    quant_method: Literal['bnb', 'hqq', 'eetq', 'quanto', 'fp8'] = None
+    # while bnb, hqq, eetq, fp8, and entropack can be quantized during SFT using the original models.
+    quant_method: Literal['bnb', 'hqq', 'eetq', 'quanto', 'fp8', 'entropack'] = None
     # bnb: 4,8; hqq: 1,2,3,4,8'; eetq: 8
     # awq: 4; gptq: 2,3,4,8
     quant_bits: Literal[1, 2, 3, 4, 8, 'float8'] = None
@@ -41,12 +45,15 @@ class QuantizeArguments:
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
     bnb_4bit_quant_storage: Optional[str] = None
+    # entropack
+    entropack_target_bpp: Optional[float] = None
+    entropack_linear_type: Optional[Literal['default', 'fp8', 'int8']] = None
 
     def get_quantization_config(self):
         if self.quant_method is None or self.quant_method in {'awq', 'gptq', 'gptq_v2'}:
             return None
-        assert self.quant_method in {'bnb', 'hqq', 'eetq', 'quanto', 'fp8'}
-        if self.quant_method != 'fp8' and self.quant_bits is None:
+        assert self.quant_method in {'bnb', 'hqq', 'eetq', 'quanto', 'fp8', 'entropack'}
+        if self.quant_method not in {'fp8', 'entropack'} and self.quant_bits is None:
             raise ValueError(f'Please set the quant_bits. args.quant_bits: {self.quant_bits}')
         if self.quant_method == 'bnb':
             if self.quant_bits == 4:
@@ -90,6 +97,19 @@ class QuantizeArguments:
             else:
                 raise ValueError('quanto quantization only support quant bits 2/4/8/float8')
             quantization_config = QuantoConfig(weights=weights)
+        elif self.quant_method == 'entropack':
+            if not hasattr(self, 'model_info'):
+                return
+            from transformers import EntroPackConfig
+            if self.entropack_target_bpp is None:
+                raise ValueError('Please set `entropack_target_bpp` for entropack.')
+            with torch.device('meta'):
+                hf_model, _ = get_model_processor(self.model_dir, model_type=self.model_type, return_dummy_model=True)
+            modules_to_not_convert = get_modules_to_not_convert(hf_model)
+            quantization_config = EntroPackConfig(
+                target_bpp=self.entropack_target_bpp,
+                linear_type=self.entropack_linear_type or 'default',
+                modules_to_not_convert=modules_to_not_convert)
         else:  # 'eetq'
             from transformers import EetqConfig
             quantization_config = EetqConfig(f'int{self.quant_bits}')

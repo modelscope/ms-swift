@@ -2,7 +2,6 @@
 # Currently, it only supports the case where the model and reward_model use the same template/tokenizer.
 # Currently, multimodal model PPO is not supported.
 
-# pip install "deepspeed==0.14.*"
 nproc_per_node=8
 
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \

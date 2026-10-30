@@ -88,6 +88,26 @@ class TestMegatronArgs(unittest.TestCase):
         for field_name in expected_fields:
             self.assertIn(field_name, field_names, f'MegatronArguments missing field: {field_name}')
 
+    def test_mtp_num_layers_normalization(self):
+        self._skip_if_no_megatron()
+
+        from swift.megatron.arguments.megatron_args import _normalize_mtp_num_layers
+
+        cases = {
+            1: 1,
+            '1': 1,
+            'auto': 'auto',
+            0: 0,
+            None: None,
+        }
+        for value, expected in cases.items():
+            with self.subTest(value=value):
+                self.assertEqual(_normalize_mtp_num_layers(value), expected)
+        for value in ('AUTO', 'none'):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    _normalize_mtp_num_layers(value)
+
     def _rlhf_args(self, advantage_estimator):
         """A MegatronRLHFArguments populated from field defaults.
 

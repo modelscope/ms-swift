@@ -13,7 +13,7 @@ from requests.adapters import HTTPAdapter
 from typing import Any, Callable, Iterator, List, TypeVar, Union
 from urllib3.util.retry import Retry
 
-from swift.utils import get_env_args
+from swift.utils import SafeMediaPath, get_env_args
 
 # >>> internvl
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -155,6 +155,9 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
                 data = base64.b64decode(data)
                 res = BytesIO(data)
             else:
+                # local_path. An untrusted caller can name any file here, so the request is inlined only after
+                # the path is allowed; otherwise this reads the file before any of the media loading checks run.
+                SafeMediaPath.check(path)
                 with open(path, 'rb') as f:
                     res = BytesIO(f.read())
     elif isinstance(path, bytes):
@@ -166,7 +169,15 @@ def load_image(image: Union[str, bytes, Image.Image]) -> Image.Image:
     image = load_file(image)
     if isinstance(image, BytesIO):
         image = Image.open(image)
-    if image.mode != 'RGB':
+    if image.mode in ('RGBA', 'LA', 'PA') or 'transparency' in image.info:
+        # Composite onto white instead of dropping the alpha channel, which
+        # renders transparent areas as black. Same check as vllm's
+        # _has_transparency (vllm/multimodal/image.py).
+        image = image.convert('RGBA')
+        background = Image.new('RGB', image.size, (255, 255, 255))
+        background.paste(image, mask=image.getchannel('A'))
+        image = background
+    elif image.mode != 'RGB':
         image = image.convert('RGB')
     return image
 
