@@ -32,7 +32,7 @@ class SwiftInfer(SwiftPipeline):
 
         if args.infer_backend == 'transformers':
             model, self.template = prepare_model_template(args)
-            self.infer_engine = TransformersEngine(model, template=self.template, max_batch_size=args.max_batch_size)
+            self.infer_engine = TransformersEngine(model, template=self.template, max_batch_size=args.max_batch_size, strict=args.strict)
             logger.info(f'model: {self.infer_engine.model}')
         else:
             self.template = args.get_template()
@@ -65,6 +65,8 @@ class SwiftInfer(SwiftPipeline):
             kwargs.update(args.get_model_kwargs())
             if hasattr(args, 'max_batch_size'):
                 kwargs.update({'max_batch_size': args.max_batch_size})
+            if hasattr(args, 'strict'):
+                kwargs.update({'strict': args.strict})
         elif infer_backend == 'vllm':
             from swift.infer_engine import VllmEngine
             infer_engine_cls = VllmEngine
