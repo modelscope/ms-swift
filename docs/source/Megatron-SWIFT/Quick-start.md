@@ -1,6 +1,8 @@
 
 # 快速开始
 
+通过 `--callbacks profiler` 可启用内置 callback，在指定训练步采集 GPU/NPU 性能数据，使用方法请参考 [训练性能采集](../Instruction/Profiling.md)。
+
 ms-swift引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、Qwen3.5、Deepseek-R1、GLM4.5、GPT-OSS等模型的CPT/SFT/GRPO/DPO/KTO/RM。完整支持的模型可以参考[支持的模型与数据集文档](../Instruction/Supported-models-and-datasets.md)。
 
 

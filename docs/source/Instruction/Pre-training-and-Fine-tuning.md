@@ -1,5 +1,7 @@
 # 预训练与微调
 
+通过 `--callbacks profiler` 可启用内置训练性能采集 callback，使用方法请参考 [训练性能采集（GPU/NPU）](Profiling.md)。
+
 训练能力：
 
 | 方法   | 全参数 | LoRA                                                                                        | QLoRA | Deepspeed | 多机 | 多模态                                                                                          |

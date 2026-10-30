@@ -309,6 +309,8 @@ print(f'response: {resp_list[0].choices[0].message.content}')
 |   [自定义模型](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-model.html), [🔥自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html)   |
 |   [大模型教程](https://github.com/modelscope/modelscope-classroom/tree/main/LLM-tutorial)   |
 
+默认后端和 Megatron-SWIFT 可通过 `--callbacks profiler` 启用内置 GPU/NPU 性能采集 callback，使用方法请参考[训练性能采集](docs/source/Instruction/Profiling.md)。
+
 ### 训练
 支持的训练方法：
 
