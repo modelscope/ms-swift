@@ -64,6 +64,10 @@ rollout:
   gpus: 4    # dedicated 4 GPUs
 ```
 
+CUDA IPC weight synchronization allocates only its transfer buffers without expandable segments, then immediately restores
+the training allocator settings. This lets training retain `expandable_segments:True` in containers that restrict
+`pidfd_getfd`, for both colocated and standalone rollout senders.
+
 ### GKD Teacher Modes
 
 | Mode | Configuration | top-k | full-vocab |
