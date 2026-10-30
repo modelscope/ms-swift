@@ -9,19 +9,26 @@ from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
 from datasets import Value
+from functools import partial
 from itertools import chain
 from modelscope.hub.utils.utils import get_cache_dir
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 from swift.template import history_to_messages
 from swift.template.template_inputs import normalize_openai_tool_calls
-from swift.utils import TOOL_KEYS, get_logger, is_dist, is_master, remove_arrow_padding, safe_ddp_context
+from swift.utils import (TOOL_KEYS, get_logger, is_dist, is_master, limit_worker_num_threads, remove_arrow_padding,
+                         safe_ddp_context)
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 logger = get_logger()
 
 _pair_keys = ['messages', 'images', 'videos', 'audios', 'tools', 'objects']
+
+
+def _preprocess_in_worker(func: Callable, num_proc: int, *args, **kwargs):
+    limit_worker_num_threads(num_proc)
+    return func(*args, **kwargs)
 
 
 class RowPreprocessor:
@@ -390,8 +397,12 @@ class RowPreprocessor:
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             if isinstance(dataset, HfDataset) and not dataset.cache_files:
                 map_kwargs['cache_file_name'] = self._map_cache_file(dataset._fingerprint)
+            map_func = self.batched_preprocess
+            if isinstance(dataset, HfDataset) and num_proc is not None and num_proc > 1:
+                # `datasets` runs `map_func` in `num_proc` worker processes.
+                map_func = partial(_preprocess_in_worker, map_func, num_proc)
             dataset_mapped = dataset.map(
-                self.batched_preprocess,
+                map_func,
                 fn_kwargs={
                     'strict': strict,
                     'ignore_max_length_error': ignore_max_length_error,
