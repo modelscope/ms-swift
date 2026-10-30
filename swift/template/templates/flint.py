@@ -12,9 +12,23 @@ form and tool results come back as `<|observation|><tool_response>...</tool_resp
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from ..base import Template
 from ..constant import LLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Prompt, Word
+
+
+class FlintTemplate(Template):
+    # The checkpoint's four `eos_token_id` entries: the end of turn, plus the three role markers that
+    # also end a turn. All four must be dropped from the answer, but `Template.skip_stop_tokens`
+    # only knows `tokenizer.eos_token_id` and the template suffix, i.e. `<|end_of_text|>`.
+    stop_tokens = ['<|end_of_text|>', '<|user|>', '<|observation|>', '<|developer|>']
+
+    def decode_generate_ids(self, generate_ids, **kwargs):
+        stop_token_ids = {self._tokenize(token)[0] for token in self.stop_tokens}
+        while generate_ids and generate_ids[-1] in stop_token_ids:
+            generate_ids = generate_ids[:-1]
+        return super().decode_generate_ids(generate_ids, **kwargs)
 
 
 @dataclass
@@ -27,9 +41,9 @@ class FlintTemplateMeta(TemplateMeta):
     # No BOS for chat, matching the reference tokenizer (`add_bos_token: false`).
     auto_add_bos: bool = False
     agent_template: str = 'flint'
-    # `<|user|>` / `<|observation|>` / `<|developer|>` are in `eos_token_id`, so generation already
-    # stops on them; they stay out of the response, hence no extra stop words.
+    # Generation already stops on `<|user|>` / `<|observation|>` / `<|developer|>` through the
+    # checkpoint's `eos_token_id`, and `FlintTemplate` drops them from the response; nothing to add.
     stop_words: List[Word] = field(default_factory=list)
 
 
-register_template(FlintTemplateMeta(LLMTemplateType.flint))
+register_template(FlintTemplateMeta(LLMTemplateType.flint, template_cls=FlintTemplate))
