@@ -473,8 +473,10 @@ class GLM5NextTemplate(GLM4_5VTemplate, GLM5_2Template):
     """GLM-5.3-Flash: GLM-4.5V vision tokens, GLM-5.2 reasoning effort (low/high/max), NoPE text tower.
 
     `init_env_args` / `_get_system` come from GLM5_2Template through the MRO; the vision
-    handling comes from GLM4_5VTemplate.
+    handling comes from GLM4_5VTemplate. Like GLM-5.3, GLM-5.3-Flash's chat template renders
+    `Reasoning Effort:` whether or not thinking is on.
     """
+    reasoning_effort_needs_thinking = False
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
         # The text tower is NoPE (`qk_rope_head_dim=0`, `Glm5NextTextModel` passes
