@@ -76,6 +76,13 @@ rollout:
 - **top-k**: The distillation loss is computed only over the teacher's top-k highest-probability tokens (set via `gkd_logits_topk`). Lower memory usage, but discards long-tail distribution information.
 - **full-vocab**: The distillation loss is computed over the entire vocabulary, preserving the full distribution. Higher memory usage.
 
+### GRPO Batch Alignment
+
+`generation_batch_size` counts completions. Prompts (`generation_batch_size / num_generations`) must divide evenly
+across training DP ranks. For Ray training, completions must also divide evenly by `dp_size * micro_batch_size`.
+For example, 512 completions with 16 generations and 32 DP ranks give one prompt and 16 completions per rank,
+which form eight training microbatches of size 2. Each configured training GPU must still receive at least one completion.
+
 ### Related Documentation
 
 For more details, refer to:

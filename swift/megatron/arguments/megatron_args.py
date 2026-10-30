@@ -301,11 +301,13 @@ class RLHFMegatronArgumentsMixin:
         dp_size: int,
         micro_batch_size: int,
         world_size: int,
+        use_ray: bool = False,
     ) -> None:
         """Validate that batch parameters are correctly aligned with DP parallelism.
 
         Reusable across both worker-side (torch.distributed) and pipeline-side
         (Ray config-based dp estimation) contexts.
+        Ray workers batch completions; the non-Ray path batches prompts.
         """
         num_rollout_prompt = generation_batch_size // num_generations
         if num_rollout_prompt % dp_size != 0:
@@ -318,7 +320,11 @@ class RLHFMegatronArgumentsMixin:
             raise ValueError(f'per_device_num_rollout_prompt ({per_device_num_rollout_prompt}) must be >= 1, '
                              f'please adjust generation_batch_size/steps_per_generation/num_generations.')
 
-        if per_device_num_rollout_prompt % micro_batch_size != 0:
+        if use_ray:
+            if generation_batch_size % (dp_size * micro_batch_size) != 0:
+                raise ValueError(f'Generation completion count ({generation_batch_size}) must be divisible by '
+                                 f'dp_size ({dp_size}) * micro_batch_size ({micro_batch_size}).')
+        elif per_device_num_rollout_prompt % micro_batch_size != 0:
             raise ValueError(f'Per-device rollout prompt count ({per_device_num_rollout_prompt}) = '
                              f'(generation_batch_size ({generation_batch_size}) // '
                              f'num_generations ({num_generations})) // dp_size ({dp_size}) '
@@ -336,8 +342,13 @@ class RLHFMegatronArgumentsMixin:
             world_size = torch.distributed.get_world_size()
             dp_size = world_size // (
                 self.pipeline_model_parallel_size * self.tensor_model_parallel_size * self.context_parallel_size)
-            self.validate_batch_dp_alignment(self.generation_batch_size, self.num_generations, dp_size,
-                                             self.micro_batch_size, world_size)
+            self.validate_batch_dp_alignment(
+                self.generation_batch_size,
+                self.num_generations,
+                dp_size,
+                self.micro_batch_size,
+                world_size,
+                use_ray=self.use_ray)
             self.per_device_generation_batch_size = self.generation_batch_size // world_size
 
     def _check_teacher(self):
