@@ -141,6 +141,19 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - soft_max_length: 论文中的L_max，模型的最大生成长度，默认等于max_completion_length
 - soft_cache_length: 论文中的L_cache，控制长度惩罚区间，区间为[soft_max_length-soft_cache_length, soft_max_length]
 
+## 示例：Text-to-SQL 执行奖励
+
+[examples/train/grpo/plugin/text2sql](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/text2sql) 通过在 SQLite 数据库（BIRD、Spider 或自有数据库）上执行模型生成的 SQL 来打分：
+
+- `text2sql_exec`：预测 SQL 与 `solution` 中参考 SQL 返回的行集合相同则为 1.0，即 BIRD / Spider 的执行准确率定义。数据库由 `db_path` 列给出，或由 `db_id` 列在 `TEXT2SQL_DB_ROOT` 下解析。
+- `text2sql_format`：回答以 ```sql 代码块结尾且以 `SELECT` 或 `WITH` 开头则为 1.0。
+
+执行模型生成代码得到的奖励很容易被钻空子，因此 `text2sql_exec` 以只读方式打开数据库并通过 SQLite authorizer 只允许读操作（禁止写入、`ATTACH`、`PRAGMA` 和扩展），每次只执行一条语句，超过 `TEXT2SQL_TIMEOUT` 秒中断查询，并限制结果行数。参考 SQL 执行失败时返回 `None`（不计奖励）而不是 0；设置 `TEXT2SQL_SKIP_EMPTY_GOLD=1` 时，对参考结果为空的样本同样处理，因为任何返回空结果的查询都会与之匹配。
+
+还需注意常数答案：BIRD Mini-Dev 的 500 条参考 SQL 中有 16 条只返回单个值 `1`，因此 `SELECT 1` 在 3.2% 的问题上能拿到满分奖励。如果 `log_completions` 显示策略趋向此类查询，可以过滤这些样本，或对不引用任何表的查询加惩罚。
+
+`prepare_bird.py` 将 BIRD 转换为所需的数据格式，`text2sql.sh` 是完整的训练脚本。
+
 ## 注意事项
 
 如果需要在奖励函数中加载模型，默认会使用训练的 deepspeed 插件（transformers逻辑），zero3下可能会导致模型无法正常推理，参考该[issue](https://github.com/modelscope/ms-swift/issues/4580)来跳过 deepspeed 初始化环境
