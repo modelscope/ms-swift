@@ -7,9 +7,10 @@ from copy import copy, deepcopy
 from functools import partial
 from mcore_bridge import set_random_seed
 from megatron.core import mpu
-from typing import Any, Dict, List, Optional, Tuple, Union
+from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
+from typing import Any, Dict, List, Optional, Tuple
 
-from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
+from swift.infer_engine.protocol import RequestConfig, RolloutOutput
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.utils import RouterReplayHelper, get_padding_to, set_router_replay_data
 from swift.rl_core.advantage import (compute_advantages, compute_reward_metrics, compute_teacher_kl_per_token,
@@ -31,12 +32,6 @@ from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather, gather_object, reconstruct_tensor_cp
 from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
-
-try:
-    from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
-except ImportError:
-    RouterReplay = None
-    RouterReplayAction = None
 
 logger = get_logger()
 

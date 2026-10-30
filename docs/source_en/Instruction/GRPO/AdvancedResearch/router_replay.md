@@ -87,7 +87,7 @@ Select the routing replay strategy via the `--router_replay_mode` parameter:
 Environment requirements:
 
 - R3 requires vLLM ≥ 0.14.0 to support returning `routed_experts` information.
-- Router Replay is currently only available with the Megatron backend, requiring megatron-core ≥ 0.16.0.
+- Router Replay is currently only available with the Megatron backend.
 
 ### Relationship with Training-Inference Correction
 
