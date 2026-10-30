@@ -40,6 +40,8 @@ megatron rlhf --use_ray true --config examples/ray/grpo/ray_grpo_colocate.yaml
 
 ### GPU 分配模式
 
+`nnodes` 指每个 GPU 资源池分布到的不同节点数量。独立资源池可以使用不同的节点集合；同卡部署的角色共享资源池。按节点放置需要 Ray 2.54 或更新版本，该版本修复了 `STRICT_PACK` 放置组忽略节点标签选择器的问题。
+
 **Colocate（共享 GPU）**— 训练和推理共享同一组 GPU，交替使用，通过 sleep/wake 释放显存：
 
 ```yaml

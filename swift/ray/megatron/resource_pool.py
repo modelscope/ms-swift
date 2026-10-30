@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from dataclasses import dataclass, field
+from packaging.version import Version
 from typing import Any, Dict, List, Tuple
 
 from swift.utils import get_logger
@@ -19,7 +20,7 @@ def sort_pgs_by_node_ip(pgs: List[Any]) -> List[Any]:
     for pg in pgs:
         specs = ray._private.state.state.placement_group_table(pg.id)
         node_id = specs['bundles_to_node_id'][0]
-        pg_ip[pg.id] = node_ip[node_id]
+        pg_ip[pg.id] = (node_ip[node_id], node_id)
     return sorted(pgs, key=lambda pg: pg_ip[pg.id])
 
 
@@ -54,9 +55,13 @@ class ResourcePool:
         return [int(info[1]) if info[1] else i for i, info in enumerate(self.bundle_infos)]
 
     def create(self, device_name: str = 'GPU'):
-        """Create one PG per node with STRICT_PACK strategy."""
+        """Create one STRICT_PACK PG on each distinct node."""
         import ray
         from ray.util.placement_group import placement_group
+
+        if self.num_nodes > 1 and Version(ray.__version__) < Version('2.54.0'):
+            raise RuntimeError('Multi-node resource pools require Ray >= 2.54.0; '
+                               'older versions ignore STRICT_PACK node labels.')
 
         if device_name == 'npu':
             device_name = 'NPU'
@@ -68,16 +73,32 @@ class ResourcePool:
             'CPU': max(self.max_colocate_count, 1),
         }
 
-        pgs = []
-        for n_gpus in self.process_on_nodes:
-            bundles = [bundle_template.copy() for _ in range(n_gpus)]
-            pg = placement_group(bundles, strategy='STRICT_PACK')
-            pgs.append(pg)
+        original_counts = self.process_on_nodes
+        self.pgs = pgs = []
+        counts = {}
+        used_nodes = []
+        try:
+            # Place larger slices first so smaller ones cannot consume their only eligible node.
+            for n_gpus in sorted(original_counts, reverse=True):
+                bundles = [bundle_template.copy() for _ in range(n_gpus)]
+                kwargs = {}
+                if used_nodes:
+                    selector = {'ray.io/node-id': f'!in({",".join(used_nodes)})'}
+                    kwargs['bundle_label_selector'] = [selector] * n_gpus
+                pg = placement_group(bundles, strategy='STRICT_PACK', **kwargs)
+                pgs.append(pg)
+                counts[pg.id] = n_gpus
+                ray.get(pg.ready())
+                node_id = ray._private.state.state.placement_group_table(pg.id)['bundles_to_node_id'][0]
+                used_nodes.append(node_id)
 
-        ray.get([pg.ready() for pg in pgs])
-
-        self.pgs = sort_pgs_by_node_ip(pgs)
-        self._discover_bundle_infos()
+            self.pgs = sort_pgs_by_node_ip(pgs)
+            self.process_on_nodes = [counts[pg.id] for pg in self.pgs]
+            self._discover_bundle_infos()
+        except BaseException:
+            self.destroy()
+            self.process_on_nodes = original_counts
+            raise
 
     def _discover_bundle_infos(self):
         """Probe each bundle's accelerator_id via lightweight actors.
@@ -142,6 +163,8 @@ class ResourcePool:
                 except Exception:  # noqa: BLE001
                     pass
             self.pgs = []
+        self.node_ips = []
+        self.bundle_infos = []
 
 
 class ResourcePoolManager:
@@ -155,10 +178,14 @@ class ResourcePoolManager:
 
     def create_all(self):
         seen: set = set()
-        for pool in self._pools.values():
-            if id(pool) not in seen:
-                seen.add(id(pool))
-                pool.create()
+        try:
+            for pool in self._pools.values():
+                if id(pool) not in seen:
+                    seen.add(id(pool))
+                    pool.create()
+        except BaseException:
+            self.destroy_all()
+            raise
 
     def destroy_all(self):
         seen: set = set()
