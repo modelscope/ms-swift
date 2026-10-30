@@ -250,6 +250,23 @@ def load_video_internvl(video: Union[str, bytes], bound=None, num_segments=32):
     return images
 
 
+def load_video_kimi_vl(video: Union[str, bytes], sample_fps: float = 1., max_size: int = 448):
+    # https://huggingface.co/blog/moonshotai/kimi-vl-a3b-thinking-2506#video-understanding
+    from decord import VideoReader, cpu
+    vr = VideoReader(load_file(video), ctx=cpu(0), num_threads=1)
+    fps = float(vr.get_avg_fps())
+    num_frames = int(int(len(vr) / fps) * sample_fps) + 1
+    frame_indices = np.linspace(0, len(vr) - 1, num_frames).round().astype(int)
+    frames = vr.get_batch(frame_indices).asnumpy()
+    images = []
+    for frame in frames:
+        image = Image.fromarray(frame)
+        width, height = image.size
+        scale = max_size / max(width, height)
+        images.append(image.resize((int(width * scale), int(height * scale))))
+    return images, (frame_indices / fps).astype(np.int64).tolist()
+
+
 def load_video_cogvlm2(video: Union[str, bytes]) -> np.ndarray:
     from decord import VideoReader, bridge, cpu
     video_io = load_file(video)
