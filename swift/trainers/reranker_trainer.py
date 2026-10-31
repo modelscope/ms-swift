@@ -34,7 +34,7 @@ class RerankerTrainer(Trainer):
                 # Fallback to model's loss
                 loss = outputs.loss
 
-            if num_items_in_batch is not None and self.model_accepts_loss_kwargs:
+            if model.training and num_items_in_batch is not None and self.model_accepts_loss_kwargs:
                 accumulation_steps = getattr(self, 'current_gradient_accumulation_steps',
                                              self.args.gradient_accumulation_steps)
                 loss = loss / accumulation_steps

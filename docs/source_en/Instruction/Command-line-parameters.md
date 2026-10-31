@@ -250,6 +250,7 @@ This list inherits from the Transformers `Seq2SeqTrainingArguments`, with ms-swi
 - 🔥per_device_eval_batch_size: Default is 1.
 - 🔥gradient_accumulation_steps: Gradient accumulation steps. Default is `None`, meaning `gradient_accumulation_steps` is automatically calculated so that `total_batch_size >= 16`. Total batch size is computed as `per_device_train_batch_size * gradient_accumulation_steps * world_size`. In GRPO training, default is 1.
   - In CPT/SFT training, gradient accumulation has equivalent effects to using a larger batch size, but this equivalence does not hold in RLHF training.
+  - For classification, reranking, and decision tasks, evaluation loss is not divided by the training accumulation window. For a fixed model and validation batch layout, changing `gradient_accumulation_steps` or evaluating after a partial accumulation window does not rescale `eval_loss`.
 - weight_decay:  Weight decay coefficient. Default is 0.1.
 - adam_beta1: The exponential decay rate for the first moment estimates (momentum) in Adam-based optimizers. Defaults to 0.9.
 - adam_beta2: The exponential decay rate for the second moment estimates (variance) in Adam-based optimizers. Defaults to 0.95.
