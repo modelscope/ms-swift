@@ -56,14 +56,9 @@ from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logg
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
 from .utils import (_ForwardRedirection, collate_to_grpo_micro_batch, compute_chord_loss, encode_sample,
-                    get_even_process_data, identity_data_collator, load_pil_img, make_chord_sft_dataset,
-                    pad_logps_back_to_batch, patch_save_last_checkpoint, profiling_context, profiling_decorator,
-                    replace_assistant_response_with_ids, selective_log_softmax, swanlab_get_run)
-
-try:
-    from trl.trainer.utils import entropy_from_logits
-except ImportError:
-    from .utils import entropy_from_logits
+                    entropy_from_logits, get_even_process_data, identity_data_collator, load_pil_img,
+                    make_chord_sft_dataset, pad_logps_back_to_batch, patch_save_last_checkpoint, profiling_context,
+                    profiling_decorator, replace_assistant_response_with_ids, selective_log_softmax, swanlab_get_run)
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer.log
@@ -1495,8 +1490,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         entropies = None
         per_token_logps, _ = GatherLoss.apply(per_token_logps, labels, 1, position_ids)
         if compute_entropy:
-            entropies = entropy_from_logits(logits)
-            entropies, _ = GatherLoss.apply(entropies, labels, 1, position_ids)
+            with torch.no_grad():
+                entropies = entropy_from_logits(logits)
+                entropies, _ = GatherLoss.apply(entropies, labels, 1, position_ids)
 
         if self.template.padding_free:
             # In padding_free mode, we need to extract completion tokens from gathered data.
@@ -1597,18 +1593,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             logps = selective_log_softmax(logits_rmpad, input_ids_rmpad)  # [total_nnz]
             logps = logps.unsqueeze(0)  # [1, total_nnz]
 
-            # Compute entropy if needed
-            if compute_entropy:
-                entropies = entropy_from_logits(logits_rmpad)  # [total_nnz]
-                entropies = entropies.unsqueeze(0)  # [1, total_nnz]
-            else:
-                entropies = None
         else:
             logps = selective_log_softmax(logits, input_ids_for_logps)
-            if compute_entropy:
-                entropies = entropy_from_logits(logits)
-            else:
-                entropies = None
+
+        # Entropy only drives metrics and a boolean token mask, not a differentiable loss.
+        with torch.no_grad():
+            entropies = entropy_from_logits(logits) if compute_entropy else None
 
         return logps, entropies
 
