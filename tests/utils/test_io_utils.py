@@ -57,7 +57,30 @@ class TestIOUtils(unittest.TestCase):
 
         update_last_checkpoint_symlink(self._make_checkpoint(4))
         self.assertEqual(os.readlink(link_path), 'checkpoint-4')
-        self.assertFalse(os.path.lexists(f'{link_path}.tmp'))
+        # The staging link carries this writer's pid and is consumed by the replace.
+        self.assertFalse(os.path.lexists(f'{link_path}.{os.getpid()}.tmp'))
+
+    def test_last_checkpoint_symlink_concurrent_writers(self):
+        # Two saves interleaving must not publish each other's target: with a
+        # shared `last-checkpoint.tmp` staging name, writer A's replace could
+        # land writer B's checkpoint and B could lose its staging link (#10336).
+        link_path = os.path.join(self.tmp_dir, LAST_CHECKPOINT_SYMLINK)
+        stage_a = update_last_checkpoint_symlink(self._make_checkpoint(2))
+        self.assertEqual(stage_a, link_path)
+        # Writer B stages under its own pid while A's replace is "in flight".
+        pid_b = os.getpid() + 1
+        tmp_b = f'{link_path}.{pid_b}.tmp'
+        os.symlink('checkpoint-3', tmp_b)
+
+        # A's next update only touches its own staging name: B's survives.
+        update_last_checkpoint_symlink(self._make_checkpoint(4))
+        self.assertEqual(os.readlink(link_path), 'checkpoint-4')
+        self.assertEqual(os.readlink(tmp_b), 'checkpoint-3')
+        self.assertFalse(os.path.lexists(f'{link_path}.{os.getpid()}.tmp'))
+
+        # And when B does publish, it lands B's own target.
+        os.replace(tmp_b, link_path)
+        self.assertEqual(os.readlink(link_path), 'checkpoint-3')
 
     def test_last_checkpoint_symlink_skips_unusable_targets(self):
         # A checkpoint whose directory is not there yet must not be linked.
