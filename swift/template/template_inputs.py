@@ -43,11 +43,12 @@ def normalize_openai_tool_calls(messages: Messages) -> Messages:
             # no function field, back to tool_call
             function = tool_call.get('function', tool_call)
             arguments = function.get('arguments', {})
-            if isinstance(arguments, str):
-                try:
-                    arguments = json.loads(arguments)
-                except json.JSONDecodeError:
-                    pass
+            # Preserve the original ``arguments`` representation. Round-tripping
+            # through ``json.loads`` -> ``json.dumps`` silently rewrites IEEE-754
+            # floats (e.g. 0.7 -> 0.7000000000000001), which is a different
+            # token sequence for function-call SFT — see #10216. Downstream
+            # callers (e.g. ``BaseAgentTemplate._parse_tool_call``) already
+            # parse the JSON themselves before consuming the value.
             tool_message = {
                 'role': 'tool_call',
                 'content': {
