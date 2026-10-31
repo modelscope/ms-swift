@@ -1,471 +1,320 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""The canvas component registry: descriptors for the minimal generic set.
-
-Organised by mathematical role, not by algorithm -- one descriptor serves a whole
-family via enum params (estimator / loss / reward families point at the twinkle
-class families). Roles of reference models are declared by wiring: a frozen model
-may be KL anchor, preference reference, teacher or scorer, and the canvas renders
-that guidance from the port ``role`` fields. Agentic training is first-class: the
-twinkle_agentic building blocks (sandbox envs, toolsets, verifiers, judges,
-challengers, multi-turn and external rollouts) all carry descriptors here.
-"""
+"""通用组件 v3 注册表：数学职责、真实端口与类型化配置的唯一声明。"""
 from __future__ import annotations
 
 from .descriptor import ComponentDescriptor, ParamSpec, PortSpec
 
-ADVANTAGE_OPTIONS = (
-    'grpo', 'grpo_passk', 'gae', 'rloo', 'remax', 'gpg', 'opo',
-    'reinforce_plus_plus', 'reinforce_pp_baseline',
-)
-LOSS_OPTIONS = (
-    'cross_entropy', 'channel', 'chunked_cross_entropy', 'mse',
-    'grpo', 'ppo', 'ppo_value', 'gspo', 'sapo', 'cispo', 'bnpo', 'dr_grpo', 'real',
-    'gpg', 'gkd', 'opsd', 'mopd', 'kl_cov', 'clip_cov', 'geo_mean',
-    'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'dro', 'dppo_kl', 'dppo_tv',
-    'infonce', 'online_contrastive', 'cosine_similarity',
-)
-REWARD_OPTIONS = (
-    'math', 'math_verify', 'boxed_math', 'format', 'gsm8k', 'gsm8k_brevity',
-    'olympiad_bench', 'multimodal_accuracy', 'f1', 'cot', 'tool_explore',
-    'checks', 'rubric_judge',
-)
-
+REGISTRY_VERSION = 3
+ADVANTAGE_OPTIONS = ('grpo', 'grpo_passk', 'gae', 'rloo', 'remax', 'gpg', 'opo',
+                     'reinforce_plus_plus', 'reinforce_pp_baseline')
+LOSS_OPTIONS = ('cross_entropy', 'channel', 'chunked_cross_entropy', 'mse', 'grpo', 'ppo',
+                'ppo_value', 'gspo', 'sapo', 'cispo', 'bnpo', 'dr_grpo', 'real', 'gpg',
+                'gkd', 'opsd', 'mopd', 'kl_cov', 'clip_cov', 'geo_mean', 'dpo', 'kto',
+                'cpo', 'orpo', 'simpo', 'dro', 'dppo_kl', 'dppo_tv', 'infonce',
+                'online_contrastive', 'cosine_similarity')
+REWARD_OPTIONS = ('math', 'math_verify', 'boxed_math', 'format', 'gsm8k', 'gsm8k_brevity',
+                  'olympiad_bench', 'multimodal_accuracy', 'f1', 'cot', 'tool_explore',
+                  'checks', 'rubric_judge')
 P = PortSpec
+Q = ParamSpec
+D = ComponentDescriptor
 
-POLICY_MODEL = ComponentDescriptor(
-    'policy_model', '策略模型', '资源',
-    'The trainable policy π_θ: the single actor being optimised. The base port is the '
-    'same object viewed with adapters disabled (the LoRA KL anchor), not a second model.',
-    ports_out=(P('policy', 'MODEL', 'policy_view'), P('base', 'MODEL', 'base_view')),
-    params=(
-        ParamSpec('model', '模型', 'Qwen/Qwen3-8B', 'checkpoint id'),
-        ParamSpec('train_type', '训练类型', 'lora', 'lora or full: a parameter tier, not a topology fork',
-                  options=('lora', 'full')),
-        ParamSpec('adapters', '续训 adapter', '', 'checkpoint path; resume training from this adapter', group='训练面'),
-        ParamSpec('loss', '损失', 'cross_entropy', 'default objective; a wired loss node or code component overrides it',
-                  options=LOSS_OPTIONS, group='训练面'),
-        ParamSpec('optim', '优化器', 'adamw', 'optimizer family; lr and schedule live in the train config', group='训练面'),
-        ParamSpec('parallel_spec', '并行规格', 'tp2dp4', 'placement of the trainable mesh', group='放置'),
-        # 模板面预处理：与 TemplateConfig 字段同名（编码/截断/loss 掩码都在模板里做）
-        ParamSpec('max_length', '最大长度', '', 'token budget; empty = template default', group='模板'),
-        ParamSpec('truncation_strategy', '截断策略', '', 'delete / left / right / split; empty = off', group='模板'),
-        ParamSpec('loss_scale', '损失掩码', 'default', 'which turns carry loss (default / last_round / all)', group='模板'),
-        ParamSpec('system', '系统提示词', '', 'prepended system message; empty = none', group='模板'),
-    ),
-    factory='swift.dev.builders.model:build_model',
-)
+MODEL = D('model', '模型', 'Resource', '唯一参数化函数 f_theta；独立冻结模型必须独立构造。',
+    ports_in=(P('artifact', 'ARTIFACT', '模型权重来源', ('model', 'training'), optional=True),),
+    ports_out=(P('model', 'MODEL', '唯一模型对象'),),
+    params=(Q('model', '模型来源', '', '模型 ID/路径；接入 artifact 时由真实产物提供'),
+            Q('train_type', '训练类型', 'lora', options=('lora', 'full')),
+            Q('freeze', '冻结参数', False, type='bool'),
+            Q('backend', '训练后端', 'hf', options=('hf', 'megatron', 'unsloth')),
+            Q('mode', '执行模式', 'ray', options=('ray', 'local', 'remote')),
+            Q('parallel_spec', '并行规格', '', '由 DeviceMesh 解释，不强制单卡'),
+            Q('model_config', '模型配置', {}, type='dict'),
+            Q('train_config', '训练参数选择', {}, type='dict'),
+            Q('tuner_config', '调参配置', {}, type='dict'),
+            Q('distributed_config', '完整放置配置', {}, type='dict')),
+    owner_kind='MODEL')
 
-FROZEN_MODEL = ComponentDescriptor(
-    'frozen_model', '冻结模型', '资源',
-    'A frozen model copy whose role is declared by wiring: KL anchor, preference '
-    'reference, distillation teacher or reward scorer -- the model itself carries no role.',
-    ports_out=(P('model', 'MODEL', 'frozen_reference'),),
-    params=(
-        ParamSpec('model', '模型', '同策略初始权重', 'checkpoint id'),
-        ParamSpec('ema', 'EMA 影子', 'false',
-                  'true = sync this anchor as an EMA shadow (rl.sync_ref_model); needs the ref wiring',
-                  options=('true', 'false')),
-    ),
-    factory='swift.dev.builders.model:build_ref_model',
-)
+DATASET = D('dataset', '数据集', 'Resource', '原始数据分布与预处理配置，不进入循环。',
+    ports_out=(P('data', 'DATASET', '原生数据来源'),),
+    params=(Q('dataset', '数据来源', [], type='list', item_type='str', required=True),
+            Q('dataset_config', '预处理配置', {}, type='dict')))
 
-API_MODEL = ComponentDescriptor(
-    'api_model', '外部 API 模型', '资源',
-    'An external OpenAI-compatible endpoint used as judge, teacher or utility model: '
-    'a reference that never occupies training mesh.',
-    ports_out=(P('model', 'MODEL', 'external_api'),),
-    params=(
-        ParamSpec('base_url', '端点', '', 'OpenAI-compatible base url'),
-        ParamSpec('model', '模型名', '', 'the served model name at that endpoint'),
-    ),
-    factory='twinkle_agentic.protocol.openai:OpenAI',
-)
+SAMPLER = D('sampler', '采样器', 'Resource', '常驻生成引擎；权重初始来源与编码配置是参数，同步由 weight_sync 表达。',
+    ports_out=(P('sampler', 'SAMPLER', '生成引擎'),),
+    params=(Q('model', '模型来源（id/路径，同时是 tokenizer 来源）', '', required=True),
+            Q('engine', '引擎', 'vllm', options=('vllm', 'sglang', 'torch')),
+            Q('parallel_spec', '并行规格', ''), Q('mode', '执行模式', 'ray', options=('ray', 'local', 'remote')),
+            Q('engine_args', '引擎参数', {}, type='dict'),
+            Q('model_config', '模型加载配置', {}, type='dict'),
+            Q('template_config', '编码配置', {}, type='dict'),
+            Q('sleep_level', '休眠级别', 0, type='int', options=(0, 1, 2))), owner_kind='SAMPLER')
 
-SAMPLER = ComponentDescriptor(
-    'sampler', '采样引擎', '资源',
-    'A resident inference engine serving the policy view: generation happens here, '
-    'weight sync targets are declared by wiring this handle into the sync effect.',
-    ports_out=(P('sampler', 'SAMPLER', 'engine'),),
-    params=(
-        ParamSpec('engine', '引擎', 'vllm', 'inference engine kind', options=('vllm', 'sglang', 'torch')),
-        ParamSpec('temperature', '温度', '1.0', 'default sampling temperature'),
-        ParamSpec('max_model_len', '最大长度', '8192', 'engine context length; passed through engine args'),
-        ParamSpec('gpu_memory_util', '显存占比', '0.8', 'fraction of GPU memory the engine may claim'),
-        ParamSpec('sleep_level', '休眠级别', '0',
-                  'colocate device time-sharing: 0 = engine stays resident, 1 = offload weights + drop KV, 2 = discard both',
-                  options=('0', '1', '2')),
-    ),
-    factory='swift.dev.builders.sampler',
-    client_factory='twinkle_client.sampler:vLLMSampler',
-)
+ROLLOUT = D('rollout', '多轮生成器', 'Resource', '在环境 lease 内执行多轮生成，不包含评分与优势估计。',
+    ports_in=(P('sampler', 'SAMPLER', '生成 backend'), P('tools', 'TOOL', '工具插件与声明', optional=True),
+              P('env', 'ENV', '环境 lease', optional=True)),
+    ports_out=(P('rollout', 'ROLLOUT', 'episode 生成机制'),),
+    params=(Q('tokenizer', 'Tokenizer 来源（id/路径）', '', required=True),
+            Q('template_config', '编码配置', {}, type='dict'),
+            Q('max_turns', '最大轮数', 8, type='int', minimum=1),
+            Q('generation_config', '生成参数', {}, type='dict'),
+            Q('rollout_config', '多轮配置', {}, type='dict')))
 
-DATASET = ComponentDescriptor(
-    'dataset', '数据集', '资源',
-    'A declared dataset of rows (messages plus free columns): an offline statement, '
-    'never a member of the training loop frame.',
-    ports_out=(P('data', 'DATA', 'rows'),),
-    params=(
-        ParamSpec('dataset', '数据集', '', 'dataset id or path'),
-        # 预处理旋钮与 DatasetConfig 字段同名（loader 内部按它们构造 Preprocessor 家族）
-        ParamSpec('packing', '样本打包', 'false', 'pack short rows into fixed-length sequences', group='预处理'),
-        ParamSpec('packing_strategy', '打包策略', 'wrapped', 'packed-sample boundary policy', group='预处理'),
-        ParamSpec('streaming', '流式读取', 'false', 'iterate the dataset lazily instead of materializing', group='预处理'),
-        ParamSpec('lazy_tokenize', '惰性编码', 'false', 'tokenize inside the dataloader instead of eager map', group='预处理'),
-        ParamSpec('split_dataset_ratio', '验证集比例', '0', 'hold out this fraction as val split', group='预处理'),
-    ),
-    factory='swift.dev.builders.dataset',
-)
+GROUP_RULE = D('group_rule', '分组采样规则', 'Resource', '完整组准入规则，不执行基线前向。',
+    ports_out=(P('rule', 'GROUP_RULE', '准入规则'),),
+    params=(Q('resample', '重采规则', 'none', options=('none', 'zero_variance')),
+            Q('kwargs', '准入参数', {}, type='dict')))
 
-TOOLSET = ComponentDescriptor(
-    'toolset', '工具集', '资源',
-    'The JSON-schema tool declarations the policy may call: rolled into the chat '
-    'template and mirrored onto the environment tool surface.',
-    ports_out=(P('tools', 'TOOL', 'tool_decls'),),
-    params=(ParamSpec('tools', '工具', '', 'tool JSON schemas'),),
-    factory='twinkle_agentic.tools.tool_manager:ToolManager',
-)
+TOOLSET = D('toolset', '工具集', 'Resource', '实际插件来源；运行实现按环境 lease 绑定，声明即插件模块内的实例。',
+    ports_out=(P('tools', 'TOOL', '工具插件'),),
+    params=(Q('plugins', '插件来源', [], type='list', item_type='str'),))
+SANDBOX_ENV = D('sandbox_env', '沙箱环境', 'Resource', '原生环境池与 lease 生命周期。',
+    ports_out=(P('env', 'ENV', '环境池'),), params=(Q('sandbox_config', '环境配置', {}, type='dict'),), owner_kind='ENV')
+POLICY_ENDPOINT = D('policy_endpoint', '本地推理服务', 'Resource', '复用常驻 sampler；只管理本会话拥有的应用。',
+    ports_in=(P('sampler', 'SAMPLER', '服务引擎'),),
+    ports_out=(P('endpoint', 'ENDPOINT', '就绪端点'),),
+    params=(Q('port', '端口', 8000, type='int', minimum=1, maximum=65535),
+            Q('server_config', '服务配置', {}, type='dict')), effects=('serve',), owner_kind='ENDPOINT')
+API_ENDPOINT = D('api_endpoint', '外部 API', 'Resource', '明确外部连接；凭据仅从运行环境读取。',
+    ports_out=(P('endpoint', 'ENDPOINT', '外部 API 连接'),),
+    params=(Q('base_url', '服务地址', '', required=True), Q('model', '服务模型', '', required=True),
+            Q('api_key_env', '凭据环境变量名', ''),
+            Q('timeout', '超时秒数', 60.0, type='float', minimum=0)), owner_kind='ENDPOINT')
+CODE_COMPONENT = D('code_component', '自定义组件', 'Stage', '显式声明端口、生命周期与副作用的用户组件。',
+    params=(Q('entry', '入口名', 'fn', required=True),
+            Q('lifecycle', '生命周期', 'Stage', options=('Resource', 'Iterator', 'Stage', 'Task')),
+            Q('ports_in', '输入声明', [], type='list', item_type='dict'),
+            Q('ports_out', '输出声明', [], type='list', item_type='dict'),
+            Q('effects', '副作用', [], type='list', item_type='str', unique_items=True),
+            Q('config', '用户配置', {}, type='dict')), effects=('code',))
 
-SANDBOX_ENV = ComponentDescriptor(
-    'sandbox_env', '沙箱环境', '资源',
-    'The sandbox where tool calls execute: local subprocess, OpenEnv pool or '
-    'microVM. Multi-turn rollouts lease it per episode.',
-    ports_out=(P('env', 'ENV', 'sandbox'),),
-    params=(ParamSpec('kind', '环境形态', 'local', 'sandbox backend', options=('local', 'openenv', 'agentenv')),),
-    factory='twinkle_agentic.envs',
-)
+DATALOADER = D('dataloader', '数据加载器', 'Iterator', '常驻游标、epoch 与 RNG；完整消费后推进当前批次。',
+    ports_in=(P('data', 'DATASET', '数据来源'), P('after', 'CTRL', '反馈后取下一批', optional=True)),
+    ports_out=(P('batch', 'DATA', '当前原始批次', ('batch',)), P('source', 'SOURCE', '控制句柄', control=True)),
+    params=(Q('batch_size', '批大小', 8, type='int', minimum=1),
+            Q('shuffle', '打乱', True, type='bool'), Q('seed', '随机种子', 42, type='int', minimum=0),
+            Q('num_workers', '加载进程数', 0, type='int', minimum=0),
+            Q('drop_last', '丢弃尾批', False, type='bool')))
+STREAMING_DRIVER = D('streaming_driver', '流式采样', 'Iterator', '采样准入、滞后、背压和批次确认控制面。',
+    ports_in=(P('prompts', 'DATASET', '数据分布'),
+              P('engine', 'SAMPLER', '具名采样资源', many=True, optional=True),
+              P('episode', 'ROLLOUT', '多轮来源', optional=True),
+              P('groups', 'GROUP_RULE', '完整组规则', optional=True),
+              P('after', 'CTRL', '下一批反馈', optional=True)),
+    ports_out=(P('samples', 'TRAJ', '当前轨迹', ('rollout',)), P('source', 'SOURCE', '发布与确认控制', control=True)),
+    params=(Q('async_mode', '异步模式', 'none', options=('none', 'one_step_off', 'fully_async')),
+            Q('max_staleness', '最大滞后', 1, type='int', minimum=0),
+            Q('num_generations', '组宽', 8, type='int', minimum=1),
+            Q('batch_size', '消费批大小', 8, type='int', minimum=1),
+            Q('buffer_size', '缓冲上限', 64, type='int', minimum=1),
+            Q('generation_config', '生成配置', {}, type='dict'),
+            Q('driver_config', '控制面配置', {}, type='dict')))
+CHALLENGER = D('challenger', '自动出题器', 'Iterator', '显式出题/解题来源； 一次提取同批两路训练轨迹。',
+    ports_in=(P('backend', 'SAMPLER', '出题 backend'),
+              P('solver_rollout', 'ROLLOUT', '解题多轮机制', optional=True),
+              P('env', 'ENV', 'episode 环境'),
+              P('api', 'ENDPOINT', '额外代理 API', optional=True),
+              P('after', 'CTRL', '下一批反馈', optional=True)),
+    ports_out=(P('questions', 'TRAJ', '同批出题轨迹', ('rollout',)),
+               P('answers', 'TRAJ', '同批解题轨迹', ('rollout',)), P('source', 'SOURCE', '批次控制', control=True)),
+    params=(Q('seed', '种子任务', '', required=True), Q('max_tasks', '每批题数', 8, type='int', minimum=1),
+            Q('tokenizer', 'Tokenizer 来源（id/路径）', '', required=True),
+            Q('template_config', '编码配置', {}, type='dict'),
+            Q('challenger_config', '出题机制配置', {}, type='dict')))
 
-POLICY_ENDPOINT = ComponentDescriptor(
-    'policy_endpoint', '策略端点', '资源',
-    'A local OpenAI-shaped endpoint served by the policy that is being trained: '
-    'external agents hit it, so answers always come from the fresh weights.',
-    ports_in=(P('policy', 'MODEL', 'policy_view'),),
-    ports_out=(P('endpoint', 'MODEL', 'serving_view'),),
-    params=(ParamSpec('port', '端口', '8000', 'local serving port'),),
-    factory='twinkle_agentic.rollout.endpoint:PolicyEndpoint',
-)
+GENERATE = D('generate', '批量生成', 'Stage', '仅生成 episode，评分与筛选独立执行。',
+    ports_in=(P('prompts', 'DATA', '原始提示批次', ('batch',)),
+              P('engine', 'SAMPLER', '生成引擎', optional=True),
+              P('episode', 'ROLLOUT', '多轮引擎', optional=True)),
+    ports_out=(P('samples', 'TRAJ', '生成轨迹', ('rollout',)),),
+    params=(Q('num_generations', '组宽', 8, type='int', minimum=1, phase='call'),
+            Q('generation_config', '生成参数', {}, type='dict', phase='call')),
+    exclusive_inputs=(('engine', 'episode'),))
+SCORE = D('score', '评分', 'Stage', '按参数声明的评分函数对齐打分列；缺失不截断也不补零。',
+    ports_in=(P('samples', 'TRAJ', '待评分轨迹', ('rollout',)),),
+    ports_out=(P('reward', 'REWARD', '结果评分', ('outcome',)),
+               P('process', 'REWARD', '过程评分', ('process',), optional=True)),
+    params=(Q('scorer', '注册评分函数名', 'math', required=True),
+            Q('scorer_kwargs', '评分构造参数', {}, type='dict', phase='call')))
+MODEL_FORWARD = D('model_forward', '模型前向', 'Stage', '按显式字段集合返回原生模型输出，调用方式不改变模型身份。',
+    ports_in=(P('model', 'MODEL', '前向模型'),
+              P('traj', 'TRAJ', '前向数据；内部按 tokenizer 参数编码', accepted_kinds=('DATA', 'BATCH'))),
+    ports_out=tuple(P(key, 'SIGNAL', key, (key,), optional=True, enabled_by='outputs')
+                    for key in ('logps', 'values', 'logits', 'topk', 'embeddings')),
+    params=(Q('tokenizer', 'Tokenizer 来源（id/路径）', '', required=True),
+            Q('template_config', '编码配置', {}, type='dict'),
+            Q('outputs', '输出字段', ['logps'], type='list', item_type='str',
+              item_options=('logps', 'values', 'logits', 'topk', 'embeddings'), required=True, unique_items=True, phase='call'),
+            Q('disable_lora', '禁用 LoRA', False, type='bool', phase='call'),
+            Q('temperature', '温度', 1.0, type='float', minimum=1e-12, phase='call'),
+            Q('top_k', 'Top-k 宽度', 32, type='int', minimum=1, phase='call'),
+            Q('micro_batch_size', '前向微批大小', 1, type='int', minimum=1, phase='call')),
+    execution='remote')
+REDUCE = D('reduce', '归约', 'Stage', '按显式轴、mask 和权重做数值归约，不访问模型。',
+    ports_in=(P('signal', 'SIGNAL', '数值输入', accepted_kinds=('ADV',)),
+              P('mask', 'SIGNAL', '明确 mask', optional=True), P('weights', 'SIGNAL', '数值权重', optional=True)),
+    ports_out=(P('out', 'SIGNAL', '数学归约结果', profile_param='output_profile'),),
+    params=(Q('op', '算子', 'mean', options=('sum', 'mean', 'variance', 'logsumexp'), phase='call'),
+            Q('axis', '归约轴', 'token', options=('token', 'row', 'group'), phase='call'),
+            Q('output_profile', '结果 Profile', 'row', options=('row', 'scalar'), phase='call')),
+    execution='remote')
+REWARD_SHAPE = D('reward_shape', '奖励整形', 'Stage', 'r - baseline - beta*KL；KL 必须两路前向或显式已计算数值。',
+    ports_in=(P('reward', 'REWARD', '原评分', ('outcome', 'process')),
+              P('logps', 'SIGNAL', '被比较 logps', ('logps',), optional=True),
+              P('reference', 'SIGNAL', '比较基准 logps', ('logps',), optional=True),
+              P('baseline', 'SIGNAL', '明确基线', ('row', 'scalar'), optional=True)),
+    ports_out=(P('reward', 'REWARD', '整形奖励', profile_param='profile'),),
+    params=(Q('beta', 'KL 系数', 0.0, type='float', minimum=0, phase='call'),
+            Q('kl', 'KL 估计', 'none', options=('none', 'k1', 'k2', 'k3'), phase='call'),
+            Q('profile', '结果 Profile', 'outcome', options=('outcome', 'process'), phase='call')),
+    required_when=tuple(('kl', method, ('logps', 'reference')) for method in ('k1', 'k2', 'k3')),
+    execution='remote')
+ADVANTAGE = D('advantage', '优势估计', 'Stage', '仅消费奖励、分组身份与显式 values/baseline；不执行前向。',
+    ports_in=(P('reward', 'REWARD', '实际奖励', ('outcome', 'process')),
+              P('values', 'SIGNAL', '值函数估计', ('values',), optional=True),
+              P('baseline', 'SIGNAL', '显式基线', ('row', 'scalar'), optional=True),
+              P('traj', 'TRAJ', '批次分组与 token 身份', ('rollout',))),
+    ports_out=(P('adv', 'ADV', '优势', profile_param='profile'),
+               P('returns', 'SIGNAL', '独立 returns', ('values',), optional=True)),
+    params=(Q('estimator', '估计器', 'grpo', options=ADVANTAGE_OPTIONS, phase='call'),
+            Q('profile', '结果 Profile', 'row', options=('row', 'token'), phase='call'),
+            Q('gamma', '折扣', 1.0, type='float', minimum=0, maximum=1, phase='call'),
+            Q('lam', 'GAE lambda', 1.0, type='float', minimum=0, maximum=1, phase='call'),
+            Q('kwargs', '估计参数', {}, type='dict', phase='call')),
+    required_when=(('estimator', 'gae', ('values',)), ('estimator', 'remax', ('baseline',))),
+    execution='remote')
+SIGNAL_COMBINE = D('signal_combine', '数值组合', 'Stage', '对齐通道的加权和或概率混合；logps 概率混合使用 logsumexp。',
+    ports_in=(P('signals', 'SIGNAL', '具名对齐数值', many=True, accepted_kinds=('ADV',)),),
+    ports_out=(P('out', 'SIGNAL', '与输入数学类型一致', mirror_input='signals'),),
+    params=(Q('mode', '运算', 'weighted_sum', options=('weighted_sum', 'probability_mixture'), phase='call'),
+            Q('weights', '逐 slot 权重', {}, type='dict', phase='call')),
+    execution='remote')
+SELECT = D('select', '样本筛选', 'Stage', '一次选择索引应用全部对齐载荷；成对与完整组不拆散。',
+    ports_in=(P('batch', 'TRAJ', '原始对齐数据', optional=False, accepted_kinds=('DATA', 'BATCH')),
+              P('reward', 'REWARD', '筛选评分', ('outcome',)),
+              P('signals', 'SIGNAL', '具名同步筛选输入', many=True, optional=True, accepted_kinds=('ADV',))),
+    ports_out=(P('batch', 'TRAJ', '同一次选择后的数据', mirror_input='batch'),
+               P('reward', 'REWARD', '同一次选择后的评分', mirror_input='reward'),
+               P('signals', 'SIGNAL', '逐 slot 同步输出', optional=True, mirror_input='signals')),
+    params=(Q('select', '选择规则', 'threshold', options=('threshold', 'top_k', 'best_of_n'), phase='call'),
+            Q('threshold', '阈值', 0.0, type='float', phase='call'),
+            Q('top_k', '保留数', 1, type='int', minimum=1, phase='call')))
+TRAIN_STEP = D('train_step', '训练步骤', 'Stage', '真实 forward_backward 与 optimizer step；loss、优化器与编码是参数，不负责保存和发布 cadence。',
+    ports_in=(P('model', 'MODEL', '实际更新模型', access='write'),
+              P('batch', 'TRAJ', '待训练数据；轨迹在内部按 tokenizer 参数编码', accepted_kinds=('DATA', 'BATCH')),
+              P('arguments', 'SIGNAL', 'slot 是 loss 实际参数名', many=True, optional=True, accepted_kinds=('ADV',)),
+              P('after', 'CTRL', '正向完成依赖', optional=True)),
+    ports_out=(P('step', 'STEP', '真实训练回执', ('step',)), P('model', 'MODEL', '训练后的模型引用'),
+               P('metric', 'METRIC', '小型摘要', ('summary',)),
+               P('then', 'CTRL', '更新完成')),
+    params=(Q('tokenizer', 'Tokenizer 来源（id/路径）', '', required=True),
+            Q('template_config', '编码配置', {}, type='dict'),
+            Q('loss', '损失函数', 'cross_entropy', options=LOSS_OPTIONS),
+            Q('loss_kwargs', '损失构造参数', {}, type='dict'),
+            Q('optim', '优化器族', 'adamw'),
+            Q('lr', '学习率', 1e-5, type='float', minimum=0),
+            Q('lr_scheduler_type', '调度器', 'cosine'),
+            Q('num_training_steps', 'Scheduler 总步数', 1000, type='int', minimum=1),
+            Q('warmup_ratio', '预热比例', 0.05, type='float', minimum=0, maximum=1),
+            Q('weight_decay', '权重衰减', 0.0, type='float', minimum=0),
+            Q('optimizer_config', '其他原生更新参数', {}, type='dict'),
+            Q('micro_batch_size', '微批大小', 1, type='int', minimum=1, phase='call'),
+            Q('gradient_accumulation_steps', '梯度累积步数', 1, type='int', minimum=1, phase='call'),
+            Q('max_grad_norm', '梯度裁剪', 1.0, type='float', minimum=0, phase='call')),
+    effects=('train',))
+WEIGHT_SYNC = D('weight_sync', '权重同步', 'Stage', '经原生分桶传输；流式发布登记、commit 后确认，不虚报 pending 完成。',
+    ports_in=(P('model', 'MODEL', '权重来源；未接线时沿连线共享的作用域唯一解析', scope=True),
+              P('targets', 'SAMPLER', '明确接收者', many=True, access='write'),
+              P('source', 'SOURCE', '流式控制句柄，不触发 take', optional=True, control=True),
+              P('step', 'STEP', '真实更新结果', ('step',), optional=True),
+              P('after', 'CTRL', '完成依赖', optional=True)),
+    ports_out=(P('sync', 'SYNC', '完成确认', ('outcome',)), P('then', 'CTRL', '同步已完成')),
+    params=(Q('cadence', '同步间隔', 1, type='int', minimum=1, phase='call'),
+            Q('sync_config', '原生同步配置', {}, type='dict')), effects=('sync',))
+WEIGHT_AVERAGE = D('weight_average', '参数平均', 'Stage', 'source/target 的 copy 或 EMA；目标角色不写死，原生设备间传输。',
+    ports_in=(P('source', 'MODEL', '来源模型；未接线时沿连线共享的作用域唯一解析', scope=True),
+              P('target', 'MODEL', '目标模型', access='write'),
+              P('step', 'STEP', '明确更新来源', ('step',))),
+    ports_out=(P('sync', 'SYNC', '实际传输确认', ('outcome',)),),
+    params=(Q('mode', '方式', 'ema', options=('copy', 'ema'), phase='call'),
+            Q('alpha', 'EMA 系数', 0.9, type='float', minimum=0, maximum=1, phase='call')), effects=('sync',))
+CHECKPOINT = D('checkpoint', '保存检查点', 'Stage', '实际模型导出与完整训练快照分 profile；完整快照仅在安全边界保存。',
+    ports_in=(P('model', 'MODEL', '快照模型；未接线时沿连线共享的作用域唯一解析', scope=True),
+              P('step', 'STEP', '训练状态来源', ('step',), optional=True),
+              P('source', 'SOURCE', '循环游标来源', optional=True, control=True),
+              P('after', 'CTRL', '完成依赖', optional=True)),
+    ports_out=(P('artifact', 'ARTIFACT', '实际写出产物', profile_param='profile'),),
+    params=(Q('name', '保存名', 'checkpoint', phase='call'),
+            Q('profile', '保存内容', 'model', options=('model', 'training'), phase='call'),
+            Q('cadence', '保存间隔', 1, type='int', minimum=1, phase='call')),
+    required_when=(('profile', 'training', ('step', 'source')),), effects=('save',))
 
-STREAMING_DRIVER = ComponentDescriptor(
-    'streaming_driver', '流式驱动器', '迭代器',
-    'The async control plane: admits prompts, overlaps generation with training under '
-    'a staleness budget, and hands the learner assembled batches.',
-    ports_in=(P('prompts', 'DATA', 'prompt_stream'),
-              P('sampler', 'SAMPLER', 'engine', many=True),
-              P('score', 'REWARD', 'scorer', optional=True),
-              P('after', 'CTRL', 'next_round', optional=True)),
-    ports_out=(P('samples', 'TRAJ', 'batch_stream'),),
-    params=(
-        ParamSpec('async_mode', '异步模式', 'none', 'none = sync colocate-style, one_step_off = one-batch lookahead, fully_async = stale-by-budget',
-                  options=('none', 'one_step_off', 'fully_async')),
-        ParamSpec('max_staleness', '最大滞后', '1', 'how many publishes behind the freshest policy a batch may train on'),
-        ParamSpec('num_generations', '组宽', '8', 'samples per prompt group'),
-    ),
-    factory='twinkle_agentic.async_rl.streaming_driver:StreamingDriver',
-)
+MERGE = D('merge', '权重合并', 'Task', '复用实体 MergeComponent，输出真实模型产物。',
+    ports_in=(P('artifact', 'ARTIFACT', '原权重', ('model',)),), ports_out=(P('model', 'ARTIFACT', '合并权重', ('model',)),),
+    params=(Q('output_dir', '输出目录', 'output/merged'), Q('merge_config', '合并配置', {}, type='dict')), effects=('save',))
+QUANTIZE = D('quantize', '权重量化', 'Task', '复用实体 QuantizeComponent，校准来源明确。',
+    ports_in=(P('artifact', 'ARTIFACT', '原权重', ('model',)), P('calib', 'DATASET', '校准来源', optional=True)),
+    ports_out=(P('model', 'ARTIFACT', '量化权重', ('model',)),),
+    params=(Q('output_dir', '输出目录', 'output/quantized'), Q('quantize_config', '量化配置', {}, type='dict')), effects=('save',))
+INFER = D('infer', '批量推理', 'Task', '从权重来源重建推理引擎，推理数据必须明确。',
+    ports_in=(P('model', 'MODEL', '会话模型（回读其权重来源）', optional=True),
+              P('artifact', 'ARTIFACT', '权重来源', ('model',), optional=True),
+              P('data', 'DATASET', ' 实际推理数据')),
+    ports_out=(P('predictions', 'DATA', '预测行', ('raw',)), P('artifact', 'ARTIFACT', '预测产物', ('dataset',), optional=True)),
+    params=(Q('infer_config', '推理配置（sampler 为引擎，含 template_config 等）', {}, type='dict'),),
+    exclusive_inputs=(('model', 'artifact'),), effects=('save',))
+EVAL = D('eval', '评测', 'Task', '复用 Evaluator 与公共 runner，不关闭借用的会话采样资源。',
+    ports_in=(P('sampler', 'SAMPLER', '采样来源', optional=True), P('endpoint', 'ENDPOINT', 'API 来源', optional=True),
+              P('data', 'DATASET', '明确评测数据')),
+    ports_out=(P('metrics', 'METRIC', '真实评测摘要', ('summary',)), P('artifact', 'ARTIFACT', '真实报告', ('report',), optional=True)),
+    params=(Q('tokenizer', 'Tokenizer 来源（id/路径）', '', required=True),
+            Q('task_config', 'Evaluator 配置', {}, type='dict')), exclusive_inputs=(('sampler', 'endpoint'),))
+DEPLOY = D('deploy', '部署服务', 'Task', '经明确授权启动服务并等待就绪，命令线程不被阻塞。',
+    ports_in=(P('model', 'ARTIFACT', '权重来源', ('model',)),), ports_out=(P('endpoint', 'ENDPOINT', '就绪服务'),),
+    params=(Q('deploy_config', '服务配置', {}, type='dict'),), effects=('external', 'serve'), owner_kind='ENDPOINT')
+HUB_PUSH = D('hub_push', '发布模型', 'Task', '明确授权后调用公共 Hub API，返回实际发布结果。',
+    ports_in=(P('model', 'ARTIFACT', '权重来源', ('model',)),),
+    ports_out=(P('artifact', 'ARTIFACT', '实际发布结果', ('publication',)),),
+    params=(Q('hub_model_id', '目标仓库', '', required=True),
+            Q('hub', 'Hub', 'ModelScope', options=('ModelScope', 'HuggingFace')),
+            Q('private', '私有仓库', True, type='bool'), Q('revision', '版本', 'main'),
+            Q('commit_message', '提交说明', 'webui workflow push'), Q('token_env', '凭据环境变量名', '')),
+    effects=('external',))
 
-DATALOADER = ComponentDescriptor(
-    'dataloader', '数据加载器', '迭代器',
-    'for batch in dataloader: the offline and colocate iterator. The loop frame '
-    'starts here; the dataset itself stays outside as a declaration.',
-    ports_in=(P('data', 'DATA', 'rows'), P('after', 'CTRL', 'next_round', optional=True)),
-    ports_out=(P('batch', 'DATA', 'batches'),),
-    params=(
-        ParamSpec('batch_size', '批大小', '8'),
-        ParamSpec('shuffle', '打乱', 'true'),
-        ParamSpec('num_workers', '加载进程', '0'),
-    ),
-    factory='twinkle.dataloader:DataLoader',
-)
-
-BATCH_ROLLOUT = ComponentDescriptor(
-    'batch_rollout', '批量生成', '迭代器',
-    'One blocking batch generation over a prompt batch (the first stage of the '
-    'colocate loop body, not an iterator itself).',
-    ports_in=(P('prompts', 'DATA', 'prompt_batch'), P('sampler', 'SAMPLER', 'engine')),
-    ports_out=(P('samples', 'TRAJ', 'sample_batch'),),
-    params=(
-        ParamSpec('num_generations', '组宽', '8'),
-        ParamSpec('temperature', '温度', '1.0'),
-        ParamSpec('max_new_tokens', '生成长度', '512'),
-    ),
-)
-
-MULTI_TURN_ROLLOUT = ComponentDescriptor(
-    'multi_turn_rollout', '多轮生成', '迭代器',
-    'The tool-calling episode engine: the policy converses with tools inside the '
-    'sandbox until the episode closes; the ledger yields the trainable trajectory.',
-    ports_in=(P('prompts', 'DATA', 'prompt_stream'), P('sampler', 'SAMPLER', 'engine'),
-              P('tools', 'TOOL', 'tool_decls', optional=True), P('env', 'ENV', 'sandbox', optional=True)),
-    ports_out=(P('samples', 'TRAJ', 'episodes'),),
-    params=(
-        ParamSpec('max_turns', '最大轮数', '8', 'turns per episode; 1 degrades to single-turn'),
-    ),
-    factory='twinkle_agentic.rollout.multi_turn:MultiTurnRollout',
-)
-
-EXTERNAL_ROLLOUT = ComponentDescriptor(
-    'external_rollout', '外部 agent 驱动', '迭代器',
-    'Control inversion: an external agent program (CLI) drives the episode against '
-    'the policy endpoint and reports each round back as a trainable trajectory.',
-    ports_in=(P('endpoint', 'MODEL', 'serving_view'),),
-    ports_out=(P('samples', 'TRAJ', 'episodes'),),
-    params=(ParamSpec('run_script', '驱动脚本', '', 'the agent program to launch'),),
-    factory='twinkle_agentic.rollout.external:ExternalRollout',
-)
-
-CHALLENGER = ComponentDescriptor(
-    'challenger', '自动出题器', '迭代器',
-    'A dynamic prompt source: generates tasks scored by rubric (novelty / usefulness '
-    '/ complexity), turning the dataset itself into a co-evolving distribution.',
-    ports_in=(P('judge', 'MODEL', 'rubric_judge'),),
-    ports_out=(P('data', 'DATA', 'generated_prompts'),),
-    params=(ParamSpec('theme', '主题', '', 'task family description'),),
-    factory='twinkle_agentic.challenger:AgenticChallenger',
-)
-
-ADVANTAGE_ESTIMATOR = ComponentDescriptor(
-    'advantage_estimator', '优势估计器', '阶段',
-    'A(s,a) estimator: turns rewards plus per-channel logps into a baseline-relative '
-    'signal, aligned row-for-row with the TRAJ batch.',
-    ports_in=(P('samples', 'TRAJ', 'batch'), P('reward', 'REWARD', 'scores', optional=True),
-              P('critic', 'MODEL', 'value_head', optional=True),
-              P('ref', 'MODEL', 'kl_ref', optional=True),
-              P('teacher', 'MODEL', 'teacher', many=True)),
-    ports_out=(P('batch', 'TRAJ', 'batch_with_advantage'), P('adv', 'ADV', 'signal')),
-    params=(ParamSpec('estimator', '估计器', 'grpo', 'baseline family; plain math names',
-                      options=ADVANTAGE_OPTIONS),),
-    factory='twinkle.advantage',
-)
-
-TEACHER_SIGNAL = ComponentDescriptor(
-    'teacher_signal', '教师信号', '阶段',
-    'Distillation signal: the teacher forward on the same samples produces logits or '
-    'response logps; the output batch is the assembled training kwargs.',
-    ports_in=(P('samples', 'TRAJ', 'batch'), P('teacher', 'MODEL', 'teacher', many=True)),
-    ports_out=(P('batch', 'TRAJ', 'training_kwargs'),),
-    params=(
-        # signal form is NOT a user knob: the loss family (gkd/opsd/mopd) decides it
-        ParamSpec('teacher_weights', '教师权重', '等权', 'per-teacher mixture weight; empty = equal'),
-        ParamSpec('gkd_logits_topk', 'logits top-k', '', 'top-k vocab slice for GKD full-vocab logits'),
-    ),
-)
-
-REWARD_SCORER = ComponentDescriptor(
-    'reward_scorer', '打分器', '阶段',
-    'r(τ) → scalar row: rule verifiers, model scorers, programmatic checks or an '
-    'LLM judge with weighted rubric -- one column per wired scorer.',
-    ports_in=(P('traj', 'TRAJ', 'batch', optional=True), P('model', 'MODEL', 'scorer', optional=True)),
-    ports_out=(P('reward', 'REWARD', 'score_columns'),),
-    params=(
-        ParamSpec('scorer', '打分器', 'math', 'verifier / judge family; plain math names',
-                  options=REWARD_OPTIONS),
-        ParamSpec('weights', '权重', '1.0', 'per-scorer mixture weight'),
-    ),
-    factory='twinkle.reward',
-)
-
-TRAIN_STEP = ComponentDescriptor(
-    'train_step', '训练步', '训练',
-    'The invariant carrier: forward_backward → GA boundary → clip → step, with '
-    'publish/commit pairing. The objective comes from whichever is wired: a loss '
-    'node, a code component LOSS port, or the policy model loss param as fallback. '
-    'The skeleton stays closed on purpose -- silently-wrong training has no entry point here.',
-    ports_in=(P('samples', 'TRAJ', 'batch'), P('adv', 'ADV', 'signal', optional=True),
-              P('policy', 'MODEL', 'policy_view'), P('loss', 'LOSS', 'objective', optional=True)),
-    ports_out=(P('ckpt', 'CKPT', 'checkpoint'), P('then', 'CTRL', 'after_step')),
-    params=(
-        ParamSpec('publish_cadence', '发布节奏', '每 1 个优化步', 'optimizer steps per publish'),
-        ParamSpec('max_steps', '步数上限', '1000'),
-        ParamSpec('mini_micro_batch', '批划分', '8 / 2'),
-        ParamSpec('max_grad_norm', '梯度裁剪', '1.0', 'clip_grad_and_step bound'),
-        ParamSpec('save_steps', '保存间隔', '500', 'checkpoint cadence in optimizer steps'),
-    ),
-)
-
-OFFLINE_TRAINER = ComponentDescriptor(
-    'offline_trainer', '离线训练', '训练',
-    'The supervised / preference loop body: batches from the dataloader, reference '
-    'logps from the wired ref view, no rollout machinery at all.',
-    ports_in=(P('model', 'MODEL', 'policy_view'), P('ref', 'MODEL', 'preference_ref', optional=True),
-              P('data', 'DATA', 'batches'), P('traj', 'TRAJ', 'surviving_samples', optional=True)),
-    ports_out=(P('ckpt', 'CKPT', 'checkpoint'),),
-    params=(
-        ParamSpec('max_steps', '步数上限', '2000'),
-        ParamSpec('mini_micro_batch', '批划分', '8 / 2'),
-        ParamSpec('max_grad_norm', '梯度裁剪', '1.0', 'clip_grad_and_step bound'),
-        ParamSpec('save_steps', '保存间隔', '500', 'checkpoint cadence in optimizer steps'),
-    ),
-)
-
-WEIGHT_SYNC = ComponentDescriptor(
-    'weight_sync', '权重同步', '效果',
-    'A pure effect: the trained weights are pushed into the sampler declared on the '
-    'synced port. Strategy and backend decide how the bytes travel.',
-    ports_in=(P('policy', 'MODEL', 'policy_view'),
-              P('synced', 'SAMPLER', 'receive_weights', many=True),
-              P('after', 'CTRL', 'after_step', optional=True)),
-    ports_out=(P('then', 'CTRL', 'after_publish'),),
-    params=(
-        ParamSpec('strategy', '策略', 'in_place', 'in_place / adapter_snapshot', options=('in_place', 'adapter_snapshot')),
-        ParamSpec('backend', '后端', 'full', 'full snapshot / sharded delta', options=('full', 'delta_sharded')),
-    ),
-    factory='swift.dev.weight_sync.manager',
-)
-
-MERGE = ComponentDescriptor(
-    'merge', '产物合并', '效果',
-    'Folds trained adapters into full weights for export; for full-finetune runs the '
-    'same node degrades to a pure export/convert step (a declared form, not an error).',
-    ports_in=(P('ckpt', 'CKPT', 'checkpoint'),),
-    ports_out=(P('model', 'MODEL', 'merged_weights'),),
-    params=(ParamSpec('merge_lora', '合并 adapter', 'true', 'false = pure export for full-finetune checkpoints'),),
-)
-
-INFER = ComponentDescriptor(
-    'infer', '批量推理', '部署',
-    'Offline batch inference over the merged model: rows in, predictions out. The '
-    'rows come from the wired data port or, equivalently, the dataset param -- the '
-    'same declaration the run_infer dataset_config carries.',
-    ports_in=(P('model', 'MODEL', 'merged_weights'), P('data', 'DATA', 'rows', optional=True)),
-    ports_out=(P('predictions', 'DATA', 'rows'),),
-    params=(
-        ParamSpec('dataset', '数据集', '', 'dataset id or path; feeds the run when no data port is wired'),
-        ParamSpec('num_return_sequences', '采样路数', '1', 'best-of-n width; >=2 with output_format dpo/grpo'),
-        ParamSpec('output_format', '输出格式', 'all', 'all / dpo pairs / grpo groups with rollout tokens',
-                  options=('all', 'dpo', 'grpo')),
-        ParamSpec('max_new_tokens', '生成长度', '512'),
-    ),
-)
-
-EVAL = ComponentDescriptor(
-    'eval', '评测', '部署',
-    'A model scored on a data distribution: one node for both evaluation forms -- '
-    'an empty eval_url builds a sampler in-process (generative or loss scoring), '
-    'a set eval_url scores the served endpoint instead. Metrics leave on the '
-    'METRIC channel, the first consumer of that channel.',
-    ports_in=(P('model', 'MODEL', 'scored_view'), P('data', 'DATA', 'rows', optional=True)),
-    ports_out=(P('metrics', 'METRIC', 'score_report'),),
-    params=(
-        ParamSpec('eval_dataset', '评测集', '', 'benchmark dataset id(s); feeds the run when no data port is wired'),
-        ParamSpec('eval_limit', '评测条数', '0', 'cap on rows per dataset; 0 = all'),
-        ParamSpec('eval_url', '评测端点', '', 'OpenAI-compatible url; empty = build a sampler locally'),
-        ParamSpec('eval_generation_config', '生成配置', '', 'generation overrides (json or path)'),
-        ParamSpec('result_jsonl', '结果落盘', '', 'append the per-sample report here when set'),
-    ),
-    factory='swift.dev.recipe.infer.run_eval:run_eval',
-)
-
-VALUE_MODEL = ComponentDescriptor(
-    'value_model', '价值模型', '资源',
-    'The trained value head V(s) of PPO: a second trainable model with its own optimizer and '
-    'value loss. Placement shares the policy mesh (checked at compile time); it never enters '
-    'the publish face -- the sampler only serves the policy.',
-    ports_out=(P('value', 'MODEL', 'value_head'),),
-    params=(
-        ParamSpec('model', '模型', 'Qwen/Qwen3-8B（value 头）'),
-        ParamSpec('train_type', '训练类型', 'full', 'lora or full: a parameter tier, not a topology fork',
-                  options=('lora', 'full')),
-        ParamSpec('parallel_spec', '并行规格', '与 policy 同 mesh（编译期校验）', group='放置'),
-    ),
-    factory='swift.dev.builders.model:build_model',
-)
-
-DEPLOY = ComponentDescriptor(
-    'deploy', '部署', '部署',
-    'Serve the trained model as a live OpenAI-shaped endpoint (twinkle-server): '
-    'one command, one served model, one base url out.',
-    ports_in=(P('model', 'MODEL', 'merged_weights'),),
-    ports_out=(P('endpoint', 'ENDPOINT', 'served'),),
-    params=(
-        ParamSpec('infer_backend', '推理后端', 'vllm', options=('vllm', 'sglang', 'torch')),
-        ParamSpec('max_model_len', '最大长度', '8192'),
-        ParamSpec('route_prefix', '路由前缀', '/v1', 'legacy-compatible chat-completions prefix'),
-    ),
-    factory='swift.dev.recipe.infer.run_deploy:run_deploy',
-)
-
-QUANTIZE = ComponentDescriptor(
-    'quantize', '量化', '效果',
-    'Post-training weight quantisation (gptq / awq / bnb): model in, quantised model out.',
-    ports_in=(P('model', 'MODEL', 'merged_weights'),),
-    ports_out=(P('model', 'MODEL', 'quantized_weights'),),
-    params=(
-        ParamSpec('quant_method', '方法', 'gptq', options=('gptq', 'awq', 'bnb')),
-        ParamSpec('quant_bits', '位数', '4'),
-    ),
-    factory='swift.dev.recipe.export.quantize:run_quantize',
-)
-
-HUB_PUSH = ComponentDescriptor(
-    'hub_push', '推送 Hub', '效果',
-    'Publish the finished weights to the model hub -- the last purely declarative step.',
-    ports_in=(P('model', 'MODEL', 'final_weights'),),
-    params=(
-        ParamSpec('hub_model_id', '目标仓库', '', 'hub repo id to push to (required)'),
-        ParamSpec('commit_message', '提交说明', 'webui workflow push'),
-        ParamSpec('hub', '目标', 'ModelScope', 'ModelScope / HuggingFace'),
-        ParamSpec('private', '私有', 'true', 'create the repo private when missing'),
-    ),
-    factory='swift.dev.recipe.export.hub:run_push_to_hub',
-)
-
-TRAJECTORY_FILTER = ComponentDescriptor(
-    'trajectory_filter', '轨迹过滤', '阶段',
-    'Rejection sampling on the data plane: keep the winners per prompt group '
-    '(best_of_n / threshold / top_k) and drop the rest -- RFT trains on what survives.',
-    ports_in=(P('samples', 'TRAJ', 'batch'), P('reward', 'REWARD', 'score_columns', optional=True)),
-    ports_out=(P('batch', 'TRAJ', 'kept_batch'),),
-    params=(
-        ParamSpec('select', '保留策略', 'best_of_n', 'keep 1 winner / above threshold / top-k of the group',
-                  options=('best_of_n', 'threshold', 'top_k')),
-        ParamSpec('threshold', '阈值', '0.0'),
-        ParamSpec('top_k', '保留数', '1'),
-    ),
-    factory='swift.dev.recipe.rft.run_rft',
-)
-
-LOSS_NODE = ComponentDescriptor(
-    'loss_node', '损失', '损失',
-    'The training objective as a wired callable: one node per math name (clip_cov, '
-    'infonce, gkd, ...); weighted sums compose loss graphs.',
-    ports_in=(P('traj', 'TRAJ', 'batch', optional=True), P('adv', 'ADV', 'signal', optional=True),
-              P('model', 'MODEL', 'policy_view', optional=True)),
-    ports_out=(P('loss', 'LOSS', 'objective'),),
-    params=(ParamSpec('loss', '损失', 'cross_entropy', 'plain math names from the twinkle loss family',
-                      options=LOSS_OPTIONS),),
-    factory='twinkle.loss',
-)
-
-CODE_COMPONENT = ComponentDescriptor(
-    'code_component', '代码组件', '代码',
-    'A first-class user node: a small pure transform over the data plane (parse, '
-    'reward shaping, metric, cross-actor bridge, or a hand-written objective on '
-    'the LOSS port). Ports and output schema are declared by the author; the '
-    'token ledger stays closed.',
-    ports_in=(P('samples', 'TRAJ', 'batch', optional=True), P('refs', 'MODEL', 'forward_channels', many=True)),
-    ports_out=(P('batch', 'TRAJ', 'batch'), P('loss', 'LOSS', 'custom_objective')),
-    params=(ParamSpec('name', '名称', 'my_transform'),),
-)
-
-REGISTRY: dict[str, ComponentDescriptor] = {
-    d.type: d for d in (
-        POLICY_MODEL, FROZEN_MODEL, API_MODEL, VALUE_MODEL, SAMPLER, DATASET, TOOLSET,
-        SANDBOX_ENV, POLICY_ENDPOINT, STREAMING_DRIVER, DATALOADER, BATCH_ROLLOUT,
-        MULTI_TURN_ROLLOUT, EXTERNAL_ROLLOUT, CHALLENGER, ADVANTAGE_ESTIMATOR, TEACHER_SIGNAL,
-        REWARD_SCORER, TRAJECTORY_FILTER, TRAIN_STEP, OFFLINE_TRAINER, WEIGHT_SYNC, MERGE,
-        INFER, EVAL, DEPLOY, QUANTIZE, HUB_PUSH, LOSS_NODE, CODE_COMPONENT,
-    )
-}
+REGISTRY = {descriptor.type: descriptor for descriptor in (
+    MODEL, DATASET, SAMPLER, ROLLOUT, GROUP_RULE,
+    TOOLSET, SANDBOX_ENV, POLICY_ENDPOINT, API_ENDPOINT, CODE_COMPONENT,
+    DATALOADER, STREAMING_DRIVER, CHALLENGER, GENERATE, SCORE,
+    MODEL_FORWARD, REDUCE, REWARD_SHAPE, ADVANTAGE, SIGNAL_COMBINE, SELECT,
+    TRAIN_STEP, WEIGHT_SYNC, WEIGHT_AVERAGE, CHECKPOINT, MERGE, QUANTIZE,
+    INFER, EVAL, DEPLOY, HUB_PUSH)}
 
 
 def validate_registry() -> None:
-    """Registration-time self-check: every port kind must have a channel schema.
-
-    Kept as a plain function (not hidden in module import) so the export smoke run
-    exercises it explicitly.
-    """
     from .schema import CHANNEL_SCHEMAS
-
     for descriptor in REGISTRY.values():
+        params = {param.name: param for param in descriptor.params}
+        for param in descriptor.params:
+            if param.phase not in ('construct', 'call'):
+                raise ValueError(f'{descriptor.type}.{param.name}: 非法参数阶段')
+            if not param.required:
+                param.validate(param.default)
+        inputs = {port.key for port in descriptor.ports_in}
         for port in descriptor.ports_in + descriptor.ports_out:
-            if port.kind not in CHANNEL_SCHEMAS:
-                raise ValueError(f'{descriptor.type}.{port.key}: unknown channel kind {port.kind!r}')
+            for kind in (port.kind, *port.accepted_kinds):
+                if kind not in CHANNEL_SCHEMAS:
+                    raise ValueError(f'{descriptor.type}.{port.key}: 未声明通道 {kind}')
+            for profile in port.profiles:
+                CHANNEL_SCHEMAS[port.kind].profile(profile)
+            if port.access not in ('read', 'write'):
+                raise ValueError(f'{descriptor.type}.{port.key}: 非法访问模式')
+            for name in (port.enabled_by, port.profile_param):
+                if name and name not in params:
+                    raise ValueError(f'{descriptor.type}.{port.key}: 未声明动态参数 {name}')
+            if port.mirror_input and port.mirror_input not in inputs:
+                raise ValueError(f'{descriptor.type}.{port.key}: 未声明投射输入')
+        for group in descriptor.exclusive_inputs:
+            if not set(group) <= inputs:
+                raise ValueError(f'{descriptor.type}: 互斥输入不存在')
+        for name, _value, ports in descriptor.required_when:
+            if name not in params or not set(ports) <= inputs:
+                raise ValueError(f'{descriptor.type}: 条件输入声明不完整')
