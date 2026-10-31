@@ -2073,6 +2073,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                  if grpo_batch.ref_per_token_logps is not None else None),
             rollout_per_token_logps=(grpo_batch.rollout_per_token_logps[start_idx:end_idx]
                                      if grpo_batch.rollout_per_token_logps is not None else None),
+            teacher_per_token_logps=(grpo_batch.teacher_per_token_logps[start_idx:end_idx]
+                                     if grpo_batch.teacher_per_token_logps is not None else None),
             advantages=grpo_batch.advantages[start_idx:end_idx] if grpo_batch.advantages is not None else None,
             num_items_in_batch=grpo_batch.num_items_in_batch,
             logits_to_keep=grpo_batch.logits_to_keep,
