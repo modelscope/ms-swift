@@ -21,7 +21,7 @@ from swift.rlhf_trainers.gkd_helpers import (TeacherServerConfig, assemble_teach
                                              remap_teacher_logps_to_student_frame,
                                              resolve_dynamic_opd_self_distillation)
 from swift.rlhf_trainers.utils import encode_sample, make_reward_weights, resolve_reward_funcs
-from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
+from swift.rollout import MultiTurnScheduler, multi_turn_lifecycle, multi_turns, run_multi_turn
 from swift.utils import get_logger, remove_response
 from .base_trainer import BaseRayTrainer
 from .driver_utils import extract_iteration
@@ -407,19 +407,19 @@ class GRPOTrainer(BaseRayTrainer):
         if self._multi_turn_scheduler is not None and not self._enable_server_multi_turn:
             # Mode A: driver-side trainer loop. run_multi_turn mutates `messages`
             # in place on RolloutInferRequest objects.
-            invoke_async_hook(self._multi_turn_scheduler.on_trajectory_start(requests))
-            first_turn = [
-                RolloutOutput(response=resp) for resp in self._distribute_to_replicas(requests, request_config)
-            ]
-            return run_multi_turn(
-                requests=requests,
-                first_turn_outputs=first_turn,
-                scheduler=self._multi_turn_scheduler,
-                rollout_fn=lambda reqs, cfg:
-                [RolloutOutput(response=resp) for resp in self._distribute_to_replicas(reqs, cfg)],
-                request_config=request_config,
-                max_turns=self._max_turns,
-            )
+            with multi_turn_lifecycle(self._multi_turn_scheduler, requests):
+                first_turn = [
+                    RolloutOutput(response=resp) for resp in self._distribute_to_replicas(requests, request_config)
+                ]
+                return run_multi_turn(
+                    requests=requests,
+                    first_turn_outputs=first_turn,
+                    scheduler=self._multi_turn_scheduler,
+                    rollout_fn=lambda reqs, cfg:
+                    [RolloutOutput(response=resp) for resp in self._distribute_to_replicas(reqs, cfg)],
+                    request_config=request_config,
+                    max_turns=self._max_turns,
+                )
 
         # Mode B (server-side multi-turn, currently disabled) + single-turn share this path.
         completions = self._distribute_to_replicas(requests, request_config)
