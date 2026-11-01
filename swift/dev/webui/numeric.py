@@ -2,20 +2,18 @@
 """The numeric compute plane for remote-execution stages.
 
 Heavy forward payloads (logps / logits) must never materialise in the session
-process: they flow between stages as infra references (LazyCollect under Ray,
-plain values locally), and every numeric consumer -- reduction, shaping,
-advantage estimation, combination -- runs HERE, on this worker, where the
-references are resolved. The driver only carries small control scalars back.
+process: they flow between stages as infra references (LazyCollect), and
+every numeric consumer -- reduction, shaping, advantage estimation,
+combination -- runs HERE, on this worker, where the references are resolved.
+The driver only carries small control scalars back.
 
 Placement notes:
 
-- ``local`` mode: the methods are plain calls returning real values -- the
-  same binding code path, zero remoting cost.
-- ``ray`` mode: a reference passed as an argument is resolved by the dispatch
-  layer on this worker; the return value rides back as ONE reference
-  (``lazy_collect=True``), which downstream consumers (the next numeric call,
-  ``train_step``'s small scalar read-back, the preview materialisation)
-  dereference where THEY run.
+- The session is ALWAYS ray: a reference passed as an argument is resolved by
+  the dispatch layer on this worker; the return value rides back as ONE
+  reference (``lazy_collect=True``), which downstream consumers (the next
+  numeric call, ``train_step``'s small scalar read-back, the preview
+  materialisation) dereference where THEY run.
 - ``project`` is the field-projection primitive: a forward return is a dict
   of channels; selecting ONE channel happens worker-side so the other
   channels never cross the boundary. It replaces the driver-side
@@ -28,6 +26,8 @@ from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 
 from twinkle import remote_class, remote_function
+
+from .placement import NUMERIC_GROUP
 
 
 def deref(value: Any) -> Any:
@@ -81,10 +81,19 @@ def _seq_mean(row: Any) -> float:
 @remote_class(execute='first')
 class NumericWorker:
     """The resident numeric engine: field projection, reductions, shaping,
-    advantage estimation and lane combination, all over resolved values."""
+    advantage estimation and lane combination, all over resolved values.
+
+    Every handle-taking method declares ``**kwargs``: when a LazyCollect
+    reference arrives as a TOP-LEVEL argument, the dispatch layer forwards the
+    call with its internal re-dispatch parameter (``_dispatch_context``) and
+    Ray validates kwargs against this signature on the driver -- the plain
+    parameter list would reject it. The dispatch wrapper strips that parameter
+    before the body runs, so the catch-all stays empty here. The same contract
+    ``TrainableModel.forward_only(*, inputs, **kwargs)`` already follows.
+    """
 
     @remote_function(dispatch='all', collect='first', lazy_collect=True)
-    def project(self, handle: Any, field: str) -> Any:
+    def project(self, handle: Any, field: str, **kwargs) -> Any:
         """One channel of a dict-shaped handle, resolved HERE.
 
         A missing channel is a contract violation and fails loudly; a present
@@ -98,7 +107,7 @@ class NumericWorker:
         return value[field]
 
     @remote_function(dispatch='all', collect='first', lazy_collect=True)
-    def reduce(self, signal: Any, op: str, axis: str) -> Dict[str, Any]:
+    def reduce(self, signal: Any, op: str, axis: str, **kwargs) -> Dict[str, Any]:
         """A named reduction over an explicit axis: pure math over resolved rows."""
         value = deref(signal)
         values = value.get('values') if isinstance(value, dict) else value
@@ -112,7 +121,7 @@ class NumericWorker:
 
     @remote_function(dispatch='all', collect='first', lazy_collect=True)
     def reward_shape(self, reward: Any, baseline: Any, logps: Any, reference: Any,
-                     beta: float, kl: str) -> Dict[str, Any]:
+                     beta: float, kl: str, **kwargs) -> Dict[str, Any]:
         """r' = r - baseline - beta*KL over resolved reward / baseline / KL lanes.
 
         The KL term is the sequence-level k1 estimate (mean logp - mean
@@ -146,7 +155,7 @@ class NumericWorker:
     @remote_function(dispatch='all', collect='first', lazy_collect=True)
     def advantage(self, samples: List[Any], reward: Any, values_signal: Any,
                   num_generations: int, estimator: str, gamma: float, lam: float,
-                  kwargs: Optional[dict] = None) -> Dict[str, Any]:
+                  extra: Optional[dict] = None, **kwargs) -> Dict[str, Any]:
         """Baseline-relative credit over resolved rewards / values; no forward here.
 
         The GRPO family delegates to ``swift.dev.rewards.advantage.compute_advantages``
@@ -166,21 +175,49 @@ class NumericWorker:
                 raise ValueError('gae needs a wired values lane')
             resolved = deref(values_signal)
             values = resolved.get('values') if isinstance(resolved, dict) else resolved
-            lengths = [len(getattr(sample, 'response_token_ids', None) or ())
-                       for sample in samples]
+            # The length authority is the ENCODED labels' trainable segment -- the
+            # same segment the loss mask scores -- not response_token_ids: a
+            # multi-turn trajectory counts turn-boundary tokens in labels, so the
+            # two disagree and a GAE row aligned to the wrong one fails the loss's
+            # pad-and-align check.
+            def _response_length(sample: Any) -> int:
+                labels = (getattr(sample, 'encoded', None) or {}).get('labels')
+                if labels is None:
+                    return len(getattr(sample, 'response_token_ids', None) or ())
+                if hasattr(labels, 'tolist'):  # a torch tensor: elementwise != would
+                    labels = labels.tolist()   # yield a bool tensor, uncountable
+                if labels and isinstance(labels[0], list):
+                    # a single-sample batched lane [[...]] (the ledger's collated
+                    # form): the batch dimension holds exactly this one row
+                    labels = labels[0]
+                return sum(1 for label in labels if label != -100)
+
+            lengths = [_response_length(sample) for sample in samples]
             flat_rewards = [sum(float(v) for v in row) if isinstance(row, list) and row
                             else float(row) for row in _rows(rewards)]
+            # A model_forward value lane is whole-sequence (prompt+completion);
+            # GAE works on the response segment, which is the sequence TAIL --
+            # trim each value row to its sample's response length. Rows already
+            # response-length pass through unchanged.
+            value_rows = [list(row) if isinstance(row, list) else [row]
+                          for row in _rows(values)]
+            aligned_values = []
+            for i, row in enumerate(value_rows):
+                n = lengths[i] if i < len(lengths) else 0
+                if n and len(row) > n:
+                    row = row[-n:]
+                aligned_values.append(row)
             token_rewards = GAEAdvantage.build_token_rewards(
                 flat_rewards, lengths, kl_coef=0.0)
             advantages, returns = GAEAdvantage(
-                gamma=gamma, gae_lambda=lam)(token_rewards, values)
+                gamma=gamma, gae_lambda=lam)(token_rewards, aligned_values)
             return {'adv': {'values': advantages, 'estimator': estimator},
                     'returns': returns}
         from swift.dev.rewards.advantage import compute_advantages
 
         advantages = compute_advantages(
             rewards, num_generations, advantage_estimator=estimator,
-            **(kwargs or {}))
+            **(extra or {}))
         return {'adv': {'values': advantages, 'estimator': estimator}, 'returns': None}
 
     @remote_function(dispatch='all', collect='first', lazy_collect=True)
@@ -189,7 +226,10 @@ class NumericWorker:
         """Weighted sum or probability mixture over named, aligned lanes.
 
         logps lanes mix in probability space -- logsumexp_k(log w_k + logp_k) --
-        never as an arithmetic mean of logps. Lane payloads resolve HERE."""
+        never as an arithmetic mean of logps. A row is either a SCALAR or a
+        TOKEN SEQUENCE (a logps lane): token rows blend element-wise over the
+        lanes' aligned positions; mixing a token row with a scalar row in one
+        blend is refused (no silent broadcasting). Lane payloads resolve HERE."""
         lane_values = [deref(lane_value) for _slot, lane_value in lanes]
         n_rows = min(len(_rows(v)) for v in lane_values) if lane_values else 0
         fused: List[Any] = []
@@ -200,29 +240,60 @@ class NumericWorker:
                 value = lane_rows[i] if i < len(lane_rows) else None
                 if value is None:
                     continue
-                if mode == 'probability_mixture':
-                    terms.append(math.log(max(weight, 1e-12)) + float(value))
-                else:  # weighted_sum
-                    terms.append((float(value), weight))
+                terms.append((value, weight))
             if not terms:
                 fused.append(None)
                 continue
-            if mode == 'probability_mixture':
-                top = max(terms)
-                fused.append(top + math.log(sum(math.exp(v - top) for v in terms)))
-            else:
+            token_rows = [v for v, _w in terms if isinstance(v, list)]
+            scalars = [v for v, _w in terms if not isinstance(v, list)]
+            if token_rows and scalars:
+                raise ValueError(
+                    'signal_combine cannot blend a token-sequence row with a scalar row; '
+                    'wire lanes of one row shape per combine node')
+            if token_rows:
+                fused.append(self._blend_token_rows(terms, mode))
+            elif mode == 'probability_mixture':
+                logs = [math.log(max(w, 1e-12)) + float(v) for v, w in terms]
+                top = max(logs)
+                fused.append(top + math.log(sum(math.exp(v - top) for v in logs)))
+            else:  # weighted_sum over scalars
                 total_w = sum(w for _v, w in terms)
-                fused.append(sum(v for v, _w in terms) / total_w if total_w else None)
+                fused.append(sum(float(v) for v, _w in terms) / total_w if total_w else None)
         return {'out': {'values': fused, 'mode': mode}}
+
+    @staticmethod
+    def _blend_token_rows(terms: List[Tuple[Any, float]], mode: str) -> List[float]:
+        """Element-wise blend over aligned token positions (the logps-lane form).
+
+        weighted_sum: position j is sum_k(w_k * v_k[j]) / sum_k(w_k) over the
+        lanes that HAVE position j. probability_mixture: position j is
+        logsumexp_k(log w_k + v_k[j]) -- mixing in probability space, the same
+        rule the scalar form applies, per token."""
+        rows = [(list(v), w) for v, w in terms if isinstance(v, list)]
+        length = max(len(v) for v, _w in rows)
+        out: List[float] = []
+        for j in range(length):
+            present = [(v[j], w) for v, w in rows if j < len(v) and v[j] is not None]
+            if not present:
+                out.append(0.0)
+                continue
+            if mode == 'probability_mixture':
+                logs = [math.log(max(w, 1e-12)) + float(v) for v, w in present]
+                top = max(logs)
+                out.append(top + math.log(sum(math.exp(v - top) for v in logs)))
+            else:
+                total_w = sum(w for _v, w in present)
+                out.append(sum(float(v) for v, _w in present) / total_w if total_w else 0.0)
+        return out
 
 
 @lru_cache(maxsize=1)
-def get_numeric_worker(remote_group: str = 'webui_numeric') -> NumericWorker:
+def get_numeric_worker(remote_group: str = NUMERIC_GROUP) -> NumericWorker:
     """The process-resident numeric engine (one per session process).
 
-    ``local`` mode: a plain object, methods are direct calls. ``ray`` mode:
-    the worker pool is created on first use under ``remote_group`` -- the
-    group is declared by the session bootstrap
-    (``python -m swift.dev.webui.session graph.json --mode ray``); a session
-    started without it fails on the first remote-execution stage."""
+    The session is ALWAYS ray: the worker pool is created on first use under
+    ``remote_group`` -- the CPU group the session bootstrap declared at
+    ``twinkle.initialize`` time (the placement module's NUMERIC_GROUP, the
+    single spelling of that name). A session started without the group fails
+    on the first remote-execution stage."""
     return NumericWorker(remote_group=remote_group)

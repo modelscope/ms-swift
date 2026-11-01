@@ -103,6 +103,8 @@ CHANNEL_SCHEMAS: dict[str, ChannelSchema] = {
     'TOOL': ChannelSchema('TOOL', '实际工具声明及插件来源；声明不等同于运行实现。', True),
     'ENDPOINT': ChannelSchema('ENDPOINT', '就绪服务或明确外部 API 连接；凭据只存在运行环境。', True),
     'SOURCE': ChannelSchema('SOURCE', '常驻 source 控制句柄；消费该口不触发 take。', True),
+    'LOSS': ChannelSchema('LOSS', '损失对象：注册名构造的原生 Loss 或用户公式包装；train_step 安装后在前向内计算。', True),
+    'SCORER': ChannelSchema('SCORER', '评分器对象：规则注册名构造或用户代码；score 按接线顺序聚合为多列。', True),
     'DATA': ChannelSchema('DATA', '未编码的原生行集合。', profiles=(
         _profile('raw', '原始或预测行；业务列原样保留。', (ChannelField('rows', '原生行集合', 'rows[B]'),), layout='list[dict] 或 Dataset slice'),
         _profile('batch', 'Iterator 分配身份的当前批次。', (ChannelField('rows', '本批原生行集合', 'rows[B]'),), layout='list[dict]'),
