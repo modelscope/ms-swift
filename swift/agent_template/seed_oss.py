@@ -26,7 +26,10 @@ class SeedAgentTemplate(BaseAgentTemplate):
     def _py_type(t: str) -> str:
         return SeedAgentTemplate._PY_TYPE_MAPPING.get(t, 'Any')
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    supports_tool_schema = True
+
+    def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
+        tool_schemas = self._get_tool_schemas(tools)
         res_list = re.findall(rf'{self.TOOL_CALL_START}(.+?){self.TOOL_CALL_END}', response, re.DOTALL)
         if not res_list:
             return super().get_toolcall(response)
@@ -39,7 +42,19 @@ class SeedAgentTemplate(BaseAgentTemplate):
 
             func_name = func_name_match.group(1)
             param_matches = re.findall(rf'<{self.PARAMETER_TAG}=([^>]+)>(.*?)</{self.PARAMETER_TAG}>', res, re.DOTALL)
-            arguments = {name: value for name, value in param_matches}
+            properties = (tool_schemas or {}).get(func_name, {}).get('properties', {})
+            if not isinstance(properties, dict):
+                properties = {}
+            arguments = {}
+            for name, value in param_matches:
+                # The wire format writes strings raw and other JSON values via `tojson`, so the
+                # schema decides whether the text is kept verbatim or decoded as a JSON literal.
+                if BaseAgentTemplate._is_string_param(properties.get(name), value):
+                    arguments[name] = value
+                    continue
+                parsed = BaseAgentTemplate._parse_json(value)
+                # json.loads('null') is None, which _parse_json cannot tell from a parse failure.
+                arguments[name] = value if parsed is None and value != 'null' else parsed
             functions.append(Function(name=func_name, arguments=arguments))
 
         return functions

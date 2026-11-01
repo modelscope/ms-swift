@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple, Union
 
 from swift.infer_engine import Function
 from swift.template import Prompt
+from .base import BaseAgentTemplate
 from .glm4 import GLM4_5AgentTemplate
 
 
@@ -18,8 +19,10 @@ class FlintAgentTemplate(GLM4_5AgentTemplate):
 
     model_type = 'flint'
 
+    supports_tool_schema = True
+
     @staticmethod
-    def _find_function_call(single_content: str) -> Optional[Function]:
+    def _find_function_call(single_content: str, tool_schemas: Optional[dict] = None) -> Optional[Function]:
         single_content = single_content.strip()
         func_name_match = re.match(r'^([^\n<]+)', single_content)
         if not func_name_match:
@@ -28,7 +31,20 @@ class FlintAgentTemplate(GLM4_5AgentTemplate):
         values = re.findall(r'<arg_value>(.*?)</arg_value>', single_content, re.DOTALL)
         if len(keys) != len(values):
             return None
-        args = {k.strip(): v.strip() for k, v in zip(keys, values, strict=True)}
+        properties = (tool_schemas or {}).get(func_name_match.group(1).strip(), {}).get('properties', {})
+        if not isinstance(properties, dict):
+            properties = {}
+        args = {}
+        for key, value in zip(keys, values, strict=True):
+            key, value = key.strip(), value.strip()
+            # The wire format writes strings raw and other JSON values via `tojson`, so the
+            # schema decides whether the text is kept verbatim or decoded as a JSON literal.
+            if BaseAgentTemplate._is_string_param(properties.get(key), value):
+                args[key] = value
+                continue
+            parsed = BaseAgentTemplate._parse_json(value)
+            # json.loads('null') is None, which _parse_json cannot tell from a parse failure.
+            args[key] = value if parsed is None and value != 'null' else parsed
         return Function(name=func_name_match.group(1).strip(), arguments=json.dumps(args, ensure_ascii=False))
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
