@@ -7,17 +7,17 @@ Contract highlights (see the plan's training and publish sections):
   boundary, ``clip_grad_and_step``; ``optimizer_steps`` counts only real
   optimizer completions. Partial mutation errors keep their completed marks --
   no transparent rollback is promised.
-- ``weight_sync`` registers the real push through the existing
-  ``request_publish`` entry and observes completion through the public stats
-  surface; it NEVER waits for the push before the source commit, and never
-  fabricates a completion from a registration.
+- ``weight_sync`` pushes the trained weights into every wired sampler inside
+  its own invoke, through a resident CheckpointEngineManager per
+  (model, sampler) pair -- the disaggregated shape's sync point (native
+  bucketed device-to-device transfer over the ray channel).
 - ``weight_average`` copies or EMA-blends between two explicit models through
   the native transfer surface; the target's role is never hardcoded.
 """
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from ..component import ComponentError, StageComponent, slot_values
 from ..numeric import deref
@@ -44,54 +44,32 @@ def _float_value(raw: Any, default: float) -> float:
 def _aligned_slice(value: Any, start: int, stop: int) -> Any:
     """Slice one sample-aligned loss kwarg alongside a micro batch.
 
-    A per-sample list is sliced with the batch; anything else rides every
-    micro batch whole -- the same convention the recipes use for scalar
-    kwargs."""
+    A per-sample list is sliced with the batch; a tensor / ndarray is sliced on
+    its leading (sample) axis; anything else rides every micro batch whole --
+    the same convention the recipes use for scalar kwargs."""
     if isinstance(value, list):
         return value[start:stop]
+    if hasattr(value, 'shape') and getattr(value, 'shape', None) and len(value.shape) >= 1:
+        return value[start:stop]
     return value
-
-
-def register_weight_sync(driver: Any, push: Any) -> str:
-    """Register one real push on the driver through the existing public entry.
-
-    The existing signature returns None and the push runs in the next pass;
-    this helper only registers and reports the request identity.
-    """
-    driver.request_publish(push)
-    return f'publish-{id(push):x}'
 
 
 class TrainStepStage(StageComponent):
     """train_step: real forward_backward + optimizer step.
 
-    The objective, the optimizer and the encoding rule are PARAMS on this
-    node: the loss instance is registered ONCE per node on the model's own
-    loss registry under ``train:<node_id>`` (the same registry any
-    model_forward probe uses with its own key), and the optimizer is
-    configured ONCE on the wired model with the total horizon. Loss kwargs
-    come from the arguments port's slots (the real loss parameter names).
-    The input is raw data / trajectories -- encoded here under the node's
-    own tokenizer param, exactly the per-round re-encode the dev recipes
-    run. The ``model`` output carries the trained model reference forward
-    (an identity downstream effects consume instead of an actor fan-out)."""
+    The objective arrives WIRED on the loss port (a loss node's resident
+    object); the optimizer and the encoding rule are PARAMS on this node.
+    The loss instance is registered ONCE per node on the model's own loss
+    registry under ``train:<node_id>`` (the same registry any model_forward
+    probe uses with its own key), and the optimizer is configured ONCE on
+    the wired model with the total horizon. Loss kwargs come from the
+    arguments port's slots (the real loss parameter names). The input is
+    raw data / trajectories -- encoded here under the node's own tokenizer
+    param, exactly the per-round re-encode the dev recipes run. The
+    ``model`` output carries the trained model reference forward (an
+    identity downstream effects consume instead of an actor fan-out)."""
 
     type = 'train_step'
-
-    def _loss(self) -> Any:
-        if getattr(self, '_loss_obj', None) is None:
-            from twinkle.loss import torch_loss_mapping
-            name = str(self.params.get('loss') or 'cross_entropy')
-            cls = torch_loss_mapping.get(name)
-            if cls is None:
-                raise ComponentError(f'{self.node_id}: unknown loss {name!r}')
-            kwargs = dict(self.params.get('loss_kwargs') or {})
-            try:
-                self._loss_obj = cls(**kwargs)
-            except TypeError as exc:
-                raise ComponentError(
-                    f'{self.node_id}: loss {name!r} rejects kwargs {sorted(kwargs)}: {exc}') from exc
-        return self._loss_obj
 
     def _configure_optimizer(self, model: Any) -> None:
         """The update rule, built ONCE on the wired model with the TOTAL
@@ -112,14 +90,14 @@ class TrainStepStage(StageComponent):
         num_training_steps = _int_value(self.params.get('num_training_steps', 1000), 1000)
         from .resources import _configs, _fill
         train_config = _fill(_configs().TrainConfig,
-                             {k: str(v) for k, v in kv.items() if v is not None},
+                             {k: v for k, v in kv.items() if v is not None},
                              self.node_id)
         configure_optimizer(model, train_config, num_training_steps=num_training_steps)
         self._optimizer_built = True
 
     def _features(self, data: Any) -> Any:
+        from .resources import build_template_from, encode_rows
         if getattr(self, '_template', None) is None:
-            from .resources import build_template_from, encode_rows
             self._template = build_template_from(
                 str(self.params.get('tokenizer') or ''),
                 dict(self.params.get('template_config') or {}), self.node_id)
@@ -131,7 +109,19 @@ class TrainStepStage(StageComponent):
         model = inputs.get('model')
         if model is None:
             raise ComponentError(f'{self.node_id}: train_step needs a wired model')
-        features = self._features(inputs.get('batch'))
+        loss = inputs.get('loss')
+        if loss is None:
+            raise ComponentError(f'{self.node_id}: train_step needs a wired loss (a loss node)')
+        # The training rows ride the wired batch PORT when the frame source
+        # delivers a grouped object (the challenger's ChallengeBatch: its
+        # port projection is the flattened lane) or projects its last batch
+        # (the streaming driver); the positional batch is the loader shape,
+        # whose port value is the resident DataLoader object itself. A LIST
+        # port value wins, anything else falls back to the positional batch --
+        # the same port-first convention score and advantage apply.
+        port_batch = inputs.get('batch')
+        data = port_batch if isinstance(port_batch, list) else batch
+        features = self._features(data)
         if not isinstance(features, list):
             features = [features]
         if not features:
@@ -151,10 +141,14 @@ class TrainStepStage(StageComponent):
             set_loss = getattr(model, 'set_loss', None)
             if not callable(set_loss):
                 raise ComponentError(f'{self.node_id}: model exposes no set_loss()')
-            set_loss(self._loss(), loss_key=loss_key)
+            set_loss(loss, loss_key=loss_key)
             self._loss_registered = True
         self._configure_optimizer(model)
         from swift.dev.recipe.utils import backend_owns_gradient_accumulation, is_grad_sync_boundary
+        # A value loss trains the per-token value head: forward_backward must run
+        # the value task (the same flag the PPO recipe passes) or the seq_cls head
+        # returns one scalar per sample and the loss's values/mask check fails.
+        forward_task = 'value' if bool(getattr(loss, 'require_values', False)) else None
         optimizer_steps = 0
         if backend_owns_gradient_accumulation(model):
             # Megatron internalises the micro-batch schedule: the feature LIST
@@ -162,7 +156,9 @@ class TrainStepStage(StageComponent):
             # optimizer step; loss kwargs are sliced worker-side by the loss's
             # own micro_batch_kwargs.
             model.forward_backward(inputs=features, loss_key=loss_key,
-                                   micro_batch_size=micro or None, **loss_kwargs)
+                                   micro_batch_size=micro or None,
+                                   **({'task': forward_task} if forward_task else {}),
+                                   **loss_kwargs)
             model.clip_grad_and_step(max_grad_norm=max_grad_norm)
             optimizer_steps = 1
         else:
@@ -172,7 +168,9 @@ class TrainStepStage(StageComponent):
                                for key, value in loss_kwargs.items()}
                 self._micro_step = getattr(self, '_micro_step', 0) + 1
                 model.forward_backward(inputs=features[start:stop], loss_key=loss_key,
-                                       gradient_accumulation_steps=ga, **mini_kwargs)
+                                       gradient_accumulation_steps=ga,
+                                       **({'task': forward_task} if forward_task else {}),
+                                       **mini_kwargs)
                 model.clip_grad_and_step(max_grad_norm=max_grad_norm,
                                          gradient_accumulation_steps=ga)
                 if is_grad_sync_boundary(self._micro_step, ga):
@@ -194,9 +192,18 @@ class TrainStepStage(StageComponent):
 
 
 class WeightSyncStage(StageComponent):
-    """Register the real push for the wired samplers; observe (never fake) the
-    completion. Registration precedes the source commit; the push itself runs
-    in the driver's next pass."""
+    """Push the trained weights into every wired sampler, for real.
+
+    The session is disaggregated: every sampler owns its own DeviceGroup, so
+    the push runs inside this stage's own invoke through the native
+    CheckpointEngineManager -- bucketed device-to-device transfer over the
+    ray channel, the same surface the disaggregated recipes use. The
+    streaming driver's publish window is the on-the-fly sync path and rides
+    the driver itself; deferring to it from here would require a
+    model-attached driver handle this graph never wires. Each (model,
+    sampler) pair keeps one resident manager: its channel state
+    (base_sync_done) must survive across pushes.
+    """
 
     type = 'weight_sync'
 
@@ -206,38 +213,32 @@ class WeightSyncStage(StageComponent):
         if model is None or not targets:
             raise ComponentError(
                 f'{self.node_id}: weight_sync needs a wired source model and target samplers')
-        driver = getattr(model, 'driver', None)
-        intent = inputs.get('intent')
-        request = None
-        if driver is not None and callable(getattr(driver, 'request_publish', None)):
-            from .training import register_weight_sync
-            request = register_weight_sync(driver, self._push_for(targets))
-        return {'sync': {'state': 'pending', 'request': request or intent or 'registered',
+        for target in targets:
+            self._manager_for(model, target).sync_weights(merge_and_sync=True)
+        return {'sync': {'state': 'completed',
                          'targets': [getattr(t, 'name', str(i)) for i, t in enumerate(targets)]}}
 
-    def _push_for(self, targets: List[Any]):
-        """The real push callable: snapshot-save then engine sync, per target.
-
-        Only the actual start/end produce sync events; ``in_place`` pushes
-        return None (no snapshot path) and snapshot pushes must return the real
-        new path -- the existing driver contract.
-        """
-        def push(window: Any) -> Optional[str]:
-            path = None
-            for target in targets:
-                sync = getattr(target, 'sync_weights', None)
-                if callable(sync):
-                    sync(merge_and_sync=True)
-            return path
-        return push
+    def _manager_for(self, model: Any, target: Any) -> Any:
+        """One resident CheckpointEngineManager per (model, sampler) pair."""
+        managers = getattr(self, '_managers', None)
+        if managers is None:
+            managers = self._managers = {}
+        manager = managers.get((id(model), id(target)))
+        if manager is None:
+            from twinkle.checkpoint_engine import CheckpointEngineManager
+            manager = CheckpointEngineManager(model=model, sampler=target)
+            managers[(id(model), id(target))] = manager
+        return manager
 
 
 class WeightAverageStage(StageComponent):
     """weight_average: copy or EMA-blend from one explicit model into another.
 
     The target's role is never hardcoded (reference, teacher, value...); the
-    transfer itself is the native surface (state_dict load or the EMA
-    manager)."""
+    transfer rides the native surfaces: copy goes through the torch
+    state_dict pair, EMA through a resident CheckpointEngineManager over the
+    (policy, reference) pair -- the same channel the PPO recipe builds, its
+    bucketed transfer running device-to-device over the ray channel."""
 
     type = 'weight_average'
 
@@ -246,27 +247,40 @@ class WeightAverageStage(StageComponent):
         target = inputs.get('target')
         if source is None or target is None:
             raise ComponentError(f'{self.node_id}: weight_average needs source and target')
-        mode = self.params.get('mode', 'ema')
+        mode = str(self.params.get('mode', 'ema') or 'ema')
         alpha = float(self.params.get('alpha', '0.9') or 0.9)
         if mode == 'copy':
-            sync = getattr(target, 'load_state_dict', None) or getattr(target, 'sync_weights', None)
+            sync = getattr(target, 'load_state_dict', None)
             state = getattr(source, 'state_dict', None)
             if callable(sync) and callable(state):
                 sync(state())
                 return {'sync': {'state': 'completed'}}
             raise ComponentError(f'{self.node_id}: copy mode needs state_dict/load_state_dict')
-        # EMA: ref <- alpha*ref + (1-alpha)*policy. The native EMA manager owns
-        # the exact blend; this binding only routes it.
-        ema = getattr(target, 'sync_ema', None)
-        if callable(ema):
-            ema(alpha)
-            return {'sync': {'state': 'completed'}}
-        raise ComponentError(f'{self.node_id}: ema mode needs the native sync_ema surface')
+        if mode != 'ema':
+            raise ComponentError(f'{self.node_id}: unknown weight_average mode {mode!r}')
+        self._manager_for(source, target).sync_ema(alpha)
+        return {'sync': {'state': 'completed'}}
+
+    def _manager_for(self, source: Any, target: Any) -> Any:
+        """One resident CheckpointEngineManager per (source, target) pair, on
+        its own channel so an EMA pair never shares transport state with the
+        rollout weight-sync channel."""
+        managers = getattr(self, '_managers', None)
+        if managers is None:
+            managers = self._managers = {}
+        manager = managers.get((id(source), id(target)))
+        if manager is None:
+            from twinkle.checkpoint_engine import CheckpointEngineManager
+            manager = CheckpointEngineManager(
+                model=source, sampler=target, channel=f'ema:{self.node_id}')
+            managers[(id(source), id(target))] = manager
+        return manager
 
 
 class CheckpointStage(StageComponent):
     """Persist the real weights and training state; the artifact path is the
-    one actually written."""
+    one the model's own save() reports (its return value IS the truth --
+    never a path the caller guesses)."""
 
     type = 'checkpoint'
 
@@ -277,11 +291,11 @@ class CheckpointStage(StageComponent):
         save = getattr(model, 'save_checkpoint', None) or getattr(model, 'save', None)
         if not callable(save):
             raise ComponentError(f'{self.node_id}: model exposes no save surface')
-        name = self.params.get('name', 'checkpoint') or 'checkpoint'
-        output_dir = self.params.get('output_dir', '') or os.path.join('output', 'checkpoints')
+        name = str(self.params.get('name') or 'checkpoint')
+        output_dir = str(self.params.get('output_dir') or os.path.join('output', 'checkpoints'))
         os.makedirs(output_dir, exist_ok=True)
-        path = os.path.join(output_dir, name)
-        save(path)
+        path = save(name, output_dir=output_dir)
+        path = str(path or os.path.join(output_dir, name))
         if not os.path.exists(path):
             raise ComponentError(f'{self.node_id}: save reported no artifact at {path}')
         return {'artifact': {'path': path, 'format': 'native'}}

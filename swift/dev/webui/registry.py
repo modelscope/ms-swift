@@ -1,10 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""通用组件 v3 注册表：数学职责、真实端口与类型化配置的唯一声明。"""
+"""通用组件 v4 注册表：数学职责、真实端口与类型化配置的唯一声明。"""
 from __future__ import annotations
 
-from .descriptor import ComponentDescriptor, ParamSpec, PortSpec
+from .descriptor import KIND_ALLOWS, KIND_CATEGORIES, ComponentDescriptor, ParamSpec, PortSpec
 
-REGISTRY_VERSION = 3
+REGISTRY_VERSION = 4
 ADVANTAGE_OPTIONS = ('grpo', 'grpo_passk', 'gae', 'rloo', 'remax', 'gpg', 'opo',
                      'reinforce_plus_plus', 'reinforce_pp_baseline')
 LOSS_OPTIONS = ('cross_entropy', 'channel', 'chunked_cross_entropy', 'mse', 'grpo', 'ppo',
@@ -12,12 +12,19 @@ LOSS_OPTIONS = ('cross_entropy', 'channel', 'chunked_cross_entropy', 'mse', 'grp
                 'gkd', 'opsd', 'mopd', 'kl_cov', 'clip_cov', 'geo_mean', 'dpo', 'kto',
                 'cpo', 'orpo', 'simpo', 'dro', 'dppo_kl', 'dppo_tv', 'infonce',
                 'online_contrastive', 'cosine_similarity')
-REWARD_OPTIONS = ('math', 'math_verify', 'boxed_math', 'format', 'gsm8k', 'gsm8k_brevity',
-                  'olympiad_bench', 'multimodal_accuracy', 'f1', 'cot', 'tool_explore',
-                  'checks', 'rubric_judge')
 P = PortSpec
 Q = ParamSpec
 D = ComponentDescriptor
+
+# Card allocation: a GPU component declares either a card count or an explicit
+# card list (ids win; setting both is a construction error). An empty spec
+# defaults to one card. The session plans one named DeviceGroup per declaring
+# component from these specs -- selecting N cards really occupies N cards.
+GPU_PARAMS = (
+    Q('gpu_count', '占卡数', 1, type='int', minimum=1,
+      doc='声明占用几张卡；与卡列表同时设置是构造错误'),
+    Q('gpu_ids', '卡列表', [], type='list', item_type='int', unique_items=True,
+      doc='显式卡编号列表；非空时优先于占卡数'))
 
 MODEL = D('model', '模型', 'Resource', '唯一参数化函数 f_theta；独立冻结模型必须独立构造。',
     ports_in=(P('artifact', 'ARTIFACT', '模型权重来源', ('model', 'training'), optional=True),),
@@ -25,13 +32,19 @@ MODEL = D('model', '模型', 'Resource', '唯一参数化函数 f_theta；独立
     params=(Q('model', '模型来源', '', '模型 ID/路径；接入 artifact 时由真实产物提供'),
             Q('train_type', '训练类型', 'lora', options=('lora', 'full')),
             Q('freeze', '冻结参数', False, type='bool'),
-            Q('backend', '训练后端', 'hf', options=('hf', 'megatron', 'unsloth')),
-            Q('mode', '执行模式', 'ray', options=('ray', 'local', 'remote')),
-            Q('parallel_spec', '并行规格', '', '由 DeviceMesh 解释，不强制单卡'),
+            Q('backend', '训练后端', 'hf', options=('hf', 'megatron', 'unsloth'),
+              doc='hf=transformers 后端；megatron 经 bridge 构建，接口等价'),
+            Q('parallel_spec', '并行规格', '',
+              doc='tp/pp/dp 显式规格；缺省由占卡数单维推导（tp=卡数）'),
+            *GPU_PARAMS,
             Q('model_config', '模型配置', {}, type='dict'),
             Q('train_config', '训练参数选择', {}, type='dict'),
             Q('tuner_config', '调参配置', {}, type='dict'),
-            Q('distributed_config', '完整放置配置', {}, type='dict')),
+            Q('distributed_config', '完整放置配置', {}, type='dict'),
+            Q('megatron_config', 'Megatron 配置', {}, type='dict',
+              doc='仅 backend=megatron 时生效的 MegatronConfig 字段'),
+            Q('moe_config', 'MoE 配置', {}, type='dict',
+              doc='仅 backend=megatron 时生效的 MoEConfig 字段')),
     owner_kind='MODEL')
 
 DATASET = D('dataset', '数据集', 'Resource', '原始数据分布与预处理配置，不进入循环。',
@@ -43,11 +56,12 @@ SAMPLER = D('sampler', '采样器', 'Resource', '常驻生成引擎；权重初�
     ports_out=(P('sampler', 'SAMPLER', '生成引擎'),),
     params=(Q('model', '模型来源（id/路径，同时是 tokenizer 来源）', '', required=True),
             Q('engine', '引擎', 'vllm', options=('vllm', 'sglang', 'torch')),
-            Q('parallel_spec', '并行规格', ''), Q('mode', '执行模式', 'ray', options=('ray', 'local', 'remote')),
+            Q('parallel_spec', '并行规格', '',
+              doc='tp/pp/dp 显式规格；缺省由占卡数单维推导（tp=卡数）'),
+            *GPU_PARAMS,
             Q('engine_args', '引擎参数', {}, type='dict'),
             Q('model_config', '模型加载配置', {}, type='dict'),
-            Q('template_config', '编码配置', {}, type='dict'),
-            Q('sleep_level', '休眠级别', 0, type='int', options=(0, 1, 2))), owner_kind='SAMPLER')
+            Q('template_config', '编码配置', {}, type='dict')), owner_kind='SAMPLER')
 
 ROLLOUT = D('rollout', '多轮生成器', 'Resource', '在环境 lease 内执行多轮生成，不包含评分与优势估计。',
     ports_in=(P('sampler', 'SAMPLER', '生成 backend'), P('tools', 'TOOL', '工具插件与声明', optional=True),
@@ -63,6 +77,20 @@ GROUP_RULE = D('group_rule', '分组采样规则', 'Resource', '完整组准入�
     ports_out=(P('rule', 'GROUP_RULE', '准入规则'),),
     params=(Q('resample', '重采规则', 'none', options=('none', 'zero_variance')),
             Q('kwargs', '准入参数', {}, type='dict')))
+
+LOSS_COMP = D('loss', '损失函数', 'Resource', 'L(theta)：策略更新目标；注册名或自定义公式的损失对象。',
+    ports_out=(P('loss', 'LOSS', '损失对象'),),
+    params=(Q('kind', '损失函数', 'cross_entropy', options=LOSS_OPTIONS),
+            Q('loss_kwargs', '损失构造参数', {}, type='dict'),
+            Q('code', '自定义公式', '',
+              doc='用户公式 def loss(**lanes)->float；设置时忽略注册名')))
+SCORER_COMP = D('scorer', '评分函数', 'Resource', 'r(tau)：规则评分函数；注册名或自定义代码的评分器。',
+    ports_out=(P('scorer', 'SCORER', '评分器对象'),),
+    params=(Q('kind', '注册评分函数名', 'math',
+              doc='orms 插件注册表中的名字（math/format/accuracy 等；插件可运行时扩充，故不静态枚举）'),
+            Q('scorer_kwargs', '评分构造参数', {}, type='dict'),
+            Q('code', '自定义评分代码', '',
+              doc='用户代码 def score(rows)->list[float]；设置时忽略注册名')))
 
 TOOLSET = D('toolset', '工具集', 'Resource', '实际插件来源；运行实现按环境 lease 绑定，声明即插件模块内的实例。',
     ports_out=(P('tools', 'TOOL', '工具插件'),),
@@ -91,11 +119,13 @@ DATALOADER = D('dataloader', '数据加载器', 'Iterator', '常驻游标、epoc
     ports_in=(P('data', 'DATASET', '数据来源'), P('after', 'CTRL', '反馈后取下一批', optional=True)),
     ports_out=(P('batch', 'DATA', '当前原始批次', ('batch',)), P('source', 'SOURCE', '控制句柄', control=True)),
     params=(Q('batch_size', '批大小', 8, type='int', minimum=1),
+            Q('source', '数据面', 'prompts', options=('prompts', 'rows'),
+              doc='prompts=提示面（剥掉末轮 assistant，生成侧用）；rows=完整训练行（监督训练用）'),
             Q('shuffle', '打乱', True, type='bool'), Q('seed', '随机种子', 42, type='int', minimum=0),
             Q('num_workers', '加载进程数', 0, type='int', minimum=0),
             Q('drop_last', '丢弃尾批', False, type='bool')))
 STREAMING_DRIVER = D('streaming_driver', '流式采样', 'Iterator', '采样准入、滞后、背压和批次确认控制面。',
-    ports_in=(P('prompts', 'DATASET', '数据分布'),
+    ports_in=(P('prompts', 'DATA', '提示流来源（连接 dataloader）', ('batch',)),
               P('engine', 'SAMPLER', '具名采样资源', many=True, optional=True),
               P('episode', 'ROLLOUT', '多轮来源', optional=True),
               P('groups', 'GROUP_RULE', '完整组规则', optional=True),
@@ -104,10 +134,13 @@ STREAMING_DRIVER = D('streaming_driver', '流式采样', 'Iterator', '采样准�
     params=(Q('async_mode', '异步模式', 'none', options=('none', 'one_step_off', 'fully_async')),
             Q('max_staleness', '最大滞后', 1, type='int', minimum=0),
             Q('num_generations', '组宽', 8, type='int', minimum=1),
-            Q('batch_size', '消费批大小', 8, type='int', minimum=1),
-            Q('buffer_size', '缓冲上限', 64, type='int', minimum=1),
             Q('generation_config', '生成配置', {}, type='dict'),
-            Q('driver_config', '控制面配置', {}, type='dict')))
+            Q('rl_config', 'RL 配置', {}, type='dict'),
+            Q('rollout_config', 'Rollout 配置', {}, type='dict'),
+            Q('train_batch_size', '训练批大小', 8, type='int', minimum=1),
+            Q('gradient_accumulation_steps', '梯度累积', 1, type='int', minimum=1),
+            Q('num_train_epochs', '训练轮数', 1.0, type='float'),
+            Q('max_steps', '总步数', 0, type='int', minimum=0)))
 CHALLENGER = D('challenger', '自动出题器', 'Iterator', '显式出题/解题来源； 一次提取同批两路训练轨迹。',
     ports_in=(P('backend', 'SAMPLER', '出题 backend'),
               P('solver_rollout', 'ROLLOUT', '解题多轮机制', optional=True),
@@ -129,12 +162,12 @@ GENERATE = D('generate', '批量生成', 'Stage', '仅生成 episode，评分与
     params=(Q('num_generations', '组宽', 8, type='int', minimum=1, phase='call'),
             Q('generation_config', '生成参数', {}, type='dict', phase='call')),
     exclusive_inputs=(('engine', 'episode'),))
-SCORE = D('score', '评分', 'Stage', '按参数声明的评分函数对齐打分列；缺失不截断也不补零。',
-    ports_in=(P('samples', 'TRAJ', '待评分轨迹', ('rollout',)),),
+SCORE = D('score', '评分', 'Stage', '按接线声明的评分器对齐打分列；缺失不截断也不补零。',
+    ports_in=(P('samples', 'TRAJ', '待评分轨迹', ('rollout',)),
+              P('scorers', 'SCORER', '具名评分器', many=True)),
     ports_out=(P('reward', 'REWARD', '结果评分', ('outcome',)),
                P('process', 'REWARD', '过程评分', ('process',), optional=True)),
-    params=(Q('scorer', '注册评分函数名', 'math', required=True),
-            Q('scorer_kwargs', '评分构造参数', {}, type='dict', phase='call')))
+    params=())
 MODEL_FORWARD = D('model_forward', '模型前向', 'Stage', '按显式字段集合返回原生模型输出，调用方式不改变模型身份。',
     ports_in=(P('model', 'MODEL', '前向模型'),
               P('traj', 'TRAJ', '前向数据；内部按 tokenizer 参数编码', accepted_kinds=('DATA', 'BATCH'))),
@@ -198,8 +231,9 @@ SELECT = D('select', '样本筛选', 'Stage', '一次选择索引应用全部对
     params=(Q('select', '选择规则', 'threshold', options=('threshold', 'top_k', 'best_of_n'), phase='call'),
             Q('threshold', '阈值', 0.0, type='float', phase='call'),
             Q('top_k', '保留数', 1, type='int', minimum=1, phase='call')))
-TRAIN_STEP = D('train_step', '训练步骤', 'Stage', '真实 forward_backward 与 optimizer step；loss、优化器与编码是参数，不负责保存和发布 cadence。',
-    ports_in=(P('model', 'MODEL', '实际更新模型', access='write'),
+TRAIN_STEP = D('train_step', '训练步骤', 'Stage', '真实 forward_backward 与 optimizer step；优化器与编码是参数，不负责保存和发布 cadence。',
+    ports_in=(P('model', 'MODEL', '实际更新模型；未接线时沿连线共享的作用域唯一解析', access='write', scope=True),
+              P('loss', 'LOSS', '损失对象'),
               P('batch', 'TRAJ', '待训练数据；轨迹在内部按 tokenizer 参数编码', accepted_kinds=('DATA', 'BATCH')),
               P('arguments', 'SIGNAL', 'slot 是 loss 实际参数名', many=True, optional=True, accepted_kinds=('ADV',)),
               P('after', 'CTRL', '正向完成依赖', optional=True)),
@@ -208,8 +242,6 @@ TRAIN_STEP = D('train_step', '训练步骤', 'Stage', '真实 forward_backward �
                P('then', 'CTRL', '更新完成')),
     params=(Q('tokenizer', 'Tokenizer 来源（id/路径）', '', required=True),
             Q('template_config', '编码配置', {}, type='dict'),
-            Q('loss', '损失函数', 'cross_entropy', options=LOSS_OPTIONS),
-            Q('loss_kwargs', '损失构造参数', {}, type='dict'),
             Q('optim', '优化器族', 'adamw'),
             Q('lr', '学习率', 1e-5, type='float', minimum=0),
             Q('lr_scheduler_type', '调度器', 'cosine'),
@@ -281,7 +313,7 @@ HUB_PUSH = D('hub_push', '发布模型', 'Task', '明确授权后调用公共 Hu
     effects=('external',))
 
 REGISTRY = {descriptor.type: descriptor for descriptor in (
-    MODEL, DATASET, SAMPLER, ROLLOUT, GROUP_RULE,
+    MODEL, DATASET, SAMPLER, ROLLOUT, GROUP_RULE, LOSS_COMP, SCORER_COMP,
     TOOLSET, SANDBOX_ENV, POLICY_ENDPOINT, API_ENDPOINT, CODE_COMPONENT,
     DATALOADER, STREAMING_DRIVER, CHALLENGER, GENERATE, SCORE,
     MODEL_FORWARD, REDUCE, REWARD_SHAPE, ADVANTAGE, SIGNAL_COMBINE, SELECT,
@@ -291,6 +323,15 @@ REGISTRY = {descriptor.type: descriptor for descriptor in (
 
 def validate_registry() -> None:
     from .schema import CHANNEL_SCHEMAS
+    # The wiring matrix must cover exactly the declared channels, and every
+    # cross-kind adaptation a port declares must be backed by the matrix --
+    # edge legality then has one source of truth for validator and frontend.
+    if set(KIND_CATEGORIES) != set(CHANNEL_SCHEMAS):
+        raise ValueError(f'kind matrix and channel schemas diverge: '
+                         f'{sorted(set(KIND_CATEGORIES) ^ set(CHANNEL_SCHEMAS))}')
+    for producer, allowed in KIND_ALLOWS.items():
+        if producer not in KIND_CATEGORIES:
+            raise ValueError(f'kind matrix adapts unknown kind {producer!r}')
     for descriptor in REGISTRY.values():
         params = {param.name: param for param in descriptor.params}
         for param in descriptor.params:
@@ -303,6 +344,10 @@ def validate_registry() -> None:
             for kind in (port.kind, *port.accepted_kinds):
                 if kind not in CHANNEL_SCHEMAS:
                     raise ValueError(f'{descriptor.type}.{port.key}: 未声明通道 {kind}')
+            for accepted in port.accepted_kinds:
+                if port.kind not in KIND_ALLOWS.get(accepted, ()):
+                    raise ValueError(f'{descriptor.type}.{port.key}: 通道适配 {accepted}->{port.kind} '
+                                     f'不在 KIND_ALLOWS 矩阵内')
             for profile in port.profiles:
                 CHANNEL_SCHEMAS[port.kind].profile(profile)
             if port.access not in ('read', 'write'):

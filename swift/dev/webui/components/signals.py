@@ -4,8 +4,7 @@
 Every stage here is an independent, general math/functional meaning -- no
 algorithm name decides behaviour. All five are remote-execution stages: the
 binding only wires inputs and parameters and hands references to the numeric
-worker, so heavy forward payloads never materialise in the session process
-(local mode: the same calls are plain function calls returning real values).
+worker, so heavy forward payloads never materialise in the session process.
 """
 from __future__ import annotations
 
@@ -55,8 +54,8 @@ class ModelForwardStage(StageComponent):
 
     def _features(self, data: Any) -> Any:
         """The input encoded under this node's own tokenizer, built once."""
+        from .resources import build_template_from, encode_rows
         if getattr(self, '_template', None) is None:
-            from .resources import build_template_from, encode_rows
             self._template = build_template_from(
                 str(self.params.get('tokenizer') or ''),
                 dict(self.params.get('template_config') or {}), self.node_id)
@@ -71,7 +70,7 @@ class ModelForwardStage(StageComponent):
         forward = getattr(model, 'forward_only', None)
         if not callable(forward):
             raise ComponentError(f'{self.node_id}: model exposes no forward_only()')
-        features = self._features(inputs.get('traj'))
+        features = self._features(batch)
         if not isinstance(features, list):
             features = [features]
         if not features:
@@ -170,8 +169,12 @@ class AdvantageStage(StageComponent):
             samples, reward, inputs.get('values'), num_generations, estimator,
             float(self.params.get('gamma', 1.0) or 1.0),
             float(self.params.get('lam', 1.0) or 1.0), kwargs)
-        return {'adv': worker.project(result, 'adv'),
-                'returns': worker.project(result, 'returns')}
+        # The adv port carries the VALUE sequence only (the loss's per-sample
+        # lane); estimator metadata stays a node param, not payload.
+        adv = worker.project(result, 'adv')
+        adv_values = adv.get('values') if isinstance(adv, dict) else adv
+        returns = worker.project(result, 'returns')
+        return {'adv': adv_values, 'returns': returns}
 
 
 class SignalCombineStage(StageComponent):
@@ -197,4 +200,8 @@ class SignalCombineStage(StageComponent):
             raise ComponentError(f'{self.node_id}: weights must be non-negative and sum > 0')
         worker = get_numeric_worker()
         result = worker.signal_combine(list(lanes), mode, weights)
-        return {'out': worker.project(result, 'out')}
+        # The out port carries the VALUE sequence only; the combine mode stays
+        # a node param, not payload (a dict with a str field fails the loss's
+        # per-sample flatten downstream).
+        out = worker.project(result, 'out')
+        return {'out': out.get('values') if isinstance(out, dict) else out}

@@ -9,6 +9,62 @@ from typing import Any, Mapping
 
 LIFECYCLES = ('Resource', 'Iterator', 'Stage', 'Task')
 
+#: Wiring posture per channel kind -- the three-category rule.
+#: 'scope' -- resource variables (`let model = ...`): shared through
+#:            connectivity, resolved implicitly when unique, wired explicitly
+#:            only to disambiguate or to mark a role.
+#: 'data'  -- data-flow values: always wired; these edges ARE the algorithm
+#:            design surface the user composes on the canvas.
+#: 'flow'  -- control tokens: order edges only where no data edge can carry
+#:            the happens-before relation.
+KIND_CATEGORY_SCOPE = 'scope'
+KIND_CATEGORY_DATA = 'data'
+KIND_CATEGORY_FLOW = 'flow'
+
+KIND_CATEGORIES: dict[str, str] = {
+    'MODEL': KIND_CATEGORY_SCOPE,
+    'SAMPLER': KIND_CATEGORY_SCOPE,
+    'ROLLOUT': KIND_CATEGORY_SCOPE,
+    'GROUP_RULE': KIND_CATEGORY_SCOPE,
+    'ENV': KIND_CATEGORY_SCOPE,
+    'TOOL': KIND_CATEGORY_SCOPE,
+    'ENDPOINT': KIND_CATEGORY_SCOPE,
+    'CTRL': KIND_CATEGORY_FLOW,
+    'SOURCE': KIND_CATEGORY_FLOW,
+    'DATASET': KIND_CATEGORY_DATA,
+    'DATA': KIND_CATEGORY_DATA,
+    'BATCH': KIND_CATEGORY_DATA,
+    'TRAJ': KIND_CATEGORY_DATA,
+    'REWARD': KIND_CATEGORY_DATA,
+    'SIGNAL': KIND_CATEGORY_DATA,
+    'ADV': KIND_CATEGORY_DATA,
+    'LOSS': KIND_CATEGORY_DATA,
+    'SCORER': KIND_CATEGORY_DATA,
+    'STEP': KIND_CATEGORY_DATA,
+    'SYNC': KIND_CATEGORY_DATA,
+    'ARTIFACT': KIND_CATEGORY_DATA,
+    'METRIC': KIND_CATEGORY_DATA,
+}
+
+#: Cross-kind adaptation matrix: ``KIND_ALLOWS[producer]`` lists the OTHER
+#: port kinds a value of that kind may legally feed (its own kind always is).
+#: Every ``PortSpec.accepted_kinds`` entry must be backed by this table; the
+#: graph validator and the frontend wiring hints read the same source, so the
+#: legality of an edge is decidable in exactly one place.
+KIND_ALLOWS: dict[str, tuple[str, ...]] = {
+    'DATA': ('TRAJ',),
+    'BATCH': ('TRAJ',),
+    'ADV': ('SIGNAL',),
+}
+
+
+def kind_matrix() -> dict[str, dict[str, list[str]]]:
+    """The wiring contract for export: category plus legal consumer kinds."""
+    return {
+        kind: {'category': category, 'allows': [kind, *KIND_ALLOWS.get(kind, ())]}
+        for kind, category in KIND_CATEGORIES.items()
+    }
+
 
 @dataclass(frozen=True)
 class PortSpec:

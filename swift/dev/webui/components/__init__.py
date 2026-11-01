@@ -15,9 +15,9 @@ def _register_all() -> None:
     from .data import (ChallengerComponent, DataloaderComponent, GenerateStage,
                        ScoreStage, SelectStage, StreamingDriverComponent)
     from .resources import (ApiEndpointComponent, CodeComponent, DatasetComponent,
-                            GroupRuleComponent, ModelComponent, RolloutComponent,
-                            SamplerComponent, SandboxEnvComponent, PolicyEndpointComponent,
-                            ToolsetComponent)
+                            GroupRuleComponent, LossComponent, ModelComponent,
+                            RolloutComponent, SamplerComponent, SandboxEnvComponent,
+                            PolicyEndpointComponent, ScorerComponent, ToolsetComponent)
     from .signals import (AdvantageStage, ModelForwardStage, ReduceStage,
                           RewardShapeStage, SignalCombineStage)
     from .tasks import (DeployTask, EvalTask, HubPushTask, InferTask, MergeTask,
@@ -26,7 +26,8 @@ def _register_all() -> None:
                            WeightSyncStage)
     for cls in (
             ModelComponent, DatasetComponent, SamplerComponent,
-            RolloutComponent, GroupRuleComponent, ToolsetComponent, SandboxEnvComponent,
+            RolloutComponent, GroupRuleComponent, LossComponent, ScorerComponent,
+            ToolsetComponent, SandboxEnvComponent,
             PolicyEndpointComponent, ApiEndpointComponent, CodeComponent,
             DataloaderComponent, StreamingDriverComponent, ChallengerComponent,
             GenerateStage, ScoreStage, SelectStage,

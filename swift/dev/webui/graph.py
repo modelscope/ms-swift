@@ -9,7 +9,8 @@ import uuid
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
-from .descriptor import ComponentDescriptor, PortSpec
+from .descriptor import (KIND_CATEGORIES, KIND_CATEGORY_FLOW, ComponentDescriptor,
+                         PortSpec)
 from .registry import REGISTRY, REGISTRY_VERSION
 from .schema import CHANNEL_SCHEMAS
 
@@ -47,13 +48,31 @@ class FrameSpec:
     id: str = ''
 
 
+@dataclass(frozen=True)
+class ResourceSpec:
+    """The canvas-level GPU allocation the resource page edits.
+
+    ``local`` picks explicit card ids on this machine (the session process is
+    launched with exactly those cards visible); ``cluster`` names a ray
+    address plus the total GPU count the remote cluster offers. An empty
+    local spec means "no GPU allocated" -- any GPU component then fails
+    loudly at DeviceGroup planning instead of silently falling back.
+    """
+    mode: str = 'local'
+    cards: Tuple[int, ...] = ()
+    cluster_address: str = ''
+    cluster_gpus: int = 0
+
+
 class Graph:
     def __init__(self, nodes: List[NodeSpec], edges: List[EdgeSpec],
-                 frames: Optional[List[FrameSpec]] = None, *, workflow_id: str = ''):
+                 frames: Optional[List[FrameSpec]] = None, *, workflow_id: str = '',
+                 resource: Optional[ResourceSpec] = None):
         self.workflow_id = workflow_id or uuid.uuid4().hex
         self.nodes = copy.deepcopy(list(nodes))
         self.edges = list(edges)
         self.frames = list(frames or [])
+        self.resource = resource or ResourceSpec()
         if not self.nodes:
             raise GraphValidationError('nodes: 图不能为空')
         if len(self.nodes) > 4096 or len(self.edges) > 32768:
@@ -73,12 +92,20 @@ class Graph:
                 raise GraphValidationError(f'重复 edge.id {edge.id!r}')
             self._edges_by_id[edge.id] = edge
         self._feedback_edge_ids = {edge_id for frame in self.frames for edge_id in frame.feedback}
+        self._frame_of: Dict[str, str] = {}
+        for frame in self.frames:
+            for member in frame.members:
+                self._frame_of[member] = frame.id
         #: (node_id, port_key) -> (source_id, source_port)：作用域解析结果。
         #: 一条边把源节点带入目标节点的作用域（连通即共享），沿非反馈边传递；
         #: 只有 Resource 节点的输出口是作用域变量，Stage 的输出走显式连线。
         self._scope_resolution: Dict[Tuple[str, str], Tuple[str, str]] = {}
         self._validate_nodes()
         self._validate_edges()
+        # Cross-frame legality runs BEFORE scope resolution: an illegal
+        # cross-frame CTRL edge must be named as such, not surface as the
+        # scope ambiguity it incidentally creates downstream.
+        self._validate_cross_frame()
         self._validate_inputs()
         self._validate_frames()
         self._ordered = self._order()
@@ -107,9 +134,10 @@ class Graph:
 
     @classmethod
     def from_declaration(cls, raw: Dict[str, Any]) -> 'Graph':
-        raw = cls._mapping(raw, 'graph', {'version', 'workflow_id', 'nodes', 'edges', 'frames'})
+        raw = cls._mapping(raw, 'graph', {'version', 'workflow_id', 'nodes', 'edges', 'frames', 'resource'})
         if type(raw.get('version')) is not int or raw['version'] != REGISTRY_VERSION:
-            raise GraphValidationError('version: 仅运行 v3；旧图必须显式升级并确认，原声明不会修改')
+            raise GraphValidationError(
+                f'version: 仅运行 v{REGISTRY_VERSION}；旧图必须显式升级并确认，原声明不会修改')
         workflow_id = cls._identity(raw.get('workflow_id'), 'workflow_id')
         nodes = []
         for index, value in enumerate(cls._list(raw.get('nodes'), 'nodes')):
@@ -146,7 +174,32 @@ class Graph:
                 raise GraphValidationError(f'frames[{index}]: name/budget_owner 需要字符串')
             frames.append(FrameSpec(**collections, budget_owner=owner, name=name,
                                     id=cls._identity(value.get('id'), f'frames[{index}].id')))
-        return cls(nodes, edges, frames, workflow_id=workflow_id)
+        resource = cls._parse_resource(raw.get('resource'))
+        return cls(nodes, edges, frames, workflow_id=workflow_id, resource=resource)
+
+    @staticmethod
+    def _parse_resource(value: Any) -> ResourceSpec:
+        """The resource page's GPU allocation; absent means no GPU allocated."""
+        if value is None:
+            return ResourceSpec()
+        Graph._mapping(value, 'resource', {'mode', 'cards', 'cluster_address', 'cluster_gpus'})
+        mode = value.get('mode', 'local')
+        if mode not in ('local', 'cluster'):
+            raise GraphValidationError('resource.mode: 需要 local 或 cluster')
+        if mode == 'cluster':
+            address = value.get('cluster_address', '')
+            gpus = value.get('cluster_gpus', 0)
+            if not isinstance(address, str) or not address:
+                raise GraphValidationError('resource.cluster_address: 集群模式必须给出地址')
+            if type(gpus) is not int or gpus < 1:
+                raise GraphValidationError('resource.cluster_gpus: 集群卡数必须是正整数')
+            return ResourceSpec(mode='cluster', cluster_address=address, cluster_gpus=gpus)
+        cards = value.get('cards', [])
+        if type(cards) is not list or any(type(card) is not int or card < 0 for card in cards):
+            raise GraphValidationError('resource.cards: 需要非负整数卡编号列表')
+        if len(set(cards)) != len(cards):
+            raise GraphValidationError('resource.cards: 卡编号不得重复')
+        return ResourceSpec(mode='local', cards=tuple(cards))
 
     def node(self, node_id: str) -> NodeSpec:
         try:
@@ -347,14 +400,15 @@ class Graph:
                     raise GraphValidationError(f'{node.id}: 概率混合只能消费 logps')
 
     def _scope_sources(self, node_id: str) -> Dict[str, List[Tuple[str, str]]]:
-        """沿非反馈边可达的 Resource 节点导出变量（kind -> [(节点, 输出口)]）。
+        """沿身份边可达的 Resource 节点导出变量（kind -> [(节点, 输出口)]）。
 
-        传递规则与 ``upstream_closure`` 同一边集：数据边与前向 CTRL 边共享变量，
-        feedback 回边是同轮末尾回到轮初，不向轮初注入变量；SOURCE 控制句柄边
-        只传句柄不传变量。Stage 的输出口不是作用域变量——需要 Stage 产物里的
-        身份（如 train_step 的训练后模型引用）必须显式连线。"""
+        传递规则见 ``_identity_edges``：数据边与前向 CTRL 共享变量，feedback
+        回边是同轮末尾回到轮初不向轮初注入，SOURCE 控制句柄边只传句柄不传
+        变量，跨环边共享身份（它们只是轮边界）。Stage 的输出口不是作用域
+        变量——需要 Stage 产物里的身份（如 train_step 的训练后模型引用）必须
+        显式连线。"""
         result: Dict[str, List[Tuple[str, str]]] = {}
-        for member in self.upstream_closure(node_id):
+        for member in self._reachable(node_id, self._identity_edges()):
             if member == node_id:
                 continue
             descriptor = self.descriptor(member)
@@ -392,6 +446,10 @@ class Graph:
             sources = {node_id for node_id in members if self.descriptor(node_id).lifecycle == 'Iterator'}
             if not sources or set(frame.sources) != sources or len(set(frame.sources)) != len(frame.sources):
                 raise GraphValidationError(f'frame {frame.id}: sources 必须明确列出全部 Iterator 成员')
+            if len(sources) != 1:
+                raise GraphValidationError(
+                    f'frame {frame.id}: 一个环恰有一个批源 Iterator；辅助流（dataloader 等）留在环外，'
+                    '环间喂料用跨环数据边表达')
             if not frame.consumers or len(set(frame.consumers)) != len(frame.consumers) or not set(frame.consumers) <= members - sources:
                 raise GraphValidationError(f'frame {frame.id}: consumers 必须明确列出唯一非 source 消费终点')
             if frame.budget_owner not in frame.consumers or 'train' not in self.descriptor(frame.budget_owner).effects:
@@ -419,17 +477,63 @@ class Graph:
     def _is_feedback(self, edge: EdgeSpec) -> bool:
         return edge.id in self._feedback_edge_ids
 
+    def is_feedback(self, edge_id: str) -> bool:
+        """Whether the edge is a declared frame feedback (same-round loop-back)."""
+        return edge_id in self._feedback_edge_ids
+
+    def frame_of(self, node_id: str) -> Optional[str]:
+        """The frame a node belongs to ('' when the node is loop-free)."""
+        self.node(node_id)
+        return self._frame_of.get(node_id)
+
+    def _is_cross_frame(self, edge: EdgeSpec) -> bool:
+        """A data edge between two DIFFERENT frames: the producing loop must
+        finish a round before the consuming loop may read it -- it is a round
+        boundary, never a same-round dependency."""
+        source_frame = self._frame_of.get(edge.source)
+        return (source_frame is not None and source_frame != self._frame_of.get(edge.target))
+
+    def cross_frame_edges(self) -> List[EdgeSpec]:
+        return [edge for edge in self.edges if self._is_cross_frame(edge)]
+
+    def _validate_cross_frame(self) -> None:
+        for edge in self.cross_frame_edges():
+            if self._is_feedback(edge):
+                raise GraphValidationError(f'edge {edge.id}: feedback 不能跨环')
+            # Only data edges may cross frames: a CTRL/SOURCE edge would smuggle
+            # an inter-loop ordering the producing loop's finished round already
+            # expresses (control handles are flow, not data, by category).
+            port = self.descriptor(edge.target).port(edge.target_port, 'in')
+            if port.control or KIND_CATEGORIES.get(port.kind) == KIND_CATEGORY_FLOW:
+                raise GraphValidationError(
+                    f'edge {edge.id}: 跨环只能是数据边；环间顺序由供数环完成一圈表达')
+
     def _data_edges(self) -> List[EdgeSpec]:
-        """同轮依赖包括正向 CTRL；反馈和控制句柄不触发数据提取。"""
+        """同轮依赖包括正向 CTRL；反馈、跨环边和控制句柄不触发数据提取。
+
+        跨环边（环 A 消费环 B 的输出，以及环成员喂环外消费者）不进入同轮
+        闭包：供数方作为独立执行单元由控制器按轮供数，不成为消费方的闭包
+        成员。"""
+        return [edge for edge in self.edges if not self._is_feedback(edge)
+                and not self._is_cross_frame(edge)
+                and not self.descriptor(edge.target).port(edge.target_port, 'in').control]
+
+    def _identity_edges(self) -> List[EdgeSpec]:
+        """身份共享边：数据边与前向 CTRL（含跨环与环→环外）。
+
+        作用域解析与同轮调度用不同的边集：跨环边是供数时机的轮边界，不是
+        身份边界——环外的 checkpoint 仍要能沿环内训练步的连线解析到模型。"""
         return [edge for edge in self.edges if not self._is_feedback(edge)
                 and not self.descriptor(edge.target).port(edge.target_port, 'in').control]
 
     def _order(self) -> List[str]:
         dependencies = {node_id: set() for node_id in self._nodes}
         followers = {node_id: [] for node_id in self._nodes}
-        # 控制句柄仍依赖 source 的构造，但不等待 source 取批。
+        # 控制句柄仍依赖 source 的构造，但不等待 source 取批；跨环边是轮边界，
+        # 不构成同轮拓扑依赖（否则两个环互相等待成为非法同轮环）。
         for edge in self.edges:
-            if not self._is_feedback(edge) and edge.source not in dependencies[edge.target]:
+            if not self._is_feedback(edge) and not self._is_cross_frame(edge) \
+                    and edge.source not in dependencies[edge.target]:
                 dependencies[edge.target].add(edge.source)
                 followers[edge.source].append(edge.target)
         ready = [node_id for node_id in self._nodes if not dependencies[node_id]]
@@ -449,10 +553,11 @@ class Graph:
     def order(self) -> List[str]:
         return list(self._ordered)
 
-    def upstream_closure(self, target: str) -> Set[str]:
+    def _reachable(self, target: str, edges: List[EdgeSpec]) -> Set[str]:
+        """All nodes reachable from ``target`` walking ``edges`` backwards."""
         self.node(target)
-        reverse = {}
-        for edge in self._data_edges():
+        reverse: Dict[str, List[str]] = {}
+        for edge in edges:
             reverse.setdefault(edge.target, []).append(edge.source)
         result = {target}
         pending = [target]
@@ -462,6 +567,9 @@ class Graph:
                     result.add(source)
                     pending.append(source)
         return result
+
+    def upstream_closure(self, target: str) -> Set[str]:
+        return self._reachable(target, self._data_edges())
 
     def training_frame(self, target: str) -> Optional[FrameSpec]:
         return next((frame for frame in self.frames if target in frame.members), None)
@@ -536,7 +644,10 @@ class Graph:
                            **({'slot': edge.slot} if edge.slot else {})} for edge in self.edges],
                 'frames': [{'id': frame.id, 'name': frame.name, 'members': list(frame.members),
                             'feedback': list(frame.feedback), 'budget_owner': frame.budget_owner,
-                            'sources': list(frame.sources), 'consumers': list(frame.consumers)} for frame in self.frames]}
+                            'sources': list(frame.sources), 'consumers': list(frame.consumers)} for frame in self.frames],
+                'resource': {'mode': self.resource.mode, 'cards': list(self.resource.cards),
+                             'cluster_address': self.resource.cluster_address,
+                             'cluster_gpus': self.resource.cluster_gpus}}
 
 
 class GraphUpgrade:
@@ -546,6 +657,13 @@ class GraphUpgrade:
                'reference_update': 'weight_average'}
     USE_ARGUMENTS = {'training_old': 'old_logps', 'ref': 'ref_logps',
                      'teacher': 'teacher_logps', 'rollout': 'rollout_logps'}
+    # v3->v4 升级器拥有的参数：v2->v3 迁移不得把它们当无出路的残留报 issue
+    # （升级随后会把每个搬到它的新去处：mode 删除、loss/scorer 升为节点、
+    # driver 的批大小移到插入的 dataloader 上）。
+    V4_LIFTED_PARAMS = {'model': ('mode',), 'sampler': ('mode',),
+                        'train_step': ('loss', 'loss_kwargs'),
+                        'score': ('scorer', 'scorer_kwargs'),
+                        'streaming_driver': ('batch_size',)}
 
     def __init__(self, declaration: dict):
         self.original = copy.deepcopy(declaration)
@@ -593,10 +711,13 @@ class GraphUpgrade:
         self.choices = []
         self._uses = {}
         version = self.original.get('version', 2)
-        if type(version) is not int or version not in (2, 3):
+        if type(version) is not int or version not in (2, 3, 4):
             self._issue('version', '未知版本，保留原声明并禁止运行')
             return self._result()
+        if version == 4:
+            return self._result()
         if version == 3:
+            self._upgrade_v3_to_v4()
             return self._result()
         if type(self.original.get('nodes')) is not list or type(self.original.get('edges', [])) is not list:
             self._issue('graph', '旧图节点或边结构畸形，不能静默过滤')
@@ -613,9 +734,50 @@ class GraphUpgrade:
             self._migrate_nodes(selections)
             self._migrate_edges()
             self._migrate_frames(selections)
+            self._upgrade_v3_to_v4()
         except (KeyError, TypeError, ValueError) as exc:
             self._issue('graph', f'旧声明无法确定迁移：{exc}')
         return self._result()
+
+    def _upgrade_v3_to_v4(self) -> None:
+        """v3 -> v4: loss/scorer come back as canvas nodes, the driver's prompt
+        stream flows through a dataloader node, and the per-component mode param
+        disappears (the session itself is always ray)."""
+        for node in list(self.candidate['nodes']):
+            if node['type'] in ('model', 'sampler'):
+                if node.setdefault('params', {}).pop('mode', None) is not None:
+                    self.changes.append({'node': node['id'], 'param': 'mode', 'action': 'remove'})
+        for driver in [n for n in self.candidate['nodes'] if n['type'] == 'streaming_driver']:
+            for edge in [e for e in self.candidate['edges']
+                         if e['target'] == driver['id'] and e['target_port'] == 'prompts']:
+                if self._nodes().get(edge['source'], {}).get('type') == 'dataloader':
+                    continue
+                origin_source, origin_port = edge['source'], edge['source_port']
+                # v3 carried the prompt-face batching on the driver itself;
+                # v4 owns it on the dataloader node, so the knob MOVES there
+                # (a stale undeclared param on the driver would block confirm).
+                batch_size = driver.setdefault('params', {}).pop('batch_size', 8)
+                loader_id = self._new_node(
+                    f'{driver["id"]}:loader', 'dataloader',
+                    {'batch_size': batch_size, 'source': 'prompts'})
+                edge.update(source=loader_id, source_port='batch')
+                self._add_edge(origin_source, origin_port, loader_id, 'data')
+                self.changes.append({'node': loader_id, 'action': 'insert',
+                                     'reason': 'dataset feeds the driver through a dataloader'})
+        for step in [n for n in self.candidate['nodes'] if n['type'] == 'train_step']:
+            params = step.setdefault('params', {})
+            kind = params.pop('loss', 'cross_entropy')
+            kwargs = params.pop('loss_kwargs', {}) or {}
+            loss_id = self._new_node(f'{step["id"]}:loss', 'loss', {'kind': kind, 'loss_kwargs': kwargs})
+            self._add_edge(loss_id, 'loss', step['id'], 'loss')
+        for scored in [n for n in self.candidate['nodes'] if n['type'] == 'score']:
+            params = scored.setdefault('params', {})
+            kind = params.pop('scorer', 'math')
+            kwargs = params.pop('scorer_kwargs', {}) or {}
+            scorer_id = self._new_node(f'{scored["id"]}:scorer', 'scorer',
+                                       {'kind': kind, 'scorer_kwargs': kwargs})
+            self._add_edge(scorer_id, 'scorer', scored['id'], 'scorers', slot=scorer_id)
+        self.candidate['version'] = 4
 
     def _expand_views(self, selections: dict) -> None:
         for node in list(self.candidate['nodes']):
@@ -773,7 +935,10 @@ class GraphUpgrade:
                 self._issue(node['id'], f'未知插件/旧类型 {node["type"]}，需要真实契约')
                 continue
             declared = {param.name: param for param in descriptor.params}
+            lifted = self.V4_LIFTED_PARAMS.get(node['type'], ())
             for key, value in list(params.items()):
+                if key in lifted:
+                    continue  # owned by the v3->v4 lift; it moves the knob itself
                 if key not in declared:
                     self._issue(f'{node["id"]}.{key}', '旧参数没有确定的新构造字段，不静默删除')
                     continue

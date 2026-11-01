@@ -434,8 +434,7 @@ def _log_line(record: dict, loss: float) -> str:
     """The default console step line: loss plus grad_norm, lr, the MTP channel and any loss_* channels.
 
     ``lr`` is read from the TrainMetric key ``learning rate`` (a display string like '5.000000e-05'
-    once the tracker has formatted it, or a float before that); the webui parses this line into
-    per-step curves, and lr is one of the three signals it always expects.
+    once the tracker has formatted it, or a float before that).
     """
     def _fmt(value, spec='.4f'):
         # A console head must never crash the training loop: coerce, fall back to the value as-is.

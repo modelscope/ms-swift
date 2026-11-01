@@ -24,7 +24,7 @@ sources load via ``twinkle.utils.load_module`` (no new plugin downloader).
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 from .descriptor import ComponentDescriptor
 from .registry import REGISTRY
@@ -51,6 +51,19 @@ class ResourceComponent:
 
     #: The descriptor type this component binds; set by subclasses.
     type: str = ''
+
+    #: The session's planned DeviceGroup name for this node ('' when the
+    #: node owns no GPUs). Injected by the session at construction -- the one
+    #: place residents are born -- because groups exist only at
+    #: twinkle.initialize time, never at build time.
+    remote_group: str = ''
+
+    #: Build-chain entry modules. The runner imports them SERIALLY on the
+    #: calling thread before parallel construction starts, so a pool worker's
+    #: ``from X import Y`` hits an already-loaded module instead of racing
+    #: another thread's first load of X (a half-initialised module makes the
+    #: from-import fail). Subclasses list their own heavy entry modules.
+    IMPORTS: Tuple[str, ...] = ()
 
     def __init__(self, node_id: str, params: Dict[str, str]):
         self.node_id = node_id
