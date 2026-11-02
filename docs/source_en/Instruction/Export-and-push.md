@@ -12,7 +12,7 @@ SWIFT supports quantization exports for AWQ, GPTQ, FP8, and BNB models. AWQ and 
 | ---------------------- | ---------- | ---------------------- | ------------------ |
 | FP8     | ✅      | ✅        | ✅        |
 | GPTQ           | ✅          | ✅                      | ✅                  |
-| AWQ                    | Partial     | ✅                      | ✅                  |
+| AWQ                    | ❌          | ✅                      | ✅                  |
 | BNB                    | ❌          | ✅                      | ✅                  |
 
 In addition to the SWIFT installation, the following additional dependencies need to be installed:
@@ -48,12 +48,12 @@ If AWQ, SwanLab, or ms-opencompass are needed in the same environment, first con
 We provide a series of scripts to demonstrate SWIFT's quantization export capabilities:
 
 - Supports [AWQ](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/awq.sh)/[GPTQ](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/gptq.sh)/[GPTQ v2](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/gptq_v2.sh)/[BNB](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/bnb.sh) quantization exports.
-- Multimodal quantization: GPTQ supports multimodal models; AWQ currently supports image calibration for Qwen2-VL only. Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/mllm).
+- Multimodal quantization: GPTQ supports multimodal models; AWQ does not currently support multimodal calibration. Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/mllm).
 - Support for more model series: Supports quantization exports for [BERT](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/bert) and [Reward Model](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/reward_model).
 - Models exported with SWIFT's quantization support inference acceleration using vllm/sglang/lmdeploy; they also support further SFT/RLHF using QLoRA.
 
 
-AWQ uses GPTQModel to produce GEMM weights with zero points. It supports text and Qwen2-VL image calibration, safetensors, and unquantized source models; merge LoRA adapters first using `--merge_lora true`. Adding special tokens, setting `--device_map`, or passing custom model loading arguments during AWQ export are not supported. Qwen2-VL image calibration uses GPTQModel's processor and model chat template, does not support custom `--template`, `--system`, or `--max_pixels`, and requires `--truncation_strategy delete`. The model architecture must be supported by GPTQModel. Check compatibility with the existing PyTorch, Transformers, and other dependencies when installing it.
+AWQ uses GPTQModel to produce GEMM weights with zero points. It supports text calibration, safetensors, and unquantized source models; merge LoRA adapters first using `--merge_lora true`. Adding special tokens, setting `--device_map`, or passing custom model loading arguments during AWQ export are not supported. The model architecture must be supported by GPTQModel. Check compatibility with the existing PyTorch, Transformers, and other dependencies when installing it.
 
 GPTQ backends may save symmetric weights in GPTQ v1 format even when GPTQ v2 is used during quantization. The exported configuration records the saved format so the model reloads correctly.
 

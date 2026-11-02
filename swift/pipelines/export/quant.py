@@ -4,9 +4,7 @@ import torch.nn as nn
 import transformers
 from collections import defaultdict
 from contextlib import contextmanager
-from io import BytesIO
 from packaging import version
-from PIL import Image
 from tqdm import tqdm
 from typing import Dict, List, Optional
 
@@ -166,72 +164,6 @@ class QuantEngine(ProcessorMixin):
                 res.append(torch.tensor(input_ids)[None])
         return res
 
-    @staticmethod
-    def _awq_qwen2_vl_conversation(data):
-        if data.get('videos') or data.get('audios'):
-            raise ValueError('Qwen2-VL AWQ currently supports image calibration only.')
-        for key in ('objects', 'tools', 'chat_template_kwargs'):
-            if data.get(key):
-                raise ValueError(f'Qwen2-VL AWQ does not support calibration field: {key}.')
-        messages = data.get('messages') or []
-        images = list(data.get('images') or [])
-        if not messages:
-            raise ValueError('Qwen2-VL AWQ calibration requires messages.')
-        if any(not isinstance(message.get('content'), str) for message in messages):
-            raise ValueError('Qwen2-VL AWQ calibration requires text messages with image placeholders.')
-        if any(message.get('role') not in {'system', 'user', 'assistant'} for message in messages):
-            raise ValueError('Qwen2-VL AWQ does not support tool messages in calibration.')
-        placeholder_count = sum(message['content'].count('<image>') for message in messages)
-        if placeholder_count > len(images):
-            raise ValueError('More image placeholders than calibration images.')
-        missing = len(images) - placeholder_count
-        first = next((i for i, message in enumerate(messages) if message['role'] != 'system'), 0)
-        image_idx = 0
-        result = []
-        for index, message in enumerate(messages):
-            content = ('<image>' * missing if index == first else '') + message['content']
-            parts = content.split('<image>')
-            blocks = []
-            for part_idx, text in enumerate(parts):
-                if part_idx:
-                    value = images[image_idx]
-                    image_idx += 1
-                    if isinstance(value, dict):
-                        if value.get('bytes') is not None:
-                            value = Image.open(BytesIO(value['bytes'])).convert('RGB')
-                        elif value.get('path'):
-                            value = value['path']
-                        else:
-                            raise ValueError('Calibration image requires bytes or a path.')
-                    blocks.append({'type': 'image', 'image': value})
-                if text:
-                    blocks.append({'type': 'text', 'text': text})
-            result.append({'role': message['role'], 'content': blocks})
-        return result
-
-    def _get_awq_qwen2_vl_dataset(self):
-        args = self.args
-        dataset = load_dataset(
-            args.dataset, split_dataset_ratio=0, shuffle=args.dataset_shuffle,
-            **args.get_dataset_kwargs())[0].shuffle()
-        samples = []
-        for data in dataset:
-            conversation = self._awq_qwen2_vl_conversation(data)
-            try:
-                self.template.encode(data)
-            except MaxLengthError:
-                continue
-            # GPTQModel applies its own processor and chat template for this model.
-            # Check that tokenization as well, since its length can differ from Swift's.
-            if args.max_length is not None:
-                prepared = self.awq_model.prepare_dataset([conversation], batch_size=1)
-                if any(item['input_ids'].shape[-1] > args.max_length for item in prepared):
-                    continue
-            samples.append(conversation)
-            if len(samples) >= args.quant_n_samples:
-                break
-        return samples
-
     def awq_model_quantize(self):
         args = self.args
         if getattr(self.model.config, 'quantization_config', None):
@@ -245,21 +177,10 @@ class QuantEngine(ProcessorMixin):
 
         logger.info(f'Quantization dataset: {args.dataset}')
         if self.model.model_meta.is_multimodal:
-            if self.model.model_info.model_type != 'qwen2_vl':
-                raise ValueError('GPTQModel AWQ multimodal calibration currently supports only Qwen2-VL images.')
-            if getattr(args, 'system', None) is not None:
-                raise ValueError('Qwen2-VL AWQ does not support a custom --system during export.')
-            if getattr(args, 'template', None) not in {None, 'qwen2_vl'}:
-                raise ValueError('Qwen2-VL AWQ does not support a custom --template during export.')
-            if getattr(args, 'max_pixels', None) is not None:
-                raise ValueError('Qwen2-VL AWQ does not support --max_pixels during export.')
-            if getattr(args, 'truncation_strategy', 'delete') != 'delete':
-                raise ValueError('Qwen2-VL AWQ supports only truncation_strategy=delete.')
-            calibration = self._get_awq_qwen2_vl_dataset()
-        else:
-            calibration = [{
-                'input_ids': block.reshape(-1).tolist()
-            } for block in self._get_quant_dataset() if block.numel()]
+            raise ValueError('GPTQModel AWQ export does not currently support multimodal calibration.')
+        calibration = [{
+            'input_ids': block.reshape(-1).tolist()
+        } for block in self._get_quant_dataset() if block.numel()]
         if not calibration:
             raise ValueError('AWQ calibration dataset contains no usable tokens.')
         logger.info('Start quantizing the model...')

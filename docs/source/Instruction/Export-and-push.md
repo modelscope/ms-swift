@@ -13,7 +13,7 @@ SWIFT支持AWQ、GPTQ、FP8、BNB模型的量化导出。其中使用AWQ、GPTQ�
 | -------- | ------ | -------- | -------- |
 | FP8     | ✅      | ✅        | ✅        |
 | GPTQ     | ✅      | ✅        | ✅        |
-| AWQ      | 部分支持 | ✅        | ✅        |
+| AWQ      | ❌      | ✅        | ✅        |
 | BNB      | ❌      | ✅        | ✅        |
 
 
@@ -48,12 +48,12 @@ pip install bitsandbytes -U
 
 我们提供了一系列脚本展现SWIFT的量化导出能力：
 - 支持[AWQ](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/awq.sh)/[GPTQ](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/gptq.sh)/[GPTQ v2](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/gptq_v2.sh)/[BNB](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/bnb.sh)量化导出。
-- 多模态量化: GPTQ支持多模态模型；AWQ目前仅支持Qwen2-VL图像校准，其他模态和模型尚不支持。参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/mllm)。
+- 多模态量化: GPTQ支持多模态模型；AWQ目前不支持多模态校准。参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/mllm)。
 - 更多系列模型的支持: 支持[Bert](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/bert)，[Reward Model](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/reward_model)的量化导出。
 - 使用SWIFT量化导出的模型支持使用vllm/sglang/lmdeploy进行推理加速；也支持使用QLoRA继续进行SFT/RLHF。
 
 
-AWQ 使用 GPTQModel 生成带零点的 GEMM 格式权重。目前支持文本和 Qwen2-VL 图像校准，使用 safetensors 和未量化的模型；LoRA 需要先使用 `--merge_lora true` 合并。AWQ 不支持在导出时添加特殊 token、指定 `--device_map` 或设置自定义模型加载参数。Qwen2-VL 图像校准使用 GPTQModel 自身的 processor 和模型聊天模板，不支持自定义 `--template`、`--system` 或 `--max_pixels`，仅支持 `--truncation_strategy delete`。模型架构须受 GPTQModel 支持，安装时请检查与现有 PyTorch、Transformers 和其他依赖的兼容性。
+AWQ 使用 GPTQModel 生成带零点的 GEMM 格式权重。目前支持文本校准，使用 safetensors 和未量化的模型；LoRA 需要先使用 `--merge_lora true` 合并。AWQ 不支持在导出时添加特殊 token、指定 `--device_map` 或设置自定义模型加载参数。模型架构须受 GPTQModel 支持，安装时请检查与现有 PyTorch、Transformers 和其他依赖的兼容性。
 
 使用 GPTQ v2 量化时，后端可能将对称量化权重保存为 GPTQ v1 格式。导出配置会记录实际保存的格式，以便正确重新加载模型。
 
