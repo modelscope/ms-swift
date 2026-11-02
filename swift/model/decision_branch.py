@@ -15,6 +15,7 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+
 def _rep(v, K):
     if torch.is_tensor(v) and v.dim() >= 1:
         return v.repeat_interleave(K, dim=0)
@@ -63,10 +64,12 @@ def is_hybrid(model) -> bool:
     lt = getattr(tc, 'layer_types', None)
     return bool(lt) and any('linear' in str(t) for t in lt)
 
+
 OPT_OPEN = '<|opt|>'
 OPT_CLOSE = '<|/opt|>'
 N_FEAT = 6
 _PIX_KEYS = ('pixel_values', 'image_grid_thw', 'pixel_values_videos', 'video_grid_thw', 'mm_token_type_ids')
+
 
 def find_rope_owner(m, depth: int = 0):
     if depth > 6:
@@ -180,6 +183,7 @@ def branch_forward(backbone,
         cache_pos = torch.arange(L, L + n, device=dev)
 
         if torch.is_grad_enabled() and os.environ.get('MSO_BRANCH_CKPT', '0') == '1':
+
             def _chunk_h_ckpt(ids_, att_, pos_, cpos_, pids_, patt_, ppos_):
                 pkw = {
                     k: v
@@ -333,6 +337,7 @@ def add_option_tokens(model, proc, emb_path: Optional[str] = None) -> List[int]:
                 emb[tid] = (mean + 0.01 * (k + 1)).to(emb.dtype)
     return ids
 
+
 def kev_branch_enabled() -> bool:
     return os.environ.get('KEV_BRANCH', '1') == '1'
 
@@ -380,6 +385,7 @@ def kev_branch_hidden(backbone,
         cache_pos = torch.arange(L, L + n, device=dev)
 
         if torch.is_grad_enabled() and os.environ.get('KEV_BRANCH_CKPT', '0') == '1':
+
             def _chunk_h_ckpt(ids_, att_, pos_, cpos_, pids_, patt_):
                 pout = backbone(input_ids=pids_, attention_mask=patt_, use_cache=True, logits_to_keep=1)
                 o_ = backbone(
@@ -417,7 +423,11 @@ def kev_branch_hidden(backbone,
     return feats
 
 
-def kev_forward_branch(origin_forward, head, backbone_model, kwargs: Dict[str, Any], meta: Dict[str, Any],
+def kev_forward_branch(origin_forward,
+                       head,
+                       backbone_model,
+                       kwargs: Dict[str, Any],
+                       meta: Dict[str, Any],
                        pad_id: int = 0):
     input_ids = kwargs.get('input_ids')
     if input_ids is None or input_ids.dim() != 2:
@@ -457,8 +467,8 @@ def kev_forward_branch(origin_forward, head, backbone_model, kwargs: Dict[str, A
         for key, rows in shared:
             prefix = list(key)
             suffixes = [reals[r][int(branch_idx[r]):] for r in rows]
-            gather = [(int(decide_idx[r]) - int(branch_idx[r]),
-                       [int(o) - int(branch_idx[r]) for o in opt_idx[r]]) for r in rows]
+            gather = [(int(decide_idx[r]) - int(branch_idx[r]), [int(o) - int(branch_idx[r]) for o in opt_idx[r]])
+                      for r in rows]
             feats = kev_branch_hidden(origin_forward, prefix, suffixes, gather, dev, pad_id=pad_id)
             for r, f in zip(rows, feats):
                 features[r] = f
