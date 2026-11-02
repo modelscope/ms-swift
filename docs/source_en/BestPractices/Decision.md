@@ -729,7 +729,7 @@ This means a trained decision checkpoint can be deployed immediately — `swift 
 
 ## OmniJev: `MSO_BRANCH_CKPT` and Gradient Checkpointing
 
-OmniJev's hybrid Qwen3.5-4B backbone uses linear attention layers that carry recurrent state across the sequence. A block-diagonal attention mask cannot isolate options because the recurrent state leaks information between option blocks. This is solved with a **two-stage cached branch** mechanism (`swift/model/omnijev_branch.py`):
+OmniJev's hybrid Qwen3.5-4B backbone uses linear attention layers that carry recurrent state across the sequence. A block-diagonal attention mask cannot isolate options because the recurrent state leaks information between option blocks. This is solved with a **two-stage cached branch** mechanism (`swift/model/decision_branch.py`):
 
 1. The shared prefix (chat template + image tokens + instructions) is forwarded once, keeping KV/recurrent cache.
 2. Each (question, option) pair is a row that reuses the prefix cache via `expand_cache`, so options are physically isolated.
