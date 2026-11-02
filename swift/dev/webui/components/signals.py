@@ -71,7 +71,15 @@ class ModelForwardStage(StageComponent):
         forward = getattr(model, 'forward_only', None)
         if not callable(forward):
             raise ComponentError(f'{self.node_id}: model exposes no forward_only()')
-        features = self._features(batch)
+        # Port-first: the wired traj lane is the data THIS forward scores
+        # (the generated trajectories); the positional batch is the frame
+        # SOURCE's batch -- the loader's prompts. Encoding the positional one
+        # silently scores the prompt instead of the episode, and every
+        # downstream lane (KL, teacher, values) is wrong with no shape alarm.
+        data = inputs.get('traj')
+        if data is None:
+            data = batch
+        features = self._features(data)
         if not isinstance(features, list):
             features = [features]
         if not features:

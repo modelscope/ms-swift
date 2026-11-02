@@ -303,7 +303,7 @@ class DAGController:
             # A pure DAG runs to completion once: one click on the sink.
             return self._run_segment_click(self.graph.order[-1])
         participation = set().union(*(
-            self.graph.upstream_closure(node_id) for frame in self.graph.frames
+            self.graph.upstream_presence(node_id) for frame in self.graph.frames
             for node_id in frame.members))
         self._emit_plan(participation)
         rounds = 0
@@ -393,7 +393,10 @@ class DAGController:
                            '(cross-frame dependency cycle between frames)')
         self._turning.add(frame.id)
         try:
-            participation = set().union(*(self.graph.upstream_closure(node_id)
+            # Presence, not data closure: control-wired producers (a
+            # dataloader behind the driver's prompts port) extract no batch
+            # but must exist -- started and projected -- before members build.
+            participation = set().union(*(self.graph.upstream_presence(node_id)
                                           for node_id in frame.members))
             self._emit_plan(participation)
             self._prepare_round(participation)

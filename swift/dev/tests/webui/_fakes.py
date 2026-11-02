@@ -60,7 +60,7 @@ def base_declaration():
     ]
     edges = [
         edge('e2', 'ds', 'data', 'loader', 'data'),
-        edge('e1', 'loader', 'batch', 'driver', 'prompts'),
+        edge('e1', 'loader', 'source', 'driver', 'prompts'),
         edge('e3', 'smp', 'sampler', 'driver', 'engine', slot='smp'),
         edge('e_s', 'scorer', 'scorer', 'score', 'scorers', slot='scorer'),
         edge('e4', 'driver', 'samples', 'score', 'samples'),

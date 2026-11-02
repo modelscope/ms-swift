@@ -46,17 +46,19 @@ def _sampler_kind() -> PluginKind:
 
     Lazy: seeding needs twinkle's Sampler base (whose package pulls in vLLM), so it runs here where
     the engine stack is imported anyway; engines are seeded by name into the table plugins share.
+    ``ensure_kind`` makes the declare-or-fetch atomic -- the DAG builds concurrently-ready resources
+    in parallel threads, and with a plain check-then-register two first resolves both register and
+    the second dies on the duplicate.
     """
-    if "sampler" not in PluginRegistry.KINDS:
-        import twinkle.sampler as twinkle_sampler
+    import twinkle.sampler as twinkle_sampler
 
-        PluginRegistry.register_kind("sampler", twinkle_sampler.Sampler, config_field="sampler", entries=_SAMPLERS)
-        for name, cls in (
-            ("vllm", twinkle_sampler.vLLMSampler),
-            ("sglang", twinkle_sampler.SGLangSampler),
-            ("transformers", twinkle_sampler.TransformersSampler),
-        ):
-            _SAMPLERS[name] = cls
+    PluginRegistry.ensure_kind("sampler", twinkle_sampler.Sampler, config_field="sampler", entries=_SAMPLERS)
+    for name, cls in (
+        ("vllm", twinkle_sampler.vLLMSampler),
+        ("sglang", twinkle_sampler.SGLangSampler),
+        ("transformers", twinkle_sampler.TransformersSampler),
+    ):
+        _SAMPLERS[name] = cls
     return PluginRegistry.kind("sampler")
 
 

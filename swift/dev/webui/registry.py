@@ -127,7 +127,7 @@ DATALOADER = D('dataloader', '数据加载器', 'Iterator', '常驻游标、epoc
             Q('num_workers', '加载进程数', 0, type='int', minimum=0),
             Q('drop_last', '丢弃尾批', False, type='bool')))
 STREAMING_DRIVER = D('streaming_driver', '流式采样', 'Iterator', '采样准入、滞后、背压和批次确认控制面。',
-    ports_in=(P('prompts', 'DATA', '提示流来源（连接 dataloader）', ('batch',)),
+    ports_in=(P('prompts', 'SOURCE', '提示流来源（dataloader 的 source 控制口；原生 loader 在其上）', control=True),
               P('engine', 'SAMPLER', '具名采样资源', many=True, optional=True),
               P('episode', 'ROLLOUT', '多轮来源', optional=True),
               P('groups', 'GROUP_RULE', '完整组规则', optional=True),

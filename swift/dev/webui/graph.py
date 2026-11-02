@@ -571,6 +571,16 @@ class Graph:
     def upstream_closure(self, target: str) -> Set[str]:
         return self._reachable(target, self._data_edges())
 
+    def upstream_presence(self, target: str) -> Set[str]:
+        """Everything that must EXIST before ``target`` runs: the data closure
+        plus the producers behind wired control ports. A control edge extracts
+        no batch, but the resident it names -- a dataloader's source handle --
+        must be started before the consumer builds, the same construction
+        dependency the topological order already carries."""
+        edges = [edge for edge in self.edges
+                 if not self._is_feedback(edge) and not self._is_cross_frame(edge)]
+        return self._reachable(target, edges)
+
     def training_frame(self, target: str) -> Optional[FrameSpec]:
         return next((frame for frame in self.frames if target in frame.members), None)
 
@@ -760,7 +770,7 @@ class GraphUpgrade:
                 loader_id = self._new_node(
                     f'{driver["id"]}:loader', 'dataloader',
                     {'batch_size': batch_size, 'source': 'prompts'})
-                edge.update(source=loader_id, source_port='batch')
+                edge.update(source=loader_id, source_port='source')
                 self._add_edge(origin_source, origin_port, loader_id, 'data')
                 self.changes.append({'node': loader_id, 'action': 'insert',
                                      'reason': 'dataset feeds the driver through a dataloader'})

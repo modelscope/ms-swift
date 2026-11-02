@@ -235,9 +235,35 @@ class NumericWorker:
                 aligned_values.append(row)
             token_rewards = GAEAdvantage.build_token_rewards(
                 flat_rewards, lengths, kl_coef=0.0)
+            # GAEAdvantage takes one equal-length [N, T] matrix; the rows here
+            # are ragged (per-sample response lengths), so pad to the longest
+            # row and mark the real positions with masks. The tail padding is
+            # invisible to the recursion: the terminal value sits on the last
+            # VALID position, never on a padded cell.
+            if len(aligned_values) != len(token_rewards):
+                raise ValueError(
+                    f'the values lane carries {len(aligned_values)} rows for a '
+                    f'{len(token_rewards)}-sample batch; the lane is misaligned '
+                    'with the trajectories')
+            for i, row in enumerate(aligned_values):
+                if len(row) != len(token_rewards[i]):
+                    raise ValueError(
+                        f'values row {i} has {len(row)} entries but the sample\'s '
+                        f'response segment is {len(token_rewards[i])} long; the '
+                        'values lane is misaligned with the batch')
+            max_len = max(lengths)
+            padded_rewards = [row + [0.0] * (max_len - len(row))
+                              for row in token_rewards]
+            padded_values = [row + [0.0] * (max_len - len(row))
+                             for row in aligned_values]
+            masks = [[True] * n + [False] * (max_len - n) for n in lengths]
             advantages, returns = GAEAdvantage(
-                gamma=gamma, gae_lambda=lam)(token_rewards, aligned_values)
-            return {'adv': advantages, 'returns': returns, 'old_logps': old_logps}
+                gamma=gamma, gae_lambda=lam)(padded_rewards, padded_values, masks=masks)
+            # Cut back to bare per-sample response rows: the ragged shape the
+            # loss's ``advantages`` kwarg takes, aligned with old_logps.
+            adv_rows = [advantages[i, :n].tolist() for i, n in enumerate(lengths)]
+            ret_rows = [returns[i, :n].tolist() for i, n in enumerate(lengths)]
+            return {'adv': adv_rows, 'returns': ret_rows, 'old_logps': old_logps}
         from swift.dev.rewards.advantage import compute_advantages
 
         advantages = compute_advantages(

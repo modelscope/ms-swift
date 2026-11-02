@@ -54,9 +54,23 @@ class DataloaderComponent(IteratorComponent):
             raise ComponentError(f'{self.node_id}: unknown source face {face!r} (prompts|rows)')
         self._iterator = iter(self.obj)
         self._state: Optional[Dict[str, Any]] = None
+        self._current: Optional[Any] = None
 
     def take_batch(self) -> Any:
-        return next(self._iterator)
+        batch = next(self._iterator)
+        # The batch port projects the LAST delivered batch (the same live-view
+        # contract the streaming driver's samples lane follows), so consumers
+        # wired to it read batch data, not the resident loader object.
+        self._current = batch
+        return batch
+
+    def port_value(self, key: str) -> Any:
+        """The loader's lanes: batch = the last delivered batch (the data
+        face), source = this control handle (the resident loader rides on
+        ``obj`` -- the face a streaming driver's prompts input wants)."""
+        if key == 'source':
+            return self
+        return getattr(self, '_current', None) or []
 
     def commit(self, steps: int) -> None:
         # The dataloader advances by take; commit only records the cursor for
@@ -99,13 +113,19 @@ class StreamingDriverComponent(IteratorComponent):
         if cluster is None:
             raise ComponentError(
                 f'{self.node_id}: streaming_driver needs a wired engine (the cluster)')
-        # The prompt stream is the wired dataloader's resident loader object
-        # (its batch port projects the loader itself): batching, seed and the
-        # face choice live on THAT node, not here.
-        prompt_loader = inputs.get('prompts')
+        # The prompt stream is the wired dataloader's SOURCE handle: the native
+        # loader rides on its ``obj`` (batching, seed and the face choice live
+        # on THAT node, not here). The batch port is the data face -- the rows
+        # of the last delivered batch -- and cannot stand in for the loader.
+        prompt_source = inputs.get('prompts')
+        if getattr(prompt_source, 'type', None) != 'dataloader':
+            raise ComponentError(
+                f'{self.node_id}: prompts must be the dataloader\'s source control port '
+                '(the resident loader rides on it), not a data lane or another resource')
+        prompt_loader = prompt_source.obj
         if prompt_loader is None:
             raise ComponentError(
-                f'{self.node_id}: streaming_driver needs a wired prompt stream (a dataloader)')
+                f'{self.node_id}: the wired dataloader is not started yet')
         config_pkg = _configs()
         # The rollout encodes episodes with a template held HERE: under a
         # disaggregated ray placement the sampler's own template lives on its
@@ -144,13 +164,7 @@ class StreamingDriverComponent(IteratorComponent):
             max_steps=int(self.params.get('max_steps', 0) or 0))
 
     def take_batch(self) -> Any:
-        try:
-            batch = next(self._iterator)
-        except StopIteration:
-            # The terminal sentinel is consumed HERE: the driver's queue is
-            # empty forever after, and release's drain-next must not run.
-            self._exhausted = True
-            raise
+        batch = next(self._iterator)
         # The samples port projects the LAST delivered batch: downstream stages
         # wired to this port read batch data, not the control-plane object.
         self._current = batch
@@ -177,31 +191,20 @@ class StreamingDriverComponent(IteratorComponent):
     def release(self) -> None:
         """Terminate the source.
 
-        The single-slot queue may already hold a delivered batch; the runner's
-        final take has already consumed it. Draining happens through the public
-        iterator: one more ``next`` (if a batch is queued) receives it, THEN
-        abort joins without the queue-full deadlock. An iterator that already
-        raised StopIteration is NEVER drained -- its terminal sentinel was
-        consumed, the queue is empty forever, and a blocking ``next`` would
-        hang the release. The private queue is never touched here.
-        """
+        The driver's abort drains its own single-slot queue while joining:
+        neither a queued-but-undelivered batch (a full queue the run thread
+        cannot put past) nor an empty queue (nothing to receive, the run
+        thread waiting on its bridge ack) can hang the release. The private
+        queue is never touched here."""
         driver = self.obj
         if driver is None:
             return
+        self.obj = None
+        self._iterator = None
         try:
-            if (getattr(self, '_iterator', None) is not None
-                    and not getattr(self, '_exhausted', False)):
-                try:
-                    next(self._iterator)  # receive a queued delivery, if any
-                except StopIteration:
-                    pass
-        finally:
-            try:
-                driver.abort()
-            except Exception:
-                pass
-            self.obj = None
-            self._iterator = None
+            driver.abort()
+        except Exception:
+            pass
 
 
 class ChallengerComponent(IteratorComponent):

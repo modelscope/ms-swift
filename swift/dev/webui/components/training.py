@@ -156,10 +156,17 @@ class TrainStepStage(StageComponent):
         loss_kwargs: Dict[str, Any] = {}
         for slot, value in (inputs.get('arguments') or []):
             if value is not None:
-                # A small numeric lane (advantages / returns / old_logps) read
-                # back HERE, exactly the way the recipes consume the estimator
-                # output; the heavy forward channels stay references end to end.
-                loss_kwargs[str(slot)] = deref(value)
+                # A small numeric lane (advantages / returns / old_logps / a
+                # blended teacher-logps lane) read back HERE, exactly the way
+                # the recipes consume the estimator output; the heavy forward
+                # channels stay references end to end. A lane a combine or
+                # reduce node produced wraps its rows under 'values' -- the
+                # loss takes the BARE row sequence (its pad-and-align
+                # iterates SAMPLES; a dict would iterate the dict's KEYS).
+                value = deref(value)
+                if isinstance(value, dict) and isinstance(value.get('values'), (list, tuple)):
+                    value = value['values']
+                loss_kwargs[str(slot)] = value
         ga = _int_value(self.params.get('gradient_accumulation_steps'), 1)
         micro = _int_value(self.params.get('micro_batch_size'), 1)
         max_grad_norm = _float_value(self.params.get('max_grad_norm'), 1.0)

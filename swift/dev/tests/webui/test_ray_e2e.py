@@ -116,7 +116,7 @@ def grpo_declaration(model: str, data: str, cards: Tuple[int, ...] = (0, 1)) -> 
         ],
         'edges': [
             _edge('e2', 'ds', 'data', 'loader', 'data'),
-            _edge('e1', 'loader', 'batch', 'driver', 'prompts'),
+            _edge('e1', 'loader', 'source', 'driver', 'prompts'),
             _edge('e3', 'smp', 'sampler', 'driver', 'engine', 'smp'),
             _edge('e_s', 'scorer', 'scorer', 'score', 'scorers', 'scorer'),
             _edge('e4', 'driver', 'samples', 'score', 'samples'),
