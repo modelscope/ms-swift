@@ -16,11 +16,33 @@ Contract highlights (see the plan's training and publish sections):
 """
 from __future__ import annotations
 
+import logging
 import os
+import threading
 from typing import Any, Dict, List
 
 from ..component import ComponentError, StageComponent, slot_values
 from ..numeric import deref
+
+logger = logging.getLogger(__name__)
+
+#: One serialisation gate per model actor (keyed by the resident proxy's id).
+#: The checkpoint engine's ACTIVE channel is actor-wide mutable state: the
+#: activate call selects it and the data calls (prepare/init/send/receive)
+#: consume the selection. Two manager flows driving one actor concurrently
+#: (a canvas wave runs weight_average and weight_sync together when the graph
+#: declares them independent) interleave an activation inside the other
+#: channel's flow: the send runs on the WRONG engine and the receiver waits
+#: forever on a socket nobody publishes to. The recipe driver is sequential
+#: and never exposes this; the wave is parallel, so the flows gate here.
+_channel_gates: Dict[int, threading.Lock] = {}
+
+
+def _channel_gate(model: Any) -> threading.Lock:
+    lock = _channel_gates.get(id(model))
+    if lock is None:
+        lock = _channel_gates[id(model)] = threading.Lock()
+    return lock
 
 
 def _int_value(raw: Any, default: int) -> int:
@@ -98,9 +120,14 @@ class TrainStepStage(StageComponent):
     def _features(self, data: Any) -> Any:
         from .resources import build_template_from, encode_rows
         if getattr(self, '_template', None) is None:
+            # ``model_config`` carries the identity fields the tokenizer load
+            # needs (a locally built directory is ambiguous without an explicit
+            # ``model_type``); it must stay consistent with the model node's own
+            # ModelConfig -- the same contract the sampler node follows.
             self._template = build_template_from(
                 str(self.params.get('tokenizer') or ''),
-                dict(self.params.get('template_config') or {}), self.node_id)
+                dict(self.params.get('template_config') or {}), self.node_id,
+                model_kv=dict(self.params.get('model_config') or {}))
         if data is None:
             raise ComponentError(f'{self.node_id}: train_step needs a wired batch input')
         return encode_rows(self._template, data)
@@ -142,6 +169,14 @@ class TrainStepStage(StageComponent):
             if not callable(set_loss):
                 raise ComponentError(f'{self.node_id}: model exposes no set_loss()')
             set_loss(loss, loss_key=loss_key)
+            # A keyed loss DISABLES the model's default LossMetric (the metric
+            # dispatcher only accumulates a metric whose key matches the
+            # forward's), so one keyed LossMetric rides the same registration:
+            # without it calculate_metric reports nothing and the loss stays
+            # invisible in the node's preview. The same keyed-metric pattern
+            # ``configure_rl_metrics`` applies for the algorithm metrics.
+            from twinkle.metric import LossMetric
+            model.add_metric(LossMetric, is_training=True, loss_key=loss_key)
             self._loss_registered = True
         self._configure_optimizer(model)
         from swift.dev.recipe.utils import backend_owns_gradient_accumulation, is_grad_sync_boundary
@@ -155,11 +190,11 @@ class TrainStepStage(StageComponent):
             # is the micro-batch plan (GA = its length), so one call is one
             # optimizer step; loss kwargs are sliced worker-side by the loss's
             # own micro_batch_kwargs.
-            model.forward_backward(inputs=features, loss_key=loss_key,
-                                   micro_batch_size=micro or None,
-                                   **({'task': forward_task} if forward_task else {}),
-                                   **loss_kwargs)
-            model.clip_grad_and_step(max_grad_norm=max_grad_norm)
+            deref(model.forward_backward(inputs=features, loss_key=loss_key,
+                                          micro_batch_size=micro or None,
+                                          **({'task': forward_task} if forward_task else {}),
+                                          **loss_kwargs))
+            deref(model.clip_grad_and_step(max_grad_norm=max_grad_norm))
             optimizer_steps = 1
         else:
             for start in range(0, len(features), micro):
@@ -167,12 +202,16 @@ class TrainStepStage(StageComponent):
                 mini_kwargs = {key: _aligned_slice(value, start, stop)
                                for key, value in loss_kwargs.items()}
                 self._micro_step = getattr(self, '_micro_step', 0) + 1
-                model.forward_backward(inputs=features[start:stop], loss_key=loss_key,
-                                       gradient_accumulation_steps=ga,
-                                       **({'task': forward_task} if forward_task else {}),
-                                       **mini_kwargs)
-                model.clip_grad_and_step(max_grad_norm=max_grad_norm,
-                                         gradient_accumulation_steps=ga)
+                # The remote calls return lazy handles; collecting them HERE is
+                # what makes a worker-side loss error fail this stage loudly --
+                # a dropped handle leaves the step silently no-op (ray prints
+                # "Unhandled error" but the driver never sees the exception).
+                deref(model.forward_backward(inputs=features[start:stop], loss_key=loss_key,
+                                              gradient_accumulation_steps=ga,
+                                              **({'task': forward_task} if forward_task else {}),
+                                              **mini_kwargs))
+                deref(model.clip_grad_and_step(max_grad_norm=max_grad_norm,
+                                                gradient_accumulation_steps=ga))
                 if is_grad_sync_boundary(self._micro_step, ga):
                     optimizer_steps += 1
         loss_value = None
@@ -181,7 +220,11 @@ class TrainStepStage(StageComponent):
             try:
                 metric_row = metric(True)
                 loss_value = metric_row.get('loss') if isinstance(metric_row, dict) else None
-            except Exception:
+            except Exception as exc:  # noqa
+                # A metric read-back failure must not fail the finished step,
+                # but it must stay visible: a silent None here reads as "the
+                # training produced no loss" in the node's preview.
+                logger.warning('%s: calculate_metric failed: %r', self.node_id, exc)
                 loss_value = None
         return {'step': {'status': 'completed', 'optimizer_steps': optimizer_steps,
                          'micro_step': getattr(self, '_micro_step', 0)},
@@ -214,7 +257,10 @@ class WeightSyncStage(StageComponent):
             raise ComponentError(
                 f'{self.node_id}: weight_sync needs a wired source model and target samplers')
         for target in targets:
-            self._manager_for(model, target).sync_weights(merge_and_sync=True)
+            # One model actor's checkpoint channels flow strictly in turn (see
+            # _channel_gates above): the gate spans the whole manager flow.
+            with _channel_gate(model):
+                self._manager_for(model, target).sync_weights(merge_and_sync=True)
         return {'sync': {'state': 'completed',
                          'targets': [getattr(t, 'name', str(i)) for i, t in enumerate(targets)]}}
 
@@ -258,7 +304,10 @@ class WeightAverageStage(StageComponent):
             raise ComponentError(f'{self.node_id}: copy mode needs state_dict/load_state_dict')
         if mode != 'ema':
             raise ComponentError(f'{self.node_id}: unknown weight_average mode {mode!r}')
-        self._manager_for(source, target).sync_ema(alpha)
+        # One model actor's checkpoint channels flow strictly in turn (see
+        # _channel_gates above): the gate spans the whole manager flow.
+        with _channel_gate(source):
+            self._manager_for(source, target).sync_ema(alpha)
         return {'sync': {'state': 'completed'}}
 
     def _manager_for(self, source: Any, target: Any) -> Any:

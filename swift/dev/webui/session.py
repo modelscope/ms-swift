@@ -261,6 +261,11 @@ class GraphSession:
         target = cmd.get('target') or None
         steps = cmd.get('steps')
         observe = bool(cmd.get('observe'))
+        # Reset the controller's control plane HERE, synchronously with the
+        # acceptance: a pause/stop issued after this point targets THIS run and
+        # must survive the execution thread's start (the controller's entries
+        # never reset -- see DAGController.run_component's docstring).
+        self.controller().reset_control()
         self.state = 'running'
         self.emit('run_begin', request_id=request_id, target=target or '', mode=mode,
                   observe=observe)

@@ -22,7 +22,7 @@ Placement notes:
 from __future__ import annotations
 
 import math
-from functools import lru_cache
+import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 from twinkle import remote_class, remote_function
@@ -163,11 +163,37 @@ class NumericWorker:
         ``num_generations``); GAE goes to ``twinkle.advantage.GAEAdvantage`` with
         token rewards built from the terminal rewards and the per-sample response
         lengths. This worker never touches a model. ``returns`` is filled by GAE
-        and stays ``None`` for the others (an optional output channel)."""
+        and stays ``None`` for the others (an optional output channel).
+
+        ``old_logps`` carries the SAMPLER's per-token logps off the samples
+        (``rollout_logps``) -- the importance-sampling denominator the loss
+        consumes next. The channel is ``None`` when any sample lacks it (a
+        non-rollout batch): the loss then runs its on-policy form, exactly the
+        recipe contract ``grpo_advantages`` established.
+
+        The ``adv`` channel is the BARE per-sample value sequence -- the shape
+        the loss's ``advantages`` kwarg takes. Never wrap it in a dict here:
+        a dict-typed advantages makes the loss iterate the dict's KEYS as
+        samples and fail deep inside its pad-and-align, and under Ray the
+        failure surfaces only as an unretrieved worker error."""
         reward_value = deref(reward)
         rewards = None
         if reward_value is not None:
             rewards = reward_value.get('values') if isinstance(reward_value, dict) else reward_value
+        # The batch may carry trajectories as OBJECTS (a rollout sample with
+        # the ``rollout_logps`` property) or as ledger-merged DICTS (the
+        # ``rollout_logprobs`` key the streaming driver delivers); both spell
+        # the sampler's own per-token logps.
+        def _rollout_row(sample: Any) -> list:
+            if isinstance(sample, dict):
+                raw = sample.get('rollout_logprobs') or sample.get('rollout_logps') or ()
+            else:
+                raw = (getattr(sample, 'rollout_logps', None)
+                       or getattr(sample, 'rollout_logprobs', None) or ())
+            return list(raw)
+
+        rollout_rows = [_rollout_row(sample) for sample in samples]
+        old_logps = rollout_rows if all(rollout_rows) else None
         if estimator == 'gae':
             from twinkle.advantage import GAEAdvantage
 
@@ -211,14 +237,13 @@ class NumericWorker:
                 flat_rewards, lengths, kl_coef=0.0)
             advantages, returns = GAEAdvantage(
                 gamma=gamma, gae_lambda=lam)(token_rewards, aligned_values)
-            return {'adv': {'values': advantages, 'estimator': estimator},
-                    'returns': returns}
+            return {'adv': advantages, 'returns': returns, 'old_logps': old_logps}
         from swift.dev.rewards.advantage import compute_advantages
 
         advantages = compute_advantages(
             rewards, num_generations, advantage_estimator=estimator,
             **(extra or {}))
-        return {'adv': {'values': advantages, 'estimator': estimator}, 'returns': None}
+        return {'adv': advantages, 'returns': None, 'old_logps': old_logps}
 
     @remote_function(dispatch='all', collect='first', lazy_collect=True)
     def signal_combine(self, lanes: List[Tuple[str, Any]], mode: str,
@@ -287,13 +312,29 @@ class NumericWorker:
         return out
 
 
-@lru_cache(maxsize=1)
-def get_numeric_worker(remote_group: str = NUMERIC_GROUP) -> NumericWorker:
-    """The process-resident numeric engine (one per session process).
+_numeric_workers: Dict[str, 'NumericWorker'] = {}
+_numeric_lock = threading.Lock()
+
+
+def get_numeric_worker(remote_group: str = NUMERIC_GROUP) -> 'NumericWorker':
+    """The process-resident numeric engine (one per remote group per process).
 
     The session is ALWAYS ray: the worker pool is created on first use under
     ``remote_group`` -- the CPU group the session bootstrap declared at
     ``twinkle.initialize`` time (the placement module's NUMERIC_GROUP, the
     single spelling of that name). A session started without the group fails
-    on the first remote-execution stage."""
-    return NumericWorker(remote_group=remote_group)
+    on the first remote-execution stage.
+
+    The lock is load-bearing: the DAG runs concurrently-ready stages in
+    parallel threads, and a plain cache lets two simultaneous first uses BOTH
+    construct the worker -- the actor's name is deterministic (group + class
+    + call site), so the second creation dies with 'actor already exists'."""
+    worker = _numeric_workers.get(remote_group)
+    if worker is not None:
+        return worker
+    with _numeric_lock:
+        worker = _numeric_workers.get(remote_group)
+        if worker is None:
+            worker = NumericWorker(remote_group=remote_group)
+            _numeric_workers[remote_group] = worker
+        return worker

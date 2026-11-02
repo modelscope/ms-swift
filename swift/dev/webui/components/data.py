@@ -107,6 +107,16 @@ class StreamingDriverComponent(IteratorComponent):
             raise ComponentError(
                 f'{self.node_id}: streaming_driver needs a wired prompt stream (a dataloader)')
         config_pkg = _configs()
+        # The rollout encodes episodes with a template held HERE: under a
+        # disaggregated ray placement the sampler's own template lives on its
+        # remote actor and cannot be read off the driver-side proxy, so this
+        # node builds its own (the tokenizer/model_config params carry the
+        # identity, the same contract train_step and model_forward follow).
+        from .resources import build_template_from
+        template = build_template_from(
+            str(self.params.get('tokenizer') or ''),
+            dict(self.params.get('template_config') or {}), self.node_id,
+            model_kv=dict(self.params.get('model_config') or {}))
         # The panel's scalar knobs are the REAL Config fields' convenience face
         # (dict params win; the scalars fill their Config's field when unset).
         # The click budget is NOT passed here: max_steps is the frame's total
@@ -122,6 +132,7 @@ class StreamingDriverComponent(IteratorComponent):
         self.obj = build_streaming_driver(
             engine=cluster,
             prompt_dataloader=prompt_loader,
+            template=template,
             rollout_config=_fill(config_pkg.RolloutConfig, rollout_kv, self.node_id),
             rl_config=_fill(config_pkg.RLConfig, rl_kv, self.node_id),
             generation_config=(
@@ -133,7 +144,13 @@ class StreamingDriverComponent(IteratorComponent):
             max_steps=int(self.params.get('max_steps', 0) or 0))
 
     def take_batch(self) -> Any:
-        batch = next(self._iterator)
+        try:
+            batch = next(self._iterator)
+        except StopIteration:
+            # The terminal sentinel is consumed HERE: the driver's queue is
+            # empty forever after, and release's drain-next must not run.
+            self._exhausted = True
+            raise
         # The samples port projects the LAST delivered batch: downstream stages
         # wired to this port read batch data, not the control-plane object.
         self._current = batch
@@ -163,14 +180,17 @@ class StreamingDriverComponent(IteratorComponent):
         The single-slot queue may already hold a delivered batch; the runner's
         final take has already consumed it. Draining happens through the public
         iterator: one more ``next`` (if a batch is queued) receives it, THEN
-        abort joins without the queue-full deadlock. The private queue is never
-        touched here.
+        abort joins without the queue-full deadlock. An iterator that already
+        raised StopIteration is NEVER drained -- its terminal sentinel was
+        consumed, the queue is empty forever, and a blocking ``next`` would
+        hang the release. The private queue is never touched here.
         """
         driver = self.obj
         if driver is None:
             return
         try:
-            if getattr(self, '_iterator', None) is not None:
+            if (getattr(self, '_iterator', None) is not None
+                    and not getattr(self, '_exhausted', False)):
                 try:
                     next(self._iterator)  # receive a queued delivery, if any
                 except StopIteration:
@@ -211,7 +231,8 @@ class ChallengerComponent(IteratorComponent):
         seed = str(self.params.get('seed') or '')
         template = build_template_from(
             str(self.params.get('tokenizer') or ''),
-            dict(self.params.get('template_config') or {}), self.node_id)
+            dict(self.params.get('template_config') or {}), self.node_id,
+            model_kv=dict(self.params.get('model_config') or {}))
         cfg = dict(self.params.get('challenger_config') or {})
         try:
             self.obj = AgenticChallenger(
