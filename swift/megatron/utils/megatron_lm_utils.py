@@ -4,7 +4,6 @@ import copy
 import dataclasses
 import importlib
 import inspect
-import megatron.core
 import numpy as np
 import os
 import random
@@ -12,7 +11,7 @@ import torch
 from argparse import Namespace
 from contextlib import contextmanager
 from datetime import timedelta
-from mcore_bridge import set_random_seed, split_cp_inputs, unwrap_model
+from mcore_bridge import set_random_seed, split_cp_inputs
 from megatron.core import dist_checkpointing, mpu, parallel_state, tensor_parallel
 from megatron.core.dist_checkpointing.mapping import ShardedObject
 from megatron.core.dist_checkpointing.strategies.fully_parallel import (FullyParallelLoadStrategyWrapper,
@@ -26,8 +25,7 @@ from megatron.core.fusions.fused_bias_gelu import bias_gelu
 from megatron.core.fusions.fused_bias_swiglu import bias_swiglu
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.transformer.module import Float16Module
-from megatron.core.utils import get_torch_version, is_te_min_version, is_torch_min_version
-from packaging import version
+from megatron.core.utils import get_torch_version, is_te_min_version, is_torch_min_version, unwrap_model
 from transformers.utils import is_torch_npu_available
 from typing import Any, Callable, Dict, Optional
 
@@ -47,8 +45,6 @@ except ImportError:
     HAVE_ASYNC_UTILS = False
 
 logger = get_logger()
-
-mcore_017 = version.parse(megatron.core.__version__) >= version.parse('0.17.0rc0')
 
 
 @contextmanager
@@ -366,11 +362,7 @@ def save_mcore_checkpoint(
         fsdp_checkpoint.save_checkpoint(args, state_dict, models[0], checkpoint_dir)
         async_save_request = None
     else:
-        if mcore_017:
-            save_strategy = TorchDistSaveShardedStrategy()
-        else:
-            from megatron.core.dist_checkpointing.serialization import get_default_save_sharded_strategy
-            save_strategy = get_default_save_sharded_strategy()
+        save_strategy = TorchDistSaveShardedStrategy()
         save_strategy = FullyParallelSaveStrategyWrapper(
             save_strategy,
             mpu.get_data_parallel_group(with_context_parallel=True),
@@ -395,6 +387,7 @@ def save_mcore_checkpoint(
 
         tracker_path = os.path.join(output_dir, 'latest_checkpointed_iteration.txt')
         try:
+            # `open_file` was dropped in 0.19; later releases only ship the MultiStorageClient helpers.
             from megatron.core.msc_utils import open_file
         except ImportError:
             open_file = open
@@ -577,11 +570,7 @@ def load_mcore_checkpoint(args,
     if fsdp_dtensor:
         state_dict = fsdp_checkpoint.load_checkpoint(args, sharded_state_dict, models[0], checkpoint_dir)
     else:
-        if mcore_017:
-            load_strategy = TorchDistLoadShardedStrategy()
-        else:
-            from megatron.core.dist_checkpointing.serialization import get_default_load_sharded_strategy
-            load_strategy = get_default_load_sharded_strategy(checkpoint_dir)
+        load_strategy = TorchDistLoadShardedStrategy()
 
         load_strategy = FullyParallelLoadStrategyWrapper(load_strategy,
                                                          mpu.get_data_parallel_group(with_context_parallel=True))

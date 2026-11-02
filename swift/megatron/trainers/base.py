@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import dataclasses
 import logging
-import megatron.core
 import operator
 import os
 import shutil
@@ -15,14 +14,15 @@ from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import FullyShardedDataParallel as megatron_FSDP
 from megatron.core.distributed import finalize_model_grads
-from megatron.core.optimizer import OptimizerConfig, get_megatron_optimizer
+from megatron.core.optimizer import OptimizerConfig, get_megatron_optimizer, param_group_identifier_keys
+from megatron.core.optimizer.layer_wise_optimizer import is_managed_by_layer_wise_optimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
+from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.utils import get_attr_wrapped_model
 from modelscope import check_local_model_is_latest
-from packaging import version
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -44,32 +44,13 @@ from swift.utils import (deep_getattr, gc_collect, get_current_device, get_last_
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from .utils import TrainerState, build_streaming_dataloader, prepare_batch
 
-try:
-    from megatron.core.optimizer import param_group_identifier_keys
-    from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
-except ImportError:
-    param_group_identifier_keys = None
-    RouterReplay = None
-    RouterReplayAction = None
-
-mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
-
-try:
-    from megatron.core.optimizer.layer_wise_optimizer import is_managed_by_layer_wise_optimizer
-except ImportError:
-    # Before the layer-wise optimizer there was no shared predicate: `get_megatron_muon_optimizer` split the
-    # parameters between Muon and the scalar optimizer inline with this very rule, so mirror it to stay in step.
-    def is_managed_by_layer_wise_optimizer(param) -> bool:
-        return not getattr(param, 'is_embedding_or_output_parameter', False) and param.dim() == 2
-
-
 logger = get_logger()
 
 
 class BaseMegatronTrainer(ABC):
 
     def __init__(self, args, template: Template):
-        # validate mcore version and patch routing_replay
+        # patch routing_replay before the first model build
         self.enable_routing_replay = args.router_replay_mode != 'disabled'
         if self.enable_routing_replay:
             apply_router_replay_patch()
@@ -213,18 +194,15 @@ class BaseMegatronTrainer(ABC):
 
     def get_optimizer_and_scheduler(self):
         args = self.args
-        if mcore_016:
-            from megatron.core.optimizer import AdamOptimizerConfig, SGDOptimizerConfig
-            if args.optimizer == 'adam' or 'muon' in args.optimizer:
-                # TODO(deyuf): Muon needs both adam + muon but get() only receive one config
-                # So for now we keep using adam config that's back compat with old way
-                config_cls = AdamOptimizerConfig
-            elif args.optimizer == 'sgd':
-                config_cls = SGDOptimizerConfig
-            else:
-                raise ValueError(f'Invalid optimizer type: {args.optimizer}')
+        from megatron.core.optimizer import AdamOptimizerConfig, SGDOptimizerConfig
+        if args.optimizer == 'adam' or 'muon' in args.optimizer:
+            # TODO(deyuf): Muon needs both adam + muon but get() only receive one config
+            # So for now we keep using adam config that's back compat with old way
+            config_cls = AdamOptimizerConfig
+        elif args.optimizer == 'sgd':
+            config_cls = SGDOptimizerConfig
         else:
-            config_cls = OptimizerConfig
+            raise ValueError(f'Invalid optimizer type: {args.optimizer}')
 
         kwargs = {
             f.name: getattr(args, f.name)
@@ -334,7 +312,7 @@ class BaseMegatronTrainer(ABC):
                 logger.info(f'Training of {epoch} epochs has been completed, the training has finished.')
                 args.train_iters = self.state.iteration + 1
 
-    def _get_param_groups_mcore_016(
+    def _patched_get_param_groups(
         self,
         model_chunks: List[MegatronModule],
         config: OptimizerConfig,
@@ -503,8 +481,7 @@ class BaseMegatronTrainer(ABC):
             }
             # Ensure param_group has required keys for matching when loading optimizer state
             # See MegatronOptimizer._filter_and_reorder_param_groups.
-            if param_group_identifier_keys is not None:
-                assert set(param_group.keys()) - set(param_group_identifier_keys) == {'params'}
+            assert set(param_group.keys()) - set(param_group_identifier_keys) == {'params'}
             param_group['max_lr'] = _max_lr
             param_group['min_lr'] = _min_lr
             param_groups.append(param_group)
@@ -514,10 +491,7 @@ class BaseMegatronTrainer(ABC):
     def _patch_get_param_groups(self):
         from megatron.core import optimizer
         _get_param_groups = optimizer._get_param_groups
-        if mcore_016:
-            optimizer._get_param_groups = self._get_param_groups_mcore_016
-        else:
-            optimizer._get_param_groups = self._get_param_groups
+        optimizer._get_param_groups = self._patched_get_param_groups
         try:
             yield
         finally:

@@ -469,6 +469,9 @@ class ModelLoader(BaseModelLoader):
                     if type(module).__name__ == 'Xing4_0MoE':
                         z3_leaf_modules = [type(module)]
                         break
+            elif hf_model_type == 'flint':
+                from transformers.models.flint.modeling_flint import FlintSparseMoeBlock
+                z3_leaf_modules = [FlintSparseMoeBlock]
 
         if z3_leaf_modules:
             from deepspeed.utils import set_z3_leaf_modules
