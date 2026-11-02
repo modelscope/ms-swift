@@ -2284,16 +2284,16 @@ def optimizer_batch_slices(num_samples: int, train_batch_size: int, ga: int):
 
 
 def grouped_training_batches(dataloader: Any, ga: int):
-    """Collect up to GA dataloader batches, keeping the final shorter group."""
+    """Yield concatenated samples and their dataloader batch count, keeping the final shorter group."""
     group, count = [], 0
     for batch in dataloader:
         group.extend(batch)
         count += 1
         if count == ga:
-            yield group
+            yield group, count
             group, count = [], 0
     if group:
-        yield group
+        yield group, count
 
 
 def fit_supervised(
@@ -2302,7 +2302,6 @@ def fit_supervised(
     train_config: "TrainConfig",
     *,
     start_epoch: int,
-    train_batch_size: int,
     update_step: Callable[[list], None],
 ) -> None:
     """Run the shared epoch/update cadence; the model owns every micro-batch schedule."""
@@ -2316,8 +2315,8 @@ def fit_supervised(
         state.publish_state()
         state.handler.on_epoch_begin()
         updates = 0
-        for group in grouped_training_batches(dataloader, state.ga):
-            state.micro_step += math.ceil(len(group) / train_batch_size)
+        for group, batch_count in grouped_training_batches(dataloader, state.ga):
+            state.micro_step += batch_count
             update_step(group)
             updates += 1
             if state.reached_max() or state.should_stop():

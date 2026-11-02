@@ -128,15 +128,20 @@ def test_epoch_tail_counts_actual_micro_steps_across_epochs():
 
     batches = [[i * 2, i * 2 + 1] for i in range(5)]
     fit_supervised(
-        progress, batches, TrainConfig(num_train_epochs=2), start_epoch=0, train_batch_size=2, update_step=update
+        progress, batches, TrainConfig(num_train_epochs=2), start_epoch=0, update_step=update
     )
     assert updates == [(list(range(8)), 4), ([8, 9], 5), (list(range(8)), 9), ([8, 9], 10)]
     assert progress.micro_step == 10 and progress.global_step == 4
 
 
-def test_partial_dataloader_batch_counts_the_actual_micro_batches():
+@pytest.mark.parametrize("batch_sizes", [(2, 2, 2, 1), (1, 2, 1, 2), (1, 1, 1)])
+def test_supervised_counts_dataloader_batches_independently_of_sample_counts(batch_sizes):
     progress = state(max_steps=1)
     updates = []
+    batches, start = [], 0
+    for size in batch_sizes:
+        batches.append(list(range(start, start + size)))
+        start += size
 
     def update(group):
         updates.append(group)
@@ -144,14 +149,13 @@ def test_partial_dataloader_batch_counts_the_actual_micro_batches():
 
     fit_supervised(
         progress,
-        [[1, 2], [3, 4], [5, 6], [7]],
+        batches,
         TrainConfig(),
         start_epoch=0,
-        train_batch_size=2,
         update_step=update,
     )
-    assert updates == [list(range(1, 8))]
-    assert progress.micro_step == 4 and progress.global_step == 1
+    assert updates == [list(range(sum(batch_sizes)))]
+    assert progress.micro_step == len(batch_sizes) and progress.global_step == 1
 
 
 def test_resume_at_the_epoch_boundary_continues_with_full_updates():
@@ -172,7 +176,7 @@ def test_resume_at_the_epoch_boundary_continues_with_full_updates():
         submitted.append(group)
         progress.record()
 
-    fit_supervised(progress, Loader(), TrainConfig(), start_epoch=0, train_batch_size=2, update_step=update)
+    fit_supervised(progress, Loader(), TrainConfig(), start_epoch=0, update_step=update)
     assert submitted == [list(range(8))]
     assert (progress.global_step, progress.micro_step, progress.epoch) == (2, 8, 1)
 
@@ -713,4 +717,4 @@ def test_unsized_dataloader_submits_its_short_ga_tail():
     from swift.dev.recipe.utils import grouped_training_batches
 
     batches = iter([[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]])
-    assert list(grouped_training_batches(batches, ga=4)) == [list(range(8)), [8, 9]]
+    assert list(grouped_training_batches(batches, ga=4)) == [(list(range(8)), 4), ([8, 9], 1)]

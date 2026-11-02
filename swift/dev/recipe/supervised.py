@@ -154,9 +154,6 @@ def run_supervised(
     model = cluster.model
     dataloader = cluster.dataloader
     ga = train_config.gradient_accumulation_steps
-    train_batch_size = train_config.per_device_train_batch_size
-    if distributed_config.mode == "ray":
-        train_batch_size *= model.device_mesh.data_world_size
     max_steps = cluster.total_opt_steps
 
     # The dissolved component knob sets.
@@ -291,7 +288,6 @@ def run_supervised(
             dataloader,
             train_config,
             start_epoch=start_epoch,
-            train_batch_size=train_batch_size,
             update_step=update_step,
         )
         evaluation.final_eval()
