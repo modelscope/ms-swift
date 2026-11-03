@@ -21,6 +21,10 @@ class TrainConfig:
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 1
     gradient_accumulation_steps: int = 1
+    # GRPO: the update size still uses B * DP * GA; Twinkle plans the micro-batches.
+    dynamic_batching: bool = False
+    max_tokens_per_micro_batch: Optional[int] = None
+    packing_algorithm: Literal["ffd", "kk"] = "ffd"
     max_steps: int = -1
     num_train_epochs: float = 3.0
 

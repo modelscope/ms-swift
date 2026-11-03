@@ -322,7 +322,7 @@ def _extract_lengths(enc: Any) -> list:
 
 
 def _drop_last(distributed_config: DistributedConfig) -> bool:
-    """Megatron drops a trailing partial batch (exact global_batch_size invariant); hf keeps it (legacy)."""
+    """Keep the backend's existing micro-batch tail policy, independently of GA."""
     return distributed_config.backend == 'megatron'
 
 

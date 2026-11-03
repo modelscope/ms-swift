@@ -15,7 +15,7 @@ class CallbackState:
 
     global_step: int = 0  # completed optimizer steps
     epoch: int = 0  # zero-based epoch index currently running
-    micro_step: int = 0  # micro-batches consumed in the current optimizer window
+    micro_step: int = 0  # Cumulative micro-batch statistic; GRPO counts configured GA even under DBS.
     loss: Optional[float] = None  # most recent training loss
     metrics: Dict[str, Any] = field(default_factory=dict)  # last log record / eval metrics
     best_metric: Optional[float] = None  # best metric_for_best_model so far
