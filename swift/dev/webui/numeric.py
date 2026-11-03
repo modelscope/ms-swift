@@ -78,6 +78,22 @@ def _seq_mean(row: Any) -> float:
     return sum(flat) / len(flat) if flat else 0.0
 
 
+def _rollout_row(sample: Any) -> list:
+    """One sample's sampler-side per-token logps.
+
+    The batch may carry trajectories as OBJECTS (a rollout sample with the
+    ``rollout_logps`` property) or as ledger-merged DICTS (the
+    ``rollout_logprobs`` key the streaming driver delivers); both spell the
+    sampler's own per-token logps.
+    """
+    if isinstance(sample, dict):
+        raw = sample.get('rollout_logprobs') or sample.get('rollout_logps') or ()
+    else:
+        raw = (getattr(sample, 'rollout_logps', None)
+               or getattr(sample, 'rollout_logprobs', None) or ())
+    return list(raw)
+
+
 @remote_class(execute='first')
 class NumericWorker:
     """The resident numeric engine: field projection, reductions, shaping,
@@ -180,18 +196,6 @@ class NumericWorker:
         rewards = None
         if reward_value is not None:
             rewards = reward_value.get('values') if isinstance(reward_value, dict) else reward_value
-        # The batch may carry trajectories as OBJECTS (a rollout sample with
-        # the ``rollout_logps`` property) or as ledger-merged DICTS (the
-        # ``rollout_logprobs`` key the streaming driver delivers); both spell
-        # the sampler's own per-token logps.
-        def _rollout_row(sample: Any) -> list:
-            if isinstance(sample, dict):
-                raw = sample.get('rollout_logprobs') or sample.get('rollout_logps') or ()
-            else:
-                raw = (getattr(sample, 'rollout_logps', None)
-                       or getattr(sample, 'rollout_logprobs', None) or ())
-            return list(raw)
-
         rollout_rows = [_rollout_row(sample) for sample in samples]
         old_logps = rollout_rows if all(rollout_rows) else None
         if estimator == 'gae':

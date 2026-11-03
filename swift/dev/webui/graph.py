@@ -313,6 +313,9 @@ class Graph:
         result = []
         for value in ports:
             value = dict(value)
+            # role 是连线引导的展示字段，不参与校验；自定义端口未写时给空默认，
+            # 不把无语义的必填项转嫁给用户代码声明。
+            value.setdefault('role', '')
             for key in ('profiles', 'accepted_kinds'):
                 items = value.get(key, [])
                 if type(items) is not list or any(type(item) is not str for item in items):

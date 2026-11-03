@@ -221,24 +221,55 @@ class TrainStepStage(StageComponent):
                                                 gradient_accumulation_steps=ga))
                 if is_grad_sync_boundary(self._micro_step, ga):
                     optimizer_steps += 1
-        loss_value = None
+        metric_row = None
         metric = getattr(model, 'calculate_metric', None)
         if callable(metric):
             try:
                 metric_row = metric(True)
-                loss_value = metric_row.get('loss') if isinstance(metric_row, dict) else None
             except Exception as exc:  # noqa
                 # A metric read-back failure must not fail the finished step,
                 # but it must stay visible: a silent None here reads as "the
                 # training produced no loss" in the node's preview.
                 logger.warning('%s: calculate_metric failed: %r', self.node_id, exc)
-                loss_value = None
+                metric_row = None
+        # The curve lives on the component instance: the receipt is replaced
+        # every round, the history must survive it. The x axis is CUMULATIVE
+        # optimizer steps (a GA-wrapped round counts its real steps); every
+        # scalar calculate_metric reports rides the same lane, so algorithm
+        # metrics plot next to the loss without a second channel. The native
+        # metrics return numbers as STRINGS ('%.5f' formatting) -- coerce, the
+        # curve needs values the SVG axis can scale.
+        def _numeric(value: Any) -> Any:
+            if isinstance(value, bool):
+                return None
+            if isinstance(value, (int, float)):
+                return value
+            if isinstance(value, str):
+                try:
+                    return float(value)
+                except ValueError:
+                    return None
+            return None
+
+        history = getattr(self, '_metric_history', None)
+        if history is None:
+            history = self._metric_history = []
+        self._steps_done = getattr(self, '_steps_done', 0) + optimizer_steps
+        scalars: Dict[str, Any] = {}
+        if isinstance(metric_row, dict):
+            for key, value in metric_row.items():
+                number = _numeric(value)
+                if number is not None:
+                    scalars[str(key)] = number
+        if scalars:
+            point = {'optimizer_steps': self._steps_done, **scalars}
+            history.append(point)
         return {'step': {'status': 'completed', 'optimizer_steps': optimizer_steps,
                          'micro_step': getattr(self, '_micro_step', 0)},
                 'model': model,
                 'optimizer_steps': optimizer_steps,
                 'then': {'done': True},
-                'metric': {'values': {'loss': loss_value}} if loss_value is not None else None}
+                'metric': {'values': scalars, 'history': list(history)} if scalars else None}
 
 
 class WeightSyncStage(StageComponent):

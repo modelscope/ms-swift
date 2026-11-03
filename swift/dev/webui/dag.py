@@ -37,7 +37,7 @@ from __future__ import annotations
 import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ALL_COMPLETED, Future, ThreadPoolExecutor, wait
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set
 
 from .graph import FrameSpec, Graph
 
@@ -305,7 +305,9 @@ class DAGController:
         participation = set().union(*(
             self.graph.upstream_presence(node_id) for frame in self.graph.frames
             for node_id in frame.members))
-        self._emit_plan(participation)
+        self._emit_plan(
+            participation,
+            feedback=[edge_id for frame in self.graph.frames for edge_id in frame.feedback])
         rounds = 0
         completed = 0
         stalled: Dict[str, int] = {}
@@ -398,7 +400,7 @@ class DAGController:
             # but must exist -- started and projected -- before members build.
             participation = set().union(*(self.graph.upstream_presence(node_id)
                                           for node_id in frame.members))
-            self._emit_plan(participation)
+            self._emit_plan(participation, feedback=frame.feedback)
             self._prepare_round(participation)
             handle = self._source(source_id)
             if self._freshen_producers(frame, observe=observe):
@@ -880,8 +882,13 @@ class DAGController:
                 total += node_out['optimizer_steps']
         return total
 
-    def _emit_plan(self, participation: Set[str]) -> None:
-        """本次参与范围不等于节点正在执行；下游无需先转动才能显示上游出线。"""
+    def _emit_plan(self, participation: Set[str], feedback: Sequence[str] = ()) -> None:
+        """本次参与范围不等于节点正在执行；下游无需先转动才能显示上游出线。
+
+        ``feedback`` 是本环的回环 CTRL 边 id。``inputs_of`` 有意跳过回环边
+        （它不投影为任何节点的入参），上面的遍历永远收不到它；不显式
+        补进计划边集合，前端 activeEdges 就不含回环线，它被永久压暗，
+        尽管环真的在转。"""
         edge_ids = []
         for node_id in self.graph.order:
             if node_id not in participation:
@@ -890,6 +897,7 @@ class DAGController:
                 for edge in source if isinstance(source, list) else [source]:
                     if edge.source in participation:
                         edge_ids.append(edge.id)
+        edge_ids.extend(feedback)
         self._event('run_plan', nodes=[node_id for node_id in self.graph.order
                                        if node_id in participation], edges=edge_ids)
 

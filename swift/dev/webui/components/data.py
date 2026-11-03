@@ -402,7 +402,18 @@ class ScoreStage(StageComponent):
             scorer_ids.append(str(slot))
         # values[B, C]: one row per sample, one column per wired scorer.
         values = [[column[i] for column in columns] for i in range(len(rows))]
-        return {'reward': {'values': values, 'scorer_ids': scorer_ids}}
+        # The reward curve lives on the component instance: the receipt is
+        # replaced every round, the history must survive it. One point per
+        # round per column -- the column mean over this round's batch.
+        history = getattr(self, '_reward_history', None)
+        if history is None:
+            history = self._reward_history = []
+        point: Dict[str, Any] = {'round': len(history) + 1}
+        for slot, column in zip(scorer_ids, columns):
+            point[str(slot)] = (sum(column) / len(column)) if column else None
+        history.append(point)
+        return {'reward': {'values': values, 'scorer_ids': scorer_ids,
+                           'history': list(history)}}
 
 
 class SelectStage(StageComponent):
