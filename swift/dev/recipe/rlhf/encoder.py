@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # The offline RLHF family's batch encoder + console line: raw rows -> forward kwargs.
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from swift.dev.utils.logger import get_logger
@@ -17,16 +18,14 @@ class PreferenceBatchEncoder:
     The shared loop calls this ``micro_step_fn`` once; the model owns micro-batch splitting.
     """
 
-    def __init__(
-        self,
-        model: "TrainableModel",
-        template: Any,
-        *,
-        rl_type: str,
-        reference: Optional[Any] = None,
-        calculate_kl: bool = True,
-        data_parallel_size: int = 1,
-    ):
+    def __init__(self,
+                 model: 'TrainableModel',
+                 template: Any,
+                 *,
+                 rl_type: str,
+                 reference: Optional[Any] = None,
+                 calculate_kl: bool = True,
+                 data_parallel_size: int = 1):
         self.model = model
         self.template = template
         self.rl_type = rl_type
@@ -36,7 +35,7 @@ class PreferenceBatchEncoder:
         self.calculate_kl = calculate_kl
         self.data_parallel_size = data_parallel_size
         #: RM scores a num_labels=1 seq_cls head (no labels, no logps); the rest read per-token labels.
-        self._is_reward = rl_type == "rm"
+        self._is_reward = rl_type == 'rm'
 
     @staticmethod
     def _strip_side(encoded: dict, prefix: str) -> dict:
@@ -45,8 +44,8 @@ class PreferenceBatchEncoder:
         ``length`` is per-side bookkeeping the collator does not consume; drop it so the feature is
         just the model inputs (input_ids [+ labels/loss_scale]).
         """
-        feature = {k[len(prefix) + 1 :]: v for k, v in encoded.items() if k.startswith(prefix + "_")}
-        feature.pop("length", None)
+        feature = {k[len(prefix) + 1:]: v for k, v in encoded.items() if k.startswith(prefix + '_')}
+        feature.pop('length', None)
         return feature
 
     def _encode_pair(self, row: dict) -> List[dict]:
@@ -58,13 +57,11 @@ class PreferenceBatchEncoder:
         """
         encoded = self.template.encode(row)
         pair = []
-        for prefix in ("chosen", "rejected"):
+        for prefix in ('chosen', 'rejected'):
             feature = self._strip_side(encoded, prefix)
-            if "input_ids" not in feature:
-                raise ValueError(
-                    f"preference row did not encode a {prefix!r} sequence (no {prefix}_input_ids). "
-                    f"rl_type={self.rl_type} needs paired chosen/rejected data."
-                )
+            if 'input_ids' not in feature:
+                raise ValueError(f'preference row did not encode a {prefix!r} sequence (no {prefix}_input_ids). '
+                                 f'rl_type={self.rl_type} needs paired chosen/rejected data.')
             pair.append(feature)
         return pair
 
@@ -78,13 +75,11 @@ class PreferenceBatchEncoder:
     @staticmethod
     def _last_assistant_content(row: dict) -> Any:
         """The completion of a KTO row: the content of its final (assistant) message."""
-        messages = row.get("messages") or []
-        if not messages or messages[-1].get("role") != "assistant":
-            raise ValueError(
-                "KTO rows must end with an assistant completion (last message "
-                f"role='assistant'); got messages={messages!r}."
-            )
-        return messages[-1]["content"]
+        messages = row.get('messages') or []
+        if not messages or messages[-1].get('role') != 'assistant':
+            raise ValueError('KTO rows must end with an assistant completion (last message '
+                             f"role='assistant'); got messages={messages!r}.")
+        return messages[-1]['content']
 
     def _encode_kto_batch(self, rows: List[dict]) -> Tuple[List[dict], List[dict], List[bool]]:
         """Encode a KTO batch into ``(completion_features, kl_features, labels)``.
@@ -100,13 +95,13 @@ class PreferenceBatchEncoder:
         kl_features: List[dict] = []
         labels: List[bool] = []
         for row, kl_completion in zip(rows, rotated):
-            encoded = self.template.encode({**row, "rejected_response": kl_completion})
-            completion = self._strip_side(encoded, "chosen")
-            if "input_ids" not in completion:
-                raise ValueError("KTO row did not encode a completion (no chosen_input_ids).")
+            encoded = self.template.encode({**row, 'rejected_response': kl_completion})
+            completion = self._strip_side(encoded, 'chosen')
+            if 'input_ids' not in completion:
+                raise ValueError('KTO row did not encode a completion (no chosen_input_ids).')
             completion_features.append(completion)
-            kl_features.append(self._strip_side(encoded, "rejected"))
-            labels.append(bool(encoded["label"]))
+            kl_features.append(self._strip_side(encoded, 'rejected'))
+            labels.append(bool(encoded['label']))
         return completion_features, kl_features, labels
 
     def _sequence_logps(self, logps: Any, features: List[dict]) -> Any:
@@ -120,7 +115,6 @@ class PreferenceBatchEncoder:
         import torch
 
         from swift.dev.utils.scoring import response_positions
-
         values = torch.as_tensor(logps).detach().float()
         if values.dim() == 1:
             values = values.unsqueeze(0)
@@ -141,7 +135,7 @@ class PreferenceBatchEncoder:
         if not self.calculate_kl or not kl_features:
             return None
         policy_out = self.model.forward_only(inputs=kl_features, compute_loss=False, micro_batch_size=micro_batch_size)
-        policy_logps = policy_out.get("logps")
+        policy_logps = policy_out.get('logps')
         ref_logps = self._ref_logps(kl_features, micro_batch_size=micro_batch_size)
         if policy_logps is None or ref_logps is None:
             return None
@@ -159,11 +153,11 @@ class PreferenceBatchEncoder:
         completion_features, kl_features, labels = self._encode_kto_batch(rows)
         ref_logps = self._ref_logps(completion_features, micro_batch_size=micro_batch_size)
         if ref_logps is not None:
-            kwargs["ref_logps"] = ref_logps
+            kwargs['ref_logps'] = ref_logps
         z_kl = self._kto_kl_term(kl_features, micro_batch_size=micro_batch_size)
         if z_kl is not None:
-            kwargs["z_kl"] = z_kl
-        kwargs["label"] = labels
+            kwargs['z_kl'] = z_kl
+        kwargs['label'] = labels
         return completion_features
 
     def _ref_logps(self, features: List[dict], *, micro_batch_size: int) -> Optional[Any]:
@@ -188,7 +182,7 @@ class PreferenceBatchEncoder:
                 compute_loss=False,
                 micro_batch_size=micro_batch_size,
             )
-        return outputs.get("logps")
+        return outputs.get('logps')
 
     def __call__(self, unit: Any, *, micro_batch_size: int) -> Dict[str, Any]:
         """Encode one update, preserving paired sequences with a micro-batch size of 2B."""
@@ -201,18 +195,18 @@ class PreferenceBatchEncoder:
         # Convert records to sequences once; every forward uses this call's micro-batch size.
         micro_batch_size *= 1 if self.rl_type == "kto" else 2
         kwargs: Dict[str, Any] = {}
-        if self.rl_type == "kto":
-            kwargs["inputs"] = self._kto_step_kwargs(rows, kwargs, micro_batch_size=micro_batch_size)
+        if self.rl_type == 'kto':
+            kwargs['inputs'] = self._kto_step_kwargs(rows, kwargs, micro_batch_size=micro_batch_size)
         else:
             features = self._interleave(rows)
             if not self._is_reward:
                 ref_logps = self._ref_logps(features, micro_batch_size=micro_batch_size)
                 if ref_logps is not None:
-                    kwargs["ref_logps"] = ref_logps
-            kwargs["inputs"] = features
+                    kwargs['ref_logps'] = ref_logps
+            kwargs['inputs'] = features
         if self._is_reward:
-            kwargs["task"] = "seq_cls"
-        kwargs["gradient_accumulation_steps"] = 1
+            kwargs['task'] = 'seq_cls'
+        kwargs['gradient_accumulation_steps'] = 1
         kwargs["micro_batch_size"] = micro_batch_size
         return kwargs
 
@@ -225,14 +219,14 @@ def preference_log_line(record: dict, loss: float) -> str:
     registered DPOMetric; they are absent for the unpaired kto and the seq_cls rm, so those fall
     back to loss + grad_norm.
     """
-    parts = [f"step {record.get('step')}", f"loss={loss:.4f}"]
-    margins = record.get("rewards/margins")
+    parts = [f"step {record.get('step')}", f'loss={loss:.4f}']
+    margins = record.get('rewards/margins')
     if margins is not None:
-        parts.append(f"rewards/margins={margins:.4f}")
-    accuracies = record.get("rewards/accuracies")
+        parts.append(f'rewards/margins={margins:.4f}')
+    accuracies = record.get('rewards/accuracies')
     if accuracies is not None:
-        parts.append(f"rewards/accuracies={accuracies:.1f}%")
-    gn = record.get("grad_norm")
+        parts.append(f'rewards/accuracies={accuracies:.1f}%')
+    gn = record.get('grad_norm')
     if gn is not None:
-        parts.append(f"grad_norm={gn:.4f}")
-    return "  ".join(parts)
+        parts.append(f'grad_norm={gn:.4f}')
+    return '  '.join(parts)

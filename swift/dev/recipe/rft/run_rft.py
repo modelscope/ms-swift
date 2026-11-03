@@ -25,12 +25,7 @@ from swift.dev.recipe.utils import (
 
 if TYPE_CHECKING:
     from swift.dev.config import (
-        CheckpointConfig,
-        DatasetConfig,
-        DistributedConfig,
-        GenerationConfig,
-        LoggingConfig,
-        MegatronConfig,
+        CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig, LoggingConfig, MegatronConfig,
         ModelConfig,
         MoEConfig,
         QuantizeConfig,
@@ -52,9 +47,9 @@ def _rft_log_line(record: dict, loss: float) -> str:
     completions starts near its floor and stays flat -- so the step line leads with ``reward`` when
     the round produced one.
     """
-    reward = record.get("train/total_reward")
-    reward_str = f"  reward={reward:.4f}" if reward is not None else ""
-    return f"step {record.get('step')}  loss={loss:.4f}{reward_str}"
+    reward = record.get('train/total_reward')
+    reward_str = f'  reward={reward:.4f}' if reward is not None else ''
+    return f'step {record.get("step")}  loss={loss:.4f}{reward_str}'
 
 
 class RFTState:
@@ -64,21 +59,21 @@ class RFTState:
         self.next_round = 0
 
     def get_state(self) -> dict:
-        return {"version": 1, "next_round": self.next_round}
+        return {'version': 1, 'next_round': self.next_round}
 
     def load_state(self, state: dict) -> None:
         if not isinstance(state, dict):
-            raise TypeError(f"RFT state must be a dict, got {type(state).__name__}.")
-        version = int(state.get("version", 1))
+            raise TypeError(f'RFT state must be a dict, got {type(state).__name__}.')
+        version = int(state.get('version', 1))
         if version != 1:
-            raise ValueError(f"Unsupported RFT state version: {version}.")
-        next_round = int(state.get("next_round", 0))
+            raise ValueError(f'Unsupported RFT state version: {version}.')
+        next_round = int(state.get('next_round', 0))
         if next_round < 0:
-            raise ValueError(f"RFT next_round must be non-negative, got {next_round}.")
+            raise ValueError(f'RFT next_round must be non-negative, got {next_round}.')
         self.next_round = next_round
 
 
-def _rft_kept_per_prompt(rl_config: "RLConfig", num_samples: int) -> int:
+def _rft_kept_per_prompt(rl_config: 'RLConfig', num_samples: int) -> int:
     """Upper bound on completions RFT keeps PER PROMPT -- the budget's effective ``num_generations``.
 
     Mirrors :meth:`RFTSelector._select_keep` from config alone (no rewards exist yet, since the
@@ -87,9 +82,9 @@ def _rft_kept_per_prompt(rl_config: "RLConfig", num_samples: int) -> int:
     ``rft_max_samples_per_prompt`` caps every mode; MUST stay in sync with ``_select_keep``.
     """
     select = rl_config.rft_select
-    if select == "best_of_n":
+    if select == 'best_of_n':
         kept = 1
-    elif select == "top_k":
+    elif select == 'top_k':
         kept = min(max(1, rl_config.rft_top_k), num_samples)
     else:  # threshold
         kept = num_samples
@@ -108,21 +103,15 @@ class RFTSelector:
     ``step_telemetry`` folds it into every step record (``StepState``'s ``extra_metrics_fn``).
     """
 
-    def __init__(
-        self,
-        *,
-        num_generations: int,
-        rft_select: str = "best_of_n",
-        rft_threshold: float = 0.0,
-        rft_top_k: int = 1,
-        rft_max_samples_per_prompt: Optional[int] = None,
-        reward_scorer_names: Optional[List[str]] = None,
-        reward_weights: Optional[List[float]] = None,
-    ):
-        if rft_select not in ("best_of_n", "threshold", "top_k"):
+    def __init__(self, *, num_generations: int, rft_select: str = 'best_of_n',
+                 rft_threshold: float = 0.0, rft_top_k: int = 1,
+                 rft_max_samples_per_prompt: Optional[int] = None,
+                 reward_scorer_names: Optional[List[str]] = None,
+                 reward_weights: Optional[List[float]] = None):
+        if rft_select not in ('best_of_n', 'threshold', 'top_k'):
             raise ValueError(f"rft_select must be one of 'best_of_n'/'threshold'/'top_k', got {rft_select!r}.")
         if rft_max_samples_per_prompt is not None and rft_max_samples_per_prompt < 1:
-            raise ValueError(f"rft_max_samples_per_prompt must be >= 1 or None, got {rft_max_samples_per_prompt}.")
+            raise ValueError(f'rft_max_samples_per_prompt must be >= 1 or None, got {rft_max_samples_per_prompt}.')
         self.num_generations = num_generations
         self.rft_select = rft_select
         self.rft_threshold = rft_threshold
@@ -147,13 +136,8 @@ class RFTSelector:
 
         if self._reward_metric is None:
             self._reward_metric = CompletionRewardMetric()
-        accumulate_reward_metric(
-            self._reward_metric,
-            samples,
-            rewards_per_func,
-            scorer_names=self.reward_scorer_names,
-            reward_weights=self.reward_weights,
-        )
+        accumulate_reward_metric(self._reward_metric, samples, rewards_per_func,
+                                 scorer_names=self.reward_scorer_names, reward_weights=self.reward_weights)
 
     def step_telemetry(self) -> dict:
         """The per-optimizer-step metric fold read by the loop's ``StepState``.
@@ -169,14 +153,14 @@ class RFTSelector:
     def _select_keep(self, group_rewards: List[float]) -> List[int]:
         """Local indices (into one prompt's N samples) to keep, ordered best-first."""
         order = sorted(range(len(group_rewards)), key=lambda i: group_rewards[i], reverse=True)
-        if self.rft_select == "best_of_n":
+        if self.rft_select == 'best_of_n':
             keep = order[:1]
-        elif self.rft_select == "top_k":
-            keep = order[: self.rft_top_k]
+        elif self.rft_select == 'top_k':
+            keep = order[:self.rft_top_k]
         else:  # threshold: keep every sample at/above the threshold, best-first.
             keep = [i for i in order if group_rewards[i] >= self.rft_threshold]
         if self.rft_max_samples_per_prompt is not None:
-            keep = keep[: self.rft_max_samples_per_prompt]
+            keep = keep[:self.rft_max_samples_per_prompt]
         return keep
 
     def select(self, samples: List[Any], rewards: List[float]) -> List[Any]:
@@ -187,20 +171,18 @@ class RFTSelector:
         """
         n = self.num_generations
         if len(samples) % n != 0:
-            raise RuntimeError(
-                f"{len(samples)} samples is not a multiple of num_generations={n}; "
-                "group-wise rejection sampling is impossible."
-            )
+            raise RuntimeError(f'{len(samples)} samples is not a multiple of num_generations={n}; '
+                               'group-wise rejection sampling is impossible.')
         selected: List[Any] = []
         for start in range(0, len(samples), n):
-            group = samples[start : start + n]
-            group_rewards = rewards[start : start + n]
+            group = samples[start:start + n]
+            group_rewards = rewards[start:start + n]
             for local in self._select_keep(group_rewards):
                 selected.append(group[local])
         return selected
 
 
-def _resume_round(checkpoint_config: "CheckpointConfig", rft_state: RFTState) -> int:
+def _resume_round(checkpoint_config: 'CheckpointConfig', rft_state: RFTState) -> int:
     """Seed the round counter from the checkpoint's ``component_states['rft']`` (0 when absent).
 
     The model-side restore already ran (:func:`resume_training`); a weights-only checkpoint carries
@@ -210,13 +192,13 @@ def _resume_round(checkpoint_config: "CheckpointConfig", rft_state: RFTState) ->
     path = checkpoint_config.resume_from_checkpoint
     if not path or checkpoint_config.resume_only_model:
         return rft_state.next_round
-    trainer_state_path = os.path.join(path, "trainer_state.json")
+    trainer_state_path = os.path.join(path, 'trainer_state.json')
     if not os.path.isfile(trainer_state_path):
         return rft_state.next_round
     with open(trainer_state_path) as f:
-        component_states = json.load(f).get("component_states", {})
-    if "rft" in component_states:
-        rft_state.load_state(component_states["rft"])
+        component_states = json.load(f).get('component_states', {})
+    if 'rft' in component_states:
+        rft_state.load_state(component_states['rft'])
     return rft_state.next_round
 
 
@@ -318,26 +300,17 @@ def _train_selected_samples(cluster, state, selected, train_batch_size, save_ste
     return round_save_due
 
 
-def run_rft(
-    model_config: "ModelConfig",
-    template_config: "TemplateConfig",
-    dataset_config: "DatasetConfig",
-    train_config: "TrainConfig",
-    distributed_config: "DistributedConfig",
-    checkpoint_config: "CheckpointConfig",
-    rollout_config: "RolloutConfig",
-    rl_config: "RLConfig",
-    reward_config: Optional["RewardConfig"] = None,
-    tuner_config: Optional["TunerConfig"] = None,
-    generation_config: Optional["GenerationConfig"] = None,
-    logging_config: Optional["LoggingConfig"] = None,
-    quantize_config: Optional["QuantizeConfig"] = None,
-    megatron_config: Optional["MegatronConfig"] = None,
-    moe_config: Optional["MoEConfig"] = None,
-    *,
-    output_dir: str = "output",
-    _save_final: bool = True,
-) -> List[dict]:
+def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+            dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
+            distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
+            rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
+            reward_config: Optional['RewardConfig'] = None, tuner_config: Optional['TunerConfig'] = None,
+            generation_config: Optional['GenerationConfig'] = None,
+            logging_config: Optional['LoggingConfig'] = None,
+            quantize_config: Optional['QuantizeConfig'] = None,
+            megatron_config: Optional['MegatronConfig'] = None,
+            moe_config: Optional['MoEConfig'] = None, *, output_dir: str = 'output',
+            _save_final: bool = True) -> List[dict]:
     """RFT's five-segment main: prompts -> devices -> cluster -> loop scaffolding -> the round loop.
 
     A synchronous multi-round rejection-sampling loop, no driver: each of ``rft_iterations`` rounds
@@ -349,29 +322,18 @@ def run_rft(
     prompt_rows, prompts, prompt_extras = prompt_rows_from_dataset(dataset_config)
     # segment 2: devices (configs + template + twinkle + perf; an estimate rewrites the parallel sizes).
     template, resource_plan, _ = initialize_rl_devices(
-        model_config=model_config,
-        template_config=template_config,
-        dataset_config=dataset_config,
-        train_config=train_config,
-        distributed_config=distributed_config,
-        checkpoint_config=checkpoint_config,
-        rollout_config=rollout_config,
-        rl_config=rl_config,
-        reward_config=reward_config,
-        tuner_config=tuner_config,
-        logging_config=logging_config,
-        quantize_config=quantize_config,
-        megatron_config=megatron_config,
-        moe_config=moe_config,
-        output_dir=output_dir,
-        prompt_rows=prompt_rows,
-        group_requests=(lambda: rft_group_requests(reward_config)),
-    )
+        model_config=model_config, template_config=template_config, dataset_config=dataset_config,
+        train_config=train_config, distributed_config=distributed_config,
+        checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
+        reward_config=reward_config, tuner_config=tuner_config, logging_config=logging_config,
+        quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config,
+        output_dir=output_dir, prompt_rows=prompt_rows,
+        group_requests=(lambda: rft_group_requests(reward_config)))
     num_samples = rl_config.rft_num_samples or rl_config.num_generations
     if num_samples < 1:
-        raise ValueError(f"RFT needs at least one sampled completion per prompt, got {num_samples}.")
+        raise ValueError(f'RFT needs at least one sampled completion per prompt, got {num_samples}.')
     if rl_config.rft_iterations < 1:
-        raise ValueError(f"rft_iterations must be >= 1, got {rl_config.rft_iterations}.")
+        raise ValueError(f'rft_iterations must be >= 1, got {rl_config.rft_iterations}.')
     # The optimizer's LR-scheduler horizon, derived BEFORE the cluster builds the optimizer: each of
     # the rft_iterations rounds generates the whole prompt set and SFTs the kept completions, so the
     # budget sizes those rounds with the per-prompt kept count as the effective num_generations and
@@ -383,65 +345,39 @@ def run_rft(
     max_steps = resolve_rollout_max_steps(
         train_config.max_steps,
         rollout_step_budget(
-            num_prompts=len(prompts),
-            num_generations=_rft_kept_per_prompt(rl_config, num_samples),
+            num_prompts=len(prompts), num_generations=_rft_kept_per_prompt(rl_config, num_samples),
             train_batch_size=train_batch_size,
             gradient_accumulation_steps=train_config.gradient_accumulation_steps,
-            num_train_epochs=rl_config.rft_iterations,
-            num_iterations=1,
-        ),
-        recipe="run_rft",
-    )
+            num_train_epochs=rl_config.rft_iterations, num_iterations=1),
+        recipe='run_rft')
     # segment 3: the cluster -- the policy, the sampler, the orm reward channel, nothing else.
     cluster = initialize_rft_cluster(
-        model_config=model_config,
-        template_config=template_config,
-        template=template,
-        train_config=train_config,
-        distributed_config=distributed_config,
-        checkpoint_config=checkpoint_config,
-        rollout_config=rollout_config,
-        rl_config=rl_config,
-        reward_config=reward_config,
-        tuner_config=tuner_config,
-        max_steps=max_steps,
-        quantize_config=quantize_config,
-        megatron_config=megatron_config,
-        moe_config=moe_config,
-        generation_config=generation_config,
-        resource_plan=resource_plan,
-        output_dir=output_dir,
-    )
+        model_config=model_config, template_config=template_config, template=template,
+        train_config=train_config, distributed_config=distributed_config,
+        checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
+        reward_config=reward_config, tuner_config=tuner_config, max_steps=max_steps,
+        quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config,
+        generation_config=generation_config, resource_plan=resource_plan, output_dir=output_dir)
     # segment 4: the dissolved step cadence + the save closure (round-atomic, see save below).
     from swift.dev.builders.optimizer import resolve_max_grad_norm
 
     selector = RFTSelector(
-        num_generations=num_samples,
-        rft_select=rl_config.rft_select,
-        rft_threshold=rl_config.rft_threshold,
-        rft_top_k=rl_config.rft_top_k,
+        num_generations=num_samples, rft_select=rl_config.rft_select,
+        rft_threshold=rl_config.rft_threshold, rft_top_k=rl_config.rft_top_k,
         rft_max_samples_per_prompt=rl_config.rft_max_samples_per_prompt,
-        reward_scorer_names=cluster.orm_scorer_names,
-        reward_weights=reward_config.orm_weights,
-    )
+        reward_scorer_names=cluster.orm_scorer_names, reward_weights=reward_config.orm_weights)
     state = StepState(
-        cluster.model,
-        train_config,
+        cluster.model, train_config,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
-        max_steps=max_steps,
-        max_grad_norm=resolve_max_grad_norm(train_config),
-        logging_config=logging_config,
-        output_dir=output_dir,
+        max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
+        logging_config=logging_config, output_dir=output_dir,
         save_steps=checkpoint_config.save_steps,
         manual_gc=bool(megatron_config and megatron_config.manual_gc),
         manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
         empty_cache_steps=train_config.torch_empty_cache_steps,
-        extra_metrics_fn=selector.step_telemetry,
-        log_formatter=_rft_log_line,
-    )
+        extra_metrics_fn=selector.step_telemetry, log_formatter=_rft_log_line)
     save_knobs = build_save_knobs(
-        checkpoint_config, dataset_config, distributed_config, tuner_config, output_dir=output_dir
-    )
+        checkpoint_config, dataset_config, distributed_config, tuner_config, output_dir=output_dir)
     # Before any training step: a base-modifying LoRA init (pissa ...) needs its initial snapshot.
     snapshot_initial_adapter(cluster.model, save_knobs.initial_adapter_dir)
     rft_state = RFTState()
@@ -455,14 +391,9 @@ def run_rft(
         """
         state.publish_state()
         return save_training_step(
-            cluster.model,
-            state.handler,
-            name,
-            save_knobs,
+            cluster.model, state.handler, name, save_knobs,
             consumed_train_samples=state.global_step,
-            component_states={"rft": rft_state.get_state()},
-            is_final=is_final,
-        )
+            component_states={'rft': rft_state.get_state()}, is_final=is_final)
 
     state.global_step, state.micro_step, _ = resume_training(
         cluster.model,
@@ -476,8 +407,8 @@ def run_rft(
 
     from swift.dev.recipe.utils import filter_perf_actors
 
-    if Perf.initialize(filter_perf_actors({"model": cluster.model, "sampler": cluster.sampler})):
-        logger.info("[perf] profiling enabled for the online RFT loop.")
+    if Perf.initialize(filter_perf_actors({'model': cluster.model, 'sampler': cluster.sampler})):
+        logger.info('[perf] profiling enabled for the online RFT loop.')
     # segment 5: the visible round loop.
     save_steps = checkpoint_config.save_steps
     from swift.dev.utils.scoring import copy_inputs
@@ -495,7 +426,7 @@ def run_rft(
             # truncated it), then persist at this safe boundary.
             rft_state.next_round = round_index + 1
             if round_save_due:
-                save(f"checkpoint-{state.global_step}")
+                save(f'checkpoint-{state.global_step}')
             if state.reached_max() or state.should_stop():
                 break
         if state.global_step == 0:
@@ -503,12 +434,11 @@ def run_rft(
             # back an untrained checkpoint that looks like a completed run -- fail loudly instead
             # (contract: an empty selected set is never a silent 0-step run).
             raise RuntimeError(
-                f"RFT took 0 optimizer steps across {rl_config.rft_iterations} rejection-sampling round(s) "
-                f"(max_steps={max_steps}); no round kept enough completions to fill a train_batch_size="
-                f"{train_batch_size} mini-batch, so nothing was trained and no checkpoint is written. "
-                "Check max_steps > 0, then lower rft_threshold / rft_select, raise rft_num_samples, or enlarge "
-                "the prompt dataset so at least one round fills a mini-batch."
-            )
+                f'RFT took 0 optimizer steps across {rl_config.rft_iterations} rejection-sampling round(s) '
+                f'(max_steps={max_steps}); no round kept enough completions to fill a train_batch_size='
+                f'{train_batch_size} mini-batch, so nothing was trained and no checkpoint is written. '
+                'Check max_steps > 0, then lower rft_threshold / rft_select, raise rft_num_samples, or enlarge '
+                'the prompt dataset so at least one round fills a mini-batch.')
     finally:
         Perf.shutdown()
         # MultiTurnRollout owns only the sandbox env pool; the sampler's GPU memory is the Cluster's

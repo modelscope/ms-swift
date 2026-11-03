@@ -230,9 +230,7 @@ def initialize_distill_cluster(
         adapter.dedicated_manager
         if adapter is not None
         else CheckpointEngineManager(
-            model=model,
-            sampler=sampler,
-            mode=("colocate" if colocate else "standalone"),
+            model=model, sampler=sampler, mode=("colocate" if colocate else "standalone"),
             sync_backend=rollout_config.weight_sync_backend,
         )
     )
@@ -394,19 +392,11 @@ def _build_teachers(
     return [teacher], {"offload": offload}
 
 
-def build_distill_driver(
-    *,
-    cluster: Cluster,
-    rl_config: "RLConfig",
-    rollout_config: "RolloutConfig",
-    tuner_config: Optional["TunerConfig"],
-    train_batch_size: int,
-    gradient_accumulation_steps: int,
-    prompt_dataloader: Any,
-    num_train_epochs: float,
-    max_steps: int,
-    output_dir: str,
-) -> Any:
+def build_distill_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
+                         tuner_config: Optional['TunerConfig'], train_batch_size: int,
+                         gradient_accumulation_steps: int, prompt_dataloader: Any,
+                         num_train_epochs: float, max_steps: int,
+                         output_dir: str) -> Any:
     """Assemble twinkle's StreamingDriver over the cluster for a purely on-policy run (lmbda == 1).
 
     Distillation scores no outcome channel, so no remote score shape rides the barrier and no group

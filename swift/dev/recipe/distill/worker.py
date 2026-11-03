@@ -29,16 +29,16 @@ def response_ids_from_feature(feature: Dict[str, Any]) -> List[int]:
     Labels hold the response token ids at trainable positions and ``-100`` elsewhere, so filtering
     ``-100`` yields exactly the sampled response -- the tokens the teacher must re-score.
     """
-    labels = feature.get("labels")
+    labels = feature.get('labels')
     if labels is None:
-        raise ValueError("OPSD/MOPD teacher scoring requires a labelled feature to recover the response token ids.")
+        raise ValueError('OPSD/MOPD teacher scoring requires a labelled feature to recover the response token ids.')
     response_ids = [int(label) for label in labels if int(label) != -100]
     if not response_ids:
-        raise ValueError("OPSD/MOPD feature contains no response tokens to score.")
+        raise ValueError('OPSD/MOPD feature contains no response tokens to score.')
     return response_ids
 
 
-@remote_class(execute="first")
+@remote_class(execute='first')
 class DistillWorker:
     """Build one update's ``forward_backward`` kwargs where the teacher signal is produced.
 
@@ -48,21 +48,12 @@ class DistillWorker:
     always a list of bare frozen models, described by the plain parameters below.
     """
 
-    def __init__(
-        self,
-        *,
-        teachers: Sequence[Any],
-        signal: str,
-        template: Any = None,
-        disable_lora: bool = False,
-        offload: bool = False,
-        placements: Optional[Sequence[str]] = None,
-        gkd_logits_topk: Optional[int] = None,
-        sft_alpha: float = 0.0,
-        teacher_weights: Optional[Sequence[float]] = None,
-        train_batch_size: int = 1,
-    ):
-        if signal not in ("logits", "logps", "multi_logps"):
+    def __init__(self, *, teachers: Sequence[Any], signal: str, template: Any = None,
+                 disable_lora: bool = False, offload: bool = False,
+                 placements: Optional[Sequence[str]] = None, gkd_logits_topk: Optional[int] = None,
+                 sft_alpha: float = 0.0, teacher_weights: Optional[Sequence[float]] = None,
+                 train_batch_size: int = 1):
+        if signal not in ('logits', 'logps', 'multi_logps'):
             raise ValueError(f"distillation signal must be one of 'logits'/'logps'/'multi_logps', got {signal!r}.")
         self.teachers = list(teachers)
         self.signal = signal
@@ -86,23 +77,21 @@ class DistillWorker:
         frame = scorer.forward_only(
             inputs=features,
             micro_batch_size=max(1, self.train_batch_size // scorer.device_mesh.data_world_size),
-            **({"disable_lora": True} if disable_lora else {}),
+            **({'disable_lora': True} if disable_lora else {}),
         )
         return response_token_scores(frame, features)
 
     def _privileged_feature(self, row: DistillRow) -> dict:
         """Encode this row's privileged teacher view (``teacher_prompt`` + the shared response tokens)."""
-        teacher_prompt = (row.extra or {}).get("teacher_prompt")
+        teacher_prompt = (row.extra or {}).get('teacher_prompt')
         if not teacher_prompt:
-            raise ValueError(
-                "OPSD requires a per-sample `teacher_prompt` carrying the privileged context; "
-                "a row in this batch has none."
-            )
+            raise ValueError('OPSD requires a per-sample `teacher_prompt` carrying the privileged context; '
+                             'a row in this batch has none.')
         return encode_privileged_feature(
-            self.template, row.messages, teacher_prompt, response_ids_from_feature(row.feature), row.extra
-        )
+            self.template, row.messages, teacher_prompt, response_ids_from_feature(row.feature), row.extra)
 
-    @remote_function(dispatch="all", collect="none", lazy_collect=False, stash=("teacher_logits", "teacher_logps"))
+    @remote_function(dispatch='all', collect='none', lazy_collect=False,
+                     stash=('teacher_logits', 'teacher_logps'))
     def forward_kwargs(self, rows: List[DistillRow], use_student: bool) -> Dict[str, Any]:
         """One update's kwargs: student inputs plus the teacher signal in the ``signal`` form.
 
@@ -113,42 +102,41 @@ class DistillWorker:
         from swift.dev.utils.scoring import copy_inputs
 
         features = [row.feature for row in rows]
-        if self.signal == "logits":
+        if self.signal == 'logits':
             teacher = self.teachers[0]
             if self.offload:
                 teacher.reload_to_gpu()
             try:
                 logits = teacher.forward_only(
-                    inputs=copy_inputs(features),
-                    return_logits=True,
+                    inputs=copy_inputs(features), return_logits=True,
                     micro_batch_size=max(1, self.train_batch_size // teacher.device_mesh.data_world_size),
-                    **({"disable_lora": True} if self.disable_lora else {}),
-                )["logits"]
+                    **({'disable_lora': True} if self.disable_lora else {}),
+                )['logits']
             finally:
                 if self.offload:
                     teacher.offload_to_cpu()
             signal_kwargs = {
-                "teacher_logits": logits,
-                "topk": self.gkd_logits_topk,
-                "apply_sft_loss": bool(self.sft_alpha > 0 and not use_student),
+                'teacher_logits': logits,
+                'topk': self.gkd_logits_topk,
+                'apply_sft_loss': bool(self.sft_alpha > 0 and not use_student),
             }
-        elif self.signal == "logps":
+        elif self.signal == 'logps':
             privileged = [self._privileged_feature(row) for row in rows]
             signal_kwargs = {
-                "teacher_logps": self._response_logps(self.teachers[0], privileged, disable_lora=self.disable_lora),
+                'teacher_logps': self._response_logps(
+                    self.teachers[0], privileged, disable_lora=self.disable_lora),
             }
         else:
             # A dict keeps the teacher axis separate from DP/micro-batch slicing of each sample channel.
-            tasks = [
-                (self.placements[index], lambda index=index: self._response_logps(self.teachers[index], features))
-                for index in range(len(self.teachers))
-            ]
-            signal_kwargs = {"teacher_logps": dict(enumerate(_run_grouped(tasks)))}
+            tasks = [(self.placements[index],
+                      lambda index=index: self._response_logps(self.teachers[index], features))
+                     for index in range(len(self.teachers))]
+            signal_kwargs = {'teacher_logps': dict(enumerate(_run_grouped(tasks)))}
             if self.teacher_weights is not None:
                 # Mixture weights are global scalars; tuples are broadcast by DP dispatch.
-                signal_kwargs["teacher_weights"] = tuple(self.teacher_weights)
+                signal_kwargs['teacher_weights'] = tuple(self.teacher_weights)
         return {
-            "inputs": copy_inputs(features),
-            "gradient_accumulation_steps": 1,
+            'inputs': copy_inputs(features),
+            'gradient_accumulation_steps': 1,
             **signal_kwargs,
         }
