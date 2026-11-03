@@ -1,10 +1,14 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
+import importlib
 import torch
 from transformers import PretrainedConfig
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from .logger import get_logger
 from .utils import deep_getattr
+
+logger = get_logger()
 
 
 class HfConfigFactory:
@@ -81,6 +85,75 @@ class HfConfigFactory:
             if key in keys:
                 return True
         return False
+
+    @staticmethod
+    def get_native_config_class(model_type: str) -> Optional[type]:
+        """Return the Transformers config class declared for ``model_type``.
+
+        ``AutoConfig.register(..., exist_ok=True)`` only fills
+        ``CONFIG_MAPPING._extra_content``, so resolving through ``CONFIG_MAPPING_NAMES``
+        keeps returning Transformers' own class even after another package replaced it
+        in the process-wide mapping.
+        """
+        from transformers import PretrainedConfig
+        from transformers.models.auto.configuration_auto import CONFIG_MAPPING_NAMES
+        cls_name = CONFIG_MAPPING_NAMES.get(model_type)
+        if not cls_name:
+            return None
+        import transformers
+        cls = getattr(transformers, cls_name, None)
+        if cls is None:
+            try:
+                from transformers.models.auto.configuration_auto import model_type_to_module_name
+                module = importlib.import_module(f'transformers.models.{model_type_to_module_name(model_type)}')
+            except Exception:
+                return None
+            cls = getattr(module, cls_name, None)
+        if isinstance(cls, type) and issubclass(cls, PretrainedConfig):
+            return cls
+        return None
+
+    @staticmethod
+    def load_hf_config(model_dir: str, *, trust_remote_code: bool = False) -> Optional[PretrainedConfig]:
+        """Load ``config.json`` with the Transformers config class.
+
+        ``AutoConfig.from_pretrained`` resolves through ``CONFIG_MAPPING``, where
+        ``AutoConfig.register(..., exist_ok=True)`` lets third-party packages replace the
+        class process-wide. vLLM registers every model type it supports with classes that
+        only keep the keys present in ``config.json``; they miss the class-level
+        declarations/defaults that Transformers' modeling and serialization rely on (e.g.
+        ``rope_parameters``/``default_rope_type``/``attribute_map``). Building a model with
+        such a config (the dummy model before saving, the vision tower) raises, and saving
+        silently writes an incomplete ``config.json``.
+
+        Returns ``None`` when the native class cannot be resolved safely, so that callers
+        fall back to ``AutoConfig`` (remote code, Swift-registered custom model types,
+        unknown checkpoints).
+        """
+        try:
+            config_dict, _ = PretrainedConfig.get_config_dict(model_dir)
+        except Exception:
+            return None
+        # Remote-code repositories must go through AutoConfig to resolve `auto_map`.
+        if config_dict.get('auto_map'):
+            return None
+        model_type = config_dict.get('model_type')
+        if not isinstance(model_type, str):
+            return None
+        config_cls = HfConfigFactory.get_native_config_class(model_type)
+        if config_cls is None:
+            return None
+        from transformers.models.auto.configuration_auto import CONFIG_MAPPING
+        registered_cls = getattr(CONFIG_MAPPING, '_extra_content', {}).get(model_type)
+        if registered_cls is not None and registered_cls is not config_cls:
+            logger.info_once(f'{model_type!r} config class is overridden by '
+                             f'{registered_cls.__module__}.{registered_cls.__name__}; loading it with '
+                             f'{config_cls.__module__}.{config_cls.__name__} instead.')
+        try:
+            return config_cls.from_pretrained(model_dir, trust_remote_code=trust_remote_code)
+        except Exception as e:
+            logger.debug(f'Failed to load {model_dir!r} with {config_cls.__name__}: {e}')
+            return None
 
     @staticmethod
     def get_config_attr(config: Union[PretrainedConfig, Dict[str, Any]],
