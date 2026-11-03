@@ -88,13 +88,7 @@ class HfConfigFactory:
 
     @staticmethod
     def get_native_config_class(model_type: str) -> Optional[type]:
-        """Return the Transformers config class declared for ``model_type``.
-
-        ``AutoConfig.register(..., exist_ok=True)`` only fills
-        ``CONFIG_MAPPING._extra_content``, so resolving through ``CONFIG_MAPPING_NAMES``
-        keeps returning Transformers' own class even after another package replaced it
-        in the process-wide mapping.
-        """
+        """Return the Transformers config class, ignoring `AutoConfig.register` overrides."""
         from transformers import PretrainedConfig
         from transformers.models.auto.configuration_auto import CONFIG_MAPPING_NAMES
         cls_name = CONFIG_MAPPING_NAMES.get(model_type)
@@ -115,26 +109,15 @@ class HfConfigFactory:
 
     @staticmethod
     def load_hf_config(model_dir: str, *, trust_remote_code: bool = False) -> Optional[PretrainedConfig]:
-        """Load ``config.json`` with the Transformers config class.
+        """Load `config.json` with the Transformers class instead of an overridden `AutoConfig` one.
 
-        ``AutoConfig.from_pretrained`` resolves through ``CONFIG_MAPPING``, where
-        ``AutoConfig.register(..., exist_ok=True)`` lets third-party packages replace the
-        class process-wide. vLLM registers every model type it supports with classes that
-        only keep the keys present in ``config.json``; they miss the class-level
-        declarations/defaults that Transformers' modeling and serialization rely on (e.g.
-        ``rope_parameters``/``default_rope_type``/``attribute_map``). Building a model with
-        such a config (the dummy model before saving, the vision tower) raises, and saving
-        silently writes an incomplete ``config.json``.
-
-        Returns ``None`` when the native class cannot be resolved safely, so that callers
-        fall back to ``AutoConfig`` (remote code, Swift-registered custom model types,
-        unknown checkpoints).
+        Returns None when the native class cannot be resolved, so callers can fall back to `AutoConfig`.
         """
         try:
             config_dict, _ = PretrainedConfig.get_config_dict(model_dir)
         except Exception:
             return None
-        # Remote-code repositories must go through AutoConfig to resolve `auto_map`.
+        # `auto_map` needs AutoConfig to resolve remote code.
         if config_dict.get('auto_map'):
             return None
         model_type = config_dict.get('model_type')

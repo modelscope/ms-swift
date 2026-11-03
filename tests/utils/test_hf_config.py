@@ -10,7 +10,7 @@ from swift.utils import HfConfigFactory
 
 
 class OverriddenLlamaConfig(PretrainedConfig):
-    """Stands in for a third-party class (e.g. vLLM) that only keeps the keys in config.json."""
+    """Mimics a third-party config class that only keeps the keys in config.json."""
 
     model_type = 'llama'
 

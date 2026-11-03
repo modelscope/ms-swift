@@ -251,9 +251,7 @@ class ModelLoader(BaseModelLoader):
                            'Only use models from sources you trust.')
         auto_config_cls = self.auto_config_cls or AutoConfig
         if auto_config_cls is AutoConfig:
-            # A third-party package (e.g. vLLM) in this process may have replaced the class
-            # through `AutoConfig.register`, which loses class-level defaults that model
-            # construction and config.json serialization depend on.
+            # Another package (e.g. vLLM) may have replaced the class via `AutoConfig.register`.
             config = HfConfigFactory.load_hf_config(model_dir, trust_remote_code=self.default_trust_remote_code)
             if config is not None:
                 return config
