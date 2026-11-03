@@ -417,13 +417,13 @@ def _resolve_checkpoint_args_source(configs: Dict[str, Any]) -> Optional[str]:
 def _restore_checkpoint_args(configs: Sequence[Any], *, default_load_args: bool) -> None:
     """Apply legacy ``load_args_from_ckpt`` semantics to atomic dev Configs."""
     mapped = _config_mapping(configs)
-    checkpoint = mapped.get('checkpoint_config')
-    if checkpoint is None:
+    checkpoint_config = mapped.get('checkpoint_config')
+    if checkpoint_config is None:
         return
-    explicit = getattr(checkpoint, '_explicit_fields', set())
+    explicit = getattr(checkpoint_config, '_explicit_fields', set())
     if 'load_args' not in explicit:
-        checkpoint.load_args = default_load_args
-    if not checkpoint.load_args:
+        checkpoint_config.load_args = default_load_args
+    if not checkpoint_config.load_args:
         return
     args_path = _resolve_checkpoint_args_source(mapped)
     if args_path is None:
@@ -439,6 +439,27 @@ def _restore_checkpoint_args(configs: Sequence[Any], *, default_load_args: bool)
     swift_version = old_args.get('swift_version')
     if swift_version is None or version.parse(swift_version) < version.parse('4.0.0.dev'):
         load_fields['model_config'].remove('model_type')
+    # `external_plugins` is never restored silently: a checkpoint declares code to import, so a malicious
+    # one published on a hub would otherwise execute arbitrary code through `swift infer --adapters <repo>`.
+    declared_plugins = old_args.get('external_plugins')
+    if declared_plugins:
+        if isinstance(declared_plugins, str):
+            declared_plugins = [declared_plugins]
+        declared_plugins = list(declared_plugins)
+        trusted = checkpoint_config.trust_remote_plugins or os.environ.get(
+            'SWIFT_TRUST_REMOTE_PLUGINS', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+        if trusted:
+            logger.warning(f'Importing plugins declared by {args_path} (trust_remote_plugins=True): '
+                           f'{[os.path.realpath(p) for p in declared_plugins]}. '
+                           'Make sure the checkpoint comes from a source you trust.')
+            plugin_config = mapped.get('plugin_config')
+            if plugin_config is not None:
+                plugin_config.external_plugins = list(plugin_config.external_plugins or []) + declared_plugins
+        else:
+            logger.warning(f'{args_path} declares external_plugins {declared_plugins}, which are NOT imported: '
+                           'importing a checkpoint-declared plugin is arbitrary code execution. Pass '
+                           '--trust_remote_plugins true (or set SWIFT_TRUST_REMOTE_PLUGINS=1) to import them, '
+                           'or pass --external_plugins explicitly.')
     for config_name, names in _CHECKPOINT_FORCE_LOAD_FIELDS.items():
         config = mapped.get(config_name)
         if config is None:
@@ -456,7 +477,7 @@ def _restore_checkpoint_args(configs: Sequence[Any], *, default_load_args: bool)
             value = getattr(config, name, None)
             if old_value is not None and (value is None or isinstance(value, (list, tuple)) and not value):
                 setattr(config, name, old_value)
-    if checkpoint.load_data_args:
+    if checkpoint_config.load_data_args:
         dataset = mapped.get('dataset_config')
         if dataset is not None:
             for name in _CHECKPOINT_DATA_FIELDS:

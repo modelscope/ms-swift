@@ -37,6 +37,8 @@ _ALSO_CANDIDATES = set()
 #: Consumed, but not through PluginRegistry -- with the consumer named, so the claim is checkable.
 WIRED_ELSEWHERE = {
     ('PluginConfig', 'external_plugins'): 'PluginRegistry.load_configured imports every source it names',
+    ('CheckpointConfig', 'trust_remote_plugins'): 'cli/parser.py::_restore_checkpoint_args gates the '
+    'checkpoint-declared external_plugins import on it, instead of restoring them silently',
     ('TemplateConfig', 'loss_scale'): "builders/template.py passes it to legacy get_template, whose own "
     'loss_scale registry resolves the name',
     ('InferConfig', 'metric'): "run_infer reads infer_config.metric and hands it to compute_metric (a closed "

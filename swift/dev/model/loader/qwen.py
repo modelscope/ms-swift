@@ -38,6 +38,17 @@ class Qwen2VLLoader(ModelLoader):
     requires = ["transformers>=4.45", "qwen_vl_utils>=0.0.6", "decord"]
     tags = ["vision", "video"]
     is_multimodal = True
+
+    @property
+    def model_arch(self) -> ModelArch:
+        # Without this the family reads as a plain LLM: freeze_vit is a no-op and all-linear LoRA adapts
+        # the vision tower too. The merger is the aligner, nested inside the tower.
+        return ModelArch(
+            language_model=["model.language_model", "lm_head"],
+            aligner="model.visual.merger",
+            vision_tower="model.visual",
+        )
+
     models = [
         "Qwen/Qwen2-VL-2B-Instruct",
         "Qwen/Qwen2-VL-7B-Instruct",

@@ -75,6 +75,7 @@ def validate_configs(
     _check_load_quantization(
         model_config, distributed_config, tuner_config, quantize_config, is_megatron, training=training)
     _check_megatron_fsdp(distributed_config, is_megatron)
+    _check_cp_partition_mode(distributed_config, is_megatron)
     _check_selective_recompute(distributed_config, is_megatron)
     _check_pipeline_decoder_layers(distributed_config, is_megatron)
     _check_freeze_ratio_pp(train_config, distributed_config, is_megatron, tuner_config)
@@ -1345,6 +1346,17 @@ def _check_megatron_fsdp(distributed_config: 'DistributedConfig', is_megatron: b
         raise ValueError('DistributedConfig.use_megatron_fsdp is incompatible with context_parallel_size='
                          f'{distributed_config.context_parallel_size}. Megatron-FSDP does not support context '
                          'parallelism; use the default DDP wrapper for a CP run.')
+
+
+def _check_cp_partition_mode(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+    """Reject a CP layout only the checkpoint-repartition path honours (training always splits zigzag)."""
+    if not is_megatron or distributed_config.context_parallel_size <= 1:
+        return
+    if distributed_config.cp_partition_mode != 'zigzag':
+        raise NotImplementedError(
+            'DistributedConfig.cp_partition_mode="contiguous" is only honoured by the checkpoint '
+            'repartition path (components/weight_transform); the training CP split and router replay are '
+            'load-balanced (zigzag) only. Keep the default zigzag for a CP training run.')
 
 
 # (format field, param-gather field) per low-precision format. The amax knobs are absent on purpose:

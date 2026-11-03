@@ -924,6 +924,13 @@ def _build_transformers_model(
     # Resolve a dev family loader and build the config once so caller overrides reach custom loaders.
     model_loader = _resolve_model_loader(model_config)
     hf_config = _build_hf_config(model_config, model_loader)
+    if model_loader is None:
+        # The download step rewrites ModelConfig.model to the cache dir, which matches no registered id.
+        # Without a loader, model_arch never reaches twinkle and freeze_vit / all-linear narrowing silently
+        # degrade, so re-resolve from the checkpoint's own model_type.
+        model_loader = _resolve_model_loader(dataclasses.replace(model_config, model_type=hf_config.model_type))
+        if model_loader is not None:
+            hf_config = _build_hf_config(model_config, model_loader)
     kwargs["config"] = hf_config
     # MoE aux loss: twinkle adds any `aux_loss` it finds to the training loss; HF only emits it with
     # output_router_logits on. Opt-in (0.0 default leaves the checkpoint's own config untouched).
@@ -1354,6 +1361,35 @@ def _field_was_requested(config, field_name: str) -> bool:
     return getattr(config, field_name) != default
 
 
+def _drop_unsupported_bridge_kwargs(kwargs: dict, bridge_backend: str) -> dict:
+    """Drop Megatron options the installed bridge's ``ModelConfig`` does not accept.
+
+    A bare default may be dropped; an option the user asked for explicitly raises, so it cannot
+    silently do nothing.
+    """
+    if bridge_backend != 'mcore-bridge':
+        return kwargs
+    import inspect
+    try:
+        from mcore_bridge import ModelConfig
+    except Exception:
+        return kwargs
+    parameters = inspect.signature(ModelConfig.__init__).parameters
+    if any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()):
+        return kwargs
+    dropped = [name for name in kwargs if name != '_strict_model_kwargs' and name not in parameters]
+    if not dropped:
+        return kwargs
+    requested = sorted(set(kwargs.get('_strict_model_kwargs', ())).intersection(dropped))
+    if requested:
+        raise ValueError(f'{requested} are not accepted by the installed bridge ModelConfig: the installed '
+                         'mcore-bridge/megatron-core is too old. Upgrade them, or drop these options.')
+    for name in dropped:
+        kwargs.pop(name)
+    logger.info(f'Dropped Megatron options the installed bridge does not expose: {sorted(dropped)}')
+    return kwargs
+
+
 def _megatron_model_kwargs(megatron_config: Optional[MegatronConfig], moe_config: Optional[MoEConfig]) -> dict:
     """Translate backend-only Configs into model kwargs and retain explicit-field provenance.
 
@@ -1428,7 +1464,8 @@ def _build_megatron_model(
         "use_distributed_optimizer": distributed_config.use_distributed_optimizer,
         "align_grad_reduce": distributed_config.align_grad_reduce,
         "nccl_comm_warmup": distributed_config.nccl_comm_warmup,
-        **_megatron_model_kwargs(megatron_config, moe_config),
+        **_drop_unsupported_bridge_kwargs(
+            _megatron_model_kwargs(megatron_config, moe_config), distributed_config.bridge_backend),
     }
     strict_model_kwargs = set(extra_kwargs.pop("_strict_model_kwargs", ()))
     # ModelParallelConfig/TransformerConfig fields owned by DistributedConfig; the spelling

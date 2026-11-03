@@ -486,6 +486,20 @@ def test_megatron_fsdp_config_gates():
     _check_megatron_fsdp(DistributedConfig(backend='megatron', use_megatron_fsdp=True), True)
 
 
+def test_cp_partition_mode_contiguous_is_rejected_for_training():
+    """S2-45b: only the checkpoint-repartition path honours contiguous CP; a training run would split
+    load-balanced (zigzag) while claiming contiguous, so it fails instead of silently diverging."""
+    from swift.dev.config.validate import _check_cp_partition_mode
+
+    contiguous = DistributedConfig(backend='megatron', context_parallel_size=2, cp_partition_mode='contiguous')
+    with pytest.raises(NotImplementedError, match='load-balanced'):
+        _check_cp_partition_mode(contiguous, True)
+    # cp=1 makes the mode inert, and the transformers backend never sees CP at all.
+    _check_cp_partition_mode(DistributedConfig(backend='megatron', cp_partition_mode='contiguous'), True)
+    _check_cp_partition_mode(contiguous, False)
+    _check_cp_partition_mode(DistributedConfig(backend='megatron', context_parallel_size=2), True)
+
+
 def test_megatron_recompute_and_attn_backend():
     """S2-46: on megatron recompute is driven by recompute_granularity alone -- flag-off with a
     granularity set is a contradiction; padding_free refuses the unfused kernel."""

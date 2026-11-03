@@ -180,6 +180,7 @@ def _build_split_loader(raw: Any,
             packing_strategy=dataset_config.packing_strategy,
             num_proc=dataset_config.packing_num_proc,
             strict=dataset_config.strict,
+            multiprocessing_context=dataset_config.dataloader_multiprocessing_context,
             data_seed=dataset_config.data_seed)
 
     batch_size = (train_config.per_device_eval_batch_size if is_val else train_config.per_device_train_batch_size)
@@ -354,7 +355,7 @@ def _encode(raw: Any, template: Any, *, mode: Literal['lazy', 'eager', 'stream']
 
 
 def _pack(dataset: Any, template: Any, *, streaming: bool, packing_length: Optional[int], packing_strategy: str,
-          num_proc: int, strict: bool, data_seed: int = 0) -> Any:
+          num_proc: int, strict: bool, multiprocessing_context: Optional[str] = None, data_seed: int = 0) -> Any:
     """Pack an encoded dataset for efficient training (map-style or iterable)."""
     from swift.dev.dataset import IterablePackingDataset, PackingDataset
 
@@ -371,6 +372,7 @@ def _pack(dataset: Any, template: Any, *, streaming: bool, packing_length: Optio
         packing_length=length,
         packing_strategy=packing_strategy,
         strict=strict,
+        multiprocessing_context=multiprocessing_context,
         **seed_kwargs)
 
 

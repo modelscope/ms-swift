@@ -25,11 +25,11 @@ class AgentToolParser:
     def __init__(self, agent):
         self.agent = agent
 
-    def parse(self, text: str) -> List[Dict[str, Any]]:
-        return self._scan(text)[0]
+    def parse(self, text: str, tools: Optional[Iterable[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+        return self._scan(text, tools)[0]
 
-    def parse_errors(self, text: str) -> List[str]:
-        return self._scan(text)[1]
+    def parse_errors(self, text: str, tools: Optional[Iterable[Dict[str, Any]]] = None) -> List[str]:
+        return self._scan(text, tools)[1]
 
     def clean(self, text: str) -> str:
         text = text or ""
@@ -48,10 +48,15 @@ class AgentToolParser:
         marker = ReactCompatMixin.keyword.action
         return text.find(marker) if marker in text else None
 
-    def _scan(self, text: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+    def _scan(self, text: str,
+              tools: Optional[Iterable[Dict[str, Any]]] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
         text = text or ""
         try:
-            functions = self.agent.get_toolcall(text)
+            # Only schema-aware formats receive tools; the rest keep their tools-free signature.
+            if self.agent.supports_tool_schema:
+                functions = self.agent.get_toolcall(text, tools=list(tools or ()))
+            else:
+                functions = self.agent.get_toolcall(text)
         except Exception as e:  # noqa: BLE001
             return [], [f"{type(e).__name__}: {e}"]
         calls = [

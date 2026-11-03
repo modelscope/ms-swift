@@ -127,7 +127,14 @@ def _filter_adapter_state_dict(state_dict: Dict[str, Any], peft_format: bool, ad
         state_dict_model = state_dict[model_key]
         for k, v in state_dict_model.items():
             if peft_format:
-                if '.lora_A.' in k or '.lora_B.' in k or '.modules_to_save.' in k:
+                adapter_modules = ('lora_A', 'lora_B', 'modules_to_save')
+                if any(f'.{module}.' in k for module in adapter_modules):
+                    if adapter_name != 'default':
+                        # A PEFT checkpoint stores the adapter under the `default` slot while the target
+                        # model looks its tensors up under `adapter_name`. Only the READ key (`v.key`) is
+                        # remapped; the state-dict key stays as the model expects it.
+                        for module in adapter_modules:
+                            v.key = v.key.replace(f'.{module}.{adapter_name}.', f'.{module}.default.')
                     new_state_dict[k] = v
             else:
                 if '.lora_A.' in k or '.lora_B.' in k or 'original_module.' in k:

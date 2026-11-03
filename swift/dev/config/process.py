@@ -405,16 +405,12 @@ def _derive_per_token_loss(model_config: 'ModelConfig', train_config: 'TrainConf
 
 def _derive_vit_gradient_checkpointing(train_config: 'TrainConfig',
                                        tuner_config: Optional['TunerConfig']) -> None:
-    """Checkpoint the vision tower unless it is frozen, matching the LLM tower (legacy sft_args:211).
-
-    Only fills in None; no TunerConfig (full-param) leaves the builder default.
-    """
-    if train_config.vit_gradient_checkpointing is not None or tuner_config is None:
+    """Follow the LLM tower's checkpointing; legacy keyed it off ``freeze_vit`` and lost it (#9945)."""
+    if train_config.vit_gradient_checkpointing is not None:
         return
-    freeze_vit = getattr(tuner_config, 'freeze_vit', None)
-    if freeze_vit is None:
+    if train_config.gradient_checkpointing is None:
         return
-    train_config.vit_gradient_checkpointing = not freeze_vit
+    train_config.vit_gradient_checkpointing = train_config.gradient_checkpointing
 
 
 def _derive_packing(dataset_config: 'DatasetConfig', template_config: 'TemplateConfig') -> None:
