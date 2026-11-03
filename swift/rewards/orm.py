@@ -152,6 +152,7 @@ class CosineReward(ORM):
     @staticmethod
     def cosfn(t, T, min_value, max_value):
         import math
+        t = min(t, T)  # cos is periodic; lengths above T keep the value at T
         return max_value - (max_value - min_value) * (1 - math.cos(t * math.pi / T)) / 2
 
     def __call__(self, completions, solution, **kwargs) -> List[float]:
@@ -228,7 +229,7 @@ class SoftOverlong(ORM):
             completion_length = sum(map(len, ids)) if ids and isinstance(ids[0], list) else len(ids)
             expected_len = self.soft_max_length - self.soft_cache_length
             exceed_len = completion_length - expected_len
-            rewards.append(min(-exceed_len / self.soft_cache_length, 0))
+            rewards.append(max(min(-exceed_len / self.soft_cache_length, 0), -1.0))
         return rewards
 
 
