@@ -138,6 +138,9 @@ class TrainConfig:
     full_determinism: bool = False
     use_liger_kernel: bool = False
     neftune_noise_alpha: Optional[float] = None
+    # Reorder each Ray slice_dp batch so the DP ranks get similar workloads (transformers backend);
+    # sample-mean losses train the same, only the wait for the slowest rank shrinks.
+    dp_balance: bool = True
 
     # === Training Strategy ===
     router_aux_loss_coef: float = 0.0

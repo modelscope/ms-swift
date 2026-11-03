@@ -66,6 +66,12 @@ def test_explicit_values_land_in_owning_configs():
     assert quantize.quant_method is None
 
 
+def test_dp_balance_is_on_by_default_and_can_be_turned_off():
+    base = ['--model', 'm', '--load_args', 'false', '--dataset', 'd']
+    assert parse_sft_configs(base)['train_config'].dp_balance is True
+    assert parse_sft_configs([*base, '--dp_balance', 'false'])['train_config'].dp_balance is False
+
+
 def test_mapping_annotations_parse_stably_after_other_typing_imports():
     import swift.rollout.gym_env  # noqa: F401 -- reproduces typing Union cache reordering
 
