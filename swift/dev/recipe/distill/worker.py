@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# Distillation's remote worker: the teacher forward and the per-mini-batch forward kwargs, in ONE actor.
+# Distillation's remote worker: the teacher forward and the per-update forward kwargs, in ONE actor.
 from __future__ import annotations
 
 from typing import Any, Dict, List, NamedTuple, Optional, Sequence
@@ -14,7 +14,7 @@ class DistillRow(NamedTuple):
     """One distillation training row: the student feature plus the context a teacher view needs.
 
     Uniform across both ``lmbda`` sources -- an on-policy rollout sample and an off-policy dataset
-    completion both reduce to ``(feature, messages, extra)`` -- so the loop's mini-batch split and
+    completion both reduce to ``(feature, messages, extra)`` -- so the loop's update grouping and
     the teacher scoring never branch on where a row came from.
     """
 
@@ -40,7 +40,7 @@ def response_ids_from_feature(feature: Dict[str, Any]) -> List[int]:
 
 @remote_class(execute='first')
 class DistillWorker:
-    """Build one mini-batch's ``forward_backward`` kwargs where the teacher signal is produced.
+    """Build one update's ``forward_backward`` kwargs where the teacher signal is produced.
 
     The teacher forward runs HERE (a CPU actor) so its heavy output never materialises in the
     driver: GKD's full-vocab logits and OPSD / MOPD's response-only logps are declared ``stash``
@@ -52,7 +52,7 @@ class DistillWorker:
                  disable_lora: bool = False, offload: bool = False,
                  placements: Optional[Sequence[str]] = None, gkd_logits_topk: Optional[int] = None,
                  sft_alpha: float = 0.0, teacher_weights: Optional[Sequence[float]] = None,
-                 train_batch_size: int = 1, gradient_accumulation_steps: int = 1):
+                 train_batch_size: int = 1):
         if signal not in ('logits', 'logps', 'multi_logps'):
             raise ValueError(f"distillation signal must be one of 'logits'/'logps'/'multi_logps', got {signal!r}.")
         self.teachers = list(teachers)
@@ -65,18 +65,20 @@ class DistillWorker:
         self.sft_alpha = sft_alpha
         self.teacher_weights = None if teacher_weights is None else list(teacher_weights)
         self.train_batch_size = max(1, train_batch_size)
-        self.ga = max(1, gradient_accumulation_steps)
 
     def _response_logps(self, scorer: Any, features: List[dict], *, disable_lora: bool = False) -> List[List[float]]:
         """Score ``features`` with ``forward_only`` -> one response-token logp list per feature.
 
-        The features ARE one mini-batch (``forward_kwargs`` builds the signal per mini), so one
+        The features form one update (``forward_kwargs`` builds its signals together), so one
         whole-batch call -- the dispatch splits it per rank -- is the whole story.
         """
         from swift.dev.utils.scoring import response_token_scores
 
         frame = scorer.forward_only(
-            inputs=features, **({'disable_lora': True} if disable_lora else {}))
+            inputs=features,
+            micro_batch_size=max(1, self.train_batch_size // scorer.device_mesh.data_world_size),
+            **({'disable_lora': True} if disable_lora else {}),
+        )
         return response_token_scores(frame, features)
 
     def _privileged_feature(self, row: DistillRow) -> dict:
@@ -91,10 +93,10 @@ class DistillWorker:
     @remote_function(dispatch='all', collect='none', lazy_collect=False,
                      stash=('teacher_logits', 'teacher_logps'))
     def forward_kwargs(self, rows: List[DistillRow], use_student: bool) -> Dict[str, Any]:
-        """One mini-batch's kwargs: student inputs plus the teacher signal in the ``signal`` form.
+        """One update's kwargs: student inputs plus the teacher signal in the ``signal`` form.
 
-        ``use_student`` is the round's on/off-policy flag -- only GKD reads it (``apply_sft_loss``
-        adds the supervised CE term to a dataset-sourced round); the logps forms score the same rows
+        ``use_student`` is the update's on/off-policy flag -- only GKD reads it (``apply_sft_loss``
+        adds the supervised CE term to a dataset-sourced update); the logps forms score the same rows
         either way.
         """
         from swift.dev.utils.scoring import copy_inputs
@@ -107,7 +109,9 @@ class DistillWorker:
             try:
                 logits = teacher.forward_only(
                     inputs=copy_inputs(features), return_logits=True,
-                    **({'disable_lora': True} if self.disable_lora else {}))['logits']
+                    micro_batch_size=max(1, self.train_batch_size // teacher.device_mesh.data_world_size),
+                    **({'disable_lora': True} if self.disable_lora else {}),
+                )['logits']
             finally:
                 if self.offload:
                     teacher.offload_to_cpu()
@@ -124,14 +128,16 @@ class DistillWorker:
             }
         else:
             # K response-only channels, overlapped across disjoint placements, plus the mixture weights.
+            # A dict keeps the teacher axis separate from DP/micro-batch slicing of each sample channel.
             tasks = [(self.placements[index],
                       lambda index=index: self._response_logps(self.teachers[index], features))
                      for index in range(len(self.teachers))]
-            signal_kwargs = {'teacher_logps': _run_grouped(tasks)}
+            signal_kwargs = {'teacher_logps': dict(enumerate(_run_grouped(tasks)))}
             if self.teacher_weights is not None:
-                signal_kwargs['teacher_weights'] = self.teacher_weights
+                # Mixture weights are global scalars; tuples are broadcast by DP dispatch.
+                signal_kwargs['teacher_weights'] = tuple(self.teacher_weights)
         return {
             'inputs': copy_inputs(features),
-            'gradient_accumulation_steps': self.ga,
+            'gradient_accumulation_steps': 1,
             **signal_kwargs,
         }

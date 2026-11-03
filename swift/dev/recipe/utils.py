@@ -299,10 +299,12 @@ def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
             consumed_train_samples=consumed_train_samples)
         return getattr(response, 'twinkle_path', name)
 
+    component_states = dict(component_states or {})
+    component_states["training"] = {"micro_step": handler.state.micro_step}
     save_training_checkpoint(
         model, name, output_dir=knobs.output_dir,
         consumed_train_samples=consumed_train_samples,
-        component_states=component_states or {},
+        component_states=component_states,
         no_save_optim=knobs.no_save_optim,
         no_save_rng=knobs.no_save_rng,
         safe_serialization=knobs.safe_serialization,
@@ -313,7 +315,8 @@ def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
         async_save=knobs.async_save and not is_final,
         # A background writer may still be flushing shards; only the synchronous saves can
         # be re-quantized in place.
-        requantize_source=requantize_source if (is_final or not knobs.async_save) else None)
+        requantize_source=requantize_source if (is_final or not knobs.async_save) else None,
+    )
     ckpt_dir = os.path.join(knobs.output_dir, name)
     if knobs.initial_adapter_dir is not None and is_main_process():
         # The portable form of a base-modifying adapter: fold the init factor back out, so a
@@ -376,33 +379,19 @@ def _restore_training(model: Any, checkpoint_config: Optional['CheckpointConfig'
     return model.resume_from_checkpoint(path, **resume_kwargs)
 
 
-def _seed_counters(state: dict, *, gradient_accumulation_steps: int, dataloader: Any,
-                   ignore_data_skip: bool) -> Tuple[int, int, int]:
-    """Seed the loop counters + dataloader position from a restored trainer_state.
+def training_progress(state: dict) -> Tuple[int, int]:
+    """Read completed optimizer updates and an optional micro-batch statistic."""
+    global_step = int(state.get("cur_step", 0))
+    progress = state.get("component_states", {}).get("training", {})
+    return global_step, int(progress.get("micro_step", 0))
 
-    ``micro_step`` mirrors twinkle's ``cur_step`` so the grad-sync phase stays aligned,
-    ``global_step`` is derived from it (single source), and the dataloader either loads its
-    component state or skips to the consumed offset. Returns ``(global_step, micro_step,
-    start_epoch)``; a ``dataloader=None`` (prompt-stream) run always seeds ``(n, n, 0)``.
-    """
 
-    cur_step = int(state['cur_step'])
-    micro_step = cur_step
-    global_step = num_optimizer_steps(cur_step, gradient_accumulation_steps)
-    if 'component_states' in state:
-        component_states = state['component_states']
-        if not isinstance(component_states, dict):
-            raise TypeError('checkpoint component_states must be a dict.')
-        if not ignore_data_skip and dataloader is not None and 'dataloader' in component_states:
-            load_state = getattr(dataloader, 'load_state', None)
-            if load_state is None:
-                raise TypeError('the dataloader does not implement load_state().')
-            load_state(component_states['dataloader'])
-    elif not ignore_data_skip and dataloader is not None:
-        # Compatibility with checkpoints written before component_states existed.
-        skip = getattr(dataloader, 'skip_consumed_samples', None)
-        if skip is not None:
-            skip(int(state.get('consumed_train_samples', 0)))
+def _seed_counters(state: dict, *, dataloader: Any, ignore_data_skip: bool) -> Tuple[int, int, int]:
+    """Restore update/micro counters and the independent dataloader position."""
+    global_step, micro_step = training_progress(state)
+    component_states = state.get('component_states', {})
+    if not ignore_data_skip and dataloader is not None and 'dataloader' in component_states:
+        dataloader.load_state(component_states['dataloader'])
     if ignore_data_skip or dataloader is None:
         return global_step, micro_step, 0
     get_state = getattr(dataloader, 'get_state', None)
@@ -414,20 +403,18 @@ def resume_training(model: Any, *, checkpoint_config: Optional['CheckpointConfig
                     distributed_config: 'DistributedConfig',
                     megatron_config: Optional['MegatronConfig'],
                     tuner_config: Optional['TunerConfig'],
-                    gradient_accumulation_steps: int, dataloader: Any = None,
+                    dataloader: Any = None,
                     ignore_data_skip: bool = False) -> Tuple[int, int, int]:
     """Restore the trainable model, then seed the loop counters and the data position.
 
     Returns ``(global_step, micro_step, start_epoch)``. The offline family passes its dataloader
-    (its component state reloads, or it skips to the consumed offset); a prompt-stream run passes
+    (its saved component state restores the read position); a prompt-stream run passes
     ``None`` and always gets ``start_epoch`` 0.
     """
     state = _restore_training(model, checkpoint_config, distributed_config, megatron_config, tuner_config)
     if not state:
         return 0, 0, 0
-    return _seed_counters(
-        state, gradient_accumulation_steps=gradient_accumulation_steps, dataloader=dataloader,
-        ignore_data_skip=ignore_data_skip)
+    return _seed_counters(state, dataloader=dataloader, ignore_data_skip=ignore_data_skip)
 
 
 def _log_line(record: dict, loss: float) -> str:
@@ -521,13 +508,9 @@ class StepState:
         self.epoch = 0
         self.best_metric: Optional[float] = None
         self.history: List[dict] = []
+        self._output_dir = output_dir
         self.tracker = RunTracker(logging_config, output_dir)
         self.handler = CallbackHandler(build_callbacks(train_config), output_dir=output_dir)
-
-    def is_grad_sync_boundary(self) -> bool:
-        """Whether the current ``micro_step`` closes an optimizer window."""
-
-        return is_grad_sync_boundary(self.micro_step, self.ga)
 
     def reached_max(self) -> bool:
         return self.max_steps > 0 and self.global_step >= self.max_steps
@@ -592,7 +575,23 @@ class StepState:
                     else _log_line(record, loss))
             logger.info(line)
             self.handler.on_log(logs=record)
+            self._write_metrics_jsonl(record)
         return record
+
+    def _write_metrics_jsonl(self, record: Dict[str, Any]) -> None:
+        """Append the step record as one JSON line to ``<output_dir>/metrics.jsonl``.
+
+        The machine-readable curve source for monitors (the webui tail-loads it instead of
+        parsing the console line); main-process only, best-effort: a metrics write must
+        never kill a training step.
+        """
+        if not is_main_process():
+            return
+        try:
+            with open(os.path.join(self._output_dir, 'metrics.jsonl'), 'a') as f:
+                f.write(json.dumps(record, default=str) + '\n')
+        except OSError:
+            logger.debug('metrics.jsonl write failed', exc_info=True)
 
     def should_stop(self) -> bool:
         """Whether a callback (early stop / graceful exit) asked the loop to break."""
@@ -632,20 +631,39 @@ class StepState:
 
 def rollout_step_budget(*, num_prompts: int, num_generations: int, train_batch_size: int,
                         gradient_accumulation_steps: int, num_train_epochs: float,
-                        generation_batch_size: Optional[int] = None, num_iterations: int = 1) -> int:
-    """Optimizer steps for ``num_train_epochs`` passes over the prompt set (the scheduler horizon).
+                        generation_batch_size: Optional[int] = None,
+                        num_iterations: int = 1,
+                        streaming: bool = False,
+                        group_pull: bool = False) -> int:
+    """Count full optimizer updates after dropping unusable rollout samples.
 
-    Each generation batch rolls out ``batch_size * num_generations`` completions, splits into full
-    ``train_batch_size`` mini-batches (an undersized tail is dropped), and replays them
-    ``num_iterations`` times. Returns 0 when a generation batch cannot fill even one mini-batch.
+    ``train_batch_size`` is B * DP, so GBS = train_batch_size * gradient_accumulation_steps.
+    Each generation batch repeats ``num_iterations`` times before its last incomplete update
+    is dropped. With ``streaming``, the driver combines generation batches and drops its own
+    delivery tail before replay; ``group_pull`` additionally requires whole generation groups.
     """
-
-    batch_size = min(generation_batch_size or num_prompts, num_prompts)
-    batches_per_epoch = math.ceil(num_prompts / batch_size)
+    # Count the samples actually generated by each batch, including smaller epoch tails.
+    prompt_batch_size = min(generation_batch_size or num_prompts, num_prompts)
+    batches_per_epoch = math.ceil(num_prompts / prompt_batch_size)
     total_batches = max(1, math.ceil(num_train_epochs * batches_per_epoch))
-    mini_batches = (batch_size * num_generations) // max(1, train_batch_size)
-    micro_per_batch = mini_batches * max(1, num_iterations)
-    return num_optimizer_steps(micro_per_batch * total_batches, gradient_accumulation_steps)
+    sample_counts = []
+    for batch_index in range(total_batches):
+        batch_in_epoch = batch_index % batches_per_epoch
+        remaining_prompts = num_prompts - batch_in_epoch * prompt_batch_size
+        actual_prompt_count = min(prompt_batch_size, remaining_prompts)
+        sample_counts.append(actual_prompt_count * num_generations)
+
+    global_batch_size = train_batch_size * gradient_accumulation_steps
+    # The driver drops before delivery. Colocate instead drops after replaying each batch.
+    if streaming:
+        alignment = math.lcm(global_batch_size, num_generations) if group_pull else global_batch_size
+        sample_counts = [(sum(sample_counts) // alignment) * alignment]
+
+    optimizer_steps = 0
+    for num_samples in sample_counts:
+        optimizer_steps += (num_samples * max(1, num_iterations)) // global_batch_size
+
+    return optimizer_steps
 
 
 def resolve_rollout_max_steps(explicit_max_steps: int, budget: int, *, recipe: str) -> int:
@@ -654,9 +672,9 @@ def resolve_rollout_max_steps(explicit_max_steps: int, budget: int, *, recipe: s
         return explicit_max_steps
     if budget <= 0:
         raise ValueError(
-            f'{recipe}: derived {budget} training steps -- a generation batch cannot fill one '
-            'train_batch_size (per_device_train_batch_size * dp_size) mini-batch. Enlarge the prompt '
-            'dataset or num_generations, lower per_device_train_batch_size / the DP world size, or set '
+            f"{recipe}: derived {budget} training steps -- the rollout data cannot form an optimizer "
+            "update under the configured training batch size and gradient accumulation policy. "
+            "Enlarge the dataset, generation batch or num_generations, lower the training batch size or GA, or set "
             '--max_steps explicitly.')
     return budget
 
@@ -1083,22 +1101,16 @@ def resolve_step_intervals(train_config: 'TrainConfig',
 
 
 def plan_supervised_steps(recipe: str, train_config: 'TrainConfig', dataloader: Any) -> int:
-    """The optimizer-step budget, with the zero-step fail-fast.
-
-    ``N <= ga`` micro-batches yield 0 optimizer steps (the GA gate lags one step, so a dataset that
-    never fills a full lagged window would run forward/backward but NEVER update the model); rather
-    than silently run a no-op training, fail with an actionable message. Runs BEFORE build_model so
-    we fail before loading heavy weights.
-    """
-
+    """Count optimizer updates, including an epoch's final group of fewer than GA batches."""
     if train_config.max_steps and train_config.max_steps > 0:
         return train_config.max_steps
+    ga = max(1, train_config.gradient_accumulation_steps)
     try:
         micro_per_epoch = len(dataloader)  # micro-batches (already /batch_size) per epoch
-    except TypeError:
+    except (TypeError, NotImplementedError):
         micro_per_epoch = 0  # IterableDataset: caller must set max_steps
-    total_micro = math.ceil(micro_per_epoch * train_config.num_train_epochs)
-    total_opt_steps = num_optimizer_steps(total_micro, train_config.gradient_accumulation_steps)
+    steps_per_epoch = math.ceil(micro_per_epoch / ga)
+    total_opt_steps = math.ceil(steps_per_epoch * train_config.num_train_epochs)
     if total_opt_steps <= 0:
         raise ValueError(
             f'{recipe}: computed {total_opt_steps} optimizer steps -- the dataloader is too small for '
@@ -1189,39 +1201,6 @@ def filter_perf_actors(candidates: Dict[str, Any]) -> Dict[str, Any]:
     return {label: handle for label, handle in candidates.items() if handle is not None and hasattr(handle, 'perf_on')}
 
 
-def backend_owns_gradient_accumulation(model) -> bool:
-    """True when the backend's ``forward_backward`` internalizes gradient accumulation.
-
-    fit() forks on exactly one axis: who schedules the GA micro-steps. Most backends (transformers) leave
-    it to the loop -- one micro-batch per ``forward_backward``, the optimizer stepped every ga-th call. A
-    backend that owns its own micro-batch schedule needs the loop to instead group the ga batches and call
-    ``forward_backward`` once per optimizer step; in dev that is Megatron, whose 1F1B pipeline derives GA
-    from the length of the micro-batch LIST it is handed. A future such backend (e.g. torchtitan/veomni
-    running pipeline parallelism) is recognized HERE, so the dispatch stays a two-way fork on this
-    capability rather than growing a branch per backend name.
-    """
-    try:
-        from twinkle.model.megatron import MegatronModel
-    except Exception:
-        return False
-    return isinstance(model, MegatronModel)
-
-
-def is_grad_sync_boundary(micro_step: int, gradient_accumulation_steps: int) -> bool:
-    """Whether ``micro_step`` is an optimizer-update boundary, computed driver-side.
-
-    Replicates twinkle's ``OptimizerGroup.do_grad_sync`` (a pure function of ``cur_step`` and the
-    accumulation size: boundary when ga==1, else one micro-step late at cur_step = ga+1, 2ga+1, ...) using
-    the loop's own ``micro_step`` as ``cur_step``, which the loops advance once per ``forward_backward`` and
-    ``resume()`` keeps aligned. It is a module-level helper rather than a read of ``model.optimizer_group``
-    because that group lives on the WORKERS: under Ray the driver-side model is a proxy with no such
-    attribute, so both the in-process transformers loop and the Ray-remote loops (SFT/GRPO/RFT) must derive
-    the boundary here instead of reaching into the proxy.
-    """
-    ga = gradient_accumulation_steps
-    return ga == 1 or ((micro_step - 1) % ga == 0 and micro_step > 1)
-
-
 def flatten_evalscope_report(summary: Any) -> Dict[str, float]:
     """Flatten EvalScope report rows into a ``{metric_name: score}`` dict.
 
@@ -1244,7 +1223,8 @@ def flatten_evalscope_report(summary: Any) -> Dict[str, float]:
 
 def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_gc: bool,
                   manual_gc_eval: bool, micro_step_kwargs: Callable[..., Dict[str, Any]],
-                  global_step: int) -> Optional[dict]:
+                  global_step: int,
+                  micro_batch_size: int = 1) -> Optional[dict]:
     """Val-loss eval: the normalized per-token loss over eval_dataloader (None if there is none).
 
     Mirrors the train metric path on the eval side: each val batch runs ``forward_only`` (no grad)
@@ -1260,7 +1240,7 @@ def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_g
     for index, batch in enumerate(eval_dataloader):
         if eval_iters > 0 and index >= eval_iters:
             break
-        model.forward_only(**micro_step_kwargs(batch, owns_ga=True))
+        model.forward_only(**micro_step_kwargs(batch, micro_batch_size=micro_batch_size))
         try:
             model.calculate_loss()
         except NotImplementedError:
@@ -2011,3 +1991,76 @@ def single_teacher_id(teacher_model: Optional[List[str]], *, algo: str) -> Optio
                          f'{len(teacher_model)} entries ({list(teacher_model)}); pass exactly one, or use '
                          '--rl_type mopd to distil from multiple teachers.')
     return teacher_model[0]
+
+
+def optimizer_batch_slices(num_samples: int, train_batch_size: int, ga: int):
+    """Yield full GA update windows, dropping samples that cannot fill one GBS."""
+    update_batch_size = train_batch_size * ga
+    usable = (num_samples // update_batch_size) * update_batch_size
+    for start in range(0, usable, update_batch_size):
+        yield start, start + update_batch_size
+
+
+def grouped_training_batches(dataloader: Any, ga: int):
+    """Yield concatenated samples and their dataloader batch count, keeping the final shorter group."""
+    group, count = [], 0
+    for batch in dataloader:
+        group.extend(batch)
+        count += 1
+        if count == ga:
+            yield group, count
+            group, count = [], 0
+    if group:
+        # trailing partial group
+        yield group, count
+
+
+def fit_supervised(
+    state: StepState,
+    dataloader: Any,
+    train_config: "TrainConfig",
+    *,
+    start_epoch: int,
+    update_step: Callable[[list], None],
+) -> None:
+    """Run the shared epoch/update cadence; the model owns every micro-batch schedule."""
+    epochs = math.ceil(train_config.num_train_epochs) if state.max_steps <= 0 else 10**9
+    for epoch in range(start_epoch, epochs):
+        if state.reached_max() or state.should_stop():
+            break
+        state.epoch = epoch
+        # Reshuffle each epoch (twinkle's EpochSampler derives each epoch's order from its
+        # number, and only set_epoch advances it); resume replays it the same way.
+        if hasattr(dataloader, "set_epoch"):
+            dataloader.set_epoch(epoch)
+        state.publish_state()
+        state.handler.on_epoch_begin()
+        updates = 0
+        for group, batch_count in grouped_training_batches(dataloader, state.ga):
+            state.micro_step += batch_count
+            update_step(group)
+            updates += 1
+            if state.reached_max() or state.should_stop():
+                break
+        resumed_tail = epoch == start_epoch and state.global_step > 0
+        if not updates and not resumed_tail and not state.reached_max() and not state.should_stop():
+            raise ValueError(f"Epoch {epoch} yielded no training batches; no optimizer update is possible.")
+        state.publish_state()
+        state.handler.on_epoch_end()
+        if state.history:
+            state.tracker.log(state.history[-1], state.global_step, epoch_end=True)
+        if state.should_stop():
+            break
+
+
+def save_final_checkpoint(model: Any, save: Callable[..., str], *, enabled: bool) -> Optional[str]:
+    """Flush asynchronous writes before the optional synchronous final checkpoint."""
+    if enabled:
+        # The final save is synchronous, and its args.json must land after every earlier
+        # checkpoint's background write finished. The remote handle has no background writer
+        # (each client save blocks to the terminal state), so the wait is a no-op there.
+        wait_async = getattr(model, "wait_async_saves", None)
+        if callable(wait_async):
+            wait_async()
+        return save("checkpoint-final", is_final=True)
+    return None

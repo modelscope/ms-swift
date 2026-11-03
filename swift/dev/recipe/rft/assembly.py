@@ -129,7 +129,7 @@ def initialize_rft_cluster(
         apply_tuner(
             model,
             tuner_config,
-            gradient_accumulation_steps=train_config.gradient_accumulation_steps,
+            gradient_accumulation_steps=1,
             task_type=model_config.task_type,
         )
     else:

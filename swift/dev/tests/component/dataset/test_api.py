@@ -419,6 +419,8 @@ class TestDropLast:
     once an epoch boundary fell mid-run that put dev a full step behind legacy for the rest of the run
     (measured on a 50-step dense.sh comparison: 500 samples at global_batch_size 16 = 31.25
     steps/epoch, and from step 32 on cli[i] matched legacy[i-1], not legacy[i]).
+
+    Micro-batch tails follow this policy independently of the number of GA batches.
     """
 
     def _dc(self, **kw):
@@ -429,19 +431,29 @@ class TestDropLast:
         from swift.dev.builders.dataset import _drop_last
         assert _drop_last(self._dc(backend='megatron', mode='local'), ) is True
 
-    def test_megatron_ray_also_drops_remainder(self):
+    def test_megatron_ray_drops_remainder(self):
         from swift.dev.builders.dataset import _drop_last
 
         # The global-batch invariant holds regardless of who performs the DP scatter, so ray mode
         # must not differ from local here (unlike _twinkle_loader_layout, which does).
-        assert _drop_last(self._dc(backend='megatron', mode='ray'), ) is True
+        assert (
+            _drop_last(
+                self._dc(backend='megatron', mode='ray'),
+            )
+            is True
+        )
 
-    def test_hf_train_keeps_remainder(self):
+    def test_hf_train_does_not_drop_remainder(self):
         from swift.dev.builders.dataset import _drop_last
 
         # legacy defers to TrainingArguments.dataloader_drop_last, whose default is False. Flipping
         # this globally would silently discard training samples on the transformers path.
-        assert _drop_last(self._dc(backend='hf', mode='local'), ) is False
+        assert (
+            _drop_last(
+                self._dc(backend='hf', mode='local'),
+            )
+            is False
+        )
 
     def test_megatron_eval_also_drops_matching_legacy(self):
         from swift.dev.builders.dataset import _drop_last
@@ -458,12 +470,12 @@ class TestDropLast:
         from swift.dev.builders.dataset import _drop_last
 
         # Unchanged on the transformers path: legacy defers to dataloader_drop_last (default False).
-        assert _drop_last(self._dc(backend='hf', mode='local'), ) is False  # eval keeps the remainder too
+        assert _drop_last(self._dc(backend='hf', mode='local')) is False  # eval keeps the remainder too
 
     @patch('twinkle.dataloader.DataLoader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')
     @patch('swift.dev.dataset.load_dataset')
-    def test_build_dataset_forwards_drop_last_per_backend(self, mock_load, _enc, mock_dl):
+    def test_build_dataset_forwards_drop_last_per_split(self, mock_load, _enc, mock_dl):
         """The policy is worthless if build_dataset does not actually pass it down.
 
         Guards the wiring, which is exactly what was missing before: the factory default (False)
@@ -471,15 +483,43 @@ class TestDropLast:
         """
         from swift.dev.builders.dataset import build_dataset
         from swift.dev.config import DatasetConfig, DistributedConfig, TrainConfig
-        for backend, expected in (('megatron', True), ('hf', False)):
-            mock_load.return_value = (make_mock_dataset(10), None)
+
+        for backend in ('megatron', 'hf'):
+            mock_dl.reset_mock()
+            mock_load.return_value = (make_mock_dataset(10), make_mock_dataset(3))
             # nproc_per_node is mandatory on the Megatron path (build_device_mesh fails fast without
             # it); harmless on hf, so pass it for both to keep the two cases symmetric.
             build_dataset(
                 DatasetConfig(dataset=['d']), make_mock_template(), TrainConfig(),
-                DistributedConfig(backend=backend, mode='local', nproc_per_node=1))
-            assert mock_dl.call_args.kwargs['drop_last'] is expected, \
-                f'backend={backend} should pass drop_last={expected}'
+                DistributedConfig(backend=backend, mode='local', nproc_per_node=1),
+            )
+            train_call, eval_call = mock_dl.call_args_list
+            assert train_call.kwargs['drop_last'] is (backend == "megatron")
+            assert eval_call.kwargs["drop_last"] is (backend == "megatron")
+
+    @pytest.mark.parametrize(
+        "backend,mode,dp,count",
+        [
+            ("hf", "local", 1, 10),
+            ("megatron", "local", 1, 10),
+            ("megatron", "ray", 2, 18),
+        ],
+    )
+    def test_dataset_size_need_not_be_a_multiple_of_ga(self, backend, mode, dp, count):
+        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.config import DatasetConfig, DistributedConfig, TrainConfig
+
+        with patch("swift.dev.dataset.load_dataset", return_value=(make_mock_dataset(count), None)), patch(
+            "twinkle.dataloader.DataLoader"
+        ) as loader:
+            build_dataset(
+                DatasetConfig(dataset=["d"]),
+                make_mock_template(),
+                TrainConfig(per_device_train_batch_size=2, gradient_accumulation_steps=4),
+                DistributedConfig(backend=backend, mode=mode, nproc_per_node=dp),
+                encode=False,
+            )
+            loader.assert_called_once()
 
 
 # === TestShardedBatchSampler (DP semantics of the twinkle dataloader's per-rank slicing) ===

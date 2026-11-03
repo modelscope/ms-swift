@@ -50,7 +50,7 @@ def base_declaration():
         node('loss_n', 'loss', {'kind': 'grpo'}),
         node('loss_q', 'loss', {'kind': 'cross_entropy'}),
         node('scorer', 'scorer', {'kind': 'math'}),
-        node('driver', 'streaming_driver'),
+        node('driver', 'streaming_driver', {'tokenizer': 'tiny/test'}),
         node('score', 'score'),
         node('adv', 'advantage'),
         node('train', 'train_step', {'tokenizer': MODEL_ID}),
@@ -60,7 +60,7 @@ def base_declaration():
     ]
     edges = [
         edge('e2', 'ds', 'data', 'loader', 'data'),
-        edge('e1', 'loader', 'batch', 'driver', 'prompts'),
+        edge('e1', 'loader', 'source', 'driver', 'prompts'),
         edge('e3', 'smp', 'sampler', 'driver', 'engine', slot='smp'),
         edge('e_s', 'scorer', 'scorer', 'score', 'scorers', slot='scorer'),
         edge('e4', 'driver', 'samples', 'score', 'samples'),
@@ -131,7 +131,7 @@ def v3_declaration():
         node('policy', 'model', {'model': MODEL_ID, 'mode': 'ray'}),
         node('smp', 'sampler', {'model': MODEL_ID, 'mode': 'ray'}),
         node('ds', 'dataset', {'dataset': ['AI-ModelScope/gsm8k']}),
-        node('driver', 'streaming_driver'),
+        node('driver', 'streaming_driver', {'tokenizer': 'tiny/test'}),
         node('score', 'score', {'scorer': 'math', 'scorer_kwargs': {}}),
         node('adv', 'advantage'),
         node('train', 'train_step', {'tokenizer': MODEL_ID, 'loss': 'grpo', 'loss_kwargs': {}}),

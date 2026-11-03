@@ -2,6 +2,7 @@
 # PPO's visible training main: five segments, then ONE loop body picked by placement.
 from __future__ import annotations
 
+import math
 import os
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
@@ -12,7 +13,7 @@ from swift.dev.utils.logger import get_logger
 from swift.dev.recipe.ppo.assembly import (
     Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests)
 from swift.dev.recipe.utils import (
-    StepState, build_save_knobs, collect, initialize_rl_devices, prompt_rows_from_dataset,
+    StepState, build_save_knobs, collect, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
     resolve_rollout_max_steps, resume_training, rollout_step_budget, save_training_step,
     snapshot_initial_adapter)
 
@@ -86,42 +87,54 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
                      values: List[List[float]], old_logps: List[List[float]], *,
                      train_batch_size: int, temperature: float, ema_manager: Any,
                      save: Callable[[str], Any]) -> int:
-    """Train one pull on BOTH models over the mini-batches x ``num_ppo_epochs`` replays.
+    """Repeat one pull continuously, then drop only the final incomplete optimizer batch.
 
-    Each mini-batch steps the policy (the clipped surrogate: advantages + old_logps) and then the
+    Each update steps the policy (the clipped surrogate: advantages + old_logps) and then the
     critic (the clipped value loss: ``task='value'`` + returns + old_values) within the SAME
-    micro-step; the GAE anchors stay fixed across every replay (PPO's batch re-use). Returns the
+    update; the GAE anchors stay fixed across every replay (PPO's batch re-use). Returns the
     optimizer steps actually run.
     """
     model = cluster.model
     value_model = cluster.value_model
+    update_batch_size = train_batch_size * state.ga
+    total_samples = len(samples) * max(1, rl_config.num_ppo_epochs)
+    dropped = total_samples % update_batch_size
+    if dropped:
+        logger.warning(
+            f"Dropping {dropped} PPO sample occurrences from the final replay tail "
+            f"that cannot fill an optimizer batch of {update_batch_size}."
+        )
     optimizer_steps = 0
-    for _ in range(max(1, rl_config.num_ppo_epochs)):
-        for lo in range(0, len(samples) - train_batch_size + 1, train_batch_size):
-            hi = lo + train_batch_size
-            mini = [sample.encoded for sample in samples[lo:hi]]
-            state.micro_step += 1
-            model.forward_backward(
-                inputs=mini, gradient_accumulation_steps=state.ga, temperature=temperature,
-                advantages=advantages[lo:hi], old_logps=old_logps[lo:hi])
-            boundary = state.is_grad_sync_boundary()
-            model.clip_grad_and_step(
-                max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=state.ga)
-            value_model.forward_backward(
-                inputs=mini, gradient_accumulation_steps=state.ga,
-                task='value', returns=returns[lo:hi], old_values=values[lo:hi])
-            value_model.clip_grad_and_step(
-                max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=state.ga)
-            if boundary:
-                state.record()
-                optimizer_steps += 1
-                if ema_manager is not None and state.global_step % rl_config.ref_model_sync_steps == 0:
-                    ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
-                state.step_tail(save=save)
-                if state.reached_max() or state.should_stop():
-                    break
+    micro_batch_size = train_batch_size // model.device_mesh.data_world_size
+    for lo, hi in optimizer_batch_slices(total_samples, train_batch_size, state.ga):
         if state.reached_max() or state.should_stop():
             break
+        indices = [index % len(samples) for index in range(lo, hi)]
+        inputs = [samples[index].encoded for index in indices]
+        state.micro_step += (hi - lo) // train_batch_size
+        model.forward_backward(
+            inputs=inputs,
+            gradient_accumulation_steps=1,
+            micro_batch_size=micro_batch_size,
+            temperature=temperature,
+            advantages=[advantages[index] for index in indices],
+            old_logps=[old_logps[index] for index in indices],
+        )
+        model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+        value_model.forward_backward(
+            inputs=inputs,
+            gradient_accumulation_steps=1,
+            micro_batch_size=micro_batch_size,
+            task='value',
+            returns=[returns[index] for index in indices],
+            old_values=[values[index] for index in indices],
+        )
+        value_model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+        state.record()
+        optimizer_steps += 1
+        if ema_manager is not None and state.global_step % rl_config.ref_model_sync_steps == 0:
+            ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
+        state.step_tail(save=save)
     return optimizer_steps
 
 
@@ -138,6 +151,8 @@ def _colocate_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'Rewa
     entered = False
     try:
         for batch_rows in dataloader:
+            if state.reached_max() or state.should_stop():
+                break
             # borrow the device: wake the sampler's weights so the sync has somewhere to write,
             # sync the trained policy in, step BOTH trainers aside, wake ONLY the kv cache.
             from swift.dev.recipe.offload import wake_for_rollout
@@ -276,6 +291,28 @@ def _ppo_log_line(record: Dict[str, Any], loss: float) -> str:
     return '  '.join(parts)
 
 
+def _ppo_extra_metrics(cluster, reward_metric, _versions_cell) -> Dict[str, Any]:
+    """The critic's namespaced metrics + the batch's reward aggregate and version spans."""
+    extra: Dict[str, Any] = {}
+    for key, value in (cluster.value_model.calculate_metric(is_training=True) or {}).items():
+        if key == "loss":
+            extra["value_loss"] = value
+        elif key == "grad_norm":
+            extra["value_grad_norm"] = value
+        else:
+            extra[key] = value
+    extra.update(reward_metric.calculate())
+    if _versions_cell:
+        extra.update(
+            {
+                "partial_ratio": sum(1 for span in _versions_cell if span > 0) / len(_versions_cell),
+                "max_partial_span": max(_versions_cell),
+                "version_span_mean": sum(_versions_cell) / len(_versions_cell),
+            }
+        )
+    return extra
+
+
 def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
             dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
             distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
@@ -307,13 +344,16 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
+    generation_batch_size = rollout_config.generation_batch_size
     budget = rollout_step_budget(
         num_prompts=len(prompts), num_generations=rl_config.num_generations,
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
-        num_train_epochs=train_config.num_train_epochs,
-        generation_batch_size=rollout_config.generation_batch_size,
-        num_iterations=max(1, rl_config.num_ppo_epochs))
+        num_train_epochs=math.ceil(train_config.num_train_epochs) if rollout_config.sampler_mode != "colocate" else 1,
+        generation_batch_size=generation_batch_size,
+        num_iterations=rl_config.num_ppo_epochs,
+        streaming=rollout_config.sampler_mode != "colocate",
+    )
     max_steps = resolve_rollout_max_steps(train_config.max_steps, budget, recipe='run_ppo')
     # segment 3: the cluster -- policy, critic, frozen reference, reward channel, built explicitly.
     cluster = initialize_ppo_cluster(
@@ -332,28 +372,14 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=train_config.seed,
         shuffle=dataset_config.train_dataloader_shuffle,
-        batch_size=(rollout_config.generation_batch_size or len(prompts)))
+        batch_size=(generation_batch_size or len(prompts)),
+    )
     reward_metric = CompletionRewardMetric()
     _versions_cell: List[List[int]] = []
 
     def _extra_metrics() -> Dict[str, Any]:
         """The critic's namespaced metrics + the batch's reward aggregate and version spans."""
-        extra: Dict[str, Any] = {}
-        for key, value in (cluster.value_model.calculate_metric(is_training=True) or {}).items():
-            if key == 'loss':
-                extra['value_loss'] = value
-            elif key == 'grad_norm':
-                extra['value_grad_norm'] = value
-            else:
-                extra[key] = value
-        extra.update(reward_metric.calculate())
-        if _versions_cell:
-            extra.update({
-                'partial_ratio': sum(1 for span in _versions_cell if span > 0) / len(_versions_cell),
-                'max_partial_span': max(_versions_cell),
-                'version_span_mean': sum(_versions_cell) / len(_versions_cell),
-            })
-        return extra
+        return _ppo_extra_metrics(cluster, reward_metric, _versions_cell)
 
     state = StepState(
         cluster.model, train_config,
@@ -398,7 +424,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         state.global_step, state.micro_step, _ = resume_training(
             cluster.model, checkpoint_config=checkpoint_config, distributed_config=distributed_config,
             megatron_config=megatron_config, tuner_config=tuner_config,
-            gradient_accumulation_steps=train_config.gradient_accumulation_steps)
+        )
         # the critic reloads its own weights/optimizer from <resume>/value_model; its completed-step
         # count is cross-checked -- a mismatch means the two checkpoints came from different steps.
         value_kwargs = {'resume_only_model': checkpoint_config.resume_only_model}
@@ -439,7 +465,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         state.tracker.close()
     state.handler.on_train_end()
     if _save_final:
-        # the final checkpoint is synchronous on BOTH models; its args.json is written by
+        # The final checkpoint is synchronous on BOTH models; its args.json is written by
         # initialize_rl_devices' copy. The wait must pierce to the workers (decorated method).
         cluster.model.wait_async_saves()
         cluster.value_model.wait_async_saves()

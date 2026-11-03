@@ -102,7 +102,8 @@ class EvalTask(TaskComponent):
         template = None
         if sampler is not None:
             template = build_template_from(
-                str(self.params.get('tokenizer') or ''), None, self.node_id)
+                str(self.params.get('tokenizer') or ''), None, self.node_id,
+                model_kv=dict(self.params.get('model_config') or {}))
         if not isinstance(dataset, dict) or not getattr(dataset.get('config'), 'dataset', None):
             raise ComponentError(f'{self.node_id}: eval needs a wired DATASET (its dataset id)')
         datasets = [str(name) for name in dataset['config'].dataset]

@@ -57,6 +57,7 @@ def validate_configs(
     _check_data_sharding(dataset_config)
     _check_streaming(dataset_config)
     _check_backend_specific(model_config, dataset_config, train_config, distributed_config, is_megatron, tuner_config)
+    _check_dynamic_batching(train_config, rl_config, is_megatron)
     _check_galore(train_config, tuner_config)
     _check_param_groups(tuner_config)
     _check_unsloth_strategy(distributed_config, template_config)
@@ -103,6 +104,19 @@ def validate_configs(
     # by _check_rlhf_sequence_parallel above, so this early-returns for a non-None rl_config.
     _check_hf_sequence_parallel(
         model_config, template_config, dataset_config, distributed_config, is_megatron, rl_config)
+
+
+def _check_dynamic_batching(train_config: "TrainConfig", rl_config: Optional["RLConfig"], is_megatron: bool) -> None:
+    if not train_config.dynamic_batching:
+        return
+    if rl_config is None or rl_config.rl_type != "grpo":
+        raise ValueError("dynamic_batching is currently connected only to the GRPO recipe.")
+    if is_megatron:
+        raise ValueError("dynamic_batching requires the HF/Unsloth backend; Megatron uses fixed micro-batches.")
+    if train_config.max_tokens_per_micro_batch is None or train_config.max_tokens_per_micro_batch <= 0:
+        raise ValueError("max_tokens_per_micro_batch must be positive when dynamic_batching=True.")
+    if train_config.packing_algorithm not in ("ffd", "kk"):
+        raise ValueError("packing_algorithm must be ffd or kk.")
 
 
 def _changed_fields(config) -> list:

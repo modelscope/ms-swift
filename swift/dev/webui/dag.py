@@ -37,7 +37,7 @@ from __future__ import annotations
 import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ALL_COMPLETED, Future, ThreadPoolExecutor, wait
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set
 
 from .graph import FrameSpec, Graph
 
@@ -208,6 +208,18 @@ class DAGController:
 
     # -- control surface (any thread, immediate) -----------------------------
 
+    def reset_control(self) -> None:
+        """Clear leftover stop/pause requests from a PREVIOUS run.
+
+        Only the run's acceptance point may call this: a reset that runs after
+        acceptance (e.g. at the execution thread's entry) would silently wipe a
+        pause/stop that arrived in the acceptance window -- the request is
+        genuine for THIS run, not a leftover.
+        """
+        self._stop.clear()
+        self._paused.clear()
+        self._paused_emitted = False
+
     def pause(self) -> Dict[str, Any]:
         """Pause at the next node boundary: running nodes complete, no further
         node starts. The receipt is immediate; a ``paused`` event lands once
@@ -260,14 +272,16 @@ class DAGController:
         target -- or the target alone on a re-click. Frame target: turn the
         frame one circle (``steps`` extends the click to that many optimizer
         steps; one circle is the default).
+
+        The caller hands over a clean control plane (``reset_control`` runs at
+        the run's acceptance point, before any pause/stop for THIS run can
+        arrive); this entry never resets the flags itself -- a reset here would
+        swallow a request from the acceptance window.
         """
         target = target or (self.graph.order[-1] if self.graph.order else None)
         if target is None:
             raise DAGError('empty graph has nothing to run')
         self.graph.node(target)  # unknown target fails loudly here
-        self._stop.clear()
-        self._paused.clear()
-        self._paused_emitted = False
         frame = self.graph.training_frame(target)
         if frame is not None:
             receipt = self._run_frame_click(frame, steps=steps, observe=observe)
@@ -280,20 +294,20 @@ class DAGController:
 
         No ``target``: turn every frame circle after circle until the sources
         exhaust, pause or stop (loop-free tasks stay click-driven). A
-        ``target`` degenerates to one click on that node.
+        ``target`` degenerates to one click on that node. The control-plane
+        handover contract is ``run_component``'s (see its docstring).
         """
         if target:
             return self.run_component(target, steps=steps)
-        self._stop.clear()
-        self._paused.clear()
-        self._paused_emitted = False
         if not self.graph.frames:
             # A pure DAG runs to completion once: one click on the sink.
             return self._run_segment_click(self.graph.order[-1])
         participation = set().union(*(
-            self.graph.upstream_closure(node_id) for frame in self.graph.frames
+            self.graph.upstream_presence(node_id) for frame in self.graph.frames
             for node_id in frame.members))
-        self._emit_plan(participation)
+        self._emit_plan(
+            participation,
+            feedback=[edge_id for frame in self.graph.frames for edge_id in frame.feedback])
         rounds = 0
         completed = 0
         stalled: Dict[str, int] = {}
@@ -381,9 +395,12 @@ class DAGController:
                            '(cross-frame dependency cycle between frames)')
         self._turning.add(frame.id)
         try:
-            participation = set().union(*(self.graph.upstream_closure(node_id)
+            # Presence, not data closure: control-wired producers (a
+            # dataloader behind the driver's prompts port) extract no batch
+            # but must exist -- started and projected -- before members build.
+            participation = set().union(*(self.graph.upstream_presence(node_id)
                                           for node_id in frame.members))
-            self._emit_plan(participation)
+            self._emit_plan(participation, feedback=frame.feedback)
             self._prepare_round(participation)
             handle = self._source(source_id)
             if self._freshen_producers(frame, observe=observe):
@@ -408,6 +425,14 @@ class DAGController:
             if not observe and not stopped:
                 handle.commit(trained)
                 self._frame_rounds[frame.id] = self._frame_rounds.get(frame.id, 0) + 1
+                # The feedback CTRL edge fires with the round's acknowledgement:
+                # the consumers finished and the source may admit the next batch.
+                # It is never resolved through ``_inputs`` (a feedback edge is
+                # skipped there on purpose), so this is its only 'used' event --
+                # without it the frontend keeps the loop's back edge dimmed
+                # forever even though the circle really turned.
+                for edge_id in frame.feedback:
+                    self._event('edge', edge_id=edge_id, state='used')
             self._event('frame_progress', frame=frame.id,
                         rounds=self._frame_rounds.get(frame.id, 0),
                         optimizer_steps=trained, pending=handle.has_pending,
@@ -731,12 +756,13 @@ class DAGController:
             self._project_iterator(node_id)
 
     def _prepare_resources(self, participation: Set[str]) -> None:
-        """按已就绪依赖构建资源；CPU 构建与设备资源构建重叠。
+        """按已就绪依赖构建资源；无依赖关系的构建链（lane）彼此并行。
 
-        模型和采样器构建会修改进程级环境与加载上下文，仍在调用线程串行执行；
-        不把两个设备构建放进线程以共享这些临时状态。每个并行任务只写自己的
-        输出副本，资源依赖在上一轮完成后才可用。依赖 Stage 输出的资源留给
-        正常波次执行。"""
+        设备资源也在并行之列：在不相交 DeviceGroup 上创建 ray actor 是线程
+        安全的，而把模型构建串在 vllm 引擎构建之后会把两段墙钟时间相加而非
+        重叠（recipe 装配是重叠的）。绑定与懒导入仍在调用线程串行完成；
+        每个并行任务只写自己的输出副本，资源依赖在上一轮完成后才可用。
+        依赖 Stage 输出的资源留给正常波次执行。"""
         pending = [node_id for node_id in self.graph.order if node_id in participation
                    and node_id not in self._outputs
                    and self.graph.descriptor(node_id).lifecycle == 'Resource']
@@ -749,22 +775,14 @@ class DAGController:
             bindings = {node_id: self._resolve(node_id) for node_id in ready}
             self._prewarm_imports(bindings)
             lanes = self.graph.access_plan(ready)
-            device_lanes = []
-            cpu_lanes = []
-            for lane in lanes:
-                owners = set().union(*(self.graph.resource_owners(node_id)
-                                       for node_id in lane))
-                for node_id in lane:
-                    owners.update(f'{self.graph.descriptor(source).owner_kind}:{source}'
-                                  for source, _port in self.graph.scope_of(node_id).values())
-                destination = device_lanes if any(
-                    owner.startswith(('MODEL:', 'SAMPLER:')) for owner in owners) else cpu_lanes
-                destination.append(lane)
+            # Every lane is a dependency-independent chain, so the lanes build
+            # in parallel -- the device lanes too: creating ray actors on
+            # disjoint DeviceGroups is thread-safe, and serialising the model
+            # behind the vllm engine's build would add their wall-clocks
+            # instead of overlapping them (the recipe assemblies overlap).
             with ThreadPoolExecutor() as pool:
                 futures = [pool.submit(self._build_resource_lane, lane, bindings)
-                           for lane in cpu_lanes]
-                for lane in device_lanes:
-                    self._merge_resource_lane(self._build_resource_lane(lane, bindings))
+                           for lane in lanes]
                 for future in futures:
                     self._merge_resource_lane(future.result())
             pending = [node_id for node_id in pending if node_id not in ready]
@@ -864,8 +882,13 @@ class DAGController:
                 total += node_out['optimizer_steps']
         return total
 
-    def _emit_plan(self, participation: Set[str]) -> None:
-        """本次参与范围不等于节点正在执行；下游无需先转动才能显示上游出线。"""
+    def _emit_plan(self, participation: Set[str], feedback: Sequence[str] = ()) -> None:
+        """本次参与范围不等于节点正在执行；下游无需先转动才能显示上游出线。
+
+        ``feedback`` 是本环的回环 CTRL 边 id。``inputs_of`` 有意跳过回环边
+        （它不投影为任何节点的入参），上面的遍历永远收不到它；不显式
+        补进计划边集合，前端 activeEdges 就不含回环线，它被永久压暗，
+        尽管环真的在转。"""
         edge_ids = []
         for node_id in self.graph.order:
             if node_id not in participation:
@@ -874,6 +897,7 @@ class DAGController:
                 for edge in source if isinstance(source, list) else [source]:
                     if edge.source in participation:
                         edge_ids.append(edge.id)
+        edge_ids.extend(feedback)
         self._event('run_plan', nodes=[node_id for node_id in self.graph.order
                                        if node_id in participation], edges=edge_ids)
 

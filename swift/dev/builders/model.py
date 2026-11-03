@@ -415,7 +415,17 @@ def build_dp_mesh(distributed_config: DistributedConfig, sequence_parallel_size:
         world = Platform.get_world_size()
 
     if spec:
-        return DeviceMesh.from_spec(spec, world_size=world)
+        mesh = DeviceMesh.from_spec(spec, world_size=world)
+        # from_sizes silently GROWS a world of 1 to the spec's rank product,
+        # so a spec bigger than the declared ranks would only surface deep
+        # inside the worker's accelerate mesh init with an unreadable error.
+        # Fail HERE, at the one seam every caller (recipe and webui) shares.
+        if mesh.mesh.size != world:
+            raise ValueError(
+                f"parallel_spec {spec!r} implies {mesh.mesh.size} ranks, but "
+                f"nproc_per_node={world}; size the cards (or the spec) so they agree."
+            )
+        return mesh
 
     if not is_ray and sequence_parallel_size <= 1:
         return None

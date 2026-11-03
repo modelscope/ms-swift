@@ -25,11 +25,18 @@ def build_streaming_driver(
         gradient_accumulation_steps: int,
         num_train_epochs: float = 1.0,
         max_steps: int = 0,
+        template: Optional[Any] = None,
 ) -> Any:
     """One StreamingDriver over a built engine, ready to iterate.
 
-    The engine carries its template (set at sampler build time); the rollout
-    wraps it with the sampling params derived from the rl/generation configs.
+    The rollout needs the encoding rule ON THE DRIVER SIDE. Under a
+    disaggregated ray placement the sampler's template lives on the remote
+    actor (``set_template`` is a remote call), so ``getattr(engine,
+    'template')`` reads ``None`` here and the rollout would silently fall
+    back to its message-only form -- empty encoded / response_token_ids /
+    rollout_logps. The caller therefore passes the template it built
+    explicitly (the same object the recipe assemblies hand in); the
+    attribute read stays only as the local-mode fallback.
     The stream geometry (staleness, pull quantum, buffer depth) follows the
     same derivation the recipe assemblies use, so a canvas graph and a recipe
     reach the same driver shape for the same configs. Scoring, regeneration
@@ -62,7 +69,7 @@ def build_streaming_driver(
             params[key] = value
     rollout = MultiTurnRollout(
         engine,
-        getattr(engine, 'template', None),
+        template if template is not None else getattr(engine, 'template', None),
         sampling_params=SamplingParams(**params),
         max_turns=(rollout_config.max_turns or 1),
         max_trajectory_tokens=rollout_config.max_trajectory_tokens,
