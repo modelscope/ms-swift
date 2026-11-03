@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
 import os
+import threading
 from typing import Any, Dict, FrozenSet, Literal, Optional
 
 import json
@@ -10,15 +11,26 @@ from .meta import TemplateMeta
 from .processor import Processor
 
 TEMPLATE_MAPPING: Dict[str, TemplateMeta] = {}
+_TEMPLATE_LOCK = threading.Lock()
 _REGISTERED = False
 
 
 def _ensure_registered() -> None:
+    """Populate TEMPLATE_MAPPING exactly once, safely for concurrent callers.
+
+    The flag is set only AFTER the family import completes, and late callers
+    wait on the lock: the webui builds its resources in parallel threads, and
+    a caller that arrives while the (seconds-long) import is still running
+    would otherwise see an empty mapping and reject a perfectly valid
+    template_type."""
     global _REGISTERED
     if _REGISTERED:
         return
-    _REGISTERED = True
-    from . import families  # noqa: F401 -- family modules register their metadata on import
+    with _TEMPLATE_LOCK:
+        if _REGISTERED:
+            return
+        from . import families  # noqa: F401 -- family modules register their metadata on import
+        _REGISTERED = True
 
 
 def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False) -> None:

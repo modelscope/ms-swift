@@ -58,7 +58,8 @@ class ModelForwardStage(StageComponent):
         if getattr(self, '_template', None) is None:
             self._template = build_template_from(
                 str(self.params.get('tokenizer') or ''),
-                dict(self.params.get('template_config') or {}), self.node_id)
+                dict(self.params.get('template_config') or {}), self.node_id,
+                model_kv=dict(self.params.get('model_config') or {}))
         if data is None:
             raise ComponentError(f'{self.node_id}: model_forward needs a wired traj input')
         return encode_rows(self._template, data)
@@ -70,7 +71,15 @@ class ModelForwardStage(StageComponent):
         forward = getattr(model, 'forward_only', None)
         if not callable(forward):
             raise ComponentError(f'{self.node_id}: model exposes no forward_only()')
-        features = self._features(batch)
+        # Port-first: the wired traj lane is the data THIS forward scores
+        # (the generated trajectories); the positional batch is the frame
+        # SOURCE's batch -- the loader's prompts. Encoding the positional one
+        # silently scores the prompt instead of the episode, and every
+        # downstream lane (KL, teacher, values) is wrong with no shape alarm.
+        data = inputs.get('traj')
+        if data is None:
+            data = batch
+        features = self._features(data)
         if not isinstance(features, list):
             features = [features]
         if not features:
@@ -170,11 +179,13 @@ class AdvantageStage(StageComponent):
             float(self.params.get('gamma', 1.0) or 1.0),
             float(self.params.get('lam', 1.0) or 1.0), kwargs)
         # The adv port carries the VALUE sequence only (the loss's per-sample
-        # lane); estimator metadata stays a node param, not payload.
-        adv = worker.project(result, 'adv')
-        adv_values = adv.get('values') if isinstance(adv, dict) else adv
-        returns = worker.project(result, 'returns')
-        return {'adv': adv_values, 'returns': returns}
+        # lane -- the worker returns it bare); estimator metadata stays a node
+        # param, not payload. The old_logps lane rides along for the loss's
+        # importance sampling: the sampler's own logps, projected worker-side
+        # like every other channel.
+        return {'adv': worker.project(result, 'adv'),
+                'returns': worker.project(result, 'returns'),
+                'old_logps': worker.project(result, 'old_logps')}
 
 
 class SignalCombineStage(StageComponent):

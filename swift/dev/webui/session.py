@@ -261,6 +261,11 @@ class GraphSession:
         target = cmd.get('target') or None
         steps = cmd.get('steps')
         observe = bool(cmd.get('observe'))
+        # Reset the controller's control plane HERE, synchronously with the
+        # acceptance: a pause/stop issued after this point targets THIS run and
+        # must survive the execution thread's start (the controller's entries
+        # never reset -- see DAGController.run_component's docstring).
+        self.controller().reset_control()
         self.state = 'running'
         self.emit('run_begin', request_id=request_id, target=target or '', mode=mode,
                   observe=observe)
@@ -521,8 +526,26 @@ def _bootstrap(declaration: Dict[str, Any]) -> None:
 
     if graph.resource.mode == 'cluster':
         import ray
-        ray.init(address=graph.resource.cluster_address, ignore_reinit_error=True,
-                 namespace='webui_session')
+        # One namespace PER SESSION PROCESS: actor names are deterministic
+        # (remote class + call site), so two concurrent sessions sharing one
+        # cluster would collide on the first named actor. The pid keeps the
+        # namespace unique yet traceable in logs. The env var is the control
+        # point twinkle's worker creation actually reads (TWINKLE_RAY_
+        # NAMESPACE); ray.init's namespace is kept aligned for lookups.
+        namespace = f'webui_session_{os.getpid()}'
+        os.environ['TWINKLE_RAY_NAMESPACE'] = namespace
+        init_kwargs: Dict[str, Any] = {
+            'address': graph.resource.cluster_address,
+            'ignore_reinit_error': True,
+            'namespace': namespace,
+        }
+        # The driver's import paths must reach the workers: a dev checkout
+        # (twinkle/src + the repo ride on PYTHONPATH) is not pip-installed on
+        # the cluster nodes, and ray does not propagate PYTHONPATH by itself.
+        pythonpath = os.environ.get('PYTHONPATH', '')
+        if pythonpath:
+            init_kwargs['runtime_env'] = {'env_vars': {'PYTHONPATH': pythonpath}}
+        ray.init(**init_kwargs)
     else:
         # Ray's local slots map onto exactly the selected physical cards.
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(card) for card in graph.resource.cards)

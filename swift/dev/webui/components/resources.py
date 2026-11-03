@@ -368,7 +368,8 @@ class RolloutComponent(ResourceComponent):
         tool_manager = tools if tools is not None else (env.tool_manager() if env_tools else None)
         template = build_template_from(
             str(self.params.get('tokenizer') or ''),
-            dict(self.params.get('template_config') or {}), self.node_id)
+            dict(self.params.get('template_config') or {}), self.node_id,
+            model_kv=dict(self.params.get('model_config') or {}))
         cfg = dict(self.params.get('rollout_config') or {})
         cfg.pop('max_turns', None)
         gen = dict(self.params.get('generation_config') or {})

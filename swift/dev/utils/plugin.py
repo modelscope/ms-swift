@@ -38,6 +38,7 @@ capability, not a hook.
 from __future__ import annotations
 import json
 import os
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Dict, Iterable, List, Optional, Tuple, Type, Union
@@ -163,6 +164,14 @@ class PluginRegistry:
 
     KINDS: ClassVar[Dict[str, PluginKind]] = {}
 
+    #: Guards every KINDS / entries mutation. Lazy declarations race in real
+    #: use: a kind declared on first resolve (``sampler``) runs its slow base
+    #: import between the check and the registration, so two concurrent first
+    #: resolves both pass the check and the second registration dies. The
+    #: module-top-level declarations are import-locked already; this lock is
+    #: for the lazy ones.
+    _LOCK: ClassVar[threading.RLock] = threading.RLock()
+
     @staticmethod
     def register_kind(name: str,
                       base: Union[type, Tuple[type, ...]],
@@ -171,12 +180,36 @@ class PluginRegistry:
                       entries: Optional[Dict[str, type]] = None,
                       exist_ok: bool = False) -> PluginKind:
         """Declare an extension point. Pass ``entries`` to adopt an existing registry dict as-is."""
-        if not exist_ok and name in PluginRegistry.KINDS:
-            raise ValueError(f'plugin kind `{name}` is already registered with base '
-                             f'{PluginRegistry.KINDS[name].base_names}.')
-        kind = PluginKind(name, base, config_field, entries if entries is not None else {})
-        PluginRegistry.KINDS[name] = kind
+        with PluginRegistry._LOCK:
+            if not exist_ok and name in PluginRegistry.KINDS:
+                raise ValueError(f'plugin kind `{name}` is already registered with base '
+                                 f'{PluginRegistry.KINDS[name].base_names}.')
+            kind = PluginKind(name, base, config_field, entries if entries is not None else {})
+            PluginRegistry.KINDS[name] = kind
         return kind
+
+    @staticmethod
+    def ensure_kind(name: str,
+                    base: Union[type, Tuple[type, ...]],
+                    *,
+                    config_field: Optional[str] = None,
+                    entries: Optional[Dict[str, type]] = None) -> PluginKind:
+        """Atomically declare-or-fetch a kind: the lock covers check AND register.
+
+        This is the form a LAZY declaration must use. With a plain
+        ``if name not in KINDS: register_kind(...)``, the base import between
+        the check and the registration lets a second concurrent resolver
+        register the same kind twice and die on the duplicate.
+        """
+        with PluginRegistry._LOCK:
+            existing = PluginRegistry.KINDS.get(name)
+            if existing is None:
+                return PluginRegistry.register_kind(name, base, config_field=config_field,
+                                                    entries=entries)
+            if existing.base != base:
+                raise ValueError(f'plugin kind `{name}` is already registered with base '
+                                 f'{existing.base_names}, not the requested base.')
+            return existing
 
     @staticmethod
     def kind(kind: Union[str, PluginKind]) -> PluginKind:
@@ -206,10 +239,11 @@ class PluginRegistry:
             if not (isinstance(cls, type) and issubclass(cls, registry.base)):
                 raise TypeError(f'{cls.__name__} must subclass {registry.base_names} '
                                 f'to be registered as a `{registry.name}` plugin.')
-            if not exist_ok and entry in registry.entries:
-                raise ValueError(f'`{registry.name}` plugin `{entry}` is already registered '
-                                 f'by {registry.entries[entry].__name__}.')
-            registry.entries[entry] = cls
+            with PluginRegistry._LOCK:
+                if not exist_ok and entry in registry.entries:
+                    raise ValueError(f'`{registry.name}` plugin `{entry}` is already registered '
+                                     f'by {registry.entries[entry].__name__}.')
+                registry.entries[entry] = cls
             return cls
 
         return _register
