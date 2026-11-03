@@ -1994,6 +1994,7 @@ def grouped_training_batches(dataloader: Any, ga: int):
             yield group, count
             group, count = [], 0
     if group:
+        # trailing partial group
         yield group, count
 
 
@@ -2011,6 +2012,8 @@ def fit_supervised(
         if state.reached_max() or state.should_stop():
             break
         state.epoch = epoch
+        # Reshuffle each epoch (twinkle's EpochSampler derives each epoch's order from its
+        # number, and only set_epoch advances it); resume replays it the same way.
         if hasattr(dataloader, "set_epoch"):
             dataloader.set_epoch(epoch)
         state.publish_state()
@@ -2036,7 +2039,9 @@ def fit_supervised(
 def save_final_checkpoint(model: Any, save: Callable[..., str], *, enabled: bool) -> Optional[str]:
     """Flush asynchronous writes before the optional synchronous final checkpoint."""
     if enabled:
-        # Remote saves already block to completion and expose no background-writer wait.
+        # The final save is synchronous, and its args.json must land after every earlier
+        # checkpoint's background write finished. The remote handle has no background writer
+        # (each client save blocks to the terminal state), so the wait is a no-op there.
         wait_async = getattr(model, "wait_async_saves", None)
         if callable(wait_async):
             wait_async()

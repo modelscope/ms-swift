@@ -404,11 +404,24 @@ class TestTwinkleLoaderLayout:
         assert _twinkle_loader_layout(self._dc(backend='hf', mode='local'), 3) == (3, None)
 
 
-# === TestDropLast (backend-specific micro-batch tail policy) ===
+# === TestDropLast (partial-batch policy is a backend contract, not a preference) ===
 
 
 class TestDropLast:
-    """Micro-batch tails follow the backend policy independently of the number of GA batches."""
+    """drop_last must follow the backend's batch-size contract, matching legacy on both paths.
+
+    On Megatron both splits drop the remainder, by different mechanisms: the train sampler
+    (MegatronPretrainingRandomSampler) has no drop_last knob and discards unconditionally via
+    last_batch_size/active_total_samples (batch_sampler.py:100,114), while the val sampler
+    (MegatronPretrainingSampler) takes drop_last=True by default (batch_sampler.py:18).
+
+    dev previously used the factory default of False everywhere, which trained the remainder batch;
+    once an epoch boundary fell mid-run that put dev a full step behind legacy for the rest of the run
+    (measured on a 50-step dense.sh comparison: 500 samples at global_batch_size 16 = 31.25
+    steps/epoch, and from step 32 on cli[i] matched legacy[i-1], not legacy[i]).
+
+    Micro-batch tails follow this policy independently of the number of GA batches.
+    """
 
     def _dc(self, **kw):
         from swift.dev.config import DistributedConfig
@@ -433,7 +446,8 @@ class TestDropLast:
     def test_hf_train_does_not_drop_remainder(self):
         from swift.dev.builders.dataset import _drop_last
 
-        # HF keeps its existing partial micro-batch policy.
+        # legacy defers to TrainingArguments.dataloader_drop_last, whose default is False. Flipping
+        # this globally would silently discard training samples on the transformers path.
         assert (
             _drop_last(
                 self._dc(backend='hf', mode='local'),
@@ -449,13 +463,14 @@ class TestDropLast:
         # dev matched the opposite ('never drop for eval') until this was checked: with a val set that
         # is not a multiple of micro_batch_size*dp_size, the two pipelines would score DIFFERENT
         # sample sets, which is worse than legacy's known habit of scoring slightly fewer samples.
+        # The split knob has since been absorbed: _drop_last is a pure backend decision now.
         assert _drop_last(self._dc(backend='megatron', mode='local')) is True
 
     def test_hf_eval_keeps_remainder(self):
         from swift.dev.builders.dataset import _drop_last
 
         # Unchanged on the transformers path: legacy defers to dataloader_drop_last (default False).
-        assert _drop_last(self._dc(backend='hf', mode='local')) is False
+        assert _drop_last(self._dc(backend='hf', mode='local')) is False  # eval keeps the remainder too
 
     @patch('twinkle.dataloader.DataLoader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')

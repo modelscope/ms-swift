@@ -1,22 +1,17 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # The offline RLHF family: the run_dpo main plus the family's own training loop.
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, List, Optional
 
-from swift.dev.recipe.supervised import run_supervised
 from swift.dev.utils.logger import get_logger
+
+from swift.dev.recipe.supervised import run_supervised
 
 if TYPE_CHECKING:
     from swift.dev.config import (
         CheckpointConfig, DatasetConfig, DistributedConfig, LoggingConfig, MegatronConfig, ModelConfig,
-        MoEConfig,
-        QuantizeConfig,
-        RewardConfig,
-        RLConfig,
-        TemplateConfig,
-        TrainConfig,
-        TunerConfig,
-    )
+        MoEConfig, QuantizeConfig, RLConfig, RewardConfig, TemplateConfig, TrainConfig, TunerConfig)
 
 logger = get_logger()
 

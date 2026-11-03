@@ -235,6 +235,8 @@ def _chord_forward_backward(
     num_micro_batches: int,
 ) -> None:
     """Accumulate the weighted RL and SFT losses before finalizing one CHORD update."""
+    # CHORD's dual RPC: the two losses accumulate on ONE gradient (weights sum to 1),
+    # so only the second RPC finalizes; the overlap guard below is the collision backstop.
     overlap = {'loss_key', 'loss_weight', 'finalize_gradients', 'kind'} & set(forward_kwargs)
     if overlap:
         raise ValueError(f'forward kwargs duplicate explicit loss controls: {sorted(overlap)}')
@@ -368,6 +370,8 @@ def _resample_zero_variance_groups(
     weights: Any,
 ) -> None:
     """Regenerate zero-variance groups on their original prompts up to the configured cap."""
+    # dynamic_sample: regenerate a zero-variance group (its advantage is degenerate) on
+    # the same prompt, bounded by max_resample_times; at the cap, accept the last try.
     num_generations = rl_config.num_generations
     for start in range(0, len(samples), num_generations):
         attempts = 0
@@ -389,6 +393,8 @@ def _resample_zero_variance_groups(
 
 def _set_remax_baselines(cluster, samples, prompts, extras, num_generations, weights):
     """Score one greedy baseline per group after any dynamic resampling."""
+    # remax baseline per group: the greedy completion of the same prompt, scored the same
+    # way, AFTER any dynamic_sample regen so the baseline lands on the final siblings.
     for start in range(0, len(samples), num_generations):
         prompt = samples[start].prompt or prompts[start // num_generations]
         extra = samples[start].extra or None
@@ -663,6 +669,8 @@ def _grpo_extra_metrics(
     """Read the current rollout, staleness, and reward aggregates for step logging."""
     extra = {f"rollout_correction/{key}": value for key, value in rollout_correction.items()}
     if driver_cell:
+        # Straight reads of the driver's own counters; the idle ratio is folded BY the driver
+        # at each pull boundary (stats.last_pull_idle_ratio) -- the recipe does no timing math.
         stats = driver_cell[0].stats
         extra.update(
             {
@@ -895,5 +903,6 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         cluster.sampler.shutdown()
         state.tracker.close()
     state.handler.on_train_end()
+    # The final checkpoint is synchronous; its args.json is written by initialize_rl_devices' copy.
     save_final_checkpoint(cluster.model, save, enabled=_save_final)
     return state.history

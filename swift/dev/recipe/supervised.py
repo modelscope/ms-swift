@@ -79,6 +79,8 @@ class _Evaluation:
 
             distributed = dist.is_available() and dist.is_initialized() and (dist.get_world_size() > 1)
             if distributed and dist.get_rank() == 0 and (not self.warned_eval_dp):
+                # A multi-rank torchrun launch can only be on the transformers-live sampler
+                # (vllm/sglang need ray): EvalScope runs on rank 0 alone, at 1/N of the GPUs.
                 world_size = dist.get_world_size()
                 logger.warning(
                     "predict_with_generate under torchrun drives EvalScope from rank 0 only "
@@ -237,6 +239,8 @@ def run_supervised(
         """Submit one update; every backend schedules its micro-batches internally."""
         state.publish_state()
         handler.on_step_begin()
+        # forward_backward / clip_grad_and_step carry @timed at their twinkle definition
+        # site, so the span is recorded on the rank that actually runs them.
         model.forward_backward(**micro_step_fn(samples, micro_batch_size=train_config.per_device_train_batch_size))
         handler.on_pre_optimizer_step()
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
@@ -311,7 +315,9 @@ def run_supervised(
         finish_manual_gc(gc_was_enabled)
         state.tracker.close()
     ckpt_dir = save_final_checkpoint(model, save, enabled=_save_final)
-    # Remote checkpoints are twinkle:// URIs; the assembly writes the local run args.
+    # A remote ckpt_dir is a twinkle:// URI in the SERVER's store: the server-side checkpoint has
+    # no local dir to copy args.json into, and the run-level args.json (written by the
+    # assembly into output_dir) already documents the run for --load_args.
     if _save_final and distributed_config.mode != "remote":
         write_ckpt_args_json(
             ckpt_dir,

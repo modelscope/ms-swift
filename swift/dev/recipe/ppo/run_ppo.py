@@ -1,38 +1,27 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # PPO's visible training main: five segments, then ONE loop body picked by placement.
 from __future__ import annotations
+
 import math
 import os
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 
-from swift.dev.recipe.ppo.assembly import Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests
-from swift.dev.recipe.utils import (
-    StepState,
-    build_save_knobs,
-    collect,
-    initialize_rl_devices,
-    optimizer_batch_slices,
-    prompt_rows_from_dataset,
-    resolve_rollout_max_steps, resume_training, rollout_step_budget, save_training_step,
-    snapshot_initial_adapter,
-)
 from swift.dev.utils.logger import get_logger
+
+from swift.dev.recipe.ppo.assembly import (
+    Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests)
+from swift.dev.recipe.utils import (
+    StepState, build_save_knobs, collect, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
+    resolve_rollout_max_steps, resume_training, rollout_step_budget, save_training_step,
+    snapshot_initial_adapter)
 
 if TYPE_CHECKING:
     from swift.dev.config import (
         CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig, LoggingConfig, MegatronConfig,
-        ModelConfig,
-        MoEConfig,
-        QuantizeConfig,
-        RewardConfig,
-        RLConfig,
-        RolloutConfig,
-        TemplateConfig,
-        TrainConfig,
-        TunerConfig,
-    )
+        ModelConfig, MoEConfig, QuantizeConfig, RLConfig, RewardConfig, RolloutConfig, TemplateConfig,
+        TrainConfig, TunerConfig)
 
 logger = get_logger()
 
@@ -376,10 +365,9 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         generation_config=generation_config, resource_plan=resource_plan,
         auxiliary_meshes=auxiliary_meshes, output_dir=output_dir)
     # segment 4: dataloader + the dissolved step cadence + the save closure.
-    from twinkle.metric import CompletionRewardMetric
-
     from swift.dev.builders import build_prompt_dataloader, is_megatron_backend
     from swift.dev.builders.optimizer import resolve_max_grad_norm
+    from twinkle.metric import CompletionRewardMetric
 
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=train_config.seed,
@@ -390,6 +378,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     _versions_cell: List[List[int]] = []
 
     def _extra_metrics() -> Dict[str, Any]:
+        """The critic's namespaced metrics + the batch's reward aggregate and version spans."""
         return _ppo_extra_metrics(cluster, reward_metric, _versions_cell)
 
     state = StepState(
@@ -476,6 +465,8 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         state.tracker.close()
     state.handler.on_train_end()
     if _save_final:
+        # The final checkpoint is synchronous on BOTH models; its args.json is written by
+        # initialize_rl_devices' copy. The wait must pierce to the workers (decorated method).
         cluster.model.wait_async_saves()
         cluster.value_model.wait_async_saves()
         save('checkpoint-final', is_final=True)

@@ -127,6 +127,7 @@ class DistillWorker:
                     self.teachers[0], privileged, disable_lora=self.disable_lora),
             }
         else:
+            # K response-only channels, overlapped across disjoint placements, plus the mixture weights.
             # A dict keeps the teacher axis separate from DP/micro-batch slicing of each sample channel.
             tasks = [(self.placements[index],
                       lambda index=index: self._response_logps(self.teachers[index], features))

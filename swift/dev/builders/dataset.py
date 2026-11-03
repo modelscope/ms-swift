@@ -420,8 +420,8 @@ def build_prompt_dataloader(prompts: List[List[dict]],
     otherwise ordering follows the loader seed and epoch. One pass per ``iter()``; drop_last stays
     off so a partial batch is never a dropped prompt.
     """
-    from twinkle.dataloader import DataLoader
     from twinkle.dataset import Dataset, DatasetMeta
+    from twinkle.dataloader import DataLoader
 
     if not prompts:
         raise ValueError('build_prompt_dataloader needs at least one prompt, got an empty sequence.')

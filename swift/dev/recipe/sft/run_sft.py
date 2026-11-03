@@ -1,11 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # The supervised family: the five visible mains plus the family's own training loop.
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+
+from swift.dev.utils.logger import get_logger
 
 from swift.dev.recipe.sft.assembly import build_supervised_objects
 from swift.dev.recipe.supervised import run_supervised
-from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -23,7 +25,12 @@ RERANKER_TASK_TYPES = ('reranker', 'generative_reranker')
 
 
 def _supervised_micro_kwargs(task: str) -> Callable[..., Dict[str, Any]]:
-    """Build forward kwargs; micro_batch_size counts original examples or packing units."""
+    """The forward-kwargs factory the training loop and the val-loss eval share.
+
+    The dataloader already yields ``list[InputFeature]``, so this passes through ``inputs``
+    plus the forward ``task``. ``micro_batch_size`` counts original examples or packing units;
+    the backend splits the submitted inputs internally, with no accumulation across calls.
+    """
 
     def micro_step_kwargs(unit, *, micro_batch_size: int):
         return {'inputs': unit, 'task': task, "gradient_accumulation_steps": 1, "micro_batch_size": micro_batch_size}

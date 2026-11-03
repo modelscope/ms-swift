@@ -10,32 +10,15 @@ from swift.dev.utils.logger import get_logger
 
 from swift.dev.recipe.rft.assembly import initialize_rft_cluster, rft_group_requests
 from swift.dev.recipe.utils import (
-    StepState,
-    build_save_knobs,
-    initialize_rl_devices,
-    optimizer_batch_slices,
-    prompt_rows_from_dataset,
-    resolve_rollout_max_steps,
-    resume_training,
-    rollout_step_budget,
-    save_final_checkpoint,
-    save_training_step,
-    snapshot_initial_adapter,
-)
+    StepState, build_save_knobs, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
+    resolve_rollout_max_steps, resume_training, rollout_step_budget, save_final_checkpoint, save_training_step,
+    snapshot_initial_adapter)
 
 if TYPE_CHECKING:
     from swift.dev.config import (
         CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig, LoggingConfig, MegatronConfig,
-        ModelConfig,
-        MoEConfig,
-        QuantizeConfig,
-        RewardConfig,
-        RLConfig,
-        RolloutConfig,
-        TemplateConfig,
-        TrainConfig,
-        TunerConfig,
-    )
+        ModelConfig, MoEConfig, QuantizeConfig, RLConfig, RewardConfig, RolloutConfig, TemplateConfig,
+        TrainConfig, TunerConfig)
 
 logger = get_logger()
 
@@ -130,9 +113,8 @@ class RFTSelector:
         Called before rejection so the logged reward tracks the policy's improving sample quality --
         filtering first would make the metric read only the kept winners and hide the trend.
         """
-        from twinkle.metric import CompletionRewardMetric
-
         from swift.dev.utils.scoring import accumulate_reward_metric
+        from twinkle.metric import CompletionRewardMetric
 
         if self._reward_metric is None:
             self._reward_metric = CompletionRewardMetric()
@@ -447,5 +429,6 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         cluster.sampler.shutdown()
         state.tracker.close()
     state.handler.on_train_end()
+    # The final checkpoint is synchronous; its args.json was written at initialize_rl_devices.
     save_final_checkpoint(cluster.model, save, enabled=_save_final)
     return state.history

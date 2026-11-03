@@ -7,38 +7,22 @@ import random
 from itertools import islice
 from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
+from swift.dev.utils.logger import get_logger
+
 from swift.dev.recipe.distill.assembly import (
     DISTILL_SIGNALS, Cluster, build_distill_driver, distill_dataset_rows, distill_group_requests,
     initialize_distill_cluster)
 from swift.dev.recipe.distill.worker import DistillRow
 from swift.dev.recipe.utils import (
-    StepState,
-    build_save_knobs,
-    initialize_rl_devices,
-    optimizer_batch_slices,
-    prompt_rows_from_dataset,
-    resolve_rollout_max_steps,
-    resume_training,
-    rollout_step_budget,
-    save_final_checkpoint,
-    save_training_step,
-    snapshot_initial_adapter,
-)
-from swift.dev.utils.logger import get_logger
+    StepState, build_save_knobs, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
+    resolve_rollout_max_steps, resume_training, rollout_step_budget, save_final_checkpoint, save_training_step,
+    snapshot_initial_adapter)
 
 if TYPE_CHECKING:
     from swift.dev.config import (
         CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig, LoggingConfig, MegatronConfig,
-        ModelConfig,
-        MoEConfig,
-        QuantizeConfig,
-        RewardConfig,
-        RLConfig,
-        RolloutConfig,
-        TemplateConfig,
-        TrainConfig,
-        TunerConfig,
-    )
+        ModelConfig, MoEConfig, QuantizeConfig, RLConfig, RewardConfig, RolloutConfig, TemplateConfig,
+        TrainConfig, TunerConfig)
 
 logger = get_logger()
 
@@ -94,6 +78,10 @@ def _distill_round_loop(cluster: Cluster, rl_config: 'RLConfig', rollout_config:
     Prompt rows repeat ``num_generations`` times before grouping into updates, independently of
     the dataloader's batch size. Only an epoch's incomplete final update is dropped, before any
     generation. Off-policy updates advance their own dataset cursor by GBS rows.
+
+    An on-policy update rolls the student (borrowing the device when colocated, or one weight sync
+    when disaggregated); an off-policy update distils the dataset's own completions and adds GKD's
+    supervised CE term -- it is not a skipped update.
     """
     colocate = cluster.colocate
     update_batch_size = train_batch_size * state.ga
@@ -148,6 +136,10 @@ def _distill_round_loop(cluster: Cluster, rl_config: 'RLConfig', rollout_config:
                         cluster, state, _rows_from_samples(samples), True, train_batch_size=train_batch_size, save=save
                     )
                 else:
+                    # A rolling window over the dataset completions, so successive off-policy
+                    # updates cover new rows (run_distill rejected lmbda<1 without completions).
+                    # The window and cursor advance by update_batch_size, keeping the same sample
+                    # budget as one on-policy update instead of consuming a whole dataset epoch.
                     # Only off-policy updates consume dataset completions; intervening on-policy
                     # updates must not skip any of them.
                     count = len(dataset_rows)
@@ -349,6 +341,7 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         cluster.sampler.shutdown()
         state.tracker.close()
     state.handler.on_train_end()
+    # The final checkpoint is synchronous; its args.json is written by initialize_rl_devices' copy.
     save_final_checkpoint(cluster.model, save, enabled=_save_final)
     return state.history
 

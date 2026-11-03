@@ -15,7 +15,9 @@ logger = get_logger()
 class PreferenceBatchEncoder:
     """Build one update's preference inputs and reference signals for training or evaluation.
 
-    The shared loop calls this ``micro_step_fn`` once; the model owns micro-batch splitting.
+    Its ``__call__`` is the shared loop's ``micro_step_fn`` seam, so the same encoding and
+    reference-forward preparation feed both training and val-loss evaluation, with no backend
+    branch here. The model owns micro-batch splitting.
     """
 
     def __init__(self,
@@ -185,7 +187,13 @@ class PreferenceBatchEncoder:
         return outputs.get('logps')
 
     def __call__(self, unit: Any, *, micro_batch_size: int) -> Dict[str, Any]:
-        """Encode one update, preserving paired sequences with a micro-batch size of 2B."""
+        """Encode raw preference rows into ``forward_backward``/``forward_only`` args.
+
+        ``unit`` is a flat iterable of raw rows, encoded identically for training and val-loss
+        evaluation. KTO is unpaired (:meth:`_kto_step_kwargs` assembles its layout / ``label`` /
+        ``z_kl``); the paired types interleave chosen/rejected and add reference logps when needed.
+        Their micro-batch size of B original records becomes 2B sequences, preserving pairs.
+        """
         rows = list(unit)
         if self.rl_type != "kto" and len(rows) % self.data_parallel_size:
             raise ValueError(
