@@ -112,9 +112,13 @@ class ChunkedCrossEntropyLoss(torch.autograd.Function):
 
 
 class SequenceParallelSampler(Sampler):
-    """Sampler for sequence parallel training"""
+    """Shard the dataset over the data-parallel group.
 
-    def __init__(self, sp_instance, dataset, shuffle: bool = True, seed=None, round_up: bool = True) -> None:
+    With ``round_up=False`` this mirrors ``BatchSamplerShard`` so an SP run sees the same per-step
+    sample set as a non-SP run; ``round_up=True`` keeps full coverage for evaluation.
+    """
+
+    def __init__(self, sp_instance, dataset, shuffle: bool = True, seed=None, *, round_up: bool) -> None:
         self.sp_instance = sp_instance
         rank = dist.get_rank(sp_instance.device_mesh['data'].get_group())
         world_size = sp_instance.device_mesh['data'].size()
@@ -128,18 +132,21 @@ class SequenceParallelSampler(Sampler):
         self.epoch = 0
         self.round_up = round_up
 
+        # Each sample is replicated over the sequence-parallel group.
+        self.global_world_size = world_size * sp_instance.world_size
         if self.round_up:
             self.num_samples = math.ceil(len(self.dataset) / world_size)
             self.total_size = self.num_samples * self.world_size
         else:
-            self.num_samples = math.ceil((len(self.dataset) - rank) / world_size)
-            self.total_size = len(self.dataset)
+            self.total_size = (len(self.dataset) // self.global_world_size) * self.global_world_size
+            self.num_samples = self.total_size // world_size
 
     def __iter__(self) -> Iterator[int]:
         if self.shuffle:
             g = torch.Generator()
             g.manual_seed(self.seed + self.epoch)
-            indices = torch.randperm(len(self.dataset), generator=g).tolist()
+            shuffle_size = len(self.dataset) if self.round_up else self.total_size
+            indices = torch.randperm(shuffle_size, generator=g).tolist()
         else:
             indices = torch.arange(len(self.dataset)).tolist()
 
