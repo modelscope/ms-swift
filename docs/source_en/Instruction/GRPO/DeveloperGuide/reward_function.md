@@ -115,6 +115,8 @@ The paper found that using only the accuracy reward function for training could 
 
 A cosine function is used to smoothly adjust the reward value, ensuring the changes remain within a reasonable range. The parameters of the cosine function include the length of the generated text, the maximum length limit, and the minimum and maximum reward values.
 
+Length is counted in generated tokens across all rollout turns. When the total exceeds `cosine_max_len`, the reward stays at the configured maximum-length value for the answer's correctness.
+
 Parameters:
 - cosine_min_len_value_wrong (default: -0.5): The reward value for the minimum length when the answer is incorrect.
 - cosine_max_len_value_wrong (default: 0.0): The reward value for the maximum length when the answer is incorrect.
@@ -134,6 +136,8 @@ Parameters:
 
 ### 5. **soft overlong punishment**
 Defines a length penalty interval. Within this interval, a linear penalty in the range [-1, 0] is applied.
+
+Length is counted in generated tokens across all rollout turns. When the total exceeds `soft_max_length`, the penalty stays at -1.
 
 Parameters:
 - soft_max_length: L_max in the paper, the model's maximum generation length, defaulting to max_completion_length.
