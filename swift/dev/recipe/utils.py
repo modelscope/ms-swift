@@ -508,6 +508,7 @@ class StepState:
         self.epoch = 0
         self.best_metric: Optional[float] = None
         self.history: List[dict] = []
+        self._output_dir = output_dir
         self.tracker = RunTracker(logging_config, output_dir)
         self.handler = CallbackHandler(build_callbacks(train_config), output_dir=output_dir)
 
@@ -574,7 +575,23 @@ class StepState:
                     else _log_line(record, loss))
             logger.info(line)
             self.handler.on_log(logs=record)
+            self._write_metrics_jsonl(record)
         return record
+
+    def _write_metrics_jsonl(self, record: Dict[str, Any]) -> None:
+        """Append the step record as one JSON line to ``<output_dir>/metrics.jsonl``.
+
+        The machine-readable curve source for monitors (the webui tail-loads it instead of
+        parsing the console line); main-process only, best-effort: a metrics write must
+        never kill a training step.
+        """
+        if not is_main_process():
+            return
+        try:
+            with open(os.path.join(self._output_dir, 'metrics.jsonl'), 'a') as f:
+                f.write(json.dumps(record, default=str) + '\n')
+        except OSError:
+            logger.debug('metrics.jsonl write failed', exc_info=True)
 
     def should_stop(self) -> bool:
         """Whether a callback (early stop / graceful exit) asked the loop to break."""
