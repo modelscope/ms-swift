@@ -40,10 +40,12 @@ pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolati
 
 N-gram 嵌入表占了 51B 参数、bf16 下约 **95GiB**，而且只能沿 TP 切分。
 
-设置`PLE_CPU_OFFLOAD`环境变量卸载PLE权重
+设置`NGRAM_EMBEDDING_CPU_OFFLOAD`环境变量卸载PLE权重
+
+兼容旧变量 `PLE_CPU_OFFLOAD`；若设置了新变量，则以新变量为准（包括 `0`）。
 
 ```shell
-PLE_CPU_OFFLOAD=1 megatron sft ...
+NGRAM_EMBEDDING_CPU_OFFLOAD=1 megatron sft ...
 ```
 
 注意，开启后
@@ -53,7 +55,7 @@ PLE_CPU_OFFLOAD=1 megatron sft ...
 
 ```shell
 # 8*70G
-PLE_CPU_OFFLOAD=1 \
+NGRAM_EMBEDDING_CPU_OFFLOAD=1 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
@@ -105,7 +107,7 @@ megatron sft \
 | **并行策略** | TP4/EP2/PP2 | 8192 | – | full | – | 105.7 | +39.8% | 2.58× |
 | | TP2/EP4/PP1 | 8192 | – | full | – | 142.5 | +88.5% | **0.80×** |
 
-<sub>PF = padding_free，RC = recompute_granularity，PLE offload = `PLE_CPU_OFFLOAD=1`；“–” 表示关闭/默认。**耗时列是单步时长的相对值，数值越大越慢**（如 1.32× = 每步耗时是基线的 1.32 倍）。</sub>
+<sub>PF = padding_free，RC = recompute_granularity，PLE offload = `NGRAM_EMBEDDING_CPU_OFFLOAD=1`；“–” 表示关闭/默认。**耗时列是单步时长的相对值，数值越大越慢**（如 1.32× = 每步耗时是基线的 1.32 倍）。</sub>
 
 
 ## 强化学习（GRPO）
@@ -116,7 +118,7 @@ megatron sft \
 # 8*135G
 SYSTEM_PROMPT="Please reason step by step, and put your final answer within \\boxed{}."
 
-PLE_CPU_OFFLOAD=1 \
+NGRAM_EMBEDDING_CPU_OFFLOAD=1 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
