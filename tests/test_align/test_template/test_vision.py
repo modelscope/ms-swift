@@ -1305,6 +1305,20 @@ def test_unlimited_ocr():
     print(response)
 
 
+def test_qwen3_8():
+    engine = TransformersEngine('Qwen/Qwen3.8-27B')
+    template = engine.template
+    assert engine.model_info.model_type == 'qwen3_5'
+    assert template.template_meta.template_type == 'qwen3_8'
+    # Qwen3.8 keeps historical thinking by default, unlike Qwen3.5/Qwen3.6.
+    assert template.template_meta.preserve_thinking is True
+    messages = [{'role': 'user', 'content': '<image>这是什么'}]
+    swift_response = _infer_model(engine, messages=messages)
+    engine.template.template_backend = 'jinja'
+    jinja_response = _infer_model(engine, messages=messages)
+    assert swift_response == jinja_response
+
+
 if __name__ == '__main__':
     from swift.infer_engine import RequestConfig, TransformersEngine
     from swift.utils import get_logger, seed_everything
@@ -1396,4 +1410,5 @@ if __name__ == '__main__':
     # test_gemma4()
     # test_mineru2_5_pro()
     # test_unlimited_ocr()
-    test_ovis_ocr2()
+    # test_ovis_ocr2()
+    test_qwen3_8()

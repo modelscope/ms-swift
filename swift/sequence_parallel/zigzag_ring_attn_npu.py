@@ -8,6 +8,7 @@ from .ring_utils import RingComm
 _NPU_BLOCK_MASK_SIZE = 2048
 _NPU_FULL_TOKENS = 2147483647
 _NPU_TND_SOFTMAX_STAT_REPEAT = 8
+_VEC_PATH_MIN_NUMEL = 6
 
 
 def is_npu_tensor(tensor: torch.Tensor) -> bool:
@@ -255,15 +256,27 @@ def _get_second_half_lse(softmax_lse: torch.Tensor, cu_seqlens: torch.Tensor) ->
     total_len = int(cu_seqlens[-1].item())
     lse = _normalize_flash_attn_lse(softmax_lse, total_len)
 
-    # The step > rank branch only differentiates q[half_index1]. Slice the final
-    # merged lse per sequence so the native grad ctx sees the same query span.
-    second_half_lse = torch.empty((lse.shape[0], lse.shape[1] // 2), dtype=lse.dtype, device=lse.device)
-    for i in range(len(cu_seqlens) - 1):
-        start, end = cu_seqlens[i].item(), cu_seqlens[i + 1].item()
-        new_start, new_end = start // 2, end // 2
-        start += (end - start) // 2
-        second_half_lse[:, new_start:new_end] = lse[:, start:end]
-    return second_half_lse
+    # For a few sequences, constructing index tensors costs more than the
+    # bounded loop. Keep the fast path from regressing long single sequences.
+    if cu_seqlens.numel() < _VEC_PATH_MIN_NUMEL:
+        second_half_lse = torch.empty((lse.shape[0], lse.shape[1] // 2), dtype=lse.dtype, device=lse.device)
+        for i in range(len(cu_seqlens) - 1):
+            start, end = cu_seqlens[i].item(), cu_seqlens[i + 1].item()
+            second_half_lse[:, start // 2:end // 2] = lse[:, start + (end - start) // 2:end]
+        return second_half_lse
+
+    # The step > rank branch only differentiates q[half_index1]. Build all
+    # source indices on device instead of synchronizing once per sequence.
+    cu_seqlens = cu_seqlens.to(device=lse.device, dtype=torch.long)
+    lengths = cu_seqlens[1:] - cu_seqlens[:-1]
+    half_lengths = lengths // 2
+    half_total_len = lse.shape[1] // 2
+    source_starts = cu_seqlens[:-1] + half_lengths
+    destination_starts = cu_seqlens[:-1] // 2
+    source_indices = torch.repeat_interleave(source_starts, half_lengths, output_size=half_total_len)
+    destination_indices = torch.repeat_interleave(destination_starts, half_lengths, output_size=half_total_len)
+    source_indices = source_indices + torch.arange(half_total_len, device=lse.device) - destination_indices
+    return lse.index_select(1, source_indices)
 
 
 def _npu_block_backward_with_global_stats(

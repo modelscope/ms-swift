@@ -1,6 +1,7 @@
 import math
 import threading
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 from contextlib import suppress
 from torch.optim import Optimizer
@@ -243,6 +244,22 @@ class MuonClip(Optimizer):
     def _is_qk_weight(self, group) -> bool:
         return bool(group.get('is_qk', False))
 
+    def _sync_max_logits(self, max_logits: Optional[float]) -> Optional[float]:
+        if not (dist.is_available() and dist.is_initialized()):
+            return max_logits
+
+        qk_param = next(
+            (p for group in self.param_groups if group.get('qk_clip_enabled', True) and self._is_qk_weight(group)
+             for p in group['params']), None)
+        if qk_param is None:
+            return max_logits
+
+        local_max = -float('inf') if max_logits is None else float(max_logits)
+        max_tensor = torch.tensor(local_max, device=qk_param.device, dtype=torch.float32)
+        dist.all_reduce(max_tensor, op=dist.ReduceOp.MAX)
+        max_logits = float(max_tensor.item())
+        return None if max_logits == -float('inf') else max_logits
+
     @torch.no_grad()
     def step(self, closure=None, max_logits: Optional[float] = None):
         loss = None
@@ -253,6 +270,7 @@ class MuonClip(Optimizer):
         # fallback: collect scalar max_logits from tracker if not provided
         if max_logits is None:
             max_logits = _MaxLogitsTracker.consume()
+        max_logits = self._sync_max_logits(max_logits)
 
         for group in self.param_groups:
             lr = float(group['lr'])
@@ -281,18 +299,14 @@ class MuonClip(Optimizer):
 
                 buf.mul_(momentum).add_(grad)
 
-                # build update
+                # Build the momentum update before orthogonalization, including Nesterov.
+                update = grad.add(buf, alpha=momentum) if nesterov else buf
                 if apply_muon and p.ndim >= 2:
-                    orth = self.newton_schulz(buf, steps=ns_steps)
+                    orth = self.newton_schulz(update, steps=ns_steps)
                     n, m = p.shape[0], p.shape[1]
                     rms_scale_factor = float(group.get('rms_scale_factor', 0.2))
                     rms_scale = math.sqrt(max(n, m)) * rms_scale_factor
                     update = orth * rms_scale
-                else:
-                    update = buf
-
-                if nesterov:
-                    update = grad.add(update, alpha=momentum)
 
                 # decoupled-ish weight decay
                 if weight_decay != 0:

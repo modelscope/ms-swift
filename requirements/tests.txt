@@ -3,3 +3,5 @@ modelscope
 pre-commit
 pytest
 ruff
+scikit-learn
+yapf==0.30.0 # use fix version to ensure consistent auto-styling

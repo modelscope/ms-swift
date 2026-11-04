@@ -1,10 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import json
 import os
+import torch
 from dataclasses import dataclass
 
 from swift.utils import add_version_to_work_dir, get_logger, init_process_group, is_last_rank, to_abspath
 from .megatron_base_args import MegatronBaseArguments
+from .parallel_args import get_parallel_world_size, validate_parallel_args
 
 logger = get_logger()
 
@@ -40,6 +42,9 @@ class MegatronSftArguments(MegatronBaseArguments):
         super()._init_megatron_args()
 
     def __post_init__(self):
+        # Validate before model lookup and _init_output_dir's process-group initialization.
+        world_size = get_parallel_world_size(self.skip_megatron_init, torch.distributed)
+        validate_parallel_args(self, world_size)
         self.mcore_model = to_abspath(self.mcore_model, check_path_exist=True)
         super().__post_init__()
         if len(self.dataset) == 0 and len(self.cached_dataset) == 0:

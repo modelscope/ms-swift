@@ -9,9 +9,10 @@ from .types import DecodedResponse
 
 @runtime_checkable
 class ToolParser(Protocol):
-    def parse(self, text: str) -> List[Dict[str, Any]]: ...
+    # ``tools`` is optional: only a parser whose wire format omits argument types needs it.
+    def parse(self, text: str, tools: Optional[Iterable[Dict[str, Any]]] = None) -> List[Dict[str, Any]]: ...
 
-    def parse_errors(self, text: str) -> List[str]: ...
+    def parse_errors(self, text: str, tools: Optional[Iterable[Dict[str, Any]]] = None) -> List[str]: ...
 
     def clean(self, text: str) -> str: ...
 
@@ -174,7 +175,7 @@ def decode_output(
         raw_calls = structured_calls
         errors = ()
     elif tool_parser is not None:
-        raw_calls = tool_parser.parse(content)
+        raw_calls = tool_parser.parse(content, tools=tools)
         errors = tuple(tool_parser.parse_errors(content))
         content = tool_parser.clean(content)
     else:

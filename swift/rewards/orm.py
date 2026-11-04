@@ -167,7 +167,7 @@ class CosineReward(ORM):
             else:
                 min_value = self.max_len_value_wrong
                 max_value = self.min_len_value_wrong
-            gen_len = len(ids)
+            gen_len = sum(map(len, ids)) if ids and isinstance(ids[0], list) else len(ids)
             reward = self.cosfn(gen_len, self.max_len, min_value, max_value)
             rewards.append(reward)
         return rewards
@@ -187,7 +187,7 @@ class RepetitionPenalty(ORM):
 
     def __call__(self, completions, **kwargs) -> List[float]:
         """
-        reward function the penalizes repetitions
+        reward function that penalizes repetitions
 
         Args:
             completions: List of model completions
@@ -225,7 +225,7 @@ class SoftOverlong(ORM):
         rewards = []
         response_token_ids = kwargs.get('response_token_ids')
         for ids in response_token_ids:
-            completion_length = len(ids)
+            completion_length = sum(map(len, ids)) if ids and isinstance(ids[0], list) else len(ids)
             expected_len = self.soft_max_length - self.soft_cache_length
             exceed_len = completion_length - expected_len
             rewards.append(min(-exceed_len / self.soft_cache_length, 0))
@@ -262,9 +262,9 @@ class ReactORM(ORM):
                 f1.append(0)
             elif not ref_is_json and not cand_is_json:
                 rougel = ReactORM.evaluate_rougel([ref_input_json], [cand_input_json])
-                if rougel is None or rougel < 10:
+                if rougel is None or rougel < 0.1:
                     f1.append(0)
-                elif 10 <= rougel < 20:
+                elif 0.1 <= rougel < 0.2:
                     f1.append(0.1)
                 else:
                     f1.append(1)
@@ -396,17 +396,20 @@ class MathORM(ORM):
 
     @staticmethod
     def extract_boxed_result(text):
-        pattern = r'\\boxed{([^}]*)}'
-        match = re.search(pattern, text)
+        match = re.search(r'\\boxed\{', text)
         if match:
-            return match.group(1).strip()
-        else:
-            return text
+            depth = 1
+            for brace in re.finditer(r'(?<!\\)[{}]', text[match.end():]):
+                depth += 1 if brace.group() == '{' else -1
+                if depth == 0:
+                    return text[match.end():match.end() + brace.start()].strip()
+        return text
 
     @staticmethod
     def clean_latex(latex_str):
         latex_str = re.sub(r'\\\(|\\\)|\\\[|\\]', '', latex_str)
-        latex_str = latex_str.replace('}}', '}').replace('{', '').replace('}', '')
+        # Preserve groups used by fractions, exponents and other LaTeX commands.
+        latex_str = re.sub(r'^\{([^{}]*)\}$', r'\1', latex_str.strip())
         return latex_str.strip()
 
     @staticmethod
@@ -422,7 +425,11 @@ class MathORM(ORM):
     @staticmethod
     def compare_consecutive(first, second):
         cleaned_list = [MathORM.clean_latex(latex) for latex in [first, second]]
+        if cleaned_list[0] == cleaned_list[1]:
+            return True
         parsed_exprs = [MathORM.parse_expression(latex) for latex in cleaned_list]
+        if any(expr is None for expr in parsed_exprs):
+            return False
         if hasattr(parsed_exprs[0], 'equals') and hasattr(parsed_exprs[1], 'equals'):
             value = parsed_exprs[0].equals(parsed_exprs[1])
         else:

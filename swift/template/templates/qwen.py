@@ -7,6 +7,7 @@ import shutil
 import torch
 import torch.nn.functional as F
 import transformers
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import partial
 from packaging import version
@@ -15,7 +16,7 @@ from torch import nn
 from transformers.integrations import is_deepspeed_zero3_enabled
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import get_env_args, get_packed_seq_params, is_deepspeed_enabled, to_float_dtype
+from swift.utils import get_env_args, get_logger, get_packed_seq_params, is_deepspeed_enabled, to_float_dtype
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
@@ -25,6 +26,8 @@ from ..utils import Context, Word, findall
 from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
+
+logger = get_logger()
 
 
 @dataclass
@@ -358,6 +361,22 @@ class Qwen2VLTemplate(Template):
                     video, video_metadata = video
                     inputs.mm_processor_kwargs.setdefault('video_metadata', []).append(video_metadata)
                     tokens = ['<|video_pad|>']
+                elif isinstance(video, tuple):
+                    # When video_start/video_end clip a window from the source video, the
+                    # frames_indices returned by qwen_vl_utils are absolute indices of the
+                    # source video. vLLM computes per-frame timestamps as frames_indices / fps
+                    # and injects them into the prompt, which would produce absolute timestamps
+                    # (e.g. <161.4 seconds>) instead of window-relative ones. Rebase the
+                    # indices so the injected timestamps start from the clipped window.
+                    video_tensor, video_metadata = video
+                    frames_indices = video_metadata.get('frames_indices') if isinstance(video_metadata,
+                                                                                        Mapping) else None
+                    if frames_indices is not None and len(frames_indices) > 0:
+                        frames_indices = [int(i) for i in frames_indices]
+                        base = frames_indices[0]
+                        if base > 0:
+                            video_metadata = {**video_metadata, 'frames_indices': [i - base for i in frames_indices]}
+                            video = (video_tensor, video_metadata)
                 inputs.mm_processor_kwargs['do_sample_frames'] = False
             if isinstance(video, torch.Tensor):
                 video = video.to(torch.uint8)
@@ -641,6 +660,59 @@ class Qwen3_5Template(Qwen3VLTemplate):
         super()._swift_prepare_inputs(inputs)
 
 
+class Qwen3_8Template(Qwen3_5Template):
+    reasoning_effort_instructions = {
+        'xhigh': ('Reasoning effort is set to xhigh. Please think carefully through the task, validate key '
+                  'assumptions, consider plausible alternatives, and prioritize correctness, consistency, '
+                  'and clarity in the final answer.'),
+        'medium':
+        '',
+        'low': ('Reasoning effort is set to low. Keep your thinking brief and focused, moving directly to the '
+                'conclusion without unnecessary elaboration.'),
+    }
+    default_reasoning_effort = 'xhigh'
+
+    def _get_reasoning_instructions(self, inputs: Optional[StdTemplateInputs] = None) -> str:
+        # HF injects the instruction whenever thinking is on (its jinja default). Follow swift's
+        # resolved `enable_thinking` so that `--enable_thinking false` (which also emits the
+        # `<think>\n\n</think>` non-thinking prefix) consistently drops the instruction too.
+        if not self._get_enable_thinking(inputs):
+            return ''
+        reasoning_effort = None
+        if inputs is not None:
+            reasoning_effort = inputs.chat_template_kwargs.get('reasoning_effort')
+        if reasoning_effort is None:
+            reasoning_effort = self.chat_template_kwargs.get('reasoning_effort')
+        if reasoning_effort is None:
+            reasoning_effort = self.default_reasoning_effort
+        if reasoning_effort not in self.reasoning_effort_instructions:
+            raise ValueError(f'Unexpected reasoning effort {reasoning_effort}. Supported types are '
+                             f'{list(self.reasoning_effort_instructions.keys())}.')
+        return self.reasoning_effort_instructions[reasoning_effort]
+
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
+        system = super()._get_system(inputs)
+        reasoning_instructions = self._get_reasoning_instructions(inputs)
+        if not reasoning_instructions:
+            return system
+        if system:
+            return f'{reasoning_instructions}\n\n{system}'
+        return reasoning_instructions
+
+    def _jinja_encode(self, inputs: StdTemplateInputs):
+        for message in inputs.messages:
+            content = message.get('content')
+            if (message.get('role') != 'assistant' or not isinstance(content, str)
+                    or message.get('reasoning_content') is not None):
+                continue
+            if not content.startswith('<think>') or '</think>' not in content:
+                continue
+            reasoning_content, _, rest = content.partition('</think>')
+            message['reasoning_content'] = reasoning_content[len('<think>'):].strip()
+            message['content'] = rest.lstrip('\n')
+        return super()._jinja_encode(inputs)
+
+
 register_template(
     QwenTemplateMeta(
         MLLMTemplateType.qwen3_5,
@@ -653,6 +725,17 @@ register_template(
 
 register_template(
     QwenTemplateMeta(
+        MLLMTemplateType.qwen3_8,
+        template_cls=Qwen3_8Template,
+        default_system=None,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+        agent_template='qwen3_5',
+        preserve_thinking=True,
+        is_thinking=True))
+
+register_template(
+    QwenTemplateMeta(
         MLLMTemplateType.ovis_ocr2,
         template_cls=Qwen3_5Template,
         default_system=None,
@@ -660,6 +743,81 @@ register_template(
         non_thinking_prefix='<think>\n\n</think>\n\n',
         agent_template='qwen3_5',
         is_thinking=False))
+
+
+class Qwen3_5EmbTemplate(Qwen3_5Template):
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.is_training:
+            return inputs
+        input_ids = inputs['input_ids']
+        base_model = self.get_base_model(model)
+        inputs_embeds = base_model.language_model.embed_tokens(input_ids)
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
+        return {'inputs_embeds': inputs_embeds}
+
+    def init_processor(self, processor) -> None:
+        super().init_processor(processor)
+
+        base_eos_token = '<|endoftext|>'
+        sparse_info_path = os.path.join(self.model_info.model_dir, 'sparse_info.json')
+        num_eos_tokens = 0
+        if os.path.exists(sparse_info_path):
+            try:
+                with open(sparse_info_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    raw_num = data.get('num_eos_tokens', 0)
+                    if raw_num is not None:
+                        num_eos_tokens = int(raw_num)
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                logger.warning(f'Failed to parse sparse_info.json: {e}')
+        self.num_eos_tokens = num_eos_tokens
+
+        if num_eos_tokens > 0:
+            self.template_meta.suffix = [base_eos_token] * num_eos_tokens
+            logger.info(f"Set suffix to {num_eos_tokens} tokens of '{base_eos_token}' based on sparse_info.json")
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        if inputs.messages:
+            last_msg = inputs.messages[-1]
+            if last_msg['role'] != 'assistant':
+                inputs.messages.append({'role': 'assistant', 'content': ''})
+
+    def prepare_engine_kwargs(self) -> Dict[str, Any]:
+        if self.mode == 'vllm' and self.template_meta.template_type == MLLMTemplateType.qwen3_5_emb:
+            from vllm.config import PoolerConfig
+            return {
+                'hf_overrides': {
+                    'architectures': ['UEmbedForConditionalGeneration'],
+                },
+                'pooler_config': PoolerConfig(task='token_embed', pooling_type='ALL'),
+            }
+        return {}
+
+    def prepare_pooling_params(self, pooling_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        if self.mode == 'vllm' and self.template_meta.template_type == MLLMTemplateType.qwen3_5_emb:
+            pooling_kwargs.update(task='token_embed', use_activation=False)
+        return pooling_kwargs
+
+    def extract_embedding(self, result) -> Any:
+        if self.template_meta.template_type == MLLMTemplateType.qwen3_5_emb:
+            data = result.outputs.data
+            num_eos = self.num_eos_tokens
+            embedding = torch.nn.functional.normalize(data[-(num_eos + 1)].float(), p=2, dim=-1)
+            return embedding.cpu().tolist()
+        return super().extract_embedding(result)
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_5_emb,
+        template_cls=Qwen3_5EmbTemplate,
+        default_system="Represent the user's input.",
+        suffix=['<|endoftext|>'],
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+        is_thinking=True))
 
 
 class Qwen3VLEmbTemplate(Qwen3VLTemplate):
@@ -676,6 +834,16 @@ register_template(
         default_system="Represent the user's input.",
         suffix=['<|endoftext|>'],
         template_cls=Qwen3VLEmbTemplate,
+    ))
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.wemm_embedding,
+        template_cls=Qwen3_5EmbTemplate,
+        default_system=None,
+        prompt=['<|im_start|>user\n{{QUERY}}<|im_end|>\n'],
+        suffix=['<embedding>'],
+        stop_words=['<embedding>'],
     ))
 
 
@@ -789,7 +957,23 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             if isinstance(video, list):  # image list
                 from qwen_omni_utils import vision_process
                 video_inputs['sample_fps'] = vision_process.FPS
-            _video = fetch_video(video_inputs, **kwargs)
+            _video, sample_fps = fetch_video(video_inputs, return_video_sample_fps=True, **kwargs)
+            # Record the fps actually used when sampling frames (mirrors the VL v2_5 path). Without
+            # it the HF processor falls back to fps=1.0, so `video_second_per_grid` (temporal spacing
+            # driving TMRoPE + the audio/video token interleaving under `use_audio_in_video`) ignores
+            # the real fps: `_encode` recomputes `video_second_per_grid` from it in the
+            # transformers/train path, and vllm re-runs the HF processor on the forwarded
+            # mm_processor_kwargs.
+            if self.mode == 'vllm':
+                fps = inputs.mm_processor_kwargs.get('fps')
+                if fps is None:
+                    inputs.mm_processor_kwargs['fps'] = sample_fps
+                elif fps != sample_fps:
+                    logger.warning_once(f'The HF processor shares a single `fps` for all videos, but '
+                                        f'videos were sampled with different fps ({fps} vs {sample_fps}); '
+                                        f'keeping fps={fps}.')
+            else:
+                inputs.mm_processor_kwargs.setdefault('fps', []).append(sample_fps)
             if isinstance(_video, torch.Tensor):
                 _video = _video.to(torch.uint8)
             inputs.videos[index] = _video
@@ -887,6 +1071,14 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         media_inputs.pop('input_ids')
         media_inputs.pop('attention_mask')
         media_inputs = to_float_dtype(media_inputs, self.model_info.torch_dtype)
+        # The processor receives pre-sampled frames (no fps) and computes `video_second_per_grid`
+        # from the default fps=1.0. Override it with the fps actually used during sampling so the
+        # temporal position ids / audio-video token interleaving honor the user-configured fps.
+        fps = inputs.mm_processor_kwargs.get('fps')
+        if inputs.videos and fps and 'video_second_per_grid' in media_inputs:
+            video_processor = getattr(processor, 'video_processor', None) or processor.image_processor
+            media_inputs['video_second_per_grid'] = torch.tensor(
+                [video_processor.temporal_patch_size / tmp for tmp in fps], dtype=torch.float32)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
@@ -1000,6 +1192,10 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         else:
             audio_feature_lengths = None
         video_second_per_grid = inputs.pop('video_second_per_grid', None)
+        if video_second_per_grid is not None and not isinstance(video_second_per_grid, torch.Tensor):
+            # `get_rope_index` indexes `second_per_grids` per video and calls `.cpu()` on each item,
+            # so the fps override in `_encode` (a python list) must be converted back to a tensor.
+            video_second_per_grid = torch.tensor(video_second_per_grid, dtype=torch.float32)
         input_ids = inputs['input_ids']
         attention_mask = inputs.get('attention_mask_2d')
         if attention_mask is None:
@@ -1591,7 +1787,7 @@ class MarcoO1TemplateMeta(QwenTemplateMeta):
 你是一个经过良好训练的AI助手，你的名字是Marco-o1.由阿里国际数字商业集团的AI Business创造.
         \n## 重要！！！！！
 当你回答问题时，你的思考应该在<Thought>内完成，<Output>内输出你的结果。
-<Thought>应该尽可能是英文，但是有2个特例，一个是对原文中的引用，另一个是是数学应该使用markdown格式，<Output>内的输出需要遵循用户输入的语言。
+<Thought>应该尽可能是英文，但是有2个特例，一个是对原文中的引用，另一个是数学应该使用markdown格式，<Output>内的输出需要遵循用户输入的语言。
         """
 
 

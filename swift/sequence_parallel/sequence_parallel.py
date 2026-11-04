@@ -219,14 +219,22 @@ class SequenceParallel:
                             group=self.rp_group)
                         return output
                     else:
-                        if 'cu_seq_lens_q' in kwargs:
-                            position_ids = kwargs.get('position_ids')
-                            if self.real_position_ids is not None:
-                                position_ids = self.real_position_ids
+                        position_ids = kwargs.get('position_ids')
+                        if self.real_position_ids is not None:
+                            position_ids = self.real_position_ids
+                        # Our -1 padding makes transformers' `_is_packed_sequence` see a single varlen sequence
+                        # whenever the batch has one row -- no matter whether padding_free is on -- yet since
+                        # 5.15.0 it derives the lengths from `position_ids == position_ids.min()` instead of `== 0`
+                        # (huggingface/transformers#47525), reading that -1 as the only sequence start. Supply the
+                        # lengths ourselves, and only for that same single-row case.
+                        if position_ids is not None and query.shape[0] == 1:
                             position_ids = self.pad(position_ids, padding_value=-1, position_ids=position_ids)
                             cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
                             max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
-                            assert query.shape[2] == cu_seqlens[-1]
+                            # `query` is (batch, heads, seq, head_dim) here, i.e. after the all-to-all it spans the
+                            # whole sequence, so its length must match the total the lengths account for.
+                            assert query.shape[2] == cu_seqlens[-1], (
+                                f'query.shape: {tuple(query.shape)}, cu_seqlens: {cu_seqlens.tolist()}')
                             kwargs['cu_seq_lens_q'] = cu_seqlens
                             kwargs['cu_seq_lens_k'] = cu_seqlens
                             kwargs['max_length_q'] = max_seqlen
@@ -324,7 +332,12 @@ class SequenceParallel:
                 _gathered_logits.append(_bs_logits)
             router_logits = torch.stack(_gathered_logits, dim=0)
             if self.real_position_ids is not None:
-                router_logits = router_logits[:, :, :self.real_position_ids.shape[1], :]
+                if self.rp_world_size > 1:
+                    position_ids = self.pad(
+                        self.real_position_ids, padding_value=-1, position_ids=self.real_position_ids)
+                    router_logits = router_logits[:, :, position_ids[0] >= 0, :]
+                else:
+                    router_logits = router_logits[:, :, :self.real_position_ids.shape[1], :]
             output['router_logits'] = tuple(
                 [logit.reshape(-1, logit.shape[-1]) for logit in router_logits.split(1, dim=1)])
             return output
@@ -703,7 +716,7 @@ class SequenceParallel:
         """Prepare inputs
 
         1. set extra_kwargs['text_position_ids']
-        2. split labels
+        2. split labels and loss_scale
         """
         position_ids = inputs.get('text_position_ids')
         input_ids = inputs.get('input_ids')
@@ -713,11 +726,15 @@ class SequenceParallel:
             self.extra_kwargs['text_position_ids'] = position_ids.clone()
         if input_ids is not None:
             self.extra_kwargs['input_ids'] = input_ids.clone()
-        if 'labels' in inputs:
-            labels = inputs['labels']
-            _, _, labels, _, _, _, _ = self.pad_and_split_inputs(
-                None, None, labels, None, None, None, real_position_ids=position_ids)
-            inputs['labels'] = labels
+        labels = inputs.get('labels')
+        loss_scale = inputs.get('loss_scale')
+        if labels is not None or loss_scale is not None:
+            _, _, labels, _, _, loss_scale, _ = self.pad_and_split_inputs(
+                None, None, labels, None, None, loss_scale, real_position_ids=position_ids)
+            if labels is not None:
+                inputs['labels'] = labels
+            if loss_scale is not None:
+                inputs['loss_scale'] = loss_scale
 
 
 sequence_parallel = SequenceParallel()

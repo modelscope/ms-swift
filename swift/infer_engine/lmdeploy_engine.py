@@ -23,7 +23,8 @@ from swift.utils import get_logger, get_seed, safe_snapshot_download
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig)
+                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig,
+                       random_uuid)
 from .utils import InferStreamer
 
 try:
@@ -194,6 +195,7 @@ class LmdeployEngine(InferEngine):
         generation_config: LmdeployGenerationConfig,
         request_config: RequestConfig,
     ) -> AsyncIterator[ChatCompletionStreamResponse]:
+        request_id = f'chatcmpl-{random_uuid()}'
         session_id = time.time_ns()
         kwargs = {'stream_output': True, 'gen_config': generation_config, 'sequence_start': True, 'sequence_end': True}
         if version.parse(lmdeploy.__version__) >= version.parse('0.6.5'):
@@ -226,7 +228,8 @@ class LmdeployEngine(InferEngine):
                 toolcall = None
                 if is_finished:
                     toolcall = self._get_toolcall(
-                        self.template.decode_generate_ids(output.token_ids, template_inputs=inputs['template_inputs']))
+                        self.template.decode_generate_ids(output.token_ids, template_inputs=inputs['template_inputs']),
+                        template_inputs=inputs['template_inputs'])
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, output.num_token,
                                                         output.status.name == 'FINISH')
                 choices = [
@@ -236,7 +239,8 @@ class LmdeployEngine(InferEngine):
                         finish_reason=finish_reason,
                         logprobs=logprobs)
                 ]
-                yield ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info)
+                yield ChatCompletionStreamResponse(
+                    model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
     async def _infer_full_async(
         self,
@@ -265,7 +269,7 @@ class LmdeployEngine(InferEngine):
         logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
 
         usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
-        toolcall = self._get_toolcall(response)
+        toolcall = self._get_toolcall(response, template_inputs=inputs['template_inputs'])
         finish_reason = self._get_finish_reason(generation_config.max_new_tokens, output.num_token,
                                                 output.status.name == 'FINISH')
         token_ids = output.token_ids if request_config.return_details else None

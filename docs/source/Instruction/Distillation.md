@@ -111,7 +111,7 @@ swift 提供三种蒸馏训练方法，它们共享同一套教师基础设施�
 
 - `--teacher_model`：在训练进程中加载一个独立的冻结教师模型。
 - `--teacher_model_server`：连接一个外部教师服务（`swift deploy`启动的vllm服务），不在训练卡上加载教师。GKD 使用 API 时需同时设置 `--gkd_logits_topk`。支持单 URL 与多 teacher JSON 配置。
-- **自蒸馏**：教师与学生同源。LoRA 训练且 `--teacher_model` 与 `--model` 相同时，自动用 `disable_adapter()` 以基座为固定教师，无需额外加载；不传 `--teacher_model` 且设置 `teacher_prompt`, 则以「学生当前权重」为动态教师。
+- **自蒸馏**：教师与学生同源。LoRA 训练且 `--teacher_model` 与 `--model` 相同、未指定 `--teacher_adapters` 时，自动用 `disable_adapter()` 以基座为固定教师，无需额外加载；同时指定 `--teacher_model` 和 `--teacher_adapters` 时则加载包含这些 adapter 的独立冻结教师，增加一份基座权重的内存开销。不传 `--teacher_model` 且设置 `teacher_prompt`, 则以「学生当前权重」为动态教师。
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
@@ -337,7 +337,7 @@ OPSD（[On-Policy Self-Distillation](https://arxiv.org/abs/2601.18734)）是一�
 **核心机制**
 
 - **学生**：仅看到问题，正常推理。
-- **教师**：看到问题 + 参考解答（通过 `teacher_prompt` 列提供特权信息）。
+- **教师**：通过 `teacher_prompt` 获取特权文本，通过 `teacher_images` 获取特权图片，也可同时使用两者。
 - **训练目标**：用散度（JSD / KL）对齐学生与教师在同一份学生采样响应上的输出分布。
 
 OPSD 既可走 GKD 路径，也可走 OPD-RL 路径：
@@ -354,7 +354,9 @@ OPSD 既可走 GKD 路径，也可走 OPD-RL 路径：
 
 **数据格式**
 
-OPSD 数据集需包含 `teacher_prompt` 列，可通过 `--external_plugins` 加载数据处理插件来构建。以数学推理数据集 `open-r1/OpenThoughts-114k-math` 为例：
+OPSD 数据集可提供 `teacher_prompt`、`teacher_images`，或同时提供两者。省略 `teacher_images`（值为 `None`）时，教师复用学生的 `images`；显式传入空列表时，教师使用纯文本视图。只提供 `teacher_images` 而不提供 `teacher_prompt` 时，教师沿用学生消息，但使用单独的教师图片。教师实际提示词中的 `<image>` 标签数应与教师图片数一致；否则多余标签会作为文本保留，并由模板输出警告。
+
+可通过 `--external_plugins` 加载数据处理插件来构建教师侧字段。以数学推理数据集 `open-r1/OpenThoughts-114k-math` 为例：
 
 ```python
 from swift.dataset import DatasetMeta, RowPreprocessor, register_dataset

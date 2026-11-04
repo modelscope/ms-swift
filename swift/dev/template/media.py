@@ -7,12 +7,10 @@ from io import BytesIO
 from typing import Any, Callable, List, TypeVar, Union
 
 import numpy as np
-import requests
 import torch
 from PIL import Image
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
+from ..utils.url_safety import SafeMediaPath, SafeUrlFetcher
 from .runtime import get_env_args
 
 # >>> internvl
@@ -143,18 +141,11 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
     if isinstance(path, str):
         path = path.strip()
         if path.startswith("http"):
-            retries = Retry(total=3, backoff_factor=1, allowed_methods=["GET"])
-            with requests.Session() as session:
-                session.mount("http://", HTTPAdapter(max_retries=retries))
-                session.mount("https://", HTTPAdapter(max_retries=retries))
-
-                timeout = float(os.getenv("SWIFT_TIMEOUT", "20"))
-                request_kwargs = {"timeout": timeout} if timeout > 0 else {}
-
-                response = session.get(path, **request_kwargs)
-                response.raise_for_status()
-                content = response.content
-                res = BytesIO(content)
+            timeout = float(os.getenv("SWIFT_TIMEOUT", "20"))
+            request_kwargs = {"timeout": timeout} if timeout > 0 else {}
+            # Untrusted callers supply these URLs (e.g. media URLs in a `swift deploy` request), so the
+            # fetch goes through the SSRF guard instead of a bare requests.get.
+            res = BytesIO(SafeUrlFetcher.read(path, **request_kwargs))
         else:
             data = path
             path = _check_path(path)
@@ -167,6 +158,7 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
                 data = base64.b64decode(data)
                 res = BytesIO(data)
             else:
+                SafeMediaPath.check(path)
                 with open(path, "rb") as f:
                     res = BytesIO(f.read())
     elif isinstance(path, bytes):
@@ -320,12 +312,15 @@ def _load_audio_librosa(audio: Union[str, bytes], sampling_rate: int, mono: bool
         audio_io = load_file(audio)
         return librosa.load(audio_io, sr=sampling_rate, mono=mono)
     except Exception:
-        if isinstance(audio, str) and audio.startswith(("http://", "https://")):
-            import audioread
+        if not isinstance(audio, (str, bytes)):
+            # Already a file-like object / ndarray; let librosa handle it directly.
+            return librosa.load(audio, sr=sampling_rate, mono=mono)
+        # Materialize through the guarded loader: handing ffmpeg a URL lets it fetch and redirect itself,
+        # bypassing the SSRF guard.
+        audio_io = load_file(audio)
+        import audioread
 
-            audio_io = audioread.ffdec.FFmpegAudioFile(audio)
-        else:
-            audio_io = _check_path(audio) if isinstance(audio, str) else audio
+        audio_io = audioread.ffdec.FFmpegAudioFile(audio_io)
         return librosa.load(audio_io, sr=sampling_rate, mono=mono)
 
 
@@ -442,6 +437,8 @@ def _resolve_video_local_path(path: Union[str, bytes]) -> tuple:
             f.write(load_file(path).read())
             return f.name, True
     checked = _check_path(path) if isinstance(path, str) else None
+    if checked is not None:
+        SafeMediaPath.check(checked)
     return checked or path, False
 
 

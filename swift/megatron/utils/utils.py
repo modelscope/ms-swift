@@ -20,6 +20,13 @@ from swift.utils import get_packed_seq_params as _get_packed_seq_params
 logger = get_logger()
 
 
+def get_hf_mtp_num_layers(mtp_num_layers, repeated):
+    """HF configs record physical MTP layers, not the logical prediction depth."""
+    if not mtp_num_layers:
+        return mtp_num_layers
+    return 1 if repeated else mtp_num_layers
+
+
 def find_all_linears(model, extra_layers=None):
 
     def _cond(name, module):
@@ -171,11 +178,31 @@ def _prepare_full_vit(args, model):
             module.requires_grad_(True)
 
 
+def _freeze_engram_parameters(model) -> None:
+    """Freeze DeepSeek-V4.1 Engram parameters for on-policy RL.
+
+    Engram tables reach hundreds of GiB on the real checkpoint, so they cannot be resynced to the
+    rollout engine every step. Freezing the whole Engram subsystem keeps training on-policy: the
+    rest of the model is updated and vLLM keeps the base Engram (the RL weight-sync path skips
+    exporting them; see MegatronRolloutMixin._export_and_load_weights).
+    """
+    frozen = []
+    for name, param in model.named_parameters():
+        if ('.engram.' in name or getattr(param, 'is_engram_embedding', False)) and param.requires_grad:
+            param.requires_grad = False
+            frozen.append(name)
+    if frozen:
+        logger.info(f'Froze {len(frozen)} DeepSeek-V4.1 Engram parameters for on-policy RL, '
+                    f'e.g. {frozen[:2]}.')
+
+
 def prepare_mcore_model(args, model):
     if args.tuner_type == 'full':
         freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
         if args.trainable_parameters or args.trainable_parameters_regex:
             activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
+        if args.rlhf_type == 'grpo' and args.model_type == 'deepseek_v41':
+            _freeze_engram_parameters(model)
     elif args.tuner_type in {'lora', 'lora_llm'}:
         model = prepare_adapter(args, model)
         if args.tuner_type == 'lora_llm':
@@ -249,6 +276,8 @@ def get_packed_seq_params(args, position_ids: torch.Tensor) -> PackedSeqParams:
         max_seqlen_kv=max_seqlen_kv,
         qkv_format='thd',
     )
+    if hasattr(packed, 'total_tokens'):
+        packed.total_tokens = position_ids.numel()
     if hasattr(packed, 'cp_partition_mode'):
         packed.cp_partition_mode = args.cp_partition_mode
 
@@ -259,8 +288,8 @@ def get_packed_seq_params(args, position_ids: torch.Tensor) -> PackedSeqParams:
     return packed
 
 
-def reconstruct_tensor_cp(tensor, packed_seq_params, dim=1) -> torch.Tensor:
-    """In CP mode, all-gather and undo the load-balanced (zigzag) chunking
+def reconstruct_tensor_cp(tensor, packed_seq_params, dim=1, cp_partition_mode='zigzag') -> torch.Tensor:
+    """In CP mode, all-gather and undo the configured partitioning
     produced by ``split_cp_inputs``, restoring the full sequence in original
     token order along ``dim``.
 
@@ -269,6 +298,7 @@ def reconstruct_tensor_cp(tensor, packed_seq_params, dim=1) -> torch.Tensor:
         packed_seq_params: ``PackedSeqParams`` for THD inputs, or ``None`` for
             regular ``[B, S, ...]`` inputs.
         dim: Sequence dimension index of ``tensor`` (default: 1).
+        cp_partition_mode: CP partition layout, either ``zigzag`` or ``contiguous``.
 
     Returns:
         torch.Tensor: Full-sequence tensor with the same shape as ``tensor``
@@ -287,6 +317,8 @@ def reconstruct_tensor_cp(tensor, packed_seq_params, dim=1) -> torch.Tensor:
     torch.distributed.all_gather(output_list, tensor.contiguous(), group=cp_group)
     output_list[cp_rank] = tensor
     gathered = torch.cat(output_list, dim=dim)
+    if cp_partition_mode == 'contiguous':
+        return gathered
 
     # `_undo_attention_load_balancing` assumes sequence dim is 0; transpose if needed.
     if dim != 0:

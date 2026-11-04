@@ -111,10 +111,14 @@ The full preprocessing loop, as the workbench agent should run it:
 
 1. **Ask the user** for the data format and the path. Paths outside the workspace are readable
    only after the user registers them (Settings -> 外部数据目录, read-only) — probe with
-   `read_file` / `list_dir` with `root="external"`; for large files use shell `head` / `wc` / `jq`.
+   `read_file` / `list_dir` with `root="external"`. Profile large files with the `dataset_profile`
+   tool (streaming rows/columns/value-distribution/sample counts; no size limit, no shell needed);
+   fall back to shell `head` / `wc` / `jq` only for details `dataset_profile` cannot answer.
 2. **Write the preprocessing script** into the workspace (`write_file`), run it as a background
-   task (`run_script`; shell has a 30s timeout), poll `read_script_log` until it reports
-   completion. Edit scripts with `edit_file`, never `sed`.
+   task (`run_script`; shell has a 30s timeout). Completion wakes the conversation automatically —
+   let the turn end after launching and wait for the wake-up; do NOT poll `read_script_log` for
+   progress. Read the log only for mid-run diagnosis (suspected divergence, failure attribution),
+   once, not in a loop. Edit scripts with `edit_file`, never `sed`.
 3. **Aim the output at Channel 1**: a clean messages-format jsonl in the workspace. Pass its
    path in the train form's dataset field — no registration needed.
 4. **Only if the data needs code**: write the plugin as `workspace/plugins/<name>.py`. Files

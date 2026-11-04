@@ -5,7 +5,7 @@ from ..utils import split_str_parts_by
 
 
 def calculate_loss_scale(
-    query: str,
+    query: Optional[str],
     response: str,
     response_loss_scale_map: Dict[str, list],
     query_loss_scale_map: Optional[Dict[str, list]] = None,
@@ -17,7 +17,7 @@ def calculate_loss_scale(
     = literal tag then its content; a query-map hit replaces the whole response weight. Unmatched
     text weighs 1.0. Returns ``(parts, weights)``.
     """
-    if query_loss_scale_map is not None:
+    if query_loss_scale_map is not None and query is not None:
         for key in query_loss_scale_map.keys():
             if key in query:
                 if isinstance(query_loss_scale_map[key], (float, int)):

@@ -260,15 +260,17 @@ def test_recompute_granularity_none_normalisation():
 
 
 def test_vit_gradient_checkpointing_derivation():
-    """S2-08: the vision tower checkpoints unless frozen; full-param (no tuner) and an explicit
-    value are untouched."""
+    """S2-08: the vision tower follows the LLM tower's gradient checkpointing (legacy #9945), an
+    explicit value wins, and ``freeze_vit`` is deliberately not consulted."""
     train = TrainConfig()
     _derive_vit_gradient_checkpointing(train, TunerConfig(tuner='lora', freeze_vit=False))
     assert train.vit_gradient_checkpointing is True
 
+    # Legacy used `not freeze_vit` here, which silently disabled ViT checkpointing on a frozen tower even
+    # while the LLM tower kept checkpointing. #9945 replaced that rule with "mirror the LLM tower".
     train = TrainConfig()
     _derive_vit_gradient_checkpointing(train, TunerConfig(tuner='lora', freeze_vit=True))
-    assert train.vit_gradient_checkpointing is False
+    assert train.vit_gradient_checkpointing is True
 
     train = TrainConfig(vit_gradient_checkpointing=False)
     _derive_vit_gradient_checkpointing(train, TunerConfig(tuner='lora', freeze_vit=False))
@@ -276,7 +278,8 @@ def test_vit_gradient_checkpointing_derivation():
 
     train = TrainConfig()
     _derive_vit_gradient_checkpointing(train, None)
-    assert train.vit_gradient_checkpointing is None  # full-param: builder default
+    # Full-param runs get the same derivation: the tuner is irrelevant to the rule now.
+    assert train.vit_gradient_checkpointing is True
 
 
 @pytest.mark.parametrize('torch_dtype, expected', [('float16', 'float32'), ('float32', 'float32'),

@@ -413,13 +413,15 @@ def test_build_rl_sampler_placement_and_replay_knob(monkeypatch):
     model_config = ModelConfig(model='m')
     template = SimpleNamespace()
 
-    # colocate: sleep knob pinned, no dedicated mesh, and the sampler lives in the MODEL group
+    # colocate: sleep knob pinned; the sampler keeps its own group and replica mesh (the overlap with
+    # the MODEL devices is decided by the group plan -- a colocate run prints
+    # [('model', [0, 1]), ('sampler', [0])] -- not by dropping remote_group here).
     rollout = RolloutConfig(rollout_sampler='vllm', vllm_data_parallel_size=2)
     recipe_utils.build_rl_sampler(
         model_config=model_config, rollout_config=rollout, template=template, tuner_config=None, colocate=True)
     kw = calls[-1]
     assert kw['engine_args']['enable_sleep_mode'] is True
-    assert kw['device_mesh'] is None and kw['remote_group'] == 'model'
+    assert kw['remote_group'] == 'sampler' and kw['device_mesh'].data_world_size == 2
 
     # disaggregated: its own DP-sized mesh in the sampler group
     recipe_utils.build_rl_sampler(

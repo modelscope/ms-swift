@@ -259,7 +259,7 @@ In addition to installing the dependencies related to ms-swift mentioned above, 
 
 ```shell
 pip install "math_verify"
-pip install vllm==0.8.5.post1
+pip install vllm
 ```
 
 

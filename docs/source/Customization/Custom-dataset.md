@@ -10,9 +10,9 @@
 
 ms-swift的标准数据集格式可接受的keys包括: 'messages'、'rejected_response'、'label'、'images'、'videos'、'audios'、'tools'和'objects'。其中'messages'是必需的key，'rejected_response'用于DPO等RLHF训练，'label'用于KTO训练和分类模型训练，'images'、'videos'、'audios'用于存储多模态数据的路径或者url，'tools'用于Agent任务，'objects'用于grounding任务。
 
-ms-swift中存在三种核心预处理器：`MessagesPreprocessor`、`AlpacaPreprocessor`、`ResponsePreprocessor`。MessagesPreprocessor用于将类messages和sharegpt格式的数据集转换为标准格式，AlpacaPreprocessor则转换alpaca格式的数据集，ResponsePreprocessor则转换类query/response格式的数据集。`AutoPreprocessor`则自动选择合适的预处理进行处理。
+ms-swift中存在三种核心预处理器：`MessagesPreprocessor`、`AlpacaPreprocessor`、`ResponsePreprocessor`。MessagesPreprocessor用于将类messages和sharegpt格式的数据集转换为标准格式，并自动转换OpenAI的`tool_calls`以及Anthropic的`tool_use`/`tool_result`/`image`内容块；需要显式指定格式时，也可以使用`OpenAIMessagesPreprocessor`和`AnthropicMessagesPreprocessor`。AlpacaPreprocessor则转换alpaca格式的数据集，ResponsePreprocessor则转换类query/response格式的数据集。`AutoPreprocessor`则自动选择合适的预处理进行处理。
 
-以下四种格式在`AutoPreprocessor`处理下都会转换成ms-swift标准格式中的messages字段，即都可以直接使用`--dataset <dataset-path>`接入：
+以下格式在`AutoPreprocessor`处理下都会转换成ms-swift标准格式中的messages字段，即都可以直接使用`--dataset <dataset-path>`接入：
 
 messages格式（标准格式）:
 ```jsonl
@@ -24,6 +24,28 @@ sharegpt格式:
 ```jsonl
 {"system": "<system>", "conversation": [{"human": "<query1>", "assistant": "<response1>"}, {"human": "<query2>", "assistant": "<response2>"}]}
 ```
+
+OpenAI工具调用格式:
+```jsonl
+{"messages": [{"role": "user", "content": "天气如何？"}, {"role": "assistant", "content": null, "tool_calls": [{"type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Beijing\"}"}}]}, {"role": "tool", "content": "晴"}]}
+```
+
+OpenAI Chat Completions多模态工具调用格式:
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "text", "text": "比较这两张图片。"}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,{base64_encoded}"}}, {"type": "image_url", "image_url": "https://example.com/input.png"}]}, {"role": "assistant", "content": [{"type": "text", "text": "我来检查。"}], "tool_calls": [{"type": "function", "function": {"name": "inspect_images", "arguments": "{\"detail\":\"high\"}"}}]}]}
+```
+- OpenAI的`image_url`内容块会按原始顺序转换为`<image>`占位符和顶层`images`字段。该示例使用Chat Completions格式；Responses API的`input_text`和`input_image`内容块采用不同的数据结构。
+
+Anthropic工具调用格式:
+```jsonl
+{"messages": [{"role": "assistant", "content": [{"type": "text", "text": "我来查询。"}, {"type": "tool_use", "id": "toolu_01", "name": "get_weather", "input": {"city": "Beijing"}}]}, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01", "content": "晴"}]}]}
+```
+
+Anthropic多模态工具调用格式:
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "text", "text": "图片中有什么？"}, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "{base64_encoded}"}}]}, {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_01", "name": "inspect_image", "input": {}}]}, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01", "content": [{"type": "image", "source": {"type": "url", "url": "https://example.com/result.png"}}, {"type": "text", "text": "阳光明媚的海滩。"}]}]}]}
+```
+- Anthropic的base64和URL图片源会按原始顺序转换为`<image>`占位符和顶层`images`字段。
 
 query-response格式:
 ```jsonl
@@ -61,10 +83,10 @@ alpaca格式:
 ```
 
 - 可以通过增加"loss"字段，控制对应的模型回复部分（"role"为"assistant"）是否计算损失。默认该字段为None。若"loss"设置为true，则对应content进行损失计算（具体loss_scale依旧由`--loss_scale`决定）；若"loss"设置为false，则对应content不进行损失计算。需要注意的是，该功能只对"role"为"assistant"的部分生效；该功能优先级高于命令行参数 `--loss_scale`的基本策略（即'default'、'last_round'、'all'部分），例如，loss_scale为`'default+ignore_empty_think'`时，"loss"字段优先级高于"default"，但'ignore_empty_think'依旧发挥作用。
-- 可以通过增加"loss_scale"字段，控制对应的模型回复部分（"role"为"assistant"）的loss_scale。（ms-swift>=4.2.0）默认为None。该功能优先级高于命令行参数 `--loss_scale`的其他策略部分，例如：'ignore_empty_think', 'hermes'等。当loss_scale中有`>1`的数字出现时，你需要额外设置`--is_binary_loss_scale false`参数。
+- 可以通过增加"loss_scale"字段，控制对应的模型回复部分（"role"为"assistant"）的loss_scale。（ms-swift>=4.2.0）默认为None。该功能优先级高于命令行参数 `--loss_scale`的其他策略部分，例如：'ignore_empty_think', 'hermes'等。使用非二值的正权重（如`0.5`或`2.0`）时，需要额外设置`--is_binary_loss_scale false`，以保留权重大小。二值化模式只区分是否参与损失计算，不能表达降低或提高权重。
 ```jsonl
 {"messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好，有什么可以帮助你的吗？", "loss": false}, {"role": "user", "content": "1+1等于几？"}, {"role": "assistant", "content": "等于2", "loss": true}]}
-{"messages": [{"role": "user", "content": "hello!"}, {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 1.0}, {"role": "assistant", "content": "hi!", "loss_scale": 2.0}, {"role": "user", "content": "1+1=?"}, {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": false}]}
+{"messages": [{"role": "user", "content": "hello!"}, {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 0.5}, {"role": "assistant", "content": "hi!", "loss_scale": 2.0}, {"role": "user", "content": "1+1=?"}, {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": false}]}
 ```
 
 使用以下脚本进行测试：
@@ -74,7 +96,7 @@ from swift import get_processor, get_template
 
 data = {"messages": [
     {"role": "user", "content": "hello!"},
-    {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 1.},
+    {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 0.5},
     {"role": "assistant", "content": "hi!", "loss_scale": 2.},
     {"role": "user", "content": "1+1=?"},
     {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": False},
@@ -141,9 +163,17 @@ print(inputs['loss_scale'])
 ```
 
 你也可以将Agent数据集组织成以下形式：
+
+`rejected_response` 会替换 `messages` 中最后一条 `user` 消息之后的全部消息，组成 `rejected_messages`。请按顺序提供最后一条 `user` 消息之后的完整负例消息序列，包括其中的工具调用和工具返回；这些消息不会自动从正例中保留。如果负例只有一条普通助手回复，可以直接使用字符串，也可以使用只包含该回复的消息列表。消息列表中不能包含 `user` 消息。
+
 ```jsonl
-# 会寻找`messages`最后一个user的位置，并替换之后的内容为`rejected_response`组成`rejected_messages`
 {"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"天气预报。获取实时空气质量。当前空气质量，PM2.5，PM10信息\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"城市名，例如：上海\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "北京和上海今天的天气情况"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"北京\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"上海\"}}"}, {"role": "tool_response", "content": "{\"city\": \"北京\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"上海\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。"}], "rejected_response": [{"role": "assistant", "content": "我不知道。"}]}
+```
+
+上面的负例直接回答“我不知道。”，没有调用工具。下面的负例使用与正例相同的工具调用和返回，但最终回答中的 AQI 数值错误。因此，`rejected_response` 中也需要显式包含这些工具消息：
+
+```jsonl
+{"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"get_aqi\", \"description\": \"查询城市的空气质量指数。\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "北京当前的空气质量指数是多少？"}, {"role": "tool_call", "content": "{\"name\": \"get_aqi\", \"arguments\": {\"city\": \"北京\"}}"}, {"role": "tool_response", "content": "{\"aqi\": 50}"}, {"role": "assistant", "content": "北京当前的空气质量指数是50。"}], "rejected_response": [{"role": "tool_call", "content": "{\"name\": \"get_aqi\", \"arguments\": {\"city\": \"北京\"}}"}, {"role": "tool_response", "content": "{\"aqi\": 50}"}, {"role": "assistant", "content": "北京当前的空气质量指数是100。"}]}
 ```
 
 如何debug:

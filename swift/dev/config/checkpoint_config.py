@@ -52,6 +52,10 @@ class CheckpointConfig:
     # off; inference and artifact CLIs enable it unless explicitly set).
     load_args: bool = False
     load_data_args: bool = False  # with load_args, also restore DatasetConfig fields
+    # Import the `external_plugins` a checkpoint's args.json declares. Off by default: a checkpoint from a
+    # model hub is untrusted input, and importing its plugin file is arbitrary code execution. Can also be
+    # enabled with SWIFT_TRUST_REMOTE_PLUGINS=1.
+    trust_remote_plugins: bool = False
 
 
 # === Checkpoint args.json contract ===
@@ -78,7 +82,11 @@ CHECKPOINT_LOAD_FIELDS = {
     'model_config': (
         'model', 'model_type', 'model_revision', 'torch_dtype', 'attn_impl', 'experts_impl',
         'new_special_tokens', 'num_labels', 'problem_type', 'rope_scaling', 'max_model_len'),
-    'plugin_config': ('external_plugins', ),
+    'plugin_config': (
+        # `external_plugins` is deliberately absent: a checkpoint declares code to import, so restoring it
+        # here would execute attacker-chosen code. See `CheckpointConfig.trust_remote_plugins` and the
+        # explicit opt-in in `cli/parser.py::_restore_checkpoint_args`.
+    ),
     'quantize_config': (
         'quant_method', 'quant_bits', 'hqq_axis', 'bnb_4bit_compute_dtype', 'bnb_4bit_quant_storage'),
     'template_config': (

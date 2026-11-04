@@ -34,27 +34,37 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
     else:
         # If the model is quantized, perform the merge on the original (unquantized) model.
         # https://github.com/huggingface/peft/issues/2321
-        args.quant_method = None
+        origin_quant_method = args.quant_method
         origin_device_map = args.device_map
+        args.quant_method = None
         args.device_map = device_map or args.device_map
-        logger.info(f'merge_device_map: {device_map}')
-        model, template = prepare_model_template(args)
-        logger.info('Merge LoRA...')
-        check_tie_word_embeddings(model)
-        Swift.merge_and_unload(model)
-        model = model.model
-        logger.info('Saving merged weights...')
+        try:
+            logger.info(f'merge_device_map: {device_map}')
+            model, template = prepare_model_template(args)
+            logger.info('Merge LoRA...')
+            check_tie_word_embeddings(model)
+            Swift.merge_and_unload(model)
+            model = model.model
+            logger.info('Saving merged weights...')
 
-        save_checkpoint(
-            model,
-            template.processor,
-            output_dir,
-            safe_serialization=args.safe_serialization,
-            model_dirs=args.adapters,
-            max_shard_size=args.max_shard_size,
-            additional_saved_files=model.model_meta.additional_saved_files)
-        logger.info(f'Successfully merged LoRA and saved in `{output_dir}`.')
-        args.device_map = origin_device_map
+            save_checkpoint(
+                model,
+                template.processor,
+                output_dir,
+                safe_serialization=args.safe_serialization,
+                model_dirs=args.adapters,
+                max_shard_size=args.max_shard_size,
+                additional_saved_files=model.model_meta.additional_saved_files)
+            if getattr(args, 'task_type', None) == 'decision':
+                from swift.model.decision_head import get_scoring_head
+                head = get_scoring_head(model)
+                if head is not None:
+                    head.save_pretrained(output_dir, save_weights=False)
+                    logger.info(f'decision: saved scoring_head meta ({head.HEAD_META_NAME}) to {output_dir}.')
+            logger.info(f'Successfully merged LoRA and saved in `{output_dir}`.')
+        finally:
+            args.quant_method = origin_quant_method
+            args.device_map = origin_device_map
 
     args.model = output_dir
     args.model_dir = output_dir

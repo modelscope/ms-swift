@@ -70,12 +70,14 @@ class ReactCompatMixin:
 
         return functions
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    def get_toolcall(self, response: str, tools: Optional[List[Any]] = None) -> List[Function]:
         """
         Extract tool calls from an agent response.
 
         Args:
             response: The agent's response text.
+            tools: The request's tool definitions, for formats whose wire text omits a parameter's
+                type. Only read by families that set ``supports_tool_schema``.
 
         Returns:
             List of Function objects representing tool calls.
@@ -85,6 +87,42 @@ class ReactCompatMixin:
             # compat react
             functions = self._split_action_action_input(response, ReactCompatMixin.keyword)
         return functions
+
+    #: Whether :meth:`get_toolcall` needs ``tools``: a format writing bare parameter values cannot tell
+    #: ``"123"`` from ``123`` without the schema. Formats that encode the type on the wire leave it False.
+    supports_tool_schema = False
+
+    @staticmethod
+    def _tool_schemas(tools: Optional[List[Any]]) -> Dict[str, Dict[str, Any]]:
+        """``tools`` -> ``{function_name: parameter_schema}`` for schema-driven decoding."""
+        schemas: Dict[str, Dict[str, Any]] = {}
+        for tool in tools or ():
+            if isinstance(tool, str):
+                try:
+                    tool = json.loads(tool)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+            if not isinstance(tool, dict):
+                continue
+            function = tool.get('function') if isinstance(tool.get('function'), dict) else tool
+            name = function.get('name')
+            parameters = function.get('parameters')
+            if isinstance(parameters, str):
+                try:
+                    parameters = json.loads(parameters)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+            if isinstance(name, str) and isinstance(parameters, dict):
+                schemas[name] = parameters
+        return schemas
+
+    @classmethod
+    def _declared_string_params(cls, tool_schemas: Dict[str, Dict[str, Any]], function_name: str) -> set:
+        """Parameter names the schema declares as plain strings."""
+        properties = (tool_schemas.get(function_name) or {}).get('properties')
+        if not isinstance(properties, dict):
+            return set()
+        return {name for name, schema in properties.items() if isinstance(schema, dict) and schema.get('type') == 'string'}
 
     def _format_tool_responses(
         self,

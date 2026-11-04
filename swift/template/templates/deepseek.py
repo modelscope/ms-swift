@@ -8,14 +8,14 @@ import torch.nn.functional as F
 from dataclasses import dataclass, field
 from PIL import Image, ImageOps
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from swift.utils import get_env_args, get_logger
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Prompt, findall
+from ..utils import Context, Prompt, findall
 
 logger = get_logger()
 
@@ -144,8 +144,10 @@ class DeepseekVLTemplate(Template):
 
             input_ids = kwargs['input_ids']  # [bsz, max_input_token_num]
             bsz, max_input_token_num = input_ids.shape
+            # [bsz, parallel_size*2, max_input_token_num]
             tokens = torch.zeros((bsz, parallel_size * 2, max_input_token_num),
-                                 dtype=torch.int).cuda()  # [bsz, parallel_size*2, max_input_token_num]
+                                 dtype=torch.int,
+                                 device=input_ids.device)
             for i in range(parallel_size * 2):
                 tokens[:, i, :] = input_ids
                 if i % 2 != 0:
@@ -154,9 +156,10 @@ class DeepseekVLTemplate(Template):
             inputs_embeds = model.language_model.get_input_embeddings()(
                 tokens)  # [bsz, parallel_size*2, max_input_token_num, 2048]
 
-            generated_tokens = torch.zeros(
-                (bsz, parallel_size, self.image_token_num_per_image),
-                dtype=torch.int).cuda()  # [bsz, 16, image_token_num_per_image] placeholder for the generated tokens
+            generated_tokens = torch.zeros((bsz, parallel_size, self.image_token_num_per_image),
+                                           dtype=torch.int,
+                                           device=input_ids.device)
+            # [bsz, 16, image_token_num_per_image] placeholder for the generated tokens
 
             # set the first two dimensions into one dimension for batch size
             inputs_embeds = inputs_embeds.reshape(bsz * parallel_size * 2, max_input_token_num, -1)
@@ -465,7 +468,21 @@ class UnlimitedOCR(DeepseekOCR):
 
     def init_env_args(self):
         super().init_env_args()
-        self._rswa_window = self.config.sliding_window_size
+        # Unlimited-OCR-2 ships SR-SWA (`sparse_attention_config`); v1 is a plain R-SWA model.
+        self.is_v2 = bool(getattr(self.config, 'sparse_attention_config', None))
+        if self.is_v2:
+            # Official v2 prompt: `'<PAGE><image>' * num_pages + instruction`, i.e. every page is preceded by a
+            # `<PAGE>` marker (used by the page-aware RoPE and the sparse indexer).
+            self.image_placeholder = ['<PAGE><image>']
+            # None == official auto policy: gundam tiles for a single page, a base-only view for a multi-page doc.
+            self.crop_mode = get_env_args('crop_mode', bool, None)
+            # SR-SWA is implemented inside the model (DASH block-sparse + local window), so the extra 4D R-SWA
+            # mask would only re-restrict the already sparse attention.
+            self._rswa_window = None
+            if not self.template_meta.suffix:
+                self.template_meta.suffix = [['eos_token_id']]
+        else:
+            self._rswa_window = self.config.sliding_window_size
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         # Official infer_multi uses a single <image> for all images.
@@ -477,6 +494,22 @@ class UnlimitedOCR(DeepseekOCR):
                 if isinstance(content, str) and content.count('<image>') == 1:
                     msg['content'] = content.replace('<image>', '<image>' * n_images, 1)
         return super()._encode(inputs)
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        if not self.is_v2:
+            return super()._data_collator_mm_data(batch)
+        # `concat_tensor` pops the key from the rows, so read the per-sample page counts first.
+        page_counts = [
+            len(b['images_spatial_crop']) for b in batch if b.get('images') and b.get('images_spatial_crop') is not None
+        ]
+        res = super()._data_collator_mm_data(batch)
+        if not res.get('images') or 'images_spatial_crop' not in res:
+            return res
+        # The v2 model reads the crop grid from the image entry itself (`image[2]`); without it a page is
+        # decoded as a global view only and `masked_scatter_` rejects the extra tile tokens.
+        spatial = torch.split(res['images_spatial_crop'], page_counts)
+        res['images'] = [(crops, ori, pages) for (crops, ori), pages in zip(res['images'], spatial)]
+        return res
 
     # ==================== R-SWA Training Mask (only train) ====================
     @staticmethod
@@ -534,23 +567,37 @@ class UnlimitedOCR(DeepseekOCR):
         base_model = self.get_base_model(model)
         config = base_model.config
 
+        if self.is_v2:
+            configure_dash_inference = get_class_from_dynamic_module('modeling_unlimitedocr.configure_dash_inference',
+                                                                     self.model_info.model_dir)
+            saved = (getattr(config, '_ring_window', None), getattr(config, 'sliding_window', None))
+            config._ring_window = None
+            config.sliding_window = None
+            state = configure_dash_inference(base_model.model, True, topm=get_env_args('dash_topm', int, 16))
+            try:
+                return self._generate(model, *args, **kwargs)
+            finally:
+                configure_dash_inference(base_model.model, False, state=state)
+                config._ring_window, config.sliding_window = saved
+
         _orig_sw = config.sliding_window_size
         config._ring_window = _orig_sw
         config.sliding_window = None
-
         try:
-            ngram_size = get_env_args('no_repeat_ngram_size', int, 0)
-            ngram_window = get_env_args('ngram_window', int, 256)
-            if ngram_size > 0 and ngram_window > 0:
-                ProcessorCls = get_class_from_dynamic_module(
-                    'modeling_unlimitedocr.SlidingWindowNoRepeatNgramProcessor', self.model_info.model_dir)
-                if ProcessorCls is not None:
-                    existing = kwargs.get('logits_processor', []) or []
-                    kwargs['logits_processor'] = list(existing) + [ProcessorCls(ngram_size, ngram_window)]
-
-            return super().generate(model, *args, **kwargs)
+            return self._generate(model, *args, **kwargs)
         finally:
             config.sliding_window = _orig_sw
+
+    def _generate(self, model, *args, **kwargs):
+        ngram_size = get_env_args('no_repeat_ngram_size', int, 0)
+        ngram_window = get_env_args('ngram_window', int, 256)
+        if ngram_size > 0 and ngram_window > 0:
+            ProcessorCls = get_class_from_dynamic_module('modeling_unlimitedocr.SlidingWindowNoRepeatNgramProcessor',
+                                                         self.model_info.model_dir)
+            if ProcessorCls is not None:
+                existing = kwargs.get('logits_processor', []) or []
+                kwargs['logits_processor'] = list(existing) + [ProcessorCls(ngram_size, ngram_window)]
+        return super().generate(model, *args, **kwargs)
 
     # ==================== Post-processing Hooks ====================
     def decode_generate_ids(self, generate_ids: List[int], **kwargs) -> str:
@@ -612,6 +659,47 @@ class UnlimitedOCR(DeepseekOCR):
             self._dynamic_preprocess = get_class_from_dynamic_module('modeling_unlimitedocr.dynamic_preprocess',
                                                                      model_dir)
 
+    def _preprocess_image(self, images, image_token_id):
+        if not self.is_v2:
+            return super()._preprocess_image(images, image_token_id)
+        # Mirrors modeling_unlimitedocr._uocr_build_inputs (== vLLM UnlimitedOCRProcessor.tokenize_with_images):
+        # one 1024x1024 global view per page (`num_queries_base * (num_queries_base + 1) + 1` tokens), plus the
+        # gundam tiles of a single page as `num_queries * width + 1` tokens per crop row.
+        patch_size = 16
+        downsample_ratio = 4
+        base_size = self.base_size
+        image_size = self.image_size
+        num_queries = math.ceil((image_size // patch_size) / downsample_ratio)
+        num_queries_base = math.ceil((base_size // patch_size) / downsample_ratio)
+        cropping = (len(images) == 1) if self.crop_mode is None else self.crop_mode
+
+        image_transform = self.BasicImageTransform(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5), normalize=True)
+        pad_color = tuple(int(x * 255) for x in image_transform.mean)
+        tokenized_str, images_list, images_crop_list, images_spatial_crop = [], [], [], []
+        for image in images:
+            tiles, crop_ratio = [], [1, 1]
+            if image.size[0] > self.crop_threshold or image.size[1] > self.crop_threshold:
+                if cropping:
+                    tiles, crop_ratio = self.dynamic_preprocess(image, min_num=2, max_num=16, image_size=image_size)
+            global_view = ImageOps.pad(image, (base_size, base_size), color=pad_color)
+            images_list.append(image_transform(global_view).to(torch.bfloat16))
+            width_crop_num, height_crop_num = int(crop_ratio[0]), int(crop_ratio[1])
+            images_spatial_crop.append([width_crop_num, height_crop_num])
+            tokenized_image = [image_token_id] * (num_queries_base * (num_queries_base + 1)) + [image_token_id]
+            if width_crop_num > 1 or height_crop_num > 1:
+                images_crop_list += [image_transform(tile).to(torch.bfloat16) for tile in tiles]
+                tokenized_image += ([image_token_id] * (num_queries * width_crop_num + 1)) * (
+                    num_queries * height_crop_num)
+            tokenized_str.append(tokenized_image)
+
+        images_ori = torch.stack(images_list, dim=0)
+        images_spatial_crop = torch.tensor(images_spatial_crop, dtype=torch.long)
+        if images_crop_list:
+            images_crop = torch.stack(images_crop_list, dim=0)
+        else:
+            images_crop = torch.zeros((1, 3, base_size, base_size))
+        return tokenized_str, images_ori, images_crop, images_spatial_crop
+
 
 register_template(
     TemplateMeta(
@@ -651,7 +739,11 @@ register_template(
         non_thinking_prefix='</think>',
         history_thinking_prefix='</think>'))
 
-REASONING_EFFORT_MAX = (
+# Reasoning-effort prefixes, prepended at the very beginning of the conversation
+# (before the system content) when thinking is enabled. Naming follows the prompt text
+# rather than the level, because the level each one maps to differs between releases:
+# `ABSOLUTE_MAX` is `max` for V4-Flash/V4-Pro (preview) but `high` for V4-Flash-0731.
+REASONING_EFFORT_ABSOLUTE_MAX = (
     'Reasoning Effort: Absolute maximum with no shortcuts permitted.\n'
     'You MUST be very thorough in your thinking and comprehensively decompose the problem to resolve '
     'the root cause, rigorously stress-testing your logic against all potential paths, edge cases, '
@@ -659,32 +751,69 @@ REASONING_EFFORT_MAX = (
     'Explicitly write out your entire deliberation process, documenting every intermediate step, '
     'considered alternative, and rejected hypothesis to ensure absolutely no assumption is left unchecked.\n\n')
 
+REASONING_EFFORT_BEYOND_MAX = (
+    'Reasoning Effort: Beyond maximum — exhaustive, relentless, and uncompromising.\n'
+    'You MUST reason with the utmost depth and rigor, leaving absolutely nothing to chance: '
+    'exhaustively decompose the problem into its most fundamental components, trace every causal chain '
+    'to its root, and resolve the underlying cause rather than any surface symptom.\n'
+    'Do not stop reasoning until you have independently verified the solution from multiple angles and '
+    'are certain that no assumption remains unchecked and no error remains undiscovered.\n\n')
+
 
 class DeepseekV4Template(DeepseekV3_1Template):
+    # V4-Flash / V4-Pro (preview) ship two thinking levels; `high` adds no prefix.
+    reasoning_effort_prompts = {'high': '', 'max': REASONING_EFFORT_ABSOLUTE_MAX}
+    default_reasoning_effort = 'high'
 
     def init_env_args(self):
         super().init_env_args()
-        # reasoning_effort: "max", "high", or None
-        self.reasoning_effort = get_env_args('reasoning_effort', str, None)
+        self.reasoning_effort = self._check_reasoning_effort(get_env_args('reasoning_effort', str, None))
         if self.reasoning_effort is None:
-            self.reasoning_effort = 'high' if self.enable_thinking else None
-        self.enable_thinking = self.reasoning_effort in ('max', 'high')
+            self.reasoning_effort = self.default_reasoning_effort if self.enable_thinking else None
+        self.enable_thinking = self.reasoning_effort in self.reasoning_effort_prompts
         self.chat_template_kwargs['reasoning_effort'] = self.reasoning_effort
+
+    def _check_reasoning_effort(self, reasoning_effort):
+        """Drop an unknown level so that it falls back to the default instead of disabling thinking.
+
+        Every accepted level is a thinking level, so an unrecognized value would otherwise be
+        indistinguishable from "thinking off" and silently turn reasoning off.
+        """
+        if reasoning_effort is not None and reasoning_effort not in self.reasoning_effort_prompts:
+            logger.warning(f'Ignoring unknown reasoning_effort: {reasoning_effort!r}. '
+                           f'Expected one of {list(self.reasoning_effort_prompts)}.')
+            return None
+        return reasoning_effort
+
+    def _get_reasoning_effort(self, inputs=None):
+        reasoning_effort = None if inputs is None else inputs.chat_template_kwargs.get('reasoning_effort')
+        reasoning_effort = self._check_reasoning_effort(reasoning_effort)
+        if reasoning_effort is None:
+            reasoning_effort = self.reasoning_effort
+        return reasoning_effort
 
     def _get_enable_thinking(self, inputs=None):
         reasoning_effort = None if inputs is None else inputs.chat_template_kwargs.get('reasoning_effort')
+        reasoning_effort = self._check_reasoning_effort(reasoning_effort)
         if reasoning_effort is not None:
-            return reasoning_effort in ('max', 'high')
+            return reasoning_effort in self.reasoning_effort_prompts
         return super()._get_enable_thinking(inputs)
 
     def _get_system(self, inputs):
         system = super()._get_system(inputs)
-        reasoning_effort = inputs.chat_template_kwargs.get('reasoning_effort')
-        if reasoning_effort is None:
-            reasoning_effort = self.reasoning_effort
-        if reasoning_effort == 'max' and self._get_enable_thinking(inputs):
-            system = REASONING_EFFORT_MAX + (system or '')
+        if self._get_enable_thinking(inputs):
+            prefix = self.reasoning_effort_prompts.get(self._get_reasoning_effort(inputs)) or ''
+            if prefix:
+                system = prefix + (system or '')
         return system
+
+    def _remove_history_thinking(self, inputs) -> None:
+        # The official encoding disables `drop_thinking` once tools are defined: tool-calling
+        # conversations keep the reasoning of every turn so the model can track multi-step
+        # reasoning across tool calls.
+        if inputs.tools:
+            return
+        super()._remove_history_thinking(inputs)
 
 
 register_template(
@@ -693,6 +822,246 @@ register_template(
         agent_template='deepseek_v4',
         is_thinking=True,
         template_cls=DeepseekV4Template,
+        thinking_prefix='<think>',
+        non_thinking_prefix='</think>',
+        history_thinking_prefix='</think>'))
+
+
+class DeepseekV41Template(DeepseekV3_1Template):
+    """DeepSeek-V4.1 prompt protocol and official ViT patch preprocessing."""
+
+    IMAGE_PLACEHOLDER = '<｜deepseek_image｜>'
+    TEXT = -1
+    IMAGE_START = 0
+    IMAGE = 1
+    IMAGE_NEW_LINE = 2
+    IMAGE_END = 3
+    placeholder_tokens = [IMAGE_PLACEHOLDER]
+    # `image_token_types` is a per-token int64 tensor, so it concatenates with the packed row
+    # (see Template.packing_row / gather_keys) instead of needing a batch dimension.
+    support_padding_free = True
+
+    def init_env_args(self):
+        super().init_env_args()
+        effort = get_env_args('reasoning_effort', str, None)
+        if effort is not None and effort.isdecimal():
+            effort = int(effort)
+        self.reasoning_effort = self._check_reasoning_effort(effort)
+        self.chat_template_kwargs['reasoning_effort'] = self.reasoning_effort
+
+    def _check_reasoning_effort(self, reasoning_effort):
+        if reasoning_effort is None:
+            return None
+        if isinstance(reasoning_effort, str):
+            reasoning_effort = {'low': 50, 'high': 75, 'max': 100}.get(reasoning_effort, reasoning_effort)
+        if type(reasoning_effort) is not int or not 1 <= reasoning_effort <= 100:
+            raise ValueError('DeepSeek-V4.1 reasoning_effort must be an integer in [1, 100] or low/high/max.')
+        return reasoning_effort
+
+    def _get_reasoning_effort(self, inputs=None):
+        effort = None if inputs is None else inputs.chat_template_kwargs.get('reasoning_effort')
+        if effort is None:
+            effort = self.reasoning_effort
+        return self._check_reasoning_effort(effort)
+
+    def _get_system(self, inputs):
+        system = super()._get_system(inputs)
+        effort = self._get_reasoning_effort(inputs)
+        if self._get_enable_thinking(inputs):
+            effort = 75 if effort is None else effort
+            system = (f'Reasoning Effort: {effort} '
+                      '(range 1-100, the higher the value, the more thorough the reasoning)\n\n' + (system or ''))
+        if system is not None:
+            system = '<｜System｜>' + system
+        return system
+
+    def _add_non_thinking_prefix(self, inputs, thinking_prefix='<think>') -> None:
+        # Historical tool turns keep their reasoning, so they also need explicit
+        # channel delimiters when the assistant has no reasoning content.
+        prefix = '<think></think>' if self._get_enable_thinking(inputs) else '</think>'
+        for message in inputs.messages:
+            if message['role'] != 'assistant':
+                continue
+            content = message['content']
+            first = content[0] if isinstance(content, list) and content else content
+            if isinstance(first, str) and not first.startswith((thinking_prefix, '</think>')):
+                if isinstance(content, list):
+                    content[0] = prefix + first
+                else:
+                    message['content'] = prefix + first
+
+    def _remove_thinking_content(self, content: str, thinking_suffix='</think>') -> str:
+        return self.template_meta.history_thinking_prefix + content.split(thinking_suffix)[-1]
+
+    def _remove_history_thinking(self, inputs) -> None:
+        # The official V4.1 encoder retains reasoning whenever tools are defined.
+        if inputs.tools:
+            return
+        super()._remove_history_thinking(inputs)
+
+    def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
+        super()._swift_prepare_inputs(inputs)
+        if self.template_backend != 'swift':
+            return
+        messages = inputs.messages
+        start = 0
+        while start < len(messages):
+            # Find the next assistant; system messages may occur in any round.
+            end = start
+            while end < len(messages) and messages[end]['role'] != 'assistant':
+                end += 1
+            queries = messages[start:end]
+            if not any(message['role'] == 'system' for message in queries):
+                start = end + 1
+                continue
+
+            prompt = []
+            if start > 0 and queries[0]['role'] != 'tool':
+                prompt.append('<｜end▁of▁sentence｜>')
+            for message in queries:
+                role, content = message['role'], message['content']
+                if role == 'tool':
+                    # The merged query gets one assistant header at the end.
+                    if content[-1:] == ['<｜Assistant｜>']:
+                        content = content[:-1]
+                    prompt.extend(content)
+                else:
+                    prefix = '<｜System｜>' if role == 'system' else '<｜User｜>'
+                    prompt.append(prefix + (content or ''))
+            prompt.append('<｜Assistant｜>')
+            # A raw tool prompt keeps all query tokens masked during training.
+            messages[start:end] = [{'role': 'tool', 'content': prompt}]
+            start += 2  # Skip the merged query and its assistant response.
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type != 'image':
+            raise ValueError(f'DeepSeek-V4.1 only supports images, got {media_type!r}.')
+        return [self.IMAGE_PLACEHOLDER]
+
+    @staticmethod
+    def _num_image_tokens(n_llm_h: int, n_llm_w: int) -> int:
+        return n_llm_h * (n_llm_w + 1) + 2
+
+    @classmethod
+    def _safe_resize(cls, height: int, width: int, best_height: int, best_width: int, patch_size: int,
+                     downsample_ratio: int, max_image_tokens: int):
+        n_llm_h = math.ceil((best_height // patch_size) / downsample_ratio)
+        n_llm_w = math.ceil((best_width // patch_size) / downsample_ratio)
+        if cls._num_image_tokens(n_llm_h, n_llm_w) <= max_image_tokens:
+            return n_llm_h, n_llm_w, best_height, best_width
+
+        aspect_ratio = height / width
+        max_w = math.sqrt((max_image_tokens - 2) / aspect_ratio + 0.25) - 0.5
+        max_h = max_w * aspect_ratio
+        cell_size = patch_size * downsample_ratio
+        if max_w < 1.0:
+            best_height, best_width = (max_image_tokens - 2) // 2 * cell_size, cell_size
+        elif max_h < 1.0:
+            best_height, best_width = cell_size, (max_image_tokens - 3) * cell_size
+        else:
+            scale = min(math.floor(max_w) * cell_size / width, math.floor(max_h) * cell_size / height)
+            best_height = math.floor(height * scale / patch_size) * patch_size
+            best_width = math.floor(width * scale / patch_size) * patch_size
+        n_llm_h = math.ceil((best_height // patch_size) / downsample_ratio)
+        n_llm_w = math.ceil((best_width // patch_size) / downsample_ratio)
+        if cls._num_image_tokens(n_llm_h, n_llm_w) > max_image_tokens:
+            raise ValueError('Failed to fit the DeepSeek-V4.1 image span into max_image_tokens.')
+        return n_llm_h, n_llm_w, best_height, best_width
+
+    @classmethod
+    def _process_image(cls, image: Image.Image, vision_config):
+        patch_size = vision_config.patch_size
+        downsample_ratio = vision_config.downsample_ratio
+        max_image_tokens = vision_config.max_image_tokens
+        width, height = image.size
+        max_wh_ratio = vision_config.max_wh_ratio
+        if max_wh_ratio is not None and width > height * max_wh_ratio:
+            width = height * max_wh_ratio
+        min_pixels = vision_config.min_pixels
+        if 0 < width * height < min_pixels:
+            scale = math.sqrt(min_pixels / (width * height))
+            width, height = int(width * scale), int(height * scale)
+        best_width = math.ceil(width / patch_size) * patch_size
+        best_height = math.ceil(height / patch_size) * patch_size
+        n_llm_h, n_llm_w, best_height, best_width = cls._safe_resize(height, width, best_height, best_width, patch_size,
+                                                                     downsample_ratio, max_image_tokens)
+        n_vit_h, n_vit_w = best_height // patch_size, best_width // patch_size
+        image = image.convert('RGB')
+        if max_wh_ratio is not None and image.width >= max_wh_ratio * image.height:
+            image = image.resize((best_width, best_height))
+        else:
+            image = ImageOps.pad(image, (best_width, best_height), color=(127, 127, 127))
+        pixels = torch.from_numpy(np.asarray(image, dtype=np.float32)).permute(2, 0, 1) / 255
+        pixels = ((pixels - 0.5) / 0.5).to(torch.bfloat16)
+        patches = pixels.reshape(3, n_vit_h, patch_size, n_vit_w, patch_size)
+        patches = patches.permute(1, 3, 0, 2, 4).reshape(n_vit_h * n_vit_w, 3, patch_size, patch_size)
+        types = [cls.IMAGE_START]
+        types += ([cls.IMAGE] * n_llm_w + [cls.IMAGE_NEW_LINE]) * n_llm_h
+        types.append(cls.IMAGE_END)
+        return patches, (1, n_vit_h, n_vit_w), torch.tensor(types, dtype=torch.int64)
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale')
+        image_token_id = self.config.image_token_id
+        image_indices = findall(input_ids, image_token_id)
+        images = inputs.images or []
+        if len(image_indices) != len(images):
+            raise ValueError(
+                f'Found {len(image_indices)} DeepSeek-V4.1 image placeholders but got {len(images)} images.')
+
+        processed = [self._process_image(image, self.config.vision_config) for image in images]
+        image_token_types = [self.TEXT] * len(input_ids)
+        added_tokens = 0
+        for index, (_, _, types) in zip(image_indices, processed):
+            index += added_tokens
+            image_token_types[index:index + 1] = types.tolist()
+            added_tokens += types.numel() - 1
+
+        def _get_image_tokens(index):
+            return [image_token_id] * processed[index][2].numel()
+
+        encoded['input_ids'], encoded['labels'], encoded['loss_scale'] = self._extend_tokens(
+            input_ids, labels, loss_scale, image_indices, _get_image_tokens)
+        encoded['image_token_types'] = torch.tensor(image_token_types, dtype=torch.int64)
+        if processed:
+            encoded['pixel_values'] = torch.cat([item[0] for item in processed])
+            encoded['image_grid_thw'] = torch.tensor([item[1] for item in processed], dtype=torch.int64)
+        return encoded
+
+
+register_template(
+    DeepseekV2_5TemplateMeta(
+        MLLMTemplateType.deepseek_v41,
+        agent_template='deepseek_v41',
+        is_thinking=True,
+        template_cls=DeepseekV41Template,
+        thinking_prefix='<think>',
+        non_thinking_prefix='</think>',
+        history_thinking_prefix='</think>'))
+
+
+class DeepseekV4FlashTemplate(DeepseekV4Template):
+    # V4-Flash-0731 ships three thinking levels and shifts the prefixes one level down:
+    # what `max` meant in the preview release is `high` here, and `max` gets a stronger text.
+    # `low` is the default and adds no prefix (it is still a thinking level).
+    reasoning_effort_prompts = {
+        'low': '',
+        'high': REASONING_EFFORT_ABSOLUTE_MAX,
+        'max': REASONING_EFFORT_BEYOND_MAX,
+    }
+    default_reasoning_effort = 'low'
+
+
+register_template(
+    DeepseekV2_5TemplateMeta(
+        LLMTemplateType.deepseek_v4_flash,
+        agent_template='deepseek_v4',
+        is_thinking=True,
+        template_cls=DeepseekV4FlashTemplate,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
         history_thinking_prefix='</think>'))

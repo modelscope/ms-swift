@@ -9,8 +9,8 @@ Below is an example illustrating how to implement a simple length-based reward f
 
 ```python
 from swift.rewards import ORM, orms
-class DummyLengthRewardFunction(ORM)
-    def __call__(completions, **kwargs):
+class DummyLengthRewardFunction(ORM):
+    def __call__(self, completions, **kwargs):
         return [1.0 if len(completion) > 1024 else 0.0 for completion in completions]
 
 orms['dummy']= DummyLengthRewardFunction
@@ -22,7 +22,7 @@ For example, if the reward function needs to access the solution column from the
 
 Explicitly define the column name in the __call__ parameters:
 ```python
-    def __call__(completions, solution, trainer_state, **kwargs):
+    def __call__(self, completions, solution, trainer_state, **kwargs):
         print(solution)
         global_step = trainer_state.global_step
         max_steps = trainer_state.max_steps
@@ -31,7 +31,7 @@ Explicitly define the column name in the __call__ parameters:
 
 Retrieve it from kwargs:
 ```python
-    def __call__(completions, **kwargs):
+    def __call__(self, completions, **kwargs):
         solution = kwargs.get('solution')
         trainer_state = kwargs.get('trainer_state')
         global_step = trainer_state.global_step

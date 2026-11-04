@@ -7,6 +7,16 @@ from typing import Dict, List, Optional, Tuple
 from swift.utils import nanstd
 
 
+def get_local_rollout_values(values: torch.Tensor, sample_counts: List[int], rollout_rank: int) -> torch.Tensor:
+    """Select the values owned by one rank from a rollout-group concatenation."""
+    total_samples = sum(sample_counts)
+    assert values.shape[0] == total_samples, (
+        f'Expected {total_samples} rollout values from sample counts, but got {values.shape[0]}')
+    start_idx = sum(sample_counts[:rollout_rank])
+    end_idx = start_idx + sample_counts[rollout_rank]
+    return values[start_idx:end_idx]
+
+
 def compute_advantages(
     rewards_per_func: torch.Tensor,
     reward_weights: torch.Tensor,
@@ -412,7 +422,7 @@ def compute_sdar_loss(
 
 @dataclass
 class RewardMetrics:
-    """Reward statistics for logging."""
+    """Reward statistics for logging. Per-function statistics omit unobserved reward functions."""
     reward_mean: float
     reward_std: float
     frac_reward_zero_std: float
@@ -435,7 +445,7 @@ def compute_reward_metrics(
         num_generations: ``K``.
         scale_rewards: Scaling strategy (affects std computation).
     Returns:
-        :class:`RewardMetrics` with all statistics.
+        :class:`RewardMetrics`; per-function statistics exclude functions without observations.
     """
     group_rewards = rewards.view(-1, num_generations)
     reward_mean = group_rewards.mean(-1).mean().item()
@@ -457,8 +467,11 @@ def compute_reward_metrics(
     per_func_std = {}
     for i, name in enumerate(reward_func_names):
         col = rewards_per_func[:, i]
-        per_func_mean[name] = torch.nanmean(col).item()
         valid = col[~torch.isnan(col)]
+        if valid.numel() == 0:
+            # None rewards mark tasks absent from this batch, not zero-valued observations.
+            continue
+        per_func_mean[name] = valid.mean().item()
         per_func_std[name] = valid.std().item() if valid.numel() > 1 else 0.0
 
     return RewardMetrics(

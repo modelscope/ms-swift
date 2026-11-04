@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 from functools import partial
+from megatron.core.utils import get_attr_wrapped_model
 from torch import nn
 
 from swift.utils import get_logger
@@ -16,8 +17,13 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
         margin = data.pop('margin', None)
         num_samples = output_tensor.shape[0] if packed_seq_params is None else packed_seq_params.seq_lens.shape[0]
         rewards = self.get_last_tokens(output_tensor, packed_seq_params, data.get('attention_mask'))
-        rewards_chosen, rewards_rejected = torch.split(rewards, num_samples // 2, dim=0)
+        batch_size = num_samples // 2
+        rewards_chosen, rewards_rejected = torch.split(rewards, batch_size, dim=0)
         if margin is not None:
+            margin = margin.to(device=rewards_chosen.device, dtype=rewards_chosen.dtype)
+            if margin.numel() != batch_size:
+                raise ValueError(f'Expected {batch_size} margins, got {margin.numel()}.')
+            margin = margin.reshape_as(rewards_chosen)
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected - margin).mean()
         else:
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected).mean()
@@ -39,7 +45,7 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
         return loss, metric
 
     def forward_step(self, data_iterator, model):
-        vp_stage = model.module.module.vp_stage
+        vp_stage = get_attr_wrapped_model(model, 'vp_stage')
         data = self.get_batch(data_iterator, vp_stage)
         data.pop('loss_scale', None)
         output_tensor = model(**data)

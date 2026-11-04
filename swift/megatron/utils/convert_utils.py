@@ -242,6 +242,12 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         text_position_ids = mg_inputs.get('position_ids')
     if args.padding_free:
         mg_inputs['packed_seq_params'] = get_packed_seq_params(args, text_position_ids)
+        # Same contract as `prepare_batch`: once the pack is padded, the real sample count is no
+        # longer derivable from cu_seqlens_q (padding tokens open extra segments), so attach it.
+        seq_lens = mg_inputs.get('seq_lens')
+        if seq_lens is not None:
+            mg_inputs['packed_seq_params'].seq_lens = torch.as_tensor(seq_lens, device=text_position_ids.device)
+            mg_inputs['packed_seq_params'].num_samples = len(seq_lens)
     mg_language_model.config.fp8 = None  # compat fp8
     mg_modules = _find_modules(mg_language_model, ignore_modules=['visual'])
     for key in ['labels', 'seq_lens', 'attention_mask_2d']:

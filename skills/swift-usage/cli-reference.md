@@ -114,6 +114,12 @@ USE_SWIFT_V5=1 swift eval --model Qwen/Qwen2.5-0.5B-Instruct --sampler vllm \
     --eval_dataset gsm8k --eval_limit 10 --eval_num_proc 16 \
     --eval_generation_config '{"max_tokens": 1024, "temperature": 0.0}' \
     --eval_output_dir ./eval_output
+#   Benchmark names must be exact EvalScope registry names (in the webui workbench, the env_info
+#   tool lists every registered benchmark plus its selectable subsets). Version/subset selection
+#   goes through --eval_dataset_args, NOT the dataset name:
+USE_SWIFT_V5=1 swift eval --model ... --eval_dataset live_code_bench \
+    --eval_dataset_args '{"live_code_bench": {"subset_list": ["release_v6"]}}' \
+    --eval_limit 200
 
 # Megatron-backend SFT: same command, swap backend + parallel spec
 USE_SWIFT_V5=1 swift sft --model Qwen/Qwen3.5-4B --backend megatron \

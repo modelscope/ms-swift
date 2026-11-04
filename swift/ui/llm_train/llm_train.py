@@ -355,7 +355,7 @@ class LLMTrain(BaseUI):
             if key == 'more_params' and value:
                 try:
                     more_params = json.loads(value)
-                except (JSONDecodeError or TypeError):
+                except (JSONDecodeError, TypeError):
                     more_params_cmd = value
 
             if key == 'train_stage':
@@ -523,7 +523,7 @@ class LLMTrain(BaseUI):
             try:
                 import requests
                 headers = {'Accept': 'application/json'}
-                url = f'http://{host}:{port}/health/'
+                url = f'http://{host}:{port}/health'
                 response = requests.get(url, headers=headers)
                 res = response.json()
                 assert res['status'] == 'ok', 'statue must be ok'

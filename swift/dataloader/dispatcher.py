@@ -25,7 +25,7 @@ class DataLoaderDispatcher:
         return dist.group.WORLD if dist.is_initialized() else 1
 
     def _scatter_object_list(self, inputs):
-        if not dist.is_initialized():
+        if self.world_size == 1:
             return inputs[0]
         outputs = [None]
         global_src_rank = dist.get_global_rank(self.group, 0)
@@ -36,6 +36,11 @@ class DataLoaderDispatcher:
         if self.rank == 0 and self.skip_batches > 0:
             for _ in tqdm(range(self.skip_batches), dynamic_ncols=True, desc='Skip Batches: '):
                 [next(base_iter) for _ in range(self.world_size)]
+
+    def set_epoch(self, epoch: int):
+        dataset = self.base_dataloader.dataset
+        if hasattr(dataset, 'set_epoch'):
+            dataset.set_epoch(epoch)
 
     def __iter__(self):
         base_iter = iter(self.base_dataloader)

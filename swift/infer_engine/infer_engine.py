@@ -1,16 +1,17 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import asyncio
 import concurrent.futures
+import inspect
 import os
 from queue import Queue
-from threading import Thread
+from threading import Lock, Thread
 from tqdm import tqdm
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
 from swift.model import get_ckpt_dir
-from swift.template import Template, get_template
-from swift.utils import Processor, ProcessorMixin, get_logger
+from swift.template import StdTemplateInputs, Template, get_template
+from swift.utils import Processor, ProcessorMixin, get_logger, start_event_loop_in_daemon
 from .base import BaseInferEngine
 from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse,
                        InferRequest, RequestConfig, UsageInfo)
@@ -19,6 +20,8 @@ logger = get_logger()
 
 
 class InferEngine(BaseInferEngine, ProcessorMixin):
+
+    _event_loop_lock = Lock()
 
     def __init__(self, template: Template):
         processor = template.processor
@@ -76,6 +79,20 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 stop_token_ids.append(stop_token)
         return stop_token_ids
 
+    def _get_event_loop(self) -> asyncio.AbstractEventLoop:
+        """Return a long-lived event loop shared by every batch of this engine.
+
+        The loop must be reused across calls: async engines (e.g. vLLM `AsyncLLM`) spawn a background
+        output-handler task on the first loop that drives them and never recreate it, so running a later
+        batch on a fresh loop would leave that task parked on a stopped loop and hang forever.
+        """
+        with self._event_loop_lock:
+            loop = getattr(self, '_event_loop', None)
+            if loop is None or loop.is_closed():
+                self._event_loop_thread, loop, _ = start_event_loop_in_daemon(name='InferEngine')
+                self._event_loop = loop
+            return loop
+
     def async_iter_to_iter(self, async_iter, prog_bar, metrics) -> Iterator:
         queue = Queue()
 
@@ -84,25 +101,20 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 async for item in await async_iter:
                     queue.put(item)
             except Exception as e:
-                if getattr(self, 'strict', True):
-                    raise
                 queue.put(e)
             else:
                 queue.put(None)
 
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        thread = Thread(target=lambda: loop.run_until_complete(_run_async_iter()))
-        thread.start()
+        loop = self._get_event_loop()
+        asyncio.run_coroutine_threadsafe(_run_async_iter(), loop)
         pre_output = None
         while True:
             output = queue.get()
             if output is None or isinstance(output, Exception):
                 prog_bar.update()
                 self._update_metrics(pre_output, metrics)
+                if isinstance(output, Exception) and getattr(self, 'strict', True):
+                    raise output
                 return
             pre_output = output
             yield output
@@ -136,12 +148,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 return res
 
             new_tasks = [_new_run(task) for task in tasks]
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            return loop.run_until_complete(self.batch_run(new_tasks))
+            loop = self._get_event_loop()
+            return asyncio.run_coroutine_threadsafe(self.batch_run(new_tasks), loop).result()
 
     @staticmethod
     def _get_usage_info(num_prompt_tokens: int, num_generated_tokens: int) -> UsageInfo:
@@ -187,16 +195,33 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
-    def _get_toolcall(self, response: str) -> Optional[List[ChatCompletionMessageToolCall]]:
+    def _get_toolcall(
+            self,
+            response: str,
+            template_inputs: Optional[StdTemplateInputs] = None) -> Optional[List[ChatCompletionMessageToolCall]]:
         try:
-            functions = self.template.agent_template.get_toolcall(response)
+            agent_template = self.template.agent_template
+            kwargs = {}
+            # Other agent templates and plugins may only accept the response argument.
+            if getattr(agent_template, 'supports_tool_schema', False):
+                try:
+                    inspect.signature(agent_template.get_toolcall).bind(response, tools=None)
+                except (TypeError, ValueError):
+                    pass
+                else:
+                    kwargs['tools'] = getattr(template_inputs, 'tools', None)
+            functions = agent_template.get_toolcall(response, **kwargs)
         except Exception:
             functions = None
         if functions:
             return [ChatCompletionMessageToolCall(function=function) for function in functions]
 
     @staticmethod
-    def _get_num_tokens(inputs: Dict[str, Any]) -> int:
+    def _get_num_tokens(inputs: Dict[str, Any], batch_idx: Optional[int] = None) -> int:
+        # Generation slicing needs the padded width; usage counts only real prompt tokens.
+        attention_mask = inputs.get('attention_mask')
+        if batch_idx is not None and attention_mask is not None and attention_mask.ndim == 2:
+            return int(attention_mask[batch_idx].sum().item())
         if 'input_ids' in inputs:  # 1d or 2d
             input_ids = inputs['input_ids']
             if isinstance(input_ids, list):
@@ -218,6 +243,11 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             logger.warning(
                 'The current model is unable to retrieve `max_model_len`. It is set to the default value of 8192.')
         max_max_tokens = max_model_len - num_tokens + self.max_tokens_offset
+        if max_max_tokens <= 0:
+            raise ValueError(
+                f'Input length ({num_tokens}) leaves no room for generation with max_model_len ({max_model_len}) '
+                f'and max_tokens_offset ({self.max_tokens_offset}). Please shorten the input or increase max_model_len.'
+            )
         if max_tokens is None:
             request_config.max_tokens = max_max_tokens
         elif max_max_tokens < request_config.max_tokens:

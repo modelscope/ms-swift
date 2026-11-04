@@ -20,6 +20,30 @@ logger = get_logger()
 Weighted = Tuple[Any, int]
 
 
+def _resolve_mp_context(multiprocessing_context: Optional[str] = None):
+    """The workers' start method: the platform default, or spawn when fork would dead-lock."""
+    if multiprocessing_context is not None:
+        return mp.get_context(multiprocessing_context)
+    try:
+        import torch
+        cuda_initialized = torch.cuda.is_initialized()
+    except Exception:
+        cuda_initialized = False
+    if cuda_initialized or (dist.is_available() and dist.is_initialized()):
+        return mp.get_context("spawn")
+    return mp.get_context()
+
+
+def _spawn_workers(ctx, *, target, jobs):
+    """Start one worker per ``args`` tuple. No fork fallback: a worker that cannot spawn is an error."""
+    workers = []
+    for args in jobs:
+        worker = ctx.Process(target=target, daemon=True, args=args)
+        worker.start()
+        workers.append(worker)
+    return workers
+
+
 class PackingDataset(SwiftDataset):
     """A map-style dataset whose items are *groups* of samples that together fill ``packing_length``.
 
@@ -44,6 +68,7 @@ class PackingDataset(SwiftDataset):
         packing_length: Optional[int] = None,
         packing_num_proc: int = 1,
         packing_strategy: str = "binpack",
+        multiprocessing_context: Optional[str] = None,
         **kwargs,
     ):
         # The template has to know it is packing: it builds the attention mask that keeps the packed
@@ -58,7 +83,9 @@ class PackingDataset(SwiftDataset):
         # More workers than batches would leave workers with nothing to do, and `split_list` would
         # hand them empty chunks.
         self.packing_num_proc = min(packing_num_proc, math.ceil(len(dataset) / self.PACKING_BATCH_SIZE))
-        self._out_queue = mp.Queue()
+        self._mp_context = _resolve_mp_context(multiprocessing_context)
+        # The queue must come from the same context as the workers.
+        self._out_queue = self._mp_context.Queue()
 
         if is_master():
             # Asking for `lengths` is what triggers the measuring pass -- packing is the caller that
@@ -79,10 +106,11 @@ class PackingDataset(SwiftDataset):
         """
         offset = 0
         chunked_lengths = split_list(lengths, self.packing_num_proc)
+        jobs = []
         for rank in range(self.packing_num_proc):
-            worker = mp.Process(target=self.create_packed_idx, args=(rank, offset, chunked_lengths[rank]), daemon=True)
-            worker.start()
+            jobs.append((rank, offset, chunked_lengths[rank]))
             offset += len(chunked_lengths[rank])
+        _spawn_workers(self._mp_context, target=self.create_packed_idx, jobs=jobs)
 
         packed_idx: List[List[List[int]]] = [[] for _ in range(self.packing_num_proc)]
         packed_length: List[List[int]] = [[] for _ in range(self.packing_num_proc)]
@@ -204,6 +232,7 @@ class IterablePackingDataset(IterableDataset):
         cyclic: bool = False,
         packing_strategy: str = "binpack",
         data_seed: int = 0,
+        multiprocessing_context: Optional[str] = None,
         **kwargs,
     ):
         template.packing = True
@@ -220,13 +249,12 @@ class IterablePackingDataset(IterableDataset):
         # restore and set_epoch per pass; encode itself consumes no randomness.
         self.data_seed = int(data_seed or 0)
 
-        self._in_queue = mp.Queue()
-        self._out_queue = mp.Queue()
-        self.workers = []
-        for _ in range(self.num_proc):
-            worker = mp.Process(target=self._processor, daemon=True)
-            worker.start()
-            self.workers.append(worker)
+        self._mp_context = _resolve_mp_context(multiprocessing_context)
+        # Queues and workers must share one multiprocessing context (spawn cannot pass a fork queue).
+        self._in_queue = self._mp_context.Queue()
+        self._out_queue = self._mp_context.Queue()
+        self.workers = _spawn_workers(
+            self._mp_context, target=self._processor, jobs=[() for _ in range(self.num_proc)])
 
     def set_epoch(self, epoch: int) -> None:
         """Forward to the underlying stream, whose shuffle buffer seeds by epoch (twinkle calls this)."""

@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import torch
 import unittest
@@ -37,6 +38,7 @@ def _infer_model(engine, system=None, messages=None):
 class TestTemplate(unittest.TestCase):
 
     @unittest.skipIf(not torch.cuda.is_available(), reason='GPTQ is only available on GPU')
+    @unittest.skipIf(importlib.util.find_spec('gptqmodel') is None, reason='gptqmodel is not installed')
     def test_template(self):
         engine = TransformersEngine('Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4')
         response = _infer_model(engine)
