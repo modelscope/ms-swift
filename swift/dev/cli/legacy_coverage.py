@@ -12,6 +12,9 @@ UNSUPPORTED_SAMPLER_FIELDS: Tuple[str, ...] = (
 REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
     'ignore_args_error', 'use_swift_lora', 'write_batch_size', 'to_ollama', 'orm_model', 'prm_model',
     'reward_model_plugin', 'custom_register_path', 'tuner_backend',
+    # enable_npu_model_patch is retired: the switch is platform-detected (on on NPU, off on
+    # torch_npu-less hosts); the v5 config layer sets SWIFT_ENABLE_NPU_MODEL_PATCH itself.
+    'enable_npu_model_patch',
     # device_map is retired: the runtime places the model through its own parallel/accelerate strategy.
     'device_map',
     # use_vllm is retired: a rollout always rides a weight-syncable sampler engine (--rollout_sampler).

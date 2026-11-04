@@ -43,9 +43,13 @@ def process_configs(
 
     Idempotent: running it twice leaves the same result, so callers may repeat the lifecycle.
     """
-    # Bridge enable_npu_model_patch to the env var BEFORE the first swift.model import (the patch
-    # applies once at import and reads this var); create_workers copies os.environ to every worker.
-    os.environ['SWIFT_ENABLE_NPU_MODEL_PATCH'] = str(bool(model_config.enable_npu_model_patch))
+    # Bridge the NPU model-patch switch to the env var BEFORE the first swift.model import (the
+    # patch applies once at import and reads this var); create_workers copies os.environ to every
+    # worker. The switch is platform-detected, not user-configured: the model patch imports
+    # torch_npu unconditionally, so a torch_npu-less host (GPU/MPS/CPU) must keep it OFF while
+    # NPU keeps it ON. Legacy v4 still accepts the argv flag; the env var set here wins there.
+    from twinkle.utils import Platform
+    os.environ['SWIFT_ENABLE_NPU_MODEL_PATCH'] = str(Platform.get_platform().__name__ == 'NPU')
 
     from swift.dev.builders import is_megatron_backend
     from swift.dev.utils.plugin import PluginRegistry

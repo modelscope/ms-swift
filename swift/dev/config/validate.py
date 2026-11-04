@@ -70,6 +70,7 @@ def validate_configs(
     _check_megatron_microbatch_schedule(train_config, distributed_config, is_megatron)
     _check_eval_iters(train_config)
     _check_megatron_attn_backend(model_config, template_config, is_megatron)
+    _check_attn_impl_availability(model_config)
     _check_padding_free_attn(model_config, template_config, dataset_config, is_megatron)
     _check_mtp(model_config, is_megatron, tuner_config)
     _check_quantization(model_config, distributed_config, is_megatron)
@@ -1545,6 +1546,44 @@ def _check_megatron_attn_backend(model_config: 'ModelConfig', template_config: '
 # attn_impl values whose kernel handles the variable-length (THD) layout padding_free produces, on the
 # transformers backend -- under Ulysses SP and (mirroring legacy sft_args) also without it.
 _SP_PADDING_FREE_ATTN_IMPLS = ('flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4')
+
+# attn_impl -> the transformers availability probe (and the pip package that provides it),
+# so the user gets a one-line fix instead of an obscure failure deep inside the first forward.
+_FLASH_ATTN_AVAILABILITY = {
+    'flash_attn': ('flash_attention_2', 'flash-attn'),
+    'flash_attention_2': ('flash_attention_2', 'flash-attn'),
+    'flash_attention_3': ('flash_attention_3', 'flash-attn-3 (the flash_attn_interface package)'),
+    'flash_attention_4': ('flash_attention_4', 'flash-attn-4'),
+}
+
+
+def _check_attn_impl_availability(model_config: 'ModelConfig') -> None:
+    """Fail fast (at validation, before the model loads) when the requested flash attention
+    generation is not installed.
+
+    transformers would also reject it, but only after the config/weights work and with a
+    generic message; this points at the exact pip package instead.
+    """
+    probe_name, package = _FLASH_ATTN_AVAILABILITY.get(model_config.attn_impl or '', (None, None))
+    if probe_name is None:
+        return
+    from transformers.utils import (
+        is_flash_attn_2_available as _fa2,  # noqa: N813
+    )
+    if probe_name == 'flash_attention_2':
+        available = _fa2()
+    elif probe_name == 'flash_attention_3':
+        from transformers.utils import is_flash_attn_3_available as probe
+        available = probe()
+    else:
+        from transformers.utils import is_flash_attn_4_available as probe
+        available = probe()
+    if not available:
+        raise ValueError(
+            f'attn_impl={model_config.attn_impl!r} requires the matching flash attention build, which is '
+            f'not installed in this environment. Install it first: pip install {package!r} '
+            '(on a GPU the package ships prebuilt wheels; fa3/fa4 support Hopper/Blackwell). '
+            'Or switch to an installed implementation, e.g. --attn_impl flash_attention_2.')
 
 
 def _check_padding_free_attn(model_config: 'ModelConfig', template_config: 'TemplateConfig',
