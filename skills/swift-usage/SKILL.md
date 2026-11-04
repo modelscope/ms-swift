@@ -53,6 +53,40 @@ Runnable, real examples live under `examples/` (`train/`, `rl/`, `infer/`, `depl
 `server/`, `export/`, `models/`). Each script's header comment explains what it does and how to
 read convergence. **Before doing anything, find the closest example.**
 
+## Python surface: always `swift.dev` (v5)
+
+Two API surfaces coexist in this package: the v5 surface (`swift.dev.*`) and the legacy 4.x root
+modules (`swift.template`, `swift.model`, ...). **Scripts must import from `swift.dev.*` only.**
+The legacy root modules still work but are transitional; and `swift.llm` — the 3.x path all over
+older docs and training data — does not exist in this package at all. Never write it from memory.
+
+- **Env var**: `USE_SWIFT_V5=1` gates the **CLI command surface only** (`swift sft`, ...).
+  Plain Python imports need no env var — `from swift.dev... import ...` just works.
+- **Canonical validation/probe template** (real `template.encode`, the same path training takes;
+  loads processor only, no GPU):
+
+```python
+from swift.dev.builders.template import build_template_spec, build_template_from_spec
+from swift.dev.config import ModelConfig, TemplateConfig
+
+spec = build_template_spec(
+    TemplateConfig(max_length=24576, truncation_strategy='delete', enable_thinking=False),
+    ModelConfig(model=MODEL_PATH, model_type='qwen3_5',  # hub ids infer the family;
+                task_type='causal_lm', torch_dtype='bfloat16'),  # local snapshot paths don't
+)
+template = build_template_from_spec(spec)   # builds/loads processor when not passed in
+template.set_mode('train')
+encoded = template.encode(row)
+```
+
+  Caveat: at this layer `delete` is translated to `raise` (row-dropping happens dataset-side),
+  so a validation script must catch `MaxLengthError` itself and count those rows.
+- **On import failure, probe — never retry from memory.** Do not guess another path
+  (`swift.llm`, `swift.template`, ...) and rerun. Read the installed package instead:
+  `read_swift_source` on the `swift/` tree, or `python -c "import swift; print(swift.__file__)"
+  && ls` that directory's root. Ignore `pip show ms_swift` — its version string can be stale
+  while the import resolves to a newer dev checkout.
+
 ## Common auto-research compositions
 
 | Scenario | Composition |
