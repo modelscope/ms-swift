@@ -475,6 +475,7 @@ class GLM5NextTemplate(GLM4_5VTemplate, GLM5_2Template):
     `init_env_args` / `_get_system` come from GLM5_2Template through the MRO; the vision
     handling comes from GLM4_5VTemplate.
     """
+    reasoning_effort_needs_thinking = False
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
         # The text tower is NoPE (`qk_rope_head_dim=0`, `Glm5NextTextModel` passes
