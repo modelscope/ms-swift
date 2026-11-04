@@ -566,16 +566,19 @@ class StepState:
             # Fold the window's merged per-rank perf summary in only on a logging step: the
             # perf_dump fan-out is blocking, so keeping it off every step leaves it off the hot path.
             record.update(Perf.collect_step_summary())
-        record = self.tracker.log(record, self.global_step)
-        self.history.append(record)
-        self.publish_state(loss=loss, metrics=record)
-        if should_log:
-            # A recipe's own head signal (PPO's value_loss / reward / explained_variance line).
-            line = (self._log_formatter(record, loss) if self._log_formatter is not None
-                    else _log_line(record, loss))
-            logger.info(line)
-            self.handler.on_log(logs=record)
-            self._write_metrics_jsonl(record)
+        from contextlib import nullcontext
+        performance = getattr(self, "performance", None)
+        with performance.exclude_logging() if performance is not None else nullcontext():
+            record = self.tracker.log(record, self.global_step)
+            self.history.append(record)
+            self.publish_state(loss=loss, metrics=record)
+            if should_log:
+                # A recipe's own head signal (PPO's value_loss / reward / explained_variance line).
+                line = (self._log_formatter(record, loss) if self._log_formatter is not None
+                        else _log_line(record, loss))
+                logger.info(line)
+                self.handler.on_log(logs=record)
+                self._write_metrics_jsonl(record)
         return record
 
     def _write_metrics_jsonl(self, record: Dict[str, Any]) -> None:
@@ -820,6 +823,9 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
         if not shared:
             allocated.update(rank_set)
     total = max(allocated) + 1 if allocated else 0
+    # The throughput denominator is the physical allocation, not the sum of
+    # overlapping trainer/sampler worker counts or the currently active replicas.
+    template.performance_device_groups = [(name, list(ranks)) for name, ranks in groups]
     twinkle.initialize(
         mode='ray',
         nproc_per_node=total,
@@ -1466,6 +1472,9 @@ class RunTracker:
         self._loss_total = 0.0
         self._loss_count = 0
         self._logged_prompts = set()
+        from twinkle.perf.rl_metrics import JsonlMetricWriter
+        self._jsonl = (JsonlMetricWriter(os.path.join(output_dir, 'optimizer_metrics.jsonl'))
+                       if _is_main_process() else None)
         if config is None or not _is_main_process():
             return
         reporters = {name.lower() for name in config.report_to}
@@ -1488,6 +1497,12 @@ class RunTracker:
     def log(self, metrics: Dict[str, Any], step: int, *, epoch_end: bool = False) -> Dict[str, Any]:
         """Filter and write one metric record; returns the record actually emitted."""
         filtered = self._filter_metrics(metrics)
+        if self._jsonl is not None:
+            raw = coerce_metric_scalars(metrics)
+            # Keep nonfinite numeric observations as JSON null, before display
+            # loss filtering replaces them with a running average.
+            raw.update({key: value for key, value in metrics.items() if isinstance(value, (int, float))})
+            self._jsonl.write(step, raw, step_unit='optimizer_update')
         if not self.should_log(step, epoch_end=epoch_end):
             return filtered
         scalars = {}
@@ -1531,6 +1546,8 @@ class RunTracker:
             writer.log({'completions': writer.Table(columns=['prompt', 'completion'], data=rows)}, step=step)
 
     def close(self) -> None:
+        if self._jsonl is not None:
+            self._jsonl.close()
         writer = self._writers.get('tensorboard')
         if writer is not None:
             writer.close()
