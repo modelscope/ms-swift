@@ -2,6 +2,10 @@
 
 For environment preparation of Megatron-SWIFT on Ascend NPU, please refer to [NPU Best Practices](../BestPractices/NPU-support.md).
 
+## Megatron NPU performance patches
+
+After importing MegatronAdaptor and before initializing training modules, Swift installs NPU gradient norm / scale performance patches to reduce per-parameter host synchronization during gradient norm computation, scaling, and clipping. The implementation lives in `swift/model/npu_patch/megatron_optimizer.py`; no source changes to MegatronAdaptor or TransformerEngineNPU are required. These patches preserve the original MoE permutation, weighted SwiGLU, and Python garbage collection behavior.
+
 ## NPU Performance Data Collection
 
 NPU performance collection is conducted through the `torch_npu.profiler.profile` interface. To begin, create an instance of `torch_npu.profiler.profile`, then use the `start` and `stop` methods to control the performance data collection process. During this process, modifications to the ms-swift source code are required, specifically altering the `train` function in the `swift/megatron/trainers/base.py` file. Below is an example of the collection process:
