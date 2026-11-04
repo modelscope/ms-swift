@@ -2,10 +2,6 @@
 
 关于Megatron-SWIFT在Ascend NPU上的环境准备，请参考[NPU最佳实践](../BestPractices/NPU-support.md)。
 
-## Megatron NPU 性能补丁
-
-Swift 在导入 MegatronAdaptor 后、初始化训练模块前，自动安装 NPU 梯度 norm / scale 性能补丁，减少梯度范数计算和缩放、裁剪中的逐参数主机同步。实现位于 `swift/model/npu_patch/megatron_optimizer.py`，无需修改 MegatronAdaptor 或 TransformerEngineNPU 源码。该补丁不改变 MoE permutation、weighted SwiGLU 或 Python GC 策略。
-
 ## NPU 性能数据采集
 
 NPU性能采集通过`torch_npu.profiler.profile`接口进行采集，创建torch_npu.profiler.profile对象，通过start和stop接口控制采集性能数据，采集过程需要修改ms-swift源码，修改swift/megatron/trainers/base.py文件中的train函数，采集示例如下：
