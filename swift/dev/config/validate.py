@@ -92,17 +92,17 @@ def validate_configs(
         training=training)
     _check_save_total_limit(checkpoint_config, is_megatron)
     _check_logging(logging_config)
-    _check_rlhf_ref_model(model_config, tuner_config, rl_config)
-    _check_rlhf_advanced(train_config, rl_config, reward_config, rollout_config, distributed_config)
+    _check_rl_ref_model(model_config, tuner_config, rl_config)
+    _check_rl_advanced(train_config, rl_config, reward_config, rollout_config, distributed_config)
     _check_online_rl_val_dataset(dataset_config, rl_config)
     _check_grpo_truncation_strategy(template_config, rl_config)
     _check_grpo_cached_dataset(dataset_config, rl_config)
-    _check_rlhf_padding_free(template_config, dataset_config, rl_config)
-    _check_rlhf_padding_side(template_config, rl_config)
-    _check_rlhf_sequence_parallel(
+    _check_rl_padding_free(template_config, dataset_config, rl_config)
+    _check_rl_padding_side(template_config, rl_config)
+    _check_rl_sequence_parallel(
         model_config, template_config, dataset_config, distributed_config, rl_config, is_megatron)
     # Packing-derived padding_free has already been resolved by process_configs. RLHF SP is fully governed
-    # by _check_rlhf_sequence_parallel above, so this early-returns for a non-None rl_config.
+    # by _check_rl_sequence_parallel above, so this early-returns for a non-None rl_config.
     _check_hf_sequence_parallel(
         model_config, template_config, dataset_config, distributed_config, is_megatron, rl_config)
 
@@ -224,7 +224,7 @@ def _check_megatron_runtime_configs(megatron_config: Optional['MegatronConfig'],
         raise ValueError('manual_gc_steps must be >= 0.')
 
 
-def _check_rlhf_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfig'],
+def _check_rl_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfig'],
                          reward_config: Optional['RewardConfig'] = None,
                          rollout_config: Optional['RolloutConfig'] = None,
                          distributed_config: Optional['DistributedConfig'] = None) -> None:
@@ -1681,7 +1681,8 @@ def _check_megatron_recompute(train_config: 'TrainConfig', distributed_config: '
                               is_megatron: bool) -> None:
     """gradient_checkpointing decides nothing on Megatron; recompute_granularity does.
 
-    flag-off-yet-recompute-configured is fatal; flag-on-but-unconfigured is the default (warn only).
+    flag-off-yet-recompute-configured is fatal; gc=True with recompute explicitly off is the
+    user's call (warn only, in case they expected gc to be the driver).
     """
     if not is_megatron:
         return
@@ -1691,9 +1692,13 @@ def _check_megatron_recompute(train_config: 'TrainConfig', distributed_config: '
                          'Megatron backend recompute is driven by recompute_granularity alone, so the run WOULD '
                          'recompute. Drop one of the two.')
     if train_config.gradient_checkpointing and not granularity:
-        logger.warning('gradient_checkpointing=True has no effect on the Megatron backend and this run will NOT '
-                       'recompute: set DistributedConfig.recompute_granularity (legacy megatron defaults to '
-                       "'selective') to enable it.")
+        # recompute_granularity defaults to 'selective'; an empty value here means the user turned it
+        # off explicitly (or normalized 'none'), so confirm that is what they wanted rather than
+        # silently running a no-recompute training with a gc flag that does nothing on this backend.
+        logger.warning('gradient_checkpointing=True has no effect on the Megatron backend, and this run will NOT '
+                       'recompute (recompute_granularity is off). If you wanted activation-memory savings, '
+                       "set --recompute_granularity selective (the default); if off is intended, pass "
+                       '--no-gradient_checkpointing too, so the two flags agree.')
 
 
 def _check_eval_iters(train_config: 'TrainConfig') -> None:
@@ -1874,7 +1879,7 @@ _MEGATRON_ONLY = (
     ('distributed_config', 'sequence_parallel', False),
     ('distributed_config', 'use_distributed_optimizer', True),
     ('distributed_config', 'use_megatron_fsdp', False),
-    ('distributed_config', 'recompute_granularity', None),
+    ('distributed_config', 'recompute_granularity', 'selective'),
     ('distributed_config', 'recompute_method', None),
     ('distributed_config', 'recompute_num_layers', None),
     ('distributed_config', 'recompute_modules', ['core_attn']),
@@ -2127,20 +2132,20 @@ def _check_save_total_limit(checkpoint_config: Optional['CheckpointConfig'], is_
 
 # rl_type -> whether it trains against a separate reference model. CPO/ORPO fold the reference into
 # their own loss and LoRA uses the adapter-disabled base as reference, so neither takes a ref_model.
-_RLHF_USES_REF_MODEL = ('dpo', 'kto', 'ppo', 'grpo')
+_RL_USES_REF_MODEL = ('dpo', 'kto', 'ppo', 'grpo')
 
 
-def _check_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
+def _check_rl_ref_model(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
                           rl_config: Optional['RLConfig']) -> None:
     """Reject a reference model passed to an algorithm that has none.
 
-    The refusal half of process._derive_rlhf_ref_model: --ref_model on CPO/ORPO/LoRA would be ignored.
+    The refusal half of process._derive_rl_ref_model: --ref_model on CPO/ORPO/LoRA would be ignored.
     """
     if rl_config is None:
         return
     rl_type = getattr(rl_config, 'rl_type', None)
     tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
-    uses_ref = rl_type in _RLHF_USES_REF_MODEL and (tuner == 'full' or bool(rl_config.ref_adapters))
+    uses_ref = rl_type in _RL_USES_REF_MODEL and (tuner == 'full' or bool(rl_config.ref_adapters))
     if rl_config.ref_model is None:
         if rl_config.ref_adapters:
             raise ValueError('ref_adapters requires a reference model; call process_configs or set ref_model.')
@@ -2172,7 +2177,7 @@ _RL_PADDING_FREE_REFUSED_REASONS = {
 }
 
 
-def _check_rlhf_padding_free(template_config: 'TemplateConfig', dataset_config: 'DatasetConfig',
+def _check_rl_padding_free(template_config: 'TemplateConfig', dataset_config: 'DatasetConfig',
                             rl_config: Optional['RLConfig']) -> None:
     """Only some RLHF algorithms have a padding-free/packing training path.
 
@@ -2195,7 +2200,7 @@ def _check_rlhf_padding_free(template_config: 'TemplateConfig', dataset_config: 
                      'produces. Set the corresponding flag to False.')
 
 
-def _check_rlhf_padding_side(template_config: 'TemplateConfig', rl_config: Optional['RLConfig']) -> None:
+def _check_rl_padding_side(template_config: 'TemplateConfig', rl_config: Optional['RLConfig']) -> None:
     """RL logp extraction indexes each row's response positions and assumes right padding.
 
     Left padding silently mis-aligns every logp; dev refuses up front instead of corrupting the run.
@@ -2250,7 +2255,7 @@ def _check_sp_hf_feasibility(model_config: 'ModelConfig', template_config: 'Temp
                              '(packing implies padding_free, so drop packing too).')
 
 
-def _check_rlhf_sequence_parallel(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+def _check_rl_sequence_parallel(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                                  dataset_config: 'DatasetConfig', distributed_config: 'DistributedConfig',
                                  rl_config: Optional['RLConfig'], is_megatron: bool) -> None:
     """Ulysses SP (TemplateConfig.sequence_parallel_size) for the online-RL recipes under ray.

@@ -71,7 +71,10 @@ class DistributedConfig:
     # Shard parameters with Megatron-FSDP (NOT the transformers backend's ``fsdp`` above);
     # requires use_distributed_optimizer, incompatible with context_parallel_size > 1 (validate).
     use_megatron_fsdp: bool = False
-    recompute_granularity: Optional[Literal['selective', 'full', 'none']] = None
+    # Defaults to 'selective' (legacy megatron_args:517): mirrors TrainConfig.gradient_checkpointing=True
+    # on the transformers backend, so a no-arg Megatron run also saves activation memory instead of
+    # silently skipping recompute. Explicit 'none' means off (normalized to None in process).
+    recompute_granularity: Optional[Literal['selective', 'full', 'none']] = 'selective'
     recompute_method: Optional[Literal['uniform', 'block']] = None
     recompute_num_layers: Optional[int] = None
     # Which submodules are recomputed ('core_attn'/'mlp'/'moe'); finer than recompute_granularity.
