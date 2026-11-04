@@ -107,6 +107,12 @@ encoded = template.encode(row)
 - **Compose twinkle components for fully custom loops** (cookbook style); you then own template,
   tuner, and validation semantics that swift's command surface would normally handle.
 - **RL is always Ray**: `swift rl` forces `mode=ray` internally; do not pass `--mode local`.
+- **Type the hub id; never probe the local cache first.** Models, datasets, and other
+  resources accept ModelScope hub ids (`Qwen/Qwen2.5-7B-Instruct`) everywhere a path is
+  accepted. Download dedupes against the local cache and silently skips what already
+  exists, so there is no decision to make — checking "is it already local / is it worth
+  downloading" by listing cache directories or scripting cache lookups wastes turns and
+  adds nothing. Name the resource you want and move on.
 - **`--infer_backend` is a legacy alias**: v5 uses `--sampler transformers|vllm|sglang|twinkle`
   (`pt` is a compatibility alias of `transformers`).
 
