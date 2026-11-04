@@ -13,7 +13,7 @@ def train():
             teacher_model='Qwen/Qwen3.5-4B',
             tuner_type='lora',
             lora_rank=64,
-            lora_alpha=128,
+            lora_alpha=128.0,
             target_modules=['all-linear'],
             use_vllm=True,
             vllm_mode='colocate',

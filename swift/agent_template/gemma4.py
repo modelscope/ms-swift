@@ -164,9 +164,13 @@ class Gemma4AgentTemplate(BaseAgentTemplate):
 
     def _format_tool_responses(
         self,
-        assistant_content: str,
+        assistant_content: Union[str, List[str]],
         tool_messages,
-    ) -> Tuple[str, 'Prompt']:
+    ) -> Tuple[Union[str, List[str]], 'Prompt']:
+        if isinstance(assistant_content, list):
+            # Keep merged assistant segments aligned with their loss/loss_scale entries.
+            last_content, res = self._format_tool_responses(assistant_content[-1], tool_messages)
+            return assistant_content[:-1] + [last_content], res
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
@@ -182,10 +186,16 @@ class Gemma4AgentTemplate(BaseAgentTemplate):
 
     @classmethod
     def _gemma_to_json(cls, s: str) -> str:
-        # `<|"|>` -> `"`; bare keys preceded by `{` or `,` get JSON-quoted.
-        s = s.replace(QUOTE, '"')
-        s = re.sub(r'(?<=[\{,])([A-Za-z_][\w\-]*)(?=:)', r'"\1"', s)
-        return s
+        # String values are delimited by `<|"|>` and are not escaped, so they may contain `"`, newlines,
+        # `,` or `:`. Re-encode them as JSON strings, and JSON-quote only the bare keys (preceded by `{`
+        # or `,`) that appear outside of string values.
+        parts = s.split(QUOTE)
+        for i, part in enumerate(parts):
+            if i % 2 == 1:
+                parts[i] = json.dumps(part, ensure_ascii=False)
+            else:
+                parts[i] = re.sub(r'(?<=[\{,])([A-Za-z_][\w\-]*)(?=:)', r'"\1"', part)
+        return ''.join(parts)
 
     @classmethod
     def _parse_arguments(cls, args_body: str) -> Dict[str, Any]:

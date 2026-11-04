@@ -23,9 +23,11 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
-from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
+from swift.utils import (Processor, ProcessorMixin, get_env_args, get_logger, remove_arrow_padding, remove_response,
+                         retry_decorator, to_device)
 from .template_inputs import StdTemplateInputs, TemplateInputs
-from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
+from .utils import (Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round,
+                    get_token_backed_response_ids, split_str_parts_by)
 from .vision_utils import _check_path, load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
@@ -153,8 +155,8 @@ class Template(ProcessorMixin):
         self._agent_template = agent_template
         self.norm_bbox = norm_bbox or self.norm_bbox
         self.mode: Literal['transformers', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto'] = 'transformers'
-        self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
-                                'generative_reranker'] = 'causal_lm'
+        self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker', 'generative_reranker',
+                                'decision'] = 'causal_lm'
         self.use_megatron = False
         self._handles = []
         self._deepspeed_initialize = None
@@ -172,6 +174,10 @@ class Template(ProcessorMixin):
         preserve_thinking = None if inputs is None else inputs.chat_template_kwargs.get('preserve_thinking')
         if preserve_thinking is None:
             preserve_thinking = self.preserve_thinking
+        if preserve_thinking is None:
+            # Models that keep historical thinking themselves always preserve it, unless the user
+            # explicitly opts out above.
+            preserve_thinking = self.template_meta.preserve_thinking
         if preserve_thinking is None:
             enable_thinking = self._get_enable_thinking(inputs)
             if self.template_meta.is_thinking or enable_thinking:
@@ -265,6 +271,14 @@ class Template(ProcessorMixin):
                 self.dummy_model = get_model_processor(self.model_info.model_dir, return_dummy_model=True)[0]
         return self.dummy_model
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['model'] = None
+        state['dummy_model'] = None
+        state['_handles'] = []
+        state['_deepspeed_initialize'] = None
+        return state
+
     @staticmethod
     def _load_image(image, load_images: bool):
         if load_images:
@@ -326,6 +340,8 @@ class Template(ProcessorMixin):
                 inputs.tools = [agent_template._parse_json(tool) for tool in inputs.tools]
             else:
                 raise ValueError(f'inputs.tools: {inputs.tools}')
+            # Tools may also come from a request payload rather than a preprocessed dataset.
+            inputs.tools = [remove_arrow_padding(tool) if isinstance(tool, dict) else tool for tool in inputs.tools]
             for i, tool in enumerate(inputs.tools):
                 inputs.tools[i] = agent_template.wrap_tool(tool)
 
@@ -354,8 +370,56 @@ class Template(ProcessorMixin):
             else:
                 i += 1
 
+    def _preprocess_standalone_tools(self, inputs: StdTemplateInputs) -> None:
+        """Fold tool observations without a preceding assistant call into the query.
+
+        The SWIFT encoder consumes alternating query/assistant pairs. A native chat
+        template can nevertheless accept a tool result directly after a user message.
+        Agent templates provide the exact observation syntax, which is appended to the
+        current query before pairing it with the following assistant response.
+        """
+        if self.template_backend != 'swift':
+            return
+        messages = inputs.messages
+        i = 0
+        while i < len(messages):
+            if (messages[i]['role'] != 'tool' or i > 0 and messages[i - 1]['role'] in {'assistant', 'tool'}):
+                i += 1
+                continue
+
+            i_start = i
+            while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
+                i += 1
+            tool_messages = messages[i_start:i + 1]
+
+            if i_start == 0:
+                raise ValueError('A standalone tool message must follow a user message.')
+            query_message = messages[i_start - 1]
+            if query_message['role'] != 'user':
+                raise ValueError(
+                    f'A standalone tool message must follow a user message. Previous message: {query_message}')
+            query_content = query_message.get('content') or ''
+            if not isinstance(query_content, str):
+                raise ValueError('Standalone tool messages currently require text-only user content. '
+                                 f'Content: {query_content}')
+
+            agent_template = self.agent_template
+            agent_template.template_meta = self.template_meta
+            tool_context = agent_template._format_standalone_tool_responses(tool_messages)
+            if not all(isinstance(context, str) for context in tool_context):
+                raise ValueError(f'Standalone tool formatting must produce text contexts: {tool_context}')
+            query_message['content'] = query_content + ''.join(tool_context)
+            del messages[i_start:i + 1]
+            i = i_start
+
     def prepare_engine_kwargs(self) -> Dict[str, Any]:
         return {}
+
+    def prepare_pooling_params(self, pooling_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        return pooling_kwargs
+
+    def extract_embedding(self, result) -> Any:
+        return result.outputs.data.cpu().numpy().tolist()
 
     def _get_max_pixels(self, inputs=None):
         max_pixels = None if inputs is None else inputs.chat_template_kwargs.get('max_pixels')
@@ -594,6 +658,15 @@ class Template(ProcessorMixin):
             encoded['labels'] = labels
         return encoded
 
+    def _decision_encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
+        chosen = inputs.chosen
+        encoded = self._encode_truncated(chosen)
+        if self.is_training:
+            target_probs = chosen.extra_kwargs.get('target_probs')
+            if target_probs is not None:
+                encoded['target_probs'] = target_probs
+        return encoded
+
     @torch.inference_mode()
     @retry_decorator(3)
     def encode(self,
@@ -639,6 +712,8 @@ class Template(ProcessorMixin):
             encoded = self._embedding_encode(inputs)
         elif self.task_type in {'reranker', 'generative_reranker'}:
             encoded = self._reranker_encode(inputs)
+        elif self.task_type == 'decision':
+            encoded = self._decision_encode(inputs)
         else:
             raise ValueError(f'task_type: {self.task_type} is not supported.')
 
@@ -683,7 +758,7 @@ class Template(ProcessorMixin):
             keys.update(r.keys())
             length.append(r['length'])
         for key in keys:
-            if key == 'position_ids' and is_3d_position_ids or key in {'mm_token_type_ids'}:
+            if key == 'position_ids' and is_3d_position_ids or key in {'mm_token_type_ids', 'image_token_types'}:
                 packed[key] = torch.cat([x.get(key) for x in row], dim=-1)
             elif key in {'input_ids', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'}:
                 packed[key] = sum((x.get(key) or [] for x in row), start=[])
@@ -727,6 +802,37 @@ class Template(ProcessorMixin):
                 preds = [(logprob >= 0.5).nonzero(as_tuple=True)[0].tolist() for logprob in torch.sigmoid(logits)]
                 logprobs = F.logsigmoid(logits)
             logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
+        return preds, logprobs
+
+    def _decode_decision(self, output, top_logprobs: int):
+        """Turn a decision forward's `ScoringOutput` into per-record predictions.
+
+        Option sets are small (<=16), so the whole distribution is returned rather than
+        a `top_logprobs` slice (the arg is kept for parity with the engine's decode dispatch).
+        """
+        from swift.model.decision_head import masked_argmax, masked_softmax
+        logits = output.logits
+        option_mask = getattr(output, 'option_mask', None)
+        if option_mask is None:
+            option_mask = torch.ones_like(logits, dtype=torch.bool)
+        probs = masked_softmax(logits, option_mask)  # [total_q, max_opt]
+        preds_idx = masked_argmax(logits, option_mask)  # [total_q]
+        counts = getattr(output, 'counts', None)
+        if counts is None:
+            counts = [logits.shape[0]]
+        elif isinstance(counts, torch.Tensor):
+            counts = counts.tolist()
+
+        preds = []
+        start = 0
+        for c in counts:
+            record = []
+            for j in range(start, start + int(c)):
+                mask_j = option_mask[j]
+                record.append({'index': int(preds_idx[j]), 'probs': probs[j][mask_j].tolist()})
+            preds.append(record)
+            start += int(c)
+        logprobs = [None] * len(preds)
         return preds, logprobs
 
     def decode_generate_ids(self,
@@ -909,6 +1015,25 @@ class Template(ProcessorMixin):
 
     def _tokenize(self, context, **kwargs):
         return self.tokenizer(context, return_attention_mask=False, add_special_tokens=False, **kwargs)['input_ids']
+
+    def _remove_response_separator_overlap(self, response: Context,
+                                           extra_context_list: Optional[List[Context]]) -> List[Context]:
+        """Keep sampled terminal tokens while removing their overlap from a template separator."""
+        response_ids = get_token_backed_response_ids(response)
+        if not response_ids or not extra_context_list:
+            return extra_context_list or []
+        if any(not isinstance(context, str) for context in extra_context_list):
+            return extra_context_list
+
+        separator_ids = []
+        for context in extra_context_list:
+            separator_ids.extend(self._tokenize(context))
+        max_overlap = min(len(response_ids), len(separator_ids))
+        for overlap in range(max_overlap, 0, -1):
+            if response_ids[-overlap:] == separator_ids[:overlap]:
+                remaining_ids = separator_ids[overlap:]
+                return [remaining_ids] if remaining_ids else []
+        return extra_context_list
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -1187,7 +1312,8 @@ class Template(ProcessorMixin):
             # Determine the starting index for processing messages
             # During inference or when using 'last_round' strategy, only process the last round
             # Otherwise, process all messages (start_idx = -1 means start from the beginning)
-            if not self.is_training or self.loss_scale.base_strategy == 'last_round':
+            if ((not self.is_training or self.loss_scale.base_strategy == 'last_round')
+                    and not self.template_meta.preserve_thinking):
                 start_idx = get_last_user_round(messages)
             else:
                 start_idx = -1
@@ -1242,6 +1368,7 @@ class Template(ProcessorMixin):
             None. The input messages list is updated in-place.
         """
         self._preprocess_tool_call(inputs)
+        self._preprocess_standalone_tools(inputs)
         messages = inputs.messages
         if len(messages) < 2:
             return
@@ -1358,8 +1485,8 @@ class Template(ProcessorMixin):
                 # self.is_training needed because we may want to continue generation from
                 # the current response
                 add_eos = inputs.extra_kwargs.get('add_eos')
-                if add_eos is None:
-                    add_eos = (self.is_training
+                if add_eos is None or add_eos == 'auto':
+                    add_eos = (self.is_training or add_eos == 'auto'
                                or self.task_type != 'causal_lm') and not sep_token and not endswith_stop_words
                 if add_eos:
                     extra_context_list = template_meta.suffix
@@ -1376,6 +1503,7 @@ class Template(ProcessorMixin):
                 response=response,
                 system=system,
                 round0=i)
+            extra_context_list = self._remove_response_separator_overlap(response, extra_context_list)
             res_context_list += extra_context_list
             res_context_types += [extra_context_type] * len(extra_context_list)
         if template_meta.auto_add_bos and sep_token:
@@ -1411,9 +1539,10 @@ class Template(ProcessorMixin):
             loss_scale = torch.tensor(loss_scale)[protected].tolist()
             loss_scale[0] = 0
             encoded['loss_scale'] = loss_scale
-        mm_token_type_ids = encoded.get('mm_token_type_ids')
-        if mm_token_type_ids is not None:
-            encoded['mm_token_type_ids'] = mm_token_type_ids[protected]
+        for key in ('mm_token_type_ids', 'image_token_types'):
+            token_types = encoded.get(key)
+            if token_types is not None:
+                encoded[key] = token_types[protected]
         return input_ids, labels
 
     @staticmethod
@@ -1475,7 +1604,7 @@ class Template(ProcessorMixin):
                 raise ValueError(f'Invalid truncation_strategy: {self.truncation_strategy}')
         encoded['length'] = length
         encoded['input_ids'] = input_ids
-        if self.task_type in {'seq_cls', 'embedding', 'reranker', 'generative_reranker'}:
+        if self.task_type in {'seq_cls', 'embedding', 'reranker', 'generative_reranker', 'decision'}:
             encoded.pop('labels', None)
             encoded.pop('loss_scale', None)
         else:
@@ -1549,6 +1678,8 @@ class Template(ProcessorMixin):
                 encoded['length'] += padding_len
             if encoded.get('mm_token_type_ids') is not None:
                 encoded['mm_token_type_ids'] = F.pad(encoded['mm_token_type_ids'], (0, padding_len), value=0)
+            if encoded.get('image_token_types') is not None:
+                encoded['image_token_types'] = F.pad(encoded['image_token_types'], (0, padding_len), value=-1)
 
     def debug_logger(self, inputs):
         if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
@@ -1603,7 +1734,8 @@ class Template(ProcessorMixin):
         for k, v in old_kwargs.items():
             if k in {
                     'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep',
-                    'max_length_q', 'max_length_k', 'cu_seq_lens_q', 'cu_seq_lens_k', 'mm_token_type_ids'
+                    'output_router_logits', 'max_length_q', 'max_length_k', 'cu_seq_lens_q', 'cu_seq_lens_k',
+                    'mm_token_type_ids', 'image_token_types'
             } and k not in kwargs:
                 kwargs[k] = v
         if 'inputs_embeds' in kwargs:
@@ -1685,6 +1817,8 @@ class Template(ProcessorMixin):
             res = self._embedding_data_collator(batch, padding_to=padding_to)
         elif self.task_type in {'reranker', 'generative_reranker'}:
             res = self._reranker_data_collator(batch, padding_to=padding_to)
+        elif self.task_type == 'decision':
+            res = self._decision_data_collator(batch, padding_to=padding_to)
         else:
             raise ValueError(f'task_type: {self.task_type} is not supported.')
         if not self.remove_unused_columns:
@@ -1740,8 +1874,9 @@ class Template(ProcessorMixin):
         res = self._data_collator(new_batch, padding_to=padding_to)
 
         # reward modeling
-        margin = [b['margin'] for b in batch if b.get('margin') is not None]
-        if margin:
+        has_margin = any(b.get('margin') is not None for b in batch)
+        if has_margin:
+            margin = [0.0 if b.get('margin') is None else b['margin'] for b in batch]
             res['margin'] = torch.tensor(margin, dtype=torch.float)
 
         return res
@@ -1855,6 +1990,72 @@ class Template(ProcessorMixin):
             res['labels'] = labels
         return res
 
+    def _decision_data_collator(self,
+                                batch: List[Dict[str, Any]],
+                                *,
+                                padding_to: Optional[int] = None) -> Dict[str, Any]:
+        record_metas = [b.pop('decision_meta', None) for b in batch]
+        record_targets = [b.pop('target_probs', None) for b in batch]
+        res = self._data_collator(batch, padding_to=padding_to)
+
+        # -- flatten per-record decision_meta into batched flat lists (len == total_q) --
+        flat: Dict[str, Any] = {
+            'record_index': [],
+            'n_options': [],
+            'kinds': [],
+            'question_spans': [],
+            'option_spans': [],
+            'counts': [],
+        }
+        max_opt = 0
+        for rec_i, meta in enumerate(record_metas):
+            self._extract_extra_decision_meta(meta, rec_i, flat)
+            if meta is None:
+                continue
+            n_options = [int(n) for n in (meta.get('n_options') or [])]
+            nq = len(n_options)
+            flat['counts'].append(nq)
+            flat['record_index'].extend([rec_i] * nq)
+            flat['n_options'].extend(n_options)
+            flat['kinds'].extend(meta.get('kinds') or [])
+            flat['question_spans'].extend(meta.get('question_spans') or [])
+            flat['option_spans'].extend(meta.get('option_spans') or [])
+            if nq:
+                max_opt = max(max_opt, max(n_options))
+        flat['max_opt'] = max_opt
+
+        padding_side = self.padding_side if self.is_training else 'left'
+        flat['left_padding'] = padding_side == 'left'
+        attention_mask = res.get('attention_mask')
+        if isinstance(attention_mask, torch.Tensor):
+            flat['seq_lens'] = attention_mask.sum(dim=-1).tolist()
+        else:
+            flat['seq_lens'] = None
+        res['decision_meta'] = flat
+
+        # -- flatten + pad target_probs into [total_q, max_opt] labels tensor --
+        if not all(t is None for t in record_targets) and max_opt > 0:
+            rows: List[List[float]] = []
+            for targets in record_targets:
+                if targets is None:
+                    continue
+                for q in targets:
+                    row = [0.0] * max_opt
+                    n = min(len(q), max_opt)
+                    row[:n] = [float(x) for x in q[:n]]
+                    rows.append(row)
+            if rows:
+                res['labels'] = torch.tensor(rows, dtype=torch.float32)
+
+        return res
+
+    def _extract_extra_decision_meta(self, meta: Optional[Dict[str, Any]], rec_i: int, flat: Dict[str, Any]) -> None:
+        """Hook for template-specific decision meta fields. The base implementation is a no-op;
+        subclasses (e.g. OmniJevTemplate) override this to flatten model-specific fields like
+        `option_markers` or `mm_counts` into ``flat`` without polluting the shared collator.
+        """
+        return
+
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
@@ -1878,7 +2079,9 @@ class Template(ProcessorMixin):
                 encoded['position_ids'] = list(range(len(val)))
 
         res = {}
-        gather_keys = ['labels', 'loss_scale', 'position_ids', 'token_type_ids', 'mm_token_type_ids']
+        gather_keys = [
+            'labels', 'loss_scale', 'position_ids', 'token_type_ids', 'mm_token_type_ids', 'image_token_types'
+        ]
         if self.padding_free:
             assert len(batch) == 1, f'batch: {batch}'
             for k in ['input_ids', 'channel'] + gather_keys:
@@ -1908,7 +2111,7 @@ class Template(ProcessorMixin):
             'attention_mask',
             'attention_mask_2d',
         ] + gather_keys
-        pad_values = [self.tokenizer.pad_token_id, 0., 0, 0] + [-100, 0., 0, 0, 0]
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, 0] + [-100, 0., 0, 0, 0, -1]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in pad_keys:

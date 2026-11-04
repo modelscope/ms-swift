@@ -143,13 +143,12 @@ if __name__ == '__main__':
         packages=find_packages(exclude=('tests', 'tests.*')),
         include_package_data=True,
         package_data={'': ['utils/*', 'dataset/data/*.*', 'config/*.json', 'loss_scale/config/*.json']},
-        python_requires='>=3.8.0',
+        python_requires='>=3.9.0',
         classifiers=[
             'Development Status :: 4 - Beta',
             'License :: OSI Approved :: Apache Software License',
             'Operating System :: OS Independent',
             'Programming Language :: Python :: 3',
-            'Programming Language :: Python :: 3.8',
             'Programming Language :: Python :: 3.9',
             'Programming Language :: Python :: 3.10',
             'Programming Language :: Python :: 3.11',
@@ -160,7 +159,8 @@ if __name__ == '__main__':
         install_requires=install_requires,
         extras_require=extra_requires,
         entry_points={
-            'console_scripts': ['swift=swift.cli.main:cli_main', 'megatron=swift.cli._megatron.main:cli_main']
+            'console_scripts': ['swift=swift.cli.main:cli_main', 'megatron=swift.cli._megatron.main:cli_main'],
+            'vllm.general_plugins': ['swift_uembed=swift.model.models.qwen:register_uembed_model'],
         },
         dependency_links=deps_link,
         zip_safe=False)

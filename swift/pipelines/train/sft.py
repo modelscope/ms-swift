@@ -26,17 +26,20 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def __init__(self, args: Optional[Union[List[str], SftArguments]] = None) -> None:
         super().__init__(args)
         self.train_msg = {}
+        self._prepare_flash_ckpt()
         self._prepare_model_tokenizer()
         self._prepare_template()
-        self._prepare_flash_ckpt()
 
     @RayHelper.function(group='default')
     def _prepare_flash_ckpt(self):
         if self.args.use_flash_ckpt:
             try:
-                import dlrover.trainer.torch.flash_checkpoint.hf_trainer
+                from dlrover.trainer.torch.flash_checkpoint.engine import CheckpointEngine
+                from dlrover.trainer.torch.flash_checkpoint.hf_trainer import HfFlashCheckpointer
             except ImportError:
-                raise ValueError('Please install dlrover to use flash ckpt `pip install dlrover[k8s,torch]')
+                raise ValueError('Please install DLRover to use Flash Checkpoint: `pip install dlrover[k8s,torch]`.')
+            from swift.trainers.utils import check_dlrover_flash_checkpoint_api
+            check_dlrover_flash_checkpoint_api(HfFlashCheckpointer, CheckpointEngine)
 
     def _prepare_generation_config(self):
         args = self.args
@@ -145,7 +148,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     packing_num_proc=args.packing_num_proc,
                     packing_strategy=args.packing_strategy,
                     strict=args.strict,
-                    load_from_cache_file=args.load_from_cache_file)
+                    load_from_cache_file=args.load_from_cache_file,
+                    multiprocessing_context=getattr(args, 'dataloader_multiprocessing_context', None))
             elif args.streaming:
                 preprocessor = EncodePreprocessor(template=template)
                 dataset = preprocessor(

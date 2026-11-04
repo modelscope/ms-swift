@@ -28,6 +28,9 @@ def prepare_adapter(args, model, adapters=None):
     adapters = adapters if adapters is not None else args.adapters
     for adapter in adapters:
         model = tuner.from_pretrained(model, adapter)
+        if getattr(args, 'task_type', None) == 'decision':
+            from swift.model.decision_head import maybe_load_trained_scoring_head
+            maybe_load_trained_scoring_head(model, adapter)
     if args.tuner_type == 'bone':
         # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
         model.to(model.dtype)

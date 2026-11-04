@@ -100,14 +100,15 @@ class MeanMetric(Metric):
         self.count += count
 
     def compute(self):
+        state, count = self.state, self.count
         if dist.is_initialized():
-            tensor = torch.tensor([self.state, self.count], dtype=torch.float32, device=self.device)
+            tensor = torch.tensor([state, count], dtype=torch.float32, device=self.device)
             dist.all_reduce(tensor, op=dist.ReduceOp.SUM, group=self.group)
-            self.state, self.count = tensor[0].item(), int(tensor[1].item())
-        if self.count == 0:
+            state, count = tensor[0].item(), int(tensor[1].item())
+        if count == 0:
             value = self.nan_value
         else:
-            value = self.state / self.count
+            value = state / count
         return {
             'value': value,
         }

@@ -20,7 +20,10 @@ class MiniCPM5AgentTemplate(BaseAgentTemplate):
         </tool_response>
     """
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    supports_tool_schema = True
+
+    def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
+        tool_schemas = self._get_tool_schemas(tools)
         # Match <function name="...">...</function> blocks
         func_pattern = re.compile(r'<function\s+name="([^"]+)">(.*?)</function>', re.DOTALL)
         param_pattern = re.compile(r'<param\s+name="([^"]+)">'
@@ -31,16 +34,26 @@ class MiniCPM5AgentTemplate(BaseAgentTemplate):
         for func_match in func_pattern.finditer(response):
             func_name = func_match.group(1)
             func_body = func_match.group(2)
+            properties = tool_schemas.get(func_name, {}).get('properties', {})
+            if not isinstance(properties, dict):
+                properties = {}
             arguments = {}
             for param_match in param_pattern.finditer(func_body):
                 param_name = param_match.group(1)
                 # CDATA value or plain value
                 param_value = param_match.group(2) if param_match.group(2) is not None else param_match.group(3)
-                # Try to parse as JSON value (number, bool, etc.)
-                try:
-                    param_value = json.loads(param_value)
-                except (json.JSONDecodeError, ValueError):
-                    pass
+                param_schema = properties.get(param_name, {})
+                param_type = param_schema.get('type') if isinstance(param_schema, dict) else None
+                type_list = param_type if isinstance(param_type, list) else [param_type]
+                is_string = 'string' in type_list
+                if is_string and 'null' in type_list:
+                    # Bare null is ambiguous; keep decoding it as JSON null.
+                    is_string = param_value.strip() != 'null'
+                if not is_string:
+                    try:
+                        param_value = json.loads(param_value)
+                    except (json.JSONDecodeError, ValueError):
+                        pass
                 arguments[param_name] = param_value
             functions.append(Function(name=func_name, arguments=arguments))
 

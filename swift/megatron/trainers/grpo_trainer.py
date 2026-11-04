@@ -7,13 +7,14 @@ from copy import copy, deepcopy
 from functools import partial
 from mcore_bridge import set_random_seed
 from megatron.core import mpu
-from typing import Any, Dict, List, Optional, Tuple, Union
+from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
+from typing import Any, Dict, List, Optional, Tuple
 
-from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
+from swift.infer_engine.protocol import RequestConfig, RolloutOutput
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.utils import RouterReplayHelper, get_padding_to, set_router_replay_data
 from swift.rl_core.advantage import (compute_advantages, compute_reward_metrics, compute_teacher_kl_per_token,
-                                     expand_advantage_to_per_token)
+                                     expand_advantage_to_per_token, get_local_rollout_values)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
 from swift.rl_core.resample import resample_encode_failed_inputs
@@ -31,12 +32,6 @@ from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather, gather_object, reconstruct_tensor_cp
 from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
-
-try:
-    from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
-except ImportError:
-    RouterReplay = None
-    RouterReplayAction = None
 
 logger = get_logger()
 
@@ -308,7 +303,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Step 2: Compute KL from logps if kl_in_reward is enabled
         kl_values = None
         if self.kl_in_reward and self.beta != 0.0:
-            kl_values = self._compute_kl_from_batches(mini_batch_data)
+            kl_values = self._compute_kl_from_batches(mini_batch_data, len(samples), rollout_group)
 
         # Step 3: Compute the per-sequence base advantage (with ref-KL penalty if kl_in_reward).
         advantages = self._compute_advantages(samples, rewards_per_func, kl_values=kl_values)
@@ -333,27 +328,24 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if any(m['grpo_batch'].teacher_per_token_logps is not None for m in mini_batch_data):
             self._log_teacher_kl_metric(mini_batch_data)
 
-        if self.loss_type in ['cispo', 'dapo', 'fipo']:
-            # Calculate num_items_in_batch
-            # Count completion tokens from all mini_batch_data (this includes gathered data from rollout_group)
-            # Use completion_mask.sum() for both padding_free and non-padding_free modes
-            # since we want the count of actual completion tokens, not sequence lengths
-            total_token_count = sum(batch_data['grpo_batch'].completion_mask.sum().item()
-                                    for batch_data in mini_batch_data)
-
-            # All-reduce across all ranks
-            total_token_count_tensor = torch.tensor(total_token_count, dtype=torch.int, device=self.device)
-            torch.distributed.all_reduce(total_token_count_tensor)
-
+        if self.loss_type in ['bnpo', 'cispo', 'dapo', 'fipo']:
+            num_mini_batch = self.global_batch_size // (self.micro_batch_size * mpu.get_data_parallel_world_size())
             # Divide by rollout_group_size to account for duplicate counting within each rollout_group
             # Each rollout_group (TP×PP×CP ranks) has the same gathered data, so we need to normalize
             rollout_group_size = (
                 mpu.get_tensor_model_parallel_world_size() * mpu.get_pipeline_model_parallel_world_size()
                 * mpu.get_context_parallel_world_size())
-            num_items_in_batch = total_token_count_tensor / rollout_group_size
-            # Store num_items_in_batch in each mini_batch_data for token-normalized losses
-            for batch_data in mini_batch_data:
-                batch_data['grpo_batch'].num_items_in_batch = num_items_in_batch
+            for step_start in range(0, len(mini_batch_data), num_mini_batch):
+                step_micro_batches = mini_batch_data[step_start:step_start + num_mini_batch]
+                total_token_count = sum(batch_data['grpo_batch'].completion_mask.sum().item()
+                                        for batch_data in step_micro_batches)
+                # All-reduce across all ranks
+                total_token_count_tensor = torch.tensor(total_token_count, dtype=torch.int, device=self.device)
+                torch.distributed.all_reduce(total_token_count_tensor)
+                num_items_in_batch = total_token_count_tensor / rollout_group_size
+                # Store num_items_in_batch in each mini_batch_data for token-normalized losses
+                for batch_data in step_micro_batches:
+                    batch_data['grpo_batch'].num_items_in_batch = num_items_in_batch
 
         return mini_batch_data
 
@@ -535,7 +527,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._metrics[mode]['frac_reward_zero_std'].append(reward_metrics.frac_reward_zero_std)
         if kl_values is not None:
             self._metrics[mode]['kl'].append(kl_values.nanmean().item())
-        for name in self.reward_func_names:
+        for name in reward_metrics.per_func_mean:
             self._metrics[mode][f'rewards/{name}/mean'].append(reward_metrics.per_func_mean[name])
             self._metrics[mode][f'rewards/{name}/std'].append(reward_metrics.per_func_std[name])
         self._logs['advantages'].extend(advantages.tolist())
@@ -558,8 +550,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         Args:
             rollout_batch: local rollout data samples
             rewards_per_func: reward per function for local data samples
-            rollout_group: rollout communication group
-
         Returns:
             tuple: (rollout_batch, rewards_per_func) with zero-variance groups replaced by resampled data
         """
@@ -818,7 +808,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             tok_sum += grpo_batch.completion_mask.sum().item()
         self._metrics[mode]['teacher_kl'].append(kl_sum / max(tok_sum, 1.0))
 
-    def _compute_kl_from_batches(self, mini_batch_data: List[Dict[str, Any]]) -> torch.Tensor:
+    def _compute_kl_from_batches(self, mini_batch_data: List[Dict[str, Any]], local_num_samples: int,
+                                 rollout_group: torch.distributed.ProcessGroup) -> torch.Tensor:
         """
         Compute per-sample KL divergence from encoded batches for kl_in_reward.
 
@@ -829,6 +820,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 - old_per_token_logps: [batch_size, max_seq_len] in batch format
                 - ref_per_token_logps: [batch_size, max_seq_len] in batch format
                 - completion_mask: [batch_size, max_seq_len] mask for completion tokens
+            local_num_samples: Number of samples owned by the current rank
+            rollout_group: Process group whose samples were concatenated into the batches
 
         Returns:
             kl_values: Per-sample KL values, shape [total_samples]
@@ -845,8 +838,13 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             sample_kl = (per_token_kl * grpo_batch.completion_mask).sum(-1)  # [batch_size]
             kl_list.append(sample_kl)
 
-        # Concatenate all KL values and gather across ranks
+        # mini_batch_data contains the whole rollout group's samples on every rank. Select
+        # only the values originally owned by this rank before the global gather, matching
+        # the ownership and ordering used when rewards are gathered in _compute_advantages.
         kl_values = torch.cat(kl_list, dim=0)
+        sample_counts = gather_object([local_num_samples], group=rollout_group)
+        rollout_rank = torch.distributed.get_rank(group=rollout_group)
+        kl_values = get_local_rollout_values(kl_values, sample_counts, rollout_rank)
         kl_values = gather(kl_values)
 
         return kl_values
@@ -901,10 +899,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 num_samples = packed_seq_params.seq_lens.shape[0] if args.padding_free else micro_batch_size
                 cp_size = args.context_parallel_size
                 per_token_logps_packed = reconstruct_tensor_cp(cp_size, per_token_logps_packed, packed_seq_params,
-                                                               num_samples)
+                                                               num_samples, args.cp_partition_mode)
                 if per_token_entropy_packed is not None:
                     per_token_entropy_packed = reconstruct_tensor_cp(cp_size, per_token_entropy_packed,
-                                                                     packed_seq_params, num_samples)
+                                                                     packed_seq_params, num_samples,
+                                                                     args.cp_partition_mode)
 
             if args.padding_free:
                 # Pad from rmpad [1, total_tokens] to batch format [batch_size, max_seq_len]
@@ -1124,7 +1123,13 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             # Per-sample mean, then batch mean
             loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
         elif self.loss_type == 'bnpo':
-            loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
+            num_items_in_batch = grpo_batch.num_items_in_batch
+            dp_size = mpu.get_data_parallel_world_size()
+            normalizer = num_items_in_batch / dp_size
+            loss = (per_token_loss * completion_mask).sum() / normalizer.clamp(min=1.0)
+            # Megatron's two-value regime divides each micro-batch's loss equally by
+            # num_microbatches; premultiply to cancel it
+            loss = loss * self.args.num_microbatches
         elif self.loss_type == 'dr_grpo':
             loss = (per_token_loss * completion_mask).sum() / (micro_batch_size * self.max_completion_length)
         elif self.loss_type in ['cispo', 'dapo', 'fipo']:
@@ -1133,6 +1138,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             dp_size = mpu.get_data_parallel_world_size()
             normalizer = num_items_in_batch / dp_size
             loss = (per_token_loss * completion_mask).sum() / normalizer.clamp(min=1.0)
+            # Megatron's two-value regime divides each micro-batch's loss equally by
+            # num_microbatches; premultiply to cancel it, otherwise the effective objective
+            # is scaled down by a constant 1/num_microbatches (equivalent to a smaller LR).
+            loss = loss * self.args.num_microbatches
         elif self.loss_type == 'real':
             global_scores = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
 
@@ -1258,6 +1267,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 for key, val in self._metrics[mode].items()
             }
             avg_metric.update(addition_metrics)
+            # Reward metrics are produced once per rollout, while the same rollout can be
+            # consumed by multiple optimization steps. Once handed to Megatron's logging
+            # aggregator, clear them so they are neither reported repeatedly nor averaged
+            # together with every rollout seen since the start of training.
+            self._metrics[mode].clear()
 
         avg_metric = self._all_reduce_metric(avg_metric)
         reporting_metric = {**avg_metric, **custom_metrics}

@@ -1,0 +1,22 @@
+{
+    "compute_environment": "LOCAL_MACHINE",
+    "debug": false,
+    "distributed_type": "FSDP",
+    "downcast_bf16": "no",
+    "mixed_precision": "bf16",
+    "num_machines": 1,
+    "num_processes": 8,
+    "machine_rank": 0,
+    "rdzv_backend": "static",
+    "same_network": true,
+    "use_cpu": false,
+    "fsdp_config": {
+      "fsdp_version": 2,
+      "fsdp_auto_wrap_policy": "TRANSFORMER_BASED_WRAP",
+      "fsdp_transformer_layer_cls_to_wrap": "Qwen3_5MoeDecoderLayer",
+      "fsdp_reshard_after_forward": true,
+      "fsdp_state_dict_type": "FULL_STATE_DICT",
+      "fsdp_cpu_ram_efficient_loading": false,
+      "fsdp_offload_params": false
+    }
+  }

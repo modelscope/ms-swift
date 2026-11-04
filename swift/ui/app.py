@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import gradio as gr
 import os
+import sys
 from functools import partial
 from packaging import version
 from transformers.utils import strtobool
@@ -10,6 +11,7 @@ import swift
 from swift.arguments import (DeployArguments, EvalArguments, ExportArguments, RLHFArguments, SamplingArguments,
                              WebUIArguments)
 from swift.pipelines import SwiftPipeline
+from swift.utils import get_logger
 from .llm_eval import LLMEval
 from .llm_export import LLMExport
 from .llm_grpo import LLMGRPO
@@ -17,6 +19,19 @@ from .llm_infer import LLMInfer
 from .llm_rlhf import LLMRLHF
 from .llm_sample import LLMSample
 from .llm_train import LLMTrain
+
+logger = get_logger()
+
+# Addresses that expose the Web UI to the network, making it accessible to
+# anyone who can reach the server. Binding to these addresses without
+# authentication is dangerous — see GHSA-9g2v-fgfh-65rx.
+_UNSAFE_BIND_ADDRESSES = {'0.0.0.0', '::', '[::]'}
+
+_SECURITY_WARNING = ('⚠️ SECURITY WARNING: The Web UI is bound to {addr!r} and will be accessible to '
+                     'anyone on the network. The ms-swift Web UI has no built-in authentication and allows '
+                     'executing arbitrary commands on the server. This can lead to Remote Code Execution (RCE). '
+                     'If you do not need external access, use --server_name 127.0.0.1 (the default). '
+                     'If you must expose the Web UI, protect it with a reverse proxy, VPN, or firewall rules.')
 
 locale_dict = {
     'title': {
@@ -53,6 +68,9 @@ class SwiftWebUI(SwiftPipeline):
         server = os.environ.get('WEBUI_SERVER') or self.args.server_name
         port_env = os.environ.get('WEBUI_PORT')
         port = int(port_env) if port_env else self.args.server_port
+        if server in _UNSAFE_BIND_ADDRESSES:
+            logger.warning(_SECURITY_WARNING.format(addr=server))
+            print(_SECURITY_WARNING.format(addr=server), file=sys.stderr)
         LLMTrain.set_lang(lang)
         LLMRLHF.set_lang(lang)
         LLMGRPO.set_lang(lang)

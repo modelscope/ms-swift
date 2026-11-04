@@ -127,7 +127,7 @@ class LLMEval(BaseUI):
             if key == 'more_params' and value:
                 try:
                     more_params = json.loads(value)
-                except (JSONDecodeError or TypeError):
+                except (JSONDecodeError, TypeError):
                     more_params_cmd = value
 
         kwargs.update(more_params)

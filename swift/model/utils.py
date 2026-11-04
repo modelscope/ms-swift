@@ -11,7 +11,7 @@ from torch import nn
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_mps_available,
-                                is_torch_npu_available, strtobool)
+                                is_torch_musa_available, is_torch_npu_available, strtobool)
 from types import MethodType
 from typing import List, Optional, TypeVar, Union
 
@@ -214,21 +214,28 @@ class InitModelStrategy:
         logger.info(f'initialization strategy: {init_strategy}')
 
         init_func = InitModelStrategy._INIT_STRATEGY_MAP[init_strategy]
+        model_type = getattr(getattr(model, 'config', None), 'model_type', None)
 
         for name, param in model.named_parameters():
             if InitModelStrategy.is_uninitialized(param):
                 logger.info(f'Initializing parameters: {name}.')
-                init_func(param)
+                if model_type in {'qwen3_5', 'qwen3_5_moe'} and name.endswith('A_log'):
+                    with torch.no_grad():
+                        param.uniform_(0.01, 16).log_()
+                else:
+                    init_func(param)
 
 
 def get_default_device_map():
-    if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
+    if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False').lower() == 'true':
         return None
     local_rank = get_dist_setting()[1]
     if local_rank == -1:
         local_rank = 0
     if is_torch_npu_available():
         return 'auto' if is_mp() else f'npu:{local_rank}'
+    elif is_torch_musa_available():
+        return 'auto' if is_mp() else f'musa:{local_rank}'
     elif is_torch_mps_available():
         return f'mps:{local_rank}'
     elif is_torch_cuda_available():
@@ -243,12 +250,13 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
         return torch_dtype
 
     try:
-        is_bf16_available = is_torch_bf16_gpu_available() or (is_torch_npu_available()
-                                                              and torch.npu.is_bf16_supported())
+        is_bf16_available = (
+            is_torch_bf16_gpu_available() or (is_torch_npu_available() and torch.npu.is_bf16_supported())
+            or (is_torch_musa_available() and torch.musa.is_bf16_supported()))
     except Exception:  # noqa
         is_bf16_available = False
 
-    if is_torch_cuda_available() or is_torch_npu_available():
+    if is_torch_cuda_available() or is_torch_npu_available() or is_torch_musa_available():
         if is_bf16_available:
             return torch.bfloat16
         else:

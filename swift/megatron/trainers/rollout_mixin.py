@@ -35,7 +35,8 @@ from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LO
                                        check_vllm_version_ge, expand_vllm_param_name_aliases, finish_vllm_weight_reload,
                                        parse_prompt_logprobs, patch_vllm_load_adapter,
                                        patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
-                                       set_expandable_segments, vllm_supports_lora_load_inplace)
+                                       set_expandable_segments, sleep_vllm_engine, vllm_sleep,
+                                       vllm_supports_lora_load_inplace)
 from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import (JsonlWriter, get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response,
@@ -142,6 +143,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
             temperature=args.temperature,
             top_p=getattr(args, 'top_p', 1.0),
             top_k=getattr(args, 'top_k', -1),
+            min_p=getattr(args, 'min_p', 0.0),
             repetition_penalty=getattr(args, 'repetition_penalty', 1.0),
             stop=getattr(args, 'stop_words', None),
             return_details=True,
@@ -218,7 +220,19 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         vp_size = getattr(args, 'virtual_pipeline_model_parallel_size', None)
         assert vp_size is None or vp_size == 1, 'Teacher distillation does not support VPP.'
         self.teacher_hf_config = AutoConfig.from_pretrained(args.teacher_model_dir, trust_remote_code=True)
-        self.teacher_models = get_mcore_model(args, self.teacher_hf_config)
+        teacher_args = copy(args)
+        teacher_args.model_dir = args.teacher_model_dir
+        teacher_args.megatron_model_meta = args.teacher_megatron_model_meta
+        # The teacher only provides logits and does not need the MTP.
+        teacher_args.mtp_num_layers = 0
+        teacher_args.mtp_shared_weights = False
+        teacher_args.mtp_use_repeated_layer = False
+        teacher_args.megatron_extra_kwargs = {
+            key: value
+            for key, value in (args.megatron_extra_kwargs or {}).items()
+            if key not in {'mtp_num_layers', 'mtp_shared_weights', 'mtp_use_repeated_layer'}
+        }
+        self.teacher_models = get_mcore_model(teacher_args, self.teacher_hf_config)
         self.teacher_config = self.teacher_models[0].config
         if not args.use_cpu_initialization:
             for teacher_model in self.teacher_models:
@@ -254,27 +268,30 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
     def _gather_teacher_requests(self, requests: List[RolloutInferRequest]) -> Dict[str, Any]:
         """Phase 1 (all ranks, collective): gather this teacher's rollout-group-rank-0 requests.
 
-        Only rollout-group rank 0 contributes (others hold TP/PP/CP replicas of the same data);
-        contributions are tagged with ``dp_rank`` so segments order by DP rank regardless of world
-        layout or empty (zero-routed) subsets. Returns a handle with the per-DP-rank segments (for
-        the main-process infer) plus this DP rank's offset/length (for the later slice). The offset
-        is the prefix sum of preceding DP ranks' lengths, not ``dp_rank * n``: under multi-teacher
-        routing each DP rank's subset may differ in length, so equal-length slicing misaligns.
+        Only rollout-group rank 0 contributes requests (others hold TP/PP/CP replicas of the same
+        data); every rank contributes its DP rank and local count. Only the main process receives
+        the requests and builds the per-rank response slices. Segments are ordered by DP rank,
+        with prefix-sum offsets since multi-teacher routing can produce uneven or empty subsets.
         """
         rollout_group = self._get_rollout_group()
         rollout_rank = torch.distributed.get_rank(group=rollout_group)
         dp_rank = mpu.get_data_parallel_rank()
-        contribution = (dp_rank, list(requests)) if rollout_rank == 0 else None
+        contribution = (dp_rank, len(requests), list(requests) if rollout_rank == 0 else None)
 
         world_size = torch.distributed.get_world_size()
-        all_contributions = [None] * world_size
-        torch.distributed.all_gather_object(all_contributions, contribution)
+        all_contributions = [None] * world_size if self.is_main_process else None
+        torch.distributed.gather_object(contribution, all_contributions, dst=world_size - 1)
+        if not self.is_main_process:
+            return {}
 
-        segments_by_dp = {dp: reqs for c in all_contributions if c is not None for dp, reqs in [c]}
-        dp_ranks_sorted = sorted(segments_by_dp)
-        offset = sum(len(segments_by_dp[dp]) for dp in dp_ranks_sorted if dp < dp_rank)
-        flat_global = [req for dp in dp_ranks_sorted for req in segments_by_dp[dp]]
-        return {'flat_global': flat_global, 'offset': offset, 'n_local': len(requests)}
+        segments_by_dp = {dp: reqs for dp, _, reqs in all_contributions if reqs is not None}
+        flat_global = []
+        offsets = {}
+        for dp, reqs in sorted(segments_by_dp.items()):
+            offsets[dp] = len(flat_global)
+            flat_global.extend(reqs)
+        rank_slices = [(offsets[dp], offsets[dp] + n) for dp, n, _ in all_contributions]
+        return {'flat_global': flat_global, 'rank_slices': rank_slices}
 
     def _infer_teacher_requests(self, handle: Dict[str, Any], topk: int, teacher_client: Optional[Any] = None):
         """Phase 2 (main process only, no collective): run the teacher HTTP infer.
@@ -289,19 +306,25 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         return [parse_prompt_logprobs(r, topk=topk) for r in responses]
 
     def _scatter_teacher_parsed(self, handle: Dict[str, Any], parsed_global):
-        """Phase 3 (all ranks, collective): broadcast the parsed result and slice this rank's part."""
+        """Phase 3 (all ranks, collective): scatter only this rank's DP segment of the parsed result."""
         world_size = torch.distributed.get_world_size()
-        obj_list = [parsed_global]
-        torch.distributed.broadcast_object_list(obj_list, src=world_size - 1)
-        parsed_global = obj_list[0]
-        offset, n = handle['offset'], handle['n_local']
-        return parsed_global[offset:offset + n]
+        if mpu.get_data_parallel_world_size() == 1:
+            # Every rank needs the same result; serialize it once instead of once per replica.
+            obj_list = [parsed_global]
+            torch.distributed.broadcast_object_list(obj_list, src=world_size - 1)
+            return obj_list[0]
+        rank_results = None
+        if self.is_main_process:
+            rank_results = [parsed_global[start:end] for start, end in handle['rank_slices']]
+        obj_list = [None]
+        torch.distributed.scatter_object_list(obj_list, rank_results, src=world_size - 1)
+        return obj_list[0]
 
     def _fetch_teacher_parsed_logprobs(self,
                                        requests: List[RolloutInferRequest],
                                        topk: int,
                                        teacher_client: Optional[Any] = None):
-        """Combined gather→infer→broadcast for a single teacher (serial); returns this rank's slice."""
+        """Combined gather→infer→scatter for a single teacher (serial); returns this rank's slice."""
         handle = self._gather_teacher_requests(requests)
         parsed_global = self._infer_teacher_requests(handle, topk, teacher_client) \
             if self.is_main_process else None
@@ -412,7 +435,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
                 self.engine = self._prepare_vllm_engine()
                 self.engine.engine.reset_mm_cache()
                 if args.sleep_level > 0:
-                    self.engine.engine.sleep(args.sleep_level)
+                    vllm_sleep(self.engine.engine, args.sleep_level)
                 set_expandable_segments(True)
         else:
             raise ValueError(f'Invalid vllm_mode: {self.vllm_mode}')
@@ -429,7 +452,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
             tokenizer = getattr(self, 'processing_class', None) or getattr(self.template, 'tokenizer', None)
             if isinstance(args.multi_turn_scheduler, str):
                 assert args.multi_turn_scheduler in multi_turns
-                scheduler_kwargs = {'max_turns': args.max_turns, 'tokenizer': tokenizer}
+                scheduler_kwargs = {'max_turns': args.max_turns, 'tokenizer': tokenizer, 'template': self.template}
                 gym_env = getattr(args, 'gym_env', None)
                 if gym_env is not None:
                     scheduler_kwargs['gym_env'] = gym_env
@@ -614,7 +637,14 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         target_device = 'cpu' if self.args.offload_bridge else None
 
         with profiling_context(self, 'export_weights'):
-            weight_iterator = self.bridge.export_weights(self.unwrapped_models, target_device=target_device)
+            # skip_unsupported_export: RL weight sync skips weights whose Megatron->HF export is not
+            # implemented and that stay fixed in the rollout engine (e.g. frozen DeepSeek-V4.1 Engram
+            # tables). No-op for models without such weights. Guard with signature inspection so an
+            # older bridge whose export_weights predates this kwarg does not raise TypeError.
+            export_kwargs = {'target_device': target_device}
+            if 'skip_unsupported_export' in inspect.signature(self.bridge.export_weights).parameters:
+                export_kwargs['skip_unsupported_export'] = True
+            weight_iterator = self.bridge.export_weights(self.unwrapped_models, **export_kwargs)
 
         if self.rollout_enable_lora:
             vllm_param_names = self._get_vllm_param_names_for_mapping()
@@ -623,10 +653,17 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
 
         if self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
-            patch_vllm_moe_model_weight_loader(llm_model)
-            llm_model.load_weights(weight_iterator)
-            _model_config = self.engine.engine.model_config
-            finish_vllm_weight_reload(llm_model, model_config=_model_config, target_device=self.device)
+            ascend_reload_runner = None
+            if is_torch_npu_available():
+                from swift.model.npu_patch.vllm_ascend import get_vllm_ascend_reload_runner
+                ascend_reload_runner = get_vllm_ascend_reload_runner(self.engine)
+            if ascend_reload_runner is not None:
+                ascend_reload_runner.reload_weights(weights_iterator=weight_iterator, is_checkpoint_format=True)
+            else:
+                patch_vllm_moe_model_weight_loader(llm_model)
+                llm_model.load_weights(weight_iterator)
+                _model_config = self.engine.engine.model_config
+                finish_vllm_weight_reload(llm_model, model_config=_model_config, target_device=self.device, strict=True)
         elif self.vllm_mode == 'server':
             self._load_weights_to_server_in_buckets(weight_iterator)
             if self.is_main_process:
@@ -700,54 +737,61 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         """
         samples = self._preprocess_inputs(samples)
 
-        # Wake up engine if sleeping (colocate mode)
-        if self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping:
-            wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
-            kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+        needs_weight_sync = self._step != self._last_loaded_step or self.args.sleep_level == 2
+        colocate_sleeping = (
+            self.vllm_mode == 'colocate' and self.args.sleep_level > 0 and self.engine.inner_model_executor.is_sleeping)
+        wake_up_supports_tags = (
+            colocate_sleeping and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters)
+
+        if colocate_sleeping and needs_weight_sync:
+            kwargs = {'tags': ['weights']} if wake_up_supports_tags else {}
             aggressive_empty_cache()
             self.engine.engine.wake_up(**kwargs)
 
-        # Load model weights if needed
-        if self._step != self._last_loaded_step or self.args.sleep_level == 2:
+        if needs_weight_sync:
             self._move_model_to_vllm()
             self._last_loaded_step = self._step
 
         context = self.offload_context if self.enable_offload else nullcontext
         with context():
-            if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
-                    and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
-                aggressive_empty_cache()
-                set_expandable_segments(False)
-                self.engine.engine.wake_up(tags=['kv_cache'])
+            rollout_failed = False
+            try:
+                if colocate_sleeping and self.engine.inner_model_executor.is_sleeping:
+                    aggressive_empty_cache()
+                    set_expandable_segments(False)
+                    tags = ['kv_cache']
+                    if wake_up_supports_tags and not needs_weight_sync:
+                        tags.insert(0, 'weights')
+                    kwargs = {'tags': tags} if wake_up_supports_tags else {}
+                    self.engine.engine.wake_up(**kwargs)
 
-            multi_turn_scheduler = getattr(self, 'multi_turn_scheduler', None)
-            colocate_multi_turn = (
-                multi_turn_scheduler is not None and not getattr(self, 'enable_server_multi_turn', False))
+                multi_turn_scheduler = getattr(self, 'multi_turn_scheduler', None)
+                colocate_multi_turn = (
+                    multi_turn_scheduler is not None and not getattr(self, 'enable_server_multi_turn', False))
 
-            if colocate_multi_turn:
-                requests = self.samples2requests(samples)
-                invoke_async_hook(multi_turn_scheduler.on_trajectory_start(requests))
-                request_config = self._get_request_config()
-                outputs: List[RolloutOutput] = self._rollout_requests(requests, request_config)
-                outputs = run_multi_turn(
-                    requests=requests,
-                    first_turn_outputs=outputs,
-                    scheduler=multi_turn_scheduler,
-                    rollout_fn=lambda reqs, cfg: self._rollout_requests(reqs, cfg),
-                    request_config=request_config,
-                    max_turns=self.args.max_turns,
-                    gather_fn=lambda x: gather_object(x, group=self._get_rollout_group()),
-                )
-            else:
-                # Single-turn rollout (or server multi-turn handled by the engine).
-                outputs: List[RolloutOutput] = self._rollout(samples)
-
-            # Sleep to release memory
-            if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
-                self.engine.engine.reset_prefix_cache()
-                self.engine.engine.sleep(level=self.args.sleep_level)
-                aggressive_empty_cache()
-                set_expandable_segments(True)
+                if colocate_multi_turn:
+                    requests = self.samples2requests(samples)
+                    invoke_async_hook(multi_turn_scheduler.on_trajectory_start(requests))
+                    request_config = self._get_request_config()
+                    outputs: List[RolloutOutput] = self._rollout_requests(requests, request_config)
+                    outputs = run_multi_turn(
+                        requests=requests,
+                        first_turn_outputs=outputs,
+                        scheduler=multi_turn_scheduler,
+                        rollout_fn=lambda reqs, cfg: self._rollout_requests(reqs, cfg),
+                        request_config=request_config,
+                        max_turns=self.args.max_turns,
+                        gather_fn=lambda x: gather_object(x, group=self._get_rollout_group()),
+                    )
+                else:
+                    # Single-turn rollout (or server multi-turn handled by the engine).
+                    outputs: List[RolloutOutput] = self._rollout(samples)
+            except BaseException:
+                rollout_failed = True
+                raise
+            finally:
+                if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
+                    sleep_vllm_engine(self.engine.engine, self.args.sleep_level, suppress_errors=rollout_failed)
 
             samples = self._postprocess_rollout_outputs(samples, outputs)
 

@@ -11,6 +11,57 @@ from .utils import Messages, Tool, get_last_user_round, messages_to_history
 logger = get_logger()
 
 
+def normalize_openai_tool_calls(messages: Messages) -> Messages:
+    """Convert OpenAI assistant ``tool_calls`` into SWIFT canonical messages."""
+    normalized = []
+    messages = list(messages)
+    for index, message in enumerate(messages):
+        tool_calls = message.get('tool_calls') if message.get('role') == 'assistant' else None
+        if not tool_calls:
+            normalized.append(message)
+            continue
+
+        # Canonical tool responses are positional, so align a complete result batch
+        # before the call IDs are discarded. Keep legacy messages without IDs as-is.
+        call_order = {call.get('id'): i for i, call in enumerate(tool_calls)}
+        end = index + 1
+        while end < len(messages) and messages[end].get('role') in {'tool', 'tool_response'}:
+            end += 1
+        responses = messages[index + 1:end]
+        if (None not in call_order and len(call_order) == len(tool_calls) == len(responses)
+                and set(call_order) == {response.get('tool_call_id')
+                                        for response in responses}):
+            messages[index + 1:end] = sorted(responses, key=lambda response: call_order[response['tool_call_id']])
+
+        content = message.get('content')
+        if content:
+            normalized.append({
+                key: value
+                for key, value in message.items() if key in {'role', 'content', 'loss', 'loss_scale'}
+            })
+        for tool_call in tool_calls:
+            # no function field, back to tool_call
+            function = tool_call.get('function', tool_call)
+            arguments = function.get('arguments', {})
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    pass
+            tool_message = {
+                'role': 'tool_call',
+                'content': {
+                    'name': function['name'],
+                    'arguments': arguments,
+                },
+            }
+            for key in ['loss', 'loss_scale']:
+                if key in message:
+                    tool_message[key] = message[key]
+            normalized.append(tool_message)
+    return normalized
+
+
 @dataclass
 class StdTemplateInputs:
     # only user/tool/assistant
@@ -62,7 +113,9 @@ class StdTemplateInputs:
         for key in ['label', 'channel', 'margin', 'rejected_response']:
             if key in inputs:
                 kwargs[key] = inputs[key]
-        messages = inputs['messages']
+        # Dataset loading performs the same conversion, but Template.encode also
+        # accepts dictionaries directly and must not require a placeholder content.
+        messages = normalize_openai_tool_calls(inputs['messages'])
         tools = inputs.get('tools')
         objects = inputs.get('objects') or {}
         chat_template_kwargs = inputs.get('chat_template_kwargs') or {}
@@ -76,8 +129,9 @@ class StdTemplateInputs:
         for message in messages:
             if message['role'] == 'tool_response':
                 message['role'] = 'tool'
-            if message['role'] in {'tool_call', 'tool'} and not isinstance(message['content'], str):
-                message['content'] = json.dumps(message['content'], ensure_ascii=False)
+            content = message.get('content')
+            if message['role'] in {'tool_call', 'tool'} and not isinstance(content, str):
+                message['content'] = json.dumps(content, ensure_ascii=False)
 
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         for k in list(media_kwargs.keys()):
@@ -108,8 +162,8 @@ class StdTemplateInputs:
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
         res = {'images': [], 'audios': [], 'videos': []}
         for message in messages:
-            content = message['content']
-            if isinstance(content, str):
+            content = message.get('content')
+            if content is None or isinstance(content, str):
                 continue
             elif (isinstance(content, list) and content
                   and isinstance(content[0], int)) or (isinstance(content, dict) and 'token_ids' in content):
@@ -168,7 +222,8 @@ class TemplateInputs:
             return
         messages = inputs['messages']
         assert len(messages) > 0, f'messages: {messages}'
-        idx = get_last_user_round(messages) + 1
+        # Replace the entire response trajectory, including tool calls and results.
+        idx = get_last_user_round(messages, include_tool=False) + 1
 
         rejected_response = inputs.pop('rejected_response')
         if isinstance(rejected_response, str):
@@ -183,8 +238,11 @@ class TemplateInputs:
             raise ValueError(f'rejected_response must be a str or list. rejected_response: {rejected_response}')
         # Check that the response is different from the rejected_response.
         if len(messages[idx:]) == 1 and len(rejected_responses) == 1:
-            response = messages[idx]['content']
-            rejected_response = rejected_responses[0]['content']
+            # OpenAI tool calls can omit content; compare their canonical responses.
+            responses = normalize_openai_tool_calls(messages[idx:])
+            rejected = normalize_openai_tool_calls(rejected_responses)
+            response = [message['content'] for message in responses]
+            rejected_response = [message['content'] for message in rejected]
             assert rejected_response != response, f'rejected_response: {rejected_response}, response: {response}'
         inputs['rejected_messages'] = deepcopy(messages[:idx]) + rejected_responses
 

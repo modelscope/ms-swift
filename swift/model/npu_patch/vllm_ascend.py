@@ -12,17 +12,48 @@ still responsible for guarding these entrypoints with an NPU/device check.
 """
 from __future__ import annotations
 
+import inspect
 import sys
 
 from swift.model.npu_patch.vllm_ascend_lora import (patch_vllm_ascend_lora_runtime, validate_vllm_ascend_lora_training,
                                                     validate_vllm_ascend_megatron_lora_training)
 from swift.model.npu_patch.vllm_ascend_memory import patch_vllm_ascend_memory_runtime
 from swift.model.npu_patch.vllm_ascend_moe import (patch_vllm_ascend_moe_expert_weight_loader,
-                                                   patch_vllm_ascend_moe_runtime, should_skip_vllm_ascend_moe_post_load,
-                                                   use_vllm_ascend_moe_preprocessed_weight)
+                                                   patch_vllm_ascend_moe_runtime)
 from swift.utils.logger import get_logger
 
 logger = get_logger()
+
+
+def get_vllm_ascend_reload_runner(engine):
+    """Return the vLLM-Ascend runner with checkpoint-aware reload support.
+
+    vLLM 0.18 exposes ``reload_weights(..., is_checkpoint_format=...)`` on its
+    legacy model runner.  vLLM-Ascend's default v1 runner inherits that method,
+    while its experimental v2 runner and older releases do not.  Detect the
+    actual runner capability so GPU and unsupported Ascend paths keep their
+    existing SWIFT weight-sync lifecycle.
+    """
+    try:
+        model_executor = engine.inner_model_executor
+        driver_worker = model_executor.driver_worker
+        worker = getattr(driver_worker, 'worker', driver_worker)
+        model_runner = worker.model_runner
+    except AttributeError:
+        return None
+
+    if not type(model_runner).__module__.startswith('vllm_ascend'):
+        return None
+    reload_weights = getattr(model_runner, 'reload_weights', None)
+    if not callable(reload_weights):
+        return None
+    try:
+        if 'is_checkpoint_format' not in inspect.signature(reload_weights).parameters:
+            return None
+    except (TypeError, ValueError):
+        return None
+    logger.info_once('Using vLLM-Ascend checkpoint-aware reload_weights for colocate weight synchronization.')
+    return model_runner
 
 
 def _patch_flash_attn_optional_import() -> None:
@@ -60,10 +91,9 @@ def patch_vllm_ascend_runtime(*, colocate: bool = False) -> None:
 
 
 __all__ = [
+    'get_vllm_ascend_reload_runner',
     'patch_vllm_ascend_moe_expert_weight_loader',
     'patch_vllm_ascend_runtime',
-    'should_skip_vllm_ascend_moe_post_load',
-    'use_vllm_ascend_moe_preprocessed_weight',
     'validate_vllm_ascend_lora_training',
     'validate_vllm_ascend_megatron_lora_training',
 ]

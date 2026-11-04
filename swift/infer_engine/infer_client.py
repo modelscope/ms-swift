@@ -112,7 +112,7 @@ class InferClient(InferEngine):
     def _parse_stream_data(data: bytes) -> Optional[str]:
         data = data.decode(encoding='utf-8')
         data = data.strip()
-        if len(data) == 0:
+        if len(data) == 0 or data.startswith(':'):
             return
         assert data.startswith('data:'), f'data: {data}'
         return data[5:].strip()

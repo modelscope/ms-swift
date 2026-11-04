@@ -19,8 +19,8 @@ class ExportArguments(MergeArguments, BaseArguments):
     Args:
         output_dir (Optional[str]): Directory to save the exported results. Defaults to None, which automatically sets
             a path with an appropriate suffix.
-        quant_method (Optional[str]): The quantization method. Can be 'awq', 'gptq', 'bnb', 'fp8', or 'gptq_v2'.
-            Defaults to None. See examples for more details.
+        quant_method (Optional[str]): The quantization method. Can be 'awq', 'gptq', 'bnb', 'fp8', 'entropack',
+            or 'gptq_v2'. Defaults to None. See examples for more details.
         quant_n_samples (int): Number of samples for GPTQ/AWQ calibration. Defaults to 256.
         quant_batch_size (int): The batch size for quantization. Defaults to 1.
         group_size (int): The group size for quantization. Defaults to 128.
@@ -37,6 +37,9 @@ class ExportArguments(MergeArguments, BaseArguments):
         test_convert_precision (bool): Whether to test the precision error of weight conversion between Hugging Face
             and Megatron-Core formats. Defaults to False.
         test_convert_dtype (str): The dtype to use for the conversion precision test. Defaults to 'float32'.
+        save_missing_weights (bool): Whether to copy weights that exist in the source checkpoint but are not
+            supported by Megatron-Core (e.g. the `mtp.*` DSpark weights of DeepSeek-V4-Flash) into the exported
+            model, so that they are not lost. Defaults to False.
         push_to_hub (bool): Whether to push the output to the Model Hub. Defaults to False. See examples for more
             details.
         hub_model_id (Optional[str]): The model ID for pushing to the Hub (e.g., 'user_name/repo_name' or 'repo_name').
@@ -51,7 +54,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     output_dir: Optional[str] = None
 
     # awq/gptq
-    quant_method: Literal['awq', 'gptq', 'bnb', 'fp8', 'gptq_v2'] = None
+    quant_method: Literal['awq', 'gptq', 'bnb', 'fp8', 'entropack', 'gptq_v2'] = None
     quant_n_samples: int = 256
     quant_batch_size: int = 1
     group_size: int = 128
@@ -71,6 +74,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     thread_count: Optional[int] = None
     test_convert_precision: bool = False
     test_convert_dtype: str = 'float32'
+    save_missing_weights: bool = False
 
     # push to ms hub
     push_to_hub: bool = False
@@ -122,8 +126,10 @@ class ExportArguments(MergeArguments, BaseArguments):
             self.quant_batch_size = None
         if self.quant_bits and self.quant_method is None:
             raise ValueError('Please specify the quantization method using `--quant_method awq/gptq/bnb`.')
-        if self.quant_method and self.quant_bits is None and self.quant_method != 'fp8':
+        if self.quant_method and self.quant_bits is None and self.quant_method not in {'fp8', 'entropack'}:
             raise ValueError('Please specify `--quant_bits`.')
+        if self.quant_method == 'entropack' and self.entropack_target_bpp is None:
+            raise ValueError('Please specify `--entropack_target_bpp`.')
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16
         if self.to_mcore or self.to_hf:

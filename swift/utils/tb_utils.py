@@ -56,8 +56,7 @@ def plot_images(images_dir: str,
                 matches.append(os.path.join(root, f))
     if not matches:
         return
-    fname = matches[0]
-    tb_path = os.path.join(tb_dir, fname)
+    tb_path = matches[0]
     data = read_tensorboard_file(tb_path)
 
     for k in data.keys():

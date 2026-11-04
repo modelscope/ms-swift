@@ -30,13 +30,13 @@
 </p>
 
 ## 📖 Table of Contents
-- [Groups](#-Groups)
+- [Groups](#-groups)
 - [Introduction](#-introduction)
 - [News](#-news)
 - [Installation](#%EF%B8%8F-installation)
-- [Quick Start](#-quick-Start)
-- [Usage](#-Usage)
-- [License](#-License)
+- [Quick Start](#-quick-start)
+- [Usage](#-usage)
+- [License](#-license)
 - [Citation](#-citation)
 
 
@@ -59,7 +59,7 @@ You can contact us and communicate with us by adding our group:
 
 - 🍎 **Model Types**: Supports **600+ text-only large models**, **400+ multimodal large models**, and All-to-All full modality models from training to deployment full pipeline, with Day-0 support for popular models.
 - **Dataset Types**: Built-in 150+ datasets for pre-training, fine-tuning, human alignment, multimodal and various other tasks, with support for custom datasets. Users only need to prepare datasets for one-click training.
-- **Hardware Support**: Supports A10/A100/H100, RTX series, T4/V100, AMD GPU (MI300 series, etc.), CPU, MPS, and domestic hardware Ascend NPU, etc.
+- **Hardware Support**: Supports NVIDIA GPUs (A100/H100/RTX series, etc., via CUDA), AMD GPUs (MI300 series, etc., via ROCm), domestic hardware such as Ascend NPU, MetaX GPU and Moore Threads GPU (via MUSA), as well as Apple MPS and CPU.
 - **Lightweight Training**: Supports lightweight fine-tuning methods such as LoRA, QLoRA, DoRA, LoRA+, LLaMAPro, LongLoRA, LoRA-GA, ReFT, RS-LoRA, Adapter, LISA, etc.
 - **Quantized Training**: Supports training on BNB, AWQ, GPTQ, AQLM, HQQ, EETQ quantized models, requiring only 9GB training resources for 7B models.
 - **Memory Optimization**: GaLore, Q-Galore, UnSloth, Liger-Kernel, Flash-Attention 2/3, and **Ulysses and Ring-Attention sequence parallelism techniques** support, reducing memory consumption for long-text training.
@@ -77,9 +77,23 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🔥 2026.10.29: Day-0 Support for [NVIDIA-Nemotron-3.5-Transcribe](nv-community/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B), Refer to the [SFT examples](examples/models/nemotron_transcribe).
+- 🔥 2026.10.22: Support [EntroPack](https://github.com/modelscope/entropack) flexible bitrate model quantization, enabling fine-grained control of the model's bitrate based on the VRAM budget, with support for Transformers inference and LoRA training. See the [best practices](docs/source_en/BestPractices/Flexble-Quantization-With-Entropack.md) and the [QLoRA example](examples/train/qlora/entropack.sh).
+- 🔥 2026.10.19: Support for [EmbeddingGemma-2](https://www.modelscope.cn/models/google/embeddinggemma-2) (740M, multimodal embedding model, unifying text/image/video/audio in a single 768d vector space). Inference and training verified with infonce loss fine-tuning.
+- 🔥 2026.10.15: Day-0 Support for [NVIDIA-Nemotron-3.5-Super-VL-120B-A12B](https://www.modelscope.cn/models/nv-community/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16), Refer to the [SFT examples](examples/models/nemotron_super_vl).
+- 🔥 2026.10.13: Support for training and inference of decision models (typed-decision System-1 scoring models) via `--task_type decision`, which performs a single forward pass and outputs calibrated probabilities over each question's option set. Supports [JEV-27B-VL](https://www.modelscope.cn/models/autotrust/JEV-27B-VL), [Clef](https://www.modelscope.cn/models/Cloudflare/clef), [OmniJev](https://modelscope.cn/models/AI-ModelScope/OmniJev) and [Kev](https://www.modelscope.cn/models/jaredpalmer/kev-4b) (0.8b/4b/9b), with proper scoring rule losses (distill_rps, smooth_brier, ce_rps). Refer to the [documentation](docs/source_en/BestPractices/Decision.md) and [examples](examples/train/decision).
+- 🔥 2026.10.01: Support for [Xing4.0-29B-A4B](https://www.modelscope.cn/models/XingChen-AGI/Xing4.0-29B-A4B): transformers-backend training and inference, with LoRA & full-parameter SFT on single/multi-GPU (DDP & DeepSpeed ZeRO-3) and grouped_mm expert acceleration (~3.7x). Refer to the [examples](examples/models/xing4_0).
+- 🔥 2026.09.21: Support for [DeepSeek-V4.1-Flash](https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V4.1-Flash): Megatron-SWIFT full-parameter training (SFT and GRPO) plus vLLM inference. Refer to the [examples](examples/models/deepseek_v41).
+- 🔥 2026.09.01: Support inference and training for the Tencent Hunyuan multimodal embedding model [WeMM-Embedding](https://www.modelscope.cn/models/Tencent-Hunyuan/WeMM-Embedding-2B) (2B/4B/9B), supporting image-text mixed input for vector representation. Refer to [embedding example](examples/train/embedding).
+- 🔥 2026.08.26: Day-0 Support for [Qwen3.8-Flash-Next](https://www.modelscope.cn/models/Qwen/Qwen3.8-Flash-Next), refer to [sft example](examples/models/qwen4_exp/megatron_sft.sh) for training.
+- 🎁 2026.08.21: Support inference and training for the OpenMOSS multimodal model [MOSS-VL-Instruct-0708](https://modelscope.cn/models/openmoss/MOSS-VL-Instruct-0708), with LoRA and full-parameter fine-tuning, covering single/multi-image, single/multi-video and mixed-media scenarios.
+- 🎁 2026.08.11: Support inference and training for the multimodal model [Muse-Glimmer-30B](https://modelscope.cn/models/meta-models/Muse-Glimmer-30B), with Megatron-SWIFT support as well.
 - 🎁 2026.07.22: Support inference for the moonshotai multimodal model [Kimi-K3](https://modelscope.cn/models/moonshotai/Kimi-K3), including the XTML chat template, thinking channel (`reasoning_effort`) and tool calling (`--agent_template kimi_k3`).
 - 🎁 2026.06.10: Megatron-Ray now supports GRPO and GKD training. See [docs](./docs/source_en/Instruction/Ray.md) and [examples](examples/ray).
 - 🎁 2026.03.03: **ms-swift v4.0** major version is officially released. For release notes, please refer to [here](https://github.com/modelscope/ms-swift/releases/tag/v4.0.0). You can provide your suggestions to us in [this issue](https://github.com/modelscope/ms-swift/issues/7250). Thank you for your support.
+
+
+<details><summary>More</summary>
 - 🎁 2025.11.14: Megatron GRPO is now available!  Check out the [docs](./docs/source_en/Megatron-SWIFT/GRPO.md) and [examples](examples/megatron/grpo).
 - 🎁 2025.11.04: Support for [Mcore-Bridge](docs/source_en/Megatron-SWIFT/Mcore-Bridge.md), making Megatron training as simple and easy to use as transformers.
 - 🎁 2025.10.28: Ray [here](docs/source_en/Instruction/Ray.md).
@@ -90,9 +104,6 @@ You can contact us and communicate with us by adding our group:
 - 🎁 2025.07.09: Megatron-SWIFT supports LoRA training. Compared to ms-swift, it achieves significant speedup on MoE models. Training scripts can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/lora).
 - 🎁 2025.06.23: Fine-tuning of reranker models is supported. Training scripts can be found here: [Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh).
 - 🎁 2025.06.15: Support for GKD training on both pure text large models and multimodal models. Training scripts can be found here: [Pure Text](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/gkd), [Multimodal](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/gkd).
-
-<details><summary>More</summary>
-
 - 🎁 2025.06.11: Support for using Megatron parallelism techniques for RLHF training. The training script can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf).
 - 🎁 2025.05.29: Support sequence parallel in pretrain, sft, dpo and grpo, check script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel).
 - 🎁 2025.05.11: GRPO now supports custom processing logic for reward models. See the GenRM example [here](./docs/source_en/Instruction/GRPO/DeveloperGuide/reward_model.md).
@@ -104,7 +115,7 @@ You can contact us and communicate with us by adding our group:
 - 🎁 2025.02.21: The GRPO algorithm now supports LMDeploy, with the training script available [here](examples/train/grpo/internal/full_lmdeploy.sh). Additionally, the performance of the GRPO algorithm has been tested, achieving a training speed increase of up to 300% using various tricks. Please check the WanDB table [here](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz).
 - 🎁 2025.02.21: The `swift sample` command is now supported. The reinforcement fine-tuning script can be found [here](docs/source_en/Instruction/Reinforced-Fine-tuning.md), and the large model API distillation sampling script is available [here](examples/sampler/distill/distill.sh).
 - 🔥 2025.02.12: Support for the GRPO (Group Relative Policy Optimization) training algorithm has been added. Documentation is available [here](docs/source_en/Instruction/GRPO/GetStarted/GRPO.md).
-- 🎁 2024.12.04: Major update to **ms-swift 3.0**. Please refer to the [release notes and changes](https://github.com/modelscope/ms-swift/blob/v3.0.0/docs/source_en/Instruction/ReleaseNote3.0.md).
+- 🎁 2024.12.04: Major update to **ms-swift 3.0**. Please refer to the [release notes and changes](https://github.com/modelscope/ms-swift/releases/tag/v3.0.0).
 - 🎉 2024.08.12: The ms-swift paper has been published on arXiv and can be read [here](https://arxiv.org/abs/2408.05517).
 - 🔥 2024.08.05: Support for using [evalscope](https://github.com/modelscope/evalscope/) as a backend for evaluating large models and multimodal models.
 - 🔥 2024.07.29: Support for using [vllm](https://github.com/vllm-project/vllm) and [lmdeploy](https://github.com/InternLM/lmdeploy) to accelerate inference for large models and multimodal models. When performing infer/deploy/eval, you can specify `--infer_backend vllm/lmdeploy`.
@@ -146,10 +157,10 @@ Running Environment:
 | transformers | >=4.33       | 4.57.6/5.12.1              |                          |
 | modelscope   | >=1.23       |                     |                                           |
 | datasets     | >=3.0,<4.8.5 | 3.6.0/4.8.4         |                    |
-| peft         | >=0.11,<0.20 |                     |                                           |
+| peft         | >=0.11,<0.21 |                     |                                           |
 | flash_attn   |              | 2.8.3/4.0.0b15 |                                           |
 | trl          | >=0.15,<1.0 | 0.29.1              | RLHF                                      |
-| deepspeed    | >=0.14       | 0.18.9              | Training                                  |
+| deepspeed    | >=0.19.3,<0.20 | 0.19.7            | Training                                  |
 | vllm         | >=0.5.1      | 0.11.0/0.23.0       | Inference/Deployment                      |
 | sglang       | >=0.4.6      |          | Inference/Deployment                      |
 | evalscope    | >=1.0       |                     | Evaluation                                |
@@ -321,7 +332,7 @@ Supported Training Methods:
 | [PPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/ppo) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | ❌                                                            |
 | [DPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/dpo) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/dpo) |
 | [KTO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/kto.sh) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/kto.sh) |
-| [Reward Model](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm.sh) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            |
+| [Reward Model](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            |
 | [CPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/cpo.sh) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            |
 | [SimPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            |
 | [ORPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            |
@@ -506,4 +517,4 @@ This framework is licensed under the [Apache License (Version 2.0)](https://gith
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=modelscope/ms-swift&type=Date)](https://star-history.com/#modelscope/ms-swift&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=modelscope/ms-swift&type=Date)](https://star-history.dera.page/#modelscope/ms-swift&Date)

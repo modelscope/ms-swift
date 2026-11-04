@@ -119,7 +119,7 @@ def jsd_loss(
     # N may be 0 when a CP rank's partition has no valid tokens;
     # returning zero lets cp_reduce still all-reduce without hanging.
     if N == 0:
-        return s_logits.new_zeros(())
+        return s_logits.sum()  # Keep the empty partition connected to the student graph.
 
     total = s_logits.new_zeros(())
 

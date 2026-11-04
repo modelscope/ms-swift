@@ -7,6 +7,8 @@ import torch
 from mcore_bridge import split_cp_inputs
 from megatron.core import mpu
 from megatron.core.tensor_parallel import scatter_to_sequence_parallel_region
+from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
+from megatron.core.transformer.moe.token_dispatcher import MoEAlltoAllTokenDispatcher
 from megatron.core.transformer.transformer_block import get_num_layers_to_build
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 
@@ -14,17 +16,6 @@ from swift.utils import get_logger
 from swift.utils.torch_utils import get_current_device
 
 logger = get_logger()
-
-try:
-    from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
-    from megatron.core.transformer.moe.token_dispatcher import MoEAlltoAllTokenDispatcher
-    ROUTER_REPLAY_AVAILABLE = True
-except ImportError:
-    logger.warning('RouterReplay not available in current megatron-core version')
-    RouterReplay = None
-    RouterReplayAction = None
-    MoEAlltoAllTokenDispatcher = None
-    ROUTER_REPLAY_AVAILABLE = False
 
 device_name = get_current_device()
 
@@ -79,7 +70,7 @@ def get_local_layer_range(tf_config, vp_rank=None, only_moe_layer=True):
     return offset, count
 
 
-def get_local_topk_idx_for_current_rank(global_topk_idx, tf_config, packed_seq_params=None):
+def get_local_topk_idx_for_current_rank(global_topk_idx, tf_config, packed_seq_params=None, cp_partition_mode='zigzag'):
     if global_topk_idx is None:
         return None
     # 1. pp slice
@@ -100,7 +91,10 @@ def get_local_topk_idx_for_current_rank(global_topk_idx, tf_config, packed_seq_p
     # 2. cp slice
     cp_size = mpu.get_context_parallel_world_size()
     if cp_size > 1:
-        local_topk_idx = split_cp_inputs(local_topk_idx, getattr(packed_seq_params, 'cu_seqlens_q', None), 1)
+        kwargs = {}
+        if cp_partition_mode == 'contiguous':
+            kwargs['cp_partition_mode'] = 'contiguous'
+        local_topk_idx = split_cp_inputs(local_topk_idx, getattr(packed_seq_params, 'cu_seqlens_q', None), 1, **kwargs)
     # 3. sp slice
     local_topk_idx = scatter_to_sequence_parallel_region(local_topk_idx.transpose(0, 1)).transpose(0, 1)
     return local_topk_idx
@@ -108,9 +102,18 @@ def get_local_topk_idx_for_current_rank(global_topk_idx, tf_config, packed_seq_p
 
 def get_router_replay_data(tf_config, vp_rank=None):
     router_instances_list = RouterReplayHelper.get_micro_batch_router_list(tf_config, vp_rank)
-    layers_topk_idx = []
-    for router in router_instances_list:
-        layers_topk_idx.append(router.recorded_topk_idx.to(torch.uint8))
+    recorded_topk_idx = [router.recorded_topk_idx for router in router_instances_list]
+    nonempty_topk_idx = [topk_idx for topk_idx in recorded_topk_idx if topk_idx.numel()]
+    num_experts = tf_config.num_moe_experts
+    if nonempty_topk_idx:
+        bounds = torch.stack([torch.stack(torch.aminmax(topk_idx)) for topk_idx in nonempty_topk_idx]).cpu()
+        min_idx = bounds[:, 0].min().item()
+        max_idx = bounds[:, 1].max().item()
+        if min_idx < 0 or max_idx >= num_experts:
+            raise ValueError(
+                f'Recorded expert indices must be in [0, {num_experts}), but found range [{min_idx}, {max_idx}].')
+    index_dtype = torch.uint8 if num_experts <= 256 else torch.int32
+    layers_topk_idx = [topk_idx.to(index_dtype) for topk_idx in recorded_topk_idx]
     # layer_num, seq_len, topk -> 1, seq_len, layer_num, topk
     layers_topk_idx = torch.stack(layers_topk_idx).transpose(0, 1).unsqueeze(0).to(device_name)
     return layers_topk_idx
@@ -188,13 +191,10 @@ def apply_router_replay_patch():
     """
     logger.info('Applying Router Replay Patch...')
 
-    assert ROUTER_REPLAY_AVAILABLE, \
-        'The routing replay is not supported. Please upgrade megatron-core to 0.16.0 or higher'
-
     # Patch MoEAlltoAllTokenDispatcher.preprocess to handle router replay
     # When router replay is enabled, duplicate indices in top_indices can cause
     # routing_map.sum() < num_tokens * topk, leading to split size mismatch in alltoall.
-    if MoEAlltoAllTokenDispatcher is not None and not hasattr(MoEAlltoAllTokenDispatcher, '_preprocess_patched'):
+    if not hasattr(MoEAlltoAllTokenDispatcher, '_preprocess_patched'):
         original_preprocess = MoEAlltoAllTokenDispatcher.preprocess
 
         def patched_preprocess(self, routing_map):

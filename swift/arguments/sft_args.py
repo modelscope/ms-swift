@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
+from accelerate.utils.fsdp_utils import enable_fsdp_ram_efficient_loading
 from dataclasses import dataclass
 from transformers.utils.versions import require_version
 from typing import Literal, Optional
@@ -189,6 +190,13 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 self.padding_free = True
             else:
                 feature = 'padding_free'
+            template_meta = getattr(self, 'template_meta', None)
+            if template_meta is not None:
+                support_padding_free = template_meta.template_cls.support_padding_free
+                if support_padding_free is None:
+                    support_padding_free = not self.model_meta.is_multimodal
+                if not support_padding_free:
+                    raise ValueError(f'Template `{self.template}` does not support padding free or packing.')
             supported_impls = ['flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4']
             if self.attn_impl not in supported_impls:
                 supported_impls_str = ', '.join([f'"{impl}"' for impl in supported_impls])
@@ -205,11 +213,12 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 else:
                     self.adapters = [self.resume_from_checkpoint]
         BaseArguments.__post_init__(self)
+        self._init_decision_callbacks()
         self._init_override()
         TunerArguments.__post_init__(self)
         self._check_padding_free()
         if self.vit_gradient_checkpointing is None:
-            self.vit_gradient_checkpointing = not self.freeze_vit
+            self.vit_gradient_checkpointing = self.gradient_checkpointing
         if self.optimizer is None:
             if self.lorap_lr_ratio:
                 self.optimizer = 'lorap'
@@ -236,6 +245,11 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
 
         if 'swanlab' in self.report_to:
             self._init_swanlab()
+
+    def _init_decision_callbacks(self):
+        if self.task_type == 'decision':
+            if 'temperature_calibration' not in self.callbacks:
+                self.callbacks.append('temperature_calibration')
 
     def _init_override(self):
         self._init_output_dir()
@@ -319,6 +333,11 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         fsdp_version = self.fsdp_config.get('fsdp_version', 2)
         os.environ['FSDP_VERSION'] = str(fsdp_version)
 
+        # Model loading happens before the Trainer/Accelerator is created, so wire up the env vars read by
+        # `swift.model.utils.get_default_device_map()` and `transformers.is_fsdp_enabled()` via accelerate's
+        # official helper: sets ACCELERATE_USE_FSDP (only if unset) and FSDP_CPU_RAM_EFFICIENT_LOADING.
+        enable_fsdp_ram_efficient_loading()
+
         # Set environment variable to optimize NCCL memory usage
         if 'TORCH_NCCL_AVOID_RECORD_STREAMS' not in os.environ:
             os.environ['TORCH_NCCL_AVOID_RECORD_STREAMS'] = '1'
@@ -380,6 +399,9 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
             self.logging_dir = f'{self.output_dir}/runs'
 
         self.logging_dir = to_abspath(self.logging_dir)
+        # transformers>=5.15 dropped `TrainingArguments.logging_dir`; its TensorBoardCallback reads the log
+        # dir from this environment variable instead. Harmless on older versions, which ignore it.
+        os.environ.setdefault('TENSORBOARD_LOGGING_DIR', self.logging_dir)
         os.makedirs(self.output_dir, exist_ok=True)
 
         if self.run_name is None:
