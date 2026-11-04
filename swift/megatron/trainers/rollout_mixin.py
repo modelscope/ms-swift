@@ -219,8 +219,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         args = self.args
         vp_size = getattr(args, 'virtual_pipeline_model_parallel_size', None)
         assert vp_size is None or vp_size == 1, 'Teacher distillation does not support VPP.'
-        self.teacher_hf_config = HfConfigFactory.load_hf_config(
-            args.teacher_model_dir, trust_remote_code=True)
+        self.teacher_hf_config = HfConfigFactory.load_hf_config(args.teacher_model_dir, trust_remote_code=True)
         if self.teacher_hf_config is None:
             self.teacher_hf_config = AutoConfig.from_pretrained(args.teacher_model_dir, trust_remote_code=True)
         teacher_args = copy(args)

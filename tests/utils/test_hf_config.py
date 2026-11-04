@@ -2,7 +2,6 @@ import json
 import os
 import tempfile
 import unittest
-
 from transformers import AutoConfig, LlamaConfig, PretrainedConfig
 from transformers.models.auto.configuration_auto import CONFIG_MAPPING
 
