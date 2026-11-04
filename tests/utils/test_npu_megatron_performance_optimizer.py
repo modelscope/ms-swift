@@ -3,6 +3,7 @@
 
 import pytest
 import torch
+from torch.utils._python_dispatch import TorchDispatchMode
 from transformers.utils import is_torch_npu_available
 
 from swift.model.npu_patch.megatron_optimizer import (multi_tensor_l2norm, multi_tensor_scale_tensor,
@@ -60,12 +61,19 @@ def test_norm_and_scale_do_not_read_device_scalars(device):
     flag = torch.zeros(1, dtype=torch.int32, device=device)
     inv_scale = torch.tensor(0.25, device=device)
     scale = torch.tensor(0.5, device=device)
-    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as trace:
+
+    class NoScalarReads(TorchDispatchMode):
+
+        def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+            assert func._schema.name not in {'aten::item', 'aten::_local_scalar_dense', 'aten::is_nonzero'}
+            return func(*args, **(kwargs or {}))
+
+    with pytest.raises(AssertionError), NoScalarReads():
+        scale.item()
+    with NoScalarReads():
         multi_tensor_l2norm(65536, flag, [inputs])
         multi_tensor_unscale_l2norm(65536, flag, [inputs], inv_scale)
         multi_tensor_scale_tensor(65536, flag, [inputs, inputs], scale)
-    names = {event.key for event in trace.key_averages()}
-    assert not names.intersection({'aten::item', 'aten::_local_scalar_dense', 'aten::is_nonzero'})
 
 
 @pytest.mark.parametrize('device', DEVICES)

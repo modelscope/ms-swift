@@ -14,20 +14,21 @@ def test_installation_and_idempotence():
     from megatron.core.transformer.moe import experts, moe_utils, token_dispatcher
     from transformer_engine.pytorch import optimizers
 
-    original_moe_functions = (
-        moe_utils.permute,
-        token_dispatcher.permute,
+    original_swiglu_functions = (
         fused_bias_swiglu.weighted_bias_swiglu_impl,
         experts.weighted_bias_swiglu_impl,
     )
 
     import swift.megatron  # noqa: F401
+    from swift.model.npu_patch import megatron_moe as moe
     from swift.model.npu_patch import megatron_optimizer as optimizer
 
     optimizer.patch_megatron_optimizer()
-    assert original_moe_functions == (
-        moe_utils.permute,
-        token_dispatcher.permute,
+    original_permute = moe._ORIGINAL_PERMUTE
+    moe.patch_megatron_moe()
+    assert moe._ORIGINAL_PERMUTE is original_permute
+    assert moe_utils.permute is token_dispatcher.permute is moe.permute
+    assert original_swiglu_functions == (
         fused_bias_swiglu.weighted_bias_swiglu_impl,
         experts.weighted_bias_swiglu_impl,
     )
